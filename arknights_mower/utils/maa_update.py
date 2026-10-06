@@ -1591,10 +1591,6 @@ def clear_loaded_maa_cache(target: Path | str) -> None:
     if scheduler is not None:
         scheduler.MAA = None
 
-    base_schedule_module = sys.modules.get("arknights_mower.solvers.base_schedule")
-    if base_schedule_module is not None:
-        setattr(base_schedule_module, "Message", None)
-
     # Asst.load 把 MaaCore 保存在 Asst 的类属性中；仅移除 sys.modules 不会释放
     # 已加载的旧动态库。先销毁实例，再显式关闭句柄，后续版本读取才会加载新文件。
     gc.collect()

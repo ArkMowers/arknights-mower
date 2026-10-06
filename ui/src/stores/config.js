@@ -39,6 +39,7 @@ export const useConfigStore = defineStore('config', () => {
   const medicine_expire_days = ref(0)
   const maa_report_to_yituliu = ref(false)
   const maa_yituliu_id = ref('')
+  const maa_report_to_penguin = ref(false)
   const maa_penguin_id = ref('')
   const ap_fallback = ref(0)
   const maa_weekly_plan = ref([])
@@ -491,6 +492,7 @@ export const useConfigStore = defineStore('config', () => {
       medicine_expire_days.value = response.data.medicine_expire_days
       maa_report_to_yituliu.value = response.data.maa_report_to_yituliu ?? false
       maa_yituliu_id.value = response.data.maa_yituliu_id ?? ''
+      maa_report_to_penguin.value = response.data.maa_report_to_penguin ?? false
       maa_penguin_id.value = response.data.maa_penguin_id ?? ''
       ap_fallback.value = Number(response.data.ap_fallback) || 0
       maa_weekly_plan.value = normalizeWeeklyPlan(response.data.maa_weekly_plan)
@@ -663,6 +665,7 @@ export const useConfigStore = defineStore('config', () => {
       medicine_expire_days: medicine_expire_days.value,
       maa_report_to_yituliu: maa_report_to_yituliu.value,
       maa_yituliu_id: maa_yituliu_id.value,
+      maa_report_to_penguin: maa_report_to_penguin.value,
       maa_penguin_id: maa_penguin_id.value,
       ap_fallback: ap_fallback.value,
       maa_weekly_plan_active: maa_weekly_plan_active.value,
@@ -995,6 +998,7 @@ export const useConfigStore = defineStore('config', () => {
     medicine_expire_days,
     maa_report_to_yituliu,
     maa_yituliu_id,
+    maa_report_to_penguin,
     maa_penguin_id,
     ap_fallback,
     maa_weekly_plan,

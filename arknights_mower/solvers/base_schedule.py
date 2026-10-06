@@ -1,12 +1,10 @@
 import copy
-import json
 import math
 import os
 import pathlib
 import re
 import sys
 from collections import defaultdict, deque
-from ctypes import CFUNCTYPE, c_char_p, c_int, c_void_p
 from datetime import datetime, timedelta
 from time import monotonic
 from typing import Literal, Optional
@@ -85,6 +83,12 @@ from arknights_mower.utils.email import maa_template, send_message, task_templat
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.maa_callback import (
+    REPORT_REQUEST,
+    MaaCallbackLog,
+    parse_details,
+)
+from arknights_mower.utils.maa_report import upload_report
 from arknights_mower.utils.manufacture_product import (
     DRONE_SECONDS,
     MANUFACTURE_PRODUCTS,
@@ -299,6 +303,23 @@ class RoomArrangementDeferred(RuntimeError):
         self.room = room
 
 
+# MAA 掉落统计：回调随时可能到达，模块级初值保证首次回调不会因缺名而中断。
+stage_drop = {"details": [], "summary": {}}
+
+
+def _drop_entries(value):
+    """掉落条目必须是对象列表；畸形负载不得进入 maa_stop 汇报模板。"""
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def reset_stage_drop():
+    """开始新一轮 MAA 前清空掉落统计，供回调累积与 maa_stop 汇报共用。"""
+    stage_drop["details"] = []
+    stage_drop["summary"] = {}
+
+
 class ProductSwitchDeferred(Exception):
     def __init__(self, message: str, minutes: float = 15):
         super().__init__(message)
@@ -309,6 +330,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     """
     收集基建的产物：物资、赤金、信赖
     """
+
+    # MAA 回调日志：每次 initialize_maa 建立新实例，本轮 MAA 的可读进度行来自它。
+    maa_callback: MaaCallbackLog | None = None
 
     def __init__(
         self,
@@ -8629,37 +8653,38 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if not error:
             self.reload_time = datetime.now()
 
-    @CFUNCTYPE(None, c_int, c_char_p, c_void_p)
-    def log_maa(msg, details, arg):
-        m = Message(msg)
-        d = json.loads(details.decode("utf-8"))
-        logger.debug(d)
-        logger.debug(m)
-        logger.debug(arg)
-        if "what" in d and d["what"] == "StageDrops":
-            global stage_drop
-            stage_drop["details"].append(d["details"]["drops"])
-            stage_drop["summary"] = d["details"]["stats"]
+    def on_maa_callback(self, msg, details, arg):
+        """MAA 回调入口：累积掉落统计、代发上报请求、输出可读日志行。"""
+        d = parse_details(details)
+        logger.debug("MAA 回调 %s %s", msg, d)
+        if d.get("what") == "StageDrops":
+            inner = d.get("details")
+            inner = inner if isinstance(inner, dict) else {}
+            drops = _drop_entries(inner.get("drops"))
+            stats = _drop_entries(inner.get("stats"))
+            if drops:
+                stage_drop["details"].append(drops)
+            if stats:
+                stage_drop["summary"] = stats
+        if msg == REPORT_REQUEST:
+            # 上报在守护线程里进行；此处仍要兜住线程创建失败，回调不得抛错。
+            try:
+                upload_report(d)
+            except Exception as e:
+                logger.warning(f"MAA 上报请求处理失败：{e}")
+        if self.maa_callback is None:
+            return
+        line = self.maa_callback.describe(msg, d)
+        if line is not None:
+            logger.log(line.level, line.text)
 
-        elif "what" in d and d["what"] == "RecruitTagsSelected":
-            global recruit_tags_selected
-            recruit_tags_selected["tags"].append(d["details"]["tags"])
-
-        elif "what" in d and d["what"] == "RecruitResult":
-            global recruit_results
-            temp_dict = {
-                "tags": d["details"]["tags"],
-                "level": d["details"]["level"],
-                "result": d["details"]["result"],
-            }
-            recruit_results["results"].append(temp_dict)
-
-        elif "what" in d and d["what"] == "RecruitSpecialTag":
-            global recruit_special_tags
-            recruit_special_tags["tags"].append(d["details"]["tags"])
-        # elif d.get("what") == "DepotInfo" and d["details"].get("done") is True:
-        #     logger.info(f"开始扫描仓库（MAA）")
-        #     process_itemlist(d)
+    def report_maa_progress(self):
+        """按间隔播报 MAA 进度；未到间隔不产生日志行。"""
+        if self.maa_callback is None:
+            return
+        line = self.maa_callback.heartbeat()
+        if line is not None:
+            logger.log(line.level, line.text)
 
     def initialize_maa(self):
         from arknights_mower.utils.maa_backup import VerifiedAsst, update_transaction
@@ -8667,9 +8692,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if os.environ.get("MOWER_ANDROID") == "1":
             from mower_android.maa import Asst
 
-            globals()["Message"] = int
             config.stop_maa.clear()
-            self.MAA = VerifiedAsst(Asst, config.conf.maa_path, self.log_maa)
+            self.maa_callback = MaaCallbackLog()
+            self.MAA = VerifiedAsst(Asst, config.conf.maa_path, self.on_maa_callback)
             self.stages = []
             if not self.MAA.connect():
                 raise RuntimeError("安卓 MAA 引擎未连接")
@@ -8680,11 +8705,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         asst_path = os.path.dirname(path / "Python" / "asst")
         if asst_path not in sys.path:
             sys.path.append(asst_path)
-        global Message
 
         try:
             from asst.asst import Asst
-            from asst.utils import InstanceOptionType, Message
+            from asst.utils import InstanceOptionType
 
             logger.info("MAA Python模块导入成功")
         except Exception as e:
@@ -8721,8 +8745,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         @update_transaction
         def create_verified_asst():
             Asst.load(path=path, incremental_path=path / "cache")
-            return VerifiedAsst(Asst, path, self.log_maa)
+            return VerifiedAsst(Asst, path, self.on_maa_callback)
 
+        # 覆盖 Asst.load 与连接阶段：连接信息回调在 connect 期间就会到达。
+        self.maa_callback = MaaCallbackLog()
         self.MAA = create_verified_asst()
         self.stages = []
         self.MAA.set_instance_option(
@@ -8779,7 +8805,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         "stone": 999 if conf.maa_eat_stone else 0,
                         "times": 999,
                         "series": 0,
-                        "report_to_penguin": True,
+                        "report_to_penguin": conf.maa_report_to_penguin,
                         "client_type": _maa_client_type(getattr(self, "device", None)),
                         "penguin_id": conf.maa_penguin_id,
                         "DrGrandet": False,
@@ -9028,13 +9054,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if one_time:
                     stop_time = datetime.now() + timedelta(minutes=5)
                 else:
-                    global stage_drop
-                    stage_drop = {"details": [], "summary": {}}
+                    reset_stage_drop()
 
                 logger.info("MAA 启动")
                 hard_stop = False
                 while self.MAA.running():
-                    logger.info("MAA 运行中...")
+                    self.report_maa_progress()
                     self.recog.update()
                     self.recog.save_screencap(None)
                     # 单次任务默认5分钟
@@ -9265,7 +9290,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     maa_crash = True
                     while self.MAA.running():
                         csleep(5)
-                        logger.info("MAA 运行中...")
+                        self.report_maa_progress()
                         self.recog.update()
                         self.recog.save_screencap(None)
                         if (

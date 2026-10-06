@@ -19,6 +19,7 @@ def _conf(
     expiring_medicine_on_weekend=False,
     maa_report_to_yituliu=False,
     maa_yituliu_id="",
+    maa_report_to_penguin=False,
     maa_penguin_id="",
 ):
     return SimpleNamespace(
@@ -44,6 +45,7 @@ def _conf(
         maa_eat_stone=False,
         maa_report_to_yituliu=maa_report_to_yituliu,
         maa_yituliu_id=maa_yituliu_id,
+        maa_report_to_penguin=maa_report_to_penguin,
         maa_penguin_id=maa_penguin_id,
     )
 
@@ -72,7 +74,7 @@ def _mall_conf(
 
 
 class MaaFightMedicineExpireDaysTests(unittest.TestCase):
-    """#263：Fight 下发 medicine_expire_days，替换已弃用的 expiring_medicine。"""
+    """Fight 下发 medicine_expire_days，替换已弃用的 expiring_medicine。"""
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def _append_fight(self, **overrides):
@@ -129,7 +131,7 @@ class MaaFightMedicineExpireDaysTests(unittest.TestCase):
 
 
 class MaaFightYituliuTests(unittest.TestCase):
-    """#265：Fight 补齐协议可加字段 report_to_yituliu / yituliu_id，默认关闭。"""
+    """Fight 补齐协议可加字段 report_to_yituliu / yituliu_id，默认关闭。"""
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def _append_fight(self, **overrides):
@@ -168,7 +170,7 @@ class MaaFightYituliuTests(unittest.TestCase):
 
 
 class MaaFightPenguinTests(unittest.TestCase):
-    """#206：penguin_id 由硬编码空串改为配置下发，企鹅上报原为硬编码常开。"""
+    """企鹅物流上报改为可选：默认关闭，勾选后才下发 report_to_penguin。"""
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def _append_fight(self, **overrides):
@@ -186,15 +188,17 @@ class MaaFightPenguinTests(unittest.TestCase):
             solver.append_maa_task("Fight")
         return solver.MAA.append_task.call_args
 
-    def test_fight_sends_empty_penguin_id_by_default(self):
-        # 默认空串：行为与旧硬编码 "" 一致，企鹅上报不受影响
+    def test_fight_does_not_report_by_default(self):
+        # 默认关闭：不勾选就不上传，与一图流一致
         task_config = self._append_fight().args[1]
-        self.assertIs(task_config["report_to_penguin"], True)
+        self.assertIs(task_config["report_to_penguin"], False)
         self.assertEqual(task_config["penguin_id"], "")
 
-    def test_fight_sends_configured_penguin_id(self):
-        # 填写企鹅 id：如实下发
-        task_config = self._append_fight(maa_penguin_id="penguin-abc").args[1]
+    def test_fight_reports_when_enabled(self):
+        task_config = self._append_fight(
+            maa_report_to_penguin=True, maa_penguin_id="penguin-abc"
+        ).args[1]
+        self.assertIs(task_config["report_to_penguin"], True)
         self.assertEqual(task_config["penguin_id"], "penguin-abc")
 
     def test_fight_penguin_id_is_string_type(self):
@@ -204,7 +208,7 @@ class MaaFightPenguinTests(unittest.TestCase):
 
 
 class MaaMallFormationIndexTests(unittest.TestCase):
-    """#261：Mall 下发协议字段 formation_index，替换非协议字段 select_formation。"""
+    """Mall 下发协议字段 formation_index，替换非协议字段 select_formation。"""
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def _append_mall(self, **overrides):
@@ -236,7 +240,7 @@ class MaaMallFormationIndexTests(unittest.TestCase):
 
 
 class MaaMallDiscountCreditTests(unittest.TestCase):
-    """#265：Mall 补齐协议可加字段 only_buy_discount / reserve_max_credit，默认均 false。"""
+    """Mall 补齐协议可加字段 only_buy_discount / reserve_max_credit，默认均 false。"""
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def _append_mall(self, **overrides):
@@ -334,7 +338,7 @@ class MaaStageInventorySchedulerTests(unittest.TestCase):
 
 
 class MaaClientTypeTests(unittest.TestCase):
-    """#260：StartUp 与 Fight 下发协议必填的 client_type，由 package_type 推导。"""
+    """StartUp 与 Fight 下发协议必填的 client_type，由 package_type 推导。"""
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def _append(self, task_type, package_type, *, game_package=None):
@@ -389,7 +393,7 @@ class MaaClientTypeTests(unittest.TestCase):
 
 
 class MaaVisitFriendModeTests(unittest.TestCase):
-    """#262：visit_friend_enable + visit_friend_mode 控制访问好友交给 mower 还是 MAA。
+    """visit_friend_enable + visit_friend_mode 控制访问好友交给 mower 还是 MAA。
 
     开启且 mode=mower 时走原生 CreditSolver、Mall 不下发 visit_friends；开启且 mode=maa
     时 Mall 下发 visit_friends: true 且原生跳过；关闭时两者都不做；Visit 死分支已移除。
@@ -538,7 +542,7 @@ def _rg_conf(
 
 
 class MaaRoguelikeTests(unittest.TestCase):
-    """#264：Roguelike 下发补齐通用字段；协议注明「仅某主题/某模式」的字段按条件省略。"""
+    """Roguelike 下发补齐通用字段；协议注明「仅某主题/某模式」的字段按条件省略。"""
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def _run_rogue(self, **overrides):
