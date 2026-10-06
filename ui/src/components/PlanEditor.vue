@@ -562,6 +562,16 @@ function set_facility(e) {
                 此宿舍内空位填充Free
               </n-button>
             </td>
+            <td v-if="sub_plan !== 'main'">
+              <n-button
+                ghost
+                :disabled="edit_locked"
+                title="用主表此设施的配置覆盖当前副表的此设施"
+                @click="!edit_locked && plan_store.import_main_facility(facility)"
+              >
+                从主表导入此设施
+              </n-button>
+            </td>
             <td>
               <n-button ghost type="error" @click="clear" :disabled="edit_locked || facility_empty">
                 清空此设施内干员

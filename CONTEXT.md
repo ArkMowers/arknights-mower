@@ -96,6 +96,7 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 - **Code Mapping**: [`TaskTypes.SHIFT_OFF`](arknights_mower/utils/scheduler_task.py), [`BaseSchedulerSolver.plan_solver`](arknights_mower/solvers/base_schedule.py)
 - **_Avoid_**: `Fixed timetable swap`, `Static worker cycle`
 - Each binding of an operator assigned to multiple groups specifies its own group and replacements; the operator follows the latest triggered group with that binding’s replacements and does not contribute to group mood statistics, off-shift triggers or return deadlines.
+- A backup plan that changes only replacement lists preserves each primary operator’s shift state: working primaries remain at work, off-shift primaries only change replacements, and unavailable replacements defer the plan transition.
 
 ### Clue Collection & Exchange
 - **Definition**: The workflow of assigning operators to the Reception Room to gather clues 1-7, receive and gift clues with friends, and host 24-hour Clue Parties upon completing full sets for credit rewards.

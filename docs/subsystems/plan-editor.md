@@ -12,6 +12,7 @@ The setting remains in local configuration and is absent from Scheduling Plan da
 
 - **[INV-SCHED-26] Backup Operator List Removal**: Active backups apply operator additions followed by per-field removals in backup order; deactivation rebuilds effective lists from the main Scheduling Plan and remaining active backups without mutating source lists, and legacy backups retain additive behavior.
 
+- **[INV-UI-09] Backup Facility Import Isolation**: Importing a main-plan facility replaces only the selected backup facility with a deep copy of its type, product and operator bindings; subsequent edits preserve the source main plan, other facilities, backup conditions and explicit staffing tasks, and the edit lock prevents import.
 - **[INV-UI-08] Facility Display Order Isolation**: The local `swap_contact_train` setting changes only the office and training card display order in every Scheduling Plan; facility identities, assignments and exported plan data remain unchanged.
 
 The [display order decision](../../.agents/notes/implemented/simplification/2026-10-06-plan-facility-display-order.md) records shared rendering and verification.
@@ -30,10 +31,14 @@ The [shared field decision](../../.agents/notes/implemented/simplification/2026-
 
 ## 5. Operator Group Columns
 
-The plus button beside an operator's group field adds an independent group/replacement column beneath the first column. Deleting any column preserves the others; deleting the first promotes the next column into the legacy fields. Empty operators, `Free`, `Current` and Fiammetta cannot add bindings. Running-plan edit locks cover addition, deletion and every field. Facility clearing removes all bindings with the operator.
+The plus button beside an operator's group field adds an independent group/replacement column beneath the first column. The first row displays only the add button; subsequent rows display only the remove button and retain the other bindings when removed. Empty operators, `Free`, `Current` and Fiammetta cannot add bindings. Running-plan edit locks cover addition, deletion and every field. Facility clearing removes all bindings with the operator.
 
 Every avatar uses one equal-width color segment per configured column in a 5-pixel bottom strip, with its neutral background preserved in the editor and exported images. Unfinished empty columns retain a transparent segment. The main plan and all backup plans share a color map, so selecting another table preserves the colors of identically named groups. Plan saving, import, export and facility movement retain nested bindings.
 
 The [scheduling contract](base-scheduler.md#211-multiple-group-bindings) defines persisted fields, validation and shift behavior. The [shared rendering decision](../../.agents/notes/implemented/simplification/2026-10-06-shared-group-shift-selection.md) records the simplification.
 
 The [shared color decision](../../.agents/notes/implemented/simplification/2026-10-06-shared-plan-group-colors.md) defines color assignment and rendering.
+
+## 6. Backup Facility Import
+
+The backup facility toolbar copies the selected main-plan facility, including its type, product, primary operators and all group/replacement bindings. The copy replaces only that facility in the selected backup and shares no mutable rows or replacement lists with the main plan. Backup conditions, explicit staffing tasks, other facilities and other backups remain unchanged. The button is hidden on the main plan and disabled by the edit lock.

@@ -136,3 +136,57 @@ it.each([false, true])('renders group rows, segmented avatar and edit lock %s', 
   expect(html).toContain('value="甲"')
   expect(html).toContain('value="乙"')
 })
+
+it.each(['main', 0])(
+  'shows facility import only in backup %s and copies independently',
+  async (subPlan) => {
+    const app = createSSRApp(PlanEditor)
+    app.use(createPinia())
+    app.provide('loaded', ref(false))
+    app.provide('facility', ref('contact'))
+    const locked = ref(false)
+    app.provide('planEditLocked', locked)
+    const config = app.runWithContext(() => useConfigStore())
+    const plan = app.runWithContext(() => usePlanStore())
+    stores.push(config, plan)
+    config.maa_mall_buy = []
+    config.maa_mall_blacklist = []
+    plan.plan = plan.fill_empty({})
+    Object.assign(plan.plan.contact, {
+      name: '办公室',
+      product: '',
+      plans: [
+        {
+          agent: '讯使',
+          group: '甲',
+          replacement: ['红'],
+          group_bindings: [{ group: '乙', replacement: ['黑角'] }]
+        }
+      ]
+    })
+    plan.backup_plans = [{ plan: plan.fill_empty({}), trigger: { left: 'True' } }]
+    plan.sub_plan = subPlan
+    const before = JSON.stringify(plan.plan)
+    const untouched = JSON.stringify(plan.backup_plans[0].plan.meeting)
+    for (const value of [false, true]) {
+      locked.value = value
+      const html = await renderToString(app)
+      expect(html.includes('从主表导入此设施')).toBe(subPlan !== 'main')
+      if (subPlan !== 'main') {
+        const button = html.match(
+          /<button\b[^>]*title="用主表此设施的配置覆盖当前副表的此设施"[^>]*>/
+        )[0]
+        expect(/\bdisabled(?:[\s=>])/.test(button)).toBe(value)
+      }
+    }
+    plan.import_main_facility('contact')
+    expect(JSON.stringify(plan.plan)).toBe(before)
+    if (subPlan !== 'main') {
+      expect(plan.current_plan.contact).toEqual(plan.plan.contact)
+      plan.current_plan.contact.plans[0].group_bindings[0].replacement.push('砾')
+      expect(JSON.stringify(plan.plan)).toBe(before)
+      expect(JSON.stringify(plan.backup_plans[0].plan.meeting)).toBe(untouched)
+      expect(plan.backup_plans[0].trigger).toEqual({ left: 'True' })
+    }
+  }
+)

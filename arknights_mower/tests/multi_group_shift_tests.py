@@ -588,7 +588,14 @@ def test_backup_column_edit_preserves_only_valid_active_cover(solver, edit):
     correction = s._backup_transition_plan(
         previous_plan, [False], [True], previous_dorms, previous_layout
     )
-    assert correction == ({} if edit == "inactive" else {"contact": [SHARED]})
+    assert (
+        correction
+        == {
+            "inactive": {},
+            "active": {"contact": ["砾"]},
+            "remove_active": {"contact": [SHARED]},
+        }[edit]
+    )
 
 
 @pytest.mark.parametrize("cover, capacity", [("红", 0), (A, 1), ("Free", 1)])
