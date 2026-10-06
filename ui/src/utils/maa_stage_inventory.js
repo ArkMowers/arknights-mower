@@ -83,6 +83,19 @@ export function evaluateLimitRule(rule, inventory = {}, itemAliases = {}) {
   return { active: true, reached, conditions }
 }
 
+function activeRatioMembers(rule) {
+  if (rule?.enabled === false) {
+    return []
+  }
+  return (rule?.members || []).filter(
+    (member) =>
+      member.stage &&
+      member.stage !== 'Annihilation' &&
+      (member.item_id || member.item_name) &&
+      Number(member.ratio) > 0
+  )
+}
+
 export function selectRatioMember(
   rule,
   inventory = {},
@@ -96,14 +109,8 @@ export function selectRatioMember(
   const stagePositions = new Map(stageOrder.map((stage, index) => [stage, index]))
   const seenStages = new Set()
   const candidates = []
-  for (const member of rule?.members || []) {
-    if (
-      !member.stage ||
-      seenStages.has(member.stage) ||
-      !(member.item_id || member.item_name) ||
-      Number(member.ratio) <= 0 ||
-      excludedStages.has(member.stage)
-    ) {
+  for (const member of activeRatioMembers(rule)) {
+    if (seenStages.has(member.stage) || excludedStages.has(member.stage)) {
       continue
     }
     seenStages.add(member.stage)
@@ -134,25 +141,38 @@ export function previewInventorySelection(
   itemAliases = {}
 ) {
   const original = Array.isArray(stages) ? [...stages] : []
-  const skippedStages = new Set()
+  const annihilation = []
+  const priority = []
+  const fallback = []
   const limitSkipped = []
+  const ratioBoundStages = new Set(
+    ratioRules.flatMap((rule) => activeRatioMembers(rule).map((member) => member.stage))
+  )
 
   for (const stage of original) {
-    if (!stage || stage === 'Annihilation') {
+    if (stage === 'Annihilation') {
+      annihilation.push(stage)
       continue
     }
-    const reached = limitRules
+    if (!stage) {
+      fallback.push(stage)
+      continue
+    }
+    const statuses = limitRules
       .filter((rule) => rule?.stage === stage)
-      .some((rule) => evaluateLimitRule(rule, inventory, itemAliases).reached)
-    if (reached) {
-      skippedStages.add(stage)
+      .map((rule) => evaluateLimitRule(rule, inventory, itemAliases))
+    if (statuses.some((status) => status.reached)) {
       if (!limitSkipped.includes(stage)) {
         limitSkipped.push(stage)
       }
+    } else if (statuses.some((status) => status.active) || ratioBoundStages.has(stage)) {
+      priority.push(stage)
+    } else {
+      fallback.push(stage)
     }
   }
 
-  let kept = original.filter((stage) => !skippedStages.has(stage))
+  let kept = [...annihilation, ...(priority.length ? priority : fallback)]
   if (original.length > 0 && kept.length === 0 && limitSkipped.length > 0) {
     return {
       stages: original,
@@ -176,15 +196,8 @@ export function previewInventorySelection(
       continue
     }
     const candidateStages = new Set(
-      (rule.members || [])
-        .filter(
-          (member) =>
-            member.stage &&
-            (member.item_id || member.item_name) &&
-            Number(member.ratio) > 0 &&
-            kept.includes(member.stage) &&
-            !claimedStages.has(member.stage)
-        )
+      activeRatioMembers(rule)
+        .filter((member) => kept.includes(member.stage) && !claimedStages.has(member.stage))
         .map((member) => member.stage)
     )
     if (candidateStages.size < 2) {

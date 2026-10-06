@@ -279,6 +279,60 @@ class MaaMallDiscountCreditTests(unittest.TestCase):
 
 class MaaStageInventorySchedulerTests(unittest.TestCase):
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
+    def test_enabled_selection_without_rules_prioritizes_annihilation_without_refresh(
+        self,
+    ):
+        solver = BaseSchedulerSolver()
+        conf = _conf()
+        conf.maa_stage_limit_rules = []
+        with (
+            patch.object(base_schedule.config, "conf", conf),
+            patch.object(base_schedule, "cultivateDepotSolver") as refresh_solver,
+        ):
+            stages = solver.apply_maa_stage_inventory_rules(["1-7", "Annihilation"])
+        self.assertEqual(stages, ["Annihilation", "1-7"])
+        refresh_solver.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
+    def test_chip_priority_is_shared_by_fight_and_local_operation(self):
+        original = ["1-7", "PR-A-1", "PR-B-1", "Annihilation"]
+        conf = _conf()
+        conf.maa_stage_limit_rules = [
+            {"stage": "PR-A-1", "items": [{"item_id": "3231", "limit": 5}]},
+            {"stage": "PR-B-1", "items": [{"item_id": "3241", "limit": 5}]},
+        ]
+        conf.maa_weekly_plan[0].stage = list(original)
+        for inventory, expected in (
+            ({"3231": 0, "3241": 0}, ["Annihilation", "PR-A-1", "PR-B-1"]),
+            ({"3231": 5, "3241": 4}, ["Annihilation", "PR-B-1"]),
+            ({"3231": 5, "3241": 5}, ["Annihilation", "1-7"]),
+        ):
+            with self.subTest(inventory=inventory):
+                solver = BaseSchedulerSolver()
+                solver.MAA = MagicMock()
+                solver.stages = []
+                with (
+                    patch.object(solver, "maybe_switch_expired_activity_plan"),
+                    patch.object(base_schedule.config, "conf", conf),
+                    patch.object(base_schedule, "get_server_weekday", return_value=0),
+                    patch.object(base_schedule, "cultivateDepotSolver"),
+                    patch(
+                        "arknights_mower.utils.maa_stage_inventory.load_inventory_snapshot",
+                        return_value=(inventory, "2026-10-06 12:00:00"),
+                    ),
+                ):
+                    solver.append_maa_task("Fight")
+                    local_stages = solver.mower_stage_plan()
+                sent = [
+                    call.args[1]["stage"]
+                    for call in solver.MAA.append_task.call_args_list
+                ]
+                self.assertEqual(sent, expected)
+                self.assertEqual(solver.stages, expected)
+                self.assertEqual(local_stages, expected)
+                self.assertEqual(conf.maa_weekly_plan[0].stage, original)
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def test_maa_fight_task_omits_stage_that_reached_inventory_limit(self):
         solver = BaseSchedulerSolver()
         solver.MAA = MagicMock()

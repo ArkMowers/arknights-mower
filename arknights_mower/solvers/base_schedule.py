@@ -9683,13 +9683,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         original = list(stages)
         if not conf.maa_stage_inventory_enable:
             return original
-        if not conf.maa_stage_limit_rules and not conf.maa_stage_ratio_rules:
-            return original
 
         from arknights_mower.utils.maa_stage_inventory import (
             load_inventory_snapshot,
             select_stages_by_inventory,
         )
+
+        if not conf.maa_stage_limit_rules and not conf.maa_stage_ratio_rules:
+            return select_stages_by_inventory(original)["stages"]
 
         try:
             cultivateDepotSolver().start()

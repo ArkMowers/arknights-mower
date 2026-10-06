@@ -76,6 +76,72 @@ describe('一键芯片上限', () => {
 })
 
 describe('刷理智库存选关', () => {
+  it.each([
+    [['1-7', 'PR-A-1', 'Annihilation'], {}, ['Annihilation', 'PR-A-1']],
+    [['1-7', 'PR-A-1', 'PR-B-1', 'Annihilation'], { 3231: 5, 3241: 4 }, ['Annihilation', 'PR-B-1']],
+    [['1-7', 'PR-A-1', 'PR-B-1', 'Annihilation'], { 3231: 5, 3241: 5 }, ['Annihilation', '1-7']],
+    [['1-7', 'PR-A-1'], { 3231: 5 }, ['1-7']],
+    [['1-7', 'Annihilation'], {}, ['Annihilation', '1-7']],
+    [['', 'PR-A-1'], {}, ['PR-A-1']],
+    [['', 'PR-A-1'], { 3231: 5 }, ['']]
+  ])('剿灭和库存关卡优先，无上限关卡在库存关卡达标后后备：%j', (stages, inventory, expected) => {
+    const original = [...stages]
+    const result = previewInventorySelection(
+      stages,
+      [
+        { stage: 'PR-A-1', items: [{ item_id: '3231', limit: 5 }] },
+        { stage: 'PR-B-1', items: [{ item_id: '3241', limit: 5 }] }
+      ],
+      [],
+      inventory
+    )
+    expect(result.stages).toEqual(expected)
+    expect(result.limitFallback).toBe(false)
+    expect(stages).toEqual(original)
+  })
+
+  it.each([
+    { enabled: false, items: [{ item_id: '3231', limit: 5 }] },
+    { items: [{ item_id: '3231', limit: 0 }] },
+    { items: [{ limit: 5 }] },
+    { items: [] }
+  ])('无有效上限的规则不取得优先级：%j', (rule) => {
+    expect(
+      previewInventorySelection(['1-7', 'PR-A-1'], [{ stage: 'PR-A-1', ...rule }]).stages
+    ).toEqual(['1-7', 'PR-A-1'])
+  })
+
+  it('只有比例规则的关卡也优先，比例同分仍按原计划顺序选择', () => {
+    const result = previewInventorySelection(
+      ['1-7', 'ACT-B', 'ACT-A', 'Annihilation'],
+      [],
+      [
+        {
+          members: [
+            { stage: 'ACT-A', item_id: 'A', ratio: 1 },
+            { stage: 'ACT-B', item_id: 'B', ratio: 1 }
+          ]
+        }
+      ],
+      { A: 10, B: 10 }
+    )
+    expect(result.stages).toEqual(['Annihilation', 'ACT-B'])
+    expect(result.ratioDecisions[0].selected).toBe('ACT-B')
+  })
+
+  it.each([
+    { enabled: false, members: [{ stage: 'ACT-A', item_id: 'A', ratio: 1 }] },
+    { members: [{ stage: 'ACT-A', item_id: 'A', ratio: 0 }] },
+    { members: [{ stage: 'ACT-A', ratio: 1 }] },
+    { members: [{ stage: 'Annihilation', item_id: 'A', ratio: 1 }] }
+  ])('未启用或无效比例和剿灭绑定不阻止后备关卡：%j', (rule) => {
+    expect(previewInventorySelection(['1-7', 'ACT-A', 'Annihilation'], [], [rule]).stages).toEqual([
+      'Annihilation',
+      '1-7',
+      'ACT-A'
+    ])
+  })
+
   it('新绑定的比例成员默认比例为 0', () => {
     expect(createRatioMember()).toEqual({
       stage: '',
@@ -205,7 +271,7 @@ describe('刷理智库存选关', () => {
       ],
       { A: 100, B: 999 }
     )
-    expect(result.stages).toEqual(['B-1', '1-7'])
+    expect(result.stages).toEqual(['B-1'])
     expect(result.limitSkipped).toEqual(['A-1'])
     expect(result.ratioDecisions).toEqual([])
   })

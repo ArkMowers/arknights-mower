@@ -13,6 +13,81 @@ from arknights_mower.utils.maa_stage_inventory import (
 
 
 class MaaStageInventoryTests(unittest.TestCase):
+    def test_inventory_priority_and_fallback(self):
+        rules = [
+            {"stage": "PR-A-1", "items": [{"item_id": "3231", "limit": 5}]},
+            {"stage": "PR-B-1", "items": [{"item_id": "3241", "limit": 5}]},
+        ]
+        cases = [
+            (["1-7", "PR-A-1", "Annihilation"], {}, ["Annihilation", "PR-A-1"]),
+            (
+                ["1-7", "PR-A-1", "PR-B-1", "Annihilation"],
+                {"3231": 5, "3241": 4},
+                ["Annihilation", "PR-B-1"],
+            ),
+            (
+                ["1-7", "PR-A-1", "PR-B-1", "Annihilation"],
+                {"3231": 5, "3241": 5},
+                ["Annihilation", "1-7"],
+            ),
+            (["1-7", "PR-A-1"], {"3231": 5}, ["1-7"]),
+            (["1-7", "Annihilation"], {}, ["Annihilation", "1-7"]),
+            (["", "PR-A-1"], {}, ["PR-A-1"]),
+            (["", "PR-A-1"], {"3231": 5}, [""]),
+        ]
+        for stages, inventory, expected in cases:
+            with self.subTest(stages=stages, inventory=inventory):
+                original = list(stages)
+                result = select_stages_by_inventory(stages, rules, inventory=inventory)
+                self.assertEqual(result["stages"], expected)
+                self.assertFalse(result["limit_fallback"])
+                self.assertEqual(stages, original)
+
+    def test_inactive_limits_do_not_claim_priority(self):
+        for rule in (
+            {"enabled": False, "items": [{"item_id": "3231", "limit": 5}]},
+            {"items": [{"item_id": "3231", "limit": 0}]},
+            {"items": [{"limit": 5}]},
+            {"items": []},
+        ):
+            with self.subTest(rule=rule):
+                result = select_stages_by_inventory(
+                    ["1-7", "PR-A-1"], [{"stage": "PR-A-1", **rule}]
+                )
+                self.assertEqual(result["stages"], ["1-7", "PR-A-1"])
+
+    def test_ratio_bound_stages_have_priority_without_limits(self):
+        result = select_stages_by_inventory(
+            ["1-7", "ACT-B", "ACT-A", "Annihilation"],
+            ratio_rules=[
+                {
+                    "members": [
+                        {"stage": "ACT-A", "item_id": "A", "ratio": 1},
+                        {"stage": "ACT-B", "item_id": "B", "ratio": 1},
+                    ]
+                }
+            ],
+            inventory={"A": 10, "B": 10},
+        )
+        self.assertEqual(result["stages"], ["Annihilation", "ACT-B"])
+        self.assertEqual(result["ratio_decisions"][0]["selected"], "ACT-B")
+
+    def test_inactive_ratios_and_unbound_stages_do_not_claim_priority(self):
+        for rule in (
+            {
+                "enabled": False,
+                "members": [{"stage": "ACT-A", "item_id": "A", "ratio": 1}],
+            },
+            {"members": [{"stage": "ACT-A", "item_id": "A", "ratio": 0}]},
+            {"members": [{"stage": "ACT-A", "ratio": 1}]},
+            {"members": [{"stage": "Annihilation", "item_id": "A", "ratio": 1}]},
+        ):
+            with self.subTest(rule=rule):
+                result = select_stages_by_inventory(
+                    ["1-7", "ACT-A", "Annihilation"], ratio_rules=[rule]
+                )
+                self.assertEqual(result["stages"], ["Annihilation", "1-7", "ACT-A"])
+
     def test_default_regular_drops(self):
         self.assertEqual(
             default_materials_for_stage("SK-5"),
@@ -46,7 +121,7 @@ class MaaStageInventoryTests(unittest.TestCase):
             ],
             inventory={"3114": 100, "3113": 59, "3401": 9999},
         )
-        self.assertEqual(result["stages"], ["SK-5", "1-7"])
+        self.assertEqual(result["stages"], ["SK-5"])
 
         result = select_stages_by_inventory(
             ["SK-5", "1-7"],
@@ -158,7 +233,7 @@ class MaaStageInventoryTests(unittest.TestCase):
             ],
             inventory={"A": 100, "B": 60, "C": 0},
         )
-        self.assertEqual(result["stages"], ["ACT-A", "ACT-C"])
+        self.assertEqual(result["stages"], ["ACT-A"])
         self.assertEqual(result["ratio_decisions"][0]["selected"], "ACT-A")
 
     def test_rules_never_add_unselected_stage_to_weekly_plan(self):
@@ -216,7 +291,7 @@ class MaaStageInventoryTests(unittest.TestCase):
             inventory={"A": 100, "B": 999},
         )
         self.assertEqual(result["limit_skipped"], ["ACT-A"])
-        self.assertEqual(result["stages"], ["ACT-B", "1-7"])
+        self.assertEqual(result["stages"], ["ACT-B"])
         self.assertEqual(result["ratio_decisions"], [])
 
     def test_load_inventory_snapshot(self):
