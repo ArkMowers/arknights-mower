@@ -273,3 +273,81 @@ def test_changed_group_or_facility_retains_explicit_primary_semantics(solver, ch
         slot.product = "lmd"
     task = finish(s, SchedulerTask(task_type=TaskTypes.SELF_CORRECTION), full=False)
     assert task.plan["room_1_2"] == ["清流"]
+
+
+@pytest.mark.parametrize("full", [False, True])
+def test_task_only_backup_exit_keeps_resting_primary(solver, full):
+    s = solver
+    prepare_resting_relocation(s)
+    bp = s.op_data.backup_plans[0]
+    bp.plan = {}
+    bp.task = {"room_1_1": ["结城理"]}
+    assert s.op_data.swap_plan([True], refresh=True) is None
+    bp.trigger = LogicExpression("False", "==", "True")
+    before = recovery(s)
+    finish(s, SchedulerTask(task_type=TaskTypes.SELF_CORRECTION), full=full)
+    assert s.op_data.plan_condition == [False]
+    for name in ("清流", "森蚺"):
+        assert s.op_data.operators[name].is_resting()
+        if not full:
+            assert recovery(s)[name] == before[name]
+
+
+def test_task_only_exit_restores_primary_without_recovery(solver):
+    s = solver
+    bp = s.op_data.backup_plans[0]
+    bp.plan = {}
+    bp.task = {"room_1_1": ["结城理"]}
+    bp.trigger = LogicExpression("False", "==", "True")
+    assert s.op_data.swap_plan([True], refresh=True) is None
+    s.op_data = s.op_data.project_arrangements([bp.task])
+    finish(s, SchedulerTask(task_type=TaskTypes.SELF_CORRECTION), full=False)
+    assert s.op_data.operators["清流"].current_room == "room_1_1"
+
+
+def test_task_only_exit_keeps_group_dorm_cover(solver):
+    s = solver
+    resident = s.global_plan["default_plan"].plan["dormitory_1"][0]
+    resident.group, resident.replacement = "甲", ["白面鸮"]
+    s.global_plan["backup_plans"][0].plan = {}
+    assert s.initialize_operators() is None
+    for op in s.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 22, datetime.now()
+    prepare_resting_relocation(s)
+    s.op_data = s.op_data.project_arrangements(
+        [{"dormitory_1": ["白面鸮", *["Current"] * 4]}]
+    )
+    bp = s.op_data.backup_plans[0]
+    bp.task = {"dormitory_1": ["白面鸮", *["Current"] * 4]}
+    assert s.op_data.swap_plan([True], refresh=True) is None
+    bp.trigger = LogicExpression("False", "==", "True")
+    finish(s, SchedulerTask(task_type=TaskTypes.SELF_CORRECTION), full=False)
+    assert s.op_data.get_current_operator("dormitory_1", 0).name == "白面鸮"
+    assert s.op_data.operators["森蚺"].is_resting()
+
+
+@pytest.mark.parametrize("already_active", [False, True])
+def test_exit_preserves_later_backup_cover(solver, already_active):
+    s = solver
+    prepare_resting_relocation(s)
+    first = s.op_data.backup_plans[0]
+    first.plan = {}
+    first.task = {"room_1_1": ["结城理"]}
+    first.trigger = LogicExpression("False", "==", "True")
+    second = Plan(
+        {"room_1_1": [Room("清流", "甲", ["重岳"], "制造站", "gold")]},
+        PlanConfig("", "", ""),
+        trigger=LogicExpression("True", "==", "True"),
+        task={"room_1_1": ["重岳"]},
+    )
+    s.op_data.backup_plans.append(second)
+    assert s.op_data.swap_plan([True, already_active], refresh=True) is None
+    if already_active:
+        s.op_data = s.op_data.project_arrangements([second.task])
+    before = recovery(s)
+    finish(s, SchedulerTask(task_type=TaskTypes.SELF_CORRECTION), full=False)
+    assert s.op_data.plan_condition == [False, True]
+    assert s.op_data.get_current_operator("room_1_1", 0).name == "重岳"
+    assert s.op_data.operators["清流"].is_resting()
+    assert recovery(s) == before

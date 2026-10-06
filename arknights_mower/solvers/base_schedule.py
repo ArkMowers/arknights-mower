@@ -3197,7 +3197,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     def _resting_tier(self, op):
         return resting_tier(self.op_data, op.name)
 
-    def _cached_changed_slot_plan(self, previous_plan):
+    def _cached_changed_slot_plan(self, previous_plan, restored_slots=()):
         """合并副表改动的固定岗位，宿舍绑组沿用轮休规则，动态床位另行迁移。"""
         result = {}
         group_dorm_positions = set()
@@ -3226,7 +3226,15 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     slot.group_bindings,
                 )
                 if unchanged:
-                    continue
+                    if (room, index) not in restored_slots:
+                        continue
+                    if room.startswith("dorm"):
+                        if slot.group:
+                            group_dorm_positions.add((room, index))
+                        continue
+                    # 仅执行任务的副表退出时，也不能召回仍在宿舍的主班。
+                    if not self.op_data.operators[slot.agent].is_resting():
+                        continue
                 current = self.op_data.get_current_operator(room, index)
                 owner = self.op_data.operators[slot.agent]
                 previous_room, previous = previous_owners.get(slot.agent, (None, None))
@@ -3347,7 +3355,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 restore_plan[room] = names
 
         correction, group_dorm_positions, replacement_positions = (
-            self._cached_changed_slot_plan(previous_plan)
+            self._cached_changed_slot_plan(
+                previous_plan,
+                {
+                    (room, index)
+                    for room, indexes in deactivated_slots.items()
+                    for index in indexes
+                },
+            )
         )
         # 退出副表恢复岗位时，保留休息的主班仍经替班匹配，不强制回班。
         for room, index in replacement_positions:
