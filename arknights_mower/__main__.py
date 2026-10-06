@@ -448,6 +448,7 @@ def simulate(saved):
                 if k not in base_scheduler.op_data.operators:
                     base_scheduler.op_data.add(Operator(k, ""))
                     # 只复制心情数据
+                base_scheduler.op_data.select_group_binding(k, v.group)
                 base_scheduler.op_data.operators[k].mood = v.mood
                 base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
                 base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate

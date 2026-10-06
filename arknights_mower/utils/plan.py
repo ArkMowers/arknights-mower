@@ -210,6 +210,7 @@ class Room:
         replacement: list[str],
         facility: str = "",
         product: str = "",
+        group_bindings: Optional[list[dict]] = None,
     ):
         """房间
 
@@ -221,16 +222,32 @@ class Room:
         self.agent = agent
         self.group = group
         self.replacement = replacement
+        self.group_bindings = copy.deepcopy(group_bindings or [])
         self.facility = facility
         if self.facility == "发电站":
             self.product = BaseProduct.Electricity
         else:
             self.product = product
 
+    @property
+    def bindings(self):
+        return [
+            dict(group=self.group, replacement=self.replacement),
+            *self.group_bindings,
+        ]
+
+    @property
+    def all_replacements(self):
+        return list(
+            dict.fromkeys(
+                name for binding in self.bindings for name in binding["replacement"]
+            )
+        )
+
     def __repr__(self):
         return (
             f"Room(agent='{self.agent}', group='{self.group}', replacement={self.replacement}, "
-            f"facility='{self.facility}', product='{self.product}')"
+            f"facility='{self.facility}', product='{self.product}', group_bindings={self.group_bindings})"
         )
 
 
@@ -308,7 +325,7 @@ class Plan:
             name
             for room in self.plan.values()
             for slot in room
-            for name in (slot.agent, *slot.replacement)
+            for name in (slot.agent, *slot.all_replacements)
         }
         if include_tasks:
             names.update(name for task in (self.task or {}).values() for name in task)

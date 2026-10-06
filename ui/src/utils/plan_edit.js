@@ -88,6 +88,9 @@ export function replace_plan_operators(plan, source, target) {
     for (const item of facility.plans) {
       if (item.agent === source) item.agent = target
       replace_in_list(item.replacement, source, target)
+      for (const binding of item.group_bindings || []) {
+        replace_in_list(binding.replacement, source, target)
+      }
     }
   }
 }

@@ -17,6 +17,8 @@ from arknights_mower.utils.scheduler_task import (
     simplify_dorm_fill,
 )
 
+pytestmark = pytest.mark.usefixtures("offline_maintenance")
+
 
 @pytest.fixture
 def schedule(monkeypatch):

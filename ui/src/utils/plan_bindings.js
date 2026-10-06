@@ -1,0 +1,37 @@
+export function planBindings(slot) {
+  return [slot, ...(slot.group_bindings || [])]
+}
+
+export function addPlanBinding(slot) {
+  ;(slot.group_bindings ||= []).push({ group: '', replacement: [] })
+}
+
+export function removePlanBinding(slot, index) {
+  if (index === 0) {
+    const next = slot.group_bindings?.shift()
+    if (!next) return
+    slot.group = next.group
+    slot.replacement = next.replacement
+  } else {
+    slot.group_bindings?.splice(index - 1, 1)
+  }
+  if (!slot.group_bindings?.length) delete slot.group_bindings
+}
+
+export function bindingColorStyle(slot, colors) {
+  const bindings = planBindings(slot)
+  if (bindings.length === 1) {
+    return { borderBottom: slot.group ? `5px solid ${colors[slot.group]}` : 'none' }
+  }
+  const stops = bindings.flatMap((binding, index) => {
+    const color = colors[binding.group] || 'transparent'
+    return [
+      `${color} ${(index * 100) / bindings.length}%`,
+      `${color} ${((index + 1) * 100) / bindings.length}%`
+    ]
+  })
+  return {
+    borderBottom: '5px solid transparent',
+    borderImage: `linear-gradient(to right, ${stops.join(', ')}) 1`
+  }
+}

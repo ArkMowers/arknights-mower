@@ -18,6 +18,8 @@ from arknights_mower.utils.plan import (  # noqa: E402
 )
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
 
+pytestmark = pytest.mark.usefixtures("offline_maintenance")
+
 
 @pytest.fixture
 def solver(monkeypatch):

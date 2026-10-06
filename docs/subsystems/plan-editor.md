@@ -27,3 +27,11 @@ The editor displays separate 增 and 减 selections for each backup operator opt
 The [operator-list decision](../../.agents/notes/implemented/feature/2026-10-06-backup-operator-list-removal.md) records the merge boundary and verification.
 
 The [shared field decision](../../.agents/notes/implemented/simplification/2026-10-06-shared-plan-operator-fields.md) defines operator-list conversion reuse.
+
+## 5. Operator Group Columns
+
+The plus button beside an operator's group field adds an independent group/replacement column beneath the first column. Deleting any column preserves the others; deleting the first promotes the next column into the legacy fields. Empty operators, `Free`, `Current` and Fiammetta cannot add bindings. Running-plan edit locks cover addition, deletion and every field. Facility clearing removes all bindings with the operator.
+
+Every avatar uses one equal-width color segment per configured column. Unfinished empty columns retain a transparent segment. Group colors come from the currently edited main or backup plan. Plan saving, import, export and facility movement retain nested bindings.
+
+The [scheduling contract](base-scheduler.md#211-multiple-group-bindings) defines persisted fields, validation and shift behavior. The [shared rendering decision](../../.agents/notes/implemented/simplification/2026-10-06-shared-group-shift-selection.md) records the simplification.

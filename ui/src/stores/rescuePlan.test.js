@@ -151,7 +151,14 @@ it('清空救急主副表绑组与普通替班，保留全部跑单干员和充�
   const source = {
     room_1_1: {
       name: '贸易站',
-      plans: [{ agent: '阿米娅', group: '一组', replacement: ['红', ...runners, '砾'] }]
+      plans: [
+        {
+          agent: '阿米娅',
+          group: '一组',
+          replacement: ['红', ...runners, '砾'],
+          group_bindings: [{ group: '二组', replacement: ['芬'] }]
+        }
+      ]
     },
     dormitory_1: {
       plans: [
@@ -168,7 +175,16 @@ it('清空救急主副表绑组与普通替班，保留全部跑单干员和充�
       trigger: { left: '1' },
       task: {},
       plan: {
-        room_1_1: { plans: [{ agent: '但书', group: '另一组', replacement: ['砾', ...runners] }] },
+        room_1_1: {
+          plans: [
+            {
+              agent: '但书',
+              group: '另一组',
+              replacement: ['砾', ...runners],
+              group_bindings: [{ group: '三组', replacement: ['红'] }]
+            }
+          ]
+        },
         dormitory_1: { plans: [{ agent: 'Current', group: '继承组', replacement: ['斯卡蒂'] }] }
       }
     }

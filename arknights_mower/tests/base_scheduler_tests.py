@@ -212,6 +212,9 @@ class TestMoodInitialization(unittest.TestCase):
         import arknights_mower.__main__ as main
 
         self.main = main
+        self.enterContext(
+            patch.object(main.NewsChecker, "get_maintenance", return_value=None)
+        )
         self.enterContext(patch.object(base_schedule.config, "stop_mower", Event()))
         self.enterContext(patch.object(main, "base_scheduler", None))
         self.initialize = self.enterContext(patch.object(main, "initialize"))

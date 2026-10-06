@@ -1,0 +1,22 @@
+{
+  "title": "Multiple Group Shift Bindings",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-25]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/multi_group_shift_tests.py",
+    "ui/src/utils/plan_bindings.test.js",
+    "ui/src/components/PlanEditor.test.js",
+    "arknights_mower/tests/scheduler_wakeup_tests.py",
+    "arknights_mower/tests/manufacture_product_switch_tests.py"
+  ]
+}

@@ -1,11 +1,22 @@
 import { renderToString } from '@vue/server-renderer'
-import { createSSRApp, ref } from 'vue'
+import { createSSRApp, ref, h } from 'vue'
 import { createPinia } from 'pinia'
 import { parse as parseHtml } from '@vue/compiler-dom'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import PlanEditor from './PlanEditor.vue'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
+
+vi.mock('naive-ui', async (importOriginal) => ({
+  ...(await importOriginal()),
+  NSelect: {
+    props: ['disabled'],
+    setup: (props) => () => h('select', { disabled: props.disabled })
+  }
+}))
+vi.mock('./SlickOperatorSelect.vue', () => ({ default: { render: () => h('select') } }))
+
+vi.mock('./HelpText.vue', () => ({ default: { render: () => h('span') } }))
 
 const stores = []
 
@@ -93,4 +104,33 @@ describe('plan facility display order', () => {
       }
     }
   )
+})
+
+it.each([false, true])('renders group rows, segmented avatar and edit lock %s', async (locked) => {
+  const app = createSSRApp(PlanEditor)
+  app.use(createPinia())
+  app.provide('loaded', ref(false))
+  app.provide('facility', ref('contact'))
+  app.provide('planEditLocked', ref(locked))
+  const config = app.runWithContext(() => useConfigStore())
+  const plan = app.runWithContext(() => usePlanStore())
+  stores.push(config, plan)
+  config.maa_mall_buy = []
+  config.maa_mall_blacklist = []
+  plan.plan = plan.fill_empty({})
+  Object.assign(plan.current_plan.contact.plans[0], {
+    agent: '讯使',
+    group: '甲',
+    replacement: ['红'],
+    group_bindings: [{ group: '乙', replacement: ['黑角'] }]
+  })
+  const html = await renderToString(app)
+  expect(html).toContain('rowspan="2"')
+  expect(html).toContain('linear-gradient(to right')
+  expect(html).toContain('50%')
+  const buttons = html.match(/<button\b[^>]*aria-label="(?:新增绑组|删除此绑组)"[^>]*>/g)
+  expect(buttons).toHaveLength(3)
+  expect(buttons.every((button) => /\bdisabled(?:[\s=>])/.test(button))).toBe(locked)
+  expect(html).toContain('value="甲"')
+  expect(html).toContain('value="乙"')
 })
