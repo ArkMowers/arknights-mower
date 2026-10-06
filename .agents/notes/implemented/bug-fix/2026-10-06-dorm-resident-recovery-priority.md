@@ -1,32 +1,30 @@
 ---
-title: Resident Recovery Priority
+title: Vacant Single-Target Recovery
 status: implemented
 category: bug-fix
 date: 2026-10-06
 ---
 
-# Resident Recovery Priority
+# Vacant Single-Target Recovery
 
 ## Contract
 
-[INV-SCHED-20] includes unfinished existing residents in single-target competition when admission or a single-target resident change triggers cross-dormitory allocation. Ranking uses the shared dormitory priority and recovery deficit. Completed residents are not added as recovery candidates. Existing reservation, exclusion and personal-limit protections remain binding.
+[INV-SCHED-20] preserves existing single-target residents. Admission and departure events fill vacant targets using eligible non-target residents across dormitories and current arrivals. Candidate order is identity tier, locality, then mood deficit. Equal-tier local residents avoid a second room operation; higher-tier remote residents still win.
 
-## Implementation
-
-The shared admission planner detects the event before collecting candidates from projected beds. Direct arrangements, shift admission and idle filling use this same candidate set. Mood updates without admission or a single-target resident change do not trigger relocation. Planning preserves live positions, recovery markers and deadlines.
+Each vacancy exchanges only the target and selected donor beds. The chosen target stops competing immediately. No displacement chain or global reshuffle follows. Multiple vacancies are independent, while each room retains one final arrangement. Reservations, excluded residents, mandatory mood limits and actual occupancy remain authoritative.
 
 ## Simplification
 
-The correction uses the existing projection and ranking loop; no executor fallback, recurring task or independent ranking layer is added. Rescue recovery keeps its existing primary protection and capacity policy.
+The existing projected planner replaces its displacement loop with one minimum-candidate selection per vacancy. It does not add device reads, scheduled scans, caches or executor fallbacks. Complete residents are not added as recovery candidates. Idle mood changes and unrelated working plans do not trigger allocation.
 
 ## Verification
 
-Offline admission regressions cover all three callers, cross-dormitory allocation, multi-Free target departure, rear-bed departure, completed residents and stable replanning. Existing departure, isolation, recovery setup and reservation suites cover protected positions.
+Focused tests cover existing-target stability, one-vacancy two-room bounds, local ties, higher-tier remote candidates, rear-bed candidate inclusion, reservations, completed residents, ordinary admission, release, takeover and restoration. Verification passes 648 tests and 6 subtests; Ruff and governance pass. Tests perform no live-device integration.
 
 ## Standards Findings
 
-Pass: projection isolation, reservations and measured-state boundaries remain intact. The user approved both exact bilingual glossary additions. Ruff and all governance gates pass.
+Pass: projected state remains isolated, swaps preserve residents, reservation guards remain in force, and the exact bilingual glossary replacement and locality addition are user-approved.
 
 ## Spec Findings
 
-Pass: a high-priority replacement already in a rear bed competes ahead of an ordinary newcomer without removing either resident. Single-target resident changes trigger cross-dormitory allocation regardless of Free bed count. The focused suites pass 302 tests and 4 subtests.
+Pass: a rear-bed high-priority replacement can receive a vacant target, but cannot displace an established target. Equal-tier local candidates reduce the operation to one dormitory; a remote winner involves at most two per vacancy.

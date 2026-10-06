@@ -467,7 +467,7 @@ class TestScheduling(unittest.TestCase):
         self.assertNotEqual(res, None)
 
     def test_reorder_1(self):
-        # 夕、夜刀与凯尔希按优先级依次取得三个宿舍的单回位。
+        # 空单回位按优先级和稳定候选顺序分配，不产生置换链。
         op_data = self.init_opdata()
         op_data.dorm[0].name = "麒麟R夜刀"
         op_data.dorm[1].name = "凯尔希"
@@ -476,8 +476,8 @@ class TestScheduling(unittest.TestCase):
         op_data.dorm[2].name = "夕"
         plan = try_reorder(op_data, {})
         self.assertEqual(plan["dormitory_1"][2:], ["夕", "Free", "Free"])
-        self.assertEqual(plan["dormitory_2"][2], "麒麟R夜刀")
-        self.assertEqual(plan["dormitory_3"][3], "凯尔希")
+        self.assertEqual(plan["dormitory_2"][2], "凯尔希")
+        self.assertEqual(plan["dormitory_3"][3], "麒麟R夜刀")
         projected = op_data.project_arrangements([plan])
         self.assertEqual(
             {bed.name for bed in projected.dorm if bed.name},
@@ -496,8 +496,8 @@ class TestScheduling(unittest.TestCase):
 
         plan = try_reorder(op_data, {})
         self.assertEqual(len(plan), 3)
-        self.assertEqual(plan["dormitory_1"][2:], ["夕", "凯尔希", "Free"])
-        self.assertEqual(plan["dormitory_2"][2:4], ["森蚺", "麒麟R夜刀"])
+        self.assertEqual(plan["dormitory_1"][2:], ["夕", "凯尔希", "麒麟R夜刀"])
+        self.assertEqual(plan["dormitory_2"][2:4], ["森蚺", "Free"])
         self.assertEqual(plan["dormitory_3"][3], "见行者")
 
     def test_reorder_3(self):
@@ -513,7 +513,7 @@ class TestScheduling(unittest.TestCase):
         first = try_reorder(op_data, {})
         second = try_reorder(op_data, {})
         self.assertEqual(first, second)
-        self.assertEqual(first["dormitory_1"][2:], ["夕", "Free", "玛恩纳"])
+        self.assertEqual(first["dormitory_1"][2:], ["夕", "玛恩纳", "Free"])
         self.assertEqual(first["dormitory_2"][2:4], ["焰尾", "见行者"])
         self.assertEqual(first["dormitory_3"][3], "森蚺")
         projected = op_data.project_arrangements([first])
@@ -714,7 +714,15 @@ class TestScheduling(unittest.TestCase):
         self.assertIsNone(op_data.swap_plan([False], refresh=True))
         restored_tasks = []
         try_add_release_dorm({}, None, op_data, restored_tasks)
-        self.assertTrue(self.task_writes_slot(restored_tasks, "dormitory_1", 2))
+        # 重新开放不抢占仍在位的单回目标，普通补位仍在其余空床进行。
+        self.assertFalse(self.task_writes_slot(restored_tasks, "dormitory_1", 2))
+        self.assertTrue(
+            op_data.is_effective_free_slot(
+                next(bed for bed in op_data.dorm if bed.position == ("dormitory_1", 2))
+            )
+        )
+        projected = op_data.project_arrangements([task.plan for task in restored_tasks])
+        self.assertIsNotNone(projected.get_dorm_by_name("陈")[0])
 
     def init_opdata(self):
         agent_base_config = PlanConfig(

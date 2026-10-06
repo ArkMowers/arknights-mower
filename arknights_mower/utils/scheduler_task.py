@@ -1632,14 +1632,10 @@ def plan_mood_limit_releases(op_data, *, recovery_targets=None, previous_tasks=(
 def prioritize_new_dorm_recovery(
     op_data, plan, reserved_slots=(), preceding_plan=None, *, reserved_names=()
 ):
-    """新入住或单回位住客变更时，全部未完成住客竞争单回位。
+    """只补空单回位；已有单回目标保位，后排住客跨宿舍竞争。
 
-    先投影完整入住计划，再按宿舍顺序比较每房首个动态位。未完成住客
-    可填空位（含本轮替班腾出的位），或与排名更低的目标交换床位；
-    被替换者继续竞争后面的单回位，填入空位后结束本次交换。
-    新入住与单回位住客变更均让后排原住客参与本次竞争。
-    不增加/淘汰休息者，也不因已有入住者心情交叉而搬床。返回计划
-    副本，不提前改变真实位置或单回标记。
+    每个空位最多交换目标和候选的两个床位，不向其他单回位连锁交换。
+    只修改投影计划，保留住客集合、预约和真实恢复标记。
     """
     if not plan and not preceding_plan:
         return plan
@@ -1674,59 +1670,57 @@ def prioritize_new_dorm_recovery(
         for room, items in room_beds.items()
         if room not in locked_rooms
     }
-    target_changed = any(
-        (
-            old.name != bed.name
-            if (old := op_data.get_current_operator(*bed.position)) is not None
-            and op_data.is_dynamic_dorm_position(*bed.position, old.name)
-            else old is None and bool(bed.name)
-        )
-        for bed in targets.values()
-    )
-    now = datetime.now()
-    has_arrival = any(
+    available = []
+    protected = set()
+    for target in targets.values():
+        old = op_data.get_current_operator(*target.position)
+        if old is not None and old.name == target.name:
+            protected.add(target.position)
+        else:
+            available.append(target)
+    has_event = any(
+        op_data.get_current_operator(*target.position) is not None or target.name
+        for target in available
+    ) or any(
         (op := op_data.operators.get(bed.name)) is not None
-        and op.name in explicit_names
+        and bed.name in explicit_names
         and not op_data.is_dynamic_dorm_position(
             op.current_room, op.current_index, op.name
         )
         for bed in beds
     )
-    if not (has_arrival or target_changed):
+    if not has_event:
         return plan
-    arrivals = [
-        bed.name
-        for bed in beds
-        if (op := op_data.operators.get(bed.name)) is not None
-        and not (has_resting_mood(op, now) and resting_mood(op, now) >= op.upper_limit)
-    ]
-
-    def ranking(name):
-        op = op_data.operators[name]
-        complete = target_changed and (
-            has_resting_mood(op, now) and resting_mood(op, now) >= op.upper_limit
-        )
-        return complete, resting_key(op_data, name, now)
-
-    arrivals.sort(key=ranking)
+    now = datetime.now()
     result = copy.deepcopy(plan)
-    for name in arrivals:
-        source = next(bed for bed in beds if bed.name == name)
-        for target in targets.values():
-            if target is source:
-                # 已获得本房单回位，不为更低顺序的宿舍继续搬动。
-                break
-            if target.name and ranking(source.name) >= ranking(target.name):
-                continue
+    for target in available:
+        candidates = [
+            bed
+            for bed in beds
+            if bed.position not in protected
+            and (op := op_data.operators.get(bed.name)) is not None
+            and not (
+                has_resting_mood(op, now) and resting_mood(op, now) >= op.upper_limit
+            )
+        ]
+        if not candidates:
+            break
+        source = min(
+            candidates,
+            key=lambda bed: (
+                resting_tier(op_data, bed.name),
+                bed.position[0] != target.position[0],
+                resting_key(op_data, bed.name, now)[1],
+            ),
+        )
+        if source is not target:
             source.name, target.name = target.name, source.name
             for bed in (source, target):
                 room, index = bed.position
                 result.setdefault(room, ["Current"] * len(op_data.plan[room]))[
                     index
                 ] = bed.name or "Free"
-            if not source.name:
-                # 空单回位已接住入住者，没有被挤出者需要继续分配。
-                break
+        protected.add(target.position)
     return result
 
 
