@@ -725,6 +725,7 @@ def test_plan_advanced_settings_round_trip_without_drone_room(
         "product_switching": {"waiting_seconds": 5},
         "experimental_dorm_logic": True,
         "group_rest_in_full_on_mood_gap": False,
+        "group_mood_gap_threshold_minutes": 75,
         "group_mood_gap_max_extra_wait_hours": 1.5,
     }
     result = post_plan_file(plan_client, value)
@@ -733,6 +734,7 @@ def test_plan_advanced_settings_round_trip_without_drone_room(
     assert config.conf.drone_count_limit == 140
     assert config.conf.product_switching.waiting_seconds == 5
     assert config.conf.group_rest_in_full_on_mood_gap is False
+    assert config.conf.group_mood_gap_threshold_minutes == 75
     assert config.conf.group_mood_gap_max_extra_wait_hours == 1.5
     assert config.conf.drone_room == "room_1_1"
 
@@ -740,6 +742,7 @@ def test_plan_advanced_settings_round_trip_without_drone_room(
     assert exported["advanced_settings"]["resting_threshold"] == 0.75
     assert exported["advanced_settings"]["product_switching"]["waiting_seconds"] == 5
     assert exported["advanced_settings"]["group_rest_in_full_on_mood_gap"] is False
+    assert exported["advanced_settings"]["group_mood_gap_threshold_minutes"] == 75
     assert exported["advanced_settings"]["group_mood_gap_max_extra_wait_hours"] == 1.5
     assert "drone_room" not in exported["advanced_settings"]
     assert "reload_room" not in exported["advanced_settings"]

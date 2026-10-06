@@ -13,6 +13,7 @@ ADVANCED_SETTING_KEYS = (
     "dorm_isolation",
     "merge_interval",
     "group_rest_in_full_on_mood_gap",
+    "group_mood_gap_threshold_minutes",
     "group_mood_gap_max_extra_wait_hours",
     "fia_fool",
     "assistant_follows_schedule",

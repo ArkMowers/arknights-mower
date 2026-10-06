@@ -160,6 +160,7 @@ export const useConfigStore = defineStore('config', () => {
   const dorm_isolation = ref([])
   const merge_interval = ref(10)
   const group_rest_in_full_on_mood_gap = ref(true)
+  const group_mood_gap_threshold_minutes = ref(60)
   const group_mood_gap_max_extra_wait_hours = ref(0)
   const fia_fool = ref(true)
   const assistant_follows_schedule = ref(false)
@@ -591,6 +592,7 @@ export const useConfigStore = defineStore('config', () => {
       dorm_isolation.value = response.data.dorm_isolation ?? []
       merge_interval.value = response.data.merge_interval
       group_rest_in_full_on_mood_gap.value = response.data.group_rest_in_full_on_mood_gap ?? true
+      group_mood_gap_threshold_minutes.value = response.data.group_mood_gap_threshold_minutes ?? 60
       group_mood_gap_max_extra_wait_hours.value =
         response.data.group_mood_gap_max_extra_wait_hours ?? 0
       fia_fool.value = response.data.fia_fool
@@ -761,6 +763,7 @@ export const useConfigStore = defineStore('config', () => {
       dorm_isolation: dorm_isolation.value,
       merge_interval: merge_interval.value,
       group_rest_in_full_on_mood_gap: group_rest_in_full_on_mood_gap.value,
+      group_mood_gap_threshold_minutes: group_mood_gap_threshold_minutes.value,
       group_mood_gap_max_extra_wait_hours: group_mood_gap_max_extra_wait_hours.value,
       fia_fool: fia_fool.value,
       assistant_follows_schedule: assistant_follows_schedule.value,
@@ -807,6 +810,7 @@ export const useConfigStore = defineStore('config', () => {
       dorm_isolation: dorm_isolation.value,
       merge_interval: merge_interval.value,
       group_rest_in_full_on_mood_gap: group_rest_in_full_on_mood_gap.value,
+      group_mood_gap_threshold_minutes: group_mood_gap_threshold_minutes.value,
       group_mood_gap_max_extra_wait_hours: group_mood_gap_max_extra_wait_hours.value,
       fia_fool: fia_fool.value,
       assistant_follows_schedule: assistant_follows_schedule.value,
@@ -1103,6 +1107,7 @@ export const useConfigStore = defineStore('config', () => {
     dorm_isolation,
     merge_interval,
     group_rest_in_full_on_mood_gap,
+    group_mood_gap_threshold_minutes,
     group_mood_gap_max_extra_wait_hours,
     fia_fool,
     assistant_follows_schedule,
