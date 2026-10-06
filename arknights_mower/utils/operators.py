@@ -1732,19 +1732,22 @@ class Operators:
             and name in slot.all_replacements
         )
 
-    def group_dorm_bed_count(self, names):
-        """返回本组可用于恢复的固定位置数；实际入住仍须完整替班匹配。"""
-        return sum(
-            self.is_auto_free_dorm_operator(self.operators[name])
-            or any(
-                self.is_same_group_dorm_replacement(self.operators[name], cover)
+    def group_dorm_bed_count(self, group):
+        """按目标组的配置成员和替班列计算恢复位置，入住仍须完整匹配。"""
+        count = 0
+        for name in self.shift_group_members(group):
+            operator = self.operators[name]
+            if not operator.room.startswith("dorm"):
+                continue
+            replacements = operator.replacements_for_group(group)
+            if "Free" in replacements or any(
+                self.is_same_group_dorm_replacement(operator, cover, group)
                 and not self.operators[cover].room.startswith("dorm")
                 and not self.operators[cover].workaholic
-                for cover in self.operators[name].replacement
-            )
-            and self.operators[name].room.startswith("dorm")
-            for name in names
-        )
+                for cover in replacements
+            ):
+                count += 1
+        return count
 
     def project_arrangements(self, plans):
         """按执行顺序推演排班后的驻员和恢复床位，不产生实际换人副作用。

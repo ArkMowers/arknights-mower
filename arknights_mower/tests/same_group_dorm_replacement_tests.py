@@ -549,7 +549,7 @@ def test_same_group_dorm_primaries_swap_without_recovery_bed_records(
     initialize(solver)
     data = solver.op_data
     assert data.group_dorm == []
-    assert data.group_dorm_bed_count(data.groups["公招"]) == 0
+    assert data.group_dorm_bed_count("公招") == 0
     plan, covers = {}, []
     solver.get_resting_plan(data.groups["公招"].copy(), covers, plan, 0)
     assert plan["contact"] == ["黑角"]
@@ -582,7 +582,7 @@ def test_dorm_and_working_primary_cycle_tracks_only_working_recovery(monkeypatch
     data = solver.op_data
     assert data.get_group_dorm(ROOM, 0) is None
     assert data.get_group_dorm(*other) is not None
-    assert data.group_dorm_bed_count(data.groups["公招"]) == 1
+    assert data.group_dorm_bed_count("公招") == 1
     plan, covers = {}, []
     solver.get_resting_plan(data.groups["公招"].copy(), covers, plan, 0)
     assert plan["contact"] == [RESIDENT]

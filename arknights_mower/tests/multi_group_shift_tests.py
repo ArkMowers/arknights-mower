@@ -532,3 +532,76 @@ def test_secondary_binding_retains_primary_replacement_restrictions(
     else:
         plan["meeting"][1].replacement = [SHARED]
     assert "替换组不可用高效组干员" in solver.initialize_operators()
+
+
+@pytest.mark.parametrize("cover", ["Free", B])
+def test_secondary_binding_admitted_from_resting_with_full_beds(
+    free_dorm_solver, cover
+):
+    s = free_dorm_solver
+    plan = s.global_plan["default_plan"].plan
+    plan["dormitory_1"][1] = Room("冰酿", "", [])
+    plan["dormitory_1"][2] = Room("夜莺", "", [])
+    plan["dormitory_1"][3] = Room("杜林", "", [])
+    plan["dormitory_1"][0].group_bindings[0]["replacement"] = [cover]
+    # A occupies the only regular bed; B uses its binding's dormitory position.
+    assert s.initialize_operators() is None
+    for op in s.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 5 if op.name in (A, B) else 24, datetime.now()
+    assert shift_off(s, "甲")[0]
+    s.op_data.get_dorm_by_name(A)[1].time = datetime.now() + timedelta(hours=1)
+    assert s.op_data.available_free() == 0
+    # Direct group admission succeeds on an isolated model.
+    live = s.op_data
+    s.op_data = deepcopy(live)
+    assert s.get_resting_plan(s.op_data.groups["乙"], [], {}, 1)
+    s.op_data = live
+    s.tasks = []
+    s.total_agent = list(live.operators.values())
+    assert s.resting().get("meeting", [])[1:2] == ["初雪"]
+
+
+@pytest.mark.parametrize("edit", ["inactive", "active", "remove_active"])
+def test_backup_column_edit_preserves_only_valid_active_cover(solver, edit):
+    s = solver
+    s.op_data.operators[B].mood = 5
+    s.op_data.operators[SHARED].mood = 5
+    assert shift_off(s, "乙")[0]
+    previous_plan = deepcopy(s.op_data.plan)
+    previous_dorms = deepcopy(s.op_data.all_dorms())
+    previous_layout = base_schedule.dorm_rebalance_signature(s.op_data)
+    backup_room = deepcopy(previous_plan["contact"])
+    if edit == "inactive":
+        backup_room[0].replacement = ["砾"]
+    elif edit == "active":
+        backup_room[0].group_bindings[0]["replacement"] = ["砾"]
+    else:
+        backup_room[0].group_bindings = []
+    s.op_data.backup_plans.append(
+        Plan({"contact": backup_room}, PlanConfig("", "", ""))
+    )
+    assert s.op_data.swap_plan([True], refresh=True) is None
+    if edit == "inactive":
+        assert s.op_data.operators[SHARED].group == "乙"
+        assert s.op_data.operators[SHARED].replacement == ["黑角"]
+    correction = s._backup_transition_plan(
+        previous_plan, [False], [True], previous_dorms, previous_layout
+    )
+    assert correction == ({} if edit == "inactive" else {"contact": [SHARED]})
+
+
+@pytest.mark.parametrize("cover, capacity", [("红", 0), (A, 1), ("Free", 1)])
+def test_dorm_capacity_uses_target_binding_without_changing_active_group(
+    free_dorm_solver, cover, capacity
+):
+    s = free_dorm_solver
+    s.global_plan["default_plan"].plan["dormitory_1"][0].replacement = [cover]
+    assert s.initialize_operators() is None
+    s.op_data.select_group_binding("塑心", "乙")
+    groups = deepcopy(s.op_data.groups)
+    assert s.op_data.group_dorm_bed_count("甲") == capacity
+    assert s.op_data.group_dorm_bed_count("乙") == 1
+    assert s.op_data.groups == groups
+    assert s.op_data.operators["塑心"].group == "乙"
+    assert s.op_data.operators["塑心"].replacement == ["Free"]
