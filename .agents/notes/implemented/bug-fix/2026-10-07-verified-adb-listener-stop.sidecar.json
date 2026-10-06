@@ -1,0 +1,23 @@
+{
+  "title": "Verified ADB Listener Stop",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-19]",
+    "[INV-05]",
+    "[INV-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.adb_client.shared.SharedADBRecovery.recover",
+    "arknights_mower.utils.device.adb_client.server.kill_adb_server",
+    "arknights_mower.utils.device.adb_client.server_process.terminate_verified_adb"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/adb_shared_server_tests.py",
+    "arknights_mower/tests/adb_server_process_tests.py"
+  ]
+}

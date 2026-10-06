@@ -13,11 +13,15 @@ from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.adb_client.server import (
     SharedADBError,
     SharedADBHandshakeTimeout,
+    SharedADBStopTimeout,
     _check_server_environment,
     adb_client_version,
     check_adb_version,
     kill_adb_server,
     probe_adb_server,
+)
+from arknights_mower.utils.device.adb_client.server_process import (
+    terminate_verified_adb,
 )
 from arknights_mower.utils.device.manager_io import run_command
 from arknights_mower.utils.log import logger
@@ -185,9 +189,8 @@ class SharedADBRecovery:
                 self.generation += 1
                 self._shared_generation = None
                 logger.warning(
-                    "共享 ADB 已验证健康；恢复协调记录不可用，继续使用服务并刷新 helper："
-                    "generation=%s，%s",
-                    self.generation,
+                    "共享 ADB 服务正常，但恢复协调记录不可读，继续使用现有服务"
+                    "并重建截图与触控连接：%s",
                     str(exc)[:1024],
                 )
         self._remaining(deadline, cancelled)
@@ -320,34 +323,69 @@ class SharedADBRecovery:
                     self._clear_failures()
                     operation = "重启" if latest_error is not None else "启动"
                     logger.warning(
-                        "共享 ADB 服务恢复尝试：generation=%s，操作=%s；"
-                        "可能断开其他主机工具的 ADB 连接",
-                        self.generation,
+                        "共享 ADB 服务无应答，正在%s共享服务；"
+                        "其他主机工具的 ADB 连接可能断开",
                         operation,
                     )
                     try:
                         if latest_error is not None:
                             kill_timeout = min(1, self._remaining(deadline, cancelled))
-                            if self._kill is not None:
-                                self._kill(kill_timeout)
-                            else:
-                                kill_adb_server(kill_timeout, monotonic=self._monotonic)
+                            try:
+                                if self._kill is not None:
+                                    self._kill(kill_timeout)
+                                else:
+                                    kill_adb_server(
+                                        kill_timeout, monotonic=self._monotonic
+                                    )
+                            except SharedADBStopTimeout as exc:
+                                logger.warning(
+                                    "共享 ADB 协议停止无应答，正在核对端口占用进程"
+                                )
+
+                                def probe_stop(timeout):
+                                    if self._probe is not None:
+                                        return self._probe(timeout)
+                                    return probe_adb_server(
+                                        timeout, monotonic=self._monotonic
+                                    )
+
+                                try:
+                                    stopped = terminate_verified_adb(
+                                        adb_path,
+                                        min(5, self._remaining(deadline, cancelled)),
+                                        probe=probe_stop,
+                                        monotonic=self._monotonic,
+                                        cancelled=cancelled,
+                                    )
+                                except (SharedADBError, OSError) as stop_error:
+                                    raise SharedADBError(
+                                        f"{exc}；{stop_error}"
+                                    ) from stop_error
+                                if not stopped:
+                                    resumed_version, resumed_error = self._observe(
+                                        deadline, cancelled
+                                    )
+                                    self._require_host_timeout(resumed_error)
+                                    if (
+                                        resumed_error is None
+                                        and resumed_version is not None
+                                    ):
+                                        check_adb_version(
+                                            client_version, resumed_version
+                                        )
+                                        return True
                             self._remaining(deadline, cancelled)
                             self._wait_absent(deadline, cancelled)
                         self._start(adb_path, client_version, deadline, cancelled)
                         self._remaining(deadline, cancelled)
                     except (SharedADBError, OSError, subprocess.SubprocessError) as exc:
                         logger.warning(
-                            "共享 ADB 服务恢复未验证成功：generation=%s，%s",
-                            self.generation,
+                            "共享 ADB 服务%s未成功，保留现状：%s",
+                            operation,
                             str(exc)[:1024],
                         )
                         raise
-                    logger.info(
-                        "共享 ADB 服务恢复已验证：generation=%s，操作=%s",
-                        self.generation,
-                        operation,
-                    )
+                    logger.info("共享 ADB 服务已%s，连接恢复正常", operation)
                     restarted = True
                     return True
 
