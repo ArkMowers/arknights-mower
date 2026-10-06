@@ -166,7 +166,9 @@ def test_departing_worker_is_not_brought_back_by_recovery_swap(residents):
 
 
 @pytest.mark.parametrize("vacant_first", [False, True])
-def test_newcomer_fills_empty_target_without_displacing_occupied_target(residents, vacant_first):
+def test_newcomer_fills_empty_target_without_displacing_occupied_target(
+    residents, vacant_first
+):
     data = residents
     second, third = "dormitory_2", "dormitory_3"
     for room in (second, third):
