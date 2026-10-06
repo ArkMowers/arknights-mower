@@ -3197,8 +3197,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 )
                 if unchanged:
                     continue
+                current = self.op_data.get_current_operator(room, index)
+                owner = self.op_data.operators[slot.agent]
                 if old is not None and (
-                    old.agent == slot.agent
+                    # 未读驻员和心情的岗位沿用初始化纠错，不推断为离岗。
+                    (
+                        current is not None
+                        or owner.current_room
+                        or owner.time_stamp is not None
+                    )
+                    and old.agent == slot.agent
                     and old.group == slot.group
                     and old.facility == slot.facility
                     and old.product == slot.product
@@ -3210,7 +3218,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if room.startswith("dormitory_") and slot.group:
                     group_dorm_positions.add((room, index))
                     continue
-                current = self.op_data.get_current_operator(room, index)
                 if current is not None and (
                     current.name == slot.agent
                     or current.name in self.op_data.operators[slot.agent].replacement

@@ -355,3 +355,11 @@ def test_explicit_other_slot_cannot_double_book_a_retained_cover(solver):
         lambda _: False,
     )
     assert plan == {"factory": ["红"], "contact": ["黑角"]}
+
+
+def test_unobserved_primary_uses_initial_correction(solver):
+    for op in solver.op_data.operators.values():
+        op._current_room, op.current_index, op.time_stamp = "", -1, None
+    backup(solver)
+    assert transition(solver) == {"contact": [SHARED]}
+    assert solver.op_data.plan_condition == [True]
