@@ -479,3 +479,56 @@ def test_native_recovery_projects_followers_from_inactive_binding(solver):
     assert result.complete and result.opportunity is not None
     assert data.operators[SHARED].group == "甲"
     assert all(not bed.name for bed in data.dorm)
+
+
+@pytest.mark.parametrize("reciprocal", [False, True])
+def test_dorm_accepts_working_primary_secondary_binding(solver, reciprocal):
+    plan = solver.global_plan["default_plan"].plan
+    plan["dormitory_1"][0] = Room("塑心", "乙", [SHARED])
+    if reciprocal:
+        plan["contact"][0].group_bindings[0]["replacement"] = ["塑心"]
+    assert solver.initialize_operators() is None
+    data = solver.op_data
+    assert data.operators[SHARED].group == "甲"
+    assert data.is_same_group_dorm_replacement(data.operators["塑心"], SHARED)
+    apply(solver, {room: [op.agent for op in row] for room, row in plan.items()})
+    admitted, off = shift_off(solver, "乙")
+    assert admitted
+    assert off["dormitory_1"][0] == SHARED
+    assert off["contact"] == (["塑心"] if reciprocal else ["黑角"])
+    data = solver.op_data
+    assert data.operators[SHARED].group == "乙"
+    assert data.get_dorm_by_name(SHARED)[1].position == ("dormitory_1", 0)
+    apply(solver, {room: [op.agent for op in row] for room, row in plan.items()})
+    assert solver.op_data.get_dorm_by_name(SHARED) == (None, None)
+    assert solver.op_data.operators["塑心"].current_room == "dormitory_1"
+    assert solver.op_data.operators["塑心"].current_index == 0
+
+
+def test_worker_accepts_dorm_primary_secondary_binding(solver):
+    plan = solver.global_plan["default_plan"].plan
+    plan["dormitory_1"][0] = Room(
+        "塑心", "甲", ["夜莺"], group_bindings=[{"group": "乙", "replacement": [B]}]
+    )
+    plan["meeting"][1].replacement = ["塑心"]
+    assert solver.initialize_operators() is None
+    assert solver.op_data.operators["塑心"].group == "甲"
+    apply(solver, {room: [op.agent for op in row] for room, row in plan.items()})
+    admitted, off = shift_off(solver, "乙")
+    assert admitted
+    assert off["meeting"][1] == "塑心"
+    assert off["dormitory_1"][0] == B
+    assert solver.op_data.operators["塑心"].group == "乙"
+    assert solver.op_data.get_dorm_by_name(B)[1].position == ("dormitory_1", 0)
+
+
+@pytest.mark.parametrize("relationship", ["cross_group", "work_work"])
+def test_secondary_binding_retains_primary_replacement_restrictions(
+    solver, relationship
+):
+    plan = solver.global_plan["default_plan"].plan
+    if relationship == "cross_group":
+        plan["dormitory_1"][0] = Room("塑心", "丙", [SHARED])
+    else:
+        plan["meeting"][1].replacement = [SHARED]
+    assert "替换组不可用高效组干员" in solver.initialize_operators()
