@@ -951,27 +951,46 @@ def test_closing_bed_keeps_existing_single_recovery_target(solver):
     assert target.dorm_recovery_room == "dormitory_1"
 
 
-def test_auto_free_occupant_can_be_replaced_after_recovery_finishes(solver):
+@pytest.mark.parametrize("other_beds_occupied", [False, True])
+def test_auto_free_recovery_fills_vacancy_before_replacing_full_resident(
+    solver, other_beds_occupied
+):
     configure_explicit_free_bed(solver)
     data = solver.op_data
     data.config.free_room = True
-    bed = data.dorm[0]
+    for name in ("泥岩", "年"):
+        data.operators[name].current_room = ""
+        data.operators[name].current_index = -1
     apply_plan(
         solver,
-        {"dormitory_1": ["年", "Current", "Current", "Current", "Current"]},
+        {
+            "dormitory_1": [
+                "年",
+                "冰酿",
+                "陈",
+                "能天使",
+                "红" if other_beds_occupied else "Free",
+            ]
+        },
     )
-    bed.name = "年"
+    data.operators["陈"].mood = data.operators["红"].mood = 24
+    bed = data.dorm[0]
     bed.time = datetime.now() - timedelta(minutes=1)
     data.operators["年"].mood = 24
-    data.operators["泥岩"].current_room = ""
-    data.operators["泥岩"].current_index = -1
     data.operators["泥岩"].mood = 5
     data.operators["泥岩"].time_stamp = datetime.now()
     tasks = []
 
     try_add_release_dorm({}, None, data, tasks)
 
-    assert tasks[0].plan["dormitory_1"][0] == "泥岩"
+    # 有空床先补空床；满员时才接管已恢复的临时床位。
+    assert len(tasks) == 1
+    row = tasks[0].plan["dormitory_1"]
+    assert row[0 if other_beds_occupied else 4] == "泥岩"
+    if not other_beds_occupied:
+        assert row[0] == "Current"
+    assert data.operators["年"].current_index == 0
+    assert data.operators["泥岩"].current_room == ""
 
 
 def test_mood_driven_resting_schedules_resident_cover(solver, monkeypatch):

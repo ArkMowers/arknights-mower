@@ -19,7 +19,7 @@ The shared projection performs arrival-driven preemption before filling remainin
 
 ## Verification
 
-Focused offline tests cover a three-dormitory chain, arrivals initially planned in a target slot, displaced-target equality despite larger deficit, continuing past equal-tier targets, vacancy locality, reservations and physical recovery setup. The related suites pass 673 tests and 6 subtests; two additional equal-tier chain cases pass in the admission suite.
+Focused offline tests cover a three-dormitory chain, arrivals initially planned in a target slot, displaced-target equality despite larger deficit, continuing past equal-tier targets, vacancy locality, reservations and physical recovery setup. The related suites pass 673 tests and 6 subtests; two additional equal-tier chain cases pass in the admission suite. The full-capacity fixture explicitly occupies every bed before testing recovery takeover; a separate vacancy case verifies filling the empty bed without displacing the recovered resident. The focused admission, grouped-dormitory and replacement-coordination suites pass 180 tests.
 
 ## Standards Findings
 
