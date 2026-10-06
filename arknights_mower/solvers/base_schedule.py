@@ -8670,7 +8670,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         #     process_itemlist(d)
 
     def initialize_maa(self):
-        from arknights_mower.utils.maa_backup import VerifiedAsst, update_transaction
+        from arknights_mower.utils.maa_backup import VerifiedAsst
 
         if os.environ.get("MOWER_ANDROID") == "1":
             from mower_android.maa import Asst
@@ -8682,6 +8682,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if not self.MAA.connect():
                 raise RuntimeError("安卓 MAA 引擎未连接")
             return
+        from arknights_mower.utils.maa_runtime import load_verified_maa
+
         config.stop_maa.clear()
         conf = config.conf
         path = pathlib.Path(resolve_config_path(conf.maa_path))
@@ -8726,12 +8728,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
             save_exception(e)
 
-        @update_transaction
-        def create_verified_asst():
-            Asst.load(path=path, incremental_path=path / "cache")
-            return VerifiedAsst(Asst, path, self.log_maa)
-
-        self.MAA = create_verified_asst()
+        self.MAA = load_verified_maa(Asst, path, self.log_maa)
+        logger.info(f"MAA 核心版本校验通过：{self.MAA.get_version()}")
         self.stages = []
         self.MAA.set_instance_option(
             InstanceOptionType.touch_type, conf.maa_touch_option

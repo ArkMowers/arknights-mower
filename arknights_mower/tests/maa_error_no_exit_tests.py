@@ -2,6 +2,7 @@ import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -124,6 +125,8 @@ class MaaErrorNoExitTests(unittest.TestCase):
                 )
                 asst = MagicMock()
                 asst.return_value.connect.return_value = True
+                asst.return_value.get_version.return_value = "v6.19.0-beta.1"
+                Path(maa_path, "MaaCore.dll").write_bytes(b"offline core")
                 response = MagicMock()
                 response.__enter__.return_value.content = b"{}"
                 conf = SimpleNamespace(
@@ -148,12 +151,19 @@ class MaaErrorNoExitTests(unittest.TestCase):
                         },
                     ),
                     patch.object(base_schedule.requests, "get", return_value=response),
+                    patch.object(base_schedule, "guard_adb"),
+                    patch(
+                        "arknights_mower.utils.maa_runtime.read_installed_version",
+                        return_value="v6.19.0-beta.1",
+                    ),
                 ):
                     solver.initialize_maa()
-                    self.addCleanup(solver.MAA.stop)
-                asst.return_value.connect.assert_called_once_with(
-                    "sdk-adb", "USB-123", "General"
-                )
+                    try:
+                        asst.return_value.connect.assert_called_once_with(
+                            "sdk-adb", "USB-123", "General"
+                        )
+                    finally:
+                        solver.MAA.stop()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def test_initialize_maa_failure_does_not_exit_game(self):
