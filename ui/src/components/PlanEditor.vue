@@ -635,7 +635,7 @@ function set_facility(e) {
                     >+</n-button
                   >
                   <n-button
-                    v-if="planBindings(current_plan[facility].plans[i - 1]).length > 1"
+                    v-if="bindingIndex > 0"
                     class="remove-binding"
                     aria-label="删除此绑组"
                     title="删除此绑组"
