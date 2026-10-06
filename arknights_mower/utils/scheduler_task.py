@@ -1363,25 +1363,22 @@ def plan_metadata(op_data, tasks):
         ]
         if high_dorms and group_name:
             # 高优先干员恢复时间差过大时，可延后整组回班。
-            base_time = high_dorms[0].time
+            recovery_times = [dorm.time for dorm in high_dorms if dorm.time is not None]
             need_early = not op_data.operators[high_dorms[0].name].exhaust_require
             mood_gap_full_rest = False
             if (
                 config.conf.group_rest_in_full_on_mood_gap
-                and base_time is not None
+                and len(recovery_times) > 1
                 and not rest_in_full_dorms
             ):
-                for dorm in high_dorms[1:]:
-                    # 三电站限制为1小时，2电站限制为1.5小时
-                    limit = 5400 if op_data.power_plant_count == 2 else 3600
-                    if dorm.time and (base_time - dorm.time).total_seconds() > limit:
-                        logger.debug(
-                            f"{high_dorms[0].name} 的时间 {base_time} 被调整为 {dorm.time}，因为时间差超过{limit / 3600}小时"
-                        )
-                        max_rest_in_full_time = base_time
-                        mood_gap_full_rest = True
-                    if op_data.operators[high_dorms[0].name].exhaust_require:
-                        need_early = False
+                limit = timedelta(minutes=config.conf.group_mood_gap_threshold_minutes)
+                earliest, latest = min(recovery_times), max(recovery_times)
+                if latest - earliest > limit:
+                    logger.debug(
+                        f"{group_name} 预计恢复时间差 {latest - earliest} 超过 {limit}，延后整组回班"
+                    )
+                    max_rest_in_full_time = latest
+                    mood_gap_full_rest = True
             if rest_in_full_dorms:
                 max_rest_in_full_time = max(
                     (dorm.time for dorm in rest_in_full_dorms if dorm.time is not None),

@@ -556,6 +556,8 @@ class RIICPart(ConfModel):
 
     group_rest_in_full_on_mood_gap: bool = True
     "组内高优先干员预计恢复时间差过大时，等待整组回满"
+    group_mood_gap_threshold_minutes: int = Field(default=60, ge=1, le=1440)
+    "组内预计恢复时间差触发延后回班的阈值（分钟）"
     group_mood_gap_max_extra_wait_hours: float = Field(default=0, ge=0, le=24)
     "组内恢复时间差过大时最多额外等待的小时数；0 表示不限时"
     fia_fool: bool = True

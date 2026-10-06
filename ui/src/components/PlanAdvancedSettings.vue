@@ -18,6 +18,7 @@ const {
   dorm_isolation,
   merge_interval,
   group_rest_in_full_on_mood_gap,
+  group_mood_gap_threshold_minutes,
   group_mood_gap_max_extra_wait_hours,
   fia_fool,
   assistant_follows_schedule,
@@ -253,11 +254,20 @@ const {
         <n-checkbox v-model:checked="group_rest_in_full_on_mood_gap">
           组内心情差距过大时延后回班
           <help-text
-            >默认开启。组内高优先干员的预计心情恢复时间差超过上限时，延后整组回班；2 电站上限为 1.5
-            小时，其他情况为 1
-            小时。关闭后按组内最早恢复时间安排回班；单独设置“回满”的干员仍会回满。</help-text
+            >默认开启。参与正常回班计时成员的最晚与最早预计恢复完成时间之差超过下方阈值时，延后整组回班。关闭后按组内最早恢复时间安排回班；单独设置“回满”的干员仍会回满。</help-text
           >
         </n-checkbox>
+      </n-form-item>
+      <n-form-item label="组内恢复时间差阈值">
+        <mower-input-number
+          v-model:value="group_mood_gap_threshold_minutes"
+          :disabled="!group_rest_in_full_on_mood_gap"
+          :min="1"
+          :max="1440"
+          :step="5"
+        >
+          <template #suffix>分钟</template>
+        </mower-input-number>
       </n-form-item>
       <n-form-item>
         <template #label>

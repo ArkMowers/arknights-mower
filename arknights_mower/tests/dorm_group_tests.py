@@ -1372,3 +1372,40 @@ def test_multiple_idle_beds_finishing_together_generate_release(solver):
     assert task.time == completed_at
     assert task.release_dorm_targets() == {bed.name: bed.position for bed in data.dorm}
     assert task.plan == {"dormitory_1": ["Current", "Current", "Free", "Free", "Free"]}
+
+
+@pytest.mark.parametrize("power_plants", [2, 3])
+@pytest.mark.parametrize("offsets", [(0, 30, 82), (82, 0, 30), (30, 82, 0)])
+def test_group_recovery_spread_uses_extremes_and_configured_minutes(
+    solver, power_plants, offsets
+):
+    shift_off(solver)
+    data = solver.op_data
+    data.power_plant_count = power_plants
+    now = datetime.now()
+    beds = [bed for bed in data.dorm if data.operators[bed.name].is_high()]
+    assert len(beds) == 3
+    for bed, minutes in zip(beds, offsets):
+        bed.time = now + timedelta(hours=2, minutes=minutes)
+
+    def return_time():
+        return next(
+            task.time
+            for task in plan_metadata(data, [])
+            if task.type == TaskTypes.SHIFT_ON
+            and "伊内丝" in [name for names in task.plan.values() for name in names]
+        )
+
+    assert config.conf.group_mood_gap_threshold_minutes == 60
+    delayed = return_time()
+    assert delayed == max(bed.time for bed in beds) - timedelta(
+        minutes=8 + 0.4 * len(beds)
+    )
+    config.conf.group_mood_gap_threshold_minutes = 82
+    normal = return_time()
+    assert normal < delayed
+    config.conf.group_mood_gap_threshold_minutes = 90
+    assert return_time() == normal
+    config.conf.group_mood_gap_threshold_minutes = 60
+    config.conf.group_mood_gap_max_extra_wait_hours = 0.5
+    assert return_time() == normal + timedelta(minutes=30)

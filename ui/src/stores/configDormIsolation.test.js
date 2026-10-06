@@ -69,3 +69,22 @@ describe('宿舍隔离配置', () => {
     expect(store.dorm_isolation).toEqual([])
   })
 })
+
+it('组内恢复时间差默认60分钟，修改后保存并参与排班导出', async () => {
+  setup()
+  expect(store.group_mood_gap_threshold_minutes).toBe(60)
+  axios.get.mockResolvedValue({ data: { ...response, group_mood_gap_threshold_minutes: 75 } })
+  await store.load_config()
+  expect(store.group_mood_gap_threshold_minutes).toBe(75)
+  expect(store.build_advanced_settings().group_mood_gap_threshold_minutes).toBe(75)
+  loaded.value = true
+  await nextTick()
+  await store.flush_config_saves()
+  store.group_mood_gap_threshold_minutes = 90
+  await vi.waitFor(() =>
+    expect(axios.patch.mock.lastCall[1]).toEqual({ group_mood_gap_threshold_minutes: 90 })
+  )
+  axios.get.mockResolvedValue({ data: response })
+  await store.load_config()
+  expect(store.group_mood_gap_threshold_minutes).toBe(60)
+})
