@@ -414,7 +414,7 @@ describe('low frame rate adaptation', () => {
 })
 
 describe('factory product switching policy', () => {
-  it('defaults drone loss tolerance to 30 seconds and serializes edits', async () => {
+  it('defaults switching on with 30-second drone loss tolerance and serializes edits', async () => {
     pinia = createPinia()
     setActivePinia(pinia)
     const app = createApp({})
@@ -436,6 +436,7 @@ describe('factory product switching policy', () => {
 
     await store.load_config()
     expect(store.product_switching).toEqual({
+      enable: true,
       max_drones_per_switch: 0,
       grandet_mode: true,
       use_drones_when_leaving_orirock: true,
@@ -444,6 +445,7 @@ describe('factory product switching policy', () => {
       waiting_seconds: 2
     })
 
+    store.product_switching.enable = false
     store.product_switching.max_drones_per_switch = 12
     store.product_switching.grandet_mode = false
     store.product_switching.use_drones_when_leaving_orirock = false
@@ -451,6 +453,7 @@ describe('factory product switching policy', () => {
     store.product_switching.drone_loss_seconds = 45
     store.product_switching.waiting_seconds = 4
     expect(store.build_config().product_switching).toEqual({
+      enable: false,
       max_drones_per_switch: 12,
       grandet_mode: false,
       use_drones_when_leaving_orirock: false,

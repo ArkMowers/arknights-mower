@@ -20,6 +20,7 @@
     "arknights_mower/tests/manufacture_product_switch_tests.py",
     "ui/src/components/ProductSwitchingSettings.test.js",
     "ui/src/stores/configPartial.test.js",
-    "arknights_mower/tests/room_map_relocation_tests.py"
+    "arknights_mower/tests/room_map_relocation_tests.py",
+    "ui/src/stores/config.test.js"
   ]
 }
