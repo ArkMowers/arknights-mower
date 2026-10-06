@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from arknights_mower.utils.resting_priority import (
     RestingTier,
     busy_resting_names,
+    crafting_rest_order,
     has_resting_mood,
     resting_key,
     resting_mood,
@@ -108,6 +109,7 @@ def dorm_candidates(
         elif not op.is_high() and not op_data.has_rest_mood_limit(name):
             full.append(name)
     recovering.sort(key=lambda name: resting_key(op_data, name, now))
+    recovering = crafting_rest_order(op_data, recovering)
 
     unknown.extend(unregistered_idle_candidates(op_data, excluded))
 
@@ -124,6 +126,8 @@ def dorm_candidates(
         for name in unknown
         if (mood := dorm_candidate_mood(op_data, name, now)) is None or mood < 24
     ]
+    unknown = crafting_rest_order(op_data, unknown)
+    filling = crafting_rest_order(op_data, filling)
     estimated_recovering = [
         name
         for name in unknown

@@ -19,7 +19,7 @@ The existing projected planner replaces its displacement loop with one minimum-c
 
 ## Verification
 
-Focused tests cover existing-target stability, one-vacancy two-room bounds, local ties, higher-tier remote candidates, rear-bed candidate inclusion, reservations, completed residents, ordinary admission, release, takeover and restoration. Verification passes 648 tests and 6 subtests; Ruff and governance pass. Tests perform no live-device integration.
+Focused tests cover existing-target stability, one-vacancy two-room bounds, local ties, higher-tier remote candidates, rear-bed candidate inclusion, reservations, completed residents, ordinary admission, release, takeover and restoration. Verification passes 669 related tests and 6 subtests plus two integration regressions for crafting order. Existing targets and same-tier local candidates retain precedence when crafting lists are active. Ruff and governance pass. Tests perform no live-device integration.
 
 ## Standards Findings
 
