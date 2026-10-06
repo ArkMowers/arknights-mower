@@ -3109,7 +3109,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 for bed in self.op_data.dorm
             )
             has_group_dorm_bed = op.group and self.op_data.group_dorm_bed_count(
-                self.op_data.groups[op.group]
+                op.group
             )
             if _high_done and not (can_standby or can_preempt or has_group_dorm_bed):
                 continue
@@ -3198,7 +3198,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 current = self.op_data.get_current_operator(room, index)
                 if current is not None and (
                     current.name == slot.agent
-                    or current.name in slot.replacement
+                    or current.name in self.op_data.operators[slot.agent].replacement
                     and current.name not in TRADE_ORDER_AGENTS
                 ):
                     continue
