@@ -23,6 +23,8 @@ free_dorm_solver = multi_group.free_dorm_solver
 
 pytestmark = pytest.mark.usefixtures("offline_maintenance")
 
+PRODUCTS = [("制造站", "gold", "exp3"), ("贸易站", "lmd", "orundum")]
+
 
 def backup(solver, room="contact", replacements=("砾",), column=0):
     slots = deepcopy(solver.op_data.plan[room])
@@ -79,7 +81,10 @@ def test_entry_and_exit_preserve_primary_state(solver, working):
     assert recovery(solver) == before
 
 
-def test_unavailable_cover_rolls_back_plan_and_queue(solver):
+def test_unavailable_cover_and_protected_primary_roll_back(solver, monkeypatch):
+    monkeypatch.setattr(
+        multi_group.base_schedule, "_is_mastery_busy", lambda n: n == SHARED
+    )
     assert shift_off(solver, "甲")[0]
     backup(solver, replacements=("黑角",))
     solver.op_data.operators["黑角"]._current_room = "factory"
@@ -142,7 +147,7 @@ def test_free_dorm_cover_never_evicts_resident(free_dorm_solver, occupied):
 
 
 @pytest.mark.parametrize("blocking", ["busy", "reserved", "exhausted"])
-def test_protected_replacements_defer(solver, monkeypatch, blocking):
+def test_protected_replacements_recall_primary(solver, monkeypatch, blocking):
     from arknights_mower.solvers import base_schedule
 
     assert shift_off(solver, "甲")[0]
@@ -155,10 +160,14 @@ def test_protected_replacements_defer(solver, monkeypatch, blocking):
         solver.tasks = [SchedulerTask(task_plan={"factory": ["黑角"]})]
     else:
         solver.op_data.operators["黑角"].mood = 0
-    tasks = list(solver.tasks)
-    assert transition(solver) == {}
-    assert solver.op_data.plan_condition == [False]
-    assert solver.tasks == tasks
+    before = recovery(solver)
+    plan = transition(solver)
+    assert plan == {"contact": [SHARED]}
+    assert solver.op_data.plan_condition == [True]
+    apply(solver, plan)
+    assert solver.op_data.operators[SHARED].current_room == "contact"
+    assert SHARED not in recovery(solver)
+    assert recovery(solver)[A] == before[A]
 
 
 @pytest.mark.parametrize("complete", [False, True])
@@ -183,9 +192,7 @@ def test_explicit_backup_task_retains_control(solver):
 
 
 @pytest.mark.parametrize("available", [False, True])
-def test_shift_projection_changes_cover_without_recalling_primary(solver, available):
-    from arknights_mower.solvers.base_schedule import ProductSwitchDeferred
-
+def test_shift_projection_prefers_cover_before_primary(solver, available):
     backup(solver, replacements=("黑角",))
     if not available:
         solver.op_data.operators["黑角"]._current_room = "factory"
@@ -198,15 +205,13 @@ def test_shift_projection_changes_cover_without_recalling_primary(solver, availa
             "dormitory_1": ["Current", "Current", A, SHARED, "Current"],
         },
     )
-    original = deepcopy(task.plan)
+    solver._prepare_shift_backup(task)
     if available:
-        solver._prepare_shift_backup(task)
         assert task.plan["contact"] == ["黑角"]
         assert task.plan["dormitory_1"][3] == SHARED
     else:
-        with pytest.raises(ProductSwitchDeferred):
-            solver._prepare_shift_backup(task)
-        assert task.plan == original
+        assert task.plan["contact"] == [SHARED]
+        assert SHARED not in task.plan["dormitory_1"]
     assert solver.op_data.plan_condition == [False]
     assert solver.op_data.operators[SHARED].current_room == "contact"
 
@@ -276,7 +281,10 @@ def test_independent_standby_without_bed_remains_off_shift(solver):
     assert s.op_data.get_dorm_by_name(SHARED)[1] is None
 
 
-def test_deferred_transition_retries_when_cover_becomes_available(solver):
+def test_deferred_transition_retries_when_cover_becomes_available(solver, monkeypatch):
+    monkeypatch.setattr(
+        multi_group.base_schedule, "_is_mastery_busy", lambda n: n == SHARED
+    )
     assert shift_off(solver, "甲")[0]
     backup(solver, replacements=("黑角",))
     solver.op_data.operators["黑角"]._current_room = "factory"
@@ -307,7 +315,147 @@ def test_same_group_primary_cover_keeps_fixed_recovery(dorm_solver):
     assert recovery(s) == before
 
 
-def test_exit_defers_when_default_cover_is_busy(solver):
+@pytest.mark.parametrize("product_solver", PRODUCTS[:1], indirect=True)
+def test_product_shortage_recall_keeps_group_consistent(product_solver, monkeypatch):
+    s = product_solver
+    assert shift_off(s, "甲")[0]
+    for name in (A, SHARED):
+        s.op_data.operators[name].mood = 0
+        s.op_data.get_dorm_by_name(name)[1].time = datetime.now() + timedelta(hours=4)
+    monkeypatch.setattr(
+        multi_group.base_schedule, "_is_mastery_busy", lambda n: n == "砾"
+    )
+    task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION)
+    s.task = task
+    s._prepare_shift_cycle(task)
+    assert task.backup_shift_conditions == [True]
+    assert task.plan["room_1_2"] == [SHARED]
+    apply(s, task.plan)
+    assert s.op_data.operators[SHARED].is_working()
+    assert SHARED not in recovery(s)
+    # 提前召回仍沿用原有整组纠错，不能留下半组在岗的状态。
+    assert s.op_data.operators[A].is_working()
+    assert A not in recovery(s)
+
+
+@pytest.mark.parametrize("blocking", ["busy", "reserved", "source_bed", "working"])
+def test_recall_respects_primary_protection(solver, monkeypatch, blocking):
+    s = solver
+    assert shift_off(s, "甲")[0]
+    backup(s, replacements=("黑角",))
+    s.op_data.operators["黑角"].mood = 0
+    if blocking == "busy":
+        monkeypatch.setattr(
+            multi_group.base_schedule, "_is_mastery_busy", lambda n: n == SHARED
+        )
+    elif blocking == "reserved":
+        s.tasks = [SchedulerTask(task_plan={"factory": [SHARED]})]
+    elif blocking == "source_bed":
+        s.tasks = [
+            SchedulerTask(
+                task_plan={
+                    "dormitory_1": ["Current", "Current", "Current", "Free", "Current"]
+                }
+            )
+        ]
+    else:
+        apply(s, {"factory": [SHARED]})
+    tasks = list(s.tasks)
+    before = recovery(s)
+    assert transition(s) == {}
+    assert s.op_data.plan_condition == [False]
+    assert s.tasks == tasks
+    assert recovery(s) == before
+
+
+@pytest.mark.parametrize("protected", [False, True])
+def test_primary_recall_rebuilds_ordinary_return(solver, protected):
+    s = solver
+    slot = s.global_plan["default_plan"].plan["contact"][0]
+    slot.group, slot.group_bindings = "", []
+    assert s.initialize_operators() is None
+    for op in s.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    apply(
+        s,
+        {
+            "contact": ["红"],
+            "dormitory_1": ["Current", "Current", SHARED, "Current", "Current"],
+        },
+    )
+    s.op_data.operators[SHARED].mood = 0
+    due = datetime.now() + timedelta(hours=4)
+    s.op_data.get_dorm_by_name(SHARED)[1].time = due
+    backup(s, replacements=("陈",))
+    s.op_data.operators["陈"].mood = 0
+    pending = SchedulerTask(
+        time=due, task_type=TaskTypes.SHIFT_ON, task_plan={"contact": [SHARED]}
+    )
+    if protected:
+        pending.product_shift_locked = True
+        pending.product_lock_names = {SHARED}
+        pending.product_lock_slots = {("contact", 0)}
+    s.tasks = [pending]
+    plan = transition(s)
+    assert s.op_data.plan_condition == [not protected]
+    if protected:
+        assert plan == {}
+        assert pending in s.tasks
+    else:
+        assert plan == {"contact": [SHARED]}
+        assert not any(t.type == TaskTypes.SHIFT_ON for t in s.tasks)
+        apply(s, plan)
+        assert SHARED not in recovery(s)
+
+
+@pytest.mark.parametrize("protect_first", [False, True])
+def test_shared_cover_matches_before_minimal_primary_recall(
+    solver, monkeypatch, protect_first
+):
+    s = solver
+    for slots in s.global_plan["default_plan"].plan.values():
+        for slot in slots:
+            slot.group, slot.group_bindings = "", []
+    assert s.initialize_operators() is None
+    for op in s.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    apply(
+        s,
+        {
+            "contact": ["红"],
+            "meeting": ["陈", "Current"],
+            "dormitory_1": ["Current", "Current", A, SHARED, "Current"],
+        },
+    )
+    backup(s)
+    meeting = deepcopy(s.op_data.plan["meeting"])
+    meeting[0].replacement = ["砾"]
+    s.op_data.backup_plans[0].plan["meeting"] = meeting
+    if protect_first:
+        monkeypatch.setattr(
+            multi_group.base_schedule, "_is_mastery_busy", lambda n: n == A
+        )
+    plan = transition(s)
+    assert s.op_data.plan_condition == [True]
+    assigned = [plan["contact"][0], plan["meeting"][0]]
+    assert assigned.count("砾") == 1
+    assert sum(n in (A, SHARED) for n in assigned) == 1
+    if protect_first:
+        assert assigned == [SHARED, "砾"]
+
+
+@pytest.mark.parametrize("product_solver", PRODUCTS[:1], indirect=True)
+def test_product_change_keeps_explicit_staffing_priority(product_solver):
+    s = product_solver
+    assert shift_off(s, "甲")[0]
+    s.op_data.backup_plans[0].task = {"room_1_2": [SHARED]}
+    s.op_data.facility_states["room_1_2"] = {"product": "exp3"}
+    assert transition(s) == {"room_1_2": [SHARED]}
+
+
+def test_exit_defers_when_default_cover_and_primary_are_busy(solver, monkeypatch):
     assert shift_off(solver, "甲")[0]
     bp = backup(solver)
     apply(solver, transition(solver))
@@ -315,6 +463,9 @@ def test_exit_defers_when_default_cover_is_busy(solver):
     solver.op_data.operators["红"]._current_room = "factory"
     solver.op_data.operators["红"].current_index = 0
     bp.trigger = LogicExpression("False", "==", "True")
+    monkeypatch.setattr(
+        multi_group.base_schedule, "_is_mastery_busy", lambda n: n == SHARED
+    )
     before = recovery(solver)
     assert transition(solver) == {}
     assert solver.op_data.plan_condition == [True]
@@ -363,3 +514,104 @@ def test_unobserved_primary_uses_initial_correction(solver):
     backup(solver)
     assert transition(solver) == {"contact": [SHARED]}
     assert solver.op_data.plan_condition == [True]
+
+
+@pytest.fixture
+def product_solver(solver, request):
+    facility, default, target = request.param
+    plan = solver.global_plan["default_plan"]
+    slots = plan.plan.pop("contact")
+    slots[0].facility, slots[0].product = facility, default
+    plan.plan["room_1_2"] = slots
+    plan.products = {"room_1_2": default}
+    assert solver.initialize_operators() is None
+    for op in solver.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    solver.op_data.first_init = False
+    bp = backup(solver, room="room_1_2")
+    bp.plan["room_1_2"][0].product = target
+    bp.products = {"room_1_2": target}
+    return solver
+
+
+@pytest.mark.parametrize("product_solver", PRODUCTS, indirect=True)
+@pytest.mark.parametrize("working", [False, True])
+@pytest.mark.parametrize("change_replacements", [False, True])
+def test_product_entry_exit_preserve_primary_state(
+    product_solver, working, change_replacements
+):
+    s = product_solver
+    bp = s.op_data.backup_plans[0]
+    if not change_replacements:
+        bp.plan["room_1_2"][0].replacement = ["红"]
+    if not working:
+        assert shift_off(s, "甲")[0]
+        for bed in s.op_data.all_dorms():
+            if bed.name:
+                bed.time = datetime.now() + timedelta(hours=4)
+    before = recovery(s)
+    default = s.op_data.products["room_1_2"]
+    target = bp.products["room_1_2"]
+    for active, product in [(True, target), (False, default)]:
+        s.tasks = []
+        bp.trigger = LogicExpression(str(active), "==", "True")
+        s.op_data.facility_states["room_1_2"] = {"product": product}
+        plan = transition(s)
+        assert s.op_data.plan_condition == [active]
+        assert s.op_data.products["room_1_2"] == product
+        assert plan == (
+            {"room_1_2": ["砾" if active else "红"]}
+            if not working and change_replacements
+            else {}
+        )
+        apply(s, plan)
+        assert recovery(s) == before
+        assert s.op_data.operators[SHARED].is_working() == working
+
+
+@pytest.mark.parametrize("product_solver", PRODUCTS[:1], indirect=True)
+def test_product_and_cover_change_survive_full_shift_cycle(product_solver):
+    s = product_solver
+    assert shift_off(s, "甲")[0]
+    for name in (A, SHARED):
+        s.op_data.operators[name].mood = 5
+        s.op_data.get_dorm_by_name(name)[1].time = datetime.now() + timedelta(hours=4)
+    before = recovery(s)
+    task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION)
+    s.task = task
+    s._prepare_shift_cycle(task)
+    assert task.backup_shift_conditions == [True]
+    assert task.plan["room_1_2"] == ["砾"]
+    assert A not in task.plan.get("meeting", [])
+    apply(s, task.plan)
+    assert s.op_data.operators[SHARED].is_resting()
+    assert recovery(s) == before
+
+
+@pytest.mark.parametrize("product_solver", PRODUCTS[:1], indirect=True)
+def test_product_change_waits_for_observation_and_available_cover(
+    product_solver, monkeypatch
+):
+    s = product_solver
+    assert shift_off(s, "甲")[0]
+    before = recovery(s)
+    monkeypatch.setattr(
+        multi_group.base_schedule, "_is_mastery_busy", lambda n: n in ("砾", SHARED)
+    )
+    assert transition(s) == {}
+    assert s.op_data.plan_condition == [False]
+    pending = next(t for t in s.tasks if t.type == TaskTypes.SWITCH_PRODUCT)
+    assert pending.pending_product_targets == {"room_1_2": "exp3"}
+    assert recovery(s) == before
+    s.op_data.facility_states["room_1_2"] = {"product": "exp3"}
+    s.tasks.remove(pending)
+    assert transition(s) == {}
+    assert s.op_data.plan_condition == [False]
+    assert recovery(s) == before
+    monkeypatch.setattr(
+        multi_group.base_schedule, "_is_mastery_busy", lambda n: n == SHARED
+    )
+    assert transition(s) == {"room_1_2": ["砾"]}
+    assert s.op_data.plan_condition == [True]
+    assert recovery(s) == before
