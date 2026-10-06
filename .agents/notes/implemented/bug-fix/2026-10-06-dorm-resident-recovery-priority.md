@@ -1,30 +1,30 @@
 ---
-title: Vacant Single-Target Recovery
+title: Admission Preemption and Vacant Recovery
 status: implemented
 category: bug-fix
 date: 2026-10-06
 ---
 
-# Vacant Single-Target Recovery
+# Admission Preemption and Vacant Recovery
 
 ## Contract
 
-[INV-SCHED-20] preserves existing single-target residents. Admission and departure events fill vacant targets using eligible non-target residents across dormitories and current arrivals. Candidate order is identity tier, locality, then mood deficit. Equal-tier local residents avoid a second room operation; higher-tier remote residents still win.
+[INV-SCHED-20] distinguishes existing targets from new arrivals using actual occupancy before the arrangement. A newly projected target is still an arrival. New arrivals can preempt strictly lower-priority targets. A displaced target continues competing against subsequent strictly lower-priority targets, stopping after reaching an empty target or exhausting eligible targets. Equal tiers never preempt, even for a larger mood deficit.
 
-Each vacancy exchanges only the target and selected donor beds. The chosen target stops competing immediately. No displacement chain or global reshuffle follows. Multiple vacancies are independent, while each room retains one final arrangement. Reservations, excluded residents, mandatory mood limits and actual occupancy remain authoritative.
+Existing targets do not proactively reorder. Ordinary vacancies use eligible non-target residents and arrivals, ranked by tier, locality and mood deficit. Crafting order applies only within eligible equal-tier, equal-locality candidates. Reservations, exclusions, mandatory limits and actual occupancy remain authoritative.
 
-## Simplification
+## Implementation
 
-The existing projected planner replaces its displacement loop with one minimum-candidate selection per vacancy. It does not add device reads, scheduled scans, caches or executor fallbacks. Complete residents are not added as recovery candidates. Idle mood changes and unrelated working plans do not trigger allocation.
+The shared projection performs arrival-driven preemption before filling remaining vacancies. Each target assigned by the chain is excluded from vacancy filling. A preemption chain may span more than two dormitories; vacancy-only filling retains its one- or two-room bound. A target without a lower-tier recipient remains in the displaced bed. No new device reads, tasks or persistent caches are introduced.
 
 ## Verification
 
-Focused tests cover existing-target stability, one-vacancy two-room bounds, local ties, higher-tier remote candidates, rear-bed candidate inclusion, reservations, completed residents, ordinary admission, release, takeover and restoration. Verification passes 669 related tests and 6 subtests plus two integration regressions for crafting order. Existing targets and same-tier local candidates retain precedence when crafting lists are active. Ruff and governance pass. Tests perform no live-device integration.
+Focused offline tests cover a three-dormitory chain, arrivals initially planned in a target slot, displaced-target equality despite larger deficit, continuing past equal-tier targets, vacancy locality, reservations and physical recovery setup. The related suites pass 673 tests and 6 subtests; two additional equal-tier chain cases pass in the admission suite.
 
 ## Standards Findings
 
-Pass: projected state remains isolated, swaps preserve residents, reservation guards remain in force, and the exact bilingual glossary replacement and locality addition are user-approved.
+Pass: isolated projection, bounded target traversal, shared priority tiers and occupant preservation. Ruff and repository governance validate the final patch.
 
 ## Spec Findings
 
-Pass: a rear-bed high-priority replacement can receive a vacant target, but cannot displace an established target. Equal-tier local candidates reduce the operation to one dormitory; a remote winner involves at most two per vacancy.
+Pass: higher-tier arrivals immediately obtain recovery targets; existing targets move only through the resulting chain or explicit departure. Equal tiers preserve existing targets. Ordinary vacancies retain the smaller relocation scope.

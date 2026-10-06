@@ -1633,9 +1633,9 @@ def plan_mood_limit_releases(op_data, *, recovery_targets=None, previous_tasks=(
 def prioritize_new_dorm_recovery(
     op_data, plan, reserved_slots=(), preceding_plan=None, *, reserved_names=()
 ):
-    """只补空单回位；已有单回目标保位，后排住客跨宿舍竞争。
+    """新入住者可跨级抢占单回；已有目标之间不主动竞争。
 
-    每个空位最多交换目标和候选的两个床位，不向其他单回位连锁交换。
+    空位由非单回住客与新入住者补位，同级优先本宿舍。
     只修改投影计划，保留住客集合、预约和真实恢复标记。
     """
     if not plan and not preceding_plan:
@@ -1694,7 +1694,46 @@ def prioritize_new_dorm_recovery(
         return plan
     now = datetime.now()
     result = copy.deepcopy(plan)
+    arrivals = sorted(
+        (
+            bed.name
+            for bed in beds
+            if (op := op_data.operators.get(bed.name)) is not None
+            and bed.name in explicit_names
+            and not op_data.is_dynamic_dorm_position(
+                op.current_room, op.current_index, op.name
+            )
+            and not (
+                has_resting_mood(op, now) and resting_mood(op, now) >= op.upper_limit
+            )
+        ),
+        key=lambda name: resting_key(op_data, name, now),
+    )
+    for name in arrivals:
+        source = next(bed for bed in beds if bed.name == name)
+        displaced = False
+        for target in targets.values():
+            if target is source:
+                break
+            if not displaced and target.position not in protected:
+                continue
+            if target.name and resting_tier(op_data, source.name) >= resting_tier(
+                op_data, target.name
+            ):
+                continue
+            source.name, target.name = target.name, source.name
+            for bed in (source, target):
+                room, index = bed.position
+                result.setdefault(room, ["Current"] * len(op_data.plan[room]))[
+                    index
+                ] = bed.name or "Free"
+            protected.add(target.position)
+            displaced = True
+            if not source.name:
+                break
     for target in available:
+        if target.position in protected:
+            continue
         candidates = [
             bed
             for bed in beds
