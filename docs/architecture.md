@@ -76,6 +76,7 @@ Arknights Mower consists of four decoupled layers:
 ### 1.3 Core Subsystems (`arknights_mower/`)
 - **[Device Control Subsystem](subsystems/device-control.md)**: Manages emulator discovery, socket-level transport, standard canvas frame acquisition, readiness verdicts, and bounded crash recovery.
 - **[Base Infrastructure & Scheduling Subsystem](subsystems/base-scheduler.md)**: Drives automated base operations: operator mood evaluation, empirical depletion rate calculation, dormitory recovery ordering, dynamic shift transitions, clue party management, and drone acceleration.
+- **[MAA Integration Subsystem](subsystems/maa-integration.md)**: Consumes MAA core callbacks across a MAA run boundary, translating task-chain transitions and whitelisted milestones into runtime-log lines while recurring telemetry stays at DEBUG.
 - **Recognition Subsystem**: Performs template matching and neural OCR over immutable 1920×1080 canvas frames.
 
 ### 1.4 Persistence & Storage Layer

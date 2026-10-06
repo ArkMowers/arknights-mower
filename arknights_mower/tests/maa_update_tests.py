@@ -1101,7 +1101,6 @@ class TestLoadedMaaCache(unittest.TestCase):
         main_module = types.ModuleType("arknights_mower.__main__")
         main_module.base_scheduler = types.SimpleNamespace(MAA=object())
         base_module = types.ModuleType("arknights_mower.solvers.base_schedule")
-        base_module.Message = object()
         asst_module = types.ModuleType("asst")
         asst_child = types.ModuleType("asst.asst")
 
@@ -1129,7 +1128,6 @@ class TestLoadedMaaCache(unittest.TestCase):
                 self.assertNotIn("asst.asst", sys.modules)
                 close.assert_called_once_with(123)
             self.assertIsNone(main_module.base_scheduler.MAA)
-            self.assertIsNone(base_module.Message)
             self.assertIsNone(Asst._Asst__lib)
             self.assertNotIn(python_path, sys.path)
         finally:

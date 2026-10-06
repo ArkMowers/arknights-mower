@@ -383,11 +383,13 @@ class RegularTaskPart(ConfModel):
     maa_eat_stone: bool = False
     "无限吃源石"
     maa_report_to_yituliu: bool = False
-    "向一图流上报作战结果"
+    "向一图流上报掉落数据"
     maa_yituliu_id: str = ""
     "一图流上报 id（仅在开启上报时有效）"
+    maa_report_to_penguin: bool = False
+    "向企鹅物流上报掉落数据"
     maa_penguin_id: str = ""
-    "企鹅物流上报 id（可选，留空为匿名上报）"
+    "企鹅物流上报 id（仅在开启上报时有效）"
     maa_weekly_plan: list[MaaDailyPlan] = [
         {"medicine": 0, "sanity_threshold": 0, "stage": [""], "weekday": "周一"},
         {"medicine": 0, "sanity_threshold": 0, "stage": [""], "weekday": "周二"},

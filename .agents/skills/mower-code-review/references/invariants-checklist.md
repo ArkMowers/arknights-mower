@@ -138,6 +138,14 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-UPD-01] Owned Command Completion**: Does each Windows update command own descendants before execution, verify completion within its budget, and preserve other instances when preparation is cancelled?
 - [ ] **[INV-UPD-02] Complete Registration Scan**: Do strict registration scans retry within one shared monotonic budget, preserve unverified registrations and raise `InstanceScanError` instead of returning an incomplete snapshot after budget exhaustion?
 
+### 2.8 MAA Integration
+
+- [ ] **[INV-MAA-01] Total Callback Handling**: Does every callback path consume its payload without raising, so a missing, empty, or unrecognized field stays confined to at most one diagnostic line at the C callback boundary?
+
+- [ ] **[INV-MAA-02] Callback-Derived MAA Progress**: Does each task-chain transition and each whitelisted milestone produce one line, with the polling loop contributing at most one heartbeat line per interval and no finished or stopped chain reported as running?
+
+- [ ] **[INV-MAA-03] Detached Bounded Upload**: Does a delegated report upload leave the MAA callback thread immediately, run under finite connect and read deadlines within a bounded number of attempts, and surface its outcome as a log line instead of an exception?
+
 ---
 
 ## 3. Extensibility Protocol: Adding Invariants for Future Modules

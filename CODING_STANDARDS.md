@@ -98,10 +98,15 @@
 - **[INV-CFG-02] Running Plan Restore Cohesion**: Restoring the running Scheduling Plan restores its startup advanced settings with it, preserves unrelated configuration, retains previous models and files on validation or write failure, and resumes frontend autosave only after both stores reload successfully.
 - **[INV-CFG-01] Configuration Data Cohesion**: Configuration imports validate all archive members before writing, restore included persistent tmp data with configuration, preserve local access settings, clear saved scheduling state, and roll back file changes if any write or database restore fails.
 
-
 ### 2.7 Software Update
 - **[INV-UPD-01] Owned Command Completion**: Windows update commands own their descendants before execution and verify tree completion within a finite budget before releasing the temporary checkout; cancellation preserves other application instances.
 - **[INV-UPD-02] Complete Registration Scan**: Strict registration scans retry unreadable files within one shared monotonic budget, preserve unverified registrations and raise `InstanceScanError` when that budget expires instead of returning an incomplete snapshot.
+
+
+### 2.8 MAA Integration
+- **[INV-MAA-01] Total Callback Handling**: Every MAA callback is consumed without raising; a missing, empty, or unrecognized payload field yields at most one diagnostic line at the C callback boundary instead of an exception.
+- **[INV-MAA-02] Callback-Derived MAA Progress**: A MAA run's runtime log derives progress from core callbacks — each task-chain transition and each whitelisted milestone produces one line, while the polling loop contributes at most one heartbeat line per interval.
+- **[INV-MAA-03] Detached Bounded Upload**: A delegated report upload runs off the MAA callback thread, applies a finite connect and read deadline within a bounded number of attempts, and reports its outcome as a log line rather than an exception.
 
 
 ## 3. Concurrency & Resource Lifecycle
