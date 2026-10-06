@@ -20,6 +20,44 @@ from arknights_mower.utils.device.touch_backend import TouchFailure  # noqa: E40
 
 
 class TestSchedulerTerminalDeviceFailures(unittest.TestCase):
+    def test_recovered_idle_failure_returns_to_device_recovery_without_maa_mail(self):
+        from arknights_mower.tests import device_session_tests as device_fakes
+
+        harness = device_fakes.DeviceSessionTests()
+        harness.setUp()
+        harness.adb.rows, harness.adb.boot = [("USB-A", "device")], "1"
+        self.assertTrue(harness.control.start().ok)
+        self.addCleanup(harness.control.close)
+        failure = ConnectionError(b"device 'USB-A' not found")
+        query = MagicMock(side_effect=failure)
+        solver = self.make_solver()
+        solver.rest_until_next_task = MagicMock(
+            side_effect=lambda: harness.control.execute(query).unwrap()
+        )
+        conf = SimpleNamespace(
+            maa_gap=4,
+            RG=False,
+            SSS=False,
+            RCL=False,
+            RA=False,
+            SF=False,
+            maa_rg_sleep_min="12:00",
+            maa_rg_sleep_max="12:00",
+        )
+        with (
+            patch.object(base_schedule.config, "conf", conf),
+            patch.object(base_schedule, "send_message") as notify,
+            patch.object(base_schedule, "save_exception") as archive,
+        ):
+            with self.assertRaises(ConnectionError) as raised:
+                solver.maa_plan_solver()
+        self.assertIs(raised.exception, failure)
+        self.assertEqual(harness.control._readiness.state, "ready")
+        query.assert_called_once()
+        notify.assert_not_called()
+        archive.assert_not_called()
+        solver._idle_sleep.assert_not_called()
+
     def failures(self):
         return (
             DeviceRecoveryError("recovery exhausted"),
@@ -148,9 +186,11 @@ class MaaErrorNoExitTests(unittest.TestCase):
                         },
                     ),
                     patch.object(base_schedule.requests, "get", return_value=response),
+                    patch.object(base_schedule, "guard_adb") as guard,
                 ):
                     solver.initialize_maa()
                     self.addCleanup(solver.MAA.stop)
+                guard.assert_called_once_with("sdk-adb", timeout=10)
                 asst.return_value.connect.assert_called_once_with(
                     "sdk-adb", "USB-123", "General"
                 )

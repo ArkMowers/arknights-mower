@@ -1502,6 +1502,15 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self, "_emergency_startup_pending", False
             ):
                 self._emergency_tick(completed_task=completed_task)
+            if (
+                completed_task is not None
+                and getattr(completed_task, "initial_fia", False)
+                and not any(getattr(task, "initial_fia", False) for task in self.tasks)
+            ):
+                # 充能和回岗收尾后重新进入调度，应用副表并继续正常规划。
+                self.tasks.append(SchedulerTask())
+                self.skip()
+                return True
         elif not self.planned:
             if self._emergency_active():
                 self._emergency_tick()
@@ -9626,7 +9635,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
             if restore_theme:
                 self.restore_maa_theme()
-            self.rest_until_next_task()
             self.MAA = None
         except (MowerExit, DeviceRecoveryError, SharedADBError):
             if self.MAA is not None:
@@ -9647,6 +9655,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     f"休息 {format_time(remaining_time)}，到{self.tasks[0].time.strftime('%H:%M:%S')}开始工作"
                 )
                 self._idle_sleep(remaining_time)
+        else:
+            # 空闲唤醒故障交回设备恢复，不能作为 MAA 任务故障报告。
+            self.rest_until_next_task()
 
     def skland_plan_solver(self):
         solver = None
