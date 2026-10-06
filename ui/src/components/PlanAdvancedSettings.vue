@@ -73,36 +73,34 @@ const {
           </help-text>
         </n-checkbox>
       </n-form-item>
-      <n-form-item>
+      <n-form-item v-if="product_switching.grandet_mode">
         <template #label>
-          <span>葛朗台无人机损耗容限</span>
-          <help-text>
-            允许最后一架无人机浪费的加速时间。默认 30 秒，即当前一份余下至少 2 分 30
-            秒时使用无人机完成，否则等待自然完成。
-          </help-text>
+          <span class="label-with-help">
+            <span>葛朗台无人机损耗容限</span>
+            <help-text>
+              允许最后一架无人机浪费的加速时间。默认 30 秒，即当前一份余下至少 2 分 30
+              秒时使用无人机完成，否则等待自然完成。
+            </help-text>
+          </span>
         </template>
         <mower-input-number
           v-model:value="product_switching.drone_loss_seconds"
-          :disabled="!product_switching.grandet_mode"
           :min="0"
           :max="180"
         >
           <template #suffix>秒</template>
         </mower-input-number>
       </n-form-item>
-      <n-form-item>
+      <n-form-item v-if="product_switching.grandet_mode">
         <template #label>
-          <span>葛朗台切产物缓冲时间</span>
-          <help-text>
-            当前一份完成后，在制造计划取消确认页等待这段时间再确认。默认 2 秒。
-          </help-text>
+          <span class="label-with-help">
+            <span>葛朗台切产物缓冲时间</span>
+            <help-text>
+              当前一份完成后，在制造计划取消确认页等待这段时间再确认。默认 2 秒。
+            </help-text>
+          </span>
         </template>
-        <mower-input-number
-          v-model:value="product_switching.waiting_seconds"
-          :disabled="!product_switching.grandet_mode"
-          :min="0"
-          :max="60"
-        >
+        <mower-input-number v-model:value="product_switching.waiting_seconds" :min="0" :max="60">
           <template #suffix>秒</template>
         </mower-input-number>
       </n-form-item>
@@ -258,10 +256,9 @@ const {
           >
         </n-checkbox>
       </n-form-item>
-      <n-form-item label="组内恢复时间差阈值">
+      <n-form-item v-if="group_rest_in_full_on_mood_gap" label="组内恢复时间差阈值">
         <mower-input-number
           v-model:value="group_mood_gap_threshold_minutes"
-          :disabled="!group_rest_in_full_on_mood_gap"
           :min="1"
           :max="1440"
           :step="5"
@@ -269,17 +266,18 @@ const {
           <template #suffix>分钟</template>
         </mower-input-number>
       </n-form-item>
-      <n-form-item>
+      <n-form-item v-if="group_rest_in_full_on_mood_gap">
         <template #label>
-          <span>组内心情差距额外等待上限</span>
-          <help-text
-            >仅对上方“组内心情差距过大时延后回班”生效。以不延后时的预计回班时间为起点；0
-            表示不限时。单独设置“回满”的干员不受此限制。</help-text
-          >
+          <span class="label-with-help">
+            <span>额外等待上限</span>
+            <help-text
+              >仅对上方“组内心情差距过大时延后回班”生效。以不延后时的预计回班时间为起点；0
+              表示不限时。单独设置“回满”的干员不受此限制。</help-text
+            >
+          </span>
         </template>
         <mower-input-number
           v-model:value="group_mood_gap_max_extra_wait_hours"
-          :disabled="!group_rest_in_full_on_mood_gap"
           :min="0"
           :max="24"
           :step="0.5"
@@ -364,6 +362,12 @@ const {
 }
 .advanced-settings[inert] {
   opacity: 0.6;
+}
+.label-with-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 .threshold {
   display: flex;
