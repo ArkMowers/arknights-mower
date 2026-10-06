@@ -128,12 +128,17 @@ def test_departure_preserves_reserved_or_protected_donor(residents, lock):
     assert projected.get_current_operator(OTHER, 3).name == "苍苔"
 
 
-def test_multi_free_departure_keeps_existing_residents(residents):
+def test_multi_free_target_departure_reallocates_across_dormitories(residents):
     data = residents
     data.plan[ROOM][3] = Room("Free", "", [])
-    data.dorm.insert(1, Dormitory((ROOM, 3)))
+    data.dorm.insert(0, Dormitory((ROOM, 3), "银灰"))
+    data.dorm[1].name = ""
+    data.operators["银灰"].current_index = 3
     plan = {"meeting": ["银灰"]}
-    assert prioritize_new_dorm_recovery(data, plan) == plan
+    result = prioritize_new_dorm_recovery(data, plan)
+    assert result[ROOM][3] == "苍苔"
+    projected = data.project_arrangements([result])
+    assert projected.get_current_operator(OTHER, 2).name == "夕"
 
 
 @pytest.fixture

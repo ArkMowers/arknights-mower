@@ -1632,12 +1632,12 @@ def plan_mood_limit_releases(op_data, *, recovery_targets=None, previous_tasks=(
 def prioritize_new_dorm_recovery(
     op_data, plan, reserved_slots=(), preceding_plan=None, *, reserved_names=()
 ):
-    """新入住者竞争单回位；单 Free 宿舍离宿时跨宿舍分配一次。
+    """新入住或单回位住客变更时，全部未完成住客竞争单回位。
 
-    先投影完整入住计划，再按宿舍顺序比较每房首个动态位。新入住者
+    先投影完整入住计划，再按宿舍顺序比较每房首个动态位。未完成住客
     可填空位（含本轮替班腾出的位），或与排名更低的目标交换床位；
     被替换者继续竞争后面的单回位，填入空位后结束本次交换。
-    单 Free 宿舍原住客离宿时，已有休息者也参与本次竞争。
+    新入住与单回位住客变更均让后排原住客参与本次竞争。
     不增加/淘汰休息者，也不因已有入住者心情交叉而搬床。返回计划
     副本，不提前改变真实位置或单回标记。
     """
@@ -1669,46 +1669,43 @@ def prioritize_new_dorm_recovery(
         ):
             locked_rooms.add(bed.position[0])
     beds = [bed for bed in beds if bed.position[0] not in locked_rooms]
-    departed_single = any(
-        len(room_beds[bed.position[0]]) == 1
-        and (old := op_data.get_current_operator(*bed.position)) is not None
+    targets = {
+        room: min(items, key=lambda bed: bed.position[1])
+        for room, items in room_beds.items()
+        if room not in locked_rooms
+    }
+    target_changed = any(
+        (old := op_data.get_current_operator(*bed.position)) is not None
         and op_data.is_dynamic_dorm_position(*bed.position, old.name)
-        and not projected.is_dynamic_dorm_position(
-            projected.operators[old.name].current_room,
-            projected.operators[old.name].current_index,
-            old.name,
+        and old.name != bed.name
+        for bed in targets.values()
+    )
+    now = datetime.now()
+    has_arrival = any(
+        (op := op_data.operators.get(bed.name)) is not None
+        and op.name in explicit_names
+        and not op_data.is_dynamic_dorm_position(
+            op.current_room, op.current_index, op.name
         )
         for bed in beds
     )
-    now = datetime.now()
-    arrivals = []
-    for bed in beds:
-        op = op_data.operators.get(bed.name)
-        if op is not None and (
-            departed_single
-            and not (
-                has_resting_mood(op, now) and resting_mood(op, now) >= op.upper_limit
-            )
-            or op.name in explicit_names
-            and not op_data.is_dynamic_dorm_position(
-                op.current_room, op.current_index, op.name
-            )
-        ):
-            arrivals.append(op.name)
-    if not arrivals:
+    if not (has_arrival or target_changed):
         return plan
+    arrivals = [
+        bed.name
+        for bed in beds
+        if (op := op_data.operators.get(bed.name)) is not None
+        and not (has_resting_mood(op, now) and resting_mood(op, now) >= op.upper_limit)
+    ]
 
     def ranking(name):
         op = op_data.operators[name]
-        complete = departed_single and (
+        complete = target_changed and (
             has_resting_mood(op, now) and resting_mood(op, now) >= op.upper_limit
         )
         return complete, resting_key(op_data, name, now)
 
     arrivals.sort(key=ranking)
-    targets = {}
-    for bed in beds:
-        targets.setdefault(bed.position[0], bed)
     result = copy.deepcopy(plan)
     for name in arrivals:
         source = next(bed for bed in beds if bed.name == name)

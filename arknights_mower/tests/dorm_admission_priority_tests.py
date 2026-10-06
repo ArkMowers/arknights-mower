@@ -82,14 +82,14 @@ def test_priority_replacement_wins_single_recovery_without_evicting_standby(resi
     assert try_reorder(projected, {}) == {}
 
 
-def test_departing_single_target_does_not_force_other_sleepers_to_move(residents):
+def test_departing_single_target_promotes_remaining_sleeper(residents):
     data = residents
     other = set_tier(data, "红", RestingTier.REPLACEMENT, 1)
     other.current_room, other.current_index = ROOM, 4
     data.dorm[1].name = other.name
     work_plan = {"meeting": ["银灰"]}
-    assert prioritize_new_dorm_recovery(data, work_plan) == work_plan
-    assert try_reorder(data, work_plan) == {}
+    assert prioritize_new_dorm_recovery(data, work_plan)[ROOM][3:] == ["红", "Free"]
+    assert try_reorder(data, work_plan)[ROOM][3:] == ["红", "Free"]
 
 
 @pytest.mark.parametrize("marked_target", [False, True])
@@ -255,3 +255,86 @@ def test_idle_filling_preserves_queued_bed(residents):
     tasks = [SchedulerTask(task_plan={ROOM: ["Current"] * 3 + ["银灰", "Current"]})]
     try_add_release_dorm({}, None, data, tasks)
     assert tasks[1].plan == {ROOM: ["Current"] * 4 + ["红"]}
+
+
+@pytest.mark.parametrize("entry", ["direct", "shift", "idle"])
+def test_admission_includes_priority_resident_in_rear_bed(residents, entry):
+    data = residents
+    resident = set_tier(data, "银灰", RestingTier.PRIORITY_REPLACEMENT, 14)
+    resident.current_index = 4
+    data.dorm[0].name = ""
+    data.dorm[1].name = "银灰"
+    set_tier(data, "红", RestingTier.IDLE, 10)
+    before = [(bed.name, bed.time) for bed in data.dorm]
+    if entry == "direct":
+        plan = prioritize_new_dorm_recovery(
+            data, {ROOM: ["Current"] * 3 + ["红", "Current"]}
+        )
+    elif entry == "shift":
+        assert data.assign_dorm_group(["红"]) is not None
+        plan = try_reorder(data, {})
+    else:
+        tasks = []
+        try_add_release_dorm({}, None, data, tasks)
+        assert tasks
+        plan = tasks[0].plan
+    assert plan[ROOM][3:] == ["银灰", "红"]
+    assert resident.current_index == 4
+    if entry != "shift":
+        assert [(bed.name, bed.time) for bed in data.dorm] == before
+    projected = data.project_arrangements([plan])
+    assert try_reorder(projected, {}) == {}
+
+
+def test_admission_does_not_promote_completed_high_priority_resident(residents):
+    data = residents
+    resident = set_tier(data, "银灰", RestingTier.PRIORITY_REPLACEMENT, 24)
+    resident.current_index = 4
+    data.dorm[0].name = ""
+    data.dorm[1].name = "银灰"
+    set_tier(data, "红", RestingTier.IDLE, 10)
+    plan = {ROOM: ["Current"] * 3 + ["红", "Current"]}
+    assert prioritize_new_dorm_recovery(data, plan) == plan
+
+
+def test_admission_matches_rear_residents_across_dormitories(residents):
+    data = residents
+    set_tier(data, "银灰", RestingTier.IDLE, 5)
+    set_tier(data, "红", RestingTier.IDLE, 10)
+    other_room = "dormitory_2"
+    data.plan[other_room] = [Room("Free", "", []), Room("Free", "", [])]
+    for name, tier, mood, index in (
+        ("陈", RestingTier.REPLACEMENT, 2, 0),
+        ("空爆", RestingTier.PRIORITY_REPLACEMENT, 14, 1),
+    ):
+        op = set_tier(data, name, tier, mood)
+        op.current_room, op.current_index = other_room, index
+        data.dorm.append(Dormitory((other_room, index), name))
+    plan = {ROOM: ["Current"] * 4 + ["红"]}
+    result = prioritize_new_dorm_recovery(data, plan)
+    projected = data.project_arrangements([result])
+    assert projected.get_current_operator(ROOM, 3).name == "空爆"
+    assert projected.get_current_operator(other_room, 0).name == "陈"
+    assert {bed.name for bed in projected.dorm} == {"银灰", "红", "陈", "空爆"}
+    assert data.operators["空爆"].current_room == other_room
+    assert try_reorder(projected, {}) == {}
+
+
+def test_admission_does_not_move_reserved_rear_resident(residents):
+    data = residents
+    resident = set_tier(data, "银灰", RestingTier.PRIORITY_REPLACEMENT, 14)
+    resident.current_index = 4
+    data.dorm[0].name = ""
+    data.dorm[1].name = "银灰"
+    set_tier(data, "红", RestingTier.IDLE, 10)
+    plan = {ROOM: ["Current"] * 3 + ["红", "Current"]}
+    assert prioritize_new_dorm_recovery(data, plan, reserved_names={"银灰"}) == plan
+
+
+def test_departing_rear_resident_does_not_trigger_reallocation(residents):
+    data = residents
+    other = set_tier(data, "红", RestingTier.PRIORITY_REPLACEMENT, 1)
+    other.current_room, other.current_index = ROOM, 4
+    data.dorm[1].name = "红"
+    plan = {"meeting": ["红"]}
+    assert prioritize_new_dorm_recovery(data, plan) == plan
