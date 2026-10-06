@@ -165,7 +165,7 @@ def test_unknown_mood_remains_full_and_priority_still_precedes_gap(op_data):
     assert resting_key(op_data, "银灰") < resting_key(op_data, "红")
 
 
-def test_dorm_reorder_keeps_existing_beds_and_only_places_new_resters(op_data):
+def test_dorm_reorder_preserves_idle_state_and_ranks_residents_on_admission(op_data):
     set_tier(op_data, "陈", RestingTier.REPLACEMENT, 3)
     op_data.plan[ROOM][3] = Room("Free", "", [])
     op_data.dorm = [Dormitory((ROOM, 3), "红"), Dormitory((ROOM, 4), "陈")]
@@ -178,7 +178,11 @@ def test_dorm_reorder_keeps_existing_beds_and_only_places_new_resters(op_data):
     op_data.plan[ROOM][2] = Room("Free", "", [])
     op_data.dorm.insert(0, Dormitory((ROOM, 2), "空爆"))
     plan = try_reorder(op_data, {})
-    assert plan == {ROOM: ["Current", "Current", "空爆", "Current", "Current"]}
+    assert plan == {ROOM: ["Current", "Current", "陈", "Current", "空爆"]}
+    projected = op_data.project_arrangements([plan])
+    assert {bed.name for bed in projected.dorm} == {"红", "陈", "空爆"}
+    assert op_data.operators["陈"].current_index == 4
+    assert try_reorder(projected, {}) == {}
 
 
 def test_dorm_reorder_keeps_active_recovery_target_in_its_room(op_data):

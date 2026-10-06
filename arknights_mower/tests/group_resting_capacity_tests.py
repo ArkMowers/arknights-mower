@@ -431,11 +431,16 @@ def test_ungrouped_candidate_waits_without_bed_and_fills_later_free_bed(solver):
     occupant = data.get_current_operator(*bed.position)
     occupant.current_room, occupant.current_index = "", -1
     bed.reset()
+    residents = {item.name for item in data.dorm if item.name}
     tasks = []
     try_add_release_dorm({}, None, data, tasks)
     assert tasks
+    projected = data.project_arrangements([tasks[0].plan])
+    assert {item.name for item in projected.dorm if item.name} == residents | {name}
     room, index = bed.position
-    assert tasks[0].plan[room][index] == name
+    # 候补获得床位；单回位仍由已有高优先级主班取得。
+    assert projected.get_current_operator(room, index).name == DEEP[0]
+    assert projected.get_dorm_by_name(name)[0] is not None
 
 
 @pytest.fixture

@@ -467,7 +467,7 @@ class TestScheduling(unittest.TestCase):
         self.assertNotEqual(res, None)
 
     def test_reorder_1(self):
-        # 夕取得首个单回位，夜刀续到空单回位；凯尔希仍落实已选普通床位。
+        # 夕、夜刀与凯尔希按优先级依次取得三个宿舍的单回位。
         op_data = self.init_opdata()
         op_data.dorm[0].name = "麒麟R夜刀"
         op_data.dorm[1].name = "凯尔希"
@@ -475,8 +475,15 @@ class TestScheduling(unittest.TestCase):
         op_data.operators["凯尔希"].current_index = 2
         op_data.dorm[2].name = "夕"
         plan = try_reorder(op_data, {})
-        self.assertEqual(plan["dormitory_1"][2:], ["夕", "凯尔希", "Free"])
+        self.assertEqual(plan["dormitory_1"][2:], ["夕", "Free", "Free"])
         self.assertEqual(plan["dormitory_2"][2], "麒麟R夜刀")
+        self.assertEqual(plan["dormitory_3"][3], "凯尔希")
+        projected = op_data.project_arrangements([plan])
+        self.assertEqual(
+            {bed.name for bed in projected.dorm if bed.name},
+            {"夕", "麒麟R夜刀", "凯尔希"},
+        )
+        self.assertEqual(try_reorder(projected, {}), {})
 
     def test_reorder_2(self):
         # 三个主班取得单回位，普通替班留在其余床位。
