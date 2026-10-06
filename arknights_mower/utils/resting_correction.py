@@ -331,3 +331,105 @@ def correct_group_dorms(op_data, fix_plan, is_busy, *, positions=None):
     for room, slots in list(fix_plan.items()):
         if all(name == "Current" for name in slots):
             del fix_plan[room]
+
+
+def preserve_backup_replacements(
+    op_data,
+    plan,
+    positions,
+    previous_dorms,
+    is_busy,
+    reserved_names=(),
+    reserved_slots=(),
+):
+    """仅改替班的岗位保持主班状态；完整匹配失败时不写入任何替班安排。"""
+    from arknights_mower.utils.exhaust_replacement import match_replacements
+
+    positions = {
+        position for position in positions if _requested(plan, *position) == "Current"
+    }
+    owners = {
+        op_data.plan[room][index].agent: (room, index)
+        for room, index in sorted(positions)
+    }
+    reserved = set(reserved_names) | set(op_data.reserved_product_replacements)
+    assigned = {
+        name for row in plan.values() for name in row if name not in PLACEHOLDERS
+    }
+    reserved.update(assigned)
+    reserved_slots = set(reserved_slots) | set(op_data.reserved_product_beds)
+    beds = {bed.position: bed.name for bed in previous_dorms if bed.name}
+    options, changes = {}, {}
+    movable = set()
+    for name, position in owners.items():
+        owner = op_data.operators[name]
+        actual = op_data.get_current_operator(*position)
+        if actual is not None and actual.name == name:
+            continue
+        if op_data.is_auto_free_dorm_operator(owner):
+            # 开放床位时保留已有入住者；不以 Free 清走休息中的干员。
+            if actual is None:
+                if position in reserved_slots:
+                    return False
+                changes[position] = "Free"
+            continue
+        if position in reserved_slots:
+            if actual is not None and actual.name in owner.replacement:
+                reserved.add(actual.name)
+                continue
+            return False
+        options[name] = []
+        movable.add(position)
+
+    for name in options:
+        owner = op_data.operators[name]
+        position = owners[name]
+        actual = op_data.get_current_operator(*position)
+        candidates = op_data.replacement_candidates(owner)
+        if actual is not None and actual.name in candidates:
+            candidates.remove(actual.name)
+            candidates.insert(0, actual.name)
+        for candidate in candidates:
+            cover = op_data.operators.get(candidate)
+            if cover is None:
+                continue
+            source = (cover.current_room, cover.current_index)
+            if source == position and candidate not in assigned:
+                options[name].append(candidate)
+                continue
+            if (
+                candidate in reserved | set(owners) | set(TRADE_ORDER_AGENTS)
+                or is_busy(candidate)
+                or cover.is_high()
+                and (
+                    not op_data.is_same_group_dorm_replacement(owner, candidate)
+                    or source == (cover.room, cover.index)
+                )
+                or not owner.room.startswith("dorm")
+                and op_data.replacement_exhausted(candidate)
+                or cover.rest_in_full
+                and cover.is_resting()
+                and cover.current_mood() < cover.upper_limit
+            ):
+                continue
+            if source not in movable and (
+                op_data.is_dorm_replacement(candidate)
+                or cover.current_room
+                and not cover.is_resting()
+            ):
+                continue
+            # 原动态床或固定恢复位被占用时，不能以切替班的名义挤走住客。
+            if position in beds and beds[position] != candidate:
+                continue
+            options[name].append(candidate)
+    matching = match_replacements(options)
+    if matching is None:
+        logger.debug("副表替班不足，暂缓切表：%s", options)
+        return False
+    changes.update({owners[name]: candidate for name, candidate in matching.items()})
+    for (room, index), candidate in changes.items():
+        actual = op_data.get_current_operator(room, index)
+        if actual is not None and actual.name == candidate:
+            continue
+        plan.setdefault(room, ["Current"] * len(op_data.plan[room]))[index] = candidate
+    return True

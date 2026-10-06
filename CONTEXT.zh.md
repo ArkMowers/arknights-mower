@@ -96,6 +96,7 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 - **代码映射**：[`TaskTypes.SHIFT_OFF`](arknights_mower/utils/scheduler_task.py), [`BaseSchedulerSolver.plan_solver`](arknights_mower/solvers/base_schedule.py)
 - **_Avoid_**: `Fixed timetable swap`, `Static worker cycle`
 - 多绑组干员的每列配置独立指定绑组与替班；干员跟随最近触发换班的组，使用该列替班，不参与组内心情统计、下班触发和回班时间计算。
+- 副表仅修改替班名单时保留主班的上下班状态；在岗主班继续工作，离岗主班仅更换替班，替班不可用时暂缓切表。
 
 ### 线索搜集与交流 (`Clue Collection & Exchange`)
 - **定义**：进驻会客室搜集 1~7 号线索、接收与赠送线索，以及集齐后开启 24 小时线索交流（派对）获取信用点的过程。

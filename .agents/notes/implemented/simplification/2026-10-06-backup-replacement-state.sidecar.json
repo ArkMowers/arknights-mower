@@ -1,0 +1,21 @@
+{
+  "title": "Backup Replacement State Preservation",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-28]",
+    "[INV-UI-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver",
+    "arknights_mower.utils.resting_correction.preserve_backup_replacements"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/backup_replacement_state_tests.py",
+    "ui/src/components/PlanEditor.test.js"
+  ]
+}

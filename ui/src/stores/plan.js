@@ -365,7 +365,13 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       }
     })
 
+    function import_main_facility(facility) {
+      if (sub_plan.value === 'main' || !plan.value[facility]) return
+      current_plan.value[facility] = deepcopy(plan.value[facility])
+    }
+
     return {
+      import_main_facility,
       autosave_paused,
       wait_for_plan_save: () => planSaveRequest,
       save_plan,
