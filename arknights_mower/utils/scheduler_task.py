@@ -1990,7 +1990,7 @@ def dorm_residents(op_data):
 
 
 def restore_displaced_resting(op_data, previous, plan, tasks):
-    """接管保留候补的回班来源；必需组员失床时显式召回整组。"""
+    """已恢复成员和候补让床不打断同组恢复；必需组员失床召回整组。"""
     current = dorm_residents(op_data)
     for bed in op_data.dorm:
         names = plan.get(bed.position[0], [])
@@ -2017,17 +2017,24 @@ def restore_displaced_resting(op_data, previous, plan, tasks):
         if op is None or not op.is_high() or op.room not in op_data.plan:
             continue
         members = op_data.groups[op.group] if op.group else [name]
-        if op_data._can_standby(op) and any(
+        completed = (
+            bool(op.group)
+            and has_resting_mood(op)
+            and resting_mood(op) >= op.upper_limit
+        )
+        if (completed or op_data._can_standby(op)) and any(
             anchor.name in retained
             and anchor.is_high()
             and not op_data._can_standby(anchor)
             and not anchor.room.startswith("dorm")
             and not anchor.workaholic
-            and not op_data.rest_mood_complete(anchor.name)
+            and not (
+                has_resting_mood(anchor) and resting_mood(anchor) >= anchor.upper_limit
+            )
             and (not op.group or anchor.group == op.group)
             for anchor in op_data.operators.values()
         ):
-            logger.info(f"{name}的候补床位被接管，随组待命")
+            logger.info(f"{name}让出床位，随组待命，同组未恢复成员继续休息")
             continue
         recalled.update(members)
     for name in recalled:

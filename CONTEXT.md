@@ -134,6 +134,7 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 
 ### Idle Dormitory Release and Mood-Limit Release
 - **Definition**: Idle release makes resting space available under the free-room setting, exclusions, and full-occupancy fallback. Mandatory mood-limit release enforces personal limits independently of those exemptions. Departure does not itself assign work; execution verifies the original occupant still owns the bed.
+- When a grouped operator yields a bed after reaching their personal recovery cap, they remain idle if unfinished group members are still resting. This departure does not recall the group; ordinary return rules continue to determine group return.
 - **Switch Boundary**: The free-room setting controls only ordinary full-mood release task creation.
 - **Code Mapping**: [`BaseSchedulerSolver.prepare_release_dorm`](arknights_mower/solvers/base_schedule.py)
 
