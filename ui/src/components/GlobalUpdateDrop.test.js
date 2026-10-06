@@ -111,6 +111,35 @@ describe('global update drop routing', () => {
     expect(component.show.value).toBe(false)
   })
 
+  it.each([false, true])(
+    'clears the hover overlay over a facility even when consumed=%s',
+    async (defaultPrevented) => {
+      const file = await zipPackage(['arknights_mower/data/version.json'])
+      component.enter(dropEvent(file))
+      expect(component.dragging.value).toBe(true)
+      const event = dropEvent(file, { target: new DropTarget(true), defaultPrevented })
+      component.enter(event)
+      expect(component.dragging.value).toBe(false)
+      component.enter(dropEvent(file))
+      expect(component.dragging.value).toBe(true)
+      component.over(event)
+      expect(component.dragging.value).toBe(false)
+      await component.drop(event)
+      expect(event.preventDefault).not.toHaveBeenCalled()
+      expect(event.stopPropagation).not.toHaveBeenCalled()
+      expect(component.show.value).toBe(false)
+      expect(state.error).not.toHaveBeenCalled()
+      const outside = dropEvent(file)
+      component.enter(outside)
+      component.over(outside)
+      expect(component.dragging.value).toBe(true)
+      await component.drop(outside)
+      expect(outside.preventDefault).toHaveBeenCalled()
+      expect(component.show.value).toBe(true)
+      expect(component.selected.value).toBe(file)
+    }
+  )
+
   it('rejects unknown contents instead of falling back to the resource installer', async () => {
     await component.drop(dropEvent(await zipPackage(['unrelated.txt'], 'resource.zip')))
     expect(state.error).toHaveBeenCalledWith(expect.stringContaining('未识别'))

@@ -10,7 +10,11 @@ const plan_store = inject('planStore', null) || usePlanStore()
 const { operators, groups, current_plan, plan, workaholic, sub_plan, backup_plans } =
   storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
-const { theme } = storeToRefs(config_store)
+const { theme, swap_contact_train } = storeToRefs(config_store)
+
+const contact_train_order = computed(() =>
+  swap_contact_train.value ? ['train', 'contact'] : ['contact', 'train']
+)
 
 const outer = ref(null)
 
@@ -231,7 +235,7 @@ function set_facility(e) {
 
 <template>
   <div class="plan-container" ref="outer">
-    <div class="outer">
+    <div class="outer" data-no-update-drop>
       <!-- 左 -->
       <div class="left_box">
         <div class="left_contain" v-for="row in 3">
@@ -429,40 +433,20 @@ function set_facility(e) {
             </div>
           </n-button>
         </div>
-        <div class="right_contain">
-          <n-button
-            :secondary="facility != 'contact'"
-            class="facility-2"
-            @click="set_facility('contact')"
-          >
-            <div>
-              <div class="facility-name">办公室</div>
-              <div class="avatars">
-                <img
-                  v-for="i in current_plan.contact.plans"
-                  :src="`avatar/${i.agent}.webp`"
-                  width="45"
-                  height="45"
-                  :style="{ 'border-bottom': color_map[i.group] }"
-                />
-              </div>
-            </div>
-          </n-button>
-        </div>
-        <div class="right_contain">
-          <n-button
-            :secondary="facility != 'train'"
-            class="facility-2"
-            @click="set_facility('train')"
-          >
+        <div class="right_contain" v-for="r in contact_train_order" :key="r">
+          <n-button :secondary="facility != r" class="facility-2" @click="set_facility(r)">
             <div>
               <div class="facility-name">
-                <div>协助位</div>
-                <div>训练位</div>
+                <template v-if="r === 'train'">
+                  <div>协助位</div>
+                  <div>训练位</div>
+                </template>
+                <template v-else>办公室</template>
               </div>
               <div class="avatars">
                 <img
-                  v-for="i in current_plan.train.plans"
+                  v-for="(i, index) in current_plan[r].plans"
+                  :key="index"
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"

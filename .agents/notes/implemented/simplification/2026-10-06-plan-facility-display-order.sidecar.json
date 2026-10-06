@@ -1,0 +1,20 @@
+{
+  "title": "Plan Facility Display Order",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-UI-08]"
+  ],
+  "code_symbols": [
+    "ui/src/components/PlanEditor.vue"
+  ],
+  "test_suites": [
+    "ui/src/components/PlanEditor.test.js",
+    "ui/src/stores/configBackup.test.js",
+    "ui/src/components/GlobalUpdateDrop.test.js"
+  ]
+}
