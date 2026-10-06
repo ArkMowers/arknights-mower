@@ -1061,7 +1061,8 @@ class BaseMixin:
             score.append(max_val)
         return score.index(max(score)) + 1
 
-    def detect_room(self) -> str:
+    def detect_room_type(self) -> str | None:
+        """从房间标题栏图标识别设施类型，无法识别时返回未知。"""
         color_map = {
             "制造站": 25,
             "贸易站": 99,
@@ -1073,7 +1074,6 @@ class BaseMixin:
         # 只读取标题栏左侧的设施图标。整条标题栏会透出房间背景，
         # 加工站的暖色装饰曾被当成制造站的黄色。
         hsv = cv2.cvtColor(img[2:74, 2:74], cv2.COLOR_RGB2HSV)
-        colored_room = None
         color_scores = {
             room: cv2.countNonZero(
                 cv2.inRange(hsv, (color - 1, 80, 90), (color + 2, 255, 255))
@@ -1082,7 +1082,12 @@ class BaseMixin:
         }
         best_room = max(color_scores, key=color_scores.get)
         if color_scores[best_room] > 150:
-            colored_room = best_room
+            return best_room
+        return None
+
+    def detect_room(self) -> str:
+        colored_room = self.detect_room_type()
+        img = cropimg(self.recog.img, ((568, 18), (957, 95)))
         if colored_room in ["制造站", "贸易站", "发电站"]:
             digit_1 = cropimg(img, ((211, 24), (232, 54)))
             digit_2 = cropimg(img, ((253, 24), (274, 54)))

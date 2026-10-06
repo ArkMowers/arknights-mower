@@ -27,6 +27,10 @@ import {
   parse_group_mood_expression
 } from '@/utils/trigger_group'
 
+const config_store = useConfigStore()
+const { product_switching } = storeToRefs(config_store)
+const product_switching_enabled = computed(() => product_switching.value.enable !== false)
+
 const data = ref(props.data)
 
 watch(data, () => {
@@ -114,6 +118,13 @@ const op_data = computed(() => {
 })
 
 const op_type = computed(() => {
+  if (
+    !product_switching_enabled.value &&
+    (op_data.value.type == 'facility_stat' ||
+      (op_data.value.type == 'facility' && ['product', 'type'].includes(op_data.value.status)))
+  ) {
+    return 'custom'
+  }
   if (op_data.value.type == 'custom') {
     return 'custom'
   } else if (op_data.value.type == 'impart') {
@@ -133,16 +144,16 @@ const op_type = computed(() => {
   }
 })
 
-const type_options = [
+const type_options = computed(() => [
   { label: '干员属性', value: 'op' },
   { label: '仓库资源', value: 'inventory' },
   { label: '设施状态', value: 'facility' },
-  { label: '生产设施统计', value: 'facility_stat' },
+  ...(product_switching_enabled.value ? [{ label: '生产设施统计', value: 'facility_stat' }] : []),
   { label: '绑组心情', value: 'group_mood' },
   { label: '线索交流结束时间', value: 'impart' },
   { label: '停服大更新前（定时触发）', value: 'major_maintenance' },
   { label: '常量/自定义', value: 'custom' }
-]
+])
 
 const op_options = [
   { label: '心情', value: 'mood' },
@@ -161,9 +172,10 @@ function set_op_type(v) {
     data.value = inventory_expression(inventory_options[0].value)
   } else if (v == 'facility') {
     const room = facility_select_options.value[0]?.value || 'room_1_1'
-    const status = ['制造站', '贸易站'].includes(plan.value[room]?.name)
-      ? 'product'
-      : 'operator_count'
+    const status =
+      product_switching_enabled.value && ['制造站', '贸易站'].includes(plan.value[room]?.name)
+        ? 'product'
+        : 'operator_count'
     data.value = facility_expression(room, status)
   } else if (v == 'facility_stat') {
     data.value = facility_product_count_expression(facility_product_options[0].value)
@@ -187,7 +199,8 @@ function update_inventory(item) {
 }
 
 function update_facility(room) {
-  const supportsProduct = ['制造站', '贸易站'].includes(plan.value[room]?.name)
+  const supportsProduct =
+    product_switching_enabled.value && ['制造站', '贸易站'].includes(plan.value[room]?.name)
   const supportsMastery = room == 'train'
   const status =
     (op_data.value.status == 'product' && !supportsProduct) ||
@@ -250,6 +263,7 @@ function render_inventory_option(option) {
 
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
+import { useConfigStore } from '@/stores/config'
 import { usedepotStore } from '@/stores/depot'
 import { useFacilityStore } from '@/stores/facility'
 import { useMasteryStore } from '@/stores/mastery'
@@ -289,7 +303,13 @@ const facility_product_summary = computed(() =>
 const facility_select_options = computed(() =>
   [...left_side_facility, { label: '训练室', value: 'train' }].map((option) => {
     if (option.value == 'train') return option
-    const facilityName = plan.value[option.value]?.name
+    if (!product_switching_enabled.value) return option
+    const facilityName =
+      (facilityLoaded.value && !facilityLoadError.value
+        ? trigger_facility_type_options.find(
+            ({ value }) => value == facility_states.value[option.value]?.facility
+          )?.label
+        : undefined) || '未读取'
     if (!['制造站', '贸易站'].includes(facilityName)) {
       return {
         ...option,
@@ -324,12 +344,12 @@ const facility_status_options = computed(() => {
     ]
   }
   const facilityName = plan.value[op_data.value.room]?.name
-  const options = [
-    { label: '设施类型', value: 'type' },
-    { label: '当前干员数量', value: 'operator_count' }
-  ]
-  if (facilityName == '制造站') options.unshift({ label: '当前产物', value: 'product' })
-  if (facilityName == '贸易站') options.unshift({ label: '当前订单类型', value: 'product' })
+  const options = [{ label: '当前干员数量', value: 'operator_count' }]
+  if (product_switching_enabled.value) {
+    options.unshift({ label: '设施类型', value: 'type' })
+    if (facilityName == '制造站') options.unshift({ label: '当前产物', value: 'product' })
+    if (facilityName == '贸易站') options.unshift({ label: '当前订单类型', value: 'product' })
+  }
   return options
 })
 
@@ -350,7 +370,13 @@ const facility_product_stat_options = computed(() =>
 
 onMounted(() => {
   depot_store.loadInventory().catch(() => {})
-  facility_store.load().catch(() => {})
+  watch(
+    product_switching_enabled,
+    (enabled) => {
+      if (enabled) facility_store.load().catch(() => {})
+    },
+    { immediate: true }
+  )
   mastery_store.loadPlanSummary().catch(() => {})
 })
 
@@ -380,7 +406,7 @@ function update_type(type) {
 import { pinyin_match } from '@/utils/common'
 import { render_op_label } from '@/utils/op_select'
 
-const custom_tips = [
+const custom_tips = computed(() => [
   'True',
   'False',
   'None',
@@ -402,9 +428,13 @@ const custom_tips = [
   'dormitory_2',
   'dormitory_3',
   'dormitory_4',
-  ...facility_product_options.map(({ label, value }) => expression_value_option(label, value)),
-  ...trigger_facility_type_options.map(({ label, value }) => expression_value_option(label, value))
-]
+  ...(product_switching_enabled.value
+    ? facility_product_options.map(({ label, value }) => expression_value_option(label, value))
+    : []),
+  ...(product_switching_enabled.value
+    ? trigger_facility_type_options.map(({ label, value }) => expression_value_option(label, value))
+    : [])
+])
 
 function render_custom_tip(option) {
   return option.displayLabel || option.label
@@ -413,7 +443,7 @@ function render_custom_tip(option) {
 
 <template>
   <n-select
-    :default-value="op_type"
+    :value="op_type"
     :options="type_options"
     :on-update:value="set_op_type"
     style="min-width: 180px"

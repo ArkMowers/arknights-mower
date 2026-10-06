@@ -103,6 +103,7 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 - **_Avoid_**: `Party mode`, `Clue trade`
 
 ### Drone Acceleration
+- Disabling automatic product and order switching hides and disables Grandet product switching and its other settings, skips manufacturing product and trade order-type changes and related facility-state reads, and hides the corresponding backup-condition choices. Ordinary shifts, product collection and Grandet order runs retain their existing behavior.
 - **Definition**: The mechanism of consuming base drones recharged by Power Plants (1 drone = 3 minutes deduction) to accelerate production or trade orders.
 - **Code Mapping**: [`drone_plan`](arknights_mower/utils/manufacture_product.py), [`DRONE_SECONDS`](arknights_mower/utils/manufacture_product.py)
 - **_Avoid_**: `Speed up`, `Drone boost`

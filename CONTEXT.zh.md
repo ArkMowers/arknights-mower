@@ -103,6 +103,7 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 - **_Avoid_**: `Party mode`, `Clue trade`
 
 ### 无人机加速 (`Drone Acceleration`)
+- 关闭自动切换产物与订单后，葛朗台切产物及其他切产物设置失效并隐藏；调度不切换制造产物或贸易站订单类型，也不读取相关设施状态；副表条件编辑器隐藏相关可选条件。普通换班、产物收取和葛朗台跑单保持原有行为。
 - **定义**：消耗发电站充能恢复的基建无人机（每架抵扣 3 分钟），为指定制造站或贸易站加速生产与订单获取的机制。
 - **代码映射**：[`drone_plan`](arknights_mower/utils/manufacture_product.py), [`DRONE_SECONDS`](arknights_mower/utils/manufacture_product.py)
 - **_Avoid_**: `Speed up`, `Drone boost`

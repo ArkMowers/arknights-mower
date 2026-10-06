@@ -460,6 +460,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self.planned = False
         if self.op_data is None or self.op_data.operators is None:
             self.initialize_operators()
+        if not self._product_switching_enabled():
+            self._discard_product_switches()
         self.op_data.correct_dorm()
         if not getattr(self, "defer_backup_plan_until_mood_read", False):
             self.backup_plan_solver()
@@ -1194,6 +1196,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if self.find("control_central") is None:
             self.back()
             return
+        if not self._product_switching_enabled():
+            self._discard_product_switches()
         if getattr(self, "_emergency_startup_pending", False):
             if (
                 self.task is not None
@@ -3209,6 +3213,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
     def _switch_products_before_backup_plan(self):
         """独立条件触发副表时，等切产物任务完成再切表。"""
+        if not self._product_switching_enabled():
+            self._discard_product_switches()
+            return True
         pending = [
             task
             for task in self.tasks
@@ -3979,8 +3986,38 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         Operators.current_room_changed_callback = self.current_room_changed
         return self.op_data.init_and_validate()
 
+    @staticmethod
+    def _product_switching_enabled():
+        return getattr(getattr(config.conf, "product_switching", None), "enable", True)
+
+    def _discard_product_switches(self):
+        """停用切换时移除专用任务，释放预留并保留原换班安排。"""
+        self.tasks[:] = [
+            task for task in self.tasks if task.type != TaskTypes.SWITCH_PRODUCT
+        ]
+        for task in self.tasks:
+            if getattr(task, "product_shift_locked", False):
+                task.time = min(task.time, datetime.now())
+            for attr in (
+                "pending_product_targets",
+                "product_shift_locked",
+                "product_lock_slots",
+                "product_lock_names",
+                "product_switched_before_arrangement",
+            ):
+                if hasattr(task, attr):
+                    delattr(task, attr)
+        self.tasks.sort(key=lambda task: task.time)
+        selected = getattr(self, "task", None)
+        if selected is not None and selected.type == TaskTypes.SWITCH_PRODUCT:
+            self.task = None
+        self._refresh_deferred_product_reservations()
+
     def queue_product_switches(self):
         """仅为已识别且与当前排班目标不一致的生产站生成任务。"""
+        if not self._product_switching_enabled():
+            self._discard_product_switches()
+            return
         products = getattr(self.op_data, "products", None)
         if products is None:
             return
@@ -4608,6 +4645,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
     def _switch_products_before_arrangement(self, task):
         """把将由本次换班触发的切产物作为换班的前置操作。"""
+        if not self._product_switching_enabled():
+            self._discard_product_switches()
+            return
         if not getattr(self.op_data, "products", None) and not any(
             getattr(plan, "products", None)
             for plan in getattr(self.op_data, "backup_plans", [])
@@ -5409,14 +5449,27 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             op_data.update_facility_state(room, facility, product)
 
     def refresh_facility_state(self, room: str) -> None:
-        """进入房间读取心情时，顺带刷新生产设施的实际产物或订单。"""
-        room_plan = self.op_data.plan.get(room) or []
-        if not room_plan:
+        """进入房间读取心情时，按标题栏刷新实际设施类型、产物或订单。"""
+        if not self._product_switching_enabled():
             return
-        facility_name = getattr(room_plan[0], "facility", "")
-        facility_by_name = {"制造站": "manufacture", "贸易站": "trade"}
-        facility = facility_by_name.get(facility_name)
+        if not room.startswith("room_"):
+            return
+        facility_by_name = {
+            "制造站": "manufacture",
+            "贸易站": "trade",
+            "发电站": "power",
+        }
+        try:
+            facility = facility_by_name.get(self.detect_room_type())
+        except MowerExit:
+            raise
+        except Exception as e:
+            logger.warning(f"刷新{self.translate_room(room)}设施类型失败：{e}")
+            return
         if facility is None:
+            return
+        self.op_data.update_facility_state(room, facility)
+        if facility == "power":
             return
         if (
             facility == "trade"
@@ -5844,6 +5897,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self, room: str, facility: Literal["manufacture", "trade"]
     ) -> None:
         """在当前生产页面顺带更新设施状态，不进入或退出任何页面。"""
+        if not self._product_switching_enabled():
+            return
         if facility not in ("manufacture", "trade"):
             raise ValueError(f"未知设施类型：{facility}")
         try:
@@ -5913,6 +5968,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         waited_for_drones: bool = False,
     ):
         """先巡检全部目标站，再统一执行最省无人机的产物与订单计划。"""
+        if not self._product_switching_enabled():
+            self._discard_product_switches()
+            return
         task_observations = []
         for task in tasks:
             room, target_product = parse_product_task_meta(task.meta_data)
@@ -8704,6 +8762,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         return self.find_next_task(datetime.now() + timedelta(minutes=minute)) is None
 
     def reload(self):
+        """按生效排班表配置的源石碎片房间补货，不读取当前产物。"""
         error = False
         for room, product in self.op_data.products.items():
             if not room.startswith("room_") or product not in (

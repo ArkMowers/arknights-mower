@@ -1080,14 +1080,23 @@ class Operators:
         return max(self._group_moods(group))
 
     def update_facility_state(
-        self, room: str, facility: str, product: str, updated_at: str | None = None
+        self,
+        room: str,
+        facility: str,
+        product: str | None = None,
+        updated_at: str | None = None,
     ) -> None:
         """记录生产设施最近一次从游戏界面识别到的实际状态。"""
-        supported = (facility == "manufacture" and product in MANUFACTURE_PRODUCTS) or (
-            facility == "trade" and product in TRADE_PRODUCTS
+        supported = facility in FACILITY_TYPE_IDS.values() and (
+            product is None
+            or (facility == "manufacture" and product in MANUFACTURE_PRODUCTS)
+            or (facility == "trade" and product in TRADE_PRODUCTS)
         )
         if room not in base_room_list or not supported:
             raise ValueError(f"不支持的设施状态：{room}, {facility}, {product}")
+        previous = self.facility_states.get(room, {})
+        if product is None and previous.get("facility") == facility:
+            product = previous.get("product")
         self.facility_states[room] = {
             "facility": facility,
             "product": product,
@@ -1132,13 +1141,10 @@ class Operators:
         return self.global_plan["default_plan"].products.get(room)
 
     def facility_type(self, room: str) -> str | None:
-        """从当前排班复用指定位置的设施类型。"""
+        """返回实际读取的设施类型；未读取时返回未知。"""
         if room not in base_room_list:
             raise ValueError(f"不支持的设施位置：{room}")
-        room_plan = self.plan.get(room) or []
-        if not room_plan:
-            return None
-        return FACILITY_TYPE_IDS.get(getattr(room_plan[0], "facility", None))
+        return self.facility_states.get(room, {}).get("facility")
 
     def facility_operator_count(self, room: str) -> int:
         """根据已有干员位置缓存返回指定设施的进驻干员数量。"""
