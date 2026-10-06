@@ -64,6 +64,7 @@ class PlanConfig:
         operator_mood_limits: Optional[dict] = None,
         resting_priority_replacement: str = "",
         free_room_exclusions: str = "",
+        removed_operators: Optional[dict[str, str]] = None,
     ):
         """排班的设置
 
@@ -86,6 +87,10 @@ class PlanConfig:
         self.free_room_exclusions = to_list(free_room_exclusions)
         self.resting_standby = to_list(resting_standby)
         self.free_blacklist = to_list(free_blacklist)
+        self.removed_operators = {
+            field: {name for name in to_list(names) if name}
+            for field, names in (removed_operators or {}).items()
+        }
         # 0 为均衡模式
         # 1 为感知信息模式
         # 2 为人间烟火模式
@@ -175,9 +180,16 @@ class PlanConfig:
         ]:
             p_list = getattr(n, p)
             target_list = getattr(target, p)
+            field = "refresh_trading" if p == "refresh_trading_config" else p
+            removed = getattr(target, "removed_operators", {}).get(field, set())
             merged_list = []
             for item in p_list + target_list:
-                if item not in merged_list:
+                name = (
+                    item.split("(", 1)[0].strip()
+                    if field == "refresh_trading"
+                    else item
+                )
+                if item and name not in removed and item not in merged_list:
                     merged_list.append(item)
             setattr(n, p, merged_list)
         # 副表未显式设置宿舍顺序时继承此前结果；只有显式设置的副表覆盖。

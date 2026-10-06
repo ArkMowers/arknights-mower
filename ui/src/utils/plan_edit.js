@@ -100,6 +100,7 @@ export function replace_conf_operators(conf, source, target) {
   }
   for (const field of OPERATOR_CONF_FIELDS) {
     replace_in_list(conf[field], source, target)
+    replace_in_list(conf.removed_operators?.[field], source, target)
   }
 }
 
@@ -160,6 +161,7 @@ export function collect_plan_operators({ main_plan, main_conf, backup_plans }) {
     for (const name of Object.keys(conf.operator_mood_limits ?? {})) add(name)
     for (const field of OPERATOR_CONF_FIELDS) {
       for (const name of conf[field] || []) add(name)
+      for (const name of conf.removed_operators?.[field] || []) add(name)
     }
   }
   const collect_task = (task) => {
