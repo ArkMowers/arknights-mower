@@ -684,7 +684,7 @@ function set_facility(e) {
     min-width: 90px;
   }
   .binding-actions {
-    width: 60px;
+    width: 30px;
     flex-shrink: 0;
     display: flex;
     gap: 4px;
