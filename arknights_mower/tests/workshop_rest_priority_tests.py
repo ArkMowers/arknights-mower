@@ -148,14 +148,17 @@ def test_crafting_order_applies_to_single_target_allocation(crafting):
 
     room = dorm_release_tests.ROOM
     crafting.plan[room][3] = Room("Free", "", [])
-    crafting.dorm = [Dormitory((room, 3), "年"), Dormitory((room, 4))]
+    crafting.dorm = [Dormitory((room, 3)), Dormitory((room, 4), "年")]
     crafting.operators["空爆"].current_room = ""
     crafting.operators["年"].current_room = room
-    crafting.operators["年"].current_index = 3
+    crafting.operators["年"].current_index = 4
     crafting.operators["年"].mood = 1
-    plan = {room: ["Current"] * 4 + ["九色鹿"]}
-    assert prioritize_new_dorm_recovery(crafting, plan)[room][3:] == ["九色鹿", "年"]
-    assert crafting.operators["年"].current_index == 3
+    plan = {room: ["Current"] * 3 + ["九色鹿", "Current"]}
+    assert prioritize_new_dorm_recovery(crafting, plan)[room][3:] == [
+        "九色鹿",
+        "Current",
+    ]
+    assert crafting.operators["年"].current_index == 4
 
 
 def test_completed_crafter_does_not_take_an_unfinished_candidates_position(crafting):
@@ -209,3 +212,37 @@ def test_fill_task_preserves_crafting_order_after_candidate_merge(crafting):
     tasks = []
     try_add_release_dorm({}, None, crafting, tasks)
     assert tasks[0].plan[room][4] == "九色鹿"
+
+
+@pytest.mark.parametrize("occupied", [False, True])
+def test_crafting_order_preserves_existing_targets_and_locality(crafting, occupied):
+    from arknights_mower.utils.operators import Dormitory
+    from arknights_mower.utils.plan import Room
+    from arknights_mower.utils.scheduler_task import prioritize_new_dorm_recovery
+
+    room, other = dorm_release_tests.ROOM, "dormitory_2"
+    crafting.plan[room][3] = Room("Free", "", [])
+    crafting.plan[other] = [Room("Free", "", []), Room("Free", "", [])]
+    crafting.operators["空爆"].current_room = ""
+    crafting.dorm = [
+        Dormitory((room, 3), "年" if occupied else ""),
+        Dormitory((room, 4), "" if occupied else "年"),
+        Dormitory((other, 0), "芬"),
+        Dormitory((other, 1), "九色鹿"),
+    ]
+    for bed in crafting.dorm:
+        if bed.name:
+            op = crafting.operators[bed.name]
+            op.current_room, op.current_index = bed.position
+    crafting.operators["九色鹿"].mood = 1
+    crafting.operators["赫拉格"].mood = 2
+    plan = {
+        room: ["Current"] * 3
+        + (["Current", "赫拉格"] if occupied else ["赫拉格", "Current"])
+    }
+    result = prioritize_new_dorm_recovery(crafting, plan)
+    projected = crafting.project_arrangements([result])
+    assert projected.get_current_operator(room, 3).name == "年"
+    assert projected.get_current_operator(other, 0).name == "芬"
+    assert projected.get_current_operator(other, 1).name == "九色鹿"
+    assert set(result) == {room}

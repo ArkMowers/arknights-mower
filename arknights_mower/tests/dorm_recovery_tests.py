@@ -362,11 +362,8 @@ def test_changing_target_clears_previous_single_recovery_recipient(solver):
     assert solver.op_data.operators["陈"].dorm_recovery_room == ROOM
 
 
-def test_higher_priority_admission_reestablishes_single_recovery_and_reads_times(
-    solver,
-):
+def test_higher_priority_admission_reestablishes_single_recovery(solver):
     arrange(solver)
-    # 银灰已经获得单回；陈尚在宿舍外，计划新入住最后一个动态位。
     solver.physical[-1] = ""
     solver.get_agent_from_room(ROOM)
     solver.op_data.config.ope_resting_priority = ["陈"]
@@ -382,7 +379,6 @@ def test_higher_priority_admission_reestablishes_single_recovery_and_reads_times
     assert solver.op_data.operators["银灰"].dorm_recovery_room == ""
     assert solver.op_data.operators["陈"].dorm_recovery_room == ROOM
     assert {3, 4}.issubset(solver.reads[-1])
-    assert solver.op_data.operators["银灰"].current_room == ROOM
 
 
 def test_full_replacement_kept_and_full_free_occupant_temporarily_removed(solver):

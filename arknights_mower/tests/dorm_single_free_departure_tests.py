@@ -87,8 +87,8 @@ def test_single_free_departure_ranks_all_rooms_and_recovery_gaps(residents):
     result = prioritize_new_dorm_recovery(data, {"meeting": ["银灰"]})
     projected = data.project_arrangements([result])
     assert projected.get_current_operator(ROOM, 4).name == "陈"
-    assert projected.get_current_operator(OTHER, 2).name == "苍苔"
-    assert projected.get_current_operator(third, 0).name == "夕"
+    assert projected.get_current_operator(OTHER, 2).name == "夕"
+    assert projected.get_current_operator(third, 0).name == "苍苔"
     assert {bed.name for bed in projected.dorm if bed.name} == {
         "陈",
         "苍苔",
@@ -105,8 +105,8 @@ def test_concurrent_ordinary_arrival_does_not_take_vacated_single_free(residents
     )
     assert result[ROOM][-1] == "苍苔"
     projected = data.project_arrangements([result])
-    assert projected.get_current_operator(OTHER, 2).name == "红"
-    assert projected.get_current_operator(OTHER, 3).name == "夕"
+    assert projected.get_current_operator(OTHER, 2).name == "夕"
+    assert projected.get_current_operator(OTHER, 3).name == "红"
 
 
 @pytest.mark.parametrize("lock", ["queued", "product", "protected", "returning"])
@@ -128,12 +128,17 @@ def test_departure_preserves_reserved_or_protected_donor(residents, lock):
     assert projected.get_current_operator(OTHER, 3).name == "苍苔"
 
 
-def test_multi_free_departure_keeps_existing_residents(residents):
+def test_multi_free_target_departure_reallocates_across_dormitories(residents):
     data = residents
     data.plan[ROOM][3] = Room("Free", "", [])
-    data.dorm.insert(1, Dormitory((ROOM, 3)))
+    data.dorm.insert(0, Dormitory((ROOM, 3), "银灰"))
+    data.dorm[1].name = ""
+    data.operators["银灰"].current_index = 3
     plan = {"meeting": ["银灰"]}
-    assert prioritize_new_dorm_recovery(data, plan) == plan
+    result = prioritize_new_dorm_recovery(data, plan)
+    assert result[ROOM][3] == "苍苔"
+    projected = data.project_arrangements([result])
+    assert projected.get_current_operator(OTHER, 2).name == "夕"
 
 
 @pytest.fixture
@@ -247,7 +252,7 @@ def test_completed_resident_does_not_win_recovery_over_unfinished(residents):
     data = residents
     data.operators["苍苔"].mood = 24
     result = prioritize_new_dorm_recovery(data, {"meeting": ["银灰"]})
-    assert result[ROOM][-1] == "夕"
+    assert result[ROOM][-1] == "空爆"
 
 
 def test_mood_changes_without_departure_keep_all_positions(residents):
@@ -255,3 +260,41 @@ def test_mood_changes_without_departure_keep_all_positions(residents):
     data.operators["苍苔"].mood = 1
     assert prioritize_new_dorm_recovery(data, {}) == {}
     assert try_reorder(data, {}) == {}
+
+
+def test_single_vacancy_changes_only_two_dormitories_and_keeps_existing_targets(
+    residents,
+):
+    data = residents
+    third = "dormitory_3"
+    data.plan[third] = [Room("Free", "", []), Room("Free", "", [])]
+    for name, tier, index in (
+        ("陈", RestingTier.PRIORITY, 0),
+        ("红", RestingTier.IDLE, 1),
+    ):
+        op = set_tier(data, name, tier, 1)
+        op.current_room, op.current_index = third, index
+        data.dorm.append(Dormitory((third, index), name))
+    result = prioritize_new_dorm_recovery(data, {"meeting": ["银灰"]})
+    assert {room for room in result if room.startswith("dorm")} == {ROOM, OTHER}
+    projected = data.project_arrangements([result])
+    assert projected.get_current_operator(ROOM, 4).name == "苍苔"
+    assert projected.get_current_operator(OTHER, 2).name == "夕"
+    assert projected.get_current_operator(third, 0).name == "陈"
+    assert try_reorder(projected, {}) == {}
+
+
+def test_existing_target_is_not_donor_when_no_rear_candidate_remains(residents):
+    data = residents
+    for name in ("苍苔", "空爆"):
+        data.operators[name].mood = 24
+    plan = {"meeting": ["银灰"]}
+    assert prioritize_new_dorm_recovery(data, plan) == plan
+
+
+def test_unrelated_work_plan_does_not_fill_old_empty_target(residents):
+    data = residents
+    data.operators["银灰"].current_room = "meeting"
+    data.dorm[0].reset()
+    plan = {"meeting": ["银灰"]}
+    assert prioritize_new_dorm_recovery(data, plan) == plan
