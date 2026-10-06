@@ -1,0 +1,18 @@
+{
+  "title": "Completed Group Bed Release",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-21]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.scheduler_task.restore_displaced_resting"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/completed_group_departure_tests.py"
+  ]
+}
