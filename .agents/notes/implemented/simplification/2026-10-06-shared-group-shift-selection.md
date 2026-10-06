@@ -17,7 +17,7 @@ Focused tests cover legacy serialization, main and backup loading, group-specifi
 
 ## Standards Findings
 
-Pass. [INV-SCHED-25] is registered in the scheduling specification, coding standards and review checklist. Runtime group membership remains separate from persisted bindings and projections copy mutable maps. The exact bilingual glossary addition is approved by the user. 
+Pass. [INV-SCHED-25] is registered in the scheduling specification, coding standards and review checklist. Runtime group membership remains separate from persisted bindings and projections copy mutable maps. The exact bilingual glossary addition is approved by the user.
 
 ## Spec Findings
 
