@@ -268,6 +268,7 @@ def build_global_plan(
             refresh_trading_config=i["conf"]["refresh_trading"],
             refresh_drained=i["conf"]["refresh_drained"],
             free_room=conf.free_room,
+            removed_operators=i["conf"].get("removed_operators", {}),
         )
         backup_trigger = get_logic_exp(i["trigger"]) if "trigger" in i else None
         backup_task = i.get("task")

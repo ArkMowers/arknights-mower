@@ -4,7 +4,6 @@ import { storeToRefs } from 'pinia'
 import { inject } from 'vue'
 
 const { disabled } = defineProps({ disabled: Boolean })
-const freeRoomExclusions = defineModel('freeRoomExclusions', { type: Array })
 const mobile = inject('mobile')
 const configStore = useConfigStore()
 const {
@@ -195,19 +194,6 @@ const {
             开启后创建满心情清退任务。关闭后仍安排恢复、补床和优先级接管；个人及令夕上限仍生效。
           </help-text>
         </n-checkbox>
-      </n-form-item>
-      <n-form-item>
-        <template #label>
-          <span>宿舍保留干员</span>
-          <help-text
-            >名单内干员保留 Free
-            宿舍床位，不因满心情而离宿，仍按正常回班及个人心情上限规则离宿。</help-text
-          >
-        </template>
-        <slick-operator-select
-          v-model="freeRoomExclusions"
-          :disabled="disabled"
-        ></slick-operator-select>
       </n-form-item>
 
       <n-form-item>

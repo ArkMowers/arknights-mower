@@ -53,6 +53,7 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 ## 2. 基建设施与排班域 (Facility & Scheduling Domain)
 
 ### 排班表 (`Scheduling Plan`)
+- 副表干员名单向生效排班添加条目；各选项的移除名单在添加后移除条目，按副表顺序应用。副表退出时，从主表和其余生效副表重新构建名单。
 - **定义**：配置基建各房间主班干员、主班干员绑组、替班干员、生产产物以及换班规则的声明式方案。包含基准主排班（`plan1`）与条件触发的备用排班（`backup_plans`）。
 - 维护副表在公告停服大更新前的配置时刻生效，先完成现有停服前无人机加速跑单任务，再执行动态换班；其生效主班包含跑单干员时，暂停全部贸易站跑单。
 - **代码映射**：[`PlanModel`](arknights_mower/utils/config/plan.py), [`Plan1`](arknights_mower/utils/config/plan.py), [`BackupPlan`](arknights_mower/utils/config/plan.py)
