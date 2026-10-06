@@ -10,6 +10,8 @@ The setting remains in local configuration and is absent from Scheduling Plan da
 
 ## 3. Subsystem Invariants
 
+- **[INV-UI-10] Operator Replacement Coverage**: One-click replacement candidates and existing-target warnings include primary operators and replacements from every main and backup plan binding, without duplicate names or mutations during collection.
+
 - **[INV-SCHED-26] Backup Operator List Removal**: Active backups apply operator additions followed by per-field removals in backup order; deactivation rebuilds effective lists from the main Scheduling Plan and remaining active backups without mutating source lists, and legacy backups retain additive behavior.
 
 - **[INV-UI-09] Backup Facility Import Isolation**: Importing a main-plan facility replaces only the selected backup facility with a deep copy of its type, product and operator bindings; subsequent edits preserve the source main plan, other facilities, backup conditions and explicit staffing tasks, and the edit lock prevents import.
@@ -34,6 +36,10 @@ The [shared field decision](../../.agents/notes/implemented/simplification/2026-
 The plus button beside an operator's group field adds an independent group/replacement column beneath the first column. The first row displays only the add button; subsequent rows display only the remove button and retain the other bindings when removed. Empty operators, `Free`, `Current` and Fiammetta cannot add bindings. Running-plan edit locks cover addition, deletion and every field. Facility clearing removes all bindings with the operator.
 
 Every avatar uses one equal-width color segment per configured column in a 5-pixel bottom strip, with its neutral background preserved in the editor and exported images. Unfinished empty columns retain a transparent segment. The main plan and all backup plans share a color map, so selecting another table preserves the colors of identically named groups. Plan saving, import, export and facility movement retain nested bindings.
+
+The one-click operator replacement source menu and existing-target warning use a shared collection of primary operators, first-column replacements and all `group_bindings[].replacement` entries across the main and backup plans. Collection deduplicates names without changing plan data. Selecting a source replaces its entries in every corresponding column while preserving group names and other operators.
+
+The [replacement coverage decision](../../.agents/notes/implemented/bug-fix/2026-10-07-group-binding-replacement-candidates.md) records the regression verification.
 
 The [scheduling contract](base-scheduler.md#211-multiple-group-bindings) defines persisted fields, validation and shift behavior. The [shared rendering decision](../../.agents/notes/implemented/simplification/2026-10-06-shared-group-shift-selection.md) records the simplification.
 

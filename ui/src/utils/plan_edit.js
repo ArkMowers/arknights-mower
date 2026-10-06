@@ -141,7 +141,7 @@ export function apply_operator_replace({ main_plan, main_conf, backup_plans }, s
   }
 }
 
-// 排班里出现过的全部干员（agent / replacement / conf 名单 / 副表 task 数组），
+// 排班里出现过的全部干员（agent / replacement / group_bindings / conf 名单 / 副表 task 数组），
 // 用于「被替换侧」下拉选项与「目标干员已在排班」去重守卫
 export function collect_plan_operators({ main_plan, main_conf, backup_plans }) {
   const seen = new Set()
@@ -156,6 +156,9 @@ export function collect_plan_operators({ main_plan, main_conf, backup_plans }) {
       for (const item of facility.plans) {
         add(item.agent)
         for (const r of item.replacement || []) add(r)
+        for (const binding of item.group_bindings || []) {
+          for (const r of binding.replacement || []) add(r)
+        }
       }
     }
   }

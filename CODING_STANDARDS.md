@@ -45,6 +45,7 @@
 - **[INV-SCHED-18] Unscheduled Workshop Slot**: Workshop tasks read and arrange the single physical workshop slot without requiring or inserting static workshop staff; restoration snapshots use actual occupants read before the first selection, and other facilities retain their existing slot contracts.
 
 ### 2.2 Presentation Layer (UI)
+- **[INV-UI-10] Operator Replacement Coverage**: One-click replacement candidates and existing-target warnings include primary operators and replacements from every main and backup plan binding, without duplicate names or mutations during collection.
 - **[INV-UI-09] Backup Facility Import Isolation**: Importing a main-plan facility replaces only the selected backup facility with a deep copy of its type, product and operator bindings; subsequent edits preserve the source main plan, other facilities, backup conditions and explicit staffing tasks, and the edit lock prevents import.
 - **[INV-UI-08] Facility Display Order Isolation**: The local `swap_contact_train` setting changes only the office and training card display order in every Scheduling Plan; facility identities, assignments and exported plan data remain unchanged.
 - **[INV-UI-07] Facility Update Drop Isolation**: The Scheduling Plan facility layout, including every card, background and gap, suppresses and clears global update drag hints without intercepting facility sorting; other page regions retain update-package drops.
