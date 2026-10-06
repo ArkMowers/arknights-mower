@@ -1675,9 +1675,12 @@ def prioritize_new_dorm_recovery(
         if room not in locked_rooms
     }
     target_changed = any(
-        (old := op_data.get_current_operator(*bed.position)) is not None
-        and op_data.is_dynamic_dorm_position(*bed.position, old.name)
-        and old.name != bed.name
+        (
+            old.name != bed.name
+            if (old := op_data.get_current_operator(*bed.position)) is not None
+            and op_data.is_dynamic_dorm_position(*bed.position, old.name)
+            else old is None and bool(bed.name)
+        )
         for bed in targets.values()
     )
     now = datetime.now()

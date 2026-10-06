@@ -29,4 +29,4 @@ Pass: projection isolation, reservations and measured-state boundaries remain in
 
 ## Spec Findings
 
-Pass: a high-priority replacement already in a rear bed competes ahead of an ordinary newcomer without removing either resident. Single-target resident changes trigger cross-dormitory allocation regardless of Free bed count. The focused suites pass 301 tests and 4 subtests.
+Pass: a high-priority replacement already in a rear bed competes ahead of an ordinary newcomer without removing either resident. Single-target resident changes trigger cross-dormitory allocation regardless of Free bed count. The focused suites pass 302 tests and 4 subtests.

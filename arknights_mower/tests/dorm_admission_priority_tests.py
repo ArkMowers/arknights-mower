@@ -338,3 +338,21 @@ def test_departing_rear_resident_does_not_trigger_reallocation(residents):
     data.dorm[1].name = "红"
     plan = {"meeting": ["红"]}
     assert prioritize_new_dorm_recovery(data, plan) == plan
+
+
+def test_existing_resident_filling_empty_target_triggers_cross_room_matching(residents):
+    data = residents
+    data.operators["银灰"].current_index = 4
+    data.dorm[0].name = ""
+    data.dorm[1].name = "银灰"
+    other_room = "dormitory_2"
+    data.plan[other_room] = [Room("Free", "", []), Room("Free", "", [])]
+    other = set_tier(data, "红", RestingTier.PRIORITY, 1)
+    other.current_room, other.current_index = other_room, 1
+    data.dorm += [Dormitory((other_room, 0)), Dormitory((other_room, 1), "红")]
+    result = prioritize_new_dorm_recovery(
+        data, {ROOM: ["Current"] * 3 + ["银灰", "Free"]}
+    )
+    projected = data.project_arrangements([result])
+    assert projected.get_current_operator(ROOM, 3).name == "红"
+    assert projected.get_current_operator(other_room, 0).name == "银灰"
