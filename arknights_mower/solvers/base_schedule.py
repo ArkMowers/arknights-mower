@@ -3209,7 +3209,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     and old.agent == slot.agent
                     and old.group == slot.group
                     and old.facility == slot.facility
-                    and old.product == slot.product
                     and [b["group"] for b in old.group_bindings]
                     == [b["group"] for b in slot.group_bindings]
                 ):
@@ -3344,7 +3343,15 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         }
         reserved_names, reserved_slots = dorm_task_reservations(
             self.op_data,
-            [task for task in self.tasks if task is not getattr(self, "task", None)],
+            [
+                task
+                for task in self.tasks
+                if task is not getattr(self, "task", None)
+                and (
+                    task.type != TaskTypes.SHIFT_ON
+                    or getattr(task, "product_shift_locked", False)
+                )
+            ],
         )
         if not preserve_backup_replacements(
             self.op_data,
@@ -3356,6 +3363,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             reserved_slots,
         ):
             return None
+        # 替班不足时允许召回本人；其余主班仍保留原位置与恢复时间。
+        assigned = _assigned_operator_names(transition_plan)
+        preserved = {
+            name: position
+            for name, position in preserved.items()
+            if name not in assigned
+        }
 
         if group_dorm_positions:
             from arknights_mower.utils.resting_correction import correct_group_dorms

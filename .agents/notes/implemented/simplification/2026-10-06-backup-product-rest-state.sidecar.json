@@ -1,0 +1,20 @@
+{
+  "title": "Backup Product Rest State",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-28]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._backup_transition_plan",
+    "arknights_mower.utils.resting_correction.preserve_backup_replacements"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/backup_replacement_state_tests.py",
+    "arknights_mower/tests/manufacture_product_switch_tests.py"
+  ]
+}

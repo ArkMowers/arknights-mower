@@ -342,7 +342,7 @@ def preserve_backup_replacements(
     reserved_names=(),
     reserved_slots=(),
 ):
-    """仅改替班的岗位保持主班状态；完整匹配失败时不写入任何替班安排。"""
+    """切产物或替班优先保留主班状态；替班不足时召回可用主班。"""
     from arknights_mower.utils.exhaust_replacement import match_replacements
 
     positions = {
@@ -422,9 +422,25 @@ def preserve_backup_replacements(
             if position in beds and beds[position] != candidate:
                 continue
             options[name].append(candidate)
-    matching = match_replacements(options)
+    # 先最大匹配可用替班，再以主班补足缺口，避免过早召回仍有替班的人。
+    preferred = {
+        candidate for candidates in options.values() for candidate in candidates
+    }
+    for name, candidates in options.items():
+        owner = op_data.operators[name]
+        position = owners[name]
+        source = (owner.current_room, owner.current_index)
+        if (
+            name not in reserved
+            and not is_busy(name)
+            and source not in reserved_slots
+            and (not owner.current_room or owner.is_resting())
+            and position not in beds
+        ):
+            candidates.append(name)
+    matching = match_replacements(options, preferred=preferred)
     if matching is None:
-        logger.debug("副表替班不足，暂缓切表：%s", options)
+        logger.debug("副表替班与主班均不可用，暂缓切表：%s", options)
         return False
     changes.update({owners[name]: candidate for name, candidate in matching.items()})
     for (room, index), candidate in changes.items():
