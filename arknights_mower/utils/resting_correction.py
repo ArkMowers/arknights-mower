@@ -360,7 +360,16 @@ def preserve_backup_replacements(
     reserved_slots = set(reserved_slots) | set(op_data.reserved_product_beds)
     beds = {bed.position: bed.name for bed in previous_dorms if bed.name}
     options, changes = {}, {}
-    movable = set()
+    # 明确被本轮安排替换的原岗位也释放其替班，允许跨设施迁移。
+    movable = {
+        (room, index)
+        for room, row in plan.items()
+        for index, name in enumerate(row)
+        if name != "Current"
+        and (room, index) not in reserved_slots
+        and (actual := op_data.get_current_operator(room, index)) is not None
+        and actual.name != name
+    }
     for name, position in owners.items():
         owner = op_data.operators[name]
         actual = op_data.get_current_operator(*position)

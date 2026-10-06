@@ -3197,11 +3197,17 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     def _resting_tier(self, op):
         return resting_tier(self.op_data, op.name)
 
-    def _cached_changed_slot_plan(self, previous_plan):
+    def _cached_changed_slot_plan(self, previous_plan, restored_slots=()):
         """合并副表改动的固定岗位，宿舍绑组沿用轮休规则，动态床位另行迁移。"""
         result = {}
         group_dorm_positions = set()
         replacement_positions = set()
+        previous_owners = {
+            slot.agent: (old_room, slot)
+            for old_room, slots in previous_plan.items()
+            for slot in slots
+            if slot.agent not in ("", "Free", "Current")
+        }
         for room, slots in self.op_data.plan.items():
             old_slots = previous_plan.get(room, [])
             for index, slot in enumerate(slots):
@@ -3220,21 +3226,34 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     slot.group_bindings,
                 )
                 if unchanged:
-                    continue
+                    if (room, index) not in restored_slots:
+                        continue
+                    if room.startswith("dorm"):
+                        if slot.group:
+                            group_dorm_positions.add((room, index))
+                        continue
+                    # 仅执行任务的副表退出时，也不能召回仍在宿舍的主班。
+                    if not self.op_data.operators[slot.agent].is_resting():
+                        continue
                 current = self.op_data.get_current_operator(room, index)
                 owner = self.op_data.operators[slot.agent]
-                if old is not None and (
+                previous_room, previous = previous_owners.get(slot.agent, (None, None))
+                relocated = old is None or old.agent != slot.agent
+                if previous is not None and (
                     # 未读驻员和心情的岗位沿用初始化纠错，不推断为离岗。
                     (
                         current is not None
                         or owner.current_room
                         or owner.time_stamp is not None
                     )
-                    and old.agent == slot.agent
-                    and old.group == slot.group
-                    and old.facility == slot.facility
-                    and [b["group"] for b in old.group_bindings]
+                    and previous.group == slot.group
+                    and previous.facility == slot.facility
+                    and (not relocated or slot.facility or previous_room == room)
+                    and [b["group"] for b in previous.group_bindings]
                     == [b["group"] for b in slot.group_bindings]
+                    # 在岗主班迁移到新岗位；离岗主班由新岗位的替班接替。
+                    and (not relocated or not owner.current_room or owner.is_resting())
+                    and (not relocated or not room.startswith("dorm"))
                 ):
                     replacement_positions.add((room, index))
                     continue
@@ -3243,7 +3262,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     continue
                 if current is not None and (
                     current.name == slot.agent
-                    or current.name in self.op_data.operators[slot.agent].replacement
+                    or not (relocated and previous is not None)
+                    and current.name in self.op_data.operators[slot.agent].replacement
                     and current.name not in TRADE_ORDER_AGENTS
                 ):
                     continue
@@ -3335,8 +3355,19 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 restore_plan[room] = names
 
         correction, group_dorm_positions, replacement_positions = (
-            self._cached_changed_slot_plan(previous_plan)
+            self._cached_changed_slot_plan(
+                previous_plan,
+                {
+                    (room, index)
+                    for room, indexes in deactivated_slots.items()
+                    for index in indexes
+                },
+            )
         )
+        # 退出副表恢复岗位时，保留休息的主班仍经替班匹配，不强制回班。
+        for room, index in replacement_positions:
+            if room in restore_plan:
+                restore_plan[room][index] = "Current"
         _merge_plan_overlay(transition_plan, correction, self.op_data)
         _merge_plan_overlay(transition_plan, restore_plan, self.op_data)
 
@@ -3394,6 +3425,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             for name, position in preserved.items()
             if name not in assigned
         }
+        recovery = {
+            bed.name: (bed.position, bed.time)
+            for bed in previous_dorms
+            if bed.name in preserved
+        }
 
         if group_dorm_positions:
             from arknights_mower.utils.resting_correction import correct_group_dorms
@@ -3419,6 +3455,15 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
             self.op_data.dorm = migration_data.dorm
             _merge_shift_transition(transition_plan, dorm_migration, self.op_data)
+            # 副表收回原床位时沿用宿舍迁移结果；新床的恢复时间须重新读取。
+            for room, names in dorm_migration.items():
+                for index, name in enumerate(names):
+                    if name in recovery and recovery[name][0] != (room, index):
+                        preserved[name] = (room, index)
+                        recovery[name] = ((room, index), None)
+                        for bed in self.op_data.all_dorms():
+                            if bed.name == name:
+                                bed.time = None
         else:
             logger.debug("副表未改变宿舍床位或房间顺序，跳过宿舍重排")
 
@@ -3438,15 +3483,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 for name, position in preserved.items()
             ):
                 return None
-            recovery = {
+            projected_recovery = {
                 bed.name: (bed.position, bed.time)
                 for bed in projected.all_dorms()
                 if bed.name in preserved
             }
             if any(
-                recovery.get(bed.name) != (bed.position, bed.time)
-                for bed in previous_dorms
-                if bed.name in preserved
+                projected_recovery.get(name) != expected
+                for name, expected in recovery.items()
             ):
                 return None
         transition_plan = {
