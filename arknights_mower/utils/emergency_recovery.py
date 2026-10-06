@@ -10,6 +10,7 @@ from math import ceil, isfinite
 
 from arknights_mower.utils.resting_priority import (
     RestingTier,
+    crafting_rest_order,
     has_resting_mood,
     resting_key,
     resting_tier,
@@ -514,7 +515,11 @@ def emergency_dorm_plan(
         groups.setdefault(group, []).append(name)
     ordered = [name for members in groups.values() for name in members]
     ordinary.discard("菲亚梅塔")
-    ordered.extend(sorted(ordinary, key=lambda name: (resting_key(data, name), name)))
+    ordered.extend(
+        crafting_rest_order(
+            data, sorted(ordinary, key=lambda name: (resting_key(data, name), name))
+        )
+    )
     for name in ordered:
         op = data.operators[name]
         if (name in residents and not reallocate) or op.is_working():

@@ -110,6 +110,7 @@ from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 from arknights_mower.utils.resource_pkg import refresh_resource_at_boundary
 from arknights_mower.utils.resting_priority import (
     RestingTier,
+    crafting_rest_candidates,
     has_resting_mood,
     resting_key,
     resting_mood,
@@ -7026,6 +7027,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     candidates = (
                         list(free_list) if mood_fallback or idle_fallback else free_list
                     )
+                crafting = set(crafting_rest_candidates(self.op_data, free_list))
+                if crafting:
+                    boundary = next(
+                        i for i, name in enumerate(free_list) if name in crafting
+                    )
+                    permitted = set(free_list[:boundary] if boundary else free_list[:1])
+                    candidates = [name for name in candidates if name in permitted]
                 selected_name, ret = self.scan_agent(
                     candidates,
                     max_agent_count=free_num,

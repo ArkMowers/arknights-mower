@@ -24,6 +24,7 @@ from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.resting_priority import (
     RestingTier,
     busy_resting_names,
+    crafting_rest_order,
     has_resting_mood,
     resting_key,
     resting_mood,
@@ -1698,12 +1699,19 @@ def prioritize_new_dorm_recovery(
     if not arrivals:
         return plan
 
-    def ranking(name):
+    def original_ranking(name):
         op = op_data.operators[name]
         complete = departed_single and (
             has_resting_mood(op, now) and resting_mood(op, now) >= op.upper_limit
         )
         return complete, resting_key(op_data, name, now)
+
+    original = sorted((bed.name for bed in beds if bed.name), key=original_ranking)
+    ordered = crafting_rest_order(op_data, original)
+    ranks = {name: index for index, name in enumerate(ordered)}
+
+    def ranking(name):
+        return ranks[name] if ordered != original else original_ranking(name)
 
     arrivals.sort(key=ranking)
     targets = {}
@@ -2065,6 +2073,7 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
                 - op_data.operators[name].upper_limit,
             ),
         )
+        recovery_names = crafting_rest_order(op_data, recovery_names)
         if priority_only:
             recovery_names = [
                 name
