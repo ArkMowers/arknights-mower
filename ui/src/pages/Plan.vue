@@ -5,11 +5,16 @@ import { useConfigStore } from '@/stores/config'
 import { usePlanStore, useRescuePlanStore } from '@/stores/plan'
 import { useMowerStore } from '@/stores/mower'
 import PlanAdvancedSettings from '@/components/PlanAdvancedSettings.vue'
+import PlanOperatorSelect from '@/components/PlanOperatorSelect.vue'
 import DropDown from '@/components/DropDown.vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { swap } from '@/utils/common'
-import { apply_operator_replace, collect_plan_operators } from '@/utils/plan_edit'
+import {
+  OPERATOR_CONF_FIELDS,
+  apply_operator_replace,
+  collect_plan_operators
+} from '@/utils/plan_edit'
 import { createSaveCoordinator, drainConfigurationSaves } from '@/utils/configPersistence'
 
 const router = useRouter()
@@ -296,7 +301,8 @@ function create_sub_plan() {
       refresh_drained: [],
       ope_resting_priority: [],
       dorm_order: [],
-      dorm_order_override: false
+      dorm_order_override: false,
+      removed_operators: Object.fromEntries(OPERATOR_CONF_FIELDS.map((field) => [field, []]))
     },
     plan: fill_empty({}),
     trigger: {
@@ -337,6 +343,8 @@ const current_conf = ref({
   refresh_trading: refresh_trading.value,
   dorm_order: dorm_order.value
 })
+
+const current_removed = computed(() => current_conf.value.removed_operators ?? {})
 
 watchEffect(() => {
   if (sub_plan.value == 'main') {
@@ -774,10 +782,12 @@ function movePlanForward() {
         <template #label
           ><span>需要回满心情的干员</span><help-text>回满目标为当前心情上限。</help-text></template
         >
-        <slick-operator-select
+        <PlanOperatorSelect
           :disabled="edit_locked"
+          :backup="!rescue && sub_plan !== 'main'"
           v-model="current_conf.rest_in_full"
-        ></slick-operator-select>
+          v-model:removed="current_removed.rest_in_full"
+        ></PlanOperatorSelect>
       </n-form-item>
       <n-form-item v-if="!rescue">
         <template #label>
@@ -786,10 +796,12 @@ function movePlanForward() {
             用尽按当前心情下限计算， 优先取得替班；被占用时先换替班，否则叫回占用组。
           </help-text>
         </template>
-        <slick-operator-select
+        <PlanOperatorSelect
           :disabled="edit_locked"
+          :backup="!rescue && sub_plan !== 'main'"
           v-model="current_conf.exhaust_require"
-        ></slick-operator-select>
+          v-model:removed="current_removed.exhaust_require"
+        ></PlanOperatorSelect>
       </n-form-item>
       <n-form-item v-if="!rescue">
         <template #label>
@@ -804,10 +816,12 @@ function movePlanForward() {
             </p>
           </help-text>
         </template>
-        <slick-operator-select
+        <PlanOperatorSelect
           :disabled="edit_locked"
+          :backup="!rescue && sub_plan !== 'main'"
           v-model="current_conf.ope_resting_priority"
-        ></slick-operator-select>
+          v-model:removed="current_removed.ope_resting_priority"
+        ></PlanOperatorSelect>
       </n-form-item>
       <n-form-item v-if="!rescue">
         <template #label>
@@ -816,10 +830,12 @@ function movePlanForward() {
             低于普通主班，高于高优替班；同级距心情上限更远者优先。需有床才能下班，不改变下班顺序。
           </help-text>
         </template>
-        <slick-operator-select
+        <PlanOperatorSelect
           :disabled="edit_locked"
+          :backup="!rescue && sub_plan !== 'main'"
           v-model="current_conf.resting_priority"
-        ></slick-operator-select>
+          v-model:removed="current_removed.resting_priority"
+        ></PlanOperatorSelect>
       </n-form-item>
       <n-form-item v-if="!rescue">
         <template #label>
@@ -828,10 +844,12 @@ function movePlanForward() {
             >仅替班生效，低于低优主班、高于候补；同级距心情上限更远者优先，可接管候补床位。</help-text
           >
         </template>
-        <slick-operator-select
+        <PlanOperatorSelect
           :disabled="edit_locked"
+          :backup="!rescue && sub_plan !== 'main'"
           v-model="current_conf.resting_priority_replacement"
-        ></slick-operator-select>
+          v-model:removed="current_removed.resting_priority_replacement"
+        ></PlanOperatorSelect>
       </n-form-item>
       <n-form-item v-if="!rescue">
         <template #label>
@@ -842,29 +860,49 @@ function movePlanForward() {
             <p>待命不恢复心情；用尽、回满、固定宿舍和零心情工作干员不适用。</p>
           </help-text>
         </template>
-        <slick-operator-select
+        <PlanOperatorSelect
           :disabled="edit_locked"
+          :backup="!rescue && sub_plan !== 'main'"
           v-model="current_conf.resting_standby"
-        ></slick-operator-select>
+          v-model:removed="current_removed.resting_standby"
+        ></PlanOperatorSelect>
       </n-form-item>
       <n-form-item>
         <template #label>
           <span>0心情工作的干员</span><help-text>心情涣散状态仍能触发技能的干员</help-text>
         </template>
-        <slick-operator-select
+        <PlanOperatorSelect
           :disabled="edit_locked"
+          :backup="!rescue && sub_plan !== 'main'"
           v-model="current_conf.workaholic"
-        ></slick-operator-select>
+          v-model:removed="current_removed.workaholic"
+        ></PlanOperatorSelect>
       </n-form-item>
       <n-form-item>
         <template #label>
           <span>宿舍黑名单</span>
           <help-text> 不参与动态分床和补床，固定宿舍岗位不受影响。 </help-text>
         </template>
-        <slick-operator-select
+        <PlanOperatorSelect
           :disabled="edit_locked"
+          :backup="!rescue && sub_plan !== 'main'"
           v-model="current_conf.free_blacklist"
-        ></slick-operator-select>
+          v-model:removed="current_removed.free_blacklist"
+        ></PlanOperatorSelect>
+      </n-form-item>
+      <n-form-item v-if="!rescue">
+        <template #label>
+          <span>宿舍保留干员</span>
+          <help-text>
+            名单内干员保留 Free 宿舍床位，不因满心情而离宿，仍按正常回班及个人心情上限规则离宿。
+          </help-text>
+        </template>
+        <PlanOperatorSelect
+          :disabled="edit_locked"
+          :backup="sub_plan !== 'main'"
+          v-model="current_conf.free_room_exclusions"
+          v-model:removed="current_removed.free_room_exclusions"
+        ></PlanOperatorSelect>
       </n-form-item>
       <n-form-item v-if="!rescue">
         <template #label>
@@ -877,11 +915,12 @@ function movePlanForward() {
             </p>
           </help-text>
         </template>
-        <slick-operator-select
+        <PlanOperatorSelect
           :disabled="edit_locked"
+          :backup="!rescue && sub_plan !== 'main'"
           v-model="current_conf.refresh_trading"
-          select_placeholder="填入在贸易站外影响贸易效率的干员"
-        ></slick-operator-select>
+          v-model:removed="current_removed.refresh_trading"
+        ></PlanOperatorSelect>
       </n-form-item>
       <n-form-item v-if="!rescue">
         <template #label>
@@ -891,10 +930,12 @@ function movePlanForward() {
             <p>在填入该选项的干员上下班后，会重新读取用尽干员的下班时间</p>
           </help-text>
         </template>
-        <slick-operator-select
+        <PlanOperatorSelect
           :disabled="edit_locked"
+          :backup="!rescue && sub_plan !== 'main'"
           v-model="current_conf.refresh_drained"
-        ></slick-operator-select>
+          v-model:removed="current_removed.refresh_drained"
+        ></PlanOperatorSelect>
       </n-form-item>
       <n-form-item>
         <template #label>
@@ -954,10 +995,7 @@ function movePlanForward() {
       :style="{ width: '800px', maxWidth: 'calc(100vw - 24px)' }"
       :content-style="{ maxHeight: '75vh', overflowY: 'auto' }"
     >
-      <PlanAdvancedSettings
-        v-model:free-room-exclusions="current_conf.free_room_exclusions"
-        :disabled="edit_locked"
-      />
+      <PlanAdvancedSettings :disabled="edit_locked" />
       <template #footer>
         <n-space justify="end">
           <n-button @click="show_advanced_settings_dialog = false">完成</n-button>
@@ -1079,7 +1117,7 @@ function movePlanForward() {
 </template>
 
 <style scoped lang="scss">
-.plan-advanced-actions {
+.plan-advanced-actions.mx-auto {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;

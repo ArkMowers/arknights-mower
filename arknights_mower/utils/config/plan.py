@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 import copy
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -134,6 +134,23 @@ class PlanConf(BaseModel):
 
 
 class BackupPlanConf(PlanConf):
+    removed_operators: dict[
+        Literal[
+            "rest_in_full",
+            "exhaust_require",
+            "resting_priority",
+            "resting_priority_replacement",
+            "free_room_exclusions",
+            "resting_standby",
+            "workaholic",
+            "free_blacklist",
+            "refresh_trading",
+            "refresh_drained",
+            "ope_resting_priority",
+        ],
+        str,
+    ] = Field(default_factory=dict)
+    "副表各选项在添加后移除的干员名单"
     dorm_order_override: Optional[bool] = None
     "是否由该副表显式覆盖此前生效的宿舍房间优先级"
 

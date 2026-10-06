@@ -1,4 +1,5 @@
 import { planBindings } from '@/utils/plan_bindings'
+import { OPERATOR_CONF_FIELDS } from '@/utils/plan_edit'
 import { defineStore } from 'pinia'
 import { ref, watchEffect, computed, inject } from 'vue'
 import axios from 'axios'
@@ -90,20 +91,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       return override ? normalized : []
     }
 
-    const backup_conf_convert_list = [
-      'exhaust_require',
-      'rest_in_full',
-      'resting_priority',
-      'resting_priority_replacement',
-      'free_room_exclusions',
-      'resting_standby',
-      'workaholic',
-      'free_blacklist',
-      'refresh_trading',
-      'refresh_drained',
-      'ope_resting_priority',
-      'dorm_order'
-    ]
+    const backup_conf_convert_list = [...OPERATOR_CONF_FIELDS, 'dorm_order']
 
     function fill_empty(full_plan) {
       for (const i in facility_operator_limit) {
@@ -226,6 +214,9 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       for (let b of backup_plans.value) {
         b.conf.mood_limits ??= null
         b.conf.operator_mood_limits ??= {}
+        b.conf.removed_operators = Object.fromEntries(
+          OPERATOR_CONF_FIELDS.map((field) => [field, str2list(b.conf.removed_operators?.[field])])
+        )
         delete b.trigger_timing
         delete b.exit_trigger_timing
         for (const i of backup_conf_convert_list) {
@@ -301,6 +292,12 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       }
       if (!rescue && advancedSettingsSource) result.advanced_settings = advancedSettingsSource()
       for (const b of result.backup_plans) {
+        b.conf.removed_operators = Object.fromEntries(
+          OPERATOR_CONF_FIELDS.map((field) => [
+            field,
+            list2str(b.conf.removed_operators?.[field] ?? [])
+          ]).filter(([, names]) => names)
+        )
         delete b.trigger_timing
         delete b.exit_trigger_timing
         for (const i of backup_conf_convert_list) {
