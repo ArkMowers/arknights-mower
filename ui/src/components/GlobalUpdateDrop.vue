@@ -44,17 +44,21 @@ function localDropzone(event) {
 }
 
 function enter(event) {
-  if (event.defaultPrevented || !isUpdateFileDrag(event) || localDropzone(event)) return
+  if (localDropzone(event)) {
+    resetDrag()
+    return
+  }
+  if (event.defaultPrevented || !isUpdateFileDrag(event)) return
   depth += 1
   dragging.value = true
 }
 
 function over(event) {
-  if (event.defaultPrevented || !isUpdateFileDrag(event)) return
   if (localDropzone(event)) {
     resetDrag()
     return
   }
+  if (event.defaultPrevented || !isUpdateFileDrag(event)) return
   event.preventDefault()
   event.dataTransfer.dropEffect = busy.value || reading.value ? 'none' : 'copy'
   dragging.value = !busy.value && !reading.value
