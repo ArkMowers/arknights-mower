@@ -154,6 +154,9 @@ Recovery-target updates reuse a complete group's native opportunity within each 
 
 ## 3. Subsystem Invariants
 
+- **[INV-UI-11] Workshop Threshold Fallback**: One-click workshop setup synchronizes BOX once, lowers only empty categories by five percentage points down to zero, keeps each category at its first nonempty selection, and applies all lists only after successful reads without changing the configured threshold.
+- Ordinary recommendation reads retain the configured threshold. The recommendation endpoint accepts optional `fodder_min_bonus`, `t5_min_bonus` and `book_min_bonus` integers from 0 through 1000; omitted categories use `min_bonus`. One-click setup requests each empty category independently with only its override, freezes its first nonempty list and preserves populated categories. Zero can retain empty lists, and failed reads preserve configured lists and threshold. Decision record: [Workshop threshold fallback](../../.agents/notes/implemented/feature/2026-10-07-workshop-threshold-fallback.md).
+
 - **[INV-SCHED-31] Complete Schedule Membership**: Schedule-wide membership and role queries include primary operators and every configured binding replacement within their existing table and facility scope, deduplicate names without mutating configuration, and preserve per-group candidate restrictions during actual shift matching.
 - **[INV-SCHED-30] Automatic Selection Baseline**: Desktop automatic selection starts at `xhigh`, Android starts at `medium`, and repeated failures lower one level without exceeding the active cap or changing explicit modes and timing settings. The [automatic performance baseline decision](../../.agents/notes/implemented/feature/2026-10-07-auto-performance-xhigh.md) defines feedback hysteresis and offline coverage.
 

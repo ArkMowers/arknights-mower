@@ -109,6 +109,161 @@ describe('workshop owned defaults', () => {
     expect(http.get).toHaveBeenCalledTimes(2)
   })
 
+  it.each([75, 65])('lowers only empty book selections from 80 to %i', async (minimum) => {
+    const http = {
+      get: vi.fn(async (url, options) => {
+        if (url.endsWith('/cultivate-fetch')) return { data: { success: true } }
+        const minBonus = options.params.book_min_bonus ?? options.params.min_bonus
+        return {
+          data: {
+            ...data,
+            defaults: {
+              fodder_operators: minBonus === 80 ? ['空爆'] : ['空爆', '低档材料干员'],
+              t5_operators: minBonus === 80 ? ['年'] : ['年', '低档 T5 干员'],
+              book_operators: minBonus > minimum ? [] : ['赫拉格']
+            }
+          }
+        }
+      })
+    }
+    expect(await syncWorkshopOperators(http, '/api')).toEqual({
+      ...data,
+      defaults: { fodder_operators: ['空爆'], t5_operators: ['年'], book_operators: ['赫拉格'] }
+    })
+    expect(http.get.mock.calls).toEqual([
+      ['/api/cultivate-fetch'],
+      ...Array.from({ length: (80 - minimum) / 5 + 1 }, (_, index) => [
+        '/api/workshop-operators/recommendations',
+        {
+          params:
+            index === 0 ? { min_bonus: 80 } : { min_bonus: 80, book_min_bonus: 80 - index * 5 }
+        }
+      ])
+    ])
+  })
+
+  it.each(['fodder_operators', 't5_operators', 'book_operators'])(
+    'fills only the empty %s category and keeps populated lists unchanged',
+    async (category) => {
+      const fallback = {
+        fodder_operators: ['低档材料干员'],
+        t5_operators: ['低档 T5 干员'],
+        book_operators: ['低档技巧概要干员']
+      }
+      const http = {
+        get: vi
+          .fn()
+          .mockResolvedValueOnce({ data: { success: true } })
+          .mockResolvedValueOnce({
+            data: { ...data, defaults: { ...data.defaults, [category]: [] } }
+          })
+          .mockResolvedValueOnce({
+            data: {
+              ...data,
+              defaults: fallback
+            }
+          })
+      }
+      const result = await syncWorkshopOperators(http, '/api')
+      expect(result.defaults[category]).toEqual(fallback[category])
+      for (const key of Object.keys(data.defaults)) {
+        if (key !== category) expect(result.defaults[key]).toEqual(data.defaults[key])
+      }
+      expect(http.get).toHaveBeenCalledTimes(3)
+      expect(http.get).toHaveBeenLastCalledWith('/api/workshop-operators/recommendations', {
+        params: { min_bonus: 80, [category.replace('_operators', '_min_bonus')]: 75 }
+      })
+    }
+  )
+
+  it('stops each category at its first nonempty threshold', async () => {
+    const choices = {
+      80: { fodder_operators: ['空爆'], t5_operators: [], book_operators: [] },
+      75: { fodder_operators: ['空爆', '低档材料干员'], t5_operators: ['年'], book_operators: [] },
+      70: { fodder_operators: [], t5_operators: ['低档 T5 干员'], book_operators: ['赫拉格'] }
+    }
+    const http = {
+      get: vi.fn(async (url, options) => ({
+        data: url.endsWith('/cultivate-fetch')
+          ? { success: true }
+          : {
+              ...data,
+              defaults: choices[options.params.t5_min_bonus ?? options.params.book_min_bonus ?? 80]
+            }
+      }))
+    }
+    expect((await syncWorkshopOperators(http, '/api')).defaults).toEqual({
+      fodder_operators: ['空爆'],
+      t5_operators: ['年'],
+      book_operators: ['赫拉格']
+    })
+    expect(http.get).toHaveBeenCalledTimes(5)
+    expect(http.get.mock.calls.slice(2)).toEqual([
+      ['/api/workshop-operators/recommendations', { params: { min_bonus: 80, t5_min_bonus: 75 } }],
+      [
+        '/api/workshop-operators/recommendations',
+        { params: { min_bonus: 80, book_min_bonus: 75 } }
+      ],
+      ['/api/workshop-operators/recommendations', { params: { min_bonus: 80, book_min_bonus: 70 } }]
+    ])
+  })
+
+  it.each([0, 3, 80])('terminates at zero when no operators qualify from %i', async (minimum) => {
+    const empty = {
+      ...data,
+      defaults: { fodder_operators: [], t5_operators: [], book_operators: [] }
+    }
+    const http = {
+      get: vi
+        .fn()
+        .mockResolvedValueOnce({ data: { success: true } })
+        .mockResolvedValue({ data: empty })
+    }
+    expect(await syncWorkshopOperators(http, '/api', minimum)).toEqual(empty)
+    expect(http.get).toHaveBeenCalledTimes(3 * Math.ceil(minimum / 5) + 2)
+    expect(http.get).toHaveBeenLastCalledWith('/api/workshop-operators/recommendations', {
+      params: minimum === 0 ? { min_bonus: 0 } : { min_bonus: minimum, book_min_bonus: 0 }
+    })
+  })
+
+  it('keeps successful categories when one category stays empty at zero', async () => {
+    const partial = { ...data, defaults: { ...data.defaults, book_operators: [] } }
+    const http = {
+      get: vi
+        .fn()
+        .mockResolvedValueOnce({ data: { success: true } })
+        .mockResolvedValueOnce({ data: partial })
+        .mockResolvedValueOnce({
+          data: {
+            ...data,
+            defaults: { fodder_operators: [], t5_operators: [], book_operators: [] }
+          }
+        })
+    }
+    expect(await syncWorkshopOperators(http, '/api', 5)).toEqual(partial)
+    expect(http.get).toHaveBeenCalledTimes(3)
+  })
+
+  it.each(['request', 'data'])(
+    'rejects a failed fallback %s without returning partial results',
+    async (failure) => {
+      const http = {
+        get: vi
+          .fn()
+          .mockResolvedValueOnce({ data: { success: true } })
+          .mockResolvedValueOnce({
+            data: { ...data, defaults: { ...data.defaults, book_operators: [] } }
+          })
+      }
+      if (failure === 'request') http.get.mockRejectedValueOnce(new Error('连接超时'))
+      else http.get.mockResolvedValueOnce({ data: {} })
+      await expect(syncWorkshopOperators(http, '/api')).rejects.toThrow(
+        failure === 'request' ? '连接超时' : '不完整'
+      )
+      expect(http.get).toHaveBeenCalledTimes(3)
+    }
+  )
+
   it('accepts an empty candidate list from a valid BOX', async () => {
     const empty = {
       defaults: { fodder_operators: [], t5_operators: [], book_operators: [] },
