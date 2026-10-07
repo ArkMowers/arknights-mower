@@ -1,0 +1,22 @@
+{
+  "title": "Protected Mastery Skill Continuation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-29]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.mastery_reader._compute_protected",
+    "arknights_mower.solvers.mastery_reader._reconcile",
+    "arknights_mower.solvers.mastery._start_new_training"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/mastery_protection_tests.py",
+    "arknights_mower/tests/mastery_reader_tests.py",
+    "arknights_mower/tests/mastery_arranging_tests.py"
+  ]
+}

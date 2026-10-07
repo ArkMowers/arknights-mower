@@ -127,6 +127,7 @@ class RoomState:
     slots_reliable: bool = False
     support_mood: Optional[float] = None  # 协助位心情（浮窗扫描，仅 reliable 时有效）
     train_mood: Optional[float] = None  # 训练位心情（浮窗扫描，仅 reliable 时有效）
+    protected_skill_index: Optional[int] = None  # 本次实读唯一的专一/专二技能
 
     @property
     def locked(self) -> bool:
@@ -623,13 +624,15 @@ def _read_slots_checked(solver):
     return scan[0].get("agent", ""), scan[1].get("agent", ""), scan, reliable
 
 
-def _train_slot_has_mastery(solver) -> bool:
+def _train_slot_has_mastery(solver, room=None) -> bool:
     """§5.2 空闲保护深读：进技能选择页读训练位干员所有技能。
 
     有专一/专二 → True（保护，不能动）；全专三或专0 → False（可动）；
     进不去技能页 / 读不到档位 → 保守 True（保护）。
     进入技能选择页后，finally 保证必定 back 回 TRAIN_MAIN 并等待转场。
     """
+    if room is not None:
+        room.protected_skill_index = None
     entered_skill_select = False
     try:
         scene = solver.train_scene()
@@ -650,14 +653,16 @@ def _train_slot_has_mastery(solver) -> bool:
         if solver.train_scene() != Scene.TRAIN_SKILL_SELECT:
             return True
 
-        has = False
+        partial = []
         for idx in (0, 1, 2):
             tier = _read_slot_mastery_tier(solver, idx)
             if tier is None:
                 return True  # 读不到 → 保守保护
             if tier in (1, 2):
-                has = True
-        return has
+                partial.append(idx)
+        if room is not None and len(partial) == 1:
+            room.protected_skill_index = partial[0]
+        return bool(partial)
     except Exception:
         return True
     finally:
@@ -684,7 +689,7 @@ def _compute_protected(solver, room, scan_plan=None) -> bool:
     - 待收取：仅非专三（链未走完）保护；专三完成 → §5.3 第1格「无论如何不保护 → 可排班」；
     - 空闲 + 训练位有人 → 深读技能页，有专一/专二 → 保护；全专三/专0 → 可动；
     - 空闲 + 训练位没人 → 可排班。
-    - scan_plan 匹配训练位干员时，开训不动训练位，保护不适用，无需深读技能页。
+    - 计划干员匹配不解除保护；续训仅允许实读同一干员、同一技能。
     每次排班进训练室重读重判，条件一变自动解除；enable_mastery OFF 时保护全停（§7.3）。
     """
     if not config.conf.enable_mastery:
@@ -696,13 +701,7 @@ def _compute_protected(solver, room, scan_plan=None) -> bool:
     if room.state == "empty":
         if not room.train_slot:
             return False
-        if (
-            scan_plan is not None
-            and scan_plan.get("status") == "idle"
-            and _plan_operator_matches(scan_plan, room.train_slot)
-        ):
-            return False
-        return _train_slot_has_mastery(solver)
+        return _train_slot_has_mastery(solver, room=room)
     return False
 
 
@@ -943,6 +942,18 @@ def _can_recover_plan(plan, room: RoomState) -> bool:
         return False
     resolved = resolve_panel_skill(op, sk, plan.get("char_id"))
     return resolved is not None and resolved == plan.get("skill_index")
+
+
+def _protected_plan_matches(plan, room: RoomState) -> bool:
+    """受保护房间仅允许已确认的同干员同技能；未知身份不放行。"""
+    if room.state == "waiting_collect":
+        return _can_recover_plan(plan, room)
+    return (
+        room.slots_reliable
+        and _plan_operator_matches(plan, room.train_slot)
+        and room.protected_skill_index is not None
+        and room.protected_skill_index == plan.get("skill_index")
+    )
 
 
 def _plan_label(plan) -> str:
@@ -1836,12 +1847,11 @@ def _reconcile(
             )
             update_plan_status(active["id"], "idle")
         if room.protected:
-            # §4.4 保护挡「移动协助位/训练位」。训练位已是计划干员时，开始训练
-            # 不动训练位（只按路线补协助位），保护不适用 → 放行 mower 开始。
+            # 保护始终保留，只允许实读同一干员继续同一个技能。
             if (
                 scan_plan is not None
                 and scan_plan["status"] == "idle"
-                and _plan_operator_matches(scan_plan, room.train_slot)
+                and _protected_plan_matches(scan_plan, room)
             ):
                 return scan_plan, True
             idle = _next_idle_to_start(solver)
@@ -1947,7 +1957,18 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
     （恢复兜底）。专三同样纳入 skip（2026-08-14 用户撤回例外：gate 不抢收，由任务收完
     训练室再回归排班）。dispatch（reconcile_and_act）defer 恒 False 永不跳过。
     """
-    hit = _match_plan(plans, room)  # 干员+技能都在计划
+    hit = (
+        next(
+            (
+                p
+                for p in plans
+                if p["status"] != "completed" and _can_recover_plan(p, room)
+            ),
+            None,
+        )
+        if room.protected
+        else _match_plan(plans, room)
+    )
     suppress_help = False
     if hit is not None and hit["status"] == "failed":
         # #98：failed 计划不在收取阶段接管——训练中已按截图恢复 training；收取阶段
@@ -1965,10 +1986,19 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
     if active is not None and not _plan_matches_room(active, room):
         _reset_fake(solver, active, room)
         active = None
-    if hit is None and active is not None and _plan_matches_room(active, room):
+    if (
+        hit is None
+        and active is not None
+        and _plan_matches_room(active, room)
+        and (not protective or _protected_plan_matches(active, room))
+    ):
         # 干员名/技能名 OCR 不可读时 _match_plan 判不了命中，但 active 计划视为
         # 匹配（稳为先，铁律），照常更新状态后收取——否则 active 计划会永远停在 training
         hit = active
+
+    if protective and hit is None:
+        _notify_protected(solver, room)
+        return None, True
 
     if defer_collect and hit is not None and _queue_has_mastery_task(solver):
         _log_judgment(
