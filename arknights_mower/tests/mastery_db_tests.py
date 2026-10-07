@@ -14,6 +14,7 @@ from arknights_mower.utils.mastery_db import (
     get_all_plans,
     get_all_routes,
     get_failed_plans,
+    get_material_waiting_plan,
     get_next_idle_plan,
     get_plan_by_id,
     get_plan_by_skill,
@@ -22,6 +23,7 @@ from arknights_mower.utils.mastery_db import (
     get_route_settings,
     insert_plan,
     is_operator_busy,
+    retry_failed_plans,
     save_route,
     save_route_settings,
     should_notify,
@@ -40,6 +42,35 @@ class TestMasteryDb(unittest.TestCase):
 
     def tearDown(self):
         os.unlink(self.db_path)
+
+    def test_retry_preserves_only_material_failures_after_confirmed_start(self):
+        cases = [
+            ("材料不足", "2026-10-01 12:00:00", True),
+            ("材料不足", None, False),
+            ("材料不足", "", False),
+            ("安排超时", "2026-10-01 12:00:00", False),
+        ]
+        ids = []
+        for index, (reason, expires, _) in enumerate(cases):
+            pid = insert_plan(f"char_{index}", 0, 3, path=self.db_path)
+            update_plan_status(
+                pid,
+                "failed",
+                failed_reason=reason,
+                expires_at=expires,
+                path=self.db_path,
+            )
+            ids.append(pid)
+        self.assertEqual(retry_failed_plans(path=self.db_path), len(cases))
+        for pid, (_, _, waiting) in zip(ids, cases):
+            row = get_plan_by_id(pid, path=self.db_path)
+            self.assertEqual(row["status"], "idle")
+            self.assertEqual(row["failed_reason"], "材料不足" if waiting else None)
+        self.assertEqual(
+            get_material_waiting_plan(get_all_plans(path=self.db_path))["id"], ids[0]
+        )
+        update_plan_status(ids[0], "training", failed_reason="", path=self.db_path)
+        self.assertIsNone(get_material_waiting_plan(get_all_plans(path=self.db_path)))
 
     def test_insert_and_get(self):
         pid = insert_plan("char_001", 0, 1, skill_name="技能1", path=self.db_path)

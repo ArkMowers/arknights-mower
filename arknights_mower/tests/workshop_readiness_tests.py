@@ -238,3 +238,56 @@ def test_depot_scan_skips_shortage_then_reconsiders_after_stock_refresh(
         p["char_id"] for p in solver._dispatch_scan_start_tasks.call_args.args[0]
     ] == ["char_a"]
     assert next_skill.plans == plans
+
+
+def test_mid_chain_shortage_waits_instead_of_selecting_ready_later_skill(next_skill):
+    waiting = next_skill.plans[1]
+    waiting.update(
+        expires_at="2026-10-01 12:00:00", failed_reason="材料不足", priority=10
+    )
+    set_stock(next_skill, {"3302": 15})  # Later skill is craftable; current is not.
+    assert rec.compute_workshop_config([], [], ["赫拉格"]) == []
+    set_stock(next_skill, {"3303": 5})  # Later skill could start; current still cannot.
+    assert rec.auto_schedule_mastery_tasks()["scheduled"] == []
+    set_stock(next_skill, {"3302": 21})
+    assert book_limit(rec.compute_workshop_config([], [], ["赫拉格"])) == 7
+    set_stock(next_skill, {"3303": 7})
+    assert [p["char_id"] for p in rec.auto_schedule_mastery_tasks()["scheduled"]] == [
+        "char_b"
+    ]
+    assert waiting["failed_reason"] == "材料不足"
+
+
+def test_shortage_before_first_training_still_skips_to_ready_plan(next_skill):
+    next_skill.plans[1]["failed_reason"] = "材料不足"
+    set_stock(next_skill, {"3302": 15})
+    assert book_limit(rec.compute_workshop_config([], [], ["赫拉格"])) == 5
+    set_stock(next_skill, {"3303": 5})
+    assert [p["char_id"] for p in rec.auto_schedule_mastery_tasks()["scheduled"]] == [
+        "char_a"
+    ]
+
+
+def test_scan_dispatch_resumes_exact_waiting_row_before_higher_priority_duplicate(
+    next_skill, monkeypatch
+):
+    from unittest.mock import MagicMock
+
+    from arknights_mower.solvers import mastery_reader
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+
+    waiting = next_skill.plans[1]
+    waiting.update(
+        expires_at="2026-10-01 12:00:00", failed_reason="材料不足", priority=10
+    )
+    duplicate = dict(waiting, id=3, failed_reason=None, expires_at=None, priority=0)
+    next_skill.plans.append(duplicate)
+    scheduled = [
+        dict(waiting, current_level=1),
+        dict(next_skill.plans[0], current_level=0),
+    ]
+    enqueue = MagicMock()
+    monkeypatch.setattr(mastery_reader, "_schedule_scan_start", enqueue)
+    solver = object.__new__(BaseSchedulerSolver)
+    solver._dispatch_scan_start_tasks(scheduled)
+    enqueue.assert_called_once_with(solver, waiting, step_level=2)

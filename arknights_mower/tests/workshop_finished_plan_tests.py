@@ -119,3 +119,29 @@ def test_finishing_one_skill_recalculates_remaining_automatic_work(
     assert config.conf.workshop_manual_backup == [finished_queue.manual]
     assert config.conf.workshop_auto_active
     recalculate.assert_called_once_with()
+
+
+def test_completed_target_releases_persistent_material_wait(
+    finished_queue, monkeypatch
+):
+    waiting = finished_queue.ids[0]
+    mastery_db.update_plan_status(
+        waiting,
+        "failed",
+        failed_reason="材料不足",
+        expires_at="2026-10-01 12:00:00",
+    )
+    mastery_db.retry_failed_plans()
+    assert (
+        mastery_db.get_material_waiting_plan(mastery_db.get_all_plans())["id"]
+        == waiting
+    )
+    other = mastery_db.insert_plan(
+        "char_other", 0, 3, char_name="另一个干员", skill_name="一技能·测试"
+    )
+    recalculate = MagicMock()
+    monkeypatch.setattr(auto, "update_workshop_config", recalculate)
+    auto.restore_if_no_plans()
+    assert [p["id"] for p in mastery_db.get_all_plans()] == [other]
+    assert mastery_db.get_material_waiting_plan(mastery_db.get_all_plans()) is None
+    recalculate.assert_called_once_with()

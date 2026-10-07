@@ -1,9 +1,12 @@
 ---
 title: 受保护专精技能续训
-status: implemented
+status: archived
 category: bug-fix
 date: 2026-10-07
 ---
+
+由[专精训练位与材料边界](../../implemented/bug-fix/2026-10-07-mastery-trainee-material-boundary.zh.md)取代。
+
 
 # 受保护专精技能续训
 

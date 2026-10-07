@@ -1,9 +1,12 @@
 ---
 title: Protected Mastery Skill Continuation
-status: implemented
+status: archived
 category: bug-fix
 date: 2026-10-07
 ---
+
+Superseded by [Mastery Trainee and Material Boundaries](../../implemented/bug-fix/2026-10-07-mastery-trainee-material-boundary.md).
+
 
 # Protected Mastery Skill Continuation
 
