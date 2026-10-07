@@ -25,6 +25,8 @@ Automatic rescue handoff derives group transitions from final observed occupancy
 
 Shared matching excludes a replacement occupying another fixed dormitory post unless the arrangement explicitly releases that source slot. An occupant already covering the target shared post remains eligible. Ordinary recovery residents and compatible zero-mood replacements retain their existing eligibility.
 
+Final dormitory selection relocates surviving confirmation targets by name after empty-slot compaction; temporary single-target recovery selections retain the final target map. Pending group confirmation preserves ordinary tasks while independently refreshing personal mood-limit releases from observed beds. Unchanged release sources retain their existing task object and retry time; changed observations replace the deadline and departed residents lose stale release tasks.
+
 ## Verification
 
 Offline regression tests cover the three failure paths, overlapping reservation owners, unavailable alternatives, complete matching across shared slots, unfinished recovery, missing working-slot observations and fixed dormitory targets. Existing shift, product, dormitory and personal-mood suites remain applicable. No live device or configuration changes participate in verification.
@@ -34,3 +36,5 @@ Additional regression tests exercise partial-return rebuilding through both sche
 Exhaustion regression tests generate real future deadlines and verify empty arrangement plans, no replacement or bed reservations, and continued access to the same cover by ordinary groups. Execution uses the latest occupancy: a released cover allows direct departure, while an occupied alternate causes fresh coordination. The coordination retry retains an empty plan and generates the departure after support is confirmed. These tests preserve the existing execution-time coordination behavior without changing production scheduling or exhaustion deadlines.
 
 Further regression cases cover whole-task product deferral for both shift directions, completion after reservation release, observed rescue returns and continued rest, interrupted rescue confirmation, and fixed dormitory cover protection with an explicit-source-release control.
+
+Cap-confirmation regressions cover compacted dormitory targets, missing working slots, temporary selection isolation, both metadata entry points and backup-shift protection. Automatic-rescue mocks return an empty arrangement dictionary when no correction remains, matching the existing `return_plan=True` contract.

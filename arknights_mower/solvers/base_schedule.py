@@ -7178,7 +7178,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 agents[idx] = "Free"
                 logger.info("检测个人心情上限释放休息位")
         if not preserve_dorm_occupants:
-            return self.preserve_resting_crafters(agents, room) or []
+            fallback = self.preserve_resting_crafters(agents, room) or []
+            expected = getattr(getattr(self, "task", None), "group_shift_expected", {})
+            relocated = {}
+            for slot, name in list(expected.items()):
+                if slot[0] == room and name in agents:
+                    # 空位整理可移动其他恢复目标；确认位置跟随最终名单。
+                    relocated[room, agents.index(name)] = name
+                    expected.pop(slot)
+            expected.update(relocated)
+            return fallback
         return []
 
     @timed_step("selection")

@@ -10,6 +10,7 @@ import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
+from arknights_mower.data import agent_list
 from arknights_mower.solvers.base_schedule import ProductSwitchDeferred
 from arknights_mower.tests.multi_group_shift_tests import SHARED, A, B, shift_off
 from arknights_mower.tests.multi_group_shift_tests import solver as solver
@@ -417,3 +418,120 @@ def test_shared_revalidation_protects_fixed_dorm_cover(solver, released):
         assert task.plan["contact"] == [SHARED]
     assert data.get_current_operator("dormitory_1", 1).name == "黑角"
     assert data.group_is_resting("丙")
+
+
+@pytest.mark.parametrize("contact_confirmed", [False, True])
+def test_cap_cancellation_relocates_other_pending_dorm_targets(
+    solver, contact_confirmed
+):
+    data = solver.op_data
+    data.config.operator_mood_limits[B] = {"lower": 0, "upper": 12}
+    data.config.free_blacklist = [
+        name for name in agent_list if name not in {B, SHARED, "塑心", "冰酿"}
+    ]
+    data.operators[B].upper_limit = 12
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "meeting": ["Current", "初雪"],
+            "contact": ["黑角"],
+            "dormitory_1": ["塑心", "冰酿", B, SHARED, "Free"],
+        },
+    )
+    solver.task, solver.tasks = task, [task]
+    solver._prepare_group_shift(task, remember_targets=True)
+    observe_arrangement(solver, task.plan)
+    data.operators[B].mood = 12
+    data.operators[B].time_stamp = datetime.now()
+    data.operators[B].rest_mood_release_limit = 12
+    data.get_dorm_by_name(B)[1].reset()
+    data.operators[B]._current_room, data.operators[B].current_index = "", -1
+
+    solver.prepare_dorm_selection(task.plan["dormitory_1"], "dormitory_1")
+
+    assert task.plan["dormitory_1"] == ["塑心", "冰酿", SHARED, "", ""]
+    assert task.group_shift_expected["dormitory_1", 2] == SHARED
+    assert ("dormitory_1", 3) not in task.group_shift_expected
+    assert B not in task.group_shift_expected.values()
+    assert task.group_shift_expected["dormitory_1", 0] == "塑心"
+    assert task.group_shift_expected["dormitory_1", 1] == "冰酿"
+    # 单回临时名单中的第一个位置不能覆盖最终恢复床位。
+    final_targets = dict(task.group_shift_expected)
+    solver.prepare_dorm_selection([SHARED], "dormitory_1", preserve_dorm_occupants=True)
+    assert task.group_shift_expected == final_targets
+    observe_arrangement(solver, {"dormitory_1": task.plan["dormitory_1"]})
+    if not contact_confirmed:
+        data.operators["黑角"]._current_room, data.operators["黑角"].current_index = (
+            "",
+            -1,
+        )
+    task.plan.clear()
+    assert solver._complete_group_shift(task) is contact_confirmed
+    assert data.group_is_resting("乙") is contact_confirmed
+    if not contact_confirmed:
+        assert task.plan == {"contact": ["黑角"]}
+
+
+@pytest.mark.parametrize("backup_active", [False, True])
+@pytest.mark.parametrize("entry", ["solver", "utility"])
+def test_pending_confirmation_refreshes_personal_limit_releases(
+    solver, backup_active, entry
+):
+    data = solver.op_data
+    data.config.operator_mood_limits[B] = {"lower": 0, "upper": 12}
+    data.operators[B].upper_limit = 12
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "meeting": ["Current", "初雪"],
+            "contact": ["黑角"],
+            "dormitory_1": ["Current", "Current", B, SHARED, "Current"],
+        },
+    )
+    unrelated = SchedulerTask(task_type=TaskTypes.RUN_ORDER, meta_data="meeting")
+    solver.task, solver.tasks = task, [task, unrelated]
+    solver._prepare_group_shift(task, remember_targets=True)
+    observe_arrangement(
+        solver, {room: row for room, row in task.plan.items() if room != "contact"}
+    )
+    data.operators[B].mood = 5
+    data.operators[B].time_stamp = datetime.now()
+    deadline = datetime.now() + timedelta(minutes=20)
+    data.get_dorm_by_name(B)[1].time = deadline
+    assert not solver._complete_group_shift(task)
+    task.backup_shift_active = backup_active
+    pending_plan = {room: list(row) for room, row in task.plan.items()}
+    expected = dict(task.group_shift_expected)
+    retry_time = task.time
+
+    def rebuild():
+        if entry == "solver":
+            solver.plan_metadata()
+        else:
+            solver.tasks = plan_metadata(data, solver.tasks)
+        assert task in solver.tasks and unrelated in solver.tasks
+        assert task.plan == pending_plan and task.time == retry_time
+        assert task.group_shift_expected == expected
+        assert not data.group_is_resting("乙")
+        return [queued for queued in solver.tasks if queued.strict_mood_limit]
+
+    (release,) = rebuild()
+    assert release.meta_data == B
+    assert release.time == deadline
+    assert release.plan == {
+        "dormitory_1": ["Current", "Current", "Free", "Current", "Current"]
+    }
+    assert rebuild() == [release]
+    # 失败重试的清退任务沿用原对象和重试时间，不能被换班保护重置。
+    release.time += timedelta(minutes=1)
+    assert rebuild()[0] is release
+    assert release.time == deadline + timedelta(minutes=1)
+    # 新实读改变恢复期限时刷新清退；已离宿时移除过期清退。
+    data.get_dorm_by_name(B)[1].time = deadline + timedelta(minutes=5)
+    (updated,) = rebuild()
+    assert updated is not release
+    assert updated.time == deadline + timedelta(minutes=5)
+    observe_arrangement(
+        solver, {"dormitory_1": ["Current", "Current", "Free", "Current", "Current"]}
+    )
+    assert rebuild() == []

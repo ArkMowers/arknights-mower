@@ -590,7 +590,7 @@ def test_partial_handoff_persists_plan_and_retry_does_not_replan_temporary_staff
     state = make_episode(solver)
     plan = {"room_1_1": [PRIMARY[0]]}
     solver.backup_plan_solver = MagicMock(return_value=False)
-    solver.agent_get_mood = MagicMock(side_effect=[plan.copy(), None])
+    solver.agent_get_mood = MagicMock(side_effect=[plan.copy(), {}])
     solver._emergency_read_rooms = MagicMock()
     previous_task = SchedulerTask(task_type=TaskTypes.WORKSHOP)
     solver.task = previous_task
@@ -638,7 +638,7 @@ def partial_handoff(solver, monkeypatch, failure="deferred"):
         )
         plan[room] = [name]
     solver.backup_plan_solver = MagicMock(return_value=False)
-    solver.agent_get_mood = MagicMock(side_effect=[copy.deepcopy(plan), None])
+    solver.agent_get_mood = MagicMock(side_effect=[copy.deepcopy(plan), {}])
     solver._emergency_read_rooms = MagicMock()
     solver._read_initial_card_mood = MagicMock()
     solver._emergency_collect = MagicMock()
@@ -782,7 +782,7 @@ def test_handoff_uses_real_arrangement_with_its_own_task_context(solver, previou
     )
     solver.task = previous_task
     solver.backup_plan_solver = MagicMock(return_value=False)
-    solver.agent_get_mood = MagicMock(side_effect=[plan.copy(), None])
+    solver.agent_get_mood = MagicMock(side_effect=[plan.copy(), {}])
     solver._emergency_read_rooms = MagicMock()
     solver.enter_room = MagicMock()
     observed_tasks = []

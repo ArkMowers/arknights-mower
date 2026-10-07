@@ -1252,6 +1252,12 @@ def plan_metadata(op_data, tasks):
         or getattr(task, "group_shift_expected", {})
         for task in tasks
     ):
+        # 保留未确认安排，但个人上限仍按已经实读的入住位置和期限独立清退。
+        releases = plan_mood_limit_releases(op_data, previous_tasks=tasks)
+        tasks[:] = [
+            task for task in tasks if not getattr(task, "strict_mood_limit", False)
+        ]
+        tasks.extend(releases)
         return tasks
     op_data.refresh_idle_dorm_search()
     locked_tasks = [
