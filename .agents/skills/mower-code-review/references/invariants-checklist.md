@@ -17,6 +17,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ## 2. Subsystem Invariants
 
+- [ ] **[INV-REC-06] Selection Page Exit**: Do anomalous selection readings detect the known facility roster marker on the same Capture Frame and propagate page exit without filter reset or further selection input, while normal readings avoid additional page lookups or captures and existing room recovery reads actual occupants?
+
 ### 2.1 Device Control & Transport Domain
 
 - [ ] **[INV-DEV-20] Command Output Ownership**: Do MuMu startup observations and default guarded ADB commands use bounded temporary-file output with independent reader positions, preserve bytes during inherited writes and binary/text and stderr semantics, and return without descendant EOF waits while timeout cleanup targets only the owned command within its finite allowance? Does an over-budget capture stay a device verdict rather than an application fault and keep the manager's repair step, do `universal_newlines` and `stdin` keep subprocess semantics while `input` is rejected outright, does a timeout's partial output keep the caller's text selection, and does the manager runner own its merged output and return-code check instead of dropping caller options?

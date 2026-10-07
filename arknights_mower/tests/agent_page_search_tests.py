@@ -141,6 +141,25 @@ def test_swipe_overlaps_two_columns(monkeypatch):
     solver.swipe_noinertia.assert_called_once_with((1490, 488), (-860, 0))
 
 
+@pytest.mark.parametrize("mode,interval", [("high", 0.1), ("xhigh", 0.2)])
+def test_fast_page_swipe_uses_fixed_wait_without_an_extra_observation(
+    monkeypatch, mode, interval
+):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", mode)
+    before = page()
+    solver = reader(monkeypatch, [])
+
+    assert solver.swipe_agent_page(before, ["砾"], return_page=True) == (1, None)
+
+    start, end = before[-2][1][0], before[0][1][0]
+    solver.swipe_noinertia.assert_called_once_with(
+        start, (end[0] - start[0], 0), interval=interval
+    )
+    solver.recog.update.assert_not_called()
+    solver.find.assert_not_called()
+    solver.tap.assert_not_called()
+
+
 def test_failed_swipe_gets_only_one_short_confirmation(monkeypatch):
     before = page(tuple(str(i) for i in range(12)))
     after = page(tuple(str(i) for i in range(2, 14)))

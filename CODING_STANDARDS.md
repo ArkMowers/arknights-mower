@@ -12,6 +12,8 @@
 
 ## 2. Subsystem Invariants
 
+- **[INV-REC-06] Selection Page Exit**: Known facility roster pages detected during anomalous selection readings abort selection inputs and page-local fallback; normal readings add no page-template lookup or capture.
+
 ### 2.1 Base Infrastructure & Scheduling
 
 - **[INV-SCHED-29] Mastery Material Selection**: Automatic preparation skips idle skills whose remaining target costs cannot be supplied by stock and permitted crafting without changing plan state or priority, reevaluates them with refreshed inventory, and preserves confirmed-training material reservations. Training-room protection remains binding; only the same observed trainee and uniquely identified skill can continue in a protected room.
