@@ -28,7 +28,7 @@ def set_stock(fixture, stock):
 
 def test_books_short_after_crafting_wait_then_resume_without_changing_plan(next_skill):
     plans = copy.deepcopy(next_skill.plans)
-    set_stock(next_skill, {"3302": 20})  # Six books can be made; the head needs seven.
+    set_stock(next_skill, {"3302": 14})  # Neither skill's complete chain is craftable.
     assert rec.compute_workshop_config([], [], ["赫拉格"]) == []
     assert rec.auto_schedule_mastery_tasks()["scheduled"] == []
     assert next_skill.plans == plans
@@ -46,6 +46,7 @@ def test_books_short_after_crafting_wait_then_resume_without_changing_plan(next_
 def test_elite_shortage_stops_all_preparation_including_other_available_materials(
     next_skill, monkeypatch
 ):
+    next_skill.plans[:] = [next_skill.plans[1]]
     data = rec.get_mastery_recommendations()
     data["operators"][1]["recommendations"][0]["chain_needed_materials"].append(
         {"name": "糖聚块", "count": 1}
@@ -59,6 +60,7 @@ def test_elite_shortage_stops_all_preparation_including_other_available_material
 def test_protected_ingredients_do_not_unlock_automatic_preparation(
     next_skill, monkeypatch
 ):
+    next_skill.plans[:] = [next_skill.plans[1]]
     data = rec.get_mastery_recommendations()
     data["operators"][1]["recommendations"][0]["chain_needed_materials"] = [
         {"name": "提纯源岩", "count": 1}
@@ -153,3 +155,86 @@ def test_training_start_sums_repeated_materials_across_remaining_levels(
     ] == ["char_b"]
     skill["current_level"] = 2
     assert rec.auto_schedule_mastery_tasks()["scheduled"] == []
+
+
+def test_uncraftable_head_is_skipped_and_stock_refresh_restores_priority(next_skill):
+    plans = copy.deepcopy(next_skill.plans)
+    set_stock(next_skill, {"3302": 15})
+    assert book_limit(rec.compute_workshop_config([], [], ["赫拉格"])) == 5
+    set_stock(next_skill, {"3303": 5})
+    assert [
+        item["char_id"] for item in rec.auto_schedule_mastery_tasks()["scheduled"]
+    ] == ["char_a"]
+    set_stock(next_skill, {"3302": 21})
+    assert book_limit(rec.compute_workshop_config([], [], ["赫拉格"])) == 7
+    set_stock(next_skill, {"3303": 7})
+    assert any(
+        item["char_id"] == "char_b"
+        for item in rec.auto_schedule_mastery_tasks()["scheduled"]
+    )
+    assert next_skill.plans == plans
+
+
+def test_skip_during_training_reserves_current_costs_and_prepares_one_ready_skill(
+    next_skill, monkeypatch
+):
+    next_skill.plans[1].update(status="training", expires_at="2999-01-01 00:00:00")
+    data = rec.get_mastery_recommendations()
+    data["operators"][1]["recommendations"][0]["stages"] = [
+        {"to_level": 8, "needed_materials": []},
+        {"to_level": 9, "needed_materials": [{"name": "技巧概要·卷3", "count": 2}]},
+    ]
+    next_skill.plans.append(
+        {
+            "id": 3,
+            "char_id": "char_c",
+            "skill_index": 0,
+            "target_level": 3,
+            "status": "idle",
+            "priority": 3,
+        }
+    )
+    data["operators"].append(
+        {
+            "char_id": "char_c",
+            "recommendations": [
+                {
+                    "skill_index": 0,
+                    "chain_needed_materials": [{"name": "技巧概要·卷3", "count": 3}],
+                }
+            ],
+        }
+    )
+    monkeypatch.setattr(rec, "get_mastery_recommendations", lambda: data)
+    plans = copy.deepcopy(next_skill.plans)
+    set_stock(next_skill, {"3302": 15})  # B reserves two; A needs five; C needs three.
+    assert book_limit(rec.compute_workshop_config([], [], ["赫拉格"])) == 5
+    set_stock(next_skill, {"3302": 12})
+    assert rec.compute_workshop_config([], [], ["赫拉格"]) == []
+    assert next_skill.plans == plans
+
+
+def test_depot_scan_skips_shortage_then_reconsiders_after_stock_refresh(
+    next_skill, monkeypatch
+):
+    from unittest.mock import MagicMock
+
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    from arknights_mower.utils import mastery_db
+
+    monkeypatch.setattr(mastery_db, "retry_failed_plans", lambda: 0)
+    solver = object.__new__(BaseSchedulerSolver)
+    solver._dispatch_scan_start_tasks = MagicMock()
+    plans = copy.deepcopy(next_skill.plans)
+    set_stock(next_skill, {"3302": 15})
+    solver._auto_schedule_mastery_after_scan()
+    assert book_limit([s.model_dump() for s in config.conf.workshop_settings]) == 5
+    set_stock(next_skill, {"3302": 21})
+    solver._auto_schedule_mastery_after_scan()
+    assert book_limit([s.model_dump() for s in config.conf.workshop_settings]) == 7
+    set_stock(next_skill, {"3303": 5})
+    solver._auto_schedule_mastery_after_scan()
+    assert [
+        p["char_id"] for p in solver._dispatch_scan_start_tasks.call_args.args[0]
+    ] == ["char_a"]
+    assert next_skill.plans == plans

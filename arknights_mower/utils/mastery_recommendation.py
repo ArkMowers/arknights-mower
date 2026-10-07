@@ -437,7 +437,7 @@ def compute_workshop_config(
     plans=None,
     recommendations=None,
 ):
-    """准备队首技能，确认正在训练后可提前一个技能；按钮与仓库扫描共用。"""
+    """按计划顺序准备首个材料可满足的技能，已确认训练保留后续材料。"""
     if fodder_operators is None:
         fodder_operators = ["九色鹿"]
     if t5_operators is None:
@@ -483,24 +483,18 @@ def compute_workshop_config(
         None,
     )
     lookahead = current is not None and _workshop_lookahead_active(current)
-    selected = (
-        next((p for p in plans if p.get("status", "idle") == "idle"), None)
-        if lookahead
-        else current or next(iter(plans), None)
+    candidates = (
+        [current]
+        if current is not None and not lookahead
+        else [p for p in plans if p.get("status", "idle") == "idle"]
     )
-    if selected is None:
+    if not candidates:
         return []
 
     skill_data_path = _find_skill_data()
     with open(skill_data_path, "r", encoding="utf-8") as f:
         skill_data = json.load(f)
     items = skill_data.get("items", {})
-
-    def item_rarity(name):
-        for iid, info in items.items():
-            if info.get("name") == name:
-                return info.get("rarity", 0)
-        return 0
 
     from arknights_mower.utils.workshop_fodder import deer_fodder_items
 
@@ -524,7 +518,6 @@ def compute_workshop_config(
     )
     operators = rec_result.get("operators", [])
 
-    plan_key = selected["char_id"], selected["skill_index"]
     recommendations = {
         (op["char_id"], r["skill_index"]): r
         for op in operators
@@ -537,19 +530,6 @@ def compute_workshop_config(
         if current_rec is None:
             return []  # Cannot safely spend stock without the active skill's costs.
         reserved = _workshop_training_reserve(current, current_rec)
-
-    raw_demand = defaultdict(int)
-    selected_rec = recommendations.get(plan_key)
-    if selected_rec is None:
-        return []
-    for mat in _remaining_mastery_materials(selected, selected_rec):
-        raw_demand[mat["name"]] += mat["count"]
-
-    demand_t5_raw = {n: c for n, c in raw_demand.items() if n in t5_names}
-    demand_t4_raw = {n: c for n, c in raw_demand.items() if n in t4_names}
-    demand_t3_plus = {
-        n: c for n, c in raw_demand.items() if n not in t4_names and n not in t5_names
-    }
 
     cultivate_path = get_path("@app/tmp/cultivate.json")
     inventory = defaultdict(int)
@@ -581,23 +561,40 @@ def compute_workshop_config(
         workshop_formula,
         blocked_materials=protected_workshop_materials(),
     )
-    summary = budget.calculate(
-        [
-            {
-                "id": id_by_name.get(name, name),
-                "count": raw_demand.get(name, 0) + reserved.get(name, 0),
-            }
-            for name in raw_demand.keys() | reserved.keys()
-        ]
-    )
-    if not summary["craftable"]:
+    for candidate in candidates:
+        selected_rec = recommendations.get(
+            (candidate["char_id"], candidate["skill_index"])
+        )
+        if selected_rec is None:
+            continue
+        raw_demand = defaultdict(int)
+        for mat in _remaining_mastery_materials(candidate, selected_rec):
+            raw_demand[mat["name"]] += mat["count"]
+        summary = budget.calculate(
+            [
+                {
+                    "id": id_by_name.get(name, name),
+                    "count": raw_demand.get(name, 0) + reserved.get(name, 0),
+                }
+                for name in raw_demand.keys() | reserved.keys()
+            ]
+        )
+        if summary["craftable"]:
+            break
         from arknights_mower.utils.log import logger
 
-        logger.info(
-            f"专精计划 {selected['char_id']} 技能{selected['skill_index'] + 1} "
-            "材料仍不足，暂不合成，等待后续仓库扫描"
+        logger.debug(
+            f"专精计划 {candidate['char_id']} 技能{candidate['skill_index'] + 1} "
+            "材料不足，本轮跳过，等待后续仓库扫描"
         )
+    else:
         return []
+
+    demand_t5_raw = {n: c for n, c in raw_demand.items() if n in t5_names}
+    demand_t4_raw = {n: c for n, c in raw_demand.items() if n in t4_names}
+    demand_t3_plus = {
+        n: c for n, c in raw_demand.items() if n not in t4_names and n not in t5_names
+    }
 
     t4_indirect = defaultdict(int)
     for t5_name, t5_demand in demand_t5_raw.items():
