@@ -835,14 +835,7 @@ class BaseMixin:
 
     @timed_step("verify")
     def wait_for_arranged_agents(
-        self,
-        agent,
-        *,
-        ordered=True,
-        full_scan=True,
-        train=False,
-        observation=None,
-        check_empty=False,
+        self, agent, *, ordered=True, full_scan=True, train=False, observation=None
     ):
         """校验当前名单；低帧率适配还要求连续两帧的位置和名字一致。"""
         seed_image = observation.image if observation is not None else None
@@ -851,7 +844,7 @@ class BaseMixin:
             if observation is not None
             else None
         )
-        if not agent and not check_empty:
+        if not agent:
             return []
         read = self.agent_page_reader(
             full_scan=full_scan,
@@ -859,7 +852,7 @@ class BaseMixin:
             seed_image=seed_image,
             seed_page=page,
         )
-        previous = (page[: len(agent)] if agent else page) if page else None
+        previous = page[: len(agent)] if page else None
         stable = False
         stable_matches = 0
         actual = []
@@ -925,9 +918,8 @@ class BaseMixin:
                 selected = ret[: len(agent)]
             actual = [name for name, _ in selected]
             logger.debug(f"选人校验第{attempt + 1}次读取：{actual}")
-            comparison = selected if agent else ret
             if len(actual) == len(agent) and self.same_agent_page(
-                comparison, previous if self.low_frame_rate_mode else comparison
+                selected, previous if self.low_frame_rate_mode else selected
             ):
                 stable_matches += 1
             else:
@@ -938,7 +930,7 @@ class BaseMixin:
                 return actual
             if stable and not self.low_frame_rate_mode:
                 return None
-            previous = comparison
+            previous = selected
         if stable:
             logger.warning(f"干员名单已稳定但不符合预期：预期{agent}，实际{actual}")
             return None

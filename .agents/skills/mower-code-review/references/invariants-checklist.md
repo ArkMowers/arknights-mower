@@ -17,7 +17,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ## 2. Subsystem Invariants
 
-- [ ] **[INV-REC-06] Selection Feedback Boundary**: Do anomalous selection readings detect the known facility roster marker on the same Capture Frame, propagate page exit without filter reset or further selection input, and require high-mode clear acknowledgement on a nonempty card page before the first reordered target click, while normal readings avoid additional page lookups and existing room recovery reads actual occupants?
+- [ ] **[INV-REC-06] Selection Page Exit**: Do anomalous selection readings detect the known facility roster marker on the same Capture Frame and propagate page exit without filter reset or further selection input, while normal readings avoid additional page lookups or captures and existing room recovery reads actual occupants?
 
 ### 2.1 Device Control & Transport Domain
 

@@ -12,7 +12,7 @@
 
 ## 2. Subsystem Invariants
 
-- **[INV-REC-06] Selection Feedback Boundary**: Known facility roster pages detected during anomalous selection readings abort selection inputs and page-local fallback; high-mode reorder target clicks require acknowledged clearing on a nonempty card page.
+- **[INV-REC-06] Selection Page Exit**: Known facility roster pages detected during anomalous selection readings abort selection inputs and page-local fallback; normal readings add no page-template lookup or capture.
 
 ### 2.1 Base Infrastructure & Scheduling
 

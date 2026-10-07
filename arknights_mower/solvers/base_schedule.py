@@ -7463,16 +7463,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     f"选人重排清空：性能档位{reorder_mode}，页面已选{exists}，目标{agents}"
                 )
                 self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
-                if reorder_mode == "high" and isinstance(self.recog.img, np.ndarray):
-                    if (
-                        self.wait_for_arranged_agents(
-                            [], ordered=False, check_empty=True
-                        )
-                        is None
-                    ):
-                        raise AgentSelectionNotReady(
-                            "重排清空未得到反馈，停止目标点击并返回房间重试"
-                        )
                 for idx, p_idx in enumerate(click_order):
                     x = self.recog.w * position[p_idx][0]
                     y = self.recog.h * position[p_idx][1]
