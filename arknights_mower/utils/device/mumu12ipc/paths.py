@@ -2,6 +2,10 @@
 
 from pathlib import Path
 
+from arknights_mower.utils.device.mumu_layout import (
+    installation_root,
+    manager_candidates,
+)
 from arknights_mower.utils.path import resolve_config_path
 
 
@@ -13,22 +17,14 @@ def resolve_mumu_paths(installation: str, manager: str = "") -> tuple[str, str]:
 
     if installation:
         folder = Path(resolve_config_path(installation))
-        root = folder.parent if folder.name.lower() in {"shell", "nx_main"} else folder
     elif executable:
-        root = (
-            executable.parent.parent
-            if executable.parent.name.lower() in {"shell", "nx_main"}
-            else executable.parent
-        )
+        folder = executable.parent
     else:
-        root = Path()
+        folder = Path()
+    root = installation_root(folder)
 
     if not executable:
-        candidates = (
-            root / "shell/MuMuManager.exe",
-            root / "nx_main/MuMuManager.exe",
-            root / "MuMuManager.exe",
-        )
+        candidates = manager_candidates(root)
         executable = next(
             (path for path in candidates if path.is_file()), candidates[0]
         )

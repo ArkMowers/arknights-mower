@@ -95,6 +95,8 @@ The subsystem integrates platform-specific emulators through deterministic disco
 | **Linux ReDroid** | Local Docker socket (`/var/run/docker.sock`) | Immutable container ID, host port mapping |
 | **Linux Waydroid** | `waydroid status` session inspection | Session IP endpoint, port 5555 verification |
 
+Windows MuMu 12 discovery and IPC share the manager locations `shell/`, `nx_main/`, `temp/main`, `temp/shell` and the installation root. Root resolution recognizes `temp/<pair>` and `.backup/<pair>` before root-level directories, preserves explicit manager paths and deduplicates installation sources. Location resolution runs no manager commands. The [layout decision](../../.agents/notes/implemented/bug-fix/2026-10-07-mumu-runtime-layout-manager.md) defines these rules.
+
 ---
 
 ## 3. Subsystem Invariants
