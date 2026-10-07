@@ -69,11 +69,16 @@ class DelayedFrameSolver(BaseMixin, BaseSolver):
     def __init__(self, device):
         self.device = device
         self.recog = Recognizer(device)
+        self.lookups = []
 
     def find(self, name):
-        assert name == "connecting"
-        # 与 connecting 检查相同，必须触发懒截图，且保留这次截图。
-        self.recog.img
+        assert name in ("connecting", "arrange_check_in_on")
+        captures = len(self.device.captures)
+        img = self.recog.img
+        if name == "arrange_check_in_on":
+            # 首列坐标异常时查找入住信息标记，必须复用当前识别帧。
+            assert len(self.device.captures) == captures
+        self.lookups.append((name, int(img[488, 600, 0])))
         return False
 
 
@@ -117,6 +122,13 @@ def test_slow_matching_waits_for_late_frame_before_using_coordinates(
     assert [at for at, _ in solver.device.captures] == pytest.approx([0.1, 1.4, 2.7])
     # 旧页、新页各冷识别一次；第三帧相同区域命中真实 reader 缓存。
     assert [marker for _, marker in reads] == [0, 1]
+    assert solver.lookups == [
+        ("connecting", 0),
+        ("connecting", 1),
+        ("arrange_check_in_on", 1),
+        ("connecting", 1),
+        ("arrange_check_in_on", 1),
+    ]
     assert solver.device.taps == [(pytest.approx(2.7), BaseSolver.get_pos(NEW_SCOPE))]
     assert clock.waits == pytest.approx([0.4, 0.4, 0.2])
 

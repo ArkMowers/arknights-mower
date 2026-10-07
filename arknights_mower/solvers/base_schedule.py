@@ -10,7 +10,6 @@ from time import monotonic
 from typing import Literal, Optional
 
 import cv2
-import numpy as np
 import requests
 from packaging.version import InvalidVersion, Version
 
@@ -23,6 +22,7 @@ from arknights_mower.data import (
 )
 from arknights_mower.solvers.base_mixin import (
     AgentSelectionNotReady,
+    AgentSelectionPageChanged,
     BaseMixin,
     agent_card_selected,
     fixed_selection_profile,
@@ -7067,6 +7067,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
         """
         max_swipe = 50
+        clear_interval = 0.3 if self.performance_profile.mode == "high" else 0.5
         if getattr(getattr(self, "task", None), "emergency_staffing", False):
             fast_mode = False
         position = [
@@ -7091,7 +7092,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             fast_mode = False
             agents = [item for item in agents if item != ""]
         if (not agents) and not fast_mode:
-            self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+            self.tap(
+                (self.recog.w * 0.38, self.recog.h * 0.95), interval=clear_interval
+            )
         agent = copy.deepcopy(agents)
         exists = []
         if fast_mode:
@@ -7168,7 +7171,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     self.switch_arrange_order("心情", room, "true")
                     pre_order = [3, "true"]
                 if not fast_mode:
-                    self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+                    self.tap(
+                        (self.recog.w * 0.38, self.recog.h * 0.95),
+                        interval=clear_interval,
+                    )
                 changed, ret = self.scan_agent(
                     agent, full_scan=last_special_filter == "ALL"
                 )
@@ -7259,7 +7265,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             (-1900, 0),
                             interval=0,
                         )
-                    self.sleep(1)
+                    self.sleep(0.5 if self.performance_profile.mode == "high" else 1)
             changed, ret = self.scan_agent(
                 agent,
                 full_scan=last_special_filter == "ALL",
@@ -7300,7 +7306,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         # 安排空闲干员
         if free_num:
             if free_num == len(agents):
-                self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+                self.tap(
+                    (self.recog.w * 0.38, self.recog.h * 0.95), interval=clear_interval
+                )
             if last_special_filter != "ALL":
                 # Free 搜索的目标就是 ALL；真实切换本身会复位列表，
                 # 无需先恢复原职业再切一次 ALL。
@@ -7442,6 +7450,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if right_swipe == 0:
                 try:
                     exists = self.wait_for_arranged_agents(agents, ordered=False)
+                except AgentSelectionPageChanged:
+                    raise
                 except AgentSelectionNotReady:
                     logger.debug("当前已选名单尚不能确认，筛选复位后再校验")
             if exists is None:
@@ -7463,29 +7473,19 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 else:
                     raise Exception("检测到干员选择错误，重新选择")
             if click_order:
-                # 极高档连续点击；高档逐次确认已选集合增加。
+                # 按目标顺序完成点击后统一校验完整名单。
                 reorder_mode = self.performance_profile.mode
-                self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
-                for idx, p_idx in enumerate(click_order):
+                click_interval = {"xhigh": 0, "high": 0.1}.get(reorder_mode, 0.2)
+                logger.debug(
+                    f"选人重排清空：性能档位{reorder_mode}，页面已选{exists}，目标{agents}"
+                )
+                self.tap(
+                    (self.recog.w * 0.38, self.recog.h * 0.95), interval=clear_interval
+                )
+                for p_idx in click_order:
                     x = self.recog.w * position[p_idx][0]
                     y = self.recog.h * position[p_idx][1]
-                    self.tap(
-                        (x, y),
-                        interval=0 if reorder_mode == "xhigh" else 0.2,
-                    )
-                    if (
-                        reorder_mode == "high"
-                        and isinstance(self.recog.img, np.ndarray)
-                        and (
-                            self.wait_for_arranged_agents(
-                                agents[: idx + 1], ordered=False
-                            )
-                            is None
-                        )
-                    ):
-                        raise AgentSelectionNotReady(
-                            "重排点击未得到选中反馈，返回房间重试"
-                        )
+                    self.tap((x, y), interval=click_interval)
                 reordered = True
             else:
                 # 空目标没有需要重排和校验的卡片。
@@ -7497,6 +7497,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if right_swipe == 0:
                 try:
                     verified = self.verify_agent(agents, room, **verify_options)
+                except AgentSelectionPageChanged:
+                    raise
                 except AgentSelectionNotReady:
                     logger.debug("当前已选顺序尚不能确认，筛选复位后再校验")
             if not verified:

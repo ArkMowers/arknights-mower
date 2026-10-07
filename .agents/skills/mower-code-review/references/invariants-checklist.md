@@ -17,6 +17,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ## 2. Subsystem Invariants
 
+- [ ] **[INV-REC-06] Selection Page Exit**: Do anomalous selection readings detect the known facility roster marker on the same Capture Frame and propagate page exit without filter reset or further selection input, while normal readings avoid additional page lookups or captures and existing room recovery reads actual occupants?
+
 ### 2.1 Device Control & Transport Domain
 
 - [ ] **[INV-DEV-20] Command Output Ownership**: Do MuMu startup observations and default guarded ADB commands use bounded temporary-file output with independent reader positions, preserve bytes during inherited writes and binary/text and stderr semantics, and return without descendant EOF waits while timeout cleanup targets only the owned command within its finite allowance? Does an over-budget capture stay a device verdict rather than an application fault and keep the manager's repair step, do `universal_newlines` and `stdin` keep subprocess semantics while `input` is rejected outright, does a timeout's partial output keep the caller's text selection, and does the manager runner own its merged output and return-code check instead of dropping caller options?
@@ -95,6 +97,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-SCHED-15] Selection Estimate Isolation**: Selection-card mood estimates support candidate screening, ordering, and primary shift selection only; they never overwrite measured mood, timestamps, depletion rates, recovery deadlines, or mandatory personal limits. Facility-completion events refresh only affected candidates and preserve unrelated estimates and search checks. Regular candidate planning scans cards only when no eligible idle recovery candidate has valid measured or estimated mood.
 
 ### 2.3 Presentation Layer (UI)
+- [ ] **[INV-UI-10] Operator Replacement Coverage**: Do replacement candidates and existing-target warnings include primary operators and replacements from every main and backup plan binding, without duplicate names or mutations during collection?
 - [ ] **[INV-UI-09] Backup Facility Import Isolation**: Importing a main-plan facility replaces only the selected backup facility with a deep copy of its type, product and operator bindings; subsequent edits preserve the source main plan, other facilities, backup conditions and explicit staffing tasks, and the edit lock prevents import.
 - [ ] **[INV-UI-08] Facility Display Order Isolation**: Does the local `swap_contact_train` setting reorder only office and training cards in main and backup plans, preserve their identities and assignments, and remain absent from exported plan data?
 - [ ] **[INV-UI-07] Facility Update Drop Isolation**: Does the whole Scheduling Plan facility layout, including fixed cards, locked cards, backgrounds and gaps, suppress and clear update drag hints while preserving facility sorting and update-package drops elsewhere on the page?
