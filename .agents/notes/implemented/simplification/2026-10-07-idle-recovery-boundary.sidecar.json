@@ -1,0 +1,19 @@
+{
+  "title": "Idle Recovery Boundary",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-18]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.maa_plan_solver"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/maa_error_no_exit_tests.py",
+    "arknights_mower/tests/scheduler_recovery_preservation_tests.py"
+  ]
+}
