@@ -12,6 +12,9 @@ from arknights_mower.utils.path import get_path
 
 _lock = RLock()
 METRICS = ("max_level", "module_level", "elite2", "modules", "masteries")
+LEVEL_GOALS = frozenset(
+    {"elite1", "level_max", "elite2", "elite2_module", "elite2_max"}
+)
 
 
 @lru_cache(maxsize=1)
@@ -124,6 +127,34 @@ def basic_skill_materials(char, definition):
     return [material for costs in levels[level - 1 : 6] for material in costs]
 
 
+def basic_skill_target(definition):
+    if len(definition.get("basic_skills", [])) < 6:
+        raise ValueError("该干员不支持基础技能 7 级养成")
+    # Older resource packs contain costs only; basic level 7 requires elite 1.
+    requirements = definition.get("basic_skill_requirements") or [
+        {"elite": 1, "level": 1}
+    ]
+    return max((entry["elite"], entry["level"]) for entry in requirements[:6])
+
+
+def level_goal_targets(definition):
+    phases = definition.get("phases", [])
+    if len(phases) >= 3:
+        targets = {
+            "elite2": (2, 1),
+            "elite2_max": (2, phases[2]["max_level"]),
+        }
+        module_level = {6: 60, 5: 50, 4: 40}.get(definition.get("rarity"))
+        if module_level:
+            targets["elite2_module"] = (2, module_level)
+        return targets
+    if len(phases) == 2:
+        return {"elite1": (1, 1), "level_max": (1, phases[1]["max_level"])}
+    if phases:
+        return {"level_max": (0, phases[0]["max_level"])}
+    return {}
+
+
 def available_modules(char_id, char, data):
     owned = {entry["id"]: entry.get("level", 0) for entry in char.get("equips", [])}
     return [
@@ -169,13 +200,18 @@ def set_goal(char_id, module_id, selected, box, skills, target_level=None):
     if char is None:
         raise ValueError("干员不在已拥有列表，请同步干员数据")
     data = growth_data(skills)
-    if module_id in ("elite2", "elite2_module", "elite2_max"):
-        if len(data.get("characters", {}).get(char_id, {}).get("phases", [])) < 3:
-            raise ValueError("该干员无法精二")
+    definition = data.get("characters", {}).get(char_id, {})
+    if module_id in LEVEL_GOALS:
+        if module_id not in level_goal_targets(definition):
+            raise ValueError("该干员不支持此等级目标")
+    elif module_id == "skill7":
+        basic_skill_target(definition)
+        if selected:
+            basic_skill_materials(char, definition)
     elif module_id not in {m["id"] for m in available_modules(char_id, char, data)}:
         raise ValueError("该干员没有此模组")
     goal = {"char_id": char_id, "module_id": module_id}
-    if module_id not in ("elite2", "elite2_module", "elite2_max") and selected:
+    if module_id not in LEVEL_GOALS | {"skill7"} and selected:
         module = next(
             m for m in available_modules(char_id, char, data) if m["id"] == module_id
         )
@@ -188,7 +224,7 @@ def set_goal(char_id, module_id, selected, box, skills, target_level=None):
         if goal["target_level"] <= module["current_level"]:
             raise ValueError("模组已达到所选等级")
     with _lock:
-        levels = {"elite2", "elite2_module", "elite2_max"}
+        levels = LEVEL_GOALS
         goals = [
             g
             for g in load_goals()
@@ -253,17 +289,19 @@ def material_entries(box, skills, plans, goals=()):
                 materials.extend(level.get("materials", []))
         if has_skill:
             target = max(target, (2, 1))
-            materials.extend(basic_skill_materials(char, definition))
+        needs_basic = has_skill
         modules = {m["id"]: m for m in available_modules(cid, char, data)}
         for goal in group["goals"]:
             mid = goal["module_id"]
-            if mid in ("elite2", "elite2_module", "elite2_max"):
-                level = {
-                    "elite2": 1,
-                    "elite2_module": {6: 60, 5: 50, 4: 40}[definition["rarity"]],
-                    "elite2_max": definition["phases"][2]["max_level"],
-                }[mid]
-                target = max(target, (2, level))
+            if mid in LEVEL_GOALS:
+                goal_target = level_goal_targets(definition).get(mid)
+                if goal_target is None:
+                    raise ValueError("该干员不支持此等级目标")
+                target = max(target, goal_target)
+                continue
+            if mid == "skill7":
+                basic_skill_target(definition)
+                needs_basic = True
                 continue
             module = modules.get(mid)
             if module is None:
@@ -272,6 +310,11 @@ def material_entries(box, skills, plans, goals=()):
             if costs:
                 target = max(target, (module["elite"], module["level"]))
                 materials.extend(costs)
+        if needs_basic:
+            basic = basic_skill_materials(char, definition)
+            if basic:
+                target = max(target, basic_skill_target(definition))
+                materials.extend(basic)
         materials.extend(promotion_materials(char, definition, data, target))
         entries.append((cid, materials))
     return entries
@@ -281,21 +324,25 @@ def statistics(chars, skills):
     from arknights_mower.utils.growth_value import consumed_statistics
 
     definitions = growth_data(skills).get("characters", {})
-    result = {str(r): dict.fromkeys(METRICS, 0) for r in (6, 5, 4)}
+    result = {str(r): dict.fromkeys(METRICS, 0) for r in range(6, 0, -1)}
     for char in chars:
         definition = definitions.get(char["id"], {})
         rarity = definition.get("rarity")
-        if rarity not in (6, 5, 4):
+        if rarity not in range(1, 7):
             continue
         row = result[str(rarity)]
         elite2 = char.get("evolvePhase") == 2
         row["elite2"] += elite2
-        row["max_level"] += (
-            elite2 and char.get("level", 0) >= {6: 90, 5: 80, 4: 70}[rarity]
+        phases = definition.get("phases", [])
+        row["max_level"] += bool(phases) and (
+            char.get("evolvePhase") == len(phases) - 1
+            and char.get("level", 0) >= phases[-1]["max_level"]
         )
-        row["module_level"] += (
-            elite2 and char.get("level", 0) >= {6: 60, 5: 50, 4: 40}[rarity]
-        )
+        row["module_level"] += elite2 and char.get("level", 0) >= {
+            6: 60,
+            5: 50,
+            4: 40,
+        }.get(rarity, float("inf"))
         valid_modules = {m["id"] for m in definition.get("modules", [])}
         row["modules"] += len(
             {

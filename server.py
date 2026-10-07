@@ -3121,6 +3121,50 @@ def mastery_recommendation():
     return get_mastery_recommendations()
 
 
+@app.route("/growth-survey", methods=["GET"])
+@require_token
+def growth_survey():
+    from arknights_mower.utils.yituliu_statistics import get_statistics
+
+    return get_statistics()
+
+
+@app.route("/growth-sync-token", methods=["GET", "PUT", "DELETE"])
+@require_token
+def growth_sync_token():
+    from arknights_mower.utils.yituliu_sync import clear_token, save_token, token_status
+
+    try:
+        if request.method == "GET":
+            return token_status()
+        if request.method == "DELETE":
+            return clear_token()
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            raise ValueError("Token 设置格式无效")
+        return save_token(payload.get("token"))
+    except ValueError as exc:
+        return {"message": str(exc)}, 400
+    except OSError:
+        return {"message": "一图流本地设置保存失败"}, 500
+
+
+@app.route("/growth-sync", methods=["POST"])
+@require_token
+def growth_sync():
+    from arknights_mower.utils.yituliu_sync import sync_cached_operators
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or payload.get("confirmed") is not True:
+        return {"message": "请在设置中明确选择立即同步"}, 400
+    try:
+        return sync_cached_operators()
+    except ValueError as exc:
+        return {"success": False, "message": str(exc)}, 400
+    except OSError:
+        return {"success": False, "message": "本地缓存读取失败，请重新同步森空岛"}, 500
+
+
 @app.route("/growth-plan", methods=["GET", "POST"])
 @require_token
 def growth_plan():
@@ -3275,16 +3319,22 @@ def basement_skill_operators():
 
 
 @app.route("/cultivate-fetch")
+@require_token
 def cultivate_fetch():
     from arknights_mower.solvers.cultivate_depot import cultivate
 
     try:
-        if not cultivate().start():
+        syncer = cultivate()
+        if not syncer.start():
             return {
                 "success": False,
                 "message": "未同步到干员数据，请检查森空岛账号及官服/B服选择",
             }
-        return {"success": True, "message": "数据拉取成功"}
+        return {
+            "success": True,
+            "message": "数据拉取成功",
+            "yituliu_sync": getattr(syncer, "yituliu_sync_result", None),
+        }
     except Exception as e:
         return {"success": False, "message": str(e)}
 

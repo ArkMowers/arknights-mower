@@ -168,6 +168,12 @@ def test_compiler_preserves_all_module_levels_and_shared_progression():
         "profession": "MEDIC",
         "subProfessionId": "medic",
         "phases": [],
+        "allSkillLvlup": [
+            {
+                "unlockCond": {"phase": "PHASE_1", "level": 1},
+                "lvlUpCost": [{"id": "book", "count": 2}],
+            }
+        ],
     }
     module = {
         "charId": "char_form",
@@ -188,6 +194,7 @@ def test_compiler_preserves_all_module_levels_and_shared_progression():
     )
     definition = result["characters"]["char_form"]
     assert definition["progression_owner"] == "char_base"
+    assert definition["basic_skill_requirements"] == [{"elite": 1, "level": 1}]
     assert definition["modules"][0]["levels"][1] == {
         "level": 2,
         "materials": [{"id": "b", "count": 2}],

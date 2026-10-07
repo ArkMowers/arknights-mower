@@ -6,6 +6,7 @@ export const useMasteryStore = defineStore('mastery', () => {
   const loading = ref(false)
   const recommendations = ref([])
   const statistics = ref(null)
+  const personalStatistics = ref(null)
   const history = ref([])
   const goals = ref([])
   const hasData = ref(false)
@@ -13,6 +14,7 @@ export const useMasteryStore = defineStore('mastery', () => {
   const filterAchievable = ref(false)
   const cultivateOk = ref(false)
   const cultivateMsg = ref('')
+  const yituliuSyncResult = ref(null)
   const planCount = ref(0)
   const isTraining = ref(false)
   const planSummaryLoaded = ref(false)
@@ -58,6 +60,7 @@ export const useMasteryStore = defineStore('mastery', () => {
       }
       recommendations.value = data.operators || []
       statistics.value = data.statistics || null
+      personalStatistics.value = data.personal_statistics || null
       history.value = data.history || []
       goals.value = data.goals || []
       hasData.value = data.has_data || false
@@ -83,9 +86,11 @@ export const useMasteryStore = defineStore('mastery', () => {
     error.value = ''
     cultivateOk.value = false
     cultivateMsg.value = ''
+    yituliuSyncResult.value = null
     try {
       const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/cultivate-fetch`)
       const data = response.data
+      yituliuSyncResult.value = data.yituliu_sync || null
       if (data.success) {
         cultivateOk.value = true
         cultivateMsg.value = data.message || '拉取成功'
@@ -108,6 +113,7 @@ export const useMasteryStore = defineStore('mastery', () => {
     loading,
     recommendations,
     statistics,
+    personalStatistics,
     history,
     goals,
     hasData,
@@ -118,6 +124,7 @@ export const useMasteryStore = defineStore('mastery', () => {
     fetchCultivate,
     cultivateOk,
     cultivateMsg,
+    yituliuSyncResult,
     planCount,
     isTraining,
     planSummaryLoaded,

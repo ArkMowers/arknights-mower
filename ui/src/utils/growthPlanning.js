@@ -1,5 +1,5 @@
 export const growthMetrics = [
-  { key: 'max_level', label: '满练干员', detail: '精二 90 / 80 / 70 级' },
+  { key: 'max_level', label: '满练干员', detail: '达到该星级实际精英化与等级上限' },
   { key: 'module_level', label: '达到模组等级', detail: '精二 ≥60 / 50 / 40 级' },
   { key: 'elite2', label: '精二干员', detail: '已完成精英化二' },
   { key: 'modules', label: '已开启模组', detail: '按模组数量统计' },
@@ -11,44 +11,11 @@ export function sumGrowthStatistics(statistics, rarities) {
   return Object.fromEntries(
     growthMetrics.map(({ key }) => [
       key,
-      key === 'sanity_value' &&
       rarities.some((rarity) => !Number.isFinite(statistics?.[rarity]?.[key]))
         ? null
         : rarities.reduce((sum, rarity) => sum + (statistics?.[rarity]?.[key] || 0), 0)
     ])
   )
-}
-
-export function growthValueCoverage(statistics, rarities) {
-  const unpriced = new Map()
-  const incomplete = new Set()
-  let source = null
-  let moduleBlocks = 0
-  let skillBookEquivalent = 0
-  let consumedLmd = 0
-  let consumedExp = 0
-  for (const rarity of rarities) {
-    const row = statistics?.[rarity] || {}
-    moduleBlocks += row.module_blocks || 0
-    skillBookEquivalent += row.skill_book_equivalent || 0
-    consumedLmd += row.consumed_lmd || 0
-    consumedExp += row.consumed_exp || 0
-    source ||= row.sanity_source
-    for (const item of row.sanity_unpriced || []) {
-      const previous = unpriced.get(item.id)
-      unpriced.set(item.id, { ...item, count: (previous?.count || 0) + item.count })
-    }
-    for (const name of row.sanity_incomplete || []) incomplete.add(name)
-  }
-  return {
-    unpriced: [...unpriced.values()],
-    incomplete: [...incomplete],
-    source,
-    moduleBlocks,
-    skillBookEquivalent,
-    consumedLmd,
-    consumedExp
-  }
 }
 
 export function growthHistoryPoints(history, rarities, key) {
@@ -68,7 +35,49 @@ export function goalSelected(goals, charId, moduleId) {
 
 export const levelGoals = ['elite2', 'elite2_module', 'elite2_max']
 
+export function operatorLevelGoals(op) {
+  if (op.level_goals) return op.level_goals.map((goal) => ({ ...goal, key: goal.id }))
+  if (op.rarity < 4) return []
+  return [
+    { key: 'elite2', elite: 2, level: 1, label: '精二 1 级', summary: op.promotion_summary },
+    {
+      key: 'elite2_module',
+      elite: 2,
+      level: op.module_level,
+      label: `精二 ${op.module_level} 级（模组等级）`,
+      summary: op.module_level_summary
+    },
+    {
+      key: 'elite2_max',
+      elite: 2,
+      level: op.max_level,
+      label: `精二 ${op.max_level} 级（满练）`,
+      summary: op.max_level_summary
+    }
+  ]
+}
+
+export function isGrowthOperatorIdle(name, scheduled, routes, workshop, blacklist = []) {
+  return (
+    !scheduled.has(name) && !routes.has(name) && !workshop.has(name) && !blacklist.includes(name)
+  )
+}
+
 export function prerequisiteLevelGoal(op, skillPlanned, goals) {
+  const basic = op.basic_skill_prerequisite
+  if (
+    op.max_phase < 2 &&
+    basic &&
+    goalSelected(goals, op.char_id, 'skill7') &&
+    (op.elite < basic.elite || (op.elite === basic.elite && op.level < basic.level))
+  ) {
+    return (
+      operatorLevelGoals(op).find(
+        (goal) =>
+          goal.elite > basic.elite || (goal.elite === basic.elite && goal.level >= basic.level)
+      )?.key || null
+    )
+  }
   const modules = op.modules?.filter((module) => goalSelected(goals, op.char_id, module.id)) || []
   if (
     modules.some(
@@ -80,9 +89,10 @@ export function prerequisiteLevelGoal(op, skillPlanned, goals) {
 }
 
 export function selectedLevelGoal(op, skillPlanned, goals) {
+  const choices = operatorLevelGoals(op).map((goal) => goal.key)
   const required = prerequisiteLevelGoal(op, skillPlanned, goals)
   const explicit = goals
     .filter((goal) => goal.char_id === op.char_id)
-    .map((goal) => levelGoals.indexOf(goal.module_id))
-  return levelGoals[Math.max(levelGoals.indexOf(required), ...explicit)] || null
+    .map((goal) => choices.indexOf(goal.module_id))
+  return choices[Math.max(choices.indexOf(required), ...explicit)] || null
 }

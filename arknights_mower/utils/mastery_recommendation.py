@@ -133,10 +133,12 @@ def get_mastery_recommendations():
     from arknights_mower.utils.growth import (
         available_modules,
         basic_skill_materials,
+        basic_skill_target,
         calculate_growth_materials,
         growth_data,
         growth_resources,
         inventory_counts,
+        level_goal_targets,
         load_goals,
         module_materials,
         promotion_materials,
@@ -144,6 +146,7 @@ def get_mastery_recommendations():
         statistics_history,
     )
     from arknights_mower.utils.mastery_materials import MaterialBudget
+    from arknights_mower.utils.operator_statistics import personal_statistics
     from arknights_mower.utils.workshop_material_policy import (
         protected_workshop_materials,
     )
@@ -164,6 +167,7 @@ def get_mastery_recommendations():
         )
         result["goals"] = load_goals()
         result["statistics"] = statistics(box["characters"], skills)
+        result["personal_statistics"] = personal_statistics(box["characters"], skills)
         result["history"] = statistics_history()
     except (OSError, ValueError, KeyError) as exc:
         result["error"] = f"请从森空岛同步干员数据：{exc}"
@@ -174,20 +178,28 @@ def get_mastery_recommendations():
         definition = skills.get("characters", {}).get(cid, {})
         growth_def = growth.get("characters", {}).get(cid, {})
         modules = available_modules(cid, char, growth)
-        if cid in UNTRAINABLE_CHAR_IDS or (not definition and not modules):
+        if cid in UNTRAINABLE_CHAR_IDS or (
+            not definition and not growth_def and not modules
+        ):
             continue
         info = {**growth_def, **definition}
-        if info.get("rarity", 4) < 4:
-            continue
         prerequisite, material_error = [], None
         basic_summary = None
-        if definition:
+        supports_basic_skill7 = len(growth_def.get("basic_skills", [])) >= 6
+        basic_prerequisite = None
+        if supports_basic_skill7:
+            required_phase, required_level = basic_skill_target(growth_def)
+            basic_prerequisite = {"elite": required_phase, "level": required_level}
             try:
-                prerequisite = promotion_materials(char, growth_def, growth)
                 basic = basic_skill_materials(char, growth_def)
                 prerequisite += basic
                 if basic:
                     basic_summary = calculate_growth_materials(budget, basic)
+            except ValueError as exc:
+                material_error = str(exc)
+        if definition:
+            try:
+                prerequisite += promotion_materials(char, growth_def, growth)
             except ValueError as exc:
                 material_error = str(exc)
         recommendations = []
@@ -232,7 +244,9 @@ def get_mastery_recommendations():
                     "total_time": sum(s["lvl_up_time"] for s in selected),
                     "chain_needed_materials": materials,
                     "material_summary": summary,
-                    "skill_material_summary": calculate_growth_materials(budget, materials),
+                    "skill_material_summary": calculate_growth_materials(
+                        budget, materials
+                    ),
                     "full_chain_achievable": bool(summary and summary["available"]),
                 }
             recommendations.append(
@@ -272,7 +286,27 @@ def get_mastery_recommendations():
                 module["material_error"] = str(exc)
         promotion = None
         phases = growth_def.get("phases", [])
-        max_level = phases[2]["max_level"] if len(phases) >= 3 else 0
+        max_phase = len(phases) - 1 if phases else 0
+        max_level = phases[-1]["max_level"] if phases else 0
+        level_goals = []
+        for goal_id, target in sorted(
+            level_goal_targets(growth_def).items(), key=lambda row: row[1]
+        ):
+            elite, level = target
+            phase_label = ("未精英", "精一", "精二")[elite]
+            level_goals.append(
+                {
+                    "id": goal_id,
+                    "elite": elite,
+                    "level": level,
+                    "label": f"{phase_label} {level} 级",
+                    "summary": calculate_growth_materials(
+                        budget, promotion_materials(char, growth_def, growth, target)
+                    )
+                    if (char.get("evolvePhase", 0), char.get("level", 1)) < target
+                    else None,
+                }
+            )
         max_level_summary = None
         module_level = {6: 60, 5: 50, 4: 40}.get(info.get("rarity"), 0)
         module_level_summary = None
@@ -285,15 +319,16 @@ def get_mastery_recommendations():
                 budget, promotion_materials(char, growth_def, growth, (2, module_level))
             )
         if max_level and (char.get("evolvePhase", 0), char.get("level", 1)) < (
-            2,
+            max_phase,
             max_level,
         ):
             max_level_summary = calculate_growth_materials(
-                budget, promotion_materials(char, growth_def, growth, (2, max_level))
+                budget,
+                promotion_materials(char, growth_def, growth, (max_phase, max_level)),
             )
-        if char.get("evolvePhase", 0) < 2 and len(growth_def.get("phases", [])) >= 3:
+        if char.get("evolvePhase", 0) < max_phase:
             promotion = calculate_growth_materials(
-                budget, promotion_materials(char, growth_def, growth)
+                budget, promotion_materials(char, growth_def, growth, (max_phase, 1))
             )
         result["operators"].append(
             {
@@ -305,17 +340,27 @@ def get_mastery_recommendations():
                 "elite": char.get("evolvePhase", 0),
                 "level": char.get("level", 1),
                 "main_skill_level": char.get("mainSkillLevel"),
-                "mastery_error": _mastery_requirement_error(char),
+                "skill_levels": [
+                    skill.get("level") for skill in char.get("skills", [])
+                ],
+                "mastery_error": _mastery_requirement_error(char)
+                if definition
+                else None,
                 "material_error": material_error,
                 "potential": char.get("potentialRank", 0) + 1,
                 "recommendations": recommendations,
                 "modules": modules,
                 "promotion_summary": promotion,
+                "promotion_target": max_phase,
+                "max_phase": max_phase,
+                "level_goals": level_goals,
                 "max_level": max_level,
                 "max_level_summary": max_level_summary,
                 "module_level": module_level,
                 "module_level_summary": module_level_summary,
                 "basic_skill_summary": basic_summary,
+                "supports_basic_skill7": supports_basic_skill7,
+                "basic_skill_prerequisite": basic_prerequisite,
             }
         )
     result["operators"].sort(key=lambda op: (-op["rarity"], op["name"]))

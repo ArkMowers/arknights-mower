@@ -26,6 +26,16 @@ def compile_growth_data(characters, equips, constants, patch_infos=None):
             "basic_skills": [
                 level.get("lvlUpCost") or [] for level in char.get("allSkillLvlup", [])
             ],
+            "basic_skill_requirements": [
+                {
+                    "elite": int(
+                        str(level["unlockCond"]["phase"]).removeprefix("PHASE_")
+                    ),
+                    "level": level["unlockCond"]["level"],
+                }
+                for level in char.get("allSkillLvlup", [])
+                if "unlockCond" in level
+            ],
             "modules": [],
         }
     for mid, module in equips.get("equipDict", {}).items():

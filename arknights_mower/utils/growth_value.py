@@ -112,9 +112,9 @@ def consumed_statistics(chars, skills, data, catalog=None):
             "sanity_incomplete": [],
             "sanity_source": catalog["_meta"],
         }
-        for r in (6, 5, 4)
+        for r in range(6, 0, -1)
     }
-    unknown = {str(r): Counter() for r in (6, 5, 4)}
+    unknown = {r: Counter() for r in result}
     definitions = data.get("characters", {})
     seen_chars, seen_progression = set(), set()
     # Shared progression belongs to the original form when it is present.

@@ -12,6 +12,8 @@
 
 ## 2. Subsystem Invariants
 
+- **[INV-GROWTH-02] Public Survey Isolation**: Public survey retrieval sends no local identity or credentials, missing survey rates remain unknown, and survey display or filtering never mutates plans; a configured write-only token permits one fixed-endpoint upload of game identity and progression after each successful Skland refresh or an explicit manual sync, without exposing the credential or invalidating local refresh success on upload failure.
+
 - **[INV-GROWTH-01] Shared Growth Budget**: Growth planning admits unready operators without dispatching training, counts shared prerequisites once, reserves stock by operator, emits only outstanding permitted recipes, and keeps manual chip conversion separate from automatic crafting.
 
 - **[INV-REC-06] Selection Page Exit**: Known facility roster pages detected during anomalous selection readings abort selection inputs and page-local fallback; normal readings add no page-template lookup or capture.

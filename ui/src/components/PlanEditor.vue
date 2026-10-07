@@ -517,7 +517,7 @@ function set_facility(e) {
       </div> -->
     </div>
     <n-space justify="center" v-if="facility">
-      <table>
+      <table class="facility-actions">
         <tbody>
           <tr>
             <td>设施类别：</td>
@@ -675,6 +675,28 @@ function set_facility(e) {
 </template>
 
 <style scoped lang="scss">
+.facility-actions {
+  border-spacing: 8px 0;
+
+  td {
+    vertical-align: middle;
+  }
+
+  :deep(.n-button) {
+    height: 36px;
+    --n-border-radius: 6px !important;
+    --n-border: 1px solid currentColor !important;
+    --n-border-hover: 1px solid currentColor !important;
+    --n-border-focus: 1px solid currentColor !important;
+    --n-border-pressed: 1px solid currentColor !important;
+    --n-border-disabled: 1px solid currentColor !important;
+  }
+
+  :deep(.n-base-selection) {
+    --n-height: 36px !important;
+  }
+}
+
 .binding-group {
   display: flex;
   align-items: center;

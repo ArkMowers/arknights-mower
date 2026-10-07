@@ -44,7 +44,23 @@
       </n-space>
     </div>
 
-    <GrowthStatistics :statistics="store.statistics" :history="store.history" />
+    <n-card size="small" class="statistics-panel" title="干员数据统计">
+      <template #header-extra
+        ><n-button
+          text
+          :aria-expanded="statisticsExpanded"
+          @click="statisticsExpanded = !statisticsExpanded"
+        >
+          {{ statisticsExpanded ? '收起统计' : '展开统计' }}
+        </n-button></template
+      >
+      <OperatorStatistics
+        v-if="statisticsExpanded"
+        :statistics="store.personalStatistics"
+        :history="store.history"
+      />
+      <n-text v-else depth="3">查看招募、练度、材料消耗与等效理智排行</n-text>
+    </n-card>
 
     <div
       class="mastery-global-switch"
@@ -57,58 +73,47 @@
       >
     </div>
 
-    <n-space style="margin-top: 8px" :size="8" align="center" wrap>
-      <n-input
-        v-model:value="searchQuery"
-        placeholder="搜索干员 / 拼音"
-        clearable
-        style="width: 200px"
-        size="small"
-      />
-      <n-select
-        v-model:value="filterRarity"
-        :options="rarityOptions"
-        multiple
-        placeholder="稀有度"
-        style="min-width: 140px"
-        size="small"
-        clearable
-      />
-      <n-select
-        v-model:value="filterProfession"
-        :options="professionOptions"
-        multiple
-        placeholder="职业"
-        style="min-width: 140px"
-        size="small"
-        clearable
-      />
-    </n-space>
-    <n-space style="margin-top: 4px" :size="8" align="center" wrap>
-      <n-select
-        v-model:value="idleFilter"
-        :options="idleFilterOptions"
-        size="small"
-        style="min-width: 100px"
-      />
-      <n-select
-        v-model:value="filterElite"
-        :options="eliteOptions"
-        multiple
-        clearable
-        placeholder="精英阶段"
-        size="small"
-        style="min-width: 150px"
-      />
-      <n-select
-        v-model:value="filterGoal"
-        :options="goalOptions"
-        size="small"
-        style="min-width: 160px"
-      />
-      <n-checkbox v-model:checked="showOnlyPlanned">只看计划</n-checkbox>
-      <n-checkbox v-model:checked="filterAchievable">材料充足或可合成</n-checkbox>
-    </n-space>
+    <GrowthSurveyFilters
+      v-model="surveyFilters"
+      :survey="survey"
+      :loading="surveyLoading"
+      @refresh="loadSurvey"
+    >
+      <n-space style="margin-top: 8px" :size="8" align="center" wrap>
+        <n-input
+          v-model:value="searchQuery"
+          placeholder="搜索干员 / 拼音"
+          clearable
+          style="width: 200px"
+          size="small"
+        />
+        <n-select
+          v-model:value="filterRarity"
+          :options="rarityOptions"
+          multiple
+          placeholder="稀有度"
+          style="min-width: 140px"
+          size="small"
+          clearable
+        />
+        <n-select
+          v-model:value="idleFilter"
+          :options="idleFilterOptions"
+          size="small"
+          style="min-width: 130px"
+          aria-label="基地空闲状态"
+        />
+        <n-select
+          v-model:value="filterProfession"
+          :options="professionOptions"
+          multiple
+          placeholder="职业"
+          style="min-width: 140px"
+          size="small"
+          clearable
+        />
+      </n-space>
+    </GrowthSurveyFilters>
 
     <n-space justify="space-between" align="center" class="filter-summary">
       <n-text depth="3"
@@ -150,6 +155,15 @@
       森空岛同步：{{ store.cultivateMsg }}
     </n-text>
 
+    <n-alert
+      v-if="store.yituliuSyncResult"
+      :type="store.yituliuSyncResult.success ? 'success' : 'warning'"
+      :bordered="false"
+      style="margin: 12px 0"
+    >
+      一图流同步：{{ store.yituliuSyncResult.message }}
+    </n-alert>
+
     <n-spin v-if="store.loading" size="large" description="正在分析干员数据..." />
     <n-alert v-else-if="store.error" type="warning" :closable="false">
       <template #header><n-text strong>暂无干员数据</n-text></template>
@@ -181,15 +195,34 @@
             </n-space>
           </template>
           <template #header-extra>
-            <n-space :size="4">
+            <n-space :size="4" align="center" class="operator-status">
               <n-tag :bordered="false" size="small">{{ professionName(op.profession) }}</n-tag>
-              <n-tag :bordered="false" size="small">E{{ op.elite }} Lv{{ op.level }}</n-tag>
+              <n-tag
+                :bordered="false"
+                size="small"
+                :type="surveyFor(op).eliteHighlight ? 'warning' : 'default'"
+                >E{{ op.elite }} Lv{{ op.level }}</n-tag
+              >
+              <n-tooltip v-if="op.max_phase === undefined || op.max_phase >= 1"
+                ><template #trigger
+                  ><n-tag size="small" :bordered="false"
+                    >{{ op.max_phase === 1 ? '精一' : '精二' }}
+                    {{
+                      formatSurveyRate(
+                        op.max_phase === 1 ? surveyFor(op).elite1 : surveyFor(op).elite2
+                      )
+                    }}</n-tag
+                  ></template
+                >一图流拥有者{{ op.max_phase === 1 ? '精一' : '精二' }}率；拥有样本
+                {{ surveyMap.get(op.char_id)?.own?.toLocaleString() || '暂无' }}</n-tooltip
+              >
               <n-tag v-if="hasPlannedGoal(op)" type="success" :bordered="false" size="small"
                 >计划中</n-tag
               >
               <n-button
                 size="tiny"
-                quaternary
+                ghost
+                class="all-plan-button"
                 type="warning"
                 @click.stop="addAllToPlan(op)"
                 :disabled="!!op.material_error"
@@ -208,39 +241,47 @@
             {{ op.mastery_error }}
           </n-alert>
           <n-alert v-if="op.material_error" type="warning">{{ op.material_error }}</n-alert>
-          <n-card v-if="op.max_level" size="small" class="level-card" title="等级与精英化">
-            <div v-for="choice in levelChoices(op)" :key="choice.key" class="promotion-row">
-              <n-checkbox
-                :checked="levelGoalFor(op) === choice.key"
-                :disabled="
-                  goalSaving ||
-                  (!choice.summary && levelGoalFor(op) !== choice.key) ||
-                  isLevelBelowPrerequisite(op, choice.key)
-                "
-                @update:checked="(value) => toggleLevelGoal(op, choice.key, value)"
-                >{{ choice.label }}</n-checkbox
-              >
-              <n-text v-if="!choice.summary" depth="3">已达成</n-text>
-            </div>
-            <n-text depth="3" class="overview-note"
-              >三个等级目标互斥；专精和模组自动选择尚未满足的最低前置，更高目标优先。</n-text
-            >
-            <MasteryMaterials
-              v-if="levelSummary(op)"
-              :summary="levelSummary(op)"
-              title="等级与精英化材料"
-            />
-          </n-card>
+          <GrowthLevelPlan
+            :operator="op"
+            :selected-key="levelGoalFor(op)"
+            :required-key="prerequisiteLevelGoal(op, hasPlannedSkill(op), store.goals)"
+            :saving="goalSaving"
+            :apply-target="(key) => applyLevelTarget(op, key)"
+          />
           <n-card
-            v-if="op.basic_skill_summary"
+            v-if="op.basic_skill_summary || (op.supports_basic_skill7 && op.max_phase < 2)"
             size="small"
             class="level-card"
             :title="`基础技能 ${op.main_skill_level} → 7 级`"
           >
-            <n-text depth="3"
-              >选择专精后自动计入计划，同一干员的基础技能材料只计算一次。升级完成并同步后才执行专精。</n-text
+            <n-checkbox
+              v-if="op.supports_basic_skill7"
+              :checked="isGoalPlanned(op.char_id, 'skill7') || hasPlannedSkill(op)"
+              :disabled="
+                goalSaving ||
+                hasPlannedSkill(op) ||
+                (!op.basic_skill_summary && !isGoalPlanned(op.char_id, 'skill7'))
+              "
+              @update:checked="(value) => toggleGoal(op, 'skill7', value)"
             >
-            <MasteryMaterials :summary="op.basic_skill_summary" title="基础技能升级材料" />
+              {{ op.basic_skill_summary ? '规划至基础技能 7 级' : '基础技能已达 7 级' }}
+            </n-checkbox>
+            <n-text depth="3" class="overview-note">
+              基础技能材料按干员只计算一次，需在游戏中手动升级。
+              <template
+                v-if="op.basic_skill_prerequisite && op.elite < op.basic_skill_prerequisite.elite"
+                >最低前置为{{ eliteLabel(op.basic_skill_prerequisite.elite) }}
+                {{ op.basic_skill_prerequisite.level }} 级，材料自动计入。</template
+              >
+              <template v-if="op.max_phase >= 2"
+                >专精计划自动包含此项，升级并同步后才执行专精。</template
+              >
+            </n-text>
+            <MasteryMaterials
+              v-if="op.basic_skill_summary"
+              :summary="op.basic_skill_summary"
+              title="基础技能升级材料"
+            />
           </n-card>
           <div v-for="rec in visibleRecs(op)" :key="rec.skill_index" class="rec-item">
             <n-card size="small">
@@ -248,13 +289,29 @@
                 <n-space align="center" justify="space-between" style="width: 100%">
                   <n-space align="center" :size="8">
                     <n-text strong>{{ rec.skill_name }}</n-text>
+                    <n-tag
+                      size="small"
+                      :bordered="false"
+                      :type="
+                        surveyFor(op).skillHighlights.includes(rec.skill_index)
+                          ? 'warning'
+                          : 'default'
+                      "
+                      >专三
+                      {{
+                        formatSurveyRate(
+                          surveyFor(op).skills.find((skill) => skill.index === rec.skill_index)
+                            ?.rate
+                        )
+                      }}</n-tag
+                    >
                     <n-text depth="3" style="font-size: 12px"
                       >{{ masteryLevelLabel(op.main_skill_level, rec.current_level) }} → 专{{
                         rec.target_level
                       }}</n-text
                     >
                   </n-space>
-                  <n-space :size="8" align="center">
+                  <n-space :size="8" align="center" class="rec-controls">
                     <n-select
                       :value="rec.target_level"
                       :options="targetOptions(rec)"
@@ -264,11 +321,8 @@
                       style="width: 104px"
                       aria-label="目标专精等级"
                     />
-                    <n-tag :type="materialStatusType(rec.skill_material_summary)" size="small">
-                      {{ materialStatus(rec.skill_material_summary) }}
-                    </n-tag>
                     <n-button
-                      size="tiny"
+                      size="small"
                       :type="isSkillPlanned(op.char_id, rec.skill_index) ? 'success' : 'default'"
                       @click.stop="toggleSkillPlan(op, rec)"
                       :disabled="
@@ -279,14 +333,14 @@
                     </n-button>
                     <n-button
                       type="primary"
-                      size="tiny"
+                      size="small"
                       :disabled="!!op.mastery_error || startingMastery"
                       @click.stop="insertMasteryTask(op, rec)"
                       >一键插入专精任务</n-button
                     >
                     <n-button
                       v-if="planStatus[planKey(op.char_id, rec.skill_index)]?.id"
-                      size="tiny"
+                      size="small"
                       @click.stop="openSupports(op, rec)"
                       >协助方案</n-button
                     >
@@ -320,6 +374,17 @@
                 >
                   <n-text strong>{{ module.type }} · {{ module.name }}</n-text>
                 </n-checkbox>
+                <n-tag
+                  size="small"
+                  :bordered="false"
+                  :type="surveyFor(op).moduleHighlights.includes(module.id) ? 'warning' : 'default'"
+                  >解锁
+                  {{
+                    formatSurveyRate(
+                      surveyFor(op).modules.find((item) => item.id === module.id)?.rate
+                    )
+                  }}</n-tag
+                >
                 <n-select
                   v-if="module.current_level < module.max_level"
                   :value="moduleTarget(op, module)"
@@ -344,7 +409,9 @@
               />
             </div>
           </section>
-          <n-text v-if="!op.recommendations.length && !op.modules?.length" depth="3"
+          <n-text
+            v-if="op.rarity >= 4 && !op.recommendations.length && !op.modules?.length"
+            depth="3"
             >该干员的技能已全部专三</n-text
           >
         </n-collapse-item>
@@ -726,7 +793,7 @@ import {
 import { masteryScheduleContext, masteryTraineeWarning } from '@/utils/masterySupport'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import MasteryMaterials from '@/components/MasteryMaterials.vue'
-import { materialStatus, materialStatusType } from '@/utils/masteryMaterials'
+import GrowthLevelPlan from '@/components/GrowthLevelPlan.vue'
 import {
   NAlert,
   NAvatar,
@@ -776,12 +843,15 @@ import {
 import { render_op_label } from '@/utils/op_select'
 import { masteryLevelLabel } from '@/utils/masteryLevel'
 import { interleaveMasteryPlans } from '@/utils/masteryPlanOrder'
-import GrowthStatistics from '@/components/GrowthStatistics.vue'
+import OperatorStatistics from '@/components/OperatorStatistics.vue'
+import GrowthSurveyFilters from '@/components/GrowthSurveyFilters.vue'
+import { defaultSurveyFilters, operatorSurvey, formatSurveyRate } from '@/utils/growthSurvey'
 const theme = useThemeVars()
 import {
   selectedRecommendation,
   goalSelected,
-  levelGoals,
+  operatorLevelGoals,
+  isGrowthOperatorIdle,
   prerequisiteLevelGoal,
   selectedLevelGoal
 } from '@/utils/growthPlanning'
@@ -812,26 +882,23 @@ const professionName = (p) => profMap[p] || p
 const rarityOptions = [
   { label: '6★', value: 6 },
   { label: '5★', value: 5 },
-  { label: '4★', value: 4 }
+  { label: '4★', value: 4 },
+  { label: '3★', value: 3 },
+  { label: '2★', value: 2 },
+  { label: '1★', value: 1 }
 ]
 const professionOptions = profKeys.map((p) => ({ label: p, value: p }))
 
+const statisticsExpanded = ref(false)
+const idleFilter = ref('all')
+const idleFilterOptions = [
+  { label: '空闲状态：不限', value: 'all' },
+  { label: '空闲', value: 'idle' },
+  { label: '忙碌', value: 'busy' }
+]
 const searchQuery = ref('')
 const filterRarity = ref([])
 const filterProfession = ref([])
-const filterElite = ref([])
-const filterGoal = ref('all')
-const eliteOptions = [0, 1, 2].map((value) => ({
-  value,
-  label: ['未精英化', '精一', '精二'][value]
-}))
-const goalOptions = [
-  { value: 'all', label: '全部养成项目' },
-  { value: 'mastery', label: '有待专精技能' },
-  { value: 'max_level', label: '未满练干员' },
-  { value: 'module', label: '有待升级模组' },
-  { value: 'ready', label: '已满足专精条件' }
-]
 const targets = ref({})
 const targetSaving = ref(false)
 const goalSaving = ref(false)
@@ -846,49 +913,40 @@ const growthGoalEntries = computed(() =>
       key: `${goal.char_id}:${goal.module_id}`,
       name: op?.name || goal.char_id,
       label:
-        goal.module_id === 'elite2_max'
-          ? `精二 ${op?.max_level || { 6: 90, 5: 80, 4: 70 }[op?.rarity] || ''} 级（满练）`
-          : goal.module_id === 'elite2_module'
-            ? `精二 ${op?.module_level || ''} 级（模组等级）`
-            : goal.module_id === 'elite2'
-              ? '精二 1 级'
-              : `${module?.type || ''} · ${module?.name || goal.module_id}（目标 ${goal.target_level || module?.max_level || 1} 级）`
+        goal.module_id === 'skill7'
+          ? '基础技能 7 级'
+          : levelChoices(op || {}).find((choice) => choice.key === goal.module_id)?.label ||
+            `${module?.type || ''} · ${module?.name || goal.module_id}（目标 ${goal.target_level || module?.max_level || 1} 级）`
     }
   })
 )
 const totalGoalCount = computed(() => planEntries.value.length + store.goals.length)
 const isGoalPlanned = (cid, mid) => goalSelected(store.goals, cid, mid)
 const levelGoalFor = (op) => selectedLevelGoal(op, hasPlannedSkill(op), store.goals)
+const eliteLabel = (elite) => ['精零', '精一', '精二'][elite] || `精${elite}`
 function levelChoices(op) {
-  return [
-    {
-      key: 'elite2_max',
-      label: `规划至精二 ${op.max_level} 级（满练）`,
-      summary: op.max_level_summary
-    },
-    {
-      key: 'elite2_module',
-      label: `规划至精二 ${op.module_level} 级（模组等级）`,
-      summary: op.module_level_summary
-    },
-    { key: 'elite2', label: '规划至精二 1 级', summary: op.promotion_summary }
-  ]
+  return operatorLevelGoals(op)
 }
-function levelSummary(op) {
-  return levelChoices(op).find((choice) => choice.key === levelGoalFor(op))?.summary
-}
-function isLevelBelowPrerequisite(op, key) {
-  return (
-    levelGoals.indexOf(key) <
-    levelGoals.indexOf(prerequisiteLevelGoal(op, hasPlannedSkill(op), store.goals))
-  )
-}
-async function toggleLevelGoal(op, key, selected) {
-  if (!selected && !isGoalPlanned(op.char_id, key)) {
-    message.info('此等级是已选技能或模组的最低前置；移除对应项目后会自动取消。')
+async function applyLevelTarget(op, key) {
+  if (goalSaving.value) return
+  const choice = levelChoices(op).find((entry) => entry.key === key)
+  const choices = levelChoices(op).map((entry) => entry.key)
+  const required = prerequisiteLevelGoal(op, hasPlannedSkill(op), store.goals)
+  if (choices.indexOf(choice?.key) < choices.indexOf(required)) {
+    message.info('此等级低于已选养成项目的最低前置；移除对应项目后可降低目标。')
     return
   }
-  await toggleGoal(op, key, selected)
+  if (choice && !choice.summary) {
+    message.info('该等级已经达成，无需再加入计划。')
+    return
+  }
+  if (choice) await toggleGoal(op, choice.key, true)
+  else {
+    const existing = store.goals.find(
+      (goal) => goal.char_id === op.char_id && choices.includes(goal.module_id)
+    )
+    if (existing) await toggleGoal(op, existing.module_id, false)
+  }
 }
 const hasPlannedGoal = (op) =>
   hasPlannedSkill(op) || store.goals.some((goal) => goal.char_id === op.char_id)
@@ -903,11 +961,8 @@ function resetFilters() {
   searchQuery.value = ''
   filterRarity.value = []
   filterProfession.value = []
-  filterElite.value = []
-  filterGoal.value = 'all'
   idleFilter.value = 'all'
-  showOnlyPlanned.value = false
-  filterAchievable.value = false
+  surveyFilters.value = defaultSurveyFilters()
 }
 function browseOperators() {
   showPlan.value = false
@@ -994,15 +1049,6 @@ async function toggleGoal(op, moduleId, selected, targetLevel) {
     goalSaving.value = false
   }
 }
-const filterAchievable = ref(false)
-const showOnlyPlanned = ref(false)
-// 空闲状态三态：all=全部 idle=空闲 busy=非空闲
-const idleFilter = ref('all')
-const idleFilterOptions = [
-  { label: '全部', value: 'all' },
-  { label: '空闲', value: 'idle' },
-  { label: '非空闲', value: 'busy' }
-]
 const {
   workshop_min_bonus: workshopMinBonus,
   workshop_protect_t2_device_rock: workshopProtectT2,
@@ -1085,14 +1131,13 @@ async function setWorkshopOperators() {
 }
 const workshopT3Summary = ref([])
 
-const emptyText = computed(() => {
-  if (searchQuery.value || filterRarity.value.length || filterProfession.value.length)
-    return '没有匹配的干员'
-  if (idleFilter.value === 'idle') return '没有空闲干员'
-  if (idleFilter.value === 'busy') return '没有非空闲干员'
-  if (showOnlyPlanned.value) return '没有计划中的专精项'
-  return '没有推荐项'
-})
+const emptyText = computed(() =>
+  idleFilter.value === 'idle'
+    ? '没有符合当前筛选的空闲干员'
+    : idleFilter.value === 'busy'
+      ? '没有符合当前筛选的忙碌干员'
+      : '没有匹配当前筛选条件的干员'
+)
 
 // ─── 计划（技能级别）───
 // 格式: { "charId_skillIndex": true, ... }
@@ -1822,16 +1867,10 @@ async function calculateOptimalRoutes() {
 
 // ─── 显示列表 ───
 
-// ─── 空闲干员筛选 ───
-// 空闲 = 不在排班表（主/副表槽位 + 候补 replacement）& 不在专精路线配置（协助位 name/换人 swap_name）
-// & 不在加工站工具人 & 不在宿舍黑名单。
-// 与「是否有专精计划」正交：空闲/非空闲只看基地占用，计划状态由「只看计划」管——
-// 非空闲干员同样可以加入计划，添加时仅提示排班冲突。
-// 排班由 App 启动时全局 load（router-view 以 loaded 门控，进入本页必然已加载）。
+// 排班上下文用于加入计划时提示训练冲突。
 const supportSchedule = computed(() =>
   masteryScheduleContext(planStore.plan, planStore.backup_plans)
 )
-const scheduledOperatorSet = computed(() => supportSchedule.value.scheduled)
 const autoCentralBonus = computed(() => supportSchedule.value.centralBonus)
 function trainingWarning(name) {
   return masteryTraineeWarning(name, supportSchedule.value.blocked)
@@ -1845,73 +1884,85 @@ async function openSupports(op, rec) {
   supportSelection.name = op.name
   showSupports.value = true
 }
-const routeOperatorSet = computed(() => {
-  const busy = new Set()
-  for (const p of profKeys) {
-    for (const sup of routeSettings[p]?.supports || []) {
-      if (sup.name) busy.add(sup.name)
-      if (sup.swap_name) busy.add(sup.swap_name)
-    }
-  }
-  return busy
-})
+const routeOperatorSet = computed(
+  () =>
+    new Set(
+      profKeys.flatMap((profession) =>
+        (routeSettings[profession]?.supports || [])
+          .flatMap((support) => [support.name, support.swap_name])
+          .filter(Boolean)
+      )
+    )
+)
 const workshopOperators = computed(() => selectedWorkshopOperators(configStore))
+function isIdleOperator(op) {
+  return isGrowthOperatorIdle(
+    op.name,
+    supportSchedule.value.scheduled,
+    routeOperatorSet.value,
+    workshopOperators.value,
+    configStore.free_blacklist || []
+  )
+}
 function workshopTrainingWarning(name) {
   return workshopTraineeWarning(name, workshopOperators.value)
 }
-function isIdleOperator(op) {
-  if (scheduledOperatorSet.value.has(op.name)) return false
-  if (routeOperatorSet.value.has(op.name)) return false
-  if (workshopOperators.value.has(op.name)) return false
-  if ((configStore.free_blacklist || []).includes(op.name)) return false
-  return true
-}
 
+const surveyFilters = ref(defaultSurveyFilters())
+const survey = ref({ operators: [], error: '', fetched_at: null, stale: false })
+const surveyLoading = ref(false)
+async function loadSurvey() {
+  if (surveyLoading.value) return
+  surveyLoading.value = true
+  try {
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/growth-survey`, {
+      timeout: 20000
+    })
+    survey.value = response.data
+  } catch (error) {
+    survey.value = {
+      ...survey.value,
+      stale: Boolean(survey.value.operators?.length),
+      error: '一图流统计暂时不可用'
+    }
+  } finally {
+    surveyLoading.value = false
+  }
+}
+const surveyMap = computed(
+  () => new Map((survey.value.operators || []).map((row) => [row.charId, row]))
+)
+const operatorSurveys = computed(
+  () =>
+    new Map(
+      store.recommendations.map((op) => [
+        op.char_id,
+        operatorSurvey(op, surveyMap.value.get(op.char_id), surveyFilters.value)
+      ])
+    )
+)
+const surveyFor = (op) => operatorSurveys.value.get(op.char_id)
 function visibleRecs(op) {
-  let recs = op.recommendations.map((rec) => selectedRecommendation(rec, targetFor(op, rec)))
-  if (showOnlyPlanned.value)
-    recs = recs.filter((rec) => isSkillPlanned(op.char_id, rec.skill_index))
-  if (filterAchievable.value) recs = recs.filter((rec) => rec.material_summary?.craftable)
-  return recs
+  return op.recommendations.map((rec) => selectedRecommendation(rec, targetFor(op, rec)))
 }
 function visibleModules(op) {
-  let modules = op.modules || []
-  if (showOnlyPlanned.value)
-    modules = modules.filter((module) => isGoalPlanned(op.char_id, module.id))
-  if (filterAchievable.value)
-    modules = modules.filter((module) => moduleSummary(op, module).material_summary?.craftable)
-  return modules
+  return op.modules || []
 }
-const displayList = computed(() =>
-  store.recommendations.filter((op) => {
-    if (showOnlyPlanned.value && !hasPlannedGoal(op)) return false
-    if (idleFilter.value === 'idle' && !isIdleOperator(op)) return false
-    if (idleFilter.value === 'busy' && isIdleOperator(op)) return false
-    if (!matchesSearch(op.name, searchQuery.value)) return false
-    if (filterRarity.value.length && !filterRarity.value.includes(op.rarity)) return false
-    if (filterProfession.value.length && !filterProfession.value.includes(profMap[op.profession]))
-      return false
-    if (filterElite.value.length && !filterElite.value.includes(op.elite)) return false
-    if (filterGoal.value === 'max_level' && !op.max_level_summary) return false
-    if (filterGoal.value === 'mastery' && !op.recommendations.length) return false
-    if (
-      filterGoal.value === 'module' &&
-      !op.modules?.some((module) => module.current_level < module.max_level)
-    )
-      return false
-    if (filterGoal.value === 'ready' && (op.mastery_error || !op.recommendations.length))
-      return false
-    if (
-      filterAchievable.value &&
-      !visibleRecs(op).length &&
-      !visibleModules(op).some((module) => module.current_level < module.max_level) &&
-      !op.promotion_summary?.craftable &&
-      !op.max_level_summary?.craftable
-    )
-      return false
-    return true
-  })
-)
+const displayList = computed(() => {
+  const list = store.recommendations.filter(
+    (op) =>
+      (idleFilter.value === 'all' || (idleFilter.value === 'idle') === isIdleOperator(op)) &&
+      matchesSearch(op.name, searchQuery.value) &&
+      (!filterRarity.value.length || filterRarity.value.includes(op.rarity)) &&
+      (!filterProfession.value.length || filterProfession.value.includes(profMap[op.profession])) &&
+      surveyFor(op).visible
+  )
+  if (surveyFilters.value.sort === 'recommendation')
+    list.sort((a, b) => surveyFor(b).score - surveyFor(a).score)
+  if (surveyFilters.value.sort === 'level')
+    list.sort((a, b) => b.elite - a.elite || b.level - a.level)
+  return list
+})
 
 const planMaterials = ref(null)
 const chipFarmingLoading = ref(false)
@@ -2042,8 +2093,8 @@ async function insertMasteryTask(op, rec) {
 // ─── 初始化 ───
 onMounted(async () => {
   await refreshPlanFromServer()
-  await Promise.all([loadOperators(), store.fetchRecommendations()])
-  // 空闲干员筛选需要路线配置；打开设置时再刷新一次，反映最新拥有情况和解锁技能。
+  await Promise.all([loadOperators(), store.fetchRecommendations(), loadSurvey()])
+  // 载入专精路线；打开设置时刷新拥有情况和解锁技能。
   if (!defaultsCache.value) {
     try {
       await loadRoute()
@@ -2065,6 +2116,26 @@ async function loadOperators() {
 </script>
 
 <style scoped>
+.statistics-panel {
+  margin: 18px 0;
+}
+.rec-controls :deep(.n-button),
+.rec-controls :deep(.n-base-selection) {
+  height: 28px;
+  --n-height: 28px !important;
+}
+.operator-status :deep(.n-tag),
+.operator-status :deep(.n-button) {
+  height: 22px;
+  --n-height: 22px !important;
+}
+.operator-status :deep(.all-plan-button) {
+  padding: 0 8px;
+  background: color-mix(in srgb, currentColor 7%, transparent);
+}
+.operator-status :deep(.all-plan-button .n-button__border) {
+  border-color: currentColor;
+}
 .page-header {
   display: flex;
   align-items: center;
@@ -2221,9 +2292,6 @@ async function loadOperators() {
   padding: 8px;
   touch-action: none;
 }
-.growth-page :deep(.n-button) {
-  min-height: 36px;
-}
 .growth-page :deep(.n-checkbox) {
   padding-block: 8px;
 }
@@ -2241,9 +2309,6 @@ async function loadOperators() {
   .growth-page :deep(.n-collapse-item__header-main) {
     flex-wrap: wrap;
     gap: 10px;
-  }
-  .growth-page :deep(.n-button) {
-    min-height: 40px;
   }
 }
 </style>

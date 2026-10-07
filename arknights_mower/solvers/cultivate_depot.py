@@ -1,4 +1,5 @@
 import json
+from threading import Lock
 from time import time
 
 from arknights_mower.utils import config
@@ -14,6 +15,8 @@ from arknights_mower.utils.skland import (
 )
 from arknights_mower.utils.workshop_data import parse_roster
 
+_refresh_lock = Lock()
+
 
 class cultivate:
     def __init__(self):
@@ -23,6 +26,12 @@ class cultivate:
         self.all_recorded = True
 
     def start(self):
+        # Keep request, local persistence and remote upload in the same order.
+        with _refresh_lock:
+            return self._refresh()
+
+    def _refresh(self):
+        self.yituliu_sync_result = None
         if not config.conf.skland_info:
             return False
         updated = False
@@ -42,6 +51,12 @@ class cultivate:
                 if isinstance(resp, dict) and resp.get("code") != 0:
                     raise ValueError(resp.get("message") or "森空岛返回的干员数据无效")
                 parse_roster(resp)
+                player_fields = ("uid", "nickName", "channelName", "channelMasterId")
+                if all(key in i for key in player_fields):
+                    resp = {
+                        **resp,
+                        "_mower_player": {key: i[key] for key in player_fields},
+                    }
                 items = resp.get("data", {}).get("items")
                 if items is not None:
                     if not isinstance(items, list) or any(
@@ -84,6 +99,9 @@ class cultivate:
                         cloud_at=timestamp,
                     )
                 updated = True
+                from arknights_mower.utils.yituliu_sync import sync_after_cultivate
+
+                self.yituliu_sync_result = sync_after_cultivate(resp)
         return updated
 
     def save_param(self, cred_resp):

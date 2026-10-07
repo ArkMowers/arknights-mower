@@ -517,6 +517,9 @@ const idleOptions = computed(() => [
         <SKLand />
       </div>
       <div>
+        <YituliuSyncSettings />
+      </div>
+      <div>
         <Depotswitch />
       </div>
       <div>

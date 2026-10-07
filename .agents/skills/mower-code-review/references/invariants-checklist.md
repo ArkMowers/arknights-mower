@@ -17,6 +17,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ## 2. Subsystem Invariants
 
+- [ ] **[INV-GROWTH-02] Public Survey Isolation**: Does public survey retrieval omit local identity and credentials? Are missing rates unknown and plans preserved during survey display and filtering? Does a configured token produce only one fixed-endpoint upload after each actual successful Skland refresh, or an explicit manual sync, with no upload merely on token save or cache read? Are uploaded fields limited to game UID, nickname, server and progression, credentials absent from responses and logs, and upload failure isolated from local cache and Skland success?
+
 - [ ] **[INV-GROWTH-01] Shared Growth Budget**: Growth planning admits unready operators without dispatching training, counts shared prerequisites once, reserves stock by operator, emits only outstanding permitted recipes, and keeps manual chip conversion separate from automatic crafting.
 
 - [ ] **[INV-REC-06] Selection Page Exit**: Do anomalous selection readings detect the known facility roster marker on the same Capture Frame and propagate page exit without filter reset or further selection input, while normal readings avoid additional page lookups or captures and existing room recovery reads actual occupants?
