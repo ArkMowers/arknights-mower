@@ -3,7 +3,7 @@
 # ruff: noqa: E402
 
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,7 +14,7 @@ from arknights_mower.solvers.base_schedule import ProductSwitchDeferred
 from arknights_mower.tests.multi_group_shift_tests import SHARED, A, B, shift_off
 from arknights_mower.tests.multi_group_shift_tests import solver as solver
 from arknights_mower.utils.plan import Room
-from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes, plan_metadata
 
 
 @pytest.mark.parametrize("reserved", [False, True])
@@ -168,3 +168,91 @@ def test_common_alternatives_allow_complete_matching_across_shared_slots(solver)
     assert proposed["contact"] == ["黑角"]
     assert proposed["factory"] == ["红"]
     assert not solver.op_data.group_is_resting("甲")
+
+
+@pytest.mark.parametrize("exhausted", [False, True])
+def test_shared_revalidation_allows_zero_mood_cover(solver, exhausted):
+    data = solver.op_data
+    shared = data.operators[SHARED]
+    for binding in shared.group_bindings:
+        binding["replacement"] = ["红", "黑角"]
+    shared.replacement = ["红", "黑角"]
+    assert shift_off(solver, "甲")[0]
+    assert shift_off(solver, "乙")[0]
+    data = solver.op_data
+    data.operators["红"]._current_room = "factory"
+    data.operators["红"].current_index = 0
+    data.operators[B].mood = 5
+    data.operators[SHARED].mood = 5
+    data.operators["黑角"].mood = 0 if exhausted else 24
+    data.operators["黑角"].time_stamp = datetime.now()
+    assert data.replacement_exhausted("黑角") is exhausted
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_ON,
+        task_plan={"meeting": [A, "Current"], "contact": [SHARED]},
+    )
+    solver.task, solver.tasks = task, [task]
+    solver._prepare_group_shift(task)
+    solver._prepare_shift_cycle(task)
+    solver._prepare_group_shift(task, remember_targets=True)
+    assert task.plan["contact"] == ["黑角"]
+
+
+@pytest.mark.parametrize("backup_active", [False, True])
+@pytest.mark.parametrize("entry", ["solver", "utility"])
+def test_replan_keeps_unconfirmed_shared_return(solver, backup_active, entry):
+    assert shift_off(solver, "甲")[0]
+    data = solver.op_data
+    for bed in data.dorm:
+        if bed.name:
+            bed.time = datetime.now() + timedelta(hours=1)
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_ON,
+        task_plan={"meeting": [A, "Current"], "contact": [SHARED]},
+    )
+    other = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF, task_plan={"meeting": ["Current", "初雪"]}
+    )
+    solver.task, solver.tasks = task, [task, other]
+    solver._reserve_deferred_product_shift(other, {("meeting", 1)})
+    solver._refresh_deferred_product_reservations()
+    solver._prepare_group_shift(task)
+    solver._prepare_shift_cycle(task)
+    solver._activate_shift_backup(task)
+    solver._prepare_group_shift(task, remember_targets=True)
+    assert not getattr(task, "backup_shift_active", False)
+    partial = data.project_arrangements([{"meeting": [A, "Current"]}])
+    data.operators, data.dorm = partial.operators, partial.dorm
+    assert not solver._complete_group_shift(task)
+    assert task.plan == {"contact": [SHARED]}
+    assert data.group_is_resting("甲")
+    solver.task = None
+    task.backup_shift_active = backup_active
+    retry_time = task.time
+    expected = dict(task.group_shift_expected)
+    if entry == "solver":
+        solver.plan_metadata()
+    else:
+        solver.tasks = plan_metadata(data, solver.tasks)
+    assert task.time == retry_time
+    assert task.group_shift_expected == expected
+    correction = solver.agent_get_mood(read_rooms=False, return_plan=True)
+    assert data.group_is_resting("甲")
+    assert data.get_current_operator("contact", 0).name == "红"
+    assert correction == {}
+    assert not solver.get_resting_plan(data.groups["乙"], [], {}, 0)
+    assert task in solver.tasks, [(t.type, t.plan) for t in solver.tasks]
+    # 其他读房确认共享主班已回岗，也不能在提交组状态前删除待完成任务。
+    data.operators["红"]._current_room, data.operators["红"].current_index = "", -1
+    data.operators[SHARED]._current_room, data.operators[SHARED].current_index = (
+        "contact",
+        0,
+    )
+    solver._cancel_pending_shift_on(SHARED)
+    assert task in solver.tasks
+    assert solver._complete_group_shift(task)
+    assert not data.group_is_resting("甲")
+    assert task.group_shift_expected == {}
+    task.backup_shift_active = False
+    solver.plan_metadata()
+    assert task not in solver.tasks

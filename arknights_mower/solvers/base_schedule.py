@@ -1076,9 +1076,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self._emergency_filter_tasks()
             self._emergency_replan_releases()
             return
-        if any(getattr(task, "backup_shift_active", False) for task in self.tasks):
-            # 部分房间已完成时不能拿中间状态重建并覆盖尚未完成的回班任务。
-            return
         self.tasks = plan_metadata(self.op_data, self.tasks)
 
     def prepare_release_dorm(self, task):
@@ -3716,6 +3713,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             return False
         if any(
             getattr(task, "backup_shift_active", False)
+            or getattr(task, "group_shift_expected", {})
             for task in getattr(self, "tasks", [])
         ):
             logger.debug("换班最终安排尚未完成，避免用中间驻员状态重新切表")
@@ -8074,6 +8072,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if (
                 task is getattr(self, "task", None)
                 or task.type != TaskTypes.SHIFT_ON
+                or getattr(task, "group_shift_expected", {})
                 or not any(
                     name in names
                     for plan in (task.plan, getattr(task, "backup_shift_intent", {}))

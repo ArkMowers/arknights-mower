@@ -1246,6 +1246,13 @@ def generate_plan_by_drom(
 
 
 def plan_metadata(op_data, tasks):
+    # 部分换班的剩余目标必须先确认，不能从中间驻员状态重建回班队列。
+    if any(
+        getattr(task, "backup_shift_active", False)
+        or getattr(task, "group_shift_expected", {})
+        for task in tasks
+    ):
+        return tasks
     op_data.refresh_idle_dorm_search()
     locked_tasks = [
         task for task in tasks if (getattr(task, "product_shift_locked", False))
