@@ -7,7 +7,8 @@
     "Codex"
   ],
   "invariants": [
-    "[INV-SCHED-25]"
+    "[INV-SCHED-25]",
+    "[INV-SCHED-28]"
   ],
   "code_symbols": [
     "arknights_mower.utils.operators.Operators",
@@ -27,7 +28,8 @@
     "arknights_mower/tests/dorm_recovery_tests.py",
     "arknights_mower/tests/dorm_batch_release_tests.py",
     "arknights_mower/tests/scheduler_recovery_preservation_tests.py",
-    "arknights_mower/tests/mastery_db_tests.py",
-    "arknights_mower/tests/mastery_scheduling_tests.py"
+    "arknights_mower/tests/backup_replacement_state_tests.py",
+    "arknights_mower/tests/shift_backup_convergence_tests.py",
+    "arknights_mower/tests/shift_cycle_convergence_tests.py"
   ]
 }

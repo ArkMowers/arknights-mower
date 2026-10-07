@@ -11,6 +11,8 @@ date: 2026-10-07
 
 [INV-SCHED-25] Group shifts confirm their effective arrangement targets. A dynamic recovery target cancelled at the personal mood cap leaves the pending target map; fixed dormitory posts and unconfirmed working slots remain required. Shared replacement matching preserves all compatible candidates and respects reservations owned by other tasks.
 
+[INV-SCHED-28] Explicit backup entry assignments retain priority through shared-slot revalidation, task coalescing and shift projection. Other shared slots retain ordinary complete-matching requirements.
+
 ## Implementation
 
 `_prepare_group_shift` passes the union of other tasks' product reservations to `normalize_shared_arrangement`. The executing task retains access to its own reservations, while a name reserved by both tasks remains unavailable. Other callers retain the aggregate reservation filter. Candidate ordering places current and requested covers first without removing the remaining common candidates.
@@ -27,7 +29,9 @@ Shared matching excludes a replacement occupying another fixed dormitory post un
 
 Final dormitory selection relocates surviving confirmation targets by name after empty-slot compaction; temporary single-target recovery selections retain the final target map. Pending group confirmation preserves ordinary tasks while independently refreshing personal mood-limit releases from observed beds. Unchanged release sources retain their existing task object and retry time; changed observations replace the deadline and departed residents lose stale release tasks.
 
-Timeout queue rebuilding retains tasks with pending group targets or active backup-shift arrangements, preserving object identity, remaining plans and retry times. These tasks do not themselves trigger ordinary timeout rebuilding. Shared replacement revalidation uses the existing mastery occupancy query, including arranging, training and waiting-for-collection states, independently of position caches. Other compatible candidates remain eligible; absence of a complete assignment defers the shift.
+Timeout queue rebuilding retains tasks with pending group targets or active backup-shift arrangements, preserving object identity, remaining plans and retry times. These tasks do not themselves trigger ordinary timeout rebuilding.
+
+Backup transition tasks record their explicit entry slots. Shift projection carries that task-local ownership through activation and retries; coalescing retains explicit assignments ahead of ordinary arrangements. Shared matching excludes only those slots from automatic replacement, and their assigned operators remain reserved for matching other slots. `Current` does not claim an explicit slot. Shared matching uses position and task reservations without querying mastery state.
 
 ## Verification
 
@@ -41,4 +45,6 @@ Further regression cases cover whole-task product deferral for both shift direct
 
 Cap-confirmation regressions cover compacted dormitory targets, missing working slots, temporary selection isolation, both metadata entry points and backup-shift protection. Automatic-rescue mocks return an empty arrangement dictionary when no correction remains, matching the existing `return_plan=True` contract.
 
-Timeout regressions cover overdue and future partial returns, backup-shift protection, preservation through metadata rebuilding and successful completion after the missing shared primary returns. Mastery regressions cover direct matching and full shift projection with an available candidate, a reserved candidate and an alternative candidate. Scheduler recovery and mastery database tests retain their existing critical-task and occupancy-state coverage.
+Timeout regressions cover overdue and future partial returns, backup-shift protection, preservation through metadata rebuilding and successful completion after the missing shared primary returns. Scheduler recovery tests retain their existing critical-task coverage.
+
+Explicit-backup regressions cover generated tasks, projected activation, both coalescing directions, serialized partial group returns, placeholder exclusion and complete matching for other shared slots without duplicate assignments.

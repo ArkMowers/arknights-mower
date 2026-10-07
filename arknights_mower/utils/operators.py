@@ -1096,21 +1096,24 @@ class Operators:
         self.commit_group_shifts({})
 
     def normalize_shared_arrangement(
-        self, plan, transitions=None, *, reserved_replacements=None
+        self, plan, transitions=None, *, reserved_replacements=None, explicit_slots=()
     ):
         """Keep shared covers until all dependent groups return; reject conflicts.
 
         The caller owns the plan. No live occupancy or group state is modified.
         """
         from arknights_mower.utils.exhaust_replacement import match_replacements
-        from arknights_mower.utils.mastery_db import is_operator_busy
 
         transitions = (
             self.arrangement_group_transitions(plan)
             if transitions is None
             else transitions
         )
-        followers = [op for op in self.operators.values() if op.multi_group]
+        followers = [
+            op
+            for op in self.operators.values()
+            if op.multi_group and (op.room, op.index) not in explicit_slots
+        ]
         changes, options = {}, {}
         managed = {(op.room, op.index) for op in followers}
         reserved = {
@@ -1156,7 +1159,6 @@ class Operators:
                 for name in candidates
                 if name not in reserved
                 and name in self.operators
-                and not is_operator_busy(name)
                 and (
                     actual is not None
                     and actual.name == name

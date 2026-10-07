@@ -3812,6 +3812,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     else TaskTypes.SELF_CORRECTION,
                     meta_data="副表内存收敛",
                 )
+                generated.backup_explicit_slots = self._backup_explicit_slots(
+                    original, current
+                )
+                for pending in superseded:
+                    generated.backup_explicit_slots.update(
+                        (room, index)
+                        for room, index in getattr(pending, "backup_explicit_slots", ())
+                        if transition_plan.get(room, [])[index : index + 1]
+                        == pending.plan.get(room, [])[index : index + 1]
+                    )
                 # 完整最终任务先入队，再撤销旧任务，避免丢失同批有效动作。
                 self.tasks.append(generated)
                 superseded_ids = {id(task) for task in superseded}
@@ -4331,6 +4341,19 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             projected.swap_plan(conditions)
         return projected.products, projected.plan
 
+    def _backup_explicit_slots(self, original, conditions):
+        """Return concrete entry-task slots owned by newly activated backups."""
+        return {
+            (room, index)
+            for active, enabled, bp in zip(
+                original, conditions, self.op_data.backup_plans
+            )
+            if enabled and not active
+            for room, names in (bp.task or {}).items()
+            for index, name in enumerate(names)
+            if name != "Current"
+        }
+
     def _prepare_group_shift(self, task, *, remember_targets=False):
         """Revalidate queued shared slots without committing the pending shift."""
         for pending in self.tasks:
@@ -4348,7 +4371,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             for name in pending.product_lock_names
         }
         if not self.op_data.normalize_shared_arrangement(
-            proposed, transitions, reserved_replacements=reserved
+            proposed,
+            transitions,
+            reserved_replacements=reserved,
+            explicit_slots=getattr(task, "backup_explicit_slots", ()),
         ):
             raise ProductSwitchDeferred("多绑组替班冲突，等待相关组回班", minutes=1)
         task.plan = proposed
@@ -4439,6 +4465,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             task.plan = plan_dorm_isolation(self.op_data, task.plan, reserved_slots)
             return
         intent = copy.deepcopy(getattr(task, "backup_shift_intent", task.plan))
+        explicit_slots = set(getattr(task, "backup_explicit_slots", ()))
         ordinary = {
             TaskTypes.SHIFT_ON,
             TaskTypes.SHIFT_OFF,
@@ -4467,9 +4494,24 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     getattr(queued, "backup_shift_intent", queued.plan),
                     self.op_data,
                 )
-                if not self.op_data.normalize_shared_arrangement(combined):
+                explicit = self._plan_for_slots(intent, explicit_slots)
+                _merge_shift_transition(
+                    explicit,
+                    self._plan_for_slots(
+                        queued.plan, getattr(queued, "backup_explicit_slots", ())
+                    ),
+                    self.op_data,
+                )
+                _merge_shift_transition(combined, explicit, self.op_data)
+                combined_explicit = explicit_slots | set(
+                    getattr(queued, "backup_explicit_slots", ())
+                )
+                if not self.op_data.normalize_shared_arrangement(
+                    combined, explicit_slots=combined_explicit
+                ):
                     continue
                 intent = combined
+                explicit_slots = combined_explicit
             consumed.add(id(queued))
         simulation = copy.copy(self)
         # 求值模型只读复用；eval 注入的 Python 内建对象不能全部深拷贝。
@@ -4481,6 +4523,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         )
         pending = [t for t in self.tasks if t is not task and id(t) not in consumed]
         step = SchedulerTask(task_type=task.type, task_plan=copy.deepcopy(intent))
+        step.backup_explicit_slots = explicit_slots
         step.dorm_fill_plan = copy.deepcopy(getattr(task, "dorm_fill_plan", {}))
         returning = set()
         seen = set()
@@ -4491,6 +4534,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             simulation.tasks = copy.deepcopy(pending)
             simulation.task = step
             simulation._prepare_shift_backup(step)
+            explicit_slots = set(getattr(step, "backup_explicit_slots", ()))
             conditions = getattr(
                 step, "backup_shift_conditions", simulation.op_data.plan_condition
             )
@@ -4598,6 +4642,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             }
             if rest:
                 step = SchedulerTask(task_type=TaskTypes.SHIFT_OFF, task_plan=rest)
+                step.backup_explicit_slots = explicit_slots
                 step.dorm_fill_plan = ordinary_fill
                 continue
             final = {}
@@ -4617,6 +4662,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if self.op_data.group_is_resting(group) != resting
             }
             task.backup_shift_intent = intent
+            task.backup_explicit_slots = explicit_slots
             task.backup_shift_conditions = list(conditions)
             task.plan = final
             task.dorm_fill_plan = {
@@ -4722,6 +4768,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 for bp in projected.backup_plans
             ]
             if next_conditions == conditions:
+                task.backup_explicit_slots = set(
+                    getattr(task, "backup_explicit_slots", ())
+                ) | self._backup_explicit_slots(original, conditions)
                 if conditions == original and merged == intent:
                     task.plan = intent
                     for attr in ("backup_shift_intent", "backup_shift_conditions"):

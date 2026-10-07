@@ -15,7 +15,6 @@ from arknights_mower.solvers import base_schedule
 from arknights_mower.solvers.base_schedule import ProductSwitchDeferred
 from arknights_mower.tests.multi_group_shift_tests import SHARED, A, B, shift_off
 from arknights_mower.tests.multi_group_shift_tests import solver as solver
-from arknights_mower.utils import mastery_db
 from arknights_mower.utils.plan import Room
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
@@ -599,51 +598,3 @@ def test_unfinished_shift_alone_does_not_trigger_timeout_rebuild(solver, protect
     solver.handle_error(force=True)
     assert solver.tasks is queue
     assert solver.tasks == [task, ordinary]
-
-
-@pytest.mark.parametrize(
-    "busy,alternative", [(False, False), (True, False), (True, True)]
-)
-@pytest.mark.parametrize("entry", ["matching", "projection"])
-def test_shared_revalidation_respects_mastery_reservation(
-    solver, monkeypatch, busy, alternative, entry
-):
-    candidates = ["红", "黑角", "夜刀"] if alternative else ["红", "黑角"]
-    shared = solver.global_plan["default_plan"].plan["contact"][0]
-    for binding in shared.group_bindings:
-        binding["replacement"] = list(candidates)
-    shared.replacement = list(candidates)
-    assert solver.initialize_operators() is None
-    for op in solver.op_data.operators.values():
-        op._current_room, op.current_index = op.room, op.index
-        op.mood, op.time_stamp = 24, datetime.now()
-    assert shift_off(solver, "甲")[0]
-    assert shift_off(solver, "乙")[0]
-    data = solver.op_data
-    data.operators["红"]._current_room, data.operators["红"].current_index = (
-        "factory",
-        0,
-    )
-    data.operators[B].mood = data.operators[SHARED].mood = 5
-    assert not data.operators["黑角"].current_room
-    monkeypatch.setattr(
-        mastery_db, "is_operator_busy", lambda name: busy and name == "黑角"
-    )
-    monkeypatch.setattr(base_schedule, "_is_mastery_busy", mastery_db.is_operator_busy)
-    plan = {"meeting": [A, "Current"], "contact": [SHARED]}
-    if entry == "matching":
-        assert data.normalize_shared_arrangement(plan) is (not busy or alternative)
-    else:
-        task = SchedulerTask(task_type=TaskTypes.SHIFT_ON, task_plan=plan)
-        solver.task, solver.tasks = task, [task]
-        if busy and not alternative:
-            with pytest.raises(ProductSwitchDeferred):
-                solver._prepare_group_shift(task)
-            return
-        solver._prepare_group_shift(task)
-        solver._prepare_shift_cycle(task)
-        solver._prepare_group_shift(task, remember_targets=True)
-        plan = task.plan
-    assert plan["contact"] == (
-        ["夜刀"] if busy and alternative else [SHARED] if busy else ["黑角"]
-    )

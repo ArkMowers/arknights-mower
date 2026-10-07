@@ -13,7 +13,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers import base_schedule
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
-from arknights_mower.utils import config, mastery_db
+from arknights_mower.utils import config
 from arknights_mower.utils.config.plan import PlanModel
 from arknights_mower.utils.operators import Operators
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
@@ -31,7 +31,6 @@ def solver(monkeypatch):
     monkeypatch.setattr(config, "conf", config.Conf())
     monkeypatch.setattr(config, "save_conf", lambda: None)
     monkeypatch.setattr(base_schedule, "_is_mastery_busy", lambda name: False)
-    monkeypatch.setattr(mastery_db, "is_operator_busy", lambda name: False)
     config.conf.enable_mastery = False
     config.conf.rescue_threshold = 0
     instance = object.__new__(BaseSchedulerSolver)
