@@ -1,5 +1,4 @@
 import os
-import shutil
 import sys
 from pathlib import Path
 from typing import Literal
@@ -11,11 +10,11 @@ from arknights_mower.utils.config.device_profile import (
     LEGACY_NAMES,
     DeviceProfile,
     capture_compatibility_error,
+    default_adb_path,
     profile_from_legacy,
     updated_legacy_profile_fields,
 )
 from arknights_mower.utils.config.plan import PlanModel
-from arknights_mower.utils.path import get_path
 from arknights_mower.utils.performance import (
     PERFORMANCE_PRESETS,
     default_performance_mode,
@@ -32,16 +31,6 @@ DEFAULT_LAUNCH_COMMAND = (
 
 def default_maa_directory():
     return "@app/MAA"
-
-
-def default_adb_path():
-    name = "adb.exe" if sys.platform == "win32" else "adb"
-    bundled = get_path(f"@internal/platform-tools/{name}")
-    if bundled.is_file() or sys.platform == "darwin":
-        return f"@internal/platform-tools/{name}"
-    if sys.platform.startswith("linux"):
-        return os.environ.get("MOWER_ADB_BIN") or shutil.which("adb") or ""
-    return ""
 
 
 class ConfModel(BaseModel):
