@@ -1,7 +1,7 @@
 <template>
   <n-card size="small" title="大数据养成推荐 / 干员筛选" class="survey-filters">
     <template #header-extra>
-      <n-button text size="small" :loading="loading" @click="$emit('refresh')">读取统计</n-button>
+      <n-button size="small" :loading="loading" @click="$emit('refresh')">读取统计</n-button>
     </template>
     <n-alert v-if="survey.error" type="warning" :bordered="false" style="margin-bottom: 12px">
       {{ survey.error }}

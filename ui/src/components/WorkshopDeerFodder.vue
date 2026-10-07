@@ -28,7 +28,7 @@
             <mower-input-number
               size="large"
               :value="item.children_lower_limit"
-              @update:value="item.children_lower_limit = $event ?? 0"
+              @update:value="item.children_lower_limit = $event ?? 20"
               :min="0"
               :max="999999"
               :precision="0"
@@ -58,7 +58,7 @@
       block
       secondary
       :disabled="disabled || loading || !!error"
-      @click="items.push({ item_names: [], children_lower_limit: 0, self_upper_limit: 9999 })"
+      @click="items.push({ item_names: [], children_lower_limit: 20, self_upper_limit: 9999 })"
       class="fodder-button"
       >新增素材设置</n-button
     >

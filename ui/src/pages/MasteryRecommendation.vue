@@ -47,7 +47,7 @@
     <n-card size="small" class="statistics-panel" title="干员数据统计">
       <template #header-extra
         ><n-button
-          text
+          size="small"
           :aria-expanded="statisticsExpanded"
           @click="statisticsExpanded = !statisticsExpanded"
         >
@@ -124,13 +124,18 @@
 
     <n-card size="small" class="materials-overview">
       <n-spin :show="materialsLoading">
-        <MasteryMaterials
-          :summary="planMaterials"
-          :missing-skills="missingPlanSkills"
-          expand-crafting
-          title="养成材料总览"
-        >
-          <template #before>
+        <n-collapse>
+          <n-collapse-item title="养成材料总览" name="materials-overview">
+            <template #header-extra>
+              <n-tag
+                v-if="planMaterials"
+                :type="materialStatusType(planMaterials)"
+                size="small"
+                :bordered="false"
+              >
+                {{ materialStatus(planMaterials) }}
+              </n-tag>
+            </template>
             <n-alert v-if="materialsError" type="warning">{{ materialsError }}</n-alert>
             <n-space justify="end" style="margin-bottom: 12px" v-if="hasChipShortage">
               <n-button
@@ -140,11 +145,19 @@
                 >一键设置芯片 / 采购凭证刷取</n-button
               >
             </n-space>
-          </template>
-          <n-text v-if="totalGoalCount" depth="3" class="overview-note"
-            >已扣除现有库存；同一干员的精英化与基础技能费用只计一次。芯片、龙门币、经验和模组任务需另行准备。</n-text
-          >
-        </MasteryMaterials>
+            <MasteryMaterials
+              v-if="planMaterials"
+              :summary="planMaterials"
+              :missing-skills="missingPlanSkills"
+              :show-header="false"
+              expand-crafting
+            />
+            <n-text v-else-if="!materialsError" depth="3">尚未选择养成目标</n-text>
+            <n-text v-if="totalGoalCount" depth="3" class="overview-note"
+              >已扣除现有库存；同一干员的精英化与基础技能费用只计一次。芯片、龙门币、经验和模组任务需另行准备。</n-text
+            >
+          </n-collapse-item>
+        </n-collapse>
       </n-spin>
     </n-card>
 
@@ -182,8 +195,13 @@
     <n-empty v-else-if="displayList.length === 0" :description="emptyText" />
 
     <div v-else class="mastery-list">
-      <n-collapse accordion class="operator-cards">
-        <n-collapse-item v-for="op in displayList" :key="op.char_id" :name="op.char_id">
+      <n-collapse v-model:expanded-names="expandedOperator" accordion class="operator-cards">
+        <n-collapse-item
+          v-for="op in displayList"
+          :key="op.char_id"
+          :name="op.char_id"
+          @click="toggleOperatorHeaderSpace(op, $event)"
+        >
           <template #header>
             <n-space align="center" :size="8">
               <n-avatar
@@ -795,6 +813,7 @@ import {
 import { masteryScheduleContext, masteryTraineeWarning } from '@/utils/masterySupport'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import MasteryMaterials from '@/components/MasteryMaterials.vue'
+import { materialStatus, materialStatusType } from '@/utils/masteryMaterials'
 import GrowthLevelPlan from '@/components/GrowthLevelPlan.vue'
 import {
   NAlert,
@@ -891,6 +910,16 @@ const rarityOptions = [
 ]
 const professionOptions = profKeys.map((p) => ({ label: p, value: p }))
 
+const expandedOperator = ref([])
+function toggleOperatorHeaderSpace(op, event) {
+  const item = event.currentTarget
+  const header = item.querySelector(':scope > .n-collapse-item__header')
+  // Naive UI handles its main and extra regions; cover the remaining header space.
+  if (event.target !== header && event.target !== item) return
+  const bounds = header.getBoundingClientRect()
+  if (event.clientY < bounds.top || event.clientY > bounds.bottom) return
+  expandedOperator.value = expandedOperator.value.includes(op.char_id) ? [] : [op.char_id]
+}
 const statisticsExpanded = ref(false)
 const idleFilter = ref('all')
 const idleFilterOptions = [
@@ -2247,6 +2276,7 @@ async function loadOperators() {
   padding: 6px 0;
   gap: 12px;
   flex-wrap: wrap;
+  cursor: pointer;
 }
 .mastery-list
   :deep(
