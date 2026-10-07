@@ -73,6 +73,22 @@ def test_recommendation_uses_best_unscheduled_operator_and_deer_only_needs_owner
     assert result["nine_colored_deer"]["owned"] is True
 
 
+@pytest.mark.parametrize("backup", [False, True])
+def test_recommendation_excludes_additional_binding_replacement(game, backup):
+    meta, ids = game
+    roster = owned(ids, "年", "空爆")
+    slot = facility("Free")
+    slot["plans"][0]["group_bindings"] = [{"group": "附加", "replacement": ["年"]}]
+    plan = (
+        {"backup_plans": [{"plan": {"meeting": slot}}]}
+        if backup
+        else {"plan1": {"meeting": slot}}
+    )
+    result = workshop.recommend_workshop_operators(roster, meta, plan=plan)
+    assert result["blocked_operators"] == {"年": ["meeting"]}
+    assert result["defaults"]["t5_operators"] == ["空爆"]
+
+
 def test_auto_config_respects_manual_selections_even_when_scheduled(game, monkeypatch):
     meta, ids = game
     available = workshop.available_operators(owned(ids, "号角", "空爆"), meta)

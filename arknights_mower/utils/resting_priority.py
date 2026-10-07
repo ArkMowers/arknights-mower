@@ -62,7 +62,7 @@ def resting_tier(op_data, name):
             return _replacement_tier(op_data, name)
     # 菲亚梅塔的名单是充能目标，不是普通替班。
     if any(
-        name in slot.replacement
+        name in slot.all_replacements
         for slots in op_data.plan.values()
         for slot in slots
         if slot.agent != "菲亚梅塔"

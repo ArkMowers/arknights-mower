@@ -14,7 +14,7 @@ from arknights_mower.tests.multi_group_shift_tests import (
     shift_off,
 )
 from arknights_mower.utils.logic_expression import LogicExpression
-from arknights_mower.utils.plan import Plan, PlanConfig
+from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 solver = multi_group.solver
@@ -147,7 +147,9 @@ def test_free_dorm_cover_never_evicts_resident(free_dorm_solver, occupied):
 
 
 @pytest.mark.parametrize("blocking", ["busy", "reserved", "exhausted"])
-def test_protected_replacements_recall_primary(solver, monkeypatch, blocking):
+def test_protected_replacements_defer_while_shared_primary_is_required(
+    solver, monkeypatch, blocking
+):
     from arknights_mower.solvers import base_schedule
 
     assert shift_off(solver, "甲")[0]
@@ -162,12 +164,10 @@ def test_protected_replacements_recall_primary(solver, monkeypatch, blocking):
         solver.op_data.operators["黑角"].mood = 0
     before = recovery(solver)
     plan = transition(solver)
-    assert plan == {"contact": [SHARED]}
-    assert solver.op_data.plan_condition == [True]
-    apply(solver, plan)
-    assert solver.op_data.operators[SHARED].current_room == "contact"
-    assert SHARED not in recovery(solver)
-    assert recovery(solver)[A] == before[A]
+    assert plan == {}
+    assert solver.op_data.plan_condition == [False]
+    assert solver.op_data.group_is_resting("甲")
+    assert recovery(solver) == before
 
 
 @pytest.mark.parametrize("complete", [False, True])
@@ -184,11 +184,167 @@ def test_complete_matching_across_multiple_affected_slots(solver, complete):
     )
 
 
-def test_explicit_backup_task_retains_control(solver):
+@pytest.mark.parametrize("full_cycle", [False, True])
+@pytest.mark.parametrize("target", [SHARED, "黑角"])
+def test_explicit_backup_task_retains_control(solver, full_cycle, target):
+    assert shift_off(solver, "甲")[0]
+    for bed in solver.op_data.all_dorms():
+        if bed.name:
+            bed.time = datetime.now() + timedelta(hours=4)
+            solver.op_data.operators[bed.name].mood = 5
+    bp = backup(solver)
+    bp.task = {"contact": [target]}
+    assert transition(solver) == {"contact": [target]}
+    task = next(t for t in solver.tasks if t.plan)
+    solver.task = task
+    solver._prepare_group_shift(task)
+    if full_cycle:
+        solver._prepare_shift_cycle(task)
+        solver._defer_conflicting_product_shift_slots(task)
+        solver._switch_products_before_arrangement(task)
+        solver._activate_shift_backup(task)
+    solver._prepare_group_shift(task, remember_targets=True)
+    assert task.plan["contact"] == [target]
+    assert solver.op_data.group_is_resting("甲")
+    assert solver.op_data.operators[SHARED].is_resting()
+
+
+@pytest.mark.parametrize("explicit_current", [False, True])
+@pytest.mark.parametrize("target", [SHARED, "黑角"])
+def test_explicit_backup_survives_ordinary_task_coalescing(
+    solver, explicit_current, target
+):
+    assert shift_off(solver, "甲")[0]
+    for bed in solver.op_data.all_dorms():
+        if bed.name:
+            bed.time = datetime.now() + timedelta(hours=4)
+            solver.op_data.operators[bed.name].mood = 5
+    bp = backup(solver)
+    bp.task = {"contact": [target]}
+    assert transition(solver) == {"contact": [target]}
+    explicit = next(t for t in solver.tasks if t.plan)
+    ordinary = SchedulerTask(
+        task_type=TaskTypes.SELF_CORRECTION, task_plan={"contact": ["砾"]}
+    )
+    solver.tasks = [explicit, ordinary]
+    solver.task = task = explicit if explicit_current else ordinary
+    solver._prepare_group_shift(task)
+    solver._prepare_shift_cycle(task)
+    solver._activate_shift_backup(task)
+    solver._prepare_group_shift(task, remember_targets=True)
+    assert task.plan["contact"] == [target]
+    assert solver.tasks == [task]
+    assert solver.op_data.group_is_resting("甲")
+
+
+@pytest.mark.parametrize("full_cycle", [False, True])
+@pytest.mark.parametrize("target", [SHARED, "黑角"])
+def test_projected_backup_explicit_task_survives_final_revalidation(
+    solver, full_cycle, target
+):
+    assert shift_off(solver, "甲")[0]
+    for bed in solver.op_data.all_dorms():
+        if bed.name:
+            bed.time = datetime.now() + timedelta(hours=4)
+            solver.op_data.operators[bed.name].mood = 5
+    bp = backup(solver)
+    bp.task = {"contact": [target]}
+    task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION)
+    solver.task, solver.tasks = task, [task]
+    solver._prepare_group_shift(task)
+    if full_cycle:
+        solver._prepare_shift_cycle(task)
+    else:
+        solver._prepare_shift_backup(task)
+    assert solver.op_data.plan_condition == [False]
+    solver._activate_shift_backup(task)
+    solver._prepare_group_shift(task, remember_targets=True)
+    assert task.plan["contact"] == [target]
+    assert solver.op_data.group_is_resting("甲")
+
+
+def test_explicit_shared_return_survives_partial_group_return_retry(solver):
+    import pickle
+
+    shared = solver.global_plan["default_plan"].plan["contact"][0]
+    shared.group_bindings[0]["replacement"] = ["红"]
+    assert solver.initialize_operators() is None
+    for op in solver.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    assert shift_off(solver, "甲")[0]
+    assert shift_off(solver, "乙")[0]
+    bp = backup(solver)
+    bp.task = {"contact": [SHARED], "meeting": [A, "Current"]}
+    assert transition(solver)["contact"] == [SHARED]
+    task = next(t for t in solver.tasks if t.plan)
+    solver.task = task
+    solver._prepare_group_shift(task, remember_targets=True)
+    data = solver.op_data
+    observed = data.project_arrangements([{"meeting": [A, "Current"]}])
+    data.operators, data.dorm = observed.operators, observed.dorm
+    assert not solver._complete_group_shift(task)
+    assert task.plan == {"contact": [SHARED]}
+    assert data.group_is_resting("甲") and data.group_is_resting("乙")
+    task = pickle.loads(pickle.dumps(task))
+    solver.task, solver.tasks = task, [task]
+    solver._prepare_group_shift(task, remember_targets=True)
+    assert task.plan == {"contact": [SHARED]}
+    observed = data.project_arrangements([task.plan])
+    data.operators, data.dorm = observed.operators, observed.dorm
+    assert solver._complete_group_shift(task)
+    assert not data.group_is_resting("甲")
+    assert data.group_is_resting("乙")
+
+
+def test_explicit_other_slot_still_reserves_its_operator(solver):
+    assert shift_off(solver, "甲")[0]
+    plan = {"meeting": ["红", "Current"], "contact": [SHARED]}
+    assert not solver.op_data.normalize_shared_arrangement(
+        plan, explicit_slots={("meeting", 0)}
+    )
+    assert plan == {"meeting": ["红", "Current"], "contact": [SHARED]}
+
+
+@pytest.mark.parametrize("alternative", [False, True])
+def test_explicit_shared_slot_does_not_bypass_other_shared_matching(
+    solver, alternative
+):
+    candidates = ["红", "黑角"]
+    solver.global_plan["default_plan"].plan["factory"] = [
+        Room(
+            "梅尔",
+            "甲",
+            candidates,
+            group_bindings=[{"group": "乙", "replacement": candidates}],
+        )
+    ]
+    assert solver.initialize_operators() is None
+    data = solver.op_data
+    for op in data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+    if not alternative:
+        data.operators["黑角"]._current_room = "room_2_1"
+        data.operators["黑角"].current_index = 0
+    data.commit_group_shifts({"甲": True, "乙": True})
+    plan = {"contact": ["红"], "factory": ["梅尔"]}
+    assert (
+        data.normalize_shared_arrangement(plan, explicit_slots={("contact", 0)})
+        is alternative
+    )
+    assert plan["contact"] == ["红"]
+    assert plan["factory"] == (["黑角"] if alternative else ["梅尔"])
+
+
+def test_backup_current_does_not_override_shared_revalidation(solver):
     assert shift_off(solver, "甲")[0]
     bp = backup(solver)
-    bp.task = {"contact": [SHARED]}
-    assert transition(solver) == {"contact": [SHARED]}
+    bp.task = {"contact": ["Current"]}
+    assert transition(solver) == {"contact": ["砾"]}
+    task = next(t for t in solver.tasks if t.plan)
+    task.plan["contact"] = [SHARED]
+    solver._prepare_group_shift(task)
+    assert task.plan["contact"] == ["砾"]
 
 
 @pytest.mark.parametrize("available", [False, True])
@@ -205,6 +361,11 @@ def test_shift_projection_prefers_cover_before_primary(solver, available):
             "dormitory_1": ["Current", "Current", A, SHARED, "Current"],
         },
     )
+    if not available:
+        with pytest.raises(multi_group.base_schedule.ProductSwitchDeferred):
+            solver._prepare_shift_backup(task)
+        assert solver.op_data.plan_condition == [False]
+        return
     solver._prepare_shift_backup(task)
     if available:
         assert task.plan["contact"] == ["黑角"]
@@ -316,7 +477,7 @@ def test_same_group_primary_cover_keeps_fixed_recovery(dorm_solver):
 
 
 @pytest.mark.parametrize("product_solver", PRODUCTS[:1], indirect=True)
-def test_product_shortage_recall_keeps_group_consistent(product_solver, monkeypatch):
+def test_product_shortage_defers_shared_group_recall(product_solver, monkeypatch):
     s = product_solver
     assert shift_off(s, "甲")[0]
     for name in (A, SHARED):
@@ -327,15 +488,11 @@ def test_product_shortage_recall_keeps_group_consistent(product_solver, monkeypa
     )
     task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION)
     s.task = task
-    s._prepare_shift_cycle(task)
-    assert task.backup_shift_conditions == [True]
-    assert task.plan["room_1_2"] == [SHARED]
-    apply(s, task.plan)
-    assert s.op_data.operators[SHARED].is_working()
-    assert SHARED not in recovery(s)
-    # 提前召回仍沿用原有整组纠错，不能留下半组在岗的状态。
-    assert s.op_data.operators[A].is_working()
-    assert A not in recovery(s)
+    before = recovery(s)
+    with pytest.raises(multi_group.base_schedule.ProductSwitchDeferred):
+        s._prepare_shift_cycle(task)
+    assert s.op_data.group_is_resting("甲")
+    assert recovery(s) == before
 
 
 @pytest.mark.parametrize("blocking", ["busy", "reserved", "source_bed", "working"])
@@ -497,6 +654,7 @@ def test_explicit_other_slot_cannot_double_book_a_retained_cover(solver):
     from arknights_mower.utils.resting_correction import preserve_backup_replacements
 
     solver.op_data.operators[SHARED].replacement = ["红", "黑角"]
+    solver.op_data.operators[SHARED].group_bindings[0]["replacement"] = ["红", "黑角"]
     plan = {"factory": ["红"]}
     assert preserve_backup_replacements(
         solver.op_data,

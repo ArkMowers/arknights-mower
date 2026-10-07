@@ -3,9 +3,31 @@ import { createPinia } from 'pinia'
 import { createApp, ref } from 'vue'
 import { usePlanStore } from '@/stores/plan'
 import { replace_plan_operators } from './plan_edit'
-import { addPlanBinding, removePlanBinding, bindingColorStyle } from './plan_bindings'
+import {
+  addPlanBinding,
+  removePlanBinding,
+  bindingColorStyle,
+  planReplacements
+} from './plan_bindings'
 
 describe('operator group bindings', () => {
+  it('collects replacements once without changing individual binding candidates', () => {
+    const slot = {
+      agent: '讯使',
+      group: '甲',
+      replacement: ['红', '黑角'],
+      group_bindings: [
+        { group: '乙', replacement: ['黑角', '砾'] },
+        { group: '丙', replacement: ['砾', 'Free'] }
+      ]
+    }
+    const before = structuredClone(slot)
+    const replacements = planReplacements(slot)
+    expect(replacements).toEqual(['红', '黑角', '砾', 'Free'])
+    replacements.splice(0)
+    expect(slot).toEqual(before)
+    expect(planReplacements({})).toEqual([])
+  })
   it('adds independent columns and promotes the next column when deleting the first', () => {
     const slot = { agent: '清流', group: '甲', replacement: ['结城理'] }
     addPlanBinding(slot)

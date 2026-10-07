@@ -416,9 +416,9 @@ def test_infra_main_switches_before_shift_off_arrangement():
     )
     solver.task = task
     solver.tasks = [task]
-    solver.op_data = SimpleNamespace(
-        run_order_rooms={}, select_arrangement_bindings=MagicMock()
-    )
+    solver.op_data = SimpleNamespace(run_order_rooms={})
+    solver._prepare_group_shift = MagicMock()
+    solver._complete_group_shift = MagicMock(return_value=True)
     solver.find = MagicMock(return_value=(1, 1))
     solver.refresh_connecting = False
     solver._prepare_shift_cycle = MagicMock()
@@ -427,7 +427,8 @@ def test_infra_main_switches_before_shift_off_arrangement():
     solver.backup_plan_solver = MagicMock(return_value=False)
     solver.plan_metadata = MagicMock()
     sequence = MagicMock()
-    sequence.attach_mock(solver.op_data.select_arrangement_bindings, "binding")
+    sequence.attach_mock(solver._prepare_group_shift, "group")
+    sequence.attach_mock(solver._complete_group_shift, "confirm")
     sequence.attach_mock(solver._prepare_shift_cycle, "prepare")
     sequence.attach_mock(solver._switch_products_before_arrangement, "switch")
     sequence.attach_mock(solver.agent_arrange, "arrange")
@@ -436,13 +437,15 @@ def test_infra_main_switches_before_shift_off_arrangement():
         solver.infra_main()
 
     assert [call[0] for call in sequence.mock_calls] == (
-        ["binding", "prepare", "switch", "arrange"]
+        ["group", "prepare", "switch", "group", "arrange", "confirm"]
     )
 
 
 def test_infra_main_keeps_shift_off_pending_when_product_switch_waits():
     solver = object.__new__(base.BaseSchedulerSolver)
-    solver.op_data = SimpleNamespace(select_arrangement_bindings=MagicMock())
+    solver.op_data = SimpleNamespace()
+    solver._prepare_group_shift = MagicMock()
+    solver._complete_group_shift = MagicMock(return_value=True)
     task = SchedulerTask(
         time=datetime.now() - timedelta(seconds=1),
         task_plan={"room_1_1": ["Free"]},

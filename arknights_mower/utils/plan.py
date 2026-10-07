@@ -10,6 +10,14 @@ from arknights_mower.utils.mastery_support_types import IGNORED_NAMES
 DEFAULT_DORM_ROOM_ORDER = [f"dormitory_{index}" for index in range(1, 5)]
 
 
+def all_replacements(replacement, group_bindings=()):
+    """Collect every binding's replacements in declaration order without mutation."""
+    names = dict.fromkeys(replacement)
+    for binding in group_bindings:
+        names.update(dict.fromkeys(binding.get("replacement", ())))
+    return list(names)
+
+
 def effective_dorm_room_order(values: list[str]) -> list[str]:
     """将房间或旧具体床位顺序折叠为完整的四宿舍顺序。"""
     result = []
@@ -238,11 +246,7 @@ class Room:
 
     @property
     def all_replacements(self):
-        return list(
-            dict.fromkeys(
-                name for binding in self.bindings for name in binding["replacement"]
-            )
-        )
+        return all_replacements(self.replacement, self.group_bindings)
 
     def __repr__(self):
         return (

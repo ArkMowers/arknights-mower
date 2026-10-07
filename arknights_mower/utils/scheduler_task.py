@@ -680,6 +680,7 @@ def _native_return(op_data, plan, names):
         slots = plan.setdefault(op.room, ["Current"] * len(op_data.plan[op.room]))
         if slots[op.index] in ("Current", name):
             slots[op.index] = name
+    op_data.normalize_shared_arrangement(plan)
 
 
 def _active_recovery_room(op_data, name):
@@ -1058,6 +1059,7 @@ def generate_plan_by_drom(
     op_data.group_dorm = copy.deepcopy(getattr(op_data, "group_dorm", []))
     op_data.operators = copy.deepcopy(op_data.operators)
     op_data.groups = copy.deepcopy(op_data.groups)
+    op_data.group_shift_state = dict(op_data.group_shift_state)
     batches = copy.deepcopy(batches)
     ordered = sorted(batches, key=lambda batch: batch[0])
     result = []
@@ -1170,7 +1172,16 @@ def generate_plan_by_drom(
         if not plan:
             continue
         if rest_in_full is not None:
-            op_data.select_arrangement_bindings(plan)
+            transitions = op_data.arrangement_group_transitions(plan)
+            if not op_data.normalize_shared_arrangement(plan, transitions):
+                continue
+            # Shared primaries kept off shift still participate in later returns.
+            planned.difference_update(
+                op.name
+                for op in op_data.operators.values()
+                if op.multi_group and op_data.resting_binding_groups(op, transitions)
+            )
+            op_data.commit_group_shifts(transitions)
             planned.update(rebalance_closing_dorm_slots(op_data, plan, planned))
         earliest = _after_pending_arrangements(plan, pending_resources)
         if rest_in_full:
@@ -1235,6 +1246,19 @@ def generate_plan_by_drom(
 
 
 def plan_metadata(op_data, tasks):
+    # 部分换班的剩余目标必须先确认，不能从中间驻员状态重建回班队列。
+    if any(
+        getattr(task, "backup_shift_active", False)
+        or getattr(task, "group_shift_expected", {})
+        for task in tasks
+    ):
+        # 保留未确认安排，但个人上限仍按已经实读的入住位置和期限独立清退。
+        releases = plan_mood_limit_releases(op_data, previous_tasks=tasks)
+        tasks[:] = [
+            task for task in tasks if not getattr(task, "strict_mood_limit", False)
+        ]
+        tasks.extend(releases)
+        return tasks
     op_data.refresh_idle_dorm_search()
     locked_tasks = [
         task for task in tasks if (getattr(task, "product_shift_locked", False))
@@ -1883,10 +1907,16 @@ def try_reorder(op_data, new_plan):
     # self.dorm 是默认排班中的潜在床位池；副表可能把其中一部分 Free
     # 临时覆盖成固定干员。重排只能操作当前有效排班里仍为 Free 的位置。
     protected_indices = set()
+    transitions = op_data.arrangement_group_transitions(new_plan)
     effective_free_indices = [
         idx
         for idx, room in enumerate(dorm)
-        if op_data.is_effective_free_slot(room) and idx not in protected_indices
+        if op_data.is_effective_free_slot(
+            room,
+            active_groups={g for g, resting in transitions.items() if resting},
+            inactive_groups={g for g, resting in transitions.items() if not resting},
+        )
+        and idx not in protected_indices
     ]
     blocked_indices = (
         set(range(len(dorm))) - set(effective_free_indices) - protected_indices

@@ -200,13 +200,7 @@ class EmergencyRecoveryMixin:
             if state and state.get("phase") != "returning"
             else None
         )
-        normal_names = {
-            name
-            for room in self.op_data.global_plan["default_plan"].plan.values()
-            for slot in room
-            for name in (slot.agent, *slot.replacement)
-            if name not in ("", "Free", "Current")
-        }
+        normal_names = self.op_data.global_plan["default_plan"].scheduled_names()
         self.op_data.emergency_reserved_agents = (
             set(state.get("ready_members", ()))
             | set(state.get("staffing_members", ()))
@@ -1656,7 +1650,21 @@ class EmergencyRecoveryMixin:
             return False
         if not self._emergency_ready():
             return False
-        if not self._emergency_handoff_feasible({}):
+        # 直接交接不经过普通换班任务；在副本中按最终实读重新核验组状态。
+        observed = {
+            room: [
+                occupant.name
+                if (occupant := self.op_data.get_current_operator(room, index))
+                else "Current"
+                for index in range(len(slots))
+            ]
+            for room, slots in self.op_data.plan.items()
+        }
+        transitions = self.op_data.arrangement_group_transitions(observed)
+        probe = copy.copy(self)
+        probe.op_data = self.op_data.project_arrangements([observed])
+        probe.tasks = copy.deepcopy(self.tasks)
+        if not probe._emergency_handoff_feasible({}):
             for key in (
                 "handoff_observing",
                 "handoff_plan",
@@ -1667,11 +1675,15 @@ class EmergencyRecoveryMixin:
             self._emergency_save()
             return False
         state.pop("handoff_observing", None)
-        remaining = self.agent_get_mood(read_rooms=False, return_plan=True)
+        remaining = probe.agent_get_mood(read_rooms=False, return_plan=True)
+        if not probe.op_data.normalize_shared_arrangement(remaining, transitions):
+            self._emergency_save()
+            return False
         if remaining:
             state["handoff_plan"] = copy.deepcopy(remaining)
             self._emergency_save()
             return False
+        self.op_data.commit_group_shifts(transitions)
         self.emergency_state = None
         self.tasks[:] = [
             task

@@ -131,6 +131,13 @@ def test_execution_keeps_live_trainee_and_off_does_not_run_mastery(
     monkeypatch.setattr(BaseSchedulerSolver, "__init__", lambda _: None)
     plan = {"train": ["褐果", "桃金娘"]}
     solver = base_scheduler_tests.TestTrainGateReadThenJudge._make_solver(plan)
+    solver.task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION, task_plan=plan)
+    solver._can_refresh_idle_dorm_search = lambda: False
+    solver.choose_train = MagicMock()
+    solver.record_selection_success = MagicMock()
+    solver.get_agent_from_room = MagicMock(
+        return_value=[{"agent": "褐果"}, {"agent": "桃金娘"}]
+    )
     monkeypatch.setattr(
         mastery_reader,
         "read_room_state",
@@ -145,7 +152,7 @@ def test_execution_keeps_live_trainee_and_off_does_not_run_mastery(
     else:
         solver.turn_on_room_detail.assert_called_once_with("train")
         if state != "empty":
-            solver.refresh_current_room.assert_called_once_with("train", [1])
+            solver.refresh_current_room.assert_not_called()
     assert not plan
 
 
@@ -181,3 +188,34 @@ def test_correction_from_unscheduled_train_slot_keeps_configured_targets(
     else:
         assert "train" not in result
     assert data.plan == original
+
+
+def test_train_current_reaches_live_reader_without_stale_cache_substitution(
+    monkeypatch,
+):
+    monkeypatch.setattr(config.conf, "enable_mastery", False)
+    monkeypatch.setattr(BaseSchedulerSolver, "__init__", lambda _: None)
+    plan = {"train": ["Current", "桃金娘"]}
+    solver = base_scheduler_tests.TestTrainGateReadThenJudge._make_solver(plan)
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    solver.task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION, task_plan=plan)
+    solver._can_refresh_idle_dorm_search = lambda: False
+    solver._emergency_active = lambda: False
+    solver.op_data.get_current_room.return_value = ["褐果", "余"]
+    monkeypatch.setattr(
+        mastery_reader,
+        "read_room_state",
+        lambda *a, **kw: mastery_reader.RoomState("empty"),
+    )
+    solver.get_agent_from_room = MagicMock(
+        return_value=[{"agent": "望"}, {"agent": "桃金娘"}]
+    )
+    solver.choose_train = MagicMock()
+    solver.record_selection_success = MagicMock()
+    solver.agent_arrange_room({}, "train", plan)
+    solver.choose_train.assert_called_once_with(
+        ["Current", "桃金娘"], fast_mode=True, choose_error=0
+    )
+    solver.refresh_current_room.assert_not_called()
+    assert plan == {}

@@ -13,6 +13,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 from arknights_mower.solvers import base_schedule  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 from arknights_mower.utils import config  # noqa: E402
+from arknights_mower.utils.dorm_candidates import dorm_task_reservations  # noqa: E402
 from arknights_mower.utils.operators import Operator  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
@@ -73,6 +74,91 @@ def finish_support(solver):
     solver.tasks, solver.task = [], retry
     solver.overtake_room()
     return solver.tasks[0]
+
+
+@pytest.fixture
+def future_exhaust(solver, monkeypatch):
+    """只替换倒计时读屏，保留真实用尽任务生成和资源规划。"""
+    now = datetime.now()
+    op = solver.op_data.operators["机械师"]
+    op.mood, op.time_stamp, op.depletion_rate = 1, now, 1
+    monkeypatch.setattr(solver, "enter_room", MagicMock())
+    monkeypatch.setattr(solver, "back", MagicMock())
+    monkeypatch.setattr(
+        solver,
+        "get_agent_from_room",
+        MagicMock(return_value=[{"time": now + timedelta(hours=2)}]),
+    )
+    before = {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+    beds = [(bed.name, bed.time) for bed in solver.op_data.dorm]
+    support = MagicMock(wraps=solver._plan_exhaust_support)
+    monkeypatch.setattr(solver, "_plan_exhaust_support", support)
+
+    solver.run_order_solver()
+
+    (task,) = solver.tasks
+    assert task.type == TaskTypes.EXHAUST_OFF
+    assert task.time > now + timedelta(hours=1)
+    assert task.meta_data == "机械师"
+    assert task.plan == {}
+    assert dorm_task_reservations(solver.op_data, solver.tasks) == (set(), set())
+    assert not solver.op_data.reserved_product_replacements
+    assert not solver.op_data.reserved_product_beds
+    assert before == {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+    assert beds == [(bed.name, bed.time) for bed in solver.op_data.dorm]
+    support.assert_not_called()
+    return task
+
+
+def test_future_exhaust_does_not_reserve_cover_for_normal_group(solver, future_exhaust):
+    # 用尽任务尚未执行时，普通组仍能使用同一个替班下班。
+    solver.op_data = solver.op_data.project_arrangements(
+        [{"room_2_2": ["苍苔"], "contact": ["絮雨"]}]
+    )
+    plan = {}
+    solver.get_resting_plan(
+        ["苍苔", "絮雨"], [], plan, solver.op_data.active_high_resting_count()
+    )
+    assert plan["room_2_2"] == ["槐琥"]
+    assert plan["contact"] == ["斥罪"]
+    assert solver.tasks == [future_exhaust]
+    assert future_exhaust.plan == {}
+
+
+@pytest.mark.parametrize("cover_released", [False, True])
+def test_exhaust_coordinates_latest_occupancy_at_execution(
+    solver, future_exhaust, cover_released
+):
+    # 倒计时生成后，原替班已释放，或第一候补已被别处使用。
+    change = {"room_2_2": ["引星棘刺"]} if cover_released else {"meeting": ["引星棘刺"]}
+    solver.op_data = solver.op_data.project_arrangements([change])
+    solver.op_data.operators["机械师"].mood = 0
+    solver.tasks, solver.task = [], future_exhaust
+    solver.enter_room.reset_mock()
+    solver.overtake_room()
+
+    if cover_released:
+        solver._plan_exhaust_support.assert_not_called()
+        (task,) = solver.tasks
+    else:
+        solver._plan_exhaust_support.assert_called_once()
+        support, retry = solver.tasks
+        assert support.plan == {"room_2_2": ["结城理"]}
+        assert retry.type == TaskTypes.EXHAUST_OFF
+        assert retry.plan == {}
+        assert retry.meta_data == "机械师"
+        task = finish_support(solver)
+    assert task.type == TaskTypes.SHIFT_OFF
+    assert task.plan["room_3_3"] == ["槐琥"]
+    assert "机械师" in task.plan["dormitory_1"]
+    solver.enter_room.assert_not_called()
+    base_schedule.send_message.assert_not_called()
 
 
 def test_swap_cover_then_rest_exhausted_operator(solver):

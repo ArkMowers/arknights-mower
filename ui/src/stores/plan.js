@@ -1,4 +1,4 @@
-import { planBindings } from '@/utils/plan_bindings'
+import { planBindings, planReplacements } from '@/utils/plan_bindings'
 import { OPERATOR_CONF_FIELDS } from '@/utils/plan_edit'
 import { defineStore } from 'pinia'
 import { ref, watchEffect, computed, inject } from 'vue'
@@ -240,6 +240,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       for (const roster of [plan.value, ...backup_plans.value.map((backup) => backup.plan)]) {
         for (const [room, facility] of Object.entries(roster)) {
           for (const [index, slot] of facility.plans.entries()) {
+            const replacements = planReplacements(slot)
             slot.group = ''
             delete slot.group_bindings
             const position = `${room}:${index}`
@@ -249,7 +250,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
               (slot.agent === 'Current' && fia_positions.has(position))
             )
               continue
-            slot.replacement = slot.replacement.filter((name) => runners.has(name))
+            slot.replacement = replacements.filter((name) => runners.has(name))
           }
         }
       }

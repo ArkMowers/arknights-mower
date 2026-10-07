@@ -305,6 +305,7 @@ class Operators:
     def __init__(self, plan):
         self.operators = {}
         self.groups = {}
+        self.group_shift_state = {}
         self.exhaust_agent = set()
         self.exhaust_group = set()
         self.rest_in_full_group = set()
@@ -1026,36 +1027,190 @@ class Operators:
                 self.groups[group].append(name)
         op.group, op.replacement = group, replacements
 
-    def select_arrangement_bindings(self, plan):
-        """Adopt the binding of followers included in an explicit group arrangement."""
-        selected = {}
+    def arrangement_group_transitions(self, plan):
+        """Only explicit arrangements of ordinary fixed members change group state."""
+        transitions = {}
         for room, names in plan.items():
             for index, name in enumerate(names):
                 slots = self.plan.get(room, [])
                 if index >= len(slots) or name in ("", "Current", "Free"):
                     continue
                 op = self.operators.get(slots[index].agent)
-                if op is None or op.multi_group or not op.group:
+                if (
+                    op is None
+                    or not op.group
+                    or op.multi_group
+                    or op.workaholic
+                    or op.room.startswith("dorm")
+                ):
                     continue
-                returning = name == op.name
-                if not returning and name not in op.replacement:
-                    continue
-                for follower in self.shift_group_members(op.group):
-                    shared = self.operators[follower]
-                    if not shared.multi_group:
-                        continue
-                    target = plan.get(shared.room, [])[shared.index : shared.index + 1]
-                    expected = (
-                        [follower]
-                        if returning
-                        else shared.replacements_for_group(op.group)
-                    )
-                    if target and target[0] in expected:
-                        selected.setdefault(follower, []).append(op.group)
+                if name == op.name:
+                    transitions[op.group] = False
+                elif name in op.replacement:
+                    transitions.setdefault(op.group, True)
+        return transitions
 
-        for name, groups in selected.items():
-            active = self.operators[name].group
-            self.select_group_binding(name, active if active in groups else groups[-1])
+    def resting_binding_groups(self, operator, transitions=None):
+        transitions = transitions or {}
+        return [
+            binding["group"]
+            for binding in operator.group_bindings
+            if transitions.get(
+                binding["group"], self.group_is_resting(binding["group"])
+            )
+        ]
+
+    def shared_replacements(self, operator, groups):
+        """Intersect every dependent binding in configured candidate order."""
+        if not groups:
+            return list(operator.replacement)
+        return [
+            name
+            for name in operator.replacements_for_group(groups[0])
+            if all(
+                name in operator.replacements_for_group(group) for group in groups[1:]
+            )
+        ]
+
+    def commit_group_shifts(self, transitions):
+        """Commit completed arrangements, or transitions on an isolated projection."""
+        for group in self.groups:
+            if group not in self.group_shift_state:
+                self.group_shift_state[group] = self.group_is_resting(group)
+        self.group_shift_state.update(transitions)
+        for op in self.operators.values():
+            if op.multi_group:
+                groups = self.resting_binding_groups(op)
+                if groups:
+                    self.select_group_binding(
+                        op.name, op.group if op.group in groups else groups[0]
+                    )
+
+    def restore_group_shift_state(self, saved=None):
+        """Legacy snapshots infer rest only from ordinary fixed members."""
+        self.group_shift_state = {
+            group: resting
+            for group, resting in (saved or {}).items()
+            if type(resting) is bool
+        }
+        self.commit_group_shifts({})
+
+    def normalize_shared_arrangement(
+        self, plan, transitions=None, *, reserved_replacements=None, explicit_slots=()
+    ):
+        """Keep shared covers until all dependent groups return; reject conflicts.
+
+        The caller owns the plan. No live occupancy or group state is modified.
+        """
+        from arknights_mower.utils.exhaust_replacement import match_replacements
+
+        transitions = (
+            self.arrangement_group_transitions(plan)
+            if transitions is None
+            else transitions
+        )
+        followers = [
+            op
+            for op in self.operators.values()
+            if op.multi_group and (op.room, op.index) not in explicit_slots
+        ]
+        changes, options = {}, {}
+        managed = {(op.room, op.index) for op in followers}
+        reserved = {
+            name
+            for room, names in plan.items()
+            for index, name in enumerate(names)
+            if (room, index) not in managed and name not in ("Free", "Current", "")
+        } | set(
+            self.reserved_product_replacements
+            if reserved_replacements is None
+            else reserved_replacements
+        )
+        for op in followers:
+            target = plan.get(op.room, [])[op.index : op.index + 1]
+            relevant = any(b["group"] in transitions for b in op.group_bindings)
+            if not target and not relevant:
+                continue
+            groups = self.resting_binding_groups(op, transitions)
+            if not groups:
+                if relevant:
+                    changes[op.name] = op.name
+                continue
+            candidates = self.shared_replacements(op, groups)
+            if not candidates:
+                return False
+            actual = self.get_current_operator(op.room, op.index)
+            if "Free" in candidates and op.room.startswith("dorm"):
+                # A shared open bed keeps its current recovering occupant.
+                desired = (
+                    target[0]
+                    if target and target[0] not in (op.name, "Current")
+                    else actual.name
+                    if actual and actual.name != op.name
+                    else "Free"
+                )
+                if (
+                    (not target or target[0] in (op.name, "Current"))
+                    and actual is not None
+                    and any(
+                        name == actual.name and (room, index) != (op.room, op.index)
+                        for room, names in plan.items()
+                        for index, name in enumerate(names)
+                    )
+                ):
+                    desired = "Free"
+                if desired not in ("Free", "Current", ""):
+                    # Named recovery occupants compete with working covers in
+                    # the same matching, regardless of slot iteration order.
+                    options[op.name] = [desired] if desired not in reserved else []
+                else:
+                    changes[op.name] = desired
+                continue
+            preferred = ([actual.name] if actual else []) + (target or [])
+            candidates = list(
+                dict.fromkeys(n for n in [*preferred, *candidates] if n in candidates)
+            )
+            options[op.name] = [
+                name
+                for name in candidates
+                if name not in reserved
+                and name in self.operators
+                and (
+                    actual is not None
+                    and actual.name == name
+                    or not self.operators[name].current_room
+                    or self.operators[name].is_resting()
+                    and not self.is_dorm_replacement(name)
+                    or (
+                        (source := self.operators[name]).current_room in plan
+                        and 0 <= source.current_index < len(plan[source.current_room])
+                        and plan[source.current_room][source.current_index]
+                        not in ("Current", name)
+                    )
+                    or any(name in names for names in plan.values())
+                    and any(
+                        self.is_same_group_dorm_replacement(op, name, group)
+                        for group in groups
+                    )
+                )
+            ]
+        assignments = match_replacements(options)
+        if assignments is None:
+            return False
+        changes.update(assignments)
+        for name, desired in changes.items():
+            op = self.operators[name]
+            actual = self.get_current_operator(op.room, op.index)
+            if actual is not None and actual.name == desired:
+                desired = "Current"
+            if desired != "Current" or op.room in plan:
+                plan.setdefault(op.room, ["Current"] * len(self.plan[op.room]))[
+                    op.index
+                ] = desired
+        for room in list(plan):
+            if all(name == "Current" for name in plan[room]):
+                del plan[room]
+        return True
 
     def _group_moods(self, group: str) -> list[float]:
         members = self.groups.get(group)
@@ -1107,7 +1262,7 @@ class Operators:
         """救急跑单名单独立于冻结的正常排班。"""
         if self.emergency_run_order_replacements is not None:
             return self.emergency_run_order_replacements.get(room, [])
-        return [slot.replacement for slot in self.plan.get(room, [])]
+        return [slot.all_replacements for slot in self.plan.get(room, [])]
 
     def is_run_order_room(self, room: str) -> bool:
         """按维护副表、生效排班和实际订单过滤跑单。"""
@@ -1656,7 +1811,9 @@ class Operators:
         )
 
     def group_is_resting(self, group):
-        """宿舍常驻成员不参与组的工作／休息状态判断。"""
+        """Confirmed state survives bed release; unknown legacy groups use anchors."""
+        if group in self.group_shift_state:
+            return self.group_shift_state[group]
         return any(
             not self.operators[name].room.startswith("dorm")
             and not self.operators[name].workaholic
@@ -1696,7 +1853,12 @@ class Operators:
             or operator.name == "菲亚梅塔"
         ):
             return False
-        return "Free" in operator.replacement
+        replacements = (
+            self.shared_replacements(operator, self.resting_binding_groups(operator))
+            if operator.multi_group
+            else operator.replacement
+        )
+        return "Free" in replacements
 
     def is_auto_free_dorm_slot(self, room, index):
         slots = self.plan.get(room, [])
@@ -1764,10 +1926,11 @@ class Operators:
         projected = copy.copy(self)
         projected.operators = copy.deepcopy(self.operators)
         projected.groups = copy.deepcopy(self.groups)
+        projected.group_shift_state = dict(self.group_shift_state)
         projected.dorm = copy.deepcopy(self.dorm)
         projected.group_dorm = copy.deepcopy(getattr(self, "group_dorm", []))
         for plan in plans:
-            projected.select_arrangement_bindings(plan)
+            projected.commit_group_shifts(projected.arrangement_group_transitions(plan))
             changed_slots = {
                 (room, index)
                 for room, names in plan.items()
@@ -1863,9 +2026,14 @@ class Operators:
 
     def replacement_candidates(self, operator):
         """工作替班按配置顺序取用；已用尽候补稳定移到末尾。"""
+        replacements = (
+            self.shared_replacements(operator, self.resting_binding_groups(operator))
+            if operator.multi_group
+            else operator.replacement
+        )
         candidates = [
             name
-            for name in operator.replacement
+            for name in replacements
             if name != "Free"
             and not (operator.room.startswith("dorm") and self.rest_mood_complete(name))
         ]
