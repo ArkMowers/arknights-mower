@@ -3195,6 +3195,39 @@ def growth_plan():
         return {"error": str(exc)}, 400
 
 
+@app.route("/growth-crafting-order", methods=["GET", "PUT", "DELETE"])
+@require_token
+def growth_crafting_order():
+    from arknights_mower.utils.growth import _lock as growth_lock
+    from arknights_mower.utils.growth_order import (
+        crafting_order_state,
+        save_planning_order,
+        validate_order,
+    )
+    from arknights_mower.utils.workshop_automation import (
+        refresh_workshop_after_plan_change,
+    )
+    from arknights_mower.utils.workshop_config import workshop_lock
+
+    try:
+        with workshop_lock, growth_lock:
+            state = crafting_order_state()
+            if request.method == "GET":
+                return state
+            if request.method == "PUT":
+                req = request.get_json(silent=True)
+                if not isinstance(req, dict):
+                    raise ValueError("养成顺序格式错误")
+                order = validate_order(req.get("order"), state["planning_items"])
+            else:
+                order = []
+            save_planning_order(order, state["planning_items"])
+            refresh_workshop_after_plan_change()
+            return crafting_order_state()
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        return {"error": str(exc)}, 400
+
+
 @app.route("/workshop-auto-config", methods=["POST"])
 def workshop_auto_config():
     import traceback

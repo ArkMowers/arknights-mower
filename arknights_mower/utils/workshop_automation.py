@@ -71,6 +71,7 @@ def update_workshop_config(*, explicit=False, **operators):
                         )
                     },
                     protected_workshop_materials(),
+                    order=conf.growth_crafting_order,
                 )
                 # Readiness means remaining craftable demands are covered. Gold,
                 # chips and module tokens remain visible in the material overview.

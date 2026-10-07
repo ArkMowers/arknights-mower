@@ -1989,10 +1989,16 @@ def try_workshop_tasks(op_data, tasks, *, minimum_mood=22):
             if not item.enabled:
                 logger.info(f"{item.operator}加工站任务被禁用，跳过")
                 continue
+            operator = op_data.operators.get(item.operator)
+            mood = (
+                operator.current_mood()
+                if operator is not None and hasattr(operator, "current_mood")
+                else getattr(operator, "mood", None)
+            )
             reason = workshop_operator_block_reason(
                 op_data, item.operator, tasks, minimum_mood=minimum_mood
             ) or workshop_material_block_reason(
-                item.operator, item.items, inventory_data
+                item.operator, item.items, inventory_data, mood
             )
             if reason:
                 logger.info(f"{item.operator}加工跳过：{reason}")

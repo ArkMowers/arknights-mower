@@ -3,7 +3,6 @@
 from collections import Counter
 from math import ceil
 
-from arknights_mower.utils.growth import material_entries
 from arknights_mower.utils.mastery_materials import MaterialBudget
 
 
@@ -50,7 +49,7 @@ def crafting_gold_cost(budget, materials, formulas=None):
 
 
 def next_recipe(entries, skills, inventory, formulas, blocked=()):
-    """Reserve completed operators, then finish one operator before moving on.
+    """Reserve earlier projects, then finish the first outstanding recipe.
 
     Only a single recipe receives a bounded quota. The caller recalculates after
     confirmed crafting, so consumed intermediate stock cannot refill an old quota.
@@ -110,22 +109,37 @@ def next_recipe(entries, skills, inventory, formulas, blocked=()):
                         "self_upper_limit": inventory.get(iid, 0) + batches * output,
                     }
                 ]
-        # This operator still needs crafted items; do not spend its stock on another.
+        # Retain this project's ingredients until its outstanding recipe is supplied.
         return cid, []
     return None, []
 
 
 def growth_workshop_config(
-    box, skills, plans, goals, inventory, formulas, operators, blocked=()
+    box, skills, plans, goals, inventory, formulas, operators, blocked=(), order=()
 ):
+    from arknights_mower.utils.growth_order import (
+        crafting_projects,
+        prepare_project_materials,
+    )
     from arknights_mower.utils.workshop_recipes import recipe_category
     from arknights_mower.utils.workshop_recommendation import allocate_workshop_items
 
-    # An active trainee retains first access to stock. Remaining skills of the
-    # same operator join its group even when manual priorities interleave skills.
-    ordered = sorted(plans, key=lambda p: p.get("status", "idle") == "idle")
-    entries = material_entries(box, skills, ordered, goals)
-    cid, items = next_recipe(entries, skills, inventory, formulas, blocked)
+    projects = crafting_projects(plans, goals, order, box=box, skills=skills)
+    states, entries = prepare_project_materials(
+        box, skills, projects, inventory, formulas, blocked
+    )
+    key, items = next_recipe(entries, skills, inventory, formulas, blocked)
+    focus = next((p for p in projects if p["key"] == key), None)
+    if focus is None:
+        focus = next(
+            (
+                p
+                for p in states
+                if p["status"] == "waiting" or (p["locked"] and p["reason"])
+            ),
+            None,
+        )
+    cid = focus["char_id"] if focus else None
     if not items:
         return [], cid
     category = recipe_category(formulas[items[0]["item_names"][0]])

@@ -154,6 +154,11 @@ class TestMasteryRouteView(unittest.TestCase):
 class TestMasteryPlanView(unittest.TestCase):
     def setUp(self):
         stub_support_planner(self)
+        order_patch = patch(
+            "arknights_mower.views.mastery.config.conf.growth_crafting_order", []
+        )
+        order_patch.start()
+        self.addCleanup(order_patch.stop)
         auto_order_patch = patch(
             "arknights_mower.views.mastery.auto_interleave_new_plans"
         )
@@ -271,7 +276,9 @@ class TestMasteryPlanView(unittest.TestCase):
         self.assertEqual(res["status"], "added")
         self.assertEqual(res["id"], 5)
         self.assertEqual(insert.call_args.kwargs["target_level"], 3)
-        self.auto_order.assert_called_once_with([5], professions={"char_001": ""})
+        self.auto_order.assert_called_once_with(
+            [5], order=[], professions={"char_001": ""}
+        )
 
     @patch("arknights_mower.utils.mastery_db.insert_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
@@ -294,6 +301,9 @@ class TestMasteryPlanView(unittest.TestCase):
     @patch("arknights_mower.views.mastery._add_or_reuse_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
     def test_quick_add_auto_orders_before_dispatch(self, get_skill, add, dispatch):
+        from arknights_mower.views.mastery import config
+
+        config.conf.growth_crafting_order = ["skill:existing:0", "module:existing:x"]
         data = self._char_table()
         data["characters"]["char_001"]["profession"] = "CASTER"
         get_skill.return_value = data
@@ -305,7 +315,9 @@ class TestMasteryPlanView(unittest.TestCase):
 
         def dispatch_after_order(**_kwargs):
             self.auto_order.assert_called_once_with(
-                [7], professions={"char_001": "CASTER"}
+                [7],
+                order=["skill:existing:0", "module:existing:x"],
+                professions={"char_001": "CASTER"},
             )
             return {"scheduled": [], "skipped": []}
 
@@ -414,7 +426,7 @@ class TestMasteryPlanView(unittest.TestCase):
         delete_mock.return_value = True
         r = self.client.delete("/mastery-plan", json={"id": 3})
         self.assertEqual(r.status_code, 200)
-        delete_mock.assert_called_once_with(3)
+        delete_mock.assert_called_once_with(3, protect_active=True)
         purge_mock.assert_called_once_with(3)
 
     @patch("arknights_mower.views.mastery.delete_plan")

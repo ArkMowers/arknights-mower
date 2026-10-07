@@ -468,12 +468,12 @@ class MasteryPlanView(MethodView):
                     name, char_id, skill_index, skill_name, None, "auto", path=None
                 )
                 _record(result, target, is_new, char_id)
-        # Explicit priorities come from the modal's draft order; quick-add requests
-        # omit them and get a profession-interleaved default before dispatch.
+        # Quick-add preserves saved order, or uses profession alternation by default.
         auto_order = items is None or all("priority" not in item for item in items)
         if added_plan_ids and auto_order:
             auto_interleave_new_plans(
                 added_plan_ids,
+                order=config.conf.growth_crafting_order,
                 professions={
                     char_id: info.get("profession", "")
                     for char_id, info in char_table.items()
@@ -506,7 +506,11 @@ class MasteryPlanView(MethodView):
         # （True==1）也不得静默接受。对齐 #97 retry 畸形 id 400 的校验。
         if isinstance(plan_id, bool) or not isinstance(plan_id, int):
             return {"error": f"invalid id: {plan_id}"}, 400
-        if delete_plan(plan_id):
+        try:
+            deleted = delete_plan(plan_id, protect_active=True)
+        except ValueError as exc:
+            return {"error": str(exc)}, 409
+        if deleted:
             # #97：删计划清残留队列任务（该 plan_key 的 SKILL_UPGRADE/SWAP/fill），
             # 否则残留任务仍会按 plan_key 派发到已删计划。
             _purge_plan_tasks(plan_id)
