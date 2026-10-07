@@ -33,6 +33,10 @@ Timeout queue rebuilding retains tasks with pending group targets or active back
 
 Backup transition tasks record their explicit entry slots. Shift projection carries that task-local ownership through activation and retries; coalescing retains explicit assignments ahead of ordinary arrangements. Shared matching excludes only those slots from automatic replacement, and their assigned operators remain reserved for matching other slots. `Current` does not claim an explicit slot. Shared matching uses position and task reservations without querying mastery state.
 
+Named temporary-bed occupants join shared-cover matching as fixed candidates. A conflict without an alternative defers the unchanged task; a feasible alternative preserves both targets for confirmation. An existing resident explicitly assigned elsewhere releases the old bed. Matching remains independent of operator iteration order.
+
+Ordinary correction inside shift projection overlays the already projected occupants of explicit backup slots before shared matching. Their concrete names reserve those operators for other shared-slot matching. Explicit alternatives outside the active binding remain intact through both task coalescing orders and backup activation inside projection.
+
 ## Verification
 
 Offline regression tests cover the three failure paths, overlapping reservation owners, unavailable alternatives, complete matching across shared slots, unfinished recovery, missing working-slot observations and fixed dormitory targets. Existing shift, product, dormitory and personal-mood suites remain applicable. No live device or configuration changes participate in verification.
@@ -48,3 +52,5 @@ Cap-confirmation regressions cover compacted dormitory targets, missing working 
 Timeout regressions cover overdue and future partial returns, backup-shift protection, preservation through metadata rebuilding and successful completion after the missing shared primary returns. Scheduler recovery tests retain their existing critical-task coverage.
 
 Explicit-backup regressions cover generated tasks, projected activation, both coalescing directions, serialized partial group returns, placeholder exclusion and complete matching for other shared slots without duplicate assignments.
+
+Additional regressions cover named and retained temporary-bed occupants, both matching orders, unavailable and available alternatives, confirmation after a missing working cover, and explicit out-of-binding candidates through the full shift cycle.

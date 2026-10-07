@@ -1976,12 +1976,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         *,
         read_rooms=True,
         return_plan=False,
+        explicit_slots=(),
     ):
         """刷新缓存并生成纠偏计划。
 
         ``read_rooms=False`` 只使用已经缓存的干员位置和心情。副表切换使用
         这个模式在内存中收敛最终排班，禁止为了推导结果反复进入游戏房间。
         ``return_plan=True`` 返回差异而不把纠错任务塞进队列。
+        ``explicit_slots`` 保留预演中已应用的副表显式驻员，优先于普通纠错。
         """
         if read_rooms:
             self._read_agent_mood()
@@ -2192,7 +2194,17 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
             reconsider_low_mood_replacements(self.op_data, fix_plan, _is_mastery_busy)
         suppress_completed_dorm_returns(self.op_data, fix_plan)
-        if not self.op_data.normalize_shared_arrangement(fix_plan):
+        explicit = {}
+        for room, index in explicit_slots:
+            if room in plan and 0 <= index < len(plan[room]):
+                current = self.op_data.get_current_operator(room, index)
+                explicit.setdefault(room, ["Current"] * len(plan[room]))[index] = (
+                    current.name if current else "Free"
+                )
+        _merge_shift_transition(fix_plan, explicit, self.op_data)
+        if not self.op_data.normalize_shared_arrangement(
+            fix_plan, explicit_slots=explicit_slots
+        ):
             logger.debug("多绑组纠错替班暂不可用，保留当前安排")
             return {} if return_plan else None
         self._suppress_train_correction(fix_plan)
@@ -4606,7 +4618,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if not rest:
                 # 副表可能改变刚选中的替班合法性；缓存纠错也在预演中完成。
                 rest = (
-                    simulation.agent_get_mood(read_rooms=False, return_plan=True) or {}
+                    simulation.agent_get_mood(
+                        read_rooms=False,
+                        return_plan=True,
+                        explicit_slots=explicit_slots,
+                    )
+                    or {}
                 )
                 for room, names in rest.items():
                     for index, name in enumerate(names):

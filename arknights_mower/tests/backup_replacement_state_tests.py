@@ -185,15 +185,16 @@ def test_complete_matching_across_multiple_affected_slots(solver, complete):
 
 
 @pytest.mark.parametrize("full_cycle", [False, True])
-def test_explicit_backup_task_retains_control(solver, full_cycle):
+@pytest.mark.parametrize("target", [SHARED, "黑角"])
+def test_explicit_backup_task_retains_control(solver, full_cycle, target):
     assert shift_off(solver, "甲")[0]
     for bed in solver.op_data.all_dorms():
         if bed.name:
             bed.time = datetime.now() + timedelta(hours=4)
             solver.op_data.operators[bed.name].mood = 5
     bp = backup(solver)
-    bp.task = {"contact": [SHARED]}
-    assert transition(solver) == {"contact": [SHARED]}
+    bp.task = {"contact": [target]}
+    assert transition(solver) == {"contact": [target]}
     task = next(t for t in solver.tasks if t.plan)
     solver.task = task
     solver._prepare_group_shift(task)
@@ -203,21 +204,24 @@ def test_explicit_backup_task_retains_control(solver, full_cycle):
         solver._switch_products_before_arrangement(task)
         solver._activate_shift_backup(task)
     solver._prepare_group_shift(task, remember_targets=True)
-    assert task.plan["contact"] == [SHARED]
+    assert task.plan["contact"] == [target]
     assert solver.op_data.group_is_resting("甲")
     assert solver.op_data.operators[SHARED].is_resting()
 
 
 @pytest.mark.parametrize("explicit_current", [False, True])
-def test_explicit_backup_survives_ordinary_task_coalescing(solver, explicit_current):
+@pytest.mark.parametrize("target", [SHARED, "黑角"])
+def test_explicit_backup_survives_ordinary_task_coalescing(
+    solver, explicit_current, target
+):
     assert shift_off(solver, "甲")[0]
     for bed in solver.op_data.all_dorms():
         if bed.name:
             bed.time = datetime.now() + timedelta(hours=4)
             solver.op_data.operators[bed.name].mood = 5
     bp = backup(solver)
-    bp.task = {"contact": [SHARED]}
-    assert transition(solver) == {"contact": [SHARED]}
+    bp.task = {"contact": [target]}
+    assert transition(solver) == {"contact": [target]}
     explicit = next(t for t in solver.tasks if t.plan)
     ordinary = SchedulerTask(
         task_type=TaskTypes.SELF_CORRECTION, task_plan={"contact": ["砾"]}
@@ -228,20 +232,23 @@ def test_explicit_backup_survives_ordinary_task_coalescing(solver, explicit_curr
     solver._prepare_shift_cycle(task)
     solver._activate_shift_backup(task)
     solver._prepare_group_shift(task, remember_targets=True)
-    assert task.plan["contact"] == [SHARED]
+    assert task.plan["contact"] == [target]
     assert solver.tasks == [task]
     assert solver.op_data.group_is_resting("甲")
 
 
 @pytest.mark.parametrize("full_cycle", [False, True])
-def test_projected_backup_explicit_task_survives_final_revalidation(solver, full_cycle):
+@pytest.mark.parametrize("target", [SHARED, "黑角"])
+def test_projected_backup_explicit_task_survives_final_revalidation(
+    solver, full_cycle, target
+):
     assert shift_off(solver, "甲")[0]
     for bed in solver.op_data.all_dorms():
         if bed.name:
             bed.time = datetime.now() + timedelta(hours=4)
             solver.op_data.operators[bed.name].mood = 5
     bp = backup(solver)
-    bp.task = {"contact": [SHARED]}
+    bp.task = {"contact": [target]}
     task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION)
     solver.task, solver.tasks = task, [task]
     solver._prepare_group_shift(task)
@@ -252,7 +259,7 @@ def test_projected_backup_explicit_task_survives_final_revalidation(solver, full
     assert solver.op_data.plan_condition == [False]
     solver._activate_shift_backup(task)
     solver._prepare_group_shift(task, remember_targets=True)
-    assert task.plan["contact"] == [SHARED]
+    assert task.plan["contact"] == [target]
     assert solver.op_data.group_is_resting("甲")
 
 

@@ -24,6 +24,98 @@ from arknights_mower.utils.scheduler_task import (
 )
 
 
+@pytest.fixture
+def shared_open_bed(solver):
+    plans = solver.global_plan["default_plan"].plan
+    plans["dormitory_1"][0] = Room(
+        "塑心",
+        "甲",
+        ["Free"],
+        group_bindings=[{"group": "乙", "replacement": ["Free"]}],
+    )
+    plans["contact"][0].replacement.append("黑角")
+    plans["contact"][0].group_bindings[0]["replacement"] = ["红"]
+    assert solver.initialize_operators() is None
+    for op in solver.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 5, datetime.now()
+    assert shift_off(solver, "甲")[0]
+    assert shift_off(solver, "乙")[0]
+    solver.op_data.operators["红"]._current_room = ""
+    solver.op_data.operators["红"].current_index = -1
+    return solver
+
+
+@pytest.mark.parametrize("bed_first", [False, True])
+@pytest.mark.parametrize("alternative", [False, True])
+@pytest.mark.parametrize("resident", [False, True])
+def test_named_shared_bed_participates_in_cover_matching(
+    shared_open_bed, bed_first, alternative, resident
+):
+    from copy import deepcopy
+
+    data = shared_open_bed.op_data
+    if alternative:
+        data.operators[SHARED].group_bindings[1]["replacement"].append("黑角")
+    if bed_first:
+        data.operators = dict(reversed(list(data.operators.items())))
+    if resident:
+        apply_plan = {"dormitory_1": ["红", *["Current"] * 4]}
+        observed = data.project_arrangements([apply_plan])
+        data.operators, data.dorm = observed.operators, observed.dorm
+    plan = {
+        "meeting": [A, "Current"],
+        "contact": [SHARED],
+        "dormitory_1": ["Current" if resident else "红", *["Current"] * 4],
+    }
+    before = deepcopy(plan)
+    assert data.normalize_shared_arrangement(plan) is alternative
+    if alternative:
+        assert plan["contact"] == ["黑角"]
+        projected = data.project_arrangements([plan])
+        assert projected.get_current_operator("dormitory_1", 0).name == "红"
+        assert projected.get_current_operator("contact", 0).name == "黑角"
+    else:
+        assert plan == before
+
+
+def test_shared_bed_conflict_defers_without_losing_work_confirmation(shared_open_bed):
+    solver = shared_open_bed
+    data = solver.op_data
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_ON,
+        task_plan={
+            "meeting": [A, "Current"],
+            "contact": [SHARED],
+            "dormitory_1": ["红", *["Current"] * 4],
+        },
+    )
+    task.backup_shift_active = True
+    solver.task, solver.tasks = task, [task]
+    with pytest.raises(ProductSwitchDeferred):
+        solver._prepare_group_shift(task, remember_targets=True)
+    assert data.group_is_resting("甲")
+    assert not getattr(task, "group_shift_expected", {})
+    # A newly available alternative resolves the conflict on the same task.
+    data.operators[SHARED].group_bindings[1]["replacement"].append("黑角")
+    solver._prepare_group_shift(task)
+    solver._prepare_shift_cycle(task)
+    solver._prepare_group_shift(task, remember_targets=True)
+    assert task.group_shift_expected["contact", 0] == "黑角"
+    assert task.group_shift_expected["dormitory_1", 0] == "红"
+    observed = data.project_arrangements([task.plan])
+    data.operators, data.dorm = observed.operators, observed.dorm
+    data.operators["黑角"]._current_room = ""
+    data.operators["黑角"].current_index = -1
+    assert not solver._complete_group_shift(task)
+    assert data.group_is_resting("甲")
+    observed = data.project_arrangements([task.plan])
+    data.operators, data.dorm = observed.operators, observed.dorm
+    assert solver._complete_group_shift(task)
+    assert not data.group_is_resting("甲")
+    assert data.group_is_resting("乙")
+
+
 @pytest.mark.parametrize("reserved", [False, True])
 def test_available_common_cover_is_considered(solver, reserved):
     data = solver.op_data

@@ -1142,13 +1142,29 @@ class Operators:
             actual = self.get_current_operator(op.room, op.index)
             if "Free" in candidates and op.room.startswith("dorm"):
                 # A shared open bed keeps its current recovering occupant.
-                changes[op.name] = (
+                desired = (
                     target[0]
                     if target and target[0] not in (op.name, "Current")
                     else actual.name
                     if actual and actual.name != op.name
                     else "Free"
                 )
+                if (
+                    (not target or target[0] in (op.name, "Current"))
+                    and actual is not None
+                    and any(
+                        name == actual.name and (room, index) != (op.room, op.index)
+                        for room, names in plan.items()
+                        for index, name in enumerate(names)
+                    )
+                ):
+                    desired = "Free"
+                if desired not in ("Free", "Current", ""):
+                    # Named recovery occupants compete with working covers in
+                    # the same matching, regardless of slot iteration order.
+                    options[op.name] = [desired] if desired not in reserved else []
+                else:
+                    changes[op.name] = desired
                 continue
             preferred = ([actual.name] if actual else []) + (target or [])
             candidates = list(
