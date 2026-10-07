@@ -1112,8 +1112,21 @@ class Operators:
         followers = [
             op
             for op in self.operators.values()
-            if op.multi_group and (op.room, op.index) not in explicit_slots
+            if op.multi_group
+            and (op.room, op.index) not in explicit_slots
+            and (
+                op.index < len(plan.get(op.room, []))
+                or any(b["group"] in transitions for b in op.group_bindings)
+            )
         ]
+        # These sources leave only if the complete matching succeeds, so a
+        # same-group fixed dormitory target can use them in this arrangement.
+        departing = {
+            op.name
+            for op in followers
+            if (op.current_room, op.current_index) == (op.room, op.index)
+            and self.resting_binding_groups(op, transitions)
+        }
         changes, options = {}, {}
         managed = {(op.room, op.index) for op in followers}
         reserved = {
@@ -1129,8 +1142,6 @@ class Operators:
         for op in followers:
             target = plan.get(op.room, [])[op.index : op.index + 1]
             relevant = any(b["group"] in transitions for b in op.group_bindings)
-            if not target and not relevant:
-                continue
             groups = self.resting_binding_groups(op, transitions)
             if not groups:
                 if relevant:
@@ -1187,7 +1198,10 @@ class Operators:
                         and plan[source.current_room][source.current_index]
                         not in ("Current", name)
                     )
-                    or any(name in names for names in plan.values())
+                    or (
+                        name in departing
+                        or any(name in names for names in plan.values())
+                    )
                     and any(
                         self.is_same_group_dorm_replacement(op, name, group)
                         for group in groups

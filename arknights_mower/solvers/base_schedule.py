@@ -327,6 +327,13 @@ class ProductSwitchDeferred(Exception):
         self.minutes = minutes
 
 
+class GroupShiftBlocked(ProductSwitchDeferred):
+    def __init__(self, groups):
+        self.groups = set(groups)
+        waiting = "、".join(sorted(groups)) + "回班" if groups else "替班可用"
+        super().__init__(f"多绑组替班冲突，挂起换班，等待{waiting}")
+
+
 class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     """
     收集基建的产物：物资、赤金、信赖
@@ -354,6 +361,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self.error = False
         self.clue_count = 0
         self.tasks = []
+        self.waiting_group_shifts = []
         self.free_clue = None
         self.credit_fight = None
         self.task_count = 0
@@ -457,6 +465,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if config.maintenance_recheck.is_set():
                 return
             self._sync_run_order_tasks()
+            self._resume_waiting_group_shifts()
             self._fill_empty_dorms()
             scheduling(self.tasks)
             self.task = self.tasks[0] if self.tasks else None
@@ -1081,6 +1090,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self._emergency_replan_releases()
             return
         self.tasks = plan_metadata(self.op_data, self.tasks)
+        self._resume_waiting_group_shifts()
 
     def prepare_release_dorm(self, task):
         """合并任务逐人核验；一人失效不取消其他人的清退。"""
@@ -1471,6 +1481,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     task.time.strftime("%H:%M:%S"),
                 )
                 self.back_to_infrastructure()
+            except GroupShiftBlocked as e:
+                self._suspend_group_shift(self.task, e.groups)
+                logger.warning(str(e))
+                # Suspended arrangements must not occupy the dispatch queue or
+                # prevent the returning groups from receiving their tasks.
+                self.plan_metadata()
+                self.skip()
             except ProductSwitchDeferred as e:
                 retry_time = datetime.now() + timedelta(minutes=e.minutes)
                 pending_ids = {id(task) for task in self.tasks}
@@ -4386,7 +4403,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             reserved_replacements=reserved,
             explicit_slots=getattr(task, "backup_explicit_slots", ()),
         ):
-            raise ProductSwitchDeferred("多绑组替班冲突，等待相关组回班", minutes=1)
+            raise GroupShiftBlocked(self._shared_shift_blockers(task, transitions))
         task.plan = proposed
         task.group_shift_transitions = transitions
         if remember_targets and transitions:
@@ -4405,10 +4422,96 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         expected[room, index] = name
             task.group_shift_expected = expected
 
+    def _shared_shift_blockers(self, task, transitions):
+        """Identify confirmed resting dependencies without guessing return times."""
+        groups = set()
+        explicit = getattr(task, "backup_explicit_slots", ())
+        for op in self.op_data.operators.values():
+            if (
+                not op.multi_group
+                or (op.room, op.index) in explicit
+                or not (
+                    op.index < len(task.plan.get(op.room, []))
+                    or any(b["group"] in transitions for b in op.group_bindings)
+                )
+            ):
+                continue
+            groups.update(
+                group
+                for group in self.op_data.resting_binding_groups(op, transitions)
+                if self.op_data.group_is_resting(group)
+            )
+        return groups
+
+    def _suspend_group_shift(self, task, groups):
+        task.group_shift_waiting = set(groups)
+        waiting = getattr(self, "waiting_group_shifts", [])
+        if all(pending is not task for pending in waiting):
+            waiting.append(task)
+        self.waiting_group_shifts = waiting
+        self.tasks[:] = [pending for pending in self.tasks if pending is not task]
+        self._refresh_deferred_product_reservations()
+        self.op_data.correct_dorm()
+
+    def _resume_waiting_group_shifts(self):
+        """Cached state changes release suspended work; no timer dispatch is used."""
+        if not getattr(self, "waiting_group_shifts", ()):
+            return
+        if self._initial_mood_read_pending() or self._emergency_frozen():
+            return
+        for task in list(getattr(self, "waiting_group_shifts", ())):
+            if any(
+                self.op_data.group_is_resting(group)
+                for group in task.group_shift_waiting
+            ):
+                continue
+            transitions = dict(getattr(task, "group_shift_transitions", {}))
+            transitions.update(self.op_data.arrangement_group_transitions(task.plan))
+            proposed = copy.deepcopy(task.plan)
+            if not self.op_data.normalize_shared_arrangement(
+                proposed,
+                transitions,
+                explicit_slots=getattr(task, "backup_explicit_slots", ()),
+            ):
+                continue
+            task.plan = proposed
+            task.time = datetime.now()
+            del task.group_shift_waiting
+            self.waiting_group_shifts[:] = [
+                pending for pending in self.waiting_group_shifts if pending is not task
+            ]
+            self.tasks.append(task)
+            self._refresh_deferred_product_reservations()
+            logger.info("多绑组互斥已解除，恢复换班：%s", task.plan)
+
     def _complete_group_shift(self, task):
-        """A skipped or unconfirmed room keeps the group transition pending."""
+        """Confirm required targets; mastery-owned slots retain their protection."""
         if not hasattr(task, "group_shift_transitions"):
             return True
+        expected_plan = {}
+        for (room, index), name in getattr(task, "group_shift_expected", {}).items():
+            expected_plan.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
+                index
+            ] = name
+        original_transitions = self.op_data.arrangement_group_transitions(expected_plan)
+        # The execution gate may legitimately skip training slots. Reuse its
+        # scheduling protection instead of recreating those slots every minute.
+        self._suppress_train_correction(expected_plan)
+        remaining_transitions = self.op_data.arrangement_group_transitions(
+            expected_plan
+        )
+        for group in original_transitions.keys() - remaining_transitions.keys():
+            # A task containing only protected anchors confirms no group change.
+            task.group_shift_transitions.pop(group, None)
+        for group, resting in remaining_transitions.items():
+            if resting != original_transitions[group]:
+                task.group_shift_transitions[group] = resting
+        task.group_shift_expected = {
+            (room, index): name
+            for room, names in expected_plan.items()
+            for index, name in enumerate(names)
+            if name != "Current"
+        }
         missing = {}
         for (room, index), name in getattr(task, "group_shift_expected", {}).items():
             actual = self.op_data.get_current_operator(room, index)
@@ -4430,6 +4533,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if changes:
             logger.info("绑组换班确认完成：%s", changes)
         task.group_shift_expected = {}
+        self._resume_waiting_group_shifts()
         return True
 
     def _prepare_shift_cycle(self, task):
