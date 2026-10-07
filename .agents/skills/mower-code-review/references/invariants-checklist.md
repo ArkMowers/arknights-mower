@@ -172,3 +172,5 @@ When a pull request introduces a new subsystem, driver, or solver module:
 5. **Implement Hermetic Test**: Add an offline unit test in `arknights_mower/tests/` asserting that violating the invariant raises the expected structured error.
 
 - [ ] **[INV-STOCK-01] Confirmed Workshop Inventory**: Do delayed cloud responses preserve confirmed outputs and consumption across operators and restart? Are workshop thresholds absolute inventory counts? Do two-way changes require exact predicted cloud counts or newer actual observations, while single-direction changes accept convergence only in that direction? Do partial scans preserve items they do not observe?
+
+- [ ] **[INV-MAA-05] Local Inventory Execution**: Workshop execution and inventory stage selection use persisted local stock without fetching Skland; accepted MAA cumulative drops update that stock once per task, and configured stage caps stop only the reached Fight task while preserving automatic series and subsequent tasks. Are unknown baselines preserved, active-run cloud rebases held, AND/OR conditions maintained, and an all-capped plan empty when no fallback exists?

@@ -4,10 +4,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from arknights_mower.utils.maa_stage_inventory import (
     build_stage_options,
     default_materials_for_stage,
     load_inventory_snapshot,
+    maa_fight_drop_targets,
     select_stages_by_inventory,
 )
 
@@ -157,7 +160,7 @@ class MaaStageInventoryTests(unittest.TestCase):
         )
         self.assertEqual(result["stages"], ["1-7"])
 
-    def test_all_limit_skips_fall_back_to_original_plan(self):
+    def test_all_limits_reached_without_fallback_stops_fighting(self):
         result = select_stages_by_inventory(
             ["1-7", "CE-6"],
             limit_rules=[
@@ -166,8 +169,9 @@ class MaaStageInventoryTests(unittest.TestCase):
             ],
             inventory={"30012": 10, "4001": 10},
         )
-        self.assertTrue(result["limit_fallback"])
-        self.assertEqual(result["stages"], ["1-7", "CE-6"])
+        self.assertFalse(result["limit_fallback"])
+        self.assertEqual(result["stages"], [])
+        self.assertEqual(result["limit_skipped"], ["1-7", "CE-6"])
         self.assertEqual(result["ratio_decisions"], [])
 
     def test_ratio_selects_lowest_inventory_per_weight(self):
@@ -313,6 +317,152 @@ class MaaStageInventoryTests(unittest.TestCase):
             inventory, updated_at = load_inventory_snapshot(path)
         self.assertEqual(inventory, {"30012": 123, "4001": 456})
         self.assertIsNotNone(updated_at)
+
+    def test_default_snapshot_maps_shared_inventory_names_and_aliases(self):
+        with patch(
+            "arknights_mower.solvers.record.get_inventory_counts",
+            return_value={"固源岩": 123, "4001": 456, "未知材料": 99},
+        ):
+            inventory, updated_at = load_inventory_snapshot()
+        self.assertEqual(inventory, {"30012": 123, "4001": 456})
+        self.assertIsNone(updated_at)
+
+
+@pytest.fixture
+def shared_inventory(monkeypatch, tmp_path):
+    from arknights_mower.solvers import record
+
+    monkeypatch.setattr(record, "_tables_created", False)
+    monkeypatch.setattr(
+        record,
+        "get_path",
+        lambda name: tmp_path / "data.db" if name.endswith(".db") else tmp_path,
+    )
+    return record
+
+
+def test_selection_observes_confirmed_local_inventory_changes(shared_inventory):
+    shared_inventory.save_inventory_counts({"固源岩": 10, "固源岩组": 0})
+    shared_inventory.apply_workshop_inventory({"固源岩": -5, "固源岩组": 1})
+    inventory, _ = load_inventory_snapshot()
+    assert inventory == {"30012": 5, "30013": 1}
+    rules = [{"stage": "1-7", "items": [{"item_id": "30012", "limit": 8}]}]
+    result = select_stages_by_inventory(["1-7", "CE-6"], rules, inventory=inventory)
+    assert result["stages"] == ["1-7"]
+
+
+def test_stale_cloud_does_not_replace_local_stock_for_selection(shared_inventory):
+    old = {"固源岩": 10, "固源岩组": 0}
+    shared_inventory.save_inventory_counts(old)
+    shared_inventory.apply_workshop_inventory({"固源岩": -5, "固源岩组": 1})
+    shared_inventory.save_inventory_counts(
+        old, scanned_counts={}, cloud_counts=old, cloud_at=10_000_000_000
+    )
+    with patch.object(Path, "read_text", side_effect=AssertionError("Cloud reread")):
+        inventory, _ = load_inventory_snapshot()
+    assert inventory == {"30012": 5, "30013": 1}
+
+
+def test_invalidated_counts_stay_absent_from_selection_snapshot(shared_inventory):
+    old = {"固源岩": 10, "固源岩组": 0}
+    shared_inventory.save_inventory_counts(old)
+    shared_inventory.invalidate_workshop_inventory(["固源岩"])
+    shared_inventory.save_inventory_counts(
+        old, scanned_counts={}, cloud_counts=old, cloud_at=1
+    )
+    inventory, _ = load_inventory_snapshot()
+    assert inventory == {"30013": 0}
+
+
+@pytest.mark.parametrize(
+    "operator,stock,accumulated,expected",
+    [
+        ("or", {"3212": 2, "3272": 3}, {}, {"3212": 3, "3272": 2}),
+        ("and", {"3212": 2, "3272": 3}, {}, {}),
+        ("and", {"3212": 5, "3272": 3}, {"3272": 1}, {"3272": 3}),
+        ("and", {"3212": 5}, {}, {}),
+        ("and", {"3212": 2}, {}, {}),
+        ("or", {"3212": 2}, {}, {"3212": 3}),
+        ("or", {}, {}, {}),
+    ],
+)
+def test_maa_drop_targets_preserve_any_all_and_unknown_stock(
+    operator, stock, accumulated, expected
+):
+    rules = [
+        {
+            "stage": "PR-C-2",
+            "operator": operator,
+            "items": [
+                {"item_id": "3212", "limit": 5},
+                {"item_id": "3272", "limit": 5},
+            ],
+        }
+    ]
+    assert maa_fight_drop_targets("PR-C-2", rules, stock, accumulated) == {
+        "drops": expected,
+        "reached": False,
+        "bound": True,
+    }
+
+
+def test_maa_drop_targets_use_strictest_of_multiple_rules_and_resolve_aliases():
+    rules = [
+        {"stage": "PR-C-2", "items": [{"item_name": "先锋芯片组", "limit": 6}]},
+        {"stage": "PR-C-2", "items": [{"item_id": "3212", "limit": 5}]},
+        {
+            "stage": "PR-C-2",
+            "enabled": False,
+            "items": [{"item_id": "3212", "limit": 2}],
+        },
+        {"stage": "PR-C-1", "items": [{"item_id": "3212", "limit": 2}]},
+    ]
+    assert maa_fight_drop_targets("PR-C-2", rules, {"3212": 2}, {"3212": 1}) == {
+        "drops": {"3212": 4},
+        "reached": False,
+        "bound": True,
+    }
+    assert maa_fight_drop_targets("PR-C-2", rules, {"3212": 5}) == {
+        "drops": {},
+        "reached": True,
+        "bound": True,
+    }
+
+
+def test_maa_and_targets_deduplicate_same_item_caps():
+    rule = {
+        "stage": "PR-C-2",
+        "items": [
+            {"item_id": "3212", "limit": 3},
+            {"item_name": "先锋芯片组", "limit": 5},
+        ],
+    }
+    assert maa_fight_drop_targets("PR-C-2", [rule], {"3212": 2}) == {
+        "drops": {"3212": 3},
+        "reached": False,
+        "bound": True,
+    }
+
+
+def test_maa_targets_ignore_disabled_and_nonpositive_caps():
+    rules = [
+        {"stage": "PR-C-2", "items": [{"item_id": "3212", "limit": 0}]},
+        {"stage": "PR-C-2", "items": [{"limit": 10}]},
+    ]
+    assert maa_fight_drop_targets("PR-C-2", rules, {}) == {
+        "drops": {},
+        "reached": False,
+        "bound": False,
+    }
+
+
+@pytest.mark.parametrize("stage", ["", "Annihilation"])
+def test_maa_targets_do_not_bind_last_stage_or_annihilation(stage):
+    assert maa_fight_drop_targets(
+        stage,
+        [{"stage": stage, "items": [{"item_id": "3212", "limit": 1}]}],
+        {"3212": 5},
+    ) == {"drops": {}, "reached": False, "bound": False}
 
 
 if __name__ == "__main__":

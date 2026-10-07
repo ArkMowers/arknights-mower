@@ -114,6 +114,7 @@
 
 
 ### 2.8 MAA Integration
+- **[INV-MAA-05] Local Inventory Execution**: Workshop execution and inventory stage selection use persisted local stock without fetching Skland; accepted MAA cumulative drops update that stock once per task, and configured stage caps stop only the reached Fight task while preserving automatic series and subsequent tasks.
 - **[INV-MAA-04] Inventory Stage Priority**: Inventory selection keeps selected annihilation first and defers unbound stages while any selected inventory-bound stage survives its limits; when all bound stages are skipped, ordinary stages remain eligible even with annihilation present, and backend dispatch and frontend preview agree without changing saved selections.
 - **[INV-MAA-01] Total Callback Handling**: Every MAA callback is consumed without raising; a missing, empty, or unrecognized payload field yields at most one diagnostic line at the C callback boundary instead of an exception.
 - **[INV-MAA-02] Callback-Derived MAA Progress**: A MAA run's runtime log derives progress from core callbacks — each task-chain transition and each whitelisted milestone produces one line, while the polling loop contributes at most one heartbeat line per interval.

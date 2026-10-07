@@ -6,7 +6,7 @@ import sqlite3
 import traceback
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from threading import Lock
+from threading import Event, Lock
 
 import pytz
 from tzlocal import get_localzone
@@ -14,6 +14,9 @@ from tzlocal import get_localzone
 from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
+
+maa_inventory_active = Event()
+
 
 # 全部 DB 表定义（建表/迁移检查进程内只跑一次，避免每调用重跑 CREATE TABLE + PRAGMA + commit）
 _DB_TABLE_STMTS = (
@@ -668,6 +671,14 @@ def save_inventory_counts(
                     scanned = cloud_counts[name]
                     source_at = cloud_at
                     from_cloud = True
+                if from_cloud and maa_inventory_active.is_set():
+                    # A cloud response can already include drops whose callback is queued.
+                    # Keep the run's local baseline until all drop receipts are consumed.
+                    if name in current:
+                        effective[name] = current[name]
+                    else:
+                        effective.pop(name, None)
+                    continue
                 # Request time does not prove Skland inventory freshness. Keep
                 # confirmed batch changes until the cloud reaches the predicted
                 # count in its net direction; an actual game read can reconcile.
@@ -744,7 +755,7 @@ def get_inventory_counts(item_names: list[str] | None = None):
 
 
 def apply_workshop_inventory(delta: dict[str, int]):
-    """Apply the main output and ingredient changes of one confirmed batch."""
+    """Persist confirmed crafting or drop deltas without restoring invalidated stock."""
     with _conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
         conn.executemany(

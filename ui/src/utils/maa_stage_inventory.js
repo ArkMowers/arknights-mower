@@ -173,15 +173,6 @@ export function previewInventorySelection(
   }
 
   let kept = [...annihilation, ...(priority.length ? priority : fallback)]
-  if (original.length > 0 && kept.length === 0 && limitSkipped.length > 0) {
-    return {
-      stages: original,
-      limitSkipped: [],
-      limitFallback: true,
-      ratioDecisions: []
-    }
-  }
-
   const ratioDecisions = []
   const claimedStages = new Set()
   for (const rule of ratioRules) {

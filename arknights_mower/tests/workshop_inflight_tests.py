@@ -14,7 +14,7 @@ from arknights_mower.utils import workshop_config as state
 
 
 @pytest.mark.parametrize("entry", ["workshop", "direct", "furniture-page"])
-@pytest.mark.parametrize("cancel_at", [None, "scan", "selection", "submit"])
+@pytest.mark.parametrize("cancel_at", [None, "inventory", "selection", "submit"])
 @pytest.mark.parametrize("cancel_by", ["disable", "delete"])
 def test_restore_during_real_crafting_never_submits_manual_recipe(
     next_skill, monkeypatch, cancel_at, cancel_by, entry
@@ -115,10 +115,15 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
     monkeypatch.setattr(
         base,
         "cultivateDepotSolver",
-        lambda: SimpleNamespace(start=lambda: cancel("scan")),
+        MagicMock(side_effect=AssertionError("Unexpected Skland refresh")),
     )
     stock = {"技巧概要·卷3": 0, "技巧概要·卷2": 100, "碳素组": 0, "碳": 100}
-    monkeypatch.setattr(base, "get_inventory_counts", lambda: dict(stock))
+
+    def cached_inventory():
+        cancel("inventory")
+        return dict(stock)
+
+    monkeypatch.setattr(base, "get_inventory_counts", cached_inventory)
     monkeypatch.setattr(
         base,
         "apply_workshop_inventory",
@@ -137,7 +142,7 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
         solver.back.assert_called()
         assert (1920 * 0.1, 1080 * 0.45) in submitted
     assert submitted.count(produce_btn) == (1 if cancel_at is None else 0)
-    if cancel_at == "scan":
+    if cancel_at == "inventory":
         assert selected == []
 
 

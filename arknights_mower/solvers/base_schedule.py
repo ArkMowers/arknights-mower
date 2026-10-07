@@ -48,6 +48,7 @@ from arknights_mower.solvers.record import (
     apply_workshop_inventory,
     get_inventory_counts,
     invalidate_workshop_inventory,
+    maa_inventory_active,
     save_agent_action,
     save_exception,
     save_log,
@@ -2406,7 +2407,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if mood_budget < 1:
                 logger.info(f"{agent}心情不足1点，跳过加工任务")
                 return
-            cultivateDepotSolver().start()
             restore_if_no_plans()
             if not snapshot.is_current():
                 return
@@ -9204,7 +9204,18 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         """MAA 回调入口：累积掉落统计、代发上报请求、输出可读日志行。"""
         d = parse_details(details)
         logger.debug("MAA 回调 %s %s", msg, d)
-        if d.get("what") == "StageDrops":
+        if msg == 3:  # AllTasksCompleted follows the final StageDrops receipt.
+            maa_inventory_active.clear()
+        if msg == 20003 and d.get("what") == "StageDrops":
+            try:
+                from arknights_mower.utils.maa_inventory import MaaDropInventory
+
+                if getattr(self, "maa_drop_inventory", None) is None:
+                    self.maa_drop_inventory = MaaDropInventory()
+                self.maa_drop_inventory.record(d)
+                self.refresh_maa_inventory_targets()
+            except Exception:
+                logger.exception("MAA 掉落入库或停止目标更新失败，请检查库存")
             inner = d.get("details")
             inner = inner if isinstance(inner, dict) else {}
             drops = _drop_entries(inner.get("drops"))
@@ -9213,6 +9224,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 stage_drop["details"].append(drops)
             if stats:
                 stage_drop["summary"] = stats
+        if msg in (10002, 10000, 10004) and type(d.get("taskid")) is int:
+            getattr(self, "maa_inventory_tasks", {}).pop(d["taskid"], None)
+        if msg == 10001 and d.get("taskchain") == "Fight":
+            try:
+                self.refresh_maa_inventory_targets()
+            except Exception:
+                logger.exception("MAA 库存目标更新失败")
         if msg == REPORT_REQUEST:
             # 上报在守护线程里进行；此处仍要兜住线程创建失败，回调不得抛错。
             try:
@@ -9225,6 +9243,39 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if line is not None:
             logger.log(line.level, line.text)
 
+    def refresh_maa_inventory_targets(self):
+        """Update only inventory-bound Fight tasks; preserve all other parameters."""
+        tasks = getattr(self, "maa_inventory_tasks", {})
+        if not tasks:
+            return
+        from arknights_mower.utils.maa_stage_inventory import (
+            load_inventory_snapshot,
+            maa_fight_drop_targets,
+        )
+
+        inventory, _ = load_inventory_snapshot()
+        for task_id, entry in list(tasks.items()):
+            params, rules = entry
+            targets = maa_fight_drop_targets(
+                params["stage"],
+                rules,
+                inventory,
+                self.maa_drop_inventory.accumulated(task_id),
+            )
+            updated = {**params, "drops": targets["drops"]}
+            if targets["reached"]:
+                updated.update(times=0, medicine=0, stone=0, expiring_medicine=0)
+            if updated == params:
+                continue
+            if self.MAA.set_task_params(task_id, updated):
+                tasks[task_id] = (updated, rules)
+                if targets["reached"] and params["times"]:
+                    logger.info(
+                        "%s 库存已达上限，结束该关并继续后续任务", params["stage"]
+                    )
+            else:
+                logger.warning("%s 库存停止目标未被 MAA 接受", params["stage"])
+
     def report_maa_progress(self):
         """按间隔播报 MAA 进度；未到间隔不产生日志行。"""
         if self.maa_callback is None:
@@ -9235,6 +9286,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
     def initialize_maa(self):
         from arknights_mower.utils.maa_backup import VerifiedAsst, update_transaction
+        from arknights_mower.utils.maa_inventory import MaaDropInventory
+
+        self.maa_drop_inventory = MaaDropInventory()
+        self.maa_inventory_tasks = {}
+        maa_inventory_active.set()
 
         if os.environ.get("MOWER_ANDROID") == "1":
             from mower_android.maa import Asst
@@ -9340,28 +9396,46 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 else:
                     medicine_expire_days = conf.medicine_expire_days
             stages = self.apply_maa_stage_inventory_rules(_plan.stage)
+            from arknights_mower.utils.maa_stage_inventory import (
+                load_inventory_snapshot,
+                maa_fight_drop_targets,
+            )
+
+            inventory, _ = load_inventory_snapshot()
+            rules = (
+                copy.deepcopy(conf.maa_stage_limit_rules)
+                if conf.maa_stage_inventory_enable
+                else []
+            )
+            if not hasattr(self, "maa_inventory_tasks"):
+                self.maa_inventory_tasks = {}
             for stage in stages:
+                targets = maa_fight_drop_targets(stage, rules, inventory)
+                if targets["reached"]:
+                    continue
                 logger.info(f"添加关卡:{stage}")
-                self.MAA.append_task(
-                    "Fight",
-                    {
-                        # 空值表示上一次
-                        # 'stage': '',
-                        "stage": stage,
-                        "medicine": _plan.medicine,
-                        "stone": 999 if conf.maa_eat_stone else 0,
-                        "times": 999,
-                        "series": 0,
-                        "report_to_penguin": conf.maa_report_to_penguin,
-                        "client_type": _maa_client_type(getattr(self, "device", None)),
-                        "penguin_id": conf.maa_penguin_id,
-                        "DrGrandet": False,
-                        "server": "CN",
-                        "medicine_expire_days": medicine_expire_days,
-                        "report_to_yituliu": conf.maa_report_to_yituliu,
-                        "yituliu_id": conf.maa_yituliu_id,
-                    },
-                )
+                params = {
+                    # 空值表示上一次
+                    # 'stage': '',
+                    "stage": stage,
+                    "medicine": _plan.medicine,
+                    "stone": 999 if conf.maa_eat_stone else 0,
+                    "times": 999,
+                    "series": 0,
+                    "report_to_penguin": conf.maa_report_to_penguin,
+                    "client_type": _maa_client_type(getattr(self, "device", None)),
+                    "penguin_id": conf.maa_penguin_id,
+                    "DrGrandet": False,
+                    "server": "CN",
+                    "medicine_expire_days": medicine_expire_days,
+                    "report_to_yituliu": conf.maa_report_to_yituliu,
+                    "yituliu_id": conf.maa_yituliu_id,
+                }
+                if targets["bound"]:
+                    params.update(drops=targets["drops"])
+                task_id = self.MAA.append_task("Fight", params)
+                if targets["bound"] and task_id:
+                    self.maa_inventory_tasks[task_id] = (params, rules)
                 self.stages.append(stage)
 
         elif type == "Mall":
@@ -9423,6 +9497,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     def maa_stop(self, stop=True):
         if stop:
             self.MAA.stop()
+        maa_inventory_active.clear()
         logger.debug(stage_drop)
         # 有掉落东西再发
         if stage_drop["details"] and not self.drop_send:
@@ -9876,6 +9951,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             save_exception(e)
             logger.exception(e)
             self.MAA = None
+            maa_inventory_active.clear()
             send_message(str(e), "MAA调用出错！", level="ERROR")
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
             if remaining_time > 0:
@@ -9888,7 +9964,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self._idle_sleep(remaining_time)
         else:
             # 空闲唤醒故障交回设备恢复，不能作为 MAA 任务故障报告。
+            maa_inventory_active.clear()
             self.rest_until_next_task()
+        finally:
+            maa_inventory_active.clear()
 
     def skland_plan_solver(self):
         solver = None
@@ -9934,10 +10013,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if not conf.maa_stage_limit_rules and not conf.maa_stage_ratio_rules:
             return select_stages_by_inventory(original)["stages"]
 
-        try:
-            cultivateDepotSolver().start()
-        except Exception:
-            logger.exception("刷新森空岛库存失败，继续使用本地库存快照")
         inventory, updated_at = load_inventory_snapshot()
         selection = select_stages_by_inventory(
             original,
@@ -9945,9 +10020,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             ratio_rules=conf.maa_stage_ratio_rules,
             inventory=inventory,
         )
-        if selection["limit_fallback"]:
-            logger.info("全部关卡均达到库存上限，本次忽略库存跳过设置")
-        elif selection["limit_skipped"]:
+        if selection["limit_skipped"]:
             logger.info(
                 "库存达到上限，跳过关卡: %s",
                 selection["limit_skipped"],

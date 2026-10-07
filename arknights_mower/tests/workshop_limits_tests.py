@@ -192,7 +192,9 @@ def game(monkeypatch, inventory):
 
     monkeypatch.setattr(config, "conf", config.Conf())
     monkeypatch.setattr(
-        base, "cultivateDepotSolver", lambda: SimpleNamespace(start=lambda: None)
+        base,
+        "cultivateDepotSolver",
+        MagicMock(side_effect=AssertionError("Unexpected Skland refresh")),
     )
     monkeypatch.setattr(base, "save_exception", MagicMock())
     monkeypatch.setattr(base, "send_message", MagicMock())
