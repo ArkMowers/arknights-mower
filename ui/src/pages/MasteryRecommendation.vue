@@ -122,28 +122,30 @@
       <n-button text @click="resetFilters">重置筛选</n-button>
     </n-space>
 
-    <n-card v-if="totalGoalCount" size="small" class="materials-overview">
-      <n-space justify="end" style="margin-bottom: 12px" v-if="hasChipShortage">
-        <n-button
-          :loading="chipFarmingLoading"
-          :disabled="materialsLoading"
-          @click="configureChipFarming"
-          >一键设置芯片 / 采购凭证刷取</n-button
-        >
-      </n-space>
+    <n-card size="small" class="materials-overview">
       <n-spin :show="materialsLoading">
-        <n-alert v-if="materialsError" type="warning">{{ materialsError }}</n-alert>
         <MasteryMaterials
-          v-else
           :summary="planMaterials"
           :missing-skills="missingPlanSkills"
           expand-crafting
           title="养成材料总览"
-        />
+        >
+          <template #before>
+            <n-alert v-if="materialsError" type="warning">{{ materialsError }}</n-alert>
+            <n-space justify="end" style="margin-bottom: 12px" v-if="hasChipShortage">
+              <n-button
+                :loading="chipFarmingLoading"
+                :disabled="materialsLoading"
+                @click="configureChipFarming"
+                >一键设置芯片 / 采购凭证刷取</n-button
+              >
+            </n-space>
+          </template>
+          <n-text v-if="totalGoalCount" depth="3" class="overview-note"
+            >已扣除现有库存；同一干员的精英化与基础技能费用只计一次。芯片、龙门币、经验和模组任务需另行准备。</n-text
+          >
+        </MasteryMaterials>
       </n-spin>
-      <n-text depth="3" class="overview-note"
-        >已扣除现有库存；同一干员的精英化与基础技能费用只计一次。芯片、龙门币、经验和模组任务需另行准备。</n-text
-      >
     </n-card>
 
     <n-text
@@ -180,7 +182,7 @@
     <n-empty v-else-if="displayList.length === 0" :description="emptyText" />
 
     <div v-else class="mastery-list">
-      <n-collapse accordion>
+      <n-collapse accordion class="operator-cards">
         <n-collapse-item v-for="op in displayList" :key="op.char_id" :name="op.char_id">
           <template #header>
             <n-space align="center" :size="8">
@@ -2219,8 +2221,44 @@ async function loadOperators() {
   font-size: 12px;
   margin-top: 14px;
 }
-.mastery-list :deep(.n-collapse-item__header) {
-  padding: 18px 0 !important;
+.mastery-list :deep(.operator-cards) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}
+.mastery-list :deep(.operator-cards > .n-collapse-item) {
+  width: max-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--mower-control-surface, var(--n-color));
+}
+.mastery-list :deep(.operator-cards > .n-collapse-item--active) {
+  width: 880px;
+  padding-bottom: 10px;
+}
+.mastery-list :deep(.operator-cards > .n-collapse-item > .n-collapse-item__header) {
+  padding: 6px 0;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.mastery-list
+  :deep(
+    .operator-cards > .n-collapse-item > .n-collapse-item__header > .n-collapse-item__header-main
+  ) {
+  flex: none;
+}
+.mastery-list
+  :deep(
+    .operator-cards > .n-collapse-item > .n-collapse-item__header > .n-collapse-item__header-extra
+  ) {
+  margin-left: auto;
+  min-width: 0;
+  max-width: 100%;
 }
 .prerequisite-notice {
   margin-bottom: 16px;

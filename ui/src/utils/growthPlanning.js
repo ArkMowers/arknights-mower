@@ -1,6 +1,6 @@
 export const growthMetrics = [
   { key: 'max_level', label: '满练干员', detail: '达到该星级实际精英化与等级上限' },
-  { key: 'module_level', label: '达到模组等级', detail: '精二 ≥60 / 50 / 40 级' },
+  { key: 'module_level', label: '达到模组开启等级', detail: '精二 ≥60 / 50 / 40 级' },
   { key: 'elite2', label: '精二干员', detail: '已完成精英化二' },
   { key: 'modules', label: '已开启模组', detail: '按模组数量统计' },
   { key: 'masteries', label: '已专精技能', detail: '仅专三，每技能计一次' },
@@ -44,7 +44,7 @@ export function operatorLevelGoals(op) {
       key: 'elite2_module',
       elite: 2,
       level: op.module_level,
-      label: `精二 ${op.module_level} 级（模组等级）`,
+      label: `精二 ${op.module_level} 级（达到模组开启等级）`,
       summary: op.module_level_summary
     },
     {

@@ -51,7 +51,7 @@
           :data="rosterRows"
           :bordered="false"
           :single-line="false"
-          :scroll-x="1120"
+          :scroll-x="1240"
           :row-key="(row) => row.key"
           size="small"
         />
@@ -60,8 +60,8 @@
         </p>
         <p class="explanation">
           技能和模组列按当前恰好达到的等级分别计数。满练按实际能力统计：6 / 5 / 4 星为精二 90 / 80 /
-          70 级，3 星为精一 55 级，1 / 2 星为精零 30 级。模组等级为精二 ≥60 / 50 / 40 级（6 / 5 / 4
-          星）；不支持的养成项显示“—”。
+          70 级，3 星为精一 55 级，1 / 2 星为精零 30 级。模组开启等级为精二 ≥60 / 50 / 40 级（6 / 5
+          / 4 星）；不支持的养成项显示“—”。
         </p>
         <n-collapse v-if="historyChart.series.length"
           ><n-collapse-item title="已缓存的养成趋势" name="history">
@@ -252,7 +252,10 @@ const rosterColumns = [
   },
   numberColumn('精二', 'elite2', (row) => row.max_phase < 2),
   numberColumn('满练', 'max_level'),
-  numberColumn('模组等级', 'module_level', (row) => row.supports_modules === false),
+  {
+    ...numberColumn('达到模组开启等级', 'module_level', (row) => row.supports_modules === false),
+    width: 160
+  },
   {
     title: '专精技能',
     key: 'skills',

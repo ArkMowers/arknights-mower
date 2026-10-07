@@ -206,8 +206,8 @@
                 </n-tab>
                 <n-tab name="养成规划" @click="$router.push('/mastery-recommendation')">
                   <div style="display: flex; flex-direction: column; align-items: center">
-                    <n-icon size="20" style="margin-bottom: -1px" :component="SkillLevelAdvanced" />
-                    专精
+                    <n-icon size="20" style="margin-bottom: -1px" :component="TrendingUp" />
+                    养成
                   </div>
                 </n-tab>
                 <n-tab name="数据图表" @click="showModal = true">
@@ -306,6 +306,7 @@ import StatsChart from '@vicons/ionicons5/StatsChart'
 import Storefront from '@vicons/ionicons5/Storefront'
 import RoseOutline from '@vicons/ionicons5/RoseOutline'
 import Coffee from '@vicons/tabler/Coffee'
+import TrendingUp from '@vicons/tabler/TrendingUp'
 import { NIcon } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import {
@@ -416,7 +417,7 @@ const menuOptions = [
   {
     label: () =>
       h(RouterLink, { to: { path: '/mastery-recommendation' } }, { default: () => '养成规划' }),
-    icon: renderIcon(SkillLevelAdvanced),
+    icon: renderIcon(TrendingUp),
     key: 'go-to-mastery-recommendation'
   },
   {
