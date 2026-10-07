@@ -694,8 +694,8 @@ class MaaRoguelikeTests(unittest.TestCase):
             self.assertGreater(seconds, 0)
 
         with (
-            patch.object(base_schedule, "maa_inventory_active", active),
-            patch.object(record, "maa_inventory_active", active),
+            patch.object(base_schedule, "battle_inventory_active", active),
+            patch.object(record, "battle_inventory_active", active),
             patch.object(base_schedule.config, "conf", _rg_conf()),
             patch.object(solver, "back_to_index"),
             patch.object(solver, "initialize_maa", side_effect=initialize),

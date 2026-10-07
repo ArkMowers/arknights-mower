@@ -143,3 +143,5 @@
 - **Hermetic Unit Tests**: Unit tests must stub external processes, network sockets, and filesystem resources to ensure deterministic offline execution.
 
 - **[INV-STOCK-01] Confirmed Workshop Inventory**: A later cloud request timestamp alone never replaces locally confirmed crafting changes. Pending outputs and consumed ingredients remain protected until single-direction cloud counts reach the predicted inventory in that direction, or a newer actual inventory read reconciles them. Items both produced and consumed require exact predicted cloud counts or a newer actual inventory read. Workshop upper and lower limits remain absolute inventory thresholds.
+
+- **[INV-STOCK-02] Confirmed Local Battle Drops**: Local operation adds only stable, identified settlement quantities once per completed batch, never multiplies displayed totals by repeat count, holds cloud rebases while running, and stops the current stage at its configured inventory cap without cancelling other tasks.

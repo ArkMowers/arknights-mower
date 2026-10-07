@@ -15,7 +15,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
-maa_inventory_active = Event()
+battle_inventory_active = Event()
 
 
 # 全部 DB 表定义（建表/迁移检查进程内只跑一次，避免每调用重跑 CREATE TABLE + PRAGMA + commit）
@@ -672,8 +672,8 @@ def save_inventory_counts(
                     scanned = cloud_counts[name]
                     source_at = cloud_at
                     from_cloud = True
-                if from_cloud and maa_inventory_active.is_set():
-                    # A cloud response can already include drops whose callback is queued.
+                if from_cloud and battle_inventory_active.is_set():
+                    # Cloud can already include drops whose settlement receipt is pending.
                     # Keep the run's local baseline until all drop receipts are consumed.
                     if name in current:
                         effective[name] = current[name]

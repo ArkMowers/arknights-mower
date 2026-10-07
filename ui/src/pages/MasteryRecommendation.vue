@@ -112,6 +112,10 @@
           style="min-width: 130px"
           aria-label="基地空闲状态"
         />
+        <n-button size="small" @click="resetFilters">
+          <template #icon><n-icon :component="RefreshIcon" /></template>
+          重置筛选
+        </n-button>
       </n-space>
     </GrowthSurveyFilters>
 
@@ -119,10 +123,6 @@
       <n-text depth="3"
         >显示 {{ displayList.length }} / {{ store.recommendations.length }} 位干员</n-text
       >
-      <n-button size="small" @click="resetFilters">
-        <template #icon><n-icon :component="RefreshIcon" /></template>
-        重置筛选
-      </n-button>
     </n-space>
 
     <n-card size="small" class="materials-overview">

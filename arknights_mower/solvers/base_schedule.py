@@ -46,9 +46,9 @@ from arknights_mower.solvers.player_info import PlayerInfoClient
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.record import (
     apply_workshop_inventory,
+    battle_inventory_active,
     get_inventory_counts,
     invalidate_workshop_inventory,
-    maa_inventory_active,
     save_agent_action,
     save_exception,
     save_log,
@@ -9309,7 +9309,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         d = parse_details(details)
         logger.debug("MAA 回调 %s %s", msg, d)
         if msg == 3:  # AllTasksCompleted follows the final StageDrops receipt.
-            maa_inventory_active.clear()
+            battle_inventory_active.clear()
         if msg == 20003 and d.get("what") == "StageDrops":
             try:
                 from arknights_mower.utils.maa_inventory import MaaDropInventory
@@ -9394,7 +9394,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
         self.maa_drop_inventory = MaaDropInventory()
         self.maa_inventory_tasks = {}
-        maa_inventory_active.set()
+        battle_inventory_active.set()
 
         if os.environ.get("MOWER_ANDROID") == "1":
             from mower_android.maa import Asst
@@ -9601,7 +9601,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     def maa_stop(self, stop=True):
         if stop:
             self.MAA.stop()
-        maa_inventory_active.clear()
+        battle_inventory_active.clear()
         logger.debug(stage_drop)
         # 有掉落东西再发
         if stage_drop["details"] and not self.drop_send:
@@ -10055,7 +10055,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             save_exception(e)
             logger.exception(e)
             self.MAA = None
-            maa_inventory_active.clear()
+            battle_inventory_active.clear()
             send_message(str(e), "MAA调用出错！", level="ERROR")
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
             if remaining_time > 0:
@@ -10068,10 +10068,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self._idle_sleep(remaining_time)
         else:
             # 空闲唤醒故障交回设备恢复，不能作为 MAA 任务故障报告。
-            maa_inventory_active.clear()
+            battle_inventory_active.clear()
             self.rest_until_next_task()
         finally:
-            maa_inventory_active.clear()
+            battle_inventory_active.clear()
 
     def skland_plan_solver(self):
         solver = None
@@ -10144,7 +10144,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         )
         return selection["stages"]
 
-    def mower_stage_plan(self) -> list[str]:
+    def mower_stage_plan(self, excluded_stages=()) -> list[str]:
         self.maybe_switch_expired_activity_plan()
         plan = config.conf.maa_weekly_plan[get_server_weekday()]
         stages = []
@@ -10152,7 +10152,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if not isinstance(stage, str):
                 continue
             stage = stage.strip()
-            if not stage:
+            if not stage or stage in excluded_stages:
                 continue
             stages.append(stage)
         return self.apply_maa_stage_inventory_rules(stages)
@@ -10305,6 +10305,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
             if result["executed_runs"] > 0:
                 executed_any = True
+            if result.get("inventory_unconfirmed", False):
+                return {
+                    "simulated_current_ap": simulated_current_ap,
+                    "executed_any": executed_any,
+                    "should_break": True,
+                    "inventory_unconfirmed": True,
+                }
             if result["sanity_drain"] or result["stopped_by_deadline"]:
                 logger.info(
                     "stop local operation stage loop | stage=%s | mode=%s | sanity_drain=%s | stopped_by_deadline=%s",
@@ -10317,6 +10324,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     "simulated_current_ap": simulated_current_ap,
                     "executed_any": executed_any,
                     "should_break": True,
+                }
+            if result.get("stopped_by_inventory", False):
+                logger.info("库存达到上限，结束当前本地刷关: %s", stage)
+                return {
+                    "simulated_current_ap": simulated_current_ap,
+                    "executed_any": executed_any,
+                    "should_break": False,
                 }
             if remaining_runs is None:
                 return {
@@ -10401,6 +10415,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 )
 
                 executed_any = False
+                inventory_unconfirmed = False
                 threshold_control_failed = False
                 threshold_control_reason = ""
                 next_threshold_time = None
@@ -10478,12 +10493,32 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     if threshold_control_failed:
                         self.clear_local_operation_followups()
 
-                    for stage in stages:
+                    attempted_stages = set()
+                    while True:
+                        # Confirmed drops can cap later stages or unlock fallback stages.
+                        stages = self.mower_stage_plan(excluded_stages=attempted_stages)
+                        if not stages:
+                            break
+                        stage = stages[0]
+                        attempted_stages.add(stage)
                         if next_task_time - datetime.now() < timedelta(minutes=5):
                             logger.info(
                                 "skip local operation because time is not enough"
                             )
                             break
+
+                        if (
+                            not threshold_control_failed
+                            and self.mower_stage_ap_cost(stage) is None
+                        ):
+                            threshold_control_failed = True
+                            threshold_control_reason = "missing_ap_cost"
+                            mode = "fallback"
+                            self.clear_local_operation_followups()
+                            logger.warning(
+                                "reselected stage apCost missing, disable threshold control | stage=%s",
+                                stage,
+                            )
 
                         ap_cost, target_total_runs, projection = (
                             self.get_local_operation_stage_target(
@@ -10546,11 +10581,19 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         )
                         simulated_current_ap = stage_run_result["simulated_current_ap"]
                         executed_any = executed_any or stage_run_result["executed_any"]
+                        if stage_run_result.get("inventory_unconfirmed", False):
+                            inventory_unconfirmed = True
+                            self.clear_local_operation_followups()
                         if stage_run_result["should_break"]:
                             break
 
+                    remaining_stages = self.mower_stage_plan()
+                    if not remaining_stages:
+                        self.clear_local_operation_followups()
                     if (
-                        not threshold_control_failed
+                        remaining_stages
+                        and not inventory_unconfirmed
+                        and not threshold_control_failed
                         and not one_time
                         and simulated_current_ap is not None
                     ):
@@ -10583,7 +10626,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
                 logger.info("run mission solver after local operation")
                 MissionSolver(self.device, self.recog).run()
-                if executed_any:
+                if executed_any or inventory_unconfirmed:
                     self.last_execution["maa"] = datetime.now()
                     logger.info(
                         f"record local task execution time: {self.last_execution['maa']}"

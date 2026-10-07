@@ -252,9 +252,12 @@ def _rule_item_count(item, inventory: dict) -> int:
     )
 
 
-def _stage_limit_status(
+def stage_limit_status(
     stage: str, limit_rules: Iterable, inventory: dict
 ) -> tuple[bool, bool]:
+    """Return whether a stage has active limits and whether any rule is met."""
+    if stage in UNBOUND_STAGE_IDS:
+        return False, False
     bound = False
     for rule in limit_rules or []:
         if not _value(rule, "enabled", True):
@@ -292,7 +295,7 @@ def maa_fight_drop_targets(
     if stage in UNBOUND_STAGE_IDS:
         return {"drops": {}, "reached": False, "bound": False}
     rules = list(limit_rules or [])
-    bound, reached = _stage_limit_status(stage, rules, inventory)
+    bound, reached = stage_limit_status(stage, rules, inventory)
     if reached:
         return {"drops": {}, "reached": True, "bound": bound}
     accumulated = accumulated or {}
@@ -422,7 +425,7 @@ def select_stages_by_inventory(
         if stage in UNBOUND_STAGE_IDS:
             fallback.append(stage)
             continue
-        bound, reached = _stage_limit_status(stage, limit_rules, inventory)
+        bound, reached = stage_limit_status(stage, limit_rules, inventory)
         if reached:
             limit_skipped.append(stage)
         elif bound or stage in ratio_bound_stages:

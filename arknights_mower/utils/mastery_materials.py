@@ -189,19 +189,23 @@ class MaterialBudget:
             "craftable": not missing,
         }
 
-    def calculate_plan(self, entries):
+    def calculate_plan(self, entries, *, growth=False):
         """Attribute new elite-material shortages in plan order using shared stock."""
+        from arknights_mower.utils.growth import calculate_growth_materials
         from arknights_mower.utils.growth_workshop import calculate_crafting_materials
 
+        calculate = (
+            calculate_growth_materials if growth else calculate_crafting_materials
+        )
         demand = Counter()
         previous_missing = {}
         missing_skills = []
-        summary = calculate_crafting_materials(self, [])
+        summary = calculate(self, [])
         for key, materials in entries:
             for material in materials:
                 demand[material["id"]] += material["count"]
             # Aggregate first: each pass is bounded by material types, not plan length.
-            summary = calculate_crafting_materials(
+            summary = calculate(
                 self, [{"id": item, "count": count} for item, count in demand.items()]
             )
             missing = {
@@ -225,7 +229,6 @@ def plan_material_summary(planned_keys, goals=(), targets=None):
 
     from arknights_mower.data import workshop_formula
     from arknights_mower.utils.growth import (
-        expand_chip_costs,
         growth_resources,
         inventory_counts,
         material_entries,
@@ -258,31 +261,12 @@ def plan_material_summary(planned_keys, goals=(), targets=None):
         plans.append(plan)
     entries = material_entries(box, skills, plans, goals)
     stock = inventory_counts(box, skills, local=True)
-    cumulative, previous, expanded = [], Counter(), []
-    for cid, materials in entries:
-        cumulative.extend(materials)
-        costs = Counter(
-            {m["id"]: m["count"] for m in expand_chip_costs(cumulative, stock)}
-        )
-        expanded.append(
-            (
-                cid,
-                [
-                    {"id": iid, "count": count}
-                    for iid, count in (costs - previous).items()
-                ],
-            )
-        )
-        previous = costs
     summary = MaterialBudget(
         skills,
         stock,
         workshop_formula,
         blocked_materials=protected_workshop_materials(),
-    ).calculate_plan(expanded)
-    summary["manual_chips"] = any(
-        row["id"].startswith("32") for row in summary["materials"]
-    )
+    ).calculate_plan(entries, growth=True)
     missing_operators = set(summary["missing_skills"])
     summary["missing_skills"] = [
         key for key in planned_keys if key.rsplit("_", 1)[0] in missing_operators

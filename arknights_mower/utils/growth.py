@@ -84,6 +84,31 @@ def calculate_growth_materials(budget, materials):
     summary = calculate_crafting_materials(
         budget, expand_chip_costs(materials, budget.inventory)
     )
+    rows = {row["id"]: row for row in summary["materials"]}
+    catalyst = rows.get("32001")
+    vouchers = rows.get("4006")
+    if catalyst and catalyst["owned"] < catalyst["required"]:
+        catalyst["craftable"] = bool(
+            vouchers and vouchers["owned"] >= vouchers["required"]
+        )
+    for prefix in range(321, 329):
+        dual = rows.get(f"{prefix}3")
+        group = rows.get(f"{prefix}2")
+        if dual and dual["owned"] < dual["required"]:
+            # Expanded totals reserve shared catalysts, vouchers and chip groups
+            # once. Preview readiness never creates inventory or workshop recipes.
+            dual["craftable"] = bool(
+                group
+                and group["owned"] >= group["required"]
+                and catalyst
+                and catalyst["craftable"]
+            )
+    summary["missing"] = [
+        row
+        for row in summary["missing"]
+        if not (row["id"] in rows and rows[row["id"]]["craftable"])
+    ]
+    summary["craftable"] = not summary["missing"]
     summary["manual_chips"] = any(
         row["id"].startswith("32") for row in summary["materials"]
     )

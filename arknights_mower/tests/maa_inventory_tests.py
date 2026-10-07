@@ -22,8 +22,8 @@ from arknights_mower.utils.maa_stage_inventory import (  # noqa: E402
 @pytest.fixture
 def inventory(monkeypatch, tmp_path):
     active = Event()
-    monkeypatch.setattr(record, "maa_inventory_active", active)
-    monkeypatch.setattr(base_schedule, "maa_inventory_active", active)
+    monkeypatch.setattr(record, "battle_inventory_active", active)
+    monkeypatch.setattr(base_schedule, "battle_inventory_active", active)
     monkeypatch.setattr(record, "_tables_created", False)
     monkeypatch.setattr(
         record,
@@ -198,7 +198,7 @@ def test_new_assistant_has_independent_task_receipts(inventory):
 
 def test_active_maa_does_not_rebase_ahead_cloud_then_add_same_drop_again(inventory):
     inventory.save_inventory_counts({"先锋芯片组": 10})
-    inventory.maa_inventory_active.set()
+    inventory.battle_inventory_active.set()
     receipts = MaaDropInventory()
     receipts.record(drops(chips=1))
     assert inventory.get_inventory_counts()["先锋芯片组"] == 11
@@ -320,6 +320,6 @@ def test_task_start_refreshes_targets_and_retries_rejected_updates(
 
 def test_all_tasks_complete_releases_cloud_inventory_guard(inventory, monkeypatch):
     solver = target_solver(monkeypatch, {})
-    inventory.maa_inventory_active.set()
+    inventory.battle_inventory_active.set()
     solver.on_maa_callback(3, b"{}", None)
-    assert not inventory.maa_inventory_active.is_set()
+    assert not inventory.battle_inventory_active.is_set()
