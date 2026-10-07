@@ -12,6 +12,8 @@
 
 ## 2. Subsystem Invariants
 
+- **[INV-REC-06] Selection Feedback Boundary**: Known facility roster pages detected during anomalous selection readings abort selection inputs and page-local fallback; high-mode reorder target clicks require acknowledged clearing on a nonempty card page.
+
 ### 2.1 Base Infrastructure & Scheduling
 
 - **[INV-SCHED-28] Backup Replacement State Preservation**: Backup product or replacement-list changes and same-primary relocations with unchanged facility type and group bindings prefer to preserve primary shift state, recovery beds and deadlines. Matching maximizes available covers before recalling eligible primaries early; reservations, mastery protection and occupied slots remain binding. Infeasible arrangements defer the transition without changing active plans or queued tasks. Explicit entry staffing tasks, new primaries and group changes retain their existing semantics; exit restoration preserves eligible resting primaries. Required dorm layout migration retains recovery ownership and invalidates moved-bed deadlines for observation.

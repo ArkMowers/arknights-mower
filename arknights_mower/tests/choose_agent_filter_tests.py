@@ -131,13 +131,16 @@ def test_high_mode_confirms_each_reorder_click(monkeypatch):
 
     def confirm(prefix, **kwargs):
         confirmations.append(prefix.copy())
+        if not prefix:
+            return []
         return list(reversed(RESIDENTS)) if len(confirmations) <= 2 else prefix
 
     solver.wait_for_arranged_agents = MagicMock(side_effect=confirm)
     solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
 
     assert selected == RESIDENTS
-    assert confirmations[2 : 2 + len(RESIDENTS)] == [
+    assert confirmations[2] == []
+    assert confirmations[3 : 3 + len(RESIDENTS)] == [
         RESIDENTS[:i] for i in range(1, len(RESIDENTS) + 1)
     ]
     assert all(
@@ -152,7 +155,7 @@ def test_high_mode_stops_when_reorder_click_has_no_feedback(monkeypatch):
     solver, _ = selection_solver(monkeypatch, residents=list(reversed(RESIDENTS)))
     solver.recog.img = selected_card_frame()
     solver.wait_for_arranged_agents = MagicMock(
-        side_effect=[list(reversed(RESIDENTS)), list(reversed(RESIDENTS)), None]
+        side_effect=[list(reversed(RESIDENTS)), list(reversed(RESIDENTS)), [], None]
     )
 
     with pytest.raises(base_mixin.AgentSelectionNotReady):
@@ -160,6 +163,55 @@ def test_high_mode_stops_when_reorder_click_has_no_feedback(monkeypatch):
 
     # One clear and one card tap; an unconfirmed click cannot start the next card.
     assert solver.tap.call_count == 2
+
+
+@pytest.mark.parametrize(
+    "result", [None, base_mixin.AgentSelectionPageChanged("页面退出")]
+)
+def test_high_mode_stops_before_card_click_when_clear_has_no_feedback(
+    monkeypatch, result
+):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", "high")
+    solver, _ = selection_solver(monkeypatch, residents=RESIDENTS)
+    solver.recog.img = selected_card_frame()
+    solver.wait_for_arranged_agents = MagicMock(
+        side_effect=[RESIDENTS, RESIDENTS, result]
+    )
+    with pytest.raises(base_mixin.AgentSelectionNotReady):
+        solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
+    solver.tap.assert_called_once_with((729.6, 1026.0), interval=0.5)
+    solver.swipe_left.assert_not_called()
+    solver.wait_for_arranged_agents.assert_called_with(
+        [], ordered=False, check_empty=True
+    )
+
+
+@pytest.mark.parametrize("phase", ["exists", "verify"])
+def test_page_change_bypasses_filter_reset_in_reorder_and_final_verification(
+    monkeypatch, phase
+):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", "high")
+    solver, _ = selection_solver(monkeypatch, residents=RESIDENTS)
+    solver.recog.img = selected_card_frame()
+    solver.tap_confirm = MagicMock()
+    observations = 0
+
+    def observe(expected, **kwargs):
+        nonlocal observations
+        observations += 1
+        stop = 2 if phase == "exists" else len(RESIDENTS) + 4
+        if observations == stop:
+            raise base_mixin.AgentSelectionPageChanged("页面退出")
+        return expected.copy()
+
+    solver.wait_for_arranged_agents = MagicMock(side_effect=observe)
+    with pytest.raises(base_mixin.AgentSelectionPageChanged):
+        solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
+    assert solver.tap.call_count == (0 if phase == "exists" else len(RESIDENTS) + 1)
+    assert solver.profession_filter.call_count == 2
+    assert all(not call.args for call in solver.profession_filter.call_args_list)
+    solver.swipe_left.assert_not_called()
+    solver.tap_confirm.assert_not_called()
 
 
 @pytest.mark.parametrize(

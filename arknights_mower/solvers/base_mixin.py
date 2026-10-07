@@ -57,6 +57,10 @@ class AgentSelectionNotReady(RuntimeError):
     """当前页面不足以继续选人；交由排班原有重试恢复，不结束任务线程。"""
 
 
+class AgentSelectionPageChanged(AgentSelectionNotReady):
+    """选人已退出到入住信息页，禁止继续筛选复位或选人输入。"""
+
+
 def agent_card_selected(img, scope, *, train=False):
     """读取选人卡片四周的青蓝色选中边框。
 
@@ -521,6 +525,24 @@ class BaseMixin:
             train,
         )
 
+    def require_agent_selection_page(self):
+        """名单异常时，用同帧入住信息页签区分页面退出与卡片识别失败。"""
+        if self.find("arrange_check_in_on"):
+            raise AgentSelectionPageChanged(
+                "选人页面已退出到当前房间入住信息，停止选人并返回房间实读重试"
+            )
+
+    def check_agent_page(self, page, *, train=False):
+        """异常名单检查退出并返回 True；正常名单不检查页面。"""
+        if (
+            not page
+            or any(not name or scope is None for name, scope in page)
+            or (not train and page[0][1][0][0] > 650)
+        ):
+            self.require_agent_selection_page()
+            return True
+        return False
+
     def wait_for_agent_page(
         self, *, full_scan=True, train=False, before=None, observation=None
     ):
@@ -562,14 +584,16 @@ class BaseMixin:
                 continue
             try:
                 ret = read(self.recog.img)
-            except MowerExit:
+            except (MowerExit, AgentSelectionPageChanged):
                 raise
             except Exception as e:
+                self.require_agent_selection_page()
                 logger.debug(f"翻页名单读取失败，原地复核：{e}")
                 previous = None
                 stable = False
                 stable_matches = 0
                 continue
+            self.check_agent_page(ret, train=train)
             if (
                 before is not None
                 and ret
@@ -684,6 +708,7 @@ class BaseMixin:
                 else False
             )
             if selected is None:
+                self.require_agent_selection_page()
                 raise AgentSelectionNotReady("干员选中边框不清晰，返回房间重试")
             if not selected:
                 self.tap(scope, interval=0.2)
@@ -719,9 +744,11 @@ class BaseMixin:
                 if train
                 else operator_list(self.recog.img, full_scan=full_scan)
             )
-        except MowerExit:
+            page_checked = self.check_agent_page(ret, train=train)
+        except (MowerExit, AgentSelectionPageChanged):
             raise
         except Exception:
+            self.require_agent_selection_page()
             if error_count >= 2:
                 raise
             return self._scan_agent_fast(
@@ -747,6 +774,8 @@ class BaseMixin:
                     else False
                 )
                 if is_selected is None:
+                    if not page_checked:
+                        self.require_agent_selection_page()
                     raise AgentSelectionNotReady("干员选中边框不清晰，返回房间重试")
                 if not is_selected:
                     self.tap(scope, interval=0)
@@ -806,7 +835,14 @@ class BaseMixin:
 
     @timed_step("verify")
     def wait_for_arranged_agents(
-        self, agent, *, ordered=True, full_scan=True, train=False, observation=None
+        self,
+        agent,
+        *,
+        ordered=True,
+        full_scan=True,
+        train=False,
+        observation=None,
+        check_empty=False,
     ):
         """校验当前名单；低帧率适配还要求连续两帧的位置和名字一致。"""
         seed_image = observation.image if observation is not None else None
@@ -815,7 +851,7 @@ class BaseMixin:
             if observation is not None
             else None
         )
-        if not agent:
+        if not agent and not check_empty:
             return []
         read = self.agent_page_reader(
             full_scan=full_scan,
@@ -823,7 +859,7 @@ class BaseMixin:
             seed_image=seed_image,
             seed_page=page,
         )
-        previous = page[: len(agent)] if page else None
+        previous = (page[: len(agent)] if agent else page) if page else None
         stable = False
         stable_matches = 0
         actual = []
@@ -844,14 +880,16 @@ class BaseMixin:
                 continue
             try:
                 ret = read(self.recog.img)
-            except MowerExit:
+            except (MowerExit, AgentSelectionPageChanged):
                 raise
             except Exception as e:
+                self.require_agent_selection_page()
                 logger.debug(f"选人名单读取失败，等待下一帧：{e}")
                 previous = None
                 stable = False
                 stable_matches = 0
                 continue
+            page_checked = self.check_agent_page(ret, train=train)
             if not train and ret and ret[0][1] is not None and ret[0][1][0][0] > 650:
                 logger.debug(
                     "选人列表左侧仍被裁切，原地等待，不读取后续卡片作为已选名单"
@@ -875,6 +913,8 @@ class BaseMixin:
                     (name, scope) for name, scope, state in states if state is None
                 ]
                 if uncertain:
+                    if not page_checked:
+                        self.require_agent_selection_page()
                     logger.debug(f"选人卡片边框未确认，等待下一帧：{uncertain}")
                     previous = None
                     stable = False
@@ -885,8 +925,9 @@ class BaseMixin:
                 selected = ret[: len(agent)]
             actual = [name for name, _ in selected]
             logger.debug(f"选人校验第{attempt + 1}次读取：{actual}")
+            comparison = selected if agent else ret
             if len(actual) == len(agent) and self.same_agent_page(
-                selected, previous if self.low_frame_rate_mode else selected
+                comparison, previous if self.low_frame_rate_mode else comparison
             ):
                 stable_matches += 1
             else:
@@ -897,7 +938,7 @@ class BaseMixin:
                 return actual
             if stable and not self.low_frame_rate_mode:
                 return None
-            previous = selected
+            previous = comparison
         if stable:
             logger.warning(f"干员名单已稳定但不符合预期：预期{agent}，实际{actual}")
             return None

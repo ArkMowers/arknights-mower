@@ -23,6 +23,7 @@ from arknights_mower.data import (
 )
 from arknights_mower.solvers.base_mixin import (
     AgentSelectionNotReady,
+    AgentSelectionPageChanged,
     BaseMixin,
     agent_card_selected,
     fixed_selection_profile,
@@ -7433,6 +7434,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if right_swipe == 0:
                 try:
                     exists = self.wait_for_arranged_agents(agents, ordered=False)
+                except AgentSelectionPageChanged:
+                    raise
                 except AgentSelectionNotReady:
                     logger.debug("当前已选名单尚不能确认，筛选复位后再校验")
             if exists is None:
@@ -7456,7 +7459,20 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if click_order:
                 # 极高档连续点击；高档逐次确认已选集合增加。
                 reorder_mode = self.performance_profile.mode
+                logger.debug(
+                    f"选人重排清空：性能档位{reorder_mode}，页面已选{exists}，目标{agents}"
+                )
                 self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+                if reorder_mode == "high" and isinstance(self.recog.img, np.ndarray):
+                    if (
+                        self.wait_for_arranged_agents(
+                            [], ordered=False, check_empty=True
+                        )
+                        is None
+                    ):
+                        raise AgentSelectionNotReady(
+                            "重排清空未得到反馈，停止目标点击并返回房间重试"
+                        )
                 for idx, p_idx in enumerate(click_order):
                     x = self.recog.w * position[p_idx][0]
                     y = self.recog.h * position[p_idx][1]
@@ -7488,6 +7504,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if right_swipe == 0:
                 try:
                     verified = self.verify_agent(agents, room, **verify_options)
+                except AgentSelectionPageChanged:
+                    raise
                 except AgentSelectionNotReady:
                     logger.debug("当前已选顺序尚不能确认，筛选复位后再校验")
             if not verified:
