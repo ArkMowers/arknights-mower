@@ -78,3 +78,39 @@ def test_active_operator_stays_first_when_a_new_operator_is_added():
             professions={"a": "WARRIOR", "c": "WARRIOR", "b": "SNIPER"},
         )
         assert [p["id"] for p in get_all_plans(path)] == [a, b, c]
+
+
+def test_new_skill_preserves_custom_order_and_appends_to_tail(tmp_path):
+    path = str(tmp_path / "plans.db")
+    a = insert_plan("a", 0, 3, "技能一", "甲", priority=0, path=path)
+    c = insert_plan("c", 0, 3, "技能一", "丙", priority=1, path=path)
+    b = insert_plan("b", 0, 3, "技能一", "乙", priority=2, path=path)
+    a_next = insert_plan("a", 1, 3, "技能二", "甲", path=path)
+    assert auto_interleave_new_plans(
+        [a_next],
+        path=path,
+        professions={"a": "WARRIOR", "c": "WARRIOR", "b": "SNIPER"},
+        order=["skill:a:0", "module:a:x", "skill:c:0", "skill:b:0"],
+    )
+    assert [p["id"] for p in get_all_plans(path)] == [a, c, b, a_next]
+
+
+def test_saved_order_keeps_active_and_confirmed_material_wait_first(tmp_path):
+    path = str(tmp_path / "plans.db")
+    a = insert_plan("a", 0, 3, "技能一", "甲", priority=0, path=path)
+    b = insert_plan("b", 0, 3, "技能一", "乙", priority=1, path=path)
+    c = insert_plan("c", 0, 3, "技能一", "丙", path=path)
+    for status in ("arranging", "training", "waiting_collect", "idle"):
+        update_plan_status(
+            b,
+            status,
+            expires_at="2026-10-08 12:00:00",
+            failed_reason="材料不足",
+            path=path,
+        )
+        assert auto_interleave_new_plans(
+            [c],
+            path=path,
+            order=["skill:a:0", "skill:b:0"],
+        )
+        assert [p["id"] for p in get_all_plans(path)] == [b, a, c]

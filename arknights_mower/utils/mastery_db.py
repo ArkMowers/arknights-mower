@@ -590,11 +590,12 @@ def auto_interleave_new_plans(
     new_plan_ids: list[int],
     path: Optional[str] = None,
     professions: Optional[dict[str, str]] = None,
+    order=(),
 ) -> bool:
-    """Append new operators to the current order, then alternate operator groups."""
+    """Append new plans to saved order, or alternate default operator groups."""
     if not new_plan_ids:
         return True
-    if professions is None:
+    if professions is None and not order:
         from arknights_mower.utils.mastery_recommendation import get_skill_data
 
         professions = {
@@ -607,14 +608,30 @@ def auto_interleave_new_plans(
             rows = [
                 dict(row)
                 for row in conn.execute(
-                    "SELECT id, char_id, status, priority FROM mastery_plan "
+                    "SELECT * FROM mastery_plan "
                     "WHERE status NOT IN ('completed', 'failed') ORDER BY priority, id"
                 ).fetchall()
             ]
             new_ids = set(new_plan_ids)
             plans = [row for row in rows if row["id"] not in new_ids]
             plans.extend(row for row in rows if row["id"] in new_ids)
-            ordered = interleave_mastery_plans(plans, professions)
+            if order:
+                ranks = {key: index for index, key in enumerate(order)}
+                waiting = get_material_waiting_plan(plans)
+                ordered = sorted(
+                    plans,
+                    key=lambda p: (
+                        not (
+                            p["status"] in ("arranging", "training", "waiting_collect")
+                            or p is waiting
+                        ),
+                        ranks.get(
+                            f"skill:{p['char_id']}:{p['skill_index']}", len(ranks)
+                        ),
+                    ),
+                )
+            else:
+                ordered = interleave_mastery_plans(plans, professions)
             conn.executemany(
                 "UPDATE mastery_plan SET priority=? WHERE id=?",
                 (
