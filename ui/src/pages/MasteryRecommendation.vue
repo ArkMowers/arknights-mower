@@ -69,7 +69,7 @@
       <n-switch v-model:value="configStore.enable_mastery" size="small" />
       <n-text strong>全自动专精</n-text>
       <n-text depth="3" style="font-size: 12px"
-        >仅控制训练执行；精英化、基础技能升级与模组开启需要手动完成后同步</n-text
+        >控制自动专精与养成材料自动合成；精英化、基础技能升级与模组开启需要手动完成后同步</n-text
       >
     </div>
 
@@ -119,7 +119,10 @@
       <n-text depth="3"
         >显示 {{ displayList.length }} / {{ store.recommendations.length }} 位干员</n-text
       >
-      <n-button text @click="resetFilters">重置筛选</n-button>
+      <n-button size="small" @click="resetFilters">
+        <template #icon><n-icon :component="RefreshIcon" /></template>
+        重置筛选
+      </n-button>
     </n-space>
 
     <n-card size="small" class="materials-overview">
@@ -241,7 +244,6 @@
               >
               <n-button
                 size="tiny"
-                ghost
                 class="all-plan-button"
                 type="warning"
                 @click.stop="addAllToPlan(op)"
@@ -2164,10 +2166,6 @@ async function loadOperators() {
 }
 .operator-status :deep(.all-plan-button) {
   padding: 0 8px;
-  background: color-mix(in srgb, currentColor 7%, transparent);
-}
-.operator-status :deep(.all-plan-button .n-button__border) {
-  border-color: currentColor;
 }
 .page-header {
   display: flex;
@@ -2185,6 +2183,8 @@ async function loadOperators() {
 .mastery-list {
   width: 100%;
   max-width: 1280px;
+  /* Short filtered lists can still scroll past the filters into the viewport. */
+  min-height: calc(100dvh - 128px);
 }
 .mastery-route-tabs {
   /* Keep the segment capsule inside the scrolling content's coordinate space. */
