@@ -63,7 +63,7 @@ export const useConfigStore = defineStore('config', () => {
   const run_order_delay = ref(10)
   const low_frame_rate_mode = ref(false)
   const performance_mode = ref('auto')
-  const performance_effective_mode = ref('high')
+  const performance_effective_mode = ref('xhigh')
   const selection_poll_interval = ref(0.1)
   const selection_transition_timeout = ref(2.5)
   const start_automatically = ref(false)
@@ -452,7 +452,7 @@ export const useConfigStore = defineStore('config', () => {
         (performance_mode.value === 'auto'
           ? runtime_platform.value === 'android'
             ? 'medium'
-            : 'high'
+            : 'xhigh'
           : performance_mode.value)
       const fallbackProfile = performanceProfile('auto', runtime_platform.value)
       low_frame_rate_mode.value =

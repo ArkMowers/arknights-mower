@@ -60,6 +60,35 @@ async function setup(overrides = {}) {
 }
 
 describe('partial configuration saves', () => {
+  it.each(['windows', 'darwin', 'linux'])(
+    'starts desktop auto at xhigh on %s',
+    async (platform) => {
+      await setup({ runtime_platform: platform, performance_mode: 'auto' })
+      expect(store.performance_mode).toBe('auto')
+      expect(store.performance_effective_mode).toBe('xhigh')
+    }
+  )
+
+  it('keeps the Android auto baseline at medium', async () => {
+    await setup({ runtime_platform: 'android', performance_mode: 'auto' })
+    expect(store.performance_effective_mode).toBe('medium')
+  })
+
+  it('shows the backend automatic verdict after a downgrade', async () => {
+    await setup({
+      runtime_platform: 'darwin',
+      performance_mode: 'auto',
+      performance_effective_mode: 'high'
+    })
+    expect(store.performance_effective_mode).toBe('high')
+  })
+
+  it('preserves an explicitly selected high mode', async () => {
+    await setup({ runtime_platform: 'darwin', performance_mode: 'high' })
+    expect(store.performance_mode).toBe('high')
+    expect(store.performance_effective_mode).toBe('high')
+  })
+
   it('enables switching for legacy configuration and saves only the master toggle', async () => {
     await setup({
       product_switching: { grandet_mode: false, waiting_seconds: 4 },

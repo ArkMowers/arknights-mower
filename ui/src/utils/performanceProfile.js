@@ -30,6 +30,6 @@ export function performanceProfile(mode, platform) {
     runOrderDelay: platform === 'android' ? 5 : 3,
     grandetBufferTime: 15,
     ...(performancePresets[selected] ||
-      performancePresets[platform === 'android' ? 'medium' : 'high'])
+      performancePresets[platform === 'android' ? 'medium' : 'xhigh'])
   }
 }

@@ -336,8 +336,9 @@ const idleOptions = computed(() => [
               </n-radio-group>
               <help-text>
                 自动档根据选人操作后的画面反馈和连续失败情况选择{{
-                  runtime_platform === 'android' ? '中、低' : '高、中、低'
-                }}档；所有平台默认自动。 极高性能连续点击重排；高性能缩短清空和翻页等待，以 0.1
+                  runtime_platform === 'android' ? '中、低' : '极高、高、中、低'
+                }}档；桌面端从极高档开始，Android 从中档开始；所有平台默认自动。
+                极高性能连续点击重排；高性能缩短清空和翻页等待，以 0.1
                 秒间隔重排，完成后统一校验；中性能等待稳定画面；低性能多确认一帧。时间参数独立设置，切换档位不会修改。当前自动判定：{{
                   performance_effective_label
                 }}。
