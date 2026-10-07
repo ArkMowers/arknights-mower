@@ -124,7 +124,7 @@ def growth_workshop_config(
     from arknights_mower.utils.workshop_recipes import recipe_category
     from arknights_mower.utils.workshop_recommendation import allocate_workshop_items
 
-    projects = crafting_projects(plans, goals, order)
+    projects = crafting_projects(plans, goals, order, box=box, skills=skills)
     states, entries = prepare_project_materials(
         box, skills, projects, inventory, formulas, blocked
     )

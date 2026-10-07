@@ -38,7 +38,7 @@ function response(custom = false) {
         {
           key: 'goal:level',
           char_name: '等级干员',
-          label: '精二 90 级',
+          label: '精二 1 级',
           kind: 'goal',
           locked: false
         }
@@ -52,6 +52,19 @@ function setup() {
   const emit = vi.fn()
   const page = scope.run(() => GrowthCraftingOrder.setup(props, { expose: vi.fn(), emit }))
   return { page, props, emit, stop: () => scope.stop() }
+}
+function canDrag(page, index, direction) {
+  return page.canDrag({
+    draggedContext: { element: page.items.value[index], futureIndex: index + direction }
+  })
+}
+async function drop(page, index, direction) {
+  const nextItems = [...page.items.value]
+  const destination = index + direction
+  if (destination < 0 || destination >= nextItems.length) return
+  const [item] = nextItems.splice(index, 1)
+  nextItems.splice(destination, 0, item)
+  await page.commitDrag(nextItems)
 }
 async function open(page) {
   page.show.value = true
@@ -100,15 +113,15 @@ describe('养成材料合成顺序', () => {
       [3, 1],
       [0, -1]
     ]) {
-      expect(page.canMove(index, direction)).toBe(false)
-      await page.move(index, direction)
+      expect(canDrag(page, index, direction)).toBe(false)
+      await drop(page, index, direction)
     }
     expect(api.put).not.toHaveBeenCalled()
-    expect(page.canMove(1, 1)).toBe(true)
+    expect(canDrag(page, 1, 1)).toBe(true)
     stop()
   })
 
-  it('单个项目跨类别移动提交完整顺序；等待响应期间禁用重复保存', async () => {
+  it('拖拽跨类别换位提交完整顺序；等待响应期间禁用重复保存', async () => {
     const { page, emit, stop } = setup()
     await open(page)
     let resolve
@@ -118,13 +131,13 @@ describe('养成材料合成顺序', () => {
           resolve = done
         })
     )
-    const saving = page.move(2, -1)
+    const saving = drop(page, 2, -1)
     expect(api.put).toHaveBeenCalledExactlyOnceWith(
       expect.stringContaining('/growth-crafting-order'),
       { order: ['skill:active', 'goal:module', 'skill:next', 'goal:level'] }
     )
     expect(page.items.value[1].key).toBe('skill:next')
-    await page.move(3, -1)
+    await drop(page, 3, -1)
     await page.save()
     expect(api.put).toHaveBeenCalledTimes(1)
     expect(api.delete).not.toHaveBeenCalled()
@@ -144,7 +157,7 @@ describe('养成材料合成顺序', () => {
     await open(page)
     const initial = page.items.value
     api.put.mockRejectedValue({ response: { status: 409, data: { error: '计划已变更，请刷新' } } })
-    await page.move(2, -1)
+    await drop(page, 2, -1)
     expect(page.items.value).toBe(initial)
     expect(page.feedback.value).toBe('计划已变更，请刷新')
     expect(page.failed.value).toBe(true)
@@ -173,7 +186,7 @@ describe('养成材料合成顺序', () => {
     props.revision = 'two'
     await nextTick()
     expect(api.get).toHaveBeenCalledTimes(1)
-    await page.move(1, 1)
+    await drop(page, 1, 1)
     expect(api.put).not.toHaveBeenCalled()
     resolve(response())
     await nextTick()
@@ -189,10 +202,10 @@ describe('养成材料合成顺序', () => {
     api.get.mockRejectedValueOnce({ response: { data: { error: '仓库读取失败' } } })
     await page.refresh()
     expect(page.loaded.value).toBe(false)
-    expect(page.canMove(2, -1)).toBe(false)
+    expect(canDrag(page, 2, -1)).toBe(false)
     expect(page.feedback.value).toBe('仓库读取失败')
     await page.refresh()
-    expect(page.canMove(2, -1)).toBe(true)
+    expect(canDrag(page, 2, -1)).toBe(true)
     stop()
   })
 
@@ -207,8 +220,8 @@ describe('养成材料合成顺序', () => {
     await open(page)
     expect(page.items.value[2].reason).toBe('材料不足，本轮跳过')
     expect(page.items.value[3].reason).toBe('仅准备材料，前置未完成')
-    expect(page.canMove(2, -1)).toBe(true)
-    expect(page.canMove(3, -1)).toBe(true)
+    expect(canDrag(page, 2, -1)).toBe(true)
+    expect(canDrag(page, 3, -1)).toBe(true)
     stop()
   })
 
@@ -222,7 +235,7 @@ describe('养成材料合成顺序', () => {
           resolve = done
         })
     )
-    const saving = page.move(2, -1)
+    const saving = drop(page, 2, -1)
     props.revision = 'first change'
     await nextTick()
     props.revision = 'second change'
@@ -236,6 +249,65 @@ describe('养成材料合成顺序', () => {
     expect(api.get).toHaveBeenCalledTimes(2)
     expect(page.items.value.at(-1).key).toBe('goal:new')
     expect(page.busy.value).toBe(false)
+    stop()
+  })
+
+  it('拖拽期间计划变更在松开后刷新，不提交旧排列', async () => {
+    const { page, props, stop } = setup()
+    await open(page)
+    page.dragging.value = true
+    props.revision = 'updated while dragging'
+    await nextTick()
+    expect(api.get).toHaveBeenCalledTimes(1)
+    await drop(page, 2, -1)
+    expect(api.put).not.toHaveBeenCalled()
+    await page.finishDrag()
+    expect(api.get).toHaveBeenCalledTimes(2)
+    expect(page.loaded.value).toBe(true)
+    expect(page.dragging.value).toBe(false)
+    stop()
+  })
+
+  it('放回原位或提交不完整排列不保存，键盘方向键保留同样锁定边界', async () => {
+    const { page, stop } = setup()
+    await open(page)
+    await page.commitDrag([...page.items.value])
+    await page.commitDrag(page.items.value.slice(1))
+    await page.commitDrag([page.items.value[0], ...page.items.value.slice(0, 3)])
+    await page.keyboardMove(1, -1)
+    expect(api.put).not.toHaveBeenCalled()
+    api.put.mockResolvedValue(response(true))
+    await page.keyboardMove(2, -1)
+    expect(api.put).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining('/growth-crafting-order'),
+      { order: ['skill:active', 'goal:module', 'skill:next', 'goal:level'] }
+    )
+    stop()
+  })
+
+  it('顶部备齐提示独立于保存排列，兼容纯升级项目并随同步响应移除', async () => {
+    const data = response()
+    data.data.prepared_items = [
+      { ...data.data.items[2], reason: '材料已备齐，请开启模组' },
+      {
+        key: 'goal:pure-level',
+        char_name: '等级干员',
+        label: '精二 90 级',
+        reason: '材料已备齐，请升级'
+      }
+    ]
+    api.get.mockResolvedValue(data)
+    const { page, stop } = setup()
+    await open(page)
+    expect(page.preparedItems.value).toHaveLength(2)
+    expect(canDrag(page, 2, -1)).toBe(true)
+    api.put.mockResolvedValue(data)
+    await drop(page, 2, -1)
+    expect(api.put.mock.calls[0][1].order).not.toContain('goal:pure-level')
+    expect(page.preparedItems.value[1].key).toBe('goal:pure-level')
+    api.get.mockResolvedValue(response())
+    await page.refresh()
+    expect(page.preparedItems.value).toEqual([])
     stop()
   })
 })

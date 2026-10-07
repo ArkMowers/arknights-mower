@@ -270,7 +270,9 @@ def set_goal(char_id, module_id, selected, box, skills, target_level=None):
     return goals
 
 
-def material_entries(box, skills, plans, goals=(), *, separate_prerequisites=False):
+def material_entries(
+    box, skills, plans, goals=(), *, separate_prerequisites=False, crafting_only=False
+):
     """One prerequisite per operator; all skills and modules share that cost."""
     data = growth_data(skills)
     chars = {c["id"]: c for c in box.get("characters", [])}
@@ -323,6 +325,8 @@ def material_entries(box, skills, plans, goals=(), *, separate_prerequisites=Fal
                 goal_target = level_goal_targets(definition).get(mid)
                 if goal_target is None:
                     raise ValueError("该干员不支持此等级目标")
+                if crafting_only:
+                    goal_target = (goal_target[0], 1)
                 target = max(target, goal_target)
                 continue
             if mid == "skill7":
@@ -334,7 +338,9 @@ def material_entries(box, skills, plans, goals=(), *, separate_prerequisites=Fal
                 raise ValueError("部分计划缺少模组数据，请更新资源")
             costs = module_materials(module, goal.get("target_level"))
             if costs:
-                target = max(target, (module["elite"], module["level"]))
+                target = max(
+                    target, (module["elite"], 1 if crafting_only else module["level"])
+                )
                 materials.extend(costs)
         if needs_basic:
             basic = basic_skill_materials(char, definition)

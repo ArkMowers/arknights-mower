@@ -16,14 +16,17 @@ from arknights_mower.utils.mastery_materials import MaterialBudget
 from arknights_mower.utils.path import get_path
 
 
-def crafting_projects(plans, goals, order=()):
+def crafting_projects(plans, goals, order=(), *, box=None, skills=None):
     """Pin active training; default to skill order before other growth goals."""
     waiting = get_material_waiting_plan(plans)
+    chars = {c["id"]: c for c in (box or {}).get("characters", [])}
+    definitions = growth_data(skills).get("characters", {}) if skills else {}
     projects = {}
     for plan in sorted(
         plans,
         key=lambda p: (
             p.get("status") not in ("arranging", "training", "waiting_collect")
+            and p is not waiting
         ),
     ):
         key = f"skill:{plan['char_id']}:{plan['skill_index']}"
@@ -40,6 +43,12 @@ def crafting_projects(plans, goals, order=()):
             },
         )
     for goal in goals:
+        if goal["module_id"] in LEVEL_GOALS and goal["char_id"] in chars:
+            target = level_goal_targets(definitions.get(goal["char_id"], {})).get(
+                goal["module_id"]
+            )
+            if target and chars[goal["char_id"]].get("evolvePhase", 0) >= target[0]:
+                continue
         key = f"goal:{goal['char_id']}:{goal['module_id']}"
         projects[key] = {
             "key": key,
@@ -72,7 +81,7 @@ def prepare_project_materials(box, skills, projects, inventory, formulas, blocke
             group["goals"].append(project["goal"])
         cumulative, prerequisites = Counter(), Counter()
         for _, before, materials in material_entries(
-            box, skills, **group, separate_prerequisites=True
+            box, skills, **group, separate_prerequisites=True, crafting_only=True
         ):
             for material in before:
                 prerequisites[material["id"]] += material["count"]
@@ -84,7 +93,12 @@ def prepare_project_materials(box, skills, projects, inventory, formulas, blocke
             budget, [{"id": iid, "count": n} for iid, n in total.items()]
         )
         eligible = summary["craftable"] and not active_shortage
-        state = {**project, "status": "ready", "reason": ""}
+        state = {
+            **project,
+            "status": "ready",
+            "reason": "",
+            "materials_prepared": eligible and summary["available"],
+        }
         if project["locked"]:
             state["status"] = "active"
             if not eligible:
@@ -96,6 +110,8 @@ def prepare_project_materials(box, skills, projects, inventory, formulas, blocke
             state.update(status="waiting", reason="材料不足，本轮跳过")
         elif not prerequisites_ready(box, skills, project):
             state.update(status="preparing", reason="仅准备材料，前置未完成")
+        elif state["materials_prepared"]:
+            state["reason"] = "材料已备齐"
         states.append(state)
         if not eligible:
             continue
@@ -148,17 +164,18 @@ def describe_projects(projects, skills):
             goal = project["goal"]
             mid = goal["module_id"]
             if mid in LEVEL_GOALS:
-                phase, level = level_goal_targets(definition)[mid]
-                label = f"精{('零', '一', '二')[phase]} Lv.{level}"
+                phase, _ = level_goal_targets(definition)[mid]
+                label = f"精英化至精{('零', '一', '二')[phase]} Lv.1"
             elif mid == "skill7":
                 label = "基础技能升至 7 级"
             else:
                 module = next(
                     (m for m in definition.get("modules", []) if m["id"] == mid), {}
                 )
-                label = (
-                    f"{module.get('name', mid)} · 模组 {goal.get('target_level', 1)} 级"
+                target = goal.get("target_level") or max(
+                    (entry["level"] for entry in module.get("levels", [])), default=1
                 )
+                label = f"{module.get('name', mid)} · 模组 {target} 级"
         result.append(
             {
                 **{
@@ -169,6 +186,108 @@ def describe_projects(projects, skills):
                 "label": label,
             }
         )
+    return result
+
+
+def prepared_project_reminders(
+    box, skills, states, entries, goals, inventory, formulas, blocked=()
+):
+    """Report unfinished manual actions against reserved, finished inventory."""
+    chars = {char["id"]: char for char in box.get("characters", [])}
+    definitions = growth_data(skills).get("characters", {})
+    reminders = []
+    for state in states:
+        if state["locked"] or not state["materials_prepared"]:
+            continue
+        cid = state["char_id"]
+        char, definition = chars[cid], definitions.get(cid, {})
+        current = (char.get("evolvePhase", 0), char.get("level", 1))
+        actions = []
+        if state["kind"] == "skill":
+            plan = state["plan"]
+            levels = char.get("skills", [])
+            index = plan["skill_index"]
+            level = (levels[index].get("level") or 0) if index < len(levels) else 0
+            if level >= plan.get("target_level", 3):
+                continue
+            if current < (2, 1):
+                actions.append("待精英化至精二 Lv.1")
+            if char.get("mainSkillLevel", 0) < 7:
+                actions.append("待基础技能升至 7 级")
+        else:
+            goal = state["goal"]
+            mid = goal["module_id"]
+            if mid in LEVEL_GOALS:
+                phase, _ = level_goal_targets(definition)[mid]
+                if current < (phase, 1):
+                    actions.append(f"待精英化至精{('零', '一', '二')[phase]} Lv.1")
+            elif mid == "skill7":
+                if char.get("mainSkillLevel", 0) < 7:
+                    if current < basic_skill_target(definition):
+                        actions.append("待完成技能升级所需的精英化")
+                    actions.append("待基础技能升至 7 级")
+            else:
+                level = next(
+                    (
+                        e.get("level", 0)
+                        for e in char.get("equips", [])
+                        if e["id"] == mid
+                    ),
+                    0,
+                )
+                module = next(
+                    m for m in definition.get("modules", []) if m["id"] == mid
+                )
+                target = goal.get("target_level") or max(
+                    (entry["level"] for entry in module.get("levels", [])), default=1
+                )
+                if level >= target:
+                    continue
+                if current < (module["elite"], module["level"]):
+                    actions.append(
+                        f"待达到模组开启等级 Lv.{module['level']}（升级资源另计）"
+                    )
+                actions.append("待开启模组" if level == 0 else "待升级模组")
+        if actions:
+            reminders.append({**state, "reason": "；".join(actions)})
+    result = describe_projects(reminders, skills)
+
+    # Pure leveling stays out of crafting order, but can have a manual reminder.
+    reserved = Counter()
+    for _, materials in entries:
+        for material in materials:
+            reserved[material["id"]] += material["count"]
+    budget = MaterialBudget(skills, inventory, formulas, blocked_materials=blocked)
+    for goal in goals:
+        cid, mid = goal["char_id"], goal["module_id"]
+        if mid not in LEVEL_GOALS or cid not in chars:
+            continue
+        char = chars[cid]
+        target = level_goal_targets(definitions.get(cid, {})).get(mid)
+        current = (char.get("evolvePhase", 0), char.get("level", 1))
+        if not target or current[0] != target[0] or current >= target:
+            continue
+        total = reserved.copy()
+        for _, materials in material_entries(box, skills, [], [goal]):
+            for material in materials:
+                total[material["id"]] += material["count"]
+        summary = calculate_growth_materials(
+            budget, [{"id": iid, "count": count} for iid, count in total.items()]
+        )
+        if summary["available"]:
+            reserved = total
+            result.append(
+                {
+                    "key": f"goal:{cid}:{mid}",
+                    "char_id": cid,
+                    "char_name": definitions.get(cid, {}).get("name") or cid,
+                    "kind": "goal",
+                    "locked": False,
+                    "status": "ready",
+                    "label": f"精{('零', '一', '二')[target[0]]} Lv.{target[1]}",
+                    "reason": "升级资源已备齐，待升级",
+                }
+            )
     return result
 
 
@@ -199,17 +318,26 @@ def crafting_order_state():
     )
 
     order = config.conf.growth_crafting_order
-    projects = crafting_projects(get_all_plans(), load_goals(), order)
-    if not projects:
-        return {"items": [], "custom": bool(order)}
+    plans, goals = get_all_plans(), load_goals()
+    if not plans and not goals:
+        return {"items": [], "prepared_items": [], "custom": bool(order)}
     box = json.loads(get_path("@app/tmp/cultivate.json").read_text("utf-8"))["data"]
     skills = growth_resources(get_skill_data())
-    states, _ = prepare_project_materials(
+    projects = crafting_projects(plans, goals, order, box=box, skills=skills)
+    inventory = inventory_counts(box, skills, local=True)
+    blocked = protected_workshop_materials()
+    states, entries = prepare_project_materials(
         box,
         skills,
         projects,
-        inventory_counts(box, skills, local=True),
+        inventory,
         workshop_formula,
-        protected_workshop_materials(),
+        blocked,
     )
-    return {"items": describe_projects(states, skills), "custom": bool(order)}
+    return {
+        "items": describe_projects(states, skills),
+        "prepared_items": prepared_project_reminders(
+            box, skills, states, entries, goals, inventory, workshop_formula, blocked
+        ),
+        "custom": bool(order),
+    }

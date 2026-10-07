@@ -21,7 +21,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 - [ ] **[INV-GROWTH-01] Shared Growth Budget**: Growth planning admits unready operators without dispatching training, counts shared prerequisites once, reserves stock in crafting-project order, emits only outstanding permitted recipes for fully supplied projects, and keeps manual chip conversion separate from automatic crafting.
 
-- [ ] **[INV-GROWTH-03] Ordered Crafting Prerequisites**: Crafting order changes never reorder training plans, active training remains fixed first, each admitted project prepares its minimum unsatisfied prerequisites before its own costs without counting shared prerequisites twice, and an unstarted shortage skips that project while a protected training shortage blocks later preparation.
+- [ ] **[INV-GROWTH-03] Ordered Crafting Prerequisites**: Crafting order changes never reorder training plans, active training remains fixed first, each admitted project prepares its minimum unsatisfied promotion and basic-skill prerequisites before its own costs without counting shared prerequisites twice, and an unstarted shortage skips that project while a protected training shortage blocks later preparation.
 
 - [ ] **[INV-REC-06] Selection Page Exit**: Do anomalous selection readings detect the known facility roster marker on the same Capture Frame and propagate page exit without filter reset or further selection input, while normal readings avoid additional page lookups or captures and existing room recovery reads actual occupants?
 
