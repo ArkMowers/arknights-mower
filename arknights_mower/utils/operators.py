@@ -1160,6 +1160,7 @@ class Operators:
                     and actual.name == name
                     or not self.operators[name].current_room
                     or self.operators[name].is_resting()
+                    and not self.is_dorm_replacement(name)
                     or (
                         (source := self.operators[name]).current_room in plan
                         and 0 <= source.current_index < len(plan[source.current_room])

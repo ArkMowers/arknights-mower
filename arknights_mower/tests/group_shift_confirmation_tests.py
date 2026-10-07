@@ -14,7 +14,12 @@ from arknights_mower.solvers.base_schedule import ProductSwitchDeferred
 from arknights_mower.tests.multi_group_shift_tests import SHARED, A, B, shift_off
 from arknights_mower.tests.multi_group_shift_tests import solver as solver
 from arknights_mower.utils.plan import Room
-from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes, plan_metadata
+from arknights_mower.utils.scheduler_task import (
+    SchedulerTask,
+    TaskTypes,
+    plan_metadata,
+    try_reorder,
+)
 
 
 @pytest.mark.parametrize("reserved", [False, True])
@@ -256,3 +261,159 @@ def test_replan_keeps_unconfirmed_shared_return(solver, backup_active, entry):
     task.backup_shift_active = False
     solver.plan_metadata()
     assert task not in solver.tasks
+
+
+def observe_arrangement(solver, plan):
+    """读屏只更新位置和床位，组状态仍由完成确认提交。"""
+    observed = solver.op_data.project_arrangements([plan])
+    solver.op_data.operators, solver.op_data.dorm = observed.operators, observed.dorm
+
+
+@pytest.mark.parametrize("returning", [False, True])
+def test_product_conflict_defers_complete_group_arrangement(solver, returning):
+    if returning:
+        assert shift_off(solver, "甲")[0]
+        plan = {"meeting": [A, "Current"], "contact": [SHARED]}
+    else:
+        plan = {}
+        assert solver.get_resting_plan(solver.op_data.groups["甲"], [], plan, 0)
+        plan.update(try_reorder(solver.op_data, plan) or {})
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_ON if returning else TaskTypes.SHIFT_OFF,
+        task_plan=plan,
+    )
+    locked = SchedulerTask(
+        time=datetime.now() + timedelta(hours=1),
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={"meeting": ["陈", "Current"]},
+    )
+    solver.task, solver.tasks = task, [task, locked]
+    solver._reserve_deferred_product_shift(locked, {("meeting", 0)})
+    solver._refresh_deferred_product_reservations()
+    solver._prepare_group_shift(task)
+    solver._prepare_shift_cycle(task)
+    original = {room: list(names) for room, names in task.plan.items()}
+    with pytest.raises(ProductSwitchDeferred):
+        solver._defer_conflicting_product_shift_slots(task)
+    assert task.plan == original
+    assert solver.tasks == [task, locked]
+    assert not getattr(task, "group_shift_expected", {})
+    assert solver.op_data.group_is_resting("甲") is returning
+
+    # 预约任务不被待确认状态阻塞，预约解除后原换班仍完整执行并确认。
+    solver._prepare_group_shift(locked)
+    solver.tasks.remove(locked)
+    solver._refresh_deferred_product_reservations()
+    solver._defer_conflicting_product_shift_slots(task)
+    solver._prepare_group_shift(task, remember_targets=True)
+    observe_arrangement(solver, task.plan)
+    task.plan = {}
+    assert solver._complete_group_shift(task)
+    assert solver.op_data.group_is_resting("甲") is not returning
+
+
+def prepare_emergency_confirmation(solver):
+    solver._emergency_handoff = True
+    solver.emergency_state = {
+        "targets": {A: 12},
+        "phase": "returning",
+        "handoff_observing": True,
+    }
+    solver._emergency_read_rooms = MagicMock(return_value=True)
+    solver._emergency_ready = MagicMock(return_value=True)
+    solver._emergency_save = MagicMock()
+    solver.run_order_solver = MagicMock()
+    solver.plan_metadata = MagicMock()
+
+
+@pytest.mark.parametrize("returned", [False, True])
+def test_emergency_handoff_commits_observed_group_state(solver, returned):
+    assert shift_off(solver, "甲")[0]
+    if returned:
+        observe_arrangement(solver, {"meeting": [A, "Current"], "contact": [SHARED]})
+    else:
+        # 救急期间主班已离岗，但原有组状态仍为上班。
+        solver.op_data.commit_group_shifts({"甲": False})
+        for name in (A, SHARED):
+            solver.op_data.operators[name].mood = 5
+    prepare_emergency_confirmation(solver)
+    assert solver._emergency_finish_handoff()
+    assert solver.op_data.group_is_resting("甲") is not returned
+    assert solver.emergency_state is None
+    admitted = solver.get_resting_plan(solver.op_data.groups["乙"], [], {}, 0)
+    assert bool(admitted) is returned
+
+
+@pytest.mark.parametrize("blocked_by", ["read", "ready", "mood", "shared"])
+def test_incomplete_emergency_handoff_preserves_group_state(solver, blocked_by):
+    assert shift_off(solver, "甲")[0]
+    plan = {"meeting": [A, "Current"]}
+    if blocked_by != "shared":
+        plan["contact"] = [SHARED]
+    observe_arrangement(solver, plan)
+    prepare_emergency_confirmation(solver)
+    if blocked_by == "read":
+        solver._emergency_read_rooms.return_value = False
+        solver._emergency_defer_read = MagicMock()
+    elif blocked_by == "ready":
+        solver._emergency_ready.return_value = False
+    elif blocked_by == "mood":
+        solver.op_data.operators[A].mood = 0
+    before = dict(solver.op_data.group_shift_state)
+    assert not solver._emergency_finish_handoff()
+    assert solver.op_data.group_shift_state == before
+    assert solver.emergency_state is not None
+    solver.run_order_solver.assert_not_called()
+    solver.plan_metadata.assert_not_called()
+    if blocked_by == "shared":
+        observe_arrangement(solver, {"contact": [SHARED]})
+        assert solver._emergency_finish_handoff()
+        assert not solver.op_data.group_is_resting("甲")
+
+
+@pytest.mark.parametrize("released", [False, True])
+def test_shared_revalidation_protects_fixed_dorm_cover(solver, released):
+    plan = solver.global_plan["default_plan"].plan
+    plan["contact"][0].replacement = ["红", "黑角"]
+    plan["contact"][0].group_bindings[0]["replacement"] = ["红", "黑角"]
+    plan["central"] = [Room("能天使", "丙", ["夜刀"])]
+    plan["dormitory_1"][1] = Room("冰酿", "丙", ["黑角"])
+    assert solver.initialize_operators() is None
+    for op in solver.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    assert shift_off(solver, "甲")[0]
+    assert shift_off(solver, "乙")[0]
+    observe_arrangement(
+        solver,
+        {
+            "central": ["夜刀"],
+            "dormitory_1": ["Current", "黑角", "Current", "Current", "Current"],
+        },
+    )
+    data = solver.op_data
+    data.commit_group_shifts({"丙": True})
+    data.operators["红"]._current_room, data.operators["红"].current_index = (
+        "factory",
+        0,
+    )
+    assert data.is_dorm_replacement("黑角")
+    proposed = {"meeting": [A, "Current"], "contact": [SHARED]}
+    if released:
+        proposed.update(
+            central=["能天使"],
+            dormitory_1=["Current", "冰酿", "Current", "Current", "Current"],
+        )
+    task = SchedulerTask(task_type=TaskTypes.SHIFT_ON, task_plan=proposed)
+    solver.task, solver.tasks = task, [task]
+    if released:
+        solver._prepare_group_shift(task, remember_targets=True)
+        assert task.plan["contact"] == ["黑角"]
+        assert task.plan["dormitory_1"][1] == "冰酿"
+        assert task.group_shift_expected["dormitory_1", 1] == "冰酿"
+    else:
+        with pytest.raises(ProductSwitchDeferred):
+            solver._prepare_group_shift(task)
+        assert task.plan["contact"] == [SHARED]
+    assert data.get_current_operator("dormitory_1", 1).name == "黑角"
+    assert data.group_is_resting("丙")

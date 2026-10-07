@@ -4915,7 +4915,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if name != "Current"
         }
         retry = max(lock.time for lock in locks) + timedelta(seconds=1)
-        if changed - conflicting and not hasattr(task, "backup_shift_conditions"):
+        # 绑组换班保留完整安排和确认责任，不能只执行共享岗位就提交整组状态。
+        if (
+            changed - conflicting
+            and not hasattr(task, "backup_shift_conditions")
+            and not getattr(task, "group_shift_transitions", {})
+            and not getattr(task, "group_shift_expected", {})
+        ):
             blocked = SchedulerTask(
                 time=retry,
                 task_plan=self._plan_for_slots(task.plan, conflicting),
