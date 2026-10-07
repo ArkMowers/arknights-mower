@@ -35,6 +35,15 @@ const dirty = computed(
     draftFailedItems.value.length !== failedItems.value.length
 )
 const editable = computed(() => loaded.value && !busy.value && !stale.value)
+const preparedByKey = computed(() => new Map(preparedItems.value.map((item) => [item.key, item])))
+const draftPreparedItems = computed(() =>
+  draftItems.value
+    .filter((item) => !item.locked && preparedByKey.value.has(item.key))
+    .map((item) => ({ ...item, ...preparedByKey.value.get(item.key) }))
+)
+const sortableItems = computed(() =>
+  draftItems.value.filter((item) => item.locked || !preparedByKey.value.has(item.key))
+)
 
 function accept(data) {
   if (data.error) throw new Error(data.error)
@@ -108,13 +117,13 @@ async function refreshIfPending() {
 
 function canDrag(event) {
   const { element, futureIndex } = event.draggedContext
-  const lockedCount = draftItems.value.filter((item) => item.locked).length
+  const lockedCount = sortableItems.value.filter((item) => item.locked).length
   return (
     editable.value &&
     !search.value.trim() &&
     !element.locked &&
     futureIndex >= lockedCount &&
-    futureIndex < draftItems.value.length
+    futureIndex < sortableItems.value.length
   )
 }
 
@@ -142,15 +151,19 @@ function matchesSearch(item) {
 function commitDrag(nextItems) {
   if (!editable.value || search.value.trim()) return
   const order = nextItems.map((item) => item.key)
-  const original = draftItems.value.map((item) => item.key)
+  const original = sortableItems.value.map((item) => item.key)
   if (
     order.length !== original.length ||
     new Set(order).size !== original.length ||
     order.some((key) => !original.includes(key)) ||
-    draftItems.value.some((item, index) => item.locked && order[index] !== item.key)
+    sortableItems.value.some((item, index) => item.locked && order[index] !== item.key)
   )
     return
-  draftItems.value = [...nextItems]
+  const sortableKeys = new Set(original)
+  let index = 0
+  draftItems.value = draftItems.value.map((item) =>
+    sortableKeys.has(item.key) ? nextItems[index++] : item
+  )
 }
 
 async function finishDrag() {
@@ -161,11 +174,11 @@ async function finishDrag() {
 function keyboardMove(index, direction) {
   if (
     !canDrag({
-      draggedContext: { element: draftItems.value[index], futureIndex: index + direction }
+      draggedContext: { element: sortableItems.value[index], futureIndex: index + direction }
     })
   )
     return
-  const nextItems = [...draftItems.value]
+  const nextItems = [...sortableItems.value]
   const [item] = nextItems.splice(index, 1)
   nextItems.splice(index + direction, 0, item)
   commitDrag(nextItems)
@@ -186,7 +199,7 @@ function clear() {
 
 function organize() {
   if (!editable.value || search.value.trim()) return
-  const movable = draftItems.value.filter((item) => !item.locked)
+  const movable = sortableItems.value.filter((item) => !item.locked)
   const byKey = new Map(movable.map((item) => [item.key, item]))
   const ordered = interleaveMasteryPlans(
     movable.map((item) => ({
@@ -197,16 +210,16 @@ function organize() {
         props.recommendations.find((op) => op.char_id === item.char_id)?.profession
     }))
   ).map((item) => byKey.get(item.key))
-  draftItems.value = [...draftItems.value.filter((item) => item.locked), ...ordered]
+  commitDrag([...sortableItems.value.filter((item) => item.locked), ...ordered])
 }
 
 function prioritizeSkills() {
   if (!editable.value || search.value.trim()) return
-  draftItems.value = [
-    ...draftItems.value.filter((item) => item.locked),
-    ...draftItems.value.filter((item) => !item.locked && item.kind === 'skill'),
-    ...draftItems.value.filter((item) => !item.locked && item.kind !== 'skill')
-  ]
+  commitDrag([
+    ...sortableItems.value.filter((item) => item.locked),
+    ...sortableItems.value.filter((item) => !item.locked && item.kind === 'skill'),
+    ...sortableItems.value.filter((item) => !item.locked && item.kind !== 'skill')
+  ])
 }
 
 function cancel() {
@@ -298,15 +311,18 @@ watch([show, () => props.revision], ([opened], [wasOpened]) => {
     :content-style="{ minHeight: 0, overflowY: 'auto' }"
   >
     <div class="order-content">
-      <n-alert v-if="preparedItems.length" type="success" :show-icon="false" :bordered="false">
+      <n-alert v-if="draftPreparedItems.length" type="success" :show-icon="false" :bordered="false">
         <n-text strong>材料已备齐，待完成养成</n-text>
         <n-scrollbar style="max-height: 144px">
-          <div v-for="item in preparedItems" :key="item.key" class="prepared-project">
+          <div v-for="item in draftPreparedItems" :key="item.key" class="prepared-project">
             <n-avatar :src="'/avatar/' + item.char_name + '.webp'" :size="28" round />
             <div class="order-description">
               <n-text strong>{{ item.char_name }} · {{ item.label }}</n-text>
               <n-text v-if="item.reason" depth="3" class="order-label">{{ item.reason }}</n-text>
             </div>
+            <n-button size="small" quaternary :disabled="!editable" @click="remove(item)">
+              移除
+            </n-button>
           </div>
         </n-scrollbar>
         <n-text depth="3" class="order-label">
@@ -355,8 +371,8 @@ watch([show, () => props.revision], ([opened], [wasOpened]) => {
       <n-spin :show="busy">
         <div class="order-list">
           <draggable
-            v-if="draftItems.length"
-            :model-value="draftItems"
+            v-if="sortableItems.length"
+            :model-value="sortableItems"
             item-key="key"
             handle=".order-drag-handle"
             :disabled="!editable || !!search.trim()"
@@ -410,7 +426,10 @@ watch([show, () => props.revision], ([opened], [wasOpened]) => {
               </div>
             </template>
           </draggable>
-          <n-empty v-else-if="loaded && !draftFailedItems.length" description="还没有养成目标" />
+          <n-empty
+            v-else-if="loaded && !draftFailedItems.length && !draftPreparedItems.length"
+            description="还没有养成目标"
+          />
           <div v-if="draftFailedItems.length" class="failed-plans">
             <n-text strong>失败计划</n-text>
             <div

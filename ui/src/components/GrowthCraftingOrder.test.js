@@ -70,7 +70,7 @@ async function open(page) {
   await flush()
 }
 function drop(page, source, destination) {
-  const rows = [...page.draftItems.value]
+  const rows = [...page.sortableItems.value]
   const [item] = rows.splice(source, 1)
   rows.splice(destination, 0, item)
   page.commitDrag(rows)
@@ -300,13 +300,40 @@ describe('统一养成计划编辑', () => {
     stop()
   })
 
-  it('备齐提示独立展示，不改变完整计划与失败计划排序', async () => {
+  it('手动养成备齐项只在顶部显示，保留完整计划用于保存', async () => {
     current.data.prepared_items = [{ ...current.data.planning_items[3], reason: '待升级' }]
     const { page, stop } = setup()
     await open(page)
-    expect(page.preparedItems.value).toHaveLength(1)
+    expect(page.draftPreparedItems.value).toHaveLength(1)
+    expect(page.sortableItems.value.map((item) => item.key)).not.toContain('goal:level')
     expect(page.draftItems.value).toHaveLength(4)
     expect(page.dirty.value).toBe(false)
+    drop(page, 2, 1)
+    await page.save()
+    expect(api.put.mock.calls[0][1].order).toEqual([
+      'skill:active',
+      'goal:module',
+      'skill:next',
+      'goal:level'
+    ])
+    expect(api.post).not.toHaveBeenCalled()
+    expect(api.delete).not.toHaveBeenCalled()
+    stop()
+  })
+
+  it('备齐项可从顶部草稿移除，取消恢复并不误删排序中的项目', async () => {
+    current.data.prepared_items = [{ ...current.data.planning_items[2], reason: '待开启模组' }]
+    const { page, stop } = setup()
+    await open(page)
+    page.keyboardMove(2, -1)
+    expect(keys(page)).toEqual(['skill:active', 'goal:level', 'goal:module', 'skill:next'])
+    page.remove(page.draftPreparedItems.value[0])
+    expect(page.draftPreparedItems.value).toHaveLength(0)
+    expect(keys(page)).not.toContain('goal:module')
+    page.cancel()
+    expect(page.draftPreparedItems.value).toHaveLength(1)
+    expect(page.dirty.value).toBe(false)
+    expect(api.post).not.toHaveBeenCalled()
     stop()
   })
 
