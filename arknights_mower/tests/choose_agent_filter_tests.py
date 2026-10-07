@@ -146,7 +146,7 @@ def test_high_mode_checks_full_roster_after_all_reorder_clicks(monkeypatch):
         call.kwargs.get("ordered") is False
         for call in solver.wait_for_arranged_agents.call_args_list
     )
-    assert solver.tap.call_args_list[0].kwargs["interval"] == 0.5
+    assert solver.tap.call_args_list[0].kwargs["interval"] == 0.3
     assert all(call.kwargs["interval"] == 0.1 for call in solver.tap.call_args_list[1:])
 
 
@@ -227,7 +227,9 @@ def test_non_ultra_rebuilds_order_without_selection_number_proof(
 
     assert selected == RESIDENTS
     assert solver.tap.call_count == len(RESIDENTS) + 1
-    assert solver.tap.call_args_list[0].kwargs["interval"] == 0.5
+    assert solver.tap.call_args_list[0].kwargs["interval"] == (
+        0.3 if mode == "high" else 0.5
+    )
     assert all(
         call.kwargs["interval"] == click_interval
         for call in solver.tap.call_args_list[1:]
@@ -296,6 +298,56 @@ def test_resting_operator_is_scanned_without_skipping_pages(monkeypatch):
     assert selected == ["伊芙利特"]
     solver.swipe_noinertia.assert_not_called()
     solver.swipe_agent_page.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "mode,tail_wait", [("high", 0.5), ("xhigh", 1), ("medium", None), ("low", None)]
+)
+def test_resting_operator_tail_search_retains_wait_before_scan(
+    monkeypatch, mode, tail_wait
+):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", mode)
+    solver, selected = selection_solver(monkeypatch, residents=[])
+    solver.op_data.operators["伊芙利特"] = SimpleNamespace(
+        mood=10, upper_limit=24, room="dormitory_1", is_resting=lambda: True
+    )
+    scan = solver.scan_agent.side_effect
+
+    def scan_after_swipe(*args, **kwargs):
+        if solver.swipe_noinertia.call_count:
+            solver.sleep.assert_called_once_with(tail_wait)
+        return scan(*args, **kwargs)
+
+    solver.scan_agent.side_effect = scan_after_swipe
+    solver.choose_agent(["伊芙利特"], "dormitory_1")
+
+    assert selected == ["伊芙利特"]
+    if tail_wait is None:
+        solver.swipe_noinertia.assert_not_called()
+    else:
+        assert solver.swipe_noinertia.call_count == 3
+        assert all(
+            call.kwargs["interval"] == 0
+            for call in solver.swipe_noinertia.call_args_list
+        )
+        solver.sleep.assert_called_once_with(tail_wait)
+
+
+@pytest.mark.parametrize("targets", [[], ["伊芙利特"], ["Free"]])
+def test_high_clear_wait_applies_to_empty_fixed_and_free_selection(
+    monkeypatch, targets
+):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", "high")
+    solver, selected = selection_solver(monkeypatch, residents=[])
+
+    solver.choose_agent(targets.copy(), "dormitory_1", fast_mode=False)
+
+    assert selected == (["伊芙利特"] if targets else [])
+    clears = [
+        call for call in solver.tap.call_args_list if call.args[0] == (729.6, 1026.0)
+    ]
+    assert clears
+    assert all(call.kwargs["interval"] == 0.3 for call in clears)
 
 
 def selection_solver(monkeypatch, residents=None):

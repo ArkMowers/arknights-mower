@@ -13,11 +13,13 @@
     "arknights_mower.solvers.base_mixin.AgentSelectionPageChanged",
     "arknights_mower.solvers.base_mixin.BaseMixin.check_agent_page",
     "arknights_mower.solvers.base_mixin.BaseMixin.wait_for_arranged_agents",
-    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.choose_agent"
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.choose_agent",
+    "arknights_mower.solvers.base_mixin.BaseMixin.swipe_agent_page"
   ],
   "test_suites": [
     "arknights_mower/tests/selection_page_identity_tests.py",
     "arknights_mower/tests/choose_agent_filter_tests.py",
-    "arknights_mower/tests/room_retry_dispatch_tests.py"
+    "arknights_mower/tests/room_retry_dispatch_tests.py",
+    "arknights_mower/tests/agent_page_search_tests.py"
   ]
 }

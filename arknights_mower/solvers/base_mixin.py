@@ -634,7 +634,11 @@ class BaseMixin:
             if len(page) < 2:
                 raise AgentSelectionNotReady("可识别干员不足，返回房间重试")
             start, end = page[-2][1][0], page[0][1][0]
-            self.swipe_noinertia(start, (end[0] - start[0], 0))
+            self.swipe_noinertia(
+                start,
+                (end[0] - start[0], 0),
+                interval=0.1 if self.performance_profile.mode == "high" else 0.2,
+            )
             return (1, None) if return_page else 1
         columns = sorted({scope[0][0] for _, scope in page})
         if len(columns) < 2:
