@@ -22,72 +22,99 @@ def plan(index=1):
     }
 
 
-def protected_room(index):
-    room = reader.RoomState(
-        "empty",
+def protected_room(state="empty", skill_name=""):
+    return reader.RoomState(
+        state,
+        panel=reader.RoomPanel(
+            operator_name="测试干员", skill_name=skill_name, mastery_tier=2
+        ),
         support_slot="逻各斯",
         train_slot="测试干员",
         protected=True,
         slots_reliable=True,
     )
-    room.protected_skill_index = index
-    return room
 
 
 @pytest.mark.parametrize(
-    "observed,requested,allowed",
-    [(0, 0, True), (0, 1, False), (1, 1, True), (None, 1, False)],
+    "tiers,requested",
+    [([0, 1, 3], 1), ([2, 0, 3], 0), ([1, 2, 0], 1), ([0, None, 0], 1)],
 )
-def test_protected_empty_room_requires_same_skill_and_keeps_protection(
-    observed, requested, allowed
+def test_restart_empty_room_does_not_infer_previous_skill_from_historical_tiers(
+    tiers, requested
 ):
-    room = protected_room(observed)
+    solver = MagicMock()
+    solver.train_scene.return_value = Scene.TRAIN_SKILL_SELECT
+    room = protected_room()
+    room.panel = reader.RoomPanel(idle_marker=True)
     candidate = plan(requested)
-    with patch.object(reader, "_next_idle_to_start", return_value=None):
+    with (
+        patch.object(reader.config.conf, "enable_mastery", True),
+        patch.object(reader, "_read_slot_mastery_tier", side_effect=tiers),
+        patch.object(reader, "_back_to_train_main") as back,
+        patch.object(reader, "_next_idle_to_start", return_value=None),
+    ):
+        room.protected = reader._compute_protected(solver, room, scan_plan=candidate)
         start, _ = reader._reconcile(
-            MagicMock(), room, None, [candidate], scan_plan=candidate
+            solver, room, None, [candidate], scan_plan=candidate
         )
-    assert start is (candidate if allowed else None)
+    assert start is None
+    assert room.protected
+    back.assert_called_once()
+
+
+def test_empty_room_does_not_admit_cached_panel_without_current_collection():
+    room = protected_room(skill_name="技能A")
+    with patch.object(reader, "resolve_panel_skill") as resolve:
+        assert not reader._protected_plan_matches(plan(), room)
+    resolve.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "state,collected,observed,requested,allowed",
+    [
+        ("waiting_collect", False, 0, 0, True),
+        ("waiting_collect", False, 0, 1, False),
+        ("waiting_collect", False, None, 1, False),
+        ("empty", True, 1, 1, True),
+        ("empty", True, 0, 1, False),
+        ("empty", True, None, 1, False),
+        ("empty", False, 1, 1, False),
+        ("training", False, 1, 1, False),
+    ],
+)
+def test_protected_identity_requires_direct_panel_or_same_observation_collection(
+    state, collected, observed, requested, allowed
+):
+    room = protected_room(state, "技能A")
+    room.collected = collected
+    with patch.object(reader, "resolve_panel_skill", return_value=observed):
+        assert reader._protected_plan_matches(plan(requested), room) is allowed
     assert room.protected
 
 
-def test_unreliable_trainee_does_not_admit_even_matching_skill():
-    room = protected_room(1)
-    room.slots_reliable = False
-    candidate = plan()
-    with patch.object(reader, "_next_idle_to_start", return_value=None):
-        start, _ = reader._reconcile(
-            MagicMock(), room, None, [candidate], scan_plan=candidate
-        )
-    assert start is None
+@pytest.mark.parametrize("operator", ["", "其他干员"])
+def test_protected_collection_requires_same_observed_operator(operator):
+    room = protected_room("waiting_collect", "技能A")
+    room.panel.operator_name = operator
+    with patch.object(reader, "resolve_panel_skill", return_value=1):
+        assert not reader._protected_plan_matches(plan(), room)
 
 
-@pytest.mark.parametrize(
-    "tiers,protected,index",
-    [
-        ([0, 1, 3], True, 1),
-        ([2, 0, 3], True, 0),
-        ([1, 2, 0], True, None),
-        ([0, None, 0], True, None),
-        ([0, 0, 3], False, None),
-    ],
-)
-def test_deep_read_records_only_a_unique_partial_mastery_skill(tiers, protected, index):
+@pytest.mark.parametrize("tiers", [[0, 0, 3], [3, 3, 3]])
+def test_no_partial_mastery_releases_protection(tiers):
     solver = MagicMock()
     solver.train_scene.return_value = Scene.TRAIN_SKILL_SELECT
-    room = protected_room(2)
     with (
         patch.object(reader, "_read_slot_mastery_tier", side_effect=tiers),
         patch.object(reader, "_back_to_train_main") as back,
     ):
-        assert reader._train_slot_has_mastery(solver, room=room) is protected
-    assert room.protected_skill_index == index
+        assert not reader._train_slot_has_mastery(solver)
     back.assert_called_once()
 
 
 @pytest.mark.parametrize("text", ["", "含混技能"])
 def test_protected_collection_does_not_continue_an_unidentified_skill(text):
-    room = protected_room(None)
+    room = protected_room()
     room.state = "waiting_collect"
     room.panel = reader.RoomPanel(
         operator_name="测试干员", skill_name=text, mastery_tier=2
@@ -108,7 +135,7 @@ def test_protected_collection_does_not_continue_an_unidentified_skill(text):
 
 
 def test_protected_collection_continues_the_uniquely_matched_skill():
-    room = protected_room(None)
+    room = protected_room()
     room.state = "waiting_collect"
     room.panel = reader.RoomPanel(
         operator_name="测试干员", skill_name="技能A", mastery_tier=2
@@ -125,11 +152,14 @@ def test_protected_collection_continues_the_uniquely_matched_skill():
     assert room.protected
 
 
-def test_start_boundary_rejects_a_different_protected_skill_before_mutation():
-    room = protected_room(0)
+@pytest.mark.parametrize("state", ["empty", "waiting_collect"])
+def test_start_boundary_rejects_a_different_protected_skill_before_mutation(state):
+    room = protected_room("waiting_collect", "技能A")
+    room.state = state
     solver = MagicMock()
     solver.train_scene.side_effect = RuntimeError("Unexpected training action")
     with (
+        patch.object(reader, "resolve_panel_skill", return_value=0),
         patch.object(mastery, "_warn_training_room_group"),
         patch(
             "arknights_mower.utils.mastery_support_data.trainee_schedule_conflict",
@@ -146,3 +176,24 @@ def test_start_boundary_rejects_a_different_protected_skill_before_mutation():
     solver.train_scene.assert_not_called()
     solver.choose_train.assert_not_called()
     solver.ctap.assert_not_called()
+
+
+def test_real_collection_retains_panel_for_same_skill_start_admission():
+    room = protected_room("waiting_collect", "技能A")
+    candidate = plan(0)
+    solver = MagicMock()
+    with (
+        patch.object(reader, "resolve_panel_skill", return_value=0),
+        patch.object(reader, "collect_flow"),
+        patch.object(reader, "_tap_collect_confirm"),
+        patch.object(reader, "_promote_plan"),
+        patch("arknights_mower.utils.mastery_db.update_plan_status") as update,
+    ):
+        start, _ = reader._reconcile(solver, room, None, [candidate])
+        assert start is candidate
+        assert room.collected
+        room.state = "empty"
+        assert reader._protected_plan_matches(start, room)
+        assert not reader._protected_plan_matches(plan(1), room)
+    update.assert_called_once_with(candidate["id"], "idle")
+    assert room.protected

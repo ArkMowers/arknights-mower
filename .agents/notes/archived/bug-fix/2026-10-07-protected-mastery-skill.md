@@ -1,9 +1,12 @@
 ---
 title: Protected Mastery Skill Continuation
-status: implemented
+status: archived
 category: bug-fix
 date: 2026-10-07
 ---
+
+Superseded by [Protected Mastery Observed Identity](../../implemented/bug-fix/2026-10-07-protected-mastery-observed-identity.md).
+
 
 # Protected Mastery Skill Continuation
 

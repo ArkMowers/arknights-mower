@@ -127,7 +127,6 @@ class RoomState:
     slots_reliable: bool = False
     support_mood: Optional[float] = None  # 协助位心情（浮窗扫描，仅 reliable 时有效）
     train_mood: Optional[float] = None  # 训练位心情（浮窗扫描，仅 reliable 时有效）
-    protected_skill_index: Optional[int] = None  # 本次实读唯一的专一/专二技能
 
     @property
     def locked(self) -> bool:
@@ -624,15 +623,13 @@ def _read_slots_checked(solver):
     return scan[0].get("agent", ""), scan[1].get("agent", ""), scan, reliable
 
 
-def _train_slot_has_mastery(solver, room=None) -> bool:
+def _train_slot_has_mastery(solver) -> bool:
     """§5.2 空闲保护深读：进技能选择页读训练位干员所有技能。
 
     有专一/专二 → True（保护，不能动）；全专三或专0 → False（可动）；
     进不去技能页 / 读不到档位 → 保守 True（保护）。
     进入技能选择页后，finally 保证必定 back 回 TRAIN_MAIN 并等待转场。
     """
-    if room is not None:
-        room.protected_skill_index = None
     entered_skill_select = False
     try:
         scene = solver.train_scene()
@@ -653,16 +650,13 @@ def _train_slot_has_mastery(solver, room=None) -> bool:
         if solver.train_scene() != Scene.TRAIN_SKILL_SELECT:
             return True
 
-        partial = []
         for idx in (0, 1, 2):
             tier = _read_slot_mastery_tier(solver, idx)
             if tier is None:
                 return True  # 读不到 → 保守保护
             if tier in (1, 2):
-                partial.append(idx)
-        if room is not None and len(partial) == 1:
-            room.protected_skill_index = partial[0]
-        return bool(partial)
+                return True
+        return False
     except Exception:
         return True
     finally:
@@ -701,7 +695,7 @@ def _compute_protected(solver, room, scan_plan=None) -> bool:
     if room.state == "empty":
         if not room.train_slot:
             return False
-        return _train_slot_has_mastery(solver, room=room)
+        return _train_slot_has_mastery(solver)
     return False
 
 
@@ -945,14 +939,9 @@ def _can_recover_plan(plan, room: RoomState) -> bool:
 
 
 def _protected_plan_matches(plan, room: RoomState) -> bool:
-    """受保护房间仅允许已确认的同干员同技能；未知身份不放行。"""
-    if room.state == "waiting_collect":
-        return _can_recover_plan(plan, room)
-    return (
-        room.slots_reliable
-        and _plan_operator_matches(plan, room.train_slot)
-        and room.protected_skill_index is not None
-        and room.protected_skill_index == plan.get("skill_index")
+    """仅凭本次待收取面板确认同技能；收取后保留该面板供当场续训。"""
+    return (room.state == "waiting_collect" or room.collected) and _can_recover_plan(
+        plan, room
     )
 
 

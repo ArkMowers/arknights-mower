@@ -2486,7 +2486,7 @@ class TestComputeProtected(unittest.TestCase):
             is_protected = reader._compute_protected(self.solver, room, scan_plan=plan)
 
         self.assertTrue(is_protected)
-        mock_has_mastery.assert_called_once_with(self.solver, room=room)
+        mock_has_mastery.assert_called_once_with(self.solver)
 
     @patch.object(reader, "_train_slot_has_mastery", return_value=True)
     def test_deep_read_when_train_slot_mismatches_scan_plan(self, mock_has_mastery):
@@ -2497,7 +2497,7 @@ class TestComputeProtected(unittest.TestCase):
             is_protected = reader._compute_protected(self.solver, room, scan_plan=plan)
 
         self.assertTrue(is_protected)
-        mock_has_mastery.assert_called_once_with(self.solver, room=room)
+        mock_has_mastery.assert_called_once_with(self.solver)
 
     @patch.object(reader, "_train_slot_has_mastery", return_value=True)
     def test_deep_read_when_scan_plan_is_none(self, mock_has_mastery):
@@ -2507,7 +2507,7 @@ class TestComputeProtected(unittest.TestCase):
             is_protected = reader._compute_protected(self.solver, room, scan_plan=None)
 
         self.assertTrue(is_protected)
-        mock_has_mastery.assert_called_once_with(self.solver, room=room)
+        mock_has_mastery.assert_called_once_with(self.solver)
 
     @patch.object(reader, "_fill_slots_and_protection")
     @patch.object(reader, "_classify_panel", return_value="empty")
@@ -3165,14 +3165,13 @@ class TestReconcileProtectedRelease(unittest.TestCase):
             result = reader._reconcile(solver, room, None, [], scan_plan=scan_plan)
         return result, ni, np
 
-    def test_continue_same_skill_without_releasing_protection(self):
+    def test_empty_room_does_not_use_same_operator_as_skill_evidence(self):
         room = make_room(state="empty", train_slot="Miss.Christine")
         room.protected = True
         room.slots_reliable = True
-        room.protected_skill_index = 1
         plan = make_plan(char_id="char_4198_christ", char_name="Miss.Christine")
         (result, _, np) = self._call(room, plan)
-        self.assertIs(result[0], plan)
+        self.assertIsNone(result[0])
         self.assertTrue(result[1])
         self.assertTrue(room.protected)
         np.assert_not_called()
