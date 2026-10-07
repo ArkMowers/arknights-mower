@@ -1,7 +1,6 @@
 """Persist one manual snapshot for an automatic mastery crafting session."""
 
 import json
-from collections import Counter
 from dataclasses import dataclass
 
 from arknights_mower.utils import config
@@ -19,63 +18,7 @@ from arknights_mower.utils.workshop_config import (
 )
 
 
-def _materials_ready(plans, recommendations):
-    """Confirm the whole queue's remaining costs, without spending shared stock twice.
-
-    Missing BOX/costs are unknown, never evidence that crafting has finished.
-    This runs only after a depot scan or an explicit auto-config request.
-    """
-    from arknights_mower.utils import mastery_recommendation as rec
-
-    if not recommendations.get("has_data"):
-        return None
-    path = rec.get_path("@app/tmp/cultivate.json")
-    data = json.loads(path.read_text(encoding="utf-8"))["data"]
-    names = rec.get_skill_data().get("items", {})
-    inventory = Counter(
-        {
-            names.get(item["id"], {}).get("name", item["id"]): int(item["count"])
-            for item in data["items"]
-        }
-    )
-    levels = {
-        (char["id"], index): skill.get("level", 0)
-        for char in data["characters"]
-        for index, skill in enumerate(char.get("skills", []))
-    }
-    skills = {
-        (op["char_id"], skill["skill_index"]): skill
-        for op in recommendations.get("operators", [])
-        for skill in op.get("recommendations", [])
-    }
-    demand = Counter()
-    for plan in plans:
-        key = plan["char_id"], plan["skill_index"]
-        if levels.get(key, 0) >= plan["target_level"]:
-            continue
-        skill = skills.get(key)
-        if skill is None:
-            return None
-        stages = skill.get("stages")
-        if stages:
-            if rec._workshop_lookahead_active(plan):
-                stages = stages[1:]  # This training step has already been paid.
-            materials = [
-                mat
-                for stage in stages
-                if stage["to_level"] - 7 <= plan["target_level"]
-                for mat in stage.get("needed_materials", [])
-            ]
-        else:
-            materials = skill.get("chain_needed_materials")
-            if materials is None:
-                return None
-        for material in materials:
-            demand[material["name"]] += material["count"]
-    return all(inventory[name] >= count for name, count in demand.items())
-
-
-def update_workshop_config(**operators):
+def update_workshop_config(*, explicit=False, **operators):
     """Take over once, retain the backup while waiting, restore on completion."""
     from arknights_mower.utils import mastery_recommendation as rec
     from arknights_mower.utils.mastery_db import get_all_plans
@@ -89,15 +32,37 @@ def update_workshop_config(**operators):
                 "restored": False,
                 "t3_summary": [],
             }
-        plans = get_all_plans() if conf.enable_mastery else []
-        ready = not plans
+        from arknights_mower.data import workshop_formula
+        from arknights_mower.utils.growth import (
+            growth_resources,
+            inventory_counts,
+            load_goals,
+        )
+        from arknights_mower.utils.growth_workshop import growth_workshop_config
+        from arknights_mower.utils.workshop_material_policy import (
+            protected_workshop_materials,
+        )
+
+        enabled = conf.enable_mastery or explicit or conf.workshop_auto_active
+        plans = get_all_plans() if enabled else []
+        goals = load_goals() if enabled else []
+        ready = not plans and not goals
         settings = None
-        if plans:
-            recommendations = rec.get_mastery_recommendations()
-            ready = _materials_ready(plans, recommendations)
-            if ready is False:
-                settings = rec.compute_workshop_config(
-                    **{
+        focus = None
+        if plans or goals:
+            path = rec.get_path("@app/tmp/cultivate.json")
+            if path.exists():
+                box = json.loads(path.read_text(encoding="utf-8"))["data"]
+                skills = growth_resources(rec.get_skill_data())
+                stock = inventory_counts(box, skills, local=True)
+                settings, focus = growth_workshop_config(
+                    box,
+                    skills,
+                    plans,
+                    goals,
+                    stock,
+                    workshop_formula,
+                    {
                         key: operators.get(key, getattr(conf, key))
                         for key in (
                             "fodder_operators",
@@ -105,9 +70,11 @@ def update_workshop_config(**operators):
                             "book_operators",
                         )
                     },
-                    plans=plans,
-                    recommendations=recommendations,
+                    protected_workshop_materials(),
                 )
+                # Readiness means remaining craftable demands are covered. Gold,
+                # chips and module tokens remain visible in the material overview.
+                ready = focus is None
         restored = False
         if ready:
             restored = restore_manual_settings(conf)
@@ -121,7 +88,28 @@ def update_workshop_config(**operators):
                     conf.workshop_settings = generated
                     conf.workshop_generation += 1
         save_conf(conf)
-        return {**workshop_state(conf), "restored": restored, "t3_summary": []}
+        return {
+            **workshop_state(conf),
+            "restored": restored,
+            "t3_summary": [],
+            "focus_char_id": focus,
+            "pending": focus is not None,
+        }
+
+
+def refresh_workshop_after_plan_change():
+    """Invalidate old quotas immediately when an active growth plan is edited."""
+    with workshop_lock:
+        if not config.conf.workshop_auto_active:
+            return
+        try:
+            update_workshop_config()
+        except Exception:
+            logger.exception("养成计划已保存，但合成缺口重算失败，暂停旧加工配置")
+            conf = config.conf.model_copy(deep=True)
+            conf.workshop_settings = []
+            conf.workshop_generation += 1
+            save_conf(conf)
 
 
 def restore_if_no_plans():
@@ -160,7 +148,9 @@ def restore_if_no_plans():
                 plans = get_all_plans()
                 if plans:
                     update_workshop_config()
-        if plans:
+        from arknights_mower.utils.growth import load_goals
+
+        if plans or load_goals():
             return
         conf = config.conf.model_copy(deep=True)
         restore_manual_settings(conf)

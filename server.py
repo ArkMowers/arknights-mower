@@ -3121,6 +3121,80 @@ def mastery_recommendation():
     return get_mastery_recommendations()
 
 
+@app.route("/growth-survey", methods=["GET"])
+@require_token
+def growth_survey():
+    from arknights_mower.utils.yituliu_statistics import get_statistics
+
+    return get_statistics()
+
+
+@app.route("/growth-sync-token", methods=["GET", "PUT", "DELETE"])
+@require_token
+def growth_sync_token():
+    from arknights_mower.utils.yituliu_sync import clear_token, save_token, token_status
+
+    try:
+        if request.method == "GET":
+            return token_status()
+        if request.method == "DELETE":
+            return clear_token()
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            raise ValueError("Token 设置格式无效")
+        return save_token(payload.get("token"))
+    except ValueError as exc:
+        return {"message": str(exc)}, 400
+    except OSError:
+        return {"message": "一图流本地设置保存失败"}, 500
+
+
+@app.route("/growth-sync", methods=["POST"])
+@require_token
+def growth_sync():
+    from arknights_mower.utils.yituliu_sync import sync_cached_operators
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict) or payload.get("confirmed") is not True:
+        return {"message": "请在设置中明确选择立即同步"}, 400
+    try:
+        return sync_cached_operators()
+    except ValueError as exc:
+        return {"success": False, "message": str(exc)}, 400
+    except OSError:
+        return {"success": False, "message": "本地缓存读取失败，请重新同步森空岛"}, 500
+
+
+@app.route("/growth-plan", methods=["GET", "POST"])
+@require_token
+def growth_plan():
+    from arknights_mower.utils.growth import load_goals, set_goal
+    from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+    try:
+        if request.method == "GET":
+            return {"goals": load_goals()}
+        req = request.json or {}
+        with open(get_path("@app/tmp/cultivate.json"), encoding="utf-8") as stream:
+            box = json.load(stream)["data"]
+        goals = set_goal(
+            req.get("char_id"),
+            req.get("module_id"),
+            req.get("selected"),
+            box,
+            get_skill_data(),
+            target_level=req.get("target_level"),
+        )
+        from arknights_mower.utils.workshop_automation import (
+            refresh_workshop_after_plan_change,
+        )
+
+        refresh_workshop_after_plan_change()
+        return {"goals": goals}
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        return {"error": str(exc)}, 400
+
+
 @app.route("/workshop-auto-config", methods=["POST"])
 def workshop_auto_config():
     import traceback
@@ -3133,12 +3207,44 @@ def workshop_auto_config():
         t5_ops = req.get("t5_operators", config.conf.t5_operators)
         book_ops = req.get("book_operators", config.conf.book_operators)
         return update_workshop_config(
+            explicit=True,
             fodder_operators=fodder_ops,
             t5_operators=t5_ops,
             book_operators=book_ops,
         )
     except Exception as e:
         return {"error": str(e), "traceback": traceback.format_exc()}, 500
+
+
+@app.route("/growth-chip-farming", methods=["POST"])
+@require_token
+def growth_chip_farming():
+    from arknights_mower.utils.config.weekly_plan_loader import get_weekly_plan_manager
+    from arknights_mower.utils.growth import load_goals
+    from arknights_mower.utils.growth_farming import chip_farming_plan
+    from arknights_mower.utils.mastery_db import get_all_plans, get_failed_plans
+    from arknights_mower.utils.mastery_materials import plan_material_summary
+
+    try:
+        keys = [
+            f"{p['char_id']}_{p['skill_index']}"
+            for p in get_all_plans() + get_failed_plans()
+        ]
+        summary = plan_material_summary(keys, load_goals())
+        manager = get_weekly_plan_manager()
+        active = manager.get_active_plan_key()
+        plan, inventory, stages = chip_farming_plan(
+            manager.get_plan(active) or [],
+            manager.get_inventory_config(active),
+            summary,
+        )
+        if stages and not manager.create_or_update_plan(
+            active, plan, inventory_config=inventory
+        ):
+            return {"error": "库存刷关方案保存失败"}, 400
+        return {"stages": stages, "active": active}
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        return {"error": str(exc)}, 400
 
 
 @app.route("/mastery-t3-summary", methods=["POST"])
@@ -3149,8 +3255,20 @@ def mastery_t3_summary():
     keys = req.get("planned_skills", [])
     if not isinstance(keys, list) or any(not isinstance(key, str) for key in keys):
         return {"error": "计划格式错误"}, 400
+    goals, targets = req.get("goals", []), req.get("targets", {})
+    if (
+        not isinstance(goals, list)
+        or not isinstance(targets, dict)
+        or any(
+            not isinstance(goal, dict)
+            or not isinstance(goal.get("char_id"), str)
+            or not isinstance(goal.get("module_id"), str)
+            for goal in goals
+        )
+    ):
+        return {"error": "养成目标格式错误"}, 400
     try:
-        summary = plan_material_summary(keys)
+        summary = plan_material_summary(keys, goals, targets)
     except (OSError, ValueError, TypeError, KeyError) as exc:
         return {"error": f"无法计算材料，请刷新干员数据：{exc}"}, 400
     return {"material_summary": summary, "t3_summary": summary["missing"]}
@@ -3201,16 +3319,22 @@ def basement_skill_operators():
 
 
 @app.route("/cultivate-fetch")
+@require_token
 def cultivate_fetch():
     from arknights_mower.solvers.cultivate_depot import cultivate
 
     try:
-        if not cultivate().start():
+        syncer = cultivate()
+        if not syncer.start():
             return {
                 "success": False,
                 "message": "未同步到干员数据，请检查森空岛账号及官服/B服选择",
             }
-        return {"success": True, "message": "数据拉取成功"}
+        return {
+            "success": True,
+            "message": "数据拉取成功",
+            "yituliu_sync": getattr(syncer, "yituliu_sync_result", None),
+        }
     except Exception as e:
         return {"success": False, "message": str(e)}
 

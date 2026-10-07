@@ -1,6 +1,7 @@
 import sys
 import unittest
 from datetime import datetime, timedelta
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -279,6 +280,76 @@ class MaaMallDiscountCreditTests(unittest.TestCase):
 
 class MaaStageInventorySchedulerTests(unittest.TestCase):
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
+    def test_fight_initial_drop_target_is_shortage_and_keeps_auto_series(self):
+        solver = BaseSchedulerSolver()
+        solver.MAA = MagicMock()
+        solver.MAA.append_task.return_value = 23
+        solver.stages = []
+        conf = _conf(
+            medicine_expire_days=3,
+            maa_report_to_penguin=True,
+            maa_penguin_id="penguin-test",
+            maa_report_to_yituliu=True,
+            maa_yituliu_id="yituliu-test",
+        )
+        conf.maa_eat_stone = True
+        conf.maa_weekly_plan[0].stage = ["PR-C-2"]
+        conf.maa_weekly_plan[0].medicine = 2
+        conf.maa_stage_limit_rules = [
+            {"stage": "PR-C-2", "items": [{"item_name": "先锋芯片组", "limit": 5}]}
+        ]
+        with (
+            patch.object(solver, "maybe_switch_expired_activity_plan"),
+            patch.object(base_schedule.config, "conf", conf),
+            patch.object(base_schedule, "get_server_weekday", return_value=0),
+            patch.object(base_schedule, "_maa_client_type", return_value="Bilibili"),
+            patch.object(base_schedule, "cultivateDepotSolver") as refresh,
+            patch(
+                "arknights_mower.utils.maa_stage_inventory.load_inventory_snapshot",
+                return_value=({"3212": 2}, None),
+            ),
+        ):
+            solver.append_maa_task("Fight")
+        task_type, params = solver.MAA.append_task.call_args.args
+        self.assertEqual(task_type, "Fight")
+        self.assertEqual(params["drops"], {"3212": 3})
+        self.assertEqual(params["series"], 0)
+        self.assertEqual(params["times"], 999)
+        self.assertEqual(params["medicine"], 2)
+        self.assertEqual(params["stone"], 999)
+        self.assertEqual(params["medicine_expire_days"], 3)
+        self.assertEqual(params["client_type"], "Bilibili")
+        self.assertEqual(params["penguin_id"], "penguin-test")
+        self.assertEqual(params["yituliu_id"], "yituliu-test")
+        self.assertTrue(params["report_to_penguin"])
+        self.assertTrue(params["report_to_yituliu"])
+        self.assertEqual(solver.maa_inventory_tasks[23][0], params)
+        conf.maa_stage_limit_rules[0]["items"][0]["limit"] = 99
+        self.assertEqual(solver.maa_inventory_tasks[23][1][0]["items"][0]["limit"], 5)
+        refresh.assert_not_called()
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
+    def test_all_stages_at_cap_do_not_append_fight_or_stop_other_tasks(self):
+        solver = BaseSchedulerSolver()
+        solver.MAA = MagicMock()
+        solver.stages = []
+        conf = _conf()
+        conf.maa_weekly_plan[0].stage = ["1-7"]
+        with (
+            patch.object(solver, "maybe_switch_expired_activity_plan"),
+            patch.object(base_schedule.config, "conf", conf),
+            patch.object(base_schedule, "get_server_weekday", return_value=0),
+            patch(
+                "arknights_mower.utils.maa_stage_inventory.load_inventory_snapshot",
+                return_value=({"30012": 10}, None),
+            ),
+        ):
+            solver.append_maa_task("Fight")
+        solver.MAA.append_task.assert_not_called()
+        solver.MAA.stop.assert_not_called()
+        self.assertEqual(solver.stages, [])
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def test_enabled_selection_without_rules_prioritizes_annihilation_without_refresh(
         self,
     ):
@@ -315,7 +386,9 @@ class MaaStageInventorySchedulerTests(unittest.TestCase):
                     patch.object(solver, "maybe_switch_expired_activity_plan"),
                     patch.object(base_schedule.config, "conf", conf),
                     patch.object(base_schedule, "get_server_weekday", return_value=0),
-                    patch.object(base_schedule, "cultivateDepotSolver"),
+                    patch.object(
+                        base_schedule, "cultivateDepotSolver"
+                    ) as refresh_solver,
                     patch(
                         "arknights_mower.utils.maa_stage_inventory.load_inventory_snapshot",
                         return_value=(inventory, "2026-10-06 12:00:00"),
@@ -331,6 +404,7 @@ class MaaStageInventorySchedulerTests(unittest.TestCase):
                 self.assertEqual(solver.stages, expected)
                 self.assertEqual(local_stages, expected)
                 self.assertEqual(conf.maa_weekly_plan[0].stage, original)
+                refresh_solver.assert_not_called()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def test_maa_fight_task_omits_stage_that_reached_inventory_limit(self):
@@ -350,7 +424,7 @@ class MaaStageInventorySchedulerTests(unittest.TestCase):
         ):
             solver.append_maa_task("Fight")
 
-        refresh_solver.return_value.start.assert_called_once_with()
+        refresh_solver.assert_not_called()
         auto_switch.assert_called_once_with()
         solver.MAA.append_task.assert_called_once()
         task_type, task_config = solver.MAA.append_task.call_args.args
@@ -597,6 +671,46 @@ def _rg_conf(
 
 class MaaRoguelikeTests(unittest.TestCase):
     """Roguelike 下发补齐通用字段；协议注明「仅某主题/某模式」的字段按条件省略。"""
+
+    @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
+    def test_failed_maa_releases_inventory_guard_before_idle_sleep(self):
+        from arknights_mower.solvers import record
+
+        solver = BaseSchedulerSolver()
+        solver.recog = MagicMock()
+        solver.last_execution = {"maa": None}
+        solver.credit_fight = None
+        solver.tasks = [SimpleNamespace(time=datetime.now() + timedelta(hours=1))]
+        active = Event()
+        maa = MagicMock()
+        maa.start.side_effect = RuntimeError("MAA start failed")
+
+        def initialize():
+            solver.MAA = maa
+            active.set()
+
+        def sleep_after_release(seconds):
+            self.assertFalse(active.is_set())
+            self.assertGreater(seconds, 0)
+
+        with (
+            patch.object(base_schedule, "battle_inventory_active", active),
+            patch.object(record, "battle_inventory_active", active),
+            patch.object(base_schedule.config, "conf", _rg_conf()),
+            patch.object(solver, "back_to_index"),
+            patch.object(solver, "initialize_maa", side_effect=initialize),
+            patch.object(solver, "append_maa_task"),
+            patch.object(solver, "rest_until_next_task"),
+            patch.object(
+                solver, "_idle_sleep", side_effect=sleep_after_release
+            ) as idle,
+            patch.object(base_schedule, "get_server_weekday", return_value=1),
+            patch.object(base_schedule, "send_message"),
+            patch.object(base_schedule, "save_exception"),
+        ):
+            solver.maa_plan_solver()
+        idle.assert_called_once()
+        self.assertFalse(active.is_set())
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def _run_rogue(self, **overrides):

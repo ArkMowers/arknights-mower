@@ -124,8 +124,10 @@ def test_recipe_cycles_are_rejected():
 def test_plan_summary_uses_remaining_target_levels_and_excludes_paid_training(
     tmp_path, monkeypatch, status, target, current, runtime_level, expected
 ):
+    from arknights_mower.solvers import record
     from arknights_mower.utils import mastery_db, mastery_recommendation, path
 
+    monkeypatch.setattr(record, "get_inventory_counts", lambda: {})
     data = resources()
     data["characters"] = {
         "char_test": {
@@ -144,7 +146,15 @@ def test_plan_summary_uses_remaining_target_levels_and_excludes_paid_training(
         json.dumps(
             {
                 "data": {
-                    "characters": [{"id": "char_test", "skills": [{"level": current}]}],
+                    "characters": [
+                        {
+                            "id": "char_test",
+                            "evolvePhase": 2,
+                            "level": 1,
+                            "mainSkillLevel": 7,
+                            "skills": [{"level": current}],
+                        }
+                    ],
                     "items": [],
                 }
             }

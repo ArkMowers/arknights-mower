@@ -48,7 +48,19 @@ The retry parameters, the success criterion and the backup domain are ported fro
 
 Success logs one INFO line. A penguin failure logs one WARNING line naming the destination and giving up on that report. A failure for any other destination logs the same text at DEBUG, mirroring the client's deliberate silence for 一图流, except that the first such failure of the process is promoted to WARNING so a permanently failing destination leaves at least one line on the WebSocket log page.
 
+### 2.5 Local Inventory and Fight Caps
+
+Workshop execution and inventory selection do not fetch Skland. Selection reads the shared persisted inventory, including confirmed recipe outputs, ingredients and LMD costs. A successful manual sync or warehouse scan supplies the baseline; unknown or invalidated quantities remain unknown rather than becoming the size of the next drop.
+
+Each assistant instance owns a `MaaDropInventory`. `SubTaskExtraInfo` (20003) with `what=StageDrops` contributes only increases in `details.stats[].quantity`, keyed by `taskid` and canonical item ID. `drops` and `addQuantity` are not added again. Repeated or older totals do not change inventory. Failed transactions do not advance receipts. Receipt storage is bounded to 256 tasks per instance; exceeding the bound emits a diagnostic without dropping existing receipts. Active MAA runs hold cloud inventory rebases because a cloud response can already include a drop whose callback is queued. Completion, stop and failure release the hold. Confirmed pending deltas retain existing stale-cloud protection after release.
+
+Inventory-bound Fight tasks receive `drops` targets equal to task cumulative drops plus the current stock deficit. OR rules can use all remaining native targets. AND rules use a native target only when one known deficit remains; each callback reevaluates all pending bound tasks. Reaching a rule sets that task's `times` and medicine/stone allowances to zero, preserving other parameters and subsequent tasks. `series=0` retains MAA automatic consecutive battles. Drops settle per batch, so a completed batch can exceed the configured cap. Ratio-only tasks do not gain a quantity cap. If all selected stages are capped and no fallback remains, no Fight task is submitted.
+
+The decision is recorded in [Local Inventory Execution](../../.agents/notes/implemented/simplification/2026-10-08-local-inventory-execution.md).
+
 ## 3. Subsystem Invariants
+
+- **[INV-MAA-05] Local Inventory Execution**: Workshop execution and inventory stage selection use persisted local stock without fetching Skland; accepted MAA cumulative drops update that stock once per task, and configured stage caps stop only the reached Fight task while preserving automatic series and subsequent tasks.
 
 - **[INV-MAA-04] Inventory Stage Priority**: Inventory selection keeps selected annihilation first and defers unbound stages while any selected inventory-bound stage survives its limits; when all bound stages are skipped, ordinary stages remain eligible even with annihilation present, and backend dispatch and frontend preview agree without changing saved selections.
 - **[INV-MAA-01] Total Callback Handling**: Every MAA callback is consumed without raising; a missing, empty, or unrecognized payload field yields at most one diagnostic line at the C callback boundary instead of an exception.
@@ -68,6 +80,8 @@ Failure modes: an exception raised inside the C callback is reported by ctypes a
 
 ## 5. Inventory Stage Selection
 
-`select_stages_by_inventory` evaluates enabled positive item limits before ratios. A stage with an enabled, identified positive limit or an enabled, identified positive ratio member is inventory-bound. Selected annihilation runs first. Surviving bound stages retain their daily-plan order and exclude unbound stages from this dispatch; ratios then choose among surviving members. When no bound stage survives, unbound selections, including last operation, supply the fallback even if annihilation remains. Disabled rules, empty conditions and zero limits or ratios confer no priority. With only capped stages and no remaining selection, the existing whole-plan fallback remains authoritative. Source plans are never rewritten.
+`select_stages_by_inventory` evaluates enabled positive item limits before ratios. A stage with an enabled, identified positive limit or an enabled, identified positive ratio member is inventory-bound. Selected annihilation runs first. Surviving bound stages retain their daily-plan order and exclude unbound stages from this dispatch; ratios then choose among surviving members. When no bound stage survives, unbound selections, including last operation, supply the fallback even if annihilation remains. Disabled rules, empty conditions and zero limits or ratios confer no priority. With only capped stages and no remaining selection, no battle is dispatched and other tasks continue. Source plans are never rewritten.
 
 MAA Fight and local operation planning consume this same selection. `previewInventorySelection` mirrors it for the inventory panel. Focused selection and scheduler tests cover partial and complete chip limits, annihilation, inactive rules, ratio bindings and unchanged saved selections. The [inventory priority decision](../../.agents/notes/implemented/feature/2026-10-06-inventory-stage-priority.md) records reuse and verification.
+
+Native settlement accounting and per-batch cap handling follow the [local operation contract](local-operation.md).

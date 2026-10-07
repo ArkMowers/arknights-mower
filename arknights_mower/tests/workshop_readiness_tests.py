@@ -12,18 +12,11 @@ from arknights_mower.utils.config.conf import RIICPart
 
 
 def set_stock(fixture, stock):
-    fixture.cultivate.write_text(
-        json.dumps(
-            {
-                "data": {
-                    "characters": [],
-                    "items": [
-                        {"id": key, "count": value} for key, value in stock.items()
-                    ],
-                }
-            }
-        )
-    )
+    data = json.loads(fixture.cultivate.read_text())
+    data["data"]["items"] = [
+        {"id": key, "count": value} for key, value in stock.items()
+    ]
+    fixture.cultivate.write_text(json.dumps(data))
 
 
 def test_books_short_after_crafting_wait_then_resume_without_changing_plan(next_skill):
@@ -229,14 +222,21 @@ def test_depot_scan_skips_shortage_then_reconsiders_after_stock_refresh(
     set_stock(next_skill, {"3302": 15})
     solver._auto_schedule_mastery_after_scan()
     assert book_limit([s.model_dump() for s in config.conf.workshop_settings]) == 5
+    solver._dispatch_scan_start_tasks.assert_called_with([])
     set_stock(next_skill, {"3302": 21})
     solver._auto_schedule_mastery_after_scan()
     assert book_limit([s.model_dump() for s in config.conf.workshop_settings]) == 7
+    solver._dispatch_scan_start_tasks.assert_called_with([])
     set_stock(next_skill, {"3303": 5})
     solver._auto_schedule_mastery_after_scan()
     assert [
         p["char_id"] for p in solver._dispatch_scan_start_tasks.call_args.args[0]
     ] == ["char_a"]
+    set_stock(next_skill, {"3303": 7})
+    solver._auto_schedule_mastery_after_scan()
+    assert {
+        p["char_id"] for p in solver._dispatch_scan_start_tasks.call_args.args[0]
+    } == {"char_a", "char_b"}
     assert next_skill.plans == plans
 
 

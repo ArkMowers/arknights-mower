@@ -331,17 +331,22 @@ watch(maa_weekly_plan_active, loadInventoryRuleData, { immediate: true })
         </n-flex>
         <n-divider />
         <n-space vertical :size="4">
-          <n-text depth="3">• 刷理智前刷新库存；物品上限优先于比例。</n-text>
+          <n-text depth="3"
+            >• 使用本地库存选关，MAA 掉落回调自动更新库存；物品上限优先于比例。</n-text
+          >
           <n-text depth="3">
             • 剿灭优先；有效上限或比例绑定关卡仍需刷取时，只执行剿灭和这些关卡。
           </n-text>
           <n-text depth="3">
             • 已选库存关卡全部达到上限后，才执行无有效库存规则的后备关卡（含上次作战）。
           </n-text>
+          <n-text depth="3">
+            • MAA 保持自动连战，整组结算达标后停止该关；数量可能超过上限一组的掉落量。
+          </n-text>
           <n-text depth="3">• 上限填 0 表示该物品不限上限。</n-text>
           <n-text depth="3">• 比例填 0 表示该关卡不参与比例关系计算。</n-text>
           <n-text depth="3">
-            • 当天全部关卡都被上限规则跳过时，本次恢复原计划；当前剿灭和上次作战不参与绑定。
+            • 全部关卡达标且无后备关卡时停止刷取，继续其他任务；剿灭和上次作战不参与绑定。
           </n-text>
         </n-space>
       </n-card>
@@ -610,8 +615,12 @@ watch(maa_weekly_plan_active, loadInventoryRuleData, { immediate: true })
               </n-tag>
             </n-space>
           </div>
-          <n-alert v-if="previewResult.limitFallback" type="warning" :closable="false">
-            全部关卡均达到上限，本次跳过设置失效并恢复原计划。
+          <n-alert
+            v-if="!previewResult.stages.length && previewResult.limitSkipped.length"
+            type="info"
+            :closable="false"
+          >
+            全部已选关卡均已达到上限，本轮不刷取，继续其他任务。
           </n-alert>
           <div v-else-if="previewResult.limitSkipped.length" class="preview-line">
             <n-text depth="3">达到上限</n-text>

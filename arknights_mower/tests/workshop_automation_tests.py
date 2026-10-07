@@ -81,14 +81,14 @@ def test_repeated_button_scan_and_restart_never_replace_original_backup(
     assert config.conf.workshop_generation > first_generation
 
 
-def test_temporarily_empty_lookahead_keeps_backup_until_queue_is_finished(
+def test_fully_paid_training_restores_manual_settings_without_replacing_backup(
     next_skill, scan
 ):
     scan()
     next_skill.plans[:] = [next_skill.plans[1]]
     next_skill.plans[0].update(status="training", expires_at="2999-01-01 00:00:00")
     scan()
-    assert config.conf.workshop_settings == []
+    assert config.conf.workshop_settings == [manual_setting()]
     assert config.conf.workshop_manual_backup == [manual_setting()]
     next_skill.plans.clear()
     auto.restore_if_no_plans()
@@ -102,7 +102,14 @@ def test_restore_only_when_whole_queue_materials_are_ready(
     scan()
     next_skill.cultivate.write_text(
         json.dumps(
-            {"data": {"characters": [], "items": [{"id": "3303", "count": book_count}]}}
+            {
+                "data": {
+                    "characters": json.loads(next_skill.cultivate.read_text())["data"][
+                        "characters"
+                    ],
+                    "items": [{"id": "3303", "count": book_count}],
+                }
+            }
         )
     )
     scan()
@@ -246,3 +253,29 @@ def test_corrupt_legacy_backup_does_not_overwrite_either_file_or_settings(next_s
     assert path.read_text() == "not-json"
     assert config.conf.workshop_settings == [manual_setting()]
     assert not config.conf.workshop_auto_active
+
+
+def test_plan_edit_recalculates_absolute_stock_limit_and_invalidates_old_task(
+    next_skill,
+):
+    auto.update_workshop_config()
+    before = config.conf.workshop_generation
+    next_skill.plans[:] = [next_skill.plans[0]]
+    auto.refresh_workshop_after_plan_change()
+    assert config.conf.workshop_generation > before
+    assert config.conf.workshop_settings[0].items[0].self_upper_limit == 5
+
+
+def test_failed_plan_recalculation_stops_old_quotas_but_keeps_manual_backup(
+    next_skill, monkeypatch
+):
+    config.conf.workshop_settings = [manual_setting()]
+    auto.update_workshop_config()
+    before = config.conf.workshop_generation
+    monkeypatch.setattr(
+        auto, "update_workshop_config", MagicMock(side_effect=ValueError("bad roster"))
+    )
+    auto.refresh_workshop_after_plan_change()
+    assert config.conf.workshop_settings == []
+    assert config.conf.workshop_generation > before
+    assert config.conf.workshop_manual_backup == [manual_setting()]

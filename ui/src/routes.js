@@ -47,7 +47,7 @@ export const routes = [
       {
         path: 'mastery-recommendation',
         component: () => import('@/pages/MasteryRecommendation.vue'),
-        meta: { title: '自动专精' },
+        meta: { title: '养成规划' },
         name: 'mastery_recommendation'
       },
       {

@@ -6,7 +6,7 @@ import sqlite3
 import traceback
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from threading import Lock
+from threading import Event, Lock
 
 import pytz
 from tzlocal import get_localzone
@@ -14,6 +14,9 @@ from tzlocal import get_localzone
 from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
+
+battle_inventory_active = Event()
+
 
 # 全部 DB 表定义（建表/迁移检查进程内只跑一次，避免每调用重跑 CREATE TABLE + PRAGMA + commit）
 _DB_TABLE_STMTS = (
@@ -38,6 +41,8 @@ _DB_TABLE_STMTS = (
     "CREATE TABLE IF NOT EXISTS inventory (item_name TEXT PRIMARY KEY, count INTEGER)",
     "CREATE TABLE IF NOT EXISTS workshop_inventory_updates ("
     "item_name TEXT PRIMARY KEY, observed_at REAL NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS workshop_inventory_pending ("
+    "item_name TEXT PRIMARY KEY, baseline INTEGER NOT NULL, directions INTEGER NOT NULL DEFAULT 3)",
     "CREATE TABLE IF NOT EXISTS log (time INTEGER,task TEXT,level TEXT,message TEXT)",
     "CREATE TABLE IF NOT EXISTS operation_history ("
     "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -66,6 +71,14 @@ def _ensure_tables(conn):
             return
         for stmt in _DB_TABLE_STMTS:
             conn.execute(stmt)
+        pending_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(workshop_inventory_pending)")
+        }
+        if "directions" not in pending_columns:
+            conn.execute(
+                "ALTER TABLE workshop_inventory_pending ADD COLUMN directions INTEGER NOT NULL DEFAULT 3"
+            )
         agent_action_columns = {
             row[1] for row in conn.execute("PRAGMA table_info(agent_action)").fetchall()
         }
@@ -636,6 +649,12 @@ def save_inventory_counts(
                 "SELECT item_name, observed_at FROM workshop_inventory_updates"
             )
         )
+        pending = {
+            name: (baseline, directions)
+            for name, baseline, directions in conn.execute(
+                "SELECT item_name, baseline, directions FROM workshop_inventory_pending"
+            )
+        }
         if scanned_counts is not None:
             current = dict(conn.execute("SELECT item_name, count FROM inventory"))
             for name in protected.keys() | (cloud_counts or {}).keys():
@@ -644,6 +663,7 @@ def save_inventory_counts(
                 # an observed zero and must not advance its freshness marker.
                 scanned = scanned_counts.get(name)
                 source_at = scanned_at
+                from_cloud = False
                 if (
                     cloud_counts is not None
                     and name in cloud_counts
@@ -651,6 +671,34 @@ def save_inventory_counts(
                 ):
                     scanned = cloud_counts[name]
                     source_at = cloud_at
+                    from_cloud = True
+                if from_cloud and battle_inventory_active.is_set():
+                    # Cloud can already include drops whose settlement receipt is pending.
+                    # Keep the run's local baseline until all drop receipts are consumed.
+                    if name in current:
+                        effective[name] = current[name]
+                    else:
+                        effective.pop(name, None)
+                    continue
+                # Request time does not prove Skland inventory freshness. Keep
+                # confirmed batch changes until the cloud reaches the predicted
+                # count in its net direction; an actual game read can reconcile.
+                # Once an item was both made and consumed, an intermediate cloud
+                # count can cross that range. Only exact convergence is sufficient.
+                if from_cloud and name in pending and name in current:
+                    (baseline, directions), expected = pending[name], current[name]
+                    caught_up = (
+                        scanned == expected
+                        if directions == 3 or not isinstance(scanned, int)
+                        else scanned >= expected
+                        if expected > baseline
+                        else scanned <= expected
+                        if expected < baseline
+                        else scanned == expected
+                    )
+                    if not caught_up:
+                        effective[name] = expected
+                        continue
                 if (
                     source_at > observed_at
                     and isinstance(scanned, int)
@@ -659,6 +707,10 @@ def save_inventory_counts(
                     # A fresh source can reconcile crafting, loot and spending.
                     # Keep its marker: reopening the page must not restore cloud cache.
                     effective[name] = scanned
+                    conn.execute(
+                        "DELETE FROM workshop_inventory_pending WHERE item_name = ?",
+                        (name,),
+                    )
                     conn.execute(
                         "INSERT INTO workshop_inventory_updates (item_name, observed_at) VALUES (?, ?) "
                         "ON CONFLICT(item_name) DO UPDATE SET observed_at = excluded.observed_at",
@@ -669,6 +721,10 @@ def save_inventory_counts(
                 else:
                     effective.pop(name, None)  # Preserve an unconfirmed/unknown count.
         else:
+            conn.executemany(
+                "DELETE FROM workshop_inventory_pending WHERE item_name = ?",
+                [(name,) for name in effective],
+            )
             conn.executemany(
                 "UPDATE workshop_inventory_updates SET observed_at = ? WHERE item_name = ?",
                 [
@@ -700,9 +756,19 @@ def get_inventory_counts(item_names: list[str] | None = None):
 
 
 def apply_workshop_inventory(delta: dict[str, int]):
-    """Apply the main output and ingredient changes of one confirmed batch."""
+    """Persist confirmed crafting or drop deltas without restoring invalidated stock."""
     with _conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        conn.executemany(
+            "INSERT INTO workshop_inventory_pending (item_name, baseline, directions) "
+            "SELECT item_name, count, ? FROM inventory WHERE item_name = ? "
+            "ON CONFLICT(item_name) DO UPDATE SET directions = directions | excluded.directions",
+            [
+                (1 if amount > 0 else 2, name)
+                for name, amount in delta.items()
+                if amount
+            ],
+        )
         conn.executemany(
             "UPDATE inventory SET count = MAX(0, count + ?) WHERE item_name = ?",
             [(amount, name) for name, amount in delta.items()],

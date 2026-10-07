@@ -2,6 +2,7 @@ import json
 import os
 from datetime import datetime, timedelta
 from functools import wraps
+from threading import RLock
 
 from flask import Blueprint, abort, current_app, request
 from flask.views import MethodView
@@ -35,6 +36,7 @@ from arknights_mower.utils.mastery_support_types import (
     decode_supports,
 )
 from arknights_mower.utils.path import get_path
+from arknights_mower.utils.workshop_automation import refresh_workshop_after_plan_change
 
 
 class Routes:
@@ -46,6 +48,7 @@ class Routes:
 
 
 mastery_bp = Blueprint("mastery", __name__)
+_start_lock = RLock()
 
 
 def _require_token(f):
@@ -226,6 +229,7 @@ def _add_or_reuse_plan(
     support_mode,
     path=None,
     priority=0,
+    planning=False,
 ):
     """按钮路径的单条处理：能建就建，已有计划就复用（绝不建重复行）。
 
@@ -252,6 +256,7 @@ def _add_or_reuse_plan(
         support_mode=support_mode,
         priority=priority,
         path=path,
+        planning=planning,
     )
     if plan_id > 0:
         return _added_plan_result(name, plan_id, path), (char_id, skill_index), True
@@ -418,7 +423,16 @@ class MasteryPlanView(MethodView):
                     item.get("support_mode", "auto"),
                     path=None,
                     priority=priority,
+                    planning=data.get("planning") is True,
                 )
+                if data.get("planning") is True:
+                    from arknights_mower.utils.mastery_recommendation import (
+                        get_mastery_requirement_error,
+                    )
+
+                    if warning := get_mastery_requirement_error(char_id):
+                        result["warning"] = warning
+                        target = None
                 _record(result, target, is_new, char_id)
         else:
             for name, skill_index in data.items():
@@ -479,6 +493,8 @@ class MasteryPlanView(MethodView):
                     reason = skipped[target].get("reason")
                     result["status"] = "deferred" if reason else "insufficient"
                     result["reason"] = reason or "材料不足，暂不开始"
+        if added_plan_ids:
+            refresh_workshop_after_plan_change()
         return {"results": results}
 
     def delete(self):
@@ -497,8 +513,156 @@ class MasteryPlanView(MethodView):
             from arknights_mower.utils.workshop_automation import restore_if_no_plans
 
             restore_if_no_plans()
+            refresh_workshop_after_plan_change()
             return {"status": "ok"}
         return {"error": "delete failed"}, 500
+
+
+class MasteryStartView(MethodView):
+    decorators = [_require_token]
+
+    def post(self):
+        """Verify a selected target and insert its DB-backed start task."""
+        from arknights_mower.__main__ import base_scheduler
+        from arknights_mower.solvers.mastery_reader import _schedule_scan_start
+        from arknights_mower.utils.mastery_db import get_material_waiting_plan
+        from arknights_mower.utils.mastery_recommendation import (
+            get_mastery_recommendations,
+        )
+        from arknights_mower.utils.mastery_support_data import trainee_schedule_conflict
+        from arknights_mower.utils.scheduler_task import TaskTypes
+
+        data = request.json or {}
+        if not isinstance(data, dict):
+            return {"status": "blocked", "reason": "任务参数格式错误"}, 400
+        cid, index, target = (
+            data.get("char_id"),
+            data.get("skill_index"),
+            data.get("target_level"),
+        )
+        if (
+            not isinstance(cid, str)
+            or type(index) is not int
+            or index not in (0, 1, 2)
+            or type(target) is not int
+            or target not in (1, 2, 3)
+        ):
+            return {"status": "blocked", "reason": "干员、技能或目标专精等级无效"}, 400
+        if not config.conf.enable_mastery:
+            return {"status": "blocked", "reason": "请先开启专精自动化，再插入任务"}
+        if (
+            base_scheduler is None
+            or not isinstance(getattr(base_scheduler, "tasks", None), list)
+            or config.stop_mower.is_set()
+        ):
+            return {"status": "blocked", "reason": "Mower 尚未运行，请启动后再插入任务"}
+
+        with _start_lock:
+            existing = get_plan_by_skill(cid, index)
+            if existing and existing["target_level"] != target:
+                return {"status": "blocked", "reason": "计划目标已变化，请刷新后重试"}
+            if existing and existing["status"] in (
+                "arranging",
+                "training",
+                "waiting_collect",
+            ):
+                return {
+                    "status": "active",
+                    "id": existing["id"],
+                    "reason": "该技能已在训练流程中",
+                }
+            tasks = base_scheduler.tasks
+            mastery_tasks = [
+                task
+                for task in tasks
+                if task.type in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT)
+            ]
+            if existing and any(
+                getattr(task, "plan_key", None) == str(existing["id"])
+                for task in mastery_tasks
+            ):
+                return {
+                    "status": "queued",
+                    "id": existing["id"],
+                    "reason": "该专精任务已在队列中",
+                }
+            plans = get_all_plans()
+            if mastery_tasks or any(
+                plan["status"] in ("arranging", "training", "waiting_collect")
+                for plan in plans
+            ):
+                return {
+                    "status": "blocked",
+                    "reason": "训练室已有训练或待执行专精任务，请完成后再插入",
+                }
+            waiting = get_material_waiting_plan(plans)
+            if waiting and (waiting["char_id"], waiting["skill_index"]) != (cid, index):
+                return {
+                    "status": "blocked",
+                    "reason": "已有未完成专精等待材料，请先完成该计划",
+                }
+
+            recommendations = get_mastery_recommendations()
+            op = next(
+                (
+                    op
+                    for op in recommendations.get("operators", [])
+                    if op["char_id"] == cid
+                ),
+                None,
+            )
+            if not recommendations.get("has_data") or op is None:
+                return {
+                    "status": "blocked",
+                    "reason": recommendations.get("error")
+                    or "无法确认干员数据，请先同步",
+                }
+            if reason := op.get("mastery_error") or trainee_schedule_conflict(
+                op["name"]
+            ):
+                return {"status": "blocked", "reason": reason}
+            rec = next(
+                (rec for rec in op["recommendations"] if rec["skill_index"] == index),
+                None,
+            )
+            selected = rec and rec.get("targets", {}).get(str(target))
+            if not selected:
+                return {
+                    "status": "blocked",
+                    "reason": "目标等级已完成或无法确认材料，请刷新干员数据",
+                }
+            summary = selected.get("skill_material_summary")
+            if not summary or not summary.get("available"):
+                return {
+                    "status": "insufficient",
+                    "reason": "目标专精所需成品材料尚未齐全，请先完成材料合成",
+                    "material_summary": summary,
+                }
+            result, _, _ = _add_or_reuse_plan(
+                op["name"], cid, index, rec["skill_name"], target, "auto"
+            )
+            if result["status"] == "error":
+                return result
+            plan = get_plan_by_id(result["id"])
+            if not plan or plan["status"] != "idle" or plan["target_level"] != target:
+                return {"status": "blocked", "reason": "计划状态已变化，请刷新后重试"}
+            _schedule_scan_start(
+                base_scheduler, plan, step_level=rec["current_level"] + 1
+            )
+            if not any(
+                task.type == TaskTypes.SKILL_UPGRADE
+                and getattr(task, "plan_key", None) == str(plan["id"])
+                for task in base_scheduler.tasks
+            ):
+                return {"status": "blocked", "reason": "任务未能加入队列，请重试"}
+            config.wake_scheduler.set()
+            refresh_workshop_after_plan_change()
+            return {
+                "status": "inserted",
+                "id": plan["id"],
+                "reason": "已插入专精任务，调度器将在确认训练室空闲后执行",
+                "warning": result.get("warning"),
+            }
 
 
 class MasteryPlanSupportsView(MethodView):
@@ -565,6 +729,7 @@ class MasteryPlanOrderView(MethodView):
                 if isinstance(priority, bool) or not isinstance(priority, int):
                     return {"error": f"invalid priority: {priority}"}, 400
                 update_plan_priority(plan_id, priority)
+        refresh_workshop_after_plan_change()
         return {"status": "ok"}
 
 
@@ -722,7 +887,29 @@ class MasteryHistoryView(MethodView):
         return {"history": history}
 
 
+class MasteryTargetView(MethodView):
+    decorators = [_require_token]
+
+    def patch(self):
+        from arknights_mower.utils.mastery_db import change_plan_target
+        from arknights_mower.utils.mastery_support_types import SupportPlanError
+
+        req = request.json or {}
+        try:
+            change_plan_target(req.get("id"), req.get("target_level"))
+            refresh_workshop_after_plan_change()
+            return {"status": "ok"}
+        except (ValueError, SupportPlanError) as exc:
+            return {"error": str(exc)}, 400
+
+
+mastery_bp.add_url_rule(
+    "/mastery-plan/start", view_func=MasteryStartView.as_view("mastery_start")
+)
 mastery_bp.add_url_rule(Routes.PLAN, view_func=MasteryPlanView.as_view("mastery_plan"))
+mastery_bp.add_url_rule(
+    "/mastery-plan/target", view_func=MasteryTargetView.as_view("mastery_target")
+)
 mastery_bp.add_url_rule(
     "/workshop-operators/recommendations",
     view_func=WorkshopOperatorRecommendationsView.as_view(

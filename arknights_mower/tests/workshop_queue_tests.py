@@ -133,3 +133,21 @@ def test_non_workshop_task_for_same_operator_does_not_block(queue):
         "年",
         "泥岩",
     ]
+
+
+def test_growth_continuation_uses_remaining_mood_without_duplicate_tasks(queue):
+    data, tasks = queue
+    config.conf.workshop_auto_active = True
+    config.conf.workshop_generation = 12
+    for operator in data.operators.values():
+        operator.mood = 16
+    old = SchedulerTask(task_type=TaskTypes.WORKSHOP, meta_data="年")
+    old.workshop_generation = 11
+    tasks.append(old)
+    scheduler_task.try_workshop_tasks(data, tasks)
+    assert tasks == [old]
+    scheduler_task.try_workshop_tasks(data, tasks, minimum_mood=0)
+    assert len(tasks) == 3
+    assert all(task.workshop_generation == 12 for task in tasks[1:])
+    scheduler_task.try_workshop_tasks(data, tasks, minimum_mood=0)
+    assert len(tasks) == 3

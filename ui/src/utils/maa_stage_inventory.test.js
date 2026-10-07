@@ -276,7 +276,7 @@ describe('刷理智库存选关', () => {
     expect(result.ratioDecisions).toEqual([])
   })
 
-  it('全部关卡达到上限时恢复原计划', () => {
+  it('全部关卡达到上限且没有后备关卡时停止刷取', () => {
     const result = previewInventorySelection(
       ['A-1', 'B-1'],
       [
@@ -286,8 +286,9 @@ describe('刷理智库存选关', () => {
       [],
       { A: 1, B: 1 }
     )
-    expect(result.limitFallback).toBe(true)
-    expect(result.stages).toEqual(['A-1', 'B-1'])
+    expect(result.limitFallback).toBe(false)
+    expect(result.stages).toEqual([])
+    expect(result.limitSkipped).toEqual(['A-1', 'B-1'])
   })
 
   it('库存规则不会把周计划未选择的关卡加入执行列表', () => {

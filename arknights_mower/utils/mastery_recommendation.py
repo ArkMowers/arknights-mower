@@ -112,11 +112,13 @@ def get_current_mastery_level(char_id: str, skill_index: int) -> Optional[int]:
 
 
 def _mastery_requirement_error(char):
+    if char.get("evolvePhase", 2) < 2:
+        return "尚未精二，可规划养成材料；精二且基础技能升至 7 级并同步后才执行专精"
     level = char.get("mainSkillLevel")
     if type(level) is not int or level < 1:
         return "无法确认基础技能等级，请先同步干员数据"
     if level < 7:
-        return f"基础技能仅 {level} 级，需手动升至 7 级并同步干员数据后再添加专精计划"
+        return f"基础技能仅 {level} 级，可加入养成计划；升至 7 级并同步干员数据后才执行专精"
     return None
 
 
@@ -126,264 +128,242 @@ def get_mastery_requirement_error(char_id):
     return _mastery_requirement_error(char) if char is not None else None
 
 
-def _decompose_to_t3(materials, composite, item_table, inventory):
-    """将 T4/T5 材料拆解为 T3 级别材料，并与仓库库存对比"""
-    raw = {}
-
-    def _expand(mat_id, count):
-        comp = composite.get(mat_id)
-        if not comp:
-            rarity = (item_table.get(mat_id, {}) or {}).get("rarity", 0)
-            if rarity == 3:
-                raw[mat_id] = raw.get(mat_id, 0) + count
-            return
-        rarity = comp.get("rarity", 0)
-        if rarity <= 3:
-            raw[mat_id] = raw.get(mat_id, 0) + count
-            return
-        for p in comp.get("pathway", []):
-            _expand(p["id"], count * p["count"])
-
-    for mat in materials:
-        _expand(mat["id"], mat["count"])
-
-    result = []
-    for mid, cnt in sorted(raw.items(), key=lambda x: -x[1]):
-        owned = inventory.get(mid, 0)
-        shortage = max(0, cnt - owned)
-        if shortage > 0:
-            result.append(
-                {
-                    "id": mid,
-                    "name": (item_table.get(mid, {}) or {}).get("name", mid),
-                    "count": shortage,
-                    "total": cnt,
-                    "owned": owned,
-                }
-            )
-    return result
-
-
 def get_mastery_recommendations():
-    result = {"operators": [], "has_data": False, "error": None}
-
-    cultivate_path = get_path("@app/tmp/cultivate.json")
-    skill_data_path = _find_skill_data()
-
-    if not os.path.exists(cultivate_path):
-        result["error"] = "请先点击「从森空岛拉取数据」获取仓库和干员数据"
-        return result
-
-    if not os.path.exists(skill_data_path):
-        result["error"] = (
-            f"专精数据文件未找到: {skill_data_path}\n请运行 extract_skill_data.py 生成"
-        )
-        return result
-
-    try:
-        with open(cultivate_path, "r", encoding="utf-8") as f:
-            cultivate_data = json.load(f)
-    except Exception as e:
-        result["error"] = f"无法读取 cultivate.json: {str(e)}"
-        return result
-
-    chars = cultivate_data.get("data", {}).get("characters", [])
-    items = cultivate_data.get("data", {}).get("items", [])
-
-    if not chars:
-        result["error"] = "未找到干员数据，请先点击「从森空岛拉取数据」"
-        return result
-
-    try:
-        with open(skill_data_path, "r", encoding="utf-8") as f:
-            skill_data = json.load(f)
-    except Exception as e:
-        result["error"] = f"无法读取 skill_data.json: {str(e)}"
-        return result
-
-    char_table = skill_data.get("characters", {})
-    item_table = skill_data.get("items", {})
-    composite = skill_data.get("composite", {})
-
-    inventory = {}
-    for item in items:
-        item_id = item.get("id", "")
-        count = int(item.get("count", 0))
-        if count > 0:
-            inventory[item_id] = count
-
     from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.growth import (
+        available_modules,
+        basic_skill_materials,
+        basic_skill_target,
+        calculate_growth_materials,
+        growth_data,
+        growth_resources,
+        inventory_counts,
+        level_goal_targets,
+        load_goals,
+        module_materials,
+        promotion_materials,
+        statistics,
+        statistics_history,
+    )
     from arknights_mower.utils.mastery_materials import MaterialBudget
+    from arknights_mower.utils.operator_statistics import personal_statistics
     from arknights_mower.utils.workshop_material_policy import (
         protected_workshop_materials,
     )
 
-    material_budget = MaterialBudget(
-        skill_data,
-        inventory,
-        workshop_formula,
-        blocked_materials=protected_workshop_materials(),
-    )
-    operators = []
-    skill_name_cache = {}
+    result = {"operators": [], "has_data": False, "error": None}
+    try:
+        with open(get_path("@app/tmp/cultivate.json"), encoding="utf-8") as stream:
+            box = json.load(stream)["data"]
+        if not box.get("characters"):
+            raise ValueError("未找到干员数据")
+        skills = growth_resources(get_skill_data())
+        growth = growth_data(skills)
+        budget = MaterialBudget(
+            skills,
+            inventory_counts(box, skills, local=True),
+            workshop_formula,
+            blocked_materials=protected_workshop_materials(),
+        )
+        result["goals"] = load_goals()
+        result["statistics"] = statistics(box["characters"], skills)
+        result["personal_statistics"] = personal_statistics(box["characters"], skills)
+        result["history"] = statistics_history()
+    except (OSError, ValueError, KeyError) as exc:
+        result["error"] = f"请从森空岛同步干员数据：{exc}"
+        return result
 
-    def get_item_name(item_id):
-        if item_id in skill_name_cache:
-            return skill_name_cache[item_id]
-        item_info = item_table.get(item_id, {})
-        name = item_info.get("name", item_id)
-        skill_name_cache[item_id] = name
-        return name
-
-    for char in chars:
-        char_id = char.get("id", "")
-        evolve_phase = char.get("evolvePhase", 0)
-
-        if evolve_phase < 2 or char_id in UNTRAINABLE_CHAR_IDS:
+    for char in box["characters"]:
+        cid = char["id"]
+        definition = skills.get("characters", {}).get(cid, {})
+        growth_def = growth.get("characters", {}).get(cid, {})
+        modules = available_modules(cid, char, growth)
+        if cid in UNTRAINABLE_CHAR_IDS or (
+            not definition and not growth_def and not modules
+        ):
             continue
-
-        char_info = char_table.get(char_id)
-        if not char_info:
-            continue
-
-        skills_data = char.get("skills", [])
-        if not skills_data:
-            continue
-
-        char_skills = char_info.get("skills", [])
+        info = {**growth_def, **definition}
+        prerequisite, material_error = [], None
+        basic_summary = None
+        supports_basic_skill7 = len(growth_def.get("basic_skills", [])) >= 6
+        basic_prerequisite = None
+        if supports_basic_skill7:
+            required_phase, required_level = basic_skill_target(growth_def)
+            basic_prerequisite = {"elite": required_phase, "level": required_level}
+            try:
+                basic = basic_skill_materials(char, growth_def)
+                prerequisite += basic
+                if basic:
+                    basic_summary = calculate_growth_materials(budget, basic)
+            except ValueError as exc:
+                material_error = str(exc)
+        if definition:
+            try:
+                prerequisite += promotion_materials(char, growth_def, growth)
+            except ValueError as exc:
+                material_error = str(exc)
         recommendations = []
-
-        for i, skill_status in enumerate(skills_data):
-            if i >= len(char_skills):
+        for index, skill in enumerate(definition.get("skills", [])):
+            statuses = char.get("skills", [])
+            current = (
+                (statuses[index].get("level") or 0) if index < len(statuses) else 0
+            )
+            if current >= 3 or not skill.get("levels"):
                 continue
-
-            current_level = skill_status.get("level", 0)
-            if current_level is None:
-                current_level = 0
-
-            if current_level >= 3:
-                continue
-
-            skill_def = char_skills[i]
-            skill_levels = skill_def.get("levels", [])
-
-            start_stage = current_level
-            end_stage = 3
-
             stages = []
-            total_time = 0
-            full_chain_achievable = True
-            chain_total_needed = {}
-
-            remaining_inventory = dict(inventory)
-
-            for stage in range(start_stage, end_stage):
-                if stage >= len(skill_levels):
-                    break
-
-                level_data = skill_levels[stage]
-                level_materials = level_data.get("materials", [])
-                lvl_up_time = level_data.get("time", 0)
-                total_time += lvl_up_time
-
-                stage_needed = []
-                stage_missing = []
-                stage_achievable = True
-
-                for mat in level_materials:
-                    mat_id = mat.get("id", "")
-                    mat_count = mat.get("count", 0)
-                    mat_name = get_item_name(mat_id)
-                    owned = remaining_inventory.get(mat_id, 0)
-                    shortage = max(0, mat_count - owned)
-
-                    stage_needed.append(
-                        {"id": mat_id, "name": mat_name, "count": mat_count}
-                    )
-
-                    if shortage > 0:
-                        stage_missing.append(
-                            {"id": mat_id, "name": mat_name, "count": shortage}
-                        )
-                        stage_achievable = False
-                        full_chain_achievable = False
-
-                    remaining_inventory[mat_id] = max(0, owned - mat_count)
-
-                    chain_total_needed[mat_id] = (
-                        chain_total_needed.get(mat_id, 0) + mat_count
-                    )
-
+            for level, costs in enumerate(skill["levels"][current:3], current + 1):
+                materials = [
+                    {
+                        **mat,
+                        "name": skills["items"]
+                        .get(mat["id"], {})
+                        .get("name", mat["id"]),
+                    }
+                    for mat in costs.get("materials", [])
+                ]
                 stages.append(
                     {
-                        "from_level": stage + 7,
-                        "to_level": stage + 8,
-                        "lvl_up_time": lvl_up_time,
-                        "achievable": stage_achievable,
-                        "needed_materials": stage_needed,
-                        "missing_materials": stage_missing,
+                        "from_level": level + 6,
+                        "to_level": level + 7,
+                        "lvl_up_time": costs.get("time", 0),
+                        "needed_materials": materials,
                     }
                 )
-
-            if not stages:
-                continue
-
-            chain_needed_list = [
-                {"id": mid, "name": get_item_name(mid), "count": cnt}
-                for mid, cnt in chain_total_needed.items()
-            ]
-            chain_missing_list = [
-                {
-                    "id": mid,
-                    "name": get_item_name(mid),
-                    "count": max(0, chain_total_needed[mid] - inventory.get(mid, 0)),
+            targets = {}
+            for target in range(current + 1, 4):
+                selected = [s for s in stages if s["to_level"] - 7 <= target]
+                materials = [m for stage in selected for m in stage["needed_materials"]]
+                summary = (
+                    None
+                    if material_error
+                    else calculate_growth_materials(budget, prerequisite + materials)
+                )
+                targets[str(target)] = {
+                    "target_level": target,
+                    "remaining_levels": target - current,
+                    "total_time": sum(s["lvl_up_time"] for s in selected),
+                    "chain_needed_materials": materials,
+                    "material_summary": summary,
+                    "skill_material_summary": calculate_growth_materials(
+                        budget, materials
+                    ),
+                    "full_chain_achievable": bool(summary and summary["available"]),
                 }
-                for mid in chain_total_needed
-                if chain_total_needed[mid] > inventory.get(mid, 0)
-            ]
-
-            chain_missing_t3 = _decompose_to_t3(
-                chain_missing_list, composite, item_table, inventory
-            )
-
             recommendations.append(
                 {
-                    "skill_index": i,
-                    "skill_name": format_skill_label(i, skill_def.get("name")),
-                    "skill_icon_id": skill_def.get("skillId", ""),
-                    "current_level": current_level,
-                    "target_level": 3,
-                    "remaining_levels": end_stage - start_stage,
-                    "total_time": total_time,
-                    "full_chain_achievable": full_chain_achievable,
-                    "material_summary": material_budget.calculate(chain_needed_list),
-                    "chain_needed_materials": chain_needed_list,
-                    "chain_missing_materials": chain_missing_list,
-                    "chain_missing_t3": chain_missing_t3,
+                    "skill_index": index,
+                    "skill_name": format_skill_label(index, skill.get("name")),
+                    "skill_icon_id": skill.get("skillId", ""),
+                    "current_level": current,
                     "stages": stages,
+                    "targets": targets,
+                    **targets["3"],
                 }
             )
-
-        if recommendations:
-            operators.append(
+        for module in modules:
+            try:
+                module["max_level"] = max(
+                    (entry["level"] for entry in module.get("levels", [])), default=1
+                )
+                module["targets"] = {}
+                for target_level in range(1, module["max_level"] + 1):
+                    costs = module_materials(module, target_level)
+                    materials = costs + (
+                        promotion_materials(
+                            char, growth_def, growth, (module["elite"], module["level"])
+                        )
+                        if costs
+                        else []
+                    )
+                    module["targets"][str(target_level)] = {
+                        "opening_summary": calculate_growth_materials(budget, costs),
+                        "material_summary": calculate_growth_materials(
+                            budget, materials
+                        ),
+                    }
+                module.update(module["targets"][str(module["max_level"])])
+            except ValueError as exc:
+                module["material_error"] = str(exc)
+        promotion = None
+        phases = growth_def.get("phases", [])
+        max_phase = len(phases) - 1 if phases else 0
+        max_level = phases[-1]["max_level"] if phases else 0
+        level_goals = []
+        for goal_id, target in sorted(
+            level_goal_targets(growth_def).items(), key=lambda row: row[1]
+        ):
+            elite, level = target
+            phase_label = ("未精英", "精一", "精二")[elite]
+            level_goals.append(
                 {
-                    "char_id": char_id,
-                    "name": char_info.get("name", char_id),
-                    "rarity": char_info.get("rarity", 0),
-                    "profession": char_info.get("profession", ""),
-                    "sub_profession": "",
-                    "elite": evolve_phase,
-                    "level": char.get("level", 1),
-                    "main_skill_level": char.get("mainSkillLevel"),
-                    "mastery_error": _mastery_requirement_error(char),
-                    "potential": char.get("potentialRank", 0) + 1,
-                    "recommendations": recommendations,
+                    "id": goal_id,
+                    "elite": elite,
+                    "level": level,
+                    "label": f"{phase_label} {level} 级",
+                    "summary": calculate_growth_materials(
+                        budget, promotion_materials(char, growth_def, growth, target)
+                    )
+                    if (char.get("evolvePhase", 0), char.get("level", 1)) < target
+                    else None,
                 }
             )
-
-    operators.sort(key=lambda o: (-o["rarity"], -len(o["recommendations"])))
-
-    result["operators"] = operators
+        max_level_summary = None
+        module_level = {6: 60, 5: 50, 4: 40}.get(info.get("rarity"), 0)
+        module_level_summary = None
+        if (
+            max_level
+            and module_level
+            and (char.get("evolvePhase", 0), char.get("level", 1)) < (2, module_level)
+        ):
+            module_level_summary = calculate_growth_materials(
+                budget, promotion_materials(char, growth_def, growth, (2, module_level))
+            )
+        if max_level and (char.get("evolvePhase", 0), char.get("level", 1)) < (
+            max_phase,
+            max_level,
+        ):
+            max_level_summary = calculate_growth_materials(
+                budget,
+                promotion_materials(char, growth_def, growth, (max_phase, max_level)),
+            )
+        if char.get("evolvePhase", 0) < max_phase:
+            promotion = calculate_growth_materials(
+                budget, promotion_materials(char, growth_def, growth, (max_phase, 1))
+            )
+        result["operators"].append(
+            {
+                "char_id": cid,
+                "name": info.get("name", cid),
+                "rarity": info.get("rarity", 0),
+                "profession": info.get("profession", ""),
+                "sub_profession": info.get("subProfessionId", ""),
+                "elite": char.get("evolvePhase", 0),
+                "level": char.get("level", 1),
+                "main_skill_level": char.get("mainSkillLevel"),
+                "skill_levels": [
+                    skill.get("level") for skill in char.get("skills", [])
+                ],
+                "mastery_error": _mastery_requirement_error(char)
+                if definition
+                else None,
+                "material_error": material_error,
+                "potential": char.get("potentialRank", 0) + 1,
+                "recommendations": recommendations,
+                "modules": modules,
+                "promotion_summary": promotion,
+                "promotion_target": max_phase,
+                "max_phase": max_phase,
+                "level_goals": level_goals,
+                "max_level": max_level,
+                "max_level_summary": max_level_summary,
+                "module_level": module_level,
+                "module_level_summary": module_level_summary,
+                "basic_skill_summary": basic_summary,
+                "supports_basic_skill7": supports_basic_skill7,
+                "basic_skill_prerequisite": basic_prerequisite,
+            }
+        )
+    result["operators"].sort(key=lambda op: (-op["rarity"], op["name"]))
     result["has_data"] = True
     return result
 

@@ -419,7 +419,7 @@ class WorkShopItem(ConfModel):
 
 
 class WorkshopDeerFodderItem(WorkShopItem):
-    children_lower_limit: int = Field(default=0, ge=0, le=999999)
+    children_lower_limit: int = Field(default=20, ge=0, le=999999)
     self_upper_limit: int = Field(default=9999, ge=0, le=999999)
 
 
@@ -594,7 +594,7 @@ class RIICPart(ConfModel):
     workshop_deer_fodder: list[WorkshopDeerFodderItem] = [
         {
             "item_names": ["碳素", "碳素组", "家具零件_碳素组"],
-            "children_lower_limit": 0,
+            "children_lower_limit": 20,
             "self_upper_limit": 9999,
         }
     ]

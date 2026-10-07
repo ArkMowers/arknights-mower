@@ -91,7 +91,7 @@ export const useConfigStore = defineStore('config', () => {
   const defaultDeerFodder = () => [
     {
       item_names: ['碳素', '碳素组', '家具零件_碳素组'],
-      children_lower_limit: 0,
+      children_lower_limit: 20,
       self_upper_limit: 9999
     }
   ]

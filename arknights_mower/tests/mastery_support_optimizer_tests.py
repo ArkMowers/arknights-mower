@@ -104,3 +104,26 @@ def test_full_roster_route_search_is_bounded(game):
         )
     # Candidate count grows with the roster; route search retains only useful representatives.
     assert 0 < calculate.call_count < 200
+
+
+@pytest.mark.parametrize("target", [1, 2])
+def test_partial_target_final_stage_never_prepares_halving_for_another_level(
+    game, target
+):
+    data, ids = game
+    result = support.plan_supports(
+        ids["能天使"],
+        0,
+        target,
+        inputs=TrainingInputs(
+            roster=[
+                owned(ids[n]) for n in ("能天使", "假日威龙陈", "W", "艾丽妮", "逻各斯")
+            ],
+            metadata=data,
+            schedule=({}, 0),
+        ),
+    )
+    assert result["target"] == target
+    assert result["stages"][-1]["level"] == target
+    assert result["stages"][-1]["swap_target"] is None
+    assert result["stages"][-1]["next_carry"] is None
