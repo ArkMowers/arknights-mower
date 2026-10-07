@@ -93,6 +93,15 @@ def agent_card_selected(img, scope, *, train=False):
     lower_inner = blue[-8:-5, 8:-8].mean()
     if lower_inner > 0.45 and min(left_side, right_side) > 0.45:
         return True
+    # 上沿的青色状态图标与下排蓝框可同时覆盖少量横边。
+    # 两条竖边及下沿前段均缺失时，普通卡片明确未选中。
+    if (
+        not train
+        and max(upper, lower) < 0.45
+        and lower_inner < 0.20
+        and max(left_side, right_side) < 0.20
+    ):
+        return False
     # 相邻卡片只隔几像素，前一张的边框可能擦到本卡一条边；
     # 另一条边仍明显缺失时判为未选中，避免整页校验一直等待。
     if min(upper, lower) < 0.20 and max(upper, lower) < 0.45:
@@ -862,7 +871,11 @@ class BaseMixin:
                     )
                     for name, scope in ret
                 ]
-                if any(state is None for _, _, state in states):
+                uncertain = [
+                    (name, scope) for name, scope, state in states if state is None
+                ]
+                if uncertain:
+                    logger.debug(f"选人卡片边框未确认，等待下一帧：{uncertain}")
                     previous = None
                     stable = False
                     stable_matches = 0

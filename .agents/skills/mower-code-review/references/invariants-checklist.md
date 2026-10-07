@@ -122,7 +122,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 - [ ] **[INV-REC-01] Standard Canvas Frame Contract**: Do recognition models operate exclusively on standard 1920×1080 pure RGB matrices? Do recognition failures return structured verdicts without blocking the scheduler dispatch loop?
 - [ ] **[INV-REC-02] Occluded Operator Selection**: Does an obscured upper border require both vertical borders and the leading portion of the lower border, while adjacent card borders remain insufficient?
-- [ ] **[INV-REC-04] Selection Border Geometry**: Does normal card border detection remain independent of name-region widening, recognize dim blue borders, and preserve bounded recovery for genuinely clipped or ambiguous cards without selecting neighbors?
+- [ ] **[INV-REC-04] Selection Border Geometry**: Does normal card border detection remain independent of name-region widening, recognize dim blue borders, classify partial status-badge and adjacent-card color as unselected when both vertical borders and the leading lower border are absent, and preserve bounded recovery for genuinely clipped or ambiguous cards without selecting neighbors?
 
 ### 2.5 Web Access
 

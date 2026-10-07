@@ -127,6 +127,7 @@ The [Rescue Capacity and Standby decision](../../.agents/notes/implemented/simpl
 - Confirms a selected card by its blue border before committing a facility assignment.
 - Normal card border geometry uses the name region's left edge and the standard Capture Frame layout; selection-induced widening of the name region does not move the detection boundary. The blue mask includes dim borders under the card shadow. The [selection border geometry decision](../../.agents/notes/implemented/bug-fix/2026-09-30-selection-border-geometry.md) defines the captured-frame regression.
 - When a scrolling notice obscures the upper border, the remaining two vertical borders and the leading portion of the lower border confirm selection. Ambiguous borders retain the existing bounded recognition retry.
+- A normal card with less than 45% blue coverage on each horizontal edge, less than 20% on each vertical edge and less than 20% on the leading lower edge is unselected. Partial status-badge color and an adjacent lower card's border do not block roster verification. Unknown borders log their card names and name scopes before the next observation. The [status badge decision](../../.agents/notes/implemented/bug-fix/2026-10-07-selection-status-badge.md) defines the color-boundary regression and archive evidence limits.
 - The [operator selection decision](../../.agents/notes/implemented/bug-fix/2026-09-29-notice-occluded-operator-selection.md) records the failure case and verification.
 
 ### 2.9 Worker Status
@@ -187,7 +188,7 @@ Recovery-target updates reuse a complete group's native opportunity within each 
 - The [shared idle recovery decision](../../.agents/notes/implemented/bug-fix/2026-10-01-shared-idle-recovery.md) specifies shutdown authority, runtime launch recovery and classified device failure propagation.
 
 - **[INV-REC-02] Occluded Operator Selection**: A card with an obscured upper selection border is confirmed only when both vertical borders and the leading portion of its lower border are visible; adjacent card borders cannot confirm selection.
-- **[INV-REC-04] Selection Border Geometry**: Normal operator card borders remain anchored to card geometry when a selected border widens the recognized name region; dim blue borders preserve selection, and genuinely clipped or ambiguous borders retain bounded recognition recovery.
+- **[INV-REC-04] Selection Border Geometry**: Normal operator card borders remain anchored to card geometry when a selected border widens the recognized name region; dim blue borders preserve selection. Partial horizontal color from status badges and adjacent cards does not make a normal card unknown when both vertical borders and the leading lower border are absent; genuinely clipped or ambiguous borders retain bounded recognition recovery.
 - **[INV-SCHED-05] Complete Shift Projection**: Ordinary shifts submit only after backup conditions, eligible rotations, cached corrections, and final bed filling stabilize on an isolated projection; failure preserves the original task and actual occupancy.
 
 Automatic rescue lifecycle: [Configured rescue schedule](../../.agents/notes/implemented/simplification/2026-10-04-configured-rescue-schedule.md).
