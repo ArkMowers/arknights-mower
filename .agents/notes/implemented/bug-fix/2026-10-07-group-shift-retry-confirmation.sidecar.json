@@ -17,6 +17,7 @@
     "arknights_mower/tests/group_shift_confirmation_tests.py",
     "arknights_mower/tests/multi_group_shift_tests.py",
     "arknights_mower/tests/manufacture_product_switch_tests.py",
-    "arknights_mower/tests/completed_group_departure_tests.py"
+    "arknights_mower/tests/completed_group_departure_tests.py",
+    "arknights_mower/tests/exhaust_replacement_tests.py"
   ]
 }
