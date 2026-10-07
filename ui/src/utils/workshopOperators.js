@@ -22,12 +22,26 @@ export async function syncWorkshopOperators(http, baseUrl, minBonus = 80) {
   if (!synced.data?.success) {
     throw new Error(synced.data?.message || '干员数据同步失败，请稍后重试')
   }
-  return loadWorkshopOperators(http, baseUrl, minBonus)
+  const data = await loadWorkshopOperators(http, baseUrl, minBonus)
+  const defaults = { ...data.defaults }
+  for (const key of workshopCategories) {
+    let threshold = minBonus
+    while (threshold > 0 && !defaults[key].length) {
+      threshold = Math.max(0, threshold - 5)
+      const fallback = await loadWorkshopOperators(http, baseUrl, minBonus, { [key]: threshold })
+      defaults[key] = fallback.defaults[key]
+    }
+  }
+  return { ...data, defaults }
 }
 
-export async function loadWorkshopOperators(http, baseUrl, minBonus = 80) {
+export async function loadWorkshopOperators(http, baseUrl, minBonus = 80, categoryMinBonus = {}) {
+  const params = { min_bonus: minBonus }
+  for (const [key, threshold] of Object.entries(categoryMinBonus)) {
+    params[key.replace('_operators', '_min_bonus')] = threshold
+  }
   const { data } = await http.get(`${baseUrl}/workshop-operators/recommendations`, {
-    params: { min_bonus: minBonus }
+    params
   })
   if (
     !data?.defaults ||

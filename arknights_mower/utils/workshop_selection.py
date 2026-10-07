@@ -22,9 +22,10 @@ PREFERRED = {
 
 
 class WorkshopSelection:
-    def __init__(self, eligible, formulas, min_bonus):
+    def __init__(self, eligible, formulas, min_bonus, category_min_bonus=None):
         self.eligible = eligible
         self.min_bonus = min_bonus
+        self.category_min_bonus = category_min_bonus or {}
         self.unlocked = {
             name: specialty_rules(effects) for name, effects in eligible.items()
         }
@@ -92,7 +93,9 @@ class WorkshopSelection:
 
     def category_entries(self, category, assigned, *, curated):
         threshold = (
-            (80 if category == "book_operators" else 90) if curated else self.min_bonus
+            (80 if category == "book_operators" else 90)
+            if curated
+            else self.category_min_bonus.get(category, self.min_bonus)
         )
         if category == "book_operators":
             threshold = min(threshold, 80)

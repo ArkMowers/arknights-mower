@@ -16,6 +16,7 @@ from arknights_mower.tests.workshop_fixtures import (
     owned,
     recipe,
 )
+from arknights_mower.utils import config
 from arknights_mower.utils import workshop_recommendation as workshop
 from arknights_mower.views.mastery import mastery_bp
 
@@ -233,3 +234,67 @@ def test_threshold_is_saved_with_config_and_validated_by_endpoint(game):
         response = client.get("/workshop-operators/recommendations?min_bonus=90")
     assert response.status_code == 200
     assert response.json["min_bonus"] == 90
+
+
+@pytest.mark.parametrize(
+    "name,minimum", [("羽毛笔", 75), ("凯尔希", 70), ("巡林者", 60)]
+)
+def test_book_fallback_does_not_lower_material_thresholds(game, name, minimum):
+    from arknights_mower.utils.mastery_recommendation import (
+        compute_default_workshop_config,
+    )
+
+    meta, ids = game
+    roster = owned(ids, "空爆", "年", name)
+    initial = workshop.recommend_workshop_operators(roster, meta)
+    assert initial["defaults"]["book_operators"] == []
+    fallback = workshop.recommend_workshop_operators(
+        roster, meta, category_min_bonus={"book_operators": minimum}
+    )
+    assert fallback["defaults"]["book_operators"] == [name]
+    for category in ("fodder_operators", "t5_operators"):
+        assert fallback["defaults"][category] == initial["defaults"][category]
+    assert fallback["min_bonus"] == 80
+    with (
+        patch.object(
+            workshop,
+            "available_operators",
+            return_value=workshop.available_operators(roster, meta),
+        ),
+        patch.object(config.conf, "workshop_min_bonus", 80),
+    ):
+        settings = compute_default_workshop_config(**fallback["defaults"])
+    assert "技巧概要·卷3" in {
+        material
+        for entry in settings
+        if entry["operator"] == name
+        for item in entry["items"]
+        for material in item["item_names"]
+    }
+
+
+@pytest.mark.parametrize("category", workshop.CATEGORIES)
+def test_endpoint_validates_category_thresholds(game, category):
+    meta, ids = game
+    available = workshop.available_operators(owned(ids, "年", "空爆", "凯尔希"), meta)
+    app = Flask(__name__)
+    app.register_blueprint(mastery_bp)
+    client = app.test_client()
+    param = category.replace("_operators", "_min_bonus")
+    with patch.object(workshop, "available_operators", return_value=available):
+        for value in ["-1", "1001", "nan", "80.5", ""]:
+            assert (
+                client.get(
+                    "/workshop-operators/recommendations",
+                    query_string={"min_bonus": 80, param: value},
+                ).status_code
+                == 400
+            )
+        response = client.get(
+            "/workshop-operators/recommendations",
+            query_string={"min_bonus": 80, param: 70},
+        )
+    assert response.status_code == 200
+    assert response.json["min_bonus"] == 80
+    if category == "book_operators":
+        assert response.json["defaults"][category] == ["凯尔希"]
