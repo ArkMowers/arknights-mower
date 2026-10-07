@@ -11,6 +11,7 @@ from .mastery_support_types import (
     SupportPlanError,
     TrainingInputs,
 )
+from .plan import all_replacements
 
 
 def schedule_context(plan=None):
@@ -28,7 +29,10 @@ def schedule_context(plan=None):
             if room == "train" or not facility:
                 continue
             for slot in facility.get("plans", []):
-                for name in [slot.get("agent", ""), *slot.get("replacement", [])]:
+                replacements = all_replacements(
+                    slot.get("replacement", ()), slot.get("group_bindings", ())
+                )
+                for name in [slot.get("agent", ""), *replacements]:
                     if name not in IGNORED_NAMES:
                         blocked.setdefault(name, set()).add(room)
                         if room == "central":

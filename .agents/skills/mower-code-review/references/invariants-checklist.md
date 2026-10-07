@@ -64,6 +64,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-DEV-01] Native Back Dispatch**: With MuMu IPC selected, does Android BACK use the owned MuMu IPC worker, and does an uncertain result interrupt the operation without input replay or ADB fallback?
 
 ### 2.2 Base Infrastructure & Scheduling Domain
+- [ ] **[INV-SCHED-31] Complete Schedule Membership**: Schedule-wide membership and role queries include primary operators and every configured binding replacement within their existing table and facility scope, deduplicate names without mutating configuration, and preserve per-group candidate restrictions during actual shift matching. Do additional-only replacements participate in ownership, mastery, workshop, resting roles and trade order detection while binding-specific shift candidates remain separate?
 - [ ] **[INV-SCHED-30] Automatic Selection Baseline**: Does desktop automatic selection start at `xhigh`, Android start at `medium`, and repeated failure lower one level while preserving caps, explicit modes and timing settings?
 
 - [ ] **[INV-SCHED-29] Mastery Material Selection**: Does preparation skip uncraftable unstarted skills without mutating plans and retain confirmed-training reservations? Does a material shortage after confirmed training block later preparation and starts until the current plan is ready, including after retry or restart? Do protected rooms preserve the observed trainee while allowing different skills, and does collection credit remain bound to the observed skill?

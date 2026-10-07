@@ -8,7 +8,7 @@ export function masteryScheduleContext(primary, backups = []) {
   for (const table of [primary, ...backups.map((b) => b.plan)]) {
     for (const [room, facility] of Object.entries(table || {})) {
       for (const slot of facility?.plans || []) {
-        for (const name of [slot.agent, ...(slot.replacement || [])]) {
+        for (const name of [slot.agent, ...planReplacements(slot)]) {
           if (!name || ignored.has(name)) continue
           scheduled.add(name)
           if (room === 'train') continue
@@ -32,3 +32,4 @@ export function masteryTraineeWarning(name, scheduledOperators) {
     ? `${name} 出现在非训练室排班中，专精期间可能影响排班，请留意。`
     : ''
 }
+import { planReplacements } from './plan_bindings'

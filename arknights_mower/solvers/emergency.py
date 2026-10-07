@@ -200,13 +200,7 @@ class EmergencyRecoveryMixin:
             if state and state.get("phase") != "returning"
             else None
         )
-        normal_names = {
-            name
-            for room in self.op_data.global_plan["default_plan"].plan.values()
-            for slot in room
-            for name in (slot.agent, *slot.replacement)
-            if name not in ("", "Free", "Current")
-        }
+        normal_names = self.op_data.global_plan["default_plan"].scheduled_names()
         self.op_data.emergency_reserved_agents = (
             set(state.get("ready_members", ()))
             | set(state.get("staffing_members", ()))

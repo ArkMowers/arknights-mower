@@ -1,4 +1,5 @@
 import { swap } from '@/utils/common'
+import { planReplacements } from './plan_bindings'
 
 // 排班表里的干员名单 conf 字段（主表 conf 与副表 conf 同构；ling_xi 是枚举不是名单）
 export const OPERATOR_CONF_FIELDS = [
@@ -155,10 +156,7 @@ export function collect_plan_operators({ main_plan, main_conf, backup_plans }) {
       if (!facility || !Array.isArray(facility.plans)) continue
       for (const item of facility.plans) {
         add(item.agent)
-        for (const r of item.replacement || []) add(r)
-        for (const binding of item.group_bindings || []) {
-          for (const r of binding.replacement || []) add(r)
-        }
+        for (const r of planReplacements(item)) add(r)
       }
     }
   }

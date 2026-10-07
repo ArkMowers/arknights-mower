@@ -187,14 +187,20 @@ def test_fia_charge_room_tracks_measured_rescue_position(solver):
     assert (fia.room, fia.index, fia.replacement) == ("dormitory_1", 2, [PRIMARY[0]])
 
 
-def test_rescue_runner_and_fia_targets_are_independent(solver):
+@pytest.mark.parametrize("additional", [False, True])
+def test_rescue_runner_and_fia_targets_are_independent(solver, additional):
     from arknights_mower.tests.automatic_rescue_tests import configure_rescue
     from arknights_mower.utils import config
-    from arknights_mower.utils.config.plan import Facility
+    from arknights_mower.utils.config.plan import Facility, GroupBinding
 
     configure_rescue(solver)
     document = config.conf.automatic_rescue_plan
-    document.plan1.room_1_1.plans[0].replacement = ["但书"]
+    slot = document.plan1.room_1_1.plans[0]
+    if additional:
+        slot.replacement = ["红"]
+        slot.group_bindings = [GroupBinding(group="附加", replacement=["但书"])]
+    else:
+        slot.replacement = ["但书"]
     document.plan1.dormitory_1 = Facility(
         plans=[
             {"agent": "Free"},
@@ -206,6 +212,7 @@ def test_rescue_runner_and_fia_targets_are_independent(solver):
     assert result["run_order_replacements"]["room_1_1"] == [["但书"]]
     assert result["fia_targets"] == [PRIMARY[0]]
     document.plan1.room_1_1.plans[0].replacement = ["红"]
+    slot.group_bindings = []
     assert effective_rescue_plan(solver.op_data, document)["run_order_replacements"][
         "room_1_1"
     ] == [[]]

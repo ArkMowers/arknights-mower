@@ -2750,11 +2750,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             return
         in_out_plan = {room: ["Current"] * len(replacements)}
         for idx, choices in enumerate(replacements):
-            if any(
-                any(char in replacement_str for replacement_str in choices)
-                for char in TRADE_ORDER_AGENTS
-            ):
-                in_out_plan[room][idx] = choices[0]
+            in_out_plan[room][idx] = next(
+                (name for name in choices if name in TRADE_ORDER_AGENTS), "Current"
+            )
         execute_time = self.get_run_order_time(room)
         # 读取订单页可能首次发现实际仍在卖玉，不能据此创建空转任务。
         self._sync_run_order_tasks()

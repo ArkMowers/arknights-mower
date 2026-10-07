@@ -155,8 +155,8 @@ it('清空救急主副表绑组与普通替班，保留全部跑单干员和充�
         {
           agent: '阿米娅',
           group: '一组',
-          replacement: ['红', ...runners, '砾'],
-          group_bindings: [{ group: '二组', replacement: ['芬'] }]
+          replacement: ['红', runners[0], '砾'],
+          group_bindings: [{ group: '二组', replacement: ['芬', ...runners] }]
         }
       ]
     },
@@ -180,8 +180,8 @@ it('清空救急主副表绑组与普通替班，保留全部跑单干员和充�
             {
               agent: '但书',
               group: '另一组',
-              replacement: ['砾', ...runners],
-              group_bindings: [{ group: '三组', replacement: ['红'] }]
+              replacement: ['砾'],
+              group_bindings: [{ group: '三组', replacement: ['红', ...runners] }]
             }
           ]
         },

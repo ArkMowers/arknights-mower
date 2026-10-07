@@ -2,6 +2,10 @@ export function planBindings(slot) {
   return [slot, ...(slot.group_bindings || [])]
 }
 
+export function planReplacements(slot) {
+  return [...new Set(planBindings(slot).flatMap((binding) => binding.replacement || []))]
+}
+
 export function addPlanBinding(slot) {
   ;(slot.group_bindings ||= []).push({ group: '', replacement: [] })
 }

@@ -1246,7 +1246,7 @@ class Operators:
         """救急跑单名单独立于冻结的正常排班。"""
         if self.emergency_run_order_replacements is not None:
             return self.emergency_run_order_replacements.get(room, [])
-        return [slot.replacement for slot in self.plan.get(room, [])]
+        return [slot.all_replacements for slot in self.plan.get(room, [])]
 
     def is_run_order_room(self, room: str) -> bool:
         """按维护副表、生效排班和实际订单过滤跑单。"""
