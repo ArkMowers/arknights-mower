@@ -1048,13 +1048,18 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             logger.info(f"{task.meta_data}加工站任务被禁用，调人前跳过")
             return
         operator = self.op_data.operators.get(task.meta_data)
+        mood = (
+            operator.current_mood()
+            if operator is not None and hasattr(operator, "current_mood")
+            else getattr(operator, "mood", None)
+        )
         reason = workshop_operator_block_reason(
             self.op_data,
             task.meta_data,
             getattr(self, "tasks", []),
             current_task=task,
         ) or workshop_material_block_reason(
-            task.meta_data, setting.items, get_inventory_counts()
+            task.meta_data, setting.items, get_inventory_counts(), mood
         )
         if reason:
             logger.info(f"{task.meta_data}加工跳过：{reason}")

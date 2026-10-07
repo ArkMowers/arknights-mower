@@ -20,6 +20,7 @@
           <template #icon><n-icon :component="SettingsIcon" /></template>
           通用专精路线预览
         </n-button>
+        <GrowthCraftingOrder :revision="craftingOrderRevision" @changed="refreshT3Summary" />
         <n-button size="small" @click="openWorkshopSettings">
           <template #icon><n-icon :component="SettingsIcon" /></template>
           加工站干员设置
@@ -611,7 +612,7 @@
     >
       <n-space vertical :size="16">
         <n-text depth="3"
-          >拖动调整专精优先级。合成会集中准备同一干员的技能与模组材料；未满足训练条件的计划保留等待。</n-text
+          >拖动调整专精执行优先级。默认优先合成下一个专精技能的材料，可在「合成顺序」中单独调整；未满足训练条件的计划保留等待。</n-text
         >
         <n-space justify="space-between" align="center">
           <n-input
@@ -819,6 +820,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import MasteryMaterials from '@/components/MasteryMaterials.vue'
 import { materialStatus, materialStatusType } from '@/utils/masteryMaterials'
 import GrowthLevelPlan from '@/components/GrowthLevelPlan.vue'
+import GrowthCraftingOrder from '@/components/GrowthCraftingOrder.vue'
 import {
   NAlert,
   NAvatar,
@@ -1180,6 +1182,19 @@ const plan = ref({})
 const planStatus = ref({}) // { "charId_skillIndex": {id, status, target_level, priority, expires_at} }
 const showPlan = ref(false)
 const planSearch = ref('')
+const craftingOrderRevision = computed(() =>
+  JSON.stringify({
+    skills: Object.entries(planStatus.value).map(([key, entry]) => [
+      key,
+      entry.id,
+      entry.status,
+      entry.target_level,
+      entry.priority
+    ]),
+    goals: store.goals,
+    cultivate: store.cultivateMsg
+  })
+)
 // 草稿式编辑：弹层内移除的 planStatus key，保存时才删后端；re-add 会移出该集合
 const draftRemoved = ref(new Set())
 // 保存后主动关闭弹层，不触发「关闭不保存即丢弃」的重载
@@ -1676,7 +1691,7 @@ async function autoWorkshop() {
     if (skipped.length) parts.push(`已有任务: ${skipped.join(', ')}`)
     if (!added.length && !skipped.length) return
     message.success(
-      `已按同一干员优先生成当前缺口的合成任务${parts.length ? '，' + parts.join('；') : ''}`
+      `已按合成顺序生成当前缺口的合成任务${parts.length ? '，' + parts.join('；') : ''}`
     )
   } catch (e) {
     message.error(`生成失败: ${e.response?.data?.error || e.message}`)

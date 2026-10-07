@@ -64,9 +64,10 @@ def batch_limit(name, metadata, setting, inventory):
     )
 
 
-def workshop_material_block_reason(operator, items, inventory):
+def workshop_material_block_reason(operator, items, inventory, mood=None):
     """入队和调人前共用材料检查；可加工返回 None，否则指出阻塞原因。"""
     from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.workshop_mood import mood_cost, operator_mood_rules
     from arknights_mower.utils.workshop_recipes import scope_workshop_items
 
     if not items:
@@ -74,11 +75,19 @@ def workshop_material_block_reason(operator, items, inventory):
     scoped = scope_workshop_items(operator, items, workshop_formula)
     if not scoped:
         return "没有符合干员材料范围及材料保护规则的配方"
+    check_mood = mood is not None and mood >= 0
+    rules, known = operator_mood_rules(operator) if check_mood else ([], False)
     available, blocked = [], []
     for item in scoped:
         for name in item.item_names:
             metadata = workshop_formula[name]
             if batch_limit(name, metadata, item, inventory) > 0:
+                required_mood = mood_cost(name, metadata, rules, known)
+                if check_mood and mood < required_mood:
+                    blocked.append(
+                        f"{name}心情不足（当前 {mood:.1f}，单次需 {required_mood:g}）"
+                    )
+                    continue
                 available.append(metadata)
                 continue
             quantities = recipe_quantities(name, metadata)

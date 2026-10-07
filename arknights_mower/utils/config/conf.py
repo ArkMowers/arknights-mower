@@ -572,6 +572,8 @@ class RIICPart(ConfModel):
     "独立保存、可编辑的手动加工表单；None 表示尚未初始化"
     workshop_auto_active: bool = False
     "自动专精是否正在接管运行配置"
+    growth_crafting_order: list[str] = Field(default_factory=list)
+    "养成项目的合成顺序；空列表按专精计划优先，训练中的计划固定在前"
     workshop_manual_revision: int = 0
     "手动表单版本，与自动运行配置版本独立"
 
