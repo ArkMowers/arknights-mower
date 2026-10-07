@@ -521,10 +521,102 @@ class ReleaseDiscoveryTests(unittest.TestCase):
             patch.object(runtime, "frozen", return_value=True),
             patch.object(update, "platform_asset", return_value=("windows", "x64")),
             patch.object(update, "release_index", return_value=release_index(target)),
+            patch.object(update, "github", side_effect=ValueError("API unavailable")),
         ):
             checked = update.check("dev")
         self.assertTrue(checked["available"])
         self.assertTrue(checked["downgrade"])
+
+    def test_unlisted_older_nightly_is_an_update_using_commit_ancestry(self):
+        target = release(
+            "v4.1.6-alpha.10.g90a9d91f", True, system="windows", arch="x64"
+        )
+        with (
+            patch.object(update, "__version__", "4.1.6-alpha.10.g074d15a3"),
+            patch.object(runtime, "frozen", return_value=True),
+            patch.object(update, "platform_asset", return_value=("windows", "x64")),
+            patch.object(update, "release_index", return_value=release_index(target)),
+            patch.object(update, "github", return_value={"status": "ahead"}) as api,
+        ):
+            checked = update.check("dev", proxy="http://127.0.0.1:7890")
+        self.assertTrue(checked["available"])
+        self.assertFalse(checked["downgrade"])
+        self.assertEqual(checked["message"], "发现可用更新")
+        api.assert_called_once_with(
+            "/compare/074d15a3...90a9d91f", "http://127.0.0.1:7890"
+        )
+
+    def test_nightly_ancestry_preserves_rollback_and_unknown_confirmation(self):
+        target = release_index(release("v4.1.6-alpha.10.g074d15a3", True))
+        for response, downgrade in [
+            ({"status": "ahead"}, False),
+            ({"status": "identical"}, False),
+            ({"status": "behind"}, True),
+            ({"status": "diverged"}, True),
+            ({"status": "unknown"}, True),
+            ({}, True),
+            (None, True),
+        ]:
+            with (
+                self.subTest(response=response),
+                patch.object(update, "github", return_value=response) as api,
+            ):
+                self.assertEqual(
+                    update.release_is_downgrade(
+                        "dev", target, "v4.1.6-alpha.10.g90a9d91f+local"
+                    ),
+                    downgrade,
+                )
+                api.assert_called_once_with("/compare/90a9d91f...074d15a3", "")
+        for error in (ValueError("rate limited"), update.requests.Timeout("timeout")):
+            with (
+                self.subTest(error=type(error).__name__),
+                patch.object(update, "github", side_effect=error),
+            ):
+                self.assertTrue(
+                    update.release_is_downgrade(
+                        "dev", target, "4.1.6-alpha.10.g90a9d91f"
+                    )
+                )
+
+    def test_nightly_publication_order_avoids_commit_lookup(self):
+        current = release("v4.1.6-alpha.10.g074d15a3", True)
+        newer = release(
+            "v4.1.6-alpha.10.g90a9d91f",
+            True,
+            published_at="2026-10-07T13:03:45Z",
+        )
+        with patch.object(update, "github") as api:
+            self.assertFalse(
+                update.release_is_downgrade(
+                    "dev", release_index(newer, [current]), current["tag_name"]
+                )
+            )
+            self.assertTrue(
+                update.release_is_downgrade(
+                    "dev", release_index(current, [newer]), newer["tag_name"]
+                )
+            )
+            self.assertFalse(
+                update.release_is_downgrade(
+                    "dev", release_index(newer), newer["tag_name"] + "+local"
+                )
+            )
+            api.assert_not_called()
+
+    def test_invalid_nightly_publication_date_uses_commit_ancestry(self):
+        for date in (None, "invalid", "2026-10-07T13:03:45", 123):
+            current = release("v4.1.6-alpha.10.g074d15a3", True, published_at=date)
+            target = release_index(
+                release("v4.1.6-alpha.10.g90a9d91f", True), [current]
+            )
+            with (
+                self.subTest(date=date),
+                patch.object(update, "github", return_value={"status": "ahead"}),
+            ):
+                self.assertFalse(
+                    update.release_is_downgrade("dev", target, current["tag_name"])
+                )
 
     def test_offline_nightly_requires_confirmation_when_sha_order_is_unknown(self):
         package = runtime.state_dir() / "nightly.zip"

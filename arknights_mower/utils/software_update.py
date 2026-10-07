@@ -264,8 +264,8 @@ def version_key(value):
     )
 
 
-def release_is_downgrade(channel, target, current):
-    """Order Nightly commits by publication time, not their arbitrary SHA."""
+def release_is_downgrade(channel, target, current, proxy=""):
+    """Order Nightly builds by publication time or verified commit ancestry."""
     target_version = target.get("version") or target["tag_name"]
     target_key, current_key = version_key(target_version), version_key(current)
     if target_key != current_key or channel != "dev" or not is_nightly(current):
@@ -283,18 +283,24 @@ def release_is_downgrade(channel, target, current):
         ),
         None,
     )
-    if current_release is None:
-        # The retained index cannot prove that this installed build is older.
-        return True
+    if current_release is not None:
+        try:
+            target_date = datetime.fromisoformat(target["published_at"])
+            current_date = datetime.fromisoformat(current_release["published_at"])
+            if target_date.tzinfo is not None and current_date.tzinfo is not None:
+                return target_date <= current_date
+        except (KeyError, TypeError, ValueError):
+            pass
+    # Retained history omits older builds; SHA ancestry still proves direction.
+    current_sha = VERSION_RE.fullmatch(current).group(6)
+    target_sha = VERSION_RE.fullmatch(target_version).group(6)
     try:
-        target_date = datetime.fromisoformat(target["published_at"])
-        current_date = datetime.fromisoformat(current_release["published_at"])
-        return (
-            target_date.tzinfo is None
-            or current_date.tzinfo is None
-            or target_date <= current_date
+        comparison = github(f"/compare/{current_sha}...{target_sha}", proxy)
+        return not (
+            isinstance(comparison, dict)
+            and comparison.get("status") in ("ahead", "identical")
         )
-    except (KeyError, TypeError, ValueError):
+    except (requests.RequestException, ValueError):
         return True
 
 
@@ -1118,7 +1124,7 @@ def check(channel, proxy=None):
         release_version = release.get("version") or release["tag_name"]
         plan.update(
             version=release_version,
-            downgrade=release_is_downgrade(channel, release, __version__),
+            downgrade=release_is_downgrade(channel, release, __version__, proxy),
             notes=release.get("notes") or release.get("body") or "暂无更新说明",
             url=release.get("source_release") or release["html_url"],
         )
