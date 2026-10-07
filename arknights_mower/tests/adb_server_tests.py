@@ -225,15 +225,28 @@ class ServerProbeTests(unittest.TestCase):
                 with self.assertRaises(SharedADBError):
                     probe_adb_server(5, socket_factory=factory)
 
-    def test_only_connected_handshake_timeout_is_recoverable(self):
-        factory, connection = self.connection()
-        connection.recv.side_effect = socket.timeout("stalled")
-        with self.assertRaises(SharedADBHandshakeTimeout):
-            probe_adb_server(5, socket_factory=factory)
-        connection.connect.side_effect = socket.timeout("connect stalled")
-        with self.assertRaises(SharedADBError) as raised:
-            probe_adb_server(5, socket_factory=factory)
-        self.assertNotIsInstance(raised.exception, SharedADBHandshakeTimeout)
+    def test_an_unanswered_listener_supplies_recovery_evidence_at_either_phase(self):
+        for stage in ("connect", "handshake"):
+            with self.subTest(stage=stage):
+                factory, connection = self.connection()
+                if stage == "connect":
+                    connection.connect.side_effect = socket.timeout("connect stalled")
+                else:
+                    connection.recv.side_effect = socket.timeout("stalled")
+                with self.assertRaises(SharedADBHandshakeTimeout) as raised:
+                    probe_adb_server(5, socket_factory=factory)
+                # One verdict names both phases without claiming a connection.
+                self.assertIn("未完成主机握手", str(raised.exception))
+                self.assertNotIn("已连接", str(raised.exception))
+
+    def test_connect_failure_that_is_not_a_timeout_stays_unverified(self):
+        for error in (PermissionError(), OSError("network unreachable")):
+            with self.subTest(error=error):
+                factory, connection = self.connection()
+                connection.connect.side_effect = error
+                with self.assertRaises(SharedADBError) as raised:
+                    probe_adb_server(5, socket_factory=factory)
+                self.assertNotIsInstance(raised.exception, SharedADBHandshakeTimeout)
 
     def test_protocol_errors_and_eof_are_not_recoverable_timeouts(self):
         for chunks in ([b"FAIL"], [b"OKAY", b"0004", b"oops"], [b""]):

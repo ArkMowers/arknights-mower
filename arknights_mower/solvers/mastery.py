@@ -747,13 +747,22 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
     开始流程直接复用，不再重复 enter_room、不再开进驻详情浮窗重读槽位（消除重复进房
     与重复浮窗开关）。room=None（冷启动/直接调用）保持旧行为：进房 + 现读槽位。
     """
-    from arknights_mower.solvers.mastery_reader import _read_slot_mastery_tier
+    from arknights_mower.solvers.mastery_reader import (
+        _protected_plan_matches,
+        _read_slot_mastery_tier,
+    )
     from arknights_mower.utils.mastery_db import update_plan_status
     from arknights_mower.utils.mastery_recommendation import (
         get_mastery_requirement_error,
     )
     from arknights_mower.utils.mastery_support import SupportPlanError
     from arknights_mower.utils.mastery_support_data import trainee_schedule_conflict
+
+    if room is not None and getattr(room, "protected", False):
+        if not _protected_plan_matches(plan, room):
+            logger.info("训练室受保护，当前计划不是已确认的同干员同技能，保持待执行")
+            solver.back()
+            return
 
     _warn_training_room_group(plan)
 
