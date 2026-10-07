@@ -59,6 +59,101 @@ def make_plan(**overrides):
     return plan
 
 
+@pytest.mark.parametrize("target", [1, 2])
+@pytest.mark.parametrize("optimized", [False, True])
+def test_terminal_route_keeps_initial_support_and_removes_halving(target, optimized):
+    route = {
+        "level": target,
+        "operator": "夜半",
+        "efficiency": 75,
+        "swap_target": "逻各斯",
+        "central_bonus": 0,
+    }
+    plan = make_plan(target_level=target)
+    if optimized:
+        plan["support_plan"] = {"stages": [route]}
+    with (
+        patch(
+            "arknights_mower.utils.mastery_recommendation.get_skill_data",
+            return_value={},
+        ),
+        patch.object(mastery, "get_route_config", return_value=route),
+    ):
+        actual = mastery._get_plan_route(plan, target)
+    assert actual["operator"] == "夜半"
+    assert actual["swap_target"] is None
+    assert route["swap_target"] == "逻各斯", "Reading a plan cannot alter shared routes"
+
+
+@pytest.mark.parametrize("target", [1, 2])
+@pytest.mark.parametrize("step", [None, 0, "terminal"])
+def test_final_or_unknown_stage_never_enqueues_halving(target, step):
+    solver = MagicMock(tasks=[])
+    step = target if step == "terminal" else step
+    with (
+        patch.object(mastery, "_get_plan_route") as route,
+        patch(
+            "arknights_mower.solvers.mastery_support_state.schedule_support_swap"
+        ) as planned,
+    ):
+        result = mastery._schedule_swap_if_needed(
+            solver,
+            make_plan(target_level=target, support_plan={"stages": []}),
+            START + timedelta(hours=2),
+            step,
+        )
+    assert result is None
+    assert solver.tasks == []
+    route.assert_not_called()
+    planned.assert_not_called()
+
+
+@pytest.mark.parametrize("target, step", [(2, 1), (3, 1), (3, 2)])
+def test_preceding_stage_still_enqueues_next_stage_halving(target, step):
+    solver = MagicMock(tasks=[])
+    with (
+        patch.object(mastery, "datetime", FixedDateTime),
+        patch.object(config_mod.conf, "assistant_follows_schedule", False),
+        patch.object(
+            mastery,
+            "_get_plan_route",
+            return_value={
+                "swap_target": "逻各斯",
+                "efficiency": 75,
+                "job_match": True,
+            },
+        ),
+        patch.object(mastery, "calc_swap_threshold", return_value=(True, 100)),
+    ):
+        result = mastery._schedule_swap_if_needed(
+            solver,
+            make_plan(target_level=target),
+            START + timedelta(hours=2),
+            step,
+        )
+    assert result == START
+    assert len(solver.tasks) == 1
+    assert solver.tasks[0].type == TaskTypes.SWAP_SUPPORT
+
+
+@pytest.mark.parametrize("target", [1, 2])
+def test_final_stage_still_arranges_initial_speed_support(target):
+    solver = MagicMock()
+    with (
+        patch.object(config_mod.conf, "assistant_follows_schedule", False),
+        patch.object(
+            mastery,
+            "_get_plan_route",
+            return_value={"operator": "夜半", "swap_target": None},
+        ),
+    ):
+        result = mastery._arrange_support(
+            solver, make_plan(target_level=target), target
+        )
+    assert result is None
+    solver.choose_train.assert_called_once_with(["夜半", "Current"])
+
+
 def reliable_empty_room():
     """reconcile 读房交给开始流程的「训练位确实空着」可信房态（#100）。
 
@@ -1570,7 +1665,7 @@ class TestSwapCollectGating(unittest.TestCase):
             patch.object(config_mod.conf, "assistant_follows_schedule", False),
         ):
             scheduled = mastery._schedule_swap_if_needed(
-                solver, plan, START + timedelta(hours=2)
+                solver, plan, START + timedelta(hours=2), step_level=1
             )
         self.assertIsNotNone(scheduled, "立即换人应排 SWAP_SUPPORT")
         self.assertEqual(len(solver.tasks), 1)
@@ -1595,7 +1690,7 @@ class TestSwapCollectGating(unittest.TestCase):
             patch.object(mastery, "datetime", FixedDateTime),
         ):
             scheduled = mastery._schedule_swap_if_needed(
-                solver, plan, START + timedelta(hours=2)
+                solver, plan, START + timedelta(hours=2), step_level=1
             )
         self.assertIsNotNone(scheduled)
         self.assertEqual(len(solver.tasks), 1)
@@ -1625,7 +1720,7 @@ class TestSwapCollectGating(unittest.TestCase):
                 solver, plan, START + timedelta(hours=2)
             )
         self.assertIsNone(scheduled, "步级未知回退专三 → 不换人")
-        self.assertEqual(route_calls, [None], "应把缺省 step_level 传给路线加载")
+        self.assertEqual(route_calls, [], "步级未知不能确认后续训练，跳过换人路线")
 
     def test_run_swap_support_schedules_collect_after_swap(self):
         # §5.2：SWAP_SUPPORT 完成后重读倒计时再排收取。倒计时得「值得换」
@@ -2312,7 +2407,7 @@ class TestSwapCollectGating(unittest.TestCase):
             patch.object(config_mod.conf, "assistant_follows_schedule", False),
         ):
             scheduled = mastery._schedule_swap_if_needed(
-                solver, plan, START + timedelta(hours=2)
+                solver, plan, START + timedelta(hours=2), step_level=1
             )
         self.assertIsNotNone(scheduled)
         self.assertEqual(solver.tasks[0].type, TaskTypes.SWAP_SUPPORT)
@@ -2491,38 +2586,22 @@ class TestRouteStepLevel(unittest.TestCase):
             "换人任务档位用当前步（专一→专二），不是计划目标专三",
         )
 
-    def test_schedule_swap_meta_data_hides_level_when_step_unknown(self):
-        # #230：step_level 读不到（None）→ 不显示档位（不回退 target_level，避免
-        # 任务列表误导为专三）；只留换入对象。与纠错/补位任务文案同风格。
+    def test_schedule_swap_unknown_step_does_not_prepare_next_stage(self):
+        # An unreadable stage cannot establish that another stage remains.
         solver = self._solver()
         plan = make_plan(target_level=2)
-        route_calls = []
-
-        def fake_route(p, step_level=None):
-            route_calls.append(step_level)
-            return {
-                "swap_target": "逻各斯",
-                "central_bonus": 5,
-                "efficiency": 75,
-                "job_match": True,
-            }
-
         with (
-            patch.object(mastery, "_get_plan_route", side_effect=fake_route),
-            patch.object(mastery, "calc_swap_threshold", return_value=(True, 100.0)),
+            patch.object(mastery, "_get_plan_route") as route,
+            patch.object(mastery, "calc_swap_threshold") as threshold,
             patch.object(config_mod.conf, "assistant_follows_schedule", False),
-            patch.object(mastery, "datetime", FixedDateTime),
         ):
             scheduled = mastery._schedule_swap_if_needed(
                 solver, plan, START + timedelta(hours=2), step_level=None
             )
-        self.assertIsNotNone(scheduled)
-        self.assertEqual(route_calls, [None], "step_level 缺省应原样传给路线加载")
-        self.assertEqual(
-            solver.tasks[0].meta_data,
-            "测试干员 测试技能 换入逻各斯",
-            "step_level 读不到时不显示档位，只留换入对象",
-        )
+        self.assertIsNone(scheduled)
+        self.assertEqual(solver.tasks, [])
+        route.assert_not_called()
+        threshold.assert_not_called()
 
     # --- _confirm_training_started：确认后读图标当前步级，传给协助位/换人安排 ---
     def test_confirm_passes_step_level_to_arrange_and_swap(self):

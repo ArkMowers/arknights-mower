@@ -1339,10 +1339,13 @@ def _schedule_swap_if_needed(
     §5.2：返回 SWAP 任务触发时刻（None=不排换人）——排了换人则不排收取（等
     SWAP_SUPPORT 完成后重读倒计时再排收取）。立即换人（remaining ≤ threshold）也排
     任务（修旧 silent-drop）。#90 邮件「有减半」的完成时间 = 返回时刻 + (300+缓冲) 分。
-    #76：路线按当前步目标级加载（step_level）；「专三不换人」由 level_3 路线
-    swap_target=None 保证（铁律 7，用户 08-15 定案删显式 ==3 守卫、靠路线数据）。
+    只有读到当前步低于计划最终目标时，才为下一阶段安排减半换人。
+    专一、专二和专三的最终阶段都不排换人；步级未知时保守跳过。
     """
     from arknights_mower.utils import config
+
+    if (step_level or plan["target_level"]) >= plan["target_level"]:
+        return None
 
     if config.conf.assistant_follows_schedule:
         return None
@@ -1863,10 +1866,14 @@ def _get_plan_route(plan, step_level=None) -> dict | None:
     一个专三计划 专一→专二→专三 三步分别用 level_1/2/3 路线。step_level 缺省/读失败
     （None/0）时回退 plan["target_level"]（=旧行为，保守）。
     """
+    level = step_level or plan["target_level"]
     if plan.get("support_plan"):
         from arknights_mower.utils.mastery_support import stage_for
 
-        return stage_for(plan, step_level or plan["target_level"])
+        route = stage_for(plan, level)
+        if route and level >= plan["target_level"]:
+            route["swap_target"] = None
+        return route
     try:
         from arknights_mower.utils.mastery_recommendation import get_skill_data
 
@@ -1875,12 +1882,13 @@ def _get_plan_route(plan, step_level=None) -> dict | None:
         prof_cn = PROF_MAP.get(prof_en, prof_en)
         from arknights_mower.utils.mastery_support_types import route_swap_buffer
 
-        level = step_level or plan["target_level"]
         route = get_route_config(prof_cn, level)
         if route:
             # Legacy plans have no verified halving record; use the longer M2
             # margin unless inheritance is explicitly known.
-            route["mastery_swap_buffer"] = route_swap_buffer(route, level)
+            route = {**route, "mastery_swap_buffer": route_swap_buffer(route, level)}
+            if level >= plan["target_level"]:
+                route = {**route, "swap_target": None}
         return route
     except Exception as e:
         logger.error(f"获取路线配置失败: {e}")

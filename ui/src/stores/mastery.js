@@ -5,6 +5,9 @@ import { defineStore } from 'pinia'
 export const useMasteryStore = defineStore('mastery', () => {
   const loading = ref(false)
   const recommendations = ref([])
+  const statistics = ref(null)
+  const history = ref([])
+  const goals = ref([])
   const hasData = ref(false)
   const error = ref('')
   const filterAchievable = ref(false)
@@ -54,6 +57,9 @@ export const useMasteryStore = defineStore('mastery', () => {
         return
       }
       recommendations.value = data.operators || []
+      statistics.value = data.statistics || null
+      history.value = data.history || []
+      goals.value = data.goals || []
       hasData.value = data.has_data || false
     } catch (e) {
       error.value = `请求失败: ${e.message || e}`
@@ -101,6 +107,9 @@ export const useMasteryStore = defineStore('mastery', () => {
   return {
     loading,
     recommendations,
+    statistics,
+    history,
+    goals,
     hasData,
     error,
     filterAchievable,

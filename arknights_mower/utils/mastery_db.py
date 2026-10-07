@@ -266,6 +266,7 @@ def add_plan_checked(
     priority: int = 0,
     path: Optional[str] = None,
     support_mode: str = "auto",
+    planning: bool = False,
 ) -> tuple[int, Optional[str]]:
     """统一计划创建入口（#65/B7）：校验 target_level 范围 + 干员当前等级 + 技能是否已有计划。
 
@@ -301,8 +302,16 @@ def add_plan_checked(
     if char_id in UNTRAINABLE_CHAR_IDS:
         return -1, "该干员为肉鸽赠送干员，无法在训练室专精技能"
     requirement_error = get_mastery_requirement_error(char_id)
-    if requirement_error:
+    if requirement_error and not planning:
         return -1, requirement_error
+    if planning:
+        from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+        levels = (
+            get_skill_data().get("characters", {}).get(char_id, {}).get("skills", [])
+        )
+        if skill_index >= len(levels) or not levels[skill_index].get("levels"):
+            return -1, "该技能不支持专精"
     existing = get_plan_by_skill(char_id, skill_index, path)
     if existing is not None:
         return -1, (
@@ -321,7 +330,7 @@ def add_plan_checked(
     try:
         support_plan = (
             None
-            if support_mode == "route"
+            if support_mode == "route" or requirement_error
             else plan_supports(
                 char_id,
                 current_level or 0,
@@ -837,3 +846,53 @@ def get_all_routes(path: Optional[str] = None) -> list[dict]:
     except Exception as e:
         logger.error(f"get_all_routes failed: {e}")
         return []
+
+
+def change_plan_target(plan_id, target, path=None):
+    """Only an unstarted plan may replace its target and assistant route together."""
+    if type(plan_id) is not int or type(target) is not int or target not in (1, 2, 3):
+        raise ValueError("目标专精等级无效")
+    plan = get_plan_by_id(plan_id, path)
+    if plan is None or plan["status"] not in ("idle", "failed"):
+        raise ValueError("已开始的专精计划不能修改目标")
+    from arknights_mower.utils.mastery_recommendation import (
+        get_current_mastery_level,
+        get_mastery_requirement_error,
+    )
+    from arknights_mower.utils.mastery_support import (
+        RosterUnavailableError,
+        plan_supports,
+    )
+
+    current = get_current_mastery_level(plan["char_id"], plan["skill_index"]) or 0
+    if target <= current:
+        raise ValueError("目标等级必须高于当前专精等级")
+    support = None
+    if not get_mastery_requirement_error(plan["char_id"]):
+        try:
+            support = plan_supports(
+                plan["char_id"],
+                current,
+                target,
+                inputs=TrainingInputs(
+                    buffer=configured_swap_buffer(get_route_settings(path))
+                ),
+            )
+        except RosterUnavailableError:
+            pass
+    with _conn(path) as conn:
+        cursor = conn.execute(
+            "UPDATE mastery_plan SET target_level=?, support_plan=?, support_runtime=NULL "
+            "WHERE id=? AND status=? AND target_level=? AND support_runtime IS ?",
+            (
+                target,
+                encode_supports(support),
+                plan_id,
+                plan["status"],
+                plan["target_level"],
+                plan.get("support_runtime"),
+            ),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError("专精状态已变化，请刷新后重试")
+        conn.commit()

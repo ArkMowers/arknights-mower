@@ -42,10 +42,46 @@ def next_skill(monkeypatch, tmp_path):
         if item.get("rarity") == 3 or key == "3302"
     ]
     cultivate.write_text(
-        json.dumps({"data": {"characters": [], "items": stock}}), encoding="utf-8"
+        json.dumps(
+            {
+                "data": {
+                    "characters": [
+                        {
+                            "id": cid,
+                            "evolvePhase": 2,
+                            "level": 1,
+                            "mainSkillLevel": 7,
+                            "skills": [{"level": 0}],
+                        }
+                        for cid in ("char_a", "char_b")
+                    ],
+                    "items": stock,
+                }
+            }
+        ),
+        encoding="utf-8",
     )
     skills = tmp_path / "skill_data.json"
-    skills.write_text(json.dumps({"items": data["items"]}), encoding="utf-8")
+    skills.write_text(
+        json.dumps(
+            {
+                "items": data["items"],
+                "characters": {
+                    cid: {
+                        "skills": [
+                            {
+                                "levels": [
+                                    {"materials": [{"id": "3303", "count": count}]}
+                                ]
+                            }
+                        ]
+                    }
+                    for cid, count in (("char_a", 5), ("char_b", 7))
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(rec, "get_path", lambda _: cultivate)
     monkeypatch.setattr(rec, "_find_skill_data", lambda: skills)
     plans = [

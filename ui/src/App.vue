@@ -204,7 +204,7 @@
                     排班
                   </div>
                 </n-tab>
-                <n-tab name="自动专精" @click="$router.push('/mastery-recommendation')">
+                <n-tab name="养成规划" @click="$router.push('/mastery-recommendation')">
                   <div style="display: flex; flex-direction: column; align-items: center">
                     <n-icon size="20" style="margin-bottom: -1px" :component="SkillLevelAdvanced" />
                     专精
@@ -415,7 +415,7 @@ const menuOptions = [
   },
   {
     label: () =>
-      h(RouterLink, { to: { path: '/mastery-recommendation' } }, { default: () => '自动专精' }),
+      h(RouterLink, { to: { path: '/mastery-recommendation' } }, { default: () => '养成规划' }),
     icon: renderIcon(SkillLevelAdvanced),
     key: 'go-to-mastery-recommendation'
   },

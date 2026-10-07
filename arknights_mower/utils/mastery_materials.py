@@ -9,6 +9,7 @@ class MaterialBudget:
         self, skill_data, inventory, workshop_formula=None, *, blocked_materials=()
     ):
         self.items = skill_data.get("items", {})
+        self.formulas = workshop_formula
         self.inventory = {key: max(0, int(value)) for key, value in inventory.items()}
         ids = {item["name"]: key for key, item in self.items.items()}
         self.recipes = {}
@@ -190,16 +191,18 @@ class MaterialBudget:
 
     def calculate_plan(self, entries):
         """Attribute new elite-material shortages in plan order using shared stock."""
+        from arknights_mower.utils.growth_workshop import calculate_crafting_materials
+
         demand = Counter()
         previous_missing = {}
         missing_skills = []
-        summary = self.calculate([])
+        summary = calculate_crafting_materials(self, [])
         for key, materials in entries:
             for material in materials:
                 demand[material["id"]] += material["count"]
             # Aggregate first: each pass is bounded by material types, not plan length.
-            summary = self.calculate(
-                [{"id": item, "count": count} for item, count in demand.items()]
+            summary = calculate_crafting_materials(
+                self, [{"id": item, "count": count} for item, count in demand.items()]
             )
             missing = {
                 row["id"]: row["count"]
@@ -215,13 +218,18 @@ class MaterialBudget:
         return summary
 
 
-def plan_material_summary(planned_keys):
-    if not planned_keys:
+def plan_material_summary(planned_keys, goals=(), targets=None):
+    if not planned_keys and not goals:
         return MaterialBudget({}, {}).calculate_plan([])
-
     import json
 
     from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.growth import (
+        expand_chip_costs,
+        growth_resources,
+        inventory_counts,
+        material_entries,
+    )
     from arknights_mower.utils.mastery_db import get_all_plans, get_failed_plans
     from arknights_mower.utils.mastery_recommendation import get_skill_data
     from arknights_mower.utils.path import get_path
@@ -230,40 +238,54 @@ def plan_material_summary(planned_keys):
     )
 
     with open(get_path("@app/tmp/cultivate.json"), encoding="utf-8") as stream:
-        box = json.load(stream).get("data", {})
-    skills = get_skill_data()
-    characters = {char["id"]: char for char in box.get("characters", [])}
-    saved = {}
-    for plan in get_all_plans() + get_failed_plans():
-        key = f"{plan['char_id']}_{plan['skill_index']}"
-        if key not in saved or plan["target_level"] > saved[key]["target_level"]:
-            saved[key] = plan
-    entries = []
+        box = json.load(stream)["data"]
+    skills = growth_resources(get_skill_data())
+    saved = {
+        f"{p['char_id']}_{p['skill_index']}": p
+        for p in get_all_plans() + get_failed_plans()
+    }
+    plans = []
     for key in dict.fromkeys(planned_keys):
-        char_id, skill_index = key.rsplit("_", 1)
-        skill_index = int(skill_index)
-        char = characters.get(char_id)
-        definitions = skills.get("characters", {}).get(char_id, {}).get("skills", [])
-        if not char or not 0 <= skill_index < min(
-            len(char.get("skills", [])), len(definitions)
-        ):
-            raise ValueError("部分计划缺少干员技能数据，请刷新干员数据")
-        current = char["skills"][skill_index].get("level") or 0
-        plan = saved.get(key, {})
-        target = plan.get("target_level", 3)
-        if plan.get("status") in ("training", "waiting_collect"):
-            runtime = plan.get("support_runtime") or {}
-            if isinstance(runtime, str):
-                runtime = json.loads(runtime)
-            current = max(current, runtime.get("level") or current + 1)
-        materials = []
-        for level in definitions[skill_index].get("levels", [])[current:target]:
-            materials.extend(level.get("materials", []))
-        entries.append((key, materials))
-    inventory = {item["id"]: int(item.get("count", 0)) for item in box.get("items", [])}
-    return MaterialBudget(
+        cid, index = key.rsplit("_", 1)
+        plan = {
+            "char_id": cid,
+            "skill_index": int(index),
+            "target_level": 3,
+            **saved.get(key, {}),
+        }
+        if key in (targets or {}):
+            plan["target_level"] = targets[key]
+        plans.append(plan)
+    entries = material_entries(box, skills, plans, goals)
+    stock = inventory_counts(box, skills, local=True)
+    cumulative, previous, expanded = [], Counter(), []
+    for cid, materials in entries:
+        cumulative.extend(materials)
+        costs = Counter(
+            {m["id"]: m["count"] for m in expand_chip_costs(cumulative, stock)}
+        )
+        expanded.append(
+            (
+                cid,
+                [
+                    {"id": iid, "count": count}
+                    for iid, count in (costs - previous).items()
+                ],
+            )
+        )
+        previous = costs
+    summary = MaterialBudget(
         skills,
-        inventory,
+        stock,
         workshop_formula,
         blocked_materials=protected_workshop_materials(),
-    ).calculate_plan(entries)
+    ).calculate_plan(expanded)
+    summary["manual_chips"] = any(
+        row["id"].startswith("32") for row in summary["materials"]
+    )
+    missing_operators = set(summary["missing_skills"])
+    summary["missing_skills"] = [
+        key for key in planned_keys if key.rsplit("_", 1)[0] in missing_operators
+    ]
+    summary["missing_operators"] = list(missing_operators)
+    return summary

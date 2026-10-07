@@ -149,10 +149,16 @@ def test_fresh_sync_repairs_stock_but_cached_reads_keep_later_crafting(
         assert stock_db.get_inventory_counts()["提纯源岩"] == 1
         assert stock_db.get_inventory_counts()["碳"] == 90
     monkeypatch.setattr(module, "time", lambda: 10_000_000_003)
+    # A newer HTTP request alone cannot prove a changed cloud count includes
+    # local consumption (the extra rocks can be delayed loot).
     payload["data"]["items"][0]["count"] = "290"
     with patch.object(module, "request_with_retry") as get:
         get.return_value.json.return_value = payload
         assert syncer.start() is True
+    assert stock_db.get_inventory_counts()["固源岩组"] == 276
+    stock_db.save_inventory_counts(
+        {"固源岩组": 290}, scanned_counts={"固源岩组": 290}, scanned_at=10_000_000_004
+    )
     assert stock_db.get_inventory_counts()["固源岩组"] == 290
 
 
@@ -194,3 +200,122 @@ def test_invalid_stock_does_not_replace_cache_or_database(syncer, stock_db, item
             syncer.start()
     assert stock_db.get_inventory_counts() == {"固源岩组": 276}
     assert json.loads(syncer.record_path.read_text()) == {"previous": True}
+
+
+def test_later_requests_with_lagging_cloud_keep_each_operators_completed_batches(
+    syncer, stock_db, monkeypatch
+):
+    from arknights_mower.data import key_mapping, workshop_formula
+    from arknights_mower.utils.config.conf import WorkShopItem
+    from arknights_mower.utils.workshop_limits import batch_delta, batch_limit
+
+    targets = {"固化纤维板": 3, "酮阵列": 3, "异铁块": 1}
+    initial = {name: 2 for name in targets}
+    for name in targets:
+        for child in workshop_formula[name]["items"]:
+            initial[child] = 100
+    stock_db.save_inventory_counts(initial)
+    payload = {
+        "code": 0,
+        "data": {
+            "characters": [{"id": "char_2027_wang", "evolvePhase": 2}],
+            "items": [
+                {"id": key_mapping[name][0], "count": count}
+                for name, count in initial.items()
+            ],
+        },
+    }
+    now = 10_000_000_000
+    monkeypatch.setattr(module, "time", lambda: now)
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = payload
+        for name, needed in targets.items():
+            # Each new operator's request is later, but the cloud items are old.
+            now += 10
+            assert syncer.start()
+            setting = WorkShopItem(
+                item_names=[name],
+                self_upper_limit=initial[name] + needed,
+                children_lower_limit=0,
+            )
+            assert (
+                batch_limit(
+                    name,
+                    workshop_formula[name],
+                    setting,
+                    stock_db.get_inventory_counts(),
+                )
+                == needed
+            )
+            with patch.object(stock_db, "datetime") as clock:
+                clock.now.return_value.timestamp.return_value = now + 1
+                stock_db.apply_workshop_inventory(
+                    batch_delta(name, workshop_formula[name], needed)
+                )
+            now += 2
+            assert syncer.start()
+            assert (
+                batch_limit(
+                    name,
+                    workshop_formula[name],
+                    setting,
+                    stock_db.get_inventory_counts(),
+                )
+                == 0
+            )
+        for _ in range(2):
+            now += 10
+            assert syncer.start()
+            for name, needed in targets.items():
+                assert stock_db.get_inventory_counts()[name] == initial[name] + needed
+        # Cloud convergence clears the pending fence, so later real spending can sync.
+        actual = stock_db.get_inventory_counts()
+        payload["data"]["items"] = [
+            {"id": key_mapping[name][0], "count": count}
+            for name, count in actual.items()
+        ]
+        now += 10
+        assert syncer.start()
+        assert stock_db.get_inventory_counts() == actual
+        for item in payload["data"]["items"]:
+            if item["id"] == key_mapping["固化纤维板"][0]:
+                item["count"] = 0
+        now += 10
+        assert syncer.start()
+        assert stock_db.get_inventory_counts()["固化纤维板"] == 0
+
+
+@pytest.mark.parametrize(
+    "baseline,changes,lagging,expected",
+    [(0, (6, -3), 6, 3), (10, (-6, 3), 4, 7)],
+)
+def test_bidirectional_crafting_rejects_intermediate_cloud_snapshot(
+    stock_db, baseline, changes, lagging, expected
+):
+    name = "固源岩组"
+    stock_db.save_inventory_counts({name: baseline})
+    for delta in changes:
+        stock_db.apply_workshop_inventory({name: delta})
+    for timestamp in (10_000_000_000, 10_000_000_001):
+        stock_db.save_inventory_counts(
+            {name: lagging},
+            scanned_counts={},
+            cloud_counts={name: lagging},
+            cloud_at=timestamp,
+        )
+        assert stock_db.get_inventory_counts()[name] == expected
+    stock_db.save_inventory_counts(
+        {name: expected},
+        scanned_counts={},
+        cloud_counts={name: expected},
+        cloud_at=10_000_000_002,
+    )
+    with stock_db._conn() as conn:
+        assert not list(conn.execute("SELECT * FROM workshop_inventory_pending"))
+    stock_db.save_inventory_counts(
+        {name: expected + 2},
+        scanned_counts={},
+        cloud_counts={name: expected + 2},
+        cloud_at=10_000_000_003,
+    )
+    assert stock_db.get_inventory_counts()[name] == expected + 2

@@ -1084,6 +1084,15 @@ class Arknights数据处理器:
             "workshop": compile_workshop_data(self.干员表, self.基建表),
         }
 
+        from arknights_mower.utils.growth_data import compile_growth_data
+
+        output["growth"] = compile_growth_data(
+            self.干员表 | self.干员形态表.get("patchChars", {}),
+            self.加载json("./ArknightsGameResource/gamedata/excel/uniequip_table.json"),
+            self.游戏变量,
+            self.干员形态表.get("infos", {}),
+        )
+
         output_path = "./arknights_mower/data/skill_data.json"
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:

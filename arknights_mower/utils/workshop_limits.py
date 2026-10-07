@@ -44,10 +44,17 @@ def batch_limit(name, metadata, setting, inventory):
     output, count, costs = quantities
     if any(name not in inventory for name in (output, *costs)):
         return 0  # Unknown stock must be read from the depot before spending it.
+    gold_cost = int(metadata.get("goldCost") or 0)
+    gold_limit = (
+        inventory["龙门币"] // gold_cost
+        if gold_cost > 0 and "龙门币" in inventory
+        else 99
+    )
     return max(
         0,
         min(
             99,
+            gold_limit,
             (setting.self_upper_limit - inventory[output]) // count,
             *(
                 (inventory[child] - setting.children_lower_limit) // required
@@ -95,6 +102,11 @@ def workshop_material_block_reason(operator, items, inventory):
                         for mat, required in costs.items()
                         if inventory[mat] - item.children_lower_limit < required
                     ]
+                    gold_cost = int(metadata.get("goldCost") or 0)
+                    if gold_cost and inventory.get("龙门币", gold_cost) < gold_cost:
+                        shortages.append(
+                            f"龙门币库存 {inventory['龙门币']}，加工费需 {gold_cost}"
+                        )
                     blocked.append(f"{name}原料不足（{'；'.join(shortages)}）")
     if not available:
         reasons = list(dict.fromkeys(blocked))
@@ -157,4 +169,6 @@ def batch_delta(name, metadata, batches):
         raise ValueError("加工次数无效")
     delta = {child: -amount * batches for child, amount in costs.items()}
     delta[output] = delta.get(output, 0) + count * batches
+    if gold_cost := int(metadata.get("goldCost") or 0):
+        delta["龙门币"] = delta.get("龙门币", 0) - gold_cost * batches
     return delta

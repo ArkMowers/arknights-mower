@@ -101,16 +101,19 @@ def test_deer_diagnostics_distinguish_missing_material_combination(ready):
         assert reason == "缺少可加工的垫刀材料（小于 4 心情或基建材料）"
 
 
-@pytest.mark.parametrize("gold", [None, 0])
-def test_gold_is_assumed_sufficient_and_is_not_counted(gold):
+@pytest.mark.parametrize("gold,batches", [(None, 3), (0, 0), (1000, 2)])
+def test_known_gold_limits_batches_and_confirmed_output_charges_fee(gold, batches):
     name = "聚合剂"
     recipe = workshop_formula[name]
     stock = {name: 0, **{child: 10 for child in recipe["items"]}}
     if gold is not None:
         stock["龙门币"] = gold
     setting = WorkShopItem(self_upper_limit=3, children_lower_limit=0)
-    assert workshop_limits.batch_limit(name, recipe, setting, stock) == 3
-    assert "龙门币" not in workshop_limits.batch_delta(name, recipe, 3)
+    assert workshop_limits.batch_limit(name, recipe, setting, stock) == batches
+    assert (
+        workshop_limits.batch_delta(name, recipe, 3)["龙门币"]
+        == -3 * recipe["goldCost"]
+    )
 
 
 @pytest.mark.parametrize("name", list(workshop_formula))

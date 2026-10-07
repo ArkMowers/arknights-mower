@@ -17,9 +17,20 @@
         </n-space>
       </div>
       <n-text depth="3" class="inventory-hint">数量：库存 / 需要</n-text>
+      <n-text v-if="summary.crafting_gold" depth="3" class="inventory-hint">
+        其中加工费 {{ summary.crafting_gold.toLocaleString() }} 龙门币，已计入下方龙门币总需求。
+      </n-text>
+      <n-alert v-if="summary.manual_chips" type="info" :bordered="false" class="chip-hint">
+        双芯片需手动准备：每个消耗 2 个同职业芯片组和 1 个芯片助剂。每个缺少的芯片助剂折算为 90
+        张采购凭证；下方同时展示成品与原料需求，不会生成芯片合成任务。
+      </n-alert>
       <div class="material-grid">
         <div v-for="material in summary.materials" :key="material.id" class="material-row">
-          <n-avatar :src="'/depot/' + material.name + '.webp'" :size="28" :bordered="false" />
+          <n-avatar
+            :src="'/depot/' + (material.id === 'growth_exp' ? 'EXP' : material.name) + '.webp'"
+            :size="28"
+            :bordered="false"
+          />
           <div>
             <div>{{ material.name }}</div>
             <n-text :type="materialQuantityType(material)">
@@ -38,7 +49,13 @@
             <n-text depth="3" class="inventory-hint">{{ group.label }}</n-text>
             <div class="material-grid">
               <div v-for="material in group.materials" :key="material.id" class="material-row">
-                <n-avatar :src="'/depot/' + material.name + '.webp'" :size="24" :bordered="false" />
+                <n-avatar
+                  :src="
+                    '/depot/' + (material.id === 'growth_exp' ? 'EXP' : material.name) + '.webp'
+                  "
+                  :size="24"
+                  :bordered="false"
+                />
                 <div>
                   <div>{{ material.name }}</div>
                   <n-text :type="materialQuantityType(material)">
@@ -100,6 +117,10 @@ const otherMissing = computed(() => props.summary?.missing.filter((item) => !ite
 .inventory-hint {
   display: block;
   margin: 8px 0;
+  font-size: 12px;
+}
+.chip-hint {
+  margin: 12px 0;
   font-size: 12px;
 }
 .material-grid {

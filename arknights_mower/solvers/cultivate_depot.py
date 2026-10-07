@@ -59,6 +59,19 @@ class cultivate:
 
                 # web 线程（views/mastery.py 刷新）与调度线程共用本写点，原子写防撕裂
                 atomic_write(self.record_path, dump)
+                from arknights_mower.utils.growth import save_statistics
+                from arknights_mower.utils.log import logger
+                from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+                try:
+                    save_statistics(
+                        resp,
+                        self.record_path.with_name("growth_history.json"),
+                        observed_at,
+                        get_skill_data(),
+                    )
+                except (OSError, ValueError, KeyError):
+                    logger.exception("养成统计缓存保存失败")
                 if items is not None:
                     from arknights_mower.solvers.record import save_inventory_counts
                     from arknights_mower.utils.depot import cloud_inventory_snapshot

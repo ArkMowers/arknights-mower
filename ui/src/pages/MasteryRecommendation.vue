@@ -1,14 +1,17 @@
 <template>
-  <div class="home-container">
+  <div class="home-container growth-page" :style="{ color: theme.textColor1 }">
     <div class="page-header">
-      <h1 class="page-title">自动专精</h1>
+      <div>
+        <h1 class="page-title">养成规划</h1>
+        <n-text depth="3" class="page-subtitle">选定目标，准备材料，逐位完成养成</n-text>
+      </div>
       <n-space align="center" :size="8">
         <n-button size="small" @click="openPlanModal">
           <template #icon><n-icon :component="ListIcon" /></template>
-          专精计划
+          我的养成计划
           <n-badge
-            v-if="planEntries.length"
-            :value="planEntries.length"
+            v-if="totalGoalCount"
+            :value="totalGoalCount"
             :max="99"
             style="margin-left: 4px"
           />
@@ -21,9 +24,15 @@
           <template #icon><n-icon :component="SettingsIcon" /></template>
           加工站干员设置
         </n-button>
-        <n-button size="small" type="warning" @click="autoWorkshop" :loading="workshopLoading">
+        <n-button
+          size="small"
+          type="warning"
+          @click="autoWorkshop"
+          :loading="workshopLoading"
+          :disabled="!totalGoalCount || store.loading"
+        >
           <template #icon><n-icon :component="HammerIcon" /></template>
-          自动合成配置
+          生成缺失材料合成任务
         </n-button>
         <n-button type="primary" size="small" @click="fetchCultivate" :loading="store.loading">
           <template #icon><n-icon :component="RefreshIcon" /></template>
@@ -35,6 +44,8 @@
       </n-space>
     </div>
 
+    <GrowthStatistics :statistics="store.statistics" :history="store.history" />
+
     <div
       class="mastery-global-switch"
       style="display: flex; align-items: center; gap: 8px; margin-top: 8px"
@@ -42,14 +53,14 @@
       <n-switch v-model:value="configStore.enable_mastery" size="small" />
       <n-text strong>全自动专精</n-text>
       <n-text depth="3" style="font-size: 12px"
-        >关闭后暂停专精自动化（训练室动作/通知/守卫），保留仓库材料扫描</n-text
+        >仅控制训练执行；精英化、基础技能升级与模组开启需要手动完成后同步</n-text
       >
     </div>
 
     <n-space style="margin-top: 8px" :size="8" align="center" wrap>
       <n-input
         v-model:value="searchQuery"
-        placeholder="搜索干员名称"
+        placeholder="搜索干员 / 拼音"
         clearable
         style="width: 200px"
         size="small"
@@ -80,11 +91,55 @@
         size="small"
         style="min-width: 100px"
       />
+      <n-select
+        v-model:value="filterElite"
+        :options="eliteOptions"
+        multiple
+        clearable
+        placeholder="精英阶段"
+        size="small"
+        style="min-width: 150px"
+      />
+      <n-select
+        v-model:value="filterGoal"
+        :options="goalOptions"
+        size="small"
+        style="min-width: 160px"
+      />
       <n-checkbox v-model:checked="showOnlyPlanned">只看计划</n-checkbox>
       <n-checkbox v-model:checked="filterAchievable">材料充足或可合成</n-checkbox>
     </n-space>
 
-    <n-divider />
+    <n-space justify="space-between" align="center" class="filter-summary">
+      <n-text depth="3"
+        >显示 {{ displayList.length }} / {{ store.recommendations.length }} 位干员</n-text
+      >
+      <n-button text @click="resetFilters">重置筛选</n-button>
+    </n-space>
+
+    <n-card v-if="totalGoalCount" size="small" class="materials-overview">
+      <n-space justify="end" style="margin-bottom: 12px" v-if="hasChipShortage">
+        <n-button
+          :loading="chipFarmingLoading"
+          :disabled="materialsLoading"
+          @click="configureChipFarming"
+          >一键设置芯片 / 采购凭证刷取</n-button
+        >
+      </n-space>
+      <n-spin :show="materialsLoading">
+        <n-alert v-if="materialsError" type="warning">{{ materialsError }}</n-alert>
+        <MasteryMaterials
+          v-else
+          :summary="planMaterials"
+          :missing-skills="missingPlanSkills"
+          expand-crafting
+          title="养成材料总览"
+        />
+      </n-spin>
+      <n-text depth="3" class="overview-note"
+        >已扣除现有库存；同一干员的精英化与基础技能费用只计一次。芯片、龙门币、经验和模组任务需另行准备。</n-text
+      >
+    </n-card>
 
     <n-text
       v-if="store.cultivateMsg"
@@ -111,21 +166,8 @@
     <n-empty v-else-if="displayList.length === 0" :description="emptyText" />
 
     <div v-else class="mastery-list">
-      <n-card v-if="planEntries.length" size="small" style="margin-bottom: 12px">
-        <n-spin :show="materialsLoading">
-          <n-alert v-if="materialsError" type="warning">{{ materialsError }}</n-alert>
-          <MasteryMaterials
-            v-else
-            :summary="planMaterials"
-            :missing-skills="missingPlanSkills"
-            expand-crafting
-            title="计划剩余总材料消耗"
-          />
-        </n-spin>
-      </n-card>
-
       <n-collapse accordion>
-        <n-collapse-item v-for="op in displayList" :key="op.char_id">
+        <n-collapse-item v-for="op in displayList" :key="op.char_id" :name="op.char_id">
           <template #header>
             <n-space align="center" :size="8">
               <n-avatar
@@ -142,7 +184,7 @@
             <n-space :size="4">
               <n-tag :bordered="false" size="small">{{ professionName(op.profession) }}</n-tag>
               <n-tag :bordered="false" size="small">E{{ op.elite }} Lv{{ op.level }}</n-tag>
-              <n-tag v-if="hasPlannedSkill(op)" type="success" :bordered="false" size="small"
+              <n-tag v-if="hasPlannedGoal(op)" type="success" :bordered="false" size="small"
                 >计划中</n-tag
               >
               <n-button
@@ -150,13 +192,56 @@
                 quaternary
                 type="warning"
                 @click.stop="addAllToPlan(op)"
-                :disabled="!!op.mastery_error"
-                v-if="!allPlanned(op)"
-                >全加计划</n-button
+                :disabled="!!op.material_error"
+                v-if="op.recommendations.length && !allPlanned(op)"
+                >全部技能加入计划</n-button
               >
             </n-space>
           </template>
 
+          <n-alert
+            v-if="op.mastery_error && op.recommendations.length"
+            type="info"
+            :bordered="false"
+            class="prerequisite-notice"
+          >
+            {{ op.mastery_error }}
+          </n-alert>
+          <n-alert v-if="op.material_error" type="warning">{{ op.material_error }}</n-alert>
+          <n-card v-if="op.max_level" size="small" class="level-card" title="等级与精英化">
+            <div v-for="choice in levelChoices(op)" :key="choice.key" class="promotion-row">
+              <n-checkbox
+                :checked="levelGoalFor(op) === choice.key"
+                :disabled="
+                  goalSaving ||
+                  (!choice.summary && levelGoalFor(op) !== choice.key) ||
+                  isLevelBelowPrerequisite(op, choice.key)
+                "
+                @update:checked="(value) => toggleLevelGoal(op, choice.key, value)"
+                >{{ choice.label }}</n-checkbox
+              >
+              <n-text v-if="!choice.summary" depth="3">已达成</n-text>
+            </div>
+            <n-text depth="3" class="overview-note"
+              >三个等级目标互斥；专精和模组自动选择尚未满足的最低前置，更高目标优先。</n-text
+            >
+            <MasteryMaterials
+              v-if="levelSummary(op)"
+              :summary="levelSummary(op)"
+              title="等级与精英化材料"
+            />
+          </n-card>
+          <n-card
+            v-if="op.basic_skill_summary"
+            size="small"
+            class="level-card"
+            :title="`基础技能 ${op.main_skill_level} → 7 级`"
+          >
+            <n-text depth="3"
+              >选择专精后自动计入计划，同一干员的基础技能材料只计算一次。升级完成并同步后才执行专精。</n-text
+            >
+            <MasteryMaterials :summary="op.basic_skill_summary" title="基础技能升级材料" />
+          </n-card>
           <div v-for="rec in visibleRecs(op)" :key="rec.skill_index" class="rec-item">
             <n-card size="small">
               <template #header>
@@ -164,28 +249,40 @@
                   <n-space align="center" :size="8">
                     <n-text strong>{{ rec.skill_name }}</n-text>
                     <n-text depth="3" style="font-size: 12px"
-                      >{{ masteryLevelLabel(op.main_skill_level, rec.current_level) }} →
-                      专三</n-text
+                      >{{ masteryLevelLabel(op.main_skill_level, rec.current_level) }} → 专{{
+                        rec.target_level
+                      }}</n-text
                     >
                   </n-space>
-                  <n-space :size="4">
-                    <n-tag :type="materialStatusType(rec.material_summary)" size="small">
-                      {{ materialStatus(rec.material_summary) }}
+                  <n-space :size="8" align="center">
+                    <n-select
+                      :value="rec.target_level"
+                      :options="targetOptions(rec)"
+                      :disabled="isTargetLocked(op, rec) || targetSaving"
+                      @update:value="(value) => changeTarget(op, rec, value)"
+                      size="small"
+                      style="width: 104px"
+                      aria-label="目标专精等级"
+                    />
+                    <n-tag :type="materialStatusType(rec.skill_material_summary)" size="small">
+                      {{ materialStatus(rec.skill_material_summary) }}
                     </n-tag>
                     <n-button
                       size="tiny"
                       :type="isSkillPlanned(op.char_id, rec.skill_index) ? 'success' : 'default'"
                       @click.stop="toggleSkillPlan(op, rec)"
-                      :disabled="!!op.mastery_error && !isSkillPlanned(op.char_id, rec.skill_index)"
+                      :disabled="
+                        !!op.material_error && !isSkillPlanned(op.char_id, rec.skill_index)
+                      "
                     >
-                      {{ isSkillPlanned(op.char_id, rec.skill_index) ? '已计划' : '加计划' }}
+                      {{ isSkillPlanned(op.char_id, rec.skill_index) ? '移出计划' : '加入计划' }}
                     </n-button>
                     <n-button
                       type="primary"
                       size="tiny"
-                      :disabled="!!op.mastery_error"
-                      @click.stop="confirmSkill(op, rec)"
-                      >一键专精</n-button
+                      :disabled="!!op.mastery_error || startingMastery"
+                      @click.stop="insertMasteryTask(op, rec)"
+                      >一键插入专精任务</n-button
                     >
                     <n-button
                       v-if="planStatus[planKey(op.char_id, rec.skill_index)]?.id"
@@ -197,56 +294,62 @@
                 </n-space>
               </template>
               <n-space vertical :size="4">
-                <n-text v-if="op.mastery_error" type="warning">{{ op.mastery_error }}</n-text>
                 <n-text depth="2"
                   >总训练时间: {{ formatTime(rec.total_time) }} |
                   {{ rec.remaining_levels }}级专精</n-text
                 >
-                <MasteryMaterials :summary="rec.material_summary" />
+                <MasteryMaterials :summary="rec.skill_material_summary" title="技能专精材料" />
               </n-space>
             </n-card>
           </div>
+          <section v-if="op.modules?.length" class="module-section">
+            <h3>模组养成 · {{ op.modules.length }}</h3>
+            <n-text depth="3"
+              >默认规划至满级，可选择目标等级；信赖与解锁任务仍需在游戏中完成。</n-text
+            >
+            <div v-for="module in visibleModules(op)" :key="module.id" class="module-row">
+              <div class="module-heading">
+                <n-checkbox
+                  :checked="isGoalPlanned(op.char_id, module.id)"
+                  :disabled="
+                    goalSaving ||
+                    (module.current_level >= module.max_level &&
+                      !isGoalPlanned(op.char_id, module.id))
+                  "
+                  @update:checked="(value) => toggleGoal(op, module.id, value)"
+                >
+                  <n-text strong>{{ module.type }} · {{ module.name }}</n-text>
+                </n-checkbox>
+                <n-select
+                  v-if="module.current_level < module.max_level"
+                  :value="moduleTarget(op, module)"
+                  :options="moduleTargetOptions(module)"
+                  :disabled="goalSaving"
+                  style="width: 135px"
+                  @update:value="(value) => changeModuleTarget(op, module, value)"
+                />
+                <n-tag size="small" :type="module.current_level ? 'success' : 'default'">{{
+                  module.current_level
+                    ? `已开启 · ${module.current_level} 级`
+                    : `精${module.elite} ${module.level} 级开启`
+                }}</n-tag>
+              </div>
+              <n-alert v-if="module.material_error" type="warning">{{
+                module.material_error
+              }}</n-alert>
+              <MasteryMaterials
+                v-else-if="module.current_level < module.max_level"
+                :summary="moduleSummary(op, module).opening_summary"
+                title="模组升级材料"
+              />
+            </div>
+          </section>
+          <n-text v-if="!op.recommendations.length && !op.modules?.length" depth="3"
+            >该干员的技能已全部专三</n-text
+          >
         </n-collapse-item>
       </n-collapse>
     </div>
-
-    <!-- 确认专精 -->
-    <n-modal
-      v-model:show="showConfirm"
-      preset="card"
-      title="确认专精任务"
-      style="width: min(560px, 95vw)"
-      :mask-closable="false"
-    >
-      <n-space vertical>
-        <n-text
-          >干员: <n-text strong>{{ cd.op?.name }}</n-text> |
-          <n-tag size="small">{{ professionName(cd.op?.profession) }}</n-tag></n-text
-        >
-        <n-text
-          >技能: <n-text strong>{{ cd.rec?.skill_name }}</n-text> → 专精3级 |
-          {{ formatTime(cd.rec?.total_time || 0) }}</n-text
-        >
-        <n-text v-if="workshopTrainingWarning(cd.op?.name)" type="warning">{{
-          workshopTrainingWarning(cd.op?.name)
-        }}</n-text>
-        <n-divider />
-        <n-text depth="2"
-          >将根据已拥有干员和排班表自动生成协助方案，添加后可通过「协助方案」查看或修改。</n-text
-        >
-        <n-text v-if="trainingWarning(cd.op?.name)" type="warning">{{
-          trainingWarning(cd.op?.name)
-        }}</n-text>
-        <n-divider />
-        <MasteryMaterials :summary="cd.rec?.material_summary" />
-      </n-space>
-      <template #footer>
-        <n-space justify="end">
-          <n-button @click="showConfirm = false">取消</n-button>
-          <n-button type="primary" @click="doAddTask">确认添加任务</n-button>
-        </n-space>
-      </template>
-    </n-modal>
 
     <MasterySupports
       v-model:show="showSupports"
@@ -411,80 +514,86 @@
     <n-modal
       v-model:show="showPlan"
       preset="card"
-      title="专精计划"
-      style="width: min(600px, 95vw)"
+      title="我的养成计划"
+      style="width: min(760px, 95vw)"
       content-style="max-height: 75vh; overflow-y: auto"
       :mask-closable="false"
       @update:show="onPlanModalShow"
     >
-      <n-space vertical>
-        <n-input
-          v-model:value="planSearch"
-          placeholder="搜索干员"
-          clearable
-          size="small"
-          style="margin: 2px 0"
-        />
-        <n-button size="small" :disabled="planEntries.length < 2" @click="interleavePlanEntries">
-          按职业交错排序
-        </n-button>
-        <draggable v-model="sortablePlanEntries" item-key="key" handle=".drag-handle">
-          <template #item="{ element: e }">
-            <n-tag
-              closable
-              size="small"
-              :type="getStatusType(e.status)"
-              @close="removePlanEntry(e)"
-              style="margin: 2px 4px; cursor: move"
-              class="drag-handle"
-            >
-              {{ professionName(e.profession) }} · {{ e.name }} {{ e.skill_name }}
-              <template v-if="e.status && e.status !== 'idle'">
-                ({{ getStatusLabel(e.status) }}{{ e.failed_reason ? '：' + e.failed_reason : '' }})
-              </template>
-            </n-tag>
+      <n-space vertical :size="16">
+        <n-text depth="3"
+          >拖动调整专精优先级。合成会集中准备同一干员的技能与模组材料；未满足训练条件的计划保留等待。</n-text
+        >
+        <n-space justify="space-between" align="center">
+          <n-input
+            v-model:value="planSearch"
+            placeholder="查找计划中的干员"
+            clearable
+            style="width: 220px"
+          />
+          <n-button :disabled="planEntries.length < 2" @click="interleavePlanEntries"
+            >按职业整理顺序</n-button
+          >
+        </n-space>
+        <n-empty v-if="!totalGoalCount" description="还没有养成目标" class="plan-empty">
+          <template #extra>
+            <n-text depth="3">在干员卡片中选择技能目标或勾选模组，即可加入计划。</n-text>
+            <div style="margin-top: 16px">
+              <n-button type="primary" @click="browseOperators">去选择干员</n-button>
+            </div>
+          </template>
+        </n-empty>
+        <draggable
+          v-model="sortablePlanEntries"
+          item-key="key"
+          handle=".drag-handle"
+          :disabled="!!planSearch"
+        >
+          <template #item="{ element: e, index }">
+            <div v-show="matchesSearch(e.name, planSearch)" class="plan-entry">
+              <span class="drag-handle" aria-label="拖动排序">⠿</span>
+              <span class="plan-position">{{ index + 1 }}</span>
+              <n-avatar :src="'/avatar/' + e.name + '.webp'" :size="36" round />
+              <div class="plan-entry-description">
+                <n-text strong
+                  >{{ e.name }} <n-text depth="3">· {{ e.skill_name }}</n-text></n-text
+                >
+                <n-text depth="3" class="plan-entry-detail"
+                  >目标专{{ e.target_level }} ·
+                  {{ e.requirement || getStatusLabel(e.status) }}</n-text
+                >
+              </div>
+              <n-button quaternary @click="removePlanEntry(e)">移除</n-button>
+            </div>
           </template>
         </draggable>
-        <n-text v-if="!planEntries.length" depth="3">未添加计划</n-text>
-        <n-divider />
-        <n-scrollbar style="max-height: 50vh">
-          <div v-for="op in filteredPlanOperators" :key="op.char_id" class="plan-op-row">
-            <n-space align="center" :size="4">
-              <n-avatar
-                :src="'/avatar/' + op.name + '.webp'"
-                :size="22"
-                round
-                fallback-src="/avatar/阿米娅.webp"
-              />
-              <n-text strong style="font-size: 13px">{{ op.name }}</n-text>
-              <n-text depth="3" style="font-size: 11px">{{ op.rarity }}★</n-text>
-              <n-button
-                size="tiny"
-                quaternary
-                :disabled="!!op.mastery_error"
-                @click="addAllToPlan(op, true)"
-                >全加</n-button
-              >
-            </n-space>
-            <n-space :size="4" style="margin-left: 8px">
-              <n-button
-                v-for="rec in op.recommendations"
-                :key="rec.skill_index"
-                size="tiny"
-                :type="isSkillPlanned(op.char_id, rec.skill_index) ? 'success' : 'default'"
-                @click="toggleSkillPlan(op, rec, true)"
-                :disabled="!!op.mastery_error && !isSkillPlanned(op.char_id, rec.skill_index)"
-              >
-                {{ rec.skill_name }}
-              </n-button>
-            </n-space>
+        <template v-if="growthGoalEntries.length">
+          <n-text strong>精英化与模组</n-text>
+          <div
+            v-for="entry in growthGoalEntries.filter(
+              (e) => matchesSearch(e.name, planSearch) && !removedGoals.has(e.key)
+            )"
+            :key="entry.key"
+            class="plan-entry"
+          >
+            <n-avatar :src="'/avatar/' + entry.name + '.webp'" :size="36" round />
+            <div class="plan-entry-description">
+              <n-text strong>{{ entry.name }}</n-text
+              ><n-text depth="3">{{ entry.label }}</n-text>
+            </div>
+            <n-button quaternary @click="removedGoals.add(entry.key)">移除</n-button>
           </div>
-        </n-scrollbar>
+        </template>
       </n-space>
       <template #footer>
-        <n-space justify="space-between">
-          <n-button @click="clearPlan" size="small">清空</n-button>
-          <n-button type="primary" @click="savePlanFn" size="small">保存</n-button>
+        <n-space justify="space-between" align="center">
+          <n-button :disabled="!totalGoalCount" @click="clearAllGoals">清空计划</n-button>
+          <n-space
+            ><n-button @click="cancelPlanChanges">取消</n-button
+            ><n-button type="primary" :loading="planSaving" @click="savePlanFn"
+              >保存变更</n-button
+            ></n-space
+          >
         </n-space>
       </template>
     </n-modal>
@@ -505,7 +614,7 @@
         <n-text depth="3">
           一键设置先同步干员数据，再按最新 BOX
           填入已拥有、已解锁技能且副产品概率加成达到所设下限的干员，可继续手动增删。
-          材料专属干员仅分配符合条件的材料，相关低阶材料也会生成合成配置。
+          材料专属干员仅分配符合条件的缺失材料，相关低阶材料按缺口生成。
           主排班及全部备用排班中的主力和替换干员，出现在宿舍、加工站以外的设施时，一键设置会跳过这些干员。
         </n-text>
         <n-space align="center">
@@ -542,12 +651,12 @@
         </n-space>
         <div>
           <n-text depth="3">非 T5 材料加工干员</n-text>
-          <help-text>九色鹿使用下方独立设置中的垫刀素材。</help-text>
+          <help-text>缺口合成暂不使用需要额外垫刀的九色鹿，请同时选择其他加工干员。</help-text>
         </div>
         <slick-operator-select
           v-model="fodderOps"
           :disabled="workshopDefaultsLoading"
-          select_placeholder="选择干员（九色鹿带垫刀材料）"
+          select_placeholder="选择加工干员"
         />
         <n-text depth="3">T5 加工干员</n-text>
         <slick-operator-select
@@ -562,7 +671,7 @@
           select_placeholder="选择干员"
         />
         <n-collapse>
-          <n-collapse-item title="九色鹿垫刀素材设置" name="deer-fodder">
+          <n-collapse-item title="九色鹿垫刀素材设置（仅手动合成使用）" name="deer-fodder">
             <workshop-deer-fodder v-model="deerFodder" :disabled="workshopDefaultsLoading" />
           </n-collapse-item>
           <n-collapse-item
@@ -629,8 +738,6 @@ import {
   NCollapseItem,
   NDivider,
   NEmpty,
-  NGi,
-  NGrid,
   NIcon,
   NInput,
   NModal,
@@ -642,9 +749,9 @@ import {
   NTabPane,
   NTag,
   NText,
-  NThing,
   NDynamicInput,
-  useMessage
+  useMessage,
+  useThemeVars
 } from 'naive-ui'
 import { Settings, List } from '@vicons/carbon'
 import { Build, Refresh } from '@vicons/ionicons5'
@@ -669,6 +776,15 @@ import {
 import { render_op_label } from '@/utils/op_select'
 import { masteryLevelLabel } from '@/utils/masteryLevel'
 import { interleaveMasteryPlans } from '@/utils/masteryPlanOrder'
+import GrowthStatistics from '@/components/GrowthStatistics.vue'
+const theme = useThemeVars()
+import {
+  selectedRecommendation,
+  goalSelected,
+  levelGoals,
+  prerequisiteLevelGoal,
+  selectedLevelGoal
+} from '@/utils/growthPlanning'
 
 const ListIcon = List
 const SettingsIcon = Settings
@@ -703,6 +819,181 @@ const professionOptions = profKeys.map((p) => ({ label: p, value: p }))
 const searchQuery = ref('')
 const filterRarity = ref([])
 const filterProfession = ref([])
+const filterElite = ref([])
+const filterGoal = ref('all')
+const eliteOptions = [0, 1, 2].map((value) => ({
+  value,
+  label: ['未精英化', '精一', '精二'][value]
+}))
+const goalOptions = [
+  { value: 'all', label: '全部养成项目' },
+  { value: 'mastery', label: '有待专精技能' },
+  { value: 'max_level', label: '未满练干员' },
+  { value: 'module', label: '有待升级模组' },
+  { value: 'ready', label: '已满足专精条件' }
+]
+const targets = ref({})
+const targetSaving = ref(false)
+const goalSaving = ref(false)
+const planSaving = ref(false)
+const removedGoals = ref(new Set())
+const growthGoalEntries = computed(() =>
+  store.goals.map((goal) => {
+    const op = store.recommendations.find((op) => op.char_id === goal.char_id)
+    const module = op?.modules?.find((module) => module.id === goal.module_id)
+    return {
+      ...goal,
+      key: `${goal.char_id}:${goal.module_id}`,
+      name: op?.name || goal.char_id,
+      label:
+        goal.module_id === 'elite2_max'
+          ? `精二 ${op?.max_level || { 6: 90, 5: 80, 4: 70 }[op?.rarity] || ''} 级（满练）`
+          : goal.module_id === 'elite2_module'
+            ? `精二 ${op?.module_level || ''} 级（模组等级）`
+            : goal.module_id === 'elite2'
+              ? '精二 1 级'
+              : `${module?.type || ''} · ${module?.name || goal.module_id}（目标 ${goal.target_level || module?.max_level || 1} 级）`
+    }
+  })
+)
+const totalGoalCount = computed(() => planEntries.value.length + store.goals.length)
+const isGoalPlanned = (cid, mid) => goalSelected(store.goals, cid, mid)
+const levelGoalFor = (op) => selectedLevelGoal(op, hasPlannedSkill(op), store.goals)
+function levelChoices(op) {
+  return [
+    {
+      key: 'elite2_max',
+      label: `规划至精二 ${op.max_level} 级（满练）`,
+      summary: op.max_level_summary
+    },
+    {
+      key: 'elite2_module',
+      label: `规划至精二 ${op.module_level} 级（模组等级）`,
+      summary: op.module_level_summary
+    },
+    { key: 'elite2', label: '规划至精二 1 级', summary: op.promotion_summary }
+  ]
+}
+function levelSummary(op) {
+  return levelChoices(op).find((choice) => choice.key === levelGoalFor(op))?.summary
+}
+function isLevelBelowPrerequisite(op, key) {
+  return (
+    levelGoals.indexOf(key) <
+    levelGoals.indexOf(prerequisiteLevelGoal(op, hasPlannedSkill(op), store.goals))
+  )
+}
+async function toggleLevelGoal(op, key, selected) {
+  if (!selected && !isGoalPlanned(op.char_id, key)) {
+    message.info('此等级是已选技能或模组的最低前置；移除对应项目后会自动取消。')
+    return
+  }
+  await toggleGoal(op, key, selected)
+}
+const hasPlannedGoal = (op) =>
+  hasPlannedSkill(op) || store.goals.some((goal) => goal.char_id === op.char_id)
+function matchesSearch(name, search) {
+  return (
+    !search.trim() ||
+    name.toLowerCase().includes(search.trim().toLowerCase()) ||
+    !!pinyin_match(name, search.trim())
+  )
+}
+function resetFilters() {
+  searchQuery.value = ''
+  filterRarity.value = []
+  filterProfession.value = []
+  filterElite.value = []
+  filterGoal.value = 'all'
+  idleFilter.value = 'all'
+  showOnlyPlanned.value = false
+  filterAchievable.value = false
+}
+function browseOperators() {
+  showPlan.value = false
+  resetFilters()
+}
+function clearAllGoals() {
+  clearPlan()
+  removedGoals.value = new Set(growthGoalEntries.value.map((e) => e.key))
+}
+function targetFor(op, rec) {
+  return (
+    targets.value[planKey(op.char_id, rec.skill_index)] ||
+    planStatus.value[planKey(op.char_id, rec.skill_index)]?.target_level ||
+    3
+  )
+}
+function targetOptions(rec) {
+  return [1, 2, 3]
+    .filter((level) => level > rec.current_level)
+    .map((value) => ({ value, label: `目标专${value}` }))
+}
+function isTargetLocked(op, rec) {
+  const status = planStatus.value[planKey(op.char_id, rec.skill_index)]?.status
+  return status && !['idle', 'failed'].includes(status)
+}
+async function changeTarget(op, rec, value) {
+  const key = planKey(op.char_id, rec.skill_index)
+  targetSaving.value = true
+  try {
+    if (planStatus.value[key]?.id) {
+      await axios.patch(`${import.meta.env.VITE_HTTP_URL}/mastery-plan/target`, {
+        id: planStatus.value[key].id,
+        target_level: value
+      })
+      await refreshPlanFromServer()
+    }
+    targets.value[key] = value
+  } catch (error) {
+    message.error(error.response?.data?.error || '目标保存失败')
+  } finally {
+    targetSaving.value = false
+  }
+}
+const moduleTargets = ref({})
+function moduleTarget(op, module) {
+  return (
+    store.goals.find((goal) => goal.char_id === op.char_id && goal.module_id === module.id)
+      ?.target_level ||
+    moduleTargets.value[`${op.char_id}:${module.id}`] ||
+    module.max_level ||
+    1
+  )
+}
+function moduleTargetOptions(module) {
+  return Array.from({ length: module.max_level || 1 }, (_, i) => i + 1)
+    .filter((level) => level > module.current_level)
+    .map((level) => ({ label: `目标 ${level} 级`, value: level }))
+}
+function moduleSummary(op, module) {
+  return module.targets?.[moduleTarget(op, module)] || module
+}
+async function changeModuleTarget(op, module, value) {
+  if (isGoalPlanned(op.char_id, module.id)) {
+    await toggleGoal(op, module.id, true, value)
+  } else {
+    moduleTargets.value[`${op.char_id}:${module.id}`] = value
+  }
+}
+async function toggleGoal(op, moduleId, selected, targetLevel) {
+  goalSaving.value = true
+  try {
+    const response = await axios.post(`${import.meta.env.VITE_HTTP_URL}/growth-plan`, {
+      char_id: op.char_id,
+      module_id: moduleId,
+      selected,
+      target_level:
+        targetLevel ||
+        moduleTarget(op, op.modules?.find((m) => m.id === moduleId) || { id: moduleId })
+    })
+    store.goals = response.data.goals
+  } catch (error) {
+    message.error(error.response?.data?.error || '养成目标保存失败')
+  } finally {
+    goalSaving.value = false
+  }
+}
 const filterAchievable = ref(false)
 const showOnlyPlanned = ref(false)
 // 空闲状态三态：all=全部 idle=空闲 busy=非空闲
@@ -839,18 +1130,6 @@ function getStatusLabel(status) {
   return map[status] || status
 }
 
-function getStatusType(status) {
-  const map = {
-    idle: 'default',
-    arranging: 'info',
-    training: 'success',
-    waiting_collect: 'warning',
-    completed: 'success',
-    failed: 'error'
-  }
-  return map[status] || 'default'
-}
-
 async function warnMaterialShortage(additions) {
   const keys = [
     ...new Set([...Object.keys(plan.value).filter((key) => plan.value[key]), ...additions])
@@ -859,7 +1138,9 @@ async function warnMaterialShortage(additions) {
     const response = await axios.post(
       `${import.meta.env.VITE_HTTP_URL}/mastery-t3-summary`,
       {
-        planned_skills: keys
+        planned_skills: keys,
+        goals: store.goals,
+        targets: targets.value
       },
       { timeout: 5000 }
     )
@@ -879,10 +1160,7 @@ async function warnMaterialShortage(additions) {
 
 async function toggleSkillPlan(op, rec, draft = false) {
   const k = planKey(op.char_id, rec.skill_index)
-  if (!plan.value[k] && op.mastery_error) {
-    message.warning(op.mastery_error)
-    return
-  }
+  if (!plan.value[k] && op.mastery_error) message.info(op.mastery_error)
   if (!plan.value[k]) await warnMaterialShortage([k])
   if (!plan.value[k] && workshopTrainingWarning(op.name)) {
     message.warning(workshopTrainingWarning(op.name))
@@ -916,7 +1194,10 @@ async function toggleSkillPlan(op, rec, draft = false) {
   } else {
     // 主列表 quick-add：立即写后端
     try {
-      const body = { items: [{ name: op.name, skill_index: rec.skill_index }] }
+      const body = {
+        planning: true,
+        items: [{ name: op.name, skill_index: rec.skill_index, target_level: targetFor(op, rec) }]
+      }
       const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, body)
       const results = r.data?.results || []
       for (const warning of new Set(results.map((result) => result.warning).filter(Boolean))) {
@@ -924,8 +1205,12 @@ async function toggleSkillPlan(op, rec, draft = false) {
       }
       if (results[0]?.status === 'added') {
         plan.value[k] = true
-        // #65：target_level 由服务端默认专三（与推荐一致）
-        planStatus.value[k] = { id: results[0].id, status: 'idle', target_level: 3, priority: 0 }
+        planStatus.value[k] = {
+          id: results[0].id,
+          status: 'idle',
+          target_level: targetFor(op, rec),
+          priority: 0
+        }
         await refreshPlanFromServer()
       } else if (results[0]?.status === 'existing') {
         // 已有计划：服务端不再新建重复行，直接复用那条去派发。本地状态可能过期，
@@ -946,14 +1231,11 @@ async function toggleSkillPlan(op, rec, draft = false) {
 }
 
 async function addAllToPlan(op, draft = false) {
-  if (op.mastery_error) {
-    message.warning(op.mastery_error)
-    return
-  }
+  if (op.mastery_error) message.info(op.mastery_error)
   if (trainingWarning(op.name)) {
     message.warning(trainingWarning(op.name))
   }
-  const recs = op.recommendations
+  const recs = visibleRecs(op)
   const additions = recs
     .map((rec) => planKey(op.char_id, rec.skill_index))
     .filter((key) => !plan.value[key])
@@ -983,7 +1265,12 @@ async function addAllToPlan(op, draft = false) {
   }
   try {
     const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, {
-      items: toAdd.map((rec) => ({ name: op.name, skill_index: rec.skill_index }))
+      planning: true,
+      items: toAdd.map((rec) => ({
+        name: op.name,
+        skill_index: rec.skill_index,
+        target_level: targetFor(op, rec)
+      }))
     })
     const results = r.data?.results || []
     for (const warning of new Set(results.map((result) => result.warning).filter(Boolean))) {
@@ -996,8 +1283,12 @@ async function addAllToPlan(op, draft = false) {
       if (res.status === 'added' || res.status === 'existing') {
         const k = planKey(op.char_id, rec.skill_index)
         plan.value[k] = true
-        // #65：target_level 由服务端默认专三（与推荐一致）
-        planStatus.value[k] = { id: res.id, status: 'idle', target_level: 3, priority: 0 }
+        planStatus.value[k] = {
+          id: res.id,
+          status: 'idle',
+          target_level: targetFor(op, rec),
+          priority: 0
+        }
         if (res.status === 'existing') infos.push(res.reason || '已在计划中')
       } else if (res.status === 'insufficient' || res.status === 'deferred') {
         infos.push(`${rec.skill_index + 1}技能：${res.reason || '材料不足，暂不开始'}`)
@@ -1030,6 +1321,26 @@ function clearPlan() {
   plan.value = {}
 }
 async function savePlanFn() {
+  if (planSaving.value) return
+  planSaving.value = true
+  try {
+    await persistPlanChanges()
+  } catch (error) {
+    message.error(error.response?.data?.error || '计划保存失败，请重试')
+  } finally {
+    planSaving.value = false
+  }
+}
+async function persistPlanChanges() {
+  for (const entry of growthGoalEntries.value.filter((e) => removedGoals.value.has(e.key))) {
+    const response = await axios.post(`${import.meta.env.VITE_HTTP_URL}/growth-plan`, {
+      char_id: entry.char_id,
+      module_id: entry.module_id,
+      selected: false
+    })
+    store.goals = response.data.goals
+  }
+  removedGoals.value.clear()
   const orderedKeys = sortablePlanEntries.value.map((entry) => entry.key)
   const toAdd = []
   for (const [priority, k] of orderedKeys.entries()) {
@@ -1038,8 +1349,12 @@ async function savePlanFn() {
     const [cid, si] = parsePlanKey(k)
     const op = store.recommendations.find((o) => o.char_id === cid)
     if (op && si !== undefined) {
-      // #65：不传 target_level，服务端默认专三
-      toAdd.push({ name: op.name, skill_index: parseInt(si), priority })
+      toAdd.push({
+        name: op.name,
+        skill_index: parseInt(si),
+        priority,
+        target_level: targets.value[k] || 3
+      })
     }
   }
   // 草稿中被移除且未重新加回的计划（清空/单删/技能反选）
@@ -1071,7 +1386,10 @@ async function savePlanFn() {
   }
   if (toAdd.length) {
     // 先保存已有计划的顺序，再添加新计划；服务端立即派发时便能看到完整顺序。
-    const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, { items: toAdd })
+    const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, {
+      items: toAdd,
+      planning: true
+    })
     const results = r.data?.results || []
     for (const warning of new Set(results.map((result) => result.warning).filter(Boolean))) {
       message.warning(warning)
@@ -1127,7 +1445,14 @@ async function refreshPlanFromServer() {
 async function openPlanModal() {
   // 打开即重载：丢弃上次未保存的草稿（与路线编辑「关闭不保存即丢弃」一致）
   await refreshPlanFromServer()
+  removedGoals.value.clear()
+  planSearch.value = ''
   showPlan.value = true
+}
+
+function cancelPlanChanges() {
+  showPlan.value = false
+  onPlanModalShow(false)
 }
 
 function onPlanModalShow(show) {
@@ -1161,7 +1486,9 @@ const planEntries = computed(() => {
           profession: op.profession,
           status: info.status || 'idle',
           priority: info.priority || 0,
-          failed_reason: info.failed_reason
+          failed_reason: info.failed_reason,
+          target_level: targetFor(op, rec),
+          requirement: op.mastery_error
         })
     }
   }
@@ -1197,13 +1524,6 @@ function interleavePlanEntries() {
   sortablePlanEntries.value = interleaveMasteryPlans(sortablePlanEntries.value)
 }
 
-const filteredPlanOperators = computed(() => {
-  let list = allOperatorList.value.filter((o) => hasPlannedSkill(o))
-  const q = planSearch.value.trim().toLowerCase()
-  if (q) list = list.filter((o) => o.name.toLowerCase().includes(q))
-  return list
-})
-
 async function autoWorkshop() {
   workshopLoading.value = true
   try {
@@ -1214,7 +1534,7 @@ async function autoWorkshop() {
     })
     const ws = resp.data?.workshop_settings
     if (!ws) {
-      message.warning('生成失败')
+      message.warning(resp.data?.error || '生成失败')
       return
     }
     configStore.apply_workshop_response(resp.data)
@@ -1226,7 +1546,9 @@ async function autoWorkshop() {
 
     if (!resp.data.automatic || !ws.length) {
       message.info(
-        resp.data.restored ? '专精材料已准备完毕，已恢复手动合成配置' : '当前没有可准备的专精材料'
+        resp.data.restored
+          ? '当前可合成材料已备齐，已恢复手动合成配置'
+          : '当前缺口没有可执行的合成配方，请查看材料总览与加工干员设置'
       )
       return
     }
@@ -1237,7 +1559,11 @@ async function autoWorkshop() {
       tasks.some((t) => {
         const tType =
           typeof t.type === 'string' ? t.type : t.type?.display_value || t.type?.value || ''
-        return tType === '加工材料' && (t.meta_data === '' || t.meta_data === opName)
+        return (
+          tType === '加工材料' &&
+          t.workshop_generation === resp.data.workshop_generation &&
+          (t.meta_data === '' || t.meta_data === opName)
+        )
       })
 
     let added = []
@@ -1268,9 +1594,12 @@ async function autoWorkshop() {
     const parts = []
     if (added.length) parts.push(`已添加任务: ${added.join(', ')}`)
     if (skipped.length) parts.push(`已有任务: ${skipped.join(', ')}`)
-    message.success(`已为下一待专精技能生成合成配置${parts.length ? '，' + parts.join('；') : ''}`)
+    if (!added.length && !skipped.length) return
+    message.success(
+      `已按同一干员优先生成当前缺口的合成任务${parts.length ? '，' + parts.join('；') : ''}`
+    )
   } catch (e) {
-    message.error(`生成失败: ${e.message}`)
+    message.error(`生成失败: ${e.response?.data?.error || e.message}`)
   } finally {
     workshopLoading.value = false
   }
@@ -1492,7 +1821,6 @@ async function calculateOptimalRoutes() {
 }
 
 // ─── 显示列表 ───
-const allOperatorList = computed(() => store.recommendations)
 
 // ─── 空闲干员筛选 ───
 // 空闲 = 不在排班表（主/副表槽位 + 候补 replacement）& 不在专精路线配置（协助位 name/换人 swap_name）
@@ -1539,35 +1867,77 @@ function isIdleOperator(op) {
   return true
 }
 
-const displayList = computed(() => {
-  let list = store.recommendations
-  if (showOnlyPlanned.value) list = list.filter((op) => hasPlannedSkill(op))
-  if (idleFilter.value === 'idle') list = list.filter((op) => isIdleOperator(op))
-  if (idleFilter.value === 'busy') list = list.filter((op) => !isIdleOperator(op))
-  if (searchQuery.value.trim()) {
-    const q = searchQuery.value.trim().toLowerCase()
-    list = list.filter((op) => op.name.toLowerCase().includes(q))
-  }
-  if (filterRarity.value.length) list = list.filter((op) => filterRarity.value.includes(op.rarity))
-  if (filterProfession.value.length)
-    list = list.filter((op) => filterProfession.value.includes(profMap[op.profession]))
-  if (filterAchievable.value)
-    list = list
-      .map((op) => ({
-        ...op,
-        recommendations: op.recommendations.filter((r) => r.material_summary?.craftable)
-      }))
-      .filter((op) => op.recommendations.length > 0)
-  return list
-})
-
 function visibleRecs(op) {
+  let recs = op.recommendations.map((rec) => selectedRecommendation(rec, targetFor(op, rec)))
   if (showOnlyPlanned.value)
-    return op.recommendations.filter((r) => isSkillPlanned(op.char_id, r.skill_index))
-  return op.recommendations
+    recs = recs.filter((rec) => isSkillPlanned(op.char_id, rec.skill_index))
+  if (filterAchievable.value) recs = recs.filter((rec) => rec.material_summary?.craftable)
+  return recs
 }
+function visibleModules(op) {
+  let modules = op.modules || []
+  if (showOnlyPlanned.value)
+    modules = modules.filter((module) => isGoalPlanned(op.char_id, module.id))
+  if (filterAchievable.value)
+    modules = modules.filter((module) => moduleSummary(op, module).material_summary?.craftable)
+  return modules
+}
+const displayList = computed(() =>
+  store.recommendations.filter((op) => {
+    if (showOnlyPlanned.value && !hasPlannedGoal(op)) return false
+    if (idleFilter.value === 'idle' && !isIdleOperator(op)) return false
+    if (idleFilter.value === 'busy' && isIdleOperator(op)) return false
+    if (!matchesSearch(op.name, searchQuery.value)) return false
+    if (filterRarity.value.length && !filterRarity.value.includes(op.rarity)) return false
+    if (filterProfession.value.length && !filterProfession.value.includes(profMap[op.profession]))
+      return false
+    if (filterElite.value.length && !filterElite.value.includes(op.elite)) return false
+    if (filterGoal.value === 'max_level' && !op.max_level_summary) return false
+    if (filterGoal.value === 'mastery' && !op.recommendations.length) return false
+    if (
+      filterGoal.value === 'module' &&
+      !op.modules?.some((module) => module.current_level < module.max_level)
+    )
+      return false
+    if (filterGoal.value === 'ready' && (op.mastery_error || !op.recommendations.length))
+      return false
+    if (
+      filterAchievable.value &&
+      !visibleRecs(op).length &&
+      !visibleModules(op).some((module) => module.current_level < module.max_level) &&
+      !op.promotion_summary?.craftable &&
+      !op.max_level_summary?.craftable
+    )
+      return false
+    return true
+  })
+)
 
 const planMaterials = ref(null)
+const chipFarmingLoading = ref(false)
+const hasChipShortage = computed(() =>
+  planMaterials.value?.missing?.some(
+    (row) => (/^32[1-8][12]$/.test(row.id) || row.id === '4006') && row.count > 0
+  )
+)
+async function configureChipFarming() {
+  chipFarmingLoading.value = true
+  try {
+    await configStore.flush_config_saves()
+    const response = await axios.post(`${import.meta.env.VITE_HTTP_URL}/growth-chip-farming`)
+    await configStore.load_config()
+    const stages = response.data.stages || []
+    message.success(
+      stages.length
+        ? `已开启「${response.data.active}」的库存刷关并加入 ${stages.join('、')}；芯片仍需手动合成。`
+        : '当前芯片与采购凭证库存已满足需求'
+    )
+  } catch (error) {
+    message.error(error.response?.data?.error || '芯片刷取设置失败')
+  } finally {
+    chipFarmingLoading.value = false
+  }
+}
 const missingPlanSkills = computed(() => {
   const keys = new Set(planMaterials.value?.missing_skills || [])
   return planEntries.value.filter((entry) => keys.has(entry.key))
@@ -1580,7 +1950,7 @@ let materialTimer
 async function refreshT3Summary() {
   const request = ++materialRequest
   const keys = planEntries.value.map((entry) => entry.key)
-  if (!keys.length) {
+  if (!keys.length && !store.goals.length) {
     planMaterials.value = null
     materialsLoading.value = false
     return
@@ -1589,7 +1959,9 @@ async function refreshT3Summary() {
   materialsError.value = ''
   try {
     const response = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-t3-summary`, {
-      planned_skills: keys
+      planned_skills: keys,
+      goals: store.goals,
+      targets: targets.value
     })
     if (request !== materialRequest) return
     if (response.data.error) throw new Error(response.data.error)
@@ -1605,11 +1977,11 @@ async function refreshT3Summary() {
 }
 
 watch(
-  [plan, planStatus, () => store.recommendations],
+  [plan, planStatus, targets, () => store.goals, () => store.recommendations],
   () => {
     ++materialRequest
     clearTimeout(materialTimer)
-    materialsLoading.value = !!Object.values(plan.value).some(Boolean)
+    materialsLoading.value = totalGoalCount.value > 0
     materialTimer = setTimeout(refreshT3Summary, 200)
   },
   { deep: true }
@@ -1637,50 +2009,33 @@ async function fetchCultivate() {
   }
 }
 
-// ─── 确认 & 提交 ───
-const showConfirm = ref(false)
-const cd = reactive({ op: null, rec: null })
+// ─── 插入已确认材料的专精任务 ───
+const startingMastery = ref(false)
 
-function confirmSkill(op, rec) {
+async function insertMasteryTask(op, rec) {
+  if (startingMastery.value) return
   if (op.mastery_error) {
     message.warning(op.mastery_error)
     return
   }
-  cd.op = op
-  cd.rec = rec
-  showConfirm.value = true
-}
-
-async function doAddTask() {
-  showConfirm.value = false
-  const { op, rec } = cd
-  await warnMaterialShortage([planKey(op.char_id, rec.skill_index)])
-  if (workshopTrainingWarning(op.name)) message.warning(workshopTrainingWarning(op.name))
-  if (trainingWarning(op.name)) message.warning(trainingWarning(op.name))
+  startingMastery.value = true
   try {
-    // #71：一键专精走 DB 计划创建 API（POST /mastery-plan），不再发原始 /task「技能专精」
-    // （死流：server 只认 DB 计划）。target_level 由服务端默认专三，与确认弹窗「→ 专精3级」一致。
-    const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, {
-      items: [{ name: op.name, skill_index: rec.skill_index }]
+    const { data } = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan/start`, {
+      char_id: op.char_id,
+      skill_index: rec.skill_index,
+      target_level: rec.target_level
     })
-    const results = r.data?.results || []
-    for (const warning of new Set(results.map((result) => result.warning).filter(Boolean))) {
-      message.warning(warning)
-    }
-    if (results[0]?.status === 'added') {
-      message.success(`${op.name} ${rec.skill_name} 专精任务已添加！`)
-      await refreshPlanFromServer()
-    } else if (results[0]?.status === 'existing') {
-      // 已有计划：服务端复用那条并立即派发，不再靠新建重复行开训
-      await refreshPlanFromServer()
-      message.success(results[0]?.reason || '已在计划中，已安排立即开始')
-    } else if (results[0]?.status === 'insufficient' || results[0]?.status === 'deferred') {
-      message.warning(results[0]?.reason || '材料不足，暂不开始')
+    if (data.warning) message.warning(data.warning)
+    if (data.status === 'inserted' || data.status === 'queued') {
+      message.success(data.reason)
     } else {
-      message.warning(results[0]?.reason || '添加失败')
+      message.warning(data.reason || '任务未插入，请刷新后重试')
     }
-  } catch (e) {
-    message.error(`添加失败: ${e.message}`)
+    await refreshPlanFromServer()
+  } catch (error) {
+    message.error(error.response?.data?.reason || `插入失败: ${error.message}`)
+  } finally {
+    startingMastery.value = false
   }
 }
 
@@ -1718,12 +2073,14 @@ async function loadOperators() {
   gap: 8px;
 }
 .page-title {
-  margin: 0;
-  font-size: 20px;
+  margin: 0 0 4px;
+  font-size: 26px;
+  font-weight: 650;
+  letter-spacing: -0.5px;
 }
 .mastery-list {
   width: 100%;
-  max-width: 960px;
+  max-width: 1280px;
 }
 .mastery-route-tabs {
   /* Keep the segment capsule inside the scrolling content's coordinate space. */
@@ -1765,5 +2122,128 @@ async function loadOperators() {
   align-items: center;
   gap: 8px;
   padding: 4px 0;
+}
+.growth-page {
+  max-width: 1440px;
+  margin: 0 auto;
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+.page-subtitle {
+  font-size: 13px;
+}
+.mastery-global-switch {
+  padding: 16px 0;
+  flex-wrap: wrap;
+}
+.filter-summary {
+  margin: 16px 0;
+}
+.materials-overview {
+  margin: 16px 0 24px;
+  border-radius: 14px;
+}
+.overview-note {
+  display: block;
+  font-size: 12px;
+  margin-top: 14px;
+}
+.mastery-list :deep(.n-collapse-item__header) {
+  padding: 18px 0 !important;
+}
+.prerequisite-notice {
+  margin-bottom: 16px;
+}
+.level-card {
+  margin: 16px 0;
+  border-radius: 12px;
+}
+.promotion-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 14px 0;
+}
+.promotion-row > :last-child {
+  font-size: 12px;
+}
+.rec-item {
+  margin: 14px 0;
+}
+.rec-item :deep(.n-card) {
+  border-radius: 12px;
+}
+.module-section {
+  margin-top: 18px;
+}
+.module-row {
+  padding: 18px 0;
+}
+.module-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.plan-empty {
+  padding: 28px 0;
+  text-align: center;
+}
+.plan-entry {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 6px;
+  border-radius: 10px;
+}
+.plan-entry-description {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+.plan-entry-detail {
+  font-size: 12px;
+}
+.plan-position {
+  opacity: 0.55;
+  min-width: 18px;
+  font-size: 12px;
+}
+.drag-handle {
+  cursor: grab;
+  font-size: 22px;
+  opacity: 0.5;
+  padding: 8px;
+  touch-action: none;
+}
+.growth-page :deep(.n-button) {
+  min-height: 36px;
+}
+.growth-page :deep(.n-checkbox) {
+  padding-block: 8px;
+}
+@media (max-width: 650px) {
+  .page-header {
+    align-items: flex-start;
+    gap: 18px;
+  }
+  .plan-entry {
+    gap: 8px;
+  }
+  .page-title {
+    font-size: 23px;
+  }
+  .growth-page :deep(.n-collapse-item__header-main) {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .growth-page :deep(.n-button) {
+    min-height: 40px;
+  }
 }
 </style>

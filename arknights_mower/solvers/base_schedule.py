@@ -1073,6 +1073,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )[agent_index] = task.meta_data
         self.agent_arrange({"factory": [task.meta_data]})
         self.generate_product(task.meta_data, snapshot=snapshot)
+        if config.conf.workshop_auto_active and not snapshot.is_current():
+            # A confirmed batch advances the recipe generation. Continue with
+            # remaining mood instead of waiting for the normal fresh-task gate.
+            try_workshop_tasks(self.op_data, self.tasks, minimum_mood=0)
         return task.meta_data
 
     def plan_metadata(self):
@@ -2611,13 +2615,22 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             delta = batch_delta(current_name, current_material, batches)
                             apply_workshop_inventory(delta)
                         except Exception:
-                            invalidate_workshop_inventory([output, *costs])
+                            uncertain = [output, *costs]
+                            if current_material.get("goldCost"):
+                                uncertain.append("龙门币")
+                            invalidate_workshop_inventory(uncertain)
                             send_message(
                                 f"{agent}加工{current_name}后未能确认加工完成，"
                                 "已暂停相关材料的加工，请重新读取仓库。",
                                 level="WARNING",
                             )
                             raise
+                        if config.conf.workshop_auto_active:
+                            from arknights_mower.utils.workshop_automation import (
+                                update_workshop_config,
+                            )
+
+                            update_workshop_config()
                         logger.info(
                             f"{agent}加工{current_name}完成{batches}次，库存变化{delta}"
                         )

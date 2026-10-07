@@ -1960,7 +1960,7 @@ def next_workshop_task_time(tasks, earliest=None):
     return candidate
 
 
-def try_workshop_tasks(op_data, tasks):
+def try_workshop_tasks(op_data, tasks, *, minimum_mood=22):
     # 如果没有其他任务则进行加工站干员检查
     from arknights_mower.utils.workshop_automation import (
         restore_if_no_plans,
@@ -1990,7 +1990,7 @@ def try_workshop_tasks(op_data, tasks):
                 logger.info(f"{item.operator}加工站任务被禁用，跳过")
                 continue
             reason = workshop_operator_block_reason(
-                op_data, item.operator, tasks, minimum_mood=22
+                op_data, item.operator, tasks, minimum_mood=minimum_mood
             ) or workshop_material_block_reason(
                 item.operator, item.items, inventory_data
             )
