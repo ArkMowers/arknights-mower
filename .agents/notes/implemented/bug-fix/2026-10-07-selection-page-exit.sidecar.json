@@ -20,6 +20,8 @@
     "arknights_mower/tests/selection_page_identity_tests.py",
     "arknights_mower/tests/choose_agent_filter_tests.py",
     "arknights_mower/tests/room_retry_dispatch_tests.py",
-    "arknights_mower/tests/agent_page_search_tests.py"
+    "arknights_mower/tests/agent_page_search_tests.py",
+    "arknights_mower/tests/agent_delayed_frame_tests.py",
+    "arknights_mower/tests/low_frame_rate_tests.py"
   ]
 }

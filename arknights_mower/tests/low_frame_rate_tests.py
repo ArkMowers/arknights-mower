@@ -222,9 +222,9 @@ def test_verified_roster_does_not_reset_filter_in_either_mode(
     solver.swipe_left.assert_not_called()
     assert solver.tap.call_count == len(RESIDENTS) + 1
     assert solver.switch_arrange_order.call_count == 2
-    assert [c.kwargs["interval"] for c in solver.tap.call_args_list] == [0.5] + [
-        0.2
-    ] * len(RESIDENTS)
+    assert [c.kwargs["interval"] for c in solver.tap.call_args_list] == [
+        0.5 if enabled else 0.3
+    ] + [0.2 if enabled else 0.1] * len(RESIDENTS)
 
 
 @pytest.mark.parametrize("enabled", [False, True])
