@@ -2,7 +2,9 @@
 
 import copy
 import json
+import sqlite3
 from collections import Counter
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -11,6 +13,12 @@ import pytest
 from arknights_mower.tests.growth_planning_tests import growth_case as growth_case
 from arknights_mower.utils import config, growth, growth_order, mastery_db
 from arknights_mower.utils.growth_workshop import growth_workshop_config
+from arknights_mower.utils.mastery_db import (
+    get_all_plans as real_get_all_plans,
+)
+from arknights_mower.utils.mastery_db import (
+    reordered_plan_priorities as real_reordered_plan_priorities,
+)
 
 
 @pytest.fixture
@@ -375,6 +383,14 @@ def order_api(order_case, monkeypatch, tmp_path):
     monkeypatch.setattr(growth, "growth_resources", lambda skills: skills)
     monkeypatch.setattr(growth, "inventory_counts", lambda *args, **kwargs: case.stock)
     monkeypatch.setattr(mastery_db, "get_all_plans", lambda: case.plans)
+
+    @contextmanager
+    def unchanged_priorities(*args, **kwargs):
+        # Response/readiness tests isolate database writes; transactional API tests
+        # below replace this boundary with a real temporary SQLite database.
+        yield
+
+    monkeypatch.setattr(mastery_db, "reordered_plan_priorities", unchanged_priorities)
     monkeypatch.setattr(mastery_recommendation, "get_skill_data", lambda: case.skills)
     monkeypatch.setattr(data, "workshop_formula", case.formulas)
     monkeypatch.setattr(server.app, "token", "test-order-token", raising=False)
@@ -634,6 +650,7 @@ def test_pure_level_targets_reserve_experience_and_gold_only_once(order_case):
     case.stock.update({"growth_exp": 8900, "4001": 890})
     assert projects(case) == []
     assert [row["key"] for row in reminders(case)] == ["goal:char_test:elite2_max"]
+    assert reminders(case)[0]["reason"] == "龙门币与经验已备齐，待手动升级"
     case.box["characters"][0]["level"] = 90
     assert [row["key"] for row in reminders(case)] == ["goal:char_next:elite2_max"]
 
@@ -729,3 +746,319 @@ def test_legacy_module_goal_without_target_reminds_until_maximum_module_level(
     )
     char["equips"][0]["level"] = 3
     assert reminders(case) == []
+
+
+@pytest.fixture
+def planning_api(order_api, monkeypatch, tmp_path):
+    api = order_api
+    path = str(tmp_path / "plans.db")
+    with mastery_db._conn(path) as conn:
+        for index, plan in enumerate([*api.case.plans, api.case.plans[0]]):
+            conn.execute(
+                "INSERT INTO mastery_plan "
+                "(char_id, char_name, skill_index, skill_name, target_level, priority) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    plan["char_id"],
+                    "测试干员",
+                    plan["skill_index"],
+                    "测试技能",
+                    1,
+                    index,
+                ),
+            )
+        conn.commit()
+    monkeypatch.setattr(mastery_db, "get_all_plans", lambda: real_get_all_plans(path))
+    monkeypatch.setattr(
+        mastery_db,
+        "reordered_plan_priorities",
+        lambda order, locked: real_reordered_plan_priorities(order, locked, path),
+    )
+    api.db_path = path
+    api.case.skills["characters"]["char_test"]["profession"] = "WARRIOR"
+    return api
+
+
+def priority_rows(api):
+    with mastery_db._conn(api.db_path) as conn:
+        return [
+            tuple(row)
+            for row in conn.execute(
+                "SELECT id, char_id, skill_index, priority FROM mastery_plan ORDER BY id"
+            )
+        ]
+
+
+def test_unified_planning_list_includes_pure_levels_with_full_target_and_metadata(
+    planning_api,
+):
+    api = planning_api
+    api.case.box["characters"][0]["level"] = 1
+    api.box_path.write_text(json.dumps({"data": api.case.box}))
+    api.case.goals.append({"char_id": "char_test", "module_id": "elite2_max"})
+    state = api.client.get("/growth-crafting-order", headers=api.headers).json
+    assert len(state["planning_items"]) == len(state["items"]) + 1
+    level = state["planning_items"][-1]
+    assert level["module_id"] == "elite2_max" and level["label"] == "精二 Lv.90"
+    assert (
+        not level["crafting_required"] and level["reason"] == "纯等级提升，不需要合成"
+    )
+    skill = state["planning_items"][0]
+    assert skill["plan_id"] == 1 and skill["profession"] == "WARRIOR"
+    assert skill["crafting_required"]
+    custom = [row["key"] for row in state["planning_items"]]
+    custom.insert(0, custom.pop())
+    response = api.client.put(
+        "/growth-crafting-order", headers=api.headers, json={"order": custom}
+    )
+    assert response.status_code == 200
+    assert [row["key"] for row in response.json["planning_items"]] == custom
+    assert all(row["key"] != level["key"] for row in response.json["items"])
+    stale = api.client.put(
+        "/growth-crafting-order", headers=api.headers, json={"order": custom[1:]}
+    )
+    assert stale.status_code == 400
+
+
+def test_unified_order_commits_skill_relative_order_and_duplicate_rows_together(
+    planning_api,
+):
+    api = planning_api
+    custom = [
+        "skill:char_test:1",
+        "goal:char_test:module",
+        "skill:char_next:0",
+        "skill:char_test:0",
+    ]
+    original_goals = copy.deepcopy(api.case.goals)
+    response = api.client.put(
+        "/growth-crafting-order", headers=api.headers, json={"order": custom}
+    )
+    assert response.status_code == 200
+    assert [row["key"] for row in response.json["planning_items"]] == custom
+    assert config.conf.growth_crafting_order == custom
+    assert priority_rows(api) == [
+        (1, "char_test", 0, 2),
+        (2, "char_next", 0, 1),
+        (3, "char_test", 1, 0),
+        (4, "char_test", 0, 2),
+    ]
+    assert api.case.goals == original_goals
+    reset = api.client.delete("/growth-crafting-order", headers=api.headers)
+    assert reset.status_code == 200 and not reset.json["custom"]
+    assert [row["key"] for row in reset.json["planning_items"]] == [
+        "skill:char_test:1",
+        "skill:char_next:0",
+        "skill:char_test:0",
+        "goal:char_test:module",
+    ]
+
+
+def test_config_save_failure_rolls_back_all_sqlite_priority_updates(planning_api):
+    api = planning_api
+    original = priority_rows(api)
+    previous = config.conf
+    api.save.side_effect = OSError("disk full")
+    custom = [
+        "skill:char_test:1",
+        "goal:char_test:module",
+        "skill:char_next:0",
+        "skill:char_test:0",
+    ]
+    response = api.client.put(
+        "/growth-crafting-order", headers=api.headers, json={"order": custom}
+    )
+    assert response.status_code == 400
+    assert priority_rows(api) == original
+    assert config.conf is previous and config.conf.growth_crafting_order == []
+    api.refresh.assert_not_called()
+
+
+def test_sqlite_commit_failure_restores_saved_configuration_and_priorities(
+    planning_api, monkeypatch
+):
+    api = planning_api
+    original = priority_rows(api)
+    previous = config.conf
+    real_db = mastery_db._db
+
+    class BrokenCommit:
+        def __init__(self, conn):
+            self.conn = conn
+
+        def __getattr__(self, key):
+            return getattr(self.conn, key)
+
+        def commit(self):
+            raise sqlite3.OperationalError("commit failed")
+
+    monkeypatch.setattr(
+        mastery_db, "_db", lambda path=None: BrokenCommit(real_db(path))
+    )
+    custom = [
+        "skill:char_test:1",
+        "goal:char_test:module",
+        "skill:char_next:0",
+        "skill:char_test:0",
+    ]
+    response = api.client.put(
+        "/growth-crafting-order", headers=api.headers, json={"order": custom}
+    )
+    assert response.status_code == 400
+    assert config.conf is previous and config.conf.growth_crafting_order == []
+    assert priority_rows(api) == original
+    assert api.save.call_count == 2
+    api.refresh.assert_not_called()
+
+
+@pytest.mark.parametrize("change", ["new_skill", "training_started"])
+def test_transaction_rechecks_live_skill_membership_and_training_lock(
+    planning_api, monkeypatch, change
+):
+    api = planning_api
+    original_transaction = mastery_db.reordered_plan_priorities
+
+    def changed_before_transaction(order, locked):
+        with mastery_db._conn(api.db_path) as conn:
+            if change == "new_skill":
+                conn.execute(
+                    "INSERT INTO mastery_plan (char_id, skill_index, target_level, priority) "
+                    "VALUES ('char_next', 1, 1, 9)"
+                )
+            else:
+                conn.execute("UPDATE mastery_plan SET status='arranging' WHERE id=1")
+            conn.commit()
+        return original_transaction(order, locked)
+
+    monkeypatch.setattr(
+        mastery_db, "reordered_plan_priorities", changed_before_transaction
+    )
+    custom = [
+        "skill:char_test:1",
+        "goal:char_test:module",
+        "skill:char_next:0",
+        "skill:char_test:0",
+    ]
+    response = api.client.put(
+        "/growth-crafting-order", headers=api.headers, json={"order": custom}
+    )
+    assert response.status_code == 400 and "已变化" in response.json["error"]
+    assert config.conf.growth_crafting_order == []
+    assert [row[3] for row in priority_rows(api)[:4]] == [0, 1, 2, 3]
+    api.save.assert_not_called()
+
+
+def test_unified_order_preserves_actual_training_prefix(planning_api):
+    api = planning_api
+    with mastery_db._conn(api.db_path) as conn:
+        conn.execute("UPDATE mastery_plan SET status='arranging' WHERE id=2")
+        conn.commit()
+    custom = [
+        "skill:char_next:0",
+        "goal:char_test:module",
+        "skill:char_test:1",
+        "skill:char_test:0",
+    ]
+    response = api.client.put(
+        "/growth-crafting-order", headers=api.headers, json={"order": custom}
+    )
+    assert response.status_code == 200
+    assert response.json["planning_items"][0]["locked"]
+    assert [row[3] for row in priority_rows(api)] == [2, 0, 1, 2]
+    rejected = api.client.put(
+        "/growth-crafting-order",
+        headers=api.headers,
+        json={"order": custom[1:] + custom[:1]},
+    )
+    assert rejected.status_code == 400 and "固定" in rejected.json["error"]
+
+
+@pytest.mark.parametrize(
+    "status", ["arranging", "training", "waiting_collect", "idle", "failed"]
+)
+def test_plan_delete_atomically_rejects_training_and_confirmed_material_wait(
+    planning_api, monkeypatch, status
+):
+    from arknights_mower.views import mastery as view
+
+    api = planning_api
+    with mastery_db._conn(api.db_path) as conn:
+        conn.execute(
+            "UPDATE mastery_plan SET status=?, failed_reason='材料不足', expires_at='2030-01-01' WHERE id=1",
+            (status,),
+        )
+        conn.execute(
+            "INSERT INTO mastery_notify (notify_type, dedup_key) VALUES ('m3_collect', '1')"
+        )
+        conn.commit()
+    monkeypatch.setattr(
+        view,
+        "delete_plan",
+        lambda pid, **kwargs: mastery_db.delete_plan(pid, api.db_path, **kwargs),
+    )
+    purge = MagicMock()
+    monkeypatch.setattr(view, "_purge_plan_tasks", purge)
+    response = api.client.delete("/mastery-plan", headers=api.headers, json={"id": 1})
+    assert response.status_code == 409 and "不能删除" in response.json["error"]
+    assert mastery_db.get_plan_by_id(1, api.db_path)["status"] == status
+    with mastery_db._conn(api.db_path) as conn:
+        assert (
+            conn.execute(
+                "SELECT count(*) FROM mastery_notify WHERE dedup_key='1'"
+            ).fetchone()[0]
+            == 1
+        )
+    purge.assert_not_called()
+    api.refresh.assert_not_called()
+
+
+def test_idle_plan_delete_keeps_original_cleanup_behavior(planning_api, monkeypatch):
+    from arknights_mower.utils import workshop_automation
+    from arknights_mower.views import mastery as view
+
+    api = planning_api
+    monkeypatch.setattr(
+        view,
+        "delete_plan",
+        lambda pid, **kwargs: mastery_db.delete_plan(pid, api.db_path, **kwargs),
+    )
+    monkeypatch.setattr(workshop_automation, "restore_if_no_plans", lambda: None)
+    monkeypatch.setattr(view, "refresh_workshop_after_plan_change", api.refresh)
+    purge = MagicMock()
+    monkeypatch.setattr(view, "_purge_plan_tasks", purge)
+    response = api.client.delete("/mastery-plan", headers=api.headers, json={"id": 1})
+    assert response.status_code == 200
+    assert mastery_db.get_plan_by_id(1, api.db_path) is None
+    purge.assert_called_once_with(1)
+    api.refresh.assert_called_once()
+
+
+def test_plan_delete_locks_before_observing_training_status(planning_api, monkeypatch):
+    api = planning_api
+    original_db = mastery_db._db
+    statements = []
+
+    class ObserveConnection:
+        def __init__(self, conn):
+            self.conn = conn
+
+        def __getattr__(self, key):
+            return getattr(self.conn, key)
+
+        def execute(self, sql, *args):
+            statements.append(sql)
+            if sql.startswith("SELECT * FROM mastery_plan WHERE id="):
+                with sqlite3.connect(api.db_path, timeout=0) as racing:
+                    with pytest.raises(sqlite3.OperationalError, match="locked"):
+                        racing.execute(
+                            "UPDATE mastery_plan SET status='training' WHERE id=1"
+                        )
+            return self.conn.execute(sql, *args)
+
+    monkeypatch.setattr(
+        mastery_db, "_db", lambda path=None: ObserveConnection(original_db(path))
+    )
+    assert mastery_db.delete_plan(1, api.db_path, protect_active=True)
+    assert statements.index("BEGIN IMMEDIATE") < statements.index(
+        "SELECT * FROM mastery_plan WHERE id=?"
+    )

@@ -1,4 +1,4 @@
-"""Order crafting projects without changing the training queue or shared costs."""
+"""Unified growth ordering, training priorities and shared material budgets."""
 
 import json
 from collections import Counter
@@ -147,7 +147,7 @@ def prerequisites_ready(box, skills, project):
     return current >= (module["elite"], module["level"])
 
 
-def describe_projects(projects, skills):
+def describe_projects(projects, skills, *, planning=False):
     definitions = growth_data(skills).get("characters", {})
     result = []
     for project in projects:
@@ -164,8 +164,12 @@ def describe_projects(projects, skills):
             goal = project["goal"]
             mid = goal["module_id"]
             if mid in LEVEL_GOALS:
-                phase, _ = level_goal_targets(definition)[mid]
-                label = f"精英化至精{('零', '一', '二')[phase]} Lv.1"
+                phase, level = level_goal_targets(definition)[mid]
+                label = (
+                    f"精{('零', '一', '二')[phase]} Lv.{level}"
+                    if planning
+                    else f"精英化至精{('零', '一', '二')[phase]} Lv.1"
+                )
             elif mid == "skill7":
                 label = "基础技能升至 7 级"
             else:
@@ -184,6 +188,13 @@ def describe_projects(projects, skills):
                 },
                 "char_name": definition.get("name") or skill_def.get("name") or cid,
                 "label": label,
+                "profession": skill_def.get("profession")
+                or definition.get("profession", ""),
+                **(
+                    {"plan_id": project["plan"].get("id")}
+                    if project["kind"] == "skill"
+                    else {"module_id": project["goal"]["module_id"]}
+                ),
             }
         )
     return result
@@ -285,7 +296,7 @@ def prepared_project_reminders(
                     "locked": False,
                     "status": "ready",
                     "label": f"精{('零', '一', '二')[target[0]]} Lv.{target[1]}",
-                    "reason": "升级资源已备齐，待升级",
+                    "reason": "龙门币与经验已备齐，待手动升级",
                 }
             )
     return result
@@ -293,10 +304,10 @@ def prepared_project_reminders(
 
 def validate_order(order, projects):
     if not isinstance(order, list) or any(not isinstance(key, str) for key in order):
-        raise ValueError("合成顺序格式错误")
+        raise ValueError("养成顺序格式错误")
     keys = [project["key"] for project in projects]
     if len(order) != len(keys) or set(order) != set(keys):
-        raise ValueError("养成项目已变化，请刷新合成顺序后重试")
+        raise ValueError("养成项目已变化，请刷新养成计划后重试")
     locked = [project["key"] for project in projects if project["locked"]]
     if order[: len(locked)] != locked:
         raise ValueError("正在训练或等待继续的计划固定在最前，不能调整")
@@ -320,7 +331,12 @@ def crafting_order_state():
     order = config.conf.growth_crafting_order
     plans, goals = get_all_plans(), load_goals()
     if not plans and not goals:
-        return {"items": [], "prepared_items": [], "custom": bool(order)}
+        return {
+            "items": [],
+            "planning_items": [],
+            "prepared_items": [],
+            "custom": bool(order),
+        }
     box = json.loads(get_path("@app/tmp/cultivate.json").read_text("utf-8"))["data"]
     skills = growth_resources(get_skill_data())
     projects = crafting_projects(plans, goals, order, box=box, skills=skills)
@@ -334,10 +350,50 @@ def crafting_order_state():
         workshop_formula,
         blocked,
     )
+    crafting_states = {state["key"]: state for state in states}
+    planning_states = []
+    for project in crafting_projects(plans, goals, order):
+        state = crafting_states.get(project["key"])
+        if state is None:
+            state = {
+                **project,
+                "status": "manual",
+                "reason": "纯等级提升，不需要合成",
+            }
+        planning_states.append(state)
+    planning_items = describe_projects(planning_states, skills, planning=True)
+    for item in planning_items:
+        item["crafting_required"] = item["key"] in crafting_states
     return {
         "items": describe_projects(states, skills),
+        "planning_items": planning_items,
         "prepared_items": prepared_project_reminders(
             box, skills, states, entries, goals, inventory, workshop_formula, blocked
         ),
         "custom": bool(order),
     }
+
+
+def save_planning_order(order, projects):
+    """Preserve the previous configuration if either durable order write fails."""
+    from arknights_mower.utils import config
+    from arknights_mower.utils.mastery_db import reordered_plan_priorities
+    from arknights_mower.utils.workshop_config import save_conf
+
+    previous = config.conf
+    conf = previous.model_copy(deep=True)
+    conf.growth_crafting_order = order
+    if not order:
+        save_conf(conf)
+        return
+    skill_keys = {row["key"] for row in projects if row["kind"] == "skill"}
+    locked_keys = {row["key"] for row in projects if row["locked"]}
+    try:
+        with reordered_plan_priorities(
+            [key for key in order if key in skill_keys], locked_keys
+        ):
+            save_conf(conf)
+    except Exception:
+        if config.conf is not previous:
+            save_conf(previous)
+        raise

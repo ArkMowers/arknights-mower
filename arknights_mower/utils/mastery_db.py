@@ -549,6 +549,43 @@ def update_plan_priority(
         return False
 
 
+@contextmanager
+def reordered_plan_priorities(skill_order, locked_keys, path=None):
+    """Commit all skill priorities together with the caller's configuration save."""
+    try:
+        with _conn(path) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            plans = [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT * FROM mastery_plan WHERE status NOT IN ('completed', 'failed') "
+                    "ORDER BY priority, id"
+                )
+            ]
+            keys = {f"skill:{p['char_id']}:{p['skill_index']}" for p in plans}
+            waiting = get_material_waiting_plan(plans)
+            protected = {
+                f"skill:{p['char_id']}:{p['skill_index']}"
+                for p in plans
+                if p["status"] in ("arranging", "training", "waiting_collect")
+                or p is waiting
+            }
+            if keys != set(skill_order) or protected != set(locked_keys):
+                raise ValueError("专精计划已变化，请刷新养成计划后重试")
+            ranks = {key: index for index, key in enumerate(skill_order)}
+            conn.executemany(
+                "UPDATE mastery_plan SET priority=? WHERE id=?",
+                [
+                    (ranks[f"skill:{p['char_id']}:{p['skill_index']}"], p["id"])
+                    for p in plans
+                ],
+            )
+            yield
+            conn.commit()
+    except sqlite3.Error as exc:
+        raise OSError("专精顺序保存失败") from exc
+
+
 def auto_interleave_new_plans(
     new_plan_ids: list[int],
     path: Optional[str] = None,
@@ -593,9 +630,22 @@ def auto_interleave_new_plans(
         return False
 
 
-def delete_plan(plan_id: int, path: Optional[str] = None) -> bool:
+def delete_plan(
+    plan_id: int, path: Optional[str] = None, *, protect_active=False
+) -> bool:
     try:
         with _conn(path) as conn:
+            if protect_active:
+                conn.execute("BEGIN IMMEDIATE")
+                row = conn.execute(
+                    "SELECT * FROM mastery_plan WHERE id=?", (plan_id,)
+                ).fetchone()
+                plan = dict(row) if row else None
+                if plan and (
+                    plan["status"] in ("arranging", "training", "waiting_collect")
+                    or get_material_waiting_plan([plan]) is not None
+                ):
+                    raise ValueError("正在训练或等待继续的计划不能删除")
             conn.execute("DELETE FROM mastery_plan WHERE id=?", (plan_id,))
             # #97：删计划顺带清通知去重（②③⑥⑦⑧ 用 str(plan_id) 作 dedup_key）——
             # 避免孤儿 dedup 残留；重加同计划（新 id）本就会重新通知，这里是卫生清理。
@@ -610,6 +660,8 @@ def delete_plan(plan_id: int, path: Optional[str] = None) -> bool:
             )
             conn.commit()
             return True
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"delete_plan failed: {e}")
         return False

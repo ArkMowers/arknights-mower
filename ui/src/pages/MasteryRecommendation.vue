@@ -6,21 +6,16 @@
         <n-text depth="3" class="page-subtitle">选定目标，准备材料，逐位完成养成</n-text>
       </div>
       <n-space align="center" :size="8">
-        <n-button size="small" @click="openPlanModal">
-          <template #icon><n-icon :component="ListIcon" /></template>
-          我的养成计划
-          <n-badge
-            v-if="totalGoalCount"
-            :value="totalGoalCount"
-            :max="99"
-            style="margin-left: 4px"
-          />
-        </n-button>
+        <GrowthCraftingOrder
+          :revision="craftingOrderRevision"
+          :recommendations="store.recommendations"
+          :count="totalGoalCount"
+          @changed="refreshGrowthPlan"
+        />
         <n-button size="small" @click="openSettings">
           <template #icon><n-icon :component="SettingsIcon" /></template>
           通用专精路线预览
         </n-button>
-        <GrowthCraftingOrder :revision="craftingOrderRevision" @changed="refreshT3Summary" />
         <n-button size="small" @click="openWorkshopSettings">
           <template #icon><n-icon :component="SettingsIcon" /></template>
           加工站干员设置
@@ -600,94 +595,6 @@
       </template>
     </n-modal>
 
-    <!-- 专精计划 -->
-    <n-modal
-      v-model:show="showPlan"
-      preset="card"
-      title="我的养成计划"
-      style="width: min(760px, 95vw)"
-      content-style="max-height: 75vh; overflow-y: auto"
-      :mask-closable="false"
-      @update:show="onPlanModalShow"
-    >
-      <n-space vertical :size="16">
-        <n-text depth="3"
-          >拖动调整专精执行优先级。默认优先合成下一个专精技能的材料，可在「合成顺序」中单独调整；未满足训练条件的计划保留等待。</n-text
-        >
-        <n-space justify="space-between" align="center">
-          <n-input
-            v-model:value="planSearch"
-            placeholder="查找计划中的干员"
-            clearable
-            style="width: 220px"
-          />
-          <n-button :disabled="planEntries.length < 2" @click="interleavePlanEntries"
-            >按职业整理顺序</n-button
-          >
-        </n-space>
-        <n-empty v-if="!totalGoalCount" description="还没有养成目标" class="plan-empty">
-          <template #extra>
-            <n-text depth="3">在干员卡片中选择技能目标或勾选模组，即可加入计划。</n-text>
-            <div style="margin-top: 16px">
-              <n-button type="primary" @click="browseOperators">去选择干员</n-button>
-            </div>
-          </template>
-        </n-empty>
-        <draggable
-          v-model="sortablePlanEntries"
-          item-key="key"
-          handle=".drag-handle"
-          :disabled="!!planSearch"
-        >
-          <template #item="{ element: e, index }">
-            <div v-show="matchesSearch(e.name, planSearch)" class="plan-entry">
-              <span class="drag-handle" aria-label="拖动排序">⠿</span>
-              <span class="plan-position">{{ index + 1 }}</span>
-              <n-avatar :src="'/avatar/' + e.name + '.webp'" :size="36" round />
-              <div class="plan-entry-description">
-                <n-text strong
-                  >{{ e.name }} <n-text depth="3">· {{ e.skill_name }}</n-text></n-text
-                >
-                <n-text depth="3" class="plan-entry-detail"
-                  >目标专{{ e.target_level }} ·
-                  {{ e.requirement || getStatusLabel(e.status) }}</n-text
-                >
-              </div>
-              <n-button quaternary @click="removePlanEntry(e)">移除</n-button>
-            </div>
-          </template>
-        </draggable>
-        <template v-if="growthGoalEntries.length">
-          <n-text strong>精英化与模组</n-text>
-          <div
-            v-for="entry in growthGoalEntries.filter(
-              (e) => matchesSearch(e.name, planSearch) && !removedGoals.has(e.key)
-            )"
-            :key="entry.key"
-            class="plan-entry"
-          >
-            <n-avatar :src="'/avatar/' + entry.name + '.webp'" :size="36" round />
-            <div class="plan-entry-description">
-              <n-text strong>{{ entry.name }}</n-text
-              ><n-text depth="3">{{ entry.label }}</n-text>
-            </div>
-            <n-button quaternary @click="removedGoals.add(entry.key)">移除</n-button>
-          </div>
-        </template>
-      </n-space>
-      <template #footer>
-        <n-space justify="space-between" align="center">
-          <n-button :disabled="!totalGoalCount" @click="clearAllGoals">清空计划</n-button>
-          <n-space
-            ><n-button @click="cancelPlanChanges">取消</n-button
-            ><n-button type="primary" :loading="planSaving" @click="savePlanFn"
-              >保存变更</n-button
-            ></n-space
-          >
-        </n-space>
-      </template>
-    </n-modal>
-
     <!-- 加工站干员设置 -->
     <n-modal
       v-model:show="showWorkshopSettings"
@@ -824,7 +731,6 @@ import GrowthCraftingOrder from '@/components/GrowthCraftingOrder.vue'
 import {
   NAlert,
   NAvatar,
-  NBadge,
   NButton,
   NCard,
   NCheckbox,
@@ -847,10 +753,9 @@ import {
   useMessage,
   useThemeVars
 } from 'naive-ui'
-import { Settings, List } from '@vicons/carbon'
+import { Settings } from '@vicons/carbon'
 import { Build, Refresh } from '@vicons/ionicons5'
 import axios from 'axios'
-import draggable from 'vuedraggable'
 import { useMasteryStore } from '@/stores/mastery'
 import MasterySupports from '@/components/MasterySupports.vue'
 import MasteryProfessionTrainers from '@/components/MasteryProfessionTrainers.vue'
@@ -869,7 +774,6 @@ import {
 } from '@/utils/masteryRoute'
 import { render_op_label } from '@/utils/op_select'
 import { masteryLevelLabel } from '@/utils/masteryLevel'
-import { interleaveMasteryPlans } from '@/utils/masteryPlanOrder'
 import OperatorStatistics from '@/components/OperatorStatistics.vue'
 import GrowthSurveyFilters from '@/components/GrowthSurveyFilters.vue'
 import { defaultSurveyFilters, operatorSurvey, formatSurveyRate } from '@/utils/growthSurvey'
@@ -883,7 +787,6 @@ import {
   selectedLevelGoal
 } from '@/utils/growthPlanning'
 
-const ListIcon = List
 const SettingsIcon = Settings
 const HammerIcon = Build
 const RefreshIcon = Refresh
@@ -939,24 +842,6 @@ const filterProfession = ref([])
 const targets = ref({})
 const targetSaving = ref(false)
 const goalSaving = ref(false)
-const planSaving = ref(false)
-const removedGoals = ref(new Set())
-const growthGoalEntries = computed(() =>
-  store.goals.map((goal) => {
-    const op = store.recommendations.find((op) => op.char_id === goal.char_id)
-    const module = op?.modules?.find((module) => module.id === goal.module_id)
-    return {
-      ...goal,
-      key: `${goal.char_id}:${goal.module_id}`,
-      name: op?.name || goal.char_id,
-      label:
-        goal.module_id === 'skill7'
-          ? '基础技能 7 级'
-          : levelChoices(op || {}).find((choice) => choice.key === goal.module_id)?.label ||
-            `${module?.type || ''} · ${module?.name || goal.module_id}（目标 ${goal.target_level || module?.max_level || 1} 级）`
-    }
-  })
-)
 const totalGoalCount = computed(() => planEntries.value.length + store.goals.length)
 const isGoalPlanned = (cid, mid) => goalSelected(store.goals, cid, mid)
 const levelGoalFor = (op) => selectedLevelGoal(op, hasPlannedSkill(op), store.goals)
@@ -1000,14 +885,6 @@ function resetFilters() {
   filterProfession.value = []
   idleFilter.value = 'all'
   surveyFilters.value = defaultSurveyFilters()
-}
-function browseOperators() {
-  showPlan.value = false
-  resetFilters()
-}
-function clearAllGoals() {
-  clearPlan()
-  removedGoals.value = new Set(growthGoalEntries.value.map((e) => e.key))
 }
 function targetFor(op, rec) {
   return (
@@ -1180,8 +1057,6 @@ const emptyText = computed(() =>
 // 格式: { "charId_skillIndex": true, ... }
 const plan = ref({})
 const planStatus = ref({}) // { "charId_skillIndex": {id, status, target_level, priority, expires_at} }
-const showPlan = ref(false)
-const planSearch = ref('')
 const craftingOrderRevision = computed(() =>
   JSON.stringify({
     skills: Object.entries(planStatus.value).map(([key, entry]) => [
@@ -1195,11 +1070,6 @@ const craftingOrderRevision = computed(() =>
     cultivate: store.cultivateMsg
   })
 )
-// 草稿式编辑：弹层内移除的 planStatus key，保存时才删后端；re-add 会移出该集合
-const draftRemoved = ref(new Set())
-// 保存后主动关闭弹层，不触发「关闭不保存即丢弃」的重载
-let planJustSaved = false
-
 function planKey(cid, si) {
   return `${cid}_${si}`
 }
@@ -1211,18 +1081,6 @@ function hasPlannedSkill(op) {
 }
 function allPlanned(op) {
   return op.recommendations.every((r) => isSkillPlanned(op.char_id, r.skill_index))
-}
-
-function getStatusLabel(status) {
-  const map = {
-    idle: '待执行',
-    arranging: '正在安排',
-    training: '训练中',
-    waiting_collect: '待收取',
-    completed: '已完成',
-    failed: '失败'
-  }
-  return map[status] || status
 }
 
 async function warnMaterialShortage(additions) {
@@ -1253,7 +1111,7 @@ async function warnMaterialShortage(additions) {
   }
 }
 
-async function toggleSkillPlan(op, rec, draft = false) {
+async function toggleSkillPlan(op, rec) {
   const k = planKey(op.char_id, rec.skill_index)
   if (!plan.value[k] && op.mastery_error) message.info(op.mastery_error)
   if (!plan.value[k]) await warnMaterialShortage([k])
@@ -1266,7 +1124,7 @@ async function toggleSkillPlan(op, rec, draft = false) {
   if (plan.value[k]) {
     // 删除计划
     const info = planStatus.value[k]
-    if (!draft && info && info.id) {
+    if (info && info.id) {
       try {
         await axios.delete(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, {
           data: { id: info.id }
@@ -1277,15 +1135,7 @@ async function toggleSkillPlan(op, rec, draft = false) {
       }
     }
     delete plan.value[k]
-    if (draft) {
-      draftRemoved.value.add(k) // 草稿：保留 id，保存时删后端
-    } else {
-      delete planStatus.value[k] // 主列表 quick-add：已删后端，同步本地
-    }
-  } else if (draft) {
-    // 弹层内草稿：只动本地，保存时 POST
-    plan.value[k] = true
-    draftRemoved.value.delete(k)
+    delete planStatus.value[k]
   } else {
     // 主列表 quick-add：立即写后端
     try {
@@ -1325,7 +1175,7 @@ async function toggleSkillPlan(op, rec, draft = false) {
   }
 }
 
-async function addAllToPlan(op, draft = false) {
+async function addAllToPlan(op) {
   if (op.mastery_error) message.info(op.mastery_error)
   if (trainingWarning(op.name)) {
     message.warning(trainingWarning(op.name))
@@ -1340,16 +1190,6 @@ async function addAllToPlan(op, draft = false) {
     workshopTrainingWarning(op.name)
   ) {
     message.warning(workshopTrainingWarning(op.name))
-  }
-  if (draft) {
-    // 计划弹窗内草稿：只动本地，保存时 POST
-    for (const rec of recs) {
-      const k = planKey(op.char_id, rec.skill_index)
-      plan.value[k] = true
-      draftRemoved.value.delete(k)
-    }
-    message.success(`${op.name} 全部技能已加入计划`)
-    return
   }
   // 主列表 quick-add：立即写后端。已计划技能在本地就跳过；后端按 (干员, 技能) 拦重复，
   // 万一本地状态过期撞上已有计划，服务端会回 existing 而不是再建一行。
@@ -1405,107 +1245,6 @@ async function addAllToPlan(op, draft = false) {
   }
 }
 
-function removePlanEntry(e) {
-  // 弹层内草稿式删除：只动本地，保存时删后端（planStatus 保留 id）
-  delete plan.value[e.key]
-  draftRemoved.value.add(e.key)
-}
-function clearPlan() {
-  // 草稿式清空：只清本地视图，保存时才删后端计划（已挪到左侧，远离保存）
-  for (const k in planStatus.value) draftRemoved.value.add(k)
-  plan.value = {}
-}
-async function savePlanFn() {
-  if (planSaving.value) return
-  planSaving.value = true
-  try {
-    await persistPlanChanges()
-  } catch (error) {
-    message.error(error.response?.data?.error || '计划保存失败，请重试')
-  } finally {
-    planSaving.value = false
-  }
-}
-async function persistPlanChanges() {
-  for (const entry of growthGoalEntries.value.filter((e) => removedGoals.value.has(e.key))) {
-    const response = await axios.post(`${import.meta.env.VITE_HTTP_URL}/growth-plan`, {
-      char_id: entry.char_id,
-      module_id: entry.module_id,
-      selected: false
-    })
-    store.goals = response.data.goals
-  }
-  removedGoals.value.clear()
-  const orderedKeys = sortablePlanEntries.value.map((entry) => entry.key)
-  const toAdd = []
-  for (const [priority, k] of orderedKeys.entries()) {
-    if (!plan.value[k]) continue
-    if (planStatus.value[k]?.id) continue // 已是后端计划
-    const [cid, si] = parsePlanKey(k)
-    const op = store.recommendations.find((o) => o.char_id === cid)
-    if (op && si !== undefined) {
-      toAdd.push({
-        name: op.name,
-        skill_index: parseInt(si),
-        priority,
-        target_level: targets.value[k] || 3
-      })
-    }
-  }
-  // 草稿中被移除且未重新加回的计划（清空/单删/技能反选）
-  const toDel = [...draftRemoved.value].filter((k) => !plan.value[k] && planStatus.value[k]?.id)
-  const orderUpdates = orderedKeys
-    .map((key, priority) => ({ id: planStatus.value[key]?.id, priority }))
-    .filter((u) => u.id)
-  if (!toAdd.length && !toDel.length && !orderUpdates.length) {
-    message.info('没有变更需要保存')
-    showPlan.value = false
-    return
-  }
-  for (const k of toDel) {
-    try {
-      await axios.delete(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, {
-        data: { id: planStatus.value[k].id }
-      })
-    } catch (e) {
-      message.error(`删除失败: ${e.message}`)
-    }
-  }
-  if (orderUpdates.length) {
-    try {
-      await axios.patch(`${import.meta.env.VITE_HTTP_URL}/mastery-plan/order`, orderUpdates)
-    } catch (e) {
-      message.error(`排序失败: ${e.message}`)
-      return
-    }
-  }
-  if (toAdd.length) {
-    // 先保存已有计划的顺序，再添加新计划；服务端立即派发时便能看到完整顺序。
-    const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, {
-      items: toAdd,
-      planning: true
-    })
-    const results = r.data?.results || []
-    for (const warning of new Set(results.map((result) => result.warning).filter(Boolean))) {
-      message.warning(warning)
-    }
-    const err = results.filter((x) => x.status === 'error')
-    if (err.length) {
-      message.warning(`保存完成，${err.length} 项失败: ${err.map((x) => x.reason).join('；')}`)
-    } else {
-      // 材料不足和排班冲突的项都没排上，展示服务端返回的真实原因
-      const poor = results.filter((x) => x.status === 'insufficient' || x.status === 'deferred')
-      if (poor.length) {
-        message.info(`保存完成；${poor.length} 项暂未开始: ${poor.map((x) => x.reason).join('；')}`)
-      }
-    }
-  }
-  planJustSaved = true
-  await refreshPlanFromServer()
-  showPlan.value = false
-  message.success(`计划已保存${toAdd.length ? `（新增 ${toAdd.length} 项）` : ''}`)
-}
-
 async function refreshPlanFromServer() {
   try {
     const r = await axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`)
@@ -1531,30 +1270,14 @@ async function refreshPlanFromServer() {
     }
     plan.value = p
     planStatus.value = ps
-    draftRemoved.value.clear() // 以服务端为准，丢弃未落库的删除意图
   } catch (e) {
     console.error('refreshPlanFromServer failed', e)
   }
 }
 
-async function openPlanModal() {
-  // 打开即重载：丢弃上次未保存的草稿（与路线编辑「关闭不保存即丢弃」一致）
-  await refreshPlanFromServer()
-  removedGoals.value.clear()
-  planSearch.value = ''
-  showPlan.value = true
-}
-
-function cancelPlanChanges() {
-  showPlan.value = false
-  onPlanModalShow(false)
-}
-
-function onPlanModalShow(show) {
-  if (!show && !planJustSaved) {
-    refreshPlanFromServer() // 未保存关闭 → 还原草稿
-  }
-  planJustSaved = false
+async function refreshGrowthPlan() {
+  await Promise.all([refreshPlanFromServer(), store.fetchRecommendations()])
+  await refreshT3Summary()
 }
 
 function parsePlanKey(k) {
@@ -1595,29 +1318,6 @@ const planEntries = computed(() => {
   })
   return entries
 })
-
-const sortablePlanEntries = ref([])
-watch(
-  planEntries,
-  (val) => {
-    if (!showPlan.value) {
-      sortablePlanEntries.value = [...val]
-      return
-    }
-    // Adding/removing a draft entry must not discard a manual or automatic draft order.
-    const byKey = new Map(val.map((entry) => [entry.key, entry]))
-    const retained = sortablePlanEntries.value.map((entry) => byKey.get(entry.key)).filter(Boolean)
-    const seen = new Set(retained.map((entry) => entry.key))
-    const added = val.filter((entry) => !seen.has(entry.key))
-    const merged = [...retained, ...added]
-    sortablePlanEntries.value = added.length ? interleaveMasteryPlans(merged) : merged
-  },
-  { immediate: true }
-)
-
-function interleavePlanEntries() {
-  sortablePlanEntries.value = interleaveMasteryPlans(sortablePlanEntries.value)
-}
 
 async function autoWorkshop() {
   workshopLoading.value = true
@@ -2346,39 +2046,6 @@ async function loadOperators() {
   gap: 10px;
   margin-bottom: 14px;
 }
-.plan-empty {
-  padding: 28px 0;
-  text-align: center;
-}
-.plan-entry {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 14px 6px;
-  border-radius: 10px;
-}
-.plan-entry-description {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-  gap: 4px;
-}
-.plan-entry-detail {
-  font-size: 12px;
-}
-.plan-position {
-  opacity: 0.55;
-  min-width: 18px;
-  font-size: 12px;
-}
-.drag-handle {
-  cursor: grab;
-  font-size: 22px;
-  opacity: 0.5;
-  padding: 8px;
-  touch-action: none;
-}
 .growth-page :deep(.n-checkbox) {
   padding-block: 8px;
 }
@@ -2386,9 +2053,6 @@ async function loadOperators() {
   .page-header {
     align-items: flex-start;
     gap: 18px;
-  }
-  .plan-entry {
-    gap: 8px;
   }
   .page-title {
     font-size: 23px;

@@ -1,47 +1,99 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import axios from 'axios'
-import { SwapVertical } from '@vicons/ionicons5'
+import { List } from '@vicons/carbon'
 import draggable from 'vuedraggable'
+import { interleaveMasteryPlans } from '@/utils/masteryPlanOrder'
+import { pinyin_match } from '@/utils/common'
 
-const props = defineProps({ revision: { type: String, default: '' } })
+const props = defineProps({
+  revision: { type: String, default: '' },
+  recommendations: { type: Array, default: () => [] },
+  count: { type: Number, default: 0 }
+})
 const emit = defineEmits(['changed'])
 const show = ref(false)
 const items = ref([])
+const draftItems = ref([])
 const preparedItems = ref([])
-const custom = ref(false)
+const failedItems = ref([])
+const draftFailedItems = ref([])
 const busy = ref(false)
 const loaded = ref(false)
 const dragging = ref(false)
+const search = ref('')
+const stale = ref(false)
 const feedback = ref('')
 const failed = ref(false)
-const endpoint = `${import.meta.env.VITE_HTTP_URL}/growth-crafting-order`
+const base = import.meta.env.VITE_HTTP_URL
+const endpoint = `${base}/growth-crafting-order`
 let refreshPending = false
+const dirty = computed(
+  () =>
+    draftItems.value.length !== items.value.length ||
+    draftItems.value.some((item, index) => item.key !== items.value[index]?.key) ||
+    draftFailedItems.value.length !== failedItems.value.length
+)
+const editable = computed(() => loaded.value && !busy.value && !stale.value)
 
 function accept(data) {
   if (data.error) throw new Error(data.error)
-  items.value = data.items
+  items.value = data.planning_items || data.items
+  draftItems.value = [...items.value]
   preparedItems.value = data.prepared_items || []
-  custom.value = data.custom
+  failedItems.value = data.failed_items || []
+  draftFailedItems.value = [...failedItems.value]
   loaded.value = true
+  stale.value = false
 }
 
-async function refresh() {
+async function readState() {
+  const [order, plans] = await Promise.all([axios.get(endpoint), axios.get(`${base}/mastery-plan`)])
+  if (plans.data?.error) throw new Error(plans.data.error)
+  const planned = new Set(
+    (order.data.planning_items || order.data.items || []).map((item) => item.plan_id)
+  )
+  return {
+    ...order.data,
+    failed_items: (plans.data.plans || [])
+      .filter((plan) => plan.status === 'failed' && !planned.has(plan.id))
+      .map((plan) => ({
+        key: `failed:${plan.id}`,
+        kind: 'skill',
+        failedPlan: true,
+        locked: false,
+        plan_id: plan.id,
+        char_id: plan.char_id,
+        char_name: plan.name,
+        label: `${plan.skill_name} · 专${plan.target_level || 3}`,
+        reason: plan.failed_reason || '执行失败，等待重试'
+      }))
+  }
+}
+
+async function refresh(keepFeedback = false) {
   if (!show.value) return
   if (busy.value || dragging.value) {
     refreshPending = true
-    loaded.value = false
+    return
+  }
+  if (dirty.value) {
+    stale.value = true
+    failed.value = true
+    feedback.value = '计划已在其他位置变更，请取消后重新打开，再调整顺序。'
     return
   }
   busy.value = true
   loaded.value = false
-  feedback.value = ''
-  failed.value = false
+  if (!keepFeedback) {
+    feedback.value = ''
+    failed.value = false
+  }
   try {
-    accept((await axios.get(endpoint)).data)
+    accept(await readState())
   } catch (error) {
     failed.value = true
-    feedback.value = error.response?.data?.error || error.message || '合成顺序读取失败，请重试'
+    feedback.value = error.response?.data?.error || error.message || '养成计划读取失败，请重试'
   } finally {
     busy.value = false
     await refreshIfPending()
@@ -51,18 +103,18 @@ async function refresh() {
 async function refreshIfPending() {
   if (!refreshPending) return
   refreshPending = false
-  await refresh()
+  await refresh(true)
 }
 
 function canDrag(event) {
   const { element, futureIndex } = event.draggedContext
-  const lockedCount = items.value.filter((item) => item.locked).length
+  const lockedCount = draftItems.value.filter((item) => item.locked).length
   return (
-    loaded.value &&
-    !busy.value &&
+    editable.value &&
+    !search.value.trim() &&
     !element.locked &&
     futureIndex >= lockedCount &&
-    futureIndex < items.value.length
+    futureIndex < draftItems.value.length
   )
 }
 
@@ -74,41 +126,31 @@ function projectText(item) {
 }
 
 function projectStatus(item) {
-  return item.reason || (item.locked ? '进行中 · 固定优先' : '待备料')
+  const reason = item.reason || (item.locked ? '进行中 · 固定优先' : '待执行')
+  return item.crafting_required === false ? item.reason || '纯等级提升，不需要合成' : reason
 }
 
-async function save(order) {
-  if (busy.value || !loaded.value) return
-  busy.value = true
-  feedback.value = ''
-  failed.value = false
-  try {
-    const response = order ? await axios.put(endpoint, { order }) : await axios.delete(endpoint)
-    accept(response.data)
-    feedback.value = order ? '合成顺序已保存' : '已恢复专精优先顺序'
-    emit('changed')
-  } catch (error) {
-    failed.value = true
-    feedback.value = error.response?.data?.error || error.message || '合成顺序保存失败，请重试'
-  } finally {
-    busy.value = false
-    await refreshIfPending()
-  }
+function matchesSearch(item) {
+  const query = search.value.trim().toLowerCase()
+  return (
+    !query ||
+    `${item.char_name} ${item.label}`.toLowerCase().includes(query) ||
+    !!pinyin_match(item.char_name, query)
+  )
 }
 
-async function commitDrag(nextItems) {
-  if (busy.value || !loaded.value) return
+function commitDrag(nextItems) {
+  if (!editable.value || search.value.trim()) return
   const order = nextItems.map((item) => item.key)
-  const original = items.value.map((item) => item.key)
+  const original = draftItems.value.map((item) => item.key)
   if (
     order.length !== original.length ||
     new Set(order).size !== original.length ||
     order.some((key) => !original.includes(key)) ||
-    items.value.some((item, index) => item.locked && order[index] !== item.key) ||
-    order.every((key, index) => key === original[index])
+    draftItems.value.some((item, index) => item.locked && order[index] !== item.key)
   )
     return
-  await save(order)
+  draftItems.value = [...nextItems]
 }
 
 async function finishDrag() {
@@ -116,31 +158,141 @@ async function finishDrag() {
   await refreshIfPending()
 }
 
-async function keyboardMove(index, direction) {
-  if (!canDrag({ draggedContext: { element: items.value[index], futureIndex: index + direction } }))
+function keyboardMove(index, direction) {
+  if (
+    !canDrag({
+      draggedContext: { element: draftItems.value[index], futureIndex: index + direction }
+    })
+  )
     return
-  const destination = index + direction
-  if (destination >= items.value.length) return
-  const nextItems = [...items.value]
+  const nextItems = [...draftItems.value]
   const [item] = nextItems.splice(index, 1)
-  nextItems.splice(destination, 0, item)
-  await commitDrag(nextItems)
+  nextItems.splice(index + direction, 0, item)
+  commitDrag(nextItems)
 }
 
-watch([show, () => props.revision], () => {
-  if (show.value) refresh()
+function remove(item) {
+  if (!editable.value || item.locked) return
+  if (item.failedPlan)
+    draftFailedItems.value = draftFailedItems.value.filter((entry) => entry.key !== item.key)
+  else draftItems.value = draftItems.value.filter((entry) => entry.key !== item.key)
+}
+
+function clear() {
+  if (!editable.value) return
+  draftItems.value = draftItems.value.filter((item) => item.locked)
+  draftFailedItems.value = []
+}
+
+function organize() {
+  if (!editable.value || search.value.trim()) return
+  const movable = draftItems.value.filter((item) => !item.locked)
+  const byKey = new Map(movable.map((item) => [item.key, item]))
+  const ordered = interleaveMasteryPlans(
+    movable.map((item) => ({
+      ...item,
+      status: 'idle',
+      profession:
+        item.profession ||
+        props.recommendations.find((op) => op.char_id === item.char_id)?.profession
+    }))
+  ).map((item) => byKey.get(item.key))
+  draftItems.value = [...draftItems.value.filter((item) => item.locked), ...ordered]
+}
+
+function prioritizeSkills() {
+  if (!editable.value || search.value.trim()) return
+  draftItems.value = [
+    ...draftItems.value.filter((item) => item.locked),
+    ...draftItems.value.filter((item) => !item.locked && item.kind === 'skill'),
+    ...draftItems.value.filter((item) => !item.locked && item.kind !== 'skill')
+  ]
+}
+
+function cancel() {
+  if (busy.value) return
+  draftItems.value = [...items.value]
+  draftFailedItems.value = [...failedItems.value]
+  search.value = ''
+  stale.value = false
+  show.value = false
+}
+
+async function save() {
+  if (!editable.value || dragging.value || !dirty.value) return
+  busy.value = true
+  feedback.value = ''
+  failed.value = false
+  const order = draftItems.value.map((item) => item.key)
+  const retainedFailures = new Set(draftFailedItems.value.map((item) => item.key))
+  const removed = [
+    ...items.value.filter((item) => !order.includes(item.key)),
+    ...failedItems.value.filter((item) => !retainedFailures.has(item.key))
+  ]
+  let deleted = 0
+  try {
+    for (const item of removed) {
+      if (item.locked) throw new Error('进行中的计划不能移除')
+      let response
+      if (item.kind === 'skill') {
+        if (!item.plan_id) throw new Error('缺少专精计划编号，请刷新后重试')
+        response = await axios.delete(`${base}/mastery-plan`, { data: { id: item.plan_id } })
+      } else {
+        response = await axios.post(`${base}/growth-plan`, {
+          char_id: item.char_id,
+          module_id: item.module_id,
+          selected: false
+        })
+      }
+      if (response.data?.error) throw new Error(response.data.error)
+      deleted++
+    }
+    const response = await axios.put(endpoint, { order })
+    accept({ ...response.data, failed_items: draftFailedItems.value })
+    show.value = false
+    search.value = ''
+    emit('changed')
+  } catch (error) {
+    const reason = error.response?.data?.error || error.message || '请求失败'
+    failed.value = true
+    const prefix = deleted ? `已确认移除 ${deleted} 项，保存未完整确认。` : '保存未完成。'
+    try {
+      accept(await readState())
+      feedback.value = `${prefix}已重新读取实际计划：${reason}`
+    } catch {
+      loaded.value = false
+      feedback.value = `${prefix}实际计划读取失败，请取消后重新打开核对：${reason}`
+    }
+    emit('changed')
+  } finally {
+    busy.value = false
+    refreshPending = false
+  }
+}
+
+watch([show, () => props.revision], ([opened], [wasOpened]) => {
+  if (opened) refresh(wasOpened)
 })
 </script>
 
 <template>
   <n-button size="small" @click="show = true">
-    <template #icon><n-icon :component="SwapVertical" /></template>
-    合成顺序
+    <template #icon><n-icon :component="List" /></template>
+    养成计划
+    <n-badge v-if="count" :value="count" :max="99" style="margin-left: 4px" />
   </n-button>
   <n-modal
-    v-model:show="show"
+    :show="show"
+    :closable="!busy"
+    :close-on-esc="!busy"
+    :mask-closable="false"
+    @update:show="
+      (value) => {
+        if (!value) cancel()
+      }
+    "
     preset="card"
-    title="养成材料合成顺序"
+    title="养成计划"
     size="small"
     :style="{ width: 'min(620px, calc(100vw - 32px))', maxHeight: 'calc(100dvh - 48px)' }"
     :content-style="{ minHeight: 0, overflowY: 'auto' }"
@@ -163,53 +315,68 @@ watch([show, () => props.revision], () => {
       </n-alert>
       <div class="order-help">
         <n-text depth="3"
-          >拖动调整合成顺序，松开自动保存，不改变专精队列；默认专精优先，缺料项目本轮跳过。</n-text
+          >拖动调整养成顺序，保存后同步用于专精与材料合成；缺料项目本轮跳过。</n-text
         >
         <n-text depth="3"
-          >前置随项目准备，共用费用只计一次；纯等级提升不参与排序，模组前置仅准备至精二一级。</n-text
+          >前置随项目准备，共用费用只计一次；纯升级不生成合成任务，模组前置仅准备至精二一级。</n-text
         >
       </div>
-      <n-space justify="space-between" align="center" :size="8">
-        <n-tag size="small" :bordered="false">{{ custom ? '自定义顺序' : '默认顺序' }}</n-tag>
-        <n-space :size="8">
-          <n-button size="small" :disabled="busy || dragging" @click="refresh">刷新</n-button>
-          <n-button
-            size="small"
-            :disabled="busy || dragging || !loaded || items.length < 2"
-            @click="save()"
-          >
-            恢复专精优先
-          </n-button>
-        </n-space>
-      </n-space>
-      <n-text v-if="items.some((item) => item.locked)" depth="3" class="order-help">
-        进行中的专精固定优先，其他项目可拖动。
+      <div class="plan-tools">
+        <n-input
+          v-model:value="search"
+          size="small"
+          clearable
+          placeholder="查找计划中的干员 / 项目"
+          aria-label="查找养成计划"
+          class="plan-search"
+        />
+        <n-button
+          size="small"
+          :disabled="!editable || dragging || !!search.trim()"
+          @click="organize"
+          >按职业整理</n-button
+        >
+        <n-button
+          size="small"
+          :disabled="!editable || dragging || !!search.trim()"
+          @click="prioritizeSkills"
+          >专精优先</n-button
+        >
+        <n-button size="small" :disabled="busy || dragging || dirty" @click="refresh()"
+          >刷新</n-button
+        >
+      </div>
+      <n-text v-if="search.trim()" depth="3" class="order-label"
+        >搜索时暂不能拖动，清除搜索后可调整完整顺序。</n-text
+      >
+      <n-text v-if="draftItems.some((item) => item.locked)" depth="3" class="order-label">
+        进行中的专精固定优先，不能移动或移除；清空仅移除其他项目。
       </n-text>
       <n-spin :show="busy">
         <div class="order-list">
           <draggable
-            v-if="items.length"
-            :model-value="items"
+            v-if="draftItems.length"
+            :model-value="draftItems"
             item-key="key"
             handle=".order-drag-handle"
-            :disabled="busy || !loaded"
+            :disabled="!editable || !!search.trim()"
             :move="canDrag"
             class="crafting-order"
             role="list"
-            aria-label="养成材料合成顺序"
+            aria-label="养成计划顺序"
             @update:model-value="commitDrag"
             @start="dragging = true"
             @end="finishDrag"
           >
             <template #item="{ element: item, index }">
-              <div class="crafting-order-row" role="listitem">
+              <div v-show="matchesSearch(item)" class="crafting-order-row" role="listitem">
                 <span
                   :class="item.locked ? 'order-drag-locked' : 'order-drag-handle'"
-                  :tabindex="item.locked || busy || !loaded ? -1 : 0"
+                  :tabindex="item.locked || !editable || !!search.trim() ? -1 : 0"
                   :aria-label="
                     item.locked ? '进行中，顺序已固定' : `拖动排序 ${item.char_name} ${item.label}`
                   "
-                  :aria-disabled="item.locked || busy || !loaded"
+                  :aria-disabled="item.locked || !editable || !!search.trim()"
                   role="button"
                   @keydown.up.prevent="keyboardMove(index, -1)"
                   @keydown.down.prevent="keyboardMove(index, 1)"
@@ -233,20 +400,82 @@ watch([show, () => props.revision], () => {
                     {{ projectStatus(item) }}
                   </n-text>
                 </div>
+                <n-button
+                  size="small"
+                  quaternary
+                  :disabled="!editable || item.locked"
+                  @click="remove(item)"
+                  >移除</n-button
+                >
               </div>
             </template>
           </draggable>
-          <n-empty v-else-if="loaded" description="尚未选择养成项目" />
+          <n-empty v-else-if="loaded && !draftFailedItems.length" description="还没有养成目标" />
+          <div v-if="draftFailedItems.length" class="failed-plans">
+            <n-text strong>失败计划</n-text>
+            <div
+              v-for="item in draftFailedItems"
+              v-show="matchesSearch(item)"
+              :key="item.key"
+              class="crafting-order-row"
+            >
+              <n-avatar :src="'/avatar/' + item.char_name + '.webp'" :size="36" round />
+              <div class="order-description">
+                <n-text strong>{{ item.char_name }} · {{ item.label }}</n-text>
+                <n-text type="warning" class="order-label">{{ item.reason }}</n-text>
+              </div>
+              <n-button size="small" quaternary :disabled="!editable" @click="remove(item)"
+                >移除</n-button
+              >
+            </div>
+          </div>
         </div>
       </n-spin>
       <n-text v-if="feedback" :type="failed ? 'error' : 'success'" aria-live="polite">
         {{ feedback }}
       </n-text>
     </div>
+    <template #footer>
+      <div class="plan-footer">
+        <n-button
+          size="small"
+          :disabled="
+            !editable || (!draftItems.some((item) => !item.locked) && !draftFailedItems.length)
+          "
+          @click="clear"
+          >清空计划</n-button
+        >
+        <div class="plan-tools">
+          <n-button size="small" :disabled="busy" @click="cancel">取消</n-button>
+          <n-button
+            size="small"
+            type="primary"
+            :loading="busy"
+            :disabled="!editable || !dirty || dragging"
+            @click="save"
+            >保存变更</n-button
+          >
+        </div>
+      </div>
+    </template>
   </n-modal>
 </template>
 
 <style scoped>
+.plan-tools,
+.plan-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.plan-footer {
+  justify-content: space-between;
+}
+.plan-search {
+  width: 200px;
+  flex: 1 1 180px;
+}
 .order-content {
   display: flex;
   flex-direction: column;

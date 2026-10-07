@@ -16,7 +16,7 @@
 
 - **[INV-GROWTH-01] Shared Growth Budget**: Growth planning admits unready operators without dispatching training, counts shared prerequisites once, reserves stock in crafting-project order, emits only outstanding permitted recipes for fully supplied projects, and keeps manual chip conversion separate from automatic crafting.
 
-- **[INV-GROWTH-03] Ordered Crafting Prerequisites**: Crafting order changes never reorder training plans, active training remains fixed first, each admitted project prepares its minimum unsatisfied promotion and basic-skill prerequisites before its own costs without counting shared prerequisites twice, and an unstarted shortage skips that project while a protected training shortage blocks later preparation.
+- **[INV-GROWTH-03] Ordered Crafting Prerequisites**: The saved unified plan order determines crafting priority and relative skill training priority, active training remains fixed first, each admitted project prepares its minimum unsatisfied promotion and basic-skill prerequisites before its own costs without counting shared prerequisites twice, and an unstarted shortage skips that project while a protected training shortage blocks later preparation.
 
 - **[INV-REC-06] Selection Page Exit**: Known facility roster pages detected during anomalous selection readings abort selection inputs and page-local fallback; normal readings add no page-template lookup or capture.
 

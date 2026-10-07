@@ -414,7 +414,7 @@ class TestMasteryPlanView(unittest.TestCase):
         delete_mock.return_value = True
         r = self.client.delete("/mastery-plan", json={"id": 3})
         self.assertEqual(r.status_code, 200)
-        delete_mock.assert_called_once_with(3)
+        delete_mock.assert_called_once_with(3, protect_active=True)
         purge_mock.assert_called_once_with(3)
 
     @patch("arknights_mower.views.mastery.delete_plan")
