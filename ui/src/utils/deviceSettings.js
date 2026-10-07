@@ -485,7 +485,8 @@ const fieldHelpTexts = {
     '模拟器的多开管理控制程序（如 MuMuManager.exe、dnconsole.exe）。用于查询多开列表、控制启动与关停。',
   config_path:
     '模拟器的全局配置文件路径（如 BlueStacks 的 bluestacks.conf），用于自动解析多开实例与端口分配。',
-  adb_path: '用于与模拟器通信的 ADB 调试工具路径。留空时会自动优先探测模拟器自带的 ADB。选填。',
+  adb_path:
+    '用于与模拟器通信的 ADB 调试工具路径。默认填写 Mower 自带的 ADB，可手动指定其他路径。留空时会自动优先探测模拟器自带的 ADB。选填。',
   instance_id:
     '所选实例的编号或标识，格式由模拟器决定。建议通过“检测实例”选择；MuMu Pro 和夜神的身份核验信息也由检测提供，不能仅填写序号启停。',
   instance_name: '多开实例的自定义名称（仅用于界面展示与日志标识）。选填。',
@@ -530,8 +531,8 @@ export function deviceSettingsState({
     /^waydroid:\d+$/.test(profile.instance_id || '') &&
     Boolean(
       profile.manager_path?.trim() &&
-      profile.installation_path?.trim() &&
-      profile.config_path?.trim()
+        profile.installation_path?.trim() &&
+        profile.config_path?.trim()
     )
   const mumuPro = profile.preset_id === 'macos.mumu_pro'
   const boundMumuPro =
