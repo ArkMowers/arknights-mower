@@ -5,7 +5,7 @@ category: bug-fix
 date: 2026-10-07
 ---
 
-由[受保护专精的现场技能身份](../../implemented/bug-fix/2026-10-07-protected-mastery-observed-identity.zh.md)取代。
+由[专精训练位与材料边界](../../implemented/bug-fix/2026-10-07-mastery-trainee-material-boundary.zh.md)取代。
 
 
 # 受保护专精技能续训

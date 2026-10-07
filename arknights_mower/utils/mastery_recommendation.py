@@ -437,7 +437,7 @@ def compute_workshop_config(
     plans=None,
     recommendations=None,
 ):
-    """按计划顺序准备首个材料可满足的技能，已确认训练保留后续材料。"""
+    """按计划顺序准备首个可满足技能，确认开训后缺料时只等待当前计划。"""
     if fodder_operators is None:
         fodder_operators = ["九色鹿"]
     if t5_operators is None:
@@ -451,7 +451,10 @@ def compute_workshop_config(
     # 计划直接读 DB（get_all_plans 非终态）。matery_plan.json 是全仓库无写入者
     # 的孤儿文件（@app/tmp 上的 stale key），UI/API/agent 新增计划不在里面；completed/
     # failed 计划不核算材料（不消耗；failed 已由扫描钩子 retry_failed_plans 先重置 idle）。
-    from arknights_mower.utils.mastery_db import get_all_plans
+    from arknights_mower.utils.mastery_db import (
+        get_all_plans,
+        get_material_waiting_plan,
+    )
 
     if plans is None:
         plans = get_all_plans()
@@ -482,6 +485,7 @@ def compute_workshop_config(
         ),
         None,
     )
+    current = current or get_material_waiting_plan(plans)
     lookahead = current is not None and _workshop_lookahead_active(current)
     candidates = (
         [current]
@@ -765,9 +769,16 @@ def auto_schedule_mastery_tasks():
 
     # 计划直接读 DB（get_all_plans 非终态）——matery_plan.json 是全仓库无写入者
     # 的孤儿文件，只靠它的话新装/绕过前端新增的计划永远不在 plan_set，扫描自动开始失效。
-    from arknights_mower.utils.mastery_db import get_all_plans
+    from arknights_mower.utils.mastery_db import (
+        get_all_plans,
+        get_material_waiting_plan,
+    )
 
-    plan_set = {(p["char_id"], p["skill_index"]): p for p in get_all_plans()}
+    plans = get_all_plans()
+    waiting = get_material_waiting_plan(plans)
+    if waiting is not None:
+        plans = [waiting]
+    plan_set = {(p["char_id"], p["skill_index"]): p for p in plans}
     if not plan_set:
         return result
 

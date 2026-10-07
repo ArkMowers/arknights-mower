@@ -476,6 +476,20 @@ def get_reconcile_plans(path: Optional[str] = None) -> list[dict]:
     return plans
 
 
+def get_material_waiting_plan(plans: list[dict]) -> Optional[dict]:
+    """已确认开训后缺料的未完成计划阻止后续计划开始。"""
+    return next(
+        (
+            plan
+            for plan in plans
+            if plan.get("status") in ("idle", "failed")
+            and plan.get("expires_at")
+            and plan.get("failed_reason") == "材料不足"
+        ),
+        None,
+    )
+
+
 def update_plan_status(
     plan_id: int,
     status: str,
@@ -631,11 +645,14 @@ def is_operator_busy(name_or_id: str, path: Optional[str] = None) -> bool:
 
 
 def retry_failed_plans(path: Optional[str] = None) -> int:
-    """仓库扫描后调用：将 failed 状态的计划重置为 idle，允许重新尝试。返回重置数量。"""
+    """仓库扫描后调用：将 failed 重置为 idle，保留确认开训后的缺料原因。返回重置数量。"""
     try:
         with _conn(path) as conn:
             cursor = conn.execute(
-                "UPDATE mastery_plan SET status='idle', failed_reason=NULL "
+                "UPDATE mastery_plan SET status='idle', "
+                "failed_reason=CASE WHEN failed_reason='材料不足' "
+                "AND expires_at IS NOT NULL AND expires_at != '' "
+                "THEN failed_reason ELSE NULL END "
                 "WHERE status='failed'"
             )
             conn.commit()

@@ -3154,7 +3154,7 @@ class TestRefreshTrainingHalfOverlap(unittest.TestCase):
 
 
 class TestReconcileProtectedRelease(unittest.TestCase):
-    """受保护房间仅放行实读同一干员、同一技能，保护始终保留。"""
+    """受保护房间仅放行实读同一训练位干员，保护始终保留。"""
 
     def _call(self, room, scan_plan):
         solver = MagicMock()
@@ -3165,13 +3165,13 @@ class TestReconcileProtectedRelease(unittest.TestCase):
             result = reader._reconcile(solver, room, None, [], scan_plan=scan_plan)
         return result, ni, np
 
-    def test_empty_room_does_not_use_same_operator_as_skill_evidence(self):
+    def test_continue_same_trainee_without_releasing_protection(self):
         room = make_room(state="empty", train_slot="Miss.Christine")
         room.protected = True
         room.slots_reliable = True
         plan = make_plan(char_id="char_4198_christ", char_name="Miss.Christine")
         (result, _, np) = self._call(room, plan)
-        self.assertIsNone(result[0])
+        self.assertIs(result[0], plan)
         self.assertTrue(result[1])
         self.assertTrue(room.protected)
         np.assert_not_called()

@@ -683,7 +683,7 @@ def _compute_protected(solver, room, scan_plan=None) -> bool:
     - 待收取：仅非专三（链未走完）保护；专三完成 → §5.3 第1格「无论如何不保护 → 可排班」；
     - 空闲 + 训练位有人 → 深读技能页，有专一/专二 → 保护；全专三/专0 → 可动；
     - 空闲 + 训练位没人 → 可排班。
-    - 计划干员匹配不解除保护；续训仅允许实读同一干员、同一技能。
+    - 计划干员匹配不解除保护；同一训练位干员可以开始其他技能。
     每次排班进训练室重读重判，条件一变自动解除；enable_mastery OFF 时保护全停（§7.3）。
     """
     if not config.conf.enable_mastery:
@@ -938,10 +938,16 @@ def _can_recover_plan(plan, room: RoomState) -> bool:
     return resolved is not None and resolved == plan.get("skill_index")
 
 
-def _protected_plan_matches(plan, room: RoomState) -> bool:
-    """仅凭本次待收取面板确认同技能；收取后保留该面板供当场续训。"""
-    return (room.state == "waiting_collect" or room.collected) and _can_recover_plan(
-        plan, room
+def _protected_trainee_matches(plan, room: RoomState) -> bool:
+    """受保护房间只限制训练位干员；同一干员的技能不受此限制。"""
+    if room.read_failed:
+        return False
+    if room.state == "waiting_collect" or room.collected:
+        return _plan_operator_matches(plan, room.panel.operator_name)
+    return (
+        room.state == "empty"
+        and room.slots_reliable
+        and _plan_operator_matches(plan, room.train_slot)
     )
 
 
@@ -1813,7 +1819,10 @@ def _reconcile(
     defer_collect（#75 方案 C）：排班 gate（reconcile_short）传 True 时待收取格跳过
     「队列已有专精任务」的计划的收集（见 _reconcile_waiting_collect）；dispatch 恒 False。
     """
-    from arknights_mower.utils.mastery_db import update_plan_status
+    from arknights_mower.utils.mastery_db import (
+        get_material_waiting_plan,
+        update_plan_status,
+    )
 
     # arranging × 任何列 → 重置 idle
     if active is not None and active["status"] == "arranging":
@@ -1829,6 +1838,12 @@ def _reconcile(
         return None, True
 
     if room.state == "empty":
+        waiting = get_material_waiting_plan(plans)
+        if waiting is not None and (
+            scan_plan is None or scan_plan["id"] != waiting["id"]
+        ):
+            logger.info("专精链中途材料不足，保留当前计划，不开始后续计划")
+            return None, True
         # ⚪ 空闲：DB active 与截图冲突 → 截图权威重置 idle；受保护 → mower 不能开始。
         if active is not None:
             logger.info(
@@ -1836,11 +1851,11 @@ def _reconcile(
             )
             update_plan_status(active["id"], "idle")
         if room.protected:
-            # 保护始终保留，只允许实读同一干员继续同一个技能。
+            # 保护始终保留，只允许实读同一训练位干员，不限制技能。
             if (
                 scan_plan is not None
                 and scan_plan["status"] == "idle"
-                and _protected_plan_matches(scan_plan, room)
+                and _protected_trainee_matches(scan_plan, room)
             ):
                 return scan_plan, True
             idle = _next_idle_to_start(solver)
@@ -1979,15 +1994,11 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
         hit is None
         and active is not None
         and _plan_matches_room(active, room)
-        and (not protective or _protected_plan_matches(active, room))
+        and (not protective or _can_recover_plan(active, room))
     ):
         # 干员名/技能名 OCR 不可读时 _match_plan 判不了命中，但 active 计划视为
         # 匹配（稳为先，铁律），照常更新状态后收取——否则 active 计划会永远停在 training
         hit = active
-
-    if protective and hit is None:
-        _notify_protected(solver, room)
-        return None, True
 
     if defer_collect and hit is not None and _queue_has_mastery_task(solver):
         _log_judgment(

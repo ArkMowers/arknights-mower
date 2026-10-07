@@ -10285,7 +10285,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if not scheduled:
             return
         from arknights_mower.solvers.mastery_reader import _schedule_scan_start
-        from arknights_mower.utils.mastery_db import get_all_plans
+        from arknights_mower.utils.mastery_db import (
+            get_all_plans,
+            get_material_waiting_plan,
+        )
 
         # 带 current_level 的扫描条目：安排步级 = 当前级 + 1（森空岛数据，最可靠）
         confirmed = {
@@ -10299,6 +10302,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             for plan in plans
             if plan["status"] in ("arranging", "training", "waiting_collect")
         }
+        waiting = get_material_waiting_plan(plans)
+        if waiting is not None:
+            plans = [waiting]
         # 第二轮：每个键只对第一条 idle 行派发（排序后第一条就是该管的那个）
         dispatched = 0
         seen: set = set()

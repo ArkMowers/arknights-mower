@@ -5,7 +5,7 @@ category: bug-fix
 date: 2026-10-07
 ---
 
-Superseded by [Protected Mastery Observed Identity](../../implemented/bug-fix/2026-10-07-protected-mastery-observed-identity.md).
+Superseded by [Mastery Trainee and Material Boundaries](../../implemented/bug-fix/2026-10-07-mastery-trainee-material-boundary.md).
 
 
 # Protected Mastery Skill Continuation

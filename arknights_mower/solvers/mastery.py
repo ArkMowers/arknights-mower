@@ -748,7 +748,7 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
     与重复浮窗开关）。room=None（冷启动/直接调用）保持旧行为：进房 + 现读槽位。
     """
     from arknights_mower.solvers.mastery_reader import (
-        _protected_plan_matches,
+        _protected_trainee_matches,
         _read_slot_mastery_tier,
     )
     from arknights_mower.utils.mastery_db import update_plan_status
@@ -759,8 +759,8 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
     from arknights_mower.utils.mastery_support_data import trainee_schedule_conflict
 
     if room is not None and getattr(room, "protected", False):
-        if not _protected_plan_matches(plan, room):
-            logger.info("训练室受保护，当前计划不是已确认的同干员同技能，保持待执行")
+        if not _protected_trainee_matches(plan, room):
+            logger.info("训练室受保护，当前计划不是已确认的同一训练位干员，保持待执行")
             solver.back()
             return
 
@@ -1118,6 +1118,7 @@ def _confirm_training_started(
                 update_plan_status(
                     plan["id"],
                     "training",
+                    failed_reason="",
                     expires_at=expires_at,
                     swap_frozen=0,
                 )
