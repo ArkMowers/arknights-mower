@@ -369,6 +369,20 @@ class Operators:
         )
 
     def swap_plan(self, condition, refresh=False):
+        from arknights_mower.utils.backup_validation import validate_backup_facilities
+
+        if error := validate_backup_facilities(
+            self.global_plan["default_plan"],
+            [
+                backup
+                for backup, enabled in zip(self.backup_plans, condition)
+                if enabled
+            ],
+            product_switching_enabled=getattr(
+                getattr(config.conf, "product_switching", None), "enable", False
+            ),
+        ):
+            return error
         self.emergency_run_order_replacements = None
         self.emergency_dorm_agents.clear()
         self.plan = copy.deepcopy(self.global_plan["default_plan"].plan)
@@ -2426,9 +2440,18 @@ class Operators:
             BackupValidationLimitExceeded,
             check_validation_deadline,
             possible_backup_conditions,
+            validate_backup_facilities,
         )
         from arknights_mower.utils.schedule_roster import validate_owned_operators
 
+        if error := validate_backup_facilities(
+            self.global_plan["default_plan"],
+            self.backup_plans,
+            product_switching_enabled=getattr(
+                getattr(config.conf, "product_switching", None), "enable", False
+            ),
+        ):
+            return {"success": False, "status": "failed", "message": error}
         if error := validate_owned_operators(self.global_plan):
             return {"success": False, "status": "failed", "message": error}
 

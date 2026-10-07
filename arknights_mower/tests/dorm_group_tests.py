@@ -12,7 +12,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers import base_schedule  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
-from arknights_mower.utils import config  # noqa: E402
+from arknights_mower.utils import config, scheduler_task  # noqa: E402
 from arknights_mower.utils.operators import Dormitory, Operator  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
@@ -228,6 +228,157 @@ def test_group_mood_gap_full_rest_can_be_disabled(solver):
     config.conf.group_rest_in_full_on_mood_gap = True
     data.operators[data.dorm[0].name].rest_in_full = True
     assert group_return_time() == full_rest_time
+
+
+@pytest.fixture
+def return_window(solver, monkeypatch):
+    shift_off(solver)
+    data = solver.op_data
+    config.conf.group_rest_in_full_on_mood_gap = False
+    clock = [datetime(2026, 10, 8, 3, 20)]
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock[0]
+
+    monkeypatch.setattr(scheduler_task, "datetime", Clock)
+    prediction = [datetime(2026, 10, 8, 4, 17)]
+    monkeypatch.setattr(Operator, "predict_exhaust", lambda self: prediction[0])
+    worker = data.operators["泥岩"]
+    worker.operator_type = "high"
+    worker.room = worker.current_room = "factory"
+    for bed in data.all_dorms():
+        if bed.name:
+            bed.time = clock[0] + timedelta(hours=4)
+    return data, clock, prediction
+
+
+def test_return_window_does_not_restart_on_each_planning_pass(return_window):
+    data, clock, _ = return_window
+    tasks = plan_metadata(data, [])
+    expected = datetime(2026, 10, 8, 4, 9)
+    for at in [(4, 1), (4, 4), (4, 8), (4, 9)]:
+        clock[0] = datetime(2026, 10, 8, *at)
+        tasks = plan_metadata(data, tasks)
+        returns = [task for task in tasks if task.type == TaskTypes.SHIFT_ON]
+        assert len(returns) == 1
+        assert returns[0].time == expected
+
+
+def test_due_return_window_remains_immediate(return_window):
+    data, clock, _ = return_window
+    tasks = plan_metadata(data, [])
+    clock[0] = datetime(2026, 10, 8, 4, 15)
+    returned = next(
+        task for task in plan_metadata(data, tasks) if task.type == TaskTypes.SHIFT_ON
+    )
+    assert clock[0] - timedelta(seconds=1) <= returned.time <= clock[0]
+
+
+def test_return_window_accepts_an_earlier_exhaust_prediction(return_window):
+    data, clock, prediction = return_window
+    tasks = plan_metadata(data, [])
+    clock[0] = datetime(2026, 10, 8, 4, 1)
+    prediction[0] = datetime(2026, 10, 8, 4, 10)
+    returned = next(
+        task for task in plan_metadata(data, tasks) if task.type == TaskTypes.SHIFT_ON
+    )
+    assert returned.time == datetime(2026, 10, 8, 4, 2)
+
+
+@pytest.mark.parametrize("change", ["read", "new_episode", "target", "full_rest"])
+def test_return_window_reconciles_current_recovery_rules(return_window, change):
+    data, clock, _ = return_window
+    tasks = plan_metadata(data, [])
+    clock[0] = datetime(2026, 10, 8, 4, 1)
+    member = data.operators["伊内丝"]
+    if change == "read":
+        member.time_stamp = clock[0]
+        member.mood = 15
+    elif change == "new_episode":
+        room = member.current_room
+        member.current_room = "meeting"
+        member.current_room = room
+    elif change == "target":
+        member.index = 1
+        data.operators["银灰"].index = 0
+    else:
+        member.rest_in_full = True
+    returned = next(
+        task for task in plan_metadata(data, tasks) if task.type == TaskTypes.SHIFT_ON
+    )
+    if change == "read":
+        assert returned.time == datetime(2026, 10, 8, 4, 9)
+    elif change == "full_rest":
+        assert returned.time > clock[0] + timedelta(hours=2)
+    else:
+        assert returned.time == clock[0] + timedelta(minutes=22)
+
+
+def test_return_windows_survive_batch_split_and_merge(return_window):
+    data, clock, _ = return_window
+    for name in ["伊内丝", "银灰", "讯使"]:
+        data.operators[name].group = ""
+    tasks = plan_metadata(data, [])
+    clock[0] = datetime(2026, 10, 8, 4, 1)
+    _, bed = data.get_dorm_by_name("伊内丝")
+    bed.time = datetime(2026, 10, 8, 4, 12)
+    tasks = plan_metadata(data, tasks)
+    assert sorted(t.time for t in tasks if t.type == TaskTypes.SHIFT_ON) == [
+        datetime(2026, 10, 8, 4, 4),
+        datetime(2026, 10, 8, 4, 9),
+    ]
+    clock[0] = datetime(2026, 10, 8, 4, 2)
+    bed.time = datetime(2026, 10, 8, 7, 20)
+    tasks = plan_metadata(data, tasks)
+    assert [t.time for t in tasks if t.type == TaskTypes.SHIFT_ON] == [
+        datetime(2026, 10, 8, 4, 9)
+    ]
+
+
+def test_return_window_respects_pending_arrangement(return_window):
+    data, clock, _ = return_window
+    tasks = plan_metadata(data, [])
+    clock[0] = datetime(2026, 10, 8, 4, 1)
+    pending = SchedulerTask(
+        time=datetime(2026, 10, 8, 4, 20),
+        task_plan={"contact": ["红"]},
+        task_type=TaskTypes.SELF_CORRECTION,
+    )
+    returned = next(
+        t
+        for t in plan_metadata(data, tasks + [pending])
+        if t.type == TaskTypes.SHIFT_ON
+    )
+    assert returned.time == pending.time + timedelta(seconds=1)
+
+
+def test_return_window_keeps_locked_product_task(return_window):
+    data, clock, _ = return_window
+    tasks = plan_metadata(data, [])
+    locked = next(task for task in tasks if task.type == TaskTypes.SHIFT_ON)
+    locked.product_shift_locked = True
+    locked.product_lock_names = {"伊内丝", "银灰", "讯使"}
+    locked.product_lock_slots = set()
+    clock[0] = datetime(2026, 10, 8, 4, 1)
+    regenerated = plan_metadata(data, tasks)
+    assert [task for task in regenerated if task.type == TaskTypes.SHIFT_ON] == [locked]
+    assert locked.time == datetime(2026, 10, 8, 4, 9)
+
+
+def test_return_window_initializes_legacy_task_then_survives_copy(return_window):
+    data, clock, _ = return_window
+    tasks = plan_metadata(data, [])
+    for task in tasks:
+        if task.type == TaskTypes.SHIFT_ON:
+            del task.return_windows
+    clock[0] = datetime(2026, 10, 8, 4, 1)
+    tasks = plan_metadata(data, tasks)
+    clock[0] = datetime(2026, 10, 8, 4, 4)
+    copied = deepcopy(tasks)
+    returns = [t for t in plan_metadata(data, copied) if t.type == TaskTypes.SHIFT_ON]
+    assert [t.time for t in returns] == [datetime(2026, 10, 8, 4, 23)]
 
 
 @pytest.mark.parametrize("priority", ["high", "low", "standby"])

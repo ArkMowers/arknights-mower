@@ -13,6 +13,7 @@ from arknights_mower.tests.multi_group_shift_tests import (
     apply,
     shift_off,
 )
+from arknights_mower.utils import config
 from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
@@ -675,7 +676,8 @@ def test_unobserved_primary_uses_initial_correction(solver):
 
 
 @pytest.fixture
-def product_solver(solver, request):
+def product_solver(solver, request, monkeypatch):
+    monkeypatch.setattr(config.conf.product_switching, "enable", True)
     facility, default, target = request.param
     plan = solver.global_plan["default_plan"]
     slots = plan.plan.pop("contact")

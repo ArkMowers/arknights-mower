@@ -261,18 +261,27 @@ def test_independent_backup_transition_preserves_rest(solver):
     assert recovery(s) == before
 
 
-@pytest.mark.parametrize("changed", ["group", "facility"])
-def test_changed_group_or_facility_retains_explicit_primary_semantics(solver, changed):
+def test_changed_group_retains_explicit_primary_semantics(solver):
     s = solver
     prepare_resting_relocation(s)
     slot = s.op_data.backup_plans[0].plan["room_1_2"][0]
-    if changed == "group":
-        slot.group = "乙"
-    else:
-        slot.facility = "贸易站"
-        slot.product = "lmd"
+    slot.group = "乙"
     task = finish(s, SchedulerTask(task_type=TaskTypes.SELF_CORRECTION), full=False)
     assert task.plan["room_1_2"] == ["清流"]
+
+
+def test_changed_facility_is_rejected_before_shift_projection(solver):
+    s = solver
+    prepare_resting_relocation(s)
+    before = recovery(s)
+    slot = s.op_data.backup_plans[0].plan["room_1_2"][0]
+    slot.facility = "贸易站"
+    slot.product = "lmd"
+    with pytest.raises(ValueError, match="改变设施类型.*切设施功能尚未实现"):
+        finish(s, SchedulerTask(task_type=TaskTypes.SELF_CORRECTION), full=False)
+    assert s.op_data.plan_condition == [False]
+    assert recovery(s) == before
+    s.enter_room.assert_not_called()
 
 
 @pytest.mark.parametrize("full", [False, True])

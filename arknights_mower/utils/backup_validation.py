@@ -21,6 +21,50 @@ class BackupValidationLimitExceeded(ValueError):
     """条件分析或组合检查超出预算；不表示已确认排班错误。"""
 
 
+def validate_backup_facilities(default_plan, backups, *, product_switching_enabled):
+    """副表不能声明未支持的设施变化，显式任务不能超出主表岗位。"""
+    for index, backup in enumerate(backups):
+        label = backup.name or f"副表{index + 1}"
+        for room, slots in backup.plan.items():
+            if room not in default_plan.plan:
+                return f"副表“{label}”的 {room} 不在主表设施中"
+            original = default_plan.plan[room]
+            if room.startswith("room_") and len(slots) != len(original):
+                return (
+                    f"副表“{label}”的 {room} 改变设施等级（岗位数 "
+                    f"{len(original)} → {len(slots)}）；切设施功能尚未实现"
+                )
+            if len(slots) > len(original):
+                return f"副表“{label}”的 {room} 排班超出主表的 {len(original)} 个岗位"
+            for slot, source in zip(slots, original):
+                if slot.facility != source.facility:
+                    return (
+                        f"副表“{label}”的 {room} 改变设施类型"
+                        f"（{source.facility} → {slot.facility}）；切设施功能尚未实现"
+                    )
+        for room, targets in (backup.task or {}).items():
+            if room in default_plan.plan:
+                capacity = len(default_plan.plan[room])
+            elif room in ("train", "factory"):
+                capacity = 2 if room == "train" else 1
+            else:
+                return f"副表“{label}”的任务 {room} 不在主表设施中"
+            if len(targets) > capacity:
+                return (
+                    f"副表“{label}”的任务 {room} 超出主表的 {capacity} 个岗位："
+                    f"{targets[capacity:]}"
+                )
+        if not product_switching_enabled:
+            for room, target in backup.products.items():
+                original = default_plan.products.get(room)
+                if target != original:
+                    return (
+                        f"副表“{label}”的 {room} 改变产物（{original} → {target}）；"
+                        "未开启自动切换产物与订单"
+                    )
+    return None
+
+
 def check_validation_deadline(deadline):
     if deadline is not None and monotonic() >= deadline:
         raise BackupValidationLimitExceeded("验证未完成：副表校验超过耗时预算")
