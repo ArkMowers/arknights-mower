@@ -147,7 +147,9 @@ def test_free_dorm_cover_never_evicts_resident(free_dorm_solver, occupied):
 
 
 @pytest.mark.parametrize("blocking", ["busy", "reserved", "exhausted"])
-def test_protected_replacements_recall_primary(solver, monkeypatch, blocking):
+def test_protected_replacements_defer_while_shared_primary_is_required(
+    solver, monkeypatch, blocking
+):
     from arknights_mower.solvers import base_schedule
 
     assert shift_off(solver, "甲")[0]
@@ -162,12 +164,10 @@ def test_protected_replacements_recall_primary(solver, monkeypatch, blocking):
         solver.op_data.operators["黑角"].mood = 0
     before = recovery(solver)
     plan = transition(solver)
-    assert plan == {"contact": [SHARED]}
-    assert solver.op_data.plan_condition == [True]
-    apply(solver, plan)
-    assert solver.op_data.operators[SHARED].current_room == "contact"
-    assert SHARED not in recovery(solver)
-    assert recovery(solver)[A] == before[A]
+    assert plan == {}
+    assert solver.op_data.plan_condition == [False]
+    assert solver.op_data.group_is_resting("甲")
+    assert recovery(solver) == before
 
 
 @pytest.mark.parametrize("complete", [False, True])
@@ -205,6 +205,11 @@ def test_shift_projection_prefers_cover_before_primary(solver, available):
             "dormitory_1": ["Current", "Current", A, SHARED, "Current"],
         },
     )
+    if not available:
+        with pytest.raises(multi_group.base_schedule.ProductSwitchDeferred):
+            solver._prepare_shift_backup(task)
+        assert solver.op_data.plan_condition == [False]
+        return
     solver._prepare_shift_backup(task)
     if available:
         assert task.plan["contact"] == ["黑角"]
@@ -316,7 +321,7 @@ def test_same_group_primary_cover_keeps_fixed_recovery(dorm_solver):
 
 
 @pytest.mark.parametrize("product_solver", PRODUCTS[:1], indirect=True)
-def test_product_shortage_recall_keeps_group_consistent(product_solver, monkeypatch):
+def test_product_shortage_defers_shared_group_recall(product_solver, monkeypatch):
     s = product_solver
     assert shift_off(s, "甲")[0]
     for name in (A, SHARED):
@@ -327,15 +332,11 @@ def test_product_shortage_recall_keeps_group_consistent(product_solver, monkeypa
     )
     task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION)
     s.task = task
-    s._prepare_shift_cycle(task)
-    assert task.backup_shift_conditions == [True]
-    assert task.plan["room_1_2"] == [SHARED]
-    apply(s, task.plan)
-    assert s.op_data.operators[SHARED].is_working()
-    assert SHARED not in recovery(s)
-    # 提前召回仍沿用原有整组纠错，不能留下半组在岗的状态。
-    assert s.op_data.operators[A].is_working()
-    assert A not in recovery(s)
+    before = recovery(s)
+    with pytest.raises(multi_group.base_schedule.ProductSwitchDeferred):
+        s._prepare_shift_cycle(task)
+    assert s.op_data.group_is_resting("甲")
+    assert recovery(s) == before
 
 
 @pytest.mark.parametrize("blocking", ["busy", "reserved", "source_bed", "working"])
@@ -497,6 +498,7 @@ def test_explicit_other_slot_cannot_double_book_a_retained_cover(solver):
     from arknights_mower.utils.resting_correction import preserve_backup_replacements
 
     solver.op_data.operators[SHARED].replacement = ["红", "黑角"]
+    solver.op_data.operators[SHARED].group_bindings[0]["replacement"] = ["红", "黑角"]
     plan = {"factory": ["红"]}
     assert preserve_backup_replacements(
         solver.op_data,

@@ -224,6 +224,7 @@ def current_state():
         "party_time": data.party_time,
         "operators": data.operators,
         "facility_states": getattr(data, "facility_states", {}),
+        "group_shift_state": dict(getattr(data, "group_shift_state", {})),
         "automatic_rescue_state": getattr(base_scheduler, "emergency_state", None),
         "backup_plan_names": [backup.name for backup in data.backup_plans],
         "idle_dorm_search_exhausted": getattr(

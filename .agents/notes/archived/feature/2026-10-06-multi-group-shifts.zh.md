@@ -1,9 +1,11 @@
 ---
 title: Multiple Group Shift Bindings
-status: implemented
+status: archived
 category: feature
 date: 2026-10-06
 ---
+
+[显式组状态决策](../../implemented/simplification/2026-10-07-explicit-group-shifts.zh.md) 取代下述换班归属规则；配置格式继续受支持。
 
 # Multiple Group Shift Bindings
 

@@ -1,4 +1,4 @@
-"""Multiple group followers use the latest admitted shift without driving mood."""
+"""Shared followers obey every resting group without driving group mood."""
 
 # ruff: noqa: E402
 
@@ -123,18 +123,18 @@ def test_group_members_and_mood_exclude_follower(solver):
     assert data.group_min_mood("乙") == 20
 
 
-def test_each_group_uses_its_cover_without_reserving_follower_twice(solver):
+def test_different_covers_are_mutually_exclusive(solver):
     admitted, plan = shift_off(solver, "甲")
     assert admitted and plan["contact"] == ["红"]
-    assert solver.op_data.operators[B].current_room == "meeting"
-    assert solver.op_data.operators[SHARED].is_resting()
-    old_bed = solver.op_data.get_dorm_by_name(SHARED)[1].position
+    data = solver.op_data
+    old_bed = data.get_dorm_by_name(SHARED)[1].position
+    before = deepcopy(data.group_shift_state)
     admitted, plan = shift_off(solver, "乙")
-    assert admitted and plan["contact"] == ["黑角"]
-    assert solver.op_data.operators[SHARED].group == "乙"
-    assert solver.op_data.get_dorm_by_name(SHARED)[1].position == old_bed
-    assert sum(bed.name == SHARED for bed in solver.op_data.dorm) == 1
-    assert solver.op_data.operators["红"].current_room == ""
+    assert not admitted and plan == {}
+    assert data.group_shift_state == before
+    assert data.operators[B].current_room == "meeting"
+    assert data.get_dorm_by_name(SHARED)[1].position == old_bed
+    assert data.get_current_operator("contact", 0).name == "红"
 
 
 def test_failed_admission_preserves_binding_and_beds(solver):
@@ -148,22 +148,36 @@ def test_failed_admission_preserves_binding_and_beds(solver):
     assert data.groups["甲"] == [A, SHARED]
 
 
-def test_return_from_any_binding_overrides_current_group_only_on_projection(solver):
+@pytest.mark.parametrize("first,second", [(A, B), (B, A)])
+def test_shared_cover_survives_first_return_and_last_return_recalls_primary(
+    solver, first, second
+):
+    solver.op_data.operators[SHARED].group_bindings[1]["replacement"] = ["红"]
     assert shift_off(solver, "甲")[0]
+    old_bed = solver.op_data.get_dorm_by_name(SHARED)[1].position
     assert shift_off(solver, "乙")[0]
     data = solver.op_data
-    bed = data.get_dorm_by_name(A)[1]
+    assert data.get_dorm_by_name(SHARED)[1].position == old_bed
+    assert sum(bed.name == SHARED for bed in data.dorm) == 1
+    now = datetime.now()
     tasks = generate_plan_by_drom(
-        {datetime.now() + timedelta(hours=1): ([bed], False)}, data
+        {
+            now + timedelta(hours=1): ([data.get_dorm_by_name(first)[1]], False),
+            now + timedelta(hours=2): ([data.get_dorm_by_name(second)[1]], False),
+        },
+        data,
     )
-    assert len(tasks) == 1
-    assert tasks[0].plan["contact"] == [SHARED]
-    assert data.operators[SHARED].group == "乙"
-    projected = data.project_arrangements([tasks[0].plan])
-    assert projected.operators[SHARED].group == "甲"
-    assert data.operators[SHARED].group == "乙"
-    assert SHARED in data.groups["乙"]
-    assert SHARED in projected.groups["甲"]
+    assert len(tasks) == 2
+    assert "contact" not in tasks[0].plan
+    assert tasks[1].plan["contact"] == [SHARED]
+    assert data.group_is_resting("甲") and data.group_is_resting("乙")
+    apply(solver, tasks[0].plan)
+    assert solver.op_data.get_current_operator("contact", 0).name == "红"
+    assert solver.op_data.group_is_resting(data.operators[second].group)
+    apply(solver, tasks[1].plan)
+    assert solver.op_data.get_current_operator("contact", 0).name == SHARED
+    assert not solver.op_data.group_is_resting("甲")
+    assert not solver.op_data.group_is_resting("乙")
 
 
 def test_follower_recovery_time_does_not_delay_group_return(solver):
@@ -272,11 +286,12 @@ def test_same_cover_for_two_groups_keeps_latest_selected_binding(solver):
     data = solver.op_data
     data.operators[SHARED].group_bindings[1]["replacement"] = ["红"]
     data.select_group_binding(SHARED, "乙")
-    data.select_arrangement_bindings({"meeting": ["陈", "初雪"], "contact": ["红"]})
+    data.commit_group_shifts({"甲": True, "乙": True})
     assert data.operators[SHARED].group == "乙"
 
 
 def test_group_return_after_all_anchors_left_dorm_still_recalls_follower(solver):
+    assert shift_off(solver, "甲")[0]
     data = solver.op_data
     data.config.operator_mood_limits[A] = {"lower": 0, "upper": 24}
     data.operators[A]._current_room = ""
@@ -351,35 +366,29 @@ def dorm_solver(solver):
     return solver
 
 
-def test_dorm_follower_switches_covers_and_returns_with_either_group(dorm_solver):
+def test_dorm_follower_switches_covers_only_after_previous_group_returns(dorm_solver):
     solver = dorm_solver
-    for group, cover in [("甲", "红"), ("乙", "黑角")]:
+    for group, anchor, cover in [("甲", A, "红"), ("乙", B, "黑角")]:
         admitted, plan = shift_off(solver, group)
         assert admitted and plan["dormitory_1"][0] == cover
-        assert solver.op_data.operators["塑心"].group == group
-        assert solver.op_data.get_dorm_by_name("塑心")[0] is None
-        assert solver.op_data.get_current_operator("dormitory_1", 0).name == cover
-    data = solver.op_data
-    assert {bed.name for bed in data.dorm if bed.name} == {A, B}
-    bed = data.get_dorm_by_name(A)[1]
-    returns = generate_plan_by_drom({datetime.now(): ([bed], False)}, data)
-    assert returns[0].plan["dormitory_1"][0] == "塑心"
-    assert data.operators["塑心"].group == "乙"
-    apply(solver, returns[0].plan)
-    assert solver.op_data.operators["塑心"].group == "甲"
-    assert solver.op_data.get_current_operator("dormitory_1", 0).name == "塑心"
-    assert solver.op_data.operators[B].is_resting()
-    assert solver.op_data.operators["黑角"].current_room == ""
+        data = solver.op_data
+        assert data.operators["塑心"].group == group
+        bed = data.get_dorm_by_name(anchor)[1]
+        returns = generate_plan_by_drom({datetime.now(): ([bed], False)}, data)
+        assert returns[0].plan["dormitory_1"][0] == "塑心"
+        apply(solver, returns[0].plan)
+        assert solver.op_data.get_current_operator("dormitory_1", 0).name == "塑心"
 
 
-def test_dorm_follower_reuses_same_cover_when_latest_group_changes(dorm_solver):
+def test_dorm_follower_reuses_same_cover_without_changing_owner(dorm_solver):
     solver = dorm_solver
     solver.op_data.operators["塑心"].group_bindings[1]["replacement"] = ["红"]
     assert shift_off(solver, "甲")[0]
     assert solver.op_data.is_dorm_replacement("红")
     admitted, plan = shift_off(solver, "乙")
     assert admitted and plan["dormitory_1"][0] == "红"
-    assert solver.op_data.operators["塑心"].group == "乙"
+    assert solver.op_data.group_is_resting("甲")
+    assert solver.op_data.group_is_resting("乙")
     assert solver.op_data.get_current_operator("dormitory_1", 0).name == "红"
 
 
@@ -400,22 +409,21 @@ def free_dorm_solver(dorm_solver):
 
 def test_dorm_free_binding_opens_bed_and_return_relocates_occupant(free_dorm_solver):
     solver = free_dorm_solver
-    assert shift_off(solver, "甲")[0]
     assert shift_off(solver, "乙")[0]
     data = solver.op_data
     temporary = next(bed for bed in data.dorm if bed.position == ("dormitory_1", 0))
     assert data.is_effective_free_slot(temporary)
     assert temporary.name == B
-    anchor_bed = data.get_dorm_by_name(A)[1]
+    anchor_bed = data.get_dorm_by_name(B)[1]
     returns = generate_plan_by_drom({datetime.now(): ([anchor_bed], False)}, data)
     assert returns[0].plan["dormitory_1"][0] == "塑心"
-    assert B in returns[0].plan["dormitory_1"][2:]
+    assert returns[0].plan["meeting"][1] == B
     assert temporary.name == B  # Planning does not evict the live occupant.
     apply(solver, returns[0].plan)
     data = solver.op_data
     temporary = next(bed for bed in data.dorm if bed.position == ("dormitory_1", 0))
     assert not data.is_effective_free_slot(temporary)
-    assert data.get_dorm_by_name(B)[1].position != temporary.position
+    assert data.get_dorm_by_name(B) == (None, None)
     assert data.get_current_operator("dormitory_1", 0).name == "塑心"
 
 
@@ -535,7 +543,7 @@ def test_secondary_binding_retains_primary_replacement_restrictions(
 
 
 @pytest.mark.parametrize("cover", ["Free", B])
-def test_secondary_binding_admitted_from_resting_with_full_beds(
+def test_incompatible_secondary_binding_waits_even_when_target_has_a_bed(
     free_dorm_solver, cover
 ):
     s = free_dorm_solver
@@ -552,14 +560,14 @@ def test_secondary_binding_admitted_from_resting_with_full_beds(
     assert shift_off(s, "甲")[0]
     s.op_data.get_dorm_by_name(A)[1].time = datetime.now() + timedelta(hours=1)
     assert s.op_data.available_free() == 0
-    # Direct group admission succeeds on an isolated model.
+    # The target has capacity, but conflicts with the resting group.
     live = s.op_data
     s.op_data = deepcopy(live)
-    assert s.get_resting_plan(s.op_data.groups["乙"], [], {}, 1)
+    assert not s.get_resting_plan(s.op_data.groups["乙"], [], {}, 1)
     s.op_data = live
     s.tasks = []
     s.total_agent = list(live.operators.values())
-    assert s.resting().get("meeting", [])[1:2] == ["初雪"]
+    assert s.resting().get("meeting", [])[1:2] != ["初雪"]
 
 
 @pytest.mark.parametrize("edit", ["inactive", "active", "remove_active"])
@@ -612,3 +620,345 @@ def test_dorm_capacity_uses_target_binding_without_changing_active_group(
     assert s.op_data.groups == groups
     assert s.op_data.operators["塑心"].group == "乙"
     assert s.op_data.operators["塑心"].replacement == ["Free"]
+
+
+def test_successful_planning_does_not_commit_group_or_binding(solver):
+    data = solver.op_data
+    groups, state = deepcopy(data.groups), dict(data.group_shift_state)
+    plan = {}
+    assert solver.get_resting_plan(data.groups["乙"], [], plan, 0)
+    assert plan["contact"] == ["黑角"]
+    assert data.groups == groups and data.group_shift_state == state
+    assert data.operators[SHARED].group == "甲"
+    projected = data.project_arrangements([plan])
+    assert projected.group_is_resting("乙")
+    assert not data.group_is_resting("乙")
+    assert projected.group_shift_state is not data.group_shift_state
+
+
+def test_all_resting_bindings_need_one_common_candidate(solver):
+    plan = solver.global_plan["default_plan"].plan
+    slot = plan["contact"][0]
+    slot.replacement = ["红", "黑角"]
+    slot.group_bindings = [
+        {"group": "乙", "replacement": ["黑角", "砾"]},
+        {"group": "丙", "replacement": ["红", "砾"]},
+    ]
+    plan["central"] = [Room("能天使", "丙", ["夜刀"])]
+    assert solver.initialize_operators() is None
+    for op in solver.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    assert shift_off(solver, "甲")[0]
+    assert solver.op_data.get_current_operator("contact", 0).name == "红"
+    assert shift_off(solver, "乙")[0]
+    assert solver.op_data.get_current_operator("contact", 0).name == "黑角"
+    # Every pair intersects, but the three-way intersection is empty.
+    assert not shift_off(solver, "丙")[0]
+    assert not solver.op_data.group_is_resting("丙")
+
+
+def test_every_shared_slot_must_be_compatible(solver):
+    plan = solver.global_plan["default_plan"].plan
+    plan["contact"][0].group_bindings[0]["replacement"] = ["红"]
+    plan["factory"] = [
+        Room(
+            "褐果",
+            "甲",
+            ["梅尔"],
+            group_bindings=[{"group": "乙", "replacement": ["望"]}],
+        )
+    ]
+    assert solver.initialize_operators() is None
+    for op in solver.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    assert shift_off(solver, "甲")[0]
+    before = deepcopy(solver.op_data.group_shift_state)
+    assert not shift_off(solver, "乙")[0]
+    assert solver.op_data.group_shift_state == before
+    assert solver.op_data.get_current_operator("factory", 0).name == "梅尔"
+
+
+def test_partial_arrangement_keeps_state_until_all_targets_are_confirmed(solver):
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "meeting": ["Current", "初雪"],
+            "contact": ["黑角"],
+        },
+    )
+    solver._prepare_group_shift(task, remember_targets=True)
+    data = solver.op_data
+    assert not data.group_is_resting("乙")
+    # The anchor's room succeeds; training/contact selection is still pending.
+    observed = data.project_arrangements([{"meeting": ["Current", "初雪"]}])
+    data.operators = observed.operators
+    assert not solver._complete_group_shift(task)
+    assert task.plan == {"contact": ["黑角"]}
+    assert not data.group_is_resting("乙")
+    observed = data.project_arrangements([task.plan])
+    data.operators = observed.operators
+    assert solver._complete_group_shift(task)
+    assert data.group_is_resting("乙")
+    assert data.operators[SHARED].group == "乙"
+
+
+def test_pending_shift_blocks_another_execution(solver):
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    first = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "meeting": ["陈", "Current"],
+            "contact": ["红"],
+        },
+    )
+    solver._prepare_group_shift(first, remember_targets=True)
+    solver.tasks = [first]
+    second = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "meeting": ["Current", "初雪"],
+            "contact": ["黑角"],
+        },
+    )
+    with pytest.raises(base_schedule.ProductSwitchDeferred):
+        solver._prepare_group_shift(second)
+    assert not solver.op_data.group_is_resting("甲")
+    assert not solver.op_data.group_is_resting("乙")
+
+
+def test_queued_return_rechecks_groups_that_rest_later(solver):
+    solver.op_data.operators[SHARED].group_bindings[1]["replacement"] = ["红"]
+    assert shift_off(solver, "甲")[0]
+    data = solver.op_data
+    task = generate_plan_by_drom(
+        {datetime.now(): ([data.get_dorm_by_name(A)[1]], False)}, data
+    )[0]
+    assert task.plan["contact"] == [SHARED]
+    assert shift_off(solver, "乙")[0]
+    solver._prepare_group_shift(task)
+    assert "contact" not in task.plan
+    assert task.group_shift_transitions == {"甲": False}
+    assert solver.op_data.group_is_resting("甲")
+    assert solver.op_data.group_is_resting("乙")
+
+
+def test_saved_state_survives_released_anchors_and_backup_refresh(solver, monkeypatch):
+    import pickle
+
+    from arknights_mower import __main__ as main
+    from arknights_mower.solvers.record import current_state
+
+    assert shift_off(solver, "乙")[0]
+    data = solver.op_data
+    data.operators[B]._current_room, data.operators[B].current_index = "", -1
+    for attr in (
+        "daily_visit_friend",
+        "daily_report",
+        "daily_skland",
+        "daily_mail",
+        "task_count",
+    ):
+        setattr(solver, attr, None)
+    monkeypatch.setattr(main, "base_scheduler", solver)
+    saved = pickle.loads(pickle.dumps(current_state()))
+    data.group_shift_state = {}
+    data.restore_group_shift_state(saved["group_shift_state"])
+    assert data.group_is_resting("乙")
+    assert not data.group_is_resting("甲")
+    assert data.swap_plan([], refresh=True) is None
+    assert data.group_is_resting("乙")
+    assert data.operators[SHARED].group == "乙"
+
+
+def test_legacy_state_uses_fixed_anchors_not_follower_position(solver):
+    data = solver.op_data
+    data.operators[SHARED]._current_room = "dormitory_1"
+    data.restore_group_shift_state()
+    assert not any(data.group_shift_state.values())
+    data.operators[B]._current_room = "dormitory_1"
+    data.restore_group_shift_state()
+    assert data.group_shift_state == {"甲": False, "乙": True}
+    assert data.operators[SHARED].group == "乙"
+
+
+def test_perception_training_covers_survive_correction(solver):
+    plan = solver.global_plan["default_plan"].plan
+    plan.pop("contact")
+    plan["train"] = [
+        Room(
+            "褐果",
+            "甲",
+            ["梅尔"],
+            group_bindings=[{"group": "乙", "replacement": ["望"]}],
+        ),
+        Room(
+            "桃金娘",
+            "甲",
+            ["赫默"],
+            group_bindings=[{"group": "乙", "replacement": ["余"]}],
+        ),
+    ]
+    plan["dormitory_1"][0] = Room(
+        "塑心",
+        "甲",
+        ["红"],
+        group_bindings=[{"group": "乙", "replacement": ["桃金娘"]}],
+    )
+    solver.global_plan["default_plan"].config.workaholic = ["褐果", "桃金娘"]
+    assert solver.initialize_operators() is None
+    for op in solver.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 5, datetime.now()
+    admitted, off = shift_off(solver, "乙")
+    assert admitted and off["train"] == ["望", "余"]
+    data = solver.op_data
+    data.get_dorm_by_name(B)[1].time = datetime.now() + timedelta(hours=4)
+    assert data.get_current_operator("dormitory_1", 0).name == "桃金娘"
+    assert solver.agent_get_mood(read_rooms=False, return_plan=True) == {}
+    assert data.get_current_room("train", True) == ["望", "余"]
+
+
+@pytest.mark.parametrize("same_cover", [False, True])
+def test_admission_considers_groups_already_in_the_unexecuted_plan(solver, same_cover):
+    data = solver.op_data
+    if same_cover:
+        data.operators[SHARED].group_bindings[1]["replacement"] = ["红"]
+    plan, replacements = {}, []
+    assert solver.get_resting_plan(data.groups["甲"], replacements, plan, 0)
+    previous = deepcopy(plan)
+    admitted = solver.get_resting_plan(data.groups["乙"], replacements, plan, 1)
+    assert bool(admitted) is same_cover
+    assert not data.group_is_resting("甲") and not data.group_is_resting("乙")
+    if same_cover:
+        assert plan["meeting"] == ["陈", "初雪"]
+        assert sum(bed.name == SHARED for bed in data.dorm) == 1
+    else:
+        assert plan == previous
+
+
+def test_partial_shift_intent_survives_restart_and_convergence(solver):
+    import pickle
+
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "meeting": ["Current", "初雪"],
+            "contact": ["黑角"],
+            "dormitory_1": ["Current", "Current", B, SHARED, "Current"],
+        },
+    )
+    solver.task = task
+    solver.tasks = [task]
+    solver._prepare_group_shift(task, remember_targets=True)
+    data = solver.op_data
+    completed = {room: row for room, row in task.plan.items() if room != "contact"}
+    observed = data.project_arrangements([completed])
+    data.operators, data.dorm = observed.operators, observed.dorm
+    for name in (B, SHARED):
+        data.operators[name].mood = 5
+        data.get_dorm_by_name(name)[1].time = datetime.now() + timedelta(hours=4)
+    assert not solver._complete_group_shift(task)
+    solver.task = task = pickle.loads(pickle.dumps(task))
+    solver.tasks = [task]
+    solver._prepare_shift_cycle(task)
+    assert task.group_shift_transitions["乙"] is True
+    assert not data.group_is_resting("乙")
+    assert task.plan["contact"] == ["黑角"]
+
+
+def test_same_free_bed_stays_open_until_last_group_returns(free_dorm_solver):
+    solver = free_dorm_solver
+    data = solver.op_data
+    resident = data.operators["塑心"]
+    resident.group_bindings[0]["replacement"] = ["Free"]
+    resident.replacement = ["Free"]
+    assert shift_off(solver, "甲")[0]
+    assert shift_off(solver, "乙")[0]
+    data = solver.op_data
+    tasks = generate_plan_by_drom(
+        {
+            datetime.now(): ([data.get_dorm_by_name(A)[1]], False),
+            datetime.now() + timedelta(hours=1): ([data.get_dorm_by_name(B)[1]], False),
+        },
+        data,
+    )
+    assert tasks[0].plan.get("dormitory_1", ["Current"])[0] != "塑心"
+    assert tasks[1].plan["dormitory_1"][0] == "塑心"
+    apply(solver, tasks[0].plan)
+    bed = next(b for b in solver.op_data.dorm if b.position == ("dormitory_1", 0))
+    assert solver.op_data.is_effective_free_slot(bed)
+    apply(solver, tasks[1].plan)
+    assert solver.op_data.get_current_operator("dormitory_1", 0).name == "塑心"
+
+
+def test_convergence_does_not_consume_incompatible_queued_shift(solver):
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    for op in solver.op_data.operators.values():
+        op.mood = 5
+    first = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "meeting": ["陈", "Current"],
+            "contact": ["红"],
+            "dormitory_1": ["Current", "Current", A, SHARED, "Current"],
+        },
+    )
+    second = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "meeting": ["Current", "初雪"],
+            "contact": ["黑角"],
+            "dormitory_1": ["Current", "Current", "Current", SHARED, B],
+        },
+    )
+    solver.task, solver.tasks = first, [first, second]
+    solver._prepare_shift_cycle(first)
+    assert second in solver.tasks
+    assert first.plan["contact"] == ["红"]
+    assert first.group_shift_transitions == {"甲": True}
+
+
+@pytest.mark.parametrize("same_cover", [False, True])
+def test_zero_mood_shared_primary_uses_no_bed_and_still_obeys_compatibility(
+    solver, same_cover
+):
+    default = solver.global_plan["default_plan"]
+    default.config.workaholic = [SHARED]
+    default.plan["dormitory_1"][2] = Room("杜林", "", [])
+    if same_cover:
+        default.plan["contact"][0].group_bindings[0]["replacement"] = ["红"]
+    assert solver.initialize_operators() is None
+    for op in solver.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 5, datetime.now()
+    solver.op_data.operators[SHARED].mood = 0
+    assert shift_off(solver, "甲")[0]
+    assert not solver.op_data.operators[SHARED].current_room
+    assert solver.op_data.get_dorm_by_name(SHARED) == (None, None)
+    assert bool(shift_off(solver, "乙")[0]) is same_cover
+    data = solver.op_data
+    assert {bed.name for bed in data.dorm if bed.name} == (
+        {A, B} if same_cover else {A}
+    )
+    assert data.group_min_mood("甲") == 5
+    first = generate_plan_by_drom(
+        {datetime.now(): ([data.get_dorm_by_name(A)[1]], False)}, data
+    )[0]
+    apply(solver, first.plan)
+    if same_cover:
+        assert solver.op_data.get_current_operator("contact", 0).name == "红"
+        assert solver.op_data.get_dorm_by_name(SHARED) == (None, None)
+        second = generate_plan_by_drom(
+            {datetime.now(): ([solver.op_data.get_dorm_by_name(B)[1]], False)},
+            solver.op_data,
+        )[0]
+        apply(solver, second.plan)
+    assert solver.op_data.get_current_operator("contact", 0).name == SHARED

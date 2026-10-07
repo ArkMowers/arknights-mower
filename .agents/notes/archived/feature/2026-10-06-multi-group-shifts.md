@@ -1,9 +1,11 @@
 ---
 title: Multiple Group Shift Bindings
-status: implemented
+status: archived
 category: feature
 date: 2026-10-06
 ---
+
+The [explicit group-state decision](../../implemented/simplification/2026-10-07-explicit-group-shifts.md) supersedes the shift-ownership policy below. The configuration schema remains supported.
 
 # Multiple Group Shift Bindings
 

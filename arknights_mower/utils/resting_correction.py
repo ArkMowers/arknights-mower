@@ -441,6 +441,7 @@ def preserve_backup_replacements(
         source = (owner.current_room, owner.current_index)
         if (
             name not in reserved
+            and not (owner.multi_group and op_data.resting_binding_groups(owner))
             and not is_busy(name)
             and source not in reserved_slots
             and (not owner.current_room or owner.is_resting())

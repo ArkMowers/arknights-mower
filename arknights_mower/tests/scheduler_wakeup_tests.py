@@ -50,7 +50,6 @@ def scheduler(monkeypatch):
         operators={},
         dorm=[],
         correct_dorm=MagicMock(),
-        select_arrangement_bindings=MagicMock(),
         rescue_mode=False,
     )
     solver.recog = MagicMock()
@@ -64,6 +63,8 @@ def scheduler(monkeypatch):
     solver._sync_run_order_tasks = MagicMock()
     solver._switch_products_before_arrangement = MagicMock()
     solver._prepare_shift_cycle = MagicMock()
+    solver._prepare_group_shift = MagicMock()
+    solver._complete_group_shift = MagicMock(return_value=True)
     solver.agent_get_mood = MagicMock(return_value=True)
     solver.agent_arrange = MagicMock(side_effect=lambda *args: solver.skip())
     solver.craft_material = MagicMock(side_effect=solver.skip)
@@ -152,7 +153,7 @@ def test_http_workshop_wake_reselects_task_before_dispatch(scheduler):
     scheduler.on_sleep = scheduler.add_workshop
     scheduler.solver.run()
     scheduler.solver.agent_arrange.assert_not_called()
-    scheduler.solver.op_data.select_arrangement_bindings.assert_not_called()
+    scheduler.solver._prepare_group_shift.assert_not_called()
     scheduler.solver.craft_material.assert_called_once_with()
     assert scheduler.clock.now() == scheduler.shift.time - timedelta(seconds=239)
     assert any(task is scheduler.shift for task in scheduler.solver.tasks)
@@ -161,9 +162,7 @@ def test_http_workshop_wake_reselects_task_before_dispatch(scheduler):
     assert not scheduler.solver.sleeping
     scheduler.solver.run()
     scheduler.solver.agent_arrange.assert_called_once_with(scheduler.shift.plan, False)
-    scheduler.solver.op_data.select_arrangement_bindings.assert_called_once_with(
-        scheduler.shift.plan
-    )
+    scheduler.solver._complete_group_shift.assert_called_once_with(scheduler.shift)
     assert scheduler.clock.now() == scheduler.shift.time
     assert all(task is not scheduler.shift for task in scheduler.solver.tasks)
 

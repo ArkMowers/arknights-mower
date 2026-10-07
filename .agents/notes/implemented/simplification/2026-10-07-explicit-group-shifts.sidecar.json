@@ -1,0 +1,21 @@
+{
+  "title": "Explicit Group Shift State",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-25]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/multi_group_shift_tests.py",
+    "arknights_mower/tests/backup_replacement_state_tests.py",
+    "arknights_mower/tests/train_follow_correction_tests.py",
+    "arknights_mower/tests/shift_cycle_convergence_tests.py"
+  ]
+}

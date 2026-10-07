@@ -2015,7 +2015,13 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
     def _make_solver(plan):
         """可跑 agent_arrange_room("train") 的 solver：当前房间=计划 → 排班直接收尾。"""
         solver = BaseSchedulerSolver()
-        solver.task = None
+        solver.task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION, task_plan=plan)
+        solver._can_refresh_idle_dorm_search = lambda: False
+        solver.choose_train = MagicMock()
+        solver.record_selection_success = MagicMock()
+        solver.get_agent_from_room = MagicMock(
+            return_value=[{"agent": name} for name in plan["train"]]
+        )
         solver.tasks = []
         solver.waiting_scene = []
         solver.scene = MagicMock(return_value=Scene.INDEX)
@@ -2108,9 +2114,10 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
         ):
             result = solver.agent_arrange_room({}, "train", plan)
         solver.back.assert_called_once_with(0.5)  # 冻结不早退；仅排班收尾 back
-        solver.refresh_current_room.assert_called_once_with(
-            "train", [1]
-        )  # idx1=Current
+        solver.refresh_current_room.assert_not_called()
+        solver.choose_train.assert_called_once_with(
+            ["干员A", "Current"], fast_mode=True, choose_error=0
+        )
         solver.turn_on_room_detail.assert_called_with("train")
         self.assertEqual(result, {})
 
@@ -2319,9 +2326,10 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
             ),
         ):
             result = solver.agent_arrange_room({}, "train", plan)
-        solver.refresh_current_room.assert_called_once_with(
-            "train", [1]
-        )  # idx1=Current
+        solver.refresh_current_room.assert_not_called()
+        solver.choose_train.assert_called_once_with(
+            ["干员A", "Current"], fast_mode=True, choose_error=0
+        )
         self.assertEqual(result, {})
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
