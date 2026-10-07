@@ -97,13 +97,6 @@
           clearable
         />
         <n-select
-          v-model:value="idleFilter"
-          :options="idleFilterOptions"
-          size="small"
-          style="min-width: 130px"
-          aria-label="基地空闲状态"
-        />
-        <n-select
           v-model:value="filterProfession"
           :options="professionOptions"
           multiple
@@ -111,6 +104,13 @@
           style="min-width: 140px"
           size="small"
           clearable
+        />
+        <n-select
+          v-model:value="idleFilter"
+          :options="idleFilterOptions"
+          size="small"
+          style="min-width: 130px"
+          aria-label="基地空闲状态"
         />
       </n-space>
     </GrowthSurveyFilters>
@@ -2222,13 +2222,14 @@ async function loadOperators() {
   margin-top: 14px;
 }
 .mastery-list :deep(.operator-cards) {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
+  align-items: start;
   gap: 8px;
 }
 .mastery-list :deep(.operator-cards > .n-collapse-item) {
-  width: max-content;
+  width: 100%;
+  min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
   margin: 0;
@@ -2238,7 +2239,8 @@ async function loadOperators() {
   background: var(--mower-control-surface, var(--n-color));
 }
 .mastery-list :deep(.operator-cards > .n-collapse-item--active) {
-  width: 880px;
+  grid-column: 1 / -1;
+  max-width: 880px;
   padding-bottom: 10px;
 }
 .mastery-list :deep(.operator-cards > .n-collapse-item > .n-collapse-item__header) {
