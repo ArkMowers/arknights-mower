@@ -17,6 +17,8 @@ date: 2026-10-07
 
 ## Verification
 
+The frontend dependency declaration and lockfile use Prettier 3.9.9, matching the current CI formatter. The local frontend format check uses that installed version.
+
 Offline configuration tests cover Windows, macOS and Linux bundles, omitted paths, explicit custom and empty values, unrelated updates and save/reload. Device configuration and preflight tests check compatibility with existing selection and validation rules.
 
 The additional session I/O suite reports the same 34 failures, including subtests, with both the shared default and the original empty default. These existing path and manager-fixture failures remain outside this change.
