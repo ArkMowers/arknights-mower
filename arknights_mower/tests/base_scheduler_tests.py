@@ -1,3 +1,4 @@
+import itertools
 import sys
 import unittest
 from datetime import date, datetime, timedelta
@@ -3059,6 +3060,63 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         solver.get_order_remaining_time.assert_called_once_with()
         solver.sleep.assert_called_once_with(90.0)
         self.assertEqual(result, {room: ["旧干员"]})
+
+    def test_extra_room_target_stops_without_modifying_task(self):
+        for cached, extra in itertools.product(
+            (True, False), ("Current", "Free", "", "安哲拉")
+        ):
+            with self.subTest(cached=cached, extra=extra):
+                solver, room, _ = self.make_solver(target="乌尔比安")
+                solver.task.type = TaskTypes.SHIFT_ON
+                original = ["乌尔比安", "幽灵鲨", extra]
+                solver.task.plan = {room: original.copy()}
+                solver.op_data.run_order_rooms = {}
+                solver.tasks = []
+                solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
+                current = ["斑点", "夜烟"]
+                solver.op_data.get_current_room.side_effect = (
+                    lambda _room, bypass=False, current_index=None: (
+                        current if cached or bypass else None
+                    )
+                )
+                solver.refresh_current_room = (
+                    BaseSchedulerSolver.refresh_current_room.__get__(solver)
+                )
+                with (
+                    patch.object(base_schedule.config, "stop_mower") as stop,
+                    patch.object(base_schedule.logger, "error") as error,
+                ):
+                    with self.assertRaisesRegex(
+                        base_schedule.MowerExit, "排班超出当前设施的 2 个岗位"
+                    ):
+                        solver.agent_arrange_room({}, room, solver.task.plan)
+                    stop.set.assert_called_once_with()
+                    error.assert_called_once()
+                self.assertEqual(solver.task.plan, {room: original})
+                solver.enter_room.assert_called_once_with(room)
+                solver.choose_agent.assert_not_called()
+                solver.get_agent_from_room.assert_not_called()
+                solver.recog.update.assert_not_called()
+                solver.get_order_remaining_time.assert_not_called()
+
+    def test_two_slot_task_runs_after_extra_target_is_removed(self):
+        solver, room, _ = self.make_solver(target="乌尔比安")
+        solver.task.type = TaskTypes.SHIFT_ON
+        solver.task.plan = {room: ["乌尔比安", "幽灵鲨"]}
+        solver.op_data.run_order_rooms = {}
+        solver.op_data.get_current_room.return_value = ["斑点", "夜烟"]
+        solver.tasks = []
+        solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
+        solver.get_agent_from_room.side_effect = None
+        solver.get_agent_from_room.return_value = [
+            {"agent": name} for name in ["乌尔比安", "幽灵鲨"]
+        ]
+        result = solver.agent_arrange_room({}, room, solver.task.plan)
+        self.assertEqual(result, {})
+        self.assertEqual(solver.task.plan, {})
+        solver.enter_room.assert_called_once_with(room)
+        solver.choose_agent.assert_called_once()
+        self.assertEqual(solver.choose_agent.call_args.args[0], ["乌尔比安", "幽灵鲨"])
 
     def test_terminal_device_failure_stops_arrangement_without_retry(self):
         for failure in (

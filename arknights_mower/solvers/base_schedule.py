@@ -8656,6 +8656,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         break
                 error_count = 0
                 if not checked:
+                    roster = self.op_data.get_current_room(room, True)
+                    if len(plan[room]) > len(roster):
+                        extra = plan[room][len(roster) :]
+                        message = (
+                            f"{room} 排班超出当前设施的 {len(roster)} 个岗位：{extra}；"
+                            "请检查主表、副表与游戏设施岗位数是否一致"
+                        )
+                        logger.error(message)
+                        config.stop_mower.set()
+                        raise MowerExit(message)
                     if (
                         any(
                             any(char in item for item in plan[room])

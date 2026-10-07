@@ -1274,6 +1274,16 @@ def plan_metadata(op_data, tasks):
     # 仅当副表处于激活状态时，保留既有回班任务中的工位快照，避免副表临时调整工位覆盖回班目标；
     # 当所有副表均已失效（恢复纯主表）时，所有干员统一按主表规划回班，避免副表工位粘滞。
     existing_targets = {}
+    previous_windows = {}
+    for task in tasks:
+        if task.type != TaskTypes.SHIFT_ON or id(task) in locked_ids:
+            continue
+        names = {name for row in task.plan.values() for name in row}
+        for name, (identity, start) in getattr(task, "return_windows", {}).items():
+            if name in names:
+                previous_windows[identity] = min(
+                    start, previous_windows.get(identity, start)
+                )
     if any(getattr(op_data, "plan_condition", [])):
         for t in tasks:
             if t.type == TaskTypes.SHIFT_ON and t.plan:
@@ -1337,13 +1347,47 @@ def plan_metadata(op_data, tasks):
         key=lambda x: x.current_mood() - x.lower_limit,
     )
 
-    # 计算最低休息时间
+    # 工作心情预测与本轮休息等待窗口分别计算，重算不能重启等待。
     for agent in total_agent:
-        # 如果全红脸，使用急救模式
-        predicted_rest_time = max(
-            agent.predict_exhaust(), datetime.now() + timedelta(minutes=30)
+        min_resting_time = min(min_resting_time, agent.predict_exhaust())
+
+    return_windows = {}
+    now = datetime.now()
+
+    def normal_return_time(dorms):
+        operator = op_data.operators[dorms[0].name]
+        members = (
+            op_data.shift_group_members(operator.group)
+            if operator.group
+            else [operator.name]
         )
-        min_resting_time = min(min_resting_time, predicted_rest_time)
+        identity = (
+            tuple(
+                sorted(
+                    (
+                        bed.name,
+                        getattr(
+                            op_data.operators[bed.name], "dorm_position_version", 0
+                        ),
+                    )
+                    for bed in dorms
+                )
+            ),
+            tuple(
+                sorted(
+                    (name, existing_targets.get(name, (op.room, op.index)), op.group)
+                    for name in members
+                    for op in [op_data.operators[name]]
+                )
+            ),
+        )
+        start = previous_windows.get(identity, now)
+        for bed in dorms:
+            return_windows[bed.name] = (identity, start)
+        return min(
+            min(bed.time for bed in dorms if bed.time is not None),
+            max(min_resting_time, start + timedelta(minutes=30)),
+        )
 
     logger.debug(f"预测最低休息时间为: {min_resting_time}")
     grouped_dorms = defaultdict(list)
@@ -1436,16 +1480,16 @@ def plan_metadata(op_data, tasks):
                 )
                 max_extra_wait = config.conf.group_mood_gap_max_extra_wait_hours
                 if mood_gap_full_rest and max_extra_wait > 0 and nearest_dorm:
-                    normal_return_time = min(nearest_dorm.time, min_resting_time)
+                    normal_time = normal_return_time(high_dorms)
                     task_time = max(
-                        normal_return_time,
+                        normal_time,
                         min(
                             task_time,
-                            normal_return_time + timedelta(hours=max_extra_wait),
+                            normal_time + timedelta(hours=max_extra_wait),
                         ),
                     )
             elif nearest_dorm:
-                task_time = min(nearest_dorm.time, min_resting_time)
+                task_time = normal_return_time(high_dorms)
             else:
                 continue
             if task_time not in new_task:
@@ -1461,9 +1505,7 @@ def plan_metadata(op_data, tasks):
                 if room.time and room.name:
                     rest_in_full = op_data.operators[room.name].rest_in_full
                     task_time = (
-                        min(room.time, min_resting_time)
-                        if not rest_in_full
-                        else room.time
+                        normal_return_time([room]) if not rest_in_full else room.time
                     )
                     if task_time not in new_task:
                         new_task[task_time] = ([room], rest_in_full)
@@ -1492,6 +1534,14 @@ def plan_metadata(op_data, tasks):
         release_tasks=release_tasks,
         pending_arrangements=pending_arrangements,
     )
+    for task in generated:
+        if task.type == TaskTypes.SHIFT_ON:
+            task.return_windows = {
+                name: return_windows[name]
+                for row in task.plan.values()
+                for name in row
+                if name in return_windows
+            }
     tasks.extend(generated)
     # 全组都已达到各自上限并离宿时，不再有床位能派生回班任务。
     # 复用原回班及临时床关闭流程，避免最后一次离宿后把整组留在空闲。
