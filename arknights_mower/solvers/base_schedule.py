@@ -732,6 +732,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 t.time < now - timedelta(minutes=15)
                 and t.type not in preserved
                 and not hasattr(t, "emergency_original_roster")
+                and not getattr(t, "group_shift_expected", {})
+                and not getattr(t, "backup_shift_active", False)
                 for t in self.tasks
             ):
                 logger.info(
@@ -743,6 +745,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     if t.type in preserved
                     or (t.type in future_preserved and t.time > now)
                     or hasattr(t, "emergency_original_roster")
+                    or getattr(t, "group_shift_expected", {})
+                    or getattr(t, "backup_shift_active", False)
                 ]
                 # #144：清队后补立即空任务——队列只剩远期专精重检时，让下一次
                 # run() 走正常 planned 分支重读心情/换班/跑单，而不是睡到远期任务开始

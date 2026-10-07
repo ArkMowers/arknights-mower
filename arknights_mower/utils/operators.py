@@ -1103,6 +1103,7 @@ class Operators:
         The caller owns the plan. No live occupancy or group state is modified.
         """
         from arknights_mower.utils.exhaust_replacement import match_replacements
+        from arknights_mower.utils.mastery_db import is_operator_busy
 
         transitions = (
             self.arrangement_group_transitions(plan)
@@ -1155,6 +1156,7 @@ class Operators:
                 for name in candidates
                 if name not in reserved
                 and name in self.operators
+                and not is_operator_busy(name)
                 and (
                     actual is not None
                     and actual.name == name

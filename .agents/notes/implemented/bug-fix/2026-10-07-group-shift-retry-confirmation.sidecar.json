@@ -25,6 +25,9 @@
     "arknights_mower/tests/automatic_rescue_tests.py",
     "arknights_mower/tests/custom_mood_limits_tests.py",
     "arknights_mower/tests/dorm_recovery_tests.py",
-    "arknights_mower/tests/dorm_batch_release_tests.py"
+    "arknights_mower/tests/dorm_batch_release_tests.py",
+    "arknights_mower/tests/scheduler_recovery_preservation_tests.py",
+    "arknights_mower/tests/mastery_db_tests.py",
+    "arknights_mower/tests/mastery_scheduling_tests.py"
   ]
 }

@@ -27,6 +27,8 @@ Shared matching excludes a replacement occupying another fixed dormitory post un
 
 Final dormitory selection relocates surviving confirmation targets by name after empty-slot compaction; temporary single-target recovery selections retain the final target map. Pending group confirmation preserves ordinary tasks while independently refreshing personal mood-limit releases from observed beds. Unchanged release sources retain their existing task object and retry time; changed observations replace the deadline and departed residents lose stale release tasks.
 
+Timeout queue rebuilding retains tasks with pending group targets or active backup-shift arrangements, preserving object identity, remaining plans and retry times. These tasks do not themselves trigger ordinary timeout rebuilding. Shared replacement revalidation uses the existing mastery occupancy query, including arranging, training and waiting-for-collection states, independently of position caches. Other compatible candidates remain eligible; absence of a complete assignment defers the shift.
+
 ## Verification
 
 Offline regression tests cover the three failure paths, overlapping reservation owners, unavailable alternatives, complete matching across shared slots, unfinished recovery, missing working-slot observations and fixed dormitory targets. Existing shift, product, dormitory and personal-mood suites remain applicable. No live device or configuration changes participate in verification.
@@ -38,3 +40,5 @@ Exhaustion regression tests generate real future deadlines and verify empty arra
 Further regression cases cover whole-task product deferral for both shift directions, completion after reservation release, observed rescue returns and continued rest, interrupted rescue confirmation, and fixed dormitory cover protection with an explicit-source-release control.
 
 Cap-confirmation regressions cover compacted dormitory targets, missing working slots, temporary selection isolation, both metadata entry points and backup-shift protection. Automatic-rescue mocks return an empty arrangement dictionary when no correction remains, matching the existing `return_plan=True` contract.
+
+Timeout regressions cover overdue and future partial returns, backup-shift protection, preservation through metadata rebuilding and successful completion after the missing shared primary returns. Mastery regressions cover direct matching and full shift projection with an available candidate, a reserved candidate and an alternative candidate. Scheduler recovery and mastery database tests retain their existing critical-task and occupancy-state coverage.
