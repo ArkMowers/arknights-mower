@@ -1,0 +1,25 @@
+{
+  "title": "Shared Shift Dispatch and Confirmation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-25]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators.normalize_shared_arrangement",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._suspend_group_shift",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._resume_waiting_group_shifts",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._complete_group_shift",
+    "arknights_mower.solvers.record.current_state"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/shared_shift_retry_tests.py",
+    "arknights_mower/tests/group_shift_confirmation_tests.py",
+    "arknights_mower/tests/multi_group_shift_tests.py",
+    "arknights_mower/tests/group_shift_training_protection_tests.py"
+  ]
+}
