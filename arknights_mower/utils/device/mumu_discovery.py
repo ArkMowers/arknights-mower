@@ -17,8 +17,8 @@ from arknights_mower.utils.device.manager_io import (
 )
 from arknights_mower.utils.device.mumu_info import mumu_entries
 from arknights_mower.utils.device.mumu_layout import (
+    installation_root,
     manager_candidates,
-    runtime_pair_root,
 )
 from arknights_mower.utils.device.preflight import PreflightError
 from arknights_mower.utils.device.windows_discovery import WindowsInstallationDiscovery
@@ -153,11 +153,7 @@ class MuMuDiscoveryIO(WindowsInstallationDiscovery):
                 return False
 
         if path.name.lower() == "mumumanager.exe":
-            root = (
-                path.parent.parent
-                if path.parent.name.lower() in {"shell", "nx_main"}
-                else path.parent
-            )
+            root = installation_root(path.parent)
             return (path, root) if is_file(path) else (None, root)
         if path.name.lower() == "mumunxdevice.exe":
             if (
@@ -169,12 +165,7 @@ class MuMuDiscoveryIO(WindowsInstallationDiscovery):
             root = path.parents[3]
         else:
             folder = path.parent if path.suffix.lower() == ".exe" else path
-            if folder.name.lower() in {"shell", "nx_main"}:
-                root = folder.parent
-            else:
-                # A runtime directory pair (temp/main, temp/shell, .backup/main)
-                # belongs to the installation two levels above it.
-                root = runtime_pair_root(folder) or folder
+            root = installation_root(folder)
         for manager in manager_candidates(root):
             if is_file(manager):
                 return manager, root

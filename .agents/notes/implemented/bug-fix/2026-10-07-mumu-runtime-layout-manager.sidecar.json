@@ -8,7 +8,7 @@
   ],
   "invariants": [],
   "code_symbols": [
-    "arknights_mower.utils.device.mumu_layout",
+    "arknights_mower.utils.device.mumu_layout.installation_root",
     "arknights_mower.utils.device.mumu_discovery.MuMuDiscoveryIO._manager_candidate",
     "arknights_mower.utils.device.mumu12ipc.paths.resolve_mumu_paths"
   ],

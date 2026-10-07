@@ -1,18 +1,6 @@
-"""Shared MuMu 12 installation layout for discovery, IPC and ADB resolution.
-
-MuMu 12 installs its manager below a runtime directory pair in some builds
-(``temp/main``, ``temp/shell``) and keeps a copy under ``.backup``. The
-installation root is therefore two levels above those directories, not the
-directories themselves.
-"""
+"""MuMu 12 manager locations and installation roots shared by discovery and IPC."""
 
 from pathlib import Path
-
-# Directories holding the manager one level below the installation root.
-INSTALL_ROOT_LEVEL_LAYOUTS = frozenset({"shell", "nx_main"})
-# Runtime directory pairs holding the manager two levels below the root.
-INSTALL_RUNTIME_LEVEL_LAYOUTS = frozenset({"temp", "backup"})
-MANAGER_FILENAME = "MuMuManager.exe"
 
 _MANAGER_LOCATIONS = (
     "shell/MuMuManager.exe",
@@ -23,14 +11,16 @@ _MANAGER_LOCATIONS = (
 )
 
 
-def runtime_pair_root(folder: Path) -> Path | None:
-    """Return the installation root when *folder* is ``temp/<pair>`` or ``.backup/<pair>``."""
-    parent = folder.parent
-    if parent.name.lstrip(".").lower() not in INSTALL_RUNTIME_LEVEL_LAYOUTS:
-        return None
-    if folder.name.lower() not in INSTALL_ROOT_LEVEL_LAYOUTS | {"main"}:
-        return None
-    return parent.parent
+def installation_root(folder: Path) -> Path:
+    """Resolve runtime directory pairs before root-level ``shell``/``nx_main``."""
+    name = folder.name.lower()
+    if folder.parent.name.lower() in {"temp", ".backup"} and name in {
+        "main",
+        "shell",
+        "nx_main",
+    }:
+        return folder.parent.parent
+    return folder.parent if name in {"shell", "nx_main"} else folder
 
 
 def manager_candidates(root: Path) -> list[Path]:

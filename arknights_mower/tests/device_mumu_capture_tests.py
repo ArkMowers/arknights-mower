@@ -266,32 +266,48 @@ class MuMuInstallationLayoutTests(unittest.TestCase):
         self.folder = self.enterContext(tempfile.TemporaryDirectory())
         self.root = Path(self.folder)
 
-    def test_runtime_manager_derives_the_installation_root(self):
-        manager = self.root / "temp/main/MuMuManager.exe"
-        manager.parent.mkdir(parents=True)
-        manager.touch()
-        self.assertEqual(
-            resolve_mumu_paths("", str(manager)),
-            (str(self.root), str(manager)),
-        )
+    def test_live_layout_sources_share_root_and_manager(self):
+        for layout in ("", "shell", "nx_main", "temp/main", "temp/shell"):
+            root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+            manager = root / layout / "MuMuManager.exe"
+            manager.parent.mkdir(parents=True, exist_ok=True)
+            manager.touch()
+            for installation, explicit in (
+                (str(root), ""),
+                (str(manager.parent), ""),
+                ("", str(manager)),
+                (str(manager.parent), str(manager)),
+            ):
+                with self.subTest(layout=layout, installation=installation):
+                    self.assertEqual(
+                        resolve_mumu_paths(installation, explicit),
+                        (str(root), str(manager)),
+                    )
 
-    def test_runtime_installation_directory_is_not_its_own_root(self):
-        manager = self.root / "temp/main/MuMuManager.exe"
-        manager.parent.mkdir(parents=True)
-        manager.touch()
-        self.assertEqual(
-            resolve_mumu_paths(str(self.root / "temp/main")),
-            (str(self.root), str(manager)),
-        )
+    def test_backup_layout_uses_root_and_preserves_explicit_manager(self):
+        live = self.root / "temp/main/MuMuManager.exe"
+        live.parent.mkdir(parents=True)
+        live.touch()
+        for pair in ("main", "shell", "nx_main"):
+            backup = self.root / ".backup" / pair / "MuMuManager.exe"
+            backup.parent.mkdir(parents=True)
+            backup.touch()
+            for installation, explicit in (
+                (str(backup.parent), ""),
+                (str(backup.parent), str(backup)),
+                ("", str(backup)),
+            ):
+                with self.subTest(pair=pair, installation=installation):
+                    self.assertEqual(
+                        resolve_mumu_paths(installation, explicit),
+                        (str(self.root), explicit or str(live)),
+                    )
 
-    def test_runtime_layout_still_uses_the_registered_manager(self):
-        manager = self.root / "temp/main/MuMuManager.exe"
-        manager.parent.mkdir(parents=True)
-        manager.touch()
-        self.assertEqual(
-            resolve_mumu_paths(self.folder, str(manager)),
-            (str(self.root), str(manager)),
-        )
+    def test_unrecognized_runtime_names_keep_their_directory(self):
+        for layout in ("backup/main", "..backup/main", ".temp/main", "temp/other"):
+            with self.subTest(layout=layout):
+                folder = self.root / layout
+                self.assertEqual(resolve_mumu_paths(str(folder))[0], str(folder))
 
 
 class MuMuCaptureWorkerTests(unittest.TestCase):
