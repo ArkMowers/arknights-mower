@@ -22,3 +22,5 @@ The pre-flight complexity check retains the existing performance policy, failure
 ## Verification
 
 Offline performance tests cover desktop startup, feedback hysteresis, all downgrade levels, warmup and measured-feedback caps, workflow snapshots, Android restrictions and preserved timing values. Frontend tests cover the visible desktop and Android baselines, backend verdicts and explicit modes.
+
+Dormitory recovery entry tests verify that two preselection feedback failures lower desktop `xhigh` to `high` and Android `medium` to `low`, with an exact cap and effective-mode assertion for each platform.
