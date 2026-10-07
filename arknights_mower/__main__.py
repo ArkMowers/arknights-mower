@@ -485,6 +485,7 @@ def simulate(saved):
             base_scheduler.op_data.restore_group_shift_state(
                 saved.get("group_shift_state")
             )
+            base_scheduler.waiting_group_shifts = saved.get("waiting_group_shifts", [])
             base_scheduler.op_data.restore_dorm_state(saved["dorm"])
             base_scheduler.op_data.facility_states = copy.deepcopy(
                 saved.get("facility_states", {})

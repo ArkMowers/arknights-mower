@@ -815,6 +815,7 @@ class WorkshopOperatorRecommendationsView(MethodView):
 
     def get(self):
         from arknights_mower.utils.workshop_recommendation import (
+            CATEGORIES,
             WorkshopRecommendationError,
             recommend_workshop_operators,
         )
@@ -823,7 +824,17 @@ class WorkshopOperatorRecommendationsView(MethodView):
             return recommend_workshop_operators(
                 min_bonus=request.args.get(
                     "min_bonus", getattr(config.conf, "workshop_min_bonus", 80)
-                )
+                ),
+                category_min_bonus={
+                    category: value
+                    for category in CATEGORIES
+                    if (
+                        value := request.args.get(
+                            category.replace("_operators", "_min_bonus")
+                        )
+                    )
+                    is not None
+                },
             )
         except WorkshopRecommendationError as exc:
             return {"error": str(exc)}, 400

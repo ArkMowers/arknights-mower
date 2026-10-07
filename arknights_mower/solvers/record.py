@@ -234,6 +234,7 @@ def current_state():
     return {
         "dorm": data.all_dorms(),
         "tasks": tasks,
+        "waiting_group_shifts": getattr(base_scheduler, "waiting_group_shifts", []),
         "party_time": data.party_time,
         "operators": data.operators,
         "facility_states": getattr(data, "facility_states", {}),

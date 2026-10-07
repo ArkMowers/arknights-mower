@@ -10,6 +10,7 @@ from unittest.mock import patch
 from arknights_mower.utils import config as config_module
 from arknights_mower.utils.config import atomic_write, migrate_app_config_paths
 from arknights_mower.utils.config.conf import Conf
+from arknights_mower.utils.config.device_profile import DeviceProfile
 
 
 @contextmanager
@@ -30,6 +31,60 @@ def _patched_conf(path, conf=None):
 
 
 class TestMaaConfig(unittest.TestCase):
+    def test_device_profile_uses_bundled_adb_when_path_is_omitted(self):
+        from arknights_mower.utils import path
+
+        with (
+            tempfile.TemporaryDirectory() as root,
+            patch.object(path, "_internal_dir", Path(root)),
+        ):
+            tools = Path(root) / "platform-tools"
+            tools.mkdir()
+            for name in ("adb", "adb.exe"):
+                (tools / name).touch()
+            for platform in ("darwin", "win32", "linux"):
+                with patch("sys.platform", platform), self.subTest(platform=platform):
+                    name = "adb.exe" if platform == "win32" else "adb"
+                    expected = f"@internal/platform-tools/{name}"
+                    profile = DeviceProfile(preset_id="manual.physical")
+                    self.assertEqual(profile.adb_path, expected)
+                    self.assertNotIn("adb_path", profile.model_fields_set)
+                    for values in ({}, {"device": {"preset_id": "manual.physical"}}):
+                        conf = Conf(**values)
+                        self.assertEqual(conf.device.adb_path, expected)
+                        self.assertEqual(conf.maa_adb_path, expected)
+                        restored = Conf(**conf.model_dump())
+                        self.assertEqual(restored.device.adb_path, expected)
+                        self.assertEqual(restored.maa_adb_path, expected)
+
+    def test_explicit_device_adb_path_is_preserved(self):
+        with patch("sys.platform", "darwin"):
+            for selected in ("/custom/adb", ""):
+                with self.subTest(selected=selected):
+                    conf = Conf(device={"adb_path": selected})
+                    updated = conf.updated({"theme": "dark"})
+                    restored = Conf(**updated.model_dump())
+                    self.assertEqual(restored.device.adb_path, selected)
+                    self.assertEqual(restored.maa_adb_path, selected)
+
+    def test_bundled_device_adb_survives_save_and_reload(self):
+        with (
+            tempfile.TemporaryDirectory() as root,
+            patch("sys.platform", "darwin"),
+            patch.object(config_module, "__system__", "darwin"),
+            patch.dict(os.environ, {"MOWER_ANDROID": "0"}),
+        ):
+            conf_path = Path(root) / "conf.yml"
+            with _patched_conf(conf_path):
+                config_module.load_conf()
+                expected = "@internal/platform-tools/adb"
+                self.assertEqual(config_module.conf.device.adb_path, expected)
+                self.assertEqual(config_module.conf.device.last_serial, "")
+                config_module.save_conf()
+                config_module.load_conf()
+                self.assertEqual(config_module.conf.device.adb_path, expected)
+                self.assertEqual(config_module.conf.maa_adb_path, expected)
+
     def test_defaults_share_global_maa_directory_independently_of_instance(self):
         from arknights_mower.utils import path
 
@@ -89,11 +144,14 @@ class TestMaaConfig(unittest.TestCase):
             for platform in ("win32", "linux"):
                 with patch("sys.platform", platform):
                     self.assertEqual(Conf().maa_adb_path, "")
+                    self.assertEqual(DeviceProfile().adb_path, "")
             with patch("sys.platform", "linux"):
                 which.return_value = "/usr/bin/adb"
                 self.assertEqual(Conf().maa_adb_path, "/usr/bin/adb")
+                self.assertEqual(DeviceProfile().adb_path, "/usr/bin/adb")
                 with patch.dict(os.environ, {"MOWER_ADB_BIN": "/custom/adb"}):
                     self.assertEqual(Conf().maa_adb_path, "/custom/adb")
+                    self.assertEqual(DeviceProfile().adb_path, "/custom/adb")
             tools_dir = Path(root) / "platform-tools"
             tools_dir.mkdir()
             for name in ("adb", "adb.exe"):
