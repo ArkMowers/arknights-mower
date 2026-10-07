@@ -121,47 +121,54 @@ def test_fast_click_strategy_keeps_zero_interval_reorder(
     assert solver.switch_arrange_order.call_count == 2
 
 
-def test_high_mode_confirms_each_reorder_click(monkeypatch):
+def test_high_mode_checks_full_roster_after_all_reorder_clicks(monkeypatch):
     monkeypatch.setattr(base_mixin.config.conf, "performance_mode", "high")
     solver, selected = selection_solver(
         monkeypatch, residents=list(reversed(RESIDENTS))
     )
     solver.recog.img = selected_card_frame()
     confirmations = []
+    tap_counts = []
 
     def confirm(prefix, **kwargs):
         confirmations.append(prefix.copy())
+        tap_counts.append(solver.tap.call_count)
         return list(reversed(RESIDENTS)) if len(confirmations) <= 2 else prefix
 
     solver.wait_for_arranged_agents = MagicMock(side_effect=confirm)
     solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
 
     assert selected == RESIDENTS
-    assert confirmations[2 : 2 + len(RESIDENTS)] == [
-        RESIDENTS[:i] for i in range(1, len(RESIDENTS) + 1)
-    ]
-    assert len(confirmations) == len(RESIDENTS) + 3
-    assert all(confirmations)
+    assert len(confirmations) == 3
+    assert all(sorted(names) == sorted(RESIDENTS) for names in confirmations)
+    assert tap_counts == [0, 0, len(RESIDENTS) + 1]
     assert all(
         call.kwargs.get("ordered") is False
         for call in solver.wait_for_arranged_agents.call_args_list
     )
-    assert all(call.kwargs["interval"] == 0.2 for call in solver.tap.call_args_list[1:])
+    assert solver.tap.call_args_list[0].kwargs["interval"] == 0.5
+    assert all(call.kwargs["interval"] == 0.1 for call in solver.tap.call_args_list[1:])
 
 
-def test_high_mode_stops_when_reorder_click_has_no_feedback(monkeypatch):
+def test_high_mode_rejects_wrong_final_roster_after_reorder(monkeypatch):
     monkeypatch.setattr(base_mixin.config.conf, "performance_mode", "high")
     solver, _ = selection_solver(monkeypatch, residents=list(reversed(RESIDENTS)))
     solver.recog.img = selected_card_frame()
     solver.wait_for_arranged_agents = MagicMock(
-        side_effect=[list(reversed(RESIDENTS)), list(reversed(RESIDENTS)), None]
+        side_effect=[list(reversed(RESIDENTS)), list(reversed(RESIDENTS))]
     )
+    solver.verify_agent = MagicMock(return_value=False)
+    solver.tap_confirm = MagicMock()
 
-    with pytest.raises(base_mixin.AgentSelectionNotReady):
+    with pytest.raises(Exception, match="检测到干员选择错误"):
         solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
 
-    # One clear and one card tap; an unconfirmed click cannot start the next card.
-    assert solver.tap.call_count == 2
+    assert solver.tap.call_count == len(RESIDENTS) + 1
+    assert solver.verify_agent.call_count == 2
+    solver.verify_agent.assert_called_with(
+        RESIDENTS, "dormitory_1", observation=None, ordered=False
+    )
+    solver.tap_confirm.assert_not_called()
 
 
 @pytest.mark.parametrize("phase", ["exists", "verify"])
@@ -177,7 +184,7 @@ def test_page_change_bypasses_filter_reset_in_reorder_and_final_verification(
     def observe(expected, **kwargs):
         nonlocal observations
         observations += 1
-        stop = 2 if phase == "exists" else len(RESIDENTS) + 3
+        stop = 2 if phase == "exists" else 3
         if observations == stop:
             raise base_mixin.AgentSelectionPageChanged("页面退出")
         return expected.copy()
@@ -193,15 +200,15 @@ def test_page_change_bypasses_filter_reset_in_reorder_and_final_verification(
 
 
 @pytest.mark.parametrize(
-    ("mode", "low_frame_rate", "poll_interval"),
+    ("mode", "low_frame_rate", "poll_interval", "click_interval"),
     [
-        ("high", False, 0.1),
-        ("medium", True, 0.5),
-        ("low", True, 0.75),
+        ("high", False, 0.1, 0.1),
+        ("medium", True, 0.5, 0.2),
+        ("low", True, 0.75, 0.2),
     ],
 )
 def test_non_ultra_rebuilds_order_without_selection_number_proof(
-    monkeypatch, mode, low_frame_rate, poll_interval
+    monkeypatch, mode, low_frame_rate, poll_interval, click_interval
 ):
     monkeypatch.setattr(base_mixin.config.conf, "performance_mode", mode)
     monkeypatch.setattr(base_mixin.config.conf, "low_frame_rate_mode", low_frame_rate)
@@ -220,6 +227,11 @@ def test_non_ultra_rebuilds_order_without_selection_number_proof(
 
     assert selected == RESIDENTS
     assert solver.tap.call_count == len(RESIDENTS) + 1
+    assert solver.tap.call_args_list[0].kwargs["interval"] == 0.5
+    assert all(
+        call.kwargs["interval"] == click_interval
+        for call in solver.tap.call_args_list[1:]
+    )
     assert solver.switch_arrange_order.call_count == 2
 
 

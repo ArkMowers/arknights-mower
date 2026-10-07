@@ -10,7 +10,6 @@ from time import monotonic
 from typing import Literal, Optional
 
 import cv2
-import numpy as np
 import requests
 from packaging.version import InvalidVersion, Version
 
@@ -7457,32 +7456,17 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 else:
                     raise Exception("检测到干员选择错误，重新选择")
             if click_order:
-                # 极高档连续点击；高档逐次确认已选集合增加。
+                # 按目标顺序完成点击后统一校验完整名单。
                 reorder_mode = self.performance_profile.mode
+                click_interval = {"xhigh": 0, "high": 0.1}.get(reorder_mode, 0.2)
                 logger.debug(
                     f"选人重排清空：性能档位{reorder_mode}，页面已选{exists}，目标{agents}"
                 )
                 self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
-                for idx, p_idx in enumerate(click_order):
+                for p_idx in click_order:
                     x = self.recog.w * position[p_idx][0]
                     y = self.recog.h * position[p_idx][1]
-                    self.tap(
-                        (x, y),
-                        interval=0 if reorder_mode == "xhigh" else 0.2,
-                    )
-                    if (
-                        reorder_mode == "high"
-                        and isinstance(self.recog.img, np.ndarray)
-                        and (
-                            self.wait_for_arranged_agents(
-                                agents[: idx + 1], ordered=False
-                            )
-                            is None
-                        )
-                    ):
-                        raise AgentSelectionNotReady(
-                            "重排点击未得到选中反馈，返回房间重试"
-                        )
+                    self.tap((x, y), interval=click_interval)
                 reordered = True
             else:
                 # 空目标没有需要重排和校验的卡片。
