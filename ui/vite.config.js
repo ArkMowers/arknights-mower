@@ -10,6 +10,11 @@ import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
 
+// unplugin-vue-components 用单引号拼接自动导入路径且不转义，检出目录含单引号时
+// 生成的 import 语句会因引号提前闭合而无法解析。这里把组件路径换成 `@/` 别名，
+// 输出与绝对路径构建一致，也避免依赖目录名。
+const srcRoot = fileURLToPath(new URL('./src', import.meta.url)).replace(/\\/g, '/')
+
 // https://vitejs.dev/config/
 export default defineConfig(({ command }) => ({
   server: {
@@ -30,7 +35,11 @@ export default defineConfig(({ command }) => ({
     }),
     Components({
       dts: command === 'serve' ? 'components.d.ts' : false,
-      resolvers: [NaiveUiResolver()]
+      resolvers: [NaiveUiResolver()],
+      importPathTransform: (path) => {
+        const normalized = path.replace(/\\/g, '/')
+        return normalized.startsWith(srcRoot) ? `@${normalized.slice(srcRoot.length)}` : normalized
+      }
     })
   ],
   resolve: {

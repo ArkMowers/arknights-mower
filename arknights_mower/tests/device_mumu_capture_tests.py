@@ -2,7 +2,9 @@
 
 import ctypes
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from threading import Event, Thread
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -16,6 +18,7 @@ from arknights_mower.utils.device.mumu12ipc.capture import (
     _capture_worker,
 )
 from arknights_mower.utils.device.mumu12ipc.core import MuMuIpcError, bind_display
+from arknights_mower.utils.device.mumu12ipc.paths import resolve_mumu_paths
 
 
 class MuMuCaptureSessionTests(unittest.TestCase):
@@ -254,6 +257,41 @@ class MuMuDisplayBindingTests(unittest.TestCase):
         dll.nemu_get_display_id.side_effect = [-1, -1]
         with self.assertRaisesRegex(MuMuIpcError, "实例显示 -1，游戏包 -1"):
             bind_display(dll, 7, self.PACKAGE)
+
+
+class MuMuInstallationLayoutTests(unittest.TestCase):
+    """MuMu builds that keep their manager below the runtime directory pair."""
+
+    def setUp(self):
+        self.folder = self.enterContext(tempfile.TemporaryDirectory())
+        self.root = Path(self.folder)
+
+    def test_runtime_manager_derives_the_installation_root(self):
+        manager = self.root / "temp/main/MuMuManager.exe"
+        manager.parent.mkdir(parents=True)
+        manager.touch()
+        self.assertEqual(
+            resolve_mumu_paths("", str(manager)),
+            (str(self.root), str(manager)),
+        )
+
+    def test_runtime_installation_directory_is_not_its_own_root(self):
+        manager = self.root / "temp/main/MuMuManager.exe"
+        manager.parent.mkdir(parents=True)
+        manager.touch()
+        self.assertEqual(
+            resolve_mumu_paths(str(self.root / "temp/main")),
+            (str(self.root), str(manager)),
+        )
+
+    def test_runtime_layout_still_uses_the_registered_manager(self):
+        manager = self.root / "temp/main/MuMuManager.exe"
+        manager.parent.mkdir(parents=True)
+        manager.touch()
+        self.assertEqual(
+            resolve_mumu_paths(self.folder, str(manager)),
+            (str(self.root), str(manager)),
+        )
 
 
 class MuMuCaptureWorkerTests(unittest.TestCase):

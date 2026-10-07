@@ -95,6 +95,8 @@ The subsystem integrates platform-specific emulators through deterministic disco
 | **Linux ReDroid** | Local Docker socket (`/var/run/docker.sock`) | Immutable container ID, host port mapping |
 | **Linux Waydroid** | `waydroid status` session inspection | Session IP endpoint, port 5555 verification |
 
+The Windows MuMu 12 adapter resolves its manager at `shell/`, `nx_main/`, `temp/main`, `temp/shell` and the installation root. `temp/<pair>` and `.backup/<pair>` are runtime directory pairs, so the Installation Root is two levels above them and a runtime directory is never stored as that root. A saved Installation Profile whose `installation_path` is a runtime directory still resolves to the same root, because the root reaches ADB resolution and temporary device recovery. Manager execution is not evidence of a location, so the adapter keeps its read-only location list. The [layout decision](../../.agents/notes/implemented/bug-fix/2026-10-07-mumu-runtime-layout-manager.md) defines the layout table shared with the IPC path resolver.
+
 ---
 
 ## 3. Subsystem Invariants

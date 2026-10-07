@@ -44,6 +44,10 @@ class MuMuDiscoveryIOTests(unittest.TestCase):
         manager.touch()
         return manager
 
+    def add_runtime_installation(self, root, pair="main"):
+        """A build that keeps its manager below the runtime ``temp`` directory pair."""
+        return self.add_installation(root, f"temp/{pair}")
+
     def control(
         self, *, output=None, run=None, registry=None, process=None, clock=None
     ):
@@ -216,6 +220,34 @@ class MuMuDiscoveryIOTests(unittest.TestCase):
         self.assertEqual(len(result["candidates"]), 1)
         self.assertEqual(result["candidates"][0]["manager_path"], str(selected))
         self.assertEqual(len(self.run.call_args_list), 1)
+
+    def test_runtime_layout_resolves_root_and_manager_from_its_parent(self):
+        # A build installing the manager below temp/main still binds the same root
+        # that a temporary device recovery later needs to restart.
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        selected = self.add_runtime_installation(root)
+        result = self.control(registry=lambda: [str(root)]).discover().to_dict()
+        self.assertEqual(len(result["candidates"]), 1)
+        binding = result["candidates"][0]["binding"]
+        self.assertEqual(binding["preset_id"], "windows.mumu12")
+        self.assertEqual(Path(binding["installation_path"]), root)
+        self.assertEqual(Path(binding["manager_path"]), selected)
+        self.assertEqual(len(self.run.call_args_list), 1)
+
+    def test_runtime_layout_registry_install_directory_is_not_treated_as_root(self):
+        # The uninstall command is the only registered source in this layout, so
+        # the root must come from its parent rather than the runtime directory.
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.add_runtime_installation(root)
+        result = (
+            self.control(registry=lambda: [str(root / "uninstall.exe")])
+            .discover()
+            .to_dict()
+        )
+        self.assertEqual(len(result["candidates"]), 1)
+        self.assertEqual(
+            Path(result["candidates"][0]["binding"]["installation_path"]), root
+        )
 
     def test_all_installs_share_maximum_64_instance_limit(self):
         row = json.loads(vendor_output("single"))["0"]
