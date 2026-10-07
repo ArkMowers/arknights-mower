@@ -3,7 +3,7 @@ import os
 from functools import lru_cache
 from typing import Optional
 
-from arknights_mower.utils.path import _install_dir, _internal_dir, get_path
+from arknights_mower.utils.path import get_path
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
     resource_pkg_path,
@@ -16,16 +16,7 @@ UNTRAINABLE_CHAR_IDS = frozenset({"char_4195_radian", "char_4230_mcnist"})
 
 
 def _find_skill_data():
-    candidates = [
-        resource_pkg_path("arknights_mower/data/skill_data.json"),
-        _internal_dir / "arknights_mower" / "data" / "skill_data.json",
-        _install_dir / "arknights_mower" / "data" / "skill_data.json",
-        _install_dir / "data" / "skill_data.json",
-    ]
-    for p in candidates:
-        if os.path.exists(p):
-            return p
-    return candidates[0]
+    return resource_pkg_path("arknights_mower/data/skill_data.json")
 
 
 _skill_data_cache = None

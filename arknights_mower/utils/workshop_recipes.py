@@ -2,8 +2,11 @@
 
 import json
 from functools import lru_cache
-from pathlib import Path
 
+from arknights_mower.utils.resource_pkg import (
+    register_resource_reload,
+    resource_pkg_path,
+)
 from arknights_mower.utils.workshop_data import unlocked
 from arknights_mower.utils.workshop_material_policy import (
     protected_workshop_materials,
@@ -120,7 +123,7 @@ def specialty_rules(effects):
 @lru_cache(maxsize=1)
 def _bundled_specialties():
     # Keep manual selections scoped even without BOX or with an older resource pack.
-    path = Path(__file__).parents[1] / "data/skill_data.json"
+    path = resource_pkg_path("arknights_mower/data/skill_data.json")
     operators = json.loads(path.read_text(encoding="utf-8"))["workshop"]["operators"]
     result = {}
     for meta in operators.values():
@@ -136,6 +139,11 @@ def _bundled_specialties():
         if rules:
             result[meta["name"]] = rules
     return result
+
+
+@register_resource_reload
+def reload_workshop_specialties():
+    _bundled_specialties.cache_clear()
 
 
 def operator_specialties(unlocked_specialties):
