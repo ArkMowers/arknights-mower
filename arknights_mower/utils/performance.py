@@ -42,7 +42,7 @@ def default_performance_mode() -> str:
 
 
 def default_performance_profile() -> PerformanceProfile:
-    return PERFORMANCE_PRESETS["medium" if is_android_runtime() else "high"]
+    return PERFORMANCE_PRESETS["medium" if is_android_runtime() else "xhigh"]
 
 
 def auto_performance_mode(
@@ -56,9 +56,14 @@ def auto_performance_mode(
     """
     android = is_android_runtime()
     if feedback_avg is None or feedback_count < 4:
-        selected = "medium" if android else "high"
+        selected = "medium" if android else "xhigh"
+    elif previous_mode == "xhigh" and not android:
+        selected = "xhigh" if feedback_avg < 0.35 else "high"
     elif previous_mode == "high" and not android:
-        selected = "high" if feedback_avg < 0.5 else "medium"
+        if feedback_avg <= 0.2:
+            selected = "xhigh"
+        else:
+            selected = "high" if feedback_avg < 0.5 else "medium"
     elif previous_mode == "low":
         selected = "low" if feedback_avg >= 0.9 else "medium"
     elif previous_mode == "medium":
@@ -73,16 +78,16 @@ def auto_performance_mode(
     elif feedback_avg >= 0.35 or android:
         selected = "medium"
     else:
-        selected = "high"
-    if mode_cap in ("medium", "low"):
-        levels = ("low", "medium", "high")
+        selected = "xhigh"
+    if mode_cap in ("high", "medium", "low"):
+        levels = ("low", "medium", "high", "xhigh")
         selected = levels[min(levels.index(selected), levels.index(mode_cap))]
     return selected
 
 
 def lower_performance_mode(mode):
-    """Move one step down without letting AUTO select xhigh."""
-    return {"high": "medium", "medium": "low", "low": "low"}[mode]
+    """Move one step down through all automatic performance modes."""
+    return {"xhigh": "high", "high": "medium", "medium": "low", "low": "low"}[mode]
 
 
 def effective_performance_profile(

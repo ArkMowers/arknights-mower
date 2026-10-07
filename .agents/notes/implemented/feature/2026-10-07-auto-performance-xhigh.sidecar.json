@@ -1,0 +1,22 @@
+{
+  "title": "Automatic Performance Xhigh Baseline",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-30]",
+    "[INV-01]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.performance.auto_performance_mode",
+    "arknights_mower.utils.performance.lower_performance_mode"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/performance_profile_tests.py",
+    "ui/src/utils/performanceProfile.test.js",
+    "ui/src/stores/configPartial.test.js"
+  ]
+}

@@ -146,6 +146,8 @@ Recovery-target updates reuse a complete group's native opportunity within each 
 
 ## 3. Subsystem Invariants
 
+- **[INV-SCHED-30] Automatic Selection Baseline**: Desktop automatic selection starts at `xhigh`, Android starts at `medium`, and repeated failures lower one level without exceeding the active cap or changing explicit modes and timing settings. The [automatic performance baseline decision](../../.agents/notes/implemented/feature/2026-10-07-auto-performance-xhigh.md) defines feedback hysteresis and offline coverage.
+
 - **[INV-REC-06] Selection Page Exit**: Known facility roster pages detected during anomalous selection readings abort selection inputs and page-local fallback; normal readings add no page-template lookup or capture.
 - **[INV-SCHED-29] Mastery Material Selection**: Automatic preparation selects the first ready unstarted idle skill in plan order, skipping skills whose remaining target costs cannot be supplied by stock and permitted crafting. Skipped plans retain status and priority and participate again after inventory refresh. A confirmed live training countdown permits preparation of one next ready skill while reserving the current skill's remaining costs; arranging and waiting-collect states retain the current skill boundary.
 - Decision record: [Mastery material candidate selection](../../.agents/notes/implemented/simplification/2026-10-07-mastery-material-skip.md).

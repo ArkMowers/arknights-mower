@@ -55,7 +55,8 @@ describe('performance profiles', () => {
     })
   })
 
-  it('keeps other platforms on the high profile by default', () => {
+  it('uses the xhigh profile as the desktop auto baseline', () => {
+    expect(performanceProfile('auto', 'darwin')).toEqual(performanceProfile('xhigh', 'darwin'))
     expect(performanceProfile('auto', 'darwin')).toMatchObject({
       lowFrameRateMode: false,
       screenshotInterval: 500,
