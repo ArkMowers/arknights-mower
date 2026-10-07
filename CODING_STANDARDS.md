@@ -20,6 +20,7 @@
 
 ### 2.1 Base Infrastructure & Scheduling
 
+- **[INV-SCHED-34] Backup Facility Capabilities**: Backup validation rejects changed production facility types or slot counts, explicit staffing overflow and product targets that differ from the primary plan while switching is disabled, before combination analysis; runtime activation rechecks these constraints before mutating live state. Automatic switching defaults to disabled and retains explicitly saved enabled states.
 - **[INV-SCHED-32] Stable Return Window**: Replanning the same recovery episode retains the first thirty-minute return window; changed recovery positions or staffing targets create a new window, while current mood predictions, full-recovery requirements and pending arrangement reservations remain authoritative.
 - **[INV-SCHED-33] Facility Placeholder Bounds**: Facility arrangement tasks cannot exceed the current roster slot count; excess named targets and placeholders log an explicit error and stop automation before selection, preserving the task without retry or silent truncation.
 - **[INV-SCHED-31] Complete Schedule Membership**: Schedule-wide membership and role queries include primary operators and every configured binding replacement within their existing table and facility scope, deduplicate names without mutating configuration, and preserve per-group candidate restrictions during actual shift matching.

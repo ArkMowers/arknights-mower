@@ -28,6 +28,11 @@ from arknights_mower.utils.scheduler_task import (  # noqa: E402
 )
 
 
+@pytest.fixture(autouse=True)
+def enabled_product_switching(monkeypatch):
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
+
+
 def product_plan(default="gold", backup="exp3"):
     room = "room_1_2"
     conf = PlanConfig("", "", "")
@@ -65,7 +70,7 @@ def trade_plan(default="lmd"):
 def test_disabled_product_switching_skips_facility_reads(
     monkeypatch, facility, grandet
 ):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     config.conf.product_switching.enable = False
     config.conf.product_switching.grandet_mode = grandet
     solver = object.__new__(base.BaseSchedulerSolver)
@@ -89,9 +94,17 @@ def test_disabled_product_switching_skips_facility_reads(
     assert config.conf.run_order_grandet_mode.enable is True
 
 
-def test_product_switching_enable_preserves_legacy_configuration():
+def test_product_switching_defaults_off_and_preserves_explicit_configuration():
     legacy = config.Conf(product_switching={"grandet_mode": False})
-    assert legacy.product_switching.enable is True
+    assert config.Conf().product_switching.enable is False
+    assert legacy.product_switching.enable is False
+    enabled = config.Conf(product_switching={"enable": True})
+    assert (
+        config.Conf.model_validate_json(
+            enabled.model_dump_json()
+        ).product_switching.enable
+        is True
+    )
     assert legacy.product_switching.grandet_mode is False
     disabled = config.Conf(
         product_switching={"enable": False, "grandet_mode": True},
@@ -103,9 +116,15 @@ def test_product_switching_enable_preserves_legacy_configuration():
     assert restored.run_order_grandet_mode.enable is True
 
 
+@pytest.mark.parametrize("setting", [None, SimpleNamespace()])
+def test_missing_product_switching_setting_defaults_off(monkeypatch, setting):
+    monkeypatch.setattr(config, "conf", SimpleNamespace(product_switching=setting))
+    assert base.BaseSchedulerSolver._product_switching_enabled() is False
+
+
 @pytest.mark.parametrize("entry", ["queue", "backup", "arrangement", "batch"])
 def test_disabled_product_switching_removes_pending_tasks_and_locks(monkeypatch, entry):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     config.conf.product_switching.enable = False
     solver = object.__new__(base.BaseSchedulerSolver)
     product_task = SchedulerTask(
@@ -200,7 +219,7 @@ def test_build_global_plan_keeps_products_separate_from_operator_slots(monkeypat
         ],
     )
     monkeypatch.setattr(config, "plan", configured)
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     monkeypatch.setattr(
         "arknights_mower.utils.logic_expression.get_logic_exp", lambda _: None
     )
@@ -258,7 +277,7 @@ def test_device_recipe_is_kept_in_backup_plan(monkeypatch):
         ],
     )
     monkeypatch.setattr(config, "plan", configured)
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
 
     global_plan = build_global_plan()
 
@@ -350,7 +369,7 @@ def test_manufacture_survey_uses_operator_speed_with_base_countdown():
 
 @pytest.mark.parametrize("source", ["orirock", "orirock_device"])
 def test_grandet_can_wait_for_orirock_without_using_drones(monkeypatch, source):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     config.conf.product_switching.use_drones_when_leaving_orirock = False
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.op_data = SimpleNamespace()
@@ -373,7 +392,7 @@ def test_grandet_can_wait_for_orirock_without_using_drones(monkeypatch, source):
 
 
 def test_orirock_no_drone_option_does_not_apply_when_grandet_disabled(monkeypatch):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     config.conf.product_switching.grandet_mode = False
     config.conf.product_switching.use_drones_when_leaving_orirock = False
     solver = object.__new__(base.BaseSchedulerSolver)
@@ -482,7 +501,7 @@ def test_product_task_deduplicates_by_room_and_keeps_latest(monkeypatch):
             meta_data=product_task_meta(room, "gold"),
         )
     ]
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
 
     solver.queue_product_switches()
 
@@ -528,7 +547,7 @@ def test_trade_product_also_generates_a_switch_task(monkeypatch):
     solver.op_data = Operators(plan)
     solver.op_data.update_facility_state(room, "trade", "orundum")
     solver.tasks = []
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
 
     solver.queue_product_switches()
 
@@ -680,7 +699,7 @@ def test_idle_manufacture_execution_skips_drone_panel():
 
 
 def test_manufacture_execution_without_grandet_mode_finishes_immediately(monkeypatch):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     config.conf.product_switching.grandet_mode = False
     solver = acceleration_solver(available_drones=10, current_total=4149)
     observation = {
@@ -757,7 +776,7 @@ def test_unified_product_change_waits_on_second_confirmation():
 
 
 def test_unified_product_change_uses_speed_and_configured_buffer(monkeypatch):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     config.conf.product_switching.waiting_seconds = 4
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.op_data = SimpleNamespace()
@@ -802,7 +821,7 @@ def test_accelerated_unit_rollover_does_not_defer_next_product(
     drones,
     elapsed_seconds,
 ):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     total_seconds = 5000 + current_remaining
     solver = acceleration_solver(available_drones=100, current_total=total_seconds)
     solver.op_data = SimpleNamespace()
@@ -843,7 +862,7 @@ def test_accelerated_unit_rollover_does_not_defer_next_product(
 
 
 def test_accelerated_unit_with_remaining_work_still_defers(monkeypatch):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     solver = acceleration_solver(available_drones=100, current_total=5000)
     solver.op_data = SimpleNamespace()
     solver._cache_facility_state = MagicMock()
@@ -867,7 +886,7 @@ def test_accelerated_unit_with_remaining_work_still_defers(monkeypatch):
 
 
 def test_drone_cap_applies_to_product_switch(monkeypatch):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     config.conf.product_switching.max_drones_per_switch = 3
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.op_data = SimpleNamespace()
@@ -877,7 +896,7 @@ def test_drone_cap_applies_to_product_switch(monkeypatch):
 def test_independent_backup_keeps_old_table_until_product_switch_succeeds(
     monkeypatch,
 ):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     room, plan = product_plan()
     plan["default_plan"].plan[room] = [Room("陈", "", ["红"], "制造站", "gold")]
     plan["backup_plans"][0].trigger = LogicExpression("True", "==", "True")
@@ -911,7 +930,7 @@ def test_independent_backup_keeps_old_table_until_product_switch_succeeds(
 
 
 def test_unverified_independent_product_switch_schedules_retry(monkeypatch):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     room, plan = product_plan()
     plan["default_plan"].plan[room] = [Room("陈", "", ["红"], "制造站", "gold")]
     plan["backup_plans"][0].trigger = LogicExpression("True", "==", "True")
@@ -1153,10 +1172,10 @@ def test_reload_uses_both_shard_labels_and_skips_other_products():
 
 @pytest.mark.parametrize("product", ["orirock", "orirock_device"])
 @pytest.mark.parametrize("grandet", [True, False])
-def test_disabled_switching_reload_uses_effective_plan_not_observed_product(
+def test_disabled_switching_rejects_product_backup_and_reloads_primary_product(
     monkeypatch, product, grandet
 ):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     config.conf.product_switching.enable = False
     config.conf.product_switching.grandet_mode = grandet
     room, plan = product_plan(default=product, backup="gold")
@@ -1169,16 +1188,19 @@ def test_disabled_switching_reload_uses_effective_plan_not_observed_product(
     solver.reload()
     solver.enter_room.assert_called_once_with(room)
 
-    solver.op_data.swap_plan([True])
+    error = solver.op_data.swap_plan([True])
+    assert "未开启自动切换产物与订单" in error
+    assert solver.op_data.plan_condition == [False]
+    assert solver.op_data.products == {room: product}
     solver.op_data.update_facility_state(room, "manufacture", product)
     solver.reload()
-    assert solver.enter_room.call_count == 1
+    assert solver.enter_room.call_count == 2
 
     solver.op_data.swap_plan([False])
     solver.op_data.update_facility_state(room, "manufacture", "gold")
     solver.reload()
-    assert solver.enter_room.call_count == 2
-    assert solver.tap.call_count == 4
+    assert solver.enter_room.call_count == 3
+    assert solver.tap.call_count == 6
     solver.read_manufacture_product.assert_not_called()
     solver.refresh_facility_state.assert_not_called()
     solver._cache_facility_state_from_current_page.assert_not_called()
@@ -1869,7 +1891,7 @@ def test_insufficient_manufacture_drones_do_not_block_direct_trade_switch():
 
 
 def test_shift_waits_before_any_switch_when_drones_are_insufficient(monkeypatch):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     manufacture_task = SchedulerTask(
         task_type=TaskTypes.SWITCH_PRODUCT,
         meta_data=product_task_meta("room_1_2", "gold"),
@@ -1920,7 +1942,7 @@ def test_shift_waits_before_any_switch_when_drones_are_insufficient(monkeypatch)
 
 @pytest.mark.parametrize("recovered", [False, True])
 def test_shift_enters_early_and_rechecks_drones(monkeypatch, recovered):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     task = SchedulerTask(
         task_type=TaskTypes.SWITCH_PRODUCT,
         meta_data=product_task_meta("room_1_2", "gold"),
@@ -1967,7 +1989,7 @@ def test_shift_enters_early_and_rechecks_drones(monkeypatch, recovered):
 def test_shift_keeps_trade_product_if_manufacture_completion_is_unconfirmed(
     monkeypatch,
 ):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     manufacture_task = SchedulerTask(
         task_type=TaskTypes.SWITCH_PRODUCT,
         meta_data=product_task_meta("room_1_2", "gold"),
@@ -2020,7 +2042,7 @@ def test_shift_keeps_trade_product_if_manufacture_completion_is_unconfirmed(
 
 
 def test_direct_switch_on_insufficient_drones_requires_explicit_option(monkeypatch):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     config.conf.product_switching.direct_when_drones_insufficient = True
     task = SchedulerTask(
         task_type=TaskTypes.SWITCH_PRODUCT,
@@ -2049,7 +2071,7 @@ def test_direct_switch_on_insufficient_drones_requires_explicit_option(monkeypat
 
 
 def test_direct_option_still_checks_completion_when_drones_are_sufficient(monkeypatch):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     config.conf.product_switching.direct_when_drones_insufficient = True
     task = SchedulerTask(
         task_type=TaskTypes.SWITCH_PRODUCT,
@@ -2087,7 +2109,7 @@ def test_direct_option_still_checks_completion_when_drones_are_sufficient(monkey
 
 
 def test_orirock_natural_wait_defers_shift_before_any_change(monkeypatch):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     task = SchedulerTask(
         task_type=TaskTypes.SWITCH_PRODUCT,
         meta_data=product_task_meta("room_1_2", "gold"),
@@ -2124,7 +2146,7 @@ def test_orirock_natural_wait_defers_shift_before_any_change(monkeypatch):
 
 
 def test_orirock_natural_wait_enters_early_and_checks_completion(monkeypatch):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     task = SchedulerTask(
         task_type=TaskTypes.SWITCH_PRODUCT,
         meta_data=product_task_meta("room_1_2", "gold"),
@@ -2172,7 +2194,7 @@ def test_orirock_natural_wait_enters_early_and_checks_completion(monkeypatch):
 
 
 def test_orirock_is_not_switched_if_current_unit_has_not_finished(monkeypatch):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     task = SchedulerTask(
         task_type=TaskTypes.SWITCH_PRODUCT,
         meta_data=product_task_meta("room_1_2", "gold"),
@@ -2217,7 +2239,7 @@ def test_orirock_is_not_switched_if_current_unit_has_not_finished(monkeypatch):
 def test_orirock_confirmation_waits_for_original_unit_boundary(
     monkeypatch, current_total, wait_seconds
 ):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.op_data = SimpleNamespace()
     solver._open_manufacture_product_detail = MagicMock()
@@ -2313,7 +2335,7 @@ def test_mixed_batch_accelerates_manufacture_and_switches_both_facilities(
     solver._execute_manufacture_acceleration = MagicMock(return_value=30)
     solver._change_manufacture_product = MagicMock()
     solver._change_trade_product = MagicMock()
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     config.conf.product_switching.waiting_seconds = 5
 
     solver.switch_base_products([manufacture_task, trade_task])
@@ -2349,7 +2371,7 @@ def test_non_grandet_batch_switches_immediately_without_buffer(monkeypatch):
     solver._survey_manufacture_switch = MagicMock(return_value=observation)
     solver._execute_manufacture_acceleration = MagicMock(return_value=0)
     solver._change_manufacture_product = MagicMock()
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     config.conf.product_switching.grandet_mode = False
 
     solver.switch_base_products([task])
@@ -2501,7 +2523,7 @@ def test_locked_trade_does_not_block_other_product_switches(monkeypatch):
     solver._change_trade_product = MagicMock()
     solver._execute_manufacture_acceleration = MagicMock(return_value=0)
     solver._change_manufacture_product = MagicMock()
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     config.conf.product_switching.grandet_mode = False
 
     started_at = datetime.now()

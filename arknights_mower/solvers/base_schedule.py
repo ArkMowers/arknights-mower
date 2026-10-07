@@ -4245,7 +4245,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
     @staticmethod
     def _product_switching_enabled():
-        return getattr(getattr(config.conf, "product_switching", None), "enable", True)
+        return getattr(getattr(config.conf, "product_switching", None), "enable", False)
 
     def _discard_product_switches(self):
         """停用切换时移除专用任务，释放预留并保留原换班安排。"""
@@ -4378,7 +4378,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 logger.warning("换班前副表产物推演出现循环，维持当前目标")
                 break
             seen.add(tuple(conditions))
-            projected.swap_plan(conditions)
+            if error := projected.swap_plan(conditions):
+                raise ValueError(f"换班前副表产物推演失败：{error}")
         return projected.products, projected.plan
 
     def _backup_explicit_slots(self, original, conditions):

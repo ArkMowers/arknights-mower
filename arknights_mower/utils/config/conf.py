@@ -436,7 +436,7 @@ class RIICPart(ConfModel):
         "跑单前返回基建首页"
 
     class ProductSwitchingConf(ConfModel):
-        enable: bool = True
+        enable: bool = False
         "自动切换产物与订单，并读取相关设施状态"
         max_drones_per_switch: int = Field(default=0, ge=0, le=200)
         "单次切换产物最多使用的无人机数量；0 表示不限制"

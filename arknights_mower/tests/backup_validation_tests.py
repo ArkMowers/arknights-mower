@@ -67,6 +67,133 @@ def two_backups():
     }
 
 
+def facility_backup():
+    conf = PlanConfig("", "", "")
+    slots = [
+        Room("乌尔比安", "", ["苍苔"], "制造站", "gold"),
+        Room("幽灵鲨", "", ["夜烟"], "制造站", "gold"),
+    ]
+    return {
+        "default_plan": Plan({"room_1_3": slots}, conf, products={"room_1_3": "gold"}),
+        "backup_plans": [
+            Plan(
+                {"room_1_3": copy.deepcopy(slots)},
+                conf,
+                name="深海强制上班",
+                task={"room_1_3": ["乌尔比安", "幽灵鲨"]},
+                products={"room_1_3": "gold"},
+            )
+        ],
+    }
+
+
+@pytest.mark.parametrize("target", ["Current", "Free", "", "安哲拉"])
+def test_backup_task_overflow_fails_before_combination_analysis(monkeypatch, target):
+    plan = facility_backup()
+    plan["backup_plans"][0].task["room_1_3"].append(target)
+    data = initialize(plan)
+    before = copy.deepcopy(data.plan)
+    analyze = MagicMock(side_effect=AssertionError("invalid task reached analysis"))
+    monkeypatch.setattr(backup_validation, "possible_backup_conditions", analyze)
+    result = data.validate_backup_plans(max_seconds=0)
+    assert result["status"] == "failed"
+    assert "深海强制上班" in result["message"]
+    assert "room_1_3" in result["message"]
+    assert "2 个岗位" in result["message"]
+    assert data.plan_condition == [False]
+    assert [slot.agent for slot in data.plan["room_1_3"]] == [
+        slot.agent for slot in before["room_1_3"]
+    ]
+    assert plan["backup_plans"][0].task["room_1_3"][-1] == target
+    analyze.assert_not_called()
+
+
+@pytest.mark.parametrize("count", [1, 3])
+def test_backup_facility_slot_count_cannot_change_level(count):
+    plan = facility_backup()
+    slots = plan["backup_plans"][0].plan["room_1_3"]
+    if count == 1:
+        slots.pop()
+    else:
+        slots.append(Room("Current", "", [], "制造站", "gold"))
+    result = initialize(plan).validate_backup_plans()
+    assert not result["success"]
+    assert f"岗位数 2 → {count}" in result["message"]
+    assert "切设施功能尚未实现" in result["message"]
+
+
+@pytest.mark.parametrize("agent", ["Current", "乌尔比安"])
+def test_backup_facility_type_cannot_change_even_with_same_slots(agent):
+    plan = facility_backup()
+    slot = plan["backup_plans"][0].plan["room_1_3"][0]
+    slot.agent = agent
+    slot.facility = "贸易站"
+    result = initialize(plan).validate_backup_plans()
+    assert not result["success"]
+    assert "制造站 → 贸易站" in result["message"]
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("product", ["gold", "exp3"])
+def test_backup_product_change_requires_enabled_switching(enabled, product):
+    config.conf.product_switching.enable = enabled
+    plan = facility_backup()
+    plan["backup_plans"][0].products["room_1_3"] = product
+    result = initialize(plan).validate_backup_plans()
+    assert result["success"] is (enabled or product == "gold")
+    if not result["success"]:
+        assert "gold → exp3" in result["message"]
+        assert "未开启自动切换产物与订单" in result["message"]
+
+
+def test_backup_all_current_facility_still_has_to_preserve_level():
+    plan = facility_backup()
+    plan["backup_plans"][0].plan["room_1_3"] = [
+        Room("Current", "", [], "制造站", "gold")
+    ] * 3
+    result = initialize(plan).validate_backup_plans()
+    assert not result["success"]
+    assert "改变设施等级" in result["message"]
+
+
+@pytest.mark.parametrize("change", ["level", "type", "task", "product"])
+def test_runtime_backup_activation_rejects_conflicts_without_mutation(change):
+    plan = facility_backup()
+    data = initialize(plan)
+    before = data.plan, data.config, data.operators, data.dorm, data.products
+    operator = data.operators["乌尔比安"]
+    operator.current_room = "room_1_3"
+    operator.mood = 7
+    backup = plan["backup_plans"][0]
+    if change == "level":
+        backup.plan["room_1_3"].pop()
+    elif change == "type":
+        backup.plan["room_1_3"][0].facility = "贸易站"
+    elif change == "task":
+        backup.task["room_1_3"].append("Current")
+    else:
+        backup.products["room_1_3"] = "exp3"
+        config.conf.product_switching.enable = False
+    error = data.swap_plan([True], refresh=True)
+    assert "深海强制上班" in error
+    assert data.plan_condition == [False]
+    assert all(
+        current is original
+        for current, original in zip(
+            (data.plan, data.config, data.operators, data.dorm, data.products), before
+        )
+    )
+    assert operator.current_room == "room_1_3"
+    assert operator.mood == 7
+
+
+def test_nonproduction_partial_overlay_remains_supported():
+    plan = two_backups()
+    plan["backup_plans"] = plan["backup_plans"][:1]
+    result = initialize(plan).validate_backup_plans()
+    assert result["success"]
+
+
 def test_image_plan_rejects_the_same_error_as_shift_projection(image_plan):
     data = initialize(image_plan)
     for op in data.operators.values():

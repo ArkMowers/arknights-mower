@@ -1065,6 +1065,7 @@ class TestBaseScheduler(unittest.TestCase):
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_replan_scans_stale_mood_before_calculating_tasks(self):
         solver = BaseSchedulerSolver()
+        solver.op_data = SimpleNamespace(operators={})
         solver.task = None
         solver.planned = False
         solver.tasks = []
@@ -2943,6 +2944,7 @@ class TestSchedulerDispatchDeviceFailure(unittest.TestCase):
 
     def make_solver(self):
         solver = object.__new__(BaseSchedulerSolver)
+        solver.op_data = SimpleNamespace(operators={})
         solver.find = MagicMock(return_value=True)
         solver.skip = MagicMock()
         solver.tasks = []

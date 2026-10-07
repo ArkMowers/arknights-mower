@@ -29,7 +29,7 @@ import {
 
 const config_store = useConfigStore()
 const { product_switching } = storeToRefs(config_store)
-const product_switching_enabled = computed(() => product_switching.value.enable !== false)
+const product_switching_enabled = computed(() => product_switching.value.enable === true)
 
 const data = ref(props.data)
 

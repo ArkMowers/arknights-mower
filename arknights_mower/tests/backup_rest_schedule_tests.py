@@ -259,7 +259,6 @@ def test_backup_staffing_change_invalidates_corresponding_exhaust_task(solver, c
     if change == "room":
         backup.plan = {
             "central": [Room("陈", "", ["红"])],
-            "meeting": [Room("歌蕾蒂娅", "", ["陈"])],
         }
     elif change == "replacement":
         backup.plan = {"central": [Room("歌蕾蒂娅", "", ["红"])]}
@@ -734,7 +733,6 @@ def test_switch_preserves_shift_on_target_when_backup_modifies_room_plan(solver)
     backup.plan = {
         "contact": [Room("陈", "", ["砾"])],
         "central": [Room("黑键", "感知", ["红"])],
-        "meeting": [Room("歌蕾蒂娅", "", ["陈"])],
     }
     backup.config.exhaust_require = ["歌蕾蒂娅"]
 
@@ -757,7 +755,6 @@ def test_deactivation_restores_main_plan_targets_preventing_stickiness(solver):
     backup.plan = {
         "contact": [Room("陈", "", ["砾"])],
         "central": [Room("黑键", "感知", ["红"])],
-        "meeting": [Room("歌蕾蒂娅", "", ["陈"])],
     }
     backup.config.exhaust_require = ["歌蕾蒂娅"]
     solver.backup_plan_solver()

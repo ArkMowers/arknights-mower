@@ -89,21 +89,27 @@ describe('partial configuration saves', () => {
     expect(store.performance_effective_mode).toBe('high')
   })
 
-  it('enables switching for legacy configuration and saves only the master toggle', async () => {
+  it('keeps legacy switching disabled and saves only an explicit master toggle', async () => {
     await setup({
       product_switching: { grandet_mode: false, waiting_seconds: 4 },
       run_order_grandet_mode: { enable: true }
     })
-    expect(store.product_switching.enable).toBe(true)
-    store.product_switching.enable = false
+    expect(store.product_switching.enable).toBe(false)
+    store.product_switching.enable = true
     await nextTick()
     await store.flush_config_saves()
     expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
-      product_switching: { enable: false }
+      product_switching: { enable: true }
     })
     expect(store.product_switching.grandet_mode).toBe(false)
     expect(store.product_switching.waiting_seconds).toBe(4)
     expect(store.run_order_grandet_mode.enable).toBe(true)
+  })
+
+  it('preserves explicitly enabled product switching on load', async () => {
+    await setup({ product_switching: { enable: true, waiting_seconds: 4 } })
+    expect(store.product_switching.enable).toBe(true)
+    expect(store.product_switching.waiting_seconds).toBe(4)
   })
 
   it('saves the existing startup protection independently of device identity', async () => {

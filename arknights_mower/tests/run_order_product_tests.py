@@ -19,7 +19,7 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noq
 
 @pytest.fixture
 def solver(monkeypatch):
-    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     config.conf.enable_mastery = False
     monkeypatch.setattr(Operators, "current_room_changed_callback", None)
     data = Operators(

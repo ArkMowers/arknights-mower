@@ -154,11 +154,14 @@ Recovery-target updates reuse a complete group's native opportunity within each 
 
 The [replanning boundary decision](../../.agents/notes/implemented/bug-fix/2026-10-08-scheduler-replanning-boundaries.md) specifies recovery-window continuity and facility placeholder bounds.
 
+The [backup facility validation decision](../../.agents/notes/implemented/bug-fix/2026-10-08-backup-facility-validation.md) specifies static layout and task validation before combination analysis, with capability checks before runtime activation.
+
 ## 3. Subsystem Invariants
 
 - **[INV-UI-11] Workshop Threshold Fallback**: One-click workshop setup synchronizes BOX once, lowers only empty categories by five percentage points down to zero, keeps each category at its first nonempty selection, and applies all lists only after successful reads without changing the configured threshold.
 - Ordinary recommendation reads retain the configured threshold. The recommendation endpoint accepts optional `fodder_min_bonus`, `t5_min_bonus` and `book_min_bonus` integers from 0 through 1000; omitted categories use `min_bonus`. One-click setup requests each empty category independently with only its override, freezes its first nonempty list and preserves populated categories. Zero can retain empty lists, and failed reads preserve configured lists and threshold. Decision record: [Workshop threshold fallback](../../.agents/notes/implemented/feature/2026-10-07-workshop-threshold-fallback.md).
 
+- **[INV-SCHED-34] Backup Facility Capabilities**: Backup validation rejects changed production facility types or slot counts, explicit staffing overflow and product targets that differ from the primary plan while switching is disabled, before combination analysis; runtime activation rechecks these constraints before mutating live state. Automatic switching defaults to disabled and retains explicitly saved enabled states.
 - **[INV-SCHED-32] Stable Return Window**: Replanning the same recovery episode retains the first thirty-minute return window; changed recovery positions or staffing targets create a new window, while current mood predictions, full-recovery requirements and pending arrangement reservations remain authoritative.
 - **[INV-SCHED-33] Facility Placeholder Bounds**: Facility arrangement tasks cannot exceed the current roster slot count; excess named targets and placeholders log an explicit error and stop automation before selection, preserving the task without retry or silent truncation.
 - **[INV-SCHED-31] Complete Schedule Membership**: Schedule-wide membership and role queries include primary operators and every configured binding replacement within their existing table and facility scope, deduplicate names without mutating configuration, and preserve per-group candidate restrictions during actual shift matching.

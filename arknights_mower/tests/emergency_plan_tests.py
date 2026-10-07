@@ -291,7 +291,10 @@ def test_normal_schedule_advanced_export_excludes_rescue_configuration():
 
 
 @pytest.mark.parametrize("active", [False, True])
-def test_both_effective_backup_plans_control_facility_and_product(active):
+def test_both_effective_backup_plans_control_product_with_unchanged_facility(
+    active, monkeypatch
+):
+    monkeypatch.setattr(config.conf.product_switching, "enable", True)
     from arknights_mower.utils.logic_expression import LogicExpression
     from arknights_mower.utils.operators import Operators
     from arknights_mower.utils.plan import Plan, PlanConfig, Room
@@ -299,25 +302,29 @@ def test_both_effective_backup_plans_control_facility_and_product(active):
     data = Operators(
         {
             "default_plan": Plan(
-                {"room_1_1": [Room("阿米娅", "", [], "贸易站")]},
+                {"room_1_1": [Room("阿米娅", "", [], "制造站")]},
                 PlanConfig("", "", ""),
-                products={"room_1_1": "lmd"},
+                products={"room_1_1": "gold"},
             ),
             "backup_plans": [
                 Plan(
                     {"room_1_1": [Room("红", "", [], "制造站")]},
                     PlanConfig("", "", ""),
                     trigger=LogicExpression("1", "==", "1"),
-                    products={"room_1_1": "gold"},
+                    products={"room_1_1": "exp3"},
                 )
             ],
         }
     )
-    data.swap_plan([active])
+    assert data.swap_plan([active]) is None
     data.evaluate_expression = lambda expression: active
     document = PlanModel(
         plan1={
-            "room_1_1": {"name": "贸易站", "product": "lmd", "plans": [{"agent": "砾"}]}
+            "room_1_1": {
+                "name": "制造站",
+                "product": "gold",
+                "plans": [{"agent": "砾"}],
+            }
         },
         backup_plans=[
             {
@@ -328,7 +335,7 @@ def test_both_effective_backup_plans_control_facility_and_product(active):
                 "plan": {
                     "room_1_1": {
                         "name": "制造站",
-                        "product": "gold",
+                        "product": "exp3",
                         "plans": [{"agent": "初雪"}],
                     }
                 },
@@ -338,8 +345,8 @@ def test_both_effective_backup_plans_control_facility_and_product(active):
     result = effective_rescue_plan(data, document)
     assert result["rescue_plan"] == {"room_1_1": ["初雪" if active else "砾"]}
     if active:
-        document.backup_plans[0].plan.room_1_1.product = "exp3"
-        with pytest.raises(ValueError, match="产物不一致.*赤金.*中级作战记录"):
+        document.backup_plans[0].plan.room_1_1.product = "gold"
+        with pytest.raises(ValueError, match="产物不一致.*中级作战记录.*赤金"):
             effective_rescue_plan(data, document)
     else:
         document.backup_plans[0].plan.room_1_1.product = "exp3"

@@ -124,6 +124,7 @@ def test_dispatch_rechecks_priority_became_due_during_navigation(kind):
     limit = release_at(now - timedelta(minutes=3))
     priority = SchedulerTask(time=now - timedelta(seconds=1), task_type=kind)
     solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data = SimpleNamespace(operators={})
     solver.task, solver.tasks = limit, [limit, priority]
     solver.find = MagicMock(return_value=True)
     solver.skip = MagicMock()
@@ -182,6 +183,7 @@ def test_selected_ordinary_task_yields_to_newly_advanced_limit():
         time=now - timedelta(seconds=1), task_type=TaskTypes.CLUE_PARTY
     )
     solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data = SimpleNamespace(operators={})
     solver.task, solver.tasks = ordinary, [ordinary, limit]
     solver.find = MagicMock(return_value=True)
     solver.skip = MagicMock()
