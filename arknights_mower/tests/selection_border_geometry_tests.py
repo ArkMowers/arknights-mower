@@ -136,3 +136,95 @@ def test_training_dim_border_keeps_original_unselected_state():
     cv2.rectangle(frame, (565, 113), (766, 522), (0, 112, 145), 7)
 
     assert agent_card_selected(frame, ((584, 479), (759, 506)), train=True) is False
+
+
+@pytest.fixture(params=[False, True], ids=["archived-jpeg", "badge-color-boundary"])
+def purestream_page(request):
+    path = Path(__file__).parent / "fixtures/selection/purestream_badge_20261007.jpg"
+    frame = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+    if request.param:
+        # JPEG 色差改变青色状态图标的掩膜覆盖率；明确构造阈值另一侧，
+        # 不把归档 JPEG 当作现场 RGB 像素的无损复现。
+        badge = cv2.cvtColor(frame[113:121, 748:818], cv2.COLOR_RGB2HSV)
+        cyan = (
+            (badge[:, :, 0] >= 90)
+            & (badge[:, :, 0] <= 105)
+            & (badge[:, :, 1] >= 100)
+            & (badge[:, :, 2] >= 100)
+        )
+        badge[:, :, 0][cyan] = 100
+        badge[:, :, 1][cyan] = np.maximum(140, badge[:, :, 1][cyan])
+        badge[:, :, 2][cyan] = np.maximum(140, badge[:, :, 2][cyan])
+        frame[113:121, 748:818] = cv2.cvtColor(badge, cv2.COLOR_HSV2RGB)
+    return frame, operator_list(frame)
+
+
+def test_badge_and_lower_neighbor_leave_only_purestream_selected(purestream_page):
+    frame, page = purestream_page
+    assert [name for name, _ in page[:2]] == ["温蒂", "清流"]
+    states = [agent_card_selected(frame, scope) for _, scope in page]
+    assert states == [False, True] + [False] * 10
+
+
+@pytest.mark.parametrize("low_frame_rate", [False, True])
+def test_purestream_verification_ignores_unselected_badge(
+    monkeypatch, purestream_page, low_frame_rate
+):
+    monkeypatch.setattr(config.conf, "low_frame_rate_mode", low_frame_rate)
+    frame, _ = purestream_page
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame, update=MagicMock())
+    solver.find = MagicMock(return_value=False)
+    solver.sleep = MagicMock()
+    solver.tap = MagicMock()
+
+    assert solver.wait_for_arranged_agents(["清流"]) == ["清流"]
+    solver.tap.assert_not_called()
+
+
+@pytest.mark.parametrize("low_frame_rate", [False, True])
+def test_purestream_scan_preserves_existing_selection(
+    monkeypatch, purestream_page, low_frame_rate
+):
+    monkeypatch.setattr(config.conf, "low_frame_rate_mode", low_frame_rate)
+    frame, _ = purestream_page
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame, update=MagicMock())
+    solver.find = MagicMock(return_value=False)
+    solver.sleep = MagicMock()
+    solver.tap = MagicMock()
+    targets = ["清流"]
+
+    selected, page = solver.scan_agent(targets)
+
+    assert selected == ["清流"] and targets == []
+    assert len(page) == 12
+    solver.tap.assert_not_called()
+
+
+@pytest.mark.parametrize("upper_width", [50, 65, 90])
+def test_partial_badge_above_selected_neighbor_is_unselected(upper_width):
+    frame = np.full((1080, 1920, 3), 50, dtype=np.uint8)
+    # 状态图标只占上沿的一段，下排选中框只擦到下沿靠后的像素。
+    frame[113:121, 720 : 720 + upper_width] = (0, 180, 230)
+    cv2.rectangle(frame, (609, 538), (830, 953), (0, 180, 230), 7)
+
+    assert agent_card_selected(frame, ((631, 488), (820, 520))) is False
+    assert agent_card_selected(frame, ((631, 909), (820, 941))) is True
+
+
+def test_partial_border_with_vertical_evidence_remains_unknown():
+    frame = np.full((1080, 1920, 3), 50, dtype=np.uint8)
+    frame[113:121, 720:785] = (0, 180, 230)
+    frame[528:536, 720:785] = (0, 180, 230)
+    frame[121:528, 609:617] = (0, 180, 230)
+
+    assert agent_card_selected(frame, ((631, 488), (820, 520))) is None
+
+
+@pytest.mark.parametrize("top", [113, 528])
+def test_full_horizontal_border_without_sides_remains_unknown(top):
+    frame = np.full((1080, 1920, 3), 50, dtype=np.uint8)
+    frame[top : top + 8, 617:826] = (0, 180, 230)
+
+    assert agent_card_selected(frame, ((631, 488), (820, 520))) is None
