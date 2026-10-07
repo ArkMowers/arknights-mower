@@ -1095,7 +1095,9 @@ class Operators:
         }
         self.commit_group_shifts({})
 
-    def normalize_shared_arrangement(self, plan, transitions=None):
+    def normalize_shared_arrangement(
+        self, plan, transitions=None, *, reserved_replacements=None
+    ):
         """Keep shared covers until all dependent groups return; reject conflicts.
 
         The caller owns the plan. No live occupancy or group state is modified.
@@ -1115,7 +1117,11 @@ class Operators:
             for room, names in plan.items()
             for index, name in enumerate(names)
             if (room, index) not in managed and name not in ("Free", "Current", "")
-        } | set(self.reserved_product_replacements)
+        } | set(
+            self.reserved_product_replacements
+            if reserved_replacements is None
+            else reserved_replacements
+        )
         for op in followers:
             target = plan.get(op.room, [])[op.index : op.index + 1]
             relevant = any(b["group"] in transitions for b in op.group_bindings)
@@ -1141,7 +1147,9 @@ class Operators:
                 )
                 continue
             preferred = ([actual.name] if actual else []) + (target or [])
-            candidates = list(dict.fromkeys(n for n in preferred if n in candidates))
+            candidates = list(
+                dict.fromkeys(n for n in [*preferred, *candidates] if n in candidates)
+            )
             options[op.name] = [
                 name
                 for name in candidates

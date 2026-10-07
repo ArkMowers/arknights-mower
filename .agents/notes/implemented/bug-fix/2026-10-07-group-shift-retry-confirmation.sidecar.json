@@ -1,0 +1,22 @@
+{
+  "title": "Group Shift Retry Confirmation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-25]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/group_shift_confirmation_tests.py",
+    "arknights_mower/tests/multi_group_shift_tests.py",
+    "arknights_mower/tests/manufacture_product_switch_tests.py",
+    "arknights_mower/tests/completed_group_departure_tests.py"
+  ]
+}

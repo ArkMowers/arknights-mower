@@ -4340,7 +4340,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         transitions = dict(getattr(task, "group_shift_transitions", {}))
         transitions.update(self.op_data.arrangement_group_transitions(task.plan))
         proposed = copy.deepcopy(task.plan)
-        if not self.op_data.normalize_shared_arrangement(proposed, transitions):
+        reserved = {
+            name
+            for pending in self._deferred_product_locks(exclude=task)
+            for name in pending.product_lock_names
+        }
+        if not self.op_data.normalize_shared_arrangement(
+            proposed, transitions, reserved_replacements=reserved
+        ):
             raise ProductSwitchDeferred("多绑组替班冲突，等待相关组回班", minutes=1)
         task.plan = proposed
         task.group_shift_transitions = transitions
@@ -7158,6 +7165,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 and self.op_data.is_dynamic_dorm_position(room, idx, agents[idx])
             ):
                 self.op_data.operators[agents[idx]].depletion_rate = 0
+                expected = getattr(
+                    getattr(self, "task", None), "group_shift_expected", {}
+                )
+                if expected.get((room, idx)) == agents[idx]:
+                    # 恢复目标在执行边界合法取消，不再要求重新入住才能确认换班。
+                    expected.pop((room, idx))
                 agents[idx] = "Free"
                 logger.info("检测个人心情上限释放休息位")
         if not preserve_dorm_occupants:
