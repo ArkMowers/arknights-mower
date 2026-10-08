@@ -290,7 +290,9 @@ def test_partial_report_stores_zero_and_unread_independently(recording_solver):
     assert row["龙门币订单数"] == ""
 
 
-def test_storage_failure_is_retryable_without_claiming(recording_solver, monkeypatch):
+def test_storage_failure_is_retryable_without_panel_input_or_email(
+    recording_solver, monkeypatch
+):
     solver = recording_solver
     solver.report_res["赤金"] = 17
     append = Mock(side_effect=PermissionError("report.csv is occupied"))
@@ -417,7 +419,7 @@ def test_repeated_failures_stop_retrying_for_this_process():
         solver = _detached_solver()
         solver.date = "2026-10-02"
         solver.has_record = lambda: False
-        assert solver.run() is False  # gives up without claiming the day
+        assert solver.run() is False  # leaves the day's report unrecorded
     finally:
         ReportSolver.attempts = saved_attempts
         ReportSolver.last_attempt_date = saved_date

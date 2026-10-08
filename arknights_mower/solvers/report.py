@@ -149,7 +149,7 @@ class ReportSolver(SceneGraphSolver):
             logger.exception(f"处理交易历史记录时出错：{e}")
 
     def record_report(self):
-        """Store independent fields before claiming; no readings or failed writes retry."""
+        """Store readings before expanding the report for the screenshot email."""
         if all(value is None for value in self.report_res.values()):
             logger.warning(f"{self.date}的基建报告没有读到任何数据，不记录")
             return False
@@ -170,6 +170,7 @@ class ReportSolver(SceneGraphSolver):
             logger.exception(f"存入数据失败：{e}")
             return False
         self._stored = True
+        # Expand the report to show the last three days before the email capture.
         self.tap((1253, 81), interval=2)
         try:
             self.add_order_detail()
