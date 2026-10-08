@@ -5,6 +5,7 @@ Local contract for documentation under `docs/` adhering to the DeepSeek Harness 
 ## 1. Documentation Tier Taxonomy (One Home per Fact)
 
 Every fact belongs to exactly one documentation tier:
+- **Definitions and rules**: Before choosing a tier, classify the fact using the [documentation routing rules](../.agents/skills/mower-doc/references/doc-hierarchy.md#routing-rules).
 - **`architecture.md` & `subsystems/`**: Authoritative system panorama and subsystem specifications.
   - Present-tense statements of fact (e.g., `DeviceSession manages...`, not `will manage` or `should manage`).
   - No historical trade-offs, deprecated design debates, or chronological narratives.

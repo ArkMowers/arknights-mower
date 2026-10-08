@@ -6,6 +6,8 @@ Unified execution gate for Arknights Mower repository governance checks:
 1. Note format, triplet integrity, and sidecar schemas (verify_agent_note_format.py)
 2. Relative Markdown documentation links validity (verify_doc_links.py)
 3. Glossary alignment against CONTEXT.md Avoid terms (verify_glossary_alignment.py)
+
+Concept meaning, document placement, and glossary approval require manual review.
 """
 
 import sys
@@ -49,11 +51,11 @@ def run_all_checks() -> int:
     else:
         print("  PASSED: All Markdown relative documentation links are valid.")
 
-    # 3. Glossary Alignment Check
-    print("\n[Gate 3/3] Verifying glossary alignment against CONTEXT.md Avoid terms...")
+    # 3. Avoid-Term Check
+    print("\n[Gate 3/3] Verifying Avoid terms from the domain glossary...")
     glossary_errors = verify_glossary_alignment()
     if glossary_errors:
-        print(f"  FAILED: {len(glossary_errors)} glossary violation(s)")
+        print(f"  FAILED: {len(glossary_errors)} Avoid-term check error(s)")
         for err in glossary_errors:
             print(f"    - {err}")
         total_errors += len(glossary_errors)
@@ -63,11 +65,18 @@ def run_all_checks() -> int:
         )
 
     print("\n" + "=" * 60)
+    print(
+        "Scope: note formats, relative Markdown links and Avoid terms in scanned text."
+    )
+    print(
+        "Manual review remains required for concept changes, document placement and "
+        "glossary approval."
+    )
     if total_errors > 0:
-        print(f"FAILED: Found {total_errors} total governance violation(s).")
+        print(f"FAILED: Found {total_errors} error(s) in the automated checks.")
         return 1
 
-    print("ALL GOVERNANCE GATES PASSED: Repository governance is fully compliant.")
+    print("AUTOMATED CHECKS PASSED: All three checks completed without errors.")
     print("=" * 60)
     return 0
 

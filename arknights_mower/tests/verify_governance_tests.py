@@ -1,8 +1,11 @@
 import importlib.util
+import io
 import json
 import tempfile
 import unittest
+from contextlib import ExitStack, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts.verify_agent_note_format import verify_agent_notes
 from scripts.verify_doc_links import verify_doc_links
@@ -347,6 +350,57 @@ class VerifyGovernanceTests(unittest.TestCase):
 
     def test_run_all_checks_passes(self):
         self.assertEqual(run_all_checks(), 0)
+
+    def test_success_reports_automated_scope_and_remaining_manual_review(self):
+        output = io.StringIO()
+        with (
+            patch("scripts.verify_governance.verify_agent_notes", return_value=[]),
+            patch("scripts.verify_governance.verify_doc_links", return_value=[]),
+            patch(
+                "scripts.verify_governance.verify_glossary_alignment", return_value=[]
+            ),
+            redirect_stdout(output),
+        ):
+            result = run_all_checks()
+
+        self.assertEqual(result, 0)
+        report = output.getvalue()
+        self.assertIn("AUTOMATED CHECKS PASSED", report)
+        self.assertIn("note formats, relative Markdown links and Avoid terms", report)
+        self.assertIn("Manual review", report)
+        self.assertIn(
+            "concept changes, document placement and glossary approval", report
+        )
+        self.assertNotIn("fully compliant", report)
+
+    def test_each_failed_gate_reports_failure_and_runs_remaining_checks(self):
+        checks = (
+            "verify_agent_notes",
+            "verify_doc_links",
+            "verify_glossary_alignment",
+        )
+        for failed_check in checks:
+            with self.subTest(failed_check=failed_check), ExitStack() as stack:
+                mocked_checks = [
+                    stack.enter_context(
+                        patch(
+                            f"scripts.verify_governance.{check}",
+                            return_value=["Sample violation"]
+                            if check == failed_check
+                            else [],
+                        )
+                    )
+                    for check in checks
+                ]
+                output = io.StringIO()
+                stack.enter_context(redirect_stdout(output))
+                result = run_all_checks()
+
+                self.assertEqual(result, 1)
+                self.assertIn("Sample violation", output.getvalue())
+                self.assertNotIn("AUTOMATED CHECKS PASSED", output.getvalue())
+                for mocked_check in mocked_checks:
+                    mocked_check.assert_called_once_with()
 
 
 if __name__ == "__main__":

@@ -11,8 +11,11 @@ Routes technical documentation to its single authoritative location within the r
 
 When adding or modifying technical information, route to the single appropriate tier:
 
+For concept definitions, behavioral rules or implementation contracts, first apply the [routing rules](references/doc-hierarchy.md#routing-rules). They distinguish glossary content from subsystem guarantees and handle changes to existing concepts.
+
 | Content Type | Authoritative Destination | Format & Tone Constraints |
 | :--- | :--- | :--- |
+| **Concept Definitions** | `CONTEXT.md` / `CONTEXT.zh.md` | Names, meanings, boundaries and relationships; edits require explicit glossary approval. |
 | **Global Pointers** | `AGENTS.md` | Ultra-lean pointers (1-3 lines per item). Zero implementation details. |
 | **Subtree Rules** | `{subpath}/AGENTS.md` | Local constraints, subsystem invariants, and subtree test commands. |
 | **System Panorama** | `docs/architecture.md` | Present-tense facts only. Cross-subsystem data flows and invariant matrix. |
@@ -27,3 +30,5 @@ Whenever documentation is added or moved:
 python scripts/verify_doc_links.py
 python scripts/verify_glossary_alignment.py
 ```
+
+These commands check relative links and Avoid terms. Complete concept-impact and document-placement review separately under `[INV-06]` in [Coding Standards](../../../CODING_STANDARDS.md#1-core-invariants).

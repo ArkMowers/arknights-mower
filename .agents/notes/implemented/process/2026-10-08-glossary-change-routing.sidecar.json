@@ -1,0 +1,18 @@
+{
+  "title": "Glossary Change Routing",
+  "status": "implemented",
+  "category": "process",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-06]"
+  ],
+  "code_symbols": [
+    "scripts.verify_governance.run_all_checks"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/verify_governance_tests.py"
+  ]
+}

@@ -11,6 +11,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **Guaranteed Compensation**: Acquired runtime resources (temporary screen overrides, open sockets, child processes, file locks) register cleanup in `PreparationSession`, `close_process`, or `finally` blocks.
 - [ ] **Bounded Memory**: In-memory logs, frame buffers, and queue collections have explicit capacity bounds and eviction policies.
 - [ ] **Controlled Language**: Code comments, docstrings, and documentation use terms defined in `CONTEXT.md` / `CONTEXT.zh.md` and avoid all prohibited synonyms.
+- [ ] **[INV-06] Concept Impact**: Does the review identify changed concept names, meanings, boundaries or relationships, or justify why they are unchanged? Are definitions and execution rules placed according to the [routing rules](../../mower-doc/references/doc-hierarchy.md#routing-rules)?
+- [ ] **Glossary Approval**: If `CONTEXT.md` or `CONTEXT.zh.md` changes, do user instructions explicitly approve the exact wording or diff under [root approval requirements](../../../../AGENTS.md#4-global-execution-constraints)? Automated success covers only note formats, relative links and Avoid terms.
 - [ ] **Targeted Verification Only**: Reviews run targeted, hermetic unit tests (`pytest arknights_mower/tests/...`); live emulator integration runs are strictly prohibited.
 
 ---

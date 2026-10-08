@@ -9,7 +9,7 @@ Local contract for Python backend implementation under `arknights_mower/`.
 - **[INV-03] Failure Preserves Identity**: Device offline, discovery timeout, or boot failure must never silently bind to another online device on the host.
 - **[INV-04] IPC Pair Cohesion**: MuMu IPC screenshot backend and touch backend are coupled; neither backend operates in isolation.
 - **[INV-05] Shared ADB Guard**: ADB server state must be probed via socket handshake; implicit `kill-server` invocations are strictly forbidden.
-- **[INV-06] Domain Glossary Synchronization**: Any modification to scheduling mechanics, device session control, or configuration schemas must immediately synchronize domain terms in [CONTEXT.md](../CONTEXT.md).
+- **[INV-06] Domain Glossary Synchronization**: Apply the concept-impact branches in [Coding Standards](../CODING_STANDARDS.md#1-core-invariants) and the [documentation routing rules](../.agents/skills/mower-doc/references/doc-hierarchy.md#routing-rules).
 
 ## 2. Resource & Concurrency Lifecycle
 

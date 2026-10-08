@@ -1,4 +1,4 @@
-name: 文档规范与一致性检查
+name: 文档格式、相对链接与禁用词检查
 
 on:
   push:
@@ -12,6 +12,7 @@ concurrency:
 
 jobs:
   verify:
+    # Preserve the job name used by existing required-check configurations.
     name: 校验文档规范、相对链接与术语一致性
     runs-on: ubuntu-latest
     steps:
@@ -19,5 +20,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: 运行文档规范与一致性检查门禁
+      - name: 运行文档格式、链接与禁用词检查
         run: python scripts/verify_governance.py

@@ -13,6 +13,7 @@ Audits, reviews, and edits technical writing to conform to the contract-first pr
 - **Eliminate Chain-of-Thought (CoT) Leakage**: Never document discarded implementation ideas, internal hesitation, or scratchpad reasoning in production docs or notes.
 - **Present-Tense Facts**: Use present tense (`rejects`, `verifies`, `maintains`). Prohibit speculative phrasing (`should`, `will`, `might`).
 - **Domain Glossary SSOT**: Use authoritative terms from `CONTEXT.md`. Ban terms in the *Avoid* list.
+- **Content Placement**: Apply the [documentation routing rules](../mower-doc/references/doc-hierarchy.md#routing-rules) before editing prose. Glossary entries state concept identity; behavioral rules and implementation guarantees retain their contract destination.
 - **Zero Issue Numbers**: Never introduce `#xxx` issue tracker references in commits, docstrings, comments, or markdown files.
 
 ## 2. Review Checklist
