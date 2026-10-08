@@ -16,6 +16,7 @@
   ],
   "test_suites": [
     "arknights_mower/tests/priority_admission_tests.py",
-    "arknights_mower/tests/mastery_scheduling_tests.py"
+    "arknights_mower/tests/mastery_scheduling_tests.py",
+    "arknights_mower/tests/scheduler_wakeup_tests.py"
   ]
 }

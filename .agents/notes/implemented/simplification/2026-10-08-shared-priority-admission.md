@@ -23,6 +23,8 @@ The shared budget includes observed slow work facilities, mixed dormitory plans,
 
 Paired offline cases compare trade orders and mastery handoffs for measured work budgets, independent components, group atomicity, workshop batches, exact boundaries, waiting and multiple critical tasks. Existing mastery collision, strict release, dormitory continuation and governance suites verify protected behavior.
 
+Scheduler wakeup cases verify workshop admission before mastery with insufficient, exact-boundary and sufficient time under the shared 60-second workshop budget and 15-second work margin. Both admitted and deferred paths retain the handoff and execute the remaining task on the next dispatch.
+
 ## Standards Findings
 
 Pass: three invariant registrations, bounded timing samples, Actual Occupancy isolation and bilingual note governance remain consistent. No dependencies, configuration fields or persistent state are added.
