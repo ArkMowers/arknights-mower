@@ -279,6 +279,7 @@ class DeviceControl(Generic[D]):
         self._executing = False
         self._last_preflight: PreflightResult | None = None
         self._device: D | None = None
+        self._cleanup_device: D | None = None
         self._serial = ""
         self._state: SessionState = "idle"
         self._close_result: DeviceResult[None] | None = None
@@ -1287,7 +1288,13 @@ class DeviceControl(Generic[D]):
             ):
                 return self._closing_failure()
             if self._helper_cleanup_error is not None:
-                return self._failure("close_failed", self._helper_cleanup_error)
+                if self._cleanup_device is None:
+                    return self._failure("close_failed", self._helper_cleanup_error)
+                dispatch_pause = self._dispatch_pause
+                closed = self._close_resources()
+                self._dispatch_pause = dispatch_pause
+                if not closed.ok:
+                    return closed
             previous_error, self._session_error = self._session_error, None
             if self._device is None:
                 return self._start(connection_retries=1, recovering=True)
@@ -1589,25 +1596,32 @@ class DeviceControl(Generic[D]):
         self._deferred_close = False
         self._session_error = None
         self._dispatch_pause = None
-        if self._close_result is not None:
+        if self._close_result is not None and self._cleanup_device is None:
             self._pending_close.clear()
             return self._close_result
         self._serial = self.serial
-        device, self._device = self._device, None
+        device = self._cleanup_device or self._device
+        self._device = None
         self._bound_adb_generation = None
         self._state = "closed"
         self._screenshot = None
-        errors = [self._helper_cleanup_error] if self._helper_cleanup_error else []
+        errors = []
         for owner in (self._preparation, device):
             try:
                 if owner is not None:
                     owner.close()
+                    if owner is device:
+                        self._cleanup_device = None
+                        self._helper_cleanup_error = None
             except Exception as exc:
                 logger.debug("关闭设备自有资源失败，继续后续清理", exc_info=True)
                 if owner is device:
+                    self._cleanup_device = device
                     self._helper_cleanup_error = exc
                 if exc not in errors:
                     errors.append(exc)
+        if self._helper_cleanup_error is not None and not errors:
+            errors.append(self._helper_cleanup_error)
         if errors:
             self._state = "failed"
             if self._interrupt_error is not None:

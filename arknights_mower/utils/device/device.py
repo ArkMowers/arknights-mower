@@ -253,6 +253,7 @@ class Device:
         self._resource_lock = RLock()
         self._interrupted = Event()
         self._close_error = None
+        self._pending_cleanup = []
         self._interrupt_error = None
         self._recovery_active = False
         self._recovery_error = None
@@ -896,11 +897,12 @@ class Device:
             self._recovery_error = None
 
     def close(self) -> None:
-        """Detach each owned resource once, then attempt every cleanup."""
+        """Release completed resources once and retain failed cleanup owners."""
         if getattr(self, "owner_pid", None) != os.getpid():
             return
         with self._resource_lock:
             resources = (
+                *getattr(self, "_pending_cleanup", ()),
                 (getattr(self, "_mumu_capture", None), "close"),
                 (getattr(self, "_ld_capture", None), "close"),
                 (getattr(self, "_droidcast", None), "close"),
@@ -909,13 +911,22 @@ class Device:
             )
             self._mumu_capture = self._droidcast = self.control = self.client = None
             self._ld_capture = None
-            errors = [self._close_error] if self._close_error is not None else []
+            # Failures outside close may lack a retained resource; they cannot
+            # be cleared by successfully closing unrelated resources.
+            if self._close_error is not None and not getattr(
+                self, "_pending_cleanup", ()
+            ):
+                self._unowned_cleanup_error = self._close_error
+            unowned_error = getattr(self, "_unowned_cleanup_error", None)
+            errors = [unowned_error] if unowned_error is not None else []
+            self._pending_cleanup = []
             for resource, method in resources:
                 operation = getattr(resource, method, None)
                 if operation is not None:
                     try:
                         operation()
                     except Exception as exc:
+                        self._pending_cleanup.append((resource, method))
                         if exc not in errors:
                             errors.append(exc)
             if errors:
@@ -926,6 +937,7 @@ class Device:
                 self._close_error = errors[0]
                 self._close_error.cleanup_failed = True
                 raise self._close_error
+            self._close_error = None
             self._interrupt_error = None
 
     def reconnect(self, *, retries: int = 3, restarts: int = 0) -> None:

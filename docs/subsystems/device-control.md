@@ -101,6 +101,7 @@ Windows MuMu 12 discovery and IPC share the manager locations `shell/`, `nx_main
 ---
 
 ## 3. Subsystem Invariants
+- **[INV-DEV-22] Recoverable Owned Cleanup**: Failed cleanup retains its original resource owners and retries only unfinished work; successful cleanup clears the failure before verified startup, while unresolved cleanup blocks replacement and preserves foreign resources, Device Profile and shared ADB state.
 - **[INV-DEV-21] ADB Default Cohesion**: A Device Profile without an explicit ADB path uses the legacy platform default, preferring the bundled executable while preserving explicit paths and empty values through unrelated updates and save/reload.
 
 - **[INV-DEV-20] Command Output Ownership**: MuMu startup observations and default guarded ADB commands capture output through `manager_io.run_command` without pipe EOF waits. Each captured channel owns a temporary writer and an independently opened reader; collection never changes inherited writer positions or overwrites existing bytes. Windows readers share delete access with the writer, and both handles close through the command's cleanup stack. Captured stdout/stderr retain separate channels unless the caller requests merging; binary and text results and optional return-code checks retain subprocess semantics, with `universal_newlines` selecting text alongside `text`, `stdin=PIPE` receiving immediate EOF and `input` remaining rejected. The partial output a timeout carries follows that same binary/text selection; a fragment that cannot be decoded stays raw, because the timeout remains the failure the command reports. General captured output has a combined 32 MiB limit; `run_manager_command` retains merged binary output and its 1 MiB limit. The manager runner owns that merging and the return-code check, accepts the shared command call shape and rejects every other option instead of dropping it. An over-budget capture reports `CommandOutputLimit`, which is both a `ValueError` and a `subprocess.SubprocessError`, so the verdict stays a device failure rather than an application fault, and the manager budget keeps its repair step in that verdict. Polling and output checks use the command's monotonic deadline; an exhausted deadline rejects further execution. Timeout kills only the owned command and attempts reaping for at most one additional second. Closing the temporary streams never waits for a descendant or stops shared services; a captured file is removed once its last handle closes, so a descendant still holding an inherited handle keeps that file alive until it exits, within its channel's output limit. Process creation remains subject to the operating system's interruptibility.
@@ -202,6 +203,8 @@ Windows MuMu 12 discovery and IPC share the manager locations `shell/`, `nx_main
 - Other Android keycodes use ADB. `TouchFailure.backend` records the selected touch backend, while `TouchFailure.transport` identifies the transport that failed. ADB failure diagnostics name ADB and direct the user to check the ADB connection.
 
 ---
+
+The [Recoverable Device Cleanup decision](../../.agents/notes/implemented/bug-fix/2026-10-08-recoverable-device-cleanup.md) specifies retained cleanup ownership and retry verification.
 
 ## 4. Capture Frame Contract & Storage
 
