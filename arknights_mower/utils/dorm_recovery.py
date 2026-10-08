@@ -1,5 +1,6 @@
 """在目标最终床位建立单回入驻顺序。"""
 
+from arknights_mower.utils import dorm_skills
 from arknights_mower.utils.dorm_candidates import dorm_candidates
 from arknights_mower.utils.resting_priority import has_resting_mood, resting_mood
 
@@ -14,29 +15,38 @@ def active_recovery_position(op):
 
 
 def recovery_managers(op_data, room, agents):
-    """只记录前两位单回宿管的位置及移动版本，移走又归位也须重配。"""
+    """只记录完整入住名单中位置最靠前的单回宿管。"""
     slots = op_data.plan.get(room, [])
     if len(agents) != len(slots):
         return ()
-    op_data.refresh_dorm_manager_flags()
-    return tuple(
-        (name, index, getattr(op_data.operators.get(name), "dorm_position_version", 0))
-        for index, name in enumerate(agents[:2])
-        if getattr(op_data.operators.get(name), "single_recovery_manager", False)
-    )
+    for index, name in enumerate(agents):
+        op = op_data.operators.get(name)
+        if op is None:
+            continue
+        op.single_recovery_manager = dorm_skills.is_single_recovery_manager(name)
+        if op.single_recovery_manager:
+            return ((name, index, getattr(op, "dorm_position_version", 0)),)
+    return ()
 
 
-def recovery_target(op_data, room, agents):
+def recovery_target(op_data, room, agents, manager_names=None):
     slots = op_data.plan.get(room, [])
     if not room.startswith("dorm") or len(agents) != len(slots):
         return None
+    if manager_names is None:
+        manager_names = {
+            name for name, _, _ in recovery_managers(op_data, room, agents)
+        }
     index = next(
         (
             i
             for i, name in enumerate(agents)
-            if op_data.is_dynamic_dorm_position(room, i, name)
-            or (bed := op_data.get_group_dorm(room, i)) is not None
-            and op_data.is_recovery_dorm(bed, name)
+            if name not in manager_names
+            and (
+                op_data.is_dynamic_dorm_position(room, i, name)
+                or (bed := op_data.get_group_dorm(room, i)) is not None
+                and op_data.is_recovery_dorm(bed, name)
+            )
         ),
         None,
     )
@@ -51,15 +61,16 @@ def recovery_target(op_data, room, agents):
 def recovery_order_plan(op_data, room, agents, reserved_names=()):
     """建立单回时就占住最终床位，补回其他人后目标仍在原位。
 
-    保留前两位的单回宿管；其他 Free 位和未满心情（或心情未知）的
+    保留位置最靠前的单回宿管；其他 Free 位和未满心情（或心情未知）的
     绑组宿舍替班暂时撤下。目标前方保留菲亚梅塔与已满心情的入住者，其他中间空缺用最高心情的空闲者垫位，
     不能留空让游戏压缩名单。没有可用垫位者时不执行这次单回确认。
     """
-    target = recovery_target(op_data, room, agents)
-    if target is None:
-        return None
     managers = recovery_managers(op_data, room, agents)
     if not managers:
+        return None
+    manager_names = {name for name, _, _ in managers}
+    target = recovery_target(op_data, room, agents, manager_names)
+    if target is None:
         return None
     target_index = agents.index(target.name)
     if (
@@ -76,7 +87,6 @@ def recovery_order_plan(op_data, room, agents, reserved_names=()):
     ):
         return None
     retained = []
-    manager_names = {name for name, _, _ in managers}
     for index, name in enumerate(agents):
         if name in (target.name, "菲亚梅塔") or name in manager_names:
             retained.append(name)
