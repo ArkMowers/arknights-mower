@@ -30,18 +30,18 @@ const {
 <template>
   <div class="advanced-settings" :inert="disabled">
     <n-form
+      class="advanced-settings-form"
       :label-placement="mobile ? 'top' : 'left'"
       label-width="190"
-      label-align="left"
+      :label-align="mobile ? 'left' : 'right'"
       :show-feedback="false"
     >
       <n-form-item :show-label="false">
         <n-checkbox v-model:checked="product_switching.enable">
           自动切换产物与订单
           <help-text>
-            关闭后不切换制造产物或贸易站订单类型，不读取设施类型、产物与订单类型，并隐藏对应的副表条件选项。
-            当前干员数量和训练室专精条件仍可使用。 普通换班、产物收取和葛朗台跑单保持原有行为。
-            搓玉补货仍按当前生效排班表中的源石碎片配置执行。
+            开启后根据副表切换制造产物或贸易站订单类型，同时会读取设施类型、产物与订单类型，并显示对应的副表条件选项。
+            开启后推荐提高无人机使用阈值。
           </help-text>
         </n-checkbox>
       </n-form-item>
@@ -355,6 +355,11 @@ const {
 </template>
 
 <style scoped>
+.advanced-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 .advanced-settings {
   max-width: 760px;
 }

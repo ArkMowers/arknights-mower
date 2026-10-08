@@ -287,8 +287,7 @@ const level_list = [
               :disabled="!isLogPage && edit_locked"
               :options="roomOptions"
               placeholder="选择房间"
-              class="dropdown-select"
-              style="width: 160px"
+              class="dropdown-select task-room-select"
             />
             <n-dynamic-tags
               v-model:value="value.operators"
@@ -298,7 +297,7 @@ const level_list = [
             >
               <template #input="{ submit, deactivate }">
                 <n-select
-                  v-model:value="value.operators"
+                  :value="null"
                   :disabled="!isLogPage && edit_locked"
                   filterable
                   :options="operators_with_free_current"
@@ -397,5 +396,12 @@ const level_list = [
 
 .n-dynamic-tags {
   align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+.task-room-select {
+  width: 160px;
+  min-width: 160px;
+  flex: 0 0 160px;
 }
 </style>

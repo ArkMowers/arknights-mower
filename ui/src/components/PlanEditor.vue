@@ -751,6 +751,7 @@ function set_facility(e) {
 }
 
 .select-label {
+  text-align: right;
   width: 44px;
 }
 
@@ -820,6 +821,7 @@ function set_facility(e) {
 
 .avatars {
   display: flex;
+  align-items: flex-start;
   gap: 6px;
   z-index: 5;
 

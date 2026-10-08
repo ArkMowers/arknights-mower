@@ -776,7 +776,7 @@ function movePlanForward() {
       :label-placement="mobile ? 'top' : 'left'"
       :show-feedback="false"
       label-width="160"
-      label-align="left"
+      :label-align="mobile ? 'left' : 'right'"
     >
       <n-form-item v-if="!rescue">
         <template #label
@@ -808,7 +808,7 @@ function movePlanForward() {
           <span>宿舍高优先级干员</span>
           <help-text>
             <p>
-              名单 → 普通主班 → 低优主班 → 高优替班 → 候补 → 普通替班 →
+              高优干员 → 普通主班 → 低优主班 → 高优替班 → 候补 → 普通替班 →
               空闲；同级距心情上限更远者优先。
             </p>
             <p>
