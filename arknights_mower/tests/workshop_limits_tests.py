@@ -18,6 +18,7 @@ from arknights_mower.utils.config.conf import RIICPart, WorkShopItem  # noqa: E4
 
 @pytest.fixture
 def inventory(monkeypatch, tmp_path):
+    monkeypatch.setattr(workshop_limits, "_rejected_recipes", {})
     monkeypatch.setattr(record, "_tables_created", False)
     monkeypatch.setattr(
         record,

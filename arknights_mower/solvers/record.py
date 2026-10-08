@@ -740,6 +740,25 @@ def save_inventory_counts(
             list(effective.items()),
         )
         conn.commit()
+        from arknights_mower.utils.workshop_limits import (
+            clear_workshop_recipe_rejections,
+        )
+
+        observed = {}
+        if scanned_counts is None:
+            observed = dict.fromkeys(effective, datetime.now().timestamp())
+        else:
+            for counts, timestamp in (
+                (scanned_counts, scanned_at),
+                (
+                    {} if battle_inventory_active.is_set() else cloud_counts or {},
+                    cloud_at,
+                ),
+            ):
+                for name, count in counts.items():
+                    if name in effective and effective[name] == count:
+                        observed[name] = max(timestamp, observed.get(name, 0))
+        clear_workshop_recipe_rejections(observed)
         return effective
 
 
