@@ -4,7 +4,7 @@ import ast
 import copy
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 def contains_retired_rescue_condition(value) -> bool:
@@ -182,6 +182,8 @@ class Plan1(BaseModel):
     "办公室"
     train: Optional[Facility] = None
     "训练室"
+    recycle: Optional[Facility] = None
+    "回收站，固定两个岗位"
     gaming_1: Optional[Facility] = None
     "活动室1"
     gaming_2: Optional[Facility] = None
@@ -202,6 +204,13 @@ class Plan1(BaseModel):
     room_3_2: Optional[Facility] = None
     room_3_3: Optional[Facility] = None
 
+    @field_validator("recycle")
+    @classmethod
+    def validate_recycle_capacity(cls, value):
+        if value is not None and len(value.plans) > 2:
+            raise ValueError("回收站最多安排2名干员")
+        return value
+
 
 class Task(BaseModel):
     central: Optional[list[str]] = None
@@ -214,6 +223,8 @@ class Task(BaseModel):
     "办公室"
     train: Optional[list[str]] = None
     "训练室"
+    recycle: Optional[list[str]] = Field(default=None, max_length=2)
+    "回收站，固定两个岗位"
     gaming_1: Optional[list[str]] = None
     "活动室1"
     gaming_2: Optional[list[str]] = None

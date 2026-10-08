@@ -16,11 +16,9 @@ const plan_store = inject('planStore', null) || usePlanStore()
 const { operators, groups, group_colors, current_plan, plan, workaholic, sub_plan, backup_plans } =
   storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
-const { theme, swap_contact_train } = storeToRefs(config_store)
-
-const contact_train_order = computed(() =>
-  swap_contact_train.value ? ['train', 'contact'] : ['contact', 'train']
-)
+const { theme, right_side_room_order } = storeToRefs(config_store)
+const right_room_names = { contact: '办公室', train: '训练室', recycle: '回收站' }
+const right_room_drag_type = 'application/x-mower-right-room'
 
 const outer = ref(null)
 
@@ -118,6 +116,8 @@ const right_side_facility_name = computed(() => {
     return '加工站'
   } else if (facility.value == 'train') {
     return '训练室'
+  } else if (facility.value == 'recycle') {
+    return '回收站'
   } else if (facility.value.startsWith('gaming')) {
     return '活动室'
   } else {
@@ -149,8 +149,24 @@ function drop_facility(target, event) {
   event.preventDefault()
   if (edit_locked.value) return
   const source = event.dataTransfer.getData('text/plain')
+  if (!/^room_[1-3]_[1-3]$/.test(source)) return
 
   swapPlanFacilities(plan.value, backup_plans.value, sub_plan.value, source, target)
+}
+
+function drag_right_facility(room, event) {
+  if (edit_locked.value) {
+    event.preventDefault()
+    return
+  }
+  event.dataTransfer.setData(right_room_drag_type, room)
+  event.dataTransfer.effectAllowed = 'move'
+}
+
+function drop_right_facility(target, event) {
+  event.preventDefault()
+  if (edit_locked.value) return
+  config_store.swap_right_side_facilities(event.dataTransfer.getData(right_room_drag_type), target)
 }
 
 const avatar_bg = computed(() => {
@@ -429,15 +445,31 @@ function set_facility(e) {
             </div>
           </n-button>
         </div>
-        <div class="right_contain" v-for="r in contact_train_order" :key="r">
-          <n-button :secondary="facility != r" class="facility-2" @click="set_facility(r)">
+        <div
+          class="right_contain right-room-draggable"
+          v-for="r in right_side_room_order"
+          :key="r"
+          :draggable="!edit_locked"
+          :aria-label="`${right_room_names[r]}，拖动交换设施位置`"
+          title="拖动交换办公室、训练室与回收站位置；仅保存在本机，不随排班导出"
+          @dragstart="drag_right_facility(r, $event)"
+          @dragover.prevent="$event.dataTransfer.dropEffect = 'move'"
+          @dragenter.prevent
+          @drop="drop_right_facility(r, $event)"
+        >
+          <n-button
+            :secondary="facility != r"
+            :draggable="!edit_locked"
+            class="facility-2"
+            @click="set_facility(r)"
+          >
             <div>
               <div class="facility-name">
                 <template v-if="r === 'train'">
                   <div>协助位</div>
                   <div>训练位</div>
                 </template>
-                <template v-else>办公室</template>
+                <template v-else>{{ right_room_names[r] }}</template>
               </div>
               <div class="avatars">
                 <img
@@ -447,6 +479,7 @@ function set_facility(e) {
                   width="45"
                   height="45"
                   :style="bindingColorStyle(i, group_colors)"
+                  draggable="false"
                 />
               </div>
             </div>
@@ -763,6 +796,14 @@ function set_facility(e) {
   width: 124px;
   height: 76px;
   margin: 2px 3px;
+}
+
+.right-room-draggable[draggable='true'] .n-button {
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
 }
 
 .facility-3 {

@@ -1364,7 +1364,7 @@ class Operators:
             for k, v in self.operators.items()
             if v.current_room == room
         }
-        if room == "train":
+        if room in ("train", "recycle"):
             res = [""] * 2
         elif room == "factory":
             res = [""]

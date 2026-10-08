@@ -1,9 +1,12 @@
 ---
 title: 排班设施显示顺序
-status: implemented
+status: archived
 category: simplification
 date: 2026-10-06
 ---
+
+由[回收站选人与本地布局](../../implemented/feature/2026-10-08-recycle-station-selection.zh.md)替代。
+
 
 # 排班设施显示顺序
 

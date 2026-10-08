@@ -84,8 +84,10 @@ Ordinary admission includes configured followers outside the active member list.
 - Evaluates predicted exhaustion deadlines to dispatch timely dynamic shift transitions before morale depletion occurs.
 
 ### 2.3 Base Facilities
-- Encapsulates distinct working facilities (Control Center, Manufacturing Station, Trading Post, Power Plant, HR Office, Reception Room, Training Room, Workshop) and resting facilities (Dormitories 1 through 4).
+- Encapsulates distinct working facilities (Control Center, Manufacturing Station, Trading Post, Power Plant, HR Office, Reception Room, Training Room, Workshop, Recycling Station) and resting facilities (Dormitories 1 through 4).
 - Serves as the primary operational unit for operator assignment, production monitoring, and capacity validation.
+
+Recycling uses two physical slots, title recognition and the shared multi-operator selector. The left dashboard roster enters selection; room readback uses the existing residence-information panel. The local three-facility order controls right-side map positions. The [recycling decision](../../.agents/notes/implemented/feature/2026-10-08-recycle-station-selection.md) separates verified preview behavior from live validation.
 
 ### 2.4 Dormitory Recovery
 
@@ -183,6 +185,7 @@ The [manual dormitory priority decision](../../.agents/notes/implemented/feature
 - Ordinary recommendation reads retain the configured threshold. The recommendation endpoint accepts optional `fodder_min_bonus`, `t5_min_bonus` and `book_min_bonus` integers from 0 through 1000; omitted categories use `min_bonus`. One-click setup requests each empty category independently with only its override, freezes its first nonempty list and preserves populated categories. Zero can retain empty lists, and failed reads preserve configured lists and threshold. Decision record: [Workshop threshold fallback](../../.agents/notes/implemented/feature/2026-10-07-workshop-threshold-fallback.md).
 
 - **[INV-SCHED-34] Backup Facility Capabilities**: Backup validation rejects changed production facility types or slot counts, explicit staffing overflow and product targets that differ from the primary plan while switching is disabled, before combination analysis; runtime activation rechecks these constraints before mutating live state. Automatic switching defaults to disabled and retains explicitly saved enabled states.
+- **[INV-SCHED-37] Recycle Staffing Capacity**: Recycling has two physical operator slots regardless of configured staffing; oversized plans and tasks fail validation, selection uses the confirmed left-side dashboard entry, and occupancy is committed only through existing room readback.
 - **[INV-SCHED-36] Single Scheduling Cursor**: Trade orders and enabled mastery handoffs share one admission cursor that counts each queued operation once, includes scheduled waiting and prior critical operations, preserves executable staffing prefixes, admits workshop batches in full or defers them after the next critical task, and defers dependent suffixes without losing tasks or mutating actual occupancy; only fully observed ordinary room components without shared operators, group bindings or task phase state split.
 - **[INV-SCHED-35] Aligned Charging History**: A complete Fiammetta exchange observation records both operators at the same before time and the same after time one second later; Fiammetta's before point is 24, and history display times never replace measured mood or recovery timestamps. Incomplete observations and roster restoration do not synthesize before points.
 - **[INV-SCHED-32] Stable Return Window**: Replanning the same recovery episode retains the first thirty-minute return window; changed recovery positions or staffing targets create a new window, while current mood predictions, full-recovery requirements and pending arrangement reservations remain authoritative.

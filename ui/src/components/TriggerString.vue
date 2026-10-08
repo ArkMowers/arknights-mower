@@ -424,6 +424,7 @@ const custom_tips = computed(() => [
   'contact',
   'factory',
   'train',
+  'recycle',
   'dormitory_1',
   'dormitory_2',
   'dormitory_3',

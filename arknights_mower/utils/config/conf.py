@@ -424,8 +424,33 @@ class WorkshopDeerFodderItem(WorkShopItem):
 
 
 class RIICPart(ConfModel):
-    swap_contact_train: bool = False
-    "右侧训练室在办公室上方；默认办公室在上、训练室在下"
+    right_side_room_order: list[Literal["contact", "train", "recycle"]] = Field(
+        default_factory=lambda: ["contact", "train", "recycle"],
+        min_length=3,
+        max_length=3,
+    )
+    "右侧第二至四层的设施顺序，仅保存在本机配置"
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_right_side_room_order(cls, data):
+        if isinstance(data, dict) and "swap_contact_train" in data:
+            data = data.copy()
+            swapped = data.pop("swap_contact_train")
+            data.setdefault(
+                "right_side_room_order",
+                ["train", "contact", "recycle"]
+                if swapped
+                else ["contact", "train", "recycle"],
+            )
+        return data
+
+    @field_validator("right_side_room_order")
+    @classmethod
+    def validate_right_side_room_order(cls, value):
+        if len(set(value)) != 3:
+            raise ValueError("办公室、训练室和回收站必须各出现一次")
+        return value
 
     class RunOrderGrandetModeConf(ConfModel):
         enable: bool = True

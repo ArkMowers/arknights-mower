@@ -1,9 +1,12 @@
 ---
 title: Plan Facility Display Order
-status: implemented
+status: archived
 category: simplification
 date: 2026-10-06
 ---
+
+Superseded by [recycling selection and local layout](../../implemented/feature/2026-10-08-recycle-station-selection.md).
+
 
 # Plan Facility Display Order
 

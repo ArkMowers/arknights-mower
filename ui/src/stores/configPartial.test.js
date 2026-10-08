@@ -422,3 +422,31 @@ describe('partial configuration saves', () => {
     })
   })
 })
+
+it('saves room drag swaps locally with a layout-only patch', async () => {
+  await setup({ swap_contact_train: true })
+  expect(store.right_side_room_order).toEqual(['train', 'contact', 'recycle'])
+  axios.patch.mockClear()
+  store.swap_right_side_facilities('train', 'recycle')
+  await nextTick()
+  await store.flush_config_saves()
+  expect(axios.patch).toHaveBeenCalledTimes(1)
+  expect(axios.patch.mock.lastCall[1]).toEqual({
+    right_side_room_order: ['recycle', 'contact', 'train']
+  })
+  expect(store.build_advanced_settings()).not.toHaveProperty('right_side_room_order')
+  const before = store.build_config().right_side_room_order
+  store.swap_right_side_facilities('room_1_1', 'contact')
+  store.swap_right_side_facilities('', 'train')
+  store.swap_right_side_facilities('contact', 'contact')
+  expect(store.right_side_room_order).toEqual(before)
+  await nextTick()
+  await store.flush_config_saves()
+  expect(axios.patch).toHaveBeenCalledTimes(1)
+})
+
+it('loads the explicit three-room order before the legacy switch', async () => {
+  await setup({ swap_contact_train: true, right_side_room_order: ['recycle', 'train', 'contact'] })
+  expect(store.right_side_room_order).toEqual(['recycle', 'train', 'contact'])
+  expect(store.build_config()).not.toHaveProperty('swap_contact_train')
+})

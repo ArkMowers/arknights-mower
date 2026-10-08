@@ -18,7 +18,16 @@ export const useConfigStore = defineStore('config', () => {
   let savedConfig = null
   const drone_count_limit = ref(0)
   const drone_room = ref('')
-  const swap_contact_train = ref(false)
+  const right_side_room_order = ref(['contact', 'train', 'recycle'])
+
+  function swap_right_side_facilities(source, target) {
+    const order = [...right_side_room_order.value]
+    const from = order.indexOf(source)
+    const to = order.indexOf(target)
+    if (from < 0 || to < 0 || from === to) return
+    ;[order[from], order[to]] = [order[to], order[from]]
+    right_side_room_order.value = order
+  }
   const drone_interval = ref(4)
   const enable_party = ref(true)
   const leifeng_mode = ref(true)
@@ -601,7 +610,11 @@ export const useConfigStore = defineStore('config', () => {
       fia_fool.value = response.data.fia_fool
       assistant_follows_schedule.value = response.data.assistant_follows_schedule
       enable_mastery.value = response.data.enable_mastery ?? true
-      swap_contact_train.value = response.data.swap_contact_train ?? false
+      right_side_room_order.value =
+        response.data.right_side_room_order ??
+        (response.data.swap_contact_train
+          ? ['train', 'contact', 'recycle']
+          : ['contact', 'train', 'recycle'])
       sign_in.value = response.data.sign_in
       droidcast.value = response.data.droidcast
       mumu12IPC.value = response.data.mumu12IPC
@@ -641,7 +654,7 @@ export const useConfigStore = defineStore('config', () => {
       ...(device_profile.value ? { device: device_profile.value } : {}),
       drone_count_limit: drone_count_limit.value,
       drone_room: drone_room.value,
-      swap_contact_train: swap_contact_train.value,
+      right_side_room_order: [...right_side_room_order.value],
       drone_interval: drone_interval.value,
       enable_party: enable_party.value ? 1 : 0,
       leifeng_mode: leifeng_mode.value ? 1 : 0,
@@ -980,7 +993,8 @@ export const useConfigStore = defineStore('config', () => {
     save_config,
     drone_count_limit,
     drone_room,
-    swap_contact_train,
+    right_side_room_order,
+    swap_right_side_facilities,
     drone_interval,
     enable_party,
     leifeng_mode,

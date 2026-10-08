@@ -1,0 +1,23 @@
+{
+  "title": "Recycling selection and local facility layout",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-37]",
+    "[INV-UI-08]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.open_recycle_selection",
+    "ui/src/components/PlanEditor.vue"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/recycle_station_tests.py",
+    "arknights_mower/tests/room_map_relocation_tests.py",
+    "ui/src/components/PlanEditor.test.js",
+    "ui/src/stores/configPartial.test.js"
+  ]
+}

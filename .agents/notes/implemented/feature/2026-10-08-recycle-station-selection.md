@@ -1,0 +1,30 @@
+---
+title: Recycling selection and local facility layout
+status: implemented
+category: feature
+date: 2026-10-08
+---
+
+# Recycling selection and local facility layout
+
+## Contract
+
+[INV-SCHED-37] gives `recycle` two physical positions, optional Scheduling Plan membership and bounded selection entry. [INV-UI-08] keeps the order of office, training and recycling in local configuration; plan exports, identities, staffing, conditions and tasks retain their values. All three facilities can occupy any of the three right-side positions below the workshop. Dragging changes configuration, not the in-game construction layout.
+
+## Simplification audit
+
+`agent_arrange_room` already calls the shared selector, confirmation and room readback. Recycling adds only its dashboard entry; it does not copy card recognition or scheduling. The two existing physical-capacity branches also cover recycling. The local list replaces the two-room boolean rather than introducing parallel settings. Main, backup and rescue pages reuse `PlanEditor` and the same configuration autosave.
+
+## Implementation
+
+`Plan1` and explicit `Task` preserve optional recycling entries and reject more than two positions. `Operators.get_current_room` and `get_agent_from_room` inspect two physical positions even with absent or partial static staff. Empty legacy schedules omit recycling during export. The map segmenter applies the validated three-room permutation after calculating physical positions, leaving other facilities fixed.
+
+The dashboard template uses the English facility label and fixed mood label, excluding animation, occupancy and efficiency values. The room-title template excludes the floor number. Selection closes an open residence-information panel, opens the conversion dashboard from the room view and taps its upper-left operator region. A confirmed shared selection page is required; unknown pages wait within a finite budget. Existing confirmation and measured room readback complete staffing. Material input, efficiency boosting and product collection are outside this change.
+
+The editor offers two recycling operator rows and native card dragging. The explicit move drop effect permits drops over nested card content. A separate drag payload and left-room source validation prevent dragging between layout cards and production-room assignments. The legacy `swap_contact_train` migrates only when the new order is absent; malformed or duplicate room lists fail validation. Local layout is excluded from exported advanced settings.
+
+## Evidence and limits
+
+The source is the [official expansion preview](https://www.bilibili.com/opus/1256772817402200067). User-supplied stills include native 1920×1080 room/map views and a 1280×720 dashboard. The third GIF shows multi-selection of Eyjafjalla and Angelina followed by one confirmation and return to the dashboard; the existing card reader, blue-frame detector and confirmation template recognize its stable frames. The second GIF verifies that the dashboard template rejects material-selection and confirmation overlays. The first GIF contains only idle animation.
+
+Offline regressions cover legacy omission, primary/backup/task persistence, capacity rejection, six layout permutations, old-switch migration, card rendering, local-only configuration patches, entry recovery and shared selection/readback. Browser checks cover real native drag/drop and two recycling edit rows. No live game is available: residence-information panel geometry and room-view/dashboard return behavior remain assumptions inherited from existing facilities and require live validation.

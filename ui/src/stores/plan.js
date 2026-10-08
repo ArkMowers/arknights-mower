@@ -43,7 +43,8 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       meeting: 2,
       factory: 1,
       contact: 1,
-      train: 2
+      train: 2,
+      recycle: 2
     }
     for (let i = 1; i <= 3; ++i) {
       for (let j = 1; j <= 3; ++j) {
