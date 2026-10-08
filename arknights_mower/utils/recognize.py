@@ -239,6 +239,7 @@ class Recognizer:
             or self.find("arrange_check_in_on")
             or self.find("room_detail")
             or self.find("arrange_check_in_small")
+            or self.find("recycle/dashboard")
         ):
             self.scene = Scene.INFRA_DETAILS
         elif self.find("infra_overview"):
@@ -887,6 +888,7 @@ class Recognizer:
             return None
 
         template_matching = {
+            "recycle/dashboard": ((465, 148), (682, 264)),
             # "arrange_check_in": ((30, 300), (175, 700)),
             "terminal_main": ((0, 0), (1920, 1080)),
             "arrange_check_in_on": ((30, 300), (175, 700)),

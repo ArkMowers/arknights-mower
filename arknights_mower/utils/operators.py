@@ -12,7 +12,12 @@ from arknights_mower.utils.manufacture_product import (
     MANUFACTURE_PRODUCTS,
     TRADE_PRODUCTS,
 )
-from arknights_mower.utils.plan import BaseProduct, PlanConfig, effective_dorm_order
+from arknights_mower.utils.plan import (
+    RIGHT_SIDE_ROOM_CAPACITY,
+    BaseProduct,
+    PlanConfig,
+    effective_dorm_order,
+)
 from arknights_mower.utils.resting_priority import (
     RestingTier,
     has_resting_mood,
@@ -398,7 +403,16 @@ class Operators:
         plan = copy.deepcopy(self.global_plan["backup_plans"][idx])
         # 更新切换排班表
         for key, value in plan.plan.items():
-            if key in default_plan:
+            if key in RIGHT_SIDE_ROOM_CAPACITY:
+                if not value:
+                    continue
+                target = default_plan.setdefault(key, [])
+                for index, operator in enumerate(value):
+                    if index >= len(target):
+                        target.append(operator)
+                    elif operator.agent != "Current":
+                        target[index] = operator
+            elif key in default_plan:
                 for idx, operator in enumerate(value):
                     if operator.agent != "Current":
                         default_plan[key][idx] = operator
@@ -1364,10 +1378,8 @@ class Operators:
             for k, v in self.operators.items()
             if v.current_room == room
         }
-        if room == "train":
-            res = [""] * 2
-        elif room == "factory":
-            res = [""]
+        if room in RIGHT_SIDE_ROOM_CAPACITY:
+            res = [""] * RIGHT_SIDE_ROOM_CAPACITY[room]
         else:
             res = [obj.agent for obj in self.plan[room]]
         not_found = False

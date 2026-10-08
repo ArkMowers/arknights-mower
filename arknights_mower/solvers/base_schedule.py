@@ -111,6 +111,7 @@ from arknights_mower.utils.operators import (
     Operators,
 )
 from arknights_mower.utils.path import get_path, resolve_config_path
+from arknights_mower.utils.plan import RIGHT_SIDE_ROOM_CAPACITY
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 from arknights_mower.utils.resource_pkg import refresh_resource_at_boundary
 from arknights_mower.utils.resting_priority import (
@@ -191,9 +192,15 @@ def _merge_shift_transition(plan: dict, overlay: dict, op_data: Operators) -> No
 def _merge_plan_overlay(plan: dict, overlay: dict, op_data: Operators) -> None:
     """把内存演算的一层结果覆盖到最终任务，不产生中间任务。"""
     for room, names in overlay.items():
-        if room not in op_data.plan:
-            continue
-        target = plan.setdefault(room, ["Current"] * len(op_data.plan[room]))
+        if room in RIGHT_SIDE_ROOM_CAPACITY:
+            if not names:
+                continue
+            target = plan.setdefault(room, [])
+            target.extend(["Current"] * (len(names) - len(target)))
+        else:
+            if room not in op_data.plan:
+                continue
+            target = plan.setdefault(room, ["Current"] * len(op_data.plan[room]))
         for index, name in enumerate(names[: len(target)]):
             if name != "Current":
                 target[index] = name
@@ -1649,6 +1656,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             "factory": lambda parts: "加工站",
             "meeting": lambda parts: "会客室",
             "train": lambda parts: "训练室",
+            "recycle": lambda parts: "回收站",
         }
 
         for keyword, translation_func in translations.items():
@@ -6909,6 +6917,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             "arrange_check_in",
                             "arrange_check_in_small",
                             "arrange_check_in_on",
+                            "recycle/dashboard",
                         )
                         if destination != template
                     ):
@@ -7909,6 +7918,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             for retry_times in range(19):
                 if self.find("connecting"):
                     self.sleep()
+                elif room == "recycle" and self.find("recycle/dashboard"):
+                    # 材料转化页没有进驻信息按钮，先回到房间视图。
+                    self.back()
                 elif pos := self.find("room_detail"):
                     if all(self.get_color((1233, 1)) > [252] * 3):
                         return
@@ -8027,10 +8039,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     dict.fromkeys([*read_time_index, *dorm_read_time_index])
                 )
         self.wait_product_complete()
-        if room == "train":
-            length = 2
-        elif room == "factory":
-            length = 1
+        if room in RIGHT_SIDE_ROOM_CAPACITY:
+            length = RIGHT_SIDE_ROOM_CAPACITY[room]
         else:
             length = len(self.op_data.plan[room])
         if length > 3:

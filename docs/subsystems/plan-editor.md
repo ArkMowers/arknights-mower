@@ -2,11 +2,11 @@
 
 ## 1. Facility Display
 
-`PlanEditor` displays office and training cards in the order selected by the existing local configuration field `swap_contact_train`. The default places the office above training; enabling the setting places training above the office. Main and backup plans share the same display preference. Card selection, operator avatars and editing remain bound to the original `contact` and `train` facility identities.
+`PlanEditor` displays office, training and recycling cards in the local `right_side_room_order`. Dragging any of these cards onto another swaps their positions. The default order is office, training, recycling; the legacy office/training switch migrates to the equivalent three-room order. Main, backup and rescue editors share this setting and retain their facility identities and assignments. The running-plan edit lock also prevents dragging. Recycling provides two operator rows.
 
 ## 2. Plan Transfer
 
-The setting remains in local configuration and is absent from Scheduling Plan data and its exported advanced settings. Importing or sharing a Scheduling Plan does not carry the displayed office/training order. The existing backend facility-location setting retains its behavior.
+The order lives in local configuration and controls backend map navigation. It is absent from Scheduling Plan exports and advanced settings. Importing or switching a Scheduling Plan preserves the local order. Dragging these cards changes neither staffing, backup conditions nor explicit tasks; users match the order to their game layout.
 
 ## 3. Subsystem Invariants
 
@@ -15,9 +15,9 @@ The setting remains in local configuration and is absent from Scheduling Plan da
 - **[INV-SCHED-26] Backup Operator List Removal**: Active backups apply operator additions followed by per-field removals in backup order; deactivation rebuilds effective lists from the main Scheduling Plan and remaining active backups without mutating source lists, and legacy backups retain additive behavior.
 
 - **[INV-UI-09] Backup Facility Import Isolation**: Importing a main-plan facility replaces only the selected backup facility with a deep copy of its type, product and operator bindings; subsequent edits preserve the source main plan, other facilities, backup conditions and explicit staffing tasks, and the edit lock prevents import.
-- **[INV-UI-08] Facility Display Order Isolation**: The local `swap_contact_train` setting changes only the office and training card display order in every Scheduling Plan; facility identities, assignments and exported plan data remain unchanged.
+- **[INV-UI-08] Facility Display Order Isolation**: The local `right_side_room_order` permutes office, training and recycling positions for display and map navigation; dragging preserves every Scheduling Plan facility identity, assignment, condition and task, and the order remains absent from plan exports.
 
-The [display order decision](../../.agents/notes/implemented/simplification/2026-10-06-plan-facility-display-order.md) records shared rendering and verification.
+The [recycling and local layout decision](../../.agents/notes/implemented/feature/2026-10-08-recycle-station-selection.md) records shared rendering, legacy migration and verification.
 
 Facility cards retain the [global update drop exclusion](software-update.md#2-global-update-drop).
 

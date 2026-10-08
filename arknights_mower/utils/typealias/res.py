@@ -1,6 +1,8 @@
 from typing import Literal
 
 Res = Literal[
+    "recycle/dashboard",
+    "room/recycle",
     "12cadpa",
     "1800",
     "all_in",

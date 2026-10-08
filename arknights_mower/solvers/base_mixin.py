@@ -526,7 +526,7 @@ class BaseMixin:
 
     def require_agent_selection_page(self):
         """名单异常时，用同帧入住信息页签区分页面退出与卡片识别失败。"""
-        if self.find("arrange_check_in_on"):
+        if self.find("arrange_check_in_on") or self.find("recycle/dashboard"):
             raise AgentSelectionPageChanged(
                 "选人页面已退出到当前房间入住信息，停止选人并返回房间实读重试"
             )
@@ -1145,14 +1145,12 @@ class BaseMixin:
             logger.debug(f"{colored_room}B{digit_1}0{digit_2}")
             return f"room_{digit_1}_{digit_2}"
         elif colored_room == "训练室":
-            logger.debug(
-                "训练室B205" if config.conf.swap_contact_train else "训练室B305"
-            )
+            logger.debug("训练室")
             return "train"
         elif colored_room == "加工站":
             logger.debug("加工站B105")
             return "factory"
-        white_room = ["central", "dormitory", "meeting", "contact"]
+        white_room = ["central", "dormitory", "meeting", "contact", "recycle"]
         score = []
         for room in white_room:
             tpl = loadres(f"room/{room}")
@@ -1174,10 +1172,10 @@ class BaseMixin:
             return f"dormitory_{digit}"
         elif room == "meeting":
             logger.debug("会客室1F02")
+        elif room == "recycle":
+            logger.debug("回收站")
         else:
-            logger.debug(
-                "办公室B305" if config.conf.swap_contact_train else "办公室B205"
-            )
+            logger.debug("办公室")
         return room
 
     def adjust_room(self, _room):
@@ -1246,7 +1244,7 @@ class BaseMixin:
                     _room = segment.base(
                         self.recog.img,
                         pos,
-                        swap_contact_train=config.conf.swap_contact_train,
+                        right_side_room_order=config.conf.right_side_room_order,
                     )[room]
                     logger.debug(
                         f"进入房间 {room}，第{enter_times + 1}轮第{retry_times + 1}次尝试"

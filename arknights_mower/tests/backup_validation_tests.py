@@ -8,14 +8,21 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+from arknights_mower.solvers.base_schedule import (
+    BaseSchedulerSolver,
+    _merge_plan_overlay,
+)
 from arknights_mower.utils import backup_validation, config, operators, schedule_roster
 from arknights_mower.utils.config.plan import parse_plan_document
 from arknights_mower.utils.config.plan_advanced import apply_advanced_settings
 from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.operators import Operators, build_global_plan
-from arknights_mower.utils.plan import Plan, PlanConfig, Room
-from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+from arknights_mower.utils.plan import RIGHT_SIDE_ROOM_CAPACITY, Plan, PlanConfig, Room
+from arknights_mower.utils.scheduler_task import (
+    SchedulerTask,
+    TaskTypes,
+    dorm_rebalance_signature,
+)
 
 FIXTURE = Path(__file__).with_name("fixtures") / "backup_validation_plan_20261002.json"
 
@@ -85,6 +92,119 @@ def facility_backup():
             )
         ],
     }
+
+
+def test_recycle_task_without_primary_facility_passes_startup_and_activation():
+    plan = two_backups()
+    plan["backup_plans"] = [
+        Plan(
+            {},
+            plan["default_plan"].config,
+            name="回收站临时换人",
+            task={"recycle": ["芬", "香草"]},
+        )
+    ]
+    data = initialize(plan)
+    result = data.validate_backup_plans()
+    assert result["success"], result
+    assert data.swap_plan([True], refresh=True) is None
+    assert data.plan_condition == [True]
+    assert "recycle" not in data.plan
+    assert data.backup_plans[0].task == {"recycle": ["芬", "香草"]}
+
+
+@pytest.mark.parametrize("room,capacity", RIGHT_SIDE_ROOM_CAPACITY.items())
+@pytest.mark.parametrize("count", [None, 0, 1])
+@pytest.mark.parametrize("mode", ["roster", "task", "both"])
+def test_right_side_backups_reach_final_arrangement(room, capacity, count, mode):
+    plan = two_backups()
+    conf = plan["default_plan"].config
+    if count is not None:
+        plan["default_plan"].plan[room] = [Room("月见夜", "", ["史都华德"])][:count]
+    names = ["香草", "翎羽"][:capacity]
+    slots = [
+        Room(name, "", [replacement])
+        for name, replacement in zip(names, ["克洛丝", "斑点"])
+    ]
+    plan["backup_plans"] = [
+        Plan(
+            {room: slots} if mode != "task" else {},
+            conf,
+            name="右侧驻员",
+            task={room: names} if mode != "roster" else {},
+        )
+    ]
+    data = initialize(plan)
+    result = data.validate_backup_plans()
+    assert result["success"], result
+    previous = copy.deepcopy(data.plan)
+    original = repr(plan["default_plan"].plan)
+    previous_layout = dorm_rebalance_signature(data)
+    assert data.swap_plan([True], refresh=True) is None
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data, solver.tasks, solver.task = data, [], None
+    transition = solver._backup_transition_plan(
+        previous, [False], [True], [], previous_layout
+    )
+    assert transition[room] == names
+    assert repr(plan["default_plan"].plan) == original
+    if mode != "task":
+        assert [slot.agent for slot in data.plan[room]] == names
+    else:
+        assert repr(data.plan) == repr(previous)
+
+    active_plan = copy.deepcopy(data.plan)
+    assert data.swap_plan([False], refresh=True) is None
+    transition = solver._backup_transition_plan(
+        active_plan, [True], [False], [], previous_layout
+    )
+    if count == 1:
+        assert transition[room] == ["月见夜"]
+    else:
+        assert room not in transition
+
+
+@pytest.mark.parametrize("room,capacity", RIGHT_SIDE_ROOM_CAPACITY.items())
+def test_empty_right_side_backup_preserves_staff_and_has_no_transition(room, capacity):
+    plan = two_backups()
+    conf = plan["default_plan"].config
+    plan["default_plan"].plan[room] = [Room("香草", "", ["克洛丝"])]
+    plan["backup_plans"] = [Plan({room: []}, conf, task={room: []})]
+    data = initialize(plan)
+    previous = copy.deepcopy(data.plan)
+    layout = dorm_rebalance_signature(data)
+    assert data.swap_plan([True], refresh=True) is None
+    assert [slot.agent for slot in data.plan[room]] == ["香草"]
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data, solver.tasks, solver.task = data, [], None
+    assert solver._backup_transition_plan(previous, [False], [True], [], layout) == {}
+
+
+def test_right_side_task_overlay_extends_existing_partial_target():
+    from types import SimpleNamespace
+
+    plan = {"recycle": ["芬"]}
+    _merge_plan_overlay(
+        plan, {"recycle": ["Current", "香草"]}, SimpleNamespace(plan={})
+    )
+    assert plan == {"recycle": ["芬", "香草"]}
+
+
+@pytest.mark.parametrize("room", ["meeting", "train", "recycle"])
+def test_right_side_roster_current_keeps_first_slot_and_adds_second(room):
+    plan = two_backups()
+    conf = plan["default_plan"].config
+    plan["default_plan"].plan[room] = [Room("香草", "", ["克洛丝"])]
+    plan["backup_plans"] = [
+        Plan(
+            {room: [Room("Current", "", []), Room("翎羽", "", ["斑点"])]},
+            conf,
+        )
+    ]
+    data = initialize(plan)
+    assert data.validate_backup_plans()["success"]
+    assert data.swap_plan([True], refresh=True) is None
+    assert [slot.agent for slot in data.plan[room]] == ["香草", "翎羽"]
 
 
 @pytest.mark.parametrize("target", ["Current", "Free", "", "安哲拉"])

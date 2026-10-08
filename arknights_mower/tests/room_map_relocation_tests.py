@@ -82,7 +82,9 @@ def test_right_side_rooms_can_swap_without_moving_other_facilities():
     image = np.zeros((1080, 1920, 3), dtype=np.uint8)
     anchor = ((400, 80), (600, 240))
     ordinary = base_mixin.segment.base(image, anchor)
-    swapped = base_mixin.segment.base(image, anchor, swap_contact_train=True)
+    swapped = base_mixin.segment.base(
+        image, anchor, right_side_room_order=("train", "contact", "recycle")
+    )
 
     np.testing.assert_array_equal(swapped["train"], ordinary["contact"])
     np.testing.assert_array_equal(swapped["contact"], ordinary["train"])
@@ -204,7 +206,9 @@ def navigation_solver(monkeypatch, frames):
             return frame["anchor"]
         return None
 
-    def segment(frame, anchor, *, swap_contact_train=False):
+    def segment(
+        frame, anchor, *, right_side_room_order=("contact", "train", "recycle")
+    ):
         assert frame["kind"] == "map" and anchor == frame["anchor"]
         return {ROOM: frame["room"]}
 
@@ -245,13 +249,17 @@ def test_drag_relocates_using_new_frame_and_new_central_anchor(
 
 
 def test_enter_room_passes_configured_right_side_layout(monkeypatch):
-    monkeypatch.setattr(config.conf, "swap_contact_train", True)
+    monkeypatch.setattr(
+        config.conf, "right_side_room_order", ["recycle", "contact", "train"]
+    )
     room = rectangle(450, 350, 750, 600)
     solver, segmentation = navigation_solver(
         monkeypatch, [map_frame(room), {"kind": "room"}]
     )
     solver.enter_room(ROOM)
-    assert segmentation.call_args.kwargs == {"swap_contact_train": True}
+    assert segmentation.call_args.kwargs == {
+        "right_side_room_order": ["recycle", "contact", "train"]
+    }
 
 
 def test_ineffective_drags_use_existing_attempt_and_home_budgets(monkeypatch):

@@ -53,6 +53,7 @@ const roomOptions = [
   { label: '办公室', value: 'contact' },
   { label: '加工站', value: 'factory' },
   { label: '训练室', value: 'train' },
+  { label: '回收站', value: 'recycle' },
   { label: '控制中枢', value: 'central' },
   { label: '第一层1号房间', value: 'room_1_1' },
   { label: '第一层2号房间', value: 'room_1_2' },

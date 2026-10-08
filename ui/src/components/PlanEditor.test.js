@@ -49,7 +49,7 @@ afterEach(() => {
 
 describe('plan facility display order', () => {
   it.each(['main', 0])(
-    'follows local training placement without changing plan %s',
+    'follows all local room permutations without changing plan %s',
     async (subPlan) => {
       const pinia = createPinia()
       function editorApp() {
@@ -79,10 +79,20 @@ describe('plan facility display order', () => {
       plan.current_plan.contact.plans[0].agent = '办公室干员'
       plan.current_plan.train.plans[0].agent = '协助干员'
       plan.current_plan.train.plans[1].agent = '训练干员'
+      plan.current_plan.recycle.plans[0].agent = '回收干员一'
+      plan.current_plan.recycle.plans[1].agent = '回收干员二'
       plan.set_advanced_settings_source(() => config.build_advanced_settings())
       const original = JSON.stringify(plan.build_plan())
-      for (const enabled of [false, true, false]) {
-        config.swap_contact_train = enabled
+      const orders = [
+        ['contact', 'train', 'recycle'],
+        ['contact', 'recycle', 'train'],
+        ['train', 'contact', 'recycle'],
+        ['train', 'recycle', 'contact'],
+        ['recycle', 'contact', 'train'],
+        ['recycle', 'train', 'contact']
+      ]
+      for (const order of orders) {
+        config.right_side_room_order = order
         const html = await renderToString(editorApp())
         const regions = updateDropRegions(html)
         expect(regions.markers).toEqual(['outer'])
@@ -92,15 +102,25 @@ describe('plan facility display order', () => {
         const training = html.indexOf('协助干员.webp')
         expect(office).toBeGreaterThan(-1)
         expect(training).toBeGreaterThan(-1)
-        expect(training < office).toBe(enabled)
+        const recycling = html.indexOf('回收干员一.webp')
+        const positions = { contact: office, train: training, recycle: recycling }
+        expect(order.map((room) => positions[room])).toEqual(
+          Object.values(positions).sort((a, b) => a - b)
+        )
+        expect(html).toContain('回收干员二.webp')
+        expect(
+          html.match(/class="right_contain right-room-draggable" draggable="true"/g)
+        ).toHaveLength(3)
         expect(html).toContain('训练干员.webp')
         expect(html).toContain('协助位')
         expect(html).toContain('训练位')
         expect(html.indexOf('会客室')).toBeLessThan(html.indexOf('加工站'))
-        expect(html.indexOf('加工站')).toBeLessThan(Math.min(office, training))
+        expect(html.indexOf('加工站')).toBeLessThan(Math.min(office, training, recycling))
         expect(JSON.stringify(plan.build_plan())).toBe(original)
         expect(plan.build_plan().advanced_settings).not.toHaveProperty('swap_contact_train')
-        expect(config.build_config().swap_contact_train).toBe(enabled)
+        expect(plan.build_plan().advanced_settings).not.toHaveProperty('right_side_room_order')
+        expect(config.build_config().right_side_room_order).toEqual(order)
+        expect(config.build_config()).not.toHaveProperty('swap_contact_train')
       }
     }
   )
@@ -125,6 +145,9 @@ it.each([false, true])('renders group rows, segmented avatar and edit lock %s', 
     group_bindings: [{ group: '乙', replacement: ['黑角'] }]
   })
   const html = await renderToString(app)
+  expect(
+    html.match(new RegExp(`class="right_contain right-room-draggable" draggable="${!locked}"`, 'g'))
+  ).toHaveLength(3)
   expect(html).toContain('rowspan="2"')
   expect(html).toContain('linear-gradient(to right')
   expect(html).toContain('50%')
