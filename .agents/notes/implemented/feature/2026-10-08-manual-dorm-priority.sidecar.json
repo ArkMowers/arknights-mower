@@ -12,11 +12,15 @@
   "code_symbols": [
     "arknights_mower.utils.operators.Operators.ordered_dorms",
     "arknights_mower.utils.plan.effective_dorm_order",
-    "arknights_mower.utils.scheduler_task.prioritize_new_dorm_recovery"
+    "arknights_mower.utils.scheduler_task.prioritize_new_dorm_recovery",
+    "arknights_mower.utils.scheduler_task.rebalance_plan_swap_dorms",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._backup_transition_plan"
   ],
   "test_suites": [
     "arknights_mower/tests/dorm_priority_refresh_tests.py",
     "arknights_mower/tests/dorm_admission_priority_tests.py",
-    "arknights_mower/tests/dorm_isolation_tests.py"
+    "arknights_mower/tests/dorm_isolation_tests.py",
+    "arknights_mower/tests/backup_rest_schedule_tests.py",
+    "arknights_mower/tests/dorm_group_tests.py"
   ]
 }

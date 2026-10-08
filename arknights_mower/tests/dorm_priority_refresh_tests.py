@@ -143,7 +143,7 @@ def test_backup_plan_applies_its_own_dorm_order(saved):
     )
 
 
-def test_backup_order_only_change_preserves_occupied_beds(saved):
+def test_priority_reorder_requires_explicit_transition_request(saved):
     op = operators("", ["dormitory_2,dormitory_1,dormitory_3,dormitory_4"])
     assert op.init_and_validate() is None
     first, second = op.dorm[:2]
@@ -493,7 +493,7 @@ def test_high_and_optional_low_slot_order(saved, order, expected):
     assert data.available_free("low") == 3
 
 
-def test_backup_low_order_is_independent_and_does_not_move_residents(saved):
+def test_backup_low_order_is_independent_and_config_loading_preserves_residents(saved):
     custom = "dormitory_1,dormitory_1_low,dormitory_2"
     data = operators("", [custom, ""])
     assert data.init_and_validate() is None
@@ -566,3 +566,49 @@ def test_temporary_free_position_recomputes_high_slot_without_changing_capacity(
         ("dormitory_1", 4),
     ]
     assert data.ordered_dorms()[0].position == ("dormitory_1", 3)
+
+
+@pytest.mark.parametrize("lock", [None, "slot", "name", "product"])
+def test_priority_transition_reorders_residents_and_refreshes_moved_times(saved, lock):
+    from datetime import timedelta
+
+    data = operators("dormitory_2,dormitory_1")
+    data.plan["meeting"] = [Room("芬", "", ["银灰", "陈"])]
+    assert data.init_and_validate() is None
+    now = datetime.now()
+    old_time = now + timedelta(hours=3)
+    for position, name, mood in (
+        (("dormitory_1", 3), "银灰", 2),
+        (("dormitory_2", 2), "陈", 12),
+    ):
+        bed = next(b for b in data.dorm if b.position == position)
+        bed.name, bed.time = name, old_time
+        op = data.operators[name]
+        op.current_room, op.current_index = position
+        op.mood, op.time_stamp = mood, now
+        op.dorm_recovery_room = position[0]
+        op.dorm_recovery_index = position[1]
+    previous = copy.deepcopy(data.dorm)
+    reserved_slots, reserved_names = set(), set()
+    if lock == "slot":
+        reserved_slots.add(("dormitory_2", 2))
+    elif lock == "name":
+        reserved_names.add("陈")
+    elif lock == "product":
+        data.reserved_product_beds[("dormitory_2", 2)] = "陈"
+    plan = rebalance_plan_swap_dorms(
+        data, previous, reserved_names, reorder=True, reserved_slots=reserved_slots
+    )
+    if lock:
+        assert plan == {}
+        assert data.get_dorm_by_name("陈")[1].time == old_time
+        assert data.get_dorm_by_name("银灰")[1].time == old_time
+    else:
+        assert plan["dormitory_2"][2] == "银灰"
+        assert plan["dormitory_1"][3] == "陈"
+        assert all(bed.time is None for bed in data.dorm if bed.name)
+        assert not data.operators["银灰"].dorm_recovery_room
+        assert not data.operators["陈"].dorm_recovery_room
+    # 生成安排不等于设备已执行。
+    assert data.operators["银灰"].current_room == "dormitory_1"
+    assert data.operators["陈"].current_room == "dormitory_2"

@@ -125,7 +125,7 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 
 ### Dormitory Bed Priority
 - **Definition**: Determines bed allocation, single-target recovery allocation, and eligible preemption of lower-priority residents. Within a tier, larger mood deficits from individual upper limits rank first. Existing residents remain subject to position-preservation rules.
-- Dormitory priority defaults to 1, 2, 3, 4, representing each dormitory’s high-priority bed. Users can insert low-priority options for individual dormitories; omitted low-priority options come last. Changing the order alone does not move existing residents; recovery tiers and reservations remain binding. Dormitory isolation can exchange equally ranked new occupants between selected non-target beds.
+- Dormitory priority defaults to 1, 2, 3, 4, representing each dormitory’s high-priority bed. Users can insert low-priority options for individual dormitories; omitted low-priority options come last. Backup transitions that change the effective order rearrange dormitory residents; otherwise existing residents retain their positions. Recovery tiers and reservations remain binding. Dormitory isolation can exchange equally ranked new occupants between selected non-target beds.
 - While automatic mastery crafting is active, candidates first follow existing dormitory priorities. Only positions occupied by ordinary idle crafting operators are reordered by interleaving non-T5, T5 and skill-summary lists at matching indices, retaining each name’s first occurrence. Other operators’ ranking positions, staffing identities, fixed dormitory positions, exclusions and reservations remain unchanged.
 - **Code Mapping**: [`resting_key`](arknights_mower/utils/resting_priority.py)
 

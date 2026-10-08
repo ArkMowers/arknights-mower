@@ -853,14 +853,15 @@ def _active_recovery_room(op_data, name):
 
 
 def _recovery_aware_assignments(
-    op_data, beds, candidates, *, clear_invalid_recovery=True
+    op_data, beds, candidates, *, clear_invalid_recovery=True, preserve_positions=True
 ):
     """按正常排名选人，保留有效原床位，只迁移床位失效的入住者。
 
     candidates 的统一布局为 ``(排序键, 原床位顺序, 姓名, 时间, 原位置)``。
+    副表显式切换床位顺序时关闭 preserve_positions，按新顺序重排。
     单回目标若原本会因缩容落选，会替换保留区末尾的非单回目标；若目标
-    所在宿舍仍有动态床，优先保留原床或同房床。普通床也保留原位，
-    不因房间排序或心情变化互换。确实换房/离床时清除旧标记，使后续
+    所在宿舍仍有动态床，保位模式下优先保留原床或同房床。普通床也保留原位，
+    日常不因心情变化互换。确实换房/离床时清除旧标记，使后续
     宿舍任务重新执行一次单回入驻。同房换床也不能沿用旧单回标记。
     """
     capacity = len(beds)
@@ -898,7 +899,7 @@ def _recovery_aware_assignments(
     assigned_names = set()
     original_positions = {candidate[2]: candidate[4] for candidate in kept}
     # 单回目标先占原宿舍；同房内优先原床，避免无意义地重做单回。
-    for candidate in kept:
+    for candidate in kept if preserve_positions else ():
         name = candidate[2]
         recovery_room = _active_recovery_room(op_data, name)
         if not recovery_room:
@@ -920,7 +921,7 @@ def _recovery_aware_assignments(
         available.remove(bed)
 
     # 排名决定缩容时谁保留，不意味着保留者必须按名次重新映射床位。
-    for candidate in kept:
+    for candidate in kept if preserve_positions else ():
         name = candidate[2]
         if name in assigned_names:
             continue
@@ -1074,14 +1075,26 @@ def dorm_rebalance_signature(op_data):
 
 
 def rebalance_plan_swap_dorms(
-    op_data, previous_dorms=None, reserved_names: set[str] | None = None
+    op_data,
+    previous_dorms=None,
+    reserved_names: set[str] | None = None,
+    *,
+    reorder=False,
+    reserved_slots=(),
 ):
-    """主副表切换后，仅迁移失去有效原床位的入住者。
+    """切表改变优先级时重排可移动住客，其余切表只迁移失效床位。
 
-    previous_dorms 保留切表前的床位位置和恢复计时。单独改变房间优先级
-    不移动已入住者；新顺序仅用于分配确实需要迁移的干员。
+    previous_dorms 保留切表前的位置和计时；换床后重新读取恢复时间。
+    预约和显式副表安排不参与优先级重排。
     """
     reserved_names = reserved_names or set()
+    locked_positions = set(reserved_slots)
+    if reorder:
+        locked_positions.update(bed.position for bed in op_data.group_dorm)
+        locked_positions.update(op_data.reserved_product_beds)
+        locked_positions.update(
+            bed.position for bed in op_data.dorm if bed.name in reserved_names
+        )
     if previous_dorms is not None:
         sources = [
             bed
@@ -1107,6 +1120,7 @@ def rebalance_plan_swap_dorms(
                 and bed.name not in reserved_names
             ),
         ]
+    sources = [bed for bed in sources if bed.position not in locked_positions]
     if not sources:
         return {}
     now = datetime.now()
@@ -1124,9 +1138,13 @@ def rebalance_plan_swap_dorms(
         for name, (order, bed) in unique.items()
     )
     beds = [
-        bed for bed in op_data.ordered_dorms() if op_data.is_effective_free_slot(bed)
+        bed
+        for bed in op_data.ordered_dorms()
+        if bed.position not in locked_positions and op_data.is_effective_free_slot(bed)
     ]
-    assignments, dropped = _recovery_aware_assignments(op_data, beds, candidates)
+    assignments, dropped = _recovery_aware_assignments(
+        op_data, beds, candidates, preserve_positions=not reorder
+    )
     plan = {}
     for _key, _order, name, _time, _position in dropped:
         op = op_data.operators[name]
@@ -1146,7 +1164,7 @@ def rebalance_plan_swap_dorms(
             room, index = bed.position
             plan.setdefault(room, ["Current"] * len(op_data.plan[room]))[index] = name
         bed.name = name
-        bed.time = saved_time
+        bed.time = None if reorder and bed.position != _position else saved_time
 
     effective_positions = {bed.position for bed in beds}
     for _key, _order, _name, _time, position in candidates:
@@ -1164,7 +1182,7 @@ def rebalance_plan_swap_dorms(
 
     assigned = set(destinations.values())
     for bed in op_data.dorm:
-        if bed.position not in destinations:
+        if bed.position not in destinations and bed.position not in locked_positions:
             bed.reset()
     logger.info(
         "副表切换后重排宿舍：保留%s，离开%s",

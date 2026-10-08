@@ -3526,10 +3526,27 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             # 迁移须与副表已提出的槽位安排比较，不能把被该安排覆盖的
             # 原住者误判为无需移动，导致合并后丢失其床位。
             migration_data = self.op_data.project_arrangements([transition_plan])
+            priority_changed = (
+                previous_dorm_layout is not None
+                and previous_dorm_layout[0] != current_dorm_layout[0]
+            )
             dorm_migration = rebalance_plan_swap_dorms(
                 migration_data,
                 previous_dorms,
-                reserved_names=_assigned_operator_names(transition_plan),
+                reserved_names=_assigned_operator_names(transition_plan)
+                | (reserved_names if priority_changed else set()),
+                reorder=priority_changed,
+                reserved_slots=(
+                    reserved_slots
+                    | {
+                        (room, index)
+                        for room, names in transition_plan.items()
+                        for index, name in enumerate(names)
+                        if name != "Current"
+                    }
+                    if priority_changed
+                    else ()
+                ),
             )
             self.op_data.dorm = migration_data.dorm
             _merge_shift_transition(transition_plan, dorm_migration, self.op_data)
