@@ -468,7 +468,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self._sync_run_order_tasks()
             self._resume_waiting_group_shifts()
             self._fill_empty_dorms()
-            scheduling(self.tasks)
+            scheduling(self.tasks, op_data=getattr(self, "op_data", None))
             self.task = self.tasks[0] if self.tasks else None
             if self.task is None:
                 break
@@ -2825,7 +2825,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     self.plan_run_order(k)
                 run_order_rooms = self.op_data.run_order_rooms
                 adj_tasks = scheduling(
-                    self.tasks
+                    self.tasks, op_data=self.op_data
                 )  # 修改scheduling 同时输出撞在一起的前后两个任务
                 max_execution = 3
                 adj_count = 0
@@ -2859,7 +2859,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         )
                         return
                     is_run = self.drone(adjust_0_room, adjust_time=True)
-                    adj_tasks = scheduling(self.tasks)
+                    adj_tasks = scheduling(
+                        self.tasks, op_data=getattr(self, "op_data", None)
+                    )
                     adj_count += 1
                     logger.info(f"第{adj_count}次循环结束")
                     if is_run is not None and not is_run:
@@ -5755,7 +5757,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             return
 
     def adjust_order_time(self, accelerate, room):
-        action_required_task = scheduling(self.tasks)
+        action_required_task = scheduling(
+            self.tasks, op_data=getattr(self, "op_data", None)
+        )
         # logger.error(f"action_required_task:{action_required_task}")
         logger.debug(f"room:{room}")
         logger.debug(self.get_run_order_adjust_room(action_required_task) == room)
@@ -5805,7 +5809,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 logger.info(
                     f"房间 {room} 无人机加速后接单时间为 {task_time.strftime('%H:%M:%S')}"
                 )
-                action_required_task = scheduling(self.tasks)
+                action_required_task = scheduling(
+                    self.tasks, op_data=getattr(self, "op_data", None)
+                )
             else:
                 break
         return None
@@ -10670,7 +10676,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 else:
                     logger.info("local operation finished without executing any stage")
 
-            scheduling(self.tasks)
+            scheduling(self.tasks, op_data=getattr(self, "op_data", None))
         except (MowerExit, DeviceRecoveryError):
             raise
         except Exception as e:
