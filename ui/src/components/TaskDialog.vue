@@ -194,7 +194,7 @@ const operators_with_free_current = computed(() => {
 })
 
 import { pinyin_match } from '@/utils/common'
-import { render_op_label } from '@/utils/op_select'
+import { render_op_option, render_op_label } from '@/utils/op_select'
 
 const skill_list = [
   { value: 1, label: '一技能' },
@@ -210,7 +210,12 @@ const level_list = [
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" transform-origin="center" style="width: auto">
+  <n-modal
+    v-model:show="show"
+    preset="card"
+    transform-origin="center"
+    :style="{ width: isLogPage ? 'auto' : 'max-content', maxWidth: '90vw' }"
+  >
     <template #header>
       <div v-if="isLogPage" class="task_row" style="width: auto">
         <n-select
@@ -229,6 +234,7 @@ const level_list = [
           :options="operators"
           :filter="(p, o) => pinyin_match(o.label, p)"
           :render-label="render_op_label"
+          :render-option="render_op_option"
           style="width: 150px"
         />
         <n-select
@@ -287,18 +293,18 @@ const level_list = [
               :disabled="!isLogPage && edit_locked"
               :options="roomOptions"
               placeholder="选择房间"
-              class="dropdown-select"
-              style="width: 160px"
+              class="dropdown-select task-room-select"
             />
             <n-dynamic-tags
               v-model:value="value.operators"
               :disabled="!isLogPage && edit_locked"
               :max="5"
               size="large"
+              style="justify-content: flex-end"
             >
               <template #input="{ submit, deactivate }">
                 <n-select
-                  v-model:value="value.operators"
+                  :value="null"
                   :disabled="!isLogPage && edit_locked"
                   filterable
                   :options="operators_with_free_current"
@@ -310,6 +316,7 @@ const level_list = [
                   :on-blur="deactivate"
                   :filter="(p, o) => pinyin_match(o.label, p)"
                   :render-label="render_op_label"
+                  :render-option="render_op_option"
                 />
               </template>
             </n-dynamic-tags>
@@ -354,6 +361,7 @@ const level_list = [
           :options="workshopOperatorOptions"
           :filter="(p, o) => pinyin_match(o.label, p)"
           :render-label="render_op_label"
+          :render-option="render_op_option"
           style="width: 178px"
         />
         <help-text>
@@ -397,5 +405,12 @@ const level_list = [
 
 .n-dynamic-tags {
   align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+.task-room-select {
+  width: 160px;
+  min-width: 160px;
+  flex: 0 0 160px;
 }
 </style>

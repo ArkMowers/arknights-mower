@@ -404,7 +404,7 @@ function update_type(type) {
 }
 
 import { pinyin_match } from '@/utils/common'
-import { render_op_label } from '@/utils/op_select'
+import { render_op_option, render_op_label } from '@/utils/op_select'
 
 const custom_tips = computed(() => [
   'True',
@@ -475,6 +475,7 @@ function render_custom_tip(option) {
       :on-update:value="update_op"
       :filter="(p, o) => pinyin_match(o.label, p)"
       :render-label="render_op_label"
+      :render-option="render_op_option"
       style="min-width: 220px"
     />
     <n-select

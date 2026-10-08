@@ -221,7 +221,7 @@ const loading_bar = useLoadingBar()
 
 import Bowser from 'bowser'
 
-import { render_op_label } from '@/utils/op_select'
+import { render_op_option, render_op_label } from '@/utils/op_select'
 import { pinyin_match } from '@/utils/common'
 
 async function save() {
@@ -808,7 +808,7 @@ function movePlanForward() {
           <span>宿舍高优先级干员</span>
           <help-text>
             <p>
-              名单 → 普通主班 → 低优主班 → 高优替班 → 候补 → 普通替班 →
+              高优干员 → 普通主班 → 低优主班 → 高优替班 → 候补 → 普通替班 →
               空闲；同级距心情上限更远者优先。
             </p>
             <p>
@@ -1069,6 +1069,7 @@ function movePlanForward() {
             filterable
             :filter="(p, o) => pinyin_match(o.label, p)"
             :render-label="render_op_label"
+            :render-option="render_op_option"
           />
         </div>
         <svg
@@ -1097,6 +1098,7 @@ function movePlanForward() {
             filterable
             :filter="(p, o) => pinyin_match(o.label, p)"
             :render-label="render_op_label"
+            :render-option="render_op_option"
           />
         </div>
       </div>

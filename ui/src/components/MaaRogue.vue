@@ -14,7 +14,7 @@ const plan_store = usePlanStore()
 const { operators } = storeToRefs(plan_store)
 
 import { pinyin_match } from '@/utils/common'
-import { render_op_label } from '@/utils/op_select'
+import { render_op_option, render_op_label } from '@/utils/op_select'
 import HelpText from '@/components/HelpText.vue'
 import {
   collectible_start_visible,
@@ -396,6 +396,7 @@ const find_playtime_options = [
         v-model:value="rogue.core_char"
         :filter="(p, o) => pinyin_match(o.label, p)"
         :render-label="render_op_label"
+        :render-option="render_op_option"
       />
     </n-form-item>
     <n-form-item
