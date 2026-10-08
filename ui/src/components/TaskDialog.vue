@@ -214,7 +214,7 @@ const level_list = [
     v-model:show="show"
     preset="card"
     transform-origin="center"
-    :style="{ width: isLogPage ? 'auto' : '960px', maxWidth: '90vw' }"
+    :style="{ width: isLogPage ? 'auto' : 'max-content', maxWidth: '90vw' }"
   >
     <template #header>
       <div v-if="isLogPage" class="task_row" style="width: auto">
