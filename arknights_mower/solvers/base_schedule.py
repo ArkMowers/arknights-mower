@@ -10947,8 +10947,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         working 的根因。现在全部收口到这里，只有 `_idle_sleep` 一个状态写入点。
         """
         self._schedule_maintenance_backup_check()
-        if any(getattr(task, "strict_mood_limit", False) for task in self.tasks):
-            # 睡眠前就计算提前量，不能睡到原上限时刻才发现需要提前离宿。
+        if any(
+            getattr(task, "strict_mood_limit", False)
+            or config.conf.enable_mastery
+            and task.type == TaskTypes.SWAP_SUPPORT
+            for task in self.tasks
+        ):
+            # 睡眠前计算清退与专精换人的提前量，避免等到原任务时间才避让。
             protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         first = self.tasks[0]
         remaining_time = (first.time - datetime.now()).total_seconds()

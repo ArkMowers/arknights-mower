@@ -174,7 +174,7 @@ def _apply_swap(execution, support, options, central):
         )
         is True
     ):
-        # 跑单冲突已把换人提前；候选收益与房间校验仍由现有流程确认。
+        # 跑单或维护已把换人提前；候选收益与房间校验仍由现有流程确认。
         delay = 0
     if correcting and (selected is None or delay > 5):
         # Do not remove a reducer that cannot earn five hours again.

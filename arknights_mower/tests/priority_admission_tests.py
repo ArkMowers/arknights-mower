@@ -24,6 +24,7 @@ def offline_admission(monkeypatch):
     monkeypatch.setattr(config.conf, "enable_mastery", True)
     monkeypatch.setattr(config.conf.run_order_grandet_mode, "enable", False)
     monkeypatch.setattr(NewsChecker, "get_update_time", lambda: (None, None))
+    monkeypatch.setattr(NewsChecker, "get_maintenance", lambda: None)
     monkeypatch.setattr(operation_timing, "_work_durations", {})
     monkeypatch.setattr(operation_timing, "_dorm_durations", {})
 

@@ -153,6 +153,9 @@ def protect_priority_tasks(
         ),
         key=lambda t: t.time,
     )
+    _advance_support_swaps_for_maintenance(
+        swaps, run_order_delay, execution_time, now, op_data
+    )
     for swap in swaps:
         _advance_swap_before_orders(tasks, swap, now, execution_time, op_data)
     _schedule_priority_tasks(tasks, execution_time, now, op_data)
@@ -160,6 +163,36 @@ def protect_priority_tasks(
         tasks, run_order_delay, 0.75 if execution_time is None else execution_time, now
     )
     _sort_dispatch_tasks(tasks, now)
+
+
+def _advance_support_swaps_for_maintenance(
+    swaps, run_order_delay, execution_time, now, op_data
+):
+    if not swaps:
+        return
+    maintenance = NewsChecker.get_maintenance()
+    if maintenance is None or now >= maintenance.start:
+        return
+    deadline = maintenance.start - timedelta(minutes=max(10, run_order_delay * 2))
+    # 协助换人按公告的完整维护区间避让，包含停机维护的最后半小时。
+    affected = [swap for swap in swaps if deadline < swap.time < maintenance.end]
+    # 从后往前预留操作窗口；提前标记复用执行器的训练与候选校验。
+    for swap in reversed(affected):
+        original = swap.time
+        swap.time = min(
+            original,
+            max(
+                now,
+                deadline
+                - _support_swap_duration(swap, execution_time, op_data)
+                - timedelta(seconds=1),
+            ),
+        )
+        swap.advance_support_swap = True
+        deadline = swap.time
+        logger.info(
+            f"专精换人避让维护，从 {original:%H:%M:%S} 提前至 {swap.time:%H:%M:%S}"
+        )
 
 
 def _sort_dispatch_tasks(tasks, now):

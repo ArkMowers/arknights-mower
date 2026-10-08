@@ -26,6 +26,7 @@ from arknights_mower.utils.resource_pkg import (
     refresh_resource_at_boundary,
     resource_task_session,
 )
+from arknights_mower.utils.scheduler_task import protect_priority_tasks
 
 base_scheduler = None
 device_control = create_device_control()
@@ -580,7 +581,11 @@ def simulate(saved):
                 if _handle_maintenance(maintenance, base_scheduler):
                     return
             if len(base_scheduler.tasks) > 0:
-                (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
+                # 维护避让先于日常任务和等待预算，包含从存档恢复的专精换人。
+                protect_priority_tasks(
+                    base_scheduler.tasks,
+                    op_data=getattr(base_scheduler, "op_data", None),
+                )
                 remaining_time = (
                     base_scheduler.tasks[0].time - datetime.now()
                 ).total_seconds()
