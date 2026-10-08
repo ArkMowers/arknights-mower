@@ -23,6 +23,8 @@ The scheduler reuses `Operators.project_arrangements` and operation timing. Dyna
 
 Focused offline tests cover timing boundaries, independent partial plans, phase and group atomicity, isolated projection, future waiting, order occupancy, multiple orders, strict release, mastery handoffs and dorm continuation.
 
+The workshop queue regression uses a fixed clock and checks seven accepted one-minute jobs before an eight-minute trade order and four deferred jobs afterward. Repeated planning preserves all eleven task identities, operator names, order and timestamps without duplicate batches.
+
 ## Standards Findings
 
 Pass: bounded timing samples, existing projection isolation and protected task state remain intact. The invariant appears in all three governance references.

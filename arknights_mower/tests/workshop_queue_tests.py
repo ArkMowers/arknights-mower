@@ -71,7 +71,14 @@ def test_real_run_order_scheduler_does_not_cause_repeated_workshop_batches(
             template.model_copy(update={"operator": name})
         )
         data.operators[name] = SimpleNamespace(mood=24)
-    now = datetime.now()
+    now = datetime(2026, 10, 8, 10, 36, 9)
+
+    class FixedClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+
+    monkeypatch.setattr(scheduler_task, "datetime", FixedClock)
     tasks.append(
         SchedulerTask(
             time=now + timedelta(minutes=8),
@@ -84,14 +91,33 @@ def test_real_run_order_scheduler_does_not_cause_repeated_workshop_batches(
     monkeypatch.setattr(
         scheduler_task.NewsChecker, "get_update_time", lambda: (None, None)
     )
+    order = tasks[0]
+    assert scheduler_task.find_next_task(tasks, now + timedelta(minutes=5)) is None
+    scheduler_task.try_workshop_tasks(data, tasks)
+    original = [task for task in tasks if task.type == TaskTypes.WORKSHOP]
+    original_ids = [id(task) for task in original]
+    original_names = [task.meta_data for task in original]
+    admitted_times = None
     for _ in range(3):
-        # 与 plan_solver 相同的五分钟入口，以及真实的跑单推迟逻辑。
-        assert scheduler_task.find_next_task(tasks, now + timedelta(minutes=5)) is None
+        # 重复规划同时覆盖跑单前的可执行前缀与跑单后的延期后缀。
         scheduler_task.try_workshop_tasks(data, tasks)
         scheduler_task.scheduling(tasks, time_now=now)
         pending = [task for task in tasks if task.type == TaskTypes.WORKSHOP]
-        assert len(pending) == 11
-        assert all(task.time > now + timedelta(minutes=5) for task in pending)
+        assert [id(task) for task in pending] == original_ids
+        assert [task.meta_data for task in pending] == original_names
+        assert len(set(original_names)) == 11
+        assert tasks == [*original[:7], order, *original[7:]]
+        assert [task.time for task in original[:7]] == [
+            now + timedelta(seconds=2 * index) for index in range(7)
+        ]
+        assert [task.time for task in original[7:]] == [
+            order.time + timedelta(seconds=offset) for offset in range(1, 5)
+        ]
+        assert order.time == now + timedelta(minutes=8)
+        times = [task.time for task in pending]
+        if admitted_times is None:
+            admitted_times = times
+        assert times == admitted_times
 
 
 def test_pending_task_only_blocks_same_operator_and_completion_allows_next_run(queue):

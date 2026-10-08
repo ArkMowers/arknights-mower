@@ -14,6 +14,7 @@
     "arknights_mower.utils.scheduler_task._schedule_run_orders"
   ],
   "test_suites": [
-    "arknights_mower/tests/order_admission_tests.py"
+    "arknights_mower/tests/order_admission_tests.py",
+    "arknights_mower/tests/workshop_queue_tests.py"
   ]
 }
