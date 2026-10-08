@@ -7352,6 +7352,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             for name in candidates.recovering
             if not self.op_data.operators[name].current_room
         ]
+        pending = {**getattr(self.task, "plan", {}), room: agents}
         for index, name in enumerate(agents):
             if name != "Free":
                 continue
@@ -7362,11 +7363,24 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             ):
                 # 满员兜底也不能重新安排被排除的原住者。
                 current = None
-            if mood_fallback and (
-                current is None
-                or has_resting_mood(current, now)
-                and resting_mood(current, now) >= current.upper_limit
-                and not self.op_data.is_free_room_excluded(current.name)
+            if (
+                mood_fallback
+                and (
+                    current is None
+                    or self.op_data.resting_recovery_complete(current.name, now)
+                    and not self.op_data.is_free_room_excluded(current.name)
+                )
+                and (
+                    current is None
+                    or self.op_data._resting_preemption_allowed(
+                        current.name,
+                        "Free",
+                        self.op_data._retained_resting_members(
+                            pending,
+                            assignment=((room, index), "Free"),
+                        ),
+                    )
+                )
             ):
                 # 保留 Free，实际选人时从心情升序列表第一页开始找。
                 continue
@@ -7386,9 +7400,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     (d for d in self.op_data.dorm if d.position == (room, index)),
                     None,
                 )
-                full = (
-                    has_resting_mood(current, now) and mood >= current.upper_limit
-                ) or (bed is not None and bed.time is not None and bed.time <= now)
+                full = self.op_data.resting_recovery_complete(current.name, now)
                 slot = self.op_data.plan[room][index]
                 if (
                     current.is_high()
@@ -7407,6 +7419,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     ):
                         agents[index] = current.name
                         continue
+                if replacements and not self.op_data._resting_preemption_allowed(
+                    current.name,
+                    replacements[0].name,
+                    self.op_data._retained_resting_members(
+                        pending,
+                        assignment=((room, index), replacements[0].name),
+                    ),
+                ):
+                    agents[index] = current.name
+                    continue
             if replacements:
                 agents[index] = replacements.pop(0).name
             elif (
@@ -9253,6 +9275,66 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             ):
                 raise RuntimeError("救急期间暂停普通工作站换班")
         logger.info("基建：排班")
+        resting_observation = None
+        if (
+            self.task.type in (TaskTypes.NOT_SPECIFIC, TaskTypes.FILL_DORM)
+            and hasattr(self.task, "dorm_fill_plan")
+            and not getattr(self.task, "emergency_dorm", False)
+            and not any(
+                getattr(self.task, attribute, False)
+                for attribute in (
+                    "arrangement_retry_room",
+                    "dorm_recovery_restore",
+                    "product_shift_locked",
+                    "backup_shift_active",
+                    "strict_mood_limit",
+                )
+            )
+            and not self._emergency_frozen()
+        ):
+            # 自动具名接管也须按当前观测重算；单回重排后的姓名不是原申请者。
+            pending = copy.deepcopy(
+                [task for task in self.tasks if task is not self.task]
+            )
+            existing = {id(task): task for task in pending}
+            # 空安排从实际驻员补齐床位缓存；取消旧预约不代表住客已经离宿。
+            projected = self.op_data.project_arrangements([{}])
+            previous = dorm_residents(projected)
+            resting_observation = projected
+            try_add_release_dorm({}, None, projected, pending)
+            updated = next((task for task in pending if id(task) not in existing), None)
+            self.task.plan.clear()
+            self.task.plan.update(updated.plan if updated is not None else {})
+            if updated is not None:
+                self.task.type = updated.type
+            for attribute in (
+                "dorm_fill_plan",
+                "dorm_mood_residents",
+                "simple_dorm_fill",
+            ):
+                if hasattr(updated, attribute):
+                    setattr(self.task, attribute, getattr(updated, attribute))
+                elif hasattr(self.task, attribute):
+                    delattr(self.task, attribute)
+            if updated is not None:
+                # 重算可新增整组回班房间，提交补偿前重新核对关键任务窗口。
+                protect_priority_tasks(self.tasks, op_data=self.op_data)
+                if (
+                    self.task.time > datetime.now()
+                    or not self.tasks
+                    or self.tasks[0] is not self.task
+                ):
+                    return False
+            for dorm_room, names in self.task.plan.items():
+                if dorm_room.startswith("dorm"):
+                    for name in names:
+                        if name in self.op_data.operators:
+                            self.op_data.operators[name].dorm_mood_fallback = (
+                                dorm_room
+                                if projected.operators[name].dorm_mood_fallback
+                                else ""
+                            )
+            plan = self.task.plan
         self._track_idle_dorm_shift(plan)
         if self.task.type == TaskTypes.FILL_DORM and not getattr(
             self.task, "emergency_dorm", False
@@ -9280,11 +9362,18 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self.task.plan.update(remaining)
             plan = self.task.plan
         if self.task.type != TaskTypes.FIAMMETTA and not self._emergency_frozen():
-            previous = dorm_residents(self.op_data)
+            if resting_observation is None:
+                previous = dorm_residents(self.op_data)
             for dorm_room in list(plan):
                 if dorm_room.startswith("dorm"):
                     self.preserve_resting_crafters(plan[dorm_room], dorm_room)
-            restore_displaced_resting(self.op_data, previous, plan, self.tasks)
+            restore_displaced_resting(
+                self.op_data,
+                previous,
+                plan,
+                self.tasks,
+                observed=resting_observation,
+            )
         rooms = list(plan.keys())
         # 保存原班：#907 无人机加速失败时恢复，避免任务以空 plan 在下一轮被误消费
         original_plan = (

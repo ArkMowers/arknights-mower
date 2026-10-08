@@ -1,0 +1,44 @@
+{
+  "title": "Group Bed Preemption Interrupts Priority Recovery",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-37]",
+    "[INV-SCHED-05]",
+    "[INV-SCHED-20]",
+    "[INV-SCHED-21]",
+    "[INV-SCHED-36]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.resting",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._get_resting_plan",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._prepare_shift_cycle",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.preserve_resting_crafters",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange",
+    "arknights_mower.utils.operators.Operators.assign_dorm_group",
+    "arknights_mower.utils.operators.Operators.resting_recall_members",
+    "arknights_mower.utils.operators.Operators.resting_recovery_complete",
+    "arknights_mower.utils.operators.Operators._resting_residents",
+    "arknights_mower.utils.operators.Operators._resting_preemption_allowed",
+    "arknights_mower.utils.operators.Operators._retained_resting_members",
+    "arknights_mower.utils.scheduler_task.restore_displaced_resting",
+    "arknights_mower.utils.scheduler_task.try_add_release_dorm",
+    "arknights_mower.utils.emergency_recovery.emergency_dorm_plan",
+    "arknights_mower.utils.scheduler_task.protect_priority_tasks"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/group_preemption_stability_tests.py",
+    "arknights_mower/tests/scheduler_incident_20261008_tests.py",
+    "arknights_mower/tests/resting_preemption_tests.py",
+    "arknights_mower/tests/completed_group_departure_tests.py",
+    "arknights_mower/tests/emergency_group_beds_tests.py",
+    "arknights_mower/tests/same_group_dorm_replacement_tests.py",
+    "arknights_mower/tests/dorm_run_order_guard_tests.py",
+    "arknights_mower/tests/priority_admission_tests.py",
+    "arknights_mower/tests/mastery_scheduling_tests.py"
+  ]
+}

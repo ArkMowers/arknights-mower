@@ -9,7 +9,9 @@ date: 2026-10-08
 
 ## Contract
 
-[INV-SCHED-37] gives `recycle` two physical positions, optional Scheduling Plan membership and bounded selection entry. [INV-UI-08] keeps the order of office, training and recycling in local configuration; plan exports, identities, staffing, conditions and tasks retain their values. All three facilities can occupy any of the three right-side positions below the workshop. Dragging changes configuration, not the in-game construction layout.
+[INV-SCHED-41] gives `recycle` two physical positions, optional Scheduling Plan membership and bounded selection entry. [INV-UI-08] keeps the order of office, training and recycling in local configuration; plan exports, identities, staffing, conditions and tasks retain their values. All three facilities can occupy any of the three right-side positions below the workshop. Dragging changes configuration, not the in-game construction layout.
+
+The rebase target and the grouped bed-preemption branch originally register different guarantees as [INV-SCHED-37]. Recycling retains its complete guarantee under [INV-SCHED-41]; [INV-SCHED-37] continues to identify Group Preemption Priority. This registration change does not alter recycling behavior.
 
 ## Simplification audit
 

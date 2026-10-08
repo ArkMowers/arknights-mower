@@ -122,6 +122,46 @@ def test_complete_shift_uses_fixed_or_dynamic_bed(monkeypatch, reciprocal, index
         assert projected.operators[WORKER].name not in {b.name for b in projected.dorm}
 
 
+def test_completed_member_yields_with_required_anchor_in_fixed_recovery_bed(
+    monkeypatch,
+):
+    solver = make_solver(monkeypatch, reciprocal=True)
+    plan = solver.global_plan["default_plan"].plan
+    yielding, incoming = "能天使", "阿米娅"
+    plan["meeting"] = [Room(yielding, "公招", ["砾"])]
+    plan["central"] = [Room(incoming, "", ["芬"])]
+    initialize(solver)
+    data = solver.op_data
+    data.operators[yielding].resting_priority = "low"
+    data.operators[yielding].mood = 20
+    data.config.ope_resting_priority = [WORKER]
+    initial = {}
+    solver.get_resting_plan(data.groups["公招"].copy(), [], initial, 0)
+    base_schedule._merge_dorm_arrangement(initial, try_reorder(data, initial) or {})
+    solver.op_data = data = data.project_arrangements([initial])
+    _, anchor_bed = data.get_dorm_by_name(WORKER)
+    _, yielding_bed = data.get_dorm_by_name(yielding)
+    assert anchor_bed in data.group_dorm
+    assert yielding_bed is not None
+    data.operators[yielding].mood = 24
+    for bed in data.dorm:
+        if bed is not yielding_bed:
+            data.reserved_product_beds[bed.position] = "芬"
+    data.operators[incoming].mood = 0
+    final = {}
+
+    solver.get_resting_plan([incoming], [], final, data.active_high_resting_count())
+    base_schedule._merge_dorm_arrangement(final, try_reorder(data, final) or {})
+
+    room, index = yielding_bed.position
+    assert final[room][index] == incoming
+    assert WORKER not in final.get("contact", [])
+    projected = data.project_arrangements([final])
+    assert projected.operators[WORKER].is_resting()
+    assert projected.operators[incoming].is_resting()
+    assert not projected.operators[yielding].is_resting()
+
+
 @pytest.mark.parametrize("index", [0, 2])
 def test_fixed_recovery_times_generate_whole_group_return(monkeypatch, index):
     solver = make_solver(monkeypatch, reciprocal=True, index=index)

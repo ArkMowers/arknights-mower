@@ -45,3 +45,5 @@ date: 2026-10-08
 python -m pytest arknights_mower/tests/scheduler_incident_20261008_tests.py -k 'exhausted' -q
 python -m pytest arknights_mower/tests/deferred_exhaust_dedup_tests.py -q
 ```
+
+[组内床位接管记录](2026-10-08-group-bed-preemption-oscillation.zh.md)保存重复任务准入修复后，仍可能产生相反安排的独立恢复中断问题。

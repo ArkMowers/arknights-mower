@@ -2176,6 +2176,94 @@ class Operators:
             and resting_tier(self, dorm.name) != RestingTier.IDLE
         )
 
+    def resting_recovery_complete(self, name, now=None):
+        """恢复完成须有有效心情，不能只凭旧倒计时或到期预测。"""
+        op = self.operators.get(name)
+        return (
+            has_resting_mood(op, now)
+            and not op.mood_is_prediction
+            and resting_mood(op, now) >= op.upper_limit
+        )
+
+    def resting_recall_members(self, name, retained):
+        """失床后仍有恢复锚点的已恢复成员或待命成员不召回整组。"""
+        op = self.operators.get(name)
+        if op is None or not op.is_high() or op.room not in self.plan:
+            return ()
+        completed = bool(op.group) and self.resting_recovery_complete(name)
+        if (completed or self._can_standby(op)) and any(
+            anchor.name in retained
+            and anchor.is_high()
+            and not self._can_standby(anchor)
+            and not anchor.room.startswith("dorm")
+            and not anchor.workaholic
+            and not self.resting_recovery_complete(anchor.name)
+            and (not op.group or anchor.group == op.group)
+            for anchor in self.operators.values()
+        ):
+            return ()
+        return tuple(self.groups.get(op.group, [name])) if op.group else (name,)
+
+    def _resting_residents(self, plan, *, assignment=None, previous=None):
+        """合并床位预约和最终安排，明确移走的姓名不再占据 Current 位置。"""
+        moving = {
+            name
+            for row in plan.values()
+            for name in row
+            if name not in ("", "Free", "Current")
+        }
+        if assignment is not None:
+            moving.add(assignment[1])
+        residents = {}
+        for bed in self.all_dorms():
+            room, position = bed.position
+            row = plan.get(room, ())
+            name = row[position] if position < len(row) else "Current"
+            if assignment is not None and bed.position == assignment[0]:
+                name = assignment[1]
+            if name == "Current":
+                current = self.get_current_operator(*bed.position)
+                resident = bed.name or (
+                    current.name
+                    if current is not None and self.is_recovery_dorm(bed, current.name)
+                    else ""
+                )
+                name = resident if resident not in moving else ""
+            elif name in ("", "Free"):
+                # Free 可能是给本轮新预约者打开位置，不能清掉已确认的预约。
+                name = (
+                    bed.name
+                    if previous is not None
+                    and bed.position in previous
+                    and bed.name
+                    and bed.name != previous.get(bed.position, "")
+                    and bed.name not in moving
+                    else ""
+                )
+            residents[bed.position] = name
+        return residents
+
+    def _retained_resting_members(self, plan, *, assignment=None):
+        """分床与失床补偿共用最终恢复床位身份。"""
+        return set(self._resting_residents(plan, assignment=assignment).values()) - {""}
+
+    def _resting_preemption_allowed(self, name, requester, retained=None):
+        if retained is None:
+            retained = self._retained_resting_members({}) - {name}
+        elif name in retained:
+            return True
+        requester_tier = resting_tier(self, requester)
+        for member_name in self.resting_recall_members(name, retained):
+            member = self.operators[member_name]
+            if (
+                not member.room.startswith("dorm")
+                and not member.workaholic
+                and not self.resting_recovery_complete(member_name)
+                and requester_tier >= resting_tier(self, member_name)
+            ):
+                return False
+        return True
+
     def _slot_takable(self, dorm, requester=None, active_groups=None):
         """有效动态床位按共享恢复层级决定是否允许接管。"""
         if not self.is_effective_free_slot(dorm, active_groups=active_groups):
@@ -2209,13 +2297,18 @@ class Operators:
             resting_tier(self, requester),
             resting_tier(self, name),
         )
-        return requester_tier < resident_tier or (
-            name in self.emergency_dorm_agents
-            and (op.index < 2 or requester_tier == resident_tier)
-            and has_resting_mood(op)
-            and not op.mood_is_prediction
-            and op.mood >= op.upper_limit
-        )
+        if not (
+            requester_tier < resident_tier
+            or (
+                name in self.emergency_dorm_agents
+                and (op.index < 2 or requester_tier == resident_tier)
+                and has_resting_mood(op)
+                and not op.mood_is_prediction
+                and op.mood >= op.upper_limit
+            )
+        ):
+            return False
+        return self._resting_preemption_allowed(name, requester)
 
     def dorm_roommates(self, room, index=None, *, plan=None):
         """合并实际驻员、床位预约和本轮明确安排，排除离岗及被替换者。"""
@@ -2307,16 +2400,28 @@ class Operators:
             isolation = False
         if not is_high and not explicit_order:
             order = order[max_count:] + order[:max_count]
-        candidates = [
-            i
-            for i in order
-            if i not in used
-            and self._slot_takable(
-                self.dorm[i],
-                requester=name,
-                active_groups=active_groups,
+        candidates = []
+        for i in order:
+            bed = self.dorm[i]
+            if i in used or not self._slot_takable(
+                bed, requester=name, active_groups=active_groups
+            ):
+                continue
+            current = self.get_current_operator(*bed.position)
+            resident = bed.name or (
+                current.name
+                if current is not None and self.is_recovery_dorm(bed, current.name)
+                else ""
             )
-        ]
+            if resident and not self._resting_preemption_allowed(
+                resident,
+                name,
+                self._retained_resting_members(
+                    plan or {}, assignment=(bed.position, name)
+                ),
+            ):
+                continue
+            candidates.append(i)
         now = datetime.now()
 
         def takeover_cost(index):
@@ -2413,6 +2518,21 @@ class Operators:
             pending.setdefault(room, ["Current"] * len(self.plan[room]))[position] = (
                 name
             )
+
+        retained = self._retained_resting_members(pending)
+        # 整组床位提交前按最终安排复核；先前锚点也可能在同份安排中离宿。
+        for name, index in assignments:
+            bed = self.dorm[index]
+            current = self.get_current_operator(*bed.position)
+            resident = bed.name or (
+                current.name
+                if current is not None and self.is_recovery_dorm(bed, current.name)
+                else ""
+            )
+            if resident and not self._resting_preemption_allowed(
+                resident, name, retained
+            ):
+                return None
 
         rooms = []
         for name, index in assignments:

@@ -2,9 +2,224 @@
   "baseline_commit": "87b9d3aa2c265cb90adb7b1a62f07bd8c505e97c",
   "configuration_capture": "2026-10-08",
   "conf": {
-    "run_order_delay": 3.0
+    "resting_threshold": 0.7,
+    "run_order_delay": 3.0,
+    "merge_interval": 10.0
   },
   "trace": [
+    {
+      "source_file": "runtime.log.2026-10-08_00",
+      "source_line": 5863,
+      "at": "2026-10-08 01:14:17,020",
+      "event": "convergence",
+      "conditions": [
+        true,
+        false,
+        false,
+        false,
+        true,
+        true
+      ],
+      "plan": {
+        "central": [
+          "Current",
+          "Current",
+          "戴菲恩",
+          "Current",
+          "Current"
+        ],
+        "factory": [
+          "麦哲伦"
+        ],
+        "train": [
+          "余",
+          "黍"
+        ],
+        "dormitory_1": [
+          "Current",
+          "Current",
+          "Current",
+          "Current",
+          "森蚺"
+        ],
+        "dormitory_2": [
+          "塑心",
+          "Current",
+          "承曦格雷伊",
+          "Current",
+          "绮良"
+        ],
+        "dormitory_3": [
+          "隐德来希",
+          "Current",
+          "图耶",
+          "阿罗玛",
+          "鸿雪"
+        ],
+        "dormitory_4": [
+          "斥罪",
+          "Current",
+          "Current",
+          "清流",
+          "温蒂"
+        ],
+        "room_1_1": [
+          "伺夜"
+        ],
+        "room_1_3": [
+          "缪尔赛思"
+        ],
+        "room_2_1": [
+          "Current",
+          "推进之王",
+          "摩根"
+        ],
+        "room_2_3": [
+          "格雷伊"
+        ],
+        "room_3_1": [
+          "槐琥",
+          "迷迭香",
+          "Current"
+        ],
+        "room_3_3": [
+          "多萝西",
+          "娜斯提"
+        ]
+      },
+      "queued_shift_off_count": 0
+    },
+    {
+      "source_file": "runtime.log.2026-10-08_09",
+      "source_line": 13823,
+      "at": "2026-10-08 10:29:09,486",
+      "event": "convergence",
+      "conditions": [
+        false,
+        true,
+        false,
+        false,
+        true,
+        true
+      ],
+      "plan": {
+        "meeting": [
+          "Current",
+          "跃跃"
+        ],
+        "dormitory_1": [
+          "Current",
+          "Current",
+          "Current",
+          "Current",
+          "酒神"
+        ],
+        "dormitory_2": [
+          "流明",
+          "Current",
+          "见行者",
+          "桑葚",
+          "乌有"
+        ],
+        "dormitory_3": [
+          "Current",
+          "Current",
+          "重岳",
+          "望",
+          "麦哲伦"
+        ],
+        "dormitory_4": [
+          "Current",
+          "Current",
+          "Current",
+          "戴菲恩",
+          "Current"
+        ],
+        "room_1_2": [
+          "食铁兽",
+          "Current",
+          "Current"
+        ],
+        "room_2_2": [
+          "Current",
+          "迷迭香",
+          "槐琥"
+        ],
+        "room_3_1": [
+          "乌尔比安",
+          "安哲拉",
+          "Current"
+        ]
+      },
+      "queued_shift_off_count": 0
+    },
+    {
+      "source_file": "runtime.log.2026-10-08_09",
+      "source_line": 29556,
+      "at": "2026-10-08 10:46:50,620",
+      "event": "convergence",
+      "conditions": [
+        false,
+        false,
+        true,
+        false,
+        true,
+        true
+      ],
+      "plan": {
+        "central": [
+          "Current",
+          "Current",
+          "Current",
+          "诗怀雅",
+          "斩业星熊"
+        ],
+        "dormitory_1": [
+          "Current",
+          "Current",
+          "Current",
+          "Current",
+          "薇薇安娜"
+        ],
+        "dormitory_2": [
+          "Current",
+          "Current",
+          "焰尾",
+          "见行者",
+          "梅尔"
+        ],
+        "dormitory_3": [
+          "塑心",
+          "Current",
+          "酒神",
+          "伺夜",
+          "缪尔赛思"
+        ],
+        "dormitory_4": [
+          "隐德来希",
+          "Current",
+          "Current",
+          "野鬃",
+          "灰毫"
+        ],
+        "room_1_2": [
+          "Current",
+          "乌尔比安",
+          "安哲拉"
+        ],
+        "room_2_2": [
+          "Current",
+          "苍苔",
+          "引星棘刺"
+        ],
+        "room_3_1": [
+          "槐琥",
+          "迷迭香",
+          "Current"
+        ]
+      },
+      "queued_shift_off_count": 38
+    },
     {
       "source_file": "runtime.log",
       "source_line": 3933,
@@ -32,6 +247,4705 @@
       "at": "2026-10-08 11:00:37,239",
       "event": "watchdog",
       "message": "相同场景等待超时 "
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 5050,
+      "at": "2026-10-08 11:03:58,282",
+      "event": "group_recall",
+      "message": "休息床位被更高优先级接管，安排整组回班：['乌尔比安', '安哲拉', '幽灵鲨', '斯卡蒂', '歌蕾蒂娅']"
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 5756,
+      "at": "2026-10-08 11:03:58,968",
+      "event": "convergence",
+      "conditions": [
+        false,
+        false,
+        true,
+        false,
+        true,
+        true
+      ],
+      "plan": {
+        "dormitory_2": [
+          "Current",
+          "Current",
+          "Current",
+          "酒神",
+          "见行者"
+        ],
+        "dormitory_3": [
+          "Current",
+          "Current",
+          "野鬃",
+          "梅尔",
+          "伺夜"
+        ],
+        "dormitory_4": [
+          "Current",
+          "Current",
+          "Current",
+          "灰毫",
+          "缪尔赛思"
+        ],
+        "room_1_2": [
+          "食铁兽",
+          "Current",
+          "Current"
+        ]
+      },
+      "queued_shift_off_count": 45
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 8523,
+      "at": "2026-10-08 11:05:55,813",
+      "event": "convergence",
+      "conditions": [
+        false,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "plan": {
+        "central": [
+          "重岳",
+          "望",
+          "Current",
+          "焰尾",
+          "薇薇安娜"
+        ],
+        "meeting": [
+          "塞雷娅",
+          "Current"
+        ],
+        "dormitory_1": [
+          "Current",
+          "Current",
+          "Current",
+          "伊芙利特",
+          "歌蕾蒂娅"
+        ],
+        "dormitory_2": [
+          "Current",
+          "Current",
+          "斯卡蒂",
+          "伺夜",
+          "安哲拉"
+        ],
+        "dormitory_3": [
+          "Current",
+          "Current",
+          "酒神",
+          "Current",
+          "信仰搅拌机"
+        ],
+        "dormitory_4": [
+          "Current",
+          "Current",
+          "Current",
+          "幽灵鲨",
+          "乌尔比安"
+        ],
+        "room_1_2": [
+          "Current",
+          "野鬃",
+          "灰毫"
+        ],
+        "room_3_2": [
+          "多萝西",
+          "娜斯提"
+        ]
+      },
+      "queued_shift_off_count": 1
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 8638,
+      "at": "2026-10-08 11:05:55,875",
+      "event": "group_recall",
+      "message": "休息床位被更高优先级接管，安排整组回班：['灰毫', '焰尾', '薇薇安娜', '野鬃']"
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 11722,
+      "at": "2026-10-08 11:09:22,723",
+      "event": "group_recall",
+      "message": "休息床位被更高优先级接管，安排整组回班：['乌尔比安', '安哲拉', '幽灵鲨', '斯卡蒂', '歌蕾蒂娅']"
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 12465,
+      "at": "2026-10-08 11:09:23,534",
+      "event": "convergence",
+      "conditions": [
+        false,
+        false,
+        true,
+        false,
+        true,
+        true
+      ],
+      "plan": {
+        "central": [
+          "维什戴尔",
+          "歌蕾蒂娅",
+          "Current",
+          "诗怀雅",
+          "斩业星熊"
+        ],
+        "meeting": [
+          "信仰搅拌机",
+          "Current"
+        ],
+        "dormitory_1": [
+          "Current",
+          "Current",
+          "Current",
+          "刺玫",
+          "薇薇安娜"
+        ],
+        "dormitory_2": [
+          "Current",
+          "Current",
+          "焰尾",
+          "见行者",
+          "梅尔"
+        ],
+        "dormitory_3": [
+          "Current",
+          "Current",
+          "Current",
+          "戴菲恩",
+          "缪尔赛思"
+        ],
+        "dormitory_4": [
+          "Current",
+          "Current",
+          "Current",
+          "野鬃",
+          "灰毫"
+        ],
+        "room_1_2": [
+          "Current",
+          "乌尔比安",
+          "安哲拉"
+        ],
+        "room_3_2": [
+          "斯卡蒂",
+          "幽灵鲨"
+        ]
+      },
+      "queued_shift_off_count": 1
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 12579,
+      "at": "2026-10-08 11:09:23,599",
+      "event": "group_recall",
+      "message": "休息床位被更高优先级接管，安排整组回班：['乌尔比安', '信仰搅拌机', '安哲拉', '幽灵鲨', '斯卡蒂', '歌蕾蒂娅']"
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 16500,
+      "at": "2026-10-08 11:12:39,505",
+      "event": "convergence",
+      "conditions": [
+        false,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "plan": {
+        "central": [
+          "重岳",
+          "望",
+          "Current",
+          "焰尾",
+          "薇薇安娜"
+        ],
+        "meeting": [
+          "塞雷娅",
+          "Current"
+        ],
+        "dormitory_1": [
+          "Current",
+          "Current",
+          "Current",
+          "伊芙利特",
+          "歌蕾蒂娅"
+        ],
+        "dormitory_2": [
+          "Current",
+          "Current",
+          "斯卡蒂",
+          "缪尔赛思",
+          "乌尔比安"
+        ],
+        "dormitory_3": [
+          "Current",
+          "Current",
+          "Current",
+          "安哲拉",
+          "梅尔"
+        ],
+        "dormitory_4": [
+          "Current",
+          "Current",
+          "Current",
+          "幽灵鲨",
+          "信仰搅拌机"
+        ],
+        "room_1_2": [
+          "Current",
+          "野鬃",
+          "灰毫"
+        ],
+        "room_3_2": [
+          "多萝西",
+          "娜斯提"
+        ]
+      },
+      "queued_shift_off_count": 1
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 16616,
+      "at": "2026-10-08 11:12:39,570",
+      "event": "group_recall",
+      "message": "休息床位被更高优先级接管，安排整组回班：['灰毫', '焰尾', '薇薇安娜', '野鬃']"
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 19585,
+      "at": "2026-10-08 11:15:56,420",
+      "event": "group_recall",
+      "message": "休息床位被更高优先级接管，安排整组回班：['乌尔比安', '安哲拉', '幽灵鲨', '斯卡蒂', '歌蕾蒂娅']"
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 20328,
+      "at": "2026-10-08 11:15:57,295",
+      "event": "convergence",
+      "conditions": [
+        false,
+        false,
+        true,
+        false,
+        true,
+        true
+      ],
+      "plan": {
+        "central": [
+          "维什戴尔",
+          "歌蕾蒂娅",
+          "Current",
+          "诗怀雅",
+          "斩业星熊"
+        ],
+        "meeting": [
+          "信仰搅拌机",
+          "Current"
+        ],
+        "dormitory_1": [
+          "Current",
+          "Current",
+          "Current",
+          "刺玫",
+          "薇薇安娜"
+        ],
+        "dormitory_2": [
+          "Current",
+          "Current",
+          "焰尾",
+          "见行者",
+          "梅尔"
+        ],
+        "dormitory_3": [
+          "Current",
+          "Current",
+          "Current",
+          "灰毫",
+          "伺夜"
+        ],
+        "dormitory_4": [
+          "Current",
+          "Current",
+          "Current",
+          "野鬃",
+          "重岳"
+        ],
+        "room_1_2": [
+          "Current",
+          "乌尔比安",
+          "安哲拉"
+        ],
+        "room_3_2": [
+          "斯卡蒂",
+          "幽灵鲨"
+        ]
+      },
+      "queued_shift_off_count": 1
+    }
+  ],
+  "snapshots": [
+    {
+      "source_file": "runtime.log",
+      "source_line": 8523,
+      "at": "2026-10-08 11:05:55,813",
+      "operators": {
+        "维什戴尔": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 16.72258064516129,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.6961794252878297,
+          "time_stamp": "2026-10-08T10:50:36.469702",
+          "exhaust_time": null
+        },
+        "歌蕾蒂娅": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 0.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 3.4929473171203425,
+          "time_stamp": "2026-10-08T11:05:51.481056",
+          "exhaust_time": "2026-10-08T11:05:51.614959"
+        },
+        "森蚺": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 6.2709677419354835,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:50:36.793974",
+          "exhaust_time": null
+        },
+        "焰尾": {
+          "dorm_recovery_fixed": [
+            [
+              "车尔尼",
+              1,
+              3
+            ]
+          ],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 13.083870967741936,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0.6963097940568019,
+          "time_stamp": "2026-10-08T11:04:40.993684",
+          "exhaust_time": null
+        },
+        "薇薇安娜": {
+          "dorm_recovery_fixed": [
+            [
+              "闪灵",
+              1,
+              31
+            ]
+          ],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 11.76774193548387,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0.5954007524864441,
+          "time_stamp": "2026-10-08T10:48:59.995697",
+          "exhaust_time": null
+        },
+        "信仰搅拌机": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "meeting",
+          "upper_limit": 24,
+          "mood": 15.329032258064515,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.6846228153940728,
+          "time_stamp": "2026-10-08T10:29:21.014133",
+          "exhaust_time": null
+        },
+        "跃跃": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "meeting",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:29:21.086128",
+          "exhaust_time": null
+        },
+        "特克诺": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "factory",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:27:23.275784",
+          "exhaust_time": null
+        },
+        "絮雨": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "contact",
+          "upper_limit": 24,
+          "mood": 11.845161290322581,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.6884480486786504,
+          "time_stamp": "2026-10-08T10:32:58.200323",
+          "exhaust_time": null
+        },
+        "褐果": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "train",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:25:29.159761",
+          "exhaust_time": null
+        },
+        "桃金娘": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "train",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:25:17.171811",
+          "exhaust_time": null
+        },
+        "冰酿": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:34:47.621652",
+          "exhaust_time": null
+        },
+        "闪灵": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:34:47.688949",
+          "exhaust_time": null
+        },
+        "菲亚梅塔": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 19.974193548387095,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:48:58.102967",
+          "exhaust_time": null
+        },
+        "刺玫": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:34:49.555385",
+          "exhaust_time": null
+        },
+        "流明": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:31:42.687088",
+          "exhaust_time": null
+        },
+        "车尔尼": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:31:42.758932",
+          "exhaust_time": null
+        },
+        "塑心": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:49:39.014998",
+          "exhaust_time": null
+        },
+        "蜜莓": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:19.621514",
+          "exhaust_time": null
+        },
+        "隐德来希": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:50:10.621111",
+          "exhaust_time": null
+        },
+        "聆音": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:47.065853",
+          "exhaust_time": null
+        },
+        "杜林": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:47.149574",
+          "exhaust_time": null
+        },
+        "图耶": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_1",
+          "upper_limit": 24,
+          "mood": 6.348387096774194,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.7589318821899558,
+          "time_stamp": "2026-10-08T11:03:57.008404",
+          "exhaust_time": null
+        },
+        "酒神": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 15.793548387096774,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:04:42.750059",
+          "exhaust_time": null
+        },
+        "乌尔比安": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_2",
+          "upper_limit": 24,
+          "mood": 12.929032258064517,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0.5942597365408294,
+          "time_stamp": "2026-10-08T10:47:42.701426",
+          "exhaust_time": null
+        },
+        "安哲拉": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_2",
+          "upper_limit": 24,
+          "mood": 12.851612903225806,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0.6046852511111852,
+          "time_stamp": "2026-10-08T10:47:42.782958",
+          "exhaust_time": null
+        },
+        "承曦格雷伊": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_3",
+          "upper_limit": 24,
+          "mood": 6.658064516129032,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:27:42.322692",
+          "exhaust_time": null
+        },
+        "黑键": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_1",
+          "upper_limit": 24,
+          "mood": 14.4,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.6047699167712778,
+          "time_stamp": "2026-10-08T10:33:10.825647",
+          "exhaust_time": null
+        },
+        "绮良": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_1",
+          "upper_limit": 24,
+          "mood": 3.870967741935484,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:46:47.594809",
+          "exhaust_time": null
+        },
+        "鸿雪": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_1",
+          "upper_limit": 24,
+          "mood": 3.870967741935484,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:46:47.693554",
+          "exhaust_time": null
+        },
+        "砾": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_2",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.5978217031235376,
+          "time_stamp": "2026-10-08T10:34:32.099465",
+          "exhaust_time": null
+        },
+        "野鬃": {
+          "dorm_recovery_fixed": [
+            [
+              "蜜莓",
+              1,
+              3
+            ]
+          ],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 16.18064516129032,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0.5814867425905151,
+          "time_stamp": "2026-10-08T11:05:14.188918",
+          "exhaust_time": null
+        },
+        "灰毫": {
+          "dorm_recovery_fixed": [
+            [
+              "聆音",
+              1,
+              3
+            ]
+          ],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 16.335483870967742,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0.5814867834088705,
+          "time_stamp": "2026-10-08T11:05:42.519044",
+          "exhaust_time": null
+        },
+        "Lancet-2": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_3",
+          "upper_limit": 24,
+          "mood": 0.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:27:35.621519",
+          "exhaust_time": null
+        },
+        "槐琥": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_1",
+          "upper_limit": 24,
+          "mood": 23.690322580645162,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:48:44.417422",
+          "exhaust_time": null
+        },
+        "迷迭香": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_1",
+          "upper_limit": 24,
+          "mood": 23.690322580645162,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:48:44.505978",
+          "exhaust_time": null
+        },
+        "阿罗玛": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_1",
+          "upper_limit": 24,
+          "mood": 23.690322580645162,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:48:44.594202",
+          "exhaust_time": null
+        },
+        "斯卡蒂": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_2",
+          "upper_limit": 24,
+          "mood": 12.07741935483871,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.6305934745515256,
+          "time_stamp": "2026-10-08T10:33:23.555273",
+          "exhaust_time": null
+        },
+        "幽灵鲨": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_2",
+          "upper_limit": 24,
+          "mood": 12.07741935483871,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0.630593491241145,
+          "time_stamp": "2026-10-08T10:33:23.620986",
+          "exhaust_time": null
+        },
+        "清流": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_3",
+          "upper_limit": 24,
+          "mood": 2.167741935483871,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:26:09.247016",
+          "exhaust_time": null
+        },
+        "温蒂": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_3",
+          "upper_limit": 24,
+          "mood": 2.0903225806451613,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:26:09.363226",
+          "exhaust_time": null
+        },
+        "重岳": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 17.729032258064517,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.00743965848981817,
+          "time_stamp": "2026-10-08T10:32:19.699145",
+          "exhaust_time": null
+        },
+        "望": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:21.461072",
+          "exhaust_time": null
+        },
+        "戴菲恩": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 17.961290322580645,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.684112886009332,
+          "time_stamp": "2026-10-08T10:32:48.905383",
+          "exhaust_time": null
+        },
+        "诗怀雅": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:50:38.589622",
+          "exhaust_time": null
+        },
+        "斩业星熊": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:50:38.726778",
+          "exhaust_time": null
+        },
+        "见行者": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 1.4709677419354839,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 1.50245228778356,
+          "time_stamp": "2026-10-08T11:04:42.896038",
+          "exhaust_time": null
+        },
+        "麦哲伦": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:21.542889",
+          "exhaust_time": null
+        },
+        "桑葚": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 22.916129032258066,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.34763807441747097,
+          "time_stamp": "2026-10-08T10:31:44.576922",
+          "exhaust_time": null
+        },
+        "余": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:49.001563",
+          "exhaust_time": null
+        },
+        "黍": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-06T22:26:36.438071",
+          "exhaust_time": null
+        },
+        "但书": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 21.36774193548387,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.065279783820687,
+          "time_stamp": "2026-10-08T11:03:24.586106",
+          "exhaust_time": null
+        },
+        "伺夜": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 18.425806451612903,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0.6889379637068626,
+          "time_stamp": "2026-10-08T11:05:16.094160",
+          "exhaust_time": null
+        },
+        "食铁兽": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_2",
+          "upper_limit": 24,
+          "mood": 23.767741935483873,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:04:24.883987",
+          "exhaust_time": null
+        },
+        "弑君者": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-07T13:01:31.711659",
+          "exhaust_time": null
+        },
+        "断罪者": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-07T18:36:19.773832",
+          "exhaust_time": null
+        },
+        "缪尔赛思": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 18.425806451612903,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0.6889108436415811,
+          "time_stamp": "2026-10-08T11:05:42.599272",
+          "exhaust_time": null
+        },
+        "乌有": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 22.451612903225808,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.007413276647608442,
+          "time_stamp": "2026-10-08T10:31:44.713400",
+          "exhaust_time": null
+        },
+        "推进之王": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:24:34.673801",
+          "exhaust_time": null
+        },
+        "龙舌兰": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.53548387096774,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.02298625757988584,
+          "time_stamp": "2026-10-08T10:46:13.604767",
+          "exhaust_time": null
+        },
+        "摩根": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:24:34.770134",
+          "exhaust_time": null
+        },
+        "夜烟": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": null,
+          "exhaust_time": null
+        },
+        "苍苔": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_2",
+          "upper_limit": 24,
+          "mood": 5.496774193548387,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0.4820959077674631,
+          "time_stamp": "2026-10-08T10:48:13.085387",
+          "exhaust_time": null
+        },
+        "引星棘刺": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_2",
+          "upper_limit": 24,
+          "mood": 5.574193548387097,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0.5062006090729826,
+          "time_stamp": "2026-10-08T10:48:13.165172",
+          "exhaust_time": null
+        },
+        "格雷伊": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:27:27.485476",
+          "exhaust_time": null
+        },
+        "梅尔": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 16.335483870967742,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0.6428721507480193,
+          "time_stamp": "2026-10-08T11:05:15.942054",
+          "exhaust_time": null
+        },
+        "多萝西": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:25:43.124089",
+          "exhaust_time": null
+        },
+        "娜斯提": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:25:43.220045",
+          "exhaust_time": null
+        },
+        "淬羽赫默": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": null,
+          "exhaust_time": null
+        },
+        "斥罪": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:46.993789",
+          "exhaust_time": null
+        },
+        "Castle-3": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": null,
+          "exhaust_time": null
+        },
+        "白雪": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": null,
+          "exhaust_time": null
+        },
+        "塞雷娅": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-07T19:42:59.965934",
+          "exhaust_time": null
+        },
+        "伊芙利特": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-07T14:49:32.893546",
+          "exhaust_time": null
+        }
+      },
+      "dorms": [
+        {
+          "position": [
+            "dormitory_1",
+            4
+          ],
+          "name": "薇薇安娜",
+          "time": "2026-10-08T14:42:03.052690"
+        },
+        {
+          "position": [
+            "dormitory_2",
+            2
+          ],
+          "name": "焰尾",
+          "time": "2026-10-08T14:38:30.919279"
+        },
+        {
+          "position": [
+            "dormitory_2",
+            3
+          ],
+          "name": "酒神",
+          "time": "2026-10-08T14:28:42.799939"
+        },
+        {
+          "position": [
+            "dormitory_2",
+            4
+          ],
+          "name": "见行者",
+          "time": "2026-10-08T20:26:39.947059"
+        },
+        {
+          "position": [
+            "dormitory_3",
+            2
+          ],
+          "name": "野鬃",
+          "time": "2026-10-08T13:40:35.663886"
+        },
+        {
+          "position": [
+            "dormitory_3",
+            3
+          ],
+          "name": "梅尔",
+          "time": "2026-10-08T14:23:25.993561"
+        },
+        {
+          "position": [
+            "dormitory_3",
+            4
+          ],
+          "name": "伺夜",
+          "time": "2026-10-08T13:28:16.150982"
+        },
+        {
+          "position": [
+            "dormitory_4",
+            3
+          ],
+          "name": "灰毫",
+          "time": "2026-10-08T13:37:57.122520"
+        },
+        {
+          "position": [
+            "dormitory_4",
+            4
+          ],
+          "name": "缪尔赛思",
+          "time": "2026-10-08T13:02:32.644812"
+        }
+      ],
+      "tasks": [
+        {
+          "time": "2026-10-08 11:05:54.641627",
+          "plan": {
+            "meeting": [
+              "见行者",
+              "Current"
+            ],
+            "dormitory_4": [
+              "Current",
+              "Current",
+              "Current",
+              "野鬃",
+              "灰毫"
+            ],
+            "dormitory_3": [
+              "Current",
+              "Current",
+              "信仰搅拌机",
+              "Current",
+              "Current"
+            ]
+          },
+          "type": "SHIFT_OFF",
+          "meta_data": "",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 11:05:55.196861",
+          "plan": {
+            "room_2_2": [
+              "Current",
+              "野鬃",
+              "灰毫"
+            ],
+            "central": [
+              "Current",
+              "Current",
+              "Current",
+              "焰尾",
+              "薇薇安娜"
+            ]
+          },
+          "type": "SELF_CORRECTION",
+          "meta_data": "",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 11:05:55.196861",
+          "plan": {},
+          "type": "EXHAUST_OFF",
+          "meta_data": "歌蕾蒂娅",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 12:11:46.783450",
+          "plan": {
+            "room_1_1": [
+              "但书"
+            ]
+          },
+          "type": "RUN_ORDER",
+          "meta_data": "room_1_1",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 12:24:41.047815",
+          "plan": {
+            "room_2_1": [
+              "Current",
+              "但书",
+              "龙舌兰"
+            ]
+          },
+          "type": "RUN_ORDER",
+          "meta_data": "room_2_1",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 12:48:04.148166",
+          "plan": {},
+          "type": "FIAMMETTA",
+          "meta_data": "",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 13:29:57.122520",
+          "plan": {
+            "central": [
+              "Current",
+              "Current",
+              "Current",
+              "焰尾",
+              "薇薇安娜"
+            ],
+            "room_2_2": [
+              "Current",
+              "野鬃",
+              "灰毫"
+            ]
+          },
+          "type": "SHIFT_ON",
+          "meta_data": "",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 14:20:42.799939",
+          "plan": {
+            "room_1_2": [
+              "酒神",
+              "Current",
+              "Current"
+            ]
+          },
+          "type": "SHIFT_ON",
+          "meta_data": "",
+          "adjusted": false
+        }
+      ],
+      "final_conditions": [
+        false,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "final_plan": {
+        "central": [
+          "重岳",
+          "望",
+          "Current",
+          "焰尾",
+          "薇薇安娜"
+        ],
+        "meeting": [
+          "塞雷娅",
+          "Current"
+        ],
+        "dormitory_1": [
+          "Current",
+          "Current",
+          "Current",
+          "伊芙利特",
+          "歌蕾蒂娅"
+        ],
+        "dormitory_2": [
+          "Current",
+          "Current",
+          "斯卡蒂",
+          "伺夜",
+          "安哲拉"
+        ],
+        "dormitory_3": [
+          "Current",
+          "Current",
+          "酒神",
+          "Current",
+          "信仰搅拌机"
+        ],
+        "dormitory_4": [
+          "Current",
+          "Current",
+          "Current",
+          "幽灵鲨",
+          "乌尔比安"
+        ],
+        "room_1_2": [
+          "Current",
+          "野鬃",
+          "灰毫"
+        ],
+        "room_3_2": [
+          "多萝西",
+          "娜斯提"
+        ]
+      }
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 12465,
+      "at": "2026-10-08 11:09:23,534",
+      "operators": {
+        "重岳": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 18.580645161290324,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.00743965848981817,
+          "time_stamp": "2026-10-08T11:06:11.154985",
+          "exhaust_time": null
+        },
+        "歌蕾蒂娅": {
+          "dorm_recovery_fixed": [
+            [
+              "闪灵",
+              1,
+              31
+            ]
+          ],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 0.0,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 3.4929473171203425,
+          "time_stamp": "2026-10-08T11:07:47.603407",
+          "exhaust_time": null
+        },
+        "森蚺": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 6.2709677419354835,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:50:36.793974",
+          "exhaust_time": null
+        },
+        "焰尾": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 13.161290322580646,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:06:13.052843",
+          "exhaust_time": null
+        },
+        "薇薇安娜": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 12.619354838709677,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:06:13.143224",
+          "exhaust_time": null
+        },
+        "塞雷娅": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "meeting",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:06:22.274662",
+          "exhaust_time": null
+        },
+        "跃跃": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "meeting",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:29:21.086128",
+          "exhaust_time": null
+        },
+        "特克诺": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "factory",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:27:23.275784",
+          "exhaust_time": null
+        },
+        "絮雨": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "contact",
+          "upper_limit": 24,
+          "mood": 11.845161290322581,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.6884480486786504,
+          "time_stamp": "2026-10-08T10:32:58.200323",
+          "exhaust_time": null
+        },
+        "褐果": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "train",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:25:29.159761",
+          "exhaust_time": null
+        },
+        "桃金娘": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "train",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:25:17.171811",
+          "exhaust_time": null
+        },
+        "冰酿": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:34:47.621652",
+          "exhaust_time": null
+        },
+        "闪灵": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:34:47.688949",
+          "exhaust_time": null
+        },
+        "菲亚梅塔": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 20.670967741935485,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:07:45.781215",
+          "exhaust_time": null
+        },
+        "伊芙利特": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:07:47.541357",
+          "exhaust_time": null
+        },
+        "流明": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:31:42.687088",
+          "exhaust_time": null
+        },
+        "车尔尼": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:31:42.758932",
+          "exhaust_time": null
+        },
+        "塑心": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:49:39.014998",
+          "exhaust_time": null
+        },
+        "蜜莓": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:19.621514",
+          "exhaust_time": null
+        },
+        "隐德来希": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:50:10.621111",
+          "exhaust_time": null
+        },
+        "聆音": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:47.065853",
+          "exhaust_time": null
+        },
+        "杜林": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:47.149574",
+          "exhaust_time": null
+        },
+        "图耶": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_1",
+          "upper_limit": 24,
+          "mood": 6.348387096774194,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.7589318821899558,
+          "time_stamp": "2026-10-08T11:03:57.008404",
+          "exhaust_time": null
+        },
+        "酒神": {
+          "dorm_recovery_fixed": [
+            [
+              "蜜莓",
+              1,
+              3
+            ]
+          ],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 15.948387096774194,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:08:44.448908",
+          "exhaust_time": null
+        },
+        "野鬃": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_2",
+          "upper_limit": 24,
+          "mood": 16.258064516129032,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:06:56.982947",
+          "exhaust_time": null
+        },
+        "灰毫": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_2",
+          "upper_limit": 24,
+          "mood": 16.412903225806453,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:06:57.058976",
+          "exhaust_time": null
+        },
+        "承曦格雷伊": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_3",
+          "upper_limit": 24,
+          "mood": 6.658064516129032,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:27:42.322692",
+          "exhaust_time": null
+        },
+        "黑键": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_1",
+          "upper_limit": 24,
+          "mood": 14.4,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.6047699167712778,
+          "time_stamp": "2026-10-08T10:33:10.825647",
+          "exhaust_time": null
+        },
+        "绮良": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_1",
+          "upper_limit": 24,
+          "mood": 3.870967741935484,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:46:47.594809",
+          "exhaust_time": null
+        },
+        "鸿雪": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_1",
+          "upper_limit": 24,
+          "mood": 3.870967741935484,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:46:47.693554",
+          "exhaust_time": null
+        },
+        "砾": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_2",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.5978217031235376,
+          "time_stamp": "2026-10-08T10:34:32.099465",
+          "exhaust_time": null
+        },
+        "乌尔比安": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 12.696774193548388,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0.5942597365408294,
+          "time_stamp": "2026-10-08T11:09:12.380843",
+          "exhaust_time": null
+        },
+        "安哲拉": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 12.696774193548388,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0.6046852511111852,
+          "time_stamp": "2026-10-08T11:08:19.047506",
+          "exhaust_time": null
+        },
+        "Lancet-2": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_3",
+          "upper_limit": 24,
+          "mood": 0.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:27:35.621519",
+          "exhaust_time": null
+        },
+        "槐琥": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_1",
+          "upper_limit": 24,
+          "mood": 23.690322580645162,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:48:44.417422",
+          "exhaust_time": null
+        },
+        "迷迭香": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_1",
+          "upper_limit": 24,
+          "mood": 23.690322580645162,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:48:44.505978",
+          "exhaust_time": null
+        },
+        "阿罗玛": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_1",
+          "upper_limit": 24,
+          "mood": 23.690322580645162,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:48:44.594202",
+          "exhaust_time": null
+        },
+        "斯卡蒂": {
+          "dorm_recovery_fixed": [
+            [
+              "车尔尼",
+              1,
+              3
+            ]
+          ],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 11.69032258064516,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0.688071610379562,
+          "time_stamp": "2026-10-08T11:08:17.237966",
+          "exhaust_time": null
+        },
+        "幽灵鲨": {
+          "dorm_recovery_fixed": [
+            [
+              "聆音",
+              1,
+              3
+            ]
+          ],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 11.69032258064516,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0.6880693079770089,
+          "time_stamp": "2026-10-08T11:09:12.301410",
+          "exhaust_time": null
+        },
+        "清流": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_3",
+          "upper_limit": 24,
+          "mood": 2.167741935483871,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:26:09.247016",
+          "exhaust_time": null
+        },
+        "温蒂": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_3",
+          "upper_limit": 24,
+          "mood": 2.0903225806451613,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:26:09.363226",
+          "exhaust_time": null
+        },
+        "维什戴尔": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 16.56774193548387,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.6961794252878297,
+          "time_stamp": "2026-10-08T11:05:57.827159",
+          "exhaust_time": null
+        },
+        "望": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:06:11.235287",
+          "exhaust_time": null
+        },
+        "戴菲恩": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 17.961290322580645,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.684112886009332,
+          "time_stamp": "2026-10-08T10:32:48.905383",
+          "exhaust_time": null
+        },
+        "诗怀雅": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.767741935483873,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:05:59.677157",
+          "exhaust_time": null
+        },
+        "斩业星熊": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.767741935483873,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:05:59.767055",
+          "exhaust_time": null
+        },
+        "见行者": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 1.4709677419354839,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 1.50245228778356,
+          "time_stamp": "2026-10-08T11:04:42.896038",
+          "exhaust_time": null
+        },
+        "麦哲伦": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:21.542889",
+          "exhaust_time": null
+        },
+        "桑葚": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 22.916129032258066,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.34763807441747097,
+          "time_stamp": "2026-10-08T10:31:44.576922",
+          "exhaust_time": null
+        },
+        "余": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:49.001563",
+          "exhaust_time": null
+        },
+        "黍": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-06T22:26:36.438071",
+          "exhaust_time": null
+        },
+        "但书": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 21.36774193548387,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.065279783820687,
+          "time_stamp": "2026-10-08T11:03:24.586106",
+          "exhaust_time": null
+        },
+        "伺夜": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 18.580645161290324,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0.6889379637068626,
+          "time_stamp": "2026-10-08T11:08:18.934718",
+          "exhaust_time": null
+        },
+        "食铁兽": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_2",
+          "upper_limit": 24,
+          "mood": 23.767741935483873,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:04:24.883987",
+          "exhaust_time": null
+        },
+        "弑君者": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-07T13:01:31.711659",
+          "exhaust_time": null
+        },
+        "断罪者": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-07T18:36:19.773832",
+          "exhaust_time": null
+        },
+        "缪尔赛思": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 18.425806451612903,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.6889108436415811,
+          "time_stamp": "2026-10-08T11:05:42.599272",
+          "exhaust_time": null
+        },
+        "乌有": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 22.451612903225808,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.007413276647608442,
+          "time_stamp": "2026-10-08T10:31:44.713400",
+          "exhaust_time": null
+        },
+        "推进之王": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:24:34.673801",
+          "exhaust_time": null
+        },
+        "龙舌兰": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.53548387096774,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.02298625757988584,
+          "time_stamp": "2026-10-08T10:46:13.604767",
+          "exhaust_time": null
+        },
+        "摩根": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:24:34.770134",
+          "exhaust_time": null
+        },
+        "夜烟": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": null,
+          "exhaust_time": null
+        },
+        "苍苔": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_2",
+          "upper_limit": 24,
+          "mood": 5.496774193548387,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0.4820959077674631,
+          "time_stamp": "2026-10-08T10:48:13.085387",
+          "exhaust_time": null
+        },
+        "引星棘刺": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_2",
+          "upper_limit": 24,
+          "mood": 5.574193548387097,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0.5062006090729826,
+          "time_stamp": "2026-10-08T10:48:13.165172",
+          "exhaust_time": null
+        },
+        "格雷伊": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:27:27.485476",
+          "exhaust_time": null
+        },
+        "梅尔": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 16.490322580645163,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0.6428721507480193,
+          "time_stamp": "2026-10-08T11:08:46.144843",
+          "exhaust_time": null
+        },
+        "多萝西": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_2",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:07:32.465686",
+          "exhaust_time": null
+        },
+        "娜斯提": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_2",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:07:32.529094",
+          "exhaust_time": null
+        },
+        "信仰搅拌机": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 14.864516129032259,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0.7547269110628784,
+          "time_stamp": "2026-10-08T11:08:46.258649",
+          "exhaust_time": null
+        },
+        "刺玫": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:34:49.555385",
+          "exhaust_time": null
+        },
+        "淬羽赫默": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": null,
+          "exhaust_time": null
+        },
+        "斥罪": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:46.993789",
+          "exhaust_time": null
+        },
+        "Castle-3": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": null,
+          "exhaust_time": null
+        },
+        "白雪": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": null,
+          "exhaust_time": null
+        }
+      },
+      "dorms": [
+        {
+          "position": [
+            "dormitory_1",
+            4
+          ],
+          "name": "歌蕾蒂娅",
+          "time": "2026-10-08T18:44:53.645432"
+        },
+        {
+          "position": [
+            "dormitory_2",
+            2
+          ],
+          "name": "斯卡蒂",
+          "time": "2026-10-08T14:09:49.144021"
+        },
+        {
+          "position": [
+            "dormitory_2",
+            3
+          ],
+          "name": "伺夜",
+          "time": "2026-10-08T13:23:35.976476"
+        },
+        {
+          "position": [
+            "dormitory_2",
+            4
+          ],
+          "name": "安哲拉",
+          "time": "2026-10-08T14:37:03.085891"
+        },
+        {
+          "position": [
+            "dormitory_3",
+            2
+          ],
+          "name": "酒神",
+          "time": "2026-10-08T13:48:32.416803"
+        },
+        {
+          "position": [
+            "dormitory_3",
+            3
+          ],
+          "name": "梅尔",
+          "time": "2026-10-08T14:23:09.184786"
+        },
+        {
+          "position": [
+            "dormitory_3",
+            4
+          ],
+          "name": "信仰搅拌机",
+          "time": "2026-10-08T15:03:23.297752"
+        },
+        {
+          "position": [
+            "dormitory_4",
+            3
+          ],
+          "name": "幽灵鲨",
+          "time": "2026-10-08T14:27:58.455905"
+        },
+        {
+          "position": [
+            "dormitory_4",
+            4
+          ],
+          "name": "乌尔比安",
+          "time": "2026-10-08T16:02:38.421672"
+        }
+      ],
+      "tasks": [
+        {
+          "time": "2026-10-08 11:09:22.724849",
+          "plan": {
+            "central": [
+              "Current",
+              "歌蕾蒂娅",
+              "Current",
+              "诗怀雅",
+              "斩业星熊"
+            ],
+            "room_1_2": [
+              "Current",
+              "弑君者",
+              "断罪者"
+            ],
+            "room_2_2": [
+              "Current",
+              "乌尔比安",
+              "安哲拉"
+            ],
+            "room_3_2": [
+              "斯卡蒂",
+              "幽灵鲨"
+            ],
+            "dormitory_1": [
+              "Current",
+              "Current",
+              "Current",
+              "Current",
+              "薇薇安娜"
+            ],
+            "dormitory_2": [
+              "Current",
+              "Current",
+              "焰尾",
+              "Free",
+              "Free"
+            ],
+            "dormitory_4": [
+              "Current",
+              "Current",
+              "Current",
+              "野鬃",
+              "灰毫"
+            ],
+            "dormitory_3": [
+              "Current",
+              "Current",
+              "Current",
+              "Free",
+              "Free"
+            ]
+          },
+          "type": "SHIFT_OFF",
+          "meta_data": "",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 12:11:46.811403",
+          "plan": {
+            "room_1_1": [
+              "但书"
+            ]
+          },
+          "type": "RUN_ORDER",
+          "meta_data": "room_1_1",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 12:24:51.312449",
+          "plan": {
+            "room_2_1": [
+              "Current",
+              "但书",
+              "龙舌兰"
+            ]
+          },
+          "type": "RUN_ORDER",
+          "meta_data": "room_2_1",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 12:48:03.815806",
+          "plan": {},
+          "type": "FIAMMETTA",
+          "meta_data": "",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 13:40:32.416803",
+          "plan": {
+            "room_1_2": [
+              "酒神",
+              "Current",
+              "Current"
+            ]
+          },
+          "type": "SHIFT_ON",
+          "meta_data": "",
+          "adjusted": false
+        }
+      ],
+      "final_conditions": [
+        false,
+        false,
+        true,
+        false,
+        true,
+        true
+      ],
+      "final_plan": {
+        "central": [
+          "维什戴尔",
+          "歌蕾蒂娅",
+          "Current",
+          "诗怀雅",
+          "斩业星熊"
+        ],
+        "meeting": [
+          "信仰搅拌机",
+          "Current"
+        ],
+        "dormitory_1": [
+          "Current",
+          "Current",
+          "Current",
+          "刺玫",
+          "薇薇安娜"
+        ],
+        "dormitory_2": [
+          "Current",
+          "Current",
+          "焰尾",
+          "见行者",
+          "梅尔"
+        ],
+        "dormitory_3": [
+          "Current",
+          "Current",
+          "Current",
+          "戴菲恩",
+          "缪尔赛思"
+        ],
+        "dormitory_4": [
+          "Current",
+          "Current",
+          "Current",
+          "野鬃",
+          "灰毫"
+        ],
+        "room_1_2": [
+          "Current",
+          "乌尔比安",
+          "安哲拉"
+        ],
+        "room_3_2": [
+          "斯卡蒂",
+          "幽灵鲨"
+        ]
+      }
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 16500,
+      "at": "2026-10-08 11:12:39,505",
+      "operators": {
+        "维什戴尔": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 16.56774193548387,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.6961794252878297,
+          "time_stamp": "2026-10-08T11:09:41.684993",
+          "exhaust_time": null
+        },
+        "歌蕾蒂娅": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 0.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:12:35.126283",
+          "exhaust_time": "2026-10-08T11:12:35.252805"
+        },
+        "森蚺": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 6.2709677419354835,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:50:36.793974",
+          "exhaust_time": null
+        },
+        "焰尾": {
+          "dorm_recovery_fixed": [
+            [
+              "车尔尼",
+              1,
+              3
+            ]
+          ],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 13.161290322580646,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:11:37.147784",
+          "exhaust_time": null
+        },
+        "薇薇安娜": {
+          "dorm_recovery_fixed": [
+            [
+              "闪灵",
+              1,
+              31
+            ]
+          ],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 12.619354838709677,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:11:07.027119",
+          "exhaust_time": null
+        },
+        "信仰搅拌机": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "meeting",
+          "upper_limit": 24,
+          "mood": 14.941935483870967,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:09:54.190915",
+          "exhaust_time": null
+        },
+        "跃跃": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "meeting",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:29:21.086128",
+          "exhaust_time": null
+        },
+        "特克诺": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "factory",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:27:23.275784",
+          "exhaust_time": null
+        },
+        "絮雨": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "contact",
+          "upper_limit": 24,
+          "mood": 11.845161290322581,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.6884480486786504,
+          "time_stamp": "2026-10-08T10:32:58.200323",
+          "exhaust_time": null
+        },
+        "褐果": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "train",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:25:29.159761",
+          "exhaust_time": null
+        },
+        "桃金娘": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "train",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:25:17.171811",
+          "exhaust_time": null
+        },
+        "冰酿": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:34:47.621652",
+          "exhaust_time": null
+        },
+        "闪灵": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:34:47.688949",
+          "exhaust_time": null
+        },
+        "菲亚梅塔": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 20.748387096774195,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:11:05.138893",
+          "exhaust_time": null
+        },
+        "刺玫": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:11:06.945931",
+          "exhaust_time": null
+        },
+        "流明": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:31:42.687088",
+          "exhaust_time": null
+        },
+        "车尔尼": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:31:42.758932",
+          "exhaust_time": null
+        },
+        "塑心": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:49:39.014998",
+          "exhaust_time": null
+        },
+        "蜜莓": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:19.621514",
+          "exhaust_time": null
+        },
+        "隐德来希": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:50:10.621111",
+          "exhaust_time": null
+        },
+        "聆音": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:47.065853",
+          "exhaust_time": null
+        },
+        "杜林": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:47.149574",
+          "exhaust_time": null
+        },
+        "图耶": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_1",
+          "upper_limit": 24,
+          "mood": 6.348387096774194,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.7589318821899558,
+          "time_stamp": "2026-10-08T11:03:57.008404",
+          "exhaust_time": null
+        },
+        "酒神": {
+          "dorm_recovery_fixed": [
+            [
+              "蜜莓",
+              1,
+              3
+            ]
+          ],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 16.10322580645161,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:11:54.301209",
+          "exhaust_time": null
+        },
+        "乌尔比安": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_2",
+          "upper_limit": 24,
+          "mood": 12.774193548387096,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:10:24.966927",
+          "exhaust_time": null
+        },
+        "安哲拉": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_2",
+          "upper_limit": 24,
+          "mood": 12.774193548387096,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:10:25.045297",
+          "exhaust_time": null
+        },
+        "承曦格雷伊": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_3",
+          "upper_limit": 24,
+          "mood": 6.658064516129032,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:27:42.322692",
+          "exhaust_time": null
+        },
+        "黑键": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_1",
+          "upper_limit": 24,
+          "mood": 14.4,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.6047699167712778,
+          "time_stamp": "2026-10-08T10:33:10.825647",
+          "exhaust_time": null
+        },
+        "绮良": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_1",
+          "upper_limit": 24,
+          "mood": 3.870967741935484,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:46:47.594809",
+          "exhaust_time": null
+        },
+        "鸿雪": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_1",
+          "upper_limit": 24,
+          "mood": 3.870967741935484,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:46:47.693554",
+          "exhaust_time": null
+        },
+        "砾": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_2",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.5978217031235376,
+          "time_stamp": "2026-10-08T10:34:32.099465",
+          "exhaust_time": null
+        },
+        "野鬃": {
+          "dorm_recovery_fixed": [
+            [
+              "聆音",
+              1,
+              3
+            ]
+          ],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 16.258064516129032,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:12:23.168229",
+          "exhaust_time": null
+        },
+        "灰毫": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 16.412903225806453,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:12:23.248918",
+          "exhaust_time": null
+        },
+        "Lancet-2": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_3",
+          "upper_limit": 24,
+          "mood": 0.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:27:35.621519",
+          "exhaust_time": null
+        },
+        "槐琥": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_1",
+          "upper_limit": 24,
+          "mood": 23.690322580645162,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:48:44.417422",
+          "exhaust_time": null
+        },
+        "迷迭香": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_1",
+          "upper_limit": 24,
+          "mood": 23.690322580645162,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:48:44.505978",
+          "exhaust_time": null
+        },
+        "阿罗玛": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_1",
+          "upper_limit": 24,
+          "mood": 23.690322580645162,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:48:44.594202",
+          "exhaust_time": null
+        },
+        "斯卡蒂": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_2",
+          "upper_limit": 24,
+          "mood": 11.845161290322581,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:10:53.082883",
+          "exhaust_time": null
+        },
+        "幽灵鲨": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_2",
+          "upper_limit": 24,
+          "mood": 11.845161290322581,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:10:53.151927",
+          "exhaust_time": null
+        },
+        "清流": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_3",
+          "upper_limit": 24,
+          "mood": 2.167741935483871,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:26:09.247016",
+          "exhaust_time": null
+        },
+        "温蒂": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_3",
+          "upper_limit": 24,
+          "mood": 2.0903225806451613,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:26:09.363226",
+          "exhaust_time": null
+        },
+        "重岳": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 18.503225806451614,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.00743965848981817,
+          "time_stamp": "2026-10-08T11:09:25.587012",
+          "exhaust_time": null
+        },
+        "望": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:09:25.665258",
+          "exhaust_time": null
+        },
+        "戴菲恩": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 18.81290322580645,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0.684112886009332,
+          "time_stamp": "2026-10-08T11:11:56.044615",
+          "exhaust_time": null
+        },
+        "诗怀雅": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 23.690322580645162,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:09:43.626250",
+          "exhaust_time": null
+        },
+        "斩业星熊": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 23.690322580645162,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:09:43.712810",
+          "exhaust_time": null
+        },
+        "见行者": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 1.6258064516129032,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 1.50245228778356,
+          "time_stamp": "2026-10-08T11:11:38.910157",
+          "exhaust_time": null
+        },
+        "麦哲伦": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:21.542889",
+          "exhaust_time": null
+        },
+        "桑葚": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 22.916129032258066,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.34763807441747097,
+          "time_stamp": "2026-10-08T10:31:44.576922",
+          "exhaust_time": null
+        },
+        "余": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:49.001563",
+          "exhaust_time": null
+        },
+        "黍": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-06T22:26:36.438071",
+          "exhaust_time": null
+        },
+        "但书": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 21.36774193548387,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.065279783820687,
+          "time_stamp": "2026-10-08T11:03:24.586106",
+          "exhaust_time": null
+        },
+        "伺夜": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 18.580645161290324,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.6889379637068626,
+          "time_stamp": "2026-10-08T11:08:18.934718",
+          "exhaust_time": null
+        },
+        "食铁兽": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_2",
+          "upper_limit": 24,
+          "mood": 23.767741935483873,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:04:24.883987",
+          "exhaust_time": null
+        },
+        "弑君者": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-07T13:01:31.711659",
+          "exhaust_time": null
+        },
+        "断罪者": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-07T18:36:19.773832",
+          "exhaust_time": null
+        },
+        "缪尔赛思": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 18.580645161290324,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0.6889108436415811,
+          "time_stamp": "2026-10-08T11:11:56.189051",
+          "exhaust_time": null
+        },
+        "乌有": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 22.451612903225808,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.007413276647608442,
+          "time_stamp": "2026-10-08T10:31:44.713400",
+          "exhaust_time": null
+        },
+        "推进之王": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:24:34.673801",
+          "exhaust_time": null
+        },
+        "龙舌兰": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.53548387096774,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.02298625757988584,
+          "time_stamp": "2026-10-08T10:46:13.604767",
+          "exhaust_time": null
+        },
+        "摩根": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:24:34.770134",
+          "exhaust_time": null
+        },
+        "夜烟": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": null,
+          "exhaust_time": null
+        },
+        "苍苔": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_2",
+          "upper_limit": 24,
+          "mood": 5.496774193548387,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0.4820959077674631,
+          "time_stamp": "2026-10-08T10:48:13.085387",
+          "exhaust_time": null
+        },
+        "引星棘刺": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_2",
+          "upper_limit": 24,
+          "mood": 5.574193548387097,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0.5062006090729826,
+          "time_stamp": "2026-10-08T10:48:13.165172",
+          "exhaust_time": null
+        },
+        "格雷伊": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:27:27.485476",
+          "exhaust_time": null
+        },
+        "梅尔": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 16.56774193548387,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0.6428721507480193,
+          "time_stamp": "2026-10-08T11:11:39.057328",
+          "exhaust_time": null
+        },
+        "多萝西": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:10:36.918792",
+          "exhaust_time": null
+        },
+        "娜斯提": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:10:36.995248",
+          "exhaust_time": null
+        },
+        "淬羽赫默": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": null,
+          "exhaust_time": null
+        },
+        "塞雷娅": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:09:46.907992",
+          "exhaust_time": null
+        },
+        "伊芙利特": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:07:47.541357",
+          "exhaust_time": null
+        },
+        "斥罪": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:46.993789",
+          "exhaust_time": null
+        },
+        "Castle-3": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": null,
+          "exhaust_time": null
+        },
+        "白雪": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": null,
+          "exhaust_time": null
+        }
+      },
+      "dorms": [
+        {
+          "position": [
+            "dormitory_1",
+            4
+          ],
+          "name": "薇薇安娜",
+          "time": "2026-10-08T14:47:43.070033"
+        },
+        {
+          "position": [
+            "dormitory_2",
+            2
+          ],
+          "name": "焰尾",
+          "time": "2026-10-08T14:44:24.106091"
+        },
+        {
+          "position": [
+            "dormitory_2",
+            3
+          ],
+          "name": "见行者",
+          "time": "2026-10-08T20:29:47.954972"
+        },
+        {
+          "position": [
+            "dormitory_2",
+            4
+          ],
+          "name": "梅尔",
+          "time": "2026-10-08T14:16:47.102894"
+        },
+        {
+          "position": [
+            "dormitory_3",
+            2
+          ],
+          "name": "酒神",
+          "time": "2026-10-08T13:48:32.416803"
+        },
+        {
+          "position": [
+            "dormitory_3",
+            3
+          ],
+          "name": "戴菲恩",
+          "time": "2026-10-08T13:25:37.089640"
+        },
+        {
+          "position": [
+            "dormitory_3",
+            4
+          ],
+          "name": "缪尔赛思",
+          "time": "2026-10-08T13:04:11.235399"
+        },
+        {
+          "position": [
+            "dormitory_4",
+            3
+          ],
+          "name": "野鬃",
+          "time": "2026-10-08T13:47:06.969940"
+        },
+        {
+          "position": [
+            "dormitory_4",
+            4
+          ],
+          "name": "灰毫",
+          "time": "2026-10-08T14:30:24.288744"
+        }
+      ],
+      "tasks": [
+        {
+          "time": "2026-10-08 11:12:38.275043",
+          "plan": {
+            "meeting": [
+              "见行者",
+              "Current"
+            ],
+            "dormitory_3": [
+              "Current",
+              "Current",
+              "信仰搅拌机",
+              "野鬃",
+              "Current"
+            ],
+            "dormitory_4": [
+              "Current",
+              "Current",
+              "Current",
+              "酒神",
+              "Current"
+            ]
+          },
+          "type": "SHIFT_OFF",
+          "meta_data": "",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 11:12:38.817096",
+          "plan": {
+            "room_2_2": [
+              "Current",
+              "野鬃",
+              "灰毫"
+            ],
+            "central": [
+              "Current",
+              "Current",
+              "Current",
+              "焰尾",
+              "薇薇安娜"
+            ]
+          },
+          "type": "SELF_CORRECTION",
+          "meta_data": "",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 11:12:38.817096",
+          "plan": {},
+          "type": "EXHAUST_OFF",
+          "meta_data": "歌蕾蒂娅",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 12:11:46.308853",
+          "plan": {
+            "room_1_1": [
+              "但书"
+            ]
+          },
+          "type": "RUN_ORDER",
+          "meta_data": "room_1_1",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 12:24:55.800243",
+          "plan": {
+            "room_2_1": [
+              "Current",
+              "但书",
+              "龙舌兰"
+            ]
+          },
+          "type": "RUN_ORDER",
+          "meta_data": "room_2_1",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 12:48:04.179962",
+          "plan": {},
+          "type": "FIAMMETTA",
+          "meta_data": "",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 13:39:06.969940",
+          "plan": {
+            "central": [
+              "Current",
+              "Current",
+              "Current",
+              "焰尾",
+              "薇薇安娜"
+            ],
+            "room_2_2": [
+              "Current",
+              "野鬃",
+              "灰毫"
+            ]
+          },
+          "type": "SHIFT_ON",
+          "meta_data": "",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 13:40:32.416803",
+          "plan": {
+            "room_1_2": [
+              "酒神",
+              "Current",
+              "Current"
+            ]
+          },
+          "type": "SHIFT_ON",
+          "meta_data": "",
+          "adjusted": false
+        }
+      ],
+      "final_conditions": [
+        false,
+        false,
+        false,
+        true,
+        true,
+        true
+      ],
+      "final_plan": {
+        "central": [
+          "重岳",
+          "望",
+          "Current",
+          "焰尾",
+          "薇薇安娜"
+        ],
+        "meeting": [
+          "塞雷娅",
+          "Current"
+        ],
+        "dormitory_1": [
+          "Current",
+          "Current",
+          "Current",
+          "伊芙利特",
+          "歌蕾蒂娅"
+        ],
+        "dormitory_2": [
+          "Current",
+          "Current",
+          "斯卡蒂",
+          "缪尔赛思",
+          "乌尔比安"
+        ],
+        "dormitory_3": [
+          "Current",
+          "Current",
+          "Current",
+          "安哲拉",
+          "梅尔"
+        ],
+        "dormitory_4": [
+          "Current",
+          "Current",
+          "Current",
+          "幽灵鲨",
+          "信仰搅拌机"
+        ],
+        "room_1_2": [
+          "Current",
+          "野鬃",
+          "灰毫"
+        ],
+        "room_3_2": [
+          "多萝西",
+          "娜斯提"
+        ]
+      }
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 20328,
+      "at": "2026-10-08 11:15:57,295",
+      "operators": {
+        "重岳": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 18.503225806451614,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.00743965848981817,
+          "time_stamp": "2026-10-08T11:12:57.151267",
+          "exhaust_time": null
+        },
+        "歌蕾蒂娅": {
+          "dorm_recovery_fixed": [
+            [
+              "闪灵",
+              1,
+              31
+            ]
+          ],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 0.0,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:14:27.062247",
+          "exhaust_time": null
+        },
+        "森蚺": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 6.2709677419354835,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:50:36.793974",
+          "exhaust_time": null
+        },
+        "焰尾": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 13.238709677419354,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:12:58.962851",
+          "exhaust_time": null
+        },
+        "薇薇安娜": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 12.696774193548388,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:12:59.022278",
+          "exhaust_time": null
+        },
+        "塞雷娅": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "meeting",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:13:07.176475",
+          "exhaust_time": null
+        },
+        "跃跃": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "meeting",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:29:21.086128",
+          "exhaust_time": null
+        },
+        "特克诺": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "factory",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:27:23.275784",
+          "exhaust_time": null
+        },
+        "絮雨": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "contact",
+          "upper_limit": 24,
+          "mood": 11.845161290322581,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.6884480486786504,
+          "time_stamp": "2026-10-08T10:32:58.200323",
+          "exhaust_time": null
+        },
+        "褐果": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "train",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:25:29.159761",
+          "exhaust_time": null
+        },
+        "桃金娘": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "train",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:25:17.171811",
+          "exhaust_time": null
+        },
+        "冰酿": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:34:47.621652",
+          "exhaust_time": null
+        },
+        "闪灵": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:34:47.688949",
+          "exhaust_time": null
+        },
+        "菲亚梅塔": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 20.825806451612902,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:14:25.039203",
+          "exhaust_time": null
+        },
+        "伊芙利特": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_1",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:14:26.979034",
+          "exhaust_time": null
+        },
+        "流明": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:31:42.687088",
+          "exhaust_time": null
+        },
+        "车尔尼": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:31:42.758932",
+          "exhaust_time": null
+        },
+        "塑心": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:49:39.014998",
+          "exhaust_time": null
+        },
+        "蜜莓": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:19.621514",
+          "exhaust_time": null
+        },
+        "隐德来希": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:50:10.621111",
+          "exhaust_time": null
+        },
+        "聆音": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:47.065853",
+          "exhaust_time": null
+        },
+        "杜林": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:47.149574",
+          "exhaust_time": null
+        },
+        "图耶": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_1",
+          "upper_limit": 24,
+          "mood": 6.348387096774194,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.7589318821899558,
+          "time_stamp": "2026-10-08T11:03:57.008404",
+          "exhaust_time": null
+        },
+        "酒神": {
+          "dorm_recovery_fixed": [
+            [
+              "蜜莓",
+              1,
+              3
+            ]
+          ],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 16.258064516129032,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:15:16.222084",
+          "exhaust_time": null
+        },
+        "野鬃": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_2",
+          "upper_limit": 24,
+          "mood": 16.258064516129032,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:13:40.504828",
+          "exhaust_time": null
+        },
+        "灰毫": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_2",
+          "upper_limit": 24,
+          "mood": 16.412903225806453,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:13:40.568419",
+          "exhaust_time": null
+        },
+        "承曦格雷伊": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_3",
+          "upper_limit": 24,
+          "mood": 6.658064516129032,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:27:42.322692",
+          "exhaust_time": null
+        },
+        "黑键": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_1",
+          "upper_limit": 24,
+          "mood": 14.4,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.6047699167712778,
+          "time_stamp": "2026-10-08T10:33:10.825647",
+          "exhaust_time": null
+        },
+        "绮良": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_1",
+          "upper_limit": 24,
+          "mood": 3.870967741935484,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:46:47.594809",
+          "exhaust_time": null
+        },
+        "鸿雪": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_1",
+          "upper_limit": 24,
+          "mood": 3.870967741935484,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:46:47.693554",
+          "exhaust_time": null
+        },
+        "砾": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_2",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0.5978217031235376,
+          "time_stamp": "2026-10-08T10:34:32.099465",
+          "exhaust_time": null
+        },
+        "乌尔比安": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 12.696774193548388,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:15:00.644911",
+          "exhaust_time": null
+        },
+        "安哲拉": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 12.774193548387096,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:15:17.962007",
+          "exhaust_time": null
+        },
+        "Lancet-2": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_3",
+          "upper_limit": 24,
+          "mood": 0.0,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:27:35.621519",
+          "exhaust_time": null
+        },
+        "槐琥": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_1",
+          "upper_limit": 24,
+          "mood": 23.690322580645162,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:48:44.417422",
+          "exhaust_time": null
+        },
+        "迷迭香": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_1",
+          "upper_limit": 24,
+          "mood": 23.690322580645162,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:48:44.505978",
+          "exhaust_time": null
+        },
+        "阿罗玛": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_1",
+          "upper_limit": 24,
+          "mood": 23.690322580645162,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:48:44.594202",
+          "exhaust_time": null
+        },
+        "斯卡蒂": {
+          "dorm_recovery_fixed": [
+            [
+              "车尔尼",
+              1,
+              3
+            ]
+          ],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 11.845161290322581,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:14:58.761918",
+          "exhaust_time": null
+        },
+        "幽灵鲨": {
+          "dorm_recovery_fixed": [
+            [
+              "聆音",
+              1,
+              3
+            ]
+          ],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 11.76774193548387,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:15:46.100144",
+          "exhaust_time": null
+        },
+        "清流": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_3",
+          "upper_limit": 24,
+          "mood": 2.167741935483871,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:26:09.247016",
+          "exhaust_time": null
+        },
+        "温蒂": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_3",
+          "upper_limit": 24,
+          "mood": 2.0903225806451613,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:26:09.363226",
+          "exhaust_time": null
+        },
+        "维什戴尔": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 16.490322580645163,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.6961794252878297,
+          "time_stamp": "2026-10-08T11:12:41.525174",
+          "exhaust_time": null
+        },
+        "望": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "central",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:12:57.212655",
+          "exhaust_time": null
+        },
+        "戴菲恩": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 18.89032258064516,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.684112886009332,
+          "time_stamp": "2026-10-08T11:15:05.297564",
+          "exhaust_time": null
+        },
+        "诗怀雅": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.690322580645162,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:12:43.397375",
+          "exhaust_time": null
+        },
+        "斩业星熊": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.690322580645162,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:12:43.477254",
+          "exhaust_time": null
+        },
+        "见行者": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 1.6258064516129032,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 1.50245228778356,
+          "time_stamp": "2026-10-08T11:11:38.910157",
+          "exhaust_time": null
+        },
+        "麦哲伦": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:21.542889",
+          "exhaust_time": null
+        },
+        "桑葚": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 22.916129032258066,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.34763807441747097,
+          "time_stamp": "2026-10-08T10:31:44.576922",
+          "exhaust_time": null
+        },
+        "余": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:49.001563",
+          "exhaust_time": null
+        },
+        "黍": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-06T22:26:36.438071",
+          "exhaust_time": null
+        },
+        "但书": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 21.36774193548387,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.065279783820687,
+          "time_stamp": "2026-10-08T11:03:24.586106",
+          "exhaust_time": null
+        },
+        "伺夜": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 18.580645161290324,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.6889379637068626,
+          "time_stamp": "2026-10-08T11:08:18.934718",
+          "exhaust_time": null
+        },
+        "食铁兽": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_1_2",
+          "upper_limit": 24,
+          "mood": 23.767741935483873,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:04:24.883987",
+          "exhaust_time": null
+        },
+        "弑君者": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-07T13:01:31.711659",
+          "exhaust_time": null
+        },
+        "断罪者": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-07T18:36:19.773832",
+          "exhaust_time": null
+        },
+        "缪尔赛思": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_2",
+          "upper_limit": 24,
+          "mood": 18.73548387096774,
+          "current_index": 3,
+          "lower_limit": 0,
+          "depletion_rate": 0.6889108436415811,
+          "time_stamp": "2026-10-08T11:15:00.502567",
+          "exhaust_time": null
+        },
+        "乌有": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 22.451612903225808,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.007413276647608442,
+          "time_stamp": "2026-10-08T10:31:44.713400",
+          "exhaust_time": null
+        },
+        "推进之王": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:24:34.673801",
+          "exhaust_time": null
+        },
+        "龙舌兰": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.53548387096774,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0.02298625757988584,
+          "time_stamp": "2026-10-08T10:46:13.604767",
+          "exhaust_time": null
+        },
+        "摩根": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:24:34.770134",
+          "exhaust_time": null
+        },
+        "夜烟": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": null,
+          "exhaust_time": null
+        },
+        "苍苔": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_2",
+          "upper_limit": 24,
+          "mood": 5.496774193548387,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0.4820959077674631,
+          "time_stamp": "2026-10-08T10:48:13.085387",
+          "exhaust_time": null
+        },
+        "引星棘刺": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_2_2",
+          "upper_limit": 24,
+          "mood": 5.574193548387097,
+          "current_index": 2,
+          "lower_limit": 0,
+          "depletion_rate": 0.5062006090729826,
+          "time_stamp": "2026-10-08T10:48:13.165172",
+          "exhaust_time": null
+        },
+        "格雷伊": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:27:27.485476",
+          "exhaust_time": null
+        },
+        "梅尔": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_3",
+          "upper_limit": 24,
+          "mood": 16.72258064516129,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0.6428721507480193,
+          "time_stamp": "2026-10-08T11:15:18.101186",
+          "exhaust_time": null
+        },
+        "多萝西": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_2",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": 0,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:14:12.550859",
+          "exhaust_time": null
+        },
+        "娜斯提": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "room_3_2",
+          "upper_limit": 24,
+          "mood": 23.92258064516129,
+          "current_index": 1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:14:12.631938",
+          "exhaust_time": null
+        },
+        "信仰搅拌机": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "dormitory_4",
+          "upper_limit": 24,
+          "mood": 14.941935483870967,
+          "current_index": 4,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:15:46.181532",
+          "exhaust_time": null
+        },
+        "刺玫": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T11:11:06.945931",
+          "exhaust_time": null
+        },
+        "淬羽赫默": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": null,
+          "exhaust_time": null
+        },
+        "斥罪": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24.0,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": "2026-10-08T10:32:46.993789",
+          "exhaust_time": null
+        },
+        "Castle-3": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": null,
+          "exhaust_time": null
+        },
+        "白雪": {
+          "dorm_recovery_fixed": [],
+          "_current_room": "",
+          "upper_limit": 24,
+          "mood": 24,
+          "current_index": -1,
+          "lower_limit": 0,
+          "depletion_rate": 0,
+          "time_stamp": null,
+          "exhaust_time": null
+        }
+      },
+      "dorms": [
+        {
+          "position": [
+            "dormitory_1",
+            4
+          ],
+          "name": "歌蕾蒂娅",
+          "time": "2026-10-08T18:51:33.103419"
+        },
+        {
+          "position": [
+            "dormitory_2",
+            2
+          ],
+          "name": "斯卡蒂",
+          "time": "2026-10-08T14:14:13.211388"
+        },
+        {
+          "position": [
+            "dormitory_2",
+            3
+          ],
+          "name": "缪尔赛思",
+          "time": "2026-10-08T13:01:14.549803"
+        },
+        {
+          "position": [
+            "dormitory_2",
+            4
+          ],
+          "name": "乌尔比安",
+          "time": "2026-10-08T15:55:56.687117"
+        },
+        {
+          "position": [
+            "dormitory_3",
+            2
+          ],
+          "name": "酒神",
+          "time": "2026-10-08T13:48:32.416803"
+        },
+        {
+          "position": [
+            "dormitory_3",
+            3
+          ],
+          "name": "安哲拉",
+          "time": "2026-10-08T14:47:51.008065"
+        },
+        {
+          "position": [
+            "dormitory_3",
+            4
+          ],
+          "name": "梅尔",
+          "time": "2026-10-08T14:23:42.144771"
+        },
+        {
+          "position": [
+            "dormitory_4",
+            3
+          ],
+          "name": "幽灵鲨",
+          "time": "2026-10-08T14:33:16.762838"
+        },
+        {
+          "position": [
+            "dormitory_4",
+            4
+          ],
+          "name": "信仰搅拌机",
+          "time": "2026-10-08T15:12:11.223088"
+        }
+      ],
+      "tasks": [
+        {
+          "time": "2026-10-08 11:15:56.421018",
+          "plan": {
+            "central": [
+              "Current",
+              "歌蕾蒂娅",
+              "Current",
+              "诗怀雅",
+              "斩业星熊"
+            ],
+            "room_1_2": [
+              "Current",
+              "弑君者",
+              "断罪者"
+            ],
+            "room_2_2": [
+              "Current",
+              "乌尔比安",
+              "安哲拉"
+            ],
+            "room_3_2": [
+              "斯卡蒂",
+              "幽灵鲨"
+            ],
+            "dormitory_1": [
+              "Current",
+              "Current",
+              "Current",
+              "Current",
+              "薇薇安娜"
+            ],
+            "dormitory_2": [
+              "Current",
+              "Current",
+              "焰尾",
+              "Free",
+              "Free"
+            ],
+            "dormitory_4": [
+              "Current",
+              "Current",
+              "Current",
+              "野鬃",
+              "Free"
+            ],
+            "dormitory_3": [
+              "Current",
+              "Current",
+              "Current",
+              "灰毫",
+              "Free"
+            ]
+          },
+          "type": "SHIFT_OFF",
+          "meta_data": "",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 12:11:47.582078",
+          "plan": {
+            "room_1_1": [
+              "但书"
+            ]
+          },
+          "type": "RUN_ORDER",
+          "meta_data": "room_1_1",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 12:24:59.004608",
+          "plan": {
+            "room_2_1": [
+              "Current",
+              "但书",
+              "龙舌兰"
+            ]
+          },
+          "type": "RUN_ORDER",
+          "meta_data": "room_2_1",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 12:48:05.195132",
+          "plan": {},
+          "type": "FIAMMETTA",
+          "meta_data": "",
+          "adjusted": false
+        },
+        {
+          "time": "2026-10-08 13:40:32.416803",
+          "plan": {
+            "room_1_2": [
+              "酒神",
+              "Current",
+              "Current"
+            ]
+          },
+          "type": "SHIFT_ON",
+          "meta_data": "",
+          "adjusted": false
+        }
+      ],
+      "final_conditions": [
+        false,
+        false,
+        true,
+        false,
+        true,
+        true
+      ],
+      "final_plan": {
+        "central": [
+          "维什戴尔",
+          "歌蕾蒂娅",
+          "Current",
+          "诗怀雅",
+          "斩业星熊"
+        ],
+        "meeting": [
+          "信仰搅拌机",
+          "Current"
+        ],
+        "dormitory_1": [
+          "Current",
+          "Current",
+          "Current",
+          "刺玫",
+          "薇薇安娜"
+        ],
+        "dormitory_2": [
+          "Current",
+          "Current",
+          "焰尾",
+          "见行者",
+          "梅尔"
+        ],
+        "dormitory_3": [
+          "Current",
+          "Current",
+          "Current",
+          "灰毫",
+          "伺夜"
+        ],
+        "dormitory_4": [
+          "Current",
+          "Current",
+          "Current",
+          "野鬃",
+          "重岳"
+        ],
+        "room_1_2": [
+          "Current",
+          "乌尔比安",
+          "安哲拉"
+        ],
+        "room_3_2": [
+          "斯卡蒂",
+          "幽灵鲨"
+        ]
+      }
     }
   ]
 }

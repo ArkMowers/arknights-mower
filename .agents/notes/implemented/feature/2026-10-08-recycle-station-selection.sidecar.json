@@ -7,7 +7,7 @@
     "Codex"
   ],
   "invariants": [
-    "[INV-SCHED-37]",
+    "[INV-SCHED-41]",
     "[INV-UI-08]"
   ],
   "code_symbols": [

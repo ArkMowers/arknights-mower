@@ -456,7 +456,8 @@ def emergency_dorm_plan(
         and not op.is_working()
         and resting_tier(data, name) != RestingTier.EXCLUDED
     }
-    residents = {bed.name for bed in data.all_dorms() if bed.name}
+    current = data._resting_residents({})
+    residents = set(current.values()) - {""}
     ordinary = set()
     waiting_primary = any(
         name not in ready
@@ -488,17 +489,21 @@ def emergency_dorm_plan(
         and op.is_resting()
         and (not has_resting_mood(op) or op.mood_is_prediction or op.mood < target)
     }
-    beds = [
-        bed
-        for bed in data.all_dorms()
-        if bed.position not in slots
-        and bed.name not in reserved | (set() if reallocate else protected)
-    ]
+    beds = data.all_dorms()
+    # 预约和保护只限制可选位置；召回判定仍须看见整份恢复床位。
+    used = {
+        index
+        for index, bed in enumerate(beds)
+        if bed.position in slots
+        or current[bed.position] in reserved | (set() if reallocate else protected)
+    }
     plan = {}
     if reallocate:
         # 独立空床预演让旧住客与新恢复者共用排序，不修改实测床位。
         beds = [copy.copy(bed) for bed in beds]
-        for bed in beds:
+        for bed_index, bed in enumerate(beds):
+            if bed_index in used:
+                continue
             room, index = bed.position
             plan.setdefault(room, ["Current"] * len(data.plan[room]))[index] = ""
             bed.name, bed.time = "", None
@@ -531,14 +536,15 @@ def emergency_dorm_plan(
         active_groups = {op.group} if op.group else set()
         index = probe._find_dorm_slot(
             name,
-            set(),
+            used,
             active_groups=active_groups,
             plan=plan,
             isolation=not reallocate,
         )
         if index is None:
             continue
-        bed = beds.pop(index)
+        used.add(index)
+        bed = beds[index]
         room, position = bed.position
         plan.setdefault(room, ["Current"] * len(data.plan[room]))[position] = name
     from arknights_mower.utils.scheduler_task import plan_dorm_isolation

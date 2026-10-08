@@ -45,3 +45,5 @@ After repair, all twenty-four pending recovery cases and both incident exhaustio
 python -m pytest arknights_mower/tests/scheduler_incident_20261008_tests.py -k 'exhausted' -q
 python -m pytest arknights_mower/tests/deferred_exhaust_dedup_tests.py -q
 ```
+
+The [group bed-preemption record](2026-10-08-group-bed-preemption-oscillation.md) captures the separate recovery interruption that can still generate opposite arrangements after duplicate-task admission is repaired.

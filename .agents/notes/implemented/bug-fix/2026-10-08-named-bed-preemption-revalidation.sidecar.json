@@ -1,0 +1,32 @@
+{
+  "title": "Automatic Named Bed Takeovers Revalidate Group Priority",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-37]",
+    "[INV-SCHED-05]",
+    "[INV-SCHED-21]",
+    "[INV-SCHED-36]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange",
+    "arknights_mower.utils.operators.Operators.project_arrangements",
+    "arknights_mower.utils.operators.Operators._resting_preemption_allowed",
+    "arknights_mower.utils.operators.Operators._retained_resting_members",
+    "arknights_mower.utils.operators.Operators.resting_recall_members",
+    "arknights_mower.utils.scheduler_task.try_add_release_dorm",
+    "arknights_mower.utils.scheduler_task.restore_displaced_resting",
+    "arknights_mower.utils.scheduler_task.protect_priority_tasks"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/group_preemption_stability_tests.py",
+    "arknights_mower/tests/scheduler_incident_20261008_tests.py",
+    "arknights_mower/tests/dorm_run_order_guard_tests.py",
+    "arknights_mower/tests/priority_admission_tests.py",
+    "arknights_mower/tests/mastery_scheduling_tests.py"
+  ]
+}

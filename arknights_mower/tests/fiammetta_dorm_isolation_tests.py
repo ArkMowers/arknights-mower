@@ -372,7 +372,9 @@ def test_initial_fia_reuses_cached_wakeup_and_marks_charge(solver, monkeypatch):
 @pytest.mark.parametrize(
     "kind", [TaskTypes.RUN_ORDER, TaskTypes.SWAP_SUPPORT, TaskTypes.RELEASE_DORM]
 )
-def test_initial_fia_respects_due_critical_tasks(solver, monkeypatch, kind):
+def test_initial_fia_respects_due_critical_tasks(
+    solver, monkeypatch, kind, offline_maintenance
+):
     from arknights_mower.utils.scheduler_task import protect_priority_tasks
 
     monkeypatch.setattr(config.conf, "enable_mastery", True)

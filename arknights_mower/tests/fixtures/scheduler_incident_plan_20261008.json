@@ -1,0 +1,1081 @@
+{
+  "default": "plan1",
+  "plan1": {
+    "central": {
+      "name": "",
+      "plans": [
+        {
+          "agent": "维什戴尔",
+          "group": "感知",
+          "replacement": [
+            "重岳"
+          ]
+        },
+        {
+          "agent": "歌蕾蒂娅",
+          "group": "深海",
+          "replacement": [
+            "望"
+          ]
+        },
+        {
+          "agent": "森蚺",
+          "group": "自动化",
+          "replacement": [
+            "戴菲恩"
+          ]
+        },
+        {
+          "agent": "焰尾",
+          "group": "红松",
+          "replacement": [
+            "诗怀雅"
+          ]
+        },
+        {
+          "agent": "薇薇安娜",
+          "group": "红松",
+          "replacement": [
+            "斩业星熊"
+          ]
+        }
+      ]
+    },
+    "meeting": {
+      "name": "",
+      "plans": [
+        {
+          "agent": "信仰搅拌机",
+          "group": "",
+          "replacement": [
+            "见行者"
+          ]
+        },
+        {
+          "agent": "跃跃",
+          "group": "",
+          "replacement": [
+            "见行者"
+          ]
+        }
+      ]
+    },
+    "factory": {
+      "name": "",
+      "plans": [
+        {
+          "agent": "特克诺",
+          "group": "自动化",
+          "replacement": [
+            "麦哲伦"
+          ]
+        }
+      ]
+    },
+    "contact": {
+      "name": "",
+      "plans": [
+        {
+          "agent": "絮雨",
+          "group": "感知",
+          "replacement": [
+            "桑葚"
+          ]
+        }
+      ]
+    },
+    "train": {
+      "name": "",
+      "plans": [
+        {
+          "agent": "褐果",
+          "group": "自动化",
+          "replacement": [
+            "余"
+          ]
+        },
+        {
+          "agent": "桃金娘",
+          "group": "自动化",
+          "replacement": [
+            "黍"
+          ]
+        }
+      ]
+    },
+    "dormitory_1": {
+      "name": "",
+      "plans": [
+        {
+          "agent": "冰酿",
+          "group": "",
+          "replacement": []
+        },
+        {
+          "agent": "闪灵",
+          "group": "",
+          "replacement": []
+        },
+        {
+          "agent": "菲亚梅塔",
+          "group": "",
+          "replacement": [
+            "阿罗玛",
+            "砾",
+            "歌蕾蒂娅"
+          ]
+        },
+        {
+          "agent": "刺玫",
+          "group": "",
+          "replacement": []
+        },
+        {
+          "agent": "Free",
+          "group": "",
+          "replacement": []
+        }
+      ]
+    },
+    "dormitory_2": {
+      "name": "",
+      "plans": [
+        {
+          "agent": "流明",
+          "group": "",
+          "replacement": []
+        },
+        {
+          "agent": "车尔尼",
+          "group": "",
+          "replacement": []
+        },
+        {
+          "agent": "Free",
+          "group": "",
+          "replacement": []
+        },
+        {
+          "agent": "Free",
+          "group": "",
+          "replacement": []
+        },
+        {
+          "agent": "Free",
+          "group": "",
+          "replacement": []
+        }
+      ]
+    },
+    "dormitory_3": {
+      "name": "",
+      "plans": [
+        {
+          "agent": "塑心",
+          "group": "",
+          "replacement": []
+        },
+        {
+          "agent": "蜜莓",
+          "group": "",
+          "replacement": []
+        },
+        {
+          "agent": "Free",
+          "group": "",
+          "replacement": []
+        },
+        {
+          "agent": "Free",
+          "group": "",
+          "replacement": []
+        },
+        {
+          "agent": "Free",
+          "group": "",
+          "replacement": []
+        }
+      ]
+    },
+    "dormitory_4": {
+      "name": "",
+      "plans": [
+        {
+          "agent": "隐德来希",
+          "group": "",
+          "replacement": []
+        },
+        {
+          "agent": "聆音",
+          "group": "",
+          "replacement": []
+        },
+        {
+          "agent": "杜林",
+          "group": "",
+          "replacement": []
+        },
+        {
+          "agent": "Free",
+          "group": "",
+          "replacement": []
+        },
+        {
+          "agent": "Free",
+          "group": "",
+          "replacement": []
+        }
+      ]
+    },
+    "room_1_1": {
+      "name": "贸易站",
+      "plans": [
+        {
+          "agent": "图耶",
+          "group": "自动化",
+          "replacement": [
+            "但书",
+            "伺夜"
+          ]
+        }
+      ],
+      "product": "lmd"
+    },
+    "room_1_2": {
+      "name": "制造站",
+      "plans": [
+        {
+          "agent": "酒神",
+          "group": "",
+          "replacement": [
+            "食铁兽"
+          ]
+        },
+        {
+          "agent": "野鬃",
+          "group": "红松",
+          "replacement": [
+            "弑君者"
+          ]
+        },
+        {
+          "agent": "灰毫",
+          "group": "红松",
+          "replacement": [
+            "断罪者"
+          ]
+        }
+      ],
+      "product": "exp3"
+    },
+    "room_1_3": {
+      "name": "发电站",
+      "plans": [
+        {
+          "agent": "承曦格雷伊",
+          "group": "自动化",
+          "replacement": [
+            "缪尔赛思"
+          ]
+        }
+      ]
+    },
+    "room_2_1": {
+      "name": "贸易站",
+      "plans": [
+        {
+          "agent": "黑键",
+          "group": "感知",
+          "replacement": [
+            "乌有"
+          ]
+        },
+        {
+          "agent": "绮良",
+          "group": "自动化",
+          "replacement": [
+            "但书",
+            "推进之王"
+          ]
+        },
+        {
+          "agent": "鸿雪",
+          "group": "自动化",
+          "replacement": [
+            "龙舌兰",
+            "摩根"
+          ]
+        }
+      ],
+      "product": "lmd"
+    },
+    "room_2_2": {
+      "name": "制造站",
+      "plans": [
+        {
+          "agent": "砾",
+          "group": "永续",
+          "replacement": [
+            "夜烟"
+          ]
+        },
+        {
+          "agent": "乌尔比安",
+          "group": "深海",
+          "replacement": [
+            "苍苔"
+          ]
+        },
+        {
+          "agent": "安哲拉",
+          "group": "深海",
+          "replacement": [
+            "引星棘刺"
+          ]
+        }
+      ],
+      "product": "gold"
+    },
+    "room_2_3": {
+      "name": "发电站",
+      "plans": [
+        {
+          "agent": "Lancet-2",
+          "group": "自动化",
+          "replacement": [
+            "格雷伊"
+          ]
+        }
+      ]
+    },
+    "room_3_1": {
+      "name": "制造站",
+      "plans": [
+        {
+          "agent": "槐琥",
+          "group": "感知",
+          "replacement": [
+            "苍苔"
+          ]
+        },
+        {
+          "agent": "迷迭香",
+          "group": "感知",
+          "replacement": [
+            "引星棘刺"
+          ]
+        },
+        {
+          "agent": "阿罗玛",
+          "group": "",
+          "replacement": [
+            "梅尔"
+          ]
+        }
+      ],
+      "product": "gold"
+    },
+    "room_3_2": {
+      "name": "制造站",
+      "plans": [
+        {
+          "agent": "斯卡蒂",
+          "group": "深海",
+          "replacement": [
+            "多萝西"
+          ]
+        },
+        {
+          "agent": "幽灵鲨",
+          "group": "深海",
+          "replacement": [
+            "娜斯提"
+          ]
+        }
+      ],
+      "product": "gold"
+    },
+    "room_3_3": {
+      "name": "制造站",
+      "plans": [
+        {
+          "agent": "清流",
+          "group": "自动化",
+          "replacement": [
+            "多萝西"
+          ]
+        },
+        {
+          "agent": "温蒂",
+          "group": "自动化",
+          "replacement": [
+            "娜斯提"
+          ]
+        }
+      ],
+      "product": "gold"
+    }
+  },
+  "conf": {
+    "ling_xi": 1,
+    "operator_mood_limits": {},
+    "exhaust_require": "阿罗玛",
+    "rest_in_full": "阿罗玛",
+    "resting_priority": "乌尔比安,斯卡蒂,安哲拉,幽灵鲨",
+    "resting_priority_replacement": "",
+    "free_room_exclusions": "",
+    "resting_standby": "",
+    "free_blacklist": "",
+    "workaholic": "Lancet-2,褐果,特克诺,桃金娘,砾",
+    "refresh_trading": "诗怀雅,望,戴菲恩",
+    "refresh_drained": "槐琥",
+    "ope_resting_priority": "歌蕾蒂娅",
+    "dorm_order": "dormitory_1,dormitory_2,dormitory_3,dormitory_4"
+  },
+  "backup_plans": [
+    {
+      "conf": {
+        "ling_xi": 1,
+        "operator_mood_limits": {},
+        "exhaust_require": "阿斯卡纶,薇薇安娜,歌蕾蒂娅",
+        "rest_in_full": "",
+        "resting_priority": "",
+        "resting_priority_replacement": "",
+        "free_room_exclusions": "",
+        "resting_standby": "",
+        "free_blacklist": "",
+        "workaholic": "",
+        "refresh_trading": "",
+        "refresh_drained": "",
+        "ope_resting_priority": "",
+        "dorm_order": "",
+        "dorm_order_override": false
+      },
+      "plan": {
+        "dormitory_2": {
+          "name": "",
+          "plans": [
+            {
+              "agent": "塑心",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "dormitory_3": {
+          "name": "",
+          "plans": [
+            {
+              "agent": "隐德来希",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "dormitory_4": {
+          "name": "",
+          "plans": [
+            {
+              "agent": "斥罪",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        }
+      },
+      "task": {},
+      "trigger": {
+        "left": "op_data.operators['森蚺'].is_resting()",
+        "operator": "==",
+        "right": "True"
+      },
+      "name": "自动化下班"
+    },
+    {
+      "conf": {
+        "ling_xi": 1,
+        "operator_mood_limits": {},
+        "exhaust_require": "歌蕾蒂娅,森蚺,焰尾,绮良",
+        "rest_in_full": "",
+        "resting_priority": "",
+        "resting_priority_replacement": "",
+        "free_room_exclusions": "",
+        "resting_standby": "",
+        "free_blacklist": "",
+        "workaholic": "",
+        "refresh_trading": "",
+        "refresh_drained": "",
+        "ope_resting_priority": "",
+        "dorm_order": "",
+        "dorm_order_override": false
+      },
+      "plan": {
+        "dormitory_3": {
+          "name": "",
+          "plans": [
+            {
+              "agent": "隐德来希",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "dormitory_4": {
+          "name": "",
+          "plans": [
+            {
+              "agent": "斥罪",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "room_1_2": {
+          "name": "制造站",
+          "plans": [
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "野鬃",
+              "group": "红松",
+              "replacement": [
+                "Castle-3"
+              ]
+            },
+            {
+              "agent": "灰毫",
+              "group": "红松",
+              "replacement": [
+                "白雪"
+              ]
+            }
+          ],
+          "product": "exp3"
+        },
+        "room_2_2": {
+          "name": "制造站",
+          "plans": [
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "迷迭香",
+              "group": "感知",
+              "replacement": [
+                "苍苔"
+              ]
+            },
+            {
+              "agent": "槐琥",
+              "group": "感知",
+              "replacement": [
+                "引星棘刺"
+              ]
+            }
+          ],
+          "product": "gold"
+        },
+        "room_3_1": {
+          "name": "制造站",
+          "plans": [
+            {
+              "agent": "乌尔比安",
+              "group": "深海",
+              "replacement": [
+                "苍苔"
+              ]
+            },
+            {
+              "agent": "安哲拉",
+              "group": "深海",
+              "replacement": [
+                "引星棘刺"
+              ]
+            },
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            }
+          ],
+          "product": "gold"
+        },
+        "room_3_3": {
+          "name": "制造站",
+          "plans": [
+            {
+              "agent": "清流",
+              "group": "自动化",
+              "replacement": [
+                "多萝西"
+              ]
+            },
+            {
+              "agent": "温蒂",
+              "group": "自动化",
+              "replacement": [
+                "娜斯提"
+              ]
+            }
+          ],
+          "product": "gold"
+        }
+      },
+      "task": {
+        "room_2_2": [
+          "Current",
+          "苍苔",
+          "引星棘刺"
+        ],
+        "room_3_1": [
+          "乌尔比安",
+          "安哲拉",
+          "Current"
+        ]
+      },
+      "trigger": {
+        "left": "op_data.operators['望'].is_resting()",
+        "operator": "==",
+        "right": "True"
+      },
+      "name": "感知下班"
+    },
+    {
+      "conf": {
+        "ling_xi": 1,
+        "operator_mood_limits": {},
+        "exhaust_require": "阿斯卡纶,歌蕾蒂娅,森蚺",
+        "rest_in_full": "",
+        "resting_priority": "",
+        "resting_priority_replacement": "",
+        "free_room_exclusions": "",
+        "resting_standby": "",
+        "free_blacklist": "",
+        "workaholic": "",
+        "refresh_trading": "",
+        "refresh_drained": "",
+        "ope_resting_priority": "",
+        "dorm_order": "",
+        "dorm_order_override": false
+      },
+      "plan": {
+        "room_1_2": {
+          "name": "制造站",
+          "plans": [
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "乌尔比安",
+              "group": "深海",
+              "replacement": [
+                "弑君者"
+              ]
+            },
+            {
+              "agent": "安哲拉",
+              "group": "深海",
+              "replacement": [
+                "断罪者"
+              ]
+            }
+          ],
+          "product": "exp3"
+        },
+        "room_2_2": {
+          "name": "制造站",
+          "plans": [
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "野鬃",
+              "group": "红松",
+              "replacement": [
+                "苍苔"
+              ]
+            },
+            {
+              "agent": "灰毫",
+              "group": "红松",
+              "replacement": [
+                "引星棘刺"
+              ]
+            }
+          ],
+          "product": "gold"
+        },
+        "room_3_1": {
+          "name": "制造站",
+          "plans": [
+            {
+              "agent": "槐琥",
+              "group": "感知",
+              "replacement": [
+                "苍苔"
+              ]
+            },
+            {
+              "agent": "迷迭香",
+              "group": "感知",
+              "replacement": [
+                "引星棘刺"
+              ]
+            },
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            }
+          ],
+          "product": "gold"
+        },
+        "room_3_3": {
+          "name": "制造站",
+          "plans": [
+            {
+              "agent": "清流",
+              "group": "自动化",
+              "replacement": [
+                "多萝西"
+              ]
+            },
+            {
+              "agent": "温蒂",
+              "group": "自动化",
+              "replacement": [
+                "淬羽赫默"
+              ]
+            }
+          ],
+          "product": "gold"
+        }
+      },
+      "task": {
+        "room_1_2": [
+          "Current",
+          "乌尔比安",
+          "安哲拉"
+        ],
+        "room_2_2": [
+          "Current",
+          "苍苔",
+          "引星棘刺"
+        ]
+      },
+      "trigger": {
+        "left": "op_data.operators['薇薇安娜'].is_resting()",
+        "operator": "==",
+        "right": "True"
+      },
+      "name": "红松下班"
+    },
+    {
+      "conf": {
+        "ling_xi": 1,
+        "operator_mood_limits": {},
+        "exhaust_require": "",
+        "rest_in_full": "",
+        "resting_priority": "",
+        "resting_priority_replacement": "",
+        "free_room_exclusions": "",
+        "resting_standby": "",
+        "free_blacklist": "",
+        "workaholic": "",
+        "refresh_trading": "",
+        "refresh_drained": "",
+        "ope_resting_priority": "",
+        "dorm_order": "",
+        "dorm_order_override": false
+      },
+      "plan": {
+        "central": {
+          "name": "",
+          "plans": [
+            {
+              "agent": "重岳",
+              "group": "",
+              "replacement": [
+                "维什戴尔"
+              ]
+            },
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "meeting": {
+          "name": "",
+          "plans": [
+            {
+              "agent": "塞雷娅",
+              "group": "",
+              "replacement": [
+                "见行者"
+              ]
+            },
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "dormitory_1": {
+          "name": "",
+          "plans": [
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Current",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "伊芙利特",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        }
+      },
+      "task": {
+        "central": [
+          "重岳",
+          "Current",
+          "Current",
+          "Current",
+          "Current"
+        ],
+        "meeting": [
+          "塞雷娅",
+          "Current"
+        ]
+      },
+      "trigger": {
+        "left": "op_data.operators['歌蕾蒂娅'].is_resting()",
+        "operator": "==",
+        "right": "True"
+      },
+      "name": "深海下班"
+    },
+    {
+      "conf": {
+        "ling_xi": 1,
+        "operator_mood_limits": {},
+        "exhaust_require": "",
+        "rest_in_full": "",
+        "resting_priority": "",
+        "resting_priority_replacement": "",
+        "free_room_exclusions": "",
+        "resting_standby": "",
+        "free_blacklist": "但书",
+        "workaholic": "",
+        "refresh_trading": "",
+        "refresh_drained": "",
+        "ope_resting_priority": "",
+        "dorm_order": "",
+        "dorm_order_override": false
+      },
+      "plan": {},
+      "task": {},
+      "trigger": {
+        "left": "op_data.operators['但书'].current_mood()",
+        "operator": ">=",
+        "right": "18"
+      },
+      "name": "但书黑名单"
+    },
+    {
+      "conf": {
+        "ling_xi": 1,
+        "operator_mood_limits": {},
+        "exhaust_require": "",
+        "rest_in_full": "",
+        "resting_priority": "",
+        "resting_priority_replacement": "",
+        "free_room_exclusions": "",
+        "resting_standby": "",
+        "free_blacklist": "龙舌兰",
+        "workaholic": "",
+        "refresh_trading": "",
+        "refresh_drained": "",
+        "ope_resting_priority": "",
+        "dorm_order": "",
+        "dorm_order_override": false
+      },
+      "plan": {},
+      "task": {},
+      "trigger": {
+        "left": "op_data.operators['龙舌兰'].current_mood()",
+        "operator": ">=",
+        "right": "18"
+      },
+      "name": "龙舌兰黑名单"
+    }
+  ],
+  "advanced_settings": {
+    "product_switching": {
+      "max_drones_per_switch": 0,
+      "grandet_mode": false,
+      "use_drones_when_leaving_orirock": true,
+      "direct_when_drones_insufficient": false,
+      "drone_loss_seconds": 30,
+      "waiting_seconds": 2
+    },
+    "drone_count_limit": 100,
+    "drone_interval": 3,
+    "resting_threshold": 0.7,
+    "version_update_resting_threshold": 0.85,
+    "version_update_threshold_advance_hours": 12,
+    "free_room": false,
+    "dorm_isolation": [],
+    "merge_interval": 10,
+    "group_rest_in_full_on_mood_gap": true,
+    "group_mood_gap_max_extra_wait_hours": 0,
+    "fia_fool": false,
+    "assistant_follows_schedule": false,
+    "fia_threshold": 0.9,
+    "rescue_threshold": 0.75,
+    "favorite": ""
+  }
+}
