@@ -1,4 +1,4 @@
-"""macOS 与 Linux 的 MaaResource 独立更新支持。"""
+"""macOS、Linux 与 Windows 的 MaaResource 独立更新支持。"""
 
 from __future__ import annotations
 
@@ -430,12 +430,12 @@ def install_maa_resource_update(
     session: requests.Session | None = None,
     callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
-    """检查并原子合并 MaaResource；Windows 由 MAA 主程序负责。"""
+    """检查并原子合并 MaaResource，保留资源备份与核心文件。"""
     if maa_in_use():
         raise MaaUpdateError("MAA 正在使用中，请等待当前 MAA 任务结束后再更新")
     system = system.lower()
-    if system not in {"darwin", "linux"}:
-        raise MaaUpdateError("当前平台请在 MAA 主程序中更新 MAA 资源")
+    if system not in {"darwin", "linux", "windows"}:
+        raise MaaUpdateError("当前平台不使用 Mower 的 MAA 资源更新功能")
     target_path = Path(target).expanduser()
     if not has_maa_installation(target_path):
         raise MaaUpdateError("请先下载并设置有效的 MAA 目录")

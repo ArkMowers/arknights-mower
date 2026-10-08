@@ -2459,7 +2459,7 @@ def get_maa_resource_update_info():
     )
     cached_latest = str(cached_check.get("latest_version") or "")
     installed = has_maa_installation(target) if target else False
-    supported = __system__ in {"darwin", "linux"} and installed
+    supported = __system__ in {"darwin", "linux", "windows"} and installed
     current = (
         read_maa_resource_info(target)
         if target
@@ -2483,9 +2483,6 @@ def get_maa_resource_update_info():
         "backup": str(resource_backup_path(target)) if target else "",
         "job": _maa_resource_update_snapshot(),
     }
-    if __system__ == "windows" and installed:
-        result["message"] = "请在 MAA 主程序中更新 MAA 资源"
-        return result
     if not configured_target:
         result["message"] = "请先设置 MAA 目录"
         return result
@@ -2508,8 +2505,8 @@ def check_maa_resource_update():
     from arknights_mower.utils.maa_update import MaaUpdateError, has_maa_installation
 
     _clear_update_check(maa_resource_update_check, maa_resource_update_check_lock)
-    if __system__ not in {"darwin", "linux"}:
-        return {"ok": False, "message": "请在 MAA 主程序中检查并更新 MAA 资源"}
+    if __system__ not in {"darwin", "linux", "windows"}:
+        return {"ok": False, "message": "当前平台不使用 Mower 的 MAA 资源更新功能"}
     payload = request.get_json(silent=True) or {}
     target_text = str(payload.get("maa_path") or config.conf.maa_path or "").strip()
     if not target_text:
@@ -2575,8 +2572,8 @@ def start_maa_resource_update():
     )
     from arknights_mower.utils.maa_update import MaaUpdateError, has_maa_installation
 
-    if __system__ not in {"darwin", "linux"}:
-        return {"ok": False, "message": "请在 MAA 主程序中更新 MAA 资源"}
+    if __system__ not in {"darwin", "linux", "windows"}:
+        return {"ok": False, "message": "当前平台不使用 Mower 的 MAA 资源更新功能"}
     payload = request.get_json(silent=True) or {}
     target = str(payload.get("maa_path") or config.conf.maa_path or "").strip()
     source = str(payload.get("source") or "github").strip()

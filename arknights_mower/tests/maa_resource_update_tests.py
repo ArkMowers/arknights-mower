@@ -274,10 +274,10 @@ class TestInstallMaaResource(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def _install(self):
+    def _install(self, system="darwin", source="github"):
         release = mru.MaaResourceRelease(
             version="2026-09-04 01:07:54.000",
-            source="github",
+            source=source,
             url="https://example.test/resource.zip",
             release_note="月行水上",
         )
@@ -287,10 +287,12 @@ class TestInstallMaaResource(unittest.TestCase):
             return destination.stat().st_size
 
         with (
-            patch.object(mru, "get_github_resource_release", return_value=release),
+            patch.object(mru, f"get_{source}_resource_release", return_value=release),
             patch.object(mru, "download_resource_archive", side_effect=fake_download),
         ):
-            return mru.install_maa_resource_update(self.target, system="darwin")
+            return mru.install_maa_resource_update(
+                self.target, system=system, source=source, mirror_token="fixture-token"
+            )
 
     def test_update_keeps_incremental_files_and_creates_backup(self):
         old_backup = self.target / "resource.old"
@@ -366,6 +368,69 @@ class TestInstallMaaResource(unittest.TestCase):
         self.assertEqual((old_backup / "older.txt").read_text(), "older")
         self.assertFalse((self.resource / "new.txt").exists())
 
-    def test_windows_keeps_resource_update_in_maa(self):
-        with self.assertRaisesRegex(mru.MaaUpdateError, "MAA 主程序"):
+    def test_windows_resource_update_preserves_core_python_and_backup(self):
+        (self.target / "libMaaCore.dylib").unlink()
+        (self.target / "MaaCore.dll").write_bytes(b"windows-core")
+        (self.target / "MAA.exe").write_bytes(b"windows-gui")
+        python = self.target / "Python"
+        python.mkdir()
+        (python / "asst.py").write_bytes(b"python-interface")
+
+        for source in ("github", "mirrorchyan"):
+            with self.subTest(source=source):
+                (self.resource / "version.json").write_text(
+                    json.dumps(_version_payload("2026-09-03 01:00:00.000")),
+                    encoding="utf-8",
+                )
+                result = self._install(system="windows", source=source)
+
+                self.assertTrue(result["updated"])
+                self.assertEqual(result["source"], source)
+                self.assertEqual(result["version"], "2026-09-04 01:07:54.000")
+                self.assertEqual((self.resource / "old.txt").read_text(), "current")
+                self.assertEqual((self.resource / "new.txt").read_text(), "new")
+                self.assertEqual(
+                    json.loads((Path(result["backup"]) / "version.json").read_text())[
+                        "last_updated"
+                    ],
+                    "2026-09-03 01:00:00.000",
+                )
+                self.assertEqual(
+                    (self.target / "MaaCore.dll").read_bytes(), b"windows-core"
+                )
+                self.assertEqual((self.target / "MAA.exe").read_bytes(), b"windows-gui")
+                self.assertEqual((python / "asst.py").read_bytes(), b"python-interface")
+
+    def test_windows_resource_update_rejects_active_maa_before_download(self):
+        with (
+            patch.object(mru, "maa_in_use", return_value=True),
+            patch.object(mru, "get_maa_resource_release") as release,
+            self.assertRaisesRegex(mru.MaaUpdateError, "MAA 正在使用中"),
+        ):
             mru.install_maa_resource_update(self.target, system="windows")
+        release.assert_not_called()
+
+    def test_windows_locked_resource_preserves_current_and_previous_backup(self):
+        backup = self.target / "resource.old"
+        backup.mkdir()
+        (backup / "older.txt").write_text("older", encoding="utf-8")
+        original_replace = mru.os.replace
+
+        def replace(source, destination):
+            if source == self.resource:
+                raise PermissionError("resource is in use")
+            return original_replace(source, destination)
+
+        with (
+            patch.object(mru.os, "replace", side_effect=replace),
+            self.assertRaisesRegex(mru.MaaUpdateError, "替换 MAA 资源目录失败"),
+        ):
+            self._install(system="windows")
+
+        self.assertEqual(
+            mru.read_maa_resource_info(self.target)["version"],
+            "2026-09-03 01:00:00.000",
+        )
+        self.assertEqual((self.resource / "old.txt").read_text(), "current")
+        self.assertFalse((self.resource / "new.txt").exists())
+        self.assertEqual((backup / "older.txt").read_text(), "older")
