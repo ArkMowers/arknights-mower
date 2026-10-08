@@ -767,7 +767,7 @@ def test_normal_low_precedes_candidate_in_resting_and_dorm_order(solver):
         data.operators[DEEP[2]]
     )
     shift_off(solver)
-    names = [bed.name for bed in data.dorm]
+    names = [bed.name for bed in data.ordered_dorms()]
     assert names.index(DEEP[1]) < names.index(DEEP[2])
 
 

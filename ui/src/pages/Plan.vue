@@ -941,13 +941,15 @@ function movePlanForward() {
         <template #label>
           <span>宿舍优先级排序</span>
           <help-text>
-            按所选顺序分床，日常不搬动已入住者。主表默认 1→2→3→4；副表留空继承，调整后覆盖。
+            默认 1→2→3→4
+            为各宿舍高优位，可手动插入低优位。未选择的低优位排在末尾；日常不搬动已入住者。副表留空继承，调整后覆盖。
           </help-text>
         </template>
         <slick-dorm-select
           :disabled="edit_locked"
           v-model="current_conf.dorm_order"
           room-only
+          include-low
           @update:model-value="update_dorm_order_override"
         ></slick-dorm-select>
       </n-form-item>

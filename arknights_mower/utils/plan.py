@@ -18,8 +18,8 @@ def all_replacements(replacement, group_bindings=()):
     return list(names)
 
 
-def effective_dorm_room_order(values: list[str]) -> list[str]:
-    """将房间或旧具体床位顺序折叠为完整的四宿舍顺序。"""
+def effective_dorm_order(values: list[str]) -> list[str]:
+    """保留显式低优位，旧床位键折叠为宿舍，补齐缺少的高优位。"""
     result = []
     for value in values:
         parts = value.rsplit("_", 1)
@@ -30,7 +30,10 @@ def effective_dorm_room_order(values: list[str]) -> list[str]:
             and parts[1].isdigit()
             else value
         )
-        if room in DEFAULT_DORM_ROOM_ORDER and room not in result:
+        if (
+            room in DEFAULT_DORM_ROOM_ORDER
+            or room.removesuffix("_low") in DEFAULT_DORM_ROOM_ORDER
+        ) and room not in result:
             result.append(room)
     result.extend(room for room in DEFAULT_DORM_ROOM_ORDER if room not in result)
     return result
@@ -129,8 +132,7 @@ class PlanConfig:
             if dorm_order_override is not None
             else bool(
                 self.dorm_order
-                and effective_dorm_room_order(self.dorm_order)
-                != DEFAULT_DORM_ROOM_ORDER
+                and effective_dorm_order(self.dorm_order) != DEFAULT_DORM_ROOM_ORDER
             )
         )
 

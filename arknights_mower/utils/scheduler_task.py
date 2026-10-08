@@ -985,7 +985,7 @@ def rebalance_closing_dorm_slots(op_data, plan, recalled):
     while True:
         beds = [
             bed
-            for bed in op_data.dorm
+            for bed in op_data.ordered_dorms(inactive_groups=inactive_groups)
             if bed.position not in closing
             and op_data.is_effective_free_slot(bed, inactive_groups=inactive_groups)
         ]
@@ -1123,7 +1123,9 @@ def rebalance_plan_swap_dorms(
         )
         for name, (order, bed) in unique.items()
     )
-    beds = [bed for bed in op_data.dorm if op_data.is_effective_free_slot(bed)]
+    beds = [
+        bed for bed in op_data.ordered_dorms() if op_data.is_effective_free_slot(bed)
+    ]
     assignments, dropped = _recovery_aware_assignments(op_data, beds, candidates)
     plan = {}
     for _key, _order, name, _time, _position in dropped:
@@ -1892,7 +1894,11 @@ def prioritize_new_dorm_recovery(
     if not plan and not preceding_plan:
         return plan
     projected = op_data.project_arrangements([preceding_plan or {}, plan])
-    beds = [bed for bed in projected.dorm if projected.is_effective_free_slot(bed)]
+    beds = [
+        bed
+        for bed in projected.ordered_dorms()
+        if projected.is_effective_free_slot(bed)
+    ]
     explicit_names = {name for names in plan.values() for name in names}
     locked_rooms = {
         room for room, _ in set(reserved_slots) | set(op_data.reserved_product_beds)
@@ -1917,11 +1923,15 @@ def prioritize_new_dorm_recovery(
         ):
             locked_rooms.add(bed.position[0])
     beds = [bed for bed in beds if bed.position[0] not in locked_rooms]
-    targets = {
-        room: min(items, key=lambda bed: bed.position[1])
-        for room, items in room_beds.items()
-        if room not in locked_rooms
-    }
+    if any(item.endswith("_low") for item in projected.config.dorm_order):
+        # 显式低优位参加同一排名，不能被固定“单回位优先”反向覆盖。
+        targets = {bed.position: bed for bed in beds}
+    else:
+        targets = {
+            room: min(items, key=lambda bed: bed.position[1])
+            for room, items in room_beds.items()
+            if room not in locked_rooms
+        }
     available = []
     protected = set()
     for target in targets.values():
@@ -2028,11 +2038,18 @@ def plan_dorm_isolation(op_data, plan, reserved_slots=()):
     """入住前演算分散新入住者；保留单回位、原入住者和其他任务预约。"""
     if not config.conf.dorm_isolation or not plan:
         return plan
+    explicit_order = any(item.endswith("_low") for item in op_data.config.dorm_order)
     projected = op_data.project_arrangements([plan])
-    beds = [bed for bed in projected.dorm if projected.is_effective_free_slot(bed)]
+    beds = [
+        bed
+        for bed in projected.ordered_dorms()
+        if projected.is_effective_free_slot(bed)
+    ]
     first_positions = {}
     for bed in beds:
-        first_positions.setdefault(bed.position[0], bed.position)
+        first_positions[bed.position[0]] = min(
+            first_positions.get(bed.position[0], bed.position), bed.position
+        )
     reserved = set(reserved_slots) | set(op_data.reserved_product_beds)
     newcomers = {
         name
@@ -2045,7 +2062,7 @@ def plan_dorm_isolation(op_data, plan, reserved_slots=()):
         for bed in beds
         if bed.position not in reserved
         and bed.position != first_positions[bed.position[0]]
-        and (not bed.name or bed.name in newcomers)
+        and (bed.name in newcomers or not explicit_order and not bed.name)
     ]
     if len(movable) < 2:
         return plan
@@ -2062,6 +2079,8 @@ def plan_dorm_isolation(op_data, plan, reserved_slots=()):
             for group in config.conf.dorm_isolation
         )
 
+    now = datetime.now()
+    # 显式顺序保留所选床位，只交换恢复排名相同的新入住者。
     # 只接受减少同住对数的交换，有限床位内不出现来回搬动。
     for _ in range(len(movable) ** 2):
         best = None
@@ -2070,6 +2089,10 @@ def plan_dorm_isolation(op_data, plan, reserved_slots=()):
             for second in movable[offset + 1 :]:
                 rooms = {first.position[0], second.position[0]}
                 if len(rooms) < 2 or first.name == second.name:
+                    continue
+                if explicit_order and resting_key(
+                    op_data, first.name, now
+                ) != resting_key(op_data, second.name, now):
                     continue
                 before = sum(room_cost(room) for room in rooms)
                 first.name, second.name = second.name, first.name
@@ -2405,7 +2428,7 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
         filling_vacancies = bool(vacancies)
         arrangement = {}
         residents = []
-        beds_to_visit = list(op_data.dorm)
+        beds_to_visit = op_data.ordered_dorms()
         for bed in beds_to_visit:
             room, index = bed.position
             if room in arrangement and arrangement[room][index] != "Current":
@@ -2460,7 +2483,12 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
                 else:
                     # 未登记卡片不能成为换班预演的明确姓名；实际选人再登记。
                     incoming = "Free"
-            if filling_vacancies and config.conf.dorm_isolation and incoming != "Free":
+            if (
+                filling_vacancies
+                and config.conf.dorm_isolation
+                and incoming != "Free"
+                and not any(item.endswith("_low") for item in op_data.config.dorm_order)
+            ):
                 available = [
                     candidate
                     for candidate in op_data.dorm
