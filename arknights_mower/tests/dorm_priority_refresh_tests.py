@@ -612,3 +612,42 @@ def test_priority_transition_reorders_residents_and_refreshes_moved_times(saved,
     # 生成安排不等于设备已执行。
     assert data.operators["银灰"].current_room == "dormitory_1"
     assert data.operators["陈"].current_room == "dormitory_2"
+
+
+def test_priority_reorder_preserves_explicit_moves_and_rehomes_displaced_resident(
+    saved,
+):
+    data = operators("dormitory_1,dormitory_1_low,dormitory_2")
+    data.plan["meeting"] = [Room("芬", "", ["银灰", "陈", "红"])]
+    assert data.init_and_validate() is None
+    for position, name in ((("dormitory_1", 3), "银灰"), (("dormitory_2", 2), "陈")):
+        bed = next(bed for bed in data.dorm if bed.position == position)
+        bed.name = name
+        op = data.operators[name]
+        op.current_room, op.current_index = position
+        op.mood, op.time_stamp = 5, datetime.now()
+    previous = copy.deepcopy(data.dorm)
+    explicit = {
+        "dormitory_1": ["Current"] * 4 + ["银灰"],
+        "dormitory_2": ["Current", "Current", "红", "Current", "Current"],
+    }
+    projected = data.project_arrangements([explicit])
+    migration = rebalance_plan_swap_dorms(
+        projected,
+        previous,
+        reorder=True,
+        reserved_slots={("dormitory_1", 4), ("dormitory_2", 2)},
+    )
+    assert migration == {"dormitory_1": ["Current"] * 3 + ["陈", "Current"]}
+    assert projected.get_dorm_by_name("银灰")[1].position == ("dormitory_1", 4)
+    assert next(bed for bed in projected.dorm if bed.name == "陈").position == (
+        "dormitory_1",
+        3,
+    )
+    assert projected.get_dorm_by_name("红")[1].position == ("dormitory_2", 2)
+    final = data.project_arrangements([explicit, migration])
+    assert final.operators["银灰"].current_index == 4
+    assert final.operators["陈"].current_room == "dormitory_1"
+    assert final.operators["红"].current_room == "dormitory_2"
+    assert data.operators["银灰"].current_index == 3
+    assert data.operators["陈"].current_room == "dormitory_2"

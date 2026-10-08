@@ -1120,7 +1120,14 @@ def rebalance_plan_swap_dorms(
                 and bed.name not in reserved_names
             ),
         ]
-    sources = [bed for bed in sources if bed.position not in locked_positions]
+    # 显式安排可能把原住客移到另一锁定床位；按投影后的住客保护，
+    # 不能重复分配已安置者，也不能漏掉被新安排挤出的原住客。
+    locked_residents = {
+        current.name
+        for position in locked_positions
+        if (current := op_data.get_current_operator(*position)) is not None
+    }
+    sources = [bed for bed in sources if bed.name not in locked_residents]
     if not sources:
         return {}
     now = datetime.now()
@@ -1168,7 +1175,7 @@ def rebalance_plan_swap_dorms(
 
     effective_positions = {bed.position for bed in beds}
     for _key, _order, _name, _time, position in candidates:
-        if position in destinations:
+        if position in destinations or position in locked_positions:
             continue
         room, index = position
         if room not in op_data.plan or index >= len(op_data.plan[room]):

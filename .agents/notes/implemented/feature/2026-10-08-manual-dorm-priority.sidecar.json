@@ -21,6 +21,7 @@
     "arknights_mower/tests/dorm_admission_priority_tests.py",
     "arknights_mower/tests/dorm_isolation_tests.py",
     "arknights_mower/tests/backup_rest_schedule_tests.py",
-    "arknights_mower/tests/dorm_group_tests.py"
+    "arknights_mower/tests/dorm_group_tests.py",
+    "arknights_mower/tests/local_backup_replay_tests.py"
   ]
 }
