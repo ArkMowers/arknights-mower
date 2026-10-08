@@ -8102,13 +8102,20 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             "mood_event": "fiammetta_charge",
                         }
                         if swap_recorded_at is not None:
-                            record_kwargs["recorded_at"] = swap_recorded_at
+                            record_kwargs["recorded_at"] = swap_recorded_at + timedelta(
+                                seconds=1
+                            )
                     if (
                         swap_recorded_at is not None
                         and _name == "菲亚梅塔"
                         and related_operator == swap_target
                     ):
                         swap_moods["before"] = _mood
+                        swap_fia_snapshot = {
+                            "agent_current_room": agent.current_room,
+                            "is_high": agent.is_high(),
+                            "agent_group": agent.group,
+                        }
                     elif swap_recorded_at is not None and _name == swap_target:
                         record_kwargs = {
                             "related_operator": "菲亚梅塔",
@@ -8211,6 +8218,19 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 swap_moods["before"],
                 related_operator="菲亚梅塔",
                 mood_event="fiammetta_before",
+                current_time=swap_recorded_at,
+            )
+            # 充能技能以满心情触发；补记自身交换前的 24，展示时间
+            # 与实读的交换后心情相差一秒，不改写实际采样或恢复计时。
+            save_agent_action(
+                "菲亚梅塔",
+                swap_fia_snapshot["agent_current_room"],
+                room,
+                swap_fia_snapshot["is_high"],
+                swap_fia_snapshot["agent_group"],
+                24,
+                related_operator=swap_target,
+                mood_event="fiammetta_charge",
                 current_time=swap_recorded_at,
             )
         for _operator in self.op_data.operators.keys():
