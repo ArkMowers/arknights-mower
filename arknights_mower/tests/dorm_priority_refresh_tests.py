@@ -70,7 +70,10 @@ ROOM_DEFAULT = ["dormitory_1", "dormitory_2", "dormitory_3", "dormitory_4"]
 
 
 def bed_order(room_order):
-    return [bed for room in room_order for bed in DEFAULT if bed.startswith(room + "_")]
+    by_room = [
+        [bed for bed in DEFAULT if bed.startswith(room + "_")] for room in room_order
+    ]
+    return [bed for beds in by_room for bed in beds]
 
 
 def test_retired_dorm_switch_is_not_exposed():
@@ -140,7 +143,7 @@ def test_backup_plan_applies_its_own_dorm_order(saved):
     )
 
 
-def test_backup_order_only_change_preserves_occupied_beds(saved):
+def test_priority_reorder_requires_explicit_transition_request(saved):
     op = operators("", ["dormitory_2,dormitory_1,dormitory_3,dormitory_4"])
     assert op.init_and_validate() is None
     first, second = op.dorm[:2]
@@ -442,3 +445,209 @@ def test_backup_can_change_between_zero_one_and_three_managers(saved):
     ]:
         assert data.swap_plan(condition, refresh=True) is None
         assert sum(bed.position[0] == "dormitory_1" for bed in data.dorm) == count
+
+
+@pytest.mark.parametrize(
+    "order, expected",
+    [
+        (
+            "",
+            [
+                "dormitory_1_3",
+                "dormitory_2_2",
+                "dormitory_1_4",
+                "dormitory_2_3",
+                "dormitory_2_4",
+            ],
+        ),
+        (
+            "dormitory_1,dormitory_1_low,dormitory_2",
+            [
+                "dormitory_1_3",
+                "dormitory_1_4",
+                "dormitory_2_2",
+                "dormitory_2_3",
+                "dormitory_2_4",
+            ],
+        ),
+        (
+            "dormitory_2_low,dormitory_1",
+            [
+                "dormitory_2_3",
+                "dormitory_2_4",
+                "dormitory_1_3",
+                "dormitory_2_2",
+                "dormitory_1_4",
+            ],
+        ),
+    ],
+)
+def test_high_and_optional_low_slot_order(saved, order, expected):
+    data = operators(order)
+    assert data.init_and_validate() is None
+    assert [
+        f"{b.position[0]}_{b.position[1]}" for b in data.ordered_dorms()
+    ] == expected
+    assert len(data.config.dorm_order) == (4 if not order else 5)
+    assert data.available_free("high") == 2
+    assert data.available_free("low") == 3
+
+
+def test_backup_low_order_is_independent_and_config_loading_preserves_residents(saved):
+    custom = "dormitory_1,dormitory_1_low,dormitory_2"
+    data = operators("", [custom, ""])
+    assert data.init_and_validate() is None
+    for bed, name in zip(data.dorm, ["至简", "蜜莓"]):
+        bed.name = name
+        data.operators[name].current_room, data.operators[name].current_index = (
+            bed.position
+        )
+    previous = copy.deepcopy(data.dorm)
+    assert data.swap_plan([True, True], refresh=True) is None
+    assert data.config.dorm_order[:3] == custom.split(",")
+    assert rebalance_plan_swap_dorms(data, previous) == {}
+    assert data.swap_plan([False, False], refresh=True) is None
+    assert data.config.dorm_order == ROOM_DEFAULT
+
+
+def test_migration_preserves_low_options_and_explicit_default_reset(saved):
+    from arknights_mower.utils.config.plan import PlanModel
+
+    raw = {
+        "plan1": {},
+        "conf": {"dorm_order": "dormitory_1,dormitory_1_low,dormitory_2"},
+        "backup_plans": [{"plan": {}, "conf": {"dorm_order": "dormitory_2_low"}}],
+    }
+    plan = PlanModel.model_validate(raw)
+    migrate_legacy_dorm_order(plan, raw, "")
+    assert (
+        plan.conf.dorm_order
+        == "dormitory_1,dormitory_1_low,dormitory_2,dormitory_3,dormitory_4"
+    )
+    assert plan.backup_plans[0].conf.dorm_order.startswith("dormitory_2_low,")
+    assert plan.backup_plans[0].conf.dorm_order_override
+    assert not migrate_legacy_dorm_order(plan, plan.model_dump(), "")
+
+
+@pytest.mark.parametrize("tier", ["main", "replacement"])
+def test_explicit_low_order_applies_to_admission(saved, tier):
+    from arknights_mower.tests.resting_priority_tests import set_tier
+    from arknights_mower.utils.resting_priority import RestingTier
+
+    data = operators("dormitory_1,dormitory_1_low,dormitory_2")
+    data.plan["meeting"] = [Room("芬", "", ["银灰", "陈"])]
+    assert data.init_and_validate() is None
+    for name in ["银灰", "陈"]:
+        set_tier(
+            data,
+            name,
+            RestingTier.MAIN if tier == "main" else RestingTier.REPLACEMENT,
+            5,
+        )
+    assert data.assign_dorm("银灰").position == ("dormitory_1", 3)
+    assert data.assign_dorm("陈").position == ("dormitory_1", 4)
+
+
+def test_temporary_free_position_recomputes_high_slot_without_changing_capacity(saved):
+    from arknights_mower.utils.operators import Operator
+
+    data = operators("dormitory_1,dormitory_1_low,dormitory_2")
+    assert data.init_and_validate() is None
+    data.plan["dormitory_1"][0] = Room("冰酿", "临时", ["Free"])
+    data.add(Operator("冰酿", "dormitory_1", 0, group="临时", replacement=["Free"]))
+    extra = Dormitory(("dormitory_1", 0))
+    data.dorm.append(extra)
+    assert data.ordered_dorms()[0].position == ("dormitory_1", 3)
+    assert data.ordered_dorms()[-1] is extra
+    opened = data.ordered_dorms(active_groups={"临时"})
+    assert [bed.position for bed in opened[:3]] == [
+        ("dormitory_1", 0),
+        ("dormitory_1", 3),
+        ("dormitory_1", 4),
+    ]
+    assert data.ordered_dorms()[0].position == ("dormitory_1", 3)
+
+
+@pytest.mark.parametrize("lock", [None, "slot", "name", "product"])
+def test_priority_transition_reorders_residents_and_refreshes_moved_times(saved, lock):
+    from datetime import timedelta
+
+    data = operators("dormitory_2,dormitory_1")
+    data.plan["meeting"] = [Room("芬", "", ["银灰", "陈"])]
+    assert data.init_and_validate() is None
+    now = datetime.now()
+    old_time = now + timedelta(hours=3)
+    for position, name, mood in (
+        (("dormitory_1", 3), "银灰", 2),
+        (("dormitory_2", 2), "陈", 12),
+    ):
+        bed = next(b for b in data.dorm if b.position == position)
+        bed.name, bed.time = name, old_time
+        op = data.operators[name]
+        op.current_room, op.current_index = position
+        op.mood, op.time_stamp = mood, now
+        op.dorm_recovery_room = position[0]
+        op.dorm_recovery_index = position[1]
+    previous = copy.deepcopy(data.dorm)
+    reserved_slots, reserved_names = set(), set()
+    if lock == "slot":
+        reserved_slots.add(("dormitory_2", 2))
+    elif lock == "name":
+        reserved_names.add("陈")
+    elif lock == "product":
+        data.reserved_product_beds[("dormitory_2", 2)] = "陈"
+    plan = rebalance_plan_swap_dorms(
+        data, previous, reserved_names, reorder=True, reserved_slots=reserved_slots
+    )
+    if lock:
+        assert plan == {}
+        assert data.get_dorm_by_name("陈")[1].time == old_time
+        assert data.get_dorm_by_name("银灰")[1].time == old_time
+    else:
+        assert plan["dormitory_2"][2] == "银灰"
+        assert plan["dormitory_1"][3] == "陈"
+        assert all(bed.time is None for bed in data.dorm if bed.name)
+        assert not data.operators["银灰"].dorm_recovery_room
+        assert not data.operators["陈"].dorm_recovery_room
+    # 生成安排不等于设备已执行。
+    assert data.operators["银灰"].current_room == "dormitory_1"
+    assert data.operators["陈"].current_room == "dormitory_2"
+
+
+def test_priority_reorder_preserves_explicit_moves_and_rehomes_displaced_resident(
+    saved,
+):
+    data = operators("dormitory_1,dormitory_1_low,dormitory_2")
+    data.plan["meeting"] = [Room("芬", "", ["银灰", "陈", "红"])]
+    assert data.init_and_validate() is None
+    for position, name in ((("dormitory_1", 3), "银灰"), (("dormitory_2", 2), "陈")):
+        bed = next(bed for bed in data.dorm if bed.position == position)
+        bed.name = name
+        op = data.operators[name]
+        op.current_room, op.current_index = position
+        op.mood, op.time_stamp = 5, datetime.now()
+    previous = copy.deepcopy(data.dorm)
+    explicit = {
+        "dormitory_1": ["Current"] * 4 + ["银灰"],
+        "dormitory_2": ["Current", "Current", "红", "Current", "Current"],
+    }
+    projected = data.project_arrangements([explicit])
+    migration = rebalance_plan_swap_dorms(
+        projected,
+        previous,
+        reorder=True,
+        reserved_slots={("dormitory_1", 4), ("dormitory_2", 2)},
+    )
+    assert migration == {"dormitory_1": ["Current"] * 3 + ["陈", "Current"]}
+    assert projected.get_dorm_by_name("银灰")[1].position == ("dormitory_1", 4)
+    assert next(bed for bed in projected.dorm if bed.name == "陈").position == (
+        "dormitory_1",
+        3,
+    )
+    assert projected.get_dorm_by_name("红")[1].position == ("dormitory_2", 2)
+    final = data.project_arrangements([explicit, migration])
+    assert final.operators["银灰"].current_index == 4
+    assert final.operators["陈"].current_room == "dormitory_1"
+    assert final.operators["红"].current_room == "dormitory_2"
+    assert data.operators["银灰"].current_index == 3
+    assert data.operators["陈"].current_room == "dormitory_2"

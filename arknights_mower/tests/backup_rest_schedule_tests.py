@@ -874,3 +874,79 @@ def test_gladiia_temporary_charge_does_not_activate_rest_backup(solver):
     gladiia.current_room, gladiia.current_index = "dormitory_1", 3
     solver.backup_plan_solver()
     assert data.plan_condition == [True]
+
+
+@pytest.mark.parametrize("path", ["cached", "projection"])
+@pytest.mark.parametrize(
+    "order,destination",
+    [
+        (["dormitory_2", "dormitory_1"], ("dormitory_2", 2)),
+        (["dormitory_1_low", "dormitory_1"], ("dormitory_1", 3)),
+    ],
+)
+def test_backup_priority_change_moves_existing_sleeper_once(
+    solver, path, order, destination
+):
+    solver.global_plan["default_plan"].plan["dormitory_2"] = [
+        Room("杜林", "", []),
+        Room("桃金娘", "", []),
+        *[Room("Free", "", []) for _ in range(3)],
+    ]
+    backup = solver.op_data.backup_plans[0]
+    backup.config.dorm_order = order
+    backup.config.dorm_order_override = True
+    reset_default_plan(solver)
+    room, index = destination
+    original_room = solver.op_data.operators["黑键"].current_room
+    if path == "projection":
+        task = SchedulerTask(
+            task_type=TaskTypes.SHIFT_OFF, task_plan={"contact": ["红"]}
+        )
+        solver.tasks = [task]
+        solver._prepare_shift_backup(task)
+        assert task.plan[room][index] == "黑键"
+        assert solver.op_data.plan_condition == [False]
+    else:
+        assert solver.backup_plan_solver()
+        task = next(t for t in solver.tasks if t.type == TaskTypes.RE_ORDER)
+        assert task.plan[room][index] == "黑键"
+        assert task.plan["dormitory_1"][2] == "Free"
+        assert solver.op_data.get_dorm_by_name("黑键")[1].time is None
+        assert not solver.backup_plan_solver()
+        assert sum(t.type == TaskTypes.RE_ORDER for t in solver.tasks) == 1
+    assert solver.op_data.operators["黑键"].current_room == original_room
+    if path == "cached":
+        solver.op_data = solver.op_data.project_arrangements([task.plan])
+        solver.tasks = []
+        solver.op_data.backup_plans[0].trigger = LogicExpression("True", "==", "False")
+        assert solver.backup_plan_solver()
+        restored = next(t for t in solver.tasks if t.type == TaskTypes.RE_ORDER)
+        assert restored.plan["dormitory_1"][2] == "黑键"
+        assert restored.plan[room][index] == "Free"
+
+
+@pytest.mark.parametrize("reservation", ["task", "product"])
+def test_priority_switch_keeps_reserved_preferred_bed(solver, reservation):
+    solver.global_plan["default_plan"].plan["dormitory_2"] = [
+        Room("杜林", "", []),
+        Room("桃金娘", "", []),
+        *[Room("Free", "", []) for _ in range(3)],
+    ]
+    backup = solver.op_data.backup_plans[0]
+    backup.config.dorm_order = ["dormitory_2", "dormitory_1"]
+    backup.config.dorm_order_override = True
+    reset_default_plan(solver)
+    if reservation == "task":
+        task = SchedulerTask(
+            time=base.datetime.now() + timedelta(hours=1),
+            task_type=TaskTypes.NOT_SPECIFIC,
+            task_plan={
+                "dormitory_2": ["Current", "Current", "陈", "Current", "Current"]
+            },
+        )
+        solver.tasks = [task]
+    else:
+        solver.op_data.reserved_product_beds[("dormitory_2", 2)] = "陈"
+    assert not solver.backup_plan_solver()
+    assert solver.op_data.get_dorm_by_name("黑键")[1].position == ("dormitory_1", 2)
+    assert all(task.type != TaskTypes.RE_ORDER for task in solver.tasks)

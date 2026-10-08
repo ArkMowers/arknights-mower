@@ -71,9 +71,9 @@ const createPlanStore = (id, endpoint, rescue = false) =>
     function normalizeDormOrder(data) {
       const result = []
       for (const value of str2list(data)) {
-        const match = value.match(/^(dormitory_[1-4])(?:_\d+)?$/)
-        const room = match?.[1]
-        if (room && !result.includes(room)) result.push(room)
+        const match = value.match(/^(dormitory_[1-4])(?:_(low|\d+))?$/)
+        const option = match && (match[2] === 'low' ? `${match[1]}_low` : match[1])
+        if (option && !result.includes(option)) result.push(option)
       }
       return result.concat(default_dorm_order.filter((room) => !result.includes(room)))
     }

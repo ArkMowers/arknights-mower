@@ -273,3 +273,55 @@ def test_emergency_reallocation_keeps_existing_residents_baseline(data):
         == baseline
     )
     assert (positions(data), [(bed.name, bed.time) for bed in data.dorm]) == before
+
+
+@pytest.mark.parametrize("entry", ["shift", "idle", "projection"])
+def test_explicit_low_priority_precedes_isolation(data, entry):
+    data.config.dorm_order = ["dormitory_1", "dormitory_1_low", "dormitory_2"]
+    config.conf.dorm_isolation = [["空爆", "黑角"]]
+    put(data, "空爆", "dormitory_1", 2)
+    if entry == "shift":
+        assert data.assign_dorm("黑角").position == ("dormitory_1", 3)
+    elif entry == "idle":
+        for name in GUESTS:
+            if name != "黑角":
+                data.operators[name].mood = 24
+        tasks = []
+        try_add_release_dorm({}, None, data, tasks)
+        assert tasks
+        assert tasks[0].plan["dormitory_1"][3] == "黑角"
+    else:
+        plan = {"dormitory_1": ["Current"] * 3 + ["黑角", "Current"]}
+        assert plan_dorm_isolation(data, plan) == plan
+
+
+@pytest.mark.parametrize("guard", [None, "priority", "mood", "reservation", "resident"])
+def test_custom_order_isolates_equal_newcomers_within_selected_beds(data, guard):
+    data.config.dorm_order = ["dormitory_1", "dormitory_1_low", "dormitory_2"]
+    config.conf.dorm_isolation = [["空爆", "黑角"]]
+    put(data, "空爆", "dormitory_1", 2)
+    plan = {
+        "dormitory_1": ["Current"] * 3 + ["黑角", "Current"],
+        "dormitory_2": ["Current"] * 3 + ["初雪", "Current"],
+    }
+    reserved = set()
+    if guard == "priority":
+        data.config.ope_resting_priority = ["黑角"]
+    elif guard == "mood":
+        data.operators["黑角"].mood = 1
+    elif guard == "reservation":
+        reserved.add(("dormitory_1", 3))
+    elif guard == "resident":
+        put(data, "黑角", "dormitory_1", 3)
+    before = positions(data), copy.deepcopy(plan)
+    result = plan_dorm_isolation(data, plan, reserved)
+    if guard:
+        assert result == plan
+    else:
+        assert result["dormitory_1"][3] == "初雪"
+        assert result["dormitory_2"][3] == "黑角"
+        assert set(result) == set(plan)
+        for room in result:
+            assert result[room][:3] == ["Current"] * 3
+            assert result[room][4] == "Current"
+    assert (positions(data), plan) == before
