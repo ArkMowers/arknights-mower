@@ -103,7 +103,9 @@ class TestIdleSimulatorWake(unittest.TestCase):
         self.actions = MagicMock()
         self.actions.attach_mock(self.restart, "simulator")
         self.actions.attach_mock(self.solver.device.reconnect, "reconnect")
-        self.actions.attach_mock(self.solver.recog.update, "update")
+        self.actions.attach_mock(
+            self.solver.recog.reset_after_external_control, "reset"
+        )
 
     def advance(self, seconds):
         self.now += timedelta(seconds=seconds)
@@ -118,7 +120,7 @@ class TestIdleSimulatorWake(unittest.TestCase):
                 call.simulator(start=False),
                 call.simulator(stop=False, start=True),
                 call.reconnect(),
-                call.update(),
+                call.reset(),
             ],
         )
         self.assertFalse(self.solver._simulator_closed_for_idle)
@@ -153,7 +155,7 @@ class TestIdleSimulatorWake(unittest.TestCase):
         self.solver.handle_idle_action(600)
         self.solver._idle_sleep(0)
         self.restart.assert_not_called()
-        self.solver.recog.update.assert_called_once_with()
+        self.solver.recog.reset_after_external_control.assert_called_once_with()
 
     def test_stop_during_sleep_does_not_start_simulator(self):
         self.solver.handle_idle_action(600)
@@ -161,7 +163,7 @@ class TestIdleSimulatorWake(unittest.TestCase):
         with self.assertRaises(base_schedule.MowerExit):
             self.solver._idle_sleep(600)
         self.restart.assert_called_once_with(start=False)
-        self.solver.recog.update.assert_not_called()
+        self.solver.recog.reset_after_external_control.assert_not_called()
         self.assertFalse(self.solver.sleeping)
 
     def test_stop_at_deadline_does_not_start_simulator(self):
@@ -178,7 +180,7 @@ class TestIdleSimulatorWake(unittest.TestCase):
         with self.assertRaisesRegex(ConnectionError, "模拟器启动失败"):
             self.solver._idle_sleep(0)
         self.solver.device.reconnect.assert_not_called()
-        self.solver.recog.update.assert_not_called()
+        self.solver.recog.reset_after_external_control.assert_not_called()
         self.assertTrue(self.solver._simulator_closed_for_idle)
         self.assertFalse(self.solver.sleeping)
 
@@ -196,7 +198,7 @@ class TestIdleSimulatorWake(unittest.TestCase):
         self.solver.device.reconnect.side_effect = ConnectionError("offline")
         with self.assertRaises(ConnectionError):
             self.solver._idle_sleep(0)
-        self.solver.recog.update.assert_not_called()
+        self.solver.recog.reset_after_external_control.assert_not_called()
         self.assertFalse(self.solver._simulator_closed_for_idle)
         self.solver._idle_sleep(0)
         self.assertEqual(
@@ -204,7 +206,7 @@ class TestIdleSimulatorWake(unittest.TestCase):
             [call(start=False), call(stop=False, start=True)],
         )
         self.solver.device.reconnect.assert_called_once_with()
-        self.solver.recog.update.assert_called_once_with()
+        self.solver.recog.reset_after_external_control.assert_called_once_with()
         self.assertFalse(self.solver.sleeping)
 
 
@@ -616,7 +618,7 @@ class TestBaseScheduler(unittest.TestCase):
         BaseSchedulerSolver._idle_sleep(solver, 3600)
         self.assertFalse(cfg.wake_scheduler.is_set(), "唤醒事件应被消费（clear）")
         self.assertFalse(solver.sleeping, "try/finally 应复位 sleeping")
-        solver.recog.update.assert_called_once()
+        solver.recog.reset_after_external_control.assert_called_once()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_backup_plan_solver_Caper(self):

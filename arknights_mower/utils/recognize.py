@@ -104,7 +104,7 @@ class Recognizer:
         self.clear()
 
     def reset_after_external_control(self) -> None:
-        """外部任务交还控制权时，丢弃旧画面及非连续观测的场景停留计时。"""
+        """重新开始连续观测时，丢弃旧标准画面帧及场景停留计时。"""
         self.update()
         self.last_scene = None
         self.last_scene_time = datetime.now()

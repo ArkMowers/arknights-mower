@@ -1,4 +1,4 @@
-"""Offline regressions for deferred exhausted-shift duplication."""
+"""Offline regressions for deferred exhausted shifts and scheduler idle waits."""
 
 import sys
 from copy import deepcopy
@@ -13,6 +13,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers import base_schedule as base  # noqa: E402
 from arknights_mower.utils import config, operators, scheduler_task  # noqa: E402
+from arknights_mower.utils.recognize import Recognizer, Scene  # noqa: E402
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
     SchedulerTask,
     TaskTypes,
@@ -137,3 +138,41 @@ def test_retained_exhausted_deadline_suppresses_duplicate_generation(
     clock, monkeypatch
 ):
     assert len(repeated_exhaust(clock, monkeypatch, retain_deadline=True)) == 1
+
+
+def idle_recognizer(clock, monkeypatch, *, reset_after_idle=False):
+    clock.current = datetime(2026, 10, 8, 10, 55, 38, 643000)
+    config.conf.run_order_delay = 3
+    config.conf.close_simulator_when_idle = False
+    device = MagicMock()
+    recog = Recognizer(device)
+    recog.scene = recog.last_scene = Scene.INFRA_MAIN
+    recog.last_scene_time = clock.now()
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = recog
+
+    def sleep(seconds):
+        clock.current += timedelta(seconds=seconds)
+
+    monkeypatch.setattr(base, "csleep", sleep)
+    solver._idle_sleep(298.417708)
+    assert not solver.sleeping
+    assert clock.now() == datetime(2026, 10, 8, 11, 0, 37, 60708)
+    if reset_after_idle:
+        recog.reset_after_external_control()
+    # The first fresh observation after the legitimate idle interval is unchanged.
+    recog.scene = Scene.INFRA_MAIN
+    recog.check_freeze(clock.now())
+    return recog
+
+
+def test_intentional_scheduler_sleep_does_not_trigger_game_exit(clock, monkeypatch):
+    recog = idle_recognizer(clock, monkeypatch)
+    recog.device.exit.assert_not_called()
+
+
+def test_reset_at_idle_boundary_preserves_active_freeze_detection(clock, monkeypatch):
+    recog = idle_recognizer(clock, monkeypatch, reset_after_idle=True)
+    recog.device.exit.assert_not_called()
+    recog.check_freeze(clock.now() + timedelta(seconds=271))
+    recog.device.exit.assert_called_once()
