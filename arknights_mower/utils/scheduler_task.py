@@ -19,8 +19,11 @@ from arknights_mower.utils.furniture_task import (
 )
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.news_checker import NewsChecker
-from arknights_mower.utils.operation_timing import estimate_dorm_minutes
-from arknights_mower.utils.operators import Operator
+from arknights_mower.utils.operation_timing import (
+    estimate_dorm_minutes,
+    estimate_work_minutes,
+)
+from arknights_mower.utils.operators import Operator, Operators
 from arknights_mower.utils.resting_priority import (
     RestingTier,
     busy_resting_names,
@@ -112,7 +115,9 @@ def find_next_task(
         )
 
 
-def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
+def scheduling(
+    tasks, run_order_delay=5, execution_time=None, time_now=None, op_data=None
+):
     time_now = time_now or datetime.now()
     merge_release_dorm(tasks, config.conf.merge_interval)
     # 强制上限不参加延期；统一保护会为它预留离宿时间并避开阻塞任务。
@@ -125,19 +130,18 @@ def scheduling(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
         or enabled
         and t.type == TaskTypes.SWAP_SUPPORT
     }
-    ordinary = [t for t in tasks if id(t) not in fixed] if fixed else tasks
-    conflict = _schedule_run_orders(ordinary, run_order_delay, execution_time, time_now)
-    if fixed:
-        ordinary_ids = {id(task) for task in ordinary}
-        tasks[:] = [task for task in tasks if id(task) in fixed | ordinary_ids]
-    protect_priority_tasks(tasks, run_order_delay, execution_time, time_now)
+    conflict = _schedule_run_orders(
+        tasks, run_order_delay, execution_time, time_now, op_data, fixed
+    )
+    protection_time = 0.75 if execution_time is None else execution_time
+    protect_priority_tasks(tasks, run_order_delay, protection_time, time_now)
     if enabled:
         # 临近换人暂停可选无人机调时，关键任务保护决定执行顺序。
         if any(
             t.type == TaskTypes.SWAP_SUPPORT
             and t.time
             <= time_now
-            + timedelta(minutes=_ordinary_task_minutes(t, execution_time) + 1)
+            + timedelta(minutes=_ordinary_task_minutes(t, protection_time) + 1)
             for t in tasks
         ):
             return None
@@ -521,113 +525,250 @@ def _merge_deferred_dorm_schedules(tasks):
     return result
 
 
-def _schedule_run_orders(tasks, run_order_delay=5, execution_time=0.75, time_now=None):
-    # execution_time per room
-    if time_now is None:
-        time_now = datetime.now()
-    if len(tasks) > 0:
-        adjust_run_order_for_maintenance(tasks, run_order_delay)
-        tasks.sort(key=lambda x: x.time)
+def _task_has_phase_state(task):
+    # Phase, return-window and reservation state belongs to the complete task.
+    fields = {
+        "time",
+        "plan",
+        "type",
+        "meta_data",
+        "adjusted",
+        "strict_mood_limit",
+        "mood_limit",
+        "initial_fia",
+    }
+    return bool(vars(task).keys() - fields)
 
-        # 任务间隔最小时间（5分钟）
-        min_time_interval = timedelta(minutes=run_order_delay)
 
-        # 初始化变量以跟踪上一个优先级0任务和计划执行时间总和
-        last_priority_0_task = None
-        total_execution_time = 0
+def _static_room_task(task):
+    return (
+        not _task_has_phase_state(task)
+        and not task.meta_data
+        and not task.strict_mood_limit
+        and not task.initial_fia
+        and task.type
+        in (
+            TaskTypes.SHIFT_OFF,
+            TaskTypes.SHIFT_ON,
+            TaskTypes.SELF_CORRECTION,
+            TaskTypes.NOT_SPECIFIC,
+        )
+    )
 
-        # 遍历任务列表
-        for i, task in enumerate(tasks):
-            current_time = time_now
-            # 判定任务堆积，如果第一个任务已经超时，则认为任务堆积
-            if task.type.priority == 1 and current_time > task.time:
-                total_execution_time += (current_time - task.time).total_seconds() / 60
 
-            if task.type.priority == 1:
-                if last_priority_0_task is not None:
-                    time_difference = task.time - last_priority_0_task.time
-                    if (
-                        config.conf.run_order_grandet_mode.enable
-                        and time_difference < min_time_interval
-                        and time_now < last_priority_0_task.time
-                    ) and not task.adjusted:
-                        logger.info("检测到跑单任务过于接近，准备修正跑单时间")
-                        return last_priority_0_task, task
-                # 更新上一个优先级0任务和总执行时间
-                last_priority_0_task = task
-                total_execution_time = 0
+def estimate_task_duration(task, execution_time=None, op_data=None):
+    """Estimate queued work without changing critical dorm or mastery budgets."""
+    if task.type == TaskTypes.FURNITURE:
+        return timedelta(seconds=FURNITURE_RUN_SECONDS + FURNITURE_EXIT_SECONDS)
+    if task.type in (TaskTypes.FIAMMETTA, TaskTypes.CLUE_PARTY):
+        return timedelta(minutes=3)
+    if not task.plan:
+        return timedelta(minutes=1)
+    if execution_time is not None:
+        return timedelta(
+            minutes=sum(
+                estimate_dorm_minutes(room, execution_time)
+                if room.startswith("dormitory_")
+                else execution_time
+                for room in task.plan
+            )
+        )
+    seconds = 10
+    for room, names in task.plan.items():
+        if room.startswith("dormitory_"):
+            seconds += estimate_dorm_minutes(room) * 60
+            continue
+        unchanged = all(name == "Current" for name in names)
+        if not unchanged and op_data is not None and room in op_data.plan:
+            current = op_data.get_current_room(room)
+            unchanged = (
+                current is not None
+                and len(current) == len(names)
+                and all(
+                    name == "Current" or name == current[index]
+                    for index, name in enumerate(names)
+                )
+            )
+        seconds += 15 if unchanged else estimate_work_minutes(room) * 60
+    return timedelta(seconds=seconds)
+
+
+def independent_room_plans(task, op_data):
+    """仅拆分已知驻员的普通换班，人员移动和同组房间保持在同一部分。"""
+    if (
+        op_data is None
+        or len(task.plan) < 2
+        or not _static_room_task(task)
+        or getattr(op_data, "backup_plans", ())
+        or task.adjusted
+    ):
+        return [task.plan]
+
+    rooms = list(task.plan)
+    linked = {room: {room} for room in rooms}
+    owners = {}
+    for room in rooms:
+        if room not in op_data.plan:
+            return [task.plan]
+        current = op_data.get_current_room(room)
+        if current is None or any(name in ("Free", "") for name in task.plan[room]):
+            return [task.plan]
+        names = set(current) | set(task.plan[room])
+        for name in names - {"Current", "Free", ""}:
+            operator = op_data.operators.get(name)
+            if operator is None:
+                return [task.plan]
+            keys = [("operator", name)]
+            groups = {operator.group} | {
+                binding["group"] for binding in getattr(operator, "group_bindings", ())
+            }
+            keys.extend(("group", group) for group in groups if group)
+            for key in keys:
+                if key in owners:
+                    other = owners[key]
+                    linked[room].add(other)
+                    linked[other].add(room)
+                else:
+                    owners[key] = room
+
+    result = []
+    visited = set()
+    for room in rooms:
+        if room in visited:
+            continue
+        component = set()
+        pending = [room]
+        while pending:
+            current_room = pending.pop()
+            if current_room in component:
+                continue
+            component.add(current_room)
+            pending.extend(linked[current_room] - component)
+        visited.update(component)
+        result.append({r: task.plan[r] for r in rooms if r in component})
+    return result
+
+
+def _project_admitted_task(op_data, task):
+    if op_data is None or not _static_room_task(task) or op_data.backup_plans:
+        return None
+    if any(
+        name != "Current" and name not in op_data.operators
+        for names in task.plan.values()
+        for name in names
+    ) or any(room not in op_data.plan for room in task.plan):
+        return None
+    return op_data.project_arrangements([task.plan])
+
+
+def _schedule_run_orders(
+    tasks,
+    run_order_delay=5,
+    execution_time=None,
+    time_now=None,
+    op_data=None,
+    fixed=(),
+):
+    now = time_now or datetime.now()
+    if not tasks:
+        return None
+    adjust_run_order_for_maintenance(tasks, run_order_delay)
+    tasks.sort(key=lambda task: task.time)
+    previous_order = None
+    for task in tasks:
+        if task.type != TaskTypes.RUN_ORDER:
+            continue
+        if (
+            previous_order is not None
+            and config.conf.run_order_grandet_mode.enable
+            and task.time - previous_order.time < timedelta(minutes=run_order_delay)
+            and now < previous_order.time
+            and not task.adjusted
+        ):
+            logger.info("检测到跑单任务过于接近，准备修正跑单时间")
+            return previous_order, task
+        previous_order = task
+
+    # Each queued operation advances the cursor once, including scheduled waiting.
+    ordered = list(tasks)
+    projected = op_data if isinstance(op_data, Operators) else None
+    cursor = now
+    index = 0
+    while index < len(ordered):
+        task = ordered[index]
+        if task.type == TaskTypes.RUN_ORDER:
+            start = max(cursor, task.time)
+            if config.conf.run_order_buffer_time > 0 and not task.adjusted:
+                cursor = max(
+                    start + timedelta(seconds=45),
+                    task.time + timedelta(minutes=config.conf.run_order_delay),
+                ) + timedelta(seconds=45)
             else:
-                # 找到下一个优先级0任务的位置
-                next_priority_0_index = -1
-                for j in range(i + 1, len(tasks)):
-                    if tasks[j].type.priority == 1:
-                        next_priority_0_index = j
-                        break
-                # 如果其他任务的总执行时间超过了下一个优先级0任务的执行时间，调整它们的时间
-                if next_priority_0_index > -1:
-                    for j in range(i, next_priority_0_index):
-                        # 菲亚充能/派对内置3分钟，线索购物内置1分钟
-                        task_time = (
-                            0
-                            if len(tasks[j].plan) > 0
-                            and tasks[j].type
-                            not in [TaskTypes.FIAMMETTA, TaskTypes.CLUE_PARTY]
-                            else (
-                                3
-                                if tasks[j].type
-                                in [TaskTypes.FIAMMETTA, TaskTypes.CLUE_PARTY]
-                                else 1
-                            )
-                        )
-                        # 其他任务按照 每个房间*预设执行时间算 默认 45秒
-                        estimate_time = (
-                            len(tasks[j].plan) * execution_time
-                            if task_time == 0
-                            else task_time
-                        )
-                        if task_time == 0:
-                            estimate_time = sum(
-                                estimate_dorm_minutes(room, execution_time)
-                                if room.startswith("dormitory_")
-                                else execution_time
-                                for room in tasks[j].plan
-                            )
-                        if tasks[j].type == TaskTypes.FURNITURE:
-                            estimate_time = _ordinary_task_minutes(
-                                tasks[j], execution_time
-                            )
-                        if (
-                            timedelta(minutes=total_execution_time + estimate_time)
-                            + time_now
-                            < tasks[j].time
-                        ):
-                            total_execution_time = 0
-                        else:
-                            total_execution_time += estimate_time
-                    if (
-                        timedelta(minutes=total_execution_time) + time_now
-                        > tasks[next_priority_0_index].time
-                    ):
-                        if (tasks[next_priority_0_index].time - time_now) > timedelta(
-                            minutes=10
-                        ):
-                            break
-                        logger.info("检测到任务可能影响到下次跑单修改任务至跑单之后")
-                        logger.debug("||".join([str(t) for t in tasks]))
-                        next_priority_0_time = tasks[next_priority_0_index].time
-                        pending = tasks[i:next_priority_0_index]
-                        pending = _merge_deferred_dorm_schedules(pending)
-                        tasks[i:next_priority_0_index] = pending
-                        for pending_task in pending:
-                            if pending_task.adjusted:
-                                continue
-                            pending_task.time = next_priority_0_time + timedelta(
-                                seconds=1
-                            )
-                            next_priority_0_time = pending_task.time
-                        logger.debug("||".join([str(t) for t in tasks]))
-                        break
-        tasks.sort(key=lambda x: x.time)
+                cursor = start + timedelta(seconds=90)
+            index += 1
+            continue
+        next_order_index = next(
+            (
+                j
+                for j in range(index + 1, len(ordered))
+                if ordered[j].type == TaskTypes.RUN_ORDER
+            ),
+            None,
+        )
+        if next_order_index is None:
+            break
+        order = ordered[next_order_index]
+        start = max(cursor, task.time)
+        duration = estimate_task_duration(task, execution_time, projected)
+        # Runtime dorm dispatch keeps its one-minute margin and observed budget.
+        margin = 60 if any(r.startswith("dormitory_") for r in task.plan) else 15
+        deadline = order.time - timedelta(seconds=margin)
+        if id(task) in fixed or task.adjusted or start + duration <= deadline:
+            cursor = start + duration
+            projected = _project_admitted_task(projected, task)
+            index += 1
+            continue
+
+        before_plan = {}
+        after_plan = {}
+        for plan in independent_room_plans(task, projected):
+            part = copy.copy(task)
+            part.plan = before_plan | plan
+            part_margin = (
+                60 if any(r.startswith("dormitory_") for r in part.plan) else 15
+            )
+            if start + estimate_task_duration(part, execution_time, projected) <= (
+                order.time - timedelta(seconds=part_margin)
+            ):
+                before_plan.update(plan)
+            else:
+                after_plan.update(plan)
+        pending = ordered[index:next_order_index]
+        if before_plan:
+            remainder = copy.deepcopy(task)
+            remainder.plan = copy.deepcopy(after_plan)
+            task.plan = copy.deepcopy(before_plan)
+            pending = [remainder] + ordered[index + 1 : next_order_index]
+            cursor = start + estimate_task_duration(task, execution_time, projected)
+            projected = _project_admitted_task(projected, task)
+        retained = [t for t in pending if id(t) in fixed or t.adjusted]
+        deferred = [t for t in pending if id(t) not in fixed and not t.adjusted]
+        # Preserve phase state; ordinary deferred dorm plans reuse composition.
+        if not retained and all(not _task_has_phase_state(t) for t in deferred):
+            deferred = _merge_deferred_dorm_schedules(deferred)
+        for offset, pending_task in enumerate(deferred, 1):
+            pending_task.time = max(now, order.time) + timedelta(seconds=offset)
+        logger.info(
+            "任务预计耗时 %.1f 秒，可用时间 %.1f 秒，将未完成部分移至跑单之后",
+            duration.total_seconds(),
+            max(0, (deadline - start).total_seconds()),
+        )
+        ordered[index : next_order_index + 1] = (
+            ([task] if before_plan else []) + retained + [order] + deferred
+        )
+        if before_plan:
+            index += 1
+    tasks[:] = sorted(ordered, key=lambda task: task.time)
 
 
 def adjust_run_order_for_maintenance(tasks, run_order_delay=5, advance_time=None):

@@ -87,8 +87,9 @@ class TestScheduling(unittest.TestCase):
         scheduling(
             tasks, time_now=datetime.strptime("2023-09-19 10:00", "%Y-%m-%d %H:%M")
         )
-        # 跑单任务被提前
-        self.assertEqual(tasks[0].type, TaskTypes.RUN_ORDER)
+        # 保留可以完成的任务，仅将三分钟充能延后。
+        self.assertEqual(tasks, [task1, task4, task2, task5])
+        self.assertGreater(task2.time, task4.time)
 
     def test_adjust_time(self):
         # 测试跑单任务被挤兑
@@ -119,10 +120,10 @@ class TestScheduling(unittest.TestCase):
             tasks, time_now=datetime.strptime("2023-09-19 10:01", "%Y-%m-%d %H:%M")
         )
         # 其他任务会被移送至跑单任务以后
-        self.assertEqual(tasks[2].plan["task"], "Task 4")
+        self.assertEqual(tasks, [task1, task4, task2, task3, task5])
         self.assertEqual(res, None)
 
-    def test_unified_dorm_only_tasks_merge_and_yield_to_run_order(self):
+    def test_dorm_prefix_runs_and_deferred_suffix_merges(self):
         now = datetime(2026, 9, 23, 2, 15)
         dorm_tasks = [
             SchedulerTask(
@@ -140,11 +141,12 @@ class TestScheduling(unittest.TestCase):
         tasks = [*dorm_tasks, run_order]
         scheduling(tasks, time_now=now)
 
-        self.assertEqual(len(tasks), 2)
-        self.assertEqual(tasks[0], run_order)
+        self.assertEqual(len(tasks), 3)
+        self.assertIs(tasks[0], dorm_tasks[0])
+        self.assertIs(tasks[1], run_order)
         self.assertEqual(run_order.time, now + timedelta(minutes=3))
-        self.assertGreater(tasks[1].time, run_order.time)
-        self.assertEqual(set(tasks[1].plan), {f"dormitory_{i}" for i in range(1, 5)})
+        self.assertGreater(tasks[2].time, run_order.time)
+        self.assertEqual(set(tasks[2].plan), {f"dormitory_{i}" for i in range(2, 5)})
 
     def test_dorm_wakeup_yields_to_run_order(self):
         for work_room in (False, True):

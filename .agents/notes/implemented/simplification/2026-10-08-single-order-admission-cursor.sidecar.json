@@ -1,0 +1,19 @@
+{
+  "title": "Single Trade Order Admission Cursor",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-36]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.scheduler_task.scheduling",
+    "arknights_mower.utils.scheduler_task._schedule_run_orders"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/order_admission_tests.py"
+  ]
+}

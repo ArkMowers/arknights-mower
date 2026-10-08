@@ -46,6 +46,15 @@ _current: ContextVar[OperationTiming | None] = ContextVar(
 _dorm_durations: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=8))
 
 
+_work_durations: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=8))
+
+
+def estimate_work_minutes(room: str) -> float:
+    samples = _work_durations.get(room, ())
+    # alexsun ordinary work-facility P95 is 43.12 seconds, including retries.
+    return max(45, max(samples, default=0) * 1.2 + 15) / 60
+
+
 def estimate_dorm_minutes(room: str, default_minutes: float = 0.75) -> float:
     samples = _dorm_durations.get(room, ())
     # 冷启动也预留进房和读时间；有记录后用近期最慢一次并加重试余量。
@@ -142,6 +151,8 @@ def timed_room(function: Callable[P, R]) -> Callable[P, R]:
             report = timing.report(room, outcome)
             if room.startswith("dormitory_") and outcome == "returned":
                 _dorm_durations[room].append(report["total_s"])
+            elif room and outcome == "returned":
+                _work_durations[room].append(report["total_s"])
             logger.debug("换班耗时统计 " + json.dumps(report, ensure_ascii=False))
 
     return wrapped
