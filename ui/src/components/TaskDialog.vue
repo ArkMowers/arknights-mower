@@ -210,7 +210,12 @@ const level_list = [
 </script>
 
 <template>
-  <n-modal v-model:show="show" preset="card" transform-origin="center" style="width: auto">
+  <n-modal
+    v-model:show="show"
+    preset="card"
+    transform-origin="center"
+    :style="{ width: isLogPage ? 'auto' : '960px', maxWidth: '90vw' }"
+  >
     <template #header>
       <div v-if="isLogPage" class="task_row" style="width: auto">
         <n-select
@@ -294,6 +299,7 @@ const level_list = [
               :disabled="!isLogPage && edit_locked"
               :max="5"
               size="large"
+              style="justify-content: flex-end"
             >
               <template #input="{ submit, deactivate }">
                 <n-select

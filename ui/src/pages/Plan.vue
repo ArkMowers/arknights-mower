@@ -776,7 +776,7 @@ function movePlanForward() {
       :label-placement="mobile ? 'top' : 'left'"
       :show-feedback="false"
       label-width="160"
-      :label-align="mobile ? 'left' : 'right'"
+      label-align="left"
     >
       <n-form-item v-if="!rescue">
         <template #label

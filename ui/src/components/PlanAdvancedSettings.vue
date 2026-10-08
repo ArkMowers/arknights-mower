@@ -33,7 +33,7 @@ const {
       class="advanced-settings-form"
       :label-placement="mobile ? 'top' : 'left'"
       label-width="190"
-      :label-align="mobile ? 'left' : 'right'"
+      label-align="left"
       :show-feedback="false"
     >
       <n-form-item :show-label="false">

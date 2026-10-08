@@ -751,7 +751,6 @@ function set_facility(e) {
 }
 
 .select-label {
-  text-align: right;
   width: 44px;
 }
 
