@@ -560,9 +560,6 @@ class Operators:
         for dorm in dorm_names:
             free_found = False
             for _idx, _dorm in enumerate(bed_plan[dorm]):
-                if _dorm.agent == "Free" and _idx <= 1:
-                    if "波登可" not in [_agent.agent for _agent in bed_plan[dorm]]:
-                        return "宿舍必须安排2个宿管"
                 # The merged backup may replace individual Free beds.
                 if _dorm.agent != "Free" and free_found and not (update):
                     return "Free必须连续且安排在宿管后"
@@ -713,7 +710,7 @@ class Operators:
         self.refresh_dorm_manager_flags(force=True)
 
     def refresh_dorm_manager_flags(self, *, force=False):
-        """只标记宿舍前两位及其替班；资源未变时不再匹配。"""
+        """标记配置中的宿舍成员及其替班；资源未变时不再匹配。"""
         from arknights_mower.utils import dorm_skills
 
         if not force and getattr(self, "_dorm_skill_generation", -1) == (
@@ -724,7 +721,7 @@ class Operators:
             name
             for room, slots in self.plan.items()
             if room.startswith("dorm")
-            for slot in slots[:2]
+            for slot in slots
             for name in (slot.agent, *slot.all_replacements)
             if name in self.operators
         }
