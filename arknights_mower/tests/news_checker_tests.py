@@ -9,6 +9,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.news_checker import MaintenanceInfo, NewsChecker
+from arknights_mower.utils.scheduler_task import SchedulerTask
 
 
 class NewsCheckerTests(unittest.TestCase):
@@ -407,7 +408,7 @@ class NewsCheckerTests(unittest.TestCase):
             announcement_id="2",
         )
         scheduler = Mock()
-        scheduler.tasks = [SimpleNamespace(time=now + timedelta(minutes=1))]
+        scheduler.tasks = [SchedulerTask(time=now + timedelta(minutes=1))]
         scheduler.initialize_operators.return_value = None
         scheduler.op_data.validate_backup_plans.return_value = {"success": True}
 
@@ -418,6 +419,11 @@ class NewsCheckerTests(unittest.TestCase):
             patch.object(mower_main, "refresh_resource_at_boundary"),
             patch.object(mower_main, "_apply_version_update_resting_threshold"),
             patch.object(
+                mower_main,
+                "_resume_device_dispatch",
+                side_effect=AssertionError("maintenance wake entered device recovery"),
+            ) as recover,
+            patch.object(
                 NewsChecker, "get_maintenance", side_effect=[None, None, info]
             ) as get_maintenance,
             patch.object(mower_main, "_handle_maintenance", side_effect=MowerExit),
@@ -426,6 +432,7 @@ class NewsCheckerTests(unittest.TestCase):
 
         scheduler.rest_until_next_task.assert_called_once_with()
         scheduler.run.assert_not_called()
+        recover.assert_not_called()
         self.assertEqual(get_maintenance.call_count, 3)
 
     def test_early_login_failure_retries_in_five_minutes(self):

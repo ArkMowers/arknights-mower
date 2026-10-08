@@ -18,6 +18,7 @@
     "arknights_mower.solvers.mastery_support_swap._apply_swap"
   ],
   "test_suites": [
+    "arknights_mower/tests/news_checker_tests.py",
     "arknights_mower/tests/mastery_maintenance_tests.py",
     "arknights_mower/tests/mastery_scheduling_tests.py",
     "arknights_mower/tests/mastery_drone_tests.py",
