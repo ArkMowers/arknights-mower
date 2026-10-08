@@ -19,6 +19,7 @@
   "test_suites": [
     "arknights_mower/tests/device_droidcast_tests.py",
     "arknights_mower/tests/device_owned_resources_tests.py",
-    "arknights_mower/tests/device_application_tests.py"
+    "arknights_mower/tests/device_application_tests.py",
+    "arknights_mower/tests/device_maatouch_tests.py"
   ]
 }

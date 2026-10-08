@@ -1610,7 +1610,7 @@ class DeviceControl(Generic[D]):
             try:
                 if owner is not None:
                     owner.close()
-                    if owner is device:
+                    if owner is self._cleanup_device:
                         self._cleanup_device = None
                         self._helper_cleanup_error = None
             except Exception as exc:
@@ -1620,8 +1620,11 @@ class DeviceControl(Generic[D]):
                     self._helper_cleanup_error = exc
                 if exc not in errors:
                     errors.append(exc)
-        if self._helper_cleanup_error is not None and not errors:
-            errors.append(self._helper_cleanup_error)
+        if (
+            self._helper_cleanup_error is not None
+            and self._helper_cleanup_error not in errors
+        ):
+            errors.insert(0, self._helper_cleanup_error)
         if errors:
             self._state = "failed"
             if self._interrupt_error is not None:
