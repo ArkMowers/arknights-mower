@@ -4,12 +4,8 @@ Local contract for Python backend implementation under `arknights_mower/`.
 
 ## 1. Domain Invariants & Architecture Constraints
 
-- **[INV-01] Persistent Isolation**: `DeviceProfile` stores only explicit user selections. Connection state, active sockets, and discovery candidates are strictly transient.
-- **[INV-02] Target Clearance**: Any change to emulator preset, path, or instance identity clears `last_serial` immediately.
-- **[INV-03] Failure Preserves Identity**: Device offline, discovery timeout, or boot failure must never silently bind to another online device on the host.
-- **[INV-04] IPC Pair Cohesion**: MuMu IPC screenshot backend and touch backend are coupled; neither backend operates in isolation.
-- **[INV-05] Shared ADB Guard**: ADB server state must be probed via socket handshake; implicit `kill-server` invocations are strictly forbidden.
-- **[INV-06] Domain Glossary Synchronization**: Apply the concept-impact branches in [Coding Standards](../CODING_STANDARDS.md#1-core-invariants) and the [documentation routing rules](../.agents/skills/mower-doc/references/doc-hierarchy.md#routing-rules).
+- Apply `[INV-01]` through `[INV-06]` from [Coding Standards](../CODING_STANDARDS.md#1-core-invariants) and the affected [subsystem contract](../docs/subsystems/).
+- Select only necessary stages through [Agent Workflow](../.agents/AGENTS.md#1-task-selection); document placement follows the [routing rules](../.agents/skills/mower-doc/references/doc-hierarchy.md#routing-rules).
 
 ## 2. Resource & Concurrency Lifecycle
 

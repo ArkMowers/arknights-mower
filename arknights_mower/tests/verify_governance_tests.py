@@ -1,6 +1,9 @@
 import importlib.util
 import io
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import ExitStack, redirect_stdout
@@ -27,6 +30,77 @@ spec.loader.exec_module(archive_note)
 
 
 class VerifyGovernanceTests(unittest.TestCase):
+    def make_reference_repo(self, directory, lifecycle="implemented", slug=None):
+        root = Path(directory)
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "CODING_STANDARDS.md").write_text(
+            "- **[INV-REC-07] Field Integrity**: Unread fields remain absent.\n",
+            encoding="utf-8",
+        )
+        (root / "CONTEXT.md").write_text(
+            "### Field\n- **Definition**: A report field.\n"
+            "- **_Avoid_**: `ForbiddenTerm`\n",
+            encoding="utf-8",
+        )
+        suite = root / "arknights_mower/tests/field_tests.py"
+        suite.parent.mkdir(parents=True, exist_ok=True)
+        suite.write_text(
+            "raise RuntimeError('must not import this suite')\n", encoding="utf-8"
+        )
+        note_dir = root / ".agents/notes" / lifecycle / "bug-fix"
+        note_dir.mkdir(parents=True, exist_ok=True)
+        slug = slug or "2026-10-08-reference-check"
+        for suffix in (".md", ".zh.md"):
+            (note_dir / f"{slug}{suffix}").write_text(
+                f"---\ntitle: Field Integrity\nstatus: {lifecycle}\ncategory: bug-fix\n"
+                f"date: {slug[:10]}\n---\n\nCurrent contract.\n",
+                encoding="utf-8",
+            )
+        metadata = {
+            "title": "Field Integrity",
+            "status": lifecycle,
+            "category": "bug-fix",
+            "date": slug[:10],
+            "authors": ["Tester"],
+            "invariants": ["[INV-REC-07]"],
+            "code_symbols": ["production.symbol"],
+            "test_suites": ["arknights_mower/tests/field_tests.py"],
+        }
+        sidecar = note_dir / f"{slug}.sidecar.json"
+        sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+        return root, sidecar, metadata
+
+    def run_reference_gate(self, root):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = run_all_checks(root)
+        return result, output.getvalue()
+
+    def commit_reference_fixture(self, root, message):
+        for arguments in (
+            ["add", "."],
+            [
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.invalid",
+                "-c",
+                "core.hooksPath=",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-qm",
+                message,
+            ],
+        ):
+            subprocess.run(
+                ["git", *arguments],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+
     def test_all_existing_notes_pass_verification(self):
         errors = verify_agent_notes(".agents/notes")
         self.assertEqual(errors, [])
@@ -365,11 +439,14 @@ class VerifyGovernanceTests(unittest.TestCase):
 
         self.assertEqual(result, 0)
         report = output.getvalue()
-        self.assertIn("AUTOMATED CHECKS PASSED", report)
-        self.assertIn("note formats, relative Markdown links and Avoid terms", report)
-        self.assertIn("Manual review", report)
+        self.assertIn("STRUCTURAL CHECKS PASSED", report)
         self.assertIn(
-            "concept changes, document placement and glossary approval", report
+            "note structures/references, relative Markdown links and Avoid terms",
+            report,
+        )
+        self.assertIn("Not evaluated: behavior tests", report)
+        self.assertIn(
+            "concept meaning, glossary approval or implementation status", report
         )
         self.assertNotIn("fully compliant", report)
 
@@ -398,9 +475,307 @@ class VerifyGovernanceTests(unittest.TestCase):
 
                 self.assertEqual(result, 1)
                 self.assertIn("Sample violation", output.getvalue())
-                self.assertNotIn("AUTOMATED CHECKS PASSED", output.getvalue())
+                self.assertNotIn("STRUCTURAL CHECKS PASSED", output.getvalue())
                 for mocked_check in mocked_checks:
-                    mocked_check.assert_called_once_with()
+                    mocked_check.assert_called_once()
+
+    def test_reference_checks_reachable_from_actual_cli_without_importing_modules(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _, _ = self.make_reference_repo(tmpdir)
+            source = root / "production.py"
+            marker = root / "imported.txt"
+            source.write_text(
+                "from pathlib import Path\n"
+                f"Path({str(marker)!r}).write_text('side effect')\n",
+                encoding="utf-8",
+            )
+            script = (
+                Path(__file__).resolve().parents[2] / "scripts/verify_governance.py"
+            )
+            result = subprocess.run(
+                [sys.executable, "-X", "utf8", str(script)],
+                cwd=root,
+                env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=30,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("STRUCTURAL CHECKS PASSED", result.stdout)
+            self.assertIn("Code-symbol resolution is not checked", result.stdout)
+            self.assertIn("Not evaluated: behavior tests", result.stdout)
+            self.assertIn("glossary approval or implementation status", result.stdout)
+            self.assertNotIn("fully compliant", result.stdout)
+            self.assertFalse(marker.exists())
+
+    def test_missing_test_suite_and_undeclared_invariant_fail_at_governance_entry(self):
+        for field, value, diagnostic in (
+            ("test_suites", ["arknights_mower/tests/missing_tests.py"], "test suite"),
+            ("invariants", ["[INV-REC-99]"], "Undeclared invariant"),
+            ("test_suites", ["../outside_tests.py"], "outside-repository"),
+            ("test_suites", ["C:/outside_tests.py"], "outside-repository"),
+        ):
+            with (
+                self.subTest(field=field, value=value),
+                tempfile.TemporaryDirectory() as tmpdir,
+            ):
+                root, sidecar, metadata = self.make_reference_repo(tmpdir)
+                metadata[field] = value
+                sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+                result, output = self.run_reference_gate(root)
+                self.assertEqual(result, 1)
+                self.assertIn(diagnostic, output)
+                self.assertIn("[Gate 2/3]", output)
+                self.assertIn("[Gate 3/3]", output)
+                self.assertNotIn("STRUCTURAL CHECKS PASSED", output)
+
+    def test_invariant_mentions_and_fenced_examples_are_not_declarations(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _, _ = self.make_reference_repo(tmpdir)
+            (root / "CODING_STANDARDS.md").write_text(
+                "A review mentions [INV-REC-07].\n```markdown\n"
+                "- **[INV-REC-07] Example**: This is an example.\n```\n",
+                encoding="utf-8",
+            )
+            result, output = self.run_reference_gate(root)
+            self.assertEqual(result, 1)
+            self.assertIn("Undeclared invariant", output)
+
+    def test_historical_references_warn_but_touched_triplet_is_strict(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, sidecar, metadata = self.make_reference_repo(tmpdir)
+            metadata["test_suites"] = ["arknights_mower/tests/retired_tests.py"]
+            sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+            for arguments in (
+                ["init", "-q"],
+                ["add", "."],
+                [
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.invalid",
+                    "-c",
+                    "core.hooksPath=",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "commit",
+                    "-qm",
+                    "reference fixture",
+                ],
+            ):
+                subprocess.run(
+                    ["git", *arguments],
+                    cwd=root,
+                    check=True,
+                    capture_output=True,
+                    timeout=15,
+                )
+
+            result, output = self.run_reference_gate(root)
+            self.assertEqual(result, 0)
+            self.assertIn("COMPATIBILITY WARNINGS", output)
+            self.assertIn("retired_tests.py", output)
+
+            # A deliberate audit can make unchanged active references strict.
+            script = (
+                Path(__file__).resolve().parents[2]
+                / "scripts/verify_agent_note_format.py"
+            )
+            audit = subprocess.run(
+                [sys.executable, "-X", "utf8", str(script), "--all-active"],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=30,
+            )
+            self.assertEqual(audit.returncode, 1, audit.stdout + audit.stderr)
+            self.assertIn("retired_tests.py", audit.stdout)
+
+            english = sidecar.with_name("2026-10-08-reference-check.md")
+            original = english.read_text(encoding="utf-8")
+            english.write_text(original + "Reviewed behavior.\n", encoding="utf-8")
+            self.assertEqual(self.run_reference_gate(root)[0], 1)
+
+            english.write_text(original, encoding="utf-8")
+            chinese = sidecar.with_name("2026-10-08-reference-check.zh.md")
+            original_zh = chinese.read_text(encoding="utf-8")
+            chinese.write_text(original_zh + "Reviewed behavior.\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "add", "--", str(chinese)],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            chinese.write_text(original_zh, encoding="utf-8")
+            self.assertEqual(self.run_reference_gate(root)[0], 1)
+
+    def test_untracked_active_references_are_strict_and_archive_references_warn(self):
+        for lifecycle, expected in (
+            ("implemented", 1),
+            ("proposed", 1),
+            ("archived", 0),
+            ("rejected", 0),
+        ):
+            with (
+                self.subTest(lifecycle=lifecycle),
+                tempfile.TemporaryDirectory() as tmpdir,
+            ):
+                root, sidecar, metadata = self.make_reference_repo(tmpdir, lifecycle)
+                subprocess.run(
+                    ["git", "init", "-q"],
+                    cwd=root,
+                    check=True,
+                    capture_output=True,
+                    timeout=15,
+                )
+                metadata["test_suites"] = ["arknights_mower/tests/missing_tests.py"]
+                sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+                result, output = self.run_reference_gate(root)
+                self.assertEqual(result, expected, output)
+                self.assertIn("missing_tests.py", output)
+
+    def test_metadata_overlap_does_not_prove_duplicate_decisions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _, _ = self.make_reference_repo(
+                tmpdir, slug="2026-10-07-first-decision"
+            )
+            self.make_reference_repo(tmpdir, slug="2026-10-08-second-decision")
+            result, output = self.run_reference_gate(root)
+            self.assertEqual(result, 0, output)
+
+    def test_committed_note_changes_use_requested_base_at_actual_governance_cli(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _, _ = self.make_reference_repo(
+                tmpdir, slug="2026-10-07-existing-decision"
+            )
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            self.commit_reference_fixture(root, "existing fixture")
+            comparison_base = (
+                subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"], cwd=root, timeout=15
+                )
+                .decode()
+                .strip()
+            )
+            _, sidecar, metadata = self.make_reference_repo(
+                tmpdir, slug="2026-10-08-new-decision"
+            )
+            metadata["test_suites"] = ["arknights_mower/tests/missing_tests.py"]
+            sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+            self.commit_reference_fixture(root, "new fixture")
+            self.assertEqual(self.run_reference_gate(root)[0], 0)
+
+            script = (
+                Path(__file__).resolve().parents[2] / "scripts/verify_governance.py"
+            )
+            for base, diagnostic in (
+                (comparison_base, "missing_tests.py"),
+                ("nonexistent-review-base", "Invalid comparison base"),
+            ):
+                with self.subTest(base=base):
+                    result = subprocess.run(
+                        [sys.executable, "-X", "utf8", str(script), "--base", base],
+                        cwd=root,
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        timeout=30,
+                    )
+                    self.assertEqual(
+                        result.returncode, 1, result.stdout + result.stderr
+                    )
+                    self.assertIn(diagnostic, result.stdout)
+                    self.assertNotIn("STRUCTURAL CHECKS PASSED", result.stdout)
+
+            current = subprocess.run(
+                [sys.executable, "-X", "utf8", str(script), "--base", "HEAD"],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=30,
+            )
+            self.assertEqual(current.returncode, 0, current.stdout + current.stderr)
+            self.assertIn("COMPATIBILITY WARNINGS", current.stdout)
+
+    def test_malformed_metadata_returns_errors_instead_of_crashing_gate(self):
+        for field, value in (
+            ("invariants", [None]),
+            ("authors", [7]),
+            ("code_symbols", [""]),
+            ("test_suites", [False]),
+        ):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as tmpdir:
+                root, sidecar, metadata = self.make_reference_repo(tmpdir)
+                metadata[field] = value
+                sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+                result, output = self.run_reference_gate(root)
+                self.assertEqual(result, 1, output)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, sidecar, _ = self.make_reference_repo(tmpdir)
+            sidecar.write_text("[]", encoding="utf-8")
+            result, output = self.run_reference_gate(root)
+            self.assertEqual(result, 1)
+            self.assertIn("JSON object", output)
+
+    def test_nested_non_git_reference_root_does_not_inherit_parent_history(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            parent = Path(tmpdir)
+            root, sidecar, metadata = self.make_reference_repo(parent / "nested")
+            metadata["test_suites"] = ["arknights_mower/tests/missing_tests.py"]
+            sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=parent,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            self.commit_reference_fixture(parent, "parent fixture")
+            script = (
+                Path(__file__).resolve().parents[2] / "scripts/verify_governance.py"
+            )
+            result = subprocess.run(
+                [sys.executable, "-X", "utf8", str(script), "--repo-root", str(root)],
+                cwd=parent,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=30,
+            )
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("missing_tests.py", result.stdout)
+            self.assertNotIn("COMPATIBILITY WARNINGS", result.stdout)
+
+            scoped = subprocess.run(
+                [
+                    sys.executable,
+                    "-X",
+                    "utf8",
+                    str(script),
+                    "--repo-root",
+                    str(root),
+                    "--base",
+                    "HEAD",
+                ],
+                cwd=parent,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=30,
+            )
+            self.assertEqual(scoped.returncode, 1, scoped.stdout + scoped.stderr)
+            self.assertIn("not a Git worktree root", scoped.stdout)
 
 
 if __name__ == "__main__":

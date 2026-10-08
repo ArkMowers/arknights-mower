@@ -32,4 +32,4 @@ For each case, the review passes only when the selected destination, concept-imp
 
 These are review cases, not an automated agent evaluator. Record actual agent responses and observed file changes when running them; the Python suite verifies automated reporting and gate failures separately.
 
-Decision: [Glossary change routing](../../.agents/notes/implemented/process/2026-10-08-glossary-change-routing.md) ([中文](../../.agents/notes/implemented/process/2026-10-08-glossary-change-routing.zh.md)).
+Decision: [Task-aware governance and decision ownership](../../.agents/notes/implemented/process/2026-10-08-glossary-change-routing.md) ([中文](../../.agents/notes/implemented/process/2026-10-08-glossary-change-routing.zh.md)).

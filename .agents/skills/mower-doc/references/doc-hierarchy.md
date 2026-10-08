@@ -34,21 +34,21 @@ Every technical fact in Arknights Mower belongs to exactly one documentation tie
 
 ## Routing Rules
 
-Apply `[INV-06]` in [Coding Standards](../../../../CODING_STANDARDS.md#1-core-invariants) before deciding whether a change needs glossary synchronization. Classify each fact by what it defines:
-
-| Fact | Authoritative destination | Review question |
+| Fact | Authoritative home | Other locations |
 | :--- | :--- | :--- |
-| Concept name, meaning, boundary or relationship | `CONTEXT.md` and `CONTEXT.zh.md` | Does this identify what the concept is, what belongs to it, or how it relates to another concept? |
-| Business rule or subsystem guarantee | `CODING_STANDARDS.md` invariant and the relevant `docs/subsystems/` contract | Does this specify when an operation is allowed or what execution guarantees? |
-| Implementation lifecycle or interface behavior | The relevant `docs/subsystems/` contract, with focused regression tests | Does this specify how state, inputs, outputs or resources behave? |
-| Developer procedure | `docs/cookbook/` | Does this provide reproducible steps to operate or verify the system? |
+| Concept name, meaning, boundary or relationship | `CONTEXT.md` and `CONTEXT.zh.md` | Link to the definition; follow root glossary approval before edits. |
+| Invariant identifier and concise guarantee | `CODING_STANDARDS.md` | Reuse the identifier and link to its contract. |
+| Complete interface, business rule or resource lifecycle | `docs/subsystems/` | Architecture links to the contract; review checklists ask distinct questions. |
+| Task and skill coordination | `.agents/AGENTS.md` | Root and skill entry points link to the relevant branch. |
+| Record ownership, schema and lifecycle criteria | `.agents/notes/AGENTS.md` | Skills implement this policy rather than redefining it. |
+| Developer procedure | `docs/cookbook/` | Numbered actions and verification examples. |
+| Decision rationale | One owning bilingual triplet | Link from the relevant contract; search existing owners before creation. |
+| Incident timeline and retrospective | `docs/postmortem/` | Link to the resulting guarantees. |
 
-Definitions include constraints that determine concept identity: Actual and Projected Occupancy differ by confirmed observation, for example. Project-specific technical concepts such as Capture Frame also belong in the glossary. A rule suppressing duplicate pending off-shift tasks, excluding planned idle time from a scene timeout, or comparing the priority of an entire recalled group belongs in a contract and its regression tests when those concepts retain their definitions.
+Definitions include constraints that identify a concept, such as the distinction between confirmed Actual Occupancy and hypothetical Projected Occupancy. Project-specific technical concepts such as Capture Frame also belong in the glossary. Execution ordering, retry limits, bed takeover rules and duplicate-task suppression belong in contracts when concept identity remains stable.
 
-Compare the meaning before and after the change, including existing entries with unchanged names. A new helper, threshold adjustment or defect fix alone is insufficient evidence of a changed domain concept. Existing glossary paragraphs do not determine the destination of new facts; classify each fact by the table above.
+Apply [INV-06](../../../../CODING_STANDARDS.md#1-core-invariants) by comparing names, meanings, boundaries and relationships before and after the change. The same name can acquire a different meaning. A new helper, numerical threshold or bug fix alone is insufficient evidence of a changed concept.
 
-Record the affected concepts and the reason for the selected route in the existing decision note or review report. Either a justified unchanged-concept result or an identified definition delta completes the assessment. For a definition delta, prepare the exact bilingual glossary proposal and follow [root approval requirements](../../../../AGENTS.md#4-global-execution-constraints) before writing it. Review exercises are available in the [concept-impact cookbook](../../../../docs/cookbook/review-glossary-impact.md).
+Record the concept-impact reason in the existing review or owning decision; stable concepts complete the assessment without glossary edits. For changed definitions, prepare exact bilingual wording and follow [root approval](../../../../AGENTS.md#4-global-execution-constraints) before writing. Existing mixed-content glossary paragraphs do not determine where new operational rules belong.
 
-1. **Never duplicate facts**: If a contract is defined in `docs/subsystems/device-control.md`, `architecture.md` only references it; do not copy interface definitions.
-2. **No narrative in Tier 3**: `docs/architecture.md` and `docs/subsystems/` contain present-tense facts only. Zero "we used to think..." or "we considered X vs Y".
-3. **Narrative belongs exclusively in Tier 5**: Only `docs/postmortem/` records timelines, mistakes, and historical trade-offs.
+Contracts state current facts in present tense. Decision notes retain concise rationale; postmortems retain incident history. Root and subtree entry points carry only necessary local constraints and conditional pointers. Keep one full definition per fact instead of maintaining synchronized copies.
