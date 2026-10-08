@@ -11,7 +11,9 @@ import pytest
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers import base_schedule as base  # noqa: E402
+from arknights_mower.solvers import record  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
+from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.operators import Operator, Operators  # noqa: E402
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
 
@@ -330,9 +332,20 @@ def test_fiammetta_swap_reads_target_and_fiammetta_mood(room_reader):
     )
 
 
-def test_fiammetta_swap_writes_target_before_and_after_one_second_apart(
-    monkeypatch,
+@pytest.mark.parametrize("fia_first", [False, True])
+@pytest.mark.parametrize("before_mood", [0, 7.5, 24])
+@pytest.mark.parametrize("phase", ["charge", "missing_target", "restore"])
+def test_fiammetta_swap_writes_both_operators_one_second_apart(
+    monkeypatch, tmp_path, fia_first, before_mood, phase
 ):
+    monkeypatch.setattr(
+        record,
+        "get_path",
+        lambda path: tmp_path / "data.db" if path.endswith("data.db") else tmp_path,
+    )
+    monkeypatch.setattr(record, "_tables_created", False)
+    monkeypatch.setattr(config, "conf", config.Conf(favorite="歌蕾蒂娅"))
+
     def operator(name, room, mood):
         return SimpleNamespace(
             name=name,
@@ -350,8 +363,9 @@ def test_fiammetta_swap_writes_target_before_and_after_one_second_apart(
             is_high=MagicMock(return_value=name == "歌蕾蒂娅"),
         )
 
-    target = operator("歌蕾蒂娅", "control", 0)
-    fia = operator("菲亚梅塔", "dormitory_2", 24)
+    target = operator("歌蕾蒂娅", "control", before_mood)
+    # 回满后缓存仍可能是上次交换后的低心情，不能作为交换前历史。
+    fia = operator("菲亚梅塔", "dormitory_2", 3)
     op_data = SimpleNamespace(
         operators={"歌蕾蒂娅": target, "菲亚梅塔": fia},
         plan={
@@ -367,6 +381,16 @@ def test_fiammetta_swap_writes_target_before_and_after_one_second_apart(
         update_detail=MagicMock(return_value=None),
         refresh_dorm_time=MagicMock(),
     )
+
+    @record.save_action_to_sqlite_decorator
+    def update_detail(
+        self, name, mood, room, index, update_time, *, preserve_depletion_rate=False
+    ):
+        agent = self.operators[name]
+        agent.mood, agent.current_room, agent.current_index = mood, room, index
+        agent.time_stamp = datetime.now()
+
+    op_data.update_detail = MagicMock(side_effect=MethodType(update_detail, op_data))
     solver = object.__new__(BaseSchedulerSolver)
     solver.op_data = op_data
     solver.tasks = []
@@ -377,35 +401,103 @@ def test_fiammetta_swap_writes_target_before_and_after_one_second_apart(
     solver.turn_on_room_detail = MagicMock()
     solver.detect_product_complete = MagicMock(return_value=False)
     solver.find = MagicMock(return_value=None)
-    solver.read_screen = MagicMock(side_effect=["歌蕾蒂娅", "菲亚梅塔"])
-    solver.read_accurate_mood = MagicMock(side_effect=[24, 0])
+    names = ["菲亚梅塔", "歌蕾蒂娅"] if fia_first else ["歌蕾蒂娅", "菲亚梅塔"]
+    moods = [before_mood, 24] if fia_first else [24, before_mood]
+    if phase == "missing_target":
+        missing_y = 344 if fia_first else 135
+        solver.find.side_effect = lambda resource, scope=None: (
+            resource == "infra_no_operator" and scope[0][1] == missing_y
+        )
+        solver.read_screen = MagicMock(return_value="菲亚梅塔")
+        solver.read_accurate_mood = MagicMock(return_value=before_mood)
+    else:
+        solver.read_screen = MagicMock(side_effect=names)
+        solver.read_accurate_mood = MagicMock(side_effect=moods)
     solver.read_operator_time = MagicMock(return_value=datetime.now())
-    save_history = MagicMock()
+    save_history = MagicMock(wraps=record.save_agent_action)
     monkeypatch.setattr(base, "save_agent_action", save_history)
 
     result = solver.get_agent_from_room(
-        "dormitory_1", [0, 1], related_operators={1: "歌蕾蒂娅"}
+        "dormitory_1",
+        [0, 1],
+        related_operators={names.index("菲亚梅塔"): "歌蕾蒂娅"}
+        if phase != "restore"
+        else {},
     )
 
-    assert [item["mood"] for item in result] == [24, 0]
-    target_call, fia_call = op_data.update_detail.call_args_list
-    assert target_call.args[:5] == ("歌蕾蒂娅", 24, "dormitory_1", 0, True)
+    curves = {
+        dataset["label"]: dataset["data"]
+        for group in record.get_mood_ratios()
+        for dataset in group["moodData"]["datasets"]
+    }
+    if phase != "charge":
+        save_history.assert_not_called()
+        assert len(curves["菲亚梅塔"]) == 1
+        assert fia.mood == before_mood
+        return
+
+    assert [item["mood"] for item in result] == moods
+    calls = {call.args[0]: call for call in op_data.update_detail.call_args_list}
+    target_call, fia_call = calls["歌蕾蒂娅"], calls["菲亚梅塔"]
+    assert target_call.args[:5] == (
+        "歌蕾蒂娅",
+        24,
+        "dormitory_1",
+        names.index("歌蕾蒂娅"),
+        True,
+    )
     assert target_call.kwargs["mood_event"] == "fiammetta_after"
-    assert fia_call.args[:5] == ("菲亚梅塔", 0, "dormitory_1", 1, True)
+    assert fia_call.args[:5] == (
+        "菲亚梅塔",
+        before_mood,
+        "dormitory_1",
+        names.index("菲亚梅塔"),
+        True,
+    )
     assert fia_call.kwargs["mood_event"] == "fiammetta_charge"
-    assert target_call.kwargs["recorded_at"] - fia_call.kwargs[
-        "recorded_at"
-    ] == timedelta(seconds=1)
-    save_history.assert_called_once_with(
+    assert target_call.kwargs["recorded_at"] == fia_call.kwargs["recorded_at"]
+    before_time = fia_call.kwargs["recorded_at"] - timedelta(seconds=1)
+    assert save_history.call_count == 2
+    save_history.assert_any_call(
         "歌蕾蒂娅",
         "control",
         "dormitory_1",
         True,
         "深海猎人",
-        0,
+        before_mood,
         related_operator="菲亚梅塔",
         mood_event="fiammetta_before",
-        current_time=fia_call.kwargs["recorded_at"],
+        current_time=before_time,
+    )
+    for name, expected_moods in (
+        ("菲亚梅塔", [24, before_mood]),
+        ("歌蕾蒂娅", [before_mood, 24]),
+    ):
+        points = curves[name]
+        assert [point["y"] for point in points] == expected_moods
+        assert datetime.fromisoformat(points[1]["x"]) - datetime.fromisoformat(
+            points[0]["x"]
+        ) == timedelta(seconds=1)
+        assert all(
+            point["relatedOperator"]
+            == ("歌蕾蒂娅" if name == "菲亚梅塔" else "菲亚梅塔")
+            for point in points
+        )
+    assert fia.mood == before_mood
+    assert fia.time_stamp != fia_call.kwargs["recorded_at"]
+    assert [point["x"] for point in curves["菲亚梅塔"]] == [
+        point["x"] for point in curves["歌蕾蒂娅"]
+    ]
+    save_history.assert_any_call(
+        "菲亚梅塔",
+        "dormitory_2",
+        "dormitory_1",
+        False,
+        "",
+        24,
+        related_operator="歌蕾蒂娅",
+        mood_event="fiammetta_charge",
+        current_time=before_time,
     )
 
 

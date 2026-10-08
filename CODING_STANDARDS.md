@@ -22,6 +22,7 @@
 
 ### 2.1 Base Infrastructure & Scheduling
 
+- **[INV-SCHED-35] Aligned Charging History**: A complete Fiammetta exchange observation records both operators at the same before time and the same after time one second later; Fiammetta's before point is 24, and history display times never replace measured mood or recovery timestamps. Incomplete observations and roster restoration do not synthesize before points.
 - **[INV-SCHED-34] Backup Facility Capabilities**: Backup validation rejects changed production facility types or slot counts, explicit staffing overflow and product targets that differ from the primary plan while switching is disabled, before combination analysis; runtime activation rechecks these constraints before mutating live state. Automatic switching defaults to disabled and retains explicitly saved enabled states.
 - **[INV-SCHED-32] Stable Return Window**: Replanning the same recovery episode retains the first thirty-minute return window; changed recovery positions or staffing targets create a new window, while current mood predictions, full-recovery requirements and pending arrangement reservations remain authoritative.
 - **[INV-SCHED-33] Facility Placeholder Bounds**: Facility arrangement tasks cannot exceed the current roster slot count; excess named targets and placeholders log an explicit error and stop automation before selection, preserving the task without retry or silent truncation.
