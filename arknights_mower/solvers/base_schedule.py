@@ -4142,11 +4142,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         and plan.get(x.room, [])[x.index : x.index + 1] == [obj]
                     )
                     and obj not in reserved_names
-                    and (
-                        not self.op_data.is_dorm_replacement(obj)
-                        or x.multi_group
-                        and in_slot
-                    )
+                    and (not self.op_data.is_dorm_replacement(obj) or in_slot)
                     and (
                         x.room.startswith("dorm")
                         or replacement.current_room != x.room
