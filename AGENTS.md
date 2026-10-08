@@ -1,6 +1,6 @@
 # Arknights Mower Agent Directives
 
-Root entry point and standing directives for agent operations. Every instruction is an authoritative context pointer.
+Root entry point for agent operations. Read the linked contract relevant to the task.
 
 ## 1. Authoritative Context Pointers
 
@@ -20,14 +20,9 @@ Root entry point and standing directives for agent operations. Every instruction
 
 ## 3. Standard Development Workflow
 
-When implementing features, refactoring, or fixing bugs, follow the 6-stage lifecycle:
+Select the necessary workflow in [Agent Workflow](.agents/AGENTS.md#1-task-selection): read-only review, local repair, independent design decision or documentation maintenance. Skills support that selected workflow; invoking a skill does not require a note, a new invariant or a lifecycle transition.
 
-1. **Pre-flight Simplification**: Invoke [`mower-find-simplifications`](.agents/skills/mower-find-simplifications/SKILL.md) to audit complexity and eliminate redundant abstractions before writing code.
-2. **Invariant Definition**: Invoke [`mower-define-invariant`](.agents/skills/mower-define-invariant/SKILL.md) to formulate non-negotiable guarantees (`[INV-XX]`), register them in [CODING_STANDARDS.md](CODING_STANDARDS.md), and scaffold failure tests.
-3. **Architecture Proposal**: Invoke [`mower-doc`](.agents/skills/mower-doc/SKILL.md) and [`mower-prose-standard`](.agents/skills/mower-prose-standard/SKILL.md) to draft a bilingual decision note triplet under `.agents/notes/proposed/{category}/`.
-4. **Invariant-Bound Implementation**: Implement production code and offline hermetic tests (`pytest arknights_mower/tests/...`); synchronize domain terms in [CONTEXT.md](CONTEXT.md) subject to the glossary approval requirement below.
-5. **Two-Axis Code Review**: Invoke [`mower-code-review`](.agents/skills/mower-code-review/SKILL.md) to run `python scripts/verify_governance.py` and evaluate diffs against [`invariants-checklist.md`](.agents/skills/mower-code-review/references/invariants-checklist.md).
-6. **Note Lifecycle Transition**: Invoke [`mower-archive-agent-notes`](.agents/skills/mower-archive-agent-notes/SKILL.md) to promote the triplet to `implemented/` using `archive_note.py`.
+Before adding a decision record, apply [record ownership](.agents/notes/AGENTS.md#1-record-ownership). Complete concept-impact review under `[INV-06]` in [Coding Standards](CODING_STANDARDS.md#1-core-invariants); stable domain concepts require no glossary edit.
 
 ## 4. Global Execution Constraints
 

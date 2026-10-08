@@ -97,7 +97,7 @@ The system enforces six core architectural invariants defined in [CODING_STANDAR
 | `[INV-03]` | Failure Preserves Target Identity | Session / Driver | Failed readiness or discovery halts without drifting to host devices | `device_session_tests.py` |
 | `[INV-04]` | IPC Pair Cohesion | Capture / Touch | MuMu IPC capture and touch backends require simultaneous selection | `device_config_tests.py` |
 | `[INV-05]` | Shared ADB Guard | Transport / ADB | Socket-level handshake checks server liveness; forbids implicit `kill-server` | `device_session_io_tests.py` |
-| `[INV-06]` | Domain Glossary Synchronization | Docs / Governance | All code, tests, and documentation adhere to authoritative terms in `CONTEXT.md` | `verify_governance_tests.py` |
+| `[INV-06]` | Domain Glossary Synchronization | Docs / Governance | [Concept-impact review](../CODING_STANDARDS.md#1-core-invariants) | Manual semantic review; `verify_governance_tests.py` covers structural reporting |
 
 ---
 

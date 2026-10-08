@@ -7,7 +7,7 @@
 - **[INV-03] Failure Preserves Target Identity**: Discovery, preflight, or recovery failure must never silently alter persistent configuration or automatically fallback to another online device on the host.
 - **[INV-04] IPC Pair Cohesion**: MuMu IPC screenshot backend and touch backend must be selected together; neither may be used without the other.
 - **[INV-05] Shared ADB Guard**: Socket-level protocol negotiation must verify shared ADB server state before running CLI operations; implicit `kill-server` invocations are strictly prohibited.
-- **[INV-06] Domain Glossary Synchronization**: Any change altering base scheduling mechanics, device driver lifecycles, or configuration schemas must immediately update and preserve authoritative definitions in `CONTEXT.md`.
+- **[INV-06] Domain Glossary Synchronization**: Changes affecting scheduling, device control or configuration assess domain-concept names, meanings, boundaries and relationships. Changed concepts require synchronized definitions in `CONTEXT.md` and `CONTEXT.zh.md` after [explicit glossary approval](AGENTS.md#4-global-execution-constraints); unchanged concepts complete this check without glossary edits. Behavioral rules and implementation contracts follow the [documentation routing rules](.agents/skills/mower-doc/references/doc-hierarchy.md#routing-rules).
 
 
 ## 2. Subsystem Invariants

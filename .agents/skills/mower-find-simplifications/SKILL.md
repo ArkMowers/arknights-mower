@@ -1,33 +1,23 @@
 ---
 name: mower-find-simplifications
-description: Identify over-engineered abstractions, dead code, single-callsite wrappers, and speculative complexity in Arknights Mower. Documents findings into .agents/notes/proposed/simplification/ triplets.
+description: Use when identifying redundant abstractions or reducing suspected complexity in Arknights Mower. Do not use as mandatory preflight for every repair or as a requirement to create a simplification record.
+compatibility: Requires an Arknights Mower checkout and its repository contracts; this is a repository-local skill, not a standalone distribution.
 ---
 
 # Mower Find Simplifications
 
-Scans the codebase for simplification candidates and produces evidence-backed proposals.
+## Inputs and Output
 
-## 1. Simplification Target Classes
+Inputs: requested audit or authorized repair, suspected complexity, relevant callers and public contracts. Output: evidence-backed findings; an authorized change also includes focused behavior verification. A clean audit is a valid result.
 
-1. **Dead Abstractions**: Wrappers or interfaces with only a single production callsite that add indirection without polymorphism.
-2. **Speculative Generality**: Configuration options, helper methods, or hooks with zero active consumers.
-3. **Redundant Transformations**: Conversions between intermediate representations that can be passed directly.
-4. **Duplicate Fallbacks**: Redundant error handling paths that duplicate standard recovery policies.
+## Assessment
 
-## 2. Execution Workflow
+1. Inspect callers with `rg` and read their real execution paths. Check public interfaces and plugins before classifying a wrapper, option, conversion or fallback as redundant. A single caller alone is not proof of uselessness.
+2. Describe the observable behavior the replacement preserves, the complexity removed and any risk. A read-only audit ends with findings and does not write a proposal.
+3. For authorized changes, apply [record ownership](../../notes/AGENTS.md#1-record-ownership). Incidental simplification, review fixes and added tests update the original triplet when recording them is useful. Only an independent durable decision warrants a separate proposal.
+4. For that independent proposal, optional starting points are the [English template](templates/simplification-note.md), [Chinese template](templates/simplification-note.zh.md) and [sidecar template](templates/simplification-note.sidecar.json). Replace example metadata with observed authors and actual references; the templates create no requirement for a new record.
+5. Implement only authorized scope and verify the changed production path with focused offline tests. Reuse the affected invariant rather than defining one merely because a helper disappeared.
 
-### Step 1: Scan & Gather Evidence
-For each suspected complexity:
-- Count callers across `arknights_mower/` and `ui/src/`.
-- Verify if any public API contract or plugin requires the interface.
-- Determine line reduction and cognitive load decrease.
+## Completion
 
-### Step 2: Record Proposed Simplification Note
-Create a decision note triplet under `.agents/notes/proposed/simplification/`:
-- `YYYY-MM-DD-slug.md`
-- `YYYY-MM-DD-slug.zh.md`
-- `YYYY-MM-DD-slug.sidecar.json`
-Detail the target code, caller evidence, proposed replacement, and impact assessment.
-
-### Step 3: Verify Safety
-Run targeted tests (`pytest arknights_mower/tests/...`) to ensure the proposed simplification preserves existing invariant guarantees.
+Findings identify callers and contracts. Authorized changes preserve the stated behavior and pass necessary checks. The record choice is justified by decision ownership; no candidate or no new record is a completed outcome.

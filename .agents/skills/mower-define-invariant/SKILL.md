@@ -1,50 +1,23 @@
 ---
 name: mower-define-invariant
-description: Extract, formulate, register, and scaffold tests for core architectural invariants ([INV-XX]) across Arknights Mower subsystems.
+description: Use when assessing an Arknights Mower guarantee or designing its focused behavioral tests, including a genuinely new independent invariant. Do not assign a new identifier merely because a defect, test or implementation changes.
+compatibility: Requires an Arknights Mower checkout and its repository contracts; this is a repository-local skill, not a standalone distribution.
 ---
 
 # Mower Define Invariant
 
-Guides the extraction, formalization, registration, and test-driven defense of domain invariants.
+## Inputs and Output
 
-## 1. When to Use
-- Designing a new feature, solver, or driver subsystem.
-- Establishing safety boundaries for concurrency, resource lifetimes, or state mutations.
-- Preventing regression of a critical bug by converting root-cause guarantees into permanent invariants.
+Inputs: required guarantee, relevant contract, existing registered identifiers and production callers. Output: a reused or independently new guarantee plus focused evidence of its actual behavior. Reuse preserves the existing identifier.
 
-## 2. Invariant Formulation Protocol (4 Steps)
+## Guarantee and Verification
 
-### Step 1: Formulate the Falsifiable Rule
-Every invariant must state a deterministic, non-negotiable system guarantee:
-- **Identifier**: `[INV-{SUBSYSTEM}-{NUMBER}]` (e.g. `[INV-SCHED-05]`, `[INV-ROGUE-01]`, `[INV-DEV-06]`).
-- **Short Name**: 2-5 words title.
-- **Contract Statement**: One present-tense sentence defining what must always hold true and what is strictly prohibited.
+1. Search [Coding Standards](../../../CODING_STANDARDS.md) and the owning subsystem contract. If an existing guarantee covers the defect, use its identifier and extend its evidence. Record the reuse decision in the existing review or owning triplet.
+2. Only a new independent guarantee receives a new identifier. Consult the [namespace reference](references/subsystem-prefixes.md) and [registration template](templates/invariant-entry.md) before registering its concise guarantee in Coding Standards. The subsystem owns the detailed contract; reviews link to that contract or ask a distinct verification question instead of copying it.
+3. Apply [record ownership](../../notes/AGENTS.md#1-record-ownership) when recording a design decision. Update the owning triplet's invariant and test references. Routine test additions need neither another triplet nor another lifecycle transition.
+4. Specify the actual observable guarantee: return value, state preservation, persistence, side effect or exception. Exercise the production call path and a condition that exposes the defect; then assert the correct outcome. A preserved field or suppressed side effect need not throw an error.
+5. Run the focused offline suite and relevant document checks. Keep a proposed record proposed until [implementation-state criteria](../../notes/AGENTS.md#2-lifecycle-taxonomy) are met; registration or a structurally valid test file does not prove behavior.
 
-### Step 2: Declare in Decision Note Triplet
-In the feature's proposal note (`.agents/notes/proposed/{category}/{slug}.sidecar.json`), register the identifier:
-```json
-{
-  "invariants": ["[INV-SUBSYSTEM-XX]"]
-}
-```
+## Completion
 
-### Step 3: Register Across Governance SSOT Touchpoints
-An invariant must be registered in three authoritative locations:
-1. **Subsystem Specification** (`docs/subsystems/*.md`): Under `## 3. Subsystem Invariants`.
-2. **Coding Standards** (`CODING_STANDARDS.md`): Under `## 2. Subsystem Invariants`.
-3. **Review Checklist** (`.agents/skills/mower-code-review/references/invariants-checklist.md`): Under the corresponding subsystem section.
-
-### Step 4: Hermetic Unit Test Scaffolding
-In `arknights_mower/tests/`, implement an offline, deterministic unit test asserting that violating the invariant immediately produces the expected structured error:
-```python
-def test_invariant_violation_raises_structured_error(self):
-    # Setup violating condition
-    # Assert structured verdict / exception
-```
-
-## 3. Verification
-Verify that the new invariant satisfies all formatting constraints and causes no dead links:
-```bash
-python scripts/verify_governance.py
-pytest arknights_mower/tests/verify_governance_tests.py
-```
+The guarantee has one registered identifier, a reachable authoritative contract and behavior evidence suited to its real callers. Report test commands and results, including any evidence not yet available. Structural governance checks remain separate from these results.

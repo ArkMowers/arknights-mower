@@ -1,0 +1,21 @@
+{
+  "title": "Task-Aware Governance and Decision Ownership",
+  "status": "implemented",
+  "category": "process",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-06]"
+  ],
+  "code_symbols": [
+    "scripts.verify_governance.run_all_checks",
+    "scripts.verify_agent_note_format.verify_agent_notes",
+    "scripts.verify_agent_note_format.changed_note_paths",
+    "scripts.verify_agent_note_format.declared_invariants"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/verify_governance_tests.py"
+  ]
+}
