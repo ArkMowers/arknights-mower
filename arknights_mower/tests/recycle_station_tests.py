@@ -28,7 +28,7 @@ from arknights_mower.utils.config.plan_advanced import (  # noqa: E402
     export_advanced_settings,
 )
 from arknights_mower.utils.operators import Operators  # noqa: E402
-from arknights_mower.utils.recognize import RecognizeError, Recognizer  # noqa: E402
+from arknights_mower.utils.recognize import Recognizer  # noqa: E402
 from arknights_mower.utils.scene import Scene  # noqa: E402
 from arknights_mower.utils.scheduler_task import SchedulerTask  # noqa: E402
 
@@ -162,48 +162,9 @@ def test_cache_and_reader_use_two_physical_slots(staff):
     assert solver.op_data.plan == plan
 
 
-@pytest.mark.parametrize("initial", ["detail", "room", "dashboard", "selection"])
-def test_selection_uses_dashboard_left_and_waits_for_confirmation(initial):
-    solver = MagicMock()
-    state = [initial]
-    close = ((30, 350), (150, 450))
-
-    def find(name):
-        visible = {
-            "detail": {"room_detail": True, "arrange_check_in_on": close},
-            "room": {},
-            "dashboard": {"recycle/dashboard": True},
-            "selection": {"confirm_blue": True},
-        }
-        return visible[state[0]].get(name)
-
-    def tap(point, **kwargs):
-        expected, following = {
-            "detail": (close, "room"),
-            "room": ((690, 960), "dashboard"),
-            "dashboard": ((235, 360), "selection"),
-        }[state[0]]
-        assert point == expected
-        state[0] = following
-
-    solver.find.side_effect = find
-    solver.tap.side_effect = tap
-    solver.detect_room.return_value = "recycle"
-    BaseSchedulerSolver.open_recycle_selection(solver)
-    assert state[0] == "selection"
-
-
-def test_unrecognized_page_stops_without_blind_inputs():
-    solver = MagicMock()
-    solver.find.return_value = None
-    solver.detect_room.return_value = ""
-    with pytest.raises(RecognizeError, match="回收站"):
-        BaseSchedulerSolver.open_recycle_selection(solver)
-    solver.tap.assert_not_called()
-    assert solver.sleep.call_count == 8
-
-
-def test_arrangement_uses_recycle_entry_and_confirms_actual_two_person_roster():
+@pytest.mark.parametrize("staff", [None, [], ["芬"], ["芬", "香草"]])
+@pytest.mark.parametrize("initial", ["room", "detail", "dashboard"])
+def test_arrangement_uses_residence_list_and_reads_actual_mood(staff, initial):
     solver = MagicMock()
     solver.task = SchedulerTask()
     solver.tasks = []
@@ -212,9 +173,10 @@ def test_arrangement_uses_recycle_entry_and_confirms_actual_two_person_roster():
     solver.ensure_dorm_recovery_order.return_value = False
     solver._can_refresh_idle_dorm_search.return_value = False
     solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
-    solver.op_data.plan = {
-        "recycle": [SimpleNamespace(agent=n) for n in ["芬", "香草"]]
-    }
+    solver.op_data.plan = (
+        {} if staff is None else {"recycle": [SimpleNamespace(agent=n) for n in staff]}
+    )
+    original_plan = deepcopy(solver.op_data.plan)
     solver.op_data.run_order_rooms = {}
     solver.op_data.operators = {}
     for name in ("芬", "香草"):
@@ -229,8 +191,41 @@ def test_arrangement_uses_recycle_entry_and_confirms_actual_two_person_roster():
     solver.get_agent_from_room.side_effect = MethodType(
         BaseSchedulerSolver.get_agent_from_room, solver
     )
-    solver.find.side_effect = lambda name, **kwargs: name != "infra_no_operator"
-    solver.read_screen.side_effect = ["芬", "香草"]
+    solver.recog.w, solver.recog.h = 1920, 1080
+    solver.get_color.return_value = np.array([255, 255, 255])
+    state = [initial]
+    detail_button = ((30, 350), (150, 450))
+
+    def find(name, **kwargs):
+        return {
+            "room": {"arrange_check_in": detail_button},
+            "detail": {"room_detail": True},
+            "dashboard": {"recycle/dashboard": True},
+            "selection": {"confirm_blue": True},
+        }[state[0]].get(name)
+
+    def tap(point, **kwargs):
+        expected, following = {
+            "room": (detail_button, "detail"),
+            "detail": ((1920 * 0.82, 1080 * 0.2), "selection"),
+        }[state[0]]
+        assert point == expected
+        state[0] = following
+
+    solver.find.side_effect = find
+    solver.tap.side_effect = tap
+    solver.back.side_effect = lambda *args: state.__setitem__(0, "room")
+    solver.turn_on_room_detail.side_effect = MethodType(
+        BaseSchedulerSolver.turn_on_room_detail, solver
+    )
+    solver.tap_confirm.side_effect = lambda *args: state.__setitem__(0, "room")
+    names = iter(("芬", "香草"))
+
+    def read_name(*args, **kwargs):
+        assert state[0] == "detail"
+        return next(names)
+
+    solver.read_screen.side_effect = read_name
     solver.read_accurate_mood.return_value = 20
 
     def update(name, mood, room, index, update_time):
@@ -240,7 +235,14 @@ def test_arrangement_uses_recycle_entry_and_confirms_actual_two_person_roster():
     solver.op_data.update_detail.side_effect = update
     plan = {"recycle": ["芬", "香草"]}
     assert BaseSchedulerSolver.agent_arrange_room(solver, {}, "recycle", plan) == {}
-    solver.open_recycle_selection.assert_called_once()
+    assert state[0] == "room"
+    assert solver.turn_on_room_detail.call_count == 2
+    assert solver.op_data.plan == original_plan
+    assert solver.read_accurate_mood.call_count == 2
+    assert [call.args[1] for call in solver.op_data.update_detail.call_args_list] == [
+        20,
+        20,
+    ]
     solver.choose_agent.assert_called_once()
     assert solver.choose_agent.call_args.args == (["芬", "香草"], "recycle")
     solver.tap_confirm.assert_called_once_with("recycle", {})

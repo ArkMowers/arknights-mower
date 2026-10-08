@@ -11,7 +11,7 @@
     "[INV-UI-08]"
   ],
   "code_symbols": [
-    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.open_recycle_selection",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.turn_on_room_detail",
     "ui/src/components/PlanEditor.vue",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.tap_confirm",
     "arknights_mower.utils.emergency_plan.effective_rescue_plan",

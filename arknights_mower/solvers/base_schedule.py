@@ -8603,28 +8603,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         )
         return True
 
-    def open_recycle_selection(self):
-        """从回收站进驻信息或材料转化页进入共用选人页。"""
-        for _ in range(8):
-            if self.find("connecting"):
-                self.sleep(0.5)
-            elif self.find("confirm_blue"):
-                return
-            elif self.find("recycle/dashboard"):
-                # 官方预览图左侧的驻员区域，避开右侧材料投入和收取按钮。
-                self.tap((235, 360), interval=0.5)
-            elif self.find("room_detail"):
-                if pos := self.find("arrange_check_in_on"):
-                    self.tap(pos, interval=0.5)
-                else:
-                    self.sleep(0.5)
-            elif self.detect_room() == "recycle":
-                self.tap((690, 960), interval=0.5)
-            else:
-                self.sleep(0.5)
-        if not self.find("confirm_blue"):
-            raise RecognizeError("未成功进入回收站干员选择界面")
-
     @timed_room
     def agent_arrange_room(
         self,
@@ -8931,14 +8909,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             choose_error=choose_error,
                         )
                     else:
-                        if room == "recycle":
-                            self.open_recycle_selection()
-                        else:
-                            while self.find("confirm_blue") is None:
-                                if error_count > 3:
-                                    raise Exception("未成功进入干员选择界面")
-                                self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
-                                error_count += 1
+                        while self.find("confirm_blue") is None:
+                            if error_count > 3:
+                                raise Exception("未成功进入干员选择界面")
+                            self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
+                            error_count += 1
                         selection_attempted = True
                         if recovery_ordered:
                             self.choose_agent(
