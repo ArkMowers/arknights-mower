@@ -50,6 +50,12 @@ def dorm_task_reservations(op_data, tasks, excluded=()):
         names.update(getattr(task, "emergency_staffing_members", ()))
         names.update(
             name
+            for row in getattr(task, "run_order_original_roster", {}).values()
+            for name in row
+            if name not in ("", "Current", "Free")
+        )
+        names.update(
+            name
             for row in getattr(task, "emergency_original_roster", {}).values()
             for name in row
             if name not in ("", "Current", "Free")

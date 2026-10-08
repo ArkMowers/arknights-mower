@@ -544,8 +544,11 @@ class EmergencyRecoveryMixin:
             ):
                 continue
             if any(
-                hasattr(task, "emergency_original_roster")
-                and room in set(task.plan) | set(task.emergency_original_roster)
+                (
+                    hasattr(task, "emergency_original_roster")
+                    and room in set(task.plan) | set(task.emergency_original_roster)
+                )
+                or room in getattr(task, "run_order_original_roster", {})
                 for task in self.tasks
             ):
                 logger.info("自动救急 %s：等待专项任务恢复原驻员后执行救急主表", room)
@@ -919,6 +922,7 @@ class EmergencyRecoveryMixin:
                 task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
                 and task.meta_data
                 and not hasattr(task, "emergency_original_roster")
+                and not getattr(task, "run_order_restore_pending", False)
                 and not self._emergency_run_order_available(task.meta_data, task.plan)
             )
         ]
@@ -1237,6 +1241,7 @@ class EmergencyRecoveryMixin:
             or any(
                 getattr(task, "emergency_staffing", False)
                 or hasattr(task, "emergency_original_roster")
+                or getattr(task, "run_order_restore_pending", False)
                 or task.plan
                 and task.type in (TaskTypes.FIAMMETTA, TaskTypes.RUN_ORDER)
                 and task.time <= datetime.now()
@@ -1392,6 +1397,7 @@ class EmergencyRecoveryMixin:
                 or getattr(task, "strict_mood_limit", False)
                 and task.time <= datetime.now()
                 or hasattr(task, "emergency_original_roster")
+                or getattr(task, "run_order_restore_pending", False)
             )
             for task in self.tasks
         ):

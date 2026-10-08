@@ -665,7 +665,9 @@ def _find_run_order_conflict(tasks, run_order_delay=5, time_now=None):
     tasks.sort(key=lambda task: task.time)
     previous_order = None
     for task in tasks:
-        if task.type != TaskTypes.RUN_ORDER:
+        if task.type != TaskTypes.RUN_ORDER or (
+            getattr(task, "run_order_restore_pending", False) and not task.meta_data
+        ):
             continue
         if (
             previous_order is not None
@@ -769,6 +771,10 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
             start = max(cursor, task.time)
             if task.type == TaskTypes.SWAP_SUPPORT:
                 cursor = start + _support_swap_duration(task, execution_time, projected)
+            elif (
+                getattr(task, "run_order_restore_pending", False) and not task.meta_data
+            ):
+                cursor = start + estimate_task_duration(task, execution_time, projected)
             elif config.conf.run_order_buffer_time > 0 and not task.adjusted:
                 cursor = max(
                     start + timedelta(seconds=45),
@@ -969,6 +975,7 @@ def adjust_run_order_for_maintenance(tasks, run_order_delay=5, advance_time=None
         t
         for t in tasks
         if t.type == TaskTypes.RUN_ORDER
+        and not (getattr(t, "run_order_restore_pending", False) and not t.meta_data)
         and (
             window_start < t.time < window_end
             or advance_time is not None
@@ -2920,6 +2927,11 @@ class SchedulerTask:
         self.strict_mood_limit = strict_mood_limit
         self.mood_limit = mood_limit
         self.initial_fia = initial_fia
+
+    def prepare_run_order_restoration(self):
+        """载入中断的跑单时，只恢复首次记录的实际原班。"""
+        self.plan = copy.deepcopy(self.run_order_original_roster)
+        self.meta_data = ""
 
     def release_dorm_targets(self):
         """返回仍在任务中的姓名与原床位；兼容旧的单人清退任务。"""

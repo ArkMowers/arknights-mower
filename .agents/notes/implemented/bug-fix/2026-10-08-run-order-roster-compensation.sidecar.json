@@ -1,0 +1,28 @@
+{
+  "title": "Run Order Roster Compensation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-04]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange_room",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.plan_run_order",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.infra_main",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.handle_error",
+    "arknights_mower.utils.scheduler_task.SchedulerTask.prepare_run_order_restoration",
+    "arknights_mower.utils.scheduler_task.scheduling",
+    "arknights_mower.utils.dorm_candidates.dorm_task_reservations",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_filter_tasks"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/run_order_restoration_tests.py",
+    "arknights_mower/tests/scheduler_task_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py"
+  ]
+}

@@ -758,6 +758,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self.check_current_focus()
         if self.error or force:
             now = datetime.now()
+            for task in self.tasks:
+                if getattr(task, "run_order_restore_pending", False):
+                    task.prepare_run_order_restoration()
             if self._emergency_active():
                 for task in self.tasks:
                     if (
@@ -796,6 +799,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 t.time < now - timedelta(minutes=15)
                 and t.type not in preserved
                 and not hasattr(t, "emergency_original_roster")
+                and not getattr(t, "run_order_restore_pending", False)
                 and not getattr(t, "group_shift_expected", {})
                 and not getattr(t, "backup_shift_active", False)
                 for t in self.tasks
@@ -809,6 +813,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     if t.type in preserved
                     or (t.type in future_preserved and t.time > now)
                     or hasattr(t, "emergency_original_roster")
+                    or getattr(t, "run_order_restore_pending", False)
                     or getattr(t, "group_shift_expected", {})
                     or getattr(t, "backup_shift_active", False)
                 ]
@@ -1341,6 +1346,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.skip()
             return True
         if self.task is not None:
+            if getattr(self.task, "run_order_restore_pending", False):
+                self.task.prepare_run_order_restoration()
             # Navigation/reconnection may have consumed the margin since run().
             # Recheck at a safe boundary, before any staff arrangement has started.
             protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
@@ -1432,6 +1439,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     if (
                         config.conf.run_order_grandet_mode.back_to_index
                         and TaskTypes.RUN_ORDER == self.task.type
+                        and self.task.meta_data
                         and not self.refresh_connecting
                         and config.conf.run_order_buffer_time > 0
                         and datetime.now() + timedelta(seconds=45)
@@ -2859,6 +2867,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             and task.meta_data
             and task.meta_data not in op_data.run_order_rooms
             and not hasattr(task, "emergency_original_roster")
+            and not getattr(task, "run_order_restore_pending", False)
         ]
         if invalid:
             logger.info(
@@ -2869,6 +2878,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.tasks[:] = [task for task in self.tasks if id(task) not in invalid_ids]
 
     def plan_run_order(self, room):
+        if any(
+            room in getattr(task, "run_order_original_roster", {})
+            for task in self.tasks
+        ):
+            return
         if not self._emergency_run_order_available(room):
             return
         if getattr(self, "maintenance_entry_pending", False):
@@ -5364,6 +5378,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if not (
                 task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
                 and task.meta_data in rooms
+                and not getattr(task, "run_order_restore_pending", False)
             )
         ]
         for room in rooms:
@@ -7008,6 +7023,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.task.type == TaskTypes.RUN_ORDER
             and not self.task.adjusted
             and room in self.op_data.run_order_rooms
+            and self.task.meta_data
             and len(new_plan) == 1
             and config.conf.run_order_buffer_time > 0
         ):
@@ -8663,6 +8679,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             meta_data=room,
             compare_type=">",
         ):
+            if getattr(run_order_task, "run_order_restore_pending", False):
+                return
             logger.info(f"移除超过{limit}分钟的跑单任务以刷新时间")
             self.tasks.remove(run_order_task)
         run_order_task = self.find_next_task(
@@ -8671,6 +8689,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             meta_data=room,
             compare_type="<",
         )
+        if run_order_task and getattr(
+            run_order_task, "run_order_restore_pending", False
+        ):
+            return
         if run_order_task and run_order_task.time > datetime.now():
             task_time = datetime.now()
             if len(self.tasks) > 0 and self.tasks[0].type != TaskTypes.FIAMMETTA:
@@ -8920,6 +8942,37 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         logger.error(message)
                         config.stop_mower.set()
                         raise MowerExit(message)
+                    normal_order = (
+                        self.task.type == TaskTypes.RUN_ORDER
+                        and self.task.meta_data == room
+                        and any(name in TRADE_ORDER_AGENTS for name in plan[room])
+                        and not self._emergency_frozen()
+                    )
+                    if normal_order or getattr(
+                        self.task, "run_order_restore_pending", False
+                    ):
+                        actual = [
+                            item["agent"] for item in self.get_agent_from_room(room)
+                        ]
+                        if normal_order and (
+                            len(actual) != len(roster)
+                            or not actual
+                            or len(set(actual)) != len(actual)
+                            or any(
+                                name in ("", "Free", "Current", *TRADE_ORDER_AGENTS)
+                                for name in actual
+                            )
+                        ):
+                            logger.warning(
+                                "%s 跑单前实际驻员不完整或仍含跑单干员：%s，先执行普通纠错",
+                                room,
+                                actual,
+                            )
+                            self.reset_room_time(room)
+                            plan.clear()
+                            self.tasks.append(SchedulerTask())
+                            self.back_to_infrastructure()
+                            return False
                     if (
                         self.task.type == TaskTypes.RUN_ORDER
                         and any(
@@ -8929,7 +8982,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         and not room.startswith("dormitory")
                         and room != "train"
                     ):
-                        new_plan[room] = self.refresh_current_room(room)
+                        new_plan[room] = (
+                            actual.copy()
+                            if normal_order
+                            else self.refresh_current_room(room)
+                        )
                     if "菲亚梅塔" in plan[room] and len(plan[room]) == 2:
                         new_plan[room] = self.refresh_current_room(room)
                         target = self.op_data.operators[plan[room][0]]
@@ -9106,6 +9163,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                                 raise Exception("未成功进入干员选择界面")
                             self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
                             error_count += 1
+                        if normal_order and not getattr(
+                            self.task, "run_order_restore_pending", False
+                        ):
+                            self.task.run_order_original_roster = copy.deepcopy(
+                                new_plan
+                            )
+                            self.task.run_order_restore_pending = True
                         selection_attempted = True
                         if recovery_ordered:
                             self.choose_agent(
@@ -9194,6 +9258,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     or (isinstance(e, RecognizeError) and str(e).startswith("干员确认"))
                 ):
                     self.record_selection_failure()
+                if (
+                    getattr(self.task, "run_order_restore_pending", False)
+                    and self.task.meta_data
+                ):
+                    # 首次换入失败交回任务补偿边界，后续只恢复实测原班。
+                    raise
                 choose_error += 1
                 self.recog.update()
                 if "检测到漏单！" in str(e):
@@ -9341,7 +9411,30 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             for group in completed:
                 del groups[group]
 
+    def _retain_run_order_restoration(self, *, delay=False):
+        """保留实测原班，后续调度仅恢复驻员，不重复插拔。"""
+        self.task.prepare_run_order_restoration()
+        self.task.time = datetime.now() + timedelta(minutes=int(delay))
+        if not any(task is self.task for task in self.tasks):
+            self.tasks.append(self.task)
+        return False
+
     def agent_arrange(self, plan: tp.BasePlan, get_time=False):
+        restoring_order = getattr(self.task, "run_order_restore_pending", False)
+        if restoring_order:
+            self.task.prepare_run_order_restoration()
+            plan = self.task.plan
+            if not self._emergency_compensation_available(plan):
+                self.task.time = datetime.now() + timedelta(minutes=1)
+                return False
+        elif self.task.type == TaskTypes.RUN_ORDER and self.task.meta_data:
+            if any(
+                task is not self.task
+                and getattr(task, "run_order_restore_pending", False)
+                for task in self.tasks
+            ):
+                self.task.time = datetime.now() + timedelta(minutes=1)
+                return False
         if self._emergency_frozen():
             if (
                 self.task.type == TaskTypes.RUN_ORDER
@@ -9351,7 +9444,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self.task.time = datetime.now() + timedelta(minutes=1)
                 return False
             if self.task.type in (TaskTypes.RUN_ORDER, TaskTypes.FIAMMETTA):
-                if not hasattr(self.task, "emergency_original_roster"):
+                if not restoring_order and not hasattr(
+                    self.task, "emergency_original_roster"
+                ):
                     self.task.emergency_original_roster = {
                         room: self.op_data.get_current_room(room, True) for room in plan
                     }
@@ -9455,9 +9550,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     self.preserve_resting_crafters(plan[dorm_room], dorm_room)
             restore_displaced_resting(self.op_data, previous, plan, self.tasks)
         rooms = list(plan.keys())
-        # 保存原班：#907 无人机加速失败时恢复，避免任务以空 plan 在下一轮被误消费
+        # 救急跑单失败沿用换入意图；普通跑单由实测原班补偿接续。
         original_plan = (
-            copy.deepcopy(plan) if self.task.type == TaskTypes.RUN_ORDER else None
+            copy.deepcopy(plan)
+            if self.task.type == TaskTypes.RUN_ORDER and self._emergency_frozen()
+            else None
         )
         new_plan = {}
         # 优先替换工作站再替换宿舍
@@ -9472,91 +9569,121 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self.task, self.tasks, room
             ):
                 return False
-            new_plan = self.agent_arrange_room(new_plan, room, plan, get_time=get_time)
-            if new_plan is False:
+            try:
+                new_plan = self.agent_arrange_room(
+                    new_plan, room, plan, get_time=get_time
+                )
+            except BaseException:
+                if getattr(self.task, "run_order_restore_pending", False):
+                    self._retain_run_order_restoration(delay=True)
+                raise
+            if new_plan is False or new_plan is None:
                 self._finish_idle_dorm_shift()
+                if getattr(self.task, "run_order_restore_pending", False):
+                    return self._retain_run_order_restoration(delay=True)
                 return False
         self._finish_idle_dorm_shift()
+        if restoring_order:
+            del self.task.run_order_original_roster
+            del self.task.run_order_restore_pending
         if (
             len(new_plan) == 1
             and room != "train"
             and self.task.type == TaskTypes.RUN_ORDER
         ):
-            if config.conf.run_order_buffer_time <= 0 or self.task.adjusted:
-                if self.task.adjusted:
-                    logger.info("检测到跑单已调整，强制使用无人机跑单")
-                logger.info("开始插拔")
-                try:
-                    self.drone(room, not_customize=True)
-                except Exception:
-                    # #907：无人机加速失败时恢复原班，避免任务以空 plan 在下轮被误消费
-                    if original_plan is not None:
-                        self.task.plan = original_plan
-                    raise
-            else:
-                # 葛朗台跑单模式
-                # agent_arrange_room 已完成换人并读屏校验进驻结果；
-                # 此时才进入订单页读倒计时，避免换人前往返进入房间。
-                wait_time = self.get_order_remaining_time()
-                logger.debug(f"订单剩余时间 {wait_time} 秒")
-                if 0 < wait_time < config.conf.run_order_delay * 60:
-                    logger.info(f"停止{wait_time}秒等待订单完成")
-                    self.sleep(wait_time)
-                    # 等待服务器交互
-                    if self.scene() in self.waiting_scene:
-                        if not self.waiting_solver():
-                            return
+            try:
+                if config.conf.run_order_buffer_time <= 0 or self.task.adjusted:
+                    if self.task.adjusted:
+                        logger.info("检测到跑单已调整，强制使用无人机跑单")
+                    logger.info("开始插拔")
+                    try:
+                        self.drone(room, not_customize=True)
+                    except Exception:
+                        if original_plan is not None:
+                            self.task.plan = original_plan
+                        raise
                 else:
-                    logger.error("检测到漏单", extra={"archive_screenshots": True})
-                    save_exception(Exception("检测到漏单"))
-                    send_message("检测到漏单！", level="WARNING")
-                self.accept_order()
-                if self.drone_room is None or (
-                    self.drone_room == room and room in self.op_data.run_order_rooms
-                ):
-                    drone_count = self.digit_reader.get_drone(self.recog.gray)
-                    logger.info(f"当前无人机数量为：{drone_count}")
-                    if drone_count >= config.conf.drone_count_limit:
-                        self.drone(
-                            room, not_return=True, not_customize=True, skip_enter=True
-                        )
-                if config.conf.run_order_buffer_time > 0:
-                    while self.find("bill_accelerate") is not None:
+                    # 葛朗台跑单模式
+                    # agent_arrange_room 已完成换人并读屏校验进驻结果；
+                    # 此时才进入订单页读倒计时，避免换人前往返进入房间。
+                    wait_time = self.get_order_remaining_time()
+                    logger.debug(f"订单剩余时间 {wait_time} 秒")
+                    if 0 < wait_time < config.conf.run_order_delay * 60:
+                        logger.info(f"停止{wait_time}秒等待订单完成")
+                        self.sleep(wait_time)
+                        # 等待服务器交互
+                        if self.scene() in self.waiting_scene:
+                            if not self.waiting_solver():
+                                if getattr(
+                                    self.task, "run_order_restore_pending", False
+                                ):
+                                    return self._retain_run_order_restoration(
+                                        delay=True
+                                    )
+                                return False
+                    else:
+                        logger.error("检测到漏单", extra={"archive_screenshots": True})
+                        save_exception(Exception("检测到漏单"))
+                        send_message("检测到漏单！", level="WARNING")
+                    self.accept_order()
+                    if self.drone_room is None or (
+                        self.drone_room == room and room in self.op_data.run_order_rooms
+                    ):
+                        drone_count = self.digit_reader.get_drone(self.recog.gray)
+                        logger.info(f"当前无人机数量为：{drone_count}")
+                        if drone_count >= config.conf.drone_count_limit:
+                            self.drone(
+                                room,
+                                not_return=True,
+                                not_customize=True,
+                                skip_enter=True,
+                            )
+                    if config.conf.run_order_buffer_time > 0:
+                        while self.find("bill_accelerate") is not None:
+                            self.back(interval=0.5)
+                    else:
                         self.back(interval=0.5)
-                else:
-                    self.back(interval=0.5)
-                    self.back(interval=0.5)
-            # 防止由于意外导致的死循环
-            run_order_room = next(iter(new_plan))
-            if any(
-                any(char in item for item in new_plan[run_order_room])
-                for char in TRADE_ORDER_AGENTS
-            ):
-                new_plan[run_order_room] = (
-                    self.task.emergency_original_roster[run_order_room]
-                    if self._emergency_frozen()
-                    and hasattr(self.task, "emergency_original_roster")
-                    else [data.agent for data in self.op_data.plan[room]]
-                )
-            if config.conf.run_order_buffer_time > 0 and (
-                not self._emergency_frozen()
-                or self._emergency_compensation_available(new_plan)
-            ):
-                self.agent_arrange_room({}, run_order_room, new_plan, skip_enter=True)
-            else:
-                restore_task = SchedulerTask(
-                    time=self.tasks[0].time,
-                    task_plan=new_plan,
-                    task_type=TaskTypes.RUN_ORDER,
-                )
-                if self._emergency_frozen():
-                    restore_task.emergency_original_roster = copy.deepcopy(
-                        self.task.emergency_original_roster
+                        self.back(interval=0.5)
+                # 防止由于意外导致的死循环
+                run_order_room = next(iter(new_plan))
+                if getattr(self.task, "run_order_restore_pending", False):
+                    new_plan = copy.deepcopy(self.task.run_order_original_roster)
+                    if config.conf.run_order_buffer_time <= 0:
+                        return self._retain_run_order_restoration()
+                elif self._emergency_frozen() and hasattr(
+                    self.task, "emergency_original_roster"
+                ):
+                    new_plan = copy.deepcopy(self.task.emergency_original_roster)
+                if config.conf.run_order_buffer_time > 0 and (
+                    not self._emergency_frozen()
+                    or self._emergency_compensation_available(new_plan)
+                ):
+                    restored = self.agent_arrange_room(
+                        {}, run_order_room, new_plan, skip_enter=True
                     )
-                if getattr(self.task, "maintenance_advance_before_backup", False):
-                    restore_task.maintenance_advance_before_backup = True
-                self.tasks.append(restore_task)
-                self.skip()
+                    if getattr(self.task, "run_order_restore_pending", False):
+                        if restored is False or restored is None:
+                            return self._retain_run_order_restoration(delay=True)
+                        del self.task.run_order_original_roster
+                        del self.task.run_order_restore_pending
+                else:
+                    restore_task = SchedulerTask(
+                        time=self.tasks[0].time,
+                        task_plan=new_plan,
+                        task_type=TaskTypes.RUN_ORDER,
+                    )
+                    if self._emergency_frozen():
+                        restore_task.emergency_original_roster = copy.deepcopy(
+                            self.task.emergency_original_roster
+                        )
+                    if getattr(self.task, "maintenance_advance_before_backup", False):
+                        restore_task.maintenance_advance_before_backup = True
+                    self.tasks.append(restore_task)
+                    self.skip()
+            except BaseException:
+                if getattr(self.task, "run_order_restore_pending", False):
+                    self._retain_run_order_restoration(delay=True)
+                raise
         elif new_plan and self.task.type == TaskTypes.FIAMMETTA:
             self.tasks.append(
                 SchedulerTask(
