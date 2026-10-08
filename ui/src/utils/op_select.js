@@ -1,7 +1,8 @@
 import { NAvatar, NTag } from 'naive-ui'
 import { h } from 'vue'
+import OperatorSkillTooltip from '@/components/OperatorSkillTooltip.vue'
 
-export const render_op_tag = ({ option, handleClose }) => {
+const renderTag = ({ option, handleClose }) => {
   return h(
     NTag,
     {
@@ -41,7 +42,7 @@ export const render_op_tag = ({ option, handleClose }) => {
   )
 }
 
-export const render_op_label = (option) => {
+const renderLabel = (option) => {
   return h(
     'div',
     {
@@ -64,3 +65,10 @@ export const render_op_label = (option) => {
     ]
   )
 }
+
+const withSkillTooltip = (option, render) =>
+  h(OperatorSkillTooltip, { name: option.label || option.value }, { default: render })
+
+export const render_op_label = renderLabel
+export const render_op_option = ({ option, node }) => withSkillTooltip(option, () => node)
+export const render_op_tag = renderTag

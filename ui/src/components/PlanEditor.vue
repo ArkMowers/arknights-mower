@@ -177,7 +177,7 @@ defineExpose({
   outer
 })
 
-import { render_op_label, render_op_tag } from '@/utils/op_select'
+import { render_op_option, render_op_label, render_op_tag } from '@/utils/op_select'
 import { pinyin_match } from '@/utils/common'
 import { factory_product_options } from '@/utils/base_products'
 
@@ -643,6 +643,7 @@ function set_facility(e) {
                 :disabled="edit_locked"
                 :filter="(p, o) => pinyin_match(o.label, p)"
                 :render-label="render_op_label"
+                :render-option="render_op_option"
               />
             </td>
             <td class="select-label">

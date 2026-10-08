@@ -194,7 +194,7 @@ const operators_with_free_current = computed(() => {
 })
 
 import { pinyin_match } from '@/utils/common'
-import { render_op_label } from '@/utils/op_select'
+import { render_op_option, render_op_label } from '@/utils/op_select'
 
 const skill_list = [
   { value: 1, label: '一技能' },
@@ -234,6 +234,7 @@ const level_list = [
           :options="operators"
           :filter="(p, o) => pinyin_match(o.label, p)"
           :render-label="render_op_label"
+          :render-option="render_op_option"
           style="width: 150px"
         />
         <n-select
@@ -315,6 +316,7 @@ const level_list = [
                   :on-blur="deactivate"
                   :filter="(p, o) => pinyin_match(o.label, p)"
                   :render-label="render_op_label"
+                  :render-option="render_op_option"
                 />
               </template>
             </n-dynamic-tags>
@@ -359,6 +361,7 @@ const level_list = [
           :options="workshopOperatorOptions"
           :filter="(p, o) => pinyin_match(o.label, p)"
           :render-label="render_op_label"
+          :render-option="render_op_option"
           style="width: 178px"
         />
         <help-text>

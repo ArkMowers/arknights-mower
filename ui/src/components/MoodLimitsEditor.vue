@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { pinyin_match } from '@/utils/common'
-import { render_op_label } from '@/utils/op_select'
+import { render_op_option, render_op_label } from '@/utils/op_select'
 
 const defaults = defineModel('defaults', { default: null })
 const overrides = defineModel('overrides', { default: () => ({}) })
@@ -102,6 +102,7 @@ function removeOperator(name) {
         :disabled="disabled"
         :options="choices"
         :render-label="render_op_label"
+        :render-option="render_op_option"
         :filter="(input, option) => pinyin_match(option.label, input)"
         filterable
         clearable

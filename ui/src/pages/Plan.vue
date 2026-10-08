@@ -221,7 +221,7 @@ const loading_bar = useLoadingBar()
 
 import Bowser from 'bowser'
 
-import { render_op_label } from '@/utils/op_select'
+import { render_op_option, render_op_label } from '@/utils/op_select'
 import { pinyin_match } from '@/utils/common'
 
 async function save() {
@@ -1069,6 +1069,7 @@ function movePlanForward() {
             filterable
             :filter="(p, o) => pinyin_match(o.label, p)"
             :render-label="render_op_label"
+            :render-option="render_op_option"
           />
         </div>
         <svg
@@ -1097,6 +1098,7 @@ function movePlanForward() {
             filterable
             :filter="(p, o) => pinyin_match(o.label, p)"
             :render-label="render_op_label"
+            :render-option="render_op_option"
           />
         </div>
       </div>

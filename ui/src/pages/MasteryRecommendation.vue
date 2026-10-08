@@ -490,6 +490,7 @@
                         :options="operatorOptions"
                         :filter="(p, o) => pinyin_match(o.label, p)"
                         :render-label="render_op_label"
+                        :render-option="render_op_option"
                         style="width: 178px"
                       />
                       <label class="ml" style="font-size: 13px">训练速度</label>
@@ -509,6 +510,7 @@
                         v-model:value="value.swap_name"
                         :options="swap_list"
                         :render-label="render_op_label"
+                        :render-option="render_op_option"
                         style="width: 140px"
                       />
                       <n-select
@@ -772,7 +774,7 @@ import {
   DEFAULT_MASTERY_SWAP_BUFFERS,
   normalizeMasterySwapBuffers
 } from '@/utils/masteryRoute'
-import { render_op_label } from '@/utils/op_select'
+import { render_op_option, render_op_label } from '@/utils/op_select'
 import { masteryLevelLabel } from '@/utils/masteryLevel'
 import OperatorStatistics from '@/components/OperatorStatistics.vue'
 import GrowthSurveyFilters from '@/components/GrowthSurveyFilters.vue'

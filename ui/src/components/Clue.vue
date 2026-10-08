@@ -55,7 +55,7 @@ function render_label(option) {
 }
 
 import { pinyin_match } from '@/utils/common'
-import { render_op_label } from '@/utils/op_select'
+import { render_op_option, render_op_label } from '@/utils/op_select'
 
 const deploy_directions = [
   { label: '向上', value: 'Up' },
@@ -114,6 +114,7 @@ const show_map = ref(false)
           v-model:value="credit_fight.operator"
           :filter="(p, o) => pinyin_match(o.label, p)"
           :render-label="render_op_label"
+          :render-option="render_op_option"
         />
       </n-form-item>
       <n-form-item label="部署">
