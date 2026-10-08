@@ -11,6 +11,8 @@ date: 2026-10-06
 
 共享 ADB 服务停止应答主机握手后无法恢复。每个恢复周期都记录 `设备恢复暂停，30 秒后重新检查所选目标：共享 ADB 握手无法验证，保留现有监听`，所选模拟器在外部工具重启该服务之前始终不可用。实测故障中该警告持续二十八分钟，服务始终无响应。
 
+恢复也无法重新启动协调器已经停止的服务。服务持续缺席，而每次观察都重复主机握手超时、不给出缺席结论；`_start` 拒绝这种未确认的观察，所选模拟器在外部工具启动该服务之前始终不可用。
+
 ## 根因
 
 `probe_adb_server` 区分两个超时阶段。接收主机应答超时抛出 `SharedADBHandshakeTimeout`；TCP 连接阶段超时抛出的是普通 `SharedADBError`。
@@ -57,4 +59,4 @@ date: 2026-10-06
 
 定向验证还包含 `adb_shared_transport_tests.py`、`device_adb_recovery_tests.py` 与 `scheduler_recovery_preservation_tests.py`，分别覆盖共享路由、应用恢复和待执行任务保留。
 
-上述六个离线套件通过，共 397 个测试和 22 个子测试。全仓库 Ruff 规则检查与格式检查以及 `git diff --check` 均通过。`python scripts/verify_governance.py` 通过，仅有两条既存归档测试引用兼容性警告。规范轴与需求轴审查未发现未解决缺陷。验证使用原生 API、socket 和辅助适配器的替代实现，未验证真实设备行为。
+上述六个离线套件通过，共 397 个测试和 22 个子测试。全仓库 Ruff 规则检查与格式检查以及 `git diff --check` 均通过。`python scripts/verify_governance.py` 通过，仅有两条既存归档测试引用兼容性警告。在未占用端口上对真实 Windows 表执行的一次只读人工检查确认了查询判定：空表、IPv4 回环与通配监听、IPv6 回环与双栈监听、无关端口，以及由运行中的 ADB 服务占用的共享端口。规范轴与需求轴审查未发现未解决缺陷。套件证据仍以原生 API、socket 与辅助适配器的替代实现为界；未验证真实设备行为。

@@ -11,6 +11,8 @@ date: 2026-10-06
 
 A shared ADB server that stops answering the host handshake never recovers. Every recovery cycle logs `设备恢复暂停，30 秒后重新检查所选目标：共享 ADB 握手无法验证，保留现有监听` and the selected emulator stays unusable until an external tool restarts the service. The observed incident repeats this warning for twenty-eight minutes while the service remains unreachable.
 
+Recovery also fails to restart a service the coordinator has already stopped. The service stays absent while every observation repeats the host-handshake timeout instead of reporting absence; `_start` refuses that unconfirmed observation, and the selected emulator remains unusable until an external tool starts the service.
+
 ## Root cause
 
 `probe_adb_server` distinguishes two timeout phases. A timeout while receiving the host reply raises `SharedADBHandshakeTimeout`; a timeout during the TCP connect raised a plain `SharedADBError`.
@@ -57,4 +59,4 @@ The [verified listener stop decision](2026-10-07-verified-adb-listener-stop.md) 
 
 Focused verification also includes `adb_shared_transport_tests.py`, `device_adb_recovery_tests.py` and `scheduler_recovery_preservation_tests.py` for shared routing, application recovery and pending task preservation.
 
-The six named offline suites pass with 397 tests and 22 subtests. Repository-wide Ruff lint and format checks pass, and `git diff --check` passes. `python scripts/verify_governance.py` passes with two existing archived test-reference compatibility warnings. Standards and requirements review find no unresolved defects. Native API, socket and helper substitutions bound this evidence; live-device behavior is not tested.
+The six named offline suites pass with 397 tests and 22 subtests. Repository-wide Ruff lint and format checks pass, and `git diff --check` passes. `python scripts/verify_governance.py` passes with two existing archived test-reference compatibility warnings. A read-only manual check against the real Windows tables on an unused port confirms the query verdicts for an empty table, IPv4 loopback and wildcard listeners, IPv6 loopback and dual-stack listeners, an unrelated port and the shared port owned by a running ADB server. Standards and requirements review find no unresolved defects. Native API, socket and helper substitutions bound the suite evidence; live-device behavior is not tested.

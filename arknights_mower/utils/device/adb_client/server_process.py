@@ -28,8 +28,8 @@ class _TCP6Row(ctypes.Structure):
     ]
 
 
-class _TCP6Table(ctypes.Structure):
-    _fields_ = [("count", ctypes.c_uint32), ("rows", _TCP6Row * 1)]
+# MIB_TCPTABLE and MIB_TCP6TABLE both store the entry count before their rows.
+_TCP_ROW_OFFSET = 4
 
 
 def _windows_api():
@@ -55,14 +55,14 @@ def _windows_api():
     return kernel, tcp
 
 
-def _tcp_table(query, remaining, family, row_size, *, offset=4):
+def _tcp_table(query, remaining, family, row_size):
     """Read one bounded owner table without accepting a partial snapshot."""
     size = ctypes.c_uint32()
     remaining()
     status = query(None, ctypes.byref(size), False, family, 3, 0)
     for _ in range(3):
         remaining()
-        if status != 122 or not 4 <= size.value <= 1024 * 1024:
+        if status != 122 or not _TCP_ROW_OFFSET <= size.value <= 1024 * 1024:
             raise SharedADBError("无法核验共享 ADB 端口的进程归属")
         buffer = ctypes.create_string_buffer(size.value)
         capacity = len(buffer)
@@ -72,10 +72,10 @@ def _tcp_table(query, remaining, family, row_size, *, offset=4):
             break
     else:
         raise SharedADBError("共享 ADB 端口归属持续变化，保留现有进程")
-    if status != 0 or not 4 <= size.value <= capacity:
+    if status != 0 or not _TCP_ROW_OFFSET <= size.value <= capacity:
         raise SharedADBError("共享 ADB 端口归属读取失败")
     count = struct.unpack_from("<I", buffer)[0]
-    if size.value < offset or count > (size.value - offset) // row_size:
+    if count > (size.value - _TCP_ROW_OFFSET) // row_size:
         raise SharedADBError("共享 ADB 端口归属记录无效")
     return buffer, count
 
@@ -87,7 +87,7 @@ def _listener_pid(query, remaining):
     for index in range(count):
         remaining()
         state, address, port, _, _, pid = struct.unpack_from(
-            "<6I", buffer, 4 + index * 24
+            "<6I", buffer, _TCP_ROW_OFFSET + index * 24
         )
         host = socket.inet_ntoa(struct.pack("<I", address))
         if (
@@ -116,13 +116,11 @@ def adb_listener_absent(*, remaining):
     remaining()
     if pid is not None:
         return False
-    row_size, offset = ctypes.sizeof(_TCP6Row), _TCP6Table.rows.offset
-    buffer, count = _tcp_table(
-        query, remaining, socket.AF_INET6, row_size, offset=offset
-    )
+    row_size = ctypes.sizeof(_TCP6Row)
+    buffer, count = _tcp_table(query, remaining, socket.AF_INET6, row_size)
     for index in range(count):
         remaining()
-        row = _TCP6Row.from_buffer(buffer, offset + index * row_size)
+        row = _TCP6Row.from_buffer(buffer, _TCP_ROW_OFFSET + index * row_size)
         if (
             row.state == 2
             and socket.ntohs(row.local_port & 0xFFFF) == ADB_SERVER_ADDRESS[1]

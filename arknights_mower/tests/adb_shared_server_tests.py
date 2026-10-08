@@ -60,7 +60,10 @@ def service(tmp_path, monkeypatch):
         monkeypatch.delenv(name, raising=False)
     clock = Clock()
     host = SimpleNamespace(
-        version=41, mutations=[], clients={"selected-adb": (41, "35.0.2")}
+        version=41,
+        mutations=[],
+        clients={"selected-adb": (41, "35.0.2")},
+        listener=False,
     )
 
     def probe(timeout):
@@ -120,6 +123,7 @@ def establish_failure(service):
 
 @pytest.fixture
 def delayed_refusal(service, monkeypatch):
+    """Model a refusal past the probe budget; `host.listener` owns the port."""
     factory = MagicMock()
     connection = factory.return_value.__enter__.return_value
     socket_budget = [0.0]
@@ -128,11 +132,10 @@ def delayed_refusal(service, monkeypatch):
     )
 
     def connect(address):
+        # The refusal would arrive at 2.002 seconds, past the socket budget.
         assert address == ("127.0.0.1", 5037)
         service.clock.sleep(min(2.002, socket_budget[0]))
-        if socket_budget[0] < 2.002:
-            raise socket.timeout("local connection refusal exceeds probe budget")
-        raise ConnectionRefusedError("delayed local connection refusal")
+        raise socket.timeout("local connection refusal exceeds probe budget")
 
     connection.connect.side_effect = connect
 
@@ -151,7 +154,7 @@ def delayed_refusal(service, monkeypatch):
         assert family in (socket.AF_INET, socket.AF_INET6)
         assert (table_class, reserved) == (3, 0)
         rows = []
-        if family == socket.AF_INET and service.host.version is not None:
+        if family == socket.AF_INET and service.host.listener:
             rows.append(
                 struct.pack(
                     "<6I",
@@ -240,6 +243,7 @@ def test_failed_listener_query_never_confirms_absence(
     delayed_refusal.absence.side_effect = query_error
     with pytest.raises(SharedADBError, match="30 秒"):
         service.recovery.recover("selected-adb", timeout=10)
+    assert delayed_refusal.absence.called
     assert service.host.mutations == []
     assert service.recovery.generation == 0
 
@@ -248,12 +252,15 @@ def test_existing_listener_keeps_restart_window_and_unverified_stop_protection(
     service, delayed_refusal
 ):
     service.host.version = None
-    delayed_refusal.absence.side_effect = None
-    delayed_refusal.absence.return_value = False
+    service.host.listener = True
     service.kill.side_effect = SharedADBStopTimeout("stop request unanswered")
     with pytest.raises(SharedADBError, match="30 秒"):
         service.recovery.recover("selected-adb", timeout=10)
     service.kill.assert_not_called()
+    # The IPv4 owner alone blocks absence; the IPv6 table is not consulted.
+    assert {call.args[3] for call in delayed_refusal.query.call_args_list} == {
+        socket.AF_INET
+    }
     service.clock.sleep(30)
     with pytest.raises(SharedADBError, match="无法核验"):
         service.recovery.recover("selected-adb", timeout=10)
