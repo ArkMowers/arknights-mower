@@ -624,6 +624,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if resting_members and all(op.is_resting() for op in resting_members):
             logger.info(f"{self.task.meta_data} 已完成用尽下班，继续正常规划")
             return
+        if self._has_pending_exhausted_shift(candidates):
+            logger.debug("用尽下班已有完整待执行恢复安排：%s", candidates)
+            return
         # 在candidate 中，计算出需要的high free 和 Low free 数量
         # 只计算无法直接接管的主力床位。低优、替班和临时休息干员会让床，
         # 不能在这里阻止整个大组尝试下班。
@@ -662,6 +665,48 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 logger.warning(msg)
                 send_message(msg, level="ERROR")
             self.skip()
+
+    def _has_pending_exhausted_shift(self, candidates):
+        """A concrete off-shift task covers every recovery-requiring member."""
+        members = [
+            self.op_data.operators[name]
+            for name in candidates
+            if not self.op_data.operators[name].room.startswith("dorm")
+            and not self.op_data.operators[name].workaholic
+            and not self.op_data.operators[name].multi_group
+        ]
+        if not members:
+            return False
+        for task in self.tasks:
+            if task.type != TaskTypes.SHIFT_OFF:
+                continue
+            resting = {
+                name
+                for room, names in task.plan.items()
+                if room.startswith("dorm")
+                for name in names
+                if name not in ("", "Current", "Free")
+            }
+            working = {
+                name
+                for room, names in task.plan.items()
+                if not room.startswith("dorm")
+                for name in names
+            }
+            for member in members:
+                if not member.is_resting():
+                    continue
+                target = task.plan.get(member.current_room)
+                if target is None or (
+                    member.current_index >= 0
+                    and target[member.current_index : member.current_index + 1]
+                    in (["Current"], [member.name])
+                ):
+                    resting.add(member.name)
+            resting.difference_update(working)
+            if all(member.name in resting for member in members):
+                return True
+        return False
 
     def _plan_exhaust_support(self, candidates):
         from arknights_mower.utils.exhaust_replacement import plan_exhaust_support
@@ -2930,6 +2975,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             ):
                 continue
             if op.current_mood() <= op.lower_limit + 2:
+                candidates = self.op_data.groups[op.group] if op.group else [name]
+                if self._has_pending_exhausted_shift(candidates):
+                    continue
                 if (
                     self.find_next_task(
                         task_type=TaskTypes.EXHAUST_OFF, meta_data=op.name
