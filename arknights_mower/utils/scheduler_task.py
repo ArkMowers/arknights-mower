@@ -520,7 +520,7 @@ def _merge_deferred_dorm_schedules(tasks):
     return result
 
 
-def _task_has_phase_state(task):
+def _task_has_phase_state(task, *, ignored=()):
     # Phase, return-window and reservation state belongs to the complete task.
     fields = {
         "time",
@@ -532,7 +532,7 @@ def _task_has_phase_state(task):
         "mood_limit",
         "initial_fia",
     }
-    return bool(vars(task).keys() - fields)
+    return bool(vars(task).keys() - fields - set(ignored))
 
 
 def _static_room_task(task):
@@ -685,6 +685,70 @@ def _fits_before_priority(task, start, duration, priority):
     return start + duration < deadline if has_dorm else start + duration <= deadline
 
 
+def _future_dorm_deferrals(task, following, op_data):
+    """保留人员、槽位及绑组依赖；未知状态不证明后续任务独立。"""
+
+    def resources(pending):
+        release_fields = (
+            ("release_start", "release_targets")
+            if pending.type == TaskTypes.RELEASE_DORM
+            else ()
+        )
+        if (
+            not pending.plan
+            or _task_has_phase_state(pending, ignored=release_fields)
+            or not (_is_dorm_only_task(pending) or _static_room_task(pending))
+        ):
+            return None
+        names, slots = _arrangement_resources(pending.plan)
+        if not slots:
+            return set()
+        if not isinstance(op_data, Operators) or op_data.backup_plans:
+            return None
+        if pending.type == TaskTypes.RELEASE_DORM:
+            names.update(getattr(pending, "release_targets", {}))
+        for room, index in slots:
+            if room not in op_data.plan:
+                return None
+            current = op_data.get_current_room(room)
+            if current is None or index >= len(current):
+                return None
+            if (
+                pending.plan[room][index] == "Free"
+                and pending.type != TaskTypes.RELEASE_DORM
+            ):
+                return None
+            names.add(current[index])
+        keys = {("slot", room, index) for room, index in slots}
+        for name in names:
+            operator = op_data.operators.get(name)
+            if operator is None:
+                return None
+            keys.add(("operator", name))
+            groups = {operator.group} | {
+                binding["group"] for binding in operator.group_bindings
+            }
+            keys.update(("group", group) for group in groups if group)
+        return keys
+
+    pending = [task, *following]
+    keys = [resources(item) for item in pending]
+    if any(item is None for item in keys):
+        deferred = [task] + [
+            item for item, affected in zip(following, keys[1:]) if affected != set()
+        ]
+    else:
+        affected = set(keys[0])
+        deferred = [task]
+        for item, changed in zip(following, keys[1:]):
+            if affected & changed:
+                deferred.append(item)
+                affected.update(changed)
+    if any(item.strict_mood_limit or item.adjusted for item in deferred):
+        return None
+    return deferred
+
+
 def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=None):
     now = time_now or datetime.now()
     tasks.sort(key=lambda task: task.time)
@@ -737,7 +801,7 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
             continue
         priority = ordered[next_priority_index]
         # 未来普通任务仅在跑单前十分钟延期；到期任务仍按实际操作预算保护跑单。
-        # 宿舍保留提前规划，但不因此提前延期后续普通任务。
+        # 宿舍保留提前规划；只有确认独立的后续任务保留原时间。
         if (
             priority.type == TaskTypes.RUN_ORDER
             and priority.time - now > timedelta(minutes=10)
@@ -750,25 +814,37 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
                 and not getattr(task, "dorm_recovery_restore", [])
                 and not _fits_before_priority(task, start, duration, priority)
             ):
-                original_time = task.time
+                deferred = _future_dorm_deferrals(
+                    task, ordered[index + 1 : next_priority_index], projected
+                )
+                if deferred is None:
+                    cursor = start + duration
+                    projected = _project_admitted_task(projected, task)
+                    index += 1
+                    continue
                 # 同一跑单后的宿舍安排按原顺序追加，避免后移任务覆盖最终驻员。
                 previous = deferred_dorm_tail.get(id(priority), priority)
-                task.time = priority.time + timedelta(seconds=1)
-                logger.debug(
-                    "宿舍提前规划：%s（%s）从 %s 延至 %s，避让 %s 跑单",
-                    ", ".join(task.plan),
-                    task.meta_data or task.type.display_value,
-                    original_time,
-                    task.time,
-                    priority.time,
-                )
-                ordered.pop(index)
+                for pending in deferred:
+                    original_time = pending.time
+                    pending.time = priority.time + timedelta(seconds=1)
+                    logger.debug(
+                        "宿舍提前规划：%s（%s）从 %s 延至 %s，避让 %s 跑单",
+                        ", ".join(pending.plan),
+                        pending.meta_data or pending.type.display_value,
+                        original_time,
+                        pending.time,
+                        priority.time,
+                    )
+                deferred_ids = {id(pending) for pending in deferred}
+                ordered[:] = [
+                    pending for pending in ordered if id(pending) not in deferred_ids
+                ]
                 insert_index = (
                     next(i for i, pending in enumerate(ordered) if pending is previous)
                     + 1
                 )
-                ordered.insert(insert_index, task)
-                deferred_dorm_tail[id(priority)] = task
+                ordered[insert_index:insert_index] = deferred
+                deferred_dorm_tail[id(priority)] = deferred[-1]
             else:
                 cursor = start + duration
                 projected = _project_admitted_task(projected, task)

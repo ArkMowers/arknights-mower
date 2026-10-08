@@ -12,6 +12,7 @@
   "code_symbols": [
     "arknights_mower.utils.scheduler_task.scheduling",
     "arknights_mower.utils.scheduler_task.protect_priority_tasks",
+    "arknights_mower.utils.scheduler_task._future_dorm_deferrals",
     "arknights_mower.utils.scheduler_task._schedule_priority_tasks"
   ],
   "test_suites": [

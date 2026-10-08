@@ -313,6 +313,10 @@ def test_dorm_forecast_rebuilding_does_not_repeat_info_or_defer_work(
     # 实例中的 9.1 秒来自未来清退与跑单间隔扣去一分钟，并非当前剩余时间。
     original_time = datetime(2026, 10, 9, 1, 37, 6, 136646)
     order_time = datetime(2026, 10, 9, 1, 38, 15, 262450)
+    data = room_fixtures.TestSchedulingRoomPlans().make_op_data(
+        {"dormitory_3": ["M1", "M2", "幽灵鲨", "M3", "M4"], "room_1_2": ["B"]},
+        targets=("A",),
+    )
     for now in (
         datetime(2026, 10, 9, 0, 23, 43),
         datetime(2026, 10, 9, 0, 24, 7),
@@ -328,7 +332,7 @@ def test_dorm_forecast_rebuilding_does_not_repeat_info_or_defer_work(
         order = SchedulerTask(order_time, task_type=TaskTypes.RUN_ORDER)
         tasks = [dorm, work, order]
         for _ in range(2):
-            dispatch(tasks, time_now=now)
+            dispatch(tasks, time_now=now, op_data=data)
             assert tasks == [work, order, dorm]
             assert dorm.time == order_time + timedelta(seconds=1)
             assert work.time == original_time + timedelta(seconds=1)
@@ -392,6 +396,105 @@ def test_future_dorm_deferrals_do_not_pass_a_later_arrangement(dispatch):
         assert tasks == [order, first, second, last]
         assert last.time == NOW + timedelta(seconds=1201)
         assert tasks[-1].plan["dormitory_1"] == ["C"]
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+@pytest.mark.parametrize("observed", [False, True])
+def test_future_dorm_and_return_preserve_final_work_occupancy(dispatch, observed):
+    data = room_fixtures.TestSchedulingRoomPlans().make_op_data(
+        {"dormitory_1": ["B"], "room_1_1": ["A"]}
+    )
+    dorm = task(TaskTypes.NOT_SPECIFIC, 1140, {"dormitory_1": ["A"]})
+    work = task(TaskTypes.SHIFT_ON, 1150, {"room_1_1": ["A"]})
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    tasks = [dorm, work, order]
+
+    for seconds in (0, 0, 600):
+        dispatch(
+            tasks,
+            time_now=NOW + timedelta(seconds=seconds),
+            op_data=data if observed else None,
+        )
+        assert tasks == [order, dorm, work]
+        assert dorm.time <= work.time
+        final = data.project_arrangements([pending.plan for pending in tasks])
+        assert final.operators["A"].current_room == "room_1_1"
+        assert data.get_current_room("dormitory_1") == ["B"]
+        assert data.get_current_room("room_1_1") == ["A"]
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+@pytest.mark.parametrize(
+    "dependency", ["displaced", "group", "binding", "phase", "unknown", "free"]
+)
+def test_future_dorm_deferral_keeps_unproven_followups(dispatch, dependency):
+    data = room_fixtures.TestSchedulingRoomPlans().make_op_data(
+        {"dormitory_1": ["B"], "room_1_1": ["C"]}, targets=("A", "D")
+    )
+    dorm = task(TaskTypes.NOT_SPECIFIC, 1140, {"dormitory_1": ["A"]})
+    work = task(TaskTypes.SHIFT_ON, 1150, {"room_1_1": ["D"]})
+    if dependency == "displaced":
+        work.plan = {"room_1_1": ["B"]}
+    elif dependency == "group":
+        data.operators["A"].group = data.operators["D"].group = "shared"
+    elif dependency == "binding":
+        data.operators["A"].group_bindings = [{"group": "shared"}]
+        data.operators["D"].group = "shared"
+    elif dependency == "phase":
+        work.return_window = {"deadline": NOW + timedelta(hours=1)}
+    elif dependency == "free":
+        dorm.plan = {"dormitory_1": ["Free"]}
+    else:
+        data.operators["C"].current_room = ""
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    tasks = [dorm, work, order]
+    for _ in range(3):
+        dispatch(tasks, time_now=NOW, op_data=data)
+        assert tasks == [order, dorm, work]
+        assert dorm.time <= work.time
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+def test_future_dorm_deferral_keeps_transitive_dependencies_and_independent_work(
+    dispatch,
+):
+    data = room_fixtures.TestSchedulingRoomPlans().make_op_data(
+        {"dormitory_1": ["A"], "room_1_1": ["B"], "room_1_2": ["C"]},
+        targets=("D", "E"),
+    )
+    dorm = task(TaskTypes.NOT_SPECIFIC, 1140, {"dormitory_1": ["B"]})
+    unrelated = task(TaskTypes.SHIFT_ON, 1141, {"room_1_2": ["D"]})
+    middle = task(TaskTypes.SHIFT_ON, 1142, {"room_1_1": ["A"]})
+    last = task(TaskTypes.SHIFT_ON, 1143, {"room_1_1": ["E"]})
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    tasks = [dorm, unrelated, middle, last, order]
+    for _ in range(3):
+        dispatch(tasks, time_now=NOW, op_data=data)
+        assert tasks == [unrelated, order, dorm, middle, last]
+        assert unrelated.time == NOW + timedelta(seconds=1141)
+        assert dorm.time <= middle.time <= last.time
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+def test_future_dorm_dependency_preserves_adjusted_followup(dispatch):
+    dorm = task(TaskTypes.NOT_SPECIFIC, 1140, {"dormitory_1": ["A"]})
+    work = task(TaskTypes.SHIFT_ON, 1150, {"room_1_1": ["A"]}, adjusted=True)
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    tasks = [dorm, work, order]
+    dispatch(tasks, time_now=NOW)
+    assert tasks == [dorm, work, order]
+    assert dorm.time == NOW + timedelta(seconds=1140)
+    assert work.time == NOW + timedelta(seconds=1150)
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+def test_future_unchanged_dorm_retains_the_deferral_anchor(dispatch):
+    dorm = task(TaskTypes.NOT_SPECIFIC, 1140, {"dormitory_1": ["Current"]})
+    work = task(TaskTypes.SHIFT_ON, 1150, {"room_1_1": ["A"]})
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    tasks = [dorm, work, order]
+    dispatch(tasks, time_now=NOW)
+    assert tasks == [order, dorm, work]
 
 
 @pytest.mark.parametrize("seconds", [0, 1])
