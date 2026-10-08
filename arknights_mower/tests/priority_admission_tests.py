@@ -11,6 +11,8 @@ from arknights_mower.utils.scheduler_task import (
     NewsChecker,
     SchedulerTask,
     TaskTypes,
+    defer_dorm_before_priority_task,
+    logger,
     protect_priority_tasks,
     scheduling,
 )
@@ -24,6 +26,7 @@ def offline_admission(monkeypatch):
     monkeypatch.setattr(config.conf, "enable_mastery", True)
     monkeypatch.setattr(config.conf.run_order_grandet_mode, "enable", False)
     monkeypatch.setattr(NewsChecker, "get_update_time", lambda: (None, None))
+    monkeypatch.setattr(NewsChecker, "get_maintenance", lambda: None)
     monkeypatch.setattr(operation_timing, "_work_durations", {})
     monkeypatch.setattr(operation_timing, "_dorm_durations", {})
 
@@ -263,3 +266,278 @@ def test_strict_release_and_fill_phase_are_preserved(kind):
     assert any(t is fill for t in tasks)
     assert fill.time > critical.time
     assert fill.plan == fill.dorm_fill_plan == {"dormitory_2": ["A"]}
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+@pytest.mark.parametrize(
+    "plan", [{"room_1_1": ["A"]}, {"room_1_1": ["A"], "dormitory_1": ["B"]}]
+)
+def test_future_work_waits_for_run_order_window(dispatch, plan, monkeypatch):
+    work = task(TaskTypes.SHIFT_ON, 1190, copy.deepcopy(plan))
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    tasks = [work, order]
+    info = []
+    monkeypatch.setattr(logger, "info", lambda *args: info.append(args))
+
+    for seconds in (0, 300, 599):
+        dispatch(tasks, time_now=NOW + timedelta(seconds=seconds))
+        assert tasks == [work, order]
+        assert work.time == NOW + timedelta(seconds=1190)
+        assert work.plan == plan
+    assert not info
+
+    dispatch(tasks, time_now=NOW + timedelta(seconds=600))
+    assert tasks == [order, work]
+    assert work.time == order.time + timedelta(seconds=1)
+    assert work.plan == plan
+    assert not info
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+def test_distant_mastery_still_protects_future_work(dispatch):
+    work = task(TaskTypes.SHIFT_ON, 1190, {"room_1_1": ["A"]})
+    swap = task(TaskTypes.SWAP_SUPPORT, 1200)
+    tasks = [work, swap]
+    dispatch(tasks, time_now=NOW)
+    assert tasks == [swap, work]
+    assert work.time == swap.time + timedelta(seconds=1)
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+def test_dorm_forecast_rebuilding_does_not_repeat_info_or_defer_work(
+    dispatch, monkeypatch
+):
+    info, debug = [], []
+    monkeypatch.setattr(logger, "info", lambda *args: info.append(args))
+    monkeypatch.setattr(logger, "debug", lambda *args: debug.append(args))
+    # 实例中的 9.1 秒来自未来清退与跑单间隔扣去一分钟，并非当前剩余时间。
+    original_time = datetime(2026, 10, 9, 1, 37, 6, 136646)
+    order_time = datetime(2026, 10, 9, 1, 38, 15, 262450)
+    data = room_fixtures.TestSchedulingRoomPlans().make_op_data(
+        {"dormitory_3": ["M1", "M2", "幽灵鲨", "M3", "M4"], "room_1_2": ["B"]},
+        targets=("A",),
+    )
+    for now in (
+        datetime(2026, 10, 9, 0, 23, 43),
+        datetime(2026, 10, 9, 0, 24, 7),
+        datetime(2026, 10, 9, 0, 24, 35),
+    ):
+        dorm = SchedulerTask(
+            original_time,
+            {"dormitory_3": ["Current", "Current", "Free", "Current", "Current"]},
+            TaskTypes.RELEASE_DORM,
+            meta_data="幽灵鲨",
+        )
+        work = SchedulerTask(original_time + timedelta(seconds=1), {"room_1_2": ["A"]})
+        order = SchedulerTask(order_time, task_type=TaskTypes.RUN_ORDER)
+        tasks = [dorm, work, order]
+        for _ in range(2):
+            dispatch(tasks, time_now=now, op_data=data)
+            assert tasks == [work, order, dorm]
+            assert dorm.time == order_time + timedelta(seconds=1)
+            assert work.time == original_time + timedelta(seconds=1)
+    assert not info
+    forecasts = [args for args in debug if args[0].startswith("宿舍提前规划")]
+    assert len(forecasts) == 3
+    assert all(args[1:3] == ("dormitory_3", "幽灵鲨") for args in forecasts)
+    assert all(args[3] == original_time and args[5] == order_time for args in forecasts)
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+@pytest.mark.parametrize("kind", [TaskTypes.NOT_SPECIFIC, TaskTypes.RE_ORDER])
+@pytest.mark.parametrize("same_time", [False, True])
+def test_future_dorm_deferrals_preserve_arrangement_order(dispatch, kind, same_time):
+    plans = [{"dormitory_1": ["Current", "Current", name]} for name in ("A", "B", "C")]
+    dorms = [
+        task(kind, 1140 + (0 if same_time else index), copy.deepcopy(plan))
+        for index, plan in enumerate(plans)
+    ]
+    work = task(TaskTypes.SHIFT_ON, 1150, {"room_1_1": ["Current"]})
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    tasks = dorms + [work, order]
+
+    for seconds in (0, 0, 600):
+        dispatch(tasks, time_now=NOW + timedelta(seconds=seconds))
+        assert tasks == [work, order] + dorms
+        assert [dorm.time for dorm in dorms] == [order.time + timedelta(seconds=1)] * 3
+        assert [dorm.plan for dorm in dorms] == plans
+        assert work.time == NOW + timedelta(seconds=1150)
+        # 同一槽位按原顺序完成安排，最终驻员仍为最后指定的 C。
+        assert tasks[-1].plan["dormitory_1"][2] == "C"
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+def test_future_dorm_deferrals_preserve_order_across_later_run_orders(dispatch):
+    dorms = [
+        task(TaskTypes.NOT_SPECIFIC, 1140 + index, {"dormitory_1": [name]})
+        for index, name in enumerate(("A", "B", "C"))
+    ]
+    orders = [task(TaskTypes.RUN_ORDER, seconds) for seconds in (1200, 1260)]
+    tasks = dorms + orders
+
+    for _ in range(3):
+        dispatch(tasks, time_now=NOW)
+        assert tasks == orders + dorms
+        assert [dorm.time for dorm in dorms] == [
+            orders[-1].time + timedelta(seconds=1)
+        ] * 3
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+def test_future_dorm_deferrals_do_not_pass_a_later_arrangement(dispatch):
+    first = task(TaskTypes.NOT_SPECIFIC, 1140, {"dormitory_1": ["A"]})
+    second = task(TaskTypes.NOT_SPECIFIC, 1141, {"dormitory_1": ["B"]})
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    last = task(TaskTypes.NOT_SPECIFIC, 1201, {"dormitory_1": ["C"]})
+    tasks = [first, second, order, last]
+
+    for _ in range(3):
+        dispatch(tasks, time_now=NOW)
+        assert tasks == [order, first, second, last]
+        assert last.time == NOW + timedelta(seconds=1201)
+        assert tasks[-1].plan["dormitory_1"] == ["C"]
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+@pytest.mark.parametrize("observed", [False, True])
+def test_future_dorm_and_return_preserve_final_work_occupancy(dispatch, observed):
+    data = room_fixtures.TestSchedulingRoomPlans().make_op_data(
+        {"dormitory_1": ["B"], "room_1_1": ["A"]}
+    )
+    dorm = task(TaskTypes.NOT_SPECIFIC, 1140, {"dormitory_1": ["A"]})
+    work = task(TaskTypes.SHIFT_ON, 1150, {"room_1_1": ["A"]})
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    tasks = [dorm, work, order]
+
+    for seconds in (0, 0, 600):
+        dispatch(
+            tasks,
+            time_now=NOW + timedelta(seconds=seconds),
+            op_data=data if observed else None,
+        )
+        assert tasks == [order, dorm, work]
+        assert dorm.time <= work.time
+        final = data.project_arrangements([pending.plan for pending in tasks])
+        assert final.operators["A"].current_room == "room_1_1"
+        assert data.get_current_room("dormitory_1") == ["B"]
+        assert data.get_current_room("room_1_1") == ["A"]
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+@pytest.mark.parametrize(
+    "dependency", ["displaced", "group", "binding", "phase", "unknown", "free"]
+)
+def test_future_dorm_deferral_keeps_unproven_followups(dispatch, dependency):
+    data = room_fixtures.TestSchedulingRoomPlans().make_op_data(
+        {"dormitory_1": ["B"], "room_1_1": ["C"]}, targets=("A", "D")
+    )
+    dorm = task(TaskTypes.NOT_SPECIFIC, 1140, {"dormitory_1": ["A"]})
+    work = task(TaskTypes.SHIFT_ON, 1150, {"room_1_1": ["D"]})
+    if dependency == "displaced":
+        work.plan = {"room_1_1": ["B"]}
+    elif dependency == "group":
+        data.operators["A"].group = data.operators["D"].group = "shared"
+    elif dependency == "binding":
+        data.operators["A"].group_bindings = [{"group": "shared"}]
+        data.operators["D"].group = "shared"
+    elif dependency == "phase":
+        work.return_window = {"deadline": NOW + timedelta(hours=1)}
+    elif dependency == "free":
+        dorm.plan = {"dormitory_1": ["Free"]}
+    else:
+        data.operators["C"].current_room = ""
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    tasks = [dorm, work, order]
+    for _ in range(3):
+        dispatch(tasks, time_now=NOW, op_data=data)
+        assert tasks == [order, dorm, work]
+        assert dorm.time <= work.time
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+def test_future_dorm_deferral_keeps_transitive_dependencies_and_independent_work(
+    dispatch,
+):
+    data = room_fixtures.TestSchedulingRoomPlans().make_op_data(
+        {"dormitory_1": ["A"], "room_1_1": ["B"], "room_1_2": ["C"]},
+        targets=("D", "E"),
+    )
+    dorm = task(TaskTypes.NOT_SPECIFIC, 1140, {"dormitory_1": ["B"]})
+    unrelated = task(TaskTypes.SHIFT_ON, 1141, {"room_1_2": ["D"]})
+    middle = task(TaskTypes.SHIFT_ON, 1142, {"room_1_1": ["A"]})
+    last = task(TaskTypes.SHIFT_ON, 1143, {"room_1_1": ["E"]})
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    tasks = [dorm, unrelated, middle, last, order]
+    for _ in range(3):
+        dispatch(tasks, time_now=NOW, op_data=data)
+        assert tasks == [unrelated, order, dorm, middle, last]
+        assert unrelated.time == NOW + timedelta(seconds=1141)
+        assert dorm.time <= middle.time <= last.time
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+def test_future_dorm_dependency_preserves_adjusted_followup(dispatch):
+    dorm = task(TaskTypes.NOT_SPECIFIC, 1140, {"dormitory_1": ["A"]})
+    work = task(TaskTypes.SHIFT_ON, 1150, {"room_1_1": ["A"]}, adjusted=True)
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    tasks = [dorm, work, order]
+    dispatch(tasks, time_now=NOW)
+    assert tasks == [dorm, work, order]
+    assert dorm.time == NOW + timedelta(seconds=1140)
+    assert work.time == NOW + timedelta(seconds=1150)
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+def test_future_unchanged_dorm_retains_the_deferral_anchor(dispatch):
+    dorm = task(TaskTypes.NOT_SPECIFIC, 1140, {"dormitory_1": ["Current"]})
+    work = task(TaskTypes.SHIFT_ON, 1150, {"room_1_1": ["A"]})
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    tasks = [dorm, work, order]
+    dispatch(tasks, time_now=NOW)
+    assert tasks == [order, dorm, work]
+
+
+@pytest.mark.parametrize("seconds", [0, 1])
+def test_due_deferral_logs_info_and_future_deferral_logs_debug(seconds, monkeypatch):
+    info, debug = [], []
+    monkeypatch.setattr(logger, "info", lambda *args: info.append(args))
+    monkeypatch.setattr(logger, "debug", lambda *args: debug.append(args))
+    work = task(TaskTypes.SHIFT_ON, seconds, {"room_1_1": ["A"]})
+    order = task(TaskTypes.RUN_ORDER, 60)
+    tasks = [work, order]
+    scheduling(tasks, time_now=NOW)
+    assert tasks == [order, work]
+    messages = [
+        args for args in (info if seconds == 0 else debug) if "预计耗时" in args[0]
+    ]
+    assert len(messages) == 1
+    assert messages[0][1:4] == ("上班", "room_1_1", NOW + timedelta(seconds=seconds))
+    assert messages[0][-1] == order.time
+    assert not any("预计耗时" in args[0] for args in (debug if seconds == 0 else info))
+
+
+def test_future_workshop_batch_waits_for_run_order_window():
+    jobs = [task(TaskTypes.WORKSHOP, 1190, meta_data=f"A{i}") for i in range(3)]
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    tasks = jobs + [order]
+    scheduling(tasks, time_now=NOW)
+    assert tasks == jobs + [order]
+    assert [job.time for job in jobs] == [NOW + timedelta(seconds=1190)] * 3
+    scheduling(tasks, time_now=NOW + timedelta(minutes=10))
+    assert tasks == [order] + jobs
+    assert [job.time for job in jobs] == [
+        order.time + timedelta(seconds=i) for i in range(1, 4)
+    ]
+
+
+def test_runtime_dorm_recheck_keeps_info(monkeypatch):
+    info = []
+    monkeypatch.setattr(logger, "info", lambda *args: info.append(args))
+    dorm = task(TaskTypes.RELEASE_DORM, plan={"dormitory_3": ["Current", "Free"]})
+    order = task(TaskTypes.RUN_ORDER, 100)
+    assert defer_dorm_before_priority_task(
+        dorm, [dorm, order], "dormitory_3", time_now=NOW
+    )
+    assert dorm.time == order.time + timedelta(seconds=1)
+    assert len(info) == 1
+    assert "dormitory_3" in info[0][0] and "跑单" in info[0][0]

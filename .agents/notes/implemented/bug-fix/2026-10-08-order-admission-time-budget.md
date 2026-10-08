@@ -19,11 +19,27 @@ Read-only analysis of alexsun logs from 2026-10-06 through 2026-10-08 includes 1
 
 The scheduler reuses `Operators.project_arrangements` and operation timing. Dynamic arrangements invalidate subsequent admission projections. Existing glossary terms cover Actual and Projected Occupancy and Scheduling Plan; no glossary edits are required.
 
+The unified cursor initially removes the previous ordinary-work deferral horizon. Rebuilt future dormitory releases repeatedly produce INFO messages whose available budget refers to a future start rather than the current time. The [critical task admission contract](../../../../docs/subsystems/base-scheduler.md#210-critical-task-admission) separates future planning from due-work admission, retaining the full operation-budget protection for work that can start now. Existing domain concepts remain unchanged.
+
+Future dormitory deferral appends each conflicting task after the last dormitory task deferred for that order, using the existing admission queue. The last-task references exist only within one admission pass and are bounded by the queued order count. This preserves successive arrangements of the same slot without adding task phase state or another scheduling abstraction.
+
+Advance dormitory deferral uses the existing arrangement resource extraction and observed occupancy to retain dependent followups in the same queue segment. Target and displaced operators, changed slots and all configured group bindings connect later arrangements transitively. Unknown occupancy or task phase state retains the unproven suffix; unchanged ordinary plans remain independent. Release target and original-start metadata retain their existing identity meaning. Protected followups keep the original segment in place for normal admission. The helper adds no dependency graph or persistent task fields.
+
 ## Verification
 
 Focused offline tests cover timing boundaries, independent partial plans, phase and group atomicity, isolated projection, future waiting, order occupancy, multiple orders, strict release, mastery handoffs and dorm continuation.
 
 The workshop queue regression uses a fixed clock and checks all eleven one-minute jobs deferred after an eight-minute trade order. Repeated planning preserves all eleven task identities, operator names, order and timestamps without duplicate batches. Batch boundary tests cover scheduled waiting, intervening staffing, retained staffing prefixes and repeated deferral across later orders.
+
+Future-work regressions cover the ten-minute boundary at both scheduling entry points, complete workshop batches, repeated dormitory release reconstruction with no INFO output or unrelated work deferral, unchanged mastery protection, and INFO output for due deferral and runtime dormitory rechecks. The existing distant-order regression retains protection for large due arrangements.
+
+Dormitory-order regressions cover three successive arrangements of the same slot, equal and distinct original timestamps, both scheduling entry points, repeated planning, the ten-minute boundary, deferral across later orders and arrangements already queued after the order. They preserve task identities, plans and the last specified occupant while independent work retains its original time.
+
+The dormitory-order repair passes twelve focused offline suites with 323 tests and 38 subtests, including governance verification. Changed-file Ruff lint and format checks, whitespace checks and the governance gate pass; the gate retains two historical archived-test reference warnings.
+
+Dependency regressions verify that dormitory admission followed by the same operator's return leaves that operator at the workstation, with and without observed occupancy, after repeated planning and at the ten-minute boundary. Additional cases cover displaced residents, group bindings, transitive slot reuse, unknown residents, task phase state, dynamic Free selection, protected followups and unchanged plans. The independent-release forecast uses observed staffing to establish independence.
+
+The dependency repair passes thirteen focused offline suites with 367 tests and 38 subtests. The 22 added dependency and fallback cases extend the same invariant without changing glossary definitions. Changed-file Ruff lint and format checks, whitespace checks and all three governance gates pass.
 
 ## Standards Findings
 

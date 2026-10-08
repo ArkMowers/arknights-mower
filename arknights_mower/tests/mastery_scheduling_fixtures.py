@@ -24,6 +24,7 @@ def clock():
         patch.object(
             scheduler.NewsChecker, "get_update_time", return_value=(None, None)
         ),
+        patch.object(scheduler.NewsChecker, "get_maintenance", return_value=None),
         patch.object(scheduler, "datetime") as mock_clock,
     ):
         mock_clock.now.return_value = now

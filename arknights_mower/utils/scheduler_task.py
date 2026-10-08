@@ -153,6 +153,9 @@ def protect_priority_tasks(
         ),
         key=lambda t: t.time,
     )
+    _advance_support_swaps_for_maintenance(
+        swaps, run_order_delay, execution_time, now, op_data
+    )
     for swap in swaps:
         _advance_swap_before_orders(tasks, swap, now, execution_time, op_data)
     _schedule_priority_tasks(tasks, execution_time, now, op_data)
@@ -160,6 +163,36 @@ def protect_priority_tasks(
         tasks, run_order_delay, 0.75 if execution_time is None else execution_time, now
     )
     _sort_dispatch_tasks(tasks, now)
+
+
+def _advance_support_swaps_for_maintenance(
+    swaps, run_order_delay, execution_time, now, op_data
+):
+    if not swaps:
+        return
+    maintenance = NewsChecker.get_maintenance()
+    if maintenance is None or now >= maintenance.start:
+        return
+    deadline = maintenance.start - timedelta(minutes=max(10, run_order_delay * 2))
+    # 协助换人按公告的完整维护区间避让，包含停机维护的最后半小时。
+    affected = [swap for swap in swaps if deadline < swap.time < maintenance.end]
+    # 从后往前预留操作窗口；提前标记复用执行器的训练与候选校验。
+    for swap in reversed(affected):
+        original = swap.time
+        swap.time = min(
+            original,
+            max(
+                now,
+                deadline
+                - _support_swap_duration(swap, execution_time, op_data)
+                - timedelta(seconds=1),
+            ),
+        )
+        swap.advance_support_swap = True
+        deadline = swap.time
+        logger.info(
+            f"专精换人避让维护，从 {original:%H:%M:%S} 提前至 {swap.time:%H:%M:%S}"
+        )
 
 
 def _sort_dispatch_tasks(tasks, now):
@@ -487,7 +520,7 @@ def _merge_deferred_dorm_schedules(tasks):
     return result
 
 
-def _task_has_phase_state(task):
+def _task_has_phase_state(task, *, ignored=()):
     # Phase, return-window and reservation state belongs to the complete task.
     fields = {
         "time",
@@ -499,7 +532,7 @@ def _task_has_phase_state(task):
         "mood_limit",
         "initial_fia",
     }
-    return bool(vars(task).keys() - fields)
+    return bool(vars(task).keys() - fields - set(ignored))
 
 
 def _static_room_task(task):
@@ -652,6 +685,70 @@ def _fits_before_priority(task, start, duration, priority):
     return start + duration < deadline if has_dorm else start + duration <= deadline
 
 
+def _future_dorm_deferrals(task, following, op_data):
+    """保留人员、槽位及绑组依赖；未知状态不证明后续任务独立。"""
+
+    def resources(pending):
+        release_fields = (
+            ("release_start", "release_targets")
+            if pending.type == TaskTypes.RELEASE_DORM
+            else ()
+        )
+        if (
+            not pending.plan
+            or _task_has_phase_state(pending, ignored=release_fields)
+            or not (_is_dorm_only_task(pending) or _static_room_task(pending))
+        ):
+            return None
+        names, slots = _arrangement_resources(pending.plan)
+        if not slots:
+            return set()
+        if not isinstance(op_data, Operators) or op_data.backup_plans:
+            return None
+        if pending.type == TaskTypes.RELEASE_DORM:
+            names.update(getattr(pending, "release_targets", {}))
+        for room, index in slots:
+            if room not in op_data.plan:
+                return None
+            current = op_data.get_current_room(room)
+            if current is None or index >= len(current):
+                return None
+            if (
+                pending.plan[room][index] == "Free"
+                and pending.type != TaskTypes.RELEASE_DORM
+            ):
+                return None
+            names.add(current[index])
+        keys = {("slot", room, index) for room, index in slots}
+        for name in names:
+            operator = op_data.operators.get(name)
+            if operator is None:
+                return None
+            keys.add(("operator", name))
+            groups = {operator.group} | {
+                binding["group"] for binding in operator.group_bindings
+            }
+            keys.update(("group", group) for group in groups if group)
+        return keys
+
+    pending = [task, *following]
+    keys = [resources(item) for item in pending]
+    if any(item is None for item in keys):
+        deferred = [task] + [
+            item for item, affected in zip(following, keys[1:]) if affected != set()
+        ]
+    else:
+        affected = set(keys[0])
+        deferred = [task]
+        for item, changed in zip(following, keys[1:]):
+            if affected & changed:
+                deferred.append(item)
+                affected.update(changed)
+    if any(item.strict_mood_limit or item.adjusted for item in deferred):
+        return None
+    return deferred
+
+
 def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=None):
     now = time_now or datetime.now()
     tasks.sort(key=lambda task: task.time)
@@ -661,6 +758,7 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
     adjusted = {id(task) for task in tasks if task.adjusted}
     # Each queued operation advances the cursor once, including scheduled waiting.
     ordered = list(tasks)
+    deferred_dorm_tail = {}
     projected = op_data if isinstance(op_data, Operators) else None
     cursor = now
     index = 0
@@ -702,6 +800,56 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
             index += 1
             continue
         priority = ordered[next_priority_index]
+        # 未来普通任务仅在跑单前十分钟延期；到期任务仍按实际操作预算保护跑单。
+        # 宿舍保留提前规划；只有确认独立的后续任务保留原时间。
+        if (
+            priority.type == TaskTypes.RUN_ORDER
+            and priority.time - now > timedelta(minutes=10)
+            and task.time > now
+        ):
+            if (
+                _is_dorm_only_task(task)
+                and not task.strict_mood_limit
+                and not task.adjusted
+                and not getattr(task, "dorm_recovery_restore", [])
+                and not _fits_before_priority(task, start, duration, priority)
+            ):
+                deferred = _future_dorm_deferrals(
+                    task, ordered[index + 1 : next_priority_index], projected
+                )
+                if deferred is None:
+                    cursor = start + duration
+                    projected = _project_admitted_task(projected, task)
+                    index += 1
+                    continue
+                # 同一跑单后的宿舍安排按原顺序追加，避免后移任务覆盖最终驻员。
+                previous = deferred_dorm_tail.get(id(priority), priority)
+                for pending in deferred:
+                    original_time = pending.time
+                    pending.time = priority.time + timedelta(seconds=1)
+                    logger.debug(
+                        "宿舍提前规划：%s（%s）从 %s 延至 %s，避让 %s 跑单",
+                        ", ".join(pending.plan),
+                        pending.meta_data or pending.type.display_value,
+                        original_time,
+                        pending.time,
+                        priority.time,
+                    )
+                deferred_ids = {id(pending) for pending in deferred}
+                ordered[:] = [
+                    pending for pending in ordered if id(pending) not in deferred_ids
+                ]
+                insert_index = (
+                    next(i for i, pending in enumerate(ordered) if pending is previous)
+                    + 1
+                )
+                ordered[insert_index:insert_index] = deferred
+                deferred_dorm_tail[id(priority)] = deferred[-1]
+            else:
+                cursor = start + duration
+                projected = _project_admitted_task(projected, task)
+                index += 1
+            continue
         # Runtime dorm dispatch keeps its one-minute margin and observed budget.
         margin = 60 if any(r.startswith("dormitory_") for r in task.plan) else 15
         deadline = priority.time - timedelta(seconds=margin)
@@ -741,6 +889,8 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
             index += 1
             continue
 
+        original_time = task.time
+        task_rooms = ", ".join(task.plan) or task.meta_data or task.type.display_value
         before_plan = {}
         after_plan = {}
         for plan in (
@@ -777,11 +927,17 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
             deferred = _merge_deferred_dorm_schedules(deferred)
         for offset, pending_task in enumerate(deferred, 1):
             pending_task.time = max(now, priority.time) + timedelta(seconds=offset)
-        logger.info(
-            "任务预计耗时 %.1f 秒，可用时间 %.1f 秒，将未完成部分移至%s之后",
+        log = logger.debug if original_time > now else logger.info
+        log(
+            "%s任务（%s，计划 %s）预计耗时 %.1f 秒，可用时间 %.1f 秒，"
+            "将未完成部分移至%s（%s）之后",
+            task.type.display_value,
+            task_rooms,
+            original_time,
             duration.total_seconds(),
             max(0, (deadline - start).total_seconds()),
             priority.type.display_value,
+            priority.time,
         )
         ordered[index : next_priority_index + 1] = (
             ([task] if before_plan else []) + retained + [priority] + deferred
