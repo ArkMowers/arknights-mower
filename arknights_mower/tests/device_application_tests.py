@@ -200,10 +200,11 @@ class DeviceControlTests(unittest.TestCase):
         self.assertEqual(result.error.code, "configuration_failed")
         self.assertEqual(result.serial, "")
 
-    def test_cleanup_failure_is_observable_and_does_not_repeat_cleanup(self):
+    def test_cleanup_failure_is_observable_and_retry_keeps_start_blocked(self):
         class BrokenCleanupDevice(ManualDevice):
             def close(self):
-                super().close()
+                if not self.closed:
+                    super().close()
                 raise OSError("helper did not exit")
 
         class BrokenCleanupAdapter:
@@ -218,7 +219,9 @@ class DeviceControlTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual(result.error.code, "close_failed")
         self.assertEqual(result.error.message, "helper did not exit")
-        self.assertEqual(control.close(), result)
+        self.assertEqual(control.close().error.message, result.error.message)
+        self.assertEqual(control.start().error.code, "close_failed")
+        self.assertEqual(control.recover().error.message, result.error.message)
 
     def test_failed_input_is_reported_without_repeating_the_operation(self):
         control = DeviceControl(lambda: SimpleNamespace(adb="USB-123"), ManualAdapter())
