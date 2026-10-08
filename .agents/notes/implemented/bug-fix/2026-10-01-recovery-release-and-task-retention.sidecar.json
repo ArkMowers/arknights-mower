@@ -8,7 +8,7 @@
   ],
   "invariants": [
     "[INV-DEV-19]",
-    "[INV-SCHED-13]",
+    "[INV-SCHED-39]",
     "[INV-05]"
   ],
   "code_symbols": [

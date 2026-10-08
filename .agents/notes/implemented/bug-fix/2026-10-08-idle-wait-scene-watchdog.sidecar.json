@@ -1,0 +1,32 @@
+{
+  "title": "Idle Resumption Preserves Scene Watchdog",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-REC-08]",
+    "[INV-REC-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.__main__._handle_maintenance",
+    "arknights_mower.__main__._resume_device_dispatch",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.run",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._idle_sleep",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.rest_until_next_task",
+    "arknights_mower.utils.recognize.Recognizer.update",
+    "arknights_mower.utils.recognize.Recognizer.check_freeze",
+    "arknights_mower.utils.recognize.Recognizer.reset_after_external_control"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/scheduler_incident_20261008_tests.py",
+    "arknights_mower/tests/idle_scene_watchdog_tests.py",
+    "arknights_mower/tests/maa_scene_handoff_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py",
+    "arknights_mower/tests/device_idle_lifecycle_tests.py",
+    "arknights_mower/tests/device_recovery_supervision_tests.py",
+    "arknights_mower/tests/scheduler_wakeup_tests.py"
+  ]
+}

@@ -378,6 +378,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self.last_clue = None
         self.sleeping = False
         self._simulator_closed_for_idle = False
+        self._idle_observation_pending = False
         self.operators = {}
         self.last_execution = {"maa": None, "recruit": None, "todo": None}
         self.order_reader = TradingOrder()
@@ -10903,16 +10904,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
 
     def _idle_sleep(self, remaining_time, allow_wakeup=True):
-        """任务之间真正的休眠——全工程里唯一维护 `sleeping` 状态的地方。
+        """等待任务并统一维护 `sleeping` 与连续场景观测边界。
 
-        所有「等到下一个任务」的等待都必须经过这里，这样 /status 读到的
-        `sleeping` 永远和实际行为一致；以后新增休息路径也不可能再漏设标志。
-        用 try/finally 保证即使被 MowerExit（点停止）打断也能复位。
-        #141：web 一键专精派发 now 任务后设 `config.wake_scheduler` 事件打断休眠，
-        让调度器下一轮立即执行新任务（不依赖 csleep——csleep 全工程共用，不能全局
-        加唤醒检查）。轮询每 ~1s，保持 csleep 的停止检查粒度；结束时照常 recog.update
-        刷新场景缓存（原 self.sleep 结尾行为）。维护等待传 allow_wakeup=False，避免普通
-        配置唤醒导致维护期间提前执行任务；停止信号仍由 csleep 正常响应。
+        普通等待响应调度器唤醒；维护等待仅响应停止信号。
+        成功恢复时清理标准画面帧、场景和计时；设备恢复失败时保留待完成的识别复位。
+        主循环成功恢复设备后完成复位；取消与错误始终复位 `sleeping`。
         """
         self.sleeping = True
         try:
@@ -10925,6 +10921,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 csleep(min(1, (end_time - datetime.now()).total_seconds()))
             if config.stop_mower.is_set():
                 raise MowerExit
+            self._idle_observation_pending = True
             refresh_resource_at_boundary()
             if (
                 config.conf.close_simulator_when_idle
@@ -10936,7 +10933,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 # 启动成功即结束本轮的主动启动，后续连接故障交由正常重连恢复。
                 self._simulator_closed_for_idle = False
                 self.device.reconnect()
-            self.recog.update()
+            self.recog.reset_after_external_control()
+            self._idle_observation_pending = False
         finally:
             self.sleeping = False
 
@@ -10974,7 +10972,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             f"休息 {format_time(remaining_time)}，到{first.format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
         )
         if remaining_time > 0:
-            self.recog.last_scene = None
             self._idle_sleep(remaining_time)
             self.check_current_focus()
 

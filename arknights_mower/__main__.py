@@ -362,7 +362,11 @@ def _resume_device_dispatch(scheduler=None, failure=None):
         if scheduler is not None:
             scheduler.device = device
             scheduler.recog.device = device
-            scheduler.recog.update()
+            if getattr(scheduler, "_idle_observation_pending", False):
+                scheduler.recog.reset_after_external_control()
+                scheduler._idle_observation_pending = False
+            else:
+                scheduler.recog.update()
         return device
 
     csleep(30)

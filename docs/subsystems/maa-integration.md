@@ -48,7 +48,7 @@ The retry parameters, the success criterion and the backup domain are ported fro
 
 Success logs one INFO line. A penguin failure logs one WARNING line naming the destination and giving up on that report. A failure for any other destination logs the same text at DEBUG, mirroring the client's deliberate silence for 一图流, except that the first such failure of the process is promoted to WARNING so a permanently failing destination leaves at least one line on the WebSocket log page.
 
-### 2.5 Local Inventory and Fight Caps
+### 2.6 Local Inventory and Fight Caps
 
 Workshop execution and inventory selection do not fetch Skland. Selection reads the shared persisted inventory, including confirmed recipe outputs, ingredients and LMD costs. A successful manual sync or warehouse scan supplies the baseline; unknown or invalidated quantities remain unknown rather than becoming the size of the next drop.
 
