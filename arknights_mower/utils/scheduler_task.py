@@ -120,28 +120,17 @@ def scheduling(
 ):
     time_now = time_now or datetime.now()
     merge_release_dorm(tasks, config.conf.merge_interval)
-    # 强制上限不参加延期；统一保护会为它预留离宿时间并避开阻塞任务。
     enabled = config.conf.enable_mastery
-    fixed = {
-        id(t)
-        for t in tasks
-        if getattr(t, "strict_mood_limit", False)
-        or (t.type == TaskTypes.FILL_DORM)
-        or enabled
-        and t.type == TaskTypes.SWAP_SUPPORT
-    }
-    conflict = _schedule_run_orders(
-        tasks, run_order_delay, execution_time, time_now, op_data, fixed
-    )
-    protection_time = 0.75 if execution_time is None else execution_time
-    protect_priority_tasks(tasks, run_order_delay, protection_time, time_now)
+    conflict = _find_run_order_conflict(tasks, run_order_delay, time_now)
+    protect_priority_tasks(tasks, run_order_delay, execution_time, time_now, op_data)
     if enabled:
         # 临近换人暂停可选无人机调时，关键任务保护决定执行顺序。
         if any(
             t.type == TaskTypes.SWAP_SUPPORT
             and t.time
             <= time_now
-            + timedelta(minutes=_ordinary_task_minutes(t, protection_time) + 1)
+            + _support_swap_duration(t, execution_time, op_data)
+            + timedelta(minutes=1)
             for t in tasks
         ):
             return None
@@ -150,7 +139,7 @@ def scheduling(
 
 
 def protect_priority_tasks(
-    tasks, run_order_delay=5, execution_time=0.75, time_now=None
+    tasks, run_order_delay=5, execution_time=None, time_now=None, op_data=None
 ):
     """按操作耗时保护关键任务，跑单冲突时提前专精换人。"""
     now = time_now or datetime.now()
@@ -165,25 +154,11 @@ def protect_priority_tasks(
         key=lambda t: t.time,
     )
     for swap in swaps:
-        _advance_swap_before_orders(tasks, swap, now, execution_time)
-        _defer_work_before_swap(tasks, swap, (now, execution_time))
-    cursor = now
-    for task in sorted(tasks, key=lambda t: t.time):
-        if task.type in (TaskTypes.RUN_ORDER, TaskTypes.SWAP_SUPPORT):
-            continue
-        start = max(cursor, task.time)
-        minutes = (
-            sum(estimate_dorm_minutes(room) for room in task.plan)
-            if _is_dorm_only_task(task)
-            else _ordinary_task_minutes(task, execution_time)
-        )
-        deadline = _dorm_deadline(task, tasks, start, minutes, now)
-        if deadline is not None:
-            task.time = max(now, deadline.time) + timedelta(seconds=1)
-            logger.debug(f"宿舍任务时间不足，移至{deadline.type.display_value}之后")
-        else:
-            cursor = start + timedelta(minutes=minutes)
-    _advance_mood_limit_releases(tasks, run_order_delay, execution_time, now)
+        _advance_swap_before_orders(tasks, swap, now, execution_time, op_data)
+    _schedule_priority_tasks(tasks, execution_time, now, op_data)
+    _advance_mood_limit_releases(
+        tasks, run_order_delay, 0.75 if execution_time is None else execution_time, now
+    )
     _sort_dispatch_tasks(tasks, now)
 
 
@@ -286,10 +261,24 @@ def _advance_mood_limit_releases(tasks, run_order_delay, execution_time, now):
         next_start = start
 
 
-def _advance_swap_before_orders(tasks, swap, now, execution_time):
+def _support_swap_duration(task, execution_time=None, op_data=None):
+    # 专精换人保留至少一分钟的操作窗口，慢房间实测预算可以上调。
+    return max(
+        timedelta(
+            minutes=_ordinary_task_minutes(
+                task, 0.75 if execution_time is None else execution_time
+            )
+        ),
+        estimate_task_duration(task, execution_time, op_data),
+    )
+
+
+def _advance_swap_before_orders(tasks, swap, now, execution_time, op_data=None):
     entry_delay = timedelta(minutes=config.conf.run_order_delay)
-    order_operations = timedelta(minutes=2 * execution_time)
-    swap_duration = timedelta(minutes=_ordinary_task_minutes(swap, execution_time))
+    order_operations = timedelta(
+        minutes=2 * (0.75 if execution_time is None else execution_time)
+    )
+    swap_duration = _support_swap_duration(swap, execution_time, op_data)
     # 从晚到早检查，提前产生的新冲突在同一轮内收敛。
     orders = sorted(
         (t for t in tasks if t.type == TaskTypes.RUN_ORDER and t.meta_data),
@@ -408,33 +397,6 @@ def defer_dorm_before_priority_task(task, tasks, room, time_now=None):
         f"{room} 操作可能挤占{deadline.type.display_value}时间，剩余宿舍安排延后"
     )
     return True
-
-
-def _defer_work_before_swap(tasks, swap, timing):
-    now, execution_time = timing
-    cursor = now
-    for task in sorted(tasks, key=lambda t: t.time):
-        if (
-            task.type in (TaskTypes.SWAP_SUPPORT, TaskTypes.RUN_ORDER)
-            or getattr(task, "strict_mood_limit", False)
-            or task.time > swap.time
-        ):
-            continue
-        if _is_dorm_only_task(task):
-            start = max(cursor, task.time)
-            minutes = sum(estimate_dorm_minutes(room) for room in task.plan)
-            if _dorm_deadline(task, [swap], start, minutes, now) is not None:
-                task.time = max(now, swap.time) + timedelta(seconds=1)
-            else:
-                cursor = start + timedelta(minutes=minutes)
-            continue
-        finish = max(cursor, task.time) + timedelta(
-            minutes=_ordinary_task_minutes(task, execution_time)
-        )
-        if finish >= swap.time - timedelta(minutes=1):
-            task.time = max(now, swap.time) + timedelta(minutes=3)
-        else:
-            cursor = finish
 
 
 def _merge_deferred_dorm_schedules(tasks):
@@ -557,7 +519,7 @@ def _static_room_task(task):
 
 
 def estimate_task_duration(task, execution_time=None, op_data=None):
-    """Estimate queued work without changing critical dorm or mastery budgets."""
+    """Estimate queued work from room occupancy and bounded measurements."""
     if task.type == TaskTypes.FURNITURE:
         return timedelta(seconds=FURNITURE_RUN_SECONDS + FURNITURE_EXIT_SECONDS)
     if task.type in (TaskTypes.FIAMMETTA, TaskTypes.CLUE_PARTY):
@@ -661,14 +623,7 @@ def _project_admitted_task(op_data, task):
     return op_data.project_arrangements([task.plan])
 
 
-def _schedule_run_orders(
-    tasks,
-    run_order_delay=5,
-    execution_time=None,
-    time_now=None,
-    op_data=None,
-    fixed=(),
-):
+def _find_run_order_conflict(tasks, run_order_delay=5, time_now=None):
     now = time_now or datetime.now()
     if not tasks:
         return None
@@ -689,6 +644,21 @@ def _schedule_run_orders(
             return previous_order, task
         previous_order = task
 
+
+def _fits_before_priority(task, start, duration, priority):
+    has_dorm = any(r.startswith("dormitory_") for r in task.plan)
+    deadline = priority.time - timedelta(seconds=60 if has_dorm else 15)
+    # 与逐房宿舍复核一致：恰好用尽一分钟保护余量时也让行。
+    return start + duration < deadline if has_dorm else start + duration <= deadline
+
+
+def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=None):
+    now = time_now or datetime.now()
+    tasks.sort(key=lambda task: task.time)
+    priority_ids = {id(task) for task in _priority_tasks(tasks)}
+    # 严格上限保留离宿截止；补位任务可以延期，但不参加宿舍合成。
+    fixed = {id(task) for task in tasks if task.strict_mood_limit}
+    adjusted = {id(task) for task in tasks if task.adjusted}
     # Each queued operation advances the cursor once, including scheduled waiting.
     ordered = list(tasks)
     projected = op_data if isinstance(op_data, Operators) else None
@@ -696,53 +666,76 @@ def _schedule_run_orders(
     index = 0
     while index < len(ordered):
         task = ordered[index]
-        if task.type == TaskTypes.RUN_ORDER:
+        if id(task) in priority_ids:
             start = max(cursor, task.time)
-            if config.conf.run_order_buffer_time > 0 and not task.adjusted:
+            if task.type == TaskTypes.SWAP_SUPPORT:
+                cursor = start + _support_swap_duration(task, execution_time, projected)
+            elif config.conf.run_order_buffer_time > 0 and not task.adjusted:
                 cursor = max(
                     start + timedelta(seconds=45),
                     task.time + timedelta(minutes=config.conf.run_order_delay),
                 ) + timedelta(seconds=45)
             else:
                 cursor = start + timedelta(seconds=90)
+            projected = None
             index += 1
             continue
-        next_order_index = next(
+        next_priority_index = next(
             (
                 j
                 for j in range(index + 1, len(ordered))
-                if ordered[j].type == TaskTypes.RUN_ORDER
+                if id(ordered[j]) in priority_ids
             ),
             None,
         )
-        if next_order_index is None:
-            break
-        order = ordered[next_order_index]
         start = max(cursor, task.time)
         duration = estimate_task_duration(task, execution_time, projected)
+        if next_priority_index is None:
+            # 到期关键任务仍先执行；宿舍续行保留一次明确的交回时间。
+            deadline = _dorm_deadline(
+                task, tasks, start, duration.total_seconds() / 60, now
+            )
+            if deadline is not None:
+                task.time = max(now, deadline.time) + timedelta(seconds=1)
+            else:
+                cursor = start + duration
+            index += 1
+            continue
+        priority = ordered[next_priority_index]
         # Runtime dorm dispatch keeps its one-minute margin and observed budget.
         margin = 60 if any(r.startswith("dormitory_") for r in task.plan) else 15
-        deadline = order.time - timedelta(seconds=margin)
+        deadline = priority.time - timedelta(seconds=margin)
+        batch_fits = None
         if task.type == TaskTypes.WORKSHOP and not task.adjusted:
-            # Admit the complete workshop batch before this order, including
+            # Admit the complete workshop batch before this critical task, including
             # intervening operations and scheduled waiting, or defer its suffix.
             batch_end = max(
                 j
-                for j in range(index, next_order_index)
+                for j in range(index, next_priority_index)
                 if ordered[j].type == TaskTypes.WORKSHOP
             )
             batch_cursor = start
+            batch_fits = True
             for pending_task in ordered[index : batch_end + 1]:
-                batch_cursor = max(
-                    batch_cursor, pending_task.time
-                ) + estimate_task_duration(pending_task, execution_time)
-            if batch_cursor <= deadline:
+                pending_start = max(batch_cursor, pending_task.time)
+                pending_duration = estimate_task_duration(pending_task, execution_time)
+                batch_fits &= _fits_before_priority(
+                    pending_task, pending_start, pending_duration, priority
+                )
+                batch_cursor = pending_start + pending_duration
+            if batch_fits:
                 cursor = batch_cursor
                 projected = None
                 index = batch_end + 1
                 continue
             duration = batch_cursor - start
-        if id(task) in fixed or task.adjusted or start + duration <= deadline:
+        protected = fixed | (
+            adjusted if priority.type == TaskTypes.RUN_ORDER else set()
+        )
+        if id(task) in protected or (
+            batch_fits is not False
+            and _fits_before_priority(task, start, duration, priority)
+        ):
             cursor = start + duration
             projected = _project_admitted_task(projected, task)
             index += 1
@@ -757,37 +750,41 @@ def _schedule_run_orders(
         ):
             part = copy.copy(task)
             part.plan = before_plan | plan
-            part_margin = (
-                60 if any(r.startswith("dormitory_") for r in part.plan) else 15
-            )
-            if start + estimate_task_duration(part, execution_time, projected) <= (
-                order.time - timedelta(seconds=part_margin)
+            if _fits_before_priority(
+                part,
+                start,
+                estimate_task_duration(part, execution_time, projected),
+                priority,
             ):
                 before_plan.update(plan)
             else:
                 after_plan.update(plan)
-        pending = ordered[index:next_order_index]
+        pending = ordered[index:next_priority_index]
         if before_plan:
             remainder = copy.deepcopy(task)
             remainder.plan = copy.deepcopy(after_plan)
             task.plan = copy.deepcopy(before_plan)
-            pending = [remainder] + ordered[index + 1 : next_order_index]
+            pending = [remainder] + ordered[index + 1 : next_priority_index]
             cursor = start + estimate_task_duration(task, execution_time, projected)
             projected = _project_admitted_task(projected, task)
-        retained = [t for t in pending if id(t) in fixed or t.adjusted]
-        deferred = [t for t in pending if id(t) not in fixed and not t.adjusted]
+        retained = [t for t in pending if id(t) in protected]
+        deferred = [t for t in pending if id(t) not in protected]
         # Preserve phase state; ordinary deferred dorm plans reuse composition.
-        if not retained and all(not _task_has_phase_state(t) for t in deferred):
+        if not retained and all(
+            not _task_has_phase_state(t) and t.type != TaskTypes.FILL_DORM
+            for t in deferred
+        ):
             deferred = _merge_deferred_dorm_schedules(deferred)
         for offset, pending_task in enumerate(deferred, 1):
-            pending_task.time = max(now, order.time) + timedelta(seconds=offset)
+            pending_task.time = max(now, priority.time) + timedelta(seconds=offset)
         logger.info(
-            "任务预计耗时 %.1f 秒，可用时间 %.1f 秒，将未完成部分移至跑单之后",
+            "任务预计耗时 %.1f 秒，可用时间 %.1f 秒，将未完成部分移至%s之后",
             duration.total_seconds(),
             max(0, (deadline - start).total_seconds()),
+            priority.type.display_value,
         )
-        ordered[index : next_order_index + 1] = (
-            ([task] if before_plan else []) + retained + [order] + deferred
+        ordered[index : next_priority_index + 1] = (
+            ([task] if before_plan else []) + retained + [priority] + deferred
         )
         if before_plan:
             index += 1

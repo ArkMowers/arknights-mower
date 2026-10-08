@@ -218,7 +218,9 @@ def test_dispatch_parks_conflict_without_timed_retry(conflicting_groups, monkeyp
     s.refresh_connecting = False
     s.agent_arrange = MagicMock()
     s.skip = MagicMock()
-    monkeypatch.setattr(base_schedule, "protect_priority_tasks", lambda tasks: None)
+    monkeypatch.setattr(
+        base_schedule, "protect_priority_tasks", lambda tasks, **kwargs: None
+    )
     s.infra_main()
     s.agent_arrange.assert_not_called()
     assert blocked not in s.tasks

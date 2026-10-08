@@ -1,11 +1,13 @@
 ---
 title: Single Trade Order Admission Cursor
-status: implemented
+status: archived
 category: simplification
 date: 2026-10-08
 ---
 
 # Single Trade Order Admission Cursor
+
+Superseded by [Shared Priority Admission](../../implemented/simplification/2026-10-08-shared-priority-admission.md).
 
 ## Contract
 

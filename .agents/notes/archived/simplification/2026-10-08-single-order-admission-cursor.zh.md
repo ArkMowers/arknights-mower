@@ -1,11 +1,13 @@
 ---
 title: 单次累计的跑单排期游标
-status: implemented
+status: archived
 category: simplification
 date: 2026-10-08
 ---
 
 # 单次累计的跑单排期游标
+
+由[共用关键任务准入](../../implemented/simplification/2026-10-08-shared-priority-admission.zh.md)替代。
 
 ## 契约
 

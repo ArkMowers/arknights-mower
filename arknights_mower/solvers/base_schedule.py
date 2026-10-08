@@ -1008,7 +1008,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     def _next_workshop_task(self, first_task):
         # 每次交接重新检查队列，兼容新增/删除任务和专精换人保护。
         tasks = getattr(self, "tasks", [])
-        protect_priority_tasks(tasks)
+        protect_priority_tasks(tasks, op_data=getattr(self, "op_data", None))
         pending = sorted(
             (task for task in tasks if task is not first_task),
             key=lambda task: task.time,
@@ -1259,7 +1259,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             getattr(task, "initial_fia", False) for task in self.tasks
         )
         if initial_fia_pending:
-            protect_priority_tasks(self.tasks)
+            protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
             candidate = self.tasks[0]
             if candidate.time <= datetime.now() and (
                 getattr(candidate, "initial_fia", False)
@@ -1288,7 +1288,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if self.task is not None:
             # Navigation/reconnection may have consumed the margin since run().
             # Recheck at a safe boundary, before any staff arrangement has started.
-            protect_priority_tasks(self.tasks)
+            protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
             if (
                 self.task.time > datetime.now()
                 or not any(task is self.task for task in self.tasks)
@@ -1869,7 +1869,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             force_rooms.discard(room)
             if getattr(self, "_emergency_startup_pending", False):
                 self._emergency_replan_releases()
-                protect_priority_tasks(self.tasks)
+                protect_priority_tasks(
+                    self.tasks, op_data=getattr(self, "op_data", None)
+                )
                 self._emergency_save()
 
     def _read_initial_card_mood(self):
@@ -10868,7 +10870,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self._schedule_maintenance_backup_check()
         if any(getattr(task, "strict_mood_limit", False) for task in self.tasks):
             # 睡眠前就计算提前量，不能睡到原上限时刻才发现需要提前离宿。
-            protect_priority_tasks(self.tasks)
+            protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         first = self.tasks[0]
         remaining_time = (first.time - datetime.now()).total_seconds()
         self.handle_idle_action(remaining_time)

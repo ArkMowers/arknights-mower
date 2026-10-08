@@ -85,9 +85,12 @@ def test_cumulative_work_and_adjusted_tasks_yield(clock):
         )
         for _ in range(2)
     ]
+    first, second = tasks
     tasks.append(swap)
     scheduler.scheduling(tasks)
-    assert tasks[0] is swap
+    assert tasks == [first, swap, second]
+    assert first.time == clock.now.return_value
+    assert second.time > swap.time
 
 
 def test_disabled_mastery_does_not_protect_stale_swap(clock):
@@ -130,7 +133,7 @@ def test_long_shift_yields_even_outside_fixed_window(clock):
     clock.now.return_value = swap.time - timedelta(minutes=11)
     shift = SchedulerTask(
         clock.now.return_value,
-        {f"room_{i}": ["主力"] for i in range(8)},
+        {f"room_{i}": ["主力"] for i in range(20)},
         TaskTypes.SHIFT_OFF,
     )
     tasks = [shift, swap]
@@ -145,7 +148,7 @@ def test_accumulated_long_work_cannot_cross_distant_swap(clock):
     shifts = [
         SchedulerTask(
             clock.now.return_value,
-            {f"room_{i}": ["主力"] for i in range(5)},
+            {f"room_{i}": ["主力"] for i in range(10)},
             TaskTypes.SHIFT_OFF,
         )
         for _ in range(2)

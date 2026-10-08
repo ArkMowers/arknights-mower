@@ -11,7 +11,7 @@
   ],
   "code_symbols": [
     "arknights_mower.utils.scheduler_task.scheduling",
-    "arknights_mower.utils.scheduler_task._schedule_run_orders"
+    "arknights_mower.utils.scheduler_task._schedule_priority_tasks"
   ],
   "test_suites": [
     "arknights_mower/tests/order_admission_tests.py",

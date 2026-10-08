@@ -118,7 +118,9 @@ def test_dispatch_finishes_group_after_live_training_gate_skips_room(
     s.skip = MagicMock()
     s.enter_room, s.back = MagicMock(), MagicMock()
     s.turn_on_room_detail = MagicMock(side_effect=AssertionError("protected room"))
-    monkeypatch.setattr(base_schedule, "protect_priority_tasks", lambda tasks: None)
+    monkeypatch.setattr(
+        base_schedule, "protect_priority_tasks", lambda tasks, **kwargs: None
+    )
     monkeypatch.setattr(
         mastery_reader,
         "read_room_state",
