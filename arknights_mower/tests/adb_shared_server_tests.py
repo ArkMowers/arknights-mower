@@ -1,8 +1,10 @@
+import ctypes
 import errno
 import json
 import multiprocessing
 import os
 import socket
+import struct
 import subprocess
 import sys
 import time
@@ -13,7 +15,7 @@ from unittest.mock import MagicMock, Mock
 import pytest
 
 from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.device.adb_client import shared
+from arknights_mower.utils.device.adb_client import server_process, shared
 from arknights_mower.utils.device.adb_client.server import (
     SharedADBError,
     SharedADBHandshakeTimeout,
@@ -41,6 +43,9 @@ class Clock:
 
 @pytest.fixture
 def service(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        shared, "adb_listener_absent", Mock(return_value=False), raising=False
+    )
     monkeypatch.setattr(
         shared,
         "terminate_verified_adb",
@@ -111,6 +116,205 @@ def establish_failure(service):
     with pytest.raises(SharedADBError, match="30 秒"):
         service.recovery.recover("selected-adb", timeout=5)
     service.clock.sleep(30)
+
+
+@pytest.fixture
+def delayed_refusal(service, monkeypatch):
+    factory = MagicMock()
+    connection = factory.return_value.__enter__.return_value
+    socket_budget = [0.0]
+    connection.settimeout.side_effect = lambda timeout: socket_budget.__setitem__(
+        0, timeout
+    )
+
+    def connect(address):
+        assert address == ("127.0.0.1", 5037)
+        service.clock.sleep(min(2.002, socket_budget[0]))
+        if socket_budget[0] < 2.002:
+            raise socket.timeout("local connection refusal exceeds probe budget")
+        raise ConnectionRefusedError("delayed local connection refusal")
+
+    connection.connect.side_effect = connect
+
+    def probe(timeout):
+        if isinstance(service.host.version, Exception):
+            raise service.host.version
+        if service.host.version is not None:
+            return service.host.version
+        return probe_adb_server(
+            timeout, socket_factory=factory, monotonic=service.clock.monotonic
+        )
+
+    service.probe.side_effect = probe
+
+    def table(buffer, pointer, ordered, family, table_class, reserved):
+        assert family in (socket.AF_INET, socket.AF_INET6)
+        assert (table_class, reserved) == (3, 0)
+        rows = []
+        if family == socket.AF_INET and service.host.version is not None:
+            rows.append(
+                struct.pack(
+                    "<6I",
+                    2,
+                    struct.unpack("<I", socket.inet_aton("127.0.0.1"))[0],
+                    socket.htons(5037),
+                    0,
+                    0,
+                    421,
+                )
+            )
+        data = struct.pack("<I", len(rows)) + b"".join(rows)
+        ctypes.cast(pointer, ctypes.POINTER(ctypes.c_uint32)).contents.value = len(data)
+        if buffer is None:
+            return 122
+        ctypes.memmove(buffer, data, len(data))
+        return 0
+
+    kernel = Mock()
+    query = Mock(side_effect=table)
+    monkeypatch.setattr(server_process, "_windows_api", lambda: (kernel, query))
+    absence = Mock(
+        side_effect=lambda **kwargs: server_process.adb_listener_absent(**kwargs)
+    )
+    monkeypatch.setattr(shared, "adb_listener_absent", absence)
+    yield SimpleNamespace(connection=connection, absence=absence, query=query)
+    kernel.OpenProcess.assert_not_called()
+    kernel.TerminateProcess.assert_not_called()
+
+
+def test_delayed_refusal_starts_confirmed_absent_server_without_stop(
+    service, delayed_refusal
+):
+    service.host.version = None
+    assert service.recovery.recover("selected-adb", timeout=10)
+    assert service.host.mutations == ["start-server"]
+    assert service.recovery.generation == 1
+    service.kill.assert_not_called()
+    assert delayed_refusal.absence.called
+
+
+def test_delayed_refusal_after_acknowledged_stop_completes_restart(
+    service, delayed_refusal
+):
+    establish_failure(service)
+    assert service.recovery.recover("selected-adb", timeout=10)
+    assert service.host.mutations == ["host:kill", "start-server"]
+    assert service.recovery.generation == 1
+
+
+def test_delayed_refusal_after_verified_process_stop_completes_restart(
+    service, delayed_refusal, monkeypatch
+):
+    establish_failure(service)
+    service.kill.side_effect = SharedADBStopTimeout("stop request unanswered")
+
+    def stopped(*args, **kwargs):
+        service.host.version = None
+        return True
+
+    fallback = Mock(side_effect=stopped)
+    monkeypatch.setattr(shared, "terminate_verified_adb", fallback)
+    assert service.recovery.recover("selected-adb", timeout=10)
+    fallback.assert_called_once()
+    assert service.host.mutations == ["start-server"]
+
+
+def test_changed_listener_evidence_before_start_never_launches_server(
+    service, delayed_refusal
+):
+    service.host.version = None
+    delayed_refusal.absence.side_effect = [True, True, True, False]
+    with pytest.raises(SharedADBError, match="启动前无法确认"):
+        service.recovery.recover("selected-adb", timeout=10)
+    assert service.host.mutations == []
+    assert service.recovery.generation == 1
+
+
+@pytest.mark.parametrize(
+    "query_error", [SharedADBError("invalid table"), OSError("denied")]
+)
+def test_failed_listener_query_never_confirms_absence(
+    service, delayed_refusal, query_error
+):
+    service.host.version = None
+    delayed_refusal.absence.side_effect = query_error
+    with pytest.raises(SharedADBError, match="30 秒"):
+        service.recovery.recover("selected-adb", timeout=10)
+    assert service.host.mutations == []
+    assert service.recovery.generation == 0
+
+
+def test_existing_listener_keeps_restart_window_and_unverified_stop_protection(
+    service, delayed_refusal
+):
+    service.host.version = None
+    delayed_refusal.absence.side_effect = None
+    delayed_refusal.absence.return_value = False
+    service.kill.side_effect = SharedADBStopTimeout("stop request unanswered")
+    with pytest.raises(SharedADBError, match="30 秒"):
+        service.recovery.recover("selected-adb", timeout=10)
+    service.kill.assert_not_called()
+    service.clock.sleep(30)
+    with pytest.raises(SharedADBError, match="无法核验"):
+        service.recovery.recover("selected-adb", timeout=10)
+    assert service.host.mutations == []
+    assert service.recovery.generation == 1
+
+
+def test_response_timeout_never_uses_missing_listener_evidence(
+    service, delayed_refusal
+):
+    service.host.version = None
+    delayed_refusal.connection.connect.side_effect = None
+    delayed_refusal.connection.recv.side_effect = socket.timeout("response stalled")
+    with pytest.raises(SharedADBError, match="30 秒"):
+        service.recovery.recover("selected-adb", timeout=10)
+    delayed_refusal.absence.assert_not_called()
+    assert service.host.mutations == []
+
+
+@pytest.mark.parametrize("cause", ["cancelled", "budget"])
+def test_listener_query_obeys_cancellation_and_enclosing_budget(
+    service, delayed_refusal, cause
+):
+    establish_failure(service)
+    service.host.version = None
+    cancelled = [False]
+
+    def interrupted(*, remaining):
+        if cause == "cancelled":
+            cancelled[0] = True
+        else:
+            service.clock.sleep(10)
+        remaining()
+        return True
+
+    delayed_refusal.absence.side_effect = interrupted
+    with pytest.raises(MowerExit if cause == "cancelled" else SharedADBError):
+        service.recovery.recover(
+            "selected-adb", timeout=10, cancelled=lambda: cancelled[0]
+        )
+    assert service.recovery._failed_probes == 0
+    assert service.recovery.generation == 0
+    assert service.host.mutations == []
+
+
+def test_delayed_absence_restores_each_bound_target_and_helpers(
+    service, delayed_refusal, shared_applications
+):
+    snapshots = [application.conf.model_dump() for application in shared_applications]
+    for application in shared_applications:
+        assert application.control.start().ok
+    service.host.version = None
+    for application in shared_applications:
+        assert application.control.recover().ok
+        application.adapter.rebind.assert_called_once()
+        assert application.control._bound_adb_generation == 1
+        assert application.control.serial == application.conf.device.last_serial
+    assert service.host.mutations == ["start-server"]
+    assert [
+        application.conf.model_dump() for application in shared_applications
+    ] == snapshots
 
 
 def test_wedged_protocol_stop_terminates_verified_listener_before_start(

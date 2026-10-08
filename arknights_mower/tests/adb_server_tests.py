@@ -238,6 +238,10 @@ class ServerProbeTests(unittest.TestCase):
                 # One verdict names both phases without claiming a connection.
                 self.assertIn("未完成主机握手", str(raised.exception))
                 self.assertNotIn("已连接", str(raised.exception))
+                self.assertEqual(
+                    raised.exception.phase,
+                    "connect" if stage == "connect" else "response",
+                )
 
     def test_connect_failure_that_is_not_a_timeout_stays_unverified(self):
         for error in (PermissionError(), OSError("network unreachable")):

@@ -17,15 +17,17 @@ A shared ADB server that stops answering the host handshake never recovers. Ever
 
 `SharedADBRecovery._require_host_timeout` admits only `SharedADBHandshakeTimeout` as host-failure evidence and raises `共享 ADB 握手无法验证，保留现有监听` for every other probe error. A connect-phase timeout therefore aborted recovery on its first observation, before `_failed_probes` and `_failed_since` were updated. Neither the sustained-failure window nor the restart decision was ever reached, so the coordinator never stopped the stalled service.
 
-The classification was inconsistent with what the observation proves. A TCP connect that completes the accept queue but receives no reply and a connect that never completes both describe a listener that answered nothing. Only a refused connect proves the port is free, and only a response proves a live process.
+The classification was inconsistent with what the observation proves. A completed TCP connect without a reply and a connect that never completes both describe an unanswered host handshake. A timeout alone distinguishes neither a stalled listener nor an absent service whose connection refusal arrives after the probe budget.
+
+Classifying both phases as restart evidence fixes the early abort but leaves another recovery failure. The coordinator's one-second observations can expire before a local connection refusal arrives. After a successful stop, `_wait_absent` continues to see timeouts instead of absence and exhausts the Recovery Budget. `_start` rejects that same unconfirmed observation before issuing startup.
 
 ## Contract
 
-[INV-DEV-19] Shared ADB Recovery supplies restart evidence from every unanswered host handshake. A listener that answered nothing within the budget supplies that evidence: the host never completed the TCP connect, the connected listener never replied, or a partially delivered reply stalled. Both observations count towards the same sustained-failure window of at least two observations over at least thirty monotonic seconds, and only that window authorizes the explicit coordinated restart.
+[INV-DEV-19] Shared ADB Recovery and [INV-05] Shared ADB Guard retain their existing guarantees. The [Device Control contract](../../../../docs/subsystems/device-control.md#3-subsystem-invariants) owns the full observation, coordinated restart and startup rules. [INV-SCHED-39] retains pending tasks under the [scheduler recovery contract](../../../../docs/subsystems/base-scheduler.md#3-subsystem-invariants).
 
-An unanswered connect is not proof that no live process owns the port. It shows only that the service did not answer inside the budget, so it carries no more authority than an unanswered reply and still needs the full window.
+An unanswered connect remains uncertain until an independent listener query confirms absence. This distinguishes a delayed local connection refusal from an existing listener that supplies restart evidence. Extending the socket timeout alone cannot resolve a service that stays absent while connection observations continue to time out.
 
-A listener that answered with a malformed response, or that closed the connection before the response completed, remains a different observation. It proves a live process owns the port, so it supplies no restart evidence and preserves that process. A refused connect remains the only absence result and permits guarded startup without `kill-server`.
+A malformed reply, premature response closure or response-stage timeout never uses native absence confirmation. This preserves evidence from a connection that reached a live process. A refused connect remains the raw socket probe's only absence result; the coordinator also accepts confirmed absence from successful Windows listener queries.
 
 The [verified listener stop decision](2026-10-07-verified-adb-listener-stop.md) extends the protocol-stop boundary. A timed-out stop permits its verified Windows process fallback; an unverified or failed fallback preserves the recorded attempt, cooldown and startup refusal.
 
@@ -33,12 +35,26 @@ The [verified listener stop decision](2026-10-07-verified-adb-listener-stop.md) 
 
 ## Implementation
 
-`probe_adb_server` reports a timeout in either phase as `SharedADBHandshakeTimeout` through one handler, and keeps `SharedADBError` for a malformed response, a connection closed before the response completed, an invalid protocol version and a non-timeout connect failure. The single handler also removed the flag that previously distinguished the phases and the duplicate raise that repeated the same verdict.
+`probe_adb_server` reports both timeout phases as `SharedADBHandshakeTimeout` through one handler and records `phase` as `connect` or `response`. It keeps `SharedADBError` for malformed responses, premature closure, invalid protocol versions and non-timeout connect failures. Exceptions without phase metadata retain their existing recovery behavior.
 
-`SharedADBRecovery` keeps its existing gates: two observations, thirty monotonic seconds, the host-shared cross-process lock, the persisted wall-clock cooldown and the locked re-probe. The gates are unchanged; which unresolved observation supplies evidence is what widened.
+`server_process.adb_listener_absent` reads bounded IPv4 and IPv6 owner tables without opening or terminating processes. The IPv6 record layout uses native `ctypes` alignment. Query errors never confirm absence, and any IPv6 listener on the shared port preserves possible dual-stack occupancy.
+
+`SharedADBRecovery._observe` supplements only connect-phase timeouts with that query. It passes the enclosing deadline and cancellation checks through `remaining`; budget exhaustion and cancellation clear failed-host evidence before any mutation. `_wait_absent` and `_start` share this classification and obtain fresh evidence instead of trusting a stop acknowledgement or a previous absent observation.
+
+`SharedADBRecovery` keeps the sustained-failure window, host-shared lock, persisted cooldown, locked re-probe and attempt generation. Confirmed absence takes the existing startup path without a stop; unresolved observations retain the coordinated restart gates.
+
+## Concept impact
+
+[INV-06] assessment preserves the names, meanings and boundaries of Shared ADB Guard, Recovery Budget and Instance Binding. Native listener observations extend implementation evidence inside the existing recovery coordinator; they add no persisted selections or domain concepts. The glossary requires no change.
 
 ## Verification
 
-`adb_server_tests.py` verifies that a stalled connect and a stalled handshake both raise `SharedADBHandshakeTimeout` with one phase-neutral verdict, that a refused connect stays the only absence result, that a non-timeout connect failure stays unverified, and that malformed or truncated responses remain `SharedADBError`.
+`adb_server_tests.py` verifies the shared timeout classification and phase metadata while preserving refused-connect, malformed-response and non-timeout failure behavior.
 
-`adb_shared_server_tests.py` verifies that a connect-phase timeout accumulates inside the sustained-failure window instead of aborting, that no stop is attempted after the first two unanswered observations, that the first restart decision advances the shared generation, and that unverified process ownership retains a recorded, cooldown-bounded attempt without startup.
+`adb_shared_server_tests.py` reproduces a local refusal delayed beyond the one-second probe. It verifies successful cold startup and startup after acknowledged or verified process stops, changed pre-start evidence, failed native queries, response-timeout isolation, cancellation and budget exhaustion. Two application sessions use the production coordinator, native-query boundary and session ADB adapter to verify same-target registration and helper reconstruction after service loss. Existing sustained-failure, cooldown, unverified-stop and cross-process lock regressions remain in this suite.
+
+`adb_server_process_tests.py` substitutes both native tables and process APIs. It verifies empty tables, IPv4 and IPv6 listeners, unrelated records, query failures, truncated IPv6 records and enclosing-budget cancellation without opening process handles. Existing verified-termination regressions remain intact.
+
+Focused verification also includes `adb_shared_transport_tests.py`, `device_adb_recovery_tests.py` and `scheduler_recovery_preservation_tests.py` for shared routing, application recovery and pending task preservation.
+
+The six named offline suites pass with 397 tests and 22 subtests. Repository-wide Ruff lint and format checks pass, and `git diff --check` passes. `python scripts/verify_governance.py` passes with two existing archived test-reference compatibility warnings. Standards and requirements review find no unresolved defects. Native API, socket and helper substitutions bound this evidence; live-device behavior is not tested.

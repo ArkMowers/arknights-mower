@@ -21,6 +21,7 @@ from arknights_mower.utils.device.adb_client.server import (
     probe_adb_server,
 )
 from arknights_mower.utils.device.adb_client.server_process import (
+    adb_listener_absent,
     terminate_verified_adb,
 )
 from arknights_mower.utils.device.manager_io import run_command
@@ -95,6 +96,17 @@ class SharedADBRecovery:
             )
         except (SharedADBError, OSError) as exc:
             self._remaining(deadline, cancelled)
+            if isinstance(exc, SharedADBHandshakeTimeout) and exc.phase == "connect":
+                try:
+                    absent = adb_listener_absent(
+                        remaining=lambda: self._remaining(deadline, cancelled)
+                    )
+                except (SharedADBError, OSError):
+                    self._remaining(deadline, cancelled)
+                else:
+                    self._remaining(deadline, cancelled)
+                    if absent is True:
+                        return None, None
             return None, exc
         self._remaining(deadline, cancelled)
         if version is not None and (type(version) is not int or version <= 0):

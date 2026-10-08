@@ -29,27 +29,33 @@ def process(tmp_path, monkeypatch):
         cancelled=False,
         terminated=False,
         rows=None,
+        rows6=[],
     )
 
     def table(buffer, size_pointer, ordered, family, table_class, reserved):
-        assert (family, table_class, reserved) == (socket.AF_INET, 3, 0)
-        rows = (
-            host.rows
-            if host.rows is not None
-            else [
-                (
-                    2,
-                    struct.unpack("<I", socket.inet_aton("127.0.0.1"))[0],
-                    socket.htons(5037),
-                    0,
-                    0,
-                    owner,
-                )
-                for owner in host.owners
-            ]
-        )
+        assert family in (socket.AF_INET, socket.AF_INET6)
+        assert (table_class, reserved) == (3, 0)
+        if family == socket.AF_INET6:
+            rows, row_format = host.rows6, "<16sII16sIIII"
+        else:
+            row_format = "<6I"
+            rows = (
+                host.rows
+                if host.rows is not None
+                else [
+                    (
+                        2,
+                        struct.unpack("<I", socket.inet_aton("127.0.0.1"))[0],
+                        socket.htons(5037),
+                        0,
+                        0,
+                        owner,
+                    )
+                    for owner in host.owners
+                ]
+            )
         data = struct.pack("<I", len(rows)) + b"".join(
-            struct.pack("<6I", *row) for row in rows
+            struct.pack(row_format, *row) for row in rows
         )
         ctypes.cast(size_pointer, ctypes.POINTER(ctypes.c_uint32)).contents.value = len(
             data
@@ -114,6 +120,113 @@ def test_verified_listener_uses_one_retained_handle_and_waits_for_exit(process):
     process.kernel.CloseHandle.assert_called_once_with(777)
     handle, milliseconds = process.kernel.WaitForSingleObject.call_args.args
     assert handle == 777 and 0 < milliseconds <= 4500
+
+
+def test_absence_query_checks_both_families_without_opening_processes(process):
+    process.host.owners = []
+    assert server_process.adb_listener_absent(remaining=lambda: 5)
+    assert {call.args[3] for call in process.query.call_args_list} == {
+        socket.AF_INET,
+        socket.AF_INET6,
+    }
+    process.kernel.OpenProcess.assert_not_called()
+    process.kernel.TerminateProcess.assert_not_called()
+
+
+def test_existing_ipv4_listener_never_confirms_absence(process):
+    assert server_process.adb_listener_absent(remaining=lambda: 5) is False
+    process.kernel.OpenProcess.assert_not_called()
+    process.kernel.TerminateProcess.assert_not_called()
+
+
+@pytest.mark.parametrize("address", ["::", "::1", "::ffff:127.0.0.1"])
+def test_ipv6_listener_preserves_possible_shared_port_occupancy(process, address):
+    process.host.owners = []
+    process.host.rows6 = [
+        (
+            socket.inet_pton(socket.AF_INET6, address),
+            0,
+            socket.htons(5037),
+            b"\0" * 16,
+            0,
+            0,
+            2,
+            421,
+        )
+    ]
+    assert server_process.adb_listener_absent(remaining=lambda: 5) is False
+    process.kernel.OpenProcess.assert_not_called()
+    process.kernel.TerminateProcess.assert_not_called()
+
+
+@pytest.mark.parametrize("state,port", [(2, 5038), (5, 5037)])
+def test_unrelated_ipv6_rows_do_not_block_absence_confirmation(process, state, port):
+    process.host.owners = []
+    process.host.rows6 = [
+        (b"\0" * 16, 0, socket.htons(port), b"\0" * 16, 0, 0, state, 421)
+    ]
+    assert server_process.adb_listener_absent(remaining=lambda: 5)
+    process.kernel.OpenProcess.assert_not_called()
+
+
+@pytest.mark.parametrize("family", [socket.AF_INET, socket.AF_INET6])
+def test_native_query_failure_never_confirms_absence(process, family):
+    process.host.owners = []
+    table = process.query.side_effect
+
+    def denied(buffer, pointer, ordered, observed_family, table_class, reserved):
+        if observed_family == family:
+            return 5
+        return table(buffer, pointer, ordered, observed_family, table_class, reserved)
+
+    process.query.side_effect = denied
+    with pytest.raises(SharedADBError):
+        server_process.adb_listener_absent(remaining=lambda: 5)
+    process.kernel.OpenProcess.assert_not_called()
+
+
+def test_truncated_ipv6_table_never_confirms_absence(process):
+    process.host.owners = []
+    table = process.query.side_effect
+
+    def truncated(buffer, pointer, ordered, family, table_class, reserved):
+        if family == socket.AF_INET:
+            return table(buffer, pointer, ordered, family, table_class, reserved)
+        ctypes.cast(pointer, ctypes.POINTER(ctypes.c_uint32)).contents.value = 4
+        if buffer is None:
+            return 122
+        ctypes.memmove(buffer, struct.pack("<I", 1), 4)
+        return 0
+
+    process.query.side_effect = truncated
+    with pytest.raises(SharedADBError, match="记录无效"):
+        server_process.adb_listener_absent(remaining=lambda: 5)
+    process.kernel.OpenProcess.assert_not_called()
+
+
+@pytest.mark.parametrize("cause", ["cancelled", "budget"])
+def test_absence_query_checks_budget_after_native_call(process, cause):
+    process.host.owners = []
+    table = process.query.side_effect
+
+    def interrupted(*args):
+        result = table(*args)
+        if args[0] is not None and args[3] == socket.AF_INET6:
+            process.host.cancelled = True
+            process.host.now = 5
+        return result
+
+    def remaining():
+        if cause == "cancelled" and process.host.cancelled:
+            raise MowerExit
+        if process.host.now >= 5:
+            raise SharedADBError("query budget exhausted")
+        return 5 - process.host.now
+
+    process.query.side_effect = interrupted
+    with pytest.raises(MowerExit if cause == "cancelled" else SharedADBError):
+        server_process.adb_listener_absent(remaining=remaining)
+    process.kernel.OpenProcess.assert_not_called()
 
 
 @pytest.mark.parametrize(
