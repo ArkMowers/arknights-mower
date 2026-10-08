@@ -6910,6 +6910,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             "arrange_check_in",
                             "arrange_check_in_small",
                             "arrange_check_in_on",
+                            "recycle/dashboard",
                         )
                         if destination != template
                     ):

@@ -110,6 +110,55 @@ def test_configuration_instances_keep_rescue_rosters_isolated():
     assert not configured_rescue_names(second.automatic_rescue_plan)
 
 
+@pytest.mark.parametrize("backup", [False, True])
+def test_recycle_rescue_roster_and_initial_sampling(backup):
+    facility = {"plans": [{"agent": "芬"}, {"agent": "香草"}]}
+    primary = {"central": {"plans": [{"agent": "杜林"}]}}
+    backups = []
+    if backup:
+        backups = [
+            {
+                "name": "回收站副表",
+                "conf": {},
+                "task": {},
+                "trigger": {"left": "1", "operator": "==", "right": "1"},
+                "plan": {"recycle": facility},
+            }
+        ]
+    else:
+        primary["recycle"] = facility
+    document = PlanModel(plan1=primary, backup_plans=backups)
+    data = SimpleNamespace(
+        plan={"central": [object()], "recycle": [object(), object()]},
+        evaluate_expression=lambda expression: True,
+    )
+    before = document.model_dump()
+
+    assert configured_rescue_names(document) == {"杜林", "芬", "香草"}
+    assert effective_rescue_plan(data, document)["rescue_plan"] == {
+        "central": ["杜林"],
+        "recycle": ["芬", "香草"],
+    }
+    assert document.model_dump() == before
+
+
+@pytest.mark.parametrize(
+    "names, error",
+    [
+        (["芬", "香草", "红"], "岗位数量"),
+        (["芬", "芬"], "重复"),
+        (["芬", "不存在"], "无效"),
+        (["芬"], "等级/岗位数"),
+        (None, "缺少"),
+    ],
+)
+def test_recycle_rescue_roster_rejects_invalid_staffing(names, error):
+    data = SimpleNamespace(plan={"recycle": [object(), object()]})
+    roster = {} if names is None else {"recycle": names}
+    with pytest.raises(ValueError, match=error):
+        rescue_plan_for(data, roster)
+
+
 def test_rescue_dorms_preserve_slot_indexes_and_override_fia_position(solver):
     from arknights_mower.utils.plan import Room
 

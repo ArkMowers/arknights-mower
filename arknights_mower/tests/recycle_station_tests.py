@@ -82,6 +82,22 @@ def test_official_animation_returns_to_occupied_dashboard():
     assert recog.find("confirm_blue") is None
 
 
+def test_confirm_accepts_official_recycle_dashboard_return():
+    frames = [preview("selection_two"), preview("dashboard_two")]
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data = SimpleNamespace(run_order_rooms={})
+    solver.recog = SimpleNamespace(w=1920, h=1080, update=MagicMock())
+    state = {"frame": 0}
+    solver.find = lambda name, **kwargs: frames[state["frame"]].find(name, **kwargs)
+    solver.tap = MagicMock(side_effect=lambda *args, **kwargs: state.update(frame=1))
+    solver.sleep = MagicMock()
+
+    solver.tap_confirm("recycle", {})
+
+    solver.tap.assert_called_once()
+    solver.sleep.assert_not_called()
+
+
 def test_recycle_map_matches_preview_and_is_independent_of_room_swap():
     # 第三张预览中加工站约 (254, 245)-(437, 326)，反推现有中枢锚点。
     frame = preview("map").img
