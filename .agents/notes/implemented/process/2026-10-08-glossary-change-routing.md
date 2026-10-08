@@ -31,4 +31,6 @@ The [workflow cases](../../../skills/mower-code-review/evals/evals.json) define 
 
 The [concept-impact recipe](../../../../docs/cookbook/review-glossary-impact.md) retains six narrower semantic cases. Automated structural tests do not claim to evaluate agent decisions.
 
+After those rehearsals, report-action wording was clarified from the actual tap, cache invalidation, capture and email call path. The published cases also make their fixture prerequisites explicit. Those clarifications received source and document review; they were not rerun as fresh agent trials.
+
 This change reuses [INV-06] and the existing scanners. It adds no semantic classifier or domain-runtime abstraction and contributes no glossary edits. The report repair used by the evaluation fixtures has its own decision and delivery scope.
