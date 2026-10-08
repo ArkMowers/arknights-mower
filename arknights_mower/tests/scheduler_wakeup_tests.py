@@ -370,26 +370,52 @@ def test_new_future_workshop_waits_for_its_own_deadline(scheduler):
     assert scheduler.clock.now() == scheduler.shift.time - timedelta(seconds=230)
 
 
-def test_workshop_wake_respects_pending_mastery_handoff(scheduler, monkeypatch):
+@pytest.mark.parametrize(
+    ("handoff_delay", "workshop_fits"), [(75, False), (76, True), (120, True)]
+)
+def test_workshop_wake_respects_pending_mastery_handoff(
+    scheduler, monkeypatch, handoff_delay, workshop_fits
+):
     from arknights_mower.solvers import mastery
 
     monkeypatch.setattr(config.conf, "enable_mastery", True)
     swap = SchedulerTask(
-        scheduler.clock.now() + timedelta(minutes=2), task_type=TaskTypes.SWAP_SUPPORT
+        scheduler.clock.now() + timedelta(seconds=handoff_delay),
+        task_type=TaskTypes.SWAP_SUPPORT,
     )
     scheduler.solver.tasks.append(swap)
     dispatch = MagicMock(side_effect=lambda solver: solver.skip())
     monkeypatch.setattr(mastery, "run_swap_support", dispatch)
+    inserted_at = scheduler.clock.now() + timedelta(seconds=1)
     scheduler.on_sleep = scheduler.add_workshop
     scheduler.solver.run()
-    dispatch.assert_called_once_with(scheduler.solver)
-    scheduler.solver.craft_material.assert_not_called()
     scheduler.solver.agent_arrange.assert_not_called()
-    assert scheduler.clock.now() == swap.time
-    workshop = next(
-        task for task in scheduler.solver.tasks if task.type == TaskTypes.WORKSHOP
-    )
-    assert workshop.time > swap.time
+    # Wake inserts at +1s; the workshop budget is 60s plus a 15s work margin.
+    if workshop_fits:
+        scheduler.solver.craft_material.assert_called_once_with()
+        dispatch.assert_not_called()
+        assert scheduler.clock.now() == inserted_at
+        assert any(task is swap for task in scheduler.solver.tasks)
+        assert all(task.type != TaskTypes.WORKSHOP for task in scheduler.solver.tasks)
+        scheduler.solver.run()
+    else:
+        dispatch.assert_called_once_with(scheduler.solver)
+        scheduler.solver.craft_material.assert_not_called()
+        assert scheduler.clock.now() == swap.time
+        workshop = next(
+            task for task in scheduler.solver.tasks if task.type == TaskTypes.WORKSHOP
+        )
+        assert workshop.time > swap.time
+        scheduler.solver.run()
+        assert scheduler.clock.now() == workshop.time
+        assert all(task.type != TaskTypes.WORKSHOP for task in scheduler.solver.tasks)
+    dispatch.assert_called_once_with(scheduler.solver)
+    scheduler.solver.craft_material.assert_called_once_with()
+    scheduler.solver.agent_arrange.assert_not_called()
+    assert all(task is not swap for task in scheduler.solver.tasks)
+    assert any(task is scheduler.shift for task in scheduler.solver.tasks)
+    if workshop_fits:
+        assert scheduler.clock.now() == swap.time
 
 
 @pytest.mark.parametrize("change", ["remove", "postpone"])

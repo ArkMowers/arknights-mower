@@ -178,7 +178,9 @@ class EmergencyRecoveryMixin:
             if yield_to_releases:
                 rooms.remove(room)
                 self._emergency_replan_releases()
-                protect_priority_tasks(self.tasks)
+                protect_priority_tasks(
+                    self.tasks, op_data=getattr(self, "op_data", None)
+                )
                 self._emergency_save()
         self.back_to_infrastructure()
         if yield_to_releases and state is not None:
@@ -229,7 +231,7 @@ class EmergencyRecoveryMixin:
             self.plan_metadata()
         else:
             self._emergency_replan_releases()
-        protect_priority_tasks(self.tasks)
+        protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         if self._emergency_active() and self.emergency_state.get("handoff_observing"):
             self._emergency_startup_pending = False
             self._emergency_defer_read()
@@ -1009,7 +1011,7 @@ class EmergencyRecoveryMixin:
     def _emergency_tick(self, *, completed_task=None):
         """只有到期观测或已完成的驻员变更推进恢复，不随空转循环重做规划。"""
         self.plan_metadata()
-        protect_priority_tasks(self.tasks)
+        protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         state = self.emergency_state
         pending_staffing = [
             task for task in self.tasks if getattr(task, "emergency_staffing", False)
@@ -1062,7 +1064,7 @@ class EmergencyRecoveryMixin:
                 self._emergency_defer_read()
                 return
             self.plan_metadata()
-            protect_priority_tasks(self.tasks)
+            protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         if plan_due:
             self.tasks[:] = [
                 task
@@ -1099,7 +1101,7 @@ class EmergencyRecoveryMixin:
         self._emergency_sync_reservations()
         if plan_due:
             self._emergency_replan_releases()
-            protect_priority_tasks(self.tasks)
+            protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         if (
             plan_due
             and state["phase"] == "recovering"

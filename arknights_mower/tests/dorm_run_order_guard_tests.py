@@ -232,7 +232,7 @@ def test_dorm_duration_counts_toward_later_work_before_swap(schedule, monkeypatc
     monkeypatch.setattr(config.conf, "enable_mastery", True)
     dorm.type = TaskTypes.FILL_DORM
     swap.type = TaskTypes.SWAP_SUPPORT
-    swap.time = now + timedelta(minutes=5)
+    swap.time = now + timedelta(minutes=4, seconds=30)
     ordinary = SchedulerTask(time=now, task_type=TaskTypes.FIAMMETTA)
     tasks = [dorm, ordinary, swap]
     protect_priority_tasks(tasks, time_now=now)
