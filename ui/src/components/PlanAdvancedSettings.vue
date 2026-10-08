@@ -30,7 +30,6 @@ const {
 <template>
   <div class="advanced-settings" :inert="disabled">
     <n-form
-      class="advanced-settings-form"
       :label-placement="mobile ? 'top' : 'left'"
       label-width="190"
       label-align="left"
@@ -355,11 +354,6 @@ const {
 </template>
 
 <style scoped>
-.advanced-settings-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
 .advanced-settings {
   max-width: 760px;
 }
