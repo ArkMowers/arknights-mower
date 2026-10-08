@@ -4,10 +4,11 @@ import os
 import cv2
 
 from arknights_mower.models import noto_sans
+from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.csv_utils import EmptyDataError, read_csv_rows
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.device.device import Device
-from arknights_mower.utils.digit_reader import DigitReader
+from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.email import report_template, send_message
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, thres2
@@ -16,17 +17,23 @@ from arknights_mower.utils.path import get_path
 from arknights_mower.utils.recognize import Recognizer, Scene, tp
 
 
-def remove_blank(target: str):
-    if target is None or target == "":
-        return target
-
-    target.strip()
-    target.replace(" ", "")
-    target.replace("\u3000", "")
-    return target
+def match_digit(digit, template) -> float | None:
+    """Score a digit against a contained template; incompatible shapes are unread."""
+    if digit.shape[0] < template.shape[0] or digit.shape[1] < template.shape[1]:
+        return None
+    try:
+        result = cv2.matchTemplate(digit, template, cv2.TM_SQDIFF_NORMED)
+    except cv2.error:
+        return None
+    return cv2.minMaxLoc(result)[0]
 
 
 class ReportSolver(SceneGraphSolver):
+    # Bound both per-run reads and scheduler retries for the current date.
+    MAX_READ_ATTEMPTS = 3
+    attempts = 0
+    last_attempt_date: str | None = None
+
     def __init__(
         self,
         device: Device = None,
@@ -37,7 +44,6 @@ class ReportSolver(SceneGraphSolver):
         self.low_range_gray = (100, 100, 100)
         self.high_range_gray = (255, 255, 255)
         self.date = get_server_time().date().__str__()
-        self.digitReader = DigitReader()
         self.report_res = {
             "作战录像": None,
             "赤金": None,
@@ -47,17 +53,31 @@ class ReportSolver(SceneGraphSolver):
             "合成玉订单数量": None,
         }
         self.reload_time = 0
+        self._stored = False
 
     def run(self):
         if self.has_record():
             logger.info("今天的基报看过了")
             return True
+        if type(self).last_attempt_date != self.date:
+            type(self).last_attempt_date = self.date
+            type(self).attempts = 0
+        if type(self).attempts >= self.MAX_READ_ATTEMPTS:
+            logger.warning("基报连续读取失败，本次启动不再重试")
+            return False
         logger.info("康康大基报捏~")
+        type(self).attempts += 1
         try:
             super().run()
-            return True
+        except (MowerExit, DeviceRecoveryError):
+            type(self).attempts -= 1
+            raise
         except Exception as e:
             logger.exception(e)
+        if self._stored:
+            type(self).attempts = 0
+            return True
+        logger.warning("基报没有记录，稍后重试")
         return False
 
     def transition(self) -> bool:
@@ -71,21 +91,27 @@ class ReportSolver(SceneGraphSolver):
             self.scene_graph_navigation(Scene.RIIC_REPORT)
 
     def read_report(self):
-        if self.find("riic/manufacture"):
-            try:
+        if self._stored:
+            return True
+        # A falsy transition repeats inside BaseSolver.run().
+        if self.reload_time >= self.MAX_READ_ATTEMPTS:
+            logger.info("基报未读出，本次尝试结束")
+            return True
+        self.reload_time += 1
+        try:
+            if self.find("riic/manufacture"):
                 self.crop_report()
                 logger.info(self.report_res)
-                self.record_report()
-            except Exception as e:
-                logger.exception("基报读取失败:{}".format(e))
-            return True
-        else:
-            if self.reload_time > 3:
-                logger.info("未加载出基报")
-                return True
-            self.reload_time += 1
+                return self.record_report()
+            logger.info("未加载出基报")
             self.sleep(1)
-            return
+            return False
+        except (MowerExit, DeviceRecoveryError):
+            self.reload_time -= 1
+            raise
+        except Exception as e:
+            logger.exception(f"基报读取失败:{e}")
+            return self._stored
 
     def add_order_detail(self):
         try:
@@ -117,10 +143,16 @@ class ReportSolver(SceneGraphSolver):
                 and total != self.report_res["龙门币订单"]
             ):
                 self.report_res["未知订单"] = self.report_res["龙门币订单"] - total
+        except (MowerExit, DeviceRecoveryError):
+            raise
         except Exception as e:
             logger.exception(f"处理交易历史记录时出错：{e}")
 
     def record_report(self):
+        """Store readings before expanding the report for the screenshot email."""
+        if all(value is None for value in self.report_res.values()):
+            logger.warning(f"{self.date}的基建报告没有读到任何数据，不记录")
+            return False
         logger.info(f"存入{self.date}的数据{self.report_res}")
         try:
             from arknights_mower.utils.csv_utils import append_dated_row
@@ -132,8 +164,13 @@ class ReportSolver(SceneGraphSolver):
                 header=True,
                 encoding="gbk",
             )
+        except (MowerExit, DeviceRecoveryError):
+            raise
         except Exception as e:
             logger.exception(f"存入数据失败：{e}")
+            return False
+        self._stored = True
+        # Expand the report to show the last three days before the email capture.
         self.tap((1253, 81), interval=2)
         try:
             self.add_order_detail()
@@ -145,9 +182,12 @@ class ReportSolver(SceneGraphSolver):
                 "INFO",
                 attach_image=self.recog.img,
             )
+        except (MowerExit, DeviceRecoveryError):
+            raise
         except Exception as e:
             logger.exception(f"基报邮件发送失败：{e}")
         self.tap((40, 80), interval=2)
+        return True
 
     def has_record(self):
         try:
@@ -167,24 +207,32 @@ class ReportSolver(SceneGraphSolver):
     def crop_report(self):
         exp_area = [[1625, 200], [1800, 230]]
         iron_pos = self.find("riic/iron")
-        iron_area = [
-            [iron_pos[1][0], iron_pos[0][1]],
-            [1800, iron_pos[1][1]],
-        ]
+        iron_area = (
+            [[iron_pos[1][0], iron_pos[0][1]], [1800, iron_pos[1][1]]]
+            if iron_pos
+            else None
+        )
         trade_pt = self.find("riic/trade")
         assist_pt = self.find("riic/assistants")
-        area = {
-            "iron_order": [[1620, trade_pt[1][1] + 10], [1740, assist_pt[0][1] - 50]],
-            "iron_order_number": [
-                [1820, trade_pt[1][1] + 10],
-                [1870, assist_pt[0][1] - 65],
-            ],
-            "orundum": [[1620, trade_pt[1][1] + 45], [1870, assist_pt[0][1]]],
-            "orundum_number": [
-                [1820, trade_pt[1][1] + 55],
-                [1860, assist_pt[0][1] - 20],
-            ],
-        }
+        area = dict.fromkeys(
+            ["iron_order", "iron_order_number", "orundum", "orundum_number"]
+        )
+        if trade_pt and assist_pt:
+            area = {
+                "iron_order": [
+                    [1620, trade_pt[1][1] + 10],
+                    [1740, assist_pt[0][1] - 50],
+                ],
+                "iron_order_number": [
+                    [1820, trade_pt[1][1] + 10],
+                    [1870, assist_pt[0][1] - 65],
+                ],
+                "orundum": [[1620, trade_pt[1][1] + 45], [1870, assist_pt[0][1]]],
+                "orundum_number": [
+                    [1820, trade_pt[1][1] + 55],
+                    [1860, assist_pt[0][1] - 20],
+                ],
+            }
 
         img = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
         img = cv2.inRange(img, (98, 0, 150), (102, 255, 255))
@@ -206,53 +254,19 @@ class ReportSolver(SceneGraphSolver):
         )
         logger.info("订单数读取完成")
 
-    def crop_report_backup(self):
-        logger.info("使用备用方法读取基建报告")
-        exp_area = [[1625, 200], [1800, 230]]
-        iron_pos = self.find("riic/iron")
-        iron_area = [
-            [iron_pos[1][0], iron_pos[0][1]],
-            [1800, iron_pos[1][1]],
-        ]
-        trade_pt = self.find("riic/trade")
-        assist_pt = self.find("riic/assistants")
-        area = {
-            "iron_order": [[1620, trade_pt[1][1] + 10], [1740, assist_pt[0][1] - 50]],
-            "iron_order_number": [
-                [1820, trade_pt[1][1] + 10],
-                [1870, assist_pt[0][1] - 65],
-            ],
-            "orundum": [[1620, trade_pt[1][1] + 45], [1870, assist_pt[0][1]]],
-            "orundum_number": [
-                [1820, trade_pt[1][1] + 55],
-                [1860, assist_pt[0][1] - 20],
-            ],
-        }
-
-        img = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
-        img = cv2.inRange(img, (95, 0, 100), (110, 255, 255))  # 扩大蓝色范围
-        self.report_res["作战录像"] = self.get_number(img, exp_area, height=19)
-        self.report_res["赤金"] = self.get_number(img, iron_area, height=19)
-        self.report_res["龙门币订单"] = self.get_number(
-            img, area["iron_order"], height=19
-        )
-        self.report_res["合成玉"] = self.get_number(img, area["orundum"], height=19)
-        logger.info("备用方法蓝字读取完成")
-
-        img = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
-        img = cv2.inRange(img, (0, 0, 30), (120, 120, 200))  # 扩大灰色范围
-        self.report_res["龙门币订单数"] = self.get_number(
-            img, area["iron_order_number"], height=19, thres=200
-        )
-        self.report_res["合成玉订单数量"] = self.get_number(
-            img, area["orundum_number"], height=19, thres=200
-        )
-        logger.info("备用方法订单数读取完成")
-
     def get_number(
-        self, img, scope: tp.Scope, height: int | None = 18, thres: int | None = 100
-    ):
+        self,
+        img,
+        scope: tp.Scope | None,
+        height: int | None = 18,
+        thres: int | None = 100,
+    ) -> int | None:
+        """Read a complete field; absent crops or unscorable digits return None."""
+        if scope is None:
+            return None
         img = cropimg(img, scope)
+        if img.size == 0:
+            return None
 
         default_height = 29
         if height and height != default_height:
@@ -271,9 +285,10 @@ class ReportSolver(SceneGraphSolver):
 
             score = []
             for i in range(10):
-                im = noto_sans[i]
-                result = cv2.matchTemplate(digit, im, cv2.TM_SQDIFF_NORMED)
-                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-                score.append(min_val)
-            value = value * 10 + score.index(min(score))
+                matched = match_digit(digit, noto_sans[i])
+                if matched is not None:
+                    score.append((matched, i))
+            if not score:
+                return None
+            value = value * 10 + min(score)[1]
         return value

@@ -7,7 +7,7 @@
 - **[INV-03] Failure Preserves Target Identity**: Discovery, preflight, or recovery failure must never silently alter persistent configuration or automatically fallback to another online device on the host.
 - **[INV-04] IPC Pair Cohesion**: MuMu IPC screenshot backend and touch backend must be selected together; neither may be used without the other.
 - **[INV-05] Shared ADB Guard**: Socket-level protocol negotiation must verify shared ADB server state before running CLI operations; implicit `kill-server` invocations are strictly prohibited.
-- **[INV-06] Domain Glossary Synchronization**: Any change altering base scheduling mechanics, device driver lifecycles, or configuration schemas must immediately update and preserve authoritative definitions in `CONTEXT.md`.
+- **[INV-06] Domain Glossary Synchronization**: Changes affecting scheduling, device control or configuration assess domain-concept names, meanings, boundaries and relationships. Changed concepts require synchronized definitions in `CONTEXT.md` and `CONTEXT.zh.md` after [explicit glossary approval](AGENTS.md#4-global-execution-constraints); unchanged concepts complete this check without glossary edits. Behavioral rules and implementation contracts follow the [documentation routing rules](.agents/skills/mower-doc/references/doc-hierarchy.md#routing-rules).
 
 
 ## 2. Subsystem Invariants
@@ -77,6 +77,7 @@
 - **[INV-UI-02] Recovery Policy Binding**: Advanced recovery parameters must bidirectionally bind to backend defaults without local shadow overrides.
 
 ### 2.3 Vision & Recognition
+- **[INV-REC-07] Base Report Field Integrity**: Each base report field preserves its independent reading; unavailable fields remain unread, compatible digit templates retain their scores, and a digit without a compatible score makes its complete field unread. Reports with no readings or failed storage return failure without post-storage panel input or email, while confirmed storage ends reading retries; cancellation and Device Control recovery propagate without consuming reading attempts or replaying uncertain input.
 - **[INV-REC-05] Training Panel Identity**: Training panel identity comes from full-name templates on the current Capture Frame; unknown names or missing skills retain bounded retry and never derive actual occupancy from the requested plan.
 - **[INV-DIAG-06] Error Notification Evidence**: Every ERROR notification emits a log record before mail configuration checks or delivery; screenshots are archived only when the caller explicitly identifies a visual failure, independently of email enablement.
 - **[INV-REC-03] Scene Recovery Limit**: Repeated recognition transition exceptions permit one game restart per navigation call; ordinary navigation input faults recover the same target and refresh the scene within that call, while cancellation and unverified side effects propagate without input replay.
