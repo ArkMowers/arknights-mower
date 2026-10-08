@@ -11,6 +11,8 @@ from arknights_mower.utils.scheduler_task import (
     NewsChecker,
     SchedulerTask,
     TaskTypes,
+    defer_dorm_before_priority_task,
+    logger,
     protect_priority_tasks,
     scheduling,
 )
@@ -264,3 +266,120 @@ def test_strict_release_and_fill_phase_are_preserved(kind):
     assert any(t is fill for t in tasks)
     assert fill.time > critical.time
     assert fill.plan == fill.dorm_fill_plan == {"dormitory_2": ["A"]}
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+@pytest.mark.parametrize(
+    "plan", [{"room_1_1": ["A"]}, {"room_1_1": ["A"], "dormitory_1": ["B"]}]
+)
+def test_future_work_waits_for_run_order_window(dispatch, plan, monkeypatch):
+    work = task(TaskTypes.SHIFT_ON, 1190, copy.deepcopy(plan))
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    tasks = [work, order]
+    info = []
+    monkeypatch.setattr(logger, "info", lambda *args: info.append(args))
+
+    for seconds in (0, 300, 599):
+        dispatch(tasks, time_now=NOW + timedelta(seconds=seconds))
+        assert tasks == [work, order]
+        assert work.time == NOW + timedelta(seconds=1190)
+        assert work.plan == plan
+    assert not info
+
+    dispatch(tasks, time_now=NOW + timedelta(seconds=600))
+    assert tasks == [order, work]
+    assert work.time == order.time + timedelta(seconds=1)
+    assert work.plan == plan
+    assert not info
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+def test_distant_mastery_still_protects_future_work(dispatch):
+    work = task(TaskTypes.SHIFT_ON, 1190, {"room_1_1": ["A"]})
+    swap = task(TaskTypes.SWAP_SUPPORT, 1200)
+    tasks = [work, swap]
+    dispatch(tasks, time_now=NOW)
+    assert tasks == [swap, work]
+    assert work.time == swap.time + timedelta(seconds=1)
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+def test_dorm_forecast_rebuilding_does_not_repeat_info_or_defer_work(
+    dispatch, monkeypatch
+):
+    info, debug = [], []
+    monkeypatch.setattr(logger, "info", lambda *args: info.append(args))
+    monkeypatch.setattr(logger, "debug", lambda *args: debug.append(args))
+    # 实例中的 9.1 秒来自未来清退与跑单间隔扣去一分钟，并非当前剩余时间。
+    original_time = datetime(2026, 10, 9, 1, 37, 6, 136646)
+    order_time = datetime(2026, 10, 9, 1, 38, 15, 262450)
+    for now in (
+        datetime(2026, 10, 9, 0, 23, 43),
+        datetime(2026, 10, 9, 0, 24, 7),
+        datetime(2026, 10, 9, 0, 24, 35),
+    ):
+        dorm = SchedulerTask(
+            original_time,
+            {"dormitory_3": ["Current", "Current", "Free", "Current", "Current"]},
+            TaskTypes.RELEASE_DORM,
+            meta_data="幽灵鲨",
+        )
+        work = SchedulerTask(original_time + timedelta(seconds=1), {"room_1_2": ["A"]})
+        order = SchedulerTask(order_time, task_type=TaskTypes.RUN_ORDER)
+        tasks = [dorm, work, order]
+        for _ in range(2):
+            dispatch(tasks, time_now=now)
+            assert tasks == [work, order, dorm]
+            assert dorm.time == order_time + timedelta(seconds=1)
+            assert work.time == original_time + timedelta(seconds=1)
+    assert not info
+    forecasts = [args for args in debug if args[0].startswith("宿舍提前规划")]
+    assert len(forecasts) == 3
+    assert all(args[1:3] == ("dormitory_3", "幽灵鲨") for args in forecasts)
+    assert all(args[3] == original_time and args[5] == order_time for args in forecasts)
+
+
+@pytest.mark.parametrize("seconds", [0, 1])
+def test_due_deferral_logs_info_and_future_deferral_logs_debug(seconds, monkeypatch):
+    info, debug = [], []
+    monkeypatch.setattr(logger, "info", lambda *args: info.append(args))
+    monkeypatch.setattr(logger, "debug", lambda *args: debug.append(args))
+    work = task(TaskTypes.SHIFT_ON, seconds, {"room_1_1": ["A"]})
+    order = task(TaskTypes.RUN_ORDER, 60)
+    tasks = [work, order]
+    scheduling(tasks, time_now=NOW)
+    assert tasks == [order, work]
+    messages = [
+        args for args in (info if seconds == 0 else debug) if "预计耗时" in args[0]
+    ]
+    assert len(messages) == 1
+    assert messages[0][1:4] == ("上班", "room_1_1", NOW + timedelta(seconds=seconds))
+    assert messages[0][-1] == order.time
+    assert not any("预计耗时" in args[0] for args in (debug if seconds == 0 else info))
+
+
+def test_future_workshop_batch_waits_for_run_order_window():
+    jobs = [task(TaskTypes.WORKSHOP, 1190, meta_data=f"A{i}") for i in range(3)]
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    tasks = jobs + [order]
+    scheduling(tasks, time_now=NOW)
+    assert tasks == jobs + [order]
+    assert [job.time for job in jobs] == [NOW + timedelta(seconds=1190)] * 3
+    scheduling(tasks, time_now=NOW + timedelta(minutes=10))
+    assert tasks == [order] + jobs
+    assert [job.time for job in jobs] == [
+        order.time + timedelta(seconds=i) for i in range(1, 4)
+    ]
+
+
+def test_runtime_dorm_recheck_keeps_info(monkeypatch):
+    info = []
+    monkeypatch.setattr(logger, "info", lambda *args: info.append(args))
+    dorm = task(TaskTypes.RELEASE_DORM, plan={"dormitory_3": ["Current", "Free"]})
+    order = task(TaskTypes.RUN_ORDER, 100)
+    assert defer_dorm_before_priority_task(
+        dorm, [dorm, order], "dormitory_3", time_now=NOW
+    )
+    assert dorm.time == order.time + timedelta(seconds=1)
+    assert len(info) == 1
+    assert "dormitory_3" in info[0][0] and "跑单" in info[0][0]

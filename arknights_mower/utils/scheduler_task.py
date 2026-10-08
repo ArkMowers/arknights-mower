@@ -735,6 +735,37 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
             index += 1
             continue
         priority = ordered[next_priority_index]
+        # 未来普通任务仅在跑单前十分钟延期；到期任务仍按实际操作预算保护跑单。
+        # 宿舍保留提前规划，但不因此提前延期后续普通任务。
+        if (
+            priority.type == TaskTypes.RUN_ORDER
+            and priority.time - now > timedelta(minutes=10)
+            and task.time > now
+        ):
+            if (
+                _is_dorm_only_task(task)
+                and not task.strict_mood_limit
+                and not task.adjusted
+                and not getattr(task, "dorm_recovery_restore", [])
+                and not _fits_before_priority(task, start, duration, priority)
+            ):
+                original_time = task.time
+                task.time = priority.time + timedelta(seconds=1)
+                logger.debug(
+                    "宿舍提前规划：%s（%s）从 %s 延至 %s，避让 %s 跑单",
+                    ", ".join(task.plan),
+                    task.meta_data or task.type.display_value,
+                    original_time,
+                    task.time,
+                    priority.time,
+                )
+                ordered.pop(index)
+                ordered.insert(next_priority_index, task)
+            else:
+                cursor = start + duration
+                projected = _project_admitted_task(projected, task)
+                index += 1
+            continue
         # Runtime dorm dispatch keeps its one-minute margin and observed budget.
         margin = 60 if any(r.startswith("dormitory_") for r in task.plan) else 15
         deadline = priority.time - timedelta(seconds=margin)
@@ -774,6 +805,8 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
             index += 1
             continue
 
+        original_time = task.time
+        task_rooms = ", ".join(task.plan) or task.meta_data or task.type.display_value
         before_plan = {}
         after_plan = {}
         for plan in (
@@ -810,11 +843,17 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
             deferred = _merge_deferred_dorm_schedules(deferred)
         for offset, pending_task in enumerate(deferred, 1):
             pending_task.time = max(now, priority.time) + timedelta(seconds=offset)
-        logger.info(
-            "任务预计耗时 %.1f 秒，可用时间 %.1f 秒，将未完成部分移至%s之后",
+        log = logger.debug if original_time > now else logger.info
+        log(
+            "%s任务（%s，计划 %s）预计耗时 %.1f 秒，可用时间 %.1f 秒，"
+            "将未完成部分移至%s（%s）之后",
+            task.type.display_value,
+            task_rooms,
+            original_time,
             duration.total_seconds(),
             max(0, (deadline - start).total_seconds()),
             priority.type.display_value,
+            priority.time,
         )
         ordered[index : next_priority_index + 1] = (
             ([task] if before_plan else []) + retained + [priority] + deferred

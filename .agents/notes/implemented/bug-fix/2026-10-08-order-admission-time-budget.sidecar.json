@@ -15,6 +15,7 @@
   ],
   "test_suites": [
     "arknights_mower/tests/order_admission_tests.py",
+    "arknights_mower/tests/priority_admission_tests.py",
     "arknights_mower/tests/workshop_queue_tests.py"
   ]
 }

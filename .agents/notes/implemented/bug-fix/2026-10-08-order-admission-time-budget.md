@@ -19,11 +19,15 @@ Read-only analysis of alexsun logs from 2026-10-06 through 2026-10-08 includes 1
 
 The scheduler reuses `Operators.project_arrangements` and operation timing. Dynamic arrangements invalidate subsequent admission projections. Existing glossary terms cover Actual and Projected Occupancy and Scheduling Plan; no glossary edits are required.
 
+The unified cursor initially removes the previous ordinary-work deferral horizon. Rebuilt future dormitory releases repeatedly produce INFO messages whose available budget refers to a future start rather than the current time. The [critical task admission contract](../../../../docs/subsystems/base-scheduler.md#210-critical-task-admission) separates future planning from due-work admission, retaining the full operation-budget protection for work that can start now. Existing domain concepts remain unchanged.
+
 ## Verification
 
 Focused offline tests cover timing boundaries, independent partial plans, phase and group atomicity, isolated projection, future waiting, order occupancy, multiple orders, strict release, mastery handoffs and dorm continuation.
 
 The workshop queue regression uses a fixed clock and checks all eleven one-minute jobs deferred after an eight-minute trade order. Repeated planning preserves all eleven task identities, operator names, order and timestamps without duplicate batches. Batch boundary tests cover scheduled waiting, intervening staffing, retained staffing prefixes and repeated deferral across later orders.
+
+Future-work regressions cover the ten-minute boundary at both scheduling entry points, complete workshop batches, repeated dormitory release reconstruction with no INFO output or unrelated work deferral, unchanged mastery protection, and INFO output for due deferral and runtime dormitory rechecks. The existing distant-order regression retains protection for large due arrangements.
 
 ## Standards Findings
 
