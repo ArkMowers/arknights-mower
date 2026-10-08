@@ -23,9 +23,13 @@ class SharedADBHandshakeTimeout(SharedADBError):
     """A local listener was addressed but answered no host handshake.
 
     The host never completed the TCP connect or never replied once connected.
-    Recovery treats both as restart evidence only after the sustained-failure
-    window, because neither observation shows a working server.
+    Neither observation alone proves absence. Recovery confirms absence
+    independently for a known connect phase or retains the restart window.
     """
+
+    def __init__(self, *args, phase=None):
+        super().__init__(*args)
+        self.phase = phase
 
 
 class SharedADBStopTimeout(SharedADBError):
@@ -74,6 +78,7 @@ def probe_adb_server(
     """
     deadline = monotonic() + max(0, timeout)
     factory = socket_factory or socket.socket
+    phase = "connect"
     try:
         with factory(socket.AF_INET, socket.SOCK_STREAM) as connection:
             connection.settimeout(_remaining(deadline, monotonic))
@@ -81,9 +86,7 @@ def probe_adb_server(
                 connection.connect(address or ADB_SERVER_ADDRESS)
             except ConnectionRefusedError:
                 return None
-            # A connect that outlives the whole budget never reached the
-            # server, so it is the same unanswered handshake as a listener
-            # that accepted and then stalled; the handler below reports both.
+            phase = "response"
             connection.settimeout(_remaining(deadline, monotonic))
             connection.sendall(b"000chost:version")
 
@@ -98,7 +101,7 @@ def probe_adb_server(
             return int(version, 16)
     except socket.timeout as exc:
         raise SharedADBHandshakeTimeout(
-            "共享 ADB server 未完成主机握手：连接或应答超时"
+            "共享 ADB server 未完成主机握手：连接或应答超时", phase=phase
         ) from exc
     except OSError as exc:
         raise SharedADBError(f"无法安全读取共享 ADB server 状态：{exc}") from exc

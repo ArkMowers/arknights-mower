@@ -1,4 +1,4 @@
-"""Stop a verified Windows shared-port owner through one retained handle."""
+"""Inspect Windows shared listeners and stop only a verified retained handle."""
 
 import ctypes
 import os
@@ -15,9 +15,26 @@ from arknights_mower.utils.device.adb_client.server import (
 )
 
 
+class _TCP6Row(ctypes.Structure):
+    _fields_ = [
+        ("local_address", ctypes.c_ubyte * 16),
+        ("local_scope", ctypes.c_uint32),
+        ("local_port", ctypes.c_uint32),
+        ("remote_address", ctypes.c_ubyte * 16),
+        ("remote_scope", ctypes.c_uint32),
+        ("remote_port", ctypes.c_uint32),
+        ("state", ctypes.c_uint32),
+        ("pid", ctypes.c_uint32),
+    ]
+
+
+# MIB_TCPTABLE and MIB_TCP6TABLE both store the entry count before their rows.
+_TCP_ROW_OFFSET = 4
+
+
 def _windows_api():
     if os.name != "nt":
-        raise SharedADBError("当前平台不支持核验并终止共享 ADB 端口占用进程")
+        raise SharedADBError("当前平台不支持核验共享 ADB 端口占用进程")
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
     tcp = ctypes.WinDLL("iphlpapi", use_last_error=True).GetExtendedTcpTable
     dword, handle, boolean = ctypes.c_uint32, ctypes.c_void_p, ctypes.c_int
@@ -38,32 +55,39 @@ def _windows_api():
     return kernel, tcp
 
 
-def _listener_pid(query, remaining):
-    """Read a bounded IPv4 listener table; reject ambiguous loopback ownership."""
+def _tcp_table(query, remaining, family, row_size):
+    """Read one bounded owner table without accepting a partial snapshot."""
     size = ctypes.c_uint32()
     remaining()
-    status = query(None, ctypes.byref(size), False, socket.AF_INET, 3, 0)
+    status = query(None, ctypes.byref(size), False, family, 3, 0)
     for _ in range(3):
         remaining()
-        if status != 122 or not 4 <= size.value <= 1024 * 1024:
+        if status != 122 or not _TCP_ROW_OFFSET <= size.value <= 1024 * 1024:
             raise SharedADBError("无法核验共享 ADB 端口的进程归属")
         buffer = ctypes.create_string_buffer(size.value)
         capacity = len(buffer)
-        status = query(buffer, ctypes.byref(size), False, socket.AF_INET, 3, 0)
+        status = query(buffer, ctypes.byref(size), False, family, 3, 0)
         remaining()
         if status == 0:
             break
     else:
         raise SharedADBError("共享 ADB 端口归属持续变化，保留现有进程")
-    if status != 0 or not 4 <= size.value <= capacity:
+    if status != 0 or not _TCP_ROW_OFFSET <= size.value <= capacity:
         raise SharedADBError("共享 ADB 端口归属读取失败")
     count = struct.unpack_from("<I", buffer)[0]
-    if count > (size.value - 4) // 24:
+    if count > (size.value - _TCP_ROW_OFFSET) // row_size:
         raise SharedADBError("共享 ADB 端口归属记录无效")
+    return buffer, count
+
+
+def _listener_pid(query, remaining):
+    """Read a bounded IPv4 listener table; reject ambiguous loopback ownership."""
+    buffer, count = _tcp_table(query, remaining, socket.AF_INET, 24)
     owners = set()
     for index in range(count):
+        remaining()
         state, address, port, _, _, pid = struct.unpack_from(
-            "<6I", buffer, 4 + index * 24
+            "<6I", buffer, _TCP_ROW_OFFSET + index * 24
         )
         host = socket.inet_ntoa(struct.pack("<I", address))
         if (
@@ -77,6 +101,33 @@ def _listener_pid(query, remaining):
     if len(owners) > 1:
         raise SharedADBError("共享 ADB 端口占用进程不唯一，保留现有进程")
     return next(iter(owners), None)
+
+
+def adb_listener_absent(*, remaining):
+    """Confirm absence through both Windows tables within the caller's budget.
+
+    Any IPv6 listener on the shared port preserves possible dual-stack
+    occupancy. Query failure never supplies absence evidence.
+    """
+    remaining()
+    _, query = _windows_api()
+    remaining()
+    pid = _listener_pid(query, remaining)
+    remaining()
+    if pid is not None:
+        return False
+    row_size = ctypes.sizeof(_TCP6Row)
+    buffer, count = _tcp_table(query, remaining, socket.AF_INET6, row_size)
+    for index in range(count):
+        remaining()
+        row = _TCP6Row.from_buffer(buffer, _TCP_ROW_OFFSET + index * row_size)
+        if (
+            row.state == 2
+            and socket.ntohs(row.local_port & 0xFFFF) == ADB_SERVER_ADDRESS[1]
+        ):
+            return False
+    remaining()
+    return True
 
 
 def terminate_verified_adb(
