@@ -9,7 +9,7 @@ date: 2026-10-08
 
 ## Contract
 
-[INV-SCHED-36] advances one scheduling cursor through queued operations and scheduled waiting. A failed admission retains the accepted prefix and moves the dependent suffix after the trade order.
+[INV-SCHED-36] advances one scheduling cursor through queued operations and scheduled waiting. A failed admission retains the accepted staffing prefix and moves the dependent suffix after the trade order. Workshop batches admit in full or defer in full before a shared order.
 
 ## Caller Evidence
 

@@ -723,6 +723,25 @@ def _schedule_run_orders(
         # Runtime dorm dispatch keeps its one-minute margin and observed budget.
         margin = 60 if any(r.startswith("dormitory_") for r in task.plan) else 15
         deadline = order.time - timedelta(seconds=margin)
+        if task.type == TaskTypes.WORKSHOP and not task.adjusted:
+            # Admit the complete workshop batch before this order, including
+            # intervening operations and scheduled waiting, or defer its suffix.
+            batch_end = max(
+                j
+                for j in range(index, next_order_index)
+                if ordered[j].type == TaskTypes.WORKSHOP
+            )
+            batch_cursor = start
+            for pending_task in ordered[index : batch_end + 1]:
+                batch_cursor = max(
+                    batch_cursor, pending_task.time
+                ) + estimate_task_duration(pending_task, execution_time)
+            if batch_cursor <= deadline:
+                cursor = batch_cursor
+                projected = None
+                index = batch_end + 1
+                continue
+            duration = batch_cursor - start
         if id(task) in fixed or task.adjusted or start + duration <= deadline:
             cursor = start + duration
             projected = _project_admitted_task(projected, task)
@@ -731,7 +750,11 @@ def _schedule_run_orders(
 
         before_plan = {}
         after_plan = {}
-        for plan in independent_room_plans(task, projected):
+        for plan in (
+            []
+            if task.type == TaskTypes.WORKSHOP
+            else independent_room_plans(task, projected)
+        ):
             part = copy.copy(task)
             part.plan = before_plan | plan
             part_margin = (

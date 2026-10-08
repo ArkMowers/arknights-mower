@@ -5,7 +5,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from arknights_mower.utils import config, scheduler_task, workshop_automation
+from arknights_mower.utils import (
+    config,
+    operation_timing,
+    scheduler_task,
+    workshop_automation,
+)
 from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
@@ -13,6 +18,8 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 @pytest.fixture
 def queue(monkeypatch):
     monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(operation_timing, "_work_durations", {})
+    monkeypatch.setattr(operation_timing, "_dorm_durations", {})
     monkeypatch.setattr(config.conf, "workshop_auto_active", False)
     monkeypatch.setattr(workshop_automation, "restore_if_no_plans", lambda: None)
     settings = [
@@ -99,19 +106,18 @@ def test_real_run_order_scheduler_does_not_cause_repeated_workshop_batches(
     original_names = [task.meta_data for task in original]
     admitted_times = None
     for _ in range(3):
-        # 重复规划同时覆盖跑单前的可执行前缀与跑单后的延期后缀。
+        # 加工批次无法全部完成时，整批延期；重复规划保留同一批待办。
         scheduler_task.try_workshop_tasks(data, tasks)
         scheduler_task.scheduling(tasks, time_now=now)
         pending = [task for task in tasks if task.type == TaskTypes.WORKSHOP]
         assert [id(task) for task in pending] == original_ids
         assert [task.meta_data for task in pending] == original_names
         assert len(set(original_names)) == 11
-        assert tasks == [*original[:7], order, *original[7:]]
-        assert [task.time for task in original[:7]] == [
-            now + timedelta(seconds=2 * index) for index in range(7)
-        ]
-        assert [task.time for task in original[7:]] == [
-            order.time + timedelta(seconds=offset) for offset in range(1, 5)
+        assert tasks == [order, *original]
+        assert scheduler_task.find_next_task(tasks, now + timedelta(minutes=5)) is None
+        assert all(task.time > now + timedelta(minutes=5) for task in pending)
+        assert [task.time for task in original] == [
+            order.time + timedelta(seconds=offset) for offset in range(1, 12)
         ]
         assert order.time == now + timedelta(minutes=8)
         times = [task.time for task in pending]
@@ -177,3 +183,108 @@ def test_growth_continuation_uses_remaining_mood_without_duplicate_tasks(queue):
     assert all(task.workshop_generation == 12 for task in tasks[1:])
     scheduler_task.try_workshop_tasks(data, tasks, minimum_mood=0)
     assert len(tasks) == 3
+
+
+@pytest.mark.usefixtures("offline_maintenance")
+@pytest.mark.parametrize("order_seconds, deferred", [(134, True), (135, False)])
+def test_workshop_batch_admission_boundary(queue, order_seconds, deferred):
+    _, tasks = queue
+    now = datetime(2026, 10, 8, 10, 36, 9)
+    batch = [
+        SchedulerTask(time=now, task_type=TaskTypes.WORKSHOP, meta_data=name)
+        for name in ("年", "泥岩")
+    ]
+    order = SchedulerTask(
+        time=now + timedelta(seconds=order_seconds), task_type=TaskTypes.RUN_ORDER
+    )
+    tasks[:] = [*batch, order]
+    scheduler_task.scheduling(tasks, time_now=now)
+    assert tasks == ([order, *batch] if deferred else [*batch, order])
+    assert all((task.time > order.time) == deferred for task in batch)
+
+
+@pytest.mark.usefixtures("offline_maintenance")
+@pytest.mark.parametrize(
+    "future_second, intervening_work, order_seconds, deferred",
+    [(True, False, 160, True), (False, True, 189, True), (False, True, 190, False)],
+)
+def test_workshop_batch_counts_future_wait_and_intervening_work(
+    queue, future_second, intervening_work, order_seconds, deferred
+):
+    _, tasks = queue
+    now = datetime(2026, 10, 8, 10, 36, 9)
+    first = SchedulerTask(time=now, task_type=TaskTypes.WORKSHOP, meta_data="年")
+    second = SchedulerTask(
+        time=now + timedelta(seconds=100 if future_second else 2),
+        task_type=TaskTypes.WORKSHOP,
+        meta_data="泥岩",
+    )
+    order = SchedulerTask(
+        time=now + timedelta(seconds=order_seconds), task_type=TaskTypes.RUN_ORDER
+    )
+    tasks[:] = [first, second, order]
+    if intervening_work:
+        between = SchedulerTask(
+            time=now + timedelta(seconds=1),
+            task_plan={"room_1_1": ["阿米娅"]},
+            task_type=TaskTypes.SHIFT_ON,
+        )
+        tasks.insert(1, between)
+    scheduler_task.scheduling(tasks, time_now=now)
+    assert (first.time > order.time) == deferred
+    assert (second.time > order.time) == deferred
+    if intervening_work:
+        assert tasks == (
+            [order, first, between, second]
+            if deferred
+            else [first, between, second, order]
+        )
+    else:
+        assert tasks == [order, first, second]
+
+
+@pytest.mark.usefixtures("offline_maintenance")
+def test_workshop_batch_deferral_preserves_preceding_staffing_prefix(queue):
+    _, tasks = queue
+    now = datetime(2026, 10, 8, 10, 36, 9)
+    shift = SchedulerTask(
+        time=now, task_type=TaskTypes.SHIFT_ON, task_plan={"room_1_1": ["阿米娅"]}
+    )
+    batch = [
+        SchedulerTask(
+            time=now + timedelta(seconds=i + 1),
+            task_type=TaskTypes.WORKSHOP,
+            meta_data=name,
+        )
+        for i, name in enumerate(("年", "泥岩"))
+    ]
+    order = SchedulerTask(
+        time=now + timedelta(seconds=180), task_type=TaskTypes.RUN_ORDER
+    )
+    tasks[:] = [shift, *batch, order]
+    scheduler_task.scheduling(tasks, time_now=now)
+    assert tasks == [shift, order, *batch]
+    assert shift.time == now
+    assert all(task.time > order.time for task in batch)
+
+
+@pytest.mark.usefixtures("offline_maintenance")
+def test_deferred_workshop_batch_is_rechecked_before_later_order(queue, monkeypatch):
+    _, tasks = queue
+    monkeypatch.setattr(config.conf.run_order_grandet_mode, "enable", False)
+    now = datetime(2026, 10, 8, 10, 36, 9)
+    batch = [
+        SchedulerTask(time=now, task_type=TaskTypes.WORKSHOP, meta_data=name)
+        for name in ("年", "泥岩")
+    ]
+    first = SchedulerTask(
+        time=now + timedelta(seconds=70), task_type=TaskTypes.RUN_ORDER
+    )
+    second = SchedulerTask(
+        time=now + timedelta(seconds=285), task_type=TaskTypes.RUN_ORDER
+    )
+    tasks[:] = [*batch, first, second]
+    scheduler_task.scheduling(tasks, time_now=now)
+    assert tasks == [first, second, *batch]
+    assert all(task.time > second.time for task in batch)
+    assert [task.meta_data for task in batch] == ["年", "泥岩"]
