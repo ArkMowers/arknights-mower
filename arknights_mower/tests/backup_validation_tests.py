@@ -87,6 +87,43 @@ def facility_backup():
     }
 
 
+def test_recycle_task_without_primary_facility_passes_startup_and_activation():
+    plan = two_backups()
+    plan["backup_plans"] = [
+        Plan(
+            {},
+            plan["default_plan"].config,
+            name="回收站临时换人",
+            task={"recycle": ["芬", "香草"]},
+        )
+    ]
+    data = initialize(plan)
+    result = data.validate_backup_plans()
+    assert result["success"], result
+    assert data.swap_plan([True], refresh=True) is None
+    assert data.plan_condition == [True]
+    assert "recycle" not in data.plan
+    assert data.backup_plans[0].task == {"recycle": ["芬", "香草"]}
+
+
+@pytest.mark.parametrize("staff", [None, [], ["芬"], ["芬", "香草"]])
+@pytest.mark.parametrize("targets", [["芬", "香草"], ["芬", "香草", "Current"]])
+def test_recycle_task_capacity_is_independent_of_primary_staff(staff, targets):
+    conf = PlanConfig("", "", "")
+    primary = Plan(
+        {} if staff is None else {"recycle": [Room(name, "", []) for name in staff]},
+        conf,
+    )
+    backup = Plan({}, conf, name="回收站任务", task={"recycle": targets})
+    result = backup_validation.validate_backup_facilities(
+        primary, [backup], product_switching_enabled=False
+    )
+    if len(targets) == 2:
+        assert result is None
+    else:
+        assert "2 个岗位" in result
+
+
 @pytest.mark.parametrize("target", ["Current", "Free", "", "安哲拉"])
 def test_backup_task_overflow_fails_before_combination_analysis(monkeypatch, target):
     plan = facility_backup()

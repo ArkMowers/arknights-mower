@@ -22,7 +22,7 @@ class BackupValidationLimitExceeded(ValueError):
 
 
 def validate_backup_facilities(default_plan, backups, *, product_switching_enabled):
-    """副表不能声明未支持的设施变化，显式任务不能超出主表岗位。"""
+    """副表不能声明未支持的设施变化，显式任务遵守设施岗位容量。"""
     for index, backup in enumerate(backups):
         label = backup.name or f"副表{index + 1}"
         for room, slots in backup.plan.items():
@@ -43,7 +43,9 @@ def validate_backup_facilities(default_plan, backups, *, product_switching_enabl
                         f"（{source.facility} → {slot.facility}）；切设施功能尚未实现"
                     )
         for room, targets in (backup.task or {}).items():
-            if room in default_plan.plan:
+            if room == "recycle":
+                capacity = 2
+            elif room in default_plan.plan:
                 capacity = len(default_plan.plan[room])
             elif room in ("train", "factory"):
                 capacity = 2 if room == "train" else 1
