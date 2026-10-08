@@ -473,6 +473,72 @@ class TestMaaUpdateRoutes(unittest.TestCase):
         self.assertFalse(data["ok"])
         self.assertIn("发现新版本后再更新", data["message"])
 
+    def test_windows_resource_info_check_and_start(self):
+        current = {"version": "2026-09-03 01:00:00.000", "release_note": ""}
+        for source in ("github", "mirrorchyan"):
+            with (
+                self.subTest(source=source),
+                patch.object(server, "__system__", "windows"),
+                patch.object(server, "_maa_busy_response", return_value=None),
+                patch.object(server, "active_job", return_value=False),
+                patch.dict(
+                    server.maa_resource_update_job, {"thread": None, "status": "idle"}
+                ),
+                patch.object(server, "Thread", side_effect=_FakeThread) as launch,
+                patch.object(server.config, "save_conf"),
+                patch.object(
+                    server.config.conf, "maa_mirrorchyan_token", "fixture-token"
+                ),
+                patch(
+                    "arknights_mower.utils.maa_update.has_maa_installation",
+                    return_value=True,
+                ),
+                patch(
+                    "arknights_mower.utils.maa_resource_update.read_maa_resource_info",
+                    return_value=current,
+                ),
+                patch(
+                    "arknights_mower.utils.maa_resource_update.get_maa_resource_release",
+                    return_value=MaaResourceRelease(
+                        version="2026-09-04 01:07:54.000", source=source
+                    ),
+                ),
+            ):
+                payload = {"maa_path": self.target, "source": source}
+                info = self.client.get(
+                    "/maa-resource-update/info",
+                    query_string=payload,
+                    headers=self.headers,
+                ).get_json()
+                self.assertTrue(info["supported"])
+                self.assertEqual(info["platform"], "windows")
+                self.assertEqual(info["current"], current)
+
+                unchecked = self.client.post(
+                    "/maa-resource-update/start", json=payload, headers=self.headers
+                ).get_json()
+                self.assertFalse(unchecked["ok"])
+                launch.assert_not_called()
+
+                checked = self.client.post(
+                    "/maa-resource-update/check", json=payload, headers=self.headers
+                ).get_json()
+                self.assertTrue(checked["ok"])
+                self.assertTrue(checked["available"])
+                self.assertTrue(checked["check_id"])
+                started = self.client.post(
+                    "/maa-resource-update/start",
+                    json={**payload, "check_id": checked["check_id"]},
+                    headers=self.headers,
+                ).get_json()
+                self.assertTrue(started["ok"])
+                self.assertEqual(server.maa_resource_update_check["id"], "")
+                launch.assert_called_once_with(
+                    target=server._run_maa_resource_update,
+                    args=(self.target, source, "fixture-token", "windows"),
+                    daemon=True,
+                )
+
     def test_resource_check_and_start_use_separate_check_result(self):
         current = {"version": "2026-09-03 01:00:00.000", "release_note": ""}
         release = MaaResourceRelease(
