@@ -1087,7 +1087,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 agent_room, ["Current"] * len(self.op_data.plan[agent_room])
             )[agent_index] = task.meta_data
         self.agent_arrange({"factory": [task.meta_data]})
-        self.generate_product(task.meta_data, snapshot=snapshot)
+        if self.generate_product(task.meta_data, snapshot=snapshot) is False:
+            raise RuntimeError("加工执行失败，停止本轮连续换人")
         if config.conf.workshop_auto_active and not snapshot.is_current():
             # A confirmed batch advances the recipe generation. Continue with
             # remaining mood instead of waiting for the normal fresh-task gate.
@@ -2388,8 +2389,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         from arknights_mower.utils.workshop_limits import (
             batch_delta,
             batch_limit,
+            blocked_workshop_recipes,
             deer_batch_limit,
             recipe_quantities,
+            reject_workshop_recipe,
         )
         from arknights_mower.utils.workshop_mood import mood_cost, operator_mood_rules
 
@@ -2457,6 +2460,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             blocked_materials = set()
 
             def available_groups():
+                rejected = blocked_workshop_recipes(inventory_data)
                 return {
                     tab: eligible
                     for tab, entries in group.items()
@@ -2465,6 +2469,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             name: setting
                             for name, setting in entries.items()
                             if name not in blocked_materials
+                            and name not in rejected
                             and recipe_moods[name] <= mood_budget
                             and batch_limit(
                                 name, workshop_formula[name], setting, inventory_data
@@ -2595,12 +2600,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         # Never use MAX: mood can allow more than the stock deficit.
                         for _ in range(batch_count - 1):
                             self.tap(add_btn, interval=0.1)
-                        if self.find("factory_warning") or not self.item_valid():
-                            if (
-                                not self.item_valid()
-                                and self.find("factory_warning") is None
-                            ):
-                                # 材料不够重新选择
+                        warning = self.find("factory_warning")
+                        valid = self.item_valid()
+                        if warning or not valid:
+                            if not valid and not warning:
+                                # Retain the rejection across workers with the same stock.
+                                reject_workshop_recipe(current_name, inventory_data)
                                 blocked_materials.add(current_name)
                                 tasks.insert(0, "select")
                                 tab_queue = deque(available_groups().items())
@@ -2739,6 +2744,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                                         del tasks[0]
                                         break
                                     else:
+                                        if not valid:
+                                            reject_workshop_recipe(item, inventory_data)
                                         logger.info(f"检测到{item}不满足条件，跳过")
                                         item_list.remove(item)
                             scan_round += 1
@@ -2758,9 +2765,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self.recog.update()
             self.back()
             self.back_to_infrastructure()
+        except MowerExit:
+            raise
         except Exception as e:
             save_exception(e)
             logger.exception(e)
+            return False
 
     def _sync_run_order_tasks(self):
         op_data = getattr(self, "op_data", None)

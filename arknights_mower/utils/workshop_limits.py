@@ -3,9 +3,49 @@
 import json
 from functools import lru_cache
 from pathlib import Path
+from time import time
 
 from arknights_mower.utils.dorm_candidates import dorm_task_reservations
 from arknights_mower.utils.workshop_material_policy import workshop_recipe_allowed
+
+# Process-local observations; recipe names bound the cache to the resource catalog.
+_rejected_recipes = {}
+
+
+def _recipe_stock(name, inventory):
+    from arknights_mower.data import workshop_formula
+    from arknights_mower.utils import config
+
+    recipe = workshop_formula[name]
+    quantities = recipe_quantities(name, recipe)
+    output, _, costs = quantities if quantities else (name, 1, recipe["items"])
+    names = {output, *costs}
+    if recipe.get("goldCost"):
+        names.add("龙门币")
+    return config.conf.workshop_generation, tuple(
+        (item, inventory.get(item)) for item in sorted(names)
+    )
+
+
+def reject_workshop_recipe(name, inventory):
+    """Remember a game rejection without inventing an ingredient count."""
+    _rejected_recipes[name] = (_recipe_stock(name, inventory), time())
+
+
+def clear_workshop_recipe_rejections(observed_at):
+    """New relevant observations permit retries; rereading old snapshots does not."""
+    for name, (signature, rejected_at) in tuple(_rejected_recipes.items()):
+        if any(observed_at.get(item, 0) > rejected_at for item, _ in signature[1]):
+            _rejected_recipes.pop(name, None)
+
+
+def blocked_workshop_recipes(inventory):
+    from arknights_mower.data import workshop_formula
+
+    for name, (signature, _) in tuple(_rejected_recipes.items()):
+        if name not in workshop_formula or signature != _recipe_stock(name, inventory):
+            _rejected_recipes.pop(name, None)
+    return set(_rejected_recipes)
 
 
 @lru_cache(maxsize=1)
@@ -77,9 +117,13 @@ def workshop_material_block_reason(operator, items, inventory, mood=None):
         return "没有符合干员材料范围及材料保护规则的配方"
     check_mood = mood is not None and mood >= 0
     rules, known = operator_mood_rules(operator) if check_mood else ([], False)
+    rejected = blocked_workshop_recipes(inventory)
     available, blocked = [], []
     for item in scoped:
         for name in item.item_names:
+            if name in rejected:
+                blocked.append(f"{name}游戏内不可加工，等待库存或配置更新")
+                continue
             metadata = workshop_formula[name]
             if batch_limit(name, metadata, item, inventory) > 0:
                 required_mood = mood_cost(name, metadata, rules, known)

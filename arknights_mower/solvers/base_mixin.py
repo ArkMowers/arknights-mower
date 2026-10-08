@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 
 from arknights_mower.data import workshop_formula
-from arknights_mower.solvers.record import save_inventory_counts
 from arknights_mower.utils import config, rapidocr, segment
 from arknights_mower.utils.character_recognize import (
     estimate_agent_mood,
@@ -1478,11 +1477,6 @@ class BaseMixin:
                             )
                             if not np.all((color >= 40) & (color <= 80)):
                                 valid = float("-inf ")
-                                if _idx < len(workshop_formula[name]["items"]):
-                                    logger.debug(f"更新{name}数量为0")
-                                    save_inventory_counts(
-                                        {workshop_formula[name]["items"][_idx]: 0}
-                                    )
                                 break
                     box_global = [[x + offset_x, y + offset_y] for (x, y) in box]
                     # 等于 0 则出界了
