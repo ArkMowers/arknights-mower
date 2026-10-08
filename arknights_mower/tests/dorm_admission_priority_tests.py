@@ -128,6 +128,7 @@ def test_high_priority_newcomer_starts_cross_room_preemption(residents, reverse_
     other.dorm_recovery_room = second
     data.dorm += [Dormitory((second, 0), "陈"), Dormitory((second, 1))]
     if reverse_rooms:
+        data.config.dorm_order = [second, ROOM, "dormitory_3", "dormitory_4"]
         data.dorm = data.dorm[2:] + data.dorm[:2]
     set_tier(data, "红", RestingTier.PRIORITY, 20)
     plan = {second: ["Current", "红"]}
@@ -147,8 +148,13 @@ def test_high_priority_newcomer_starts_cross_room_preemption(residents, reverse_
 
 @pytest.mark.parametrize("lock", ["queued", "product", "unexecuted"])
 @pytest.mark.parametrize("vacant", [False, True])
-def test_locked_room_is_not_used_for_single_recovery_swap(residents, lock, vacant):
+@pytest.mark.parametrize("explicit_low", [False, True])
+def test_locked_room_is_not_used_for_single_recovery_swap(
+    residents, lock, vacant, explicit_low
+):
     data = residents
+    if explicit_low:
+        data.config.dorm_order = [ROOM, f"{ROOM}_low"]
     if vacant:
         data.dorm[0].reset()
         data.operators["银灰"].current_room = "meeting"
@@ -218,6 +224,7 @@ def test_multiple_arrivals_fill_empty_vips_in_priority_and_room_order(
         data.plan[room] = [Room("Free", "", []), Room("Free", "", [])]
         data.dorm += [Dormitory((room, 0)), Dormitory((room, 1))]
     if reverse_rooms:
+        data.config.dorm_order = [second, ROOM, "dormitory_3", "dormitory_4"]
         data.dorm = data.dorm[2:4] + data.dorm[:2] + data.dorm[4:]
     set_tier(data, "红", RestingTier.PRIORITY, 20)
     set_tier(data, "陈", RestingTier.MAIN, 1)
@@ -455,3 +462,48 @@ def test_displaced_target_skips_equal_tiers_even_with_larger_mood_deficit(
     assert projected.get_current_operator("dormitory_3", 1).name == (
         "银灰" if last_tier == RestingTier.MAIN else "空爆"
     )
+
+
+@pytest.mark.parametrize("explicit_low", [False, True])
+def test_low_option_can_precede_another_rooms_high_slot(residents, explicit_low):
+    data = residents
+    second = "dormitory_2"
+    data.plan[second] = [Room("Free", "", []), Room("Free", "", [])]
+    data.dorm += [Dormitory((second, 0)), Dormitory((second, 1))]
+    data.config.dorm_order = [ROOM, *([f"{ROOM}_low"] if explicit_low else []), second]
+    set_tier(data, "红", RestingTier.MAIN, 5)
+    plan = {ROOM: ["Current"] * 4 + ["红"]}
+    result = prioritize_new_dorm_recovery(data, plan)
+    projected = data.project_arrangements([result])
+    op = projected.operators["红"]
+    assert (op.current_room, op.current_index) == (
+        (ROOM, 4) if explicit_low else (second, 0)
+    )
+    assert data.operators["银灰"].current_index == 3
+    assert plan == {ROOM: ["Current"] * 4 + ["红"]}
+
+
+def test_manual_low_order_does_not_move_existing_residents_without_arrival(residents):
+    data = residents
+    data.config.dorm_order = [f"{ROOM}_low", ROOM]
+    assert prioritize_new_dorm_recovery(data, {ROOM: ["Current"] * 5}) == {
+        ROOM: ["Current"] * 5
+    }
+
+
+def test_custom_order_preemption_keeps_displaced_resident_in_preferred_low_bed(
+    residents,
+):
+    data = residents
+    data.config.dorm_order = [ROOM, f"{ROOM}_low", "dormitory_2"]
+    data.plan["dormitory_2"] = [Room("Free", "", [])]
+    data.dorm.append(Dormitory(("dormitory_2", 0)))
+    set_tier(data, "红", RestingTier.PRIORITY, 5)
+    plan = {"dormitory_2": ["红"]}
+    result = prioritize_new_dorm_recovery(data, plan)
+    projected = data.project_arrangements([result])
+    assert projected.get_current_operator(ROOM, 3).name == "红"
+    assert projected.get_current_operator(ROOM, 4).name == "银灰"
+    assert projected.get_current_operator("dormitory_2", 0) is None
+    assert data.operators["银灰"].current_index == 3
+    assert plan == {"dormitory_2": ["红"]}

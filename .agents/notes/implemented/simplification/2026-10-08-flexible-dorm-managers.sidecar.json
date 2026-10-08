@@ -1,0 +1,25 @@
+{
+  "title": "Flexible dormitory managers",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-02]",
+    "[INV-SCHED-07]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators.init_and_validate",
+    "arknights_mower.utils.operators.Operators.refresh_dorm_manager_flags",
+    "arknights_mower.utils.dorm_recovery.recovery_managers",
+    "arknights_mower.utils.dorm_recovery.recovery_order_plan",
+    "arknights_mower.utils.dorm_skills.is_single_recovery_manager"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/dorm_recovery_tests.py",
+    "arknights_mower/tests/dorm_priority_refresh_tests.py",
+    "arknights_mower/tests/dorm_skills_tests.py"
+  ]
+}

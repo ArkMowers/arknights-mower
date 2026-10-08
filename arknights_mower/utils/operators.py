@@ -12,7 +12,7 @@ from arknights_mower.utils.manufacture_product import (
     MANUFACTURE_PRODUCTS,
     TRADE_PRODUCTS,
 )
-from arknights_mower.utils.plan import BaseProduct, PlanConfig
+from arknights_mower.utils.plan import BaseProduct, PlanConfig, effective_dorm_order
 from arknights_mower.utils.resting_priority import (
     RestingTier,
     has_resting_mood,
@@ -52,26 +52,6 @@ _NUMERIC_EXPRESSION_CALLS = {
     "inventory_count",
     "major_maintenance_remaining_hours",
 }
-
-
-def dorm_room_order(values, rooms=None):
-    """将旧床位顺序折叠为宿舍房间顺序。
-
-    旧值如 ``dormitory_2_3`` 保留其首次出现的房间；缺失的房间
-    按 1→4 补齐。这样升级后仍保留原先的房间相对优先级，同时
-    床位数随主副表变化时不再使排序失效。
-    """
-    rooms = list(rooms or DORMITORY_ROOMS)
-    result = []
-    for value in values:
-        room = value
-        parts = value.rsplit("_", 1)
-        if len(parts) == 2 and parts[0] in rooms and parts[1].isdigit():
-            room = parts[0]
-        if room in rooms and room not in result:
-            result.append(room)
-    result.extend(room for room in rooms if room not in result)
-    return result
 
 
 def _integer_literal(node: ast.AST) -> int | None:
@@ -560,9 +540,6 @@ class Operators:
         for dorm in dorm_names:
             free_found = False
             for _idx, _dorm in enumerate(bed_plan[dorm]):
-                if _dorm.agent == "Free" and _idx <= 1:
-                    if "波登可" not in [_agent.agent for _agent in bed_plan[dorm]]:
-                        return "宿舍必须安排2个宿管"
                 # The merged backup may replace individual Free beds.
                 if _dorm.agent != "Free" and free_found and not (update):
                     return "Free必须连续且安排在宿管后"
@@ -597,13 +574,12 @@ class Operators:
             for key, value in self.shadow_copy.items():
                 if key not in self.operators:
                     self.add(Operator(key, ""))
-        room_order = dorm_room_order(self.config.dorm_order)
-        self.config.dorm_order = room_order
+        self.config.dorm_order = effective_dorm_order(self.config.dorm_order)
+        room_order = [
+            room for room in self.config.dorm_order if not room.endswith("_low")
+        ]
         self.dorm.sort(
-            key=lambda dorm: (
-                room_order.index(dorm.position[0]),
-                dorm.position[1],
-            )
+            key=lambda bed: (room_order.index(bed.position[0]), bed.position[1])
         )
         self.refresh_run_order_rooms()
         from arknights_mower.utils.exhaust_replacement import match_replacements
@@ -713,7 +689,7 @@ class Operators:
         self.refresh_dorm_manager_flags(force=True)
 
     def refresh_dorm_manager_flags(self, *, force=False):
-        """只标记宿舍前两位及其替班；资源未变时不再匹配。"""
+        """标记配置中的宿舍成员及其替班；资源未变时不再匹配。"""
         from arknights_mower.utils import dorm_skills
 
         if not force and getattr(self, "_dorm_skill_generation", -1) == (
@@ -724,7 +700,7 @@ class Operators:
             name
             for room, slots in self.plan.items()
             if room.startswith("dorm")
-            for slot in slots[:2]
+            for slot in slots
             for name in (slot.agent, *slot.all_replacements)
             if name in self.operators
         }
@@ -2272,6 +2248,33 @@ class Operators:
             cost += len(shared)
         return cost
 
+    def ordered_dorms(self, *, active_groups=None, inactive_groups=None):
+        """按高优位和低优位选项排列有效床位；未列低优位按宿舍顺序补后。"""
+        order = effective_dorm_order(self.config.dorm_order)
+        order += [
+            f"{room}_low"
+            for room in order.copy()
+            if not room.endswith("_low") and f"{room}_low" not in order
+        ]
+        rank = {value: index for index, value in enumerate(order)}
+        effective = {
+            bed.position
+            for bed in self.dorm
+            if self.is_effective_free_slot(
+                bed, active_groups=active_groups, inactive_groups=inactive_groups
+            )
+        }
+        first = {}
+        for room, index in effective:
+            first[room] = min(first.get(room, index), index)
+
+        def key(bed):
+            room, index = bed.position
+            option = room if first.get(room) == index else f"{room}_low"
+            return bed.position not in effective, rank.get(option, len(rank)), index
+
+        return sorted(self.dorm, key=key)
+
     def _find_dorm_slot(
         self, name, used, *, active_groups=None, plan=None, isolation=True
     ):
@@ -2281,8 +2284,16 @@ class Operators:
             return None
         is_high = resting_tier(self, name) <= RestingTier.MAIN
         max_count = sum(1 for key in self.plan if key.startswith("dorm"))
-        order = list(range(len(self.dorm)))
-        if not is_high:
+        indices = {bed.position: index for index, bed in enumerate(self.dorm)}
+        order = [
+            indices[bed.position]
+            for bed in self.ordered_dorms(active_groups=active_groups)
+        ]
+        explicit_order = any(item.endswith("_low") for item in self.config.dorm_order)
+        if explicit_order:
+            # 先按显式顺序选床，再在选定床位内协调同排名新入住者的隔离。
+            isolation = False
+        if not is_high and not explicit_order:
             order = order[max_count:] + order[:max_count]
         candidates = [
             i

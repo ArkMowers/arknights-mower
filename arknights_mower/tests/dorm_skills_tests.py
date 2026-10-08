@@ -160,3 +160,58 @@ def test_group_and_single_classification_share_file_cache_and_reload(
     assert not dorm_skills.is_group_recovery_manager("群回")
     assert not dorm_skills.is_single_recovery_manager("单回")
     assert lookup.call_count == 2
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "罗德岛隐秘队",
+        "聆音",
+        "新约能天使",
+        "小满",
+        "寒檀",
+        "隐现",
+        "车尔尼",
+        "蜜莓",
+        "琴柳",
+        "深靛",
+        "杰克",
+        "酸糖",
+        "特米米",
+        "波登可",
+        "断罪者",
+        "黑",
+        "闪灵",
+        "暴行",
+        "初雪",
+        "崖心",
+        "临光",
+        "古米",
+        "慕斯",
+        "流星",
+        "末药",
+        "泡普卡",
+        "安赛尔",
+        "卡缇",
+        "米格鲁",
+        "芙蓉",
+        "Lancet-2",
+    ],
+)
+def test_current_single_recovery_operators_are_recognized(name):
+    assert dorm_skills.is_single_recovery_manager(name)
+
+
+def test_indigo_description_without_self_exclusion_matches(monkeypatch):
+    monkeypatch.setattr(
+        dorm_skills,
+        "_skill_index",
+        lambda: {
+            "深靛": [
+                {
+                    "des": "进驻宿舍时，使该宿舍内<@cc.vup>心情未满</>的某个干员每小时恢复+0.55"
+                }
+            ],
+        },
+    )
+    assert dorm_skills.is_single_recovery_manager("深靛")

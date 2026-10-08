@@ -1560,3 +1560,23 @@ def test_group_recovery_spread_uses_extremes_and_configured_minutes(
     config.conf.group_mood_gap_threshold_minutes = 60
     config.conf.group_mood_gap_max_extra_wait_hours = 0.5
     assert return_time() == normal + timedelta(minutes=30)
+
+
+def test_priority_reorder_keeps_named_group_cover_in_fixed_bed(solver):
+    resident = solver.global_plan["default_plan"].plan["dormitory_1"][0]
+    resident.replacement = ["伊内丝"]
+    assert solver.initialize_operators() is None
+    data = solver.op_data
+    data.config.dorm_order = ["dormitory_1_low", "dormitory_1"]
+    apply_plan(
+        solver, {"dormitory_1": ["伊内丝", "冰酿", "银灰", "Current", "Current"]}
+    )
+    fixed = data.get_group_dorm("dormitory_1", 0)
+    before = (fixed.name, fixed.time)
+    plan = scheduler_task.rebalance_plan_swap_dorms(
+        data, deepcopy(data.all_dorms()), reorder=True
+    )
+    assert plan["dormitory_1"][0] == "Current"
+    assert plan["dormitory_1"][3] == "银灰"
+    assert (fixed.name, fixed.time) == before
+    assert all(bed.name != "伊内丝" for bed in data.dorm)
