@@ -7,6 +7,14 @@ from typing import Optional, Self
 from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.mastery_support_types import IGNORED_NAMES
 
+RIGHT_SIDE_ROOM_CAPACITY = {
+    "meeting": 2,
+    "factory": 1,
+    "contact": 1,
+    "train": 2,
+    "recycle": 2,
+}
+
 DEFAULT_DORM_ROOM_ORDER = [f"dormitory_{index}" for index in range(1, 5)]
 
 

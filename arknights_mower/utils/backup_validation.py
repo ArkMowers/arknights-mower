@@ -9,6 +9,7 @@ from arknights_mower.utils.manufacture_product import (
     MANUFACTURE_PRODUCTS,
     TRADE_PRODUCTS,
 )
+from arknights_mower.utils.plan import RIGHT_SIDE_ROOM_CAPACITY
 
 MAX_CONDITION_STATES = 262144
 BOOLEAN_METHODS = {"is_working", "is_resting"}
@@ -26,6 +27,8 @@ def validate_backup_facilities(default_plan, backups, *, product_switching_enabl
     for index, backup in enumerate(backups):
         label = backup.name or f"副表{index + 1}"
         for room, slots in backup.plan.items():
+            if room in RIGHT_SIDE_ROOM_CAPACITY:
+                continue
             if room not in default_plan.plan:
                 return f"副表“{label}”的 {room} 不在主表设施中"
             original = default_plan.plan[room]
@@ -43,12 +46,10 @@ def validate_backup_facilities(default_plan, backups, *, product_switching_enabl
                         f"（{source.facility} → {slot.facility}）；切设施功能尚未实现"
                     )
         for room, targets in (backup.task or {}).items():
-            if room == "recycle":
-                capacity = 2
-            elif room in default_plan.plan:
+            if room in RIGHT_SIDE_ROOM_CAPACITY:
+                continue
+            if room in default_plan.plan:
                 capacity = len(default_plan.plan[room])
-            elif room in ("train", "factory"):
-                capacity = 2 if room == "train" else 1
             else:
                 return f"副表“{label}”的任务 {room} 不在主表设施中"
             if len(targets) > capacity:
@@ -58,6 +59,8 @@ def validate_backup_facilities(default_plan, backups, *, product_switching_enabl
                 )
         if not product_switching_enabled:
             for room, target in backup.products.items():
+                if room in RIGHT_SIDE_ROOM_CAPACITY:
+                    continue
                 original = default_plan.products.get(room)
                 if target != original:
                     return (
