@@ -128,6 +128,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.4 Vision & Recognition Domain
 
+- [ ] **[INV-REC-07] Base Report Field Integrity**: Does each base report field retain its independent reading, with missing anchors, empty crops and unscorable digits remaining unread? Do compatible templates retain their scores, failed storage prevent claiming and success, confirmed storage end reading retries, and cancellation or Device Control recovery propagate without consuming reading attempts or replaying uncertain input?
 - [ ] **[INV-REC-05] Training Panel Identity**: Does training identity use full-name templates on the current Capture Frame with score, closing-bracket and distinct-name margin checks, while unknown readings retain bounded retry without an OCR name fallback or plan-derived occupant?
 - [ ] **[INV-DIAG-06] Error Notification Evidence**: Does every ERROR notification log before mail configuration checks or delivery, while only explicit visual failures request screenshots, including disabled email, through the existing archive store?
 
