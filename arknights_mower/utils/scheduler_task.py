@@ -694,6 +694,7 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
     adjusted = {id(task) for task in tasks if task.adjusted}
     # Each queued operation advances the cursor once, including scheduled waiting.
     ordered = list(tasks)
+    deferred_dorm_tail = {}
     projected = op_data if isinstance(op_data, Operators) else None
     cursor = now
     index = 0
@@ -750,6 +751,8 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
                 and not _fits_before_priority(task, start, duration, priority)
             ):
                 original_time = task.time
+                # 同一跑单后的宿舍安排按原顺序追加，避免后移任务覆盖最终驻员。
+                previous = deferred_dorm_tail.get(id(priority), priority)
                 task.time = priority.time + timedelta(seconds=1)
                 logger.debug(
                     "宿舍提前规划：%s（%s）从 %s 延至 %s，避让 %s 跑单",
@@ -760,7 +763,12 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
                     priority.time,
                 )
                 ordered.pop(index)
-                ordered.insert(next_priority_index, task)
+                insert_index = (
+                    next(i for i, pending in enumerate(ordered) if pending is previous)
+                    + 1
+                )
+                ordered.insert(insert_index, task)
+                deferred_dorm_tail[id(priority)] = task
             else:
                 cursor = start + duration
                 projected = _project_admitted_task(projected, task)

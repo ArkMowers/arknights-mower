@@ -339,6 +339,61 @@ def test_dorm_forecast_rebuilding_does_not_repeat_info_or_defer_work(
     assert all(args[3] == original_time and args[5] == order_time for args in forecasts)
 
 
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+@pytest.mark.parametrize("kind", [TaskTypes.NOT_SPECIFIC, TaskTypes.RE_ORDER])
+@pytest.mark.parametrize("same_time", [False, True])
+def test_future_dorm_deferrals_preserve_arrangement_order(dispatch, kind, same_time):
+    plans = [{"dormitory_1": ["Current", "Current", name]} for name in ("A", "B", "C")]
+    dorms = [
+        task(kind, 1140 + (0 if same_time else index), copy.deepcopy(plan))
+        for index, plan in enumerate(plans)
+    ]
+    work = task(TaskTypes.SHIFT_ON, 1150, {"room_1_1": ["Current"]})
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    tasks = dorms + [work, order]
+
+    for seconds in (0, 0, 600):
+        dispatch(tasks, time_now=NOW + timedelta(seconds=seconds))
+        assert tasks == [work, order] + dorms
+        assert [dorm.time for dorm in dorms] == [order.time + timedelta(seconds=1)] * 3
+        assert [dorm.plan for dorm in dorms] == plans
+        assert work.time == NOW + timedelta(seconds=1150)
+        # 同一槽位按原顺序完成安排，最终驻员仍为最后指定的 C。
+        assert tasks[-1].plan["dormitory_1"][2] == "C"
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+def test_future_dorm_deferrals_preserve_order_across_later_run_orders(dispatch):
+    dorms = [
+        task(TaskTypes.NOT_SPECIFIC, 1140 + index, {"dormitory_1": [name]})
+        for index, name in enumerate(("A", "B", "C"))
+    ]
+    orders = [task(TaskTypes.RUN_ORDER, seconds) for seconds in (1200, 1260)]
+    tasks = dorms + orders
+
+    for _ in range(3):
+        dispatch(tasks, time_now=NOW)
+        assert tasks == orders + dorms
+        assert [dorm.time for dorm in dorms] == [
+            orders[-1].time + timedelta(seconds=1)
+        ] * 3
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+def test_future_dorm_deferrals_do_not_pass_a_later_arrangement(dispatch):
+    first = task(TaskTypes.NOT_SPECIFIC, 1140, {"dormitory_1": ["A"]})
+    second = task(TaskTypes.NOT_SPECIFIC, 1141, {"dormitory_1": ["B"]})
+    order = task(TaskTypes.RUN_ORDER, 1200)
+    last = task(TaskTypes.NOT_SPECIFIC, 1201, {"dormitory_1": ["C"]})
+    tasks = [first, second, order, last]
+
+    for _ in range(3):
+        dispatch(tasks, time_now=NOW)
+        assert tasks == [order, first, second, last]
+        assert last.time == NOW + timedelta(seconds=1201)
+        assert tasks[-1].plan["dormitory_1"] == ["C"]
+
+
 @pytest.mark.parametrize("seconds", [0, 1])
 def test_due_deferral_logs_info_and_future_deferral_logs_debug(seconds, monkeypatch):
     info, debug = [], []
