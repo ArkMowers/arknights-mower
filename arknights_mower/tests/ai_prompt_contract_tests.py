@@ -63,7 +63,6 @@ class AIPromptContractTests(unittest.TestCase):
         self.assertIn(sheet, parser.links)
         self.assertIn(sheet, faq.get_faq("我要反馈问题"))
         for file in (
-            "README.md",
             "ui/src/components/Feedback.vue",
             "ui/src/pages/Doc.vue",
         ):

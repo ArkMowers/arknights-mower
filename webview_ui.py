@@ -38,7 +38,7 @@ _LINUX_WEBVIEW_INSTALL_HINT = (
     "    sudo dnf install webkit2gtk4.1 gi-girepository libgtk-3\n"
     "Arch Linux：\n"
     "    sudo pacman -S webkit2gtk-4.1 gobject-introspection\n\n"
-    "安装完成后重新运行 mower。更完整的说明见 doc/release-platforms.md。"
+    "安装完成后重新运行 mower。更完整的说明见 README 的 Linux 打包一节。"
 )
 
 
