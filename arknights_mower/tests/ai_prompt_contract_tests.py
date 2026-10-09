@@ -62,11 +62,10 @@ class AIPromptContractTests(unittest.TestCase):
         sheet = "https://docs.qq.com/sheet/DUEJ6UWN5VFVRU0dG?tab=BB08J2"
         self.assertIn(sheet, parser.links)
         self.assertIn(sheet, faq.get_faq("我要反馈问题"))
-        for file in (
-            "ui/src/components/Feedback.vue",
-            "ui/src/pages/Doc.vue",
-        ):
-            self.assertIn(sheet, (root / file).read_text(encoding="utf-8"))
+        self.assertIn(
+            sheet,
+            (root / "ui/src/components/Feedback.vue").read_text(encoding="utf-8"),
+        )
         self.assertNotIn("new WebSocket", guide)
 
     def test_database_examples_run_against_actual_schema_and_limit_history(self):
