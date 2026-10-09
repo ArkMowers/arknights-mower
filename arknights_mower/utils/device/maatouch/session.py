@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import time
 from threading import Event, RLock, Thread
@@ -161,16 +162,18 @@ class Session:
         failures = []
         # MaaTouch dereferences null on stdin EOF. Stop the owned process before
         # closing its pipes, also allowing blocked I/O to release the stream lock.
-        for attempt, action in enumerate((process.terminate, process.kill)):
-            returncode = process.poll()
-            if returncode is not None:
-                if attempt == 0 and returncode != 0:
-                    failures.append(
-                        RuntimeError(f"MaaTouch 进程异常退出：{returncode}")
-                    )
+        expected_returncodes = {0}
+        stop_returncodes = (
+            (1, 1) if __system__ == "windows" else (-signal.SIGTERM, -signal.SIGKILL)
+        )
+        for action, stopped_returncode in zip(
+            (process.terminate, process.kill), stop_returncodes
+        ):
+            if process.poll() is not None:
                 break
             try:
                 action()
+                expected_returncodes.add(stopped_returncode)
             except Exception as exc:
                 failures.append(exc)
             try:
@@ -181,7 +184,10 @@ class Session:
                 failures.append(exc)
         if worker is not None:
             worker.join(timeout=1)
-        if process.poll() is None:
+        returncode = process.poll()
+        if returncode is not None and returncode not in expected_returncodes:
+            failures.append(RuntimeError(f"MaaTouch 进程异常退出：{returncode}"))
+        if returncode is None:
             failures.append(RuntimeError("MaaTouch 进程在有限等待后仍未退出"))
         elif worker is not None and worker.is_alive():
             failures.append(RuntimeError("MaaTouch I/O 在进程退出后仍未结束"))

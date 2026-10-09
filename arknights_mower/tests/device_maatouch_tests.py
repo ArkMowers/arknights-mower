@@ -44,11 +44,11 @@ class OwnedProcess:
         if self.terminate_error:
             raise self.terminate_error
         if not self.ignore_terminate:
-            self.returncode = -15
+            self.returncode = 1 if sys.platform == "win32" else -15
 
     def kill(self):
         self.events.append("kill")
-        self.returncode = -9
+        self.returncode = 1 if sys.platform == "win32" else -9
 
 
 class DelayedHeader(io.StringIO):
@@ -243,8 +243,56 @@ class MaaTouchApplicationTests(unittest.TestCase):
         self.factory.return_value = process
         self.assertTrue(self.control.execute(lambda device: device.tap()).ok)
         self.assertEqual(process.events, ["terminate", "wait", "kill", "wait"])
-        self.assertEqual(process.returncode, -9)
+        self.assertEqual(process.returncode, 1 if sys.platform == "win32" else -9)
         self.assertTrue(all(0 < timeout <= 1 for timeout in process.waits))
+
+    def test_cleanup_accepts_the_issued_platform_stop_returncodes(self):
+        for system, terminate_code, kill_code in (
+            ("windows", 1, 1),
+            ("linux", -15, -9),
+        ):
+            for use_kill in (False, True):
+                with self.subTest(system=system, use_kill=use_kill):
+                    process = OwnedProcess()
+
+                    def terminate():
+                        process.events.append("terminate")
+                        if not use_kill:
+                            process.returncode = terminate_code
+
+                    def kill():
+                        process.events.append("kill")
+                        process.returncode = kill_code
+
+                    process.terminate = terminate
+                    process.kill = kill
+                    self.factory.side_effect = None
+                    self.factory.return_value = process
+                    with (
+                        patch(
+                            "arknights_mower.utils.device.maatouch.session.__system__",
+                            system,
+                        ),
+                        patch(
+                            "arknights_mower.utils.device.maatouch.session.signal",
+                            SimpleNamespace(SIGTERM=15, SIGKILL=9),
+                        ),
+                        patch(
+                            "arknights_mower.utils.device.maatouch.session.subprocess.CREATE_NO_WINDOW",
+                            0,
+                            create=True,
+                        ),
+                    ):
+                        result = self.control.execute(lambda device: device.tap())
+                    self.assertTrue(result.ok, result.error)
+                    self.assertEqual(
+                        process.events,
+                        ["terminate", "wait", "kill", "wait"]
+                        if use_kill
+                        else ["terminate", "wait"],
+                    )
+                    self.assertTrue(process.stdin.closed)
+                    self.assertTrue(process.stdout.closed)
 
     def test_long_action_wait_consumes_deadline_and_reaps_process(self):
         with device_io_budget(lambda: 0.02):
