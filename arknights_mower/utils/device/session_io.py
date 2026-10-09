@@ -44,14 +44,15 @@ class _CommandWindow:
     def __init__(self, run, monotonic, timeout, command_timeout=None):
         self._run = run
         self._monotonic = monotonic
-        self._deadline = monotonic() + max(0, timeout)
+        self._timeout = max(0, timeout)
+        self._deadline = monotonic() + self._timeout
         self._command_timeout = command_timeout
 
     def remaining(self) -> float:
         remaining = self._deadline - self._monotonic()
         if remaining <= 0:
             raise TimeoutError("设备会话操作时间预算已耗尽")
-        return remaining
+        return min(self._timeout, remaining)
 
     def run(
         self, argv: list[str], timeout: float | None = None, *, raw_output: bool = False

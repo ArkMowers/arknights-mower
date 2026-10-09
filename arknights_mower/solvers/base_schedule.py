@@ -1587,13 +1587,26 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self, "_emergency_startup_pending", False
             ):
                 self._emergency_tick(completed_task=completed_task)
-            if (
-                completed_task is not None
-                and getattr(completed_task, "initial_fia", False)
+            if completed_task is not None and (
+                getattr(completed_task, "initial_fia", False)
                 and not any(getattr(task, "initial_fia", False) for task in self.tasks)
+                or not arrangement_deferred
+                and (
+                    completed_task.type == TaskTypes.RE_ORDER
+                    or completed_task.type == TaskTypes.SELF_CORRECTION
+                    and completed_task.meta_data == "副表内存收敛"
+                )
             ):
-                # 充能和回岗收尾后重新进入调度，应用副表并继续正常规划。
-                self.tasks.append(SchedulerTask())
+                # 延期或重启可能已消费切表时的空任务；完成边界补回规划责任。
+                # 复用已到期的空任务，远期回班不能代替立即正常规划。
+                if not any(
+                    task.type == TaskTypes.NOT_SPECIFIC
+                    and not task.plan
+                    and not task.meta_data
+                    and task.time <= datetime.now()
+                    for task in self.tasks
+                ):
+                    self.tasks.append(SchedulerTask())
                 self.skip()
                 return True
         elif not self.planned:
@@ -2708,6 +2721,20 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                                 level="WARNING",
                             )
                             raise
+                        if config.conf.enable_mastery:
+                            from arknights_mower.utils.mastery_recommendation import (
+                                auto_schedule_mastery_tasks,
+                            )
+
+                            try:
+                                ready = auto_schedule_mastery_tasks(
+                                    inventory=get_inventory_counts()
+                                )
+                                self._dispatch_scan_start_tasks(ready["scheduled"])
+                            except MowerExit:
+                                raise
+                            except Exception:
+                                logger.exception("加工库存已确认，但专精任务派发失败")
                         if config.conf.workshop_auto_active:
                             from arknights_mower.utils.workshop_automation import (
                                 update_workshop_config,
@@ -3977,9 +4004,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             # 只重建已有的回班队列，不凭切表制造普通回班。
             if had_rest_schedule:
                 self.plan_metadata()
-            # 与原版重排流程一致：回班重建和唤醒常规规划是两个独立步骤。
-            # RE_ORDER 执行后会 skip()；即使有远期回班，也要唤醒下一轮
-            # run_order_solver，补回换班时因倒计时失效而移除的跑单。
+            # 回班重建和唤醒常规规划是两个独立步骤；没有实际换人也要规划。
+            # 实际换班的完成边界会补回被延期或重启提前消费的空任务。
             followup = SchedulerTask(
                 time=custom_task_time,
                 task_plan={},
@@ -10850,7 +10876,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
 
     def _dispatch_scan_start_tasks(self, scheduled):
-        """#74 第3段：扫描确认材料后，为材料足够的 idle 计划入队「开始训练」任务。
+        """材料确认后，为材料足够的 idle 计划入队「开始训练」任务。
 
         scheduled 来自 auto_schedule_mastery_tasks（已按链级材料核算），元素带
         char_id/skill_index。按 (char_id, skill_index) 匹配 DB 里 status=='idle' 的
@@ -10904,9 +10930,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             _schedule_scan_start(self, plan, step_level=step_level)
             dispatched += 1
         if dispatched:
-            logger.info(
-                f"仓库扫描: 已为 {dispatched} 个材料足够的空闲专精计划安排开始训练"
-            )
+            logger.info(f"已为 {dispatched} 个材料足够的空闲专精计划安排开始训练")
 
     def _idle_sleep(self, remaining_time, allow_wakeup=True):
         """等待任务并统一维护 `sleeping` 与连续场景观测边界。

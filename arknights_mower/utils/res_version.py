@@ -29,6 +29,8 @@ RES_PACKAGE_MODELS = (
 )
 # Older resource packages do not contain this model; runtime OCR remains available.
 RES_PACKAGE_OPTIONAL_MODELS = ("arknights_mower/models/mastery_panel.model",)
+BUILDING_SKILL_DATA = "arknights_mower/data/building_skill.json"
+BUILDING_SKILL_PACKAGE_PATH = "ui/src/pages/basement_skill/skill.json"
 RES_PACKAGE_DATA = (
     "arknights_mower/data/agent.json",
     "arknights_mower/data/agent_profession.json",
@@ -40,8 +42,8 @@ RES_PACKAGE_DATA = (
     "arknights_mower/data/skill_data.json",
     "arknights_mower/data/workshop_formula.json",
     "arknights_mower/data/furniture.json",
-    # 前端基建技能数据：静态 import 作内置兜底，运行时由资源包下发
-    "ui/src/pages/basement_skill/skill.json",
+    # Preserve the archive path for existing clients; builtins use BUILDING_SKILL_DATA.
+    BUILDING_SKILL_PACKAGE_PATH,
     "ui/src/pages/basement_skill/buffer.json",
 )
 
@@ -57,7 +59,7 @@ def is_package_file(name: str) -> bool:
 
 
 def package_file_paths(root) -> list:
-    """展开资源包实际存在的文件（相对 root 的路径），按路径排序。"""
+    """展开资源包文件；兼容导出不存在时收集共享技能源，按路径排序。"""
     root = Path(root)
     rels = []
     for rel in RES_PACKAGE_DIRS:
@@ -66,6 +68,8 @@ def package_file_paths(root) -> list:
             rels.extend(p.relative_to(root) for p in d.rglob("*") if p.is_file())
     for rel in RES_PACKAGE_MODELS + RES_PACKAGE_OPTIONAL_MODELS + RES_PACKAGE_DATA:
         p = root / rel
+        if rel == BUILDING_SKILL_PACKAGE_PATH and not p.is_file():
+            p = root / BUILDING_SKILL_DATA
         if p.is_file():
             rels.append(p.relative_to(root))
     return sorted(rels)
@@ -77,14 +81,24 @@ def content_hash(root, rels) -> str:
     Windows 检出（core.autocrlf）会把文本文件的 LF 转成 CRLF。仅对
     RES_PACKAGE_DATA 声明的文本资源归一化到 LF；模型、图片及其他文件均按
     原字节参与，不通过 NUL 字节猜测文件类型。分块读取避免一次载入整文件。
+    共享技能源使用历史归档路径参与排序、路径摘要及文本归一化。
     """
     root = Path(root)
     digest = hashlib.sha256()
-    for rel in sorted(rels, key=lambda p: p.as_posix()):
-        digest.update(rel.as_posix().encode("utf-8"))
+    entries = [
+        (
+            BUILDING_SKILL_PACKAGE_PATH
+            if rel.as_posix() == BUILDING_SKILL_DATA
+            else rel.as_posix(),
+            rel,
+        )
+        for rel in rels
+    ]
+    for archive_name, rel in sorted(entries):
+        digest.update(archive_name.encode("utf-8"))
         digest.update(b"\0")
         with open(root / rel, "rb") as f:
-            normalize = rel.as_posix() in RES_PACKAGE_DATA
+            normalize = archive_name in RES_PACKAGE_DATA
             _update_digest(digest, f, normalize)
     return digest.hexdigest()
 

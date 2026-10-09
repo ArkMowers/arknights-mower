@@ -84,6 +84,9 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-DEV-01] Native Back Dispatch**: With MuMu IPC selected, does Android BACK use the owned MuMu IPC worker, and does an uncertain result interrupt the operation without input replay or ADB fallback?
 
 ### 2.2 Base Infrastructure & Scheduling Domain
+
+- [ ] **[INV-SCHED-42] Standby Validation Capacity**: Do primary and additional bindings count only mandatory recovery members, preserve unique replacements and full-recovery restrictions, and avoid subtracting fixed standby assignments? See the [registered guarantee](../../../../CODING_STANDARDS.md#2-subsystem-invariants).
+- [ ] **[INV-SCHED-40] Confirmed Crafting Dispatch**: Do confirmed batches admit ready plans from local stock without another scan, preserve per-plan deduplication and training-room protections, and reject unknown stock, unconfirmed output and disabled automation? See the [registered guarantee](../../../../CODING_STANDARDS.md#2-subsystem-invariants).
 - [ ] **[INV-SCHED-38] Pending Exhaust Recovery**: Do exhausted-shift generation and dispatch recognize one complete pending concrete off-shift arrangement across the whole queue, require named dormitory assignments or retained actual rest positions for every recovery-requiring working member, preserve incomplete groups and independent recovery, ignore specialized staffing and reopen admission after task consumption or cancellation without changing occupancy or queued tasks?
 - [ ] **[INV-SCHED-37] Recycle Staffing Capacity**: Do tests cover two physical slots without primary staffing, shared residence-list selection and mood readback, confirmed dashboard return and rescue inclusion? See the [registered guarantee](../../../../CODING_STANDARDS.md#2-subsystem-invariants).
 - [ ] **[INV-SCHED-36] Single Scheduling Cursor**: Trade orders and enabled mastery handoffs share one admission cursor that counts each queued operation once, includes scheduled waiting and prior critical operations, preserves executable staffing prefixes, admits workshop batches in full or defers them after the next critical task, and defers dependent suffixes without losing tasks or mutating actual occupancy; only fully observed ordinary room components without shared operators, group bindings or task phase state split.
@@ -142,6 +145,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.4 Vision & Recognition Domain
 
+- [ ] **[INV-REC-09] Training Name Decoration**: Do names with Special Focus markers retain their full identity when decoration overlaps text, including letters, hyphens and middle dots, with unchanged unknown-name rejection and correct cache invalidation after resource reload?
+
 - [ ] **[INV-REC-07] Base Report Field Integrity**: Does each base report field retain its independent reading, with missing anchors, empty crops and unscorable digits remaining unread? Do compatible templates retain their scores, unsuccessful writes stop before post-storage panel input and email, confirmed storage end reading retries, and cancellation or Device Control recovery propagate without consuming reading attempts or replaying uncertain input?
 - [ ] **[INV-REC-08] Idle Observation Boundary**: Does successful scheduler idle resumption invalidate cached Capture Frames and scene state and reset continuous scene and loading observation across deadline, early wake and maintenance waits, while routine capture refresh and active observation retain freeze detection and cancellation preserves stop propagation?
 - [ ] **[INV-REC-05] Training Panel Identity**: Does training identity use full-name templates on the current Capture Frame with score, closing-bracket and distinct-name margin checks, while unknown readings retain bounded retry without an OCR name fallback or plan-derived occupant?
@@ -177,6 +182,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-UPD-04] MAA Resource Platform Parity**: Do installed Windows, macOS and Linux MAA installations expose independent resource checks and updates while preserving core and Python files, rejecting active MAA use and retaining resource rollback copies?
 
 - [ ] **[INV-UPD-05] Release Artifact Scope**: Future release builds exclude macOS x64; OTA publication targets only Windows x64 and Android ARM64, including Nightly, and rejects unsafe Android runtime paths without publishing a new channel index.
+
+- [ ] **[INV-UPD-07] Shared Skill Data Packaging**: Do backend reads and frontend imports share the catalog under `arknights_mower/data`, do Android and desktop archives include it without frontend sources or build output, and do generated resource packages preserve historical path compatibility and selected-package priority?
 - [ ] **[INV-UPD-03] Nightly Direction Evidence**: Do same-alpha Nightly updates use publication times or upstream commit ancestry when index history is missing, preserve genuine rollback confirmation, and retain confirmation when direction cannot be verified?
 - [ ] **[INV-UPD-01] Owned Command Completion**: Does each Windows update command own descendants before execution, verify completion within its budget, and preserve other instances when preparation is cancelled?
 - [ ] **[INV-UPD-02] Complete Registration Scan**: Do strict registration scans retry within one shared monotonic budget, preserve unverified registrations and raise `InstanceScanError` instead of returning an incomplete snapshot after budget exhaustion?

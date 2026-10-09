@@ -32,3 +32,5 @@ All supported presets share these contracts. No remote configuration, running in
 ## Verification
 
 Focused hermetic tests cover false reconnect responses followed by readiness, bounded helper repair, transient capture incidents, interrupt compensation, repeated finite recovery cycles, task preservation, refreshed navigation and cancellation. Tests never connect to live devices.
+
+MaaTouch regressions cover termination before pipe closure, Windows and POSIX stop return codes, bounded terminate-to-kill escalation, and a real host-process exit between the last live check and termination through `Device.tap`. That exit pauses dispatch and the next input is not sent.

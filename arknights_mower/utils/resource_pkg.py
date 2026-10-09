@@ -26,6 +26,8 @@ from arknights_mower.utils.github_download import request_download
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.res_version import (
+    BUILDING_SKILL_DATA,
+    BUILDING_SKILL_PACKAGE_PATH,
     is_package_file,
     parse_version,
 )
@@ -276,9 +278,10 @@ def resource_task_session():
 def resource_pkg_path(rel):
     """包管理文件从当前固定版本整包读取；未纳入资源包的文件仍属程序本体。"""
     selected = _selection()
-    managed = is_package_file(rel)
+    package_rel = BUILDING_SKILL_PACKAGE_PATH if rel == BUILDING_SKILL_DATA else rel
+    managed = is_package_file(package_rel)
     if selected.root is not None and managed:
-        return selected.root / rel
+        return selected.root / package_rel
     builtin_rel = rel[len(_PKG_PREFIX) :] if rel.startswith(_PKG_PREFIX) else rel
     return Path(__rootdir__) / builtin_rel
 

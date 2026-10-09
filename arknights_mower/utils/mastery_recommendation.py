@@ -743,8 +743,8 @@ def compute_default_workshop_config(
     )
 
 
-def auto_schedule_mastery_tasks():
-    """仓库扫描后：检测计划内未满M3的技能，直接需求全部满足则返回待安排列表"""
+def auto_schedule_mastery_tasks(*, inventory=None):
+    """Return material-ready plans using supplied name counts or the scan snapshot."""
     result = {"scheduled": [], "skipped": []}
 
     # 计划直接读 DB（get_all_plans 非终态）——matery_plan.json 是全仓库无写入者
@@ -769,29 +769,31 @@ def auto_schedule_mastery_tasks():
     operators = rec_result.get("operators", [])
     from arknights_mower.utils.mastery_support_data import trainee_schedule_conflict
 
-    cultivate_path = get_path("@app/tmp/cultivate.json")
-    inventory = {}
-    if os.path.exists(cultivate_path):
-        try:
-            with open(cultivate_path, "r", encoding="utf-8") as f:
-                cdata = json.load(f)
-            for item in cdata.get("data", {}).get("items", []):
-                cnt = int(item.get("count", 0))
-                if cnt > 0:
-                    inventory[item.get("id", "")] = cnt
-        except Exception:
-            pass
+    if inventory is None:
+        cultivate_path = get_path("@app/tmp/cultivate.json")
+        counts = {}
+        if os.path.exists(cultivate_path):
+            try:
+                with open(cultivate_path, "r", encoding="utf-8") as f:
+                    cdata = json.load(f)
+                for item in cdata.get("data", {}).get("items", []):
+                    cnt = int(item.get("count", 0))
+                    if cnt > 0:
+                        counts[item.get("id", "")] = cnt
+            except Exception:
+                pass
 
-    skill_data_path = _find_skill_data()
-    name_to_id = {}
-    if os.path.exists(skill_data_path):
-        try:
-            with open(skill_data_path, "r", encoding="utf-8") as f:
-                items_table = json.load(f).get("items", {})
-            for iid, info in items_table.items():
-                name_to_id[info.get("name", "")] = iid
-        except Exception:
-            pass
+        skill_data_path = _find_skill_data()
+        name_to_id = {}
+        if os.path.exists(skill_data_path):
+            try:
+                with open(skill_data_path, "r", encoding="utf-8") as f:
+                    items_table = json.load(f).get("items", {})
+                for iid, info in items_table.items():
+                    name_to_id[info.get("name", "")] = iid
+            except Exception:
+                pass
+        inventory = {name: counts.get(iid, 0) for name, iid in name_to_id.items()}
 
     for op in operators:
         if op.get("mastery_error"):
@@ -811,8 +813,7 @@ def auto_schedule_mastery_tasks():
                 needed[mat["name"]] += mat["count"]
             all_materials_sufficient = True
             for name, count in needed.items():
-                mat_id = name_to_id.get(name, "")
-                owned = inventory.get(mat_id, 0)
+                owned = inventory.get(name, 0)
                 if owned < count:
                     all_materials_sufficient = False
                     break
