@@ -112,9 +112,9 @@ def test_deadline_and_explicit_cancellation_bound_io(solver, monkeypatch):
     with solver.budget(2):
         assert io_timeout(10) == 2
         clock[0] = 12
-        with pytest.raises(TimeoutError):
+        with pytest.raises(module.SelectionTestTimeout):
             io_timeout(10)
-        with pytest.raises(TimeoutError):
+        with pytest.raises(module.SelectionTestTimeout):
             csleep(0)
         clock[0] = 11
     solver.cancelled.return_value = True

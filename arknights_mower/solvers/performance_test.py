@@ -22,6 +22,10 @@ CLEANUP_TIMEOUT = 10
 MODES = ("xhigh", "high", "medium", "low")
 
 
+class SelectionTestTimeout(MowerExit):
+    """Stop test I/O while retaining the session for bounded compensation."""
+
+
 class SelectionPerformanceTest(BaseMixin, BaseSolver):
     room = "dormitory_1"
 
@@ -76,7 +80,8 @@ class SelectionPerformanceTest(BaseMixin, BaseSolver):
                 raise MowerExit("游戏内性能测试已取消")
             value = deadline - monotonic()
             if value <= 0:
-                raise TimeoutError("游戏内性能测试超时，请检查画面后重试")
+                error = TimeoutError if cleanup else SelectionTestTimeout
+                raise error("游戏内性能测试超时，请检查画面后重试")
             return value
 
         def check_cancelled():

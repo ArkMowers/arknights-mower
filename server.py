@@ -118,6 +118,7 @@ def _run_performance_test(configuration):
     from arknights_mower.solvers.performance_test import (
         TEST_TIMEOUT,
         SelectionPerformanceTest,
+        SelectionTestTimeout,
     )
     from arknights_mower.utils.csleep import MowerExit, cancellation_scope
     from arknights_mower.utils.device.io_budget import device_io_budget
@@ -129,7 +130,7 @@ def _run_performance_test(configuration):
             raise MowerExit("游戏内性能测试已取消")
         value = deadline - time.monotonic()
         if value <= 0:
-            raise TimeoutError("游戏内性能测试超时")
+            raise SelectionTestTimeout("游戏内性能测试超时")
         return value
 
     def check_cancelled():
@@ -138,7 +139,7 @@ def _run_performance_test(configuration):
 
     try:
         with cancellation_scope(check_cancelled):
-            with device_control.run():
+            with device_control.run(defer_cancel_close=True):
                 with device_io_budget(remaining):
                     device = device_control.start(connection_retries=1).unwrap()
                     solver = SelectionPerformanceTest(
@@ -154,7 +155,9 @@ def _run_performance_test(configuration):
     except MowerExit as exc:
         _report_performance_test(
             {
-                "status": "cancelled",
+                "status": "failed"
+                if isinstance(exc, SelectionTestTimeout)
+                else "cancelled",
                 "recommended_mode": None,
                 "message": str(exc) or "游戏内性能测试已取消",
                 "phase": "done",

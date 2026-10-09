@@ -150,6 +150,28 @@ class DeviceControlTests(unittest.TestCase):
         self.assertTrue(control.close().ok)
         self.assertTrue(control.close().ok)
 
+    def test_run_can_defer_cancel_close_until_bounded_compensation_finishes(self):
+        control = DeviceControl(lambda: SimpleNamespace(adb="USB-123"), ManualAdapter())
+
+        def cancelled(device):
+            raise MowerExit("cancelled")
+
+        for deferred in (True, False):
+            with self.subTest(deferred=deferred):
+                with control.run(defer_cancel_close=deferred):
+                    opened = control.start().unwrap()
+                    with self.assertRaises(MowerExit):
+                        control.execute(cancelled).unwrap()
+                    self.assertEqual(control.active, deferred)
+                    if deferred:
+                        self.assertEqual(
+                            control.execute(lambda device: device.tap((1, 2))).unwrap(),
+                            (1, 2),
+                        )
+                self.assertTrue(opened.closed)
+                self.assertFalse(control.active)
+                self.assertFalse(control._defer_cancel_close)
+
     def test_start_errors_are_structured_and_preserve_legacy_exceptions(self):
         for error, code in (
             (ConnectionError("offline"), "start_failed"),
