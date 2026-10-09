@@ -26,6 +26,7 @@ from arknights_mower.utils.operation_timing import (
 from arknights_mower.utils.operators import Operator, Operators
 from arknights_mower.utils.resting_priority import (
     RestingTier,
+    bed_takeover_allowed,
     busy_resting_names,
     crafting_rest_order,
     has_resting_mood,
@@ -2492,16 +2493,22 @@ def restore_displaced_resting(op_data, previous, plan, tasks):
         if (completed or op_data._can_standby(op)) and any(
             anchor.name in retained
             and anchor.is_high()
-            and not op_data._can_standby(anchor)
             and not anchor.room.startswith("dorm")
             and not anchor.workaholic
-            and not (
-                has_resting_mood(anchor) and resting_mood(anchor) >= anchor.upper_limit
+            and (
+                op_data._can_standby(op)
+                and resting_tier(op_data, anchor.name)
+                <= RestingTier.PRIORITY_REPLACEMENT
+                or not op_data._can_standby(anchor)
+                and not (
+                    has_resting_mood(anchor)
+                    and resting_mood(anchor) >= anchor.upper_limit
+                )
             )
             and (not op.group or anchor.group == op.group)
             for anchor in op_data.operators.values()
         ):
-            logger.info(f"{name}让出床位，随组待命，同组未恢复成员继续休息")
+            logger.info(f"{name}让出床位，随组待命，同组保留成员继续休息")
             continue
         recalled.update(members)
     for name in recalled:
@@ -2591,24 +2598,19 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
             ]
             if not recovery_names:
                 return
-        recovering = iter(recovery_names)
-        waiting = next(recovering, None)
+        recovering = recovery_names.copy()
+        waiting = next(iter(recovering), None)
         full = iter(
             name
             for name in candidates.filling
             if name not in candidates.recovering and name not in candidates.unknown
         )
         search_unknown = bool(candidates.unknown) and not priority_only
-        estimated_recovery = bool(candidates.estimated_recovering)
-        replacement_search = estimated_recovery or (
-            search_unknown and not op_data.idle_dorm_search_exhausted
-        )
         if waiting is None and not candidates.filling:
             return
 
         filling_vacancies = bool(vacancies)
         arrangement = {}
-        residents = []
         beds_to_visit = op_data.ordered_dorms()
         for bed in beds_to_visit:
             room, index = bed.position
@@ -2630,31 +2632,26 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
                     or op_data.is_free_room_excluded(occupant.name)
                 ):
                     continue
-                complete = (
-                    has_resting_mood(occupant, now)
-                    and resting_mood(occupant, now) >= occupant.upper_limit
-                ) or (bed.time is not None and bed.time <= now)
-                if priority_only or not complete:
-                    if waiting is None or not op_data._slot_takable(
-                        bed, requester=waiting
-                    ):
-                        continue
-                elif waiting is None and (
-                    not replacement_search
-                    or op_data.is_full_dorm_fallback(occupant.name)
-                    and not estimated_recovery
-                    or op_data.has_rest_mood_limit(occupant.name)
-                ):
+                waiting = next(
+                    (
+                        name
+                        for name in recovering
+                        if bed_takeover_allowed(op_data, name, occupant.name)
+                    ),
+                    None,
+                )
+                if waiting is None:
+                    continue
+                if not op_data._slot_takable(bed, requester=waiting):
                     continue
 
             if waiting is not None:
                 incoming = waiting
-                waiting = next(recovering, None)
+                recovering.remove(incoming)
+                waiting = next(iter(recovering), None)
             elif search_unknown:
                 # 未知心情统一通过游戏心情升序选人，不能把默认 24 当实读。
                 incoming = "Free"
-                if occupant is not None:
-                    residents.append(occupant.name)
             else:
                 incoming = next(full, None)
                 if incoming is None:
@@ -2697,8 +2694,12 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
 
         if not arrangement:
             return
-        previous = dorm_residents(op_data)
-        restore_displaced_resting(op_data, previous, arrangement, tasks)
+        # 规划补偿只修改投影；实际床位和旧回班任务留到执行准入后更新。
+        projected = op_data.project_arrangements([{}])
+        previous = dorm_residents(projected)
+        restore_displaced_resting(
+            projected, previous, arrangement, copy.deepcopy(tasks)
+        )
         task = SchedulerTask(
             time=now,
             task_plan=arrangement,
@@ -2706,8 +2707,6 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
             if filling_vacancies
             else TaskTypes.NOT_SPECIFIC,
         )
-        if residents:
-            task.dorm_mood_residents = residents
         task.dorm_fill_plan = copy.deepcopy(arrangement)
         if filling_vacancies:
             simplify_dorm_fill(task, tasks, now)

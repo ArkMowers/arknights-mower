@@ -1,4 +1,4 @@
-"""救急和普通分床使用相同层级，旧住客和候补不能跨级保床。"""
+"""救急和普通分床共用前四级保床与后三级让床规则。"""
 
 from copy import deepcopy
 from datetime import timedelta
@@ -41,7 +41,7 @@ def set_role(data, tier, incoming=False):
 @pytest.mark.parametrize("rescue", [False, True])
 @pytest.mark.parametrize("resident_tier", list(RestingTier)[:-1])
 @pytest.mark.parametrize("incoming_tier", list(RestingTier)[:-1])
-def test_takeover_uses_strict_tier_in_both_modes(
+def test_takeover_preserves_protected_tiers_in_both_modes(
     solver, rescue, resident_tier, incoming_tier
 ):
     data = solver.op_data
@@ -60,6 +60,7 @@ def test_takeover_uses_strict_tier_in_both_modes(
     before = deepcopy(vars(bed))
     assert data._slot_takable(bed, requester=incoming) is (
         incoming_tier < resident_tier
+        and resident_tier > RestingTier.PRIORITY_REPLACEMENT
     )
     assert vars(bed) == before
 

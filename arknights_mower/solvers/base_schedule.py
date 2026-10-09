@@ -116,6 +116,7 @@ from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 from arknights_mower.utils.resource_pkg import refresh_resource_at_boundary
 from arknights_mower.utils.resting_priority import (
     RestingTier,
+    bed_takeover_allowed,
     crafting_rest_candidates,
     has_resting_mood,
     resting_key,
@@ -7362,6 +7363,34 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             ):
                 # 满员兜底也不能重新安排被排除的原住者。
                 current = None
+            replacement = next(iter(replacements), None)
+            if (
+                current is not None
+                and current.name not in (set(agents) | moving)
+                and not (
+                    getattr(self.task, "strict_mood_limit", False)
+                    and self.task.meta_data == current.name
+                )
+                and not self.op_data.rest_mood_complete(current.name)
+                and not (
+                    getattr(self.task, "type", None) == TaskTypes.RELEASE_DORM
+                    and self.task.release_dorm_targets().get(current.name)
+                    == (room, index)
+                )
+            ):
+                replacement = next(
+                    (
+                        candidate
+                        for candidate in replacements
+                        if bed_takeover_allowed(
+                            self.op_data, candidate.name, current.name
+                        )
+                    ),
+                    None,
+                )
+                if replacement is None:
+                    agents[index] = current.name
+                    continue
             if mood_fallback and (
                 current is None
                 or has_resting_mood(current, now)
@@ -7399,16 +7428,17 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     continue
                 if not full:
                     if (
-                        not replacements
+                        replacement is None
                         or bed is None
                         or not self.op_data._slot_takable(
-                            bed, requester=replacements[0].name
+                            bed, requester=replacement.name
                         )
                     ):
                         agents[index] = current.name
                         continue
-            if replacements:
-                agents[index] = replacements.pop(0).name
+            if replacement is not None:
+                agents[index] = replacement.name
+                replacements.remove(replacement)
             elif (
                 current is not None
                 and self.op_data.is_dynamic_dorm_position(room, index, current.name)
@@ -9253,6 +9283,61 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             ):
                 raise RuntimeError("救急期间暂停普通工作站换班")
         logger.info("基建：排班")
+        if (
+            self.task.type in (TaskTypes.NOT_SPECIFIC, TaskTypes.FILL_DORM)
+            and hasattr(self.task, "dorm_fill_plan")
+            and not getattr(self.task, "emergency_dorm", False)
+            and not any(
+                getattr(self.task, attribute, False)
+                for attribute in (
+                    "arrangement_retry_room",
+                    "dorm_recovery_restore",
+                    "product_shift_locked",
+                    "backup_shift_active",
+                    "strict_mood_limit",
+                )
+            )
+            and not self._emergency_frozen()
+        ):
+            # 排队期间身份和恢复层级可以变化；复用分床规划器重新准入。
+            pending = copy.deepcopy(
+                [task for task in self.tasks if task is not self.task]
+            )
+            existing = {id(task): task for task in pending}
+            projected = self.op_data.project_arrangements([{}])
+            try_add_release_dorm({}, None, projected, pending)
+            updated = next((task for task in pending if id(task) not in existing), None)
+            self.task.plan.clear()
+            self.task.plan.update(updated.plan if updated is not None else {})
+            if updated is not None:
+                self.task.type = updated.type
+            for attribute in (
+                "dorm_fill_plan",
+                "dorm_mood_residents",
+                "simple_dorm_fill",
+            ):
+                if hasattr(updated, attribute):
+                    setattr(self.task, attribute, getattr(updated, attribute))
+                elif hasattr(self.task, attribute):
+                    delattr(self.task, attribute)
+            if updated is not None:
+                protect_priority_tasks(self.tasks, op_data=self.op_data)
+                if (
+                    self.task.time > datetime.now()
+                    or not self.tasks
+                    or self.tasks[0] is not self.task
+                ):
+                    return False
+            for dorm_room, names in self.task.plan.items():
+                if dorm_room.startswith("dorm"):
+                    for name in names:
+                        if name in self.op_data.operators:
+                            self.op_data.operators[name].dorm_mood_fallback = (
+                                dorm_room
+                                if projected.operators[name].dorm_mood_fallback
+                                else ""
+                            )
+            plan = self.task.plan
         self._track_idle_dorm_shift(plan)
         if self.task.type == TaskTypes.FILL_DORM and not getattr(
             self.task, "emergency_dorm", False

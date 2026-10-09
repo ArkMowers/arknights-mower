@@ -1,0 +1,27 @@
+{
+  "title": "Protected Dormitory Bed Tiers",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-42]",
+    "[INV-SCHED-13]",
+    "[INV-SCHED-21]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators._slot_takable",
+    "arknights_mower.utils.scheduler_task.try_add_release_dorm",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.preserve_resting_crafters",
+    "arknights_mower.utils.resting_priority.bed_takeover_allowed"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/protected_dorm_bed_tiers_tests.py",
+    "arknights_mower/tests/resting_priority_tests.py",
+    "arknights_mower/tests/rescue_priority_takeover_tests.py",
+    "arknights_mower/tests/emergency_capacity_tests.py",
+    "arknights_mower/tests/dorm_estimated_replacement_tests.py"
+  ]
+}

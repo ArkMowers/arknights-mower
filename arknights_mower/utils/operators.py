@@ -20,6 +20,7 @@ from arknights_mower.utils.plan import (
 )
 from arknights_mower.utils.resting_priority import (
     RestingTier,
+    bed_takeover_allowed,
     has_resting_mood,
     resting_key,
     resting_mood,
@@ -2205,17 +2206,7 @@ class Operators:
             return False
         if requester is None:
             return False
-        requester_tier, resident_tier = (
-            resting_tier(self, requester),
-            resting_tier(self, name),
-        )
-        return requester_tier < resident_tier or (
-            name in self.emergency_dorm_agents
-            and (op.index < 2 or requester_tier == resident_tier)
-            and has_resting_mood(op)
-            and not op.mood_is_prediction
-            and op.mood >= op.upper_limit
-        )
+        return bed_takeover_allowed(self, requester, name)
 
     def dorm_roommates(self, room, index=None, *, plan=None):
         """合并实际驻员、床位预约和本轮明确安排，排除离岗及被替换者。"""
