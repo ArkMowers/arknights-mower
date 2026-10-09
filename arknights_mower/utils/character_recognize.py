@@ -266,6 +266,21 @@ def operator_list_train(img, draw=False, full_scan=True):
         im = cropimg(gray, p)
         im = thres2(im, 140)
         im = cv2.copyMakeBorder(im, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
+        leading = cv2.cvtColor(cropimg(img, p)[:, :12], cv2.COLOR_RGB2HSV)
+        yellow = cv2.inRange(leading, (15, 100, 140), (40, 255, 255))
+        if cv2.countNonZero(yellow) >= 12:
+            # 黄白标记在下半行延伸；上半行的分离文字界定装饰边界。
+            upper = im[: 10 + (p[1][1] - p[0][1]) // 2]
+            contours, _ = cv2.findContours(
+                cv2.dilate(upper, kernel), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+            text_regions = [
+                rect
+                for contour in contours
+                if (rect := cv2.boundingRect(contour))[2] > 30
+            ]
+            if len(text_regions) > 1:
+                im[:, : max(text_regions, key=lambda rect: rect[0])[0]] = 0
         dilation = cv2.dilate(im, kernel, iterations=1)
         contours, _ = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         rect = map(lambda c: cv2.boundingRect(c), contours)

@@ -1,0 +1,18 @@
+{
+  "title": "Training Name Decoration Isolation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-REC-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.character_recognize.operator_list_train"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/training_name_decoration_tests.py"
+  ]
+}

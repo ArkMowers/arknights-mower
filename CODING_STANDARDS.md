@@ -86,6 +86,7 @@
 - **[INV-UI-02] Recovery Policy Binding**: Advanced recovery parameters must bidirectionally bind to backend defaults without local shadow overrides.
 
 ### 2.3 Vision & Recognition
+- **[INV-REC-09] Training Name Decoration**: Training name recognition excludes separable leading yellow-white decoration using observed text geometry, preserves complete names, and retains the existing unknown-name matching threshold.
 - **[INV-RES-01] Template Glyph Coverage**: Resource generation verifies actual font character maps, expands subsets only from the matching game font while preserving existing glyphs and metrics, and rejects unavailable source characters before changing font or charset files.
 - **[INV-REC-07] Base Report Field Integrity**: Each base report field preserves its independent reading; unavailable fields remain unread, compatible digit templates retain their scores, and a digit without a compatible score makes its complete field unread. Reports with no readings or failed storage return failure without post-storage panel input or email, while confirmed storage ends reading retries; cancellation and Device Control recovery propagate without consuming reading attempts or replaying uncertain input.
 - **[INV-REC-08] Idle Observation Boundary**: Successful scheduler idle resumption discards cached Capture Frames and scene state and restarts continuous scene and loading observation, excluding idle time from scene timeout while routine capture refresh and active observation retain freeze detection.
