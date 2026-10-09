@@ -105,7 +105,7 @@ it('does not start when configuration save fails and exposes server errors', asy
 it('cancels only the current test and keeps polling until cleanup ends', async () => {
   const { component } = setup()
   component.job.value = { status: 'running', id: 'test', phase: 'testing', mode: 'high', round: 2 }
-  expect(component.progress.value).toContain('高档 · 第 2/3 轮')
+  expect(component.progress.value).toContain('高档 · 第 2/3 次选人测试')
   state.http.delete.mockResolvedValue({ data: { status: 'running', id: 'test', phase: 'cleanup' } })
   await component.cancel()
   expect(state.http.delete).toHaveBeenCalledWith('/device/performance-test', {

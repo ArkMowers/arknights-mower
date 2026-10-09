@@ -17,6 +17,7 @@ from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.performance import PERFORMANCE_PRESETS
 from arknights_mower.utils.scene import Scene
 
+SWIPES_PER_SELECTION = 3
 CLEANUP_TIMEOUT = 10
 MODES = ("xhigh", "high", "medium", "low")
 
@@ -162,9 +163,14 @@ class SelectionPerformanceTest(BaseMixin, SceneGraphSolver):
                 for _, scope in before
             ):
                 raise RuntimeError("准备阶段未确认暂选已清空，请检查游戏画面")
-            _, observation = self.swipe_agent_page(before, [], return_page=True)
-            after = observation.page
-            original = {name for name, _ in before}
+            page = before
+            original = set()
+            for _ in range(SWIPES_PER_SELECTION):
+                self.checkpoint()
+                original.update(name for name, _ in page)
+                _, observation = self.swipe_agent_page(page, [], return_page=True)
+                page = observation.page
+            after = page
             targets = list(
                 dict.fromkeys(
                     name for name, _ in after if name and name not in original
@@ -179,8 +185,13 @@ class SelectionPerformanceTest(BaseMixin, SceneGraphSolver):
             return reset, targets
 
     def trial(self, before, targets):
-        self.checkpoint()
-        _, observation = self.swipe_agent_page(before, targets, return_page=True)
+        page = before
+        for index in range(SWIPES_PER_SELECTION):
+            self.checkpoint()
+            _, observation = self.swipe_agent_page(page, targets, return_page=True)
+            if index + 1 < SWIPES_PER_SELECTION:
+                # Read the held frame for the next gesture without selecting.
+                _, page = self.scan_agent([], observation=observation)
         pending = targets.copy()
         self.scan_agent(pending, observation=observation)
         if pending:
@@ -254,7 +265,7 @@ class SelectionPerformanceTest(BaseMixin, SceneGraphSolver):
                         result = {
                             "status": "passed",
                             "recommended_mode": mode,
-                            "message": "连续三轮滑动选人及名单校验通过",
+                            "message": "连续三次选人测试及名单校验通过",
                         }
                         break
                 if result is None:

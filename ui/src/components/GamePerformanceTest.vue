@@ -31,7 +31,7 @@ const progress = computed(() => {
   const result = job.value
   if (running.value && result.phase === 'cleanup') return '正在取消暂选并退出选人页…'
   if (running.value && result.mode) {
-    return `${labels[result.mode]}档 · 第 ${result.round}/3 轮 · ${result.phase === 'preparing' ? '准备目标' : '滑动选人及校验'}`
+    return `${labels[result.mode]}档 · 第 ${result.round}/3 次选人测试 · ${result.phase === 'preparing' ? '准备目标' : '连续滑动后选人及校验'}`
   }
   return result.message || ''
 })
@@ -127,7 +127,8 @@ onUnmounted(() => {
         请停止任务并先保存设备设置。测试使用 Mower 的启动与导航流程，
         启动所选模拟器和游戏并进入基建；已在基建时继续进入宿舍一。
         登录验证或协议确认需先在游戏中手动完成。
-        从极高档开始滑动选人，每档连续三轮通过才推荐；一次失败立即降档重测。
+        从极高档开始，每次测试先连续滑动三次，再选人并校验。
+        每次选人独立计为一次测试，每档连续三次测试通过才推荐；一次失败立即降档重测。
         同时检查实际选中名单与重排结果。测试会取消暂选，不确认换人。
         测试期间请勿操作游戏，可随时取消。测试不设总时限，建议仅用于当前设备和时间参数。
       </help-text>
@@ -154,7 +155,7 @@ onUnmounted(() => {
       :type="trial.ok ? 'success' : 'warning'"
       depth="3"
     >
-      {{ labels[trial.mode] }}档第 {{ trial.round }} 轮：{{ trial.ok ? '通过' : trial.message }}
+      {{ labels[trial.mode] }}档第 {{ trial.round }} 次选人：{{ trial.ok ? '通过' : trial.message }}
     </n-text>
     <n-text v-if="error" type="error" role="alert">{{ error }}</n-text>
   </n-space>

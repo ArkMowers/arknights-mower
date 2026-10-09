@@ -22,6 +22,11 @@ from arknights_mower.utils.device.io_budget import io_timeout  # noqa: E402
 from arknights_mower.utils.scene import Scene  # noqa: E402
 
 
+def complete_selection(pending, **_):
+    pending.clear()
+    return [], []
+
+
 @pytest.fixture
 def solver(monkeypatch):
     monkeypatch.setattr(config, "stop_mower", module.config.stop_mower.__class__())
@@ -49,6 +54,7 @@ def test_three_successes_recommend_xhigh_without_changing_conf_or_feedback(solve
     solver.trial.side_effect = lambda *_: modes.append(solver.performance_profile.mode)
     assert solver.run()["recommended_mode"] == "xhigh"
     assert modes == ["xhigh"] * 3
+    assert solver.prepare_round.call_count == 3
     assert config.conf.model_dump() == before
     assert feedback == (config.operation_feedback_avg, config.operation_feedback_count)
     solver.cancel_selection.assert_called_once()
@@ -149,7 +155,7 @@ def test_trial_uses_shared_selection_reorder_and_actual_roster(
 ):
     solver.checkpoint = MagicMock()
     solver.swipe_agent_page = MagicMock(return_value=(1, None))
-    solver.scan_agent = MagicMock(side_effect=lambda pending, **_: pending.clear())
+    solver.scan_agent = MagicMock(side_effect=complete_selection)
     solver.switch_arrange_order = MagicMock()
     solver.swipe_left = MagicMock(return_value=(0, None))
     solver.wait_for_arranged_agents = MagicMock(return_value=["斯卡蒂", "安哲拉"])
@@ -171,7 +177,7 @@ def test_stable_wrong_selection_is_failure_even_when_names_were_found(
 ):
     solver.checkpoint = MagicMock()
     solver.swipe_agent_page = MagicMock(return_value=(1, None))
-    solver.scan_agent = MagicMock(side_effect=lambda pending, **_: pending.clear())
+    solver.scan_agent = MagicMock(side_effect=complete_selection)
     solver.switch_arrange_order = MagicMock()
     solver.swipe_left = MagicMock(return_value=(0, None))
     solver.wait_for_arranged_agents = MagicMock(
@@ -188,12 +194,91 @@ def test_stable_wrong_selection_is_failure_even_when_names_were_found(
 def test_unchanged_page_cannot_pass_when_targets_are_not_selected(solver):
     solver.checkpoint = MagicMock()
     solver.swipe_agent_page = MagicMock(return_value=(1, None))
-    solver.scan_agent = MagicMock()
+    solver.scan_agent = MagicMock(return_value=([], []))
     with (
         solver.profile("xhigh"),
         pytest.raises(AgentSelectionNotReady, match="全部目标"),
     ):
         SelectionPerformanceTest.trial(solver, [], ["安哲拉", "斯卡蒂"])
+
+
+def test_each_selection_follows_three_swipes_using_the_latest_page(solver):
+    events = []
+    pages = [[(f"page-{index}", ((630, 488), (818, 520)))] for index in range(4)]
+    observations = [object() for _ in range(3)]
+
+    def swipe(page, targets, **_):
+        index = events.count("swipe")
+        assert page == pages[index]
+        events.append("swipe")
+        return 1, observations[index]
+
+    def scan(pending, *, observation):
+        index = events.count("swipe") - 1
+        assert observation is observations[index]
+        events.append("select" if pending else "read")
+        pending.clear()
+        return [], pages[index + 1]
+
+    solver.swipe_agent_page = MagicMock(side_effect=swipe)
+    solver.scan_agent = MagicMock(side_effect=scan)
+    solver.switch_arrange_order = MagicMock()
+    solver.swipe_left = MagicMock(return_value=(0, None))
+    solver.wait_for_arranged_agents = MagicMock(return_value=["安哲拉", "斯卡蒂"])
+    solver.reorder_selected_agents = MagicMock()
+    with solver.profile("xhigh"):
+        SelectionPerformanceTest.trial(solver, pages[0], ["安哲拉", "斯卡蒂"])
+    assert events == ["swipe", "read", "swipe", "read", "swipe", "select"]
+
+
+def test_cancellation_between_swipes_stops_before_selection(solver):
+    solver.swipe_agent_page = MagicMock(return_value=(1, object()))
+
+    def read_only_scan(pending, **_):
+        assert pending == []
+        solver.cancelled.return_value = True
+        return [], []
+
+    solver.scan_agent = MagicMock(side_effect=read_only_scan)
+    with pytest.raises(MowerExit), solver.budget(), solver.profile("xhigh"):
+        SelectionPerformanceTest.trial(solver, [], ["安哲拉", "斯卡蒂"])
+    assert solver.swipe_agent_page.call_count == 1
+    assert solver.scan_agent.call_count == 1
+
+
+def test_preparation_finds_targets_beyond_all_three_swipes(solver, monkeypatch):
+    def page(names):
+        return [
+            (name, ((630 + index * 215, 488), (818 + index * 215, 520)))
+            for index, name in enumerate(names)
+        ]
+
+    pages = [
+        page(names)
+        for names in (
+            ("斯卡蒂", "安哲拉"),
+            ("巡林者", "夜刀"),
+            ("芬", "香草"),
+            ("香草", "翎羽", "玫兰莎"),
+        )
+    ]
+    solver.scene = MagicMock(return_value=Scene.INFRA_ARRANGE_ORDER)
+    solver.profession_filter = MagicMock()
+    solver.tap = MagicMock()
+    solver.switch_arrange_order = MagicMock()
+    solver.swipe_left = MagicMock()
+    solver.wait_for_agent_page = MagicMock(side_effect=[pages[0], pages[0]])
+    solver.swipe_agent_page = MagicMock(
+        side_effect=[(1, SimpleNamespace(page=p)) for p in pages[1:]]
+    )
+    solver.recog.img = object()
+    monkeypatch.setattr(module, "agent_card_selected", lambda *_: False)
+    before, targets = SelectionPerformanceTest.prepare_round(solver)
+    assert before == pages[0]
+    assert targets == ["翎羽", "玫兰莎"]
+    assert [call.args[0] for call in solver.swipe_agent_page.call_args_list] == pages[
+        :3
+    ]
 
 
 def test_cleanup_only_uses_back_and_discard_action(solver):
