@@ -23,6 +23,8 @@ See the [device contract](../../../../docs/subsystems/device-control.md) and [sc
 
 Offline tests cover capture before release, all three input helpers, shared hold timing, cancellation and capture failure, release failure, fresh frame cache invalidation and reuse by fast selection. Focused device, selection and governance suites verify surrounding contracts.
 
+The fast training end-page regression supplies the recognizer and held frames used by the page observation. It verifies that each of three swipes passes its held frame to the next scan and that an unchanged end page stops search without final selection verification.
+
 ## Standards Findings
 
 PASS: The implementation retains the selected input backend and Instance Binding, registers [INV-DEV-24] in all three governance locations, reuses existing page observations and introduces no capture thread or glossary wording. Capture failures follow release; uncertain release remains a structured input failure without replay.
