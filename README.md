@@ -79,6 +79,8 @@ python3.12 -m venv .venv
 
 首次进入后，在 Mower 设置中选择设备并测试连接，再配置排班及所需任务。入门说明见程序内“一条龙”；源码更新见 [软件更新说明](doc/software-update.md#源码部署)。
 
+打包与其他部署方式：[本地打包说明](docs/cookbook/packaging.md) · [Docker 部署](docs/cookbook/docker-deploy.md)。
+
 ## 建议与反馈
 
 [Mower 反馈表](https://docs.qq.com/sheet/DUEJ6UWN5VFVRU0dG?tab=BB08J2)：查看已有问题；表格填写需相应编辑权限。提交反馈时请附软件版本、系统与设备、实际现象、期望行为及相关日志，并去除账号密码、访问令牌和密钥。
