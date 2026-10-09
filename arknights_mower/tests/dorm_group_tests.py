@@ -999,6 +999,77 @@ def test_grouped_free_capacity_does_not_borrow_other_group_quota(grouped_free_ca
     assert [vars(bed) for bed in data.dorm] == before
 
 
+@pytest.mark.parametrize("cached_name", ["", "伊内丝", "陈"])
+def test_resting_plan_counts_actual_outsiders_despite_stale_bed_cache(
+    grouped_free_capacity, cached_name
+):
+    instance = grouped_free_capacity
+    data = instance.op_data
+    data.operators["银灰"].group = "外组"
+    bed = next(bed for bed in data.dorm if bed.position == ("dormitory_1", 2))
+    bed.name, bed.time = cached_name, None
+    before = deepcopy([vars(bed) for bed in data.dorm])
+    plan, replacements = {}, []
+
+    assert not instance.get_resting_plan(["银灰"], replacements, plan, 3)
+
+    assert data.get_current_operator("dormitory_1", 2).name == "泥岩"
+    assert plan == {}
+    assert replacements == []
+    assert [vars(bed) for bed in data.dorm] == before
+
+
+@pytest.mark.parametrize("vacant", [False, True])
+@pytest.mark.parametrize("same_group", [False, True])
+def test_resting_plan_counts_explicit_admissions_across_groups(
+    grouped_free_capacity, same_group, vacant
+):
+    instance = grouped_free_capacity
+    data = instance.op_data
+    # Two protected outsiders and one idle resident leave one ordinary unit.
+    apply_plan(instance, {"dormitory_1": ["Free" if vacant else "红", "Current", "陈"]})
+    data.operators["银灰"].group = "外组"
+    data.operators["伊内丝"].group = "联动" if same_group else "另一组"
+    plan, replacements, admissions = {}, [], {}
+    assert instance.get_resting_plan(
+        ["银灰"], replacements, plan, 2, dorm_admissions=admissions
+    )
+    assert list(admissions.values()) == ["银灰"]
+    before = deepcopy((plan, replacements, admissions, data.dorm))
+
+    accepted = instance.get_resting_plan(
+        ["伊内丝"], replacements, plan, 2, dorm_admissions=admissions
+    )
+
+    assert bool(accepted) is same_group
+    assert data.get_current_operator("dormitory_1", 2).name == "陈"
+    if same_group:
+        assert set(admissions.values()) == {"银灰", "伊内丝"}
+    else:
+        assert (plan, replacements, admissions) == before[:3]
+        assert [vars(bed) for bed in data.dorm] == [vars(bed) for bed in before[3]]
+
+
+def test_resting_round_retains_prior_group_admissions(grouped_free_capacity):
+    instance = grouped_free_capacity
+    data = instance.op_data
+    apply_plan(instance, {"dormitory_1": ["Free", "Current", "陈"]})
+    for name in ("银灰", "伊内丝"):
+        op = data.operators[name]
+        op.group = ""
+        op.mood = 5
+    data.operators["银灰"].current_room = "meeting"
+    data.operators["银灰"].current_index = 1
+    data.operators["讯使"].mood = 24
+    instance.total_agent = list(data.operators.values())
+    instance.plan_metadata = MagicMock()
+
+    plan = instance.resting()
+
+    assert plan.get("meeting", []).count("Current") == 1
+    assert len([bed for bed in data.dorm if bed.name in ("银灰", "伊内丝")]) == 1
+
+
 def test_grouped_free_capacity_uses_secondary_binding(grouped_free_capacity):
     data = grouped_free_capacity.op_data
     owner = data.operators["塑心"]

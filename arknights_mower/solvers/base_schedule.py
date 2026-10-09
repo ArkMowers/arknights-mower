@@ -3264,6 +3264,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             has_active_mastery = False
         _replacement = []
         _plan = {}
+        dorm_admissions = {}
         _high_done = False
         attempted_groups = set()
         # 工作组先取得床位预约，空闲干员随后由统一补床入口安排。
@@ -3342,10 +3343,20 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 attempted_groups.add(op.group)
                 group_resting = self.op_data.groups[op.group]
                 self.get_resting_plan(
-                    group_resting, _replacement, _plan, current_resting
+                    group_resting,
+                    _replacement,
+                    _plan,
+                    current_resting,
+                    dorm_admissions=dorm_admissions,
                 )
             else:
-                self.get_resting_plan([op.name], _replacement, _plan, current_resting)
+                self.get_resting_plan(
+                    [op.name],
+                    _replacement,
+                    _plan,
+                    current_resting,
+                    dorm_admissions=dorm_admissions,
+                )
         if len(_plan.keys()) > 0:
             self.tasks.append(
                 SchedulerTask(task_plan=_plan, task_type=TaskTypes.SHIFT_OFF)
@@ -4056,7 +4067,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
             high_count -= 1
 
-    def get_resting_plan(self, agents, exist_replacement, plan, current_resting):
+    def get_resting_plan(
+        self, agents, exist_replacement, plan, current_resting, *, dorm_admissions=None
+    ):
         groups = list(
             dict.fromkeys(
                 self.op_data.operators[name].group
@@ -4073,7 +4086,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         }
         if not followers:
             return self._get_resting_plan(
-                agents, exist_replacement, plan, current_resting
+                agents,
+                exist_replacement,
+                plan,
+                current_resting,
+                dorm_admissions=dorm_admissions,
             )
         transitions = self.op_data.arrangement_group_transitions(plan)
         transitions.update({group: True for group in groups})
@@ -4122,7 +4139,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.op_data.group_shift_state = dict(previous_state)
             self.op_data.commit_group_shifts(transitions)
             return self._get_resting_plan(
-                members, exist_replacement, plan, current_resting
+                members,
+                exist_replacement,
+                plan,
+                current_resting,
+                dorm_admissions=dorm_admissions,
             )
         finally:
             self.op_data.group_shift_state = previous_state
@@ -4131,7 +4152,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self.op_data.operators[name].replacement = replacements
             self.op_data.groups = previous_groups
 
-    def _get_resting_plan(self, agents, exist_replacement, plan, current_resting):
+    def _get_resting_plan(
+        self, agents, exist_replacement, plan, current_resting, *, dorm_admissions=None
+    ):
         from arknights_mower.utils.exhaust_replacement import match_replacements
 
         self._refresh_deferred_product_reservations()
@@ -4282,6 +4305,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 and not self.op_data.operators[name].workaholic
             )
             previous = dorm_residents(self.op_data)
+            allocation_plan = copy.deepcopy({**plan, **__plan})
+            # 本轮先前组的成功分床显式占用额度，不从可能陈旧的床位缓存推断。
+            for (room, index), name in (dorm_admissions or {}).items():
+                row = allocation_plan.setdefault(
+                    room, ["Current"] * len(self.op_data.plan[room])
+                )
+                if row[index] in ("Current", "Free"):
+                    row[index] = name
             for attempt in range(2):
                 if attempt:
                     assignments = match_replacements(
@@ -4321,7 +4352,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 dorms = self.op_data.assign_dorm_group(
                     resting_agents,
                     active_groups=active_groups,
-                    plan={**plan, **__plan},
+                    plan=allocation_plan,
                 )
                 if dorms is not None:
                     break
@@ -4361,6 +4392,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             exist_replacement.remove(previous_cover)
                         plan[k][idx] = name
             logger.debug(f"当前plan{plan}")
+            if dorm_admissions is not None:
+                dorm_admissions.update({bed.position: bed.name for bed in dorms})
             return True
 
     def initialize_operators(self):

@@ -23,7 +23,9 @@
     "arknights_mower.utils.scheduler_task.dorm_residents",
     "arknights_mower.utils.scheduler_task.restore_displaced_resting",
     "arknights_mower.utils.operators.Operators.is_group_shift_anchor",
-    "arknights_mower.utils.operators.Operators.update_standby_low_priority"
+    "arknights_mower.utils.operators.Operators.update_standby_low_priority",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.resting",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.get_resting_plan"
   ],
   "test_suites": [
     "arknights_mower/tests/protected_dorm_bed_tiers_tests.py",

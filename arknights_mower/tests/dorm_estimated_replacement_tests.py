@@ -1,4 +1,4 @@
-"""低心情卡片候选仍能替换满员兜底住客，实读与恢复计时保持独立。"""
+"""低心情卡片候选等待合法清退后补位，实读与恢复计时保持独立。"""
 
 import copy
 from datetime import datetime, timedelta

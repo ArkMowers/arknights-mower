@@ -9,10 +9,10 @@ date: 2026-10-02
 
 ## Contract
 
-The shared `DormCandidates` snapshot identifies eligible unknown candidates with a valid low selection-card estimate separately from measured recovery candidates. Scanning, ordinary replacement planning and selection consume that classification. Estimates retain their existing expiry, eligibility and measured-mood isolation under [INV-SCHED-15].
+The shared `DormCandidates` snapshot identifies eligible unknown candidates with a valid low selection-card estimate separately from measured recovery candidates. Scanning, vacancy filling and selection consume that classification. Estimates retain their existing expiry, eligibility and measured-mood isolation under [INV-SCHED-15]. Occupied-bed admission follows [INV-SCHED-43]: the estimated subset alone grants no replacement permission or full-occupancy retention override.
 
 ## Simplification Evidence
 
-`_plan_primary_recovery` repeats the estimate threshold check while `try_add_release_dorm` and `dorm_mood_fallback_candidates` consume only measured recovery or generic unknown states. Computing the low-estimate subset once in `dorm_candidates` replaces the planner's separate threshold loop and supplies both admission and selection with the same snapshot. No persistent flags or device scans are added.
+`dorm_candidates` computes the low-estimate subset once for `_plan_primary_recovery`, `try_add_release_dorm` and `dorm_mood_fallback_candidates`. The shared snapshot removes repeated estimate classification without granting independent takeover rights. The replacement planner admits estimated candidates in the first four protected tiers only through legal lower-tier takeover; other estimated candidates wait for vacancy admission. No persistent flags or device scans are added.
 
 The [replacement decision](../bug-fix/2026-10-02-estimated-idle-replacement.md) defines the behavior and focused tests. Existing glossary definitions already permit selection-card screening without establishing measured recovery.

@@ -2230,7 +2230,8 @@ class Operators:
                 row = plan.get(room, [])
                 resident = row[index] if index < len(row) else "Current"
                 if resident == "Current":
-                    resident = bed.name or (current.name if current else "")
+                    # 缓存姓名可能陈旧；预约由调用方的明确安排覆盖实际驻员。
+                    resident = current.name if current else ""
                     if resident in moving:
                         resident = ""
                 if location == position:
