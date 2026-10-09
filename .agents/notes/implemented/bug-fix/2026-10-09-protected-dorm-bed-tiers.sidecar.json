@@ -50,6 +50,7 @@
     "arknights_mower/tests/resting_correction_tests.py",
     "arknights_mower/tests/shift_off_mood_tests.py",
     "arknights_mower/tests/base_scheduler_tests.py",
-    "arknights_mower/tests/backup_condition_tests.py"
+    "arknights_mower/tests/backup_condition_tests.py",
+    "arknights_mower/tests/local_backup_replay_tests.py"
   ]
 }
