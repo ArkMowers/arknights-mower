@@ -29,22 +29,21 @@ function setup(overrides = {}) {
 }
 afterEach(() => scope?.stop())
 
-it('displays a recommendation without changing the selection until adopted', () => {
+it('displays resources without recommending a hardware-derived mode', () => {
   const { component } = setup({
     observation: { status: 'available', cpu_cores: 4, memory_mb: 3840, recommended_mode: 'high' }
   })
   expect(component.resourceLabel.value).toBe('CPU 4 核 · 内存 3.8 GiB')
-  expect(component.recommendation.value).toBe('high')
+  expect(component).not.toHaveProperty('recommendation')
   expect(state.config.performance_mode).toBe('auto')
   const before = { ...state.config }
-  component.applyMode(component.recommendation.value)
+  component.applyMode('high')
   expect(state.config).toEqual({ ...before, performance_mode: 'high' })
 })
 
 it('keeps manual choices when information is unavailable or changes', () => {
   const { component, props } = setup({ observation: { status: 'unavailable' } })
   state.config.performance_mode = 'xhigh'
-  expect(component.recommendation.value).toBe(null)
   expect(component.resourceLabel.value).toBe('')
   props.observation = {
     status: 'available',
@@ -52,7 +51,7 @@ it('keeps manual choices when information is unavailable or changes', () => {
     memory_mb: 1024,
     recommended_mode: 'low'
   }
-  expect(component.recommendation.value).toBe('low')
+  expect(component).not.toHaveProperty('recommendation')
   expect(state.config.performance_mode).toBe('xhigh')
 })
 

@@ -188,7 +188,15 @@ Admission reuses `Operators.project_arrangements` without changing Actual Occupa
 
 The [manual dormitory priority decision](../../.agents/notes/implemented/feature/2026-10-08-manual-dorm-priority.md) records verification.
 
+### Selection Performance Test
+
+The desktop connection settings expose an explicit game test using the saved Device Profile. Admission reserves the existing worker slot, rejects active tasks and device operations, and freezes performance timing edits until completion. The game starts on the base overview or dormitory one's room view. The test enters dormitory one's selection page and uses conservative preparation to locate two recognizable targets beyond the first page. Each candidate mode uses the same swipe, scan, reorder and selected-roster verification primitives as normal scheduling. Three consecutive successful rounds recommend the mode; the first selection failure restarts the count one mode lower, from `xhigh` through `high`, `medium` and `low`. Low failure produces no recommendation. Preparation, page-exit and device failures abort the test rather than changing its performance conclusion.
+
+The 240-second monotonic budget includes device startup and trials; compensation has a separate ten-second budget. Cancellation retains the worker reservation until exit and attempts to discard temporary selections. Device loss or shutdown can prevent compensation and is reported. The test never confirms staffing, modifies automatic feedback or saves a mode or timing value. Explicit adoption changes only the mode; a changed Device Profile or sampling/capture timing invalidates the displayed result. CPU and memory remain informational in the connection UI. The [test decision](../../.agents/notes/implemented/feature/2026-10-10-game-performance-test.md) owns rationale and verification evidence.
+
 ## 3. Subsystem Invariants
+
+- **[INV-SCHED-45] Selection Performance Test Isolation**: See the [selection performance test contract](#selection-performance-test) for input, trial, cancellation and adoption boundaries.
 
 - **[INV-SCHED-44] Training Slot Eligibility**: Manual and startup validation reject named training-slot assignments with synchronized basic skill level below seven or all skills at mastery three; assistant slots and placeholders are exempt, missing skill fields request synchronization, a failed refresh does not suppress known training eligibility errors, and failure messages direct users to meet the conditions and manually refresh Growth Planning.
 

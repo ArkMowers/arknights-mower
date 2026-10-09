@@ -232,6 +232,14 @@ def _resolve_operator_room_prefix(
 
 
 class BaseMixin:
+    agent_selection_positions = (
+        (0.35, 0.35),
+        (0.35, 0.75),
+        (0.45, 0.35),
+        (0.45, 0.75),
+        (0.55, 0.35),
+    )
+
     @property
     def performance_profile(self):
         snapshot = getattr(self, "_selection_profile_snapshot", None)
@@ -327,6 +335,20 @@ class BaseMixin:
             else max(profile.stable_page_matches + 1, profile.transition_attempts)
         )
         return profile.poll_interval, attempts
+
+    def reorder_selected_agents(self, agents, actual):
+        """Reapply selection order using the current mode's production timing."""
+        click_order = [actual.index(name) for name in agents]
+        mode = self.performance_profile.mode
+        interval = {"xhigh": 0, "high": 0.1}.get(mode, 0.2)
+        logger.debug(f"选人重排清空：性能档位{mode}，页面已选{actual}，目标{agents}")
+        self.tap(
+            (self.recog.w * 0.38, self.recog.h * 0.95),
+            interval=0.3 if mode == "high" else 0.5,
+        )
+        for index in click_order:
+            x, y = self.agent_selection_positions[index]
+            self.tap((self.recog.w * x, self.recog.h * y), interval=interval)
 
     profession_labels = [
         "ALL",

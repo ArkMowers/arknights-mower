@@ -678,7 +678,11 @@ onUnmounted(() => {
       </n-grid>
     </div>
 
-    <PerformanceSettings :observation="performanceObservation" :disabled="busy" />
+    <PerformanceSettings
+      :observation="performanceObservation"
+      :disabled="busy"
+      :test-enabled="!dirty && !state.locked"
+    />
 
     <template v-if="advanced">
       <div class="advanced-divider">

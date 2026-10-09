@@ -12,7 +12,7 @@ import time
 from functools import wraps
 from io import BytesIO
 from pathlib import Path
-from threading import RLock, Thread, Timer
+from threading import Event, RLock, Thread, Timer
 from urllib.parse import urlparse
 from uuid import uuid4
 from zlib import error as ZlibError
@@ -96,6 +96,80 @@ log_stream = LogStream()
 scheduled_start_lock = RLock()
 scheduled_start_timer = None
 scheduled_start_at = None
+performance_test_lock = RLock()
+performance_test_cancel = Event()
+performance_test_job = {"status": "idle", "id": None}
+
+
+def _performance_test_status():
+    from copy import deepcopy
+
+    with performance_test_lock:
+        return deepcopy(performance_test_job)
+
+
+def _report_performance_test(values):
+    with performance_test_lock:
+        performance_test_job.update(values)
+
+
+def _run_performance_test(configuration):
+    from arknights_mower.__main__ import device_control
+    from arknights_mower.solvers.performance_test import (
+        TEST_TIMEOUT,
+        SelectionPerformanceTest,
+    )
+    from arknights_mower.utils.csleep import MowerExit, cancellation_scope
+    from arknights_mower.utils.device.io_budget import device_io_budget
+
+    deadline = time.monotonic() + TEST_TIMEOUT
+
+    def remaining():
+        if performance_test_cancel.is_set() or config.stop_mower.is_set():
+            raise MowerExit("游戏内性能测试已取消")
+        value = deadline - time.monotonic()
+        if value <= 0:
+            raise TimeoutError("游戏内性能测试超时")
+        return value
+
+    def check_cancelled():
+        remaining()
+        return False
+
+    try:
+        with cancellation_scope(check_cancelled):
+            with device_control.run():
+                with device_io_budget(remaining):
+                    device = device_control.start(connection_retries=1).unwrap()
+                    solver = SelectionPerformanceTest(
+                        device,
+                        configuration,
+                        performance_test_cancel.is_set,
+                        _report_performance_test,
+                    )
+                # Cleanup gets its own bounded compensation allowance.
+                solver.test_deadline = deadline
+                result = solver.run()
+        _report_performance_test(result)
+    except MowerExit as exc:
+        _report_performance_test(
+            {
+                "status": "cancelled",
+                "recommended_mode": None,
+                "message": str(exc) or "游戏内性能测试已取消",
+                "phase": "done",
+            }
+        )
+    except Exception as exc:
+        logger.exception("游戏内性能测试中止")
+        _report_performance_test(
+            {
+                "status": "failed",
+                "recommended_mode": None,
+                "message": str(exc),
+                "phase": "done",
+            }
+        )
 
 
 def _cancel_scheduled_start():
@@ -144,6 +218,12 @@ def _mower_busy_response():
     笼统失败。
     """
     from arknights_mower.__main__ import base_scheduler
+
+    if _performance_test_status()["status"] == "running":
+        return {
+            "ok": False,
+            "message": "游戏内性能测试正在运行，请等待测试结束后再更新",
+        }
 
     if (
         mower_thread
@@ -706,7 +786,10 @@ def serialize_configuration_requests():
     ):
         backup_lock.acquire()
         g.configuration_locked = True
-    if request.path == "/conf" or request.path.startswith("/device/"):
+    if request.path == "/conf" or (
+        request.path.startswith("/device/")
+        and request.path != "/device/performance-test"
+    ):
         from arknights_mower.__main__ import device_control
 
         device_control.configuration_lock.acquire()
@@ -1002,6 +1085,90 @@ def device_preflight():
         ).to_dict()
 
 
+@app.route("/device/performance-test", methods=["GET", "POST", "DELETE"])
+@require_token
+def device_performance_test():
+    global mower_thread
+    from arknights_mower.__main__ import device_control
+    from arknights_mower.utils.performance import is_android_runtime
+
+    if request.method == "GET":
+        return _performance_test_status()
+    payload = request.get_json(silent=True)
+    if request.method == "DELETE":
+        with maa_maintenance_lock:
+            status = _performance_test_status()
+            if not isinstance(payload, dict) or set(payload) != {"id"}:
+                return {"message": "请指定要取消的性能测试"}, 400
+            if status.get("id") != payload["id"] or status["status"] != "running":
+                return {"message": "该性能测试已结束或被替换"}, 409
+            performance_test_cancel.set()
+            _report_performance_test({"message": "正在取消测试并退出选人页"})
+            return _performance_test_status()
+    if payload != {}:
+        return {"message": "性能测试使用已保存的设备设置，请先保存并测试连接"}, 400
+    if is_android_runtime():
+        return {"message": "游戏内性能测试目前仅支持桌面端"}, 400
+    _collect_maa_check_result()
+    with (
+        backup_lock,
+        maa_maintenance_lock,
+        maa_check_lock,
+        device_control.configuration_lock,
+    ):
+        if (
+            shutdown.closing
+            or active_job()
+            or device_control.active
+            or (mower_thread and mower_thread.is_alive())
+            or _job_running(maa_update_job)
+            or _job_running(maa_resource_update_job)
+            or resource_update.running()
+            or maa_check_job["status"] == "running"
+        ):
+            return {"message": "请停止当前任务并等待设备操作结束后测试"}, 409
+        configuration = config.conf.model_copy(deep=True)
+        performance_test_cancel.clear()
+        config.stop_mower.clear()
+        with performance_test_lock:
+            performance_test_job.clear()
+            performance_test_job.update(
+                {
+                    "id": uuid4().hex,
+                    "status": "running",
+                    "phase": "starting",
+                    "recommended_mode": None,
+                    "trials": [],
+                    "message": "正在连接设备",
+                    "device": configuration.device.model_dump(),
+                    "timing": {
+                        key: getattr(configuration, key)
+                        for key in (
+                            "screenshot_interval",
+                            "selection_poll_interval",
+                            "selection_transition_timeout",
+                        )
+                    },
+                }
+            )
+        mower_thread = Thread(
+            target=_run_performance_test, args=(configuration,), daemon=True
+        )
+        # The shared worker slot also gates starts, updates and process shutdown.
+        set_mower_thread(None)
+        try:
+            mower_thread.start()
+        except Exception:
+            mower_thread = None
+            set_mower_thread(None)
+            _report_performance_test(
+                {"status": "failed", "message": "未能启动性能测试"}
+            )
+            raise
+        _cancel_scheduled_start()
+        return _performance_test_status(), 202
+
+
 @app.route("/device/boss_key", methods=["POST"])
 @require_token
 def device_boss_key():
@@ -1062,6 +1229,18 @@ def load_config():
             }, 400
         req = dict(payload)
         from arknights_mower.__main__ import device_control
+
+        if _performance_test_status()["status"] == "running" and set(req) & {
+            "performance_mode",
+            "low_frame_rate_mode",
+            "screenshot_interval",
+            "selection_poll_interval",
+            "selection_transition_timeout",
+        }:
+            return {
+                "error": "performance_test_active",
+                "message": "请等待性能测试结束后修改档位或时间参数",
+            }, 409
 
         if device_control.active or (mower_thread and mower_thread.is_alive()):
             try:
@@ -2039,7 +2218,12 @@ def validate_backup_plans_route():
 def get_maa_adb_version():
     from arknights_mower.__main__ import device_control
 
+    if _performance_test_status()["status"] == "running":
+        return {"status": "error", "message": "请等待游戏内性能测试结束后测试 MAA"}
+
     with maa_check_lock:
+        if _performance_test_status()["status"] == "running":
+            return {"status": "error", "message": "请等待游戏内性能测试结束后测试 MAA"}
         _collect_maa_check_result()
         if maa_check_job["status"] == "running":
             return {

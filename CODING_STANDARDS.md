@@ -12,6 +12,8 @@
 
 ## 2. Subsystem Invariants
 
+- **[INV-SCHED-45] Selection Performance Test Isolation**: Explicit game tests recommend a mode only after three consecutive verified rounds, lower it on the first selection failure, preserve staffing and saved settings, and own bounded cancellable execution and compensation. See the [scheduler contract](docs/subsystems/base-scheduler.md#selection-performance-test).
+
 - **[INV-RES-04] Operator Avatar Completeness**: Resource generation rejects missing or unreadable avatars instead of publishing an operator directory without a decoded 96×96 WEBP avatar for each obtainable operator.
 
 - **[INV-RES-03] Building Skill Facility Preservation**: Resource generation retains all upstream building skills, maps known facility codes and preserves unknown codes without aborting.
