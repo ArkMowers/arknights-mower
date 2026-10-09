@@ -545,13 +545,16 @@ def test_maa_connect_preserves_shared_compatibility(
         ("connected to 127.0.0.1:5559", False),
     ],
 )
+@pytest.mark.parametrize("clock_start", [0.0, 510.2])
 def test_selected_emulator_alias_recovery_connects_only_pinned_ports(
-    response, accepted
+    response, accepted, clock_start
 ):
     runner = Mock(
         return_value=subprocess.CompletedProcess([], 0, response.encode(), b"")
     )
-    adb = ProductionSessionADB(run=runner, probe=lambda timeout: None)
+    adb = ProductionSessionADB(
+        run=runner, probe=lambda timeout: None, monotonic=lambda: clock_start
+    )
     assert adb.recover(ADB, "emulator-5558", 5) is accepted
     runner.assert_called_once()
     assert runner.call_args.args == ([ADB, "connect", "emu:5558,5559"],)

@@ -74,6 +74,9 @@ class AndroidPackageTests(unittest.TestCase):
                 self.assertIn("python-runtime.zip.xz", z.namelist())
                 self.assertEqual(meta["version"], "4.2.0")
                 self.assertIn("mower/ui/dist/index.html", z.namelist())
+                self.assertEqual(
+                    z.read("mower/arknights_mower/data/building_skill.json"), b"payload"
+                )
                 self.assertFalse(
                     any(name.startswith("mower/ui/src/") for name in z.namelist())
                 )
@@ -105,6 +108,18 @@ class AndroidPackageTests(unittest.TestCase):
                 path.write_text("payload")
             (root / "arknights_mower/__init__.py").write_text('__version__ = "4.2.0"\n')
             with self.assertRaisesRegex(ValueError, "missing Python runtime"):
+                package(root, root / "out", "4.2.0", "a" * 40)
+            self.assertFalse((root / "out").exists())
+
+    def test_missing_shared_skill_data_prevents_packaging(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for name in REQUIRED:
+                target = root / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("payload")
+            (root / "arknights_mower/data/building_skill.json").unlink()
+            with self.assertRaisesRegex(ValueError, "missing build input"):
                 package(root, root / "out", "4.2.0", "a" * 40)
             self.assertFalse((root / "out").exists())
 
@@ -173,6 +188,7 @@ class AndroidArchiveValidationTests(unittest.TestCase):
     def test_bad_payload_cannot_be_published(self):
         cases = [
             {"mower/CHANGELOG.md": " "},
+            {"mower/arknights_mower/data/building_skill.json": ""},
             {"python-runtime.zip.xz": "corrupt"},
             {"mower/server.py": "def invalid("},
             {"mower/arknights_mower/utils/git_revision": "b" * 40},

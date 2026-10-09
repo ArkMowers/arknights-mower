@@ -16,6 +16,36 @@ from arknights_mower.utils.device.endpoint_identity import emulator_connect_targ
 
 
 class SharedADBTests(unittest.TestCase):
+    def test_frozen_clock_cannot_inflate_guard_or_command_budget(self):
+        for clock_start in (0.0, 510.2):
+            with self.subTest(clock_start=clock_start):
+                runner = Mock(
+                    return_value=subprocess.CompletedProcess(
+                        [], 0, b"Android Debug Bridge version 1.0.41\n", b""
+                    )
+                )
+                probe = Mock(return_value=41)
+                run_adb(
+                    ["adb", "devices"],
+                    timeout=5,
+                    run=runner,
+                    probe=probe,
+                    monotonic=lambda: clock_start,
+                )
+                self.assertEqual(probe.call_args.args, (5,))
+                self.assertEqual(
+                    [call.kwargs["timeout"] for call in runner.call_args_list], [5, 5]
+                )
+                self.assertEqual(
+                    guard_adb(
+                        "adb",
+                        timeout=5,
+                        probe=lambda timeout: None,
+                        monotonic=lambda: clock_start,
+                    ),
+                    5,
+                )
+
     def test_unverified_client_version_never_executes_device_command(self):
         for output in (
             b"unknown executable",
@@ -175,6 +205,19 @@ class SharedADBTests(unittest.TestCase):
 
 
 class ServerProbeTests(unittest.TestCase):
+    def test_frozen_clock_cannot_inflate_socket_budgets(self):
+        for clock_start in (0.0, 510.2):
+            for operation, replies in (
+                (probe_adb_server, [b"OKAY", b"0004", b"0029"]),
+                (kill_adb_server, [b"OKAY"]),
+            ):
+                with self.subTest(clock_start=clock_start, operation=operation):
+                    factory, connection = self.connection()
+                    connection.recv.side_effect = replies
+                    operation(5, socket_factory=factory, monotonic=lambda: clock_start)
+                    for call in connection.settimeout.call_args_list:
+                        self.assertEqual(call.args, (5,))
+
     def connection(self):
         factory = MagicMock()
         connection = factory.return_value.__enter__.return_value

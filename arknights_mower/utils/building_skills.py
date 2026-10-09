@@ -3,23 +3,19 @@
 import json
 import re
 from functools import lru_cache
-from pathlib import Path
 
-from arknights_mower import __rootdir__
 from arknights_mower.utils.mastery_recommendation import get_cultivate_characters
+from arknights_mower.utils.res_version import BUILDING_SKILL_DATA
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
-    resource_ui_path,
+    resource_pkg_path,
 )
 from arknights_mower.utils.schedule_roster import _operator_ids_by_name
 
 
 @lru_cache(maxsize=1)
 def skill_index():
-    relative = "pages/basement_skill/skill.json"
-    path = resource_ui_path(relative, source=True)
-    if path is None:
-        path = Path(__rootdir__).parent / "ui" / "src" / relative
+    path = resource_pkg_path(BUILDING_SKILL_DATA)
     return {
         a["name"]: a.get("child_skill", []) for a in json.loads(path.read_text("utf-8"))
     }

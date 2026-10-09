@@ -36,11 +36,11 @@ class SharedADBStopTimeout(SharedADBError):
     """The explicit protocol stop receives no answer within its budget."""
 
 
-def _remaining(deadline, monotonic):
+def _remaining(deadline, monotonic, timeout):
     remaining = deadline - monotonic()
     if remaining <= 0:
         raise SharedADBError("共享 ADB 检查或命令的时间预算已耗尽")
-    return remaining
+    return min(timeout, remaining)
 
 
 def _check_server_environment(environment):
@@ -55,15 +55,15 @@ def _check_server_environment(environment):
             raise SharedADBError(f"{name} 重定向了 ADB server，无法安全验证共享 server")
 
 
-def _receive(connection, length, deadline, monotonic):
+def _receive(connection, length, deadline, monotonic, timeout):
     output = bytearray()
     while len(output) < length:
-        connection.settimeout(_remaining(deadline, monotonic))
+        connection.settimeout(_remaining(deadline, monotonic, timeout))
         data = connection.recv(length - len(output))
         if not data:
             raise SharedADBError("共享 ADB server 提前关闭了响应")
         output.extend(data)
-    _remaining(deadline, monotonic)
+    _remaining(deadline, monotonic, timeout)
     return bytes(output)
 
 
@@ -81,17 +81,17 @@ def probe_adb_server(
     phase = "connect"
     try:
         with factory(socket.AF_INET, socket.SOCK_STREAM) as connection:
-            connection.settimeout(_remaining(deadline, monotonic))
+            connection.settimeout(_remaining(deadline, monotonic, timeout))
             try:
                 connection.connect(address or ADB_SERVER_ADDRESS)
             except ConnectionRefusedError:
                 return None
             phase = "response"
-            connection.settimeout(_remaining(deadline, monotonic))
+            connection.settimeout(_remaining(deadline, monotonic, timeout))
             connection.sendall(b"000chost:version")
 
             def receive(length):
-                return _receive(connection, length, deadline, monotonic)
+                return _receive(connection, length, deadline, monotonic, timeout)
 
             if receive(4) != b"OKAY" or receive(4) != b"0004":
                 raise SharedADBError("共享 ADB server 返回的版本响应格式无效")
@@ -113,11 +113,11 @@ def kill_adb_server(timeout, *, monotonic=time.monotonic, socket_factory=None):
     factory = socket_factory or socket.socket
     try:
         with factory(socket.AF_INET, socket.SOCK_STREAM) as connection:
-            connection.settimeout(_remaining(deadline, monotonic))
+            connection.settimeout(_remaining(deadline, monotonic, timeout))
             connection.connect(ADB_SERVER_ADDRESS)
-            connection.settimeout(_remaining(deadline, monotonic))
+            connection.settimeout(_remaining(deadline, monotonic, timeout))
             connection.sendall(b"0009host:kill")
-            response = _receive(connection, 4, deadline, monotonic)
+            response = _receive(connection, 4, deadline, monotonic, timeout)
             if response == b"FAIL":
                 raise SharedADBError("共享 ADB server 拒绝显式停止请求（FAIL）")
             if response != b"OKAY":
@@ -167,10 +167,10 @@ def guard_adb(adb_path, *, timeout, run=None, probe=None, monotonic=time.monoton
     try:
         if probe is None:
             version = probe_adb_server(
-                _remaining(deadline, monotonic), monotonic=monotonic
+                _remaining(deadline, monotonic, timeout), monotonic=monotonic
             )
         else:
-            version = probe(_remaining(deadline, monotonic))
+            version = probe(_remaining(deadline, monotonic, timeout))
     except OSError as exc:
         raise SharedADBError(f"无法安全读取共享 ADB server 状态：{exc}") from exc
     if version is not None:
@@ -178,11 +178,11 @@ def guard_adb(adb_path, *, timeout, run=None, probe=None, monotonic=time.monoton
             raise SharedADBError("共享 ADB server 的协议版本无效")
         client_version = adb_client_version(
             adb_path,
-            timeout=_remaining(deadline, monotonic),
+            timeout=_remaining(deadline, monotonic, timeout),
             run=runner,
         )
         check_adb_version(client_version, version)
-    return _remaining(deadline, monotonic)
+    return _remaining(deadline, monotonic, timeout)
 
 
 def run_adb(argv, *, timeout, run=None, probe=None, monotonic=time.monotonic, **kwargs):
@@ -206,11 +206,11 @@ def run_adb(argv, *, timeout, run=None, probe=None, monotonic=time.monotonic, **
     if command != "version":
         guard_adb(
             argv[0],
-            timeout=_remaining(deadline, monotonic),
+            timeout=_remaining(deadline, monotonic, timeout),
             run=runner,
             probe=probe,
             monotonic=monotonic,
         )
-    result = runner(argv, timeout=_remaining(deadline, monotonic), **kwargs)
-    _remaining(deadline, monotonic)
+    result = runner(argv, timeout=_remaining(deadline, monotonic, timeout), **kwargs)
+    _remaining(deadline, monotonic, timeout)
     return result

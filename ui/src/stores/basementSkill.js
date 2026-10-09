@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import axios from 'axios'
-import skillBundled from '@/pages/basement_skill/skill.json'
+import skillBundled from '../../../arknights_mower/data/building_skill.json'
 import bufferBundled from '@/pages/basement_skill/buffer.json'
 
 // 基建技能页数据：构建期内联的 JSON 作为内置兜底，运行时优先用资源包下发的版本。

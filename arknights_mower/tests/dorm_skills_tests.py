@@ -4,6 +4,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from arknights_mower.utils import dorm_skills
+from arknights_mower.utils.res_version import (
+    BUILDING_SKILL_DATA,
+    BUILDING_SKILL_PACKAGE_PATH,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -43,7 +47,7 @@ def test_matches_rich_text_and_only_requested_agents(monkeypatch):
 
 @pytest.mark.parametrize("overlay", [False, True])
 def test_skill_file_loaded_once_until_resource_reload(tmp_path, monkeypatch, overlay):
-    relative = "ui/src/pages/basement_skill/skill.json"
+    relative = BUILDING_SKILL_PACKAGE_PATH if overlay else BUILDING_SKILL_DATA
     skill_file = tmp_path / relative
     skill_file.parent.mkdir(parents=True)
     skill_file.write_text(
@@ -51,9 +55,8 @@ def test_skill_file_loaded_once_until_resource_reload(tmp_path, monkeypatch, ove
             [{"name": "琴柳", "child_skill": [{"des": dorm_skills._SINGLE_RECOVERY}]}]
         )
     )
-    monkeypatch.setattr(dorm_skills, "__rootdir__", tmp_path / "arknights_mower")
-    lookup = MagicMock(return_value=skill_file if overlay else None)
-    monkeypatch.setattr(dorm_skills, "resource_ui_path", lookup)
+    lookup = MagicMock(return_value=skill_file)
+    monkeypatch.setattr(dorm_skills, "resource_pkg_path", lookup)
     assert dorm_skills.is_single_recovery_manager("琴柳")
     # 文件随后不可读也不影响已加载版本，不重复 I/O 或文本匹配。
     skill_file.unlink()
@@ -67,15 +70,16 @@ def test_skill_file_loaded_once_until_resource_reload(tmp_path, monkeypatch, ove
     assert lookup.call_count == 2
 
 
-def test_packaged_app_includes_backend_skill_source(monkeypatch):
+def test_packaged_app_includes_shared_skill_data_without_frontend_sources(monkeypatch):
     import build_assets
 
     monkeypatch.setattr(build_assets, "ensure_frontend_built", lambda: None)
     datas = build_assets.get_pyinstaller_common_datas()
     assert (
-        str(build_assets.PROJECT_ROOT / "ui/src/pages/basement_skill/skill.json"),
-        "ui/src/pages/basement_skill",
+        str(build_assets.PROJECT_ROOT / BUILDING_SKILL_DATA),
+        "arknights_mower/data",
     ) in datas
+    assert not any("ui/src" in source for source, _ in datas)
 
 
 @pytest.mark.parametrize("name", ["杜林", "夜莺", "赫拉格", "冰酿"])
@@ -123,7 +127,7 @@ def test_group_recovery_requires_dorm_skill_and_matches_rich_text(monkeypatch):
 def test_group_and_single_classification_share_file_cache_and_reload(
     tmp_path, monkeypatch, overlay
 ):
-    relative = "ui/src/pages/basement_skill/skill.json"
+    relative = BUILDING_SKILL_PACKAGE_PATH if overlay else BUILDING_SKILL_DATA
     skill_file = tmp_path / relative
     skill_file.parent.mkdir(parents=True)
     skill_file.write_text(
@@ -144,9 +148,8 @@ def test_group_and_single_classification_share_file_cache_and_reload(
             ]
         )
     )
-    monkeypatch.setattr(dorm_skills, "__rootdir__", tmp_path / "arknights_mower")
-    lookup = MagicMock(return_value=skill_file if overlay else None)
-    monkeypatch.setattr(dorm_skills, "resource_ui_path", lookup)
+    lookup = MagicMock(return_value=skill_file)
+    monkeypatch.setattr(dorm_skills, "resource_pkg_path", lookup)
     assert dorm_skills.is_group_recovery_manager("群回")
     assert dorm_skills.is_single_recovery_manager("单回")
     skill_file.unlink()
