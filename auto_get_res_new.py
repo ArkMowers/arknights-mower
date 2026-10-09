@@ -8,7 +8,6 @@ from datetime import datetime, timedelta, timezone
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from skimage.feature import hog
 
 from arknights_mower.utils.furniture_data import (
     FURNITURE_DATA_PATH,
@@ -631,6 +630,8 @@ class Arknights数据处理器:
         self.load_recruit_tag()
 
     def 训练仓库的knn模型(self, 模板文件夹, 模型保存路径):
+        from skimage.feature import hog
+
         def 提取特征点(模板):
             模板 = 模板[40:173, 40:173]
             hog_features = hog(

@@ -1,6 +1,9 @@
 """Offline regressions for upstream building-skill resource generation."""
 
 import json
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -60,3 +63,28 @@ def test_building_skill_generation_preserves_new_and_unknown_facilities(
     assert skill["skillIcon"] == "test_icon"
     assert skill["buffer_des"] == ["recycle_power"]
     assert processor.所有buff == ["recycle_power"]
+
+
+def test_metadata_generator_import_does_not_require_skimage():
+    script = """
+import importlib.abc
+import sys
+
+class NoSkimage(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.partition(".")[0] == "skimage":
+            raise ModuleNotFoundError("skimage is absent from runtime dependencies", name=fullname)
+
+sys.meta_path.insert(0, NoSkimage())
+from auto_get_res_new import Arknights数据处理器
+assert callable(Arknights数据处理器.获得干员基建描述)
+assert "skimage" not in sys.modules
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path(__file__).resolve().parents[2],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
