@@ -1,0 +1,88 @@
+{
+  "baseline": "d4e22126",
+  "python": "3.12.10",
+  "platform": "win32",
+  "scope": "Fake process/pipes/ADB probe; real gesture waits. Optional local version only.",
+  "pipes": {
+    "before": {
+      "handshake_send_close": {
+        "n": 40,
+        "median_ms": 21.043,
+        "p95_ms": 22.553,
+        "min_ms": 20.669,
+        "max_ms": 22.73
+      },
+      "tap": {
+        "n": 40,
+        "median_ms": 71.956,
+        "p95_ms": 72.732,
+        "min_ms": 70.867,
+        "max_ms": 73.197
+      },
+      "swipe_100ms": {
+        "n": 40,
+        "median_ms": 295.077,
+        "p95_ms": 297.738,
+        "min_ms": 293.624,
+        "max_ms": 299.909
+      },
+      "counts": {
+        "processes": 120,
+        "guards": 120
+      },
+      "pipe_delay_ms": 1.0
+    },
+    "after": {
+      "handshake_send_close": {
+        "n": 40,
+        "median_ms": 4.124,
+        "p95_ms": 4.778,
+        "min_ms": 3.531,
+        "max_ms": 5.444
+      },
+      "tap": {
+        "n": 40,
+        "median_ms": 54.871,
+        "p95_ms": 55.945,
+        "min_ms": 53.756,
+        "max_ms": 57.053
+      },
+      "swipe_100ms": {
+        "n": 40,
+        "median_ms": 260.036,
+        "p95_ms": 261.402,
+        "min_ms": 258.508,
+        "max_ms": 262.105
+      },
+      "counts": {
+        "processes": 120,
+        "guards": 120
+      },
+      "pipe_delay_ms": 1.0
+    }
+  },
+  "local_version": {
+    "before": {
+      "first_ms": 88.776,
+      "subsequent": {
+        "n": 40,
+        "median_ms": 67.162,
+        "p95_ms": 86.789,
+        "min_ms": 59.947,
+        "max_ms": 90.267
+      },
+      "version_processes": 41
+    },
+    "after": {
+      "first_ms": 81.481,
+      "subsequent": {
+        "n": 40,
+        "median_ms": 5.644,
+        "p95_ms": 6.175,
+        "min_ms": 5.111,
+        "max_ms": 6.376
+      },
+      "version_processes": 1
+    }
+  }
+}

@@ -4,15 +4,25 @@ An ADB CLI can kill an existing server on a protocol-version mismatch. The
 host:version socket request and local `adb version` command do not do that.
 """
 
+import hashlib
+import math
 import os
 import re
 import socket
+import stat
 import subprocess
 import time
+from collections import OrderedDict
+from threading import Lock
 
 from arknights_mower.utils.device.manager_io import run_command
 
 ADB_SERVER_ADDRESS = ("127.0.0.1", 5037)
+_DEFAULT_RUN_COMMAND = run_command
+_ADB_VERSION_CACHE = OrderedDict()
+_ADB_VERSION_CACHE_LOCK = Lock()
+_ADB_VERSION_CACHE_CAPACITY = 16
+_ADB_VERSION_MAX_FILE_SIZE = 32 * 1024 * 1024
 
 
 class SharedADBError(RuntimeError):
@@ -128,14 +138,104 @@ def kill_adb_server(timeout, *, monotonic=time.monotonic, socket_factory=None):
         raise SharedADBError(f"无法显式停止共享 ADB server：{exc}") from exc
 
 
+def _adb_file_state(path):
+    identity = os.stat(path)
+    if (
+        not stat.S_ISREG(identity.st_mode)
+        or not identity.st_ino
+        or not 0 < identity.st_size <= _ADB_VERSION_MAX_FILE_SIZE
+    ):
+        return None
+    return (
+        path,
+        identity.st_dev,
+        identity.st_ino,
+        identity.st_mode,
+        identity.st_size,
+        identity.st_mtime_ns,
+        identity.st_ctime_ns,
+    )
+
+
+def _adb_executable_identity(adb_path):
+    try:
+        path = os.fspath(adb_path)
+        if not os.path.isabs(path) or (
+            os.name == "nt" and not os.path.splitdrive(path)[0]
+        ):
+            return None
+        path = os.path.realpath(path, strict=True)
+        identity = _adb_file_state(path)
+        if identity is None or not _is_native_adb(path):
+            return None
+        with open(path, "rb") as executable:
+            content = executable.read(identity[4] + 1)
+        if len(content) != identity[4] or _adb_file_state(path) != identity:
+            return None
+        return (*identity, hashlib.sha256(content).digest())
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def _is_native_adb(path):
+    try:
+        with open(path, "rb") as executable:
+            header = executable.read(64)
+            if header[:4] in {
+                b"\x7fELF",
+                b"\xfe\xed\xfa\xce",
+                b"\xce\xfa\xed\xfe",
+                b"\xfe\xed\xfa\xcf",
+                b"\xcf\xfa\xed\xfe",
+            }:
+                return True
+            if len(header) == 64 and header[:2] == b"MZ":
+                offset = int.from_bytes(header[60:64], "little")
+                if 64 <= offset <= 1024 * 1024:
+                    executable.seek(offset)
+                    return executable.read(4) == b"PE\0\0"
+    except OSError:
+        pass
+    return False
+
+
 def adb_client_version(adb_path, *, timeout, run=None):
+    """Reuse only an unchanged native executable's local protocol version.
+
+    Shared-server observations are never cached. Relative paths, wrappers,
+    unavailable file identities and injected runners retain a fresh command.
+    """
     runner = run or run_command
+    deadline = (
+        time.monotonic() + timeout
+        if runner is _DEFAULT_RUN_COMMAND and math.isfinite(timeout) and timeout > 0
+        else None
+    )
+    identity = _adb_executable_identity(adb_path) if deadline is not None else None
+    if identity is not None:
+        with _ADB_VERSION_CACHE_LOCK:
+            cached = _ADB_VERSION_CACHE.get(identity)
+            if cached is not None:
+                _ADB_VERSION_CACHE.move_to_end(identity)
+        if cached is not None:
+            if _adb_executable_identity(adb_path) != identity:
+                raise SharedADBError(
+                    "所选 ADB 文件在版本检查期间发生变化，保留共享 server"
+                )
+            if time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired([adb_path, "version"], timeout)
+            return cached
+    remaining = (
+        timeout if deadline is None else min(timeout, deadline - time.monotonic())
+    )
+    if deadline is not None and remaining <= 0:
+        raise subprocess.TimeoutExpired([adb_path, "version"], timeout)
     result = runner(
         [adb_path, "version"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=True,
-        timeout=timeout,
+        timeout=remaining,
         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
     )
     result.check_returncode()
@@ -147,7 +247,19 @@ def adb_client_version(adb_path, *, timeout, run=None):
     )
     if len(matches) != 1 or int(matches[0]) <= 0:
         raise SharedADBError("无法确认所选 ADB 程序的协议版本，保留共享 server")
-    return int(matches[0])
+    version = int(matches[0])
+    if identity is not None:
+        if _adb_executable_identity(adb_path) != identity:
+            raise SharedADBError("所选 ADB 文件在版本检查期间发生变化，保留共享 server")
+    if deadline is not None and time.monotonic() >= deadline:
+        raise subprocess.TimeoutExpired([adb_path, "version"], timeout)
+    if identity is not None:
+        with _ADB_VERSION_CACHE_LOCK:
+            _ADB_VERSION_CACHE[identity] = version
+            _ADB_VERSION_CACHE.move_to_end(identity)
+            while len(_ADB_VERSION_CACHE) > _ADB_VERSION_CACHE_CAPACITY:
+                _ADB_VERSION_CACHE.popitem(last=False)
+    return version
 
 
 def check_adb_version(client_version, server_version):

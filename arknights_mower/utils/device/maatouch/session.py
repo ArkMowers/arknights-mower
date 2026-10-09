@@ -26,6 +26,7 @@ class Session:
         self._closed = False
         self._lock = RLock()
         self._closed_event = Event()
+        self._io_event = Event()
         self._io_thread = None
         self.input_started = False
         if not defer_start:
@@ -92,6 +93,7 @@ class Session:
     def _io(self, operation, timeout=10, *, input_operation=False):
         """Bound pipe operations on Windows too; closing reaps their process."""
         done = Event()
+        wake = Event()
         result = []
         errors = []
         deadline = time.monotonic() + io_timeout(max(0, timeout))
@@ -103,6 +105,7 @@ class Session:
                 errors.append(exc)
             finally:
                 done.set()
+                wake.set()
 
         with self._lock:
             if self._closed_event.is_set() or self.owner_pid != os.getpid():
@@ -111,17 +114,21 @@ class Session:
                 raise ConnectionError("MaaTouch 进程提前退出")
             if time.monotonic() >= deadline:
                 raise TimeoutError("MaaTouch I/O 超时")
+            self._io_event = wake
             self._io_thread = Thread(target=run, daemon=True, name="maatouch-io")
             if input_operation:
                 self.input_started = True
             self._io_thread.start()
         while not done.is_set():
+            if self._closed_event.is_set():
+                raise ConnectionError("MaaTouch 会话已关闭")
             remaining = min(deadline - time.monotonic(), io_timeout(10))
             if remaining <= 0:
                 raise TimeoutError("MaaTouch I/O 超时")
-            if self._closed_event.wait(min(0.01, remaining)):
+            wake.wait(min(0.01, remaining))
+            if self._closed_event.is_set():
                 raise ConnectionError("MaaTouch 会话已关闭")
-        if self._closed:
+        if self._closed_event.is_set():
             raise ConnectionError("MaaTouch 会话已关闭")
         if time.monotonic() >= deadline:
             raise TimeoutError("MaaTouch I/O 超时")
@@ -155,6 +162,7 @@ class Session:
                 return
             self._closed = True
             self._closed_event.set()
+            self._io_event.set()
             process = self.process
             worker = self._io_thread
         if process is None:
@@ -204,6 +212,7 @@ class Session:
     def interrupt(self):
         if self.owner_pid == os.getpid():
             self._closed_event.set()
+            self._io_event.set()
 
     def send(self, content: str):
         def write():
