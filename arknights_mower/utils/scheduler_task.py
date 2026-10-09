@@ -1173,6 +1173,7 @@ def rebalance_closing_dorm_slots(op_data, plan, recalled):
             op_data.operators[name].group
             for _key, _order, name, _time, _position in dropped
             if op_data.operators[name].is_high()
+            and op_data.is_group_shift_anchor(op_data.operators[name])
             and op_data.operators[name].group
             and op_data.operators[name].group not in inactive_groups
         }
@@ -1312,7 +1313,7 @@ def rebalance_plan_swap_dorms(
     plan = {}
     for _key, _order, name, _time, _position in dropped:
         op = op_data.operators[name]
-        if op.is_high():
+        if op.is_high() and (not op.group or op_data.is_group_shift_anchor(op)):
             members = op_data.groups[op.group] if op.group else [name]
             _native_return(op_data, plan, members)
 
@@ -1685,6 +1686,7 @@ def plan_metadata(op_data, tasks):
             for v in op_data.operators.values()
             if v.is_high()
             and not v.multi_group
+            and (not v.group or op_data.is_group_shift_anchor(v))
             and not v.room.startswith("dorm")
             and not v.is_resting()
             and not op_data.is_standby(v.name)
@@ -1723,6 +1725,7 @@ def plan_metadata(op_data, tasks):
                     (name, existing_targets.get(name, (op.room, op.index)), op.group)
                     for name in members
                     for op in [op_data.operators[name]]
+                    if not operator.group or op_data.is_group_shift_anchor(op)
                 )
             ),
         )
@@ -1749,7 +1752,9 @@ def plan_metadata(op_data, tasks):
                 or dorm.position in locked_slots
             ):
                 continue
-            if not operator.multi_group:
+            if not operator.multi_group and (
+                not operator.group or op_data.is_group_shift_anchor(operator)
+            ):
                 grouped_dorms[operator.group].append(dorm)
             if (
                 dorm in op_data.dorm
@@ -1901,6 +1906,8 @@ def plan_metadata(op_data, tasks):
         if (
             not op.is_high()
             or op.multi_group
+            or op.group
+            and not op_data.is_group_shift_anchor(op)
             or op.room.startswith("dorm")
             or op.current_room
             or not op_data.rest_mood_complete(op.name)
@@ -1917,9 +1924,7 @@ def plan_metadata(op_data, tasks):
         workers = [
             op_data.operators[name]
             for name in members
-            if not op_data.operators[name].room.startswith("dorm")
-            and not op_data.operators[name].workaholic
-            and not op_data.operators[name].multi_group
+            if op_data.is_group_shift_anchor(op_data.operators[name])
         ]
         if not all(
             not worker.current_room
@@ -2459,7 +2464,7 @@ def dorm_residents(op_data):
 
 
 def restore_displaced_resting(op_data, previous, plan, tasks, *, admitted=None):
-    """已恢复成员和候补让床不打断同组恢复；必需组员失床召回整组。"""
+    """候补和多绑组成员失床不触发绑组回班；普通必需主班失床召回整组。"""
     # 同一份实际观测贯穿补偿；分床器明确返回的预约单独覆盖，避免旧缓存冒充入住者。
     current = {**previous, **(admitted or {})}
     for bed in op_data.all_dorms():
@@ -2486,6 +2491,8 @@ def restore_displaced_resting(op_data, previous, plan, tasks, *, admitted=None):
         op = op_data.operators.get(name)
         if op is None or not op.is_high() or op.room not in op_data.plan:
             continue
+        if op.multi_group or op.group and not op_data.is_group_shift_anchor(op):
+            continue
         members = op_data.shift_group_members(op.group) if op.group else [name]
         completed = (
             bool(op.group)
@@ -2494,9 +2501,7 @@ def restore_displaced_resting(op_data, previous, plan, tasks, *, admitted=None):
         )
         if (completed or op_data._can_standby(op)) and any(
             anchor.name in retained
-            and anchor.is_high()
-            and not anchor.room.startswith("dorm")
-            and not anchor.workaholic
+            and op_data.is_group_shift_anchor(anchor)
             and (
                 op_data._can_standby(op)
                 and resting_tier(op_data, anchor.name)

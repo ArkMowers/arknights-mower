@@ -1045,13 +1045,7 @@ class Operators:
                 if index >= len(slots) or name in ("", "Current", "Free"):
                     continue
                 op = self.operators.get(slots[index].agent)
-                if (
-                    op is None
-                    or not op.group
-                    or op.multi_group
-                    or op.workaholic
-                    or op.room.startswith("dorm")
-                ):
+                if op is None or not op.group or not self.is_group_shift_anchor(op):
                     continue
                 if name == op.name:
                     transitions[op.group] = False
@@ -1242,8 +1236,7 @@ class Operators:
         moods = [
             self.operators[name].current_mood()
             for name in members
-            if not self.operators[name].workaholic
-            and not getattr(self.operators[name], "multi_group", False)
+            if self.is_group_shift_anchor(self.operators[name])
         ]
         if not moods:
             raise ValueError(f"绑组内没有可统计心情的干员：{group}")
@@ -1547,7 +1540,8 @@ class Operators:
         if update_time and 0 <= mood < agent.upper_limit:
             # 最低者确实需要恢复时，之后回满仍按普通不养闲人处理。
             agent.dorm_mood_fallback = ""
-        self.update_standby_low_priority(agent, returned_to_post=returned_to_post)
+        if returned_to_post or not self.config.is_resting_standby(agent.name):
+            self.update_standby_low_priority(agent, returned_to_post=returned_to_post)
         if current_room == "train" and current_index == 0:
             agent.resting_from_train = True
         elif (current_room and not to_dorm) or mood >= 24:
@@ -1765,6 +1759,16 @@ class Operators:
             and not self.config.is_rest_in_full(op.name)
         )
 
+    def is_group_shift_anchor(self, op):
+        """只有普通固定工作主班参与绑组上下班，候补升为低优不改变身份。"""
+        return (
+            op.is_high()
+            and not op.multi_group
+            and not op.workaholic
+            and not op.room.startswith("dorm")
+            and not self._can_standby(op)
+        )
+
     def rescue_mood_threshold(self, op):
         """按个人心情上下限换算现有急救阈值。"""
         return op.lower_limit + (op.upper_limit - op.lower_limit) * (
@@ -1813,16 +1817,10 @@ class Operators:
             return False
         if not op.group:
             return self.has_resting_anchor()
-        return any(
-            (
-                member.is_high()
-                and not self._can_standby(member)
-                and not member.room.startswith("dorm")
-                and not member.workaholic
-            )
-            and member.is_resting()
-            and self.get_dorm_by_name(member.name)[0] is not None
-            for member in (self.operators[n] for n in self.groups.get(op.group, []))
+        return (
+            bool(self.resting_binding_groups(op))
+            if op.multi_group
+            else self.group_is_resting(op.group)
         )
 
     def has_dorm_groups(self):
@@ -1836,9 +1834,7 @@ class Operators:
         if group in self.group_shift_state:
             return self.group_shift_state[group]
         return any(
-            not self.operators[name].room.startswith("dorm")
-            and not self.operators[name].workaholic
-            and not self.operators[name].multi_group
+            self.is_group_shift_anchor(self.operators[name])
             and self.operators[name].is_resting()
             for name in self.groups.get(group, [])
         )
@@ -2100,6 +2096,7 @@ class Operators:
                 and not v.multi_group
                 and v.operator_type != "low"
                 and not v.workaholic
+                and (not v.group or self.is_group_shift_anchor(v))
                 and not self.is_standby(k)
             ):
                 current_mood += v.current_mood() - v.lower_limit
@@ -2459,10 +2456,10 @@ class Operators:
             bed.name in self.operators
             and self.is_effective_free_slot(bed)
             and (op := self.operators[bed.name]).is_high()
-            and not self._can_standby(op)
+            and self.is_group_shift_anchor(op)
             and not self.rest_mood_complete(op.name)
             and (group is None or op.group == group)
-            for bed in self.dorm
+            for bed in self.all_dorms()
         )
 
     def standby_candidates(self, names):
@@ -2472,12 +2469,7 @@ class Operators:
         anchor_groups = {
             op.group
             for op in (self.operators[n] for n in names)
-            if (
-                op.group
-                and op.is_high()
-                and not self._can_standby(op)
-                and not op.workaholic
-            )
+            if (op.group and op.is_high() and self.is_group_shift_anchor(op))
             and not op.room.startswith("dorm")
             and 0 <= op.mood < op.upper_limit
             and op.current_mood() < op.upper_limit
@@ -2486,6 +2478,7 @@ class Operators:
             name
             for name in names
             if self._can_standby(self.operators[name])
+            and not self.operators[name].standby_low_priority
             and (
                 self.operators[name].group in anchor_groups
                 or not self.operators[name].group

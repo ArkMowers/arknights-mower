@@ -2161,18 +2161,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 _agent = miss_list[key]
                 if (
                     _agent.group != ""
-                    and next(
-                        (
-                            k
-                            for k, v in self.op_data.operators.items()
-                            if v.group == _agent.group
-                            and not v.room.startswith("dorm")
-                            and not v.not_valid()
-                            and v.is_resting()
-                        ),
-                        None,
-                    )
-                    is not None
+                    and self.op_data.group_is_resting(_agent.group)
                     and (
                         _agent.workaholic
                         or self.op_data.rest_mood_complete(key)
@@ -2185,7 +2174,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 ):
                     logger.debug(f"跳过检查{_agent}")
                     continue
-                elif _agent.group != "":
+                elif _agent.group and self.op_data.is_group_shift_anchor(_agent):
                     # 把所有小组成员都移到工作站（已在岗成员跳过，避免 no-op 假任务）
                     _add_group_to_fix_plan(fix_plan, self.op_data, _agent.group)
                 if _agent.room not in fix_plan.keys():
@@ -2213,6 +2202,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if not self.op_data.operators[name].room.startswith("dorm")
                 and not self.op_data.operators[name].multi_group
                 and not self.op_data.operators[name].workaholic
+                and not self.op_data._can_standby(self.op_data.operators[name])
             ]
             is_any_working = next(
                 (
@@ -3224,8 +3214,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self._refresh_deferred_product_reservations()
         reserved_names = self.op_data.reserved_product_replacements
         now = datetime.now()
-        for op in self.op_data.operators.values():
-            self.op_data.update_standby_low_priority(op, now)
         # 沿用原下班顺序：只比较距心情下限的余量。显式名单、高低优和
         # 候补均属于宿舍分床规则，不能让仍有心情的组抢走红脸组的替班。
         moods = {
@@ -3239,7 +3227,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
         )
         shift_candidates = [
-            op for op in self.total_agent if op.is_high() and not op.multi_group
+            op
+            for op in self.total_agent
+            if op.is_high()
+            and not op.multi_group
+            and (not op.group or self.op_data.is_group_shift_anchor(op))
         ]
         # 宿舍的普通空闲者统一交给补床入口，不依赖不养闲人开关；否则先预约
         # 床位并生成普通重排任务，会使真空床又被跑单避让推迟。
@@ -3281,7 +3273,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 continue
             if op.name in returning or (
                 op.group
-                and any(name in returning for name in self.op_data.groups[op.group])
+                and any(
+                    name in returning
+                    and self.op_data.is_group_shift_anchor(self.op_data.operators[name])
+                    for name in self.op_data.groups[op.group]
+                )
             ):
                 continue
             if op.name in _replacement:
@@ -4024,18 +4020,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         return False
 
     def rearrange_resting_priority(self, group):
-        operators = self.op_data.groups[group]
-        if any(
-            self.op_data.operators[name].room.startswith("dorm")
-            or self.op_data.operators[name].resting_priority == "standby"
-            for name in operators
-        ):
-            operators = [
-                name
-                for name in operators
-                if not self.op_data.operators[name].room.startswith("dorm")
-                and self.op_data.operators[name].resting_priority != "standby"
-            ]
+        operators = [
+            name
+            for name in self.op_data.groups[group]
+            if self.op_data.is_group_shift_anchor(self.op_data.operators[name])
+        ]
+        if len(operators) == len(self.op_data.groups[group]):
+            operators = self.op_data.groups[group]
         # 肥鸭充能新模式：https://github.com/ArkMowers/arknights-mower/issues/551
         fia_plan, fia_room = self.check_fia()
         # 排序
@@ -4070,7 +4061,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             dict.fromkeys(
                 self.op_data.operators[name].group
                 for name in agents
-                if not self.op_data.operators[name].multi_group
+                if self.op_data.is_group_shift_anchor(self.op_data.operators[name])
                 and self.op_data.operators[name].group
             )
         )
@@ -4186,6 +4177,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
         )
         agents.extend(dorm_agents)
+        for name in agents:
+            op = self.op_data.operators[name]
+            if not op.is_resting() and not self.op_data.is_standby(name):
+                self.op_data.update_standby_low_priority(op)
         logger.debug(f"计算排班:{agents}")
         for agent in agents:
             if not success:

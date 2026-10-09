@@ -2834,7 +2834,9 @@ class TestDroneAccelerate(unittest.TestCase):
         solver = BaseSchedulerSolver()
         solver.error = False
         solver.tasks = [task]
-        solver.op_data = SimpleNamespace(dorm=[], operators={}, plan={})
+        solver.op_data = SimpleNamespace(
+            dorm=[], operators={}, plan={}, all_dorms=lambda: []
+        )
 
         def fake_arrange_room(new_plan, room, plan, get_time=False):
             del plan[room]  # 与真实 agent_arrange_room 一致：清空 self.task.plan

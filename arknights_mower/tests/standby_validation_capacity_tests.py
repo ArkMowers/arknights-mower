@@ -45,8 +45,9 @@ def plan(monkeypatch):
 
 
 @pytest.mark.parametrize("multi_group", [False, True])
+@pytest.mark.parametrize("standby_mood", [5, 20])
 def test_eight_workers_with_three_standby_validate_and_shift_with_seven_beds(
-    plan, multi_group
+    plan, multi_group, standby_mood
 ):
     if multi_group:
         candidate = plan["default_plan"].plan["room_1_1"][2]
@@ -59,14 +60,22 @@ def test_eight_workers_with_three_standby_validate_and_shift_with_seven_beds(
     for op in data.operators.values():
         op._current_room, op.current_index = op.room, op.index
         op.mood, op.time_stamp = 5, datetime.now()
+    for name in WORKERS[-3:]:
+        data.operators[name].mood = standby_mood
     solver = object.__new__(base_schedule.BaseSchedulerSolver)
     solver.op_data, solver.tasks = data, []
     solver._refresh_deferred_product_reservations = lambda: None
     solver.check_fia = lambda: (None, None)
     arrangement, replacements = {}, []
-    assert solver.get_resting_plan(
+    admitted = solver.get_resting_plan(
         data.groups[GROUP].copy(), replacements, arrangement, 0
     )
+    if standby_mood == 5:
+        assert not admitted
+        assert arrangement == {} and replacements == []
+        assert not any(bed.name for bed in data.all_dorms())
+        return
+    assert admitted
     beds = try_reorder(data, arrangement) or {}
     projected = data.project_arrangements([arrangement, beds])
     assert all(projected.get_dorm_by_name(name)[1] is not None for name in WORKERS[:5])

@@ -251,6 +251,8 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
             op = data.operators[name]
             if (
                 op.multi_group
+                or op.group
+                and not data.is_group_shift_anchor(op)
                 or op.is_resting()
                 or (current_only and not exhaust_rest_due(data, op, trial.tasks, when))
             ):
@@ -327,7 +329,13 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                 continue
             op = data.operators.get(bed.name)
             event_id = ("bed", bed.name, bed.position)
-            if op is None or op.multi_group or event_id in used:
+            if (
+                op is None
+                or op.multi_group
+                or op.group
+                and not data.is_group_shift_anchor(op)
+                or event_id in used
+            ):
                 continue
             if bed.time is None:
                 if op.is_high():

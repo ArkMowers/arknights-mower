@@ -10,7 +10,8 @@
     "[INV-SCHED-43]",
     "[INV-SCHED-13]",
     "[INV-SCHED-21]",
-    "[INV-SCHED-42]"
+    "[INV-SCHED-42]",
+    "[INV-SCHED-25]"
   ],
   "code_symbols": [
     "arknights_mower.utils.operators.Operators._slot_takable",
@@ -20,7 +21,9 @@
     "arknights_mower.utils.resting_priority.bed_takeover_allowed",
     "arknights_mower.utils.operators.Operators.init_and_validate",
     "arknights_mower.utils.scheduler_task.dorm_residents",
-    "arknights_mower.utils.scheduler_task.restore_displaced_resting"
+    "arknights_mower.utils.scheduler_task.restore_displaced_resting",
+    "arknights_mower.utils.operators.Operators.is_group_shift_anchor",
+    "arknights_mower.utils.operators.Operators.update_standby_low_priority"
   ],
   "test_suites": [
     "arknights_mower/tests/protected_dorm_bed_tiers_tests.py",
@@ -42,6 +45,10 @@
     "arknights_mower/tests/plan_binding_coverage_tests.py",
     "arknights_mower/tests/dorm_recovery_tests.py",
     "arknights_mower/tests/dorm_recovery_record_tests.py",
-    "arknights_mower/tests/dorm_single_free_departure_tests.py"
+    "arknights_mower/tests/dorm_single_free_departure_tests.py",
+    "arknights_mower/tests/group_shift_independence_tests.py",
+    "arknights_mower/tests/resting_correction_tests.py",
+    "arknights_mower/tests/shift_off_mood_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py"
   ]
 }
