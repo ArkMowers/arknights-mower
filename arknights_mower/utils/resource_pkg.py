@@ -35,6 +35,8 @@ from arknights_mower.utils.resource_store import (
 )
 from arknights_mower.utils.resource_store import (
     read_index,
+    read_index_state,
+    read_manifest,
     resource_newer,
     select_resource,
     validate_package,
@@ -122,8 +124,11 @@ def _remember_loaded_resource():
     _loaded_resource_signature = _resource_signature()
 
 
-def _write_index(packages):
-    write_json(RESOURCE_OVERLAY / "index.json", {"packages": packages})
+def _write_index(packages, *, builtin_version=None):
+    index = {"packages": packages}
+    if builtin_version is not None:
+        index["builtin_version"] = builtin_version
+    write_json(RESOURCE_OVERLAY / "index.json", index)
 
 
 def _selection():
@@ -508,23 +513,29 @@ def install_resource_pkg(data, callback=None):
                 )
                 if manifest.get("res_version") != current.manifest.get(
                     "res_version"
-                ) and not resource_newer(manifest, current.manifest):
+                ) and not resource_newer(
+                    manifest, current.manifest, allow_same_day=True
+                ):
                     raise ValueError("资源包不新于当前可用资源，保留当前版本")
                 report(phase="installing", message="正在应用资源包", progress=96)
                 previous = _selection()
-                packages = read_index(RESOURCE_OVERLAY)
+                index = read_index_state(RESOURCE_OVERLAY)
+                packages = index["packages"]
                 name = hashlib.sha256(data).hexdigest()
                 target = RESOURCE_OVERLAY / "packages" / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 if not target.exists():
                     os.replace(_STAGING, target)
-                updated = list(dict.fromkeys([*packages, name]))
+                updated = [package for package in packages if package != name] + [name]
+                builtin_version = read_manifest(
+                    Path(__rootdir__) / "data/version.json"
+                )["res_version"]
                 try:
-                    _write_index(updated)
+                    _write_index(updated, builtin_version=builtin_version)
                     if _task_owner is None or _task_owner == get_ident():
                         _reload_selected_resource()
                 except Exception:
-                    _write_index(packages)
+                    _write_index(packages, builtin_version=index["builtin_version"])
                     # Published generations are retained: another old process may
                     # still have pinned their paths. Only the index rolls back.
                     assert _selection() == previous

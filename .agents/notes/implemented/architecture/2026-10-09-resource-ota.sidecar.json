@@ -12,7 +12,9 @@
   "code_symbols": [
     "arknights_mower.utils.resource_ota.build_ota",
     "arknights_mower.utils.resource_ota.apply_ota",
-    "arknights_mower.utils.resource_pkg.install_resource_pkg"
+    "arknights_mower.utils.resource_pkg.install_resource_pkg",
+    "arknights_mower.utils.resource_store.select_resource",
+    "arknights_mower.utils.resource_version.check_resource_update"
   ],
   "test_suites": [
     "arknights_mower/tests/resource_ota_tests.py",
