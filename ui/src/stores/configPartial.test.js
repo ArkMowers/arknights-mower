@@ -94,8 +94,8 @@ describe('partial configuration saves', () => {
     }
   )
 
-  it.each(['windows', 'darwin', 'linux'])(
-    'starts desktop auto at xhigh on %s',
+  it.each(['windows', 'darwin', 'linux', 'android'])(
+    'starts auto at xhigh on %s',
     async (platform) => {
       await setup({ runtime_platform: platform, performance_mode: 'auto' })
       expect(store.performance_mode).toBe('auto')
@@ -103,9 +103,11 @@ describe('partial configuration saves', () => {
     }
   )
 
-  it('keeps the Android auto baseline at medium', async () => {
+  it('uses shared numeric defaults for Android auto', async () => {
     await setup({ runtime_platform: 'android', performance_mode: 'auto' })
-    expect(store.performance_effective_mode).toBe('medium')
+    expect(store.performance_effective_mode).toBe('xhigh')
+    expect(store.selection_poll_interval).toBe(0.1)
+    expect(store.build_config().low_frame_rate_mode).toBe(false)
   })
 
   it('shows the backend automatic verdict after a downgrade', async () => {

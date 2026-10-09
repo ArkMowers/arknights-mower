@@ -46,12 +46,13 @@ describe('performance profiles', () => {
     expect(xhigh).toEqual(high)
   })
 
-  it('uses the Android medium profile as the visible auto baseline', () => {
+  it('uses the same auto baseline on Android', () => {
     expect(performanceProfile('auto', 'android')).toMatchObject({
+      lowFrameRateMode: false,
       screenshotInterval: 500,
-      selectionPollInterval: 0.5,
+      selectionPollInterval: 0.1,
       selectionTransitionTimeout: 2.5,
-      runOrderDelay: 5,
+      runOrderDelay: 3,
       grandetBufferTime: 15
     })
   })

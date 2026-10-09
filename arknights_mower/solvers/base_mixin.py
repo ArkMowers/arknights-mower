@@ -22,7 +22,6 @@ from arknights_mower.utils.operation_timing import timed_step
 from arknights_mower.utils.performance import (
     PERFORMANCE_PRESETS,
     effective_performance_profile,
-    is_android_runtime,
     lower_performance_mode,
 )
 from arknights_mower.utils.resource_pkg import (
@@ -257,8 +256,7 @@ class BaseMixin:
         # 未设置档位的旧调用方仍可通过布尔值控制策略；明确选择档位后
         # 布尔兼容字段不再覆盖所选策略，也不改变用户的时间参数。
         if (
-            not is_android_runtime()
-            and config.conf.performance_mode in PERFORMANCE_PRESETS
+            config.conf.performance_mode in PERFORMANCE_PRESETS
             and "performance_mode" not in config.conf.model_fields_set
         ):
             legacy_enabled = config.conf.low_frame_rate_mode

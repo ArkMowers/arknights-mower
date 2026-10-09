@@ -42,7 +42,7 @@ def default_performance_mode() -> str:
 
 
 def default_performance_profile() -> PerformanceProfile:
-    return PERFORMANCE_PRESETS["medium" if is_android_runtime() else "xhigh"]
+    return PERFORMANCE_PRESETS["xhigh"]
 
 
 def auto_performance_mode(
@@ -54,9 +54,8 @@ def auto_performance_mode(
     duration must not decide the selection strategy. Hysteresis prevents a
     single borderline acknowledgement from switching modes repeatedly.
     """
-    android = is_android_runtime()
     if feedback_avg is None or feedback_count < 4:
-        selected = "medium" if android else "xhigh"
+        selected = "xhigh"
     elif previous_mode == "xhigh":
         selected = "xhigh" if feedback_avg < 0.35 else "high"
     elif previous_mode == "high":
