@@ -45,17 +45,6 @@ def default_performance_profile() -> PerformanceProfile:
     return PERFORMANCE_PRESETS["medium" if is_android_runtime() else "xhigh"]
 
 
-def recommend_device_performance(cpu_cores: int, memory_mb: int) -> str:
-    """Estimate a starting mode from guest resources, without game feedback."""
-    if any(type(value) is not int or value <= 0 for value in (cpu_cores, memory_mb)):
-        raise ValueError("设备 CPU 或内存信息无效")
-    if cpu_cores < 2 or memory_mb < 1792:
-        return "low"
-    if cpu_cores < 4 or memory_mb < 3584:
-        return "medium"
-    return "high"
-
-
 def auto_performance_mode(
     feedback_avg=None, feedback_count=0, previous_mode=None, mode_cap=None
 ):

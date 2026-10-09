@@ -16,7 +16,6 @@ from arknights_mower.utils.device.screenshot_backend import (
     ScreenshotFailure,
     ScreenshotSession,
 )
-from arknights_mower.utils.performance import recommend_device_performance
 
 GAME_PACKAGES = (
     "com.hypergryph.arknights",
@@ -293,14 +292,13 @@ class PreflightService:
             result.observations["performance"] = {
                 "status": "available",
                 **info,
-                "recommended_mode": recommend_device_performance(**info),
             }
         except MowerExit:
             raise
         except Exception:
             result.observations["performance"] = {
                 "status": "unavailable",
-                "message": "未能读取设备性能信息，可重试测试连接或使用自动档。",
+                "message": "未能读取设备资源信息，可重试测试连接；不影响游戏内性能测试。",
             }
         size = self._observe(
             lambda: self._io.display_size(result.adb_path, result.serial),

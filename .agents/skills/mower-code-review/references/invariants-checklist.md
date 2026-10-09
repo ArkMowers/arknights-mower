@@ -39,7 +39,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.1 Device Control & Transport Domain
 - [ ] **[INV-DEV-24] Held Swipe Capture**: Selection page swipes acquire one Capture Frame during a shared 400 ms minimum endpoint hold, release the owned touch before reporting capture failure or cancellation, and never recover or replay input while held.
-- [ ] **[INV-DEV-23] Performance Observation Isolation**: Do performance queries stay bounded and pinned to the verified target, preserve readiness on unavailable data and propagate cancellation? Do recommendations remain transient until explicit adoption without changing timing settings? See the [device contract](../../../../docs/subsystems/device-control.md#3-subsystem-invariants).
+- [ ] **[INV-DEV-23] Performance Observation Isolation**: Do performance queries stay bounded and pinned to the verified target, preserve readiness on unavailable data and propagate cancellation? Do resource observations avoid recommending or modifying modes and timing settings? See the [device contract](../../../../docs/subsystems/device-control.md#3-subsystem-invariants).
 - [ ] **[INV-DEV-22] Recoverable Owned Cleanup**: Failed cleanup retains its original resource owners and retries only unfinished work; successful cleanup clears the failure before verified startup, while unresolved cleanup blocks replacement and preserves foreign resources, Device Profile and shared ADB state.
 - [ ] **[INV-DEV-21] ADB Default Cohesion**: Do omitted ADB paths use the shared platform default and prefer the bundled executable while explicit paths and empty values survive unrelated updates and save/reload?
 

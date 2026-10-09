@@ -115,27 +115,17 @@ def _report_performance_test(values):
 
 def _run_performance_test(configuration):
     from arknights_mower.__main__ import device_control
-    from arknights_mower.solvers.performance_test import (
-        TEST_TIMEOUT,
-        SelectionPerformanceTest,
-        SelectionTestTimeout,
-    )
+    from arknights_mower.solvers.performance_test import SelectionPerformanceTest
     from arknights_mower.utils.csleep import MowerExit, cancellation_scope
     from arknights_mower.utils.device.io_budget import device_io_budget
 
-    deadline = time.monotonic() + TEST_TIMEOUT
+    def check_cancelled():
+        return performance_test_cancel.is_set() or config.stop_mower.is_set()
 
     def remaining():
-        if performance_test_cancel.is_set() or config.stop_mower.is_set():
+        if check_cancelled():
             raise MowerExit("游戏内性能测试已取消")
-        value = deadline - time.monotonic()
-        if value <= 0:
-            raise SelectionTestTimeout("游戏内性能测试超时")
-        return value
-
-    def check_cancelled():
-        remaining()
-        return False
+        return 30.0
 
     try:
         with cancellation_scope(check_cancelled):
@@ -148,16 +138,12 @@ def _run_performance_test(configuration):
                         performance_test_cancel.is_set,
                         _report_performance_test,
                     )
-                # Cleanup gets its own bounded compensation allowance.
-                solver.test_deadline = deadline
                 result = solver.run()
         _report_performance_test(result)
     except MowerExit as exc:
         _report_performance_test(
             {
-                "status": "failed"
-                if isinstance(exc, SelectionTestTimeout)
-                else "cancelled",
+                "status": "cancelled",
                 "recommended_mode": None,
                 "message": str(exc) or "游戏内性能测试已取消",
                 "phase": "done",

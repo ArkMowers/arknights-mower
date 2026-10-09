@@ -1,5 +1,5 @@
 {
-  "title": "Connection Performance Recommendation",
+  "title": "Connection Resource Observation",
   "status": "implemented",
   "category": "feature",
   "date": "2026-10-09",
@@ -14,7 +14,6 @@
   "code_symbols": [
     "arknights_mower.utils.device.preflight.PreflightService",
     "arknights_mower.utils.device.preflight_io.ProductionPreflightIO.performance_info",
-    "arknights_mower.utils.performance.recommend_device_performance",
     "arknights_mower.utils.device.preflight_io.ProductionPreflightIO._run_adb"
   ],
   "test_suites": [

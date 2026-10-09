@@ -125,11 +125,8 @@ class GamePerformanceRouteTests(unittest.TestCase):
         self.assertEqual(self.path.read_bytes(), before)
 
     def test_worker_fault_and_cancellation_never_leave_a_recommendation(self):
-        from arknights_mower.solvers.performance_test import SelectionTestTimeout
-
         for error, status in (
             (MowerExit("cancelled"), "cancelled"),
-            (SelectionTestTimeout("timeout"), "failed"),
             (OSError("capture failed"), "failed"),
         ):
             with (
@@ -187,6 +184,53 @@ class GamePerformanceRouteTests(unittest.TestCase):
         self.assertIsNone(self.server.performance_test_job["recommended_mode"])
         self.assertTrue(opened[0].closed)
         self.assertFalse(self.control.run_active)
+
+    def test_worker_does_not_limit_elapsed_startup_and_trial_time(self):
+        from types import SimpleNamespace
+
+        from arknights_mower.solvers import performance_test as module
+        from arknights_mower.utils.csleep import csleep
+        from arknights_mower.utils.device.io_budget import io_timeout
+
+        clock = [0.0]
+        discarded = []
+
+        def initialize(solver, device, configuration, cancelled, report):
+            solver.configuration = configuration
+            solver.cancelled = cancelled
+            solver.report = report
+            solver.entered_room = True
+            solver.trials = []
+            clock[0] += 300
+
+        def trial(*_):
+            clock[0] += 300
+            self.control.execute(lambda device: io_timeout(10)).unwrap()
+            csleep(0)
+
+        def discard(solver):
+            with solver.budget(1, cleanup=True):
+                discarded.append(self.control.execute(lambda d: d.tap((1, 2))).unwrap())
+
+        with (
+            patch.object(
+                self.server, "time", SimpleNamespace(monotonic=lambda: clock[0])
+            ),
+            patch.object(module, "monotonic", lambda: clock[0]),
+            patch.object(module.SelectionPerformanceTest, "__init__", initialize),
+            patch.object(module.SelectionPerformanceTest, "open_selection"),
+            patch.object(
+                module.SelectionPerformanceTest, "prepare_round", return_value=([], [])
+            ),
+            patch.object(module.SelectionPerformanceTest, "trial", trial),
+            patch.object(module.SelectionPerformanceTest, "cancel_selection", discard),
+        ):
+            self.server._run_performance_test(config.conf.model_copy(deep=True))
+        self.assertEqual(self.server.performance_test_job["recommended_mode"], "xhigh")
+        self.assertEqual(self.server.performance_test_job["status"], "passed")
+        self.assertEqual(discarded, [(1, 2)])
+        self.assertFalse(self.control.run_active)
+        self.assertFalse(self.control.active)
 
     def test_status_and_cancel_do_not_wait_for_device_configuration_lock(self):
         self.server.performance_test_job.update(status="running", id="test")

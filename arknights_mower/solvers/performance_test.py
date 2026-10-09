@@ -13,20 +13,15 @@ from arknights_mower.solvers.base_mixin import (
 from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit, cancellation_scope
 from arknights_mower.utils.device.io_budget import device_io_budget
+from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.performance import PERFORMANCE_PRESETS
 from arknights_mower.utils.scene import Scene
-from arknights_mower.utils.solver import BaseSolver
 
-TEST_TIMEOUT = 240
 CLEANUP_TIMEOUT = 10
 MODES = ("xhigh", "high", "medium", "low")
 
 
-class SelectionTestTimeout(MowerExit):
-    """Stop test I/O while retaining the session for bounded compensation."""
-
-
-class SelectionPerformanceTest(BaseMixin, BaseSolver):
+class SelectionPerformanceTest(BaseMixin, SceneGraphSolver):
     room = "dormitory_1"
 
     def __init__(self, device, configuration, cancelled, report):
@@ -35,6 +30,7 @@ class SelectionPerformanceTest(BaseMixin, BaseSolver):
         self.cancelled = cancelled
         self.report = report
         self.entered_room = False
+        self._navigating = False
         self.trials = []
 
     @staticmethod
@@ -67,10 +63,8 @@ class SelectionPerformanceTest(BaseMixin, BaseSolver):
                 self._selection_profile_snapshot = previous
 
     @contextmanager
-    def budget(self, seconds, *, cleanup=False):
-        deadline = monotonic() + seconds
-        if not cleanup:
-            deadline = min(deadline, getattr(self, "test_deadline", deadline))
+    def budget(self, seconds=None, *, cleanup=False):
+        deadline = monotonic() + seconds if seconds is not None else None
 
         def cancelled():
             return config.stop_mower.is_set() or (not cleanup and self.cancelled())
@@ -78,10 +72,11 @@ class SelectionPerformanceTest(BaseMixin, BaseSolver):
         def remaining():
             if cancelled():
                 raise MowerExit("游戏内性能测试已取消")
+            if deadline is None:
+                return 30.0
             value = deadline - monotonic()
             if value <= 0:
-                error = TimeoutError if cleanup else SelectionTestTimeout
-                raise error("游戏内性能测试超时，请检查画面后重试")
+                raise TimeoutError("测试暂选清理超时，请检查游戏画面")
             return value
 
         def check_cancelled():
@@ -92,12 +87,50 @@ class SelectionPerformanceTest(BaseMixin, BaseSolver):
             self.checkpoint = remaining
             yield
 
+    def scene(self):
+        scene = super().scene()
+        manual_scenes = (
+            Scene.LOGIN_MAIN,
+            Scene.LOGIN_INPUT,
+            Scene.LOGIN_REGISTER,
+            Scene.LOGIN_CAPTCHA,
+            Scene.LOGIN_BILIBILI_PRIVACY,
+            Scene.AGREEMENT_UPDATE,
+        )
+        if scene in manual_scenes:
+            # Loading transitions can briefly match a login control. Observe
+            # another frame without clicking before requiring manual action.
+            self.sleep(1)
+            scene = super().scene()
+            if scene in manual_scenes:
+                raise RuntimeError("请先在游戏中手动完成登录验证或协议确认，再重新测试")
+        if getattr(self, "_navigating", False) and scene in (
+            Scene.INFRA_ARRANGE_ORDER,
+            Scene.INFRA_ARRANGE_CONFIRM,
+            Scene.RIIC_OPERATOR_SELECT,
+            Scene.DOUBLE_CONFIRM,
+        ):
+            raise RuntimeError("检测到尚未确认的操作，请先退出该页面后重试")
+        return scene
+
     def open_selection(self):
-        scene = self.scene()
-        if scene == Scene.INFRA_MAIN:
-            self.enter_room(self.room, max_attempts=1)
-        elif scene != Scene.INFRA_DETAILS or self.detect_room() != self.room:
-            raise RuntimeError("请先将游戏返回基建首页，再开始游戏内性能测试")
+        self.report({"phase": "navigating", "message": "正在启动游戏并进入基建"})
+        self._navigating = True
+        try:
+            self.checkpoint()
+            self.check_current_focus()
+            scene = self.scene()
+            if scene != Scene.INFRA_MAIN and not (
+                scene == Scene.INFRA_DETAILS and self.detect_room() == self.room
+            ):
+                self.back_to_infrastructure()
+                scene = self.scene()
+                if scene != Scene.INFRA_MAIN:
+                    raise RuntimeError("未能进入基建首页，请检查登录或游戏画面")
+            if scene == Scene.INFRA_MAIN:
+                self.enter_room(self.room, max_attempts=1)
+        finally:
+            self._navigating = False
         self.entered_room = True
         for _ in range(12):
             self.checkpoint()
@@ -186,7 +219,7 @@ class SelectionPerformanceTest(BaseMixin, BaseSolver):
     def run(self):
         result = None
         try:
-            with self.budget(TEST_TIMEOUT), self.profile("low", preparation=True):
+            with self.budget(), self.profile("low", preparation=True):
                 self.report({"status": "running", "message": "正在进入宿舍一选人页"})
                 self.open_selection()
                 for mode in MODES:

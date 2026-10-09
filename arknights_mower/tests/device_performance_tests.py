@@ -1,4 +1,4 @@
-"""Performance recommendations use only bounded observations of the chosen target."""
+"""Resource observations never recommend a mode and remain bounded to the target."""
 
 import subprocess
 from unittest.mock import patch
@@ -11,23 +11,6 @@ from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.io_budget import device_io_budget
 from arknights_mower.utils.device.preflight import PreflightService
 from arknights_mower.utils.device.preflight_io import ProductionPreflightIO
-from arknights_mower.utils.performance import recommend_device_performance
-
-
-@pytest.mark.parametrize(
-    ("cores", "memory", "expected"),
-    [
-        (1, 8192, "low"),
-        (8, 1791, "low"),
-        (2, 1792, "medium"),
-        (3, 8192, "medium"),
-        (4, 3583, "medium"),
-        (4, 3584, "high"),
-        (8, 16384, "high"),
-    ],
-)
-def test_hardware_recommendation_thresholds(cores, memory, expected):
-    assert recommend_device_performance(cores, memory) == expected
 
 
 @pytest.mark.parametrize("cpu,cores", [("0", 1), ("0-3", 4), ("0-1,4,6-7", 5)])
@@ -82,7 +65,13 @@ def test_performance_io_uses_guarded_command_and_callers_remaining_budget():
     assert run.call_args.args[0][:3] == ["adb", "-s", "chosen"]
 
 
-def test_preflight_returns_transient_recommendation_without_profile_changes():
+@pytest.mark.parametrize(
+    "cores,memory",
+    [(1, 8192), (8, 1791), (2, 1792), (3, 8192), (4, 3583), (4, 3584), (8, 16384)],
+)
+def test_preflight_only_displays_resources_without_recommending_or_changing_profile(
+    cores, memory
+):
     io = PreflightIO()
     profile = DeviceProfile(last_serial="USB-123")
     before = profile.model_dump()
@@ -90,15 +79,14 @@ def test_preflight_returns_transient_recommendation_without_profile_changes():
         io,
         "performance_info",
         create=True,
-        return_value={"cpu_cores": 4, "memory_mb": 3840},
+        return_value={"cpu_cores": cores, "memory_mb": memory},
     ) as read:
         result = PreflightService(io).check(profile)
     assert result.ok
     assert result.observations["performance"] == {
         "status": "available",
-        "cpu_cores": 4,
-        "memory_mb": 3840,
-        "recommended_mode": "high",
+        "cpu_cores": cores,
+        "memory_mb": memory,
     }
     read.assert_called_once_with(result.adb_path, "USB-123")
     assert profile.model_dump() == before

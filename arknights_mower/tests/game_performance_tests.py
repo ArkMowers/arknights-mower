@@ -32,6 +32,9 @@ def solver(monkeypatch):
     result.trials = []
     result.entered_room = False
     result.recog = SimpleNamespace(w=1920, h=1080, update=MagicMock())
+    result.check_current_focus = MagicMock()
+    result.sleep = MagicMock()
+    result.checkpoint = MagicMock()
     result.open_selection = MagicMock()
     result.prepare_round = MagicMock(return_value=([], ["安哲拉", "斯卡蒂"]))
     result.trial = MagicMock()
@@ -106,23 +109,35 @@ def test_preparation_failure_and_cleanup_failure_cannot_recommend_mode(solver):
         solver.run()
 
 
-def test_deadline_and_explicit_cancellation_bound_io(solver, monkeypatch):
+def test_long_running_trials_have_no_total_deadline(solver, monkeypatch):
     clock = [10.0]
     monkeypatch.setattr(module, "monotonic", lambda: clock[0])
-    with solver.budget(2):
-        assert io_timeout(10) == 2
-        clock[0] = 12
-        with pytest.raises(module.SelectionTestTimeout):
-            io_timeout(10)
-        with pytest.raises(module.SelectionTestTimeout):
-            csleep(0)
-        clock[0] = 11
+
+    def trial(*_):
+        clock[0] += 300
+        solver.checkpoint()
+        assert io_timeout(10) == 10
+        csleep(0)
+
+    solver.trial.side_effect = trial
+    assert solver.run()["recommended_mode"] == "xhigh"
+    assert len(solver.trials) == 3
+
+
+def test_explicit_cancellation_and_independent_cleanup_budget(solver, monkeypatch):
+    clock = [10.0]
+    monkeypatch.setattr(module, "monotonic", lambda: clock[0])
     solver.cancelled.return_value = True
     with pytest.raises(MowerExit):
-        with solver.budget(2):
+        with solver.budget():
             pass
     with solver.budget(2, cleanup=True):
         assert io_timeout(10) == 2
+        csleep(0)
+        clock[0] += 2
+        with pytest.raises(TimeoutError):
+            io_timeout(10)
+        clock[0] -= 1
 
 
 @pytest.mark.parametrize(
@@ -199,12 +214,76 @@ def test_cleanup_only_uses_back_and_discard_action(solver):
 
 
 def test_wrong_initial_scene_sends_no_input(solver):
-    solver.scene = MagicMock(return_value=Scene.INFRA_ARRANGE_ORDER)
+    solver.recog.get_scene = MagicMock(return_value=Scene.INFRA_ARRANGE_ORDER)
     solver.tap = MagicMock()
     solver.enter_room = MagicMock()
-    with pytest.raises(RuntimeError, match="基建首页"):
+    with pytest.raises(RuntimeError, match="尚未确认"):
         SelectionPerformanceTest.open_selection(solver)
     solver.tap.assert_not_called()
+    solver.enter_room.assert_not_called()
+
+
+def test_entry_uses_production_login_and_base_navigation(solver):
+    solver.recog.get_scene = MagicMock(
+        side_effect=[
+            Scene.LOGIN_QUICKLY,
+            Scene.LOGIN_QUICKLY,
+            Scene.LOGIN_QUICKLY,
+            Scene.INDEX,
+            Scene.INFRA_MAIN,
+            Scene.INFRA_MAIN,
+            Scene.INFRA_ARRANGE_ORDER,
+        ]
+    )
+    solver.tap_element = MagicMock()
+    solver.tap_index_element = MagicMock()
+    solver.enter_room = MagicMock()
+    solver.tap = MagicMock()
+    SelectionPerformanceTest.open_selection(solver)
+    solver.check_current_focus.assert_called_once()
+    solver.tap_element.assert_called_once_with("login_awake")
+    solver.tap_index_element.assert_called_once_with("infrastructure")
+    solver.enter_room.assert_called_once_with("dormitory_1", max_attempts=1)
+    assert solver.entered_room
+    assert not solver._navigating
+
+
+@pytest.mark.parametrize("scene", [Scene.INFRA_MAIN, Scene.INFRA_DETAILS])
+def test_entry_continues_from_base_without_returning_to_index(solver, scene):
+    solver.scene = MagicMock(side_effect=[scene, Scene.INFRA_ARRANGE_ORDER])
+    solver.detect_room = MagicMock(return_value="dormitory_1")
+    solver.back_to_infrastructure = MagicMock()
+    solver.enter_room = MagicMock()
+    SelectionPerformanceTest.open_selection(solver)
+    solver.back_to_infrastructure.assert_not_called()
+    assert solver.enter_room.call_count == (scene == Scene.INFRA_MAIN)
+
+
+def test_transient_login_match_is_reobserved_without_input(solver):
+    solver.recog.get_scene = MagicMock(
+        side_effect=[Scene.LOGIN_CAPTCHA, Scene.LOGIN_LOADING]
+    )
+    solver.tap = MagicMock()
+    solver.tap_element = MagicMock()
+    assert SelectionPerformanceTest.scene(solver) == Scene.LOGIN_LOADING
+    solver.sleep.assert_called_once_with(1)
+    solver.tap.assert_not_called()
+    solver.tap_element.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "scene",
+    [Scene.LOGIN_CAPTCHA, Scene.LOGIN_BILIBILI_PRIVACY, Scene.AGREEMENT_UPDATE],
+)
+def test_entry_stops_for_manual_verification_without_clicking(solver, scene):
+    solver.recog.get_scene = MagicMock(return_value=scene)
+    solver.tap = MagicMock()
+    solver.tap_element = MagicMock()
+    solver.enter_room = MagicMock()
+    with pytest.raises(RuntimeError, match="手动"):
+        SelectionPerformanceTest.open_selection(solver)
+    solver.tap.assert_not_called()
+    solver.tap_element.assert_not_called()
     solver.enter_room.assert_not_called()
 
 

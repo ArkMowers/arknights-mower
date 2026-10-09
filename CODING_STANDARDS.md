@@ -12,7 +12,7 @@
 
 ## 2. Subsystem Invariants
 
-- **[INV-SCHED-45] Selection Performance Test Isolation**: Explicit game tests recommend a mode only after three consecutive verified rounds, lower it on the first selection failure, preserve staffing and saved settings, and own bounded cancellable execution and compensation. See the [scheduler contract](docs/subsystems/base-scheduler.md#selection-performance-test).
+- **[INV-SCHED-45] Selection Performance Test Isolation**: Explicit game tests recommend a mode only after three consecutive verified rounds, lower it on the first selection failure, preserve staffing and saved settings, and own finite cancellable trials with bounded I/O and compensation. See the [scheduler contract](docs/subsystems/base-scheduler.md#selection-performance-test).
 
 - **[INV-RES-04] Operator Avatar Completeness**: Resource generation rejects missing or unreadable avatars instead of publishing an operator directory without a decoded 96×96 WEBP avatar for each obtainable operator.
 
@@ -113,7 +113,7 @@
 
 ### 2.4 Device Control & Transport
 - **[INV-DEV-24] Held Swipe Capture**: Selection page swipes acquire one Capture Frame during a shared 400 ms minimum endpoint hold, release the owned touch before reporting capture failure or cancellation, and never recover or replay input while held.
-- **[INV-DEV-23] Performance Observation Isolation**: Connection testing reads performance information only from its verified ready target through bounded read-only commands; unavailable information preserves readiness, cancellation propagates, and recommendations never change persisted selections or timing settings without a user edit.
+- **[INV-DEV-23] Performance Observation Isolation**: Connection testing reads resource information only from its verified ready target through bounded read-only commands; unavailable information preserves readiness, cancellation propagates, and resource readings never recommend or modify modes or timing settings.
 - **[INV-DEV-22] Recoverable Owned Cleanup**: Failed cleanup retains its original resource owners and retries only unfinished work; successful cleanup clears the failure before verified startup, while unresolved cleanup blocks replacement and preserves foreign resources, Device Profile and shared ADB state.
 - **[INV-DEV-21] ADB Default Cohesion**: A Device Profile without an explicit ADB path uses the legacy platform default, preferring the bundled executable while preserving explicit paths and empty values through unrelated updates and save/reload.
 - **[INV-DEV-20] Command Output Ownership**: MuMu startup observations and default guarded ADB commands collect bounded output through readers with independent file positions, without moving inherited writers or waiting for pipe EOF; an over-budget capture remains a device verdict that keeps the manager's repair step, `text` and `universal_newlines` select text output including a timeout's partial output while `stdin` receives immediate EOF and `input` stays rejected, the manager runner owns its merged output and return-code check instead of dropping caller options, and timeout stops only the owned command with a finite reaping allowance, preserving the Instance Binding and shared services.

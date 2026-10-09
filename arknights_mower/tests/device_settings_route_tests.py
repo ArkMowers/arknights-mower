@@ -310,7 +310,6 @@ class DeviceSettingsRouteTests(unittest.TestCase):
                 "status": "available",
                 "cpu_cores": 4,
                 "memory_mb": 3840,
-                "recommended_mode": "high",
             },
         )
         performance_info.assert_called_once_with("product-adb", "USB-123")

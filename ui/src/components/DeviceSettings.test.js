@@ -313,8 +313,7 @@ it('retains performance from a tested target and clears it on identity edits', a
   const performance = {
     status: 'available',
     cpu_cores: 4,
-    memory_mb: 3840,
-    recommended_mode: 'high'
+    memory_mb: 3840
   }
   await component.acceptPreflight({ ok: true, serial: 'USB-123', observations: { performance } })
   expect(component.performanceObservation.value).toEqual(performance)
@@ -327,8 +326,7 @@ it('displays resources even if game validation fails and clears them before rete
   const performance = {
     status: 'available',
     cpu_cores: 2,
-    memory_mb: 1920,
-    recommended_mode: 'medium'
+    memory_mb: 1920
   }
   await component.acceptPreflight({
     ok: false,
