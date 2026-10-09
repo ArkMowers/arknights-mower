@@ -20,7 +20,8 @@
     "arknights_mower.utils.qrcode.export",
     "arknights_mower.utils.qrcode.decode",
     "server.save_file_dialog",
-    "server.export_json"
+    "server.export_json",
+    "arknights_mower.utils.qrcode._scan_and_cover"
   ],
   "test_suites": [
     "arknights_mower/tests/recycle_station_tests.py",
