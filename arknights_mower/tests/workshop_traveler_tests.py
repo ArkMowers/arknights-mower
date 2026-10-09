@@ -91,6 +91,59 @@ def test_legacy_combined_item_rule_matches_each_material():
     )
 
 
+def test_shared_byproduct_word_preserves_operator_identity_and_material_scope(game):
+    _, ids = game
+    traveler_id = "char_4232_hbound"
+    bindings = [(traveler_id, "traveler_skill"), (ids["年"], "nian_skill")]
+    metadata = compile_workshop_data(
+        {traveler_id: {"name": TRAVELER}, ids["年"]: {"name": "年"}},
+        {
+            "buffs": {
+                "traveler_skill": buff(SKILL),
+                "nian_skill": buff(
+                    "进驻加工站加工任意类材料时，副产物的产出概率提升100%"
+                ),
+            },
+            "chars": {
+                cid: {
+                    "buffChar": [
+                        {
+                            "buffData": [
+                                {
+                                    "buffId": buff_id,
+                                    "cond": {"phase": "PHASE_2", "level": 1},
+                                }
+                            ]
+                        }
+                    ]
+                }
+                for cid, buff_id in bindings
+            },
+        },
+    )["operators"]
+    available = workshop.available_operators(
+        owned({**ids, TRAVELER: traveler_id}, TRAVELER, "年"), metadata
+    )
+    assert workshop.recipe_bonus(available[TRAVELER], T5, workshop_formula[T5]) == 90
+    assert workshop.recipe_bonus(available["年"], T5, workshop_formula[T5]) == 100
+    assert (
+        workshop.recipe_bonus(
+            available[TRAVELER], "双极纳米片", workshop_formula["双极纳米片"]
+        )
+        == 0
+    )
+    assert (
+        workshop.recipe_bonus(
+            available["年"], "双极纳米片", workshop_formula["双极纳米片"]
+        )
+        == 100
+    )
+    assert set(
+        workshop.available_operators(owned({TRAVELER: traveler_id}, TRAVELER), metadata)
+    ) == {TRAVELER}
+    assert compile_workshop_buff({**buff(SKILL), "roomType": "RECYCLE"}) == []
+
+
 @pytest.mark.parametrize("elite", [0, 1, 2])
 def test_resource_traveler_requires_elite_two_and_is_only_recommended_for_t5(
     traveler_game, elite

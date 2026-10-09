@@ -25,9 +25,9 @@ Resource release `v2026.10.09-466ab33` lacks Homebound in its operator list and 
 
 ## Verification
 
-[Focused regressions](../../../../arknights_mower/tests/workshop_traveler_tests.py) cover tagged game text, both byproduct spellings, older combined-item metadata, elite-two unlock, T5-only recommendations, allocation with and without Nian, unavailable BOX data and immutable manual settings.
+[Focused regressions](../../../../arknights_mower/tests/workshop_traveler_tests.py) cover tagged game text, both byproduct spellings, operator identity isolation for identical wording, older combined-item metadata, elite-two unlock, T5-only recommendations, allocation with and without Nian, unavailable BOX data and immutable manual settings.
 
-The focused workshop suites pass 133 tests. On alpha baseline `a2348040`, governance regressions pass 25 tests and 21 subtests. Ruff and the repository structural gate pass; the gate retains two unrelated historical reference warnings.
+The focused workshop suites pass 134 tests. On alpha baseline `a2348040`, governance regressions pass 25 tests and 21 subtests. Ruff and the repository structural gate pass; the gate retains two unrelated historical reference warnings.
 
 The [growth-planning contract](../../../../docs/subsystems/growth-planning.md) owns the invariant.
 
