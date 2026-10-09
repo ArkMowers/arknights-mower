@@ -1,0 +1,21 @@
+{
+  "title": "Verified Resource OTA",
+  "status": "implemented",
+  "category": "architecture",
+  "date": "2026-10-09",
+  "authors": ["Codex"],
+  "invariants": ["[INV-RES-02]"],
+  "code_symbols": [
+    "arknights_mower.utils.resource_ota.build_ota",
+    "arknights_mower.utils.resource_ota.apply_ota",
+    "arknights_mower.utils.resource_pkg.install_resource_pkg"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/resource_ota_tests.py",
+    "arknights_mower/tests/resource_progress_tests.py",
+    "arknights_mower/tests/resource_pkg_tests.py",
+    "arknights_mower/tests/manual_update_tests.py",
+    "arknights_mower/tests/resource_version_tests.py",
+    "arknights_mower/tests/res_version_tests.py"
+  ]
+}

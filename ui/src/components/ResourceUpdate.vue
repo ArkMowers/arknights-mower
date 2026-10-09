@@ -178,7 +178,8 @@ function set_auto_update(checked) {
       </n-form-item>
       <n-form-item :show-label="false">
         <span class="hint">
-          同一套 mower 的所有实例共用资源包，空闲实例会自动加载新资源；仅软件版本更新需要重启 Mower
+          优先下载 OTA 增量包，不可用时自动下载整包。同一套 mower
+          的所有实例共用资源包，空闲实例自动加载；仅软件更新需要重启 Mower
         </span>
       </n-form-item>
       <n-form-item label="手动应用">
@@ -191,7 +192,7 @@ function set_auto_update(checked) {
         >
           <n-upload-dragger @dragover.prevent @drop.capture.stop.prevent="drop_manual_update">
             <div>点击或拖入更新包</div>
-            <div class="hint">手动安装资源包，用于直连 GitHub 不稳时的兜底</div>
+            <div class="hint">支持资源整包和对应当前版本的 OTA 包，用于网络不稳时手动更新</div>
           </n-upload-dragger>
         </n-upload>
       </n-form-item>
