@@ -13,8 +13,8 @@ const modelKey = computed({
   }
 })
 const type_options = [
-  { label: 'Deepseek V4 Flash', value: 'deepseek-v4-flash' },
-  { label: 'Deepseek V4 Pro', value: 'deepseek-v4-pro' },
+  { label: 'DeepSeek Flash', value: 'deepseek-flash' },
+  { label: 'DeepSeek V4 Pro', value: 'deepseek-v4-pro' },
   { label: '本地模型（OpenAI 兼容）', value: 'custom-local' },
   { label: '在线模型 / 中转商（OpenAI 兼容）', value: 'custom-online' }
 ]

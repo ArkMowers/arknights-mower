@@ -769,6 +769,11 @@ class AIAgentPart(ConfModel):
     ai_model: str = ""
     "自定义模型名称"
 
+    @field_validator("ai_type")
+    @classmethod
+    def migrate_deepseek_flash(cls, value):
+        return "deepseek-flash" if value == "deepseek-v4-flash" else value
+
     @property
     def resolved_ai_key(self) -> str:
         # A legacy Deepseek fallback key must never be sent to a custom endpoint.

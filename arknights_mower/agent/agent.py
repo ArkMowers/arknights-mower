@@ -49,7 +49,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 
 model_name_map = {
-    "deepseek-v4-flash": ["deepseek-v4-flash", "https://api.deepseek.com"],
+    "deepseek-flash": ["deepseek-flash", "https://api.deepseek.com"],
     "deepseek-v4-pro": ["deepseek-v4-pro", "https://api.deepseek.com"],
 }
 

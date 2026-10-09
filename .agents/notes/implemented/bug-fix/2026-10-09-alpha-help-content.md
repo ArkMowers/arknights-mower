@@ -27,11 +27,15 @@ README, the packaging cookbook, one-stop help and FAQ recommend source deploymen
 
 User-facing help titles, link labels and FAQ wording omit the alpha label. Project links point to the repository homepage without selecting a branch; clone commands retain the actual branch name.
 
+DeepSeek preset maintenance updates the Flash ID and label to the current official model. The [assistant contract](../../../../docs/subsystems/ai-assistant.md) owns model IDs and legacy selection normalization. This reuses [INV-01] explicit-field persistence without adding a new invariant, configuration field, abstraction or glossary concept.
+
 ## Verification
 
 Focused offline checks cover legacy downloader queries, current task-switch and database-cleanup advice, case-insensitive FAQ lookup, local source references and help navigation. No scheduling, device-control or configuration schema changes require glossary edits.
 
 README and cookbook maintenance verifies local links and section anchors, Bash syntax without running installation, packaging output names against the platform specs, Docker commands against the server Dockerfile and entrypoint, and Node.js requirements against the frontend lockfile. Four focused help-link and Linux dependency-hint checks pass. Cross-platform installation, packaging and container execution are not performed.
+
+DeepSeek maintenance passes 15 focused AI feature/prompt tests with 11 subtests. The legacy persisted selection reaches `build_llm` with the canonical Flash ID and original key, tool binding succeeds, and explicit-field serialization adds no defaults. The settings component script/template compile and formatting checks pass; no live model request is sent.
 
 ## Standards Findings
 

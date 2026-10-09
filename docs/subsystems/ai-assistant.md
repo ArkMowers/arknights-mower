@@ -1,5 +1,7 @@
 # AI Assistant
 
+DeepSeek presets use `deepseek-flash` and `deepseek-v4-pro` at `https://api.deepseek.com`, matching the [official model IDs](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/). Configuration loading normalizes the legacy Flash selection `deepseek-v4-flash` to `deepseek-flash`; the existing API key and explicit-field persistence remain intact. Custom model IDs are passed through unchanged.
+
 ## 1. Conversation Interface
 
 `agent._build_messages` supplies one system instruction, user/assistant history and the current request. The instruction uses one local timezone-aware time snapshot. Both the graph workflow and manual tool loop use `get_tools()` and `tool_func_map`. Tool progress messages describe the current operation in neutral Chinese.
