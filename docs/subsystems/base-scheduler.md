@@ -188,7 +188,7 @@ The [manual dormitory priority decision](../../.agents/notes/implemented/feature
 
 ## 3. Subsystem Invariants
 
-- **[INV-SCHED-44] Training Slot Eligibility**: Manual and startup validation reject named training-slot assignments with synchronized basic skill level below seven or all skills at mastery three; assistant slots and placeholders are exempt, missing skill fields request synchronization, and a failed refresh does not suppress known training eligibility errors.
+- **[INV-SCHED-44] Training Slot Eligibility**: Manual and startup validation reject named training-slot assignments with synchronized basic skill level below seven or all skills at mastery three; assistant slots and placeholders are exempt, missing skill fields request synchronization, a failed refresh does not suppress known training eligibility errors, and failure messages direct users to meet the conditions and manually refresh Growth Planning.
 
 Displacement compensation snapshots all recovery positions, including fixed same-group recovery beds, and prefers observed occupants to stale bed names. Group allocation supplies explicit admitted reservations; compensation overlays them and the final arrangement onto the same snapshot. Standby and shared-primary displacement never triggers group return, regardless of mood or the remaining recovery positions. Ordinary whole-group returns still recall working members on fixed recovery beds. Existing single-target manager and target positions remain unchanged without a legal single-target reassignment, departure or configuration transition.
 

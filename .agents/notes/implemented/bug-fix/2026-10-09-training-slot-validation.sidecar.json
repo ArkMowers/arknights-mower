@@ -11,9 +11,12 @@
   ],
   "code_symbols": [
     "arknights_mower.utils.schedule_roster.validate_owned_operators",
-    "arknights_mower.utils.operators.Operators.validate_backup_plans"
+    "arknights_mower.utils.operators.Operators.validate_backup_plans",
+    "arknights_mower.utils.mastery_recommendation.get_mastery_requirement_error"
   ],
   "test_suites": [
-    "arknights_mower/tests/schedule_roster_tests.py"
+    "arknights_mower/tests/schedule_roster_tests.py",
+    "arknights_mower/tests/mastery_skill_level_tests.py",
+    "arknights_mower/tests/plan_binding_coverage_tests.py"
   ]
 }

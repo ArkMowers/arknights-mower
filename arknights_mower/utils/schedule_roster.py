@@ -6,7 +6,7 @@ from arknights_mower.utils.mastery_support_types import IGNORED_NAMES
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.workshop_data import parse_roster
 
-CACHE_ERROR = "森空岛干员数据缓存无效，请重新同步干员数据后验证排班"
+CACHE_ERROR = "森空岛干员数据缓存无效，请前往「养成规划」页面手动点击「刷新」后验证排班"
 RESOURCE_ERROR = "当前资源缺少排班干员的森空岛 ID，请更新资源包后验证排班"
 
 
@@ -72,9 +72,15 @@ def _refresh_roster():
 def _training_requirement_error(char):
     level = char.get("mainSkillLevel")
     if type(level) is not int or not 1 <= level <= 7:
-        return "无法确认基础技能等级，请同步干员数据后验证排班"
+        return (
+            "无法确认基础技能等级，请前往「养成规划」页面手动点击「刷新」，"
+            "同步干员数据后重新验证排班"
+        )
     if level < 7:
-        return f"基础技能仅 {level} 级，须达到 7 级才能进驻训练位"
+        return (
+            f"基础技能仅 {level} 级，须达到 7 级才能进驻训练位；升至 7 级后，"
+            "请前往「养成规划」页面手动点击「刷新」后重新验证排班"
+        )
     skills = char.get("skills")
     if (
         not isinstance(skills, list)
@@ -86,9 +92,15 @@ def _training_requirement_error(char):
             for skill in skills
         )
     ):
-        return "无法确认技能专精等级，请同步干员数据后验证排班"
+        return (
+            "无法确认技能专精等级，请前往「养成规划」页面手动点击「刷新」，"
+            "同步干员数据后重新验证排班"
+        )
     if all(skill["level"] == 3 for skill in skills):
-        return "所有技能均已专三，无法进驻训练位，请更换干员"
+        return (
+            "所有技能均已专三，无法进驻训练位；更换干员后，"
+            "请前往「养成规划」页面手动点击「刷新」后重新验证排班"
+        )
     return None
 
 
@@ -163,7 +175,10 @@ def validate_owned_operators(global_plan) -> str | None:
             return None
         missing = missing_from(characters)
         if missing:
-            return f"森空岛中未持有以下排班干员：{'、'.join(missing)}"
+            return (
+                f"森空岛中未持有以下排班干员：{'、'.join(missing)}；获取干员后，"
+                "请前往「养成规划」页面手动点击「刷新」后重新验证排班"
+            )
         training_errors = _training_slot_errors(global_plan, characters, name_to_ids)
     if training_errors:
         return "训练位干员不满足进驻条件：" + "；".join(training_errors)

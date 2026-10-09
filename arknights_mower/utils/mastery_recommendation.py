@@ -113,12 +113,18 @@ def get_current_mastery_level(char_id: str, skill_index: int) -> Optional[int]:
 
 def _mastery_requirement_error(char):
     if char.get("evolvePhase", 2) < 2:
-        return "尚未精二，可规划养成材料；精二且基础技能升至 7 级并同步后才执行专精"
+        return (
+            "尚未精二，可规划养成材料；精二且基础技能升至 7 级后，"
+            "请前往「养成规划」页面手动点击「刷新」后再执行专精"
+        )
     level = char.get("mainSkillLevel")
     if type(level) is not int or level < 1:
-        return "无法确认基础技能等级，请先同步干员数据"
+        return "无法确认基础技能等级，请前往「养成规划」页面手动点击「刷新」"
     if level < 7:
-        return f"基础技能仅 {level} 级，可加入养成计划；升至 7 级并同步干员数据后才执行专精"
+        return (
+            f"基础技能仅 {level} 级，可加入养成计划；升至 7 级后，"
+            "请前往「养成规划」页面手动点击「刷新」后再执行专精"
+        )
     return None
 
 
