@@ -8,7 +8,6 @@ import pytest
 
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.utils import config, operation_timing
-from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
@@ -18,9 +17,7 @@ from arknights_mower.utils.scheduler_task import (
 
 
 @pytest.fixture(autouse=True)
-def settings(monkeypatch):
-    monkeypatch.setattr(NewsChecker, "get_maintenance", lambda: None)
-    monkeypatch.setattr(NewsChecker, "get_update_time", lambda: (None, None))
+def settings(monkeypatch, offline_maintenance):
     monkeypatch.setattr(config.conf, "enable_mastery", True)
     monkeypatch.setattr(config.conf, "run_order_delay", 5)
     monkeypatch.setattr(operation_timing, "_dorm_durations", {})

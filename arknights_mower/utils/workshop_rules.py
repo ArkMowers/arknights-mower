@@ -30,14 +30,17 @@ def _compile_byproduct(text):
     # Read the fixed part; dorm/storage-dependent extras remain conditional.
     match = re.match(
         r"进驻加工站加工(?:原始心情消耗为(\d+)的)?"
-        r"(.+?)时，副产品的产出概率(?:额外)?提升(\d+)%",
+        r"(.+?)时，副产[品物]的产出概率(?:额外)?提升(\d+)%",
         text,
     )
     if not match:
         return []
     if match[2] in {"基建材料", "芯片"}:
         return []
-    return [_byproduct_rule(match)]
+    rule = _byproduct_rule(match)
+    if "item" in rule:
+        return [{**rule, "item": material} for material in rule["item"].split("或")]
+    return [rule]
 
 
 def _byproduct_rule(match):
