@@ -61,7 +61,7 @@ describe('diagnostic log timeline', () => {
 
   it('filters archived ERROR and DEBUG logs without losing traceback details', async () => {
     const detail =
-      'Traceback (most recent call last):\n  File "session.py", line 166, in close\nRuntimeError: MaaTouch 进程异常退出：137'
+      'Traceback (most recent call last):\n  File "session.py", line 166, in close\nValueError: 连接已关闭\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File "session.py", line 168, in close\nRuntimeError: MaaTouch 进程异常退出：137'
     const logs = [
       {
         time: '2026-10-09 14:15:43',

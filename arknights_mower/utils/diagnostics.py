@@ -90,7 +90,7 @@ def timeline(
             for line in stream:
                 if not _LOG_START.match(line):
                     if rows and len(rows[-1]["message"]) < 8000:
-                        rows[-1]["message"] += line
+                        rows[-1]["message"] += "\n" + line.rstrip("\n")
                     continue
                 try:
                     when = datetime.strptime(line[:19], "%Y-%m-%d %H:%M:%S")

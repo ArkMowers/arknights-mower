@@ -1,6 +1,8 @@
 """验证按时间回看日志和截图。"""
 
 import json
+import logging
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta
@@ -18,6 +20,60 @@ from arknights_mower.utils.diagnostics import (
 
 
 class DiagnosticTimelineTests(unittest.TestCase):
+    def test_formatted_multiline_logs_preserve_newlines_and_exception_details(self):
+        from arknights_mower.utils import log
+
+        center = datetime(2026, 10, 9, 14, 15, 43)
+        try:
+            try:
+                raise ValueError("inner failure")
+            except ValueError as error:
+                raise RuntimeError("outer failure") from error
+        except RuntimeError:
+            exception = sys.exc_info()
+
+        messages = []
+        for level, message, exc_info in (
+            (logging.DEBUG, "sending operation\n  payload\n\n  end", None),
+            (logging.ERROR, "dispatch failed", exception),
+            (logging.INFO, "ordinary message", None),
+        ):
+            record = logging.LogRecord(
+                log.logger.name,
+                level,
+                r"C:\Program Files\Mower\arknights_mower\utils\device\device.py",
+                661,
+                message,
+                (),
+                exc_info,
+                "dispatch",
+            )
+            record.created = center.timestamp() + 0.152
+            record.msecs = 152
+            log.filter.filter(record)
+            messages.append(log.basic_formatter.format(record))
+
+        for newline in ("\n", "\r\n"):
+            with (
+                self.subTest(newline=newline),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                root = Path(temporary)
+                logs = root / "log"
+                logs.mkdir()
+                (logs / "runtime.log").write_text(
+                    ("\n".join(messages) + "\n").replace("\n", newline),
+                    encoding="utf-8",
+                    newline="",
+                )
+
+                rows = timeline(logs, root / "screenshot", center)
+
+                self.assertEqual([row["message"] for row in rows], messages)
+                self.assertEqual(
+                    [row["time"] for row in rows], ["2026-10-09 14:15:43"] * 3
+                )
+
     def test_merged_archive_export_uses_first_to_last_error_window(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
