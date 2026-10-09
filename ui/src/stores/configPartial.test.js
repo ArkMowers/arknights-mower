@@ -60,6 +60,40 @@ async function setup(overrides = {}) {
 }
 
 describe('partial configuration saves', () => {
+  it.each(['deepseek-flash', 'deepseek-v4-pro', 'deepseek-future-model'])(
+    'loads and saves DeepSeek model %s independently of custom interfaces',
+    async (model) => {
+      await setup({
+        ai_type: 'deepseek',
+        ai_deepseek_model: model,
+        ai_model: 'relay-model',
+        ai_base_url: 'https://relay.example/v1',
+        ai_key: 'deepseek-key',
+        ai_custom_key: 'relay-key'
+      })
+      expect(store.ai_deepseek_model).toBe(model)
+      expect(axios.patch).not.toHaveBeenCalled()
+      store.ai_deepseek_model = 'another-deepseek-model'
+      await nextTick()
+      await store.flush_config_saves()
+      expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+        ai_deepseek_model: 'another-deepseek-model'
+      })
+      expect(store.ai_model).toBe('relay-model')
+      expect(store.ai_base_url).toBe('https://relay.example/v1')
+      expect(store.ai_key).toBe('deepseek-key')
+      expect(store.ai_custom_key).toBe('relay-key')
+      axios.patch.mockClear()
+      store.ai_type = 'custom-online'
+      await nextTick()
+      await store.flush_config_saves()
+      expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+        ai_type: 'custom-online'
+      })
+      expect(store.ai_deepseek_model).toBe('another-deepseek-model')
+    }
+  )
+
   it.each(['windows', 'darwin', 'linux'])(
     'starts desktop auto at xhigh on %s',
     async (platform) => {

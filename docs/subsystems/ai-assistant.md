@@ -1,6 +1,8 @@
 # AI Assistant
 
-DeepSeek presets use `deepseek-flash` and `deepseek-v4-pro` at `https://api.deepseek.com`, matching the [official model IDs](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/). Configuration loading normalizes the legacy Flash selection `deepseek-v4-flash` to `deepseek-flash`; the existing API key and explicit-field persistence remain intact. Custom model IDs are passed through unchanged.
+The settings page exposes one DeepSeek provider (`ai_type=deepseek`). Its `ai_deepseek_model` field defaults to `deepseek-flash`, offers `deepseek-flash` and `deepseek-v4-pro` presets matching the [official model IDs](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/), and accepts a custom model ID. `build_llm` trims the ID, rejects a blank value and sends requests to `https://api.deepseek.com` with the DeepSeek key. The Pro preset retains its existing thinking parameters. Local and online custom providers keep their separate model, endpoint and key fields.
+
+Configuration loading migrates the legacy provider selections `deepseek-v4-flash`, `deepseek-flash` and `deepseek-v4-pro` to the shared provider and corresponding model ID, preserving credentials and unrelated custom-provider settings. Loading adds no unselected default fields to explicit-field serialization. The frontend saves model edits as a partial configuration update without overwriting other provider fields.
 
 ## 1. Conversation Interface
 

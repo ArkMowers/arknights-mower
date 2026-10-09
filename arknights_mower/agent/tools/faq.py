@@ -340,8 +340,9 @@ FAQ_LIST = [
     {
         "keywords": ["ai", "deepseek", "模型", "助手", "key", "中转", "本地模型"],
         "question": "AI 助手是否只支持 DeepSeek？本地模型如何配置？",
-        "answer": "Mower 设置 → AI 助手与模型服务支持 DeepSeek 预设、本地 OpenAI "
-        "兼容接口及在线模型或中转商。自定义接口填写实际模型ID和接口地址，本地需兼容 OpenAI Chat Completions，通常可以不填 "
+        "answer": "Mower 设置 → AI 助手与模型服务支持 DeepSeek、本地 OpenAI "
+        "兼容接口及在线模型或中转商。选择 DeepSeek 后，可在“DeepSeek 模型”选择 Flash / Pro 预设，或输入官方模型 ID 后回车，"
+        "使用 DeepSeek 密钥。自定义接口填写实际模型ID和接口地址，本地需兼容 OpenAI Chat Completions，通常可以不填 "
         "API密钥；在线接口要求 HTTPS 和对应密钥。聊天工具调用还要求所选模型与服务支持工具调用。日志排班报错可选择对应归档进行 AI 分析；AI "
         "建议不会自动修改排班或证明推测就是根因。",
         "sources": [

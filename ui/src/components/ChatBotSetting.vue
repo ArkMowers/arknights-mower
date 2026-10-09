@@ -3,7 +3,8 @@ import { computed } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
 const store = useConfigStore()
-const { ai_key, ai_custom_key, ai_type, ai_base_url, ai_model } = storeToRefs(store)
+const { ai_key, ai_custom_key, ai_type, ai_base_url, ai_model, ai_deepseek_model } =
+  storeToRefs(store)
 const customModel = computed(() => ['custom-local', 'custom-online'].includes(ai_type.value))
 const modelKey = computed({
   get: () => (customModel.value ? ai_custom_key.value : ai_key.value),
@@ -13,10 +14,13 @@ const modelKey = computed({
   }
 })
 const type_options = [
-  { label: 'DeepSeek Flash', value: 'deepseek-flash' },
-  { label: 'DeepSeek V4 Pro', value: 'deepseek-v4-pro' },
+  { label: 'DeepSeek', value: 'deepseek' },
   { label: '本地模型（OpenAI 兼容）', value: 'custom-local' },
   { label: '在线模型 / 中转商（OpenAI 兼容）', value: 'custom-online' }
+]
+const deepseekModels = [
+  { label: 'DeepSeek Flash（deepseek-flash）', value: 'deepseek-flash' },
+  { label: 'DeepSeek V4 Pro（deepseek-v4-pro）', value: 'deepseek-v4-pro' }
 ]
 </script>
 <template>
@@ -24,10 +28,10 @@ const type_options = [
     <template #header>
       <div class="card-title">AI 助手与模型服务</div>
       <help-text
-        ><div>支持 Deepseek、本地 OpenAI 兼容接口及在线模型服务。</div>
+        ><div>支持 DeepSeek、本地 OpenAI 兼容接口及在线模型服务。</div>
         <div>
-          Deepseek 密钥请前往
-          <a href="https://platform.deepseek.com/api_keys" target="_blank">Deepseek 官网</a> 获取，
+          DeepSeek 密钥请前往
+          <a href="https://platform.deepseek.com/api_keys" target="_blank">DeepSeek 官网</a> 获取，
           或填写自己的模型接口。
         </div>
       </help-text>
@@ -35,6 +39,15 @@ const type_options = [
     <n-form label-placement="left" label-width="auto">
       <n-form-item label="AI 类型">
         <n-select v-model:value="ai_type" :options="type_options" />
+      </n-form-item>
+      <n-form-item v-if="ai_type === 'deepseek'" label="DeepSeek 模型">
+        <n-select
+          v-model:value="ai_deepseek_model"
+          :options="deepseekModels"
+          filterable
+          tag
+          placeholder="选择预设，或输入模型 ID 后回车"
+        />
       </n-form-item>
       <template v-if="customModel">
         <n-form-item label="接口地址">

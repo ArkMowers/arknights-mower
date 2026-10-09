@@ -15,10 +15,11 @@
     "arknights_mower.agent.tools.faq.FAQ_LIST",
     "arknights_mower.agent.tools.faq.get_faq",
     "arknights_mower.agent.agent.build_llm",
-    "arknights_mower.utils.config.conf.AIAgentPart.migrate_deepseek_flash"
+    "arknights_mower.utils.config.conf.AIAgentPart.migrate_deepseek_selection"
   ],
   "test_suites": [
     "arknights_mower/tests/ai_prompt_contract_tests.py",
-    "arknights_mower/tests/ai_feature_tests.py"
+    "arknights_mower/tests/ai_feature_tests.py",
+    "ui/src/stores/configPartial.test.js"
   ]
 }

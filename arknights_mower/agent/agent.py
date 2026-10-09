@@ -48,11 +48,6 @@ from arknights_mower.agent.tools.submit_issue import submit_issue, submit_issue_
 from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 
-model_name_map = {
-    "deepseek-flash": ["deepseek-flash", "https://api.deepseek.com"],
-    "deepseek-v4-pro": ["deepseek-v4-pro", "https://api.deepseek.com"],
-}
-
 MISS_STATE_MARKER = "MOWER_MISS_STATE"
 MISS_CONFIRM_WORDS = ("要", "启用", "分析", "查", "是", "好的", "好", "ok", "yes")
 MISS_CANCEL_WORDS = ("不要", "不用", "取消", "算了", "不查", "no")
@@ -105,8 +100,11 @@ tool_message_map = {
 
 def build_llm(api_key, with_tools=False):
     ai_type = config.conf.ai_type
-    if ai_type in model_name_map:
-        model, base_url = model_name_map[ai_type]
+    if ai_type == "deepseek":
+        model = config.conf.ai_deepseek_model.strip()
+        if not model:
+            raise ValueError("请选择 DeepSeek 预设模型或填写模型 ID")
+        base_url = "https://api.deepseek.com"
     elif ai_type in {"custom-local", "custom-online"}:
         model = config.conf.ai_model.strip()
         base_url = config.conf.ai_base_url.strip().rstrip("/")
@@ -136,7 +134,7 @@ def build_llm(api_key, with_tools=False):
         timeout=90,
         max_retries=1,
     )
-    if config.conf.ai_type == "deepseek-v4-pro":
+    if ai_type == "deepseek" and model == "deepseek-v4-pro":
         kwargs["reasoning_effort"] = "high"
         kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
     llm = ChatOpenAI(**kwargs)
