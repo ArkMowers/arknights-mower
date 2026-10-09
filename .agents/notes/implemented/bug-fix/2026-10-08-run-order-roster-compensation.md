@@ -25,6 +25,8 @@ Fresh automatic rescue admission can also remove ordinary correction in the sour
 
 Maintenance backup entry calls order adjustment directly, outside normal scheduling. Advancing a waiting insertion or retaining an unavailable marked restoration in the maintenance batch can again block source staffing. Sharing the waiting-task exclusion at adjustment and maintenance entry preserves the prerequisite release; executable marked restoration retains batch protection.
 
+The main loop also reschedules after depot scanning dispatches due mastery work. Omitting Actual Occupancy at that entry protects an unavailable restoration again and postpones its source-room correction until after the next restoration retry. Passing the existing `Operators` data preserves source release eligibility under the same admission contract.
+
 Concept-impact review retains Scheduling Plan, Actual and Projected Occupancy and Dynamic Shift Transition names, meanings and boundaries. The change repairs execution ordering and restoration ownership under their existing contracts; no glossary edit or new invariant identifier is required.
 
 ## Verification
@@ -37,4 +39,6 @@ The [priority-admission suite](../../../../arknights_mower/tests/priority_admiss
 
 The [automatic-rescue suite](../../../../arknights_mower/tests/automatic_rescue_tests.py) covers fresh admission with saved restoration, insertion and empty plans, then resumed active staffing with matching and different rescue targets. Source staffing releases the original worker before restoration; deferred rescue targets remain outstanding until confirmed. The [maintenance suite](../../../../arknights_mower/tests/maintenance_run_order_tests.py) exercises direct adjustment and real backup entry, including previously marked tasks and source shift projection with unavailable or ready restoration.
 
-Review verification runs thirteen focused offline suites with network connections and HTTP requests blocked in the test process: 669 tests and 73 subtests pass. Scoped Ruff lint and formatting checks pass. `python scripts/verify_governance.py --base 2eb3f3413207de3709ffcf0503193d5d833fa3ae` passes all three governance gates with two unchanged warnings for archived test references.
+The [scheduler-recovery suite](../../../../arknights_mower/tests/scheduler_recovery_preservation_tests.py) exercises real `simulate` and `scheduling` calls after depot scanning and due mastery dispatch. With device and scan I/O replaced offline, the regression verifies immediate source-room correction dispatch and unchanged restoration time and snapshot. The regression fails before the entry passes Actual Occupancy; all 147 tests in the suite pass after the repair.
+
+Review verification runs fourteen focused offline suites with network connections and HTTP requests blocked in the test process: 816 tests and 73 subtests pass. Scoped Ruff lint and formatting checks pass. `python scripts/verify_governance.py --base 2eb3f3413207de3709ffcf0503193d5d833fa3ae` passes all three governance gates with two unchanged warnings for archived test references.

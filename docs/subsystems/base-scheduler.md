@@ -128,7 +128,7 @@ The [Rescue Capacity and Standby decision](../../.agents/notes/implemented/simpl
 - Unconfigured training-room slots do not generate static correction targets. Automatic mastery reads both physical slots independently of the Scheduling Plan.
 - Decision record: [Correction from an unconfigured training room](../../.agents/notes/implemented/bug-fix/2026-09-29-unconfigured-training-correction.md).
 
-### 2.5.1 Shift Compensation and Run Order Restoration
+#### 2.5.1 Shift Compensation and Run Order Restoration
 
 Condition-triggered shifts, including backup transitions, retain restoration responsibility on failure under [INV-SCHED-04]. Specialized swaps restore observed staffing; a configured main roster does not replace an observed original roster.
 
@@ -202,7 +202,7 @@ Independent future ordinary work defers for trade orders only within ten minutes
 
 An admitted staffing prefix remains before the next critical task. Workshop tasks before the same critical task form one batch: admission counts scheduled waiting and intervening operations through its last workshop task, and insufficient time defers the entire pending batch and its dependent suffix. Only ordinary plans with complete observed occupancy, explicit named targets and no backup or task phase state split into independent room components. Current and target operators and every configured group binding connect dependent facilities. Unknown targets, return windows, restoration state and adjusted tasks retain complete plans. Deferred ordinary dormitory phases compose only within an uninterrupted unprotected batch. All remaining work stays queued and participates in admission before subsequent critical tasks. Strict mood releases retain their departure deadlines. Vacancy fills can defer and retain their own phase state outside dormitory composition. Adjusted ordinary tasks preserve their trade-order boundary and yield before mastery handoffs.
 
-Admission reuses `Operators.project_arrangements` without changing Actual Occupancy. Dynamic operations invalidate later projections. Runtime dispatch and rescue protection pass available observed staffing into the same admission entry point. The [time-budget decision](../../.agents/notes/implemented/bug-fix/2026-10-08-order-admission-time-budget.md) records log evidence and verification; the [shared admission decision](../../.agents/notes/implemented/simplification/2026-10-08-shared-priority-admission.md) records caller evidence and mastery parity.
+Admission reuses `Operators.project_arrangements` without changing Actual Occupancy. Dynamic operations invalidate later projections. Runtime dispatch and rescue protection pass available observed staffing into the same admission entry point, including main-loop rescheduling after depot scanning dispatches due mastery work. The [time-budget decision](../../.agents/notes/implemented/bug-fix/2026-10-08-order-admission-time-budget.md) records log evidence and verification; the [shared admission decision](../../.agents/notes/implemented/simplification/2026-10-08-shared-priority-admission.md) records caller evidence and mastery parity.
 
 ---
 

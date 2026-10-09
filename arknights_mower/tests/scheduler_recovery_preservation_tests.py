@@ -144,6 +144,76 @@ def test_stale_cleanup_preserves_only_critical_or_future_explicit_tasks(
     scheduler.io.assert_not_called()
 
 
+def test_depot_mastery_dispatch_keeps_source_release_available(
+    scheduler, monkeypatch, tmp_path
+):
+    solver, main = scheduler.solver, scheduler.main
+    now = scheduler.clock.now()
+    monkeypatch.setattr(config, "conf", config.Conf())
+    config.conf.maa_depot_enable = True
+    monkeypatch.setattr(main, "datetime", scheduler.clock)
+    monkeypatch.setattr(main, "get_server_time", scheduler.clock.now)
+    monkeypatch.setattr(main, "initialize", Mock(return_value=solver))
+    monkeypatch.setattr(main, "refresh_resource_at_boundary", Mock())
+    monkeypatch.setattr(main.NewsChecker, "get_maintenance", Mock(return_value=None))
+    monkeypatch.setattr(main, "_apply_version_update_resting_threshold", Mock())
+    depot = tmp_path / "depotresult.csv"
+    depot.touch()
+    monkeypatch.setattr(main, "get_path", lambda value: depot)
+    monkeypatch.setattr(
+        main, "_read_depot_scan_timestamp", lambda value: int(now.timestamp()) - 86400
+    )
+    for daily in ("daily_visit_friend", "daily_report", "daily_skland", "daily_mail"):
+        setattr(solver, daily, now.date())
+    solver.recruit_plan_solver = Mock()
+    solver.mower_plan_solver = Mock()
+    solver.has_maa_tasks = Mock(return_value=False)
+    solver.rest_until_next_task = Mock(side_effect=MowerExit)
+    solver.tasks = [SchedulerTask(now + timedelta(hours=1))]
+    upgrade = SchedulerTask(now, task_type=TaskTypes.SKILL_UPGRADE)
+    restore = SchedulerTask(
+        now + timedelta(minutes=1),
+        {"room_1_1": ["陈"]},
+        TaskTypes.RUN_ORDER,
+    )
+    restore.run_order_original_roster = {"room_1_1": ["陈"]}
+    restore.run_order_restore_pending = True
+    release = SchedulerTask(now, {"room_1_2": ["银灰"]}, TaskTypes.SELF_CORRECTION)
+    solver.op_data.operators = {
+        "陈": SimpleNamespace(current_room="room_1_2", is_working=lambda: True)
+    }
+
+    def scan():
+        solver.tasks.append(upgrade)
+
+    solver.仓库扫描 = Mock(side_effect=scan)
+    solver.find_next_task = lambda task_type: next(
+        (task for task in solver.tasks if task.type == task_type), None
+    )
+    dispatched = []
+
+    def run():
+        if not dispatched:
+            dispatched.append(upgrade)
+            solver.tasks.remove(upgrade)
+            solver.tasks.extend([restore, release])
+            return
+        dispatched.append(solver.tasks[0])
+        raise MowerExit
+
+    solver.run = Mock(side_effect=run)
+
+    main.simulate(None)
+
+    assert dispatched == [upgrade, release]
+    assert release.time == now
+    assert restore.time == now + timedelta(minutes=1)
+    assert restore.run_order_original_roster == {"room_1_1": ["陈"]}
+    assert restore.run_order_restore_pending
+    solver.rest_until_next_task.assert_not_called()
+    scheduler.io.assert_not_called()
+
+
 def test_exact_fifteen_minute_boundary_does_not_rebuild_ordinary_queue(scheduler):
     now = scheduler.clock.now()
     tasks = [

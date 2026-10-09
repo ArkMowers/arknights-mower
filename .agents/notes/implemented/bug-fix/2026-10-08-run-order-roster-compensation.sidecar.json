@@ -10,6 +10,7 @@
     "[INV-SCHED-04]"
   ],
   "code_symbols": [
+    "arknights_mower.__main__.simulate",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange_room",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.plan_run_order",
@@ -33,6 +34,7 @@
     "arknights_mower/tests/scheduler_task_tests.py",
     "arknights_mower/tests/base_scheduler_tests.py",
     "arknights_mower/tests/automatic_rescue_tests.py",
-    "arknights_mower/tests/maintenance_run_order_tests.py"
+    "arknights_mower/tests/maintenance_run_order_tests.py",
+    "arknights_mower/tests/scheduler_recovery_preservation_tests.py"
   ]
 }
