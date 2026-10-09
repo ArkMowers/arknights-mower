@@ -25,7 +25,7 @@ README retains the overview, screenshots, source deployment for Windows, Linux a
 
 README, the packaging cookbook, one-stop help and FAQ recommend source deployment for macOS and Linux while retaining independent package support.
 
-User-facing help titles, link labels and FAQ wording omit the alpha label. Project links point to the repository homepage without selecting a branch; clone commands retain the actual branch name.
+User-facing help titles, link labels and FAQ wording omit the alpha label. Project links point to the repository homepage without selecting a branch; clone commands retain the actual branch name. Manual package downloads in help and FAQ point to the main project's Releases page; backend update sources remain unchanged.
 
 DeepSeek uses one provider option with preset or custom model selection. A separate model field preserves local/online custom-provider settings when switching providers. The [assistant contract](../../../../docs/subsystems/ai-assistant.md) owns model IDs and legacy selection migration. The former per-model dispatch map is removed; the existing model factory and key resolution remain in use. This reuses [INV-01] explicit-field persistence without a new invariant, abstraction or glossary concept.
 
