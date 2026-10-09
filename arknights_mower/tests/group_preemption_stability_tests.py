@@ -208,6 +208,70 @@ def test_automatic_named_strictly_higher_takeover_preserves_group_recall(solver)
     )
 
 
+@pytest.mark.parametrize("change", ["requester_tier", "member_tier", "group_binding"])
+def test_automatic_takeover_rechecks_changed_recovery_configuration(
+    planning_clock, solver, change
+):
+    data = required_resting_group(solver, priority=False)
+    fill_remaining_beds(solver, OTHERS[1:])
+    incoming = OTHER_COVERS[0]
+    data.operators[incoming].mood = 5
+    data.config.ope_resting_priority = [incoming]
+    reserved = {}
+    for bed in data.dorm:
+        if bed.name not in DEEP:
+            room, index = bed.position
+            reserved.setdefault(room, ["Current"] * len(data.plan[room]))[index] = (
+                "Free"
+            )
+    solver.tasks = plan_metadata(data, [])
+    solver.tasks.append(
+        SchedulerTask(
+            time=planning_clock.now() + timedelta(hours=1),
+            task_plan=reserved,
+            task_type=TaskTypes.RE_ORDER,
+        )
+    )
+    before = [(bed.name, bed.time) for bed in data.dorm]
+    returns = [
+        (queued, queued.time, deepcopy(queued.plan))
+        for queued in solver.tasks
+        if queued.type == TaskTypes.SHIFT_ON
+    ]
+    scheduler_task.try_add_release_dorm({}, None, data, solver.tasks)
+    task = next(task for task in solver.tasks if task.type == TaskTypes.NOT_SPECIFIC)
+    assert set(DEEP) <= {
+        name
+        for room, row in task.plan.items()
+        if not room.startswith("dorm")
+        for name in row
+    }
+
+    if change == "requester_tier":
+        data.config.ope_resting_priority = []
+        data.config.resting_priority_replacement = [incoming]
+    elif change == "member_tier":
+        data.config.ope_resting_priority.append(DEEP[0])
+    else:
+        member = data.operators[OTHERS[1]]
+        member.group = "深海"
+        data.plan[member.room][member.index].group = member.group
+        data.groups[member.group].append(member.name)
+        data.config.ope_resting_priority.append(member.name)
+
+    dispatch_without_device(solver, task.plan, task=task)
+
+    assert not task.plan
+    solver.agent_arrange_room.assert_not_called()
+    assert [(bed.name, bed.time) for bed in data.dorm] == before
+    assert all(
+        queued in solver.tasks and queued.time == time and queued.plan == plan
+        for queued, time, plan in returns
+    )
+    assert all(data.operators[name].is_resting() for name in DEEP)
+    assert not data.operators[incoming].current_room
+
+
 @pytest.mark.parametrize("kind", [TaskTypes.RUN_ORDER, TaskTypes.SWAP_SUPPORT])
 def test_automatic_group_preemption_rechecks_expanded_task_before_critical_dispatch(
     planning_clock, solver, kind

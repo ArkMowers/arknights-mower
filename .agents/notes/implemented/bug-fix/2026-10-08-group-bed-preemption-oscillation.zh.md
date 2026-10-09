@@ -119,3 +119,13 @@ python -X utf8 -m pytest -q arknights_mower/tests/verify_governance_tests.py
 最新目标的邻近验证通过 512 条用例，范围为首次合并的十三份测试，加上 `arknights_mower/tests/` 下的 `mastery_maintenance_tests.py`、`maintenance_run_order_tests.py` 和 `workshop_mastery_dispatch_tests.py`。两条 Pydantic 序列化警告来自 `dorm_priority_refresh_tests.py` 中旧格式的 Task/Trigger 字典。后续带守卫的邻近审计首次捕获已启用 SWAP_SUPPORT 的初始菲亚梅塔用例触发公告请求；该既有测试现使用 `offline_maintenance`，行为断言保持不变。修正后的带守卫重跑通过相同的 512 条用例，保留相同的两条警告，request、socket 及工作区 SQLite 尝试均为零。该轮使用独立的 `MOWER_DATA_DIR`，仅允许临时测试数据库。八个改动的 Python 文件通过 Ruff 静态及格式检查；`git diff --check` 通过。
 
 本次结构检查命令为 `python -X utf8 scripts/verify_governance.py --base 4edfb1a57f715d284376d1473056649253ec0ed1`。实际结果及独立复审结论由最终复审报告记录，与这些行为结果分别呈现。当前复审以新固定目标至最终工作树（含全部未提交修改）为范围，旧目标结果不证明本次范围。
+
+## CI 回归对齐
+
+`56c27c477aba19e5bbafe7d52daf1a27b9a03605` 的 CI 报告八个失败，本地针对性执行复现全部八个：六条旧用例在心情未恢复或未知时仍将床位倒计时到期当成恢复完成，两份简化 `SimpleNamespace` 夹具缺少共用召回策略调用的接口。跑单失败夹具现使用 `Operators`，产物预约床位夹具使用 `Operator`，保留原有任务留存及预约断言。
+
+[清退测试](../../../../arknights_mower/tests/dorm_release_tests.py)使用 `update_detail` 记录实测完成，覆盖个人上限 12、20、24。截止时间缺失、未到期或已到期时，未恢复住客均保留床位。[未知心情选人测试](../../../../arknights_mower/tests/dorm_unknown_selection_tests.py)在各类截止时间下检查未知、无效及预测读数，保留原心情与床位状态，并验证实测完成后规划和选人允许相同接管。针对性 CI 复现及完成对照共通过 41 条用例。
+
+[自动执行测试](../../../../arknights_mower/tests/group_preemption_stability_tests.py)新增三条合法准入后的配置变化用例：申请者失去优先级、原有成员提高优先级、新绑入组员具有相同优先级。执行在设备输入前拒绝失效召回，保留床位、截止时间及队列中的整组回班任务。三条均通过。测试扩展现有排班概念下的 [INV-SCHED-37] 证据；[INV-06] 无需词汇表修改。
+
+最终离线验证基于相同 HEAD 及上述测试修复，22 份针对性排班测试共通过 956 条用例，报告三条警告。守卫禁止 socket 连接及工作区 SQLite 访问，两项尝试次数均为零。`MOWER_DATA_DIR` 指向独立临时目录。复审对照 `4edfb1a57f715d284376d1473056649253ec0ed1`，覆盖完整 PR 及本次修复，包括分床、普通及自动执行、补偿、救急准入、预约和关键任务保护。该范围没有剩余已确认的标准或需求缺陷。离线执行在设备输入前停止；真实设备行为不在本次验证范围内。

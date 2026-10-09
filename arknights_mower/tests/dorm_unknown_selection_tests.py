@@ -178,7 +178,7 @@ def test_batch_comparison_does_not_borrow_residents_from_another_dorm(solver):
     assert "空爆" not in second
 
 
-@pytest.mark.parametrize("invalid", ["default", "missing", "out_of_range"])
+@pytest.mark.parametrize("invalid", ["default", "missing", "out_of_range", "predicted"])
 @pytest.mark.parametrize("deadline", [None, "future", "expired"])
 def test_unknown_main_resident_needs_completion_evidence_in_planning_and_selection(
     solver, invalid, deadline
@@ -187,27 +187,66 @@ def test_unknown_main_resident_needs_completion_evidence_in_planning_and_selecti
     data = instance.op_data
     resident = data.operators["空爆"]
     resident.operator_type, resident.resting_priority = "high", "high"
-    resident.mood = {"default": 24, "missing": 8, "out_of_range": -1}[invalid]
-    resident.time_stamp = datetime.now() if invalid == "out_of_range" else None
+    resident.mood = {
+        "default": 24,
+        "missing": 8,
+        "out_of_range": -1,
+        "predicted": 24,
+    }[invalid]
+    resident.time_stamp = (
+        datetime.now() if invalid in ("out_of_range", "predicted") else None
+    )
+    resident.mood_is_prediction = invalid == "predicted"
     data.operators["红"].mood = 10
     data.dorm[0].time = (
         None
         if deadline is None
         else datetime.now() + timedelta(hours=3 if deadline == "future" else -3)
     )
+    before = (data.dorm[0].name, data.dorm[0].time)
+    reading = (resident.mood, resident.time_stamp, resident.mood_is_prediction)
     tasks = []
     try_add_release_dorm({}, None, data, tasks)
-    expected = "红" if deadline == "expired" else resident.name
-    if deadline == "expired":
-        assert tasks[0].plan[ROOM][-1] == expected
-    else:
-        assert tasks == []
+    assert tasks == []
     instance.task.type = TaskTypes.NOT_SPECIFIC
     instance.task.meta_data = ""
     plan = instance.task.plan[ROOM]
     instance.prepare_dorm_selection(plan, ROOM)
-    assert plan[-1] == expected
+    assert plan[-1] == resident.name
     assert not resident.dorm_mood_fallback
+    assert (data.dorm[0].name, data.dorm[0].time) == before
+    assert (resident.mood, resident.time_stamp, resident.mood_is_prediction) == reading
+
+
+@pytest.mark.parametrize("upper_limit", [12, 20, 24])
+@pytest.mark.parametrize("deadline", [None, "future", "expired"])
+def test_measured_main_completion_allows_planning_and_selection(
+    solver, upper_limit, deadline
+):
+    instance, _ = solver
+    data = instance.op_data
+    resident = data.operators["空爆"]
+    resident.operator_type, resident.resting_priority = "high", "high"
+    resident.upper_limit = upper_limit
+    data.update_detail(resident.name, upper_limit, ROOM, 4, update_time=True)
+    data.operators["红"].mood = 10
+    data.dorm[0].time = (
+        None
+        if deadline is None
+        else datetime.now() + timedelta(hours=3 if deadline == "future" else -3)
+    )
+    before = (data.dorm[0].name, data.dorm[0].time)
+    tasks = []
+
+    try_add_release_dorm({}, None, data, tasks)
+
+    assert [task.plan for task in tasks] == [{ROOM: ["Current"] * 4 + ["红"]}]
+    instance.task.type = TaskTypes.NOT_SPECIFIC
+    instance.task.meta_data = ""
+    plan = instance.task.plan[ROOM]
+    instance.prepare_dorm_selection(plan, ROOM)
+    assert plan[-1] == "红"
+    assert (data.dorm[0].name, data.dorm[0].time) == before
 
 
 def test_unknown_resident_does_not_gain_verified_full_fallback(solver):

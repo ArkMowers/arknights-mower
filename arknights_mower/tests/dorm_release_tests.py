@@ -146,23 +146,36 @@ def test_full_main_is_replaced_by_free_room(op_data):
 
 
 @pytest.mark.parametrize("priority", ["high", "low", "standby"])
-def test_unfinished_standby_or_higher_is_protected_from_free_room(op_data, priority):
+@pytest.mark.parametrize("deadline", [None, "future", "expired"])
+def test_unfinished_standby_or_higher_is_protected_from_free_room(
+    op_data, priority, deadline
+):
     occupant = op_data.operators["空爆"]
     occupant.operator_type = "high"
     occupant.resting_priority = priority
     occupant.mood = 10
-    op_data.dorm[0].time = datetime.now() + timedelta(hours=4)
+    op_data.dorm[0].time = (
+        None
+        if deadline is None
+        else datetime.now() + timedelta(hours=4 if deadline == "future" else -4)
+    )
+    before = (op_data.dorm[0].name, op_data.dorm[0].time)
     tasks = []
     try_add_release_dorm({}, None, op_data, tasks)
     assert tasks == []
+    assert (op_data.dorm[0].name, op_data.dorm[0].time) == before
 
 
 @pytest.mark.parametrize("priority", ["high", "low", "standby"])
-def test_finished_standby_or_higher_is_replaced_by_free_room(op_data, priority):
+@pytest.mark.parametrize("upper_limit", [12, 20, 24])
+def test_finished_standby_or_higher_is_replaced_by_free_room(
+    op_data, priority, upper_limit
+):
     occupant = op_data.operators["空爆"]
     occupant.operator_type = "high"
     occupant.resting_priority = priority
-    occupant.mood = 10
+    occupant.upper_limit = upper_limit
+    op_data.update_detail(occupant.name, upper_limit, ROOM, 4, update_time=True)
     op_data.dorm[0].time = datetime.now() - timedelta(minutes=1)
     tasks = []
     try_add_release_dorm({}, None, op_data, tasks)

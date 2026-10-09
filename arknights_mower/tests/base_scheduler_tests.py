@@ -30,7 +30,7 @@ from arknights_mower.utils.device.session import (  # noqa: E402
 )
 from arknights_mower.utils.device.touch_backend import TouchFailure  # noqa: E402
 from arknights_mower.utils.logic_expression import LogicExpression  # noqa: E402
-from arknights_mower.utils.operators import Operator  # noqa: E402
+from arknights_mower.utils.operators import Operator, Operators  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.recognize import (  # noqa: E402
     RecognizeError,
@@ -2834,7 +2834,12 @@ class TestDroneAccelerate(unittest.TestCase):
         solver = BaseSchedulerSolver()
         solver.error = False
         solver.tasks = [task]
-        solver.op_data = SimpleNamespace(dorm=[], operators={}, plan={})
+        solver.op_data = Operators(
+            {
+                "default_plan": Plan({}, PlanConfig("", "", "")),
+                "backup_plans": [],
+            }
+        )
 
         def fake_arrange_room(new_plan, room, plan, get_time=False):
             del plan[room]  # 与真实 agent_arrange_room 一致：清空 self.task.plan

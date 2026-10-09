@@ -33,6 +33,10 @@
   "test_suites": [
     "arknights_mower/tests/group_preemption_stability_tests.py",
     "arknights_mower/tests/scheduler_incident_20261008_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py",
+    "arknights_mower/tests/manufacture_product_switch_tests.py",
+    "arknights_mower/tests/dorm_release_tests.py",
+    "arknights_mower/tests/dorm_unknown_selection_tests.py",
     "arknights_mower/tests/resting_preemption_tests.py",
     "arknights_mower/tests/completed_group_departure_tests.py",
     "arknights_mower/tests/emergency_group_beds_tests.py",
