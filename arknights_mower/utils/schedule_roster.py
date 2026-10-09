@@ -1,7 +1,8 @@
-"""Check scheduled operators against a confirmed Skland roster."""
+"""Check scheduled ownership and training eligibility against a Skland roster."""
 
 import json
 
+from arknights_mower.utils.mastery_support_types import IGNORED_NAMES
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.workshop_data import parse_roster
 
@@ -53,7 +54,7 @@ def _operator_ids_by_name():
 
 
 def _refresh_roster():
-    """Confirm a cache miss against Skland when an account is configured."""
+    """Refresh ownership and skill data when a Skland account is configured."""
     from arknights_mower.utils import config
     from arknights_mower.utils.log import logger
 
@@ -64,12 +65,62 @@ def _refresh_roster():
 
         return cultivate().start()
     except Exception as exc:
-        logger.warning(f"森空岛干员名单同步失败，跳过持有预检：{exc}")
+        logger.warning(f"森空岛干员名单同步失败，使用已有缓存校验训练位：{exc}")
         return False
 
 
+def _training_requirement_error(char):
+    level = char.get("mainSkillLevel")
+    if type(level) is not int or not 1 <= level <= 7:
+        return "无法确认基础技能等级，请同步干员数据后验证排班"
+    if level < 7:
+        return f"基础技能仅 {level} 级，须达到 7 级才能进驻训练位"
+    skills = char.get("skills")
+    if (
+        not isinstance(skills, list)
+        or not skills
+        or any(
+            not isinstance(skill, dict)
+            or type(skill.get("level")) is not int
+            or not 0 <= skill["level"] <= 3
+            for skill in skills
+        )
+    ):
+        return "无法确认技能专精等级，请同步干员数据后验证排班"
+    if all(skill["level"] == 3 for skill in skills):
+        return "所有技能均已专三，无法进驻训练位，请更换干员"
+    return None
+
+
+def _training_slot_errors(global_plan, characters, name_to_ids):
+    owned = {char["id"]: char for char in characters}
+    errors = []
+    plans = [global_plan["default_plan"], *global_plan["backup_plans"]]
+    for index, plan in enumerate(plans):
+        source = "主表" if index == 0 else f"副表“{plan.name or index}”"
+        slots = plan.plan.get("train", [])
+        names = set()
+        if len(slots) > 1:
+            names.update((slots[1].agent, *slots[1].all_replacements))
+        if index > 0:
+            task = (plan.task or {}).get("train", [])
+            if len(task) > 1:
+                names.add(task[1])
+        for name in sorted(names - IGNORED_NAMES):
+            candidates = [
+                owned[cid] for cid in sorted(name_to_ids[name]) if cid in owned
+            ]
+            # Missing operators remain subject to the ownership refresh policy.
+            reasons = [_training_requirement_error(char) for char in candidates]
+            if reasons and all(reasons):
+                errors.append(
+                    f"{source}训练位 {name}：{'；'.join(dict.fromkeys(reasons))}"
+                )
+    return errors
+
+
 def validate_owned_operators(global_plan) -> str | None:
-    """Block only operators still absent after a successful Skland sync."""
+    """Check ownership and named training assignments, refreshing at most once."""
     path = get_path("@app/tmp/cultivate.json")
     if not path.exists():
         return None
@@ -100,17 +151,20 @@ def validate_owned_operators(global_plan) -> str | None:
         )
 
     missing = missing_from(characters)
-    if not missing:
+    training_errors = _training_slot_errors(global_plan, characters, name_to_ids)
+    if not missing and not training_errors:
         return None
-    if not _refresh_roster():
-        return None
-    try:
-        characters = _read_roster(path)
-    except (OSError, ValueError):
-        return CACHE_ERROR
-    if characters is None:
-        return None
-    missing = missing_from(characters)
-    if missing:
-        return f"森空岛中未持有以下排班干员：{'、'.join(missing)}"
+    if _refresh_roster():
+        try:
+            characters = _read_roster(path)
+        except (OSError, ValueError):
+            return CACHE_ERROR
+        if characters is None:
+            return None
+        missing = missing_from(characters)
+        if missing:
+            return f"森空岛中未持有以下排班干员：{'、'.join(missing)}"
+        training_errors = _training_slot_errors(global_plan, characters, name_to_ids)
+    if training_errors:
+        return "训练位干员不满足进驻条件：" + "；".join(training_errors)
     return None
