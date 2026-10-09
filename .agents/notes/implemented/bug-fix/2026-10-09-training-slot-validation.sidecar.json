@@ -1,0 +1,19 @@
+{
+  "title": "Training Slot Validation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-44]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.schedule_roster.validate_owned_operators",
+    "arknights_mower.utils.operators.Operators.validate_backup_plans"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/schedule_roster_tests.py"
+  ]
+}
