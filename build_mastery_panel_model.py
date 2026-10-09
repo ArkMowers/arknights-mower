@@ -6,6 +6,11 @@ import os
 from pathlib import Path
 
 from arknights_mower.utils.mastery_panel_model import build_model
+from build_font_subsets import (
+    MASTERY_SOURCE_SHA256,
+    ensure_font_characters,
+    source_font,
+)
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_FONT = ROOT / "arknights_mower/fonts/SourceHanSansCN-Medium-mastery.ttf"
@@ -18,6 +23,22 @@ def build_default_model(skill_data=None, output=None, font=None):
     font = font or Path(os.environ.get("MOWER_MASTERY_FONT", DEFAULT_FONT))
     charset = DEFAULT_CHARSET if font.resolve() == DEFAULT_FONT.resolve() else None
     data = json.loads(Path(skill_data).read_text(encoding="utf-8"))
+    if charset is not None:
+        text = "".join(
+            "["
+            + char.get("name", "")
+            + "]"
+            + "".join(skill.get("name") or "" for skill in char.get("skills", []))
+            for char in data.get("characters", {}).values()
+            if char.get("rarity") in (4, 5, 6)
+        )
+        ensure_font_characters(
+            text,
+            font,
+            charset,
+            source_font("SourceHanSansCN-Medium.ttf"),
+            MASTERY_SOURCE_SHA256,
+        )
     return build_model(data, font, output, charset)
 
 

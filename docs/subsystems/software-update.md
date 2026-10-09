@@ -12,6 +12,8 @@
 
 ## 3. Subsystem Invariants
 
+- **[INV-RES-01] Template Glyph Coverage**: Resource generation requires a real glyph for each rendered character and preserves the calibrated glyphs already present in its subsets. Missing source coverage stops generation before either subset file changes.
+
 - **[INV-UPD-04] MAA Resource Platform Parity**: Installed MAA on Windows, macOS and Linux exposes independent resource checks and updates; installation preserves core and Python files, rejects active MAA use, and retains resource rollback copies.
 - **[INV-UPD-03] Nightly Direction Evidence**: Same-alpha Nightly updates use valid publication times or verified upstream commit ancestry to determine direction; missing index history alone never establishes a downgrade, and unverified direction retains manual confirmation.
 - **[INV-UPD-01] Owned Command Completion**: Windows update commands own their descendants before execution and verify tree completion within a finite budget before releasing the temporary checkout; cancellation preserves other application instances.
@@ -43,3 +45,9 @@ Cancellation and timeout terminate only the owned command tree. Successful root-
 `install_maa_resource_update` stages an incremental resource merge, preserves core and Python files, and replaces only `resource`. The previous resource tree remains in `resource.old`; failed replacement or version verification restores the original tree and previous backup.
 
 [Windows MAA resource updates](../../.agents/notes/implemented/bug-fix/2026-10-08-windows-maa-resource-update.md) records the platform correction and focused verification.
+
+## 7. Resource Template Fonts
+
+`auto_get_res_new.py` prepares room-name glyphs before the three operator models load fonts. `build_default_model` prepares mastery name and skill glyphs before rendering. `MOWERFONTS_DIR` selects original game fonts from MowerFonts; local generation defaults to `ArknightsGameResource/fonts`. A complete subset needs no source file. Missing source files or glyphs stop generation before font or charset mutation. Full game fonts and fontTools are generation dependencies; runtime continues loading compressed models.
+
+[Automatic resource font expansion](../../.agents/notes/implemented/bug-fix/2026-10-09-resource-font-expansion.md) records the decision and focused verification.

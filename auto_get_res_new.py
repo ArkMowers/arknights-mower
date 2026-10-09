@@ -21,6 +21,11 @@ from arknights_mower.utils.res_version import (
     pick_latest_activity,
     pick_latest_gacha,
 )
+from build_font_subsets import (
+    ROOM_SOURCE_SHA256,
+    ensure_font_characters,
+    source_font,
+)
 from build_mastery_panel_model import build_default_model
 
 # 字体目录：生成期从 MowerFonts 检出读取（环境变量 MOWERFONTS_DIR），
@@ -36,12 +41,14 @@ def 字体路径(文件名: str) -> str:
 
 
 def 校验房间字体字符(干员列表):
-    """Fail visibly when a new name needs glyphs absent from the bundled subset."""
-    with open(ROOM_FONT_CHARSET, encoding="utf-8") as file:
-        available = set(file.read())
-    missing = sorted(set("".join(干员列表)) - available)
-    if missing:
-        raise ValueError("房间字体子集缺字：" + "".join(missing))
+    """Expand missing name glyphs from the matching original game font."""
+    ensure_font_characters(
+        "".join(干员列表),
+        ROOM_FONT_PATH,
+        ROOM_FONT_CHARSET,
+        source_font("NotoSansHans-Medium.otf"),
+        ROOM_SOURCE_SHA256,
+    )
 
 
 def 提取干员名图片(imgpath, 裁剪区域: int = 1, 模式: int = 1):
@@ -675,8 +682,6 @@ class Arknights数据处理器:
     def 训练在房间内的干员名的模型(self):
         # 房间卡片使用游戏内 NotoSansHans-Medium；本字体按 agent.json
         # 字符集精简，位于仓库内以便重新生成模型。
-        font = ImageFont.truetype(ROOM_FONT_PATH, 37)
-
         data = {}
 
         kernel = np.ones((12, 12), np.uint8)
@@ -684,6 +689,7 @@ class Arknights数据处理器:
         with open("./arknights_mower/data/agent.json", "r", encoding="utf-8") as f:
             agent_list = json.load(f)
         校验房间字体字符(agent_list)
+        font = ImageFont.truetype(ROOM_FONT_PATH, 37)
         for operator in sorted(agent_list, key=lambda x: len(x), reverse=True):
             img = Image.new(mode="L", size=(400, 100))
             draw = ImageDraw.Draw(img)
@@ -711,12 +717,6 @@ class Arknights数据处理器:
             pickle.dump(data, f)
 
     def 训练选中的干员名的模型(self):
-        font31 = ImageFont.truetype(ROOM_FONT_PATH, 31)
-        font30 = ImageFont.truetype(ROOM_FONT_PATH, 30)
-        font25 = ImageFont.truetype(ROOM_FONT_PATH, 25)
-        font23 = ImageFont.truetype(ROOM_FONT_PATH, 23)
-        font27 = ImageFont.truetype(ROOM_FONT_PATH, 27)
-
         data = {}
 
         kernel = np.ones((10, 10), np.uint8)
@@ -724,6 +724,11 @@ class Arknights数据处理器:
         with open("./arknights_mower/data/agent.json", "r", encoding="utf-8") as f:
             agent_list = json.load(f)
         校验房间字体字符(agent_list)
+        font31 = ImageFont.truetype(ROOM_FONT_PATH, 31)
+        font30 = ImageFont.truetype(ROOM_FONT_PATH, 30)
+        font25 = ImageFont.truetype(ROOM_FONT_PATH, 25)
+        font23 = ImageFont.truetype(ROOM_FONT_PATH, 23)
+        font27 = ImageFont.truetype(ROOM_FONT_PATH, 27)
         for idx, operator in enumerate(agent_list):
             font = font31
             if not operator[0].encode().isalpha():
@@ -772,11 +777,6 @@ class Arknights数据处理器:
             pickle.dump(data, f)
 
     def 训练训练室干员名的模型(self):
-        font30 = ImageFont.truetype(ROOM_FONT_PATH, 30)
-        font28 = ImageFont.truetype(ROOM_FONT_PATH, 28)
-        font25 = ImageFont.truetype(ROOM_FONT_PATH, 25)
-        font24 = ImageFont.truetype(ROOM_FONT_PATH, 24)
-
         data = {}
 
         kernel = np.ones((10, 10), np.uint8)
@@ -784,6 +784,10 @@ class Arknights数据处理器:
         with open("./arknights_mower/data/agent.json", "r", encoding="utf-8") as f:
             agent_list = json.load(f)
         校验房间字体字符(agent_list)
+        font30 = ImageFont.truetype(ROOM_FONT_PATH, 30)
+        font28 = ImageFont.truetype(ROOM_FONT_PATH, 28)
+        font25 = ImageFont.truetype(ROOM_FONT_PATH, 25)
+        font24 = ImageFont.truetype(ROOM_FONT_PATH, 24)
         for idx, operator in enumerate(agent_list):
             font = font30
             if not operator[0].encode().isalpha():
