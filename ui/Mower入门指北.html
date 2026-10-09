@@ -3,22 +3,89 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Mower入门指北</title>
+	<title>Mower 一条龙入门说明</title>
+	<script>
+		(() => {
+			const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+			let explicitTheme = new URLSearchParams(window.location.search).get('theme');
+			function applyTheme() {
+				document.documentElement.dataset.theme = ['light', 'dark'].includes(explicitTheme)
+					? explicitTheme : systemTheme.matches ? 'dark' : 'light';
+			}
+			applyTheme();
+			systemTheme.addEventListener('change', applyTheme);
+			window.addEventListener('message', (event) => {
+				if (event.source !== window.parent || event.origin !== window.location.origin
+					|| event.data?.type !== 'mower-doc-theme'
+					|| !['light', 'dark'].includes(event.data.theme)) return;
+				explicitTheme = event.data.theme;
+				applyTheme();
+			});
+		})();
+	</script>
 	<style>
 		/* 主题变量定义 */
 		:root {
+			color-scheme: light;
 			--sidebar-width: 210px;
 			--header-height: 60px;
-			--primary-color: #4caf50;
+			--primary-color: #2e7d32;
 			--secondary-color: #2980b9;
 			--link-color: #0066cc;
-			--reference-color: #e74c3c;
+			--link-hover: #0044aa;
+			--reference-color: #c0392b;
+			--reference-hover: #a93226;
 			--border-color: #e0e0e0;
 			--light-bg: #f9f9f9;
 			--active-color: #e8f5e9;
+			--page-bg: #f8fafb;
+			--text-color: #333;
+			--muted-color: #555;
+			--heading-color: #2c3e50;
+			--hover-bg: #e0e0e0;
+			--subnav-bg: rgba(255,255,255,0.5);
+			--code-bg: #f5f5f5;
+			--error-color: #c62828;
+			--note-bg: #fff9e6;
+			--note-border: #b88700;
+			--warning-bg: #ffebee;
+			--warning-border: #d32f2f;
+			--highlight-bg: #fffacd;
+			--button-text: #fff;
+			--table-hover: #f0f7ff;
 			--transition-speed: 0.3s;
 			--shadow: 0 4px 6px rgba(0,0,0,0.1);
 			--card-bg: #fff;
+		}
+
+		:root[data-theme='dark'] {
+			color-scheme: dark;
+			--primary-color: #63e2b7;
+			--secondary-color: #70c0e8;
+			--link-color: #8acbec;
+			--link-hover: #b5e1f7;
+			--reference-color: #ffaaa0;
+			--reference-hover: #ffd0c9;
+			--border-color: #414149;
+			--light-bg: #18181c;
+			--active-color: #1d3b31;
+			--page-bg: #101014;
+			--text-color: #e8e8ec;
+			--muted-color: #b8b8c0;
+			--heading-color: #f4f4f5;
+			--hover-bg: #2c2c32;
+			--subnav-bg: #202024;
+			--code-bg: #202024;
+			--error-color: #ffaaa0;
+			--note-bg: #3c321e;
+			--note-border: #f2c97d;
+			--warning-bg: #3d2529;
+			--warning-border: #e88080;
+			--highlight-bg: #554719;
+			--button-text: #10241c;
+			--table-hover: #24303a;
+			--shadow: 0 4px 6px rgba(0,0,0,0.4);
+			--card-bg: #18181c;
 		}
 		
 		/* 全局基础样式重置 */
@@ -33,8 +100,8 @@
 			font-family: 'PingFang SC', 'Segoe UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif;
 			font-size: 16px;
 			line-height: 1.6;
-			color: #333;
-			background-color: #f8fafb;
+			color: var(--text-color);
+			background-color: var(--page-bg);
 			scroll-behavior: smooth;
 			overflow-x: hidden; /* 防止页面整体溢出 */
 		}
@@ -43,7 +110,7 @@
 		.container {
 			display: flex;
 			min-height: 100vh;
-			background: linear-gradient(to bottom, #e8f5e9 0%, #f8fafb 150px, #f8fafb 100%);
+			background: linear-gradient(to bottom, var(--active-color) 0%, var(--page-bg) 150px, var(--page-bg) 100%);
 		}
 		
 		/* 侧边栏导航样式 */
@@ -69,8 +136,8 @@
 		.nav-title {
 			padding: 15px 20px;
 			font-weight: bold;
-			background: #e8f5e9;
-			color: #4caf50;
+			background: var(--active-color);
+			color: var(--primary-color);
 			font-size: 16px;
 			position: sticky;
 			top: 0;
@@ -92,7 +159,7 @@
 		.nav-link {
 			display: block;
 			padding: 12px 20px;
-			color: #333;
+			color: var(--text-color);
 			text-decoration: none;
 			transition: all 0.2s;
 			font-size: 13px;
@@ -101,7 +168,7 @@
 		}
 		
 		.nav-link:hover {
-			background: #e0e0e0;
+			background: var(--hover-bg);
 		}
 		
 		.nav-link.active {
@@ -126,7 +193,7 @@
 			transform: translateY(-50%);
 			font-weight: bold;
 			font-size: 16px;
-			color: #666;
+			color: var(--muted-color);
 			transition: transform var(--transition-speed);
 		}
 		
@@ -141,7 +208,7 @@
 			max-height: 0;
 			overflow: hidden;
 			transition: max-height var(--transition-speed) ease;
-			background-color: rgba(255,255,255,0.5);
+			background-color: var(--subnav-bg);
 		}
 		
 		/* 二级导航展开时样式 */
@@ -153,7 +220,7 @@
 		.sub-nav-link {
 			padding: 10px 20px 10px 35px;
 			display: block;
-			color: #555;
+			color: var(--muted-color);
 			text-decoration: none;
 			font-size: 12.5px;
 			position: relative;
@@ -161,7 +228,7 @@
 		}
 		
 		.sub-nav-link:hover {
-			background: #f0f0f0;
+			background: var(--hover-bg);
 			padding-left: 38px;
 		}
 		
@@ -174,7 +241,7 @@
 			transform: translateY(-50%);
 			width: 6px;
 			height: 6px;
-			background: #999;
+			background: var(--muted-color);
 			border-radius: 50%;
 			transition: all 0.2s;
 		}
@@ -182,7 +249,7 @@
 		.sub-nav-link.active {
 			color: var(--primary-color);
 			font-weight: bold;
-			background: #e8f5e9;
+			background: var(--active-color);
 		}
 		
 		.sub-nav-link.active::before {
@@ -216,7 +283,7 @@
 			margin: 0 0 20px;
 			padding-bottom: 15px;
 			border-bottom: 2px solid var(--primary-color);
-			color: #2c3e50;
+			color: var(--heading-color);
 			scroll-margin-top: 20px;
 		}
 		
@@ -226,7 +293,7 @@
 			font-weight: bold;
 			margin: 25px 0 15px;
 			scroll-margin-top: 20px;
-			color: #2c3e50;
+			color: var(--heading-color);
 			padding-left: 10px;
 			border-left: 4px solid var(--secondary-color);
 		}
@@ -237,7 +304,7 @@
 			font-weight: bold;
 			margin: 20px 0 12px;
 			scroll-margin-top: 20px;
-			color: #34495e;
+			color: var(--heading-color);
 		}
 		
 		/* 正文段落样式 */
@@ -260,7 +327,7 @@
 		}
 		
 		.link-text:hover {
-			color: #0044aa;
+			color: var(--link-hover);
 		}
 		
 		/* 引用文本样式 */
@@ -279,13 +346,13 @@
 
 		.reference-link-text:hover {
 			text-decoration: underline;
-			color: #c0392b;
+			color: var(--reference-hover);
 		}
 		
 		/* 代码块样式 */
 		.code-block {
-			background: #f5f5f5;
-			color: #333;
+			background: var(--code-bg);
+			color: var(--text-color);
 			padding: 12px;
 			border-radius: 5px;
 			font-family: 'PingFang SC', 'Microsoft YaHei Mono', 'Menlo', 'Consolas', 'monospace';
@@ -309,7 +376,7 @@
 		}
 		
 		.code-block .error {
-			color: #ff5555;
+			color: var(--error-color);
 		}
 		
 		/* 代码块复制按钮样式 */
@@ -317,7 +384,7 @@
 			position: absolute;
 			top: 10px;
 			right: 14px;
-			background: #e8f5e9;
+			background: var(--active-color);
 			color: var(--primary-color);
 			border: none;
 			border-radius: 4px;
@@ -332,7 +399,7 @@
 		
 		.copy-btn:hover {
 			background: var(--primary-color);
-			color: #fff;
+			color: var(--button-text);
 			opacity: 1;
 		}
 		
@@ -350,32 +417,33 @@
 		/* 表头和单元格样式 */
 		.info-table th,
 		.info-table td {
-			border: 1px solid #ddd;
+			border: 1px solid var(--border-color);
 			padding: 10px 15px;
 			text-align: left;
 			max-width: 300px;
 			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
+			white-space: normal;
+			overflow-wrap: anywhere;
+			vertical-align: top;
 		}
 		/* 表头样式 */
 		.info-table th {
-			background-color: #f5f5f5;
+			background-color: var(--code-bg);
 			font-weight: bold;
 		}
 		/* 奇偶行背景色交替 */
 		.info-table tr:nth-child(even) {
-			background-color: #f9f9f9;
+			background-color: var(--light-bg);
 		}
 		/* 鼠标悬停行高亮 */
 		.info-table tr:hover {
-			background-color: #f0f7ff;
+			background-color: var(--table-hover);
 		}
 		
 		/* 引用提示框样式 */
 		.note-box {
-			background: #fff9e6;
-			border-left: 4px solid #f1c40f;
+			background: var(--note-bg);
+			border-left: 4px solid var(--note-border);
 			padding: 5px 20px;
 			margin: 20px 0;
 			border-radius: 0 4px 4px 0;
@@ -384,8 +452,8 @@
 		
 		/* 警告提示框样式 */
 		.warning-box {
-			background: #ffebee;
-			border-left: 4px solid #f44336;
+			background: var(--warning-bg);
+			border-left: 4px solid var(--warning-border);
 			padding: 5px 20px;
 			margin: 20px 0;
 			border-radius: 0 4px 4px 0;
@@ -394,8 +462,8 @@
 		
 		/* 提示框样式 */
 		.tip-box {
-			background: #e8f5e9;
-			border-left: 4px solid #4caf50;
+			background: var(--active-color);
+			border-left: 4px solid var(--primary-color);
 			padding: 5px 20px;
 			margin: 20px 0;
 			border-radius: 0 4px 4px 0;
@@ -474,7 +542,7 @@
 			left: var(--sidebar-width);
 			right: 0;
 			height: 4px;
-			background: #f0f0f0;
+			background: var(--hover-bg);
 			z-index: 1000;
 			transition: left 0.3s ease;
 		}
@@ -489,7 +557,7 @@
 		
 		/* 高亮文本样式 */
 		.highlight {
-			background-color: #fffacd;
+			background-color: var(--highlight-bg);
 			padding: 2px 4px;
 			border-radius: 3px;
 		}
@@ -500,7 +568,7 @@
 			bottom: 30px;
 			right: 30px;
 			background: var(--primary-color);
-			color: white;
+			color: var(--button-text);
 			width: 50px;
 			height: 50px;
 			border-radius: 50%;
@@ -521,905 +589,370 @@
 			opacity: 1;
 			transform: translateY(0);
 		}
-	</style>
+	html { scroll-behavior: smooth; }
+.back-to-top { border: 0; }
+</style>
 </head>
 
 <body>
-    <div class="container">
-        <!-- 左侧导航栏 -->
-        <div class="sidebar" id="sidebar">
-            <div class="nav-title">Mower入门指北导航</div>
-            <ul class="nav-list">
-                <li><a href="#preface" class="nav-link">前言</a></li>
-                
-                <li>
-                    <div class="nav-item-toggle" data-section="download-update">
-                        <a href="#download-update" class="nav-link">下载及更新</a>
-                    </div>
-                    <ul class="sub-nav-list" id="download-update-sub">
-                        <li><a href="#windows" class="sub-nav-link">Windows</a></li>
-                        <li><a href="#mower-sources" class="sub-nav-link">MacOS、GNU/Linux</a></li>
-                        <li><a href="#multi-instance" class="sub-nav-link">多开</a></li>
-                    </ul>
-                </li>
+  <div class="container">
+    <nav class="sidebar" id="sidebar" aria-label="入门说明目录">
+      <div class="nav-title">Mower 一条龙</div>
+      <ul class="nav-list">
+        <li><a href="#preface" class="nav-link">首次运行一条龙</a></li>
+        <li><a href="#download-update" class="nav-link">安装与更新</a></li>
+        <li><a href="#device-connection" class="nav-link">设备连接</a></li>
+        <li><a href="#scheduling" class="nav-link">排班与宿舍</a></li>
+        <li><a href="#schedule-theory" class="nav-link">排班表编写理论</a></li>
+        <li><a href="#Mower-settings" class="nav-link">基建与日常设置</a></li>
+        <li><a href="#sanity-plan" class="nav-link">MAA、作战与大型任务</a></li>
+        <li><a href="#growth-workshop" class="nav-link">养成、专精与加工</a></li>
+        <li><a href="#configuration-backup" class="nav-link">备份、迁移与多开</a></li>
+        <li><a href="#diagnostics-ai" class="nav-link">日志、排错与 AI</a></li>
+        <li><a href="#faq" class="nav-link">常见问题</a></li>
+        <li><a href="#feedback" class="nav-link">反馈表与求助</a></li>
+      </ul>
+    </nav>
+    <div class="progress-container" aria-hidden="true"><div class="progress-bar" id="progressBar"></div></div>
+    <main class="main-content text-content">
+      <section class="content-card">
+        <h1 id="preface" class="title-level-1">Mower 一条龙入门说明</h1>
+        <p>本说明介绍 Mower 的当前功能与界面，更新时间：2026-10-09。实际软件版本和可用操作以你所用平台的页面提示为准。</p>
+        <div class="tip-box"><p><strong>先完成设备连接和排班核对，再逐项打开需要的自动化。</strong>软件更新、资源更新、刷理智周计划和大型任务各有自己的入口与开关。</p></div>
+        <ol>
+          <li><a class="link-text" href="#download-update">安装或更新</a>：首次安装使用官方发布包，已有程序在“软件更新”检查版本。</li>
+          <li><a class="link-text" href="#device-connection">绑定设备</a>：选择平台预设，检测并选定目标实例，核对连接状态。</li>
+          <li><a class="link-text" href="#scheduling">导入或编辑排班</a>：核对设施、主班、绑组、替班、宿舍和副表，完成校验。</li>
+          <li><a class="link-text" href="#Mower-settings">选择基建与日常任务</a>：按需要开启线索、跑单、邮件和签到等功能。</li>
+          <li><a class="link-text" href="#sanity-plan">配置作战</a>：周计划选择 MAA 或 Mower 执行方式；大型任务独立设置。</li>
+          <li><a class="link-text" href="#growth-workshop">配置养成与专精</a>：先同步练度和库存，再核对目标、路线与自动合成。</li>
+          <li><a class="link-text" href="#diagnostics-ai">启动并观察</a>：先确认一轮换班和所选任务正常，出现异常查看对应日志或归档。</li>
+          <li><a class="link-text" href="#configuration-backup">导出备份</a>：保存当前实例的配置及持久化数据，迁移前再导出一次。</li>
+        </ol>
+        <p>问题与建议可查阅 <a href="https://docs.qq.com/sheet/DUEJ6UWN5VFVRU0dG?tab=BB08J2" class="reference-link-text" target="_blank" rel="noopener noreferrer">Mower 反馈表</a>。</p>
+      </section>
 
-                <li>
-                    <div class="nav-item-toggle" data-section="Mower-settings">
-                        <a href="#Mower-settings" class="nav-link">Mower设置</a>
-                    </div>
-                    <ul class="sub-nav-list" id="Mower-settings-sub">
-                        <li><a href="#basic-settings" class="sub-nav-link">基础设置</a></li>
-                        <li><a href="#email-notification" class="sub-nav-link">邮件提醒</a></li>
-                        <li><a href="#skland" class="sub-nav-link">森空岛相关</a></li>
-                        <li><a href="#material-synthesis" class="sub-nav-link">无缝合成材料设置</a></li>
-                        <li><a href="#import-schedules" class="sub-nav-link">作业导入</a></li>
-                        <li><a href="#order-running" class="sub-nav-link">葛朗台跑单</a></li>
-                        <li><a href="#mood-threshold" class="sub-nav-link">心情阈值</a></li>
-                        <li><a href="#emergency-threshold" class="sub-nav-link">急救阈值</a></li>
-                        <li><a href="#dorm-optimization" class="sub-nav-link">宿舍不养闲人</a></li>
-                        <li><a href="#phalanx" class="sub-nav-link">肥鸭防呆与肥鸭阈值</a></li>
-                        <li><a href="#dorm-priority" class="sub-nav-link">宿舍优先级排序</a></li>
-                        <li><a href="#local-ai-assistant" class="sub-nav-link">本地AI助手</a></li>
-                    </ul>
-                </li>
+      <section class="content-card">
+        <h1 id="download-update" class="title-level-1">安装、软件更新与资源更新</h1>
+        <h2 id="windows" class="title-level-2">首次安装</h2>
+        <p>macOS 和 Linux 虽提供独立包，仍建议优先使用源码部署，安装步骤见 <a href="https://arkmowers.github.io/arknights-mower/manual/source-deploy/" class="link-text" target="_blank" rel="noopener noreferrer">源码部署说明</a>。选择独立包时，按下列步骤安装。</p>
+        <ol>
+          <li>从 <a href="https://github.com/ArkMowers/arknights-mower/releases" class="link-text" target="_blank" rel="noopener noreferrer">项目主页的 Releases</a>下载对应系统和架构的独立包，并核对发布说明及 SHA256SUMS。</li>
+          <li>Windows 解压完整包后启动其中的程序；macOS 使用对应架构的 DMG；Linux 使用对应架构的完整压缩包。</li>
+          <li>Windows 和 macOS 包未签名，首次运行可能出现系统安全提示。核对来源后按官方说明处理；Linux 如提示缺少 GTK/WebKit2，按提示安装宿主依赖。</li>
+          <li>打开界面后先查看 Mower 设置 → 软件更新中的当前版本和渠道。</li>
+        </ol>
+        <p>不再使用旧版独立 Mower 下载器，也不按旧教程直接覆盖未知增量包。</p>
+        <h2 id="windows-update-auto" class="title-level-2">已有安装：内置软件更新</h2>
+        <ol>
+          <li>进入 Mower 设置 → 软件更新，选择正式版、公测版或开发版渠道。</li>
+          <li>检查目标版本和更新说明，再按页面提示安装。也可按需开启“自动检查更新”“自动更新”。</li>
+          <li>更新会重启同一安装目录下的运行实例并恢复原运行状态；“更新后后台静默重启”控制是否重新打开窗口。</li>
+          <li>独立包可在“手动应用”上传 Release 安装包；支持 OTA 的平台可用与当前版本匹配的差异包。版本不匹配或差异校验失败时使用完整包。</li>
+        </ol>
+        <h2 id="mower-sources" class="title-level-2">源码部署与平台差异</h2>
+        <p>源码部署使用“软件更新”的在线源码更新及“源码版本管理”。本地源码有修改时，先自行保存需要的改动，再判断是否接受强制更新；不要向源码部署上传 Release 独立包。源码安装和平台依赖详见 <a href="https://arkmowers.github.io/arknights-mower/manual/source-deploy/" class="link-text" target="_blank" rel="noopener noreferrer">源码部署说明</a>，不沿用旧文档中指定的环境名、手工拼装 macOS MAA 或固定安装路径。</p>
+        <h2 id="resource-update" class="title-level-2">资源与网络</h2>
+        <p>Mower 设置 → 资源更新管理 Mower 识别等资源，支持检查、自动更新和手动上传资源包。共享安装下各实例在任务间歇加载资源，通常无需重启。MAA 本体和 MAA 资源在 MAA 设置中单独更新。</p>
+        <p>下载失败时，在“网络与下载代理”检查全局网络代理和 GitHub 下载站点，并使用页面的下载测试。软件更新日志、资源更新日志和设备连接日志应分别查看。</p>
+      </section>
 
-                <li><a href="#sanity-plan" class="nav-link">MAA设置</a></li>
+      <section class="content-card">
+        <h1 id="device-connection" class="title-level-1">设备连接与恢复</h1>
+        <h2 id="basic-settings" class="title-level-2">选择预设与目标实例</h2>
+        <ol>
+          <li>在 Mower 设置的设备连接区域选择当前系统对应的预设。Windows、macOS、Linux 的支持范围和操作不同。</li>
+          <li>使用页面提供的“检测实例”或“启动并检测”。如果检测到多个实例，先明确选择目标。</li>
+          <li>需要补充路径时，按当前字段的问号说明填写安装、管理器或配置路径。不要统一填旧 shell 文件夹、多开编号0或某个默认端口。</li>
+          <li>查看状态、修复提示及所选实例。检测到的实例身份先保存，ADB 地址和游戏包通过验证后保存；测试失败不撤销已经选择的实例。</li>
+        </ol>
+        <p>未指定自定义 ADB 路径时优先使用 Mower 自带的 ADB。需要手动连接时，在高级设置选择“其他模拟器”或“实体设备”，填写明确目标 serial，再测试连接。</p>
+        <h2 id="connection-actions" class="title-level-2">区分检测、测试与启动</h2>
+        <ul>
+          <li><strong>测试连接（只读）</strong>：只检查当前连接，不启动或重启模拟器及其管理器。</li>
+          <li><strong>启动并检测</strong>：支持该动作的预设核验所选实例，停止时先启动再检查。多实例环境仍需明确目标。</li>
+          <li><strong>启动并测试连接</strong>：按当前连接与恢复设置处理选定实例，不自动切换到其他在线实例。</li>
+          <li>BlueStacks Air 需要在应用中手动开启 ADB 及启停；AVD、redroid、Genymotion 等以页面的本次启动确认和退出提示为准。</li>
+        </ul>
+        <h2 id="capture-settings" class="title-level-2">截图、触控与实体设备</h2>
+        <p>标准画面为横屏1920×1080 RGB。截图与触控在“连接与恢复”调整；MuMu IPC 只适用于 Windows MuMu 12，截图与触控配套；雷电截图增强只适用于 Windows 雷电9或14。其他后端按页面支持情况选择，不统一切成 ADB+Gzip。</p>
+        <p>实体设备默认只检查画面尺寸。页面提供“临时整备”时，授权仅对本次运行有效，结束、取消或失败时按尺寸恢复规则还原；先手动横屏，Mower 不修改旋转、密度或导航栏。Android 应用内的设备连接由应用管理，桌面预设说明不适用。</p>
+        <p>启动保护时间、连接超时和重试次数均有边界。遇到离线或启动失败，按当前目标的状态提示修复，不反复增加等待时间或改连其他设备。</p>
+      </section>
 
-                <li>
-                    <div class="nav-item-toggle" data-section="scheduling">
-                        <a href="#scheduling" class="nav-link">排班教学</a>
-                    </div>
-                    <ul class="sub-nav-list" id="scheduling-sub">
-                        <li><a href="#ui-intro" class="sub-nav-link">页面介绍</a></li>
-                        <li><a href="#main-and-replacement" class="sub-nav-link">主力与替换</a></li>
-                        <li><a href="#team-management" class="sub-nav-link">班组管理</a></li>
-                        <li><a href="#dorm-management" class="sub-nav-link">宿舍管理</a></li>
-                        <li><a href="#low-priority" class="sub-nav-link">低优先级设置</a></li>
-                        <li><a href="#infrastructure-calc" class="sub-nav-link">心情回复与消耗</a></li>
-                        <li><a href="#work-rest-ratio" class="sub-nav-link">工休比计算</a></li>
-                    </ul>
-                </li>
+      <section class="content-card">
+        <h1 id="scheduling" class="title-level-1">排班、主副表与宿舍</h1>
+        <h2 id="import-schedules" class="title-level-2">导入与核对</h2>
+        <ol>
+          <li>排班页面可导入排班 JSON、排班图片，或从配置 ZIP 读取 config/plan.json。完整配置迁移使用“配置导出与导入”。</li>
+          <li>核对基建设施的位置、类型、等级与岗位数；办公室、训练室和回收站可在排班编辑器拖动交换顺序，须与游戏布局一致。该顺序用于界面显示和房间导航，只保存在本机，不随排班导出。</li>
+          <li>检查主表、副表、触发条件、显式换人任务，以及对应的主班、绑组和替班。</li>
+          <li>运行排班校验，按具体设施和干员修复冲突。超时或预算不足表示未完成校验，不等于所有组合已经通过。</li>
+        </ol>
+        <h2 id="main-and-replacement" class="title-level-2">主班、替班与绑组</h2>
+        <p>主班确定岗位身份，替班提供休息时的完整替换。一个干员可参与多个绑组；共享主班只有在各休息组都具备兼容替班时才允许同时休息，否则相关组等待。只有最后一个依赖组回班后，共享替班才释放。不要把“替班已填写”当作“当前替班一定可用”。</p>
+        <p>工作主班之间不能互填替班；同组主班互替仅在至少一方属于宿舍绑组岗位等条件成立时允许。最终以排班校验与实际任务安排为准。</p>
+        <h2 id="dorm-management" class="title-level-2">宿舍与恢复优先级</h2>
+        <p>Free 是可动态安排休息者的位置，不等于当前已确认空床。床位分配还受实际入住、预约、个人上下限和专项任务保护约束。宿舍按分床优先级、单回位归属及心情恢复缺口安排，不使用固定“4个VIP加8个非VIP”的通用公式。</p>
+        <p>已有单回目标不因心情变化主动重排；更高优先级的新入住者可按规则接管较低优先级单回位，同级不抢占。个人回满目标可能低于24，达到上限离宿不等于立即安排上班。</p>
+        <h2 id="schedule-issues" class="title-level-2">副表、产物与岗位兼容</h2>
+        <p>副表不能改变主表生产设施的类型和岗位数。排班高级设置中的“自动切换产物与订单”默认关闭；关闭时副表不能指定与主表不同的产物或订单目标，相关状态条件和切产物选项隐藏。普通换班、产物收取及葛朗台跑单仍保留。</p>
+        <p>主班身份、岗位和绑组没有相关变化时，副表切换优先保留休息、床位与回班状态；替班不足、预约或专精保护冲突时按实际规则等待或召回，不把退出副表理解为强制所有主班回班。</p>
+      </section>
 
-				<li>
-					<div class="nav-item-toggle" data-section="faq">
-						<a href="#faq" class="nav-link">常见问题</a>
-					</div>
-					<ul class="sub-nav-list" id="faq-sub">
-						<li><a href="#connection-issues" class="sub-nav-link">连接相关</a></li>
-						<li><a href="#schedule-issues" class="sub-nav-link">副表相关</a></li>
-						<li><a href="#other-issues" class="sub-nav-link">其他问题</a></li>
-					</ul>
-				</li>
+      <section class="content-card">
+        <h1 id="schedule-theory" class="title-level-1">排班表编写理论：从岗位到轮休</h1>
+        <p>排班表描述各岗位由谁负责、谁能替班、哪些人一起换班，以及什么条件下切换安排。Mower 根据实测心情与任务状态动态换班，不是每天按固定时刻把整张表轮换一次。编写时先让普通轮休持续运转，再加入跑单、菲亚梅塔充能和副表等专项安排。</p>
 
-                <li><a href="#user-notice" class="nav-link">用户需知</a></li>
-				<li><a href="#acknowledgements" class="nav-link">致谢</a></li>
-            </ul>
-        </div>
+        <h2 id="schedule-design-fields" class="title-level-2">主班、替班和绑组分别解决什么问题</h2>
+        <table class="info-table">
+          <thead><tr><th scope="col">配置</th><th scope="col">编写时要回答的问题</th></tr></thead>
+          <tbody>
+            <tr><td>设施与岗位</td><td>房间类型、等级、产物和岗位数是否与游戏一致？</td></tr>
+            <tr><td>主班</td><td>正常工作时，哪个干员负责这个岗位？</td></tr>
+            <tr><td>替班</td><td>主班休息时，哪些候选能接替这个岗位？</td></tr>
+            <tr><td>绑组</td><td>哪些主班需要协同下班、回班，保留技能配合？</td></tr>
+            <tr><td>宿舍岗位与 Free 位</td><td>哪些岗位固定驻员，哪些随组换人或临时开放？需要恢复的人分别使用哪些床位？</td></tr>
+            <tr><td>副表</td><td>特定条件成立时，需要覆盖主表的哪些安排？</td></tr>
+          </tbody>
+        </table>
+        <p>先按基建技能的配合关系选择主班；需要一起轮休的主班填写同一个非空组名，组名本身不代表轮休顺序。无须联动的主班可以不绑组。绑组可以跨设施；普通工作成员越多，一次下班需要同时满足的替班和恢复容量条件就越多。宿舍成员和“0心情工作的干员”不能直接按普通轮休人数计算。</p>
+        <p>替班列表是候选范围，不是把这些干员依次轮换的时间表。每次换班都要为相关岗位找到互不冲突的完整替班；把同一个干员填进多个岗位，不代表他能同时覆盖这些岗位。候选正在工作、被其他任务预约或受专精保护时，也可能暂时不可用。</p>
 
-        <!-- 进度条 -->
-        <div class="progress-container">
-            <div class="progress-bar" id="progressBar"></div>
-        </div>
+        <h2 id="schedule-design-example" class="title-level-2">一个三人制造站的示例</h2>
+        <p>假设一间三人制造站需要三名主班一起工作、一起休息。下表的甲至己是示意称呼，实际填写账号已拥有且适合对应设施的干员。</p>
+        <table class="info-table">
+          <thead><tr><th scope="col">岗位</th><th scope="col">主班</th><th scope="col">绑组</th><th scope="col">替班候选</th></tr></thead>
+          <tbody>
+            <tr><td>制造站岗位 1</td><td>甲</td><td>制造一组</td><td>丁</td></tr>
+            <tr><td>制造站岗位 2</td><td>乙</td><td>制造一组</td><td>戊</td></tr>
+            <tr><td>制造站岗位 3</td><td>丙</td><td>制造一组</td><td>己</td></tr>
+          </tbody>
+        </table>
+        <ol>
+          <li>主班甲、乙、丙正常工作，丁、戊、己作为替班候选，不再填成其他工作岗位的主班。</li>
+          <li>配置能容纳三名主班同时恢复的有效 Free 位，并核对实际入住、优先级和专项预约。不能只数表格中写了几个 Free。</li>
+          <li>满足下班条件且替班、床位均可用时，由丁、戊、己接替三个岗位，甲、乙、丙入宿。</li>
+          <li>满足回班条件后主班恢复工作，替班释放，再按宿舍恢复规则参与休息。观察下一轮是否仍有完整替班和床位。</li>
+        </ol>
+        <div class="note-box"><p>若三个岗位都只填丁作为替班，就无法同时替换整组。多个组共用丁、戊、己时，也要检查休息窗口是否重叠；顺序可用不等于同时可用。</p></div>
+        <p>这个示例使用普通工作主班与非主班替班。当前也支持宿舍绑组、同组主班互替和多绑组，床位需求需按下面的对应关系另算。</p>
 
-        <!-- 主内容区域 -->
-        <div class="main-content">
-            <div class="text-content">
-                <!-- 前言部分 -->
-                <div class="content-card">
-                    <h1 id="preface" class="title-level-1">前言</h1>
-                    <div class="section-content">
-                        <p>Mower入门指北，下文简称本指北。</p>
-						<span class="reference-text">Mower开发组</span>制作的Mower是一个开源的Arknights（明日方舟）模拟器助手，旨在帮助玩家更高效地管理游戏内的干员和资源。Mower提供了多种功能，包括自动排班、资源管理、邮件通知等，极大地提升了游戏体验。</p>
-						<p>本指北将介绍Mower的下载、运行、更新方法，以及如何配置Mower的各项设置，帮助用户快速上手使用Mower。</p>
-						<p>本指北的内容将持续更新，欢迎用户提出建议和反馈。</p>
-                        <p>本指北可用Chrome、Firfox、Safari等主流浏览器直接打开。</p>
-						<p>若需了解更多Mower相关问题，可加入QQ群<a href="https://qm.qq.com/q/Dz1UrPnRLO" class="reference-link-text" target="_blank" rel="noopener noreferrer">Mower用户交流群</a>或QQ频道<a href="https://pd.qq.com/s/5t91c3gx9" class="reference-link-text" target="_blank" rel="noopener noreferrer">ArkMower</a>，文明交流互助。</p>
-                    </div>
-                </div>
+        <h2 id="schedule-design-dorm" class="title-level-2">宿舍绑组：固定互替与临时 Free</h2>
+        <p>宿舍中的具名干员也可填写组名，随同组工作成员换班。宿舍成员本身不作为普通下班、用尽或回班计时的依据，也不因随组离开宿舍而额外申请一张恢复床。该组必须有可轮休的非宿舍成员，多绑组还须满足下一节的单绑组成员要求。</p>
+        <table class="info-table">
+          <thead><tr><th scope="col">宿舍「替换」的写法</th><th scope="col">组下班时的效果</th><th scope="col">恢复容量怎么计算</th></tr></thead>
+          <tbody>
+            <tr><td>填写非主班干员</td><td>由候选接替宿舍固定岗位；按已知心情从低到高选择，已在该岗位者可保留。</td><td>仍是固定岗位，不能把换下宿舍成员的原位另算成 Free 床。</td></tr>
+            <tr><td>填写同组工作主班</td><td>工作主班可入住这个固定宿舍岗位并恢复；也可与宿舍主班双向互替。</td><td>已在固定岗位恢复的工作主班不再重复申请动态床，该岗位也不开放给任意休息者。</td></tr>
+            <tr><td>填写 Free</td><td>宿舍成员随组离岗后，该岗位临时开放为动态恢复床；回班关闭时重新安排其住客。</td><td>仅在对应组状态允许开放时增加有效床位，不能当作永久空床。</td></tr>
+          </tbody>
+        </table>
+        <p>例如，以下两名主班属于同一个“互替组”，甲是工作干员，乙原本在宿舍：</p>
+        <table class="info-table">
+          <thead><tr><th scope="col">岗位</th><th scope="col">主班</th><th scope="col">组</th><th scope="col">替换</th></tr></thead>
+          <tbody>
+            <tr><td>办公室岗位</td><td>甲</td><td>互替组</td><td>乙</td></tr>
+            <tr><td>宿舍固定岗位</td><td>乙</td><td>互替组</td><td>甲</td></tr>
+          </tbody>
+        </table>
+        <p>满足换班条件时，乙去办公室接岗，甲进入乙的固定宿舍岗位恢复；回班时交换回来。两人的主班身份不变，甲使用固定恢复位，无须再占一张 Free 床。实际干员须适合对应设施，并满足完整匹配、预约、个人心情限制和训练保护。工作主班之间互替、跨组互替和自身替班仍不允许；宿舍主班之间互替不会减少同组工作成员所需的恢复容量。</p>
+        <p>若改用临时开放方案，可以让甲的替换为非主班丙，乙的替换为 Free。组下班时丙接办公室，乙离开固定岗位待命，该宿舍位置临时用于恢复。乙离岗待命不恢复心情，不额外占恢复床；这与上面的固定互替是两种不同写法。</p>
+        <div class="note-box"><p>主表每间宿舍填写完整五个位置，至少保留一个直接填写的 Free，且这些 Free 连续排在具名驻员之后；只有宿舍替换中的 Free 不能代替这项主表要求。当前不强制每间固定配置两名宿管，恢复速度取决于实际技能组合。Free 本身和菲亚梅塔不能绑组；菲亚梅塔的替换名单用于充能对象，不是普通宿舍替班。</p></div>
 
-                <!-- 下载、运行及更新 -->
-                <div class="content-card">
-                    <h1 id="download-update" class="title-level-1">下载、运行及更新</h1>
-                    <div class="section-content">
-                        <h2 id="windows" class="title-level-2">Windows</h2>
-                            <h3 id="windows-exe" class="title-level-3">下载和运行</h3>
-                                <ol>
-                                    <li>在群文件<code>"Mower下载"</code>文件夹中获取最新全量包</li>
-                                    <li>在英文路径下创建Mower工作文件夹</li>
-                                    <li>将全量包内容解压至此</li>
-                                    <li>运行<code>"mower.exe"</code>启动Mower</li>
-                                </ol>
-                            <h3 id="windows-update-manual" class="title-level-3">手动更新</h3>
-                                <ol>
-                                    <li>在群文件<code>"Mower下载"</code>文件夹中获取最新增量包</li>
-                                    <li>将增量包内容解压至Mower工作文件夹，覆盖原有文件</li>
-                                    <li>运行<code>"mower.exe"</code>启动Mower</li>
-                                </ol>
-                            <h3 id="windows-update-auto" class="title-level-3">自动更新</h3>
-                                <ol>
-                                    <li>从群文件<code>"Mower下载"</code>获取最新下载器</li>
-                                    <li>解压并运行<code>"MowerDownload.exe"</code>，选择安装路径</li>
-                                    <li>选择目标版本</li>
-                                    <li>选择更新类型：
-                                        <ul>
-                                            <li>仅更新新干员资源（保留当前版本）</li>
-                                            <li>更新Mower代码（体验新功能）</li>
-                                            <li>全量更新（干员资源+代码更新）</li>
-											<li>替换新版本DLL（更新MAA调用文件）</li>
-                                        </ul>
-                                    </li>
-                                    <li>等待更新完成，关闭更新提示窗口</li>
-                                </ol>
-						<!-- MacOS、GNU/Linux -->
-                        <h2 id="mower-sources" class="title-level-2">MacOS、GNU/Linux</h2>
-                        <p>MacOS、GNU/Linux使用源码运行，本指北以MacOS示例</p>
-                        	<h3 id="source-build" class="title-level-3">首次运行</h3>
-                        	<ol>
-                            	<li><strong>配置环境</strong>
-                                	<p>访问MAA项目地址：<a href="https://github.com/MaaAssistantArknights/MaaAssistantArknights" class="link-text" target="_blank" rel="noopener noreferrer">https://github.com/MaaAssistantArknights/MaaAssistantArknights</a></p>
-                                	<p>安装mac版MAA，并下载Windows版MAA，复制其python文件夹到</p>
-                                	<div class="code-block">
-                                    	/Applications/MAA.app/Contents/Resources
-                                    	<button class="copy-btn">复制</button>
-                                	</div>
-                                	<p>将/Applications/MAA.app/Contents/Frameworks里的内容复制到</p>
-                                	<div class="code-block">
-                                    	/Applications/MAA.app/Contents/Resources
-                                    	<button class="copy-btn">复制</button>
-                                	</div>
-                                	<p>安装蓝叠模拟器Air版：<a href="https://www.bluestacks.com/mac" class="link-text" target="_blank" rel="noopener noreferrer">https://www.bluestacks.com/mac</a></p>
-                                	<p>安装MuMu模拟器Mac版：<a href="https://mumu.163.com/" class="link-text" target="_blank" rel="noopener noreferrer">https://mumu.163.com/</a></p>
-                                	<p>模拟器设置
-                                <ul>
-                                    <li>
-                                        分辨率：
-                                        <div class="code-block">
-                                            1920x1080
-                                            <button class="copy-btn">复制</button>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        每英寸点数（DPI）：
-                                        <div class="code-block">
-                                            280
-                                            <button class="copy-btn">复制</button>
-                                        </div>
-                                    </li>
-                                    <li>启用Android调试(ADB)</li>
-                                </ul>
-                                </p>
-                                <p>安装Mac软件包管理器和Mower运行依赖
-								<div class="code-block">
-									<pre><code>/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-brew install git git-lfs python@3.12 android-platform-tools zbar</code></pre>
-									<button class="copy-btn">复制</button>
-								</div>
-                                </p>
-                            </li>
-                            <!-- 配置环境 -->
-                            <li><strong>构建Mower</strong>
-                                <p>（假设你已设置好网络代理）在终端中执行以下命令：</p>
-                                <div class="code-block">
-                                    <pre><code>#创建mower工作目录
-cd
-mkdir ~/ark
-cd ~/ark
-#克隆mower源代码
-git lfs install
-git config --global lfs.concurrenttransfers 50
-git clone -c https://github.com/ArkMowers/arknights-mower.git --branch 2025.6.1
-cd arknights-mower
-#构建python虚拟环境并安装依赖
-python3.12 -m venv venv
-source venv/bin/activate
-pip install -r requirements.in
-cd ui
-npm install
-npm run build</code></pre>
-                                    <button class="copy-btn">复制</button>
-                                </div>
-                            </li>
-							<!-- 运行Mower -->
-                            <li><strong>运行Mower</strong>
-                                <p>通过终端启动：</p>
-                                <div class="code-block">
-                                    <pre><code>cd ~/ark/arknights-mower
-source venv/bin/activate
-python3 webview_ui.py</code></pre>
-                                    <button class="copy-btn">复制</button>
-                                </div>
-                            </li>
-                            <!-- 配置mower -->
-                            <li><strong>配置Mower</strong>
-                                <p><br>
-                                    ADB路径：
-                                        <div class="code-block">
-                                            adb
-                                            <button class="copy-btn">复制</button>
-                                        </div>
-                                    ADB连接地址：<br>
-                                        <div class="code-block">
-                                            127.0.0.1:5555
-                                            <button class="copy-btn">复制</button>
-                                        </div>
-									模拟器类型：<br>
-                                        <div class="code-block">
-                                            其它
-                                            <button class="copy-btn">复制</button>
-                                        </div>
-									启动游戏方式：<br>
-                                        <div class="code-block">
-                                            使用adb命令启动
-                                            <button class="copy-btn">复制</button>
-                                        </div>
-									截图方案：<br>
-                                        <div class="code-block">
-                                            DroidCast
-                                            <button class="copy-btn">复制</button>
-                                        </div>
-									MAA目录：<br>
-                                        <div class="code-block">
-                                            /Applications/MAA.app/Contents/Resources
-                                            <button class="copy-btn">复制</button>
-                                        </div>
-									连接配置：<br>
-                                        <div class="code-block">
-                                            General
-                                            <button class="copy-btn">复制</button>
-                                        </div>
-                                </p>
-                            </li>
-							<!-- 停止Mower -->
-							<li><strong>停止Mower</strong>
-								<p>Mower运行时关闭终端</p>
-							</li>
-                        </ol>
+        <h2 id="schedule-design-bindings" class="title-level-2">多绑组：每组分别填写替班</h2>
+        <p>同一主班仍只占一个配置岗位。点击组旁的“+”新增绑组，在每个绑组内分别填写组名和替换；不要在多个岗位重复填写同一主班。该岗位的各个组名必须非空且互不重复，每个绑组都要有替班。每个关联组至少有一名只绑该组、需要轮休的非宿舍工作成员，负责该组的心情与回班计时；共享成员不参与这些计算。</p>
+        <p>例如甲共享给 A、B 两组，乙只属于 A 组，丙只属于 B 组。下面甲的两行是<strong>同一个岗位中的两个绑组</strong>：</p>
+        <table class="info-table">
+          <thead><tr><th scope="col">工作主班</th><th scope="col">组</th><th scope="col">该组替换候选</th></tr></thead>
+          <tbody>
+            <tr><td>甲（同一岗位）</td><td>A</td><td>己、庚</td></tr>
+            <tr><td>甲（新增绑组）</td><td>B</td><td>庚、辛</td></tr>
+            <tr><td>乙</td><td>A</td><td>丁</td></tr>
+            <tr><td>丙</td><td>B</td><td>戊</td></tr>
+          </tbody>
+        </table>
+        <p>A、B 同时休息时，甲的共同候选只有庚；还需丁、戊等其他岗位替班均可用，且不能重复占岗。若两列没有共同可用候选，新申请休息的组等待，不能简单把两列候选合并使用。甲需要恢复时只占一张床；甲若配置为 0 心情工作则不占恢复床，仍须满足共享岗位的替班兼容条件。</p>
+        <p>某组回班时，仍保留其他休息组需要的共享替班，最后一个依赖组回班后才恢复共享主班。共享宿舍成员也遵守逐组兼容关系；多个依赖组使用同一临时 Free 时，该床保持开放直到最后一个依赖组回班。</p>
 
-                    <h3 id="mower-sources-update" class="title-level-3">源码更新</h3>
-						<p>（假设你已设置好网络代理）在终端中执行以下命令：</p>
-                        <div class="code-block">
-                            <pre><code>#进入mower工作目录
-cd ~/ark/arknights-mower
-#同步mower最新源代码
-git fetch origin 2025.6.1 --progress
-git switch -f 2025.6.1 --progress
-git reset --hard origin/2025.6.1
-#激活python虚拟环境并更新mower运行依赖
-source venv/bin/activate
-pip install -r requirements.in
-cd ui
-npm install
-npm run build</code></pre>
-							<button class="copy-btn">复制</button>
-                        </div>
+        <h2 id="schedule-design-mood" class="title-level-2">心情阈值、上下限与回满</h2>
+        <p>在“设置心情上下限”中，全体设置提供统一范围；令夕及其组内规则可覆盖全体设置，指定干员设置的优先级最高。未自定义时沿用程序的自动规则。下限必须小于上限，范围在 0 至 24 点内。“需要用尽心情的干员”按适用下限安排用尽，“需要回满心情的干员”以适用上限为恢复目标，不一定是 0 和 24。</p>
+        <p>普通下班参考线按上下限区间折算，未自定义上下限时程序还会取整。例如下限为 0、上限为 24、心情阈值为 50%，参考线为 12 点：</p>
+        <div class="code-block"><code>下班参考线 = 心情下限 +（心情上限 − 心情下限）× 心情阈值</code></div>
+        <p>这只是阈值换算，实际下班还受整体心情、组状态、替班、床位和任务时间约束。调高阈值通常会更早申请休息，也会增加床位和替班压力；调低则减少工作余量。“宿舍高优先级”影响分床与单回安排，不直接让某组先下班。</p>
+        <p>普通组的回班不必等所有人恢复至上限；要求回满的成员和“组内心情差距过大时延后回班”等设置会改变回班时间。全体上限用于确定回满目标，不会仅因此强制留空宿舍；个人设置及令夕规则的强制离宿仍生效。不要把“达到上限离宿”理解为立即回到工作岗位。</p>
 
-                    <!-- 多开 -->
-                    <h2 id="multi-instance" class="title-level-2">多开</h2>
-                        <p>运行Mower文件夹中的"多开管理器.exe"</p>
-                        <p>操作步骤：</p>
-                        <ol>
-                            <li>点击"添加实例"按钮</li>
-                            <li>通过铅笔图标重命名实例</li>
-                            <li>点击"..."设置数据保存路径</li>
-                            <li>启动实例并配置ADB路径和连接地址</li>
-                        </ol>
-                        <div class="tip-box">
-                            <strong>提示：</strong>多开实例的ADB路径可在模拟器多开工具中查询
-                        </div>
+        <h2 id="schedule-design-priority" class="title-level-2">分床优先级与休息候补</h2>
+        <p>当前分床顺序为：宿舍高优先级干员 → 普通主班 → 宿舍低优先级主班 → 宿舍高优先级替班 → 休息候补 → 普通替班 → 空闲干员。同级比较距各自心情上限的缺口，缺口更大者优先；有效床位、预约与已有入住保护仍需满足。优先级决定分床和单回机会，不直接改变下班顺序。</p>
+        <p>“宿舍休息候补干员”有床时恢复，无床或被更高优先级接管后可离岗待命，需要有正常优先级主班在休息。绑组候补随组回班，未绑组候补随下一批回班；低于个人急救线后升为低优并保床。待命不恢复心情；用尽、回满、固定宿舍和 0 心情工作干员不适用。</p>
+        <p>“宿舍优先级排序”默认按 1→2→3→4 的高优位，再安排各宿舍低优位，也可把低优位插入顺序。它决定选用哪些有效床位，不增加床位数量；每间最前面的有效 Free 位作为高优位，不能固定认定为某个物理编号。副表留空继承此前顺序，改变生效顺序时可重新分床，日常不会仅因心情变化反复搬床。</p>
 
-                    </div>
-                </div>
+        <h2 id="schedule-design-cycle" class="title-level-2">估算工休比与周转能力</h2>
+        <p>在要求回满、工作与恢复速率近似稳定的假设下，可用心情变化估算一轮工休时间。设上限为 U、下班心情为 H，工作每小时消耗 d 点，宿舍每小时恢复 r 点，且 d、r 均大于 0：</p>
+        <div class="code-block"><code>工作时间 ≈（U − H）÷ d
+恢复时间 ≈（U − H）÷ r
+工休比 ≈ r ÷ d</code></div>
+        <p>例如 U=24、H=12、d=1、r=2，则工作约 12 小时、恢复约 6 小时，工休比约 2:1。这里的速率仅用于演示；实际消耗和恢复受技能、设施与宿舍配置影响，应从自己的运行记录核对，不能直接套用为固定时间表。</p>
+        <ul>
+          <li><strong>检查替班覆盖时间：</strong>主班休息期间，替班必须有足够心情持续工作；主班回班后，替班也要有机会恢复，才能覆盖下一轮。</li>
+          <li><strong>检查床位占用时间：</strong>估算各组何时入宿、占几张床、何时释放。长期没有空余恢复容量，或多个大组集中下班时，即使所有人都填了替班，也可能排队等待。</li>
+          <li><strong>检查技能组合：</strong>替班效率、组内心情消耗差异和宿管恢复能力都会影响长期收益；不要只比较主班在岗时的加成。</li>
+        </ul>
+        <p>以上估算不包含换人耗时、排队、跑单与充能等事件。先观察至少一轮完整的下班与回班，再调整心情阈值、组规模或替班名单；一次校验通过不能证明长期周转没有瓶颈。</p>
 
-                <!-- Mower设置 -->
-                <div class="content-card">
-                    <h1 id="Mower-settings" class="title-level-1">Mower设置</h1>
-                    <div class="section-content">
-                        <h2 id="basic-settings" class="title-level-2">基础设置</h2>
-                        <p>根据个人需求配置基本参数</p>
-                        
-                        <h2 id="basic-settings" class="title-level-2">宿舍黑名单</h2>
-                        <p>设置永不进宿舍的干员</p>
-                        <div class="tip-box">
-                            <strong>示例：</strong>零心情工作干员Lancet-2
-                        </div>
+        <h2 id="schedule-design-backups" class="title-level-2">主表稳定后再增加副表</h2>
+        <p>主表是日常基准，副表是在条件成立时覆盖部分安排，不是必须手动轮流启用的第二班。先确认主表能独立轮休，再为确有需要的场景添加副表，填写触发条件并核对覆盖范围。多个副表可能同时生效，后面的覆盖会影响前面的结果，应验证组合后的最终安排。</p>
+        <p>副表岗位选择 Current 表示继承前面合并结果的<strong>整个岗位</strong>，包括主班、绑组和替换，不是保留游戏此刻驻员；不能靠在 Current 后填写组名或替换来局部覆盖。要修改某岗位的替班，需明确填写该岗位主班及完整绑组、替换。主表不使用 Current，Free 只用于宿舍。副表可增减宿舍 Free 位，仍须保证每间至少一个直接填写的 Free，以及最终恢复容量可行。</p>
+        <p>普通副表的回满、用尽及宿舍优先级等干员名单分为“增”和“减”：先加入增列，再移除减列，后面的副表可以重新加入。留空表示继承此前结果，不是清空名单。例如要让甲在某副表生效时不再要求回满，在“需要回满心情的干员”的减列填写甲；副表退出后按主表和其余生效副表重新合并。独立救急表仍使用单列名单。</p>
+        <p>副表仍需完整的替班与床位覆盖，也不能改变主表生产设施的类型和岗位数；切换产物或订单还需启用对应高级设置。退出副表后重新依据主表和其余生效副表安排，不保证所有主班立即回岗。</p>
+        <p>主表页面的“验证排班”会检查主表及可能同时生效的副表组合，而非只看当前编辑的一张表。预算不足时提示未完成，不能当作验证通过。验证通过也不代表启动时替班一定空闲或能长期持续周转，仍需观察实际换班。</p>
 
-                        <h2 id="email-notification" class="title-level-2">邮件提醒</h2>
-                        <p>配置接收任务通知的邮箱，通过问号图标查看授权码获取方式。通知等级分为：</p>
-                        <ul>
-                            <li>INFO：基本信息</li>
-                            <li>WARNING：警告信息</li>
-                            <li>ERROR：错误信息</li>
-                        </ul>
-                        <div class="tip-box">
-                            <strong>提示：</strong>高级别包含低级别信息，时差修正单位为小时。清空收件人字段可将邮件发送至本人邮箱
-                        </div>
-                        
-                        <h2 id="skland" class="title-level-2">森空岛相关</h2>
-                        <p>输入账号密码后，Mower可自动完成森空岛每日签到，并为仓库物品混合读取和无缝合成材料提供支持。</p>
-                        
-                        <h2 id="material-synthesis" class="title-level-2">无缝合成材料设置</h2>
-                        <p>位置：全部设置 → Mower设置 → 基建设置</p>
-                        <p>功能特点：</p>
-                        <ul>
-                            <li>由"宿舍不养闲人回满"功能触发</li>
-                            <li>需启用森空岛仓库读取功能</li>
-                            <li>当目标材料数量低于上限且子材料数量高于下限时自动合成</li>
-                            <li>支持多种材料合成策略</li>
-                        </ul>
-                        <p>特殊说明：</p>
-                        <ul>
-                            <li>九色鹿垫刀材料：消耗4心情以下的材料</li>
-                            <li>九色鹿暴击材料：消耗4心情的材料</li>
-                            <li>家具零件需用"家具零件_碳"格式区分配方</li>
-                        </ul>
-                        <div class="tip-box">
-                            <strong>推荐合成路径：</strong>碳素 → 碳素组 → 家具零件_碳素组 → 材料
-                        </div>
-                        <div class="tip-box">
-                            <strong>提示：</strong>合成截图保存在screenshot/workshop文件夹，条件不满足时发送邮件通知
-                        </div>
+        <h2 id="schedule-design-checklist" class="title-level-2">从零写表的检查顺序</h2>
+        <ol>
+          <li>按游戏实际布局填写设施、等级、产物与岗位，再填主班。</li>
+          <li>按技能配合设置普通绑组，为每个需要轮休的岗位准备可用替班，先避免复杂共享。</li>
+          <li>填满宿舍五个位置并保留连续 Free；按普通动态床、宿舍固定互替和临时开放床分别核算恢复容量，再调整分床及床位顺序。</li>
+          <li>核对心情上下限、回满和用尽名单；“0心情工作的干员”只填写确实适用的干员。</li>
+          <li>验证主表，再逐个添加副表、跑单、充能与专精相关安排，重新验证受影响的组合。</li>
+          <li>启动后核对实际驻员、心情变化、下班替换、入宿和回班，稳定后导出备份。</li>
+        </ol>
+      </section>
 
-                        <h2 id="import-schedules" class="title-level-2">作业导入</h2>
-                        <p>从群文件或频道下载图片/JSON格式作业文件，通过"排班编辑→导入排班"加载</p>
-                        <div class="note-box">
-                            <strong>注意：</strong>作业文件不包含主表黑名单列表，具体限制需参考作业说明或咨询作者。
-                        </div>
-                        
-                        <h2 id="order-running" class="title-level-2">葛朗台跑单</h2>
-                        <p>跑单机制：但书、龙舌兰等干员的技能效果仅在订单生成瞬间生效。在贸易站安排高效干员，在订单即将结束时换上特殊干员，新订单生成后换回原班组的操作。</p>
-                        <p>配置方法：将跑单干员置于贸易站替换组首位</p>
-                        <p>选项说明：</p>
-                        <ul>
-                            <li>启用葛朗台跑单：Mower会在跑单前数分钟（前置延时）准备干员，并在新单生成前数秒（缓冲时间）放入贸易站</li>
-                            <li>禁用葛朗台跑单：干员立即放入贸易站并使用无人机加速</li>
-                        </ul>
-                        <div class="tip-box">
-                            <strong>提示：</strong>网络或配置不佳时建议延长前置时间。
-                        </div>
-                        
-                        <h2 id="mood-threshold" class="title-level-2">心情阈值</h2>
-                        <p>干员或班组平均心情达到此百分比时，Mower会在高优位置充足时安排休息。实际心情值计算公式：</p>
-                        <div class="code-block">
-                            实际心情值 = 心情下限 + 心情阈值 × (心情上限 - 心情下限)
-                            <button class="copy-btn">复制</button>
-                        </div>
-                        <div class="tip-box">
-                            <strong>示例：</strong>阈值设为65%，夕在感知模式下的实际心情值为12 + 0.65 × 12 = 19.8
-                        </div>
-                        
-                        <h2 id="emergency-threshold" class="title-level-2">急救阈值</h2>
-                        <p>常规流程：干员到达心情阈值时若高优位充足则正常休息。</p>
-                        <p>急救模式：当整组心情低于"心情阈值×急救阈值"且宿舍有空位时，强制安排休息。</p>
-                        <p>设为0时禁用急救模式。</p>
-                        
-                        <h2 id="dorm-optimization" class="title-level-2">宿舍不养闲人</h2>
-                        <p>自动移出已回满的干员，替换为待回复干员，保持宿舍满员以触发依赖型技能（如黑键、乌有、迷迭香）。启用后会增加任务频率。</p>
-                        
-                        <h2 id="phalanx" class="title-level-2">肥鸭防呆与肥鸭阈值</h2>
-                        <p>
-                            <ul>
-                                <li>开启：所充干员均大于90%则肥鸭待机30分钟</li>
-                                <li>关闭：所充干员均大于肥鸭阈值则优先充能心情最低者</li>
-                            </ul>
-                        </p>
-                        
-                        <h2 id="dorm-priority" class="title-level-2">宿舍优先级排序</h2>
-                        <p>某些布局中上层非VIP位回复能力可能高于下层VIP位，与默认逻辑冲突时可在排班设置中手动设置优先级顺序。主表和每张副表分别保存；副表生效时应用自己的顺序，留空则使用当前排班的默认顺序。更换宿舍布局后需更新对应排班。</p>
-                        <h2 id="local-ai-assistant" class="title-level-2">本地AI助手</h2>
-                        <p>待开发</p>
-                    </div>
-                </div>
+      <section class="content-card">
+        <h1 id="Mower-settings" class="title-level-1">基建、日常与排班高级设置</h1>
+        <h2 id="email-notification" class="title-level-2">邮件、签到与线索</h2>
+        <p>在“邮件提醒”配置账号及 SMTP，使用“发送测试邮件”验证。收件人列表为空时发给自己；删除空白项，不要保留一条空字符串。QQ 邮箱使用授权码，自定义邮箱按服务商要求选择 SSL/TLS 或 STARTTLS，勿向助手提供密码或授权码。</p>
+        <p id="skland">“每日任务”按需选择森空岛及游戏签到等项目；森空岛账号、库存与干员数据同步按对应页面配置。基建设置中的“线索收集”和赠送选项控制会客室任务，好友和信用任务按各自入口选择执行方式。</p>
+        <h2 id="order-running" class="title-level-2">跑单、无人机与产物</h2>
+        <p>按实际排班配置跑单干员、房间与无人机使用方向。葛朗台跑单与葛朗台切产物分别配置；关闭自动切产物不会关闭普通跑单。启用切换时核对无人机和损耗设置，避免把切产物等待误当作连接故障。</p>
+        <h2 id="mood-threshold" class="title-level-2">下班与回班</h2>
+        <p>达到心情阈值后还需有效观测、完整替班匹配和可用恢复床位。用尽下班使用有效消耗速率，不保证固定提前两三小时。心情卡牌预估辅助筛选，不能当作实测回满或确定的恢复结束时间。</p>
+        <p>“组内心情差距过大时延后回班”比较参与计时成员的最晚与最早预计恢复完成时间，默认阈值60分钟，并受额外等待上限约束；不是固定心情点差。</p>
+        <h2 id="dorm-optimization" class="title-level-2">宿舍不养闲人与分床顺序</h2>
+        <p>“宿舍不养闲人”只控制普通满心情清退任务。关闭后仍安排恢复、补床和优先级接管，个人及令夕上限仍生效。主表与副表可设置宿舍优先级顺序，留空按当前规则处理；更换宿舍布局后核对相应设置。</p>
+        <h2 id="emergency-threshold" class="title-level-2">自动救急</h2>
+        <p>在 Mower 设置 → 基建设置开启“自动救急”，通过旁边“救急排班”编辑独立主表和副表。默认关闭；初始化发现多组主班低于各自救急线、仍有人等待休息且普通轮休无法安排时才接管。双方副表生效后的工作设施类型、等级和产物必须一致。</p>
+        <p>救急冻结正常副表，驻员、跑单、宿管和菲亚梅塔按救急表配置，未配置专项任务不自动继承正常表。正常排班可以接回周转时退出，仍需恢复的组继续休息，不要求所有组回满。开关不随正常排班导入导出。</p>
+        <h2 id="phalanx" class="title-level-2">菲亚梅塔充能</h2>
+        <p>配置菲亚梅塔的宿舍位置、充能对象及相关阈值，充能期间保留专项任务和床位保护。自动救急使用救急表自己的配置；存在主班等待床位时，菲亚梅塔按救急分床规则让床。调整前先核对当前生效排班和具体日志，不把普通宿舍补床当作充能任务。</p>
+      </section>
 
-                <!-- MAA设置 -->
-                <div class="content-card">
-                    <h1 id="sanity-plan" class="title-level-1">MAA设置</h1>
-                    <div class="section-content">
-                        <p>Mower通过调用MAA实现自动刷图、开鹰趴等功能。根据自己的需求进行配置。</p>
-                        <p>刷理智周计划操作指北：</p>
-                        <ol>
-                            <li>点击复选框选择/取消关卡</li>
-                            <li>输入当日目标使用的理智药数量</li>
-                            <li>点击×删除内容</li>
-                            <li>手动添加目标关卡（注意大小写，回车确认）</li>
-                        </ol>
-                        <div class="tip-box">
-                            <strong>提示：</strong>设置实时生效，无需重启Mower
-                        </div>
-                    </div>
-                </div>
+      <section class="content-card">
+        <h1 id="sanity-plan" class="title-level-1">MAA、刷理智与大型任务</h1>
+        <h2 id="maa-install" class="title-level-2">MAA 安装与测试</h2>
+        <ol>
+          <li>需要 MAA 执行的任务，在 MAA 设置检查目录及平台，未安装时按页面“下载 MAA”获取组件。</li>
+          <li>已有安装使用“检查 MAA 更新”“更新 MAA”；MAA 资源独立检查和更新。下载后的目录需包含完整的平台运行库、资源与接口。</li>
+          <li>点击“测试连接”，按日志区分目录、运行库加载与设备连接故障。Android 的组件和连接按应用管理提示处理。</li>
+        </ol>
+        <p>当前页面提供各平台的组件管理，不再按旧教程手动复制 Windows Python 文件夹拼装 macOS MAA，也不通过旧版 Mower 下载器替换 DLL。</p>
+        <h2 id="weekly-plan" class="title-level-2">刷理智周计划</h2>
+        <ol>
+          <li>开启“刷理智周计划”，选择或创建方案，再选择执行方式：MAA 或 Mower。Mower 本地作战不依赖 MAA。</li>
+          <li>在列表或表格安排每天关卡，两种视图编辑同一份计划；在列表配置吃药次数及理智阈值。</li>
+          <li>库存选关规则按方案保存，只作用于已选择的关卡，不自动加入关卡；检查限制是否使关卡被跳过。</li>
+          <li>活动方案可设置结束后的目标和切换时间，查看当天实际生效方案。</li>
+        </ol>
+        <h2 id="long-tasks" class="title-level-2">大型任务独立开关</h2>
+        <p>“大型任务”独立控制集成战略、保全派驻、生息演算和隐秘战线等任务，不需要额外开启一个空刷理智计划。带“(MAA)”的任务依赖 MAA，其余类型使用对应的 Mower 流程。</p>
+        <p>开始时间与停止时间相同表示全天；停止时间早于开始时间表示运行到次日。还需检查对应任务模式、日常任务间隔、基建任务空闲时间及运行日志。</p>
+      </section>
 
-                <!-- 排班教学 -->
-                <div class="content-card">
-                    <h1 id="scheduling" class="title-level-1">排班教学</h1>
-                    <div class="section-content">
-                        <h2 id="ui-intro" class="title-level-2">页面介绍</h2>
-                        <p>排班编辑界面分为四个功能区域：</p>
-                        <ol>
-                            <li>条件区：设置触发条件</li>
-                            <li>副表任务区：配置执行任务</li>
-                            <li>设施区：显示工作站布局</li>
-                            <li>设置区：干员管理</li>
-                        </ol>
-                        <p>操作指南：</p>
-                        <ul>
-                            <li>主表的条件及任务区需通过"新建副表"激活</li>
-                            <li>拖拽调整设施区位置需与实际游戏布局一致</li>
-                            <li>输入干员名称时可使用首字母缩写快速匹配</li>
-                        </ul>
+      <section class="content-card">
+        <h1 id="growth-workshop" class="title-level-1">养成、专精与加工</h1>
+        <h2 id="growth-plan" class="title-level-2">先同步，再添加目标</h2>
+        <p>养成页面统一管理等级/精英化、基础技能、专精和模组目标，并展示材料、龙门币及经验需求。同步干员练度与库存后再安排目标，区分“需要准备的材料”和“已经满足的开训条件”。</p>
+        <h2 id="material-synthesis" class="title-level-2">自动专精与材料合成的范围</h2>
+        <p>“全自动专精”控制自动专精及养成材料自动合成。精英化、基础技能升级和模组开启/升级仍需在游戏手动完成后同步；添加目标不代表 Mower 会自动点击完成全部养成。</p>
+        <p>专精开训要求精英二、基础技能7级及对应材料，并受训练室岗位和协助路线保护。计划可处于待执行、安排中、训练中、待收取、已完成或失败；查看失败原因后再决定重试。</p>
+        <p>自动合成按统一养成计划顺序及本地库存预算备料，保护正在训练的需求和已确认的库存变动。完整材料不足的未开工项目不会部分占用材料；刷新较晚的云端库存不等于可以覆盖本地刚完成的合成。</p>
+        <div class="note-box"><p>AI 助手当前的专精重试工具会重置<strong>全部失败计划</strong>，不按传入干员筛选；只想重试一项时，先核对页面支持的操作及实际范围。</p></div>
+      </section>
 
-                        <h2 id="main-and-replacement" class="title-level-2">主力与替换</h2>
-                        <p><strong>主班（高效组）</strong>：核心高效干员，优先安排工作</p>
-                        <p><strong>替班</strong>：替补干员，在主班休息时自动轮换</p>
-                        <p>轮换规则：</p>
-                        <ul>
-                            <li>Mower选择列表中靠前且未被占用的干员接替工作</li>
-                            <li>一名干员可担任多名主力的替换</li>
-                            <li>主力选择原则：维持长工作时间高效率状态</li>
-                        </ul>
-						<p>验证规则：</p>
-                            <ul>
-                            <li>高效组不可使用龙舌兰、但书（仅限替换组）</li>
-                            <li>同一替换组不可同时安排龙舌兰和但书</li>
-                            <li>替换组不可包含高效组干员；绑组宿舍可填写 Free 以开放动态床位</li>
-                            <li>确保替换组数量充足</li>
-                        </ul>
+      <section class="content-card">
+        <h1 id="configuration-backup" class="title-level-1">配置备份、迁移、多开与退出</h1>
+        <h2 id="backup-export" class="title-level-2">完整备份与恢复</h2>
+        <ol>
+          <li>在 Mower 设置 → 配置导出与导入点击“导出配置”，保存当前实例 ZIP。</li>
+          <li>ZIP 包含 config 原文件、主副排班及持久化 tmp 数据，包括专精计划、专精路线、历史与库存；不包含 state.json、资源包、更新文件、日志、其他实例和浏览器偏好。</li>
+          <li>导入前停止任务，选择备份 ZIP，核对覆盖范围再确认；导入前自动生成恢复 ZIP。</li>
+          <li>成功后页面刷新加载配置，不自动开始任务。当前管理端口、访问令牌与本机网络等设置保留；旧调度缓存清空。</li>
+          <li>换电脑后重新检查设备与 MAA 路径。需要撤销时可导入自动生成的恢复 ZIP。</li>
+        </ol>
+        <p>不要只按旧教程复制根目录 conf.yml、plan.json 或 temp 文件夹；完整备份包含凭据，请妥善保管。</p>
+        <h2 id="multi-instance" class="title-level-2">实例隔离与进程操作</h2>
+        <p>多开时确认当前实例名称、数据目录、端口和绑定设备，各实例的配置与运行数据分别管理，软件和资源更新按共享安装范围生效。</p>
+        <p>设置页底部“进程操作”只操作当前实例。“重启续接”保留队列继续运行；普通“重启 Mower 进程”重置运行缓存后重新开始；“结束 Mower 进程”正常停止任务并结束此实例。关闭窗口可能仍在后台运行，以托盘或多开管理器设置为准。</p>
+      </section>
 
-                        <h2 id="team-management" class="title-level-2">班组管理</h2>
-                        <p>填写相同组名可将干员绑定为班组：</p>
-                        <ul>
-                            <li>同组干员一起上下班</li>
-                            <li>不同工作站干员也可绑定</li>
-                            <li>宿舍常驻干员可绑组；其替换填写 Free 时，固定位置在组下班期间转为动态休息床位</li>
-                        </ul>
-                        <p>小组：无中枢的班组</p>
-                        <p>大组：包含中枢的班组</p>
+      <section class="content-card">
+        <h1 id="diagnostics-ai" class="title-level-1">日志、排错与 AI 助手</h1>
+        <h2 id="error-archives" class="title-level-2">先看具体证据</h2>
+        <p>运行日志查看任务、时间、设施、干员和异常堆栈。报错归档保留对应现场；选择具体归档后可使用 AI 分析。连接状态、更新日志和排班任务日志分别对应不同问题，单独一条 ERROR 不能证明唯一根因。</p>
+        <p>清理数据先导出备份，再在运行日志页面的“数据库管理”选择确实需要删除的类别。心情记录、专精计划、专精路线、库存和运行缓存彼此独立，不全选、不直接删 data.db。</p>
+        <h2 id="local-ai-assistant" class="title-level-2">DeepSeek、本地与在线模型</h2>
+        <ol>
+          <li>在 Mower 设置 → AI 助手与模型服务选择 DeepSeek、本地 OpenAI 兼容接口或在线模型/中转商。选择 DeepSeek 后，在“DeepSeek 模型”选择 Flash / Pro 预设，或输入官方模型 ID 后回车，并填写 DeepSeek 密钥。</li>
+          <li>自定义接口填实际模型ID与接口地址。本地需兼容 OpenAI Chat Completions，通常可不填密钥；在线接口要求 HTTPS 和对应密钥。</li>
+          <li>聊天工具调用需要服务及模型支持工具调用。助手可查 FAQ、日志及数据库、分析漏单与错误、管理专精计划及按明确要求发送反馈。</li>
+          <li>核对工具实际返回。AI 建议中的推测不等于已证实的根因，也不代表排班已自动修改。不要发送密码、API密钥或访问令牌。</li>
+        </ol>
+        <p>漏单分析先选择具体记录或提供完整本地时间，再结合任务时间线；漏单报警的时间不一定是原任务时间。</p>
+      </section>
 
-                        <h2 id="dorm-management" class="title-level-2">宿舍管理</h2>
-                        <p>配置要求：</p>
-                        <ul>
-                            <li>每个宿舍安排一名单回宿管和一名群回宿管</li>
-                            <li>下层宿舍回复能力不超过上层宿舍</li>
-                            <li>单回宿管数值要求：琴柳(0.7)≥蜜莓(0.7)≥车尔尼(0.65)≥波登可(0.65)</li>
-                            <li>群回宿管数值要求：流明(0.25/0.4)≥杜林(0.25)≥桃金娘(0.15)≥波登可(0.15)</li>
-                        </ul>
+      <section class="content-card">
+        <h1 id="faq" class="title-level-1">常见问题</h1>
+        <h2 id="connection-issues" class="title-level-2">连接不上，是否直接换端口或截图方案？</h2>
+        <p>先看设备连接状态与修复提示，核对预设和所选实例。不同平台、模拟器及实例的能力不同，不猜默认端口，不把所有问题都改为 ADB+Gzip，也不改连另一台在线设备。详见 <a href="#device-connection" class="link-text">设备连接</a>。</p>
+        <h2 id="rest-issues" class="title-level-2">红脸或到阈值还不下班？</h2>
+        <p>检查有效心情、个人规则、组绑定、完整替班、床位和预约。共享替班、训练保护或无法安排完整恢复都可能造成等待；按日志中的阻塞条件调整。详见 <a href="#scheduling" class="link-text">排班与宿舍</a>。</p>
+        <h2 id="task-issues" class="title-level-2">不刷图、不运行生息演算，是否要打开空周计划？</h2>
+        <p>大型任务与刷理智周计划是独立开关。分别检查执行方式、任务类型、时间窗口、当天方案及库存限制。详见 <a href="#sanity-plan" class="link-text">作战与大型任务</a>。</p>
+        <h2 id="other-issues" class="title-level-2">白屏、数组报错或历史报表为空？</h2>
+        <p>白屏先区分平台窗口依赖和页面加载；数组异常结合堆栈与实际画面；报表先核对实例、时间范围及有效记录。不要直接断言被杀毒删除、排班布局错误或数据库损坏。保留证据后查对应归档或让 AI 分析。</p>
+        <p>更多功能问题可直接向 AI 助手提问；内置 FAQ 按当前功能入口提供建议。</p>
+      </section>
 
-                        <h2 id="low-priority" class="title-level-2">低优先级设置</h2>
-                        <p>仅作用于主班干员，配置后：</p>
-                        <ul>
-                            <li>不会主动前往高优位休息</li>
-                            <li>高优位充足时可使用</li>
-                            <li>高优干员需入驻时会被移出</li>
-                        </ul>
-                        <p>推荐适用情况：</p>
-                        <ul>
-                            <li>非绑组的会客室/办公室等低收益站干员</li>
-                            <li>回复能力显著高于同组成员的干员</li>
-                            <li>主副班效率相近的干员</li>
-                        </ul>
-
-                        <h2 id="resting-standby" class="title-level-2">宿舍休息候补</h2>
-                        <p>主班干员可设为候补：有床时正常休息，缺床时由替班接岗并等待下一次回班时机。候补心情低于急救线（排班心情阈值×全局急救阈值）后，本轮升级为低优主班并必须取得床位；休息中越过急救线也保持低优，实际回班后才恢复候补。</p>
-
-                        <h2 id="infrastructure-calc" class="title-level-2">心情回复与消耗</h2>
-                        <p>宿舍基础回复公式：</p>
-                        <div class="code-block">
-                            1.5 + 0.1 × 宿舍等级 + 0.0004 × 氛围值
-                            <button class="copy-btn">复制</button>
-                        </div>
-                        <p>各等级宿舍回复能力：</p>
-                        <table class="info-table">
-                            <tr><th>宿舍等级</th><th>心情回复</th></tr>
-                            <tr><td>1</td><td>2</td></tr>
-                            <tr><td>2</td><td>2.5</td></tr>
-                            <tr><td>3</td><td>3</td></tr>
-                            <tr><td>4</td><td>3.5</td></tr>
-                            <tr><td>5</td><td>4</td></tr>
-                        </table>
-                        <p>工作站基础消耗：</p>
-                        <ul>
-                            <li>贸易站/制造站：无减免时为1</li>
-                            <li>入驻2个干员：0.05减免</li>
-                            <li>入驻3个干员：0.1减免</li>
-                        </ul>
-                        <p>中枢效果：每入驻1个干员全局-0.05消耗（上限0.25）</p>
-                        
-                        <h2 id="work-rest-ratio" class="title-level-2">工休比计算</h2>
-                        <p>工作时间占比公式：</p>
-                        <div class="code-block">
-                            工休比 = 回复效率 / (回复效率 + 消耗效率)
-                            <button class="copy-btn">复制</button>
-                        </div>
-                        <p>肥鸭充能情况：</p>
-                        <div class="code-block">
-                            工休比 = (回复效率 + 肥鸭提供效率) / (回复效率 + 消耗效率)
-                            <button class="copy-btn">复制</button>
-                        </div>
-                        <p>应用场景：</p>
-                        <ul>
-                            <li>计算布局收益</li>
-                            <li>评估大组轮休可行性</li>
-                            <li>确定替换组能替多少人</li>
-                            <li>计算肥鸭充能收益</li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- 常见问题 -->
-				<div class="content-card">
-					<h1 id="faq" class="title-level-1">常见问题</h1>
-					<div class="section-content">
-						<h2 id="connection-issues" class="title-level-2">连接相关</h2>
-						<p><strong>Q：如何设置模拟器路径和连接地址？</strong></p>
-						<p>A：Mower设置中填写ADB路径和连接地址：</p>
-						<ul>
-							<li>ADB路径格式：[模拟器地址\adb.exe]</li>
-							<li>连接地址格式：127.0.0.1:端口号</li>
-						</ul>
-						<p>常见模拟器默认端口：</p>
-						<table class="info-table">
-							<tr><th>模拟器</th><th>默认端口</th></tr>
-							<tr><td>蓝叠模拟器</td><td>5555</td></tr>
-							<tr><td>蓝叠模拟器Air（macOS）</td><td>5555</td></tr>
-							<tr><td>夜神模拟器</td><td>62001</td></tr>
-							<tr><td>MuMu模拟器/MuMuX</td><td>7555</td></tr>
-							<tr><td>MuMu12模拟器</td><td>16384</td></tr>
-							<tr><td>MuMu模拟器Mac版</td><td>5555</td></tr>
-							<tr><td>逍遥模拟器</td><td>21503</td></tr>
-							<tr><td>雷电模拟器</td><td>5555 或 emulator-5554</td></tr>
-						</table>
-						
-						<h2 id="schedule-issues" class="title-level-2">副表相关</h2>
-						<p><strong>Q：为什么心情副表在干员到达阈值时未生效？</strong></p>
-						<p>A：可能原因：</p>
-						<ol>
-							<li>Mower心情读取间隔：歌蒂、见行者每0.5小时读取一次，其他干员2.5小时读取一次</li>
-							<li>干员入驻宿舍后只读一次剩余时间</li>
-							<li>触发时机设置不当</li>
-						</ol>
-						<div class="tip-box">
-							<strong>解决方案：</strong>给宿管写用尽，给跑单干员写用尽重读
-						</div>
-						
-						<p><strong>Q：副表提示排班表验证错误怎么办？</strong></p>
-						<p>A：干员在主表或其他副表的其他位置有工作安排，需要在副表对应位置写死其他干员。</p>
-						
-						<h2 id="other-issues" class="title-level-2">其他问题</h2>
-						<p><strong>Q：如何提出功能建议或反馈问题？</strong></p>
-						<p>A：</p>
-						<ol>
-							<li>功能建议：加入QQ频道 ArkMower（频道号：2r118jwue4），在对应分区发帖</li>
-							<li>问题反馈：
-								<ul>
-									<li>保留截图24小时</li>
-									<li>根据日志确定问题发生时间</li>
-									<li>在log文件夹查找对应时间的log文件</li>
-									<li>在Mower反馈按钮处详细描述问题</li>
-									<li>在频道bug反馈区再次反馈</li>
-								</ul>
-							</li>
-						</ol>
-					</div>
-				</div>
-
-                <!-- 用户需知 -->
-                <div class="content-card">
-                    <h1 id="user-notice" class="title-level-1">用户需知</h1>
-                    <div class="section-content">
-						<h3 id="mac-update" class="title-level-3">开源性质</h3>
-							<p>Mower是开源、免费工具，无任何强制收费项目。请勿相信任何收费版本或盗版软件。</p>
-						<h3 id="mac-update" class="title-level-3">社区相关</h3>
-							<p>合理使用群组<a href="https://qm.qq.com/q/Dz1UrPnRLO" class="reference-link-text" target="_blank" rel="noopener noreferrer">Mower用户交流群</a>和频道<a href="https://pd.qq.com/s/5t91c3gx9" class="reference-link-text" target="_blank" rel="noopener noreferrer">ArkMower</a>资源，文明交流互助。</p>
-						<h3 id="mac-update" class="title-level-3">更新频率</h3>
-							<p>保持程序更新，及时获取最新功能和修复。可通过QQ群或<a href="https://github.com/ArkMowers/arknights-mower" class="reference-link-text" target="_blank" rel="noopener noreferrer">GitHub</a>获取最新版本。</p>
-						<h3 id="mac-update" class="title-level-3">数据安全</h3>
-							<p>定期备份配置文件，防止意外丢失设置数据。</p>
-						<h3 id="mac-update" class="title-level-3">手动操作</h3>
-							<p>合理安排任务时间，避免在游戏期间执行自动化操作。</p>
-						<h3 id="mac-update" class="title-level-3">长时挂机</h3>
-							<p>长时间离开时确保设备电源充足并保持网络连接稳定。</p>
-						<h3 id="mac-update" class="title-level-3">异常处理</h3>
-							<p>若遇到异常情况，及时查看日志文件排查问题。</p>
-						<h3 id="mac-update" class="title-level-3">多设备登录</h3>
-							<p>不要在多个设备同时登录同一账号，避免账号安全风险。</p>
-						<h3 id="mac-update" class="title-level-3">反馈建议</h3>
-							<p>发现程序问题及时反馈，提供详细的重现步骤和日志。</p>
-						<h3 id="mac-update" class="title-level-3">模拟器设置</h3>
-							<p>确保模拟器设置正确，分辨率为1920x1080，DPI设为280。</p>
-						<h3 id="mac-update" class="title-level-3">隐私安全</h3>
-							<p>小心网络钓鱼，避免泄露个人隐私信息。</p>
-						<h3 id="mac-update" class="title-level-3">游戏性平衡</h3>
-							<p>合理使用Mower，避免过度依赖自动化工具，保持游戏娱乐性。</p>
-						<h3 id="mac-update" class="title-level-3">寸止必要性</h3>
-							<p>熟悉程序停止快捷键，遇到问题可立即中断任务。</p>
-						<h3 id="mac-update" class="title-level-3">脚本工具论</h3>
-							<p>Mower只是一个脚本工具，当它与你的快乐冲突时，请拥抱自己的生活。</p>
-                    </div>
-                </div>
-
-                <!-- 致谢 -->
-                <div class="content-card">
-                    <h1 id="acknowledgements" class="title-level-1">致谢</h1>
-					<p>感谢所有参与Mower开发和维护的人员，特别是以下贡献者：</p>
-                    <div class="section-content">
-						<h3 class="title-level-3">开发</h3>
-						<ul>
-							<li><span class="reference-text">Shawnsdaddy</span></li>
-							<li><span class="reference-text">yk00</span></li>
-							<li>...</li>
-						</ul>
-						<h3 class="title-level-3">文档</h3>
-						<ul>
-							<li><span class="reference-text">牌佬不取对象</span>（内容创作）</li>
-							<li><span class="reference-text">玛朵布莎英</span>（编辑、校对）</li>
-							<li>...</li>
-						</ul>
-                    </div>
-                </div>
-
-            </div>
-        </div>
-	</div>
-
-    <div class="back-to-top" id="backToTop">
-        ↑
-    </div>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const sections = document.querySelectorAll('.title-level-1, .title-level-2');
-            const navLinks = document.querySelectorAll('.nav-link');
-            const subNavLinks = document.querySelectorAll('.sub-nav-link');
-            const progressBar = document.getElementById('progressBar');
-            const navToggles = document.querySelectorAll('.nav-item-toggle');
-            const backToTopBtn = document.getElementById('backToTop');
-            const copyButtons = document.querySelectorAll('.copy-btn');
-            
-            // 初始化导航折叠状态
-            navToggles.forEach(toggle => {
-                const sectionId = toggle.getAttribute('data-section');
-                const subNav = document.getElementById(`${sectionId}-sub`);
-                if (subNav) {
-                    toggle.classList.add('nav-item-toggle');
-                    subNav.classList.remove('collapsed');
-                }
-            });
-            
-            // 处理导航折叠/展开
-            navToggles.forEach(toggle => {
-                toggle.addEventListener('click', function(e) {
-                    if (e.target.tagName === 'A') {
-                        e.preventDefault();
-                        e.stopPropagation();
-                    }
-                    
-                    const sectionId = this.getAttribute('data-section');
-                    const subNav = document.getElementById(`${sectionId}-sub`);
-                    
-                    if (subNav) {
-                        this.classList.toggle('collapsed');
-                        subNav.classList.toggle('collapsed');
-                    }
-                });
-            });
-            
-            // 滚动监听
-            window.addEventListener('scroll', function() {
-                let current = '';
-                
-                // 获取当前滚动位置对应的章节
-                sections.forEach(section => {
-                    const sectionTop = section.offsetTop;
-                    if (scrollY >= sectionTop - 100) {
-                        current = section.getAttribute('id');
-                    }
-                });
-                
-                // 更新一级导航高亮
-                navLinks.forEach(link => {
-                    link.classList.remove('active');
-                    if (link.getAttribute('href').substring(1) === current) {
-                        link.classList.add('active');
-                    }
-                });
-                
-                // 更新二级导航高亮
-                subNavLinks.forEach(link => {
-                    link.classList.remove('active');
-                    if (link.getAttribute('href').substring(1) === current) {
-                        link.classList.add('active');
-                        
-                        // 确保父级菜单是展开状态
-                        const parentSection = link.closest('.sub-nav-list');
-                        if (parentSection && parentSection.previousElementSibling) {
-                            const parentToggle = parentSection.previousElementSibling.querySelector('.nav-item-toggle');
-                            if (parentToggle && parentToggle.classList.contains('collapsed')) {
-                                parentToggle.classList.remove('collapsed');
-                                parentSection.classList.remove('collapsed');
-                            }
-                        }
-                    }
-                });
-                
-                // 更新进度条
-                const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
-                const scrolled = (window.scrollY / scrollHeight) * 100;
-                progressBar.style.width = scrolled + '%';
-                
-                // 显示/隐藏回到顶部按钮
-                if (window.scrollY > 300) {
-                    backToTopBtn.classList.add('visible');
-                } else {
-                    backToTopBtn.classList.remove('visible');
-                }
-            });
-            
-            // 平滑滚动
-            navLinks.forEach(link => {
-                link.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const targetId = this.getAttribute('href').substring(1);
-                    const targetSection = document.getElementById(targetId);
-                    
-                    window.scrollTo({
-                        top: targetSection.offsetTop - 80,
-                        behavior: 'smooth'
-                    });
-                    
-                    // 如果目标是一级标题，展开其子菜单
-                    if (targetSection.classList.contains('title-level-1')) {
-                        const sectionId = targetSection.getAttribute('id');
-                        const toggle = document.querySelector(`.nav-item-toggle[data-section="${sectionId}"]`);
-                        if (toggle && toggle.classList.contains('collapsed')) {
-                            toggle.classList.remove('collapsed');
-                            const subNav = document.getElementById(`${sectionId}-sub`);
-                            if (subNav) subNav.classList.remove('collapsed');
-                        }
-                    }
-                });
-            });
-            
-            // 平滑滚动二级导航
-            subNavLinks.forEach(link => {
-                link.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const targetId = this.getAttribute('href').substring(1);
-                    const targetSection = document.getElementById(targetId);
-                    
-                    window.scrollTo({
-                        top: targetSection.offsetTop - 80,
-                        behavior: 'smooth'
-                    });
-                });
-            });
-            
-            // 回到顶部
-            backToTopBtn.addEventListener('click', function() {
-                window.scrollTo({
-                    top: 0,
-                    behavior: 'smooth'
-                });
-            });
-            
-            // 复制代码功能
-            copyButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    const codeBlock = this.parentElement;
-                    const codeToCopy = codeBlock.querySelector('code') ? 
-                        codeBlock.querySelector('code').innerText : 
-                        codeBlock.innerText.replace('复制', '');
-                    
-                    navigator.clipboard.writeText(codeToCopy).then(() => {
-                        const originalText = this.textContent;
-                        this.textContent = '✓ 已复制';
-                        setTimeout(() => {
-                            this.textContent = originalText;
-                        }, 2000);
-                    }).catch(err => {
-                        console.error('复制失败:', err);
-                        this.textContent = '复制失败';
-                    });
-                });
-            });
-
-			copyButtons.forEach(button => {
-				button.addEventListener('click', function() {
-					const codeBlock = this.parentElement;
-					const codeElem = codeBlock.querySelector('code');
-					let codeToCopy = codeElem ? codeElem.innerText : codeBlock.innerText.replace('复制', '');
-
-					// 优先用 Clipboard API
-					if (navigator.clipboard && window.isSecureContext) {
-						navigator.clipboard.writeText(codeToCopy).then(() => {
-							const originalText = this.textContent;
-							this.textContent = '✓ 已复制';
-							setTimeout(() => {
-								this.textContent = originalText;
-							}, 2000);
-						}).catch(() => {
-							fallbackCopyTextToClipboard(codeToCopy, this);
-						});
-					} else {
-						fallbackCopyTextToClipboard(codeToCopy, this);
-					}
-				});
-			});
-
-			// 兼容方案：用 textarea + execCommand
-			function fallbackCopyTextToClipboard(text, btn) {
-				const textarea = document.createElement('textarea');
-				textarea.value = text;
-				textarea.style.position = 'fixed'; // 防止页面滚动
-				textarea.style.opacity = '0';
-				document.body.appendChild(textarea);
-				textarea.focus();
-				textarea.select();
-				try {
-					const successful = document.execCommand('copy');
-					const originalText = btn.textContent;
-					btn.textContent = successful ? '✓ 已复制' : '复制失败';
-					setTimeout(() => {
-						btn.textContent = originalText;
-					}, 2000);
-				} catch (err) {
-					btn.textContent = '复制失败';
-				}
-				document.body.removeChild(textarea);
-			}
-            
-            // 移动设备优化：点击菜单项时关闭菜单（如果打开）
-            if (window.innerWidth <= 992) {
-                navLinks.forEach(link => {
-                    link.addEventListener('click', function() {
-                        const sidebar = document.getElementById('sidebar');
-                        if (sidebar.style.maxHeight && sidebar.style.maxHeight !== '0px') {
-                            sidebar.style.maxHeight = null;
-                        }
-                    });
-                });
-            }
-        });
-    </script>
-
-
-
-<!-- Code injected by live-server -->
-<script>
-	// <![CDATA[  <-- For SVG support
-	if ('WebSocket' in window) {
-		(function () {
-			function refreshCSS() {
-				var sheets = [].slice.call(document.getElementsByTagName("link"));
-				var head = document.getElementsByTagName("head")[0];
-				for (var i = 0; i < sheets.length; ++i) {
-					var elem = sheets[i];
-					var parent = elem.parentElement || head;
-					parent.removeChild(elem);
-					var rel = elem.rel;
-					if (elem.href && typeof rel != "string" || rel.length == 0 || rel.toLowerCase() == "stylesheet") {
-						var url = elem.href.replace(/(&|\?)_cacheOverride=\d+/, '');
-						elem.href = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_cacheOverride=' + (new Date().valueOf());
-					}
-					parent.appendChild(elem);
-				}
-			}
-			var protocol = window.location.protocol === 'http:' ? 'ws://' : 'wss://';
-			var address = protocol + window.location.host + window.location.pathname + '/ws';
-			var socket = new WebSocket(address);
-			socket.onmessage = function (msg) {
-				if (msg.data == 'reload') window.location.reload();
-				else if (msg.data == 'refreshcss') refreshCSS();
-			};
-			if (sessionStorage && !sessionStorage.getItem('IsThisFirstTime_Log_From_LiveServer')) {
-				console.log('Live reload enabled.');
-				sessionStorage.setItem('IsThisFirstTime_Log_From_LiveServer', true);
-			}
-		})();
-	}
-	else {
-		console.error('Upgrade your browser. This Browser is NOT supported WebSocket for Live-Reloading.');
-	}
-	// ]]>
-</script>
+      <section class="content-card">
+        <h1 id="feedback" class="title-level-1">反馈表与求助</h1>
+        <p><a href="https://docs.qq.com/sheet/DUEJ6UWN5VFVRU0dG?tab=BB08J2" class="reference-link-text" target="_blank" rel="noopener noreferrer">打开 Mower 反馈表</a>，查阅已有问题或建议；表格填写需相应编辑权限。</p>
+        <ol>
+          <li>记录 Mower 版本与渠道、系统及架构、设备或模拟器、目标实例。</li>
+          <li>描述操作步骤、期望行为、实际现象和完整本地时间范围，附相关日志、报错归档或截图。</li>
+          <li>去除账号密码、授权码、API密钥和访问令牌；不要公开完整配置备份。</li>
+          <li>内置反馈窗口通过已配置邮箱向开发组发送邮件；反馈表可单独查阅，填写需相应编辑权限。邮件提交成功不等于表格已经记录。</li>
+        </ol>
+        <p>社区求助：QQ群521857729；QQ频道 ArkMower，频道号2r118jwue4。请提供具体证据，避免只描述“不能用”。</p>
+        <h2 id="user-notice" class="title-level-2">运行与数据提示</h2>
+        <p>首次使用或调整排班后观察一轮运行；手动操作游戏前停止自动任务，避免与自动操作冲突。配置备份包含凭据，删除历史记录、覆盖导入和版本回退前核对范围并备份。</p>
+        <h2 id="acknowledgements" class="title-level-2">项目与文档</h2>
+        <p>感谢 Mower、MAA 开发者及社区文档贡献者。项目及详细部署说明见 <a href="https://github.com/ArkMowers/arknights-mower" class="link-text" target="_blank" rel="noopener noreferrer">Mower 仓库</a>。</p>
+      </section>
+    </main>
+  </div>
+  <button class="back-to-top" id="backToTop" type="button" aria-label="回到顶部">↑</button>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const headings = [...document.querySelectorAll('.title-level-1, .title-level-2')];
+      const links = [...document.querySelectorAll('.nav-link')];
+      const progressBar = document.getElementById('progressBar');
+      const backToTop = document.getElementById('backToTop');
+      function updateScrollState() {
+        const available = document.documentElement.scrollHeight - window.innerHeight;
+        progressBar.style.width = `${available > 0 ? Math.min(100, window.scrollY / available * 100) : 0}%`;
+        backToTop.classList.toggle('visible', window.scrollY > 300);
+        let current = headings[0];
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= 120) current = heading;
+        }
+        const section = current.closest('.content-card').querySelector('.title-level-1');
+        for (const link of links) link.classList.toggle('active', link.hash === `#${section.id}`);
+      }
+      backToTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+      window.addEventListener('scroll', updateScrollState, { passive: true });
+      window.addEventListener('resize', updateScrollState);
+      updateScrollState();
+    });
+  </script>
 </body>
-
 </html>

@@ -768,6 +768,26 @@ class AIAgentPart(ConfModel):
     "自定义 OpenAI 兼容接口地址"
     ai_model: str = ""
     "自定义模型名称"
+    ai_deepseek_model: str = "deepseek-flash"
+    "DeepSeek 模型 ID"
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_deepseek_selection(cls, data):
+        if isinstance(data, dict) and data.get("ai_type") in (
+            "deepseek-v4-flash",
+            "deepseek-flash",
+            "deepseek-v4-pro",
+        ):
+            model = data["ai_type"]
+            data = {
+                **data,
+                "ai_type": "deepseek",
+                "ai_deepseek_model": (
+                    "deepseek-flash" if model == "deepseek-v4-flash" else model
+                ),
+            }
+        return data
 
     @property
     def resolved_ai_key(self) -> str:

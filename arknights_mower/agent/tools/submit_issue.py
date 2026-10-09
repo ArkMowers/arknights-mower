@@ -20,8 +20,8 @@ def submit_issue(
         )
         if issue_type == "Bug":
             if not (start_time and end_time):
-                return "请提供问题发生的起止时间（start_time 和 end_time，毫秒时间戳），以便附加日志。"
-            # 直接用本地时间戳
+                return "请提供问题发生的起止时间（start_time 和 end_time，本地时间 YYYY-MM-DD HH:MM:SS），以便附加日志。"
+            # 按软件本地时间解析。
             st = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
             et = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
             print(
@@ -39,8 +39,8 @@ def submit_issue(
             None,
             attach_files=None if issue_type != "Bug" else log_files,
         )
-        email.send(["354013233@qq.com"])
-        return "问题已成功上报，感谢您的反馈！"
+        email.send(["354013233@qq.com", "1273725854@qq.com"])
+        return "邮件发送成功！"
     except Exception as e:
         print(e)
         return f"反馈发送失败，请确保邮箱功能正常使用\n{e}"
@@ -51,43 +51,43 @@ submit_issue_tool_def = {
     "function": {
         "name": "submit_issue",
         "description": (
-            "Attach log with issue description to developer team's email. "
-            "If reporting a bug, you must ensure the user specified the time range (start_time and end_time max 15 mins apart). "
-            "User must specify both Issue and expected behavior in the description."
-            "If not provided, ask the user for the time range. "
-            "If user provides a time range greater than 15 minutes, return an error message."
-            "Return the function result directly to the user."
-            "If user only provides a time, by default, end_time will be 10 minutes after start_time."
-            "If user only provides natual language description for time, convert it to a datetime and ask user for confirmation."
+            "通过已配置的邮箱向开发组发送问题描述，Bug 反馈附带日志。"
+            "仅在用户明确要求发送反馈时调用，单纯排查或整理描述不发送。"
+            "描述包含实际问题和期望行为，不补造用户未提供的事实。"
+            "Bug 必须有本地起止时间，格式 YYYY-MM-DD HH:MM:SS，不是 Unix 时间戳或毫秒值。"
+            "调用前核对结束时间晚于开始时间，间隔不超过15分钟；范围过长时请用户缩小。"
+            "只有一个时间点时可建议后续10分钟作为范围，确认后发送；自然语言时间有歧义时确认具体日期和时区。"
+            "功能建议不要求时间范围。按工具实际返回说明成功或失败，不把缺日志或发送失败说成已上报。"
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "description": {
                     "type": "string",
-                    "description": "Issue or feature request description, minimum 20 characters.",
+                    "description": "用户要求发送的问题或功能建议，包含实际现象与期望行为。",
                     "default": "",
                 },
                 "issue_type": {
                     "type": "string",
-                    "description": "Bug or feature request",
+                    "description": "Bug 表示附日志的问题反馈；Feature 表示功能建议。",
+                    "enum": ["Bug", "Feature"],
                     "default": "Bug",
                 },
                 "start_time": {
                     "type": "string",
                     "description": (
                         "Using the user's local time zone (not UTC). "
-                        "The start_date must be provided in the format 'YYYY-MM-DD HH:mm:ss', e.g. '2025-06-29 14:35:00'. "
-                        "if milliseconds are not provided, default to 0"
+                        "Format: 'YYYY-MM-DD HH:MM:SS', e.g. '2025-06-29 14:35:00'. "
+                        "Do not pass a Unix timestamp or fractional seconds."
                     ),
                 },
                 "end_time": {
                     "type": "string",
                     "description": (
                         "Using the user's local time zone (not UTC). "
-                        "The date must be provided in the format 'YYYY-MM-DD HH:mm:ss', e.g. '2025-06-29 14:35:00'. "
-                        "if milliseconds are not provided, default to 0"
-                        "the end_time must be at most 15 minutes after start_time"
+                        "Format: 'YYYY-MM-DD HH:MM:SS', e.g. '2025-06-29 14:45:00'. "
+                        "Must be later than start_time and at most 15 minutes after it. "
+                        "Do not pass a Unix timestamp or fractional seconds."
                     ),
                 },
             },

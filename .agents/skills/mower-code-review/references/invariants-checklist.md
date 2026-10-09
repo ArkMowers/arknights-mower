@@ -213,6 +213,10 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-WORKSHOP-01] Rejected Recipe Handoff**: Game-rejected recipes do not dispatch another worker against unchanged relevant inventory and configuration; rejections remain transient, renewed inventory observations permit retries without fabricated counts, and processing failures stop consecutive handoffs.
 ---
 
+### 2.10 AI Assistant
+
+- [ ] **[INV-AI-01] Tool Instruction Alignment**: Do assistant instructions reference registered tools, describe actual argument formats and mutation scopes, and agree on response formatting? Do published SQL and datetime examples execute against the current interfaces and mastery filters select actual stored statuses?
+
 ## 3. Guarantee Changes
 
 Does an existing guarantee cover the changed path? Adding a module does not by itself justify a new invariant or triplet. Apply [mower-define-invariant](../../mower-define-invariant/SKILL.md) for reuse or an independent guarantee, and [record ownership](../../../notes/AGENTS.md#1-record-ownership) for any decision record.

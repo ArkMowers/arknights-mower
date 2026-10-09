@@ -11,6 +11,7 @@ import tempfile
 import threading
 import time
 import unittest
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError
@@ -359,37 +360,100 @@ class ProgressTests(unittest.TestCase):
         def get(path, **kwargs):
             return opener.open(Request(url + path, **kwargs), timeout=3)
 
-        self.assertIn(
-            "Mower 更新进度", get("/software-update/progress").read().decode()
-        )
+        with get("/software-update/progress") as response:
+            self.assertIn("Mower 更新进度", response.read().decode())
         with self.assertRaises(HTTPError) as error:
             get("/software-update/status")
-        self.assertEqual(error.exception.code, 403)
+        with error.exception:
+            self.assertEqual(error.exception.code, 403)
         headers = {
             "token": token,
             "X-Mower-Update": "1",
             "Content-Type": "application/json",
         }
-        self.assertEqual(
-            json.load(get("/software-update/status", headers=headers))["log"],
-            "安装日志",
-        )
-        for path, origin in (
-            ("/software-update/cancel", "http://elsewhere.invalid"),
-            ("/unexpected", url),
+        with get("/software-update/status", headers=headers) as response:
+            self.assertEqual(json.load(response)["log"], "安装日志")
+        for path, origin, status in (
+            ("/software-update/cancel", "http://elsewhere.invalid", 403),
+            ("/unexpected", url, 404),
         ):
-            with self.assertRaises(HTTPError):
+            with self.assertRaises(HTTPError) as error:
                 get(path, headers={**headers, "Origin": origin}, data=b"{}")
+            with error.exception:
+                self.assertEqual(error.exception.code, status)
+            self.assertFalse((self.state / "active/cancel.json").exists())
         data = json.dumps({"id": self.job["id"]}).encode()
-        self.assertTrue(
-            json.load(get("/software-update/cancel", headers=headers, data=data))["ok"]
-        )
+        with get("/software-update/cancel", headers=headers, data=data) as response:
+            self.assertTrue(json.load(response)["ok"])
         servers.close()
         # A replacement HTTP server can bind the exact original port immediately.
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
         with ThreadingHTTPServer(("127.0.0.1", port), BaseHTTPRequestHandler):
             pass
+
+    def test_rejected_progress_posts_consume_bounded_body_before_reply(self):
+        handler_type = ProgressServers(self.state, []).handler(
+            hashlib.sha256(b"fixture").hexdigest()
+        )
+        headers = {"token": "fixture", "X-Mower-Update": "1", "Host": "localhost"}
+        for changed, path, status in (
+            ({"token": "wrong"}, "/software-update/cancel", 403),
+            ({"X-Mower-Update": "0"}, "/software-update/cancel", 403),
+            ({"Origin": "http://elsewhere.invalid"}, "/software-update/cancel", 403),
+            ({}, "/unexpected", 404),
+        ):
+            with self.subTest(changed=changed, path=path):
+                handler = object.__new__(handler_type)
+                handler.headers = {**headers, **changed, "Content-Length": "8"}
+                handler.path = path
+                handler.connection = Mock()
+                handler.rfile = BytesIO(b"not-json")
+
+                def reply(code, body):
+                    self.assertEqual(handler.rfile.tell(), 8)
+                    self.assertEqual((code, body), (status, {"ok": False}))
+
+                handler.reply = Mock(side_effect=reply)
+                with patch(
+                    "arknights_mower.utils.software_update_progress.cancel_update"
+                ) as cancel:
+                    handler.do_POST()
+                cancel.assert_not_called()
+                handler.reply.assert_called_once()
+                handler.connection.settimeout.assert_called_once_with(5)
+
+    def test_progress_post_read_limits_preserve_rejection_status(self):
+        handler_type = ProgressServers(self.state, []).handler(
+            hashlib.sha256(b"fixture").hexdigest()
+        )
+        for token, status in (("fixture", 400), ("wrong", 403)):
+            for length in ("0", "-1", "1025", "invalid", "8"):
+                with self.subTest(token=token, length=length):
+                    handler = object.__new__(handler_type)
+                    handler.headers = {
+                        "token": token,
+                        "X-Mower-Update": "1",
+                        "Content-Length": length,
+                    }
+                    handler.path = "/software-update/cancel"
+                    handler.connection = Mock()
+                    handler.rfile = Mock()
+                    handler.rfile.read.side_effect = TimeoutError("fixture timeout")
+                    handler.reply = Mock()
+                    with patch(
+                        "arknights_mower.utils.software_update_progress.cancel_update"
+                    ) as cancel:
+                        handler.do_POST()
+                    cancel.assert_not_called()
+                    handler.reply.assert_called_once()
+                    self.assertEqual(handler.reply.call_args.args[0], status)
+                    if length == "8":
+                        handler.rfile.read.assert_called_once_with(8)
+                        handler.connection.settimeout.assert_called_once_with(5)
+                    else:
+                        handler.rfile.read.assert_not_called()
+                        handler.connection.settimeout.assert_not_called()
 
     def test_older_records_do_not_create_unauthenticated_listeners(self):
         servers = ProgressServers(self.state, [{"kind": "instance", "port": 58000}])

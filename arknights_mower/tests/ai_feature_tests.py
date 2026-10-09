@@ -10,14 +10,18 @@ import server
 from arknights_mower.agent import agent
 from arknights_mower.agent.schedule_error import prepare_schedule_error_evidence
 from arknights_mower.agent.tools.captcha_ocr_match import match_captcha_order
-from arknights_mower.utils.config.conf import AIAgentPart
+from arknights_mower.utils.config.conf import AIAgentPart, Conf
 
 
 class ModelConfigurationTests(unittest.TestCase):
     def test_deepseek_presets_keep_existing_endpoints(self):
-        for model in ("deepseek-v4-flash", "deepseek-v4-pro"):
+        for model in ("deepseek-flash", "deepseek-v4-pro"):
             with self.subTest(model=model):
-                settings = AIAgentPart(ai_type=model, ai_key="preset-test-key")
+                settings = AIAgentPart(
+                    ai_type="deepseek",
+                    ai_deepseek_model=model,
+                    ai_key="preset-test-key",
+                )
                 with (
                     patch.object(agent.config, "conf", settings),
                     patch.object(agent, "ChatOpenAI") as factory,
@@ -28,6 +32,94 @@ class ModelConfigurationTests(unittest.TestCase):
                     factory.call_args.kwargs["base_url"], "https://api.deepseek.com"
                 )
                 self.assertEqual(factory.call_args.kwargs["api_key"], "preset-test-key")
+                if model == "deepseek-v4-pro":
+                    self.assertEqual(
+                        factory.call_args.kwargs["reasoning_effort"], "high"
+                    )
+                    self.assertEqual(
+                        factory.call_args.kwargs["extra_body"],
+                        {"thinking": {"type": "enabled"}},
+                    )
+                else:
+                    self.assertNotIn("reasoning_effort", factory.call_args.kwargs)
+
+    def test_legacy_deepseek_selections_keep_model_and_credentials(self):
+        for legacy, model in (
+            ("deepseek-v4-flash", "deepseek-flash"),
+            ("deepseek-flash", "deepseek-flash"),
+            ("deepseek-v4-pro", "deepseek-v4-pro"),
+        ):
+            with self.subTest(legacy=legacy):
+                saved = {
+                    "ai_type": legacy,
+                    "ai_key": "preset-test-key",
+                    "ai_model": "relay-model",
+                }
+                settings = Conf.model_validate(saved)
+                self.assertEqual(saved["ai_type"], legacy)
+                self.assertEqual(
+                    settings.model_dump(exclude_unset=True),
+                    {**saved, "ai_type": "deepseek", "ai_deepseek_model": model},
+                )
+                with (
+                    patch.object(agent.config, "conf", settings),
+                    patch.object(agent, "ChatOpenAI") as factory,
+                ):
+                    agent.build_llm(settings.resolved_ai_key, with_tools=True)
+                self.assertEqual(factory.call_args.kwargs["model"], model)
+                self.assertEqual(
+                    factory.call_args.kwargs["base_url"], "https://api.deepseek.com"
+                )
+                self.assertEqual(factory.call_args.kwargs["api_key"], "preset-test-key")
+                factory.return_value.bind_tools.assert_called_once_with(
+                    tools=agent.get_tools()
+                )
+
+    def test_custom_deepseek_id_uses_official_endpoint_and_deepseek_key(self):
+        settings = AIAgentPart(
+            ai_type="deepseek",
+            ai_deepseek_model="  deepseek-future-model  ",
+            ai_key="deepseek-test-key",
+            ai_model="relay-model",
+            ai_base_url="https://relay.example/v1",
+            ai_custom_key="relay-test-key",
+        )
+        with (
+            patch.object(agent.config, "conf", settings),
+            patch.object(agent, "ChatOpenAI") as factory,
+        ):
+            agent.build_llm(settings.resolved_ai_key, with_tools=True)
+        self.assertEqual(factory.call_args.kwargs["model"], "deepseek-future-model")
+        self.assertEqual(
+            factory.call_args.kwargs["base_url"], "https://api.deepseek.com"
+        )
+        self.assertEqual(factory.call_args.kwargs["api_key"], "deepseek-test-key")
+        factory.return_value.bind_tools.assert_called_once_with(tools=agent.get_tools())
+        self.assertEqual(settings.ai_model, "relay-model")
+        self.assertEqual(settings.ai_base_url, "https://relay.example/v1")
+        self.assertEqual(settings.ai_custom_key, "relay-test-key")
+
+    def test_deepseek_default_does_not_persist_an_unselected_model(self):
+        settings = Conf(ai_type="deepseek")
+        self.assertNotIn("ai_deepseek_model", settings.model_dump(exclude_unset=True))
+        with (
+            patch.object(agent.config, "conf", settings),
+            patch.object(agent, "ChatOpenAI") as factory,
+        ):
+            agent.build_llm("preset-test-key")
+        self.assertEqual(factory.call_args.kwargs["model"], "deepseek-flash")
+
+    def test_blank_deepseek_id_is_rejected_before_model_construction(self):
+        for model in ("", " \t "):
+            with self.subTest(model=model):
+                settings = AIAgentPart(ai_type="deepseek", ai_deepseek_model=model)
+                with (
+                    patch.object(agent.config, "conf", settings),
+                    patch.object(agent, "ChatOpenAI") as factory,
+                ):
+                    with self.assertRaisesRegex(ValueError, "DeepSeek.*模型"):
+                        agent.build_llm("preset-test-key")
+                factory.assert_not_called()
 
     def test_local_model_needs_no_key_and_uses_custom_endpoint(self):
         settings = AIAgentPart(

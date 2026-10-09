@@ -88,3 +88,7 @@ Resource packages retain `ui/src/pages/basement_skill/skill.json` as their histo
 For content hashing, `package_file_paths` collects the shared source when the compatibility export is absent. `content_hash` uses the historical archive name for that catalog's ordering, path digest and text normalization. Clean checkouts and generated resource packages with identical data therefore share the same resource version on LF and CRLF checkouts, without writing a compatibility file during validation.
 
 [Shared building-skill data](../../.agents/notes/implemented/simplification/2026-10-09-shared-building-skill-data.md) records the boundary and verification.
+
+## 13. Temporary Update Progress Service
+
+`ProgressServers` reuses registered instance ports and credentials while the application is replaced. Its POST handler reads supported request bodies within the existing 1024-byte limit and five-second socket timeout before returning a rejection, preventing unread POST data from aborting the response on Windows. Invalid credentials, update headers or origins retain HTTP 403 precedence; an authenticated unknown path returns HTTP 404. Only an authorized cancellation request with a valid body reaches `cancel_update`; body-reading failures retain the applicable rejection or return HTTP 400. Closing the service releases its registered ports for the restarted application.
