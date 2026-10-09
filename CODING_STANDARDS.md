@@ -12,6 +12,8 @@
 
 ## 2. Subsystem Invariants
 
+- **[INV-RES-03] Building Skill Facility Preservation**: Resource generation retains all upstream building skills, maps known facility codes and preserves unknown codes without aborting.
+
 - **[INV-RES-02] Resource OTA Reconstruction**: Resource OTA requires the exact starting resource version, verifies every reconstructed target file and publishes a complete compatible immutable generation; online failures fall back to the same release’s full package, while manual updates remain offline.
 
 - **[INV-WORKSHOP-02] T5 Specialist Priority**: Homebound recommendations and crafting allocation use only her elite-two T5 specialty, saved execution copies exclude non-T5 recipes, and higher-bonus workers retain execution priority.

@@ -914,9 +914,8 @@ class Arknights数据处理器:
                             self.所有buff.extend(ex_string)
 
                         干员技能详情["des"] = text
-                        干员技能详情["roomType"] = roomType[
-                            buff_table[item2["buffId"]][2]
-                        ]
+                        房间类型 = buff_table[item2["buffId"]][2]
+                        干员技能详情["roomType"] = roomType.get(房间类型, 房间类型)
                         干员技能详情["buffCategory"] = buff_table[item2["buffId"]][3]
                         干员技能详情["skillIcon"] = buff_table[item2["buffId"]][4]
                         干员技能详情["buffColor"] = buff_table[item2["buffId"]][5]
@@ -1231,6 +1230,7 @@ roomType = {
     "HIRE": "人力办公室",
     "TRAINING": "训练室",
     "CONTROL": "中枢",
+    "RECYCLE": "回收站",
 }
 formulaType = {
     "F_SKILL": "技巧概要",
@@ -1241,48 +1241,48 @@ formulaType = {
 
 # 提取干员名图片("./clst.png",1,2)
 
-数据处理器 = Arknights数据处理器()
+if __name__ == "__main__":
+    数据处理器 = Arknights数据处理器()
 
-数据处理器.添加物品()  # 显示在仓库里的物品
+    数据处理器.添加物品()  # 显示在仓库里的物品
 
-数据处理器.添加干员()
+    数据处理器.添加干员()
 
-数据处理器.读取卡池()
+    数据处理器.读取卡池()
 
-数据处理器.读取活动关卡()
+    数据处理器.读取活动关卡()
 
-# 和 数据处理器.添加物品() 有联动 ， 添加物品提供了分类的图片位置
-数据处理器.批量训练并保存扫仓库模型()
-print("批量训练并保存扫仓库模型,完成")
+    # 和 数据处理器.添加物品() 有联动 ， 添加物品提供了分类的图片位置
+    数据处理器.批量训练并保存扫仓库模型()
+    print("批量训练并保存扫仓库模型,完成")
 
-数据处理器.训练在房间内的干员名的模型()
-print("训练在房间内的干员名的模型,完成")
+    数据处理器.训练在房间内的干员名的模型()
+    print("训练在房间内的干员名的模型,完成")
 
-数据处理器.训练选中的干员名的模型()
-print("训练选中的干员名的模型,完成")
+    数据处理器.训练选中的干员名的模型()
+    print("训练选中的干员名的模型,完成")
 
-数据处理器.训练训练室干员名的模型()
-print("训练训练室干员名的模型,完成")
+    数据处理器.训练训练室干员名的模型()
+    print("训练训练室干员名的模型,完成")
 
+    # 数据处理器.auto_fight_avatar()  # 暂时停用：CreditFight 未接线、AutoFight 识别未启用，avatar.pkl 不进打包
 
-# 数据处理器.auto_fight_avatar()  # 暂时停用：CreditFight 未接线、AutoFight 识别未启用，avatar.pkl 不进打包
+    数据处理器.获得干员基建描述()
 
-数据处理器.获得干员基建描述()
+    数据处理器.buff转换()  # 所有buff描述,包括其他buff
 
-数据处理器.buff转换()  # 所有buff描述,包括其他buff
+    数据处理器.添加基建技能图标()
 
-数据处理器.添加基建技能图标()
+    数据处理器.load_recruit_resource()
 
-数据处理器.load_recruit_resource()
+    数据处理器.获取加工站配方类别()
+    数据处理器.获取家具套装()
 
-数据处理器.获取加工站配方类别()
-数据处理器.获取家具套装()
+    数据处理器.提取专精数据()
+    print("提取专精数据,完成")
 
-数据处理器.提取专精数据()
-print("提取专精数据,完成")
+    build_default_model()
+    print("训练室面板姓名与技能模板,完成")
 
-build_default_model()
-print("训练室面板姓名与技能模板,完成")
-
-数据处理器.generate_version_info()
-print("生成 version.json,完成")
+    数据处理器.generate_version_info()
+    print("生成 version.json,完成")

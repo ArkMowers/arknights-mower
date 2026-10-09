@@ -21,6 +21,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ## 2. Subsystem Invariants
 
+- [ ] **[INV-RES-03] Building Skill Facility Preservation**: Does the generator retain skills for known and unknown facility codes, including RECYCLE, without changing their phase, description or icon? See [resource generation contract](../../../../docs/subsystems/resource-update.md#4-resource-generation).
+
 - [ ] **[INV-RES-01] Template Glyph Coverage**: Does resource generation validate actual character maps and expand before loading fonts, preserving existing glyphs and metrics and rejecting missing source characters before changing files? See [Software Update Contract](../../../../docs/subsystems/software-update.md#7-resource-template-fonts).
 
 - [ ] **[INV-RES-02] Resource OTA Reconstruction**: Does resource OTA verify its starting version and every target file before publication, preserve active generations, and keep online fallback and offline manual installation separate? See [resource OTA contract](../../../../docs/subsystems/resource-update.md#1-resource-ota).

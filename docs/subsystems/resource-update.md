@@ -15,3 +15,9 @@ OTA reconstruction writes only staging files. The resource installer validates t
 ## 3. Subsystem Invariants
 
 - **[INV-RES-02] Resource OTA Reconstruction**: An OTA package reconstructs a complete compatible resource generation from an exact starting version, verifies target file digests and publishes through the existing immutable installer.
+
+## 4. Resource Generation
+
+`Arknights数据处理器.获得干员基建描述` retains every upstream building skill. Known room codes use their display labels, including `RECYCLE` as 回收站; unknown room codes remain unchanged in `roomType` and do not abort generation. Skill descriptions, icons and phase conditions retain their upstream values. The frontend derives facility filters from the generated data.
+
+**[INV-RES-03] Building Skill Facility Preservation** governs this behavior. [Building skill facility preservation](../../.agents/notes/implemented/bug-fix/2026-10-09-resource-facility-preservation.md) records the repair and verification.
