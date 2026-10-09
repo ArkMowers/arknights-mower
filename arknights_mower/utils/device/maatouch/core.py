@@ -6,6 +6,7 @@ from typing import Union
 from arknights_mower import __rootdir__
 from arknights_mower.utils import config
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
+from arknights_mower.utils.device.io_budget import touch_release_budget
 from arknights_mower.utils.device.maatouch.command import CommandBuilder
 from arknights_mower.utils.device.maatouch.session import Session
 from arknights_mower.utils.log import logger
@@ -169,6 +170,7 @@ class Client:
         up_wait: int = 0,
         fall: bool = True,
         lift: bool = True,
+        before_release=None,
     ) -> None:
         """
         swipe between points one by one, with pressure and duration
@@ -206,10 +208,19 @@ class Client:
             builder.publish(conn)
 
             if lift:
-                builder.up(0)
-                if up_wait:
-                    builder.wait(up_wait)
-                builder.publish(conn)
+                if before_release is None:
+                    if up_wait:
+                        builder.wait(up_wait)
+                        builder.publish(conn)
+                    builder.up(0)
+                    builder.publish(conn)
+                else:
+                    try:
+                        before_release()
+                    finally:
+                        with touch_release_budget():
+                            builder.up(0)
+                            builder.publish(conn)
 
     def swipe(
         self,
@@ -221,6 +232,7 @@ class Client:
         part: int = 10,
         fall: bool = True,
         lift: bool = True,
+        before_release=None,
     ) -> None:
         """
         swipe between points one by one, with pressure and duration
@@ -258,5 +270,12 @@ class Client:
             else:
                 new_duration += [duration[id - 1] // part] * part
         self.__swipe(
-            new_points, display_frames, pressure, new_duration, up_wait, fall, lift
+            new_points,
+            display_frames,
+            pressure,
+            new_duration,
+            up_wait,
+            fall,
+            lift,
+            before_release,
         )

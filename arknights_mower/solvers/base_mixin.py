@@ -556,7 +556,7 @@ class BaseMixin:
             full_scan=full_scan,
             train=train,
             seed_image=seed_image,
-            seed_page=previous,
+            seed_page=previous or None,
         )
         stable = False
         stable_matches = 0
@@ -567,7 +567,7 @@ class BaseMixin:
         for attempt in range(max_attempts):
             if attempt:
                 self.wait_for_next_observation(capture_time, poll_interval)
-            else:
+            elif previous != ():
                 self.recog.update()
             started = perf_counter()
             connecting = self.find("connecting")
@@ -637,8 +637,13 @@ class BaseMixin:
                 start,
                 (end[0] - start[0], 0),
                 interval=0.1 if self.performance_profile.mode == "high" else 0.2,
+                capture=True,
             )
-            return (1, None) if return_page else 1
+            return (
+                (1, self.observe_agent_page((), full_scan=full_scan, train=train))
+                if return_page
+                else 1
+            )
         columns = sorted({scope[0][0] for _, scope in page})
         if len(columns) < 2:
             raise AgentSelectionNotReady("可识别干员列不足，返回房间重试")
@@ -648,11 +653,18 @@ class BaseMixin:
             # 第二次只移动一列，防止第一次延迟完成时又跨过一整页。
             distance = columns[0] - (start_x if attempt == 0 else columns[1])
             if attempt:
-                self.swipe_noinertia((start_x, y), (distance, 0), retry=True)
+                self.swipe_noinertia(
+                    (start_x, y), (distance, 0), retry=True, capture=True
+                )
             else:
-                self.swipe_noinertia((start_x, y), (distance, 0))
+                self.swipe_noinertia((start_x, y), (distance, 0), capture=True)
             actual = self.wait_for_agent_page(
-                full_scan=full_scan, train=train, before=page
+                full_scan=full_scan,
+                train=train,
+                before=page,
+                observation=self.observe_agent_page(
+                    (), full_scan=full_scan, train=train
+                ),
             )
             if not self.same_agent_page(actual, page, allow_unknown=True):
                 if return_page:
@@ -688,6 +700,7 @@ class BaseMixin:
                 respect_train_selection,
                 mood_estimates,
                 skip_full_mood,
+                observation=observation,
             )
         # 无目标时仍返回已复核的页面供调用方判断，但不进行点击。
         ret = self.wait_for_agent_page(
@@ -736,10 +749,17 @@ class BaseMixin:
         respect_train_selection=False,
         mood_estimates=None,
         skip_full_mood=False,
+        observation=None,
     ):
         """普通设备沿用单帧批量选人及缩小扫描区域的识别重试。"""
         try:
-            self.recog.update()
+            held_page = (
+                observation.consume(self.recog, full_scan=full_scan, train=train)
+                if observation is not None
+                else None
+            )
+            if held_page is None:
+                self.recog.update()
             while self.find("connecting"):
                 self.sleep()
             ret = (

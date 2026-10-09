@@ -1,0 +1,20 @@
+{
+  "title": "Held Swipe Capture",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-24]",
+    "[INV-DEV-08]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.device.Device.swipe_ext",
+    "arknights_mower.solvers.base_mixin.BaseMixin.swipe_agent_page"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/held_swipe_capture_tests.py"
+  ]
+}

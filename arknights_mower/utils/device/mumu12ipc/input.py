@@ -7,7 +7,7 @@ import time
 from threading import Event, Lock
 
 from arknights_mower.utils import config
-from arknights_mower.utils.device.io_budget import io_timeout
+from arknights_mower.utils.device.io_budget import io_timeout, touch_release_budget
 from arknights_mower.utils.device.manager_io import MAX_OUTPUT, run_command
 from arknights_mower.utils.device.mumu12ipc.core import (
     MuMu12IPC,
@@ -232,7 +232,17 @@ class MuMuInputSession:
         self.send_keyevent(1)
 
     def swipe(
-        self, x0, y0, x1, y1, duration=0.5, steps=30, fall=True, lift=True, interval=0.0
+        self,
+        x0,
+        y0,
+        x1,
+        y1,
+        duration=0.5,
+        steps=30,
+        fall=True,
+        lift=True,
+        interval=0.0,
+        before_release=None,
     ):
         if fall:
             self.touch_down(x0, y0)
@@ -243,8 +253,15 @@ class MuMuInputSession:
             )
             self._wait(duration / steps)
         if lift:
-            self._wait(interval)
-            self.touch_up()
+            if before_release is None:
+                self._wait(interval)
+                self.touch_up()
+            else:
+                try:
+                    before_release()
+                finally:
+                    with touch_release_budget():
+                        self.touch_up()
 
     def swipe_ext(self, points, durations, update=False, interval=0.0, func=None):
         if len(points) < 2 or len(durations) != len(points) - 1:

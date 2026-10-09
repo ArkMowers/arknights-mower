@@ -38,6 +38,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-REC-06] Selection Page Exit**: Do anomalous selection readings detect the known facility roster marker on the same Capture Frame and propagate page exit without filter reset or further selection input, while normal readings avoid additional page lookups or captures and existing room recovery reads actual occupants?
 
 ### 2.1 Device Control & Transport Domain
+- [ ] **[INV-DEV-24] Held Swipe Capture**: Selection page swipes acquire one Capture Frame during a shared 400 ms minimum endpoint hold, release the owned touch before reporting capture failure or cancellation, and never recover or replay input while held.
 - [ ] **[INV-DEV-22] Recoverable Owned Cleanup**: Failed cleanup retains its original resource owners and retries only unfinished work; successful cleanup clears the failure before verified startup, while unresolved cleanup blocks replacement and preserves foreign resources, Device Profile and shared ADB state.
 - [ ] **[INV-DEV-21] ADB Default Cohesion**: Do omitted ADB paths use the shared platform default and prefer the bundled executable while explicit paths and empty values survive unrelated updates and save/reload?
 
