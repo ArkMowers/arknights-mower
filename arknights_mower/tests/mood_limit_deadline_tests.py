@@ -9,6 +9,7 @@ import pytest
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.utils import config, operation_timing
 from arknights_mower.utils.scheduler_task import (
+    NewsChecker,
     SchedulerTask,
     TaskTypes,
     protect_priority_tasks,
@@ -21,6 +22,7 @@ def settings(monkeypatch, offline_maintenance):
     monkeypatch.setattr(config.conf, "enable_mastery", True)
     monkeypatch.setattr(config.conf, "run_order_delay", 5)
     monkeypatch.setattr(operation_timing, "_dorm_durations", {})
+    monkeypatch.setattr(NewsChecker, "get_update_time", lambda: (None, None))
 
 
 def release_at(deadline, name="令", room="dormitory_2"):

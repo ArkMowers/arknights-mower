@@ -70,11 +70,15 @@ class TestRunOrderRestorationScheduling(unittest.TestCase):
         )
         tasks = [first, restore, second]
 
-        self.assertEqual(scheduling(tasks, time_now=self.now), (first, second))
+        self.assertIsNone(scheduling(tasks, time_now=self.now))
 
         self.assertIn(restore, tasks)
+        self.assertEqual(first.time, self.now + timedelta(minutes=1))
         self.assertEqual(restore.time, self.now + timedelta(minutes=2))
+        self.assertEqual(second.time, self.now + timedelta(minutes=3))
+        self.assertFalse(first.adjusted)
         self.assertFalse(restore.adjusted)
+        self.assertFalse(second.adjusted)
 
     def test_restoration_retains_unified_priority_over_due_ordinary_work(
         self,
@@ -93,26 +97,28 @@ class TestRunOrderRestorationScheduling(unittest.TestCase):
         self.assertEqual(restore.time, self.now)
         self.assertEqual(ordinary.time, self.now + timedelta(seconds=1))
 
-    def test_restoration_budget_excludes_grandet_wait_before_next_order(self):
+    def test_restoration_budget_excludes_grandet_wait_before_mastery_handoff(self):
+        from arknights_mower.utils import config
+
+        config.conf.enable_mastery = True
         restore = self.make_restore()
         ordinary = SchedulerTask(
             time=self.now + timedelta(minutes=1),
             task_plan={"central": ["阿米娅"]},
             task_type=TaskTypes.SELF_CORRECTION,
         )
-        order = SchedulerTask(
+        handoff = SchedulerTask(
             time=self.now + timedelta(minutes=3),
-            task_plan={"room_2_1": ["但书"]},
-            task_type=TaskTypes.RUN_ORDER,
-            meta_data="room_2_1",
+            task_plan={"train": ["逻各斯"]},
+            task_type=TaskTypes.SWAP_SUPPORT,
         )
-        tasks = [restore, ordinary, order]
+        tasks = [restore, ordinary, handoff]
 
         self.assertIsNone(scheduling(tasks, execution_time=0.75, time_now=self.now))
 
         self.assertIs(tasks[0], restore)
         self.assertEqual(ordinary.time, self.now + timedelta(minutes=1))
-        self.assertEqual(order.time, self.now + timedelta(minutes=3))
+        self.assertEqual(handoff.time, self.now + timedelta(minutes=3))
 
     def test_restoration_still_protects_strict_release_operation_window(self):
         restore = self.make_restore(seconds=120)
@@ -133,8 +139,8 @@ class TestRunOrderRestorationScheduling(unittest.TestCase):
 
     def test_maintenance_excludes_only_marked_restoration(self):
         restore = self.make_restore(seconds=120)
-        pending_insertion = self.make_restore(seconds=180)
-        pending_insertion.meta_data = "room_1_1"
+        saved_insertion = self.make_restore(seconds=180)
+        saved_insertion.meta_data = "room_1_1"
         legacy = SchedulerTask(
             time=self.now + timedelta(minutes=4),
             task_plan={"room_2_1": ["鸿雪"]},
@@ -146,13 +152,14 @@ class TestRunOrderRestorationScheduling(unittest.TestCase):
             return_value=(start, start + timedelta(hours=6)),
         ):
             adjusted = adjust_run_order_for_maintenance(
-                [restore, pending_insertion, legacy]
+                [restore, saved_insertion, legacy]
             )
 
-        self.assertEqual(adjusted, [pending_insertion, legacy])
+        self.assertEqual(adjusted, [legacy])
         self.assertEqual(restore.time, self.now + timedelta(minutes=2))
+        self.assertEqual(saved_insertion.time, self.now + timedelta(minutes=3))
         self.assertFalse(restore.adjusted)
-        self.assertTrue(pending_insertion.adjusted)
+        self.assertFalse(saved_insertion.adjusted)
         self.assertTrue(legacy.adjusted)
 
 

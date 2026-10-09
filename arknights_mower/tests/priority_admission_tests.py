@@ -2,11 +2,13 @@
 
 import copy
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock
 
 import pytest
 
 from arknights_mower.tests import order_admission_tests as room_fixtures
 from arknights_mower.utils import config, operation_timing
+from arknights_mower.utils.dorm_candidates import dorm_task_reservations
 from arknights_mower.utils.scheduler_task import (
     NewsChecker,
     SchedulerTask,
@@ -541,3 +543,167 @@ def test_runtime_dorm_recheck_keeps_info(monkeypatch):
     assert dorm.time == order.time + timedelta(seconds=1)
     assert len(info) == 1
     assert "dormitory_3" in info[0][0] and "跑单" in info[0][0]
+
+
+def waiting_run_orders(restore_seconds=0, insertion_seconds=0):
+    data = room_fixtures.TestSchedulingRoomPlans().make_op_data(
+        {"room_1_1": ["但书"], "room_1_2": ["图耶"]}, targets=("B", "C")
+    )
+    restore = task(TaskTypes.RUN_ORDER, restore_seconds, {"room_1_1": ["图耶"]})
+    restore.run_order_original_roster = copy.deepcopy(restore.plan)
+    restore.run_order_restore_pending = True
+    insertion = task(
+        TaskTypes.RUN_ORDER,
+        insertion_seconds,
+        {"room_2_1": ["但书"]},
+        meta_data="room_2_1",
+    )
+    return data, restore, insertion
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+def test_waiting_orders_keep_state_without_delaying_work_or_mastery(dispatch):
+    config.conf.run_order_grandet_mode.enable = True
+    data, restore, insertion = waiting_run_orders(120, 180)
+    work = task(TaskTypes.SHIFT_ON, 60, {"room_1_2": ["B"]})
+    handoff = task(TaskTypes.SWAP_SUPPORT, 240, {"train": ["C"]})
+    tasks = [restore, work, insertion, handoff]
+    original_states = [copy.deepcopy(vars(t)) for t in (restore, insertion)]
+    original_reservations = dorm_task_reservations(data, [restore, insertion])
+
+    for _ in range(3):
+        assert dispatch(tasks, time_now=NOW, op_data=data) is None
+        assert work.time == NOW + timedelta(seconds=60)
+        assert handoff.time == NOW + timedelta(seconds=240)
+        assert not getattr(handoff, "advance_support_swap", False)
+        for waiting, original in zip((restore, insertion), original_states):
+            assert any(t is waiting for t in tasks)
+            assert vars(waiting) == original
+        assert (
+            dorm_task_reservations(data, [restore, insertion]) == original_reservations
+        )
+        assert "图耶" in original_reservations[0]
+        assert data.operators["图耶"].current_room == "room_1_2"
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+def test_waiting_orders_do_not_create_an_early_strict_release_window(dispatch):
+    config.conf.run_order_grandet_mode.enable = True
+    data, restore, insertion = waiting_run_orders(120, 180)
+    release = task(
+        TaskTypes.RELEASE_DORM,
+        300,
+        {"dormitory_1": ["Free"]},
+        meta_data="红",
+        strict_mood_limit=True,
+    )
+    tasks = [restore, insertion, release]
+
+    for _ in range(3):
+        dispatch(tasks, time_now=NOW, op_data=data)
+        assert release.time == NOW + timedelta(seconds=210)
+        assert release.mood_limit_deadline == NOW + timedelta(seconds=300)
+        assert release.plan == {"dormitory_1": ["Free"]}
+        assert restore.time == NOW + timedelta(seconds=120)
+        assert insertion.time == NOW + timedelta(seconds=180)
+
+
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+@pytest.mark.parametrize("actual_room", [None, "", "dormitory_1", "room_1_1"])
+def test_ready_or_unobserved_restoration_retains_priority(dispatch, actual_room):
+    data, restore, insertion = waiting_run_orders()
+    if actual_room is not None:
+        data.operators["图耶"]._current_room = actual_room
+    work = task(TaskTypes.SELF_CORRECTION, -60, {"central": ["B"]})
+    tasks = [work, insertion, restore]
+
+    dispatch(tasks, time_now=NOW, op_data=None if actual_room is None else data)
+
+    assert tasks[0] is restore
+    assert work.time == NOW + timedelta(seconds=1)
+    assert restore.plan == restore.run_order_original_roster == {"room_1_1": ["图耶"]}
+    assert insertion.plan == {"room_2_1": ["但书"]}
+    assert insertion.time == NOW
+    assert not insertion.adjusted
+
+
+def test_planned_worker_release_does_not_unlock_restoration_before_observation(
+    monkeypatch,
+):
+    data, restore, insertion = waiting_run_orders(120, 180)
+    work = task(TaskTypes.SHIFT_ON, 60, {"room_1_2": ["B"]})
+    handoff = task(TaskTypes.SWAP_SUPPORT, 240, {"train": ["C"]})
+    projected_workers = []
+    project = data.project_arrangements
+
+    def observe_projection(plans):
+        projected = project(plans)
+        projected_workers.append(projected.operators["图耶"].current_room)
+        return projected
+
+    monkeypatch.setattr(data, "project_arrangements", observe_projection)
+    tasks = [restore, work, insertion, handoff]
+
+    scheduling(tasks, time_now=NOW, op_data=data)
+
+    assert "" in projected_workers
+    assert data.operators["图耶"].current_room == "room_1_2"
+    assert work.time == NOW + timedelta(seconds=60)
+    assert restore.time == NOW + timedelta(seconds=120)
+    assert insertion.time == NOW + timedelta(seconds=180)
+    tasks.remove(work)
+    data.operators["图耶"]._current_room = ""
+    ordinary = task(TaskTypes.SELF_CORRECTION, 120, {"central": ["B"]})
+    tasks.append(ordinary)
+
+    scheduling(tasks, time_now=NOW + timedelta(seconds=120), op_data=data)
+
+    assert tasks[0] is restore
+    assert ordinary.time > restore.time
+    assert restore.plan == restore.run_order_original_roster == {"room_1_1": ["图耶"]}
+    assert insertion.time == NOW + timedelta(seconds=180)
+
+
+@pytest.mark.parametrize("original_is_busy", [True, False])
+def test_room_dispatch_dorm_guard_uses_executable_restoration(
+    monkeypatch, original_is_busy
+):
+    from arknights_mower.solvers import base_schedule
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return NOW
+
+    monkeypatch.setattr(base_schedule, "datetime", Clock)
+    data, restore, insertion = waiting_run_orders(60, 90)
+    if not original_is_busy:
+        data.operators["图耶"]._current_room = ""
+    dorm = task(TaskTypes.RE_ORDER, plan={"dormitory_1": ["B"]})
+    solver = object.__new__(base_schedule.BaseSchedulerSolver)
+    solver.task, solver.tasks, solver.op_data = dorm, [dorm, restore, insertion], data
+    solver._emergency_frozen = MagicMock(return_value=False)
+    solver._track_idle_dorm_shift = MagicMock()
+    solver._finish_idle_dorm_shift = MagicMock()
+    solver.preserve_resting_crafters = MagicMock()
+
+    def arrange(new_plan, room, plan, **kwargs):
+        del plan[room]
+        return new_plan
+
+    solver.agent_arrange_room = MagicMock(side_effect=arrange)
+
+    completed = solver.agent_arrange(dorm.plan)
+
+    if original_is_busy:
+        assert completed is not False
+        solver.agent_arrange_room.assert_called_once()
+        assert dorm.plan == {}
+        assert dorm.time == NOW
+    else:
+        assert completed is False
+        solver.agent_arrange_room.assert_not_called()
+        assert dorm.plan == {"dormitory_1": ["B"]}
+        assert dorm.time == restore.time + timedelta(seconds=1)
+    assert restore.plan == restore.run_order_original_roster == {"room_1_1": ["图耶"]}
+    assert insertion.plan == {"room_2_1": ["但书"]}

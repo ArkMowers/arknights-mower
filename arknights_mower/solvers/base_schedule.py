@@ -127,6 +127,7 @@ from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
     adjust_run_order_for_maintenance,
+    blocked_run_order_ids,
     defer_dorm_before_priority_task,
     dorm_rebalance_signature,
     dorm_residents,
@@ -1318,6 +1319,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         initial_fia_pending = any(
             getattr(task, "initial_fia", False) for task in self.tasks
         )
+        blocked_orders = blocked_run_order_ids(
+            self.tasks, getattr(self, "op_data", None)
+        )
         if initial_fia_pending:
             protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
             candidate = self.tasks[0]
@@ -1325,6 +1329,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 getattr(candidate, "initial_fia", False)
                 or getattr(candidate, "strict_mood_limit", False)
                 or candidate.type == TaskTypes.RUN_ORDER
+                and id(candidate) not in blocked_orders
                 or config.conf.enable_mastery
                 and candidate.type == TaskTypes.SWAP_SUPPORT
             ):
@@ -1339,6 +1344,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             or initial_fia_pending
             and (
                 getattr(self.task, "type", None) == TaskTypes.RUN_ORDER
+                and id(self.task) not in blocked_orders
                 or config.conf.enable_mastery
                 and getattr(self.task, "type", None) == TaskTypes.SWAP_SUPPORT
             )
@@ -1351,6 +1357,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             # Navigation/reconnection may have consumed the margin since run().
             # Recheck at a safe boundary, before any staff arrangement has started.
             protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
+            blocked_orders = blocked_run_order_ids(
+                self.tasks, getattr(self, "op_data", None)
+            )
             if (
                 self.task.time > datetime.now()
                 or not any(task is self.task for task in self.tasks)
@@ -1362,6 +1371,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         or getattr(self.tasks[0], "initial_fia", False)
                         or (
                             self.tasks[0].type == TaskTypes.RUN_ORDER
+                            and id(self.tasks[0]) not in blocked_orders
                             or config.conf.enable_mastery
                             and self.tasks[0].type == TaskTypes.SWAP_SUPPORT
                         )
@@ -4747,7 +4757,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             return
         # 肥鸭、延期切产物和临近关键任务仍由原有调度边界处理。
         probe = SchedulerTask(task_type=TaskTypes.FILL_DORM)
-        simplify_dorm_fill(probe, self.tasks)
+        simplify_dorm_fill(probe, self.tasks, op_data=self.op_data)
         if (
             getattr(probe, "simple_dorm_fill", False)
             or any(
@@ -9283,11 +9293,15 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     )
                     and any(task is self.task for task in getattr(self, "tasks", []))
                 )
+                blocked_orders = (
+                    blocked_run_order_ids(self.tasks, self.op_data) if queued else set()
+                )
                 urgent = (
                     queued
                     and not getattr(self.task, "dorm_recovery_restore", [])
                     and any(
                         task is not self.task
+                        and id(task) not in blocked_orders
                         and task.type
                         in (
                             TaskTypes.FIAMMETTA,
@@ -9521,10 +9535,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if self.task.type == TaskTypes.FILL_DORM and not getattr(
             self.task, "emergency_dorm", False
         ):
-            simplify_dorm_fill(self.task, self.tasks)
+            simplify_dorm_fill(self.task, self.tasks, op_data=self.op_data)
             if getattr(self.task, "simple_dorm_fill", False):
                 if self.task.plan and defer_dorm_before_priority_task(
-                    self.task, self.tasks, next(iter(self.task.plan))
+                    self.task,
+                    self.tasks,
+                    next(iter(self.task.plan)),
+                    datetime.now(),
+                    self.op_data,
                 ):
                     return False
                 # 任务等待期间床位可能已变化；简化补位只碰现在仍为空的床。
@@ -9566,7 +9584,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         )
         for room in rooms:
             if (not new_plan) and defer_dorm_before_priority_task(
-                self.task, self.tasks, room
+                self.task, self.tasks, room, datetime.now(), self.op_data
             ):
                 return False
             try:

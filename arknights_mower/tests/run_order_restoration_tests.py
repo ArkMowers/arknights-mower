@@ -1,7 +1,8 @@
 """普通跑单仅使用完整实测原班，失败后的重试仅恢复原班。"""
 
+import copy
 import pickle
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,7 +12,9 @@ from arknights_mower.tests.automatic_rescue_tests import offline as offline
 from arknights_mower.tests.emergency_compensation_tests import selection_harness
 from arknights_mower.tests.mass_mood_recovery_tests import COVERS, NOW, PRIMARY
 from arknights_mower.tests.mass_mood_recovery_tests import solver as solver
-from arknights_mower.utils import config
+from arknights_mower.utils import config, scheduler_task
+from arknights_mower.utils.operators import Operator
+from arknights_mower.utils.plan import Room
 from arknights_mower.utils.recognize import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
@@ -353,6 +356,132 @@ def test_restore_waits_for_original_worker_in_foreign_working_facility(
     worker._current_room, worker.current_index = "", -1
     solver.agent_arrange(task.plan)
     assert solver.op_data.get_current_room(ROOM, True) == ORIGINAL
+
+
+@pytest.mark.parametrize("queued_order", [False, True])
+@pytest.mark.parametrize("saved_plan", ["restoration", "insertion", "empty"])
+@pytest.mark.parametrize("release_read_failure", [False, True])
+def test_blocked_restoration_dispatches_source_room_release(
+    solver, monkeypatch, queued_order, saved_plan, release_read_failure
+):
+    monkeypatch.setattr(
+        scheduler_task.NewsChecker,
+        "get_update_time",
+        MagicMock(return_value=(None, None)),
+    )
+    task, _ = prepare_order(solver, monkeypatch, buffer=0)
+    solver.agent_arrange(task.plan)
+    solver.op_data.plan[ROOM][1] = Room("图耶", "", [COVERS[1]])
+    solver.op_data.global_plan["default_plan"].plan[ROOM] = copy.deepcopy(
+        solver.op_data.plan[ROOM]
+    )
+    for bed, name in zip(solver.op_data.dorm, ["芙蓉", "梓兰", "安赛尔"]):
+        room, index = bed.position
+        solver.op_data.add(
+            Operator(
+                name,
+                "",
+                current_room=room,
+                current_index=index,
+                mood=12,
+                time_stamp=NOW,
+            )
+        )
+        bed.name, bed.time = name, NOW + timedelta(hours=1)
+    monkeypatch.setattr(
+        base_schedule,
+        "defer_dorm_before_priority_task",
+        scheduler_task.defer_dorm_before_priority_task,
+    )
+    if saved_plan != "restoration":
+        task.meta_data = ROOM
+        task.plan = {ROOM: ["但书", COVERS[1]]} if saved_plan == "insertion" else {}
+        task = pickle.loads(pickle.dumps(task))
+        solver.tasks = [task]
+    worker = solver.op_data.operators[ORIGINAL[0]]
+    source_room = "room_1_2"
+    primary = solver.op_data.operators[PRIMARY[1]]
+    primary._current_room, primary.current_index = "", -1
+    worker._current_room, worker.current_index = source_room, 0
+    release = SchedulerTask(
+        time=NOW,
+        task_plan={source_room: [primary.name]},
+        task_type=TaskTypes.SELF_CORRECTION,
+    )
+    solver.tasks.append(release)
+    if queued_order:
+        solver.tasks.append(
+            SchedulerTask(
+                time=NOW,
+                task_plan={"room_1_3": ["但书"]},
+                task_type=TaskTypes.RUN_ORDER,
+                meta_data="room_1_3",
+            )
+        )
+    current_time = [NOW]
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return current_time[0]
+
+    monkeypatch.setattr(base_schedule, "datetime", Clock)
+    monkeypatch.setattr(scheduler_task, "datetime", Clock)
+    solver._product_switching_enabled = MagicMock(return_value=True)
+    solver.refresh_connecting = True
+    solver.choose_agent.reset_mock()
+    solver.drone.reset_mock()
+    failed_read = False
+    read_error = base_schedule.AgentSelectionNotReady("源站选人名单暂未稳定")
+    choose = solver.choose_agent.side_effect
+
+    def choose_with_retry(names, room, **kwargs):
+        nonlocal failed_read
+        if release_read_failure and room == source_room and not failed_read:
+            failed_read = True
+            raise read_error
+        return choose(names, room, **kwargs)
+
+    solver.choose_agent.side_effect = choose_with_retry
+
+    def confirm(room, new_plan):
+        row = solver.choose_agent.call_args.args[0]
+        for operator in solver.op_data.operators.values():
+            if operator.current_room == room:
+                operator._current_room, operator.current_index = "", -1
+        for index, name in enumerate(row):
+            operator = solver.op_data.operators[name]
+            operator._current_room, operator.current_index = room, index
+
+    solver.tap_confirm.side_effect = confirm
+    trace = []
+    for _ in range(6):
+        scheduler_task.scheduling(
+            solver.tasks, time_now=current_time[0], op_data=solver.op_data
+        )
+        selected = solver.tasks[0]
+        current_time[0] = max(current_time[0], selected.time)
+        solver.task = selected
+        solver.infra_main()
+        assert [
+            call.args[0] for call in base_schedule.save_exception.call_args_list
+        ] == ([read_error] if failed_read else [])
+        trace.append((selected.type, task.time, release.time))
+        if release not in solver.tasks and not getattr(
+            task, "run_order_restore_pending", False
+        ):
+            break
+
+    assert release not in solver.tasks, trace
+    assert task not in solver.tasks, trace
+    assert solver.op_data.get_current_room(ROOM, True) == ORIGINAL
+    assert solver.op_data.get_current_room(source_room, True) == [primary.name]
+    assert failed_read == release_read_failure
+    assert not hasattr(release, "arrangement_retry_count")
+    assert all(
+        "但书" not in call.args[0] for call in solver.choose_agent.call_args_list
+    )
+    solver.drone.assert_not_called()
 
 
 def test_restoration_confirm_does_not_repeat_order_buffer_wait(solver, monkeypatch):

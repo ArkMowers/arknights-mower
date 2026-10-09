@@ -122,7 +122,7 @@ def scheduling(
     time_now = time_now or datetime.now()
     merge_release_dorm(tasks, config.conf.merge_interval)
     enabled = config.conf.enable_mastery
-    conflict = _find_run_order_conflict(tasks, run_order_delay, time_now)
+    conflict = _find_run_order_conflict(tasks, run_order_delay, time_now, op_data)
     protect_priority_tasks(tasks, run_order_delay, execution_time, time_now, op_data)
     if enabled:
         # 临近换人暂停可选无人机调时，关键任务保护决定执行顺序。
@@ -135,7 +135,7 @@ def scheduling(
             for t in tasks
         ):
             return None
-    _sort_dispatch_tasks(tasks, time_now)
+    _sort_dispatch_tasks(tasks, time_now, op_data)
     return conflict
 
 
@@ -145,7 +145,7 @@ def protect_priority_tasks(
     """按操作耗时保护关键任务，跑单冲突时提前专精换人。"""
     now = time_now or datetime.now()
     for task in tasks:
-        simplify_dorm_fill(task, tasks, now)
+        simplify_dorm_fill(task, tasks, now, op_data)
     swaps = sorted(
         (
             t
@@ -161,9 +161,13 @@ def protect_priority_tasks(
         _advance_swap_before_orders(tasks, swap, now, execution_time, op_data)
     _schedule_priority_tasks(tasks, execution_time, now, op_data)
     _advance_mood_limit_releases(
-        tasks, run_order_delay, 0.75 if execution_time is None else execution_time, now
+        tasks,
+        run_order_delay,
+        0.75 if execution_time is None else execution_time,
+        now,
+        op_data,
     )
-    _sort_dispatch_tasks(tasks, now)
+    _sort_dispatch_tasks(tasks, now, op_data)
 
 
 def _advance_support_swaps_for_maintenance(
@@ -196,9 +200,11 @@ def _advance_support_swaps_for_maintenance(
         )
 
 
-def _sort_dispatch_tasks(tasks, now):
+def _sort_dispatch_tasks(tasks, now, op_data=None):
     # 尚未开始的清退可以提前；关键任务已经到点时，不再被清退抢占。
-    due_priority = {id(task) for task in _priority_tasks(tasks) if task.time <= now}
+    due_priority = {
+        id(task) for task in _priority_tasks(tasks, op_data) if task.time <= now
+    }
     initial_fia_due = any(
         getattr(task, "initial_fia", False) and task.time <= now for task in tasks
     )
@@ -224,7 +230,9 @@ def _sort_dispatch_tasks(tasks, now):
     )
 
 
-def _advance_mood_limit_releases(tasks, run_order_delay, execution_time, now):
+def _advance_mood_limit_releases(
+    tasks, run_order_delay, execution_time, now, op_data=None
+):
     """上限是离宿截止时间；提前腾出操作窗口，不等阻塞任务结束。"""
     releases = [
         task
@@ -233,11 +241,13 @@ def _advance_mood_limit_releases(tasks, run_order_delay, execution_time, now):
     ]
     if not releases:
         return
+    blocked_orders = blocked_run_order_ids(tasks, op_data)
     blockers = sorted(
         (
             task
             for task in tasks
             if not getattr(task, "strict_mood_limit", False)
+            and id(task) not in blocked_orders
             and not getattr(task, "emergency_recovery_release", False)
             and (task.plan or task.type != TaskTypes.NOT_SPECIFIC)
             and (task.type != TaskTypes.SWAP_SUPPORT or config.conf.enable_mastery)
@@ -314,8 +324,16 @@ def _advance_swap_before_orders(tasks, swap, now, execution_time, op_data=None):
     )
     swap_duration = _support_swap_duration(swap, execution_time, op_data)
     # 从晚到早检查，提前产生的新冲突在同一轮内收敛。
+    blocked_orders = blocked_run_order_ids(tasks, op_data)
     orders = sorted(
-        (t for t in tasks if t.type == TaskTypes.RUN_ORDER and t.meta_data),
+        (
+            t
+            for t in tasks
+            if t.type == TaskTypes.RUN_ORDER
+            and t.meta_data
+            and not getattr(t, "run_order_restore_pending", False)
+            and id(t) not in blocked_orders
+        ),
         key=lambda t: t.time,
         reverse=True,
     )
@@ -362,12 +380,46 @@ def _is_dorm_only_task(task):
     )
 
 
-def _priority_tasks(tasks):
+def blocked_run_order_ids(tasks, op_data=None):
+    """根据实际驻员判断等待中的普通跑单；保留任务，但不占用关键窗口。"""
+    restorations = [
+        task
+        for task in tasks
+        if task.type == TaskTypes.RUN_ORDER
+        and getattr(task, "run_order_restore_pending", False)
+    ]
+    blocked = {
+        id(task)
+        for task in tasks
+        if restorations
+        and task.type == TaskTypes.RUN_ORDER
+        and task.meta_data
+        and not getattr(task, "run_order_restore_pending", False)
+    }
+    if op_data is not None:
+        blocked.update(
+            id(task)
+            for task in restorations
+            if any(
+                (op := op_data.operators.get(name)) is not None
+                and op.is_working()
+                and op.current_room != room
+                for room, row in task.run_order_original_roster.items()
+                for name in row
+                if name not in ("", "Free", "Current")
+            )
+        )
+    return blocked
+
+
+def _priority_tasks(tasks, op_data=None):
+    blocked_orders = blocked_run_order_ids(tasks, op_data)
     return sorted(
         (
             task
             for task in tasks
             if task.type == TaskTypes.RUN_ORDER
+            and id(task) not in blocked_orders
             or config.conf.enable_mastery
             and task.type == TaskTypes.SWAP_SUPPORT
         ),
@@ -375,7 +427,7 @@ def _priority_tasks(tasks):
     )
 
 
-def simplify_dorm_fill(task, tasks, time_now=None):
+def simplify_dorm_fill(task, tasks, time_now=None, op_data=None):
     """临近关键任务时退回原始补空名单，避免新入住者竞争单回而扩大操作。"""
     if (
         (task.type != TaskTypes.FILL_DORM)
@@ -387,7 +439,7 @@ def simplify_dorm_fill(task, tasks, time_now=None):
     window_end = now + timedelta(minutes=max(10, config.conf.run_order_delay * 2))
     if not any(
         t.time <= window_end and (task.time <= now or task.time <= t.time)
-        for t in _priority_tasks(tasks)
+        for t in _priority_tasks(tasks, op_data)
     ):
         return
     original = getattr(task, "dorm_fill_plan", task.plan)
@@ -397,7 +449,7 @@ def simplify_dorm_fill(task, tasks, time_now=None):
     task.simple_dorm_fill = True
 
 
-def _dorm_deadline(task, tasks, start, minutes, now):
+def _dorm_deadline(task, tasks, start, minutes, now, op_data=None):
     if (
         (not _is_dorm_only_task(task))
         or getattr(task, "strict_mood_limit", False)
@@ -409,7 +461,7 @@ def _dorm_deadline(task, tasks, start, minutes, now):
     return next(
         (
             deadline
-            for deadline in _priority_tasks(tasks)
+            for deadline in _priority_tasks(tasks, op_data)
             if (task.time <= now or task.time <= deadline.time)
             and finish >= deadline.time
         ),
@@ -417,12 +469,14 @@ def _dorm_deadline(task, tasks, start, minutes, now):
     )
 
 
-def defer_dorm_before_priority_task(task, tasks, room, time_now=None):
+def defer_dorm_before_priority_task(task, tasks, room, time_now=None, op_data=None):
     """逐房复核剩余时间；不足时保留未完成计划，关键任务结束后续行。"""
     if not room.startswith("dormitory_"):
         return False
     now = time_now or datetime.now()
-    deadline = _dorm_deadline(task, tasks, now, estimate_dorm_minutes(room), now)
+    deadline = _dorm_deadline(
+        task, tasks, now, estimate_dorm_minutes(room), now, op_data
+    )
     if deadline is None:
         return False
     task.time = max(now, deadline.time) + timedelta(seconds=1)
@@ -657,16 +711,21 @@ def _project_admitted_task(op_data, task):
     return op_data.project_arrangements([task.plan])
 
 
-def _find_run_order_conflict(tasks, run_order_delay=5, time_now=None):
+def _find_run_order_conflict(tasks, run_order_delay=5, time_now=None, op_data=None):
     now = time_now or datetime.now()
     if not tasks:
         return None
-    adjust_run_order_for_maintenance(tasks, run_order_delay)
+    blocked_orders = blocked_run_order_ids(tasks, op_data)
+    adjust_run_order_for_maintenance(
+        [task for task in tasks if id(task) not in blocked_orders], run_order_delay
+    )
     tasks.sort(key=lambda task: task.time)
     previous_order = None
     for task in tasks:
-        if task.type != TaskTypes.RUN_ORDER or (
-            getattr(task, "run_order_restore_pending", False) and not task.meta_data
+        if (
+            task.type != TaskTypes.RUN_ORDER
+            or getattr(task, "run_order_restore_pending", False)
+            or id(task) in blocked_orders
         ):
             continue
         if (
@@ -755,12 +814,14 @@ def _future_dorm_deferrals(task, following, op_data):
 def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=None):
     now = time_now or datetime.now()
     tasks.sort(key=lambda task: task.time)
-    priority_ids = {id(task) for task in _priority_tasks(tasks)}
+    blocked_orders = blocked_run_order_ids(tasks, op_data)
+    priority_ids = {id(task) for task in _priority_tasks(tasks, op_data)}
     # 严格上限保留离宿截止；补位任务可以延期，但不参加宿舍合成。
     fixed = {id(task) for task in tasks if task.strict_mood_limit}
     adjusted = {id(task) for task in tasks if task.adjusted}
     # Each queued operation advances the cursor once, including scheduled waiting.
-    ordered = list(tasks)
+    waiting = [task for task in tasks if id(task) in blocked_orders]
+    ordered = [task for task in tasks if id(task) not in blocked_orders]
     deferred_dorm_tail = {}
     projected = op_data if isinstance(op_data, Operators) else None
     cursor = now
@@ -771,9 +832,7 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
             start = max(cursor, task.time)
             if task.type == TaskTypes.SWAP_SUPPORT:
                 cursor = start + _support_swap_duration(task, execution_time, projected)
-            elif (
-                getattr(task, "run_order_restore_pending", False) and not task.meta_data
-            ):
+            elif getattr(task, "run_order_restore_pending", False):
                 cursor = start + estimate_task_duration(task, execution_time, projected)
             elif config.conf.run_order_buffer_time > 0 and not task.adjusted:
                 cursor = max(
@@ -798,7 +857,7 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
         if next_priority_index is None:
             # 到期关键任务仍先执行；宿舍续行保留一次明确的交回时间。
             deadline = _dorm_deadline(
-                task, tasks, start, duration.total_seconds() / 60, now
+                task, tasks, start, duration.total_seconds() / 60, now, op_data
             )
             if deadline is not None:
                 task.time = max(now, deadline.time) + timedelta(seconds=1)
@@ -951,7 +1010,7 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
         )
         if before_plan:
             index += 1
-    tasks[:] = sorted(ordered, key=lambda task: task.time)
+    tasks[:] = sorted(ordered + waiting, key=lambda task: task.time)
 
 
 def adjust_run_order_for_maintenance(tasks, run_order_delay=5, advance_time=None):
@@ -975,7 +1034,7 @@ def adjust_run_order_for_maintenance(tasks, run_order_delay=5, advance_time=None
         t
         for t in tasks
         if t.type == TaskTypes.RUN_ORDER
-        and not (getattr(t, "run_order_restore_pending", False) and not t.meta_data)
+        and not getattr(t, "run_order_restore_pending", False)
         and (
             window_start < t.time < window_end
             or advance_time is not None
@@ -2742,7 +2801,7 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
         )
         task.dorm_fill_plan = copy.deepcopy(arrangement)
         if filling_vacancies:
-            simplify_dorm_fill(task, tasks, now)
+            simplify_dorm_fill(task, tasks, now, op_data)
         if not getattr(task, "simple_dorm_fill", False):
             task.plan = prioritize_new_dorm_recovery(op_data, task.plan, reserved_slots)
         isolated = plan_dorm_isolation(op_data, task.plan, reserved_slots)
