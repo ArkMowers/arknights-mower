@@ -2708,6 +2708,20 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                                 level="WARNING",
                             )
                             raise
+                        if config.conf.enable_mastery:
+                            from arknights_mower.utils.mastery_recommendation import (
+                                auto_schedule_mastery_tasks,
+                            )
+
+                            try:
+                                ready = auto_schedule_mastery_tasks(
+                                    inventory=get_inventory_counts()
+                                )
+                                self._dispatch_scan_start_tasks(ready["scheduled"])
+                            except MowerExit:
+                                raise
+                            except Exception:
+                                logger.exception("加工库存已确认，但专精任务派发失败")
                         if config.conf.workshop_auto_active:
                             from arknights_mower.utils.workshop_automation import (
                                 update_workshop_config,
@@ -10850,7 +10864,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
 
     def _dispatch_scan_start_tasks(self, scheduled):
-        """#74 第3段：扫描确认材料后，为材料足够的 idle 计划入队「开始训练」任务。
+        """材料确认后，为材料足够的 idle 计划入队「开始训练」任务。
 
         scheduled 来自 auto_schedule_mastery_tasks（已按链级材料核算），元素带
         char_id/skill_index。按 (char_id, skill_index) 匹配 DB 里 status=='idle' 的
@@ -10904,9 +10918,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             _schedule_scan_start(self, plan, step_level=step_level)
             dispatched += 1
         if dispatched:
-            logger.info(
-                f"仓库扫描: 已为 {dispatched} 个材料足够的空闲专精计划安排开始训练"
-            )
+            logger.info(f"已为 {dispatched} 个材料足够的空闲专精计划安排开始训练")
 
     def _idle_sleep(self, remaining_time, allow_wakeup=True):
         """等待任务并统一维护 `sleeping` 与连续场景观测边界。
