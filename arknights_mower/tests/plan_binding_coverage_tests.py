@@ -201,7 +201,12 @@ def test_ownership_validation_includes_additional_bindings(
     refresh = MagicMock(return_value=True)
     monkeypatch.setattr(schedule_roster, "_refresh_roster", refresh)
     result = schedule_roster.validate_owned_operators(plan)
-    assert result == (None if owned_extra else "森空岛中未持有以下排班干员：黑角")
+    if owned_extra:
+        assert result is None
+    else:
+        assert result.startswith("森空岛中未持有以下排班干员：黑角")
+        assert "获取干员后" in result
+        assert "「养成规划」页面手动点击「刷新」" in result
     assert refresh.call_count == (0 if owned_extra else 1)
 
 

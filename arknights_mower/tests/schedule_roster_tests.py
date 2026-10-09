@@ -1,6 +1,7 @@
 """Skland ownership checks shared by manual and startup schedule validation."""
 
 import json
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -46,7 +47,9 @@ def test_reports_main_backup_replacements_and_backup_tasks(roster_path, monkeypa
     monkeypatch.setattr(schedule_roster, "_refresh_roster", lambda: True)
 
     message = schedule_roster.validate_owned_operators(make_plan())
-    assert message == "森空岛中未持有以下排班干员：Lancet-2、年、芬、香草"
+    assert message.startswith("森空岛中未持有以下排班干员：Lancet-2、年、芬、香草")
+    assert "获取干员后" in message
+    assert "「养成规划」页面手动点击「刷新」后重新验证排班" in message
     assert "Current" not in message
     assert "Free" not in message
 
@@ -65,7 +68,9 @@ def test_owned_operators_pass_including_low_rarity_names(roster_path):
 
 def test_present_but_invalid_cache_blocks_validation(roster_path):
     roster_path.write_text('{"data": {"characters": []}}', encoding="utf-8")
-    assert "缓存无效" in schedule_roster.validate_owned_operators(make_plan())
+    message = schedule_roster.validate_owned_operators(make_plan())
+    assert "缓存无效" in message
+    assert "「养成规划」页面手动点击「刷新」" in message
 
 
 def test_inventory_placeholder_skips_ownership_check(roster_path):
@@ -199,16 +204,22 @@ def write_training_roster(path, *, level=7, masteries=(3, 3, 2)):
     ("level", "masteries", "reason"),
     [(6, (0, 0, 0), "基础技能仅 6 级"), (7, (3, 3, 3), "所有技能均已专三")],
 )
+@pytest.mark.parametrize("sync_success", [False, True])
 def test_training_slot_rejects_unselectable_operators(
-    roster_path, monkeypatch, source, level, masteries, reason
+    roster_path, monkeypatch, source, level, masteries, reason, sync_success
 ):
     write_training_roster(roster_path, level=level, masteries=masteries)
-    monkeypatch.setattr(schedule_roster, "_refresh_roster", lambda: False)
+    refresh = MagicMock(return_value=sync_success)
+    monkeypatch.setattr(schedule_roster, "_refresh_roster", refresh)
     result = Operators(training_plan(**source)).validate_backup_plans()
+    refresh.assert_called_once_with()
     assert result["status"] == "failed"
     assert "训练位" in result["message"]
     assert "能天使" in result["message"]
     assert reason in result["message"]
+    action = "升至 7 级后" if level < 7 else "更换干员后"
+    assert action in result["message"]
+    assert "「养成规划」页面手动点击「刷新」后重新验证排班" in result["message"]
 
 
 @pytest.mark.parametrize("masteries", [(0, 0, 0), (3, 3, 2), (3, 0, 3)])
@@ -229,6 +240,7 @@ def test_training_slot_unknown_skill_data_requests_sync(
     message = schedule_roster.validate_owned_operators(training_plan())
     assert "无法确认" in message
     assert "同步干员数据" in message
+    assert "「养成规划」页面手动点击「刷新」" in message
 
 
 @pytest.mark.parametrize("placeholder", ["", "Current", "Free"])
@@ -251,6 +263,19 @@ def test_training_slot_refreshes_stale_skill_data_once(roster_path, monkeypatch)
     monkeypatch.setattr(schedule_roster, "_refresh_roster", refresh)
     assert schedule_roster.validate_owned_operators(training_plan()) is None
     assert calls == [True]
+
+
+def test_ownership_and_training_failures_share_one_refresh(roster_path, monkeypatch):
+    write_training_roster(roster_path, level=6)
+    plan = training_plan()
+    plan["default_plan"].plan["train"][1].replacement = ["芬"]
+    refresh = MagicMock(return_value=True)
+    monkeypatch.setattr(schedule_roster, "_refresh_roster", refresh)
+    result = Operators(plan).validate_backup_plans()
+    refresh.assert_called_once_with()
+    assert result["status"] == "failed"
+    assert "未持有以下排班干员：芬" in result["message"]
+    assert "「养成规划」页面手动点击「刷新」" in result["message"]
 
 
 def test_training_slot_rechecks_mastery_after_ownership_refresh(
