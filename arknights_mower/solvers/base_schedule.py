@@ -10149,7 +10149,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         )
                     logger.info("启动")
                     self.MAA.start()
-                    maa_crash = True
                     while self.MAA.running():
                         csleep(5)
                         self.report_maa_progress()
@@ -10159,14 +10158,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             self.tasks[0].time - datetime.now() < timedelta(seconds=30)
                             or config.stop_maa.is_set()
                         ):
-                            maa_crash = False
                             self.maa_stop()
                             restore_theme = True
                             break
                     self.recog.reset_after_external_control()
-                    if maa_crash:
-                        logger.error("MAA 肉鸽/保全/盐酸运行中断")
-                        send_message("MAA 肉鸽/保全/盐酸运行中断", level="ERROR")
                     break
 
             elif not rg_sleep:
