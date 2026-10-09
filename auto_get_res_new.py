@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from arknights_mower.utils.building_skill_data import write_building_skill_data
 from arknights_mower.utils.furniture_data import (
     FURNITURE_DATA_PATH,
     write_furniture_data,
@@ -929,10 +930,7 @@ class Arknights数据处理器:
             干员技能列表.append(干员技能字典.copy())
         干员技能列表 = sorted(干员技能列表, key=lambda x: -x["key"])
         # print(干员技能列表)
-        with open(
-            "./ui/src/pages/basement_skill/skill.json", "w", encoding="utf-8"
-        ) as f:
-            json.dump(干员技能列表, f, ensure_ascii=False, indent=2)
+        write_building_skill_data(干员技能列表)
 
     def 取技能名(self, skill_id: str) -> str:
         """从 skill_table.json 取技能显示真名（levels[0].name）。"""

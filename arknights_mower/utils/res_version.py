@@ -29,6 +29,8 @@ RES_PACKAGE_MODELS = (
 )
 # Older resource packages do not contain this model; runtime OCR remains available.
 RES_PACKAGE_OPTIONAL_MODELS = ("arknights_mower/models/mastery_panel.model",)
+BUILDING_SKILL_DATA = "arknights_mower/data/building_skill.json"
+BUILDING_SKILL_PACKAGE_PATH = "ui/src/pages/basement_skill/skill.json"
 RES_PACKAGE_DATA = (
     "arknights_mower/data/agent.json",
     "arknights_mower/data/agent_profession.json",
@@ -40,8 +42,8 @@ RES_PACKAGE_DATA = (
     "arknights_mower/data/skill_data.json",
     "arknights_mower/data/workshop_formula.json",
     "arknights_mower/data/furniture.json",
-    # 前端基建技能数据：静态 import 作内置兜底，运行时由资源包下发
-    "ui/src/pages/basement_skill/skill.json",
+    # Preserve the archive path for existing clients; builtins use BUILDING_SKILL_DATA.
+    BUILDING_SKILL_PACKAGE_PATH,
     "ui/src/pages/basement_skill/buffer.json",
 )
 

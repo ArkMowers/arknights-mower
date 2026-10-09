@@ -18,6 +18,8 @@
 
 - **[INV-UPD-04] MAA Resource Platform Parity**: Installed MAA on Windows, macOS and Linux exposes independent resource checks and updates; installation preserves core and Python files, rejects active MAA use, and retains resource rollback copies.
 - **[INV-UPD-05] Release Artifact Scope**: Future release builds exclude macOS x64; OTA publication targets only Windows x64 and Android ARM64, including Nightly, and rejects unsafe Android runtime paths without publishing a new channel index.
+
+- **[INV-UPD-07] Shared Skill Data Packaging**: Application archives contain the backend-owned building-skill catalog independently of frontend sources or build output; both backend consumers and the frontend share that catalog, while resource packages retain their historical entry path for existing clients.
 - **[INV-UPD-03] Nightly Direction Evidence**: Same-alpha Nightly updates use valid publication times or verified upstream commit ancestry to determine direction; missing index history alone never establishes a downgrade, and unverified direction retains manual confirmation.
 - **[INV-UPD-01] Owned Command Completion**: Windows update commands own their descendants before execution and verify tree completion within a finite budget before releasing the temporary checkout; cancellation preserves other application instances.
 - **[INV-UPD-02] Complete Registration Scan**: Strict registration scans retry unreadable files within one shared monotonic budget, preserve unverified registrations and raise `InstanceScanError` when that budget expires instead of returning an incomplete snapshot.
@@ -76,3 +78,11 @@ Installed development checks compare the development, beta and stable indexes. B
 Channel indexes retain their schema and channel-specific targets. Full and OTA assets come from the selected target's same index. OTA requires the exact installed source version; absence or reconstruction failure falls back to that target's full package. MowerRelease reserves recent Nightly sources for beta targets, and recent beta and Nightly sources for stable targets, with independent bounded quotas and platform filtering. Same-alpha Nightly direction retains [publication and commit evidence](#6-nightly-version-direction).
 
 [Cross-channel OTA upgrades](../../.agents/notes/implemented/bug-fix/2026-10-09-cross-channel-ota-upgrades.md) records the decision and focused verification.
+
+## 12. Shared Building-Skill Data
+
+`arknights_mower/data/building_skill.json` is the sole committed building-skill catalog. Dormitory classification and building-skill unlocks read it through `resource_pkg_path`; the frontend imports the same catalog for its bundled fallback. The HTTP filename `/basement_skill/skill.json` remains unchanged. Android and desktop packaging collect the catalog with the backend data directory, and Android publication requires a nonempty catalog.
+
+Resource packages retain `ui/src/pages/basement_skill/skill.json` as their historical archive entry. `write_building_skill_data` serializes the catalog once and writes identical bytes to the shared source and an ignored compatibility export used by the existing resource publisher. The compatibility export is not an application packaging input. `resource_pkg_path` maps the shared catalog request to that entry only when a resource package is selected; a missing entry in a selected package never permits mixing in bundled data. Resource validation, content hashing and existing clients retain their archive contract.
+
+[Shared building-skill data](../../.agents/notes/implemented/simplification/2026-10-09-shared-building-skill-data.md) records the boundary and verification.

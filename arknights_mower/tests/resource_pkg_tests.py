@@ -16,6 +16,8 @@ from arknights_mower import __rootdir__
 from arknights_mower.utils import path as mower_path
 from arknights_mower.utils import resource_pkg as rp
 from arknights_mower.utils.res_version import (
+    BUILDING_SKILL_DATA,
+    BUILDING_SKILL_PACKAGE_PATH,
     RES_PACKAGE_DATA,
     RES_PACKAGE_DIRS,
     RES_PACKAGE_MODELS,
@@ -164,6 +166,17 @@ class TestInstallResourcePkg(ResourcePkgTestBase):
         self.assertEqual((self.overlay / "index.json").read_bytes(), before)
         self.assertEqual(self.installed_version(), "v2026.08.23-aaaaaaa")
         self.assertEqual(self.reload_caches.call_count, 2)
+
+    def test_shared_skill_data_preserves_legacy_package_priority(self):
+        builtin = self.builtin / "data/building_skill.json"
+        builtin.write_text("[]")
+        self.assertEqual(rp.resource_pkg_path(BUILDING_SKILL_DATA), builtin)
+        self.assertFalse((self.builtin.parent / "ui").exists())
+        self.assertTrue(rp.install_resource_pkg(resource_zip()))
+        selected = rp.resource_pkg_path(BUILDING_SKILL_DATA)
+        self.assertTrue(selected.is_relative_to(self.overlay / "packages"))
+        self.assertEqual(selected, rp.resource_pkg_path(BUILDING_SKILL_PACKAGE_PATH))
+        self.assertEqual(selected.read_text(), "{}")
 
     def test_optional_mastery_model_can_be_installed_or_absent(self):
         model = RES_PACKAGE_OPTIONAL_MODELS[0]

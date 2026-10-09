@@ -27,6 +27,7 @@ ROOTS = (
 REQUIRED = (
     "arknights_mower/__init__.py",
     "arknights_mower/data/version.json",
+    "arknights_mower/data/building_skill.json",
     "ui/dist/index.html",
     "server.py",
     "LICENSE",

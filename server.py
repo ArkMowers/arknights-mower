@@ -758,9 +758,13 @@ def serve_resource_overlay():
 
 @app.route("/basement_skill/<filename>")
 def serve_basement_skill(filename):
-    """基建技能 JSON 与当前整包资源一致；内置资源由前端自身加载。"""
-    from arknights_mower.utils.resource_pkg import resource_ui_path
+    """基建技能读取共享数据；其他展示数据由资源包或前端内置资源提供。"""
+    from arknights_mower.utils.res_version import BUILDING_SKILL_DATA
+    from arknights_mower.utils.resource_pkg import resource_pkg_path, resource_ui_path
 
+    if filename == "skill.json":
+        selected = resource_pkg_path(BUILDING_SKILL_DATA)
+        return _serve_resource(selected.parent, selected.name) or ("", 404)
     selected = resource_ui_path("pages/basement_skill", source=True)
     if selected is None:
         return "", 404

@@ -241,3 +241,6 @@ openspec/
 
 # Local Codex workspace files
 /.codex/
+
+# Generated compatibility entry for the resource publisher; shared source lives in data/.
+/ui/src/pages/basement_skill/skill.json
