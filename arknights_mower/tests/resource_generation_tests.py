@@ -88,3 +88,58 @@ assert "skimage" not in sys.modules
         timeout=30,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("broken", [False, True])
+def test_avatar_failure_blocks_metadata_publication(tmp_path, monkeypatch, broken):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "ui/public/avatar").mkdir(parents=True)
+    (tmp_path / "arknights_mower/data").mkdir(parents=True)
+    source = tmp_path / "ArknightsGameResource/avatar/char_new.png"
+    if broken:
+        source.parent.mkdir(parents=True)
+        source.write_bytes(b"invalid PNG")
+    # A previous build's image cannot conceal an unreadable current source.
+    (tmp_path / "ui/public/avatar/旅骨.webp").write_bytes(b"old-image")
+    processor = Arknights数据处理器.__new__(Arknights数据处理器)
+    processor.干员表 = {
+        "char_new": {
+            "name": "旅骨",
+            "profession": "MEDIC",
+            "itemObtainApproach": "GACHA",
+        }
+    }
+    with pytest.raises(RuntimeError, match="旅骨.*char_new"):
+        processor.添加干员()
+    assert not (tmp_path / "arknights_mower/data/agent.json").exists()
+
+
+def test_avatar_generation_preserves_complete_operator_metadata(tmp_path, monkeypatch):
+    from PIL import Image
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "ui/public/avatar").mkdir(parents=True)
+    (tmp_path / "arknights_mower/data").mkdir(parents=True)
+    source = tmp_path / "ArknightsGameResource/avatar/char_new.png"
+    source.parent.mkdir(parents=True)
+    Image.new("RGBA", (180, 180), (255, 0, 0, 255)).save(source)
+    processor = Arknights数据处理器.__new__(Arknights数据处理器)
+    processor.干员表 = {
+        "char_new": {
+            "name": "旅骨",
+            "profession": "MEDIC",
+            "itemObtainApproach": "GACHA",
+        },
+        "npc_skip": {"itemObtainApproach": None},
+    }
+    processor.添加干员()
+    with Image.open(tmp_path / "ui/public/avatar/旅骨.webp") as avatar:
+        assert avatar.format == "WEBP"
+        assert avatar.size == (96, 96)
+        avatar.load()
+    assert json.loads((tmp_path / "arknights_mower/data/agent.json").read_text()) == [
+        "旅骨"
+    ]
+    assert json.loads(
+        (tmp_path / "arknights_mower/data/agent_profession.json").read_text()
+    ) == {"旅骨": "MEDIC"}

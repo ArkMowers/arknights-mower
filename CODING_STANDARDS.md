@@ -12,6 +12,8 @@
 
 ## 2. Subsystem Invariants
 
+- **[INV-RES-04] Operator Avatar Completeness**: Resource generation rejects missing or unreadable avatars instead of publishing an operator directory without a decoded 96×96 WEBP avatar for each obtainable operator.
+
 - **[INV-RES-03] Building Skill Facility Preservation**: Resource generation retains all upstream building skills, maps known facility codes and preserves unknown codes without aborting.
 
 - **[INV-RES-02] Resource OTA Reconstruction**: Resource OTA requires the exact starting resource version, verifies every reconstructed target file and publishes a complete compatible immutable generation; online failures fall back to the same release’s full package, while manual updates remain offline.
@@ -139,6 +141,8 @@
 
 
 ### 2.8 MAA Integration
+
+- **[INV-MAA-06] Expired Source Plan Cleanup**: Successful automatic activity fallback removes only expired activity selections from the source weekly plan, preserving the destination, ordinary and still-open stages, daily settings and inventory rules.
 - **[INV-MAA-05] Local Inventory Execution**: Workshop execution and inventory stage selection use persisted local stock without fetching Skland; accepted MAA cumulative drops update that stock once per task, and configured stage caps stop only the reached Fight task while preserving automatic series and subsequent tasks.
 - **[INV-MAA-04] Inventory Stage Priority**: Inventory selection keeps selected annihilation first and defers unbound stages while any selected inventory-bound stage survives its limits; when all bound stages are skipped, ordinary stages remain eligible even with annihilation present, and backend dispatch and frontend preview agree without changing saved selections.
 - **[INV-MAA-01] Total Callback Handling**: Every MAA callback is consumed without raising; a missing, empty, or unrecognized payload field yields at most one diagnostic line at the C callback boundary instead of an exception.

@@ -1,16 +1,29 @@
 import { renderToString } from '@vue/server-renderer'
-import { createSSRApp, defineComponent, getCurrentInstance, h, ref } from 'vue'
+import {
+  createSSRApp,
+  createRenderer,
+  defineComponent,
+  getCurrentInstance,
+  h,
+  nextTick,
+  reactive,
+  ref,
+  ssrContextKey
+} from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MaaWeekly from './MaaWeekly.vue'
+import axios from 'axios'
 import { CHIP_STAGES, WEEKDAYS } from '@/utils/maa_weekly_plan'
 
 const state = vi.hoisted(() => ({
   config: {},
+  resource: null,
   editor: null,
   tableProps: null,
   applyChips: null,
   showTable: null
 }))
+vi.mock('@/stores/resourceVersion', () => ({ useResourceVersionStore: () => state.resource }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => ({}) }))
 vi.mock('pinia', () => ({ storeToRefs: () => state.config }))
 vi.mock('axios', () => ({ default: { get: vi.fn(async () => ({ data: [] })) } }))
@@ -91,6 +104,8 @@ describe('周计划芯片按钮排序联动', () => {
         setItem: (key, value) => storage.set(key, value)
       }
     })
+    state.resource = reactive({ info: { current_version: 'old' } })
+    axios.get.mockReset().mockResolvedValue({ data: [] })
     state.showTable = ref(false)
     state.tableProps = null
     state.config = Object.fromEntries(
@@ -112,6 +127,72 @@ describe('周计划芯片按钮排序联动', () => {
   })
   afterEach(() => {
     vi.unstubAllGlobals()
+  })
+
+  function mountEditor() {
+    const node = () => ({ children: [], parent: null })
+    const renderer = createRenderer({
+      createElement: node,
+      createText: node,
+      createComment: node,
+      setText() {},
+      setElementText() {},
+      patchProp() {},
+      parentNode: (child) => child.parent,
+      nextSibling: () => null,
+      insert(child, parent) {
+        child.parent = parent
+        parent.children.push(child)
+      },
+      remove(child) {
+        if (child.parent)
+          child.parent.children = child.parent.children.filter((item) => item !== child)
+      }
+    })
+    const app = renderer.createApp({ ...MaaWeekly, render: () => h('div') })
+    app.provide(ssrContextKey, { modules: new Set() })
+    app.provide('mobile', false)
+    app.mount(node())
+    state.editor = app._instance
+    return app
+  }
+
+  it('资源变更后重读活动并保留周计划选择', async () => {
+    const selected = JSON.stringify(state.config.maa_weekly_plan.value)
+    const app = mountEditor()
+    await vi.waitFor(() => expect(state.editor.setupState.activityLoading).toBe(false))
+    expect(state.editor.setupState.latestActivityOptions).toEqual([])
+    const options = [{ value: 'YW-8', code: 'YW-8', label: 'YW-8' }]
+    axios.get.mockResolvedValue({ data: options })
+    state.resource.info.current_version = 'new'
+    await vi.waitFor(() => expect(state.editor.setupState.latestActivityOptions).toEqual(options))
+    expect(axios.get).toHaveBeenCalledTimes(2)
+    expect(JSON.stringify(state.config.maa_weekly_plan.value)).toBe(selected)
+    app.unmount()
+  })
+
+  it('重试成功清除活动读取错误，旧请求不能覆盖新资源', async () => {
+    axios.get.mockRejectedValueOnce(new Error('offline'))
+    const app = mountEditor()
+    await vi.waitFor(() => expect(state.editor.setupState.activityError).toContain('读取失败'))
+    let finishOld
+    axios.get.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishOld = resolve
+        })
+    )
+    const oldRequest = state.editor.setupState.loadLatestActivityStages()
+    const options = [{ value: 'YW-8' }]
+    axios.get.mockResolvedValue({ data: options })
+    state.resource.info.current_version = 'new'
+    await vi.waitFor(() => expect(state.editor.setupState.latestActivityOptions).toEqual(options))
+    finishOld({ data: [] })
+    await oldRequest
+    await nextTick()
+    expect(state.editor.setupState.latestActivityOptions).toEqual(options)
+    expect(state.editor.setupState.activityError).toBe('')
+    app.unmount()
   })
 
   it('表格未挂载时按钮仍更新共享排序和每日执行顺序', async () => {

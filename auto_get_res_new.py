@@ -212,12 +212,11 @@ class Arknights数据处理器:
             目标路径 = f"./ui/public/avatar/{干员数据['name']}.webp"
             print(f"{干员名}: {干员代码}")
             try:
-                png_image = Image.open(干员头像路径)
-                png_image = png_image.resize((96, 96), Image.LANCZOS)
-                png_image.save(目标路径, "WEBP")
-            except Exception as ex:
-                print("头像读取失败")
-                print(ex)
+                with Image.open(干员头像路径) as png_image:
+                    png_image = png_image.resize((96, 96), Image.LANCZOS)
+                    png_image.save(目标路径, "WEBP")
+            except (OSError, ValueError) as ex:
+                raise RuntimeError(f"干员头像生成失败：{干员名} ({干员代码})") from ex
         干员_名称列表.sort(key=len)
         with open(
             "./arknights_mower/data/agent_profession.json", "w", encoding="utf-8"

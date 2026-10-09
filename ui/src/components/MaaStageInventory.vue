@@ -2,8 +2,9 @@
 import axios from 'axios'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
+import { useResourceVersionStore } from '@/stores/resourceVersion'
 import {
   applyChipLimitPreset,
   createInventoryItemOption,
@@ -19,6 +20,7 @@ import { WEEKDAYS, getGameWeekdayIndex } from '@/utils/maa_weekly_plan'
 const message = useMessage()
 const emit = defineEmits(['chip-limits-applied'])
 const store = useConfigStore()
+const resourceVersion = useResourceVersionStore()
 const {
   maa_stage_inventory_enable,
   maa_stage_limit_rules,
@@ -169,20 +171,28 @@ function selectedRatioMember(rule) {
   )
 }
 
+let inventoryRequest = 0
+onBeforeUnmount(() => {
+  inventoryRequest += 1
+})
+
 async function loadInventoryRuleData() {
+  const request = ++inventoryRequest
   loading.value = true
   loadError.value = ''
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/stage/inventory-rules`)
+    if (request !== inventoryRequest) return
     stageOptions.value = Array.isArray(response.data.stages) ? response.data.stages : []
     itemOptions.value = Array.isArray(response.data.items) ? response.data.items : []
     inventory.value = response.data.inventory || {}
     inventoryUpdatedAt.value = response.data.inventory_updated_at || ''
     activityRatioSuggestion.value = response.data.activity_ratio_suggestion || null
   } catch (error) {
+    if (request !== inventoryRequest) return
     loadError.value = error?.response?.data?.message || error.message || '读取库存选关数据失败'
   } finally {
-    loading.value = false
+    if (request === inventoryRequest) loading.value = false
   }
 }
 
@@ -291,7 +301,9 @@ function applyActivityRatioSuggestion() {
   message.success('已添加当前活动关卡与掉落物绑定')
 }
 
-watch(maa_weekly_plan_active, loadInventoryRuleData, { immediate: true })
+watch([maa_weekly_plan_active, () => resourceVersion.info.current_version], loadInventoryRuleData, {
+  immediate: true
+})
 </script>
 
 <template>

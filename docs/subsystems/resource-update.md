@@ -14,6 +14,8 @@ OTA reconstruction writes only staging files. The resource installer validates t
 
 ## 3. Subsystem Invariants
 
+- **[INV-RES-04] Operator Avatar Completeness**: Generation and publication reject missing or unreadable obtainable-operator avatars; section 4 owns conversion and source rules.
+
 - **[INV-RES-02] Resource OTA Reconstruction**: An OTA package reconstructs a complete compatible resource generation from an exact starting version, verifies target file digests and publishes through the existing immutable installer.
 
 ## 4. Resource Generation
@@ -21,3 +23,8 @@ OTA reconstruction writes only staging files. The resource installer validates t
 `Arknights数据处理器.获得干员基建描述` retains every upstream building skill. Known room codes use their display labels, including `RECYCLE` as 回收站; unknown room codes remain unchanged in `roomType` and do not abort generation. Skill descriptions, icons and phase conditions retain their upstream values. The frontend derives facility filters from the generated data.
 
 **[INV-RES-03] Building Skill Facility Preservation** governs this behavior. [Building skill facility preservation](../../.agents/notes/implemented/bug-fix/2026-10-09-resource-facility-preservation.md) records the repair and verification.
+
+
+`Arknights数据处理器.添加干员` converts every obtainable operator avatar into a decoded 96×96 WEBP before writing the operator directory. Missing or unreadable source images fail generation with the operator name and code. MowerResource fills missing images from a fixed `ArknightsAssets/ArknightsAssets2` `cn` commit and validates all directory avatars before publication.
+
+**[INV-RES-04] Operator Avatar Completeness** governs this behavior. [Complete operator avatars](../../.agents/notes/implemented/bug-fix/2026-10-09-resource-avatar-completeness.md) records the source repair and verification.
