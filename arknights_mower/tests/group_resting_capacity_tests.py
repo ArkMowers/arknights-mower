@@ -163,11 +163,18 @@ def shift_off(solver):
 
 
 @pytest.mark.parametrize("occupants", ["replacement", "high", "low"])
-def test_deep_group_one_empty_bed_round_trip_without_correction(solver, occupants):
+@pytest.mark.parametrize("standby_mood", [19.2, 20])
+def test_deep_group_one_empty_bed_round_trip_without_correction(
+    solver, occupants, standby_mood
+):
     before = occupy_beds(solver, occupants)
+    for name in DEEP[1:]:
+        solver.op_data.operators[name].mood = standby_mood
     shift_off(solver)
     data = solver.op_data
-    expected_standby = set(DEEP[1:]) if occupants != "replacement" else set()
+    expected_standby = (
+        set(DEEP[1:]) if occupants != "replacement" or standby_mood > 19.2 else set()
+    )
     assert {name for name in DEEP if data.is_standby(name)} == expected_standby
     assert data.operators[DEEP[0]].is_resting()
     assert [data.operators[n].resting_priority for n in DEEP] == [

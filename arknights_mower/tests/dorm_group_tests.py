@@ -1006,15 +1006,21 @@ def test_release_ignores_operator_with_stale_empty_position(solver):
     )
 
 
-def test_explicit_free_correction_can_remove_fixed_resident(solver):
+@pytest.mark.parametrize("resident", ["塑心", "银灰"])
+def test_explicit_free_correction_only_removes_fixed_resident(solver, resident):
     configure_explicit_free_bed(solver)
+    if resident != "塑心":
+        apply_plan(solver, {"dormitory_1": [resident] + ["Current"] * 4})
     solver.task = None
     agents = ["Free", "冰酿", "泥岩", "能天使", "年"]
 
     solver.preserve_resting_crafters(agents, "dormitory_1")
 
-    # 显式组下班仍应移走固定宿管；有满心情替班可用时补齐，不制造空床。
-    assert agents[0] in {"陈", "初雪", "红", "黑角"}
+    # 固定宿管遵循明确离宿；占用同一动态床位的工作主班仍须保床。
+    if resident == "塑心":
+        assert agents[0] in {"陈", "初雪", "红", "黑角"}
+    else:
+        assert agents[0] == resident
     assert agents[1:] == ["冰酿", "泥岩", "能天使", "年"]
 
 
@@ -1103,8 +1109,9 @@ def test_closing_bed_keeps_existing_single_recovery_target(solver):
 
 
 @pytest.mark.parametrize("other_beds_occupied", [False, True])
+@pytest.mark.parametrize("replacement", [False, True])
 def test_auto_free_recovery_fills_vacancy_before_replacing_full_resident(
-    solver, other_beds_occupied
+    solver, other_beds_occupied, replacement
 ):
     configure_explicit_free_bed(solver)
     data = solver.op_data
@@ -1130,16 +1137,27 @@ def test_auto_free_recovery_fills_vacancy_before_replacing_full_resident(
     data.operators["年"].mood = 24
     data.operators["泥岩"].mood = 5
     data.operators["泥岩"].time_stamp = datetime.now()
+    if replacement:
+        data.plan["meeting"][0].replacement.append("泥岩")
     tasks = []
 
     try_add_release_dorm({}, None, data, tasks)
 
-    # 有空床先补空床；满员时才接管已恢复的临时床位。
+    # 有空床先补空床；空闲候选不接管同级已占床位。
+    if other_beds_occupied and not replacement:
+        assert tasks == []
+        assert data.operators["年"].current_index == 0
+        return
     assert len(tasks) == 1
     row = tasks[0].plan["dormitory_1"]
-    assert row[0 if other_beds_occupied else 4] == "泥岩"
+    projected = data.project_arrangements([tasks[0].plan])
+    assert projected.operators["泥岩"].is_resting()
     if not other_beds_occupied:
-        assert row[0] == "Current"
+        # 单回分配可以把原住者移入空床，但不能因填空床而清退原住者。
+        assert projected.operators["年"].is_resting()
+        assert {bed.name for bed in projected.dorm} == {"泥岩", "年", "陈", "能天使"}
+    else:
+        assert row[0] == "泥岩"
     assert data.operators["年"].current_index == 0
     assert data.operators["泥岩"].current_room == ""
 

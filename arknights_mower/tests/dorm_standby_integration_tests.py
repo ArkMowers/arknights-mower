@@ -48,15 +48,22 @@ def shift_off(solver):
 
 
 @pytest.mark.parametrize("occupants", ["high", "low", "replacement"])
-def test_combined_group_round_trip_preserves_other_beds(combined_solver, occupants):
+@pytest.mark.parametrize("standby_mood", [19.2, 20])
+def test_combined_group_round_trip_preserves_other_beds(
+    combined_solver, occupants, standby_mood
+):
     solver = combined_solver
     data = solver.op_data
     before = occupy_beds(solver, occupants)
+    for name in DEEP[1:]:
+        solver.op_data.operators[name].mood = standby_mood
     shift_off(solver)
     assert data.operators["塑心"].resting_priority != "standby"
     assert data.operators["塑心"].current_room == ""
     assert not data.is_standby("塑心")
-    expected = set(DEEP[1:]) if occupants != "replacement" else set()
+    expected = (
+        set(DEEP[1:]) if occupants != "replacement" or standby_mood > 19.2 else set()
+    )
     assert {name for name in DEEP if data.is_standby(name)} == expected
     assert "塑心" not in {bed.name for bed in data.dorm}
     if occupants != "replacement":

@@ -22,17 +22,26 @@ op_data = dorm_empty_release_tests.op_data
 ROOM = dorm_empty_release_tests.ROOM
 
 
-@pytest.mark.parametrize("task_type", [TaskTypes.NOT_SPECIFIC, TaskTypes.SHIFT_OFF])
-def test_ordinary_arrangement_searches_unknown_before_retaining_full_resident(
+@pytest.mark.parametrize(
+    "task_type", [TaskTypes.NOT_SPECIFIC, TaskTypes.SHIFT_OFF, TaskTypes.RELEASE_DORM]
+)
+def test_unknown_candidate_search_requires_normal_release_of_occupied_bed(
     solver, task_type
 ):
     instance, selected = solver
     data = instance.op_data
     data.operators["红"].time_stamp = None
     instance.task.type = task_type
-    instance.task.meta_data = ""
+    instance.task.meta_data = "空爆" if task_type == TaskTypes.RELEASE_DORM else ""
     plan = instance.task.plan[ROOM]
     candidates = instance.preserve_resting_crafters(plan, ROOM)
+    if task_type != TaskTypes.RELEASE_DORM:
+        assert plan[-1] == "空爆"
+        instance.choose_agent(plan, ROOM, dorm_mood_candidates=candidates)
+        assert selected == plan
+        assert data.operators["空爆"].is_resting()
+        assert not data.operators["红"].current_room
+        return
     assert plan[-1] == "Free"
     assert "红" in candidates
     assert not data.operators["空爆"].dorm_mood_fallback
@@ -125,12 +134,12 @@ def test_execution_and_planning_share_standby_and_room_reservations(
     assert executing.recovering == ["银灰"]
 
 
-def test_ordinary_unknown_comparison_can_keep_the_original_lowest_resident(solver):
+def test_normal_release_unknown_comparison_can_keep_original_lowest_resident(solver):
     instance, selected = solver
     data = instance.op_data
     data.operators["红"].time_stamp = None
-    instance.task.type = TaskTypes.NOT_SPECIFIC
-    instance.task.meta_data = ""
+    instance.task.type = TaskTypes.RELEASE_DORM
+    instance.task.meta_data = "空爆"
     instance.task.dorm_mood_residents = ["空爆"]
     scan = instance.scan_agent.side_effect
     comparisons = []
@@ -180,7 +189,7 @@ def test_batch_comparison_does_not_borrow_residents_from_another_dorm(solver):
 
 @pytest.mark.parametrize("invalid", ["default", "missing", "out_of_range"])
 @pytest.mark.parametrize("deadline", [None, "future", "expired"])
-def test_unknown_main_resident_needs_completion_evidence_in_planning_and_selection(
+def test_unknown_main_resident_keeps_bed_even_after_countdown_expires(
     solver, invalid, deadline
 ):
     instance, _ = solver
@@ -197,11 +206,8 @@ def test_unknown_main_resident_needs_completion_evidence_in_planning_and_selecti
     )
     tasks = []
     try_add_release_dorm({}, None, data, tasks)
-    expected = "红" if deadline == "expired" else resident.name
-    if deadline == "expired":
-        assert tasks[0].plan[ROOM][-1] == expected
-    else:
-        assert tasks == []
+    expected = resident.name
+    assert tasks == []
     instance.task.type = TaskTypes.NOT_SPECIFIC
     instance.task.meta_data = ""
     plan = instance.task.plan[ROOM]

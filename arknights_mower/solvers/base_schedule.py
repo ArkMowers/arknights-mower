@@ -7378,6 +7378,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             replacement = next(iter(replacements), None)
             if (
                 current is not None
+                and self.op_data.is_dynamic_dorm_position(room, index, current.name)
                 and current.name not in (set(agents) | moving)
                 and not (
                     getattr(self.task, "strict_mood_limit", False)

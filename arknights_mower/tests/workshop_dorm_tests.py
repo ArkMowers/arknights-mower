@@ -63,7 +63,7 @@ def occupy(solver, name, index):
 
 
 @pytest.mark.parametrize(
-    "mood,allowed", [(0, True), (22, True), (22.01, True), (23, True), (24, True)]
+    "mood,allowed", [(0, True), (19.2, True), (19.21, False), (22, False), (24, False)]
 )
 def test_replacement_identity_can_take_lower_crafter_bed(dorm_solver, mood, allowed):
     occupy(dorm_solver, "空爆", 3)
@@ -165,8 +165,8 @@ def test_scheduled_main_bed_counts_as_protected_high_resting(dorm_solver):
     assert dorm_solver.op_data.assign_dorm("红") is None
 
 
-@pytest.mark.parametrize("mood,expected", [(22, "红"), (22.01, "红"), (24, "空爆")])
-def test_free_placeholder_uses_priority_for_any_recovering_replacement(
+@pytest.mark.parametrize("mood,expected", [(19.2, "红"), (19.21, "空爆"), (24, "空爆")])
+def test_free_placeholder_requires_replacement_below_takeover_threshold(
     dorm_solver, mood, expected
 ):
     occupy(dorm_solver, "空爆", 3)
@@ -183,8 +183,8 @@ def test_each_recovering_replacement_can_take_one_lower_crafter_bed(dorm_solver)
     occupy(dorm_solver, "空爆", 3)
     dorm_solver.op_data.operators["伊内丝"].current_room = ""
     occupy(dorm_solver, "年", 4)
-    dorm_solver.op_data.operators["红"].mood = 22
-    dorm_solver.op_data.operators["陈"].mood = 23
+    dorm_solver.op_data.operators["红"].mood = 18
+    dorm_solver.op_data.operators["陈"].mood = 19.2
     agents = ["塑心", "冰酿", "银灰", "Free", "Free"]
     dorm_solver.task = MagicMock(plan={"dormitory_1": agents})
     dorm_solver.preserve_resting_crafters(agents, "dormitory_1")
