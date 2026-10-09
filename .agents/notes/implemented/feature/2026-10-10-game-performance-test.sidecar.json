@@ -16,7 +16,9 @@
     "arknights_mower.solvers.base_mixin.BaseMixin.reorder_selected_agents",
     "server.device_performance_test",
     "server._run_performance_test",
-    "arknights_mower.utils.device.application.DeviceControl.run"
+    "arknights_mower.utils.device.application.DeviceControl.run",
+    "server.performance_test_screenshot",
+    "arknights_mower.views.screenshot.latest_screenshot_response"
   ],
   "test_suites": [
     "arknights_mower/tests/game_performance_tests.py",
@@ -35,6 +37,8 @@
     "ui/src/stores/configPartial.test.js",
     "arknights_mower/tests/device_application_tests.py",
     "arknights_mower/tests/device_control_shutdown_tests.py",
-    "arknights_mower/tests/held_swipe_capture_tests.py"
+    "arknights_mower/tests/held_swipe_capture_tests.py",
+    "arknights_mower/tests/screenshot_tests.py",
+    "ui/src/utils/screenshotPreview.test.js"
   ]
 }

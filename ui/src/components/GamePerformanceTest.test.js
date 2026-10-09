@@ -50,6 +50,8 @@ afterEach(() => {
   scope?.stop()
   state.unmounted.forEach((callback) => callback())
   vi.useRealTimers()
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 it('adopts an actual xhigh result only on user action and preserves timings', () => {
@@ -129,4 +131,73 @@ it('ignores a status response started before a newer start or cancellation', asy
   await old
   await nextTick()
   expect(component.job.value.id).toBe('new')
+})
+
+it('shows the current test frame and stops preview when hidden or finished', async () => {
+  vi.useFakeTimers()
+  const page = Object.assign(new EventTarget(), { hidden: false })
+  vi.stubGlobal('document', page)
+  const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test-frame')
+  const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  const { component } = setup()
+  state.http.get.mockImplementation(async (url) =>
+    url.endsWith('/screenshot')
+      ? { status: 200, data: new Blob(['frame']), headers: { etag: '"frame"' } }
+      : { data: component.job.value }
+  )
+  state.mounted.forEach((callback) => callback())
+  await vi.advanceTimersByTimeAsync(0)
+  expect(createUrl).not.toHaveBeenCalled()
+  component.job.value = { status: 'running', id: 'current', mode: 'xhigh', round: 2 }
+  await vi.advanceTimersByTimeAsync(0)
+  expect(component.screenshot.value).toBe('blob:test-frame')
+  expect(state.http.get).toHaveBeenCalledWith(
+    '/device/performance-test/screenshot',
+    expect.objectContaining({ params: { id: 'current' }, responseType: 'blob', timeout: 10000 })
+  )
+  page.hidden = true
+  page.dispatchEvent(new Event('visibilitychange'))
+  expect(component.screenshot.value).toBe('')
+  expect(revokeUrl).toHaveBeenCalledWith('blob:test-frame')
+  page.hidden = false
+  page.dispatchEvent(new Event('visibilitychange'))
+  await vi.advanceTimersByTimeAsync(0)
+  expect(component.screenshot.value).toBe('blob:test-frame')
+  component.job.value = { status: 'failed', id: 'current' }
+  await vi.advanceTimersByTimeAsync(0)
+  expect(component.screenshot.value).toBe('')
+  const previewCalls = state.http.get.mock.calls.filter(([url]) => url.endsWith('/screenshot'))
+  await vi.advanceTimersByTimeAsync(5000)
+  expect(state.http.get.mock.calls.filter(([url]) => url.endsWith('/screenshot'))).toHaveLength(
+    previewCalls.length
+  )
+})
+
+it('discards a pending frame when another test replaces its owner', async () => {
+  vi.useFakeTimers()
+  vi.stubGlobal('document', Object.assign(new EventTarget(), { hidden: false }))
+  const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:new-frame')
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  const { component } = setup()
+  let finishOld
+  let oldSignal
+  state.http.get.mockImplementation((url, options) => {
+    if (!url.endsWith('/screenshot')) return Promise.resolve({ data: component.job.value })
+    if (options.params.id === 'old') {
+      oldSignal = options.signal
+      return new Promise((resolve) => (finishOld = resolve))
+    }
+    return Promise.resolve({ status: 200, data: new Blob(['new']), headers: {} })
+  })
+  component.job.value = { status: 'running', id: 'old' }
+  state.mounted.forEach((callback) => callback())
+  await vi.advanceTimersByTimeAsync(0)
+  component.job.value = { status: 'running', id: 'new' }
+  await vi.advanceTimersByTimeAsync(0)
+  expect(oldSignal.aborted).toBe(true)
+  expect(component.screenshot.value).toBe('blob:new-frame')
+  finishOld({ status: 200, data: new Blob(['old']), headers: {} })
+  await vi.advanceTimersByTimeAsync(0)
+  expect(createUrl).toHaveBeenCalledTimes(1)
+  expect(component.screenshot.value).toBe('blob:new-frame')
 })

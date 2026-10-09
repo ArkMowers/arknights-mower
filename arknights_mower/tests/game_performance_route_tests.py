@@ -2,6 +2,7 @@
 
 import unittest
 from threading import Event
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from arknights_mower.tests import device_settings_route_tests as settings_routes
@@ -110,6 +111,56 @@ class GamePerformanceRouteTests(unittest.TestCase):
             ).status_code,
             409,
         )
+
+    def test_preview_requires_auth_and_only_serves_frames_from_current_test(self):
+        store = MagicMock()
+        with patch("arknights_mower.views.screenshot._get_store", return_value=store):
+            self.assertEqual(
+                self.client.get(
+                    "/device/performance-test/screenshot?id=old"
+                ).status_code,
+                403,
+            )
+            job = self.start().json
+            url = f"/device/performance-test/screenshot?id={job['id']}"
+            self.assertEqual(
+                self.client.get(
+                    "/device/performance-test/screenshot?id=old", headers=self.headers
+                ).status_code,
+                404,
+            )
+            store.latest.assert_not_called()
+            store.latest.return_value = SimpleNamespace(
+                captured_ns=job["started_ns"] - 1, data=b"previous task"
+            )
+            self.assertEqual(
+                self.client.get(url, headers=self.headers).status_code, 204
+            )
+            store.latest.return_value = None
+            self.assertEqual(
+                self.client.get(url, headers=self.headers).status_code, 204
+            )
+            store.latest.return_value = SimpleNamespace(
+                captured_ns=job["started_ns"], data=b"test frame"
+            )
+            with patch.object(
+                self.control, "execute", side_effect=AssertionError("no device input")
+            ):
+                response = self.client.get(url, headers=self.headers)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data, b"test frame")
+            self.assertEqual(response.mimetype, "image/jpeg")
+            self.assertEqual(response.headers["Cache-Control"], "no-store")
+            conditional = {**self.headers, "If-None-Match": response.headers["ETag"]}
+            self.assertEqual(self.client.get(url, headers=conditional).status_code, 304)
+            self.server.performance_test_job["status"] = "passed"
+            self.assertEqual(
+                self.client.get(url, headers=self.headers).status_code, 404
+            )
+            self.server.performance_test_job.update(status="running", id="replacement")
+            self.assertEqual(
+                self.client.get(url, headers=self.headers).status_code, 404
+            )
 
     def test_worker_uses_session_boundary_and_preserves_saved_configuration(self):
         before = self.path.read_bytes()

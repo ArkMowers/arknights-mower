@@ -1124,6 +1124,7 @@ def device_performance_test():
             performance_test_job.update(
                 {
                     "id": uuid4().hex,
+                    "started_ns": time.time_ns(),
                     "status": "running",
                     "phase": "starting",
                     "recommended_mode": None,
@@ -1156,6 +1157,19 @@ def device_performance_test():
             raise
         _cancel_scheduled_start()
         return _performance_test_status(), 202
+
+
+@app.route("/device/performance-test/screenshot", methods=["GET"])
+@require_token
+def performance_test_screenshot():
+    from arknights_mower.views.screenshot import latest_screenshot_response
+
+    with performance_test_lock:
+        if performance_test_job["status"] != "running" or request.args.get(
+            "id"
+        ) != performance_test_job.get("id"):
+            return {"message": "该性能测试已结束或被替换"}, 404
+        return latest_screenshot_response(after_ns=performance_test_job["started_ns"])
 
 
 @app.route("/device/boss_key", methods=["POST"])
