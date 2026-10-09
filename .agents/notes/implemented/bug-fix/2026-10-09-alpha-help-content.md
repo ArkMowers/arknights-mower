@@ -21,9 +21,13 @@ Current software/resource updates, device binding, task switches, scheduling rec
 
 Email submission returns the success message checked by the feedback component, so successful delivery also triggers its success notice and description-copy behavior. The explicit recipient list preserves the original mailbox and adds the user-requested feedback mailbox for both the UI and assistant. No sheet submission service is added.
 
+README retains the overview, screenshots, source deployment for Windows, Linux and macOS, feedback entry and project notice. Packaging, release details, developer-only checks and Docker instructions are removed from README. Source instructions use the frontend's current Node.js requirement and include direct startup commands; the Linux dependency error points to the existing platform document instead of the removed packaging section.
+
 ## Verification
 
 Focused offline checks cover legacy downloader queries, current task-switch and database-cleanup advice, case-insensitive FAQ lookup, local source references and help navigation. No scheduling, device-control or configuration schema changes require glossary edits.
+
+README maintenance verifies local links and section anchors, Bash syntax without running installation, Node.js requirements against the frontend lockfile, and four focused help-link and Linux dependency-hint checks. Cross-platform installation is not executed.
 
 ## Standards Findings
 
