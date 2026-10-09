@@ -21,6 +21,13 @@
     "arknights_mower/tests/ai_prompt_contract_tests.py",
     "arknights_mower/tests/ai_feature_tests.py",
     "ui/src/stores/configPartial.test.js",
-    "ui/src/pages/Doc.test.js"
+    "ui/src/pages/Doc.test.js",
+    "arknights_mower/tests/same_group_dorm_replacement_tests.py",
+    "arknights_mower/tests/dorm_group_tests.py",
+    "arknights_mower/tests/multi_group_shift_tests.py",
+    "arknights_mower/tests/dorm_priority_refresh_tests.py",
+    "arknights_mower/tests/experimental_backup_free_tests.py",
+    "arknights_mower/tests/backup_operator_removal_tests.py",
+    "arknights_mower/tests/custom_mood_limits_tests.py"
   ]
 }
