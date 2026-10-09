@@ -153,6 +153,7 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 
 ### Dynamic Free Slot and Vacant Bed
 - **Definition**: A Free plan slot has no fixed primary occupant; a Free task placeholder delegates the occupant to selection. A vacant bed has no confirmed cached occupant and still requires reservation checks before filling.
+- When a grouped dormitory primary has Free as its replacement, its departure adds group-scoped recovery capacity rather than reserving a physical position. This capacity admits working primaries going off shift in the same group, or standby primaries, ordinary replacements and idle operators; other applicants in the first four tiers can use only ordinary Free capacity. Both admission and takeover must satisfy these capacity limits; occupied-bed protection and takeover mood thresholds continue to apply.
 - **Code Mapping**: [`vacant_dorm_slots`](arknights_mower/utils/dorm_candidates.py)
 
 ### Valid Mood Cache and Default Mood

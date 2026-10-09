@@ -131,3 +131,89 @@ def test_backup_combinations_recheck_standby_eligibility(plan, mandatory_backup)
         assert "所需宿舍数8大于当前有效宿舍数7" in result["message"]
     assert data.config.resting_standby == WORKERS[-3:]
     assert data.operators[WORKERS[-1]].resting_priority == "standby"
+
+
+@pytest.mark.parametrize("secondary", [False, True])
+@pytest.mark.parametrize("working_state", [False, True])
+def test_validation_counts_own_dynamic_free_capacity_without_live_state(
+    plan, secondary, working_state
+):
+    conf = plan["default_plan"].config
+    conf.resting_standby = []
+    rooms = plan["default_plan"].plan
+    if secondary:
+        rooms["dormitory_1"][0] = Room(
+            "杜林",
+            "另一组",
+            ["炎熔"],
+            group_bindings=[{"group": GROUP, "replacement": ["Free"]}],
+        )
+        rooms["contact"] = [Room("阿米娅", "另一组", ["苏苏洛"])]
+    else:
+        rooms["dormitory_1"][0].replacement = ["Free"]
+    data = Operators(plan)
+    data.group_shift_state[GROUP] = not working_state
+    assert data.init_and_validate() is None
+    assert data.validate_backup_plans()["success"]
+    data.group_shift_state[GROUP] = False
+    for op in data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 5, datetime.now()
+    solver = object.__new__(base_schedule.BaseSchedulerSolver)
+    solver.op_data, solver.tasks = data, []
+    solver._refresh_deferred_product_reservations = lambda: None
+    solver.check_fia = lambda: (None, None)
+    arrangement, replacements = {}, []
+    assert solver.get_resting_plan(
+        data.shift_group_members(GROUP), replacements, arrangement, 0
+    )
+    projected = data.project_arrangements(
+        [arrangement, try_reorder(data, arrangement) or {}]
+    )
+    assert all(projected.get_dorm_by_name(name)[1] is not None for name in WORKERS)
+
+
+@pytest.mark.parametrize("secondary", [False, True])
+def test_validation_cannot_borrow_other_resting_groups_dynamic_free_capacity(
+    plan, secondary
+):
+    plan["default_plan"].config.resting_standby = []
+    rooms = plan["default_plan"].plan
+    rooms["contact"] = [Room("阿米娅", "另一组", ["苏苏洛"])]
+    if secondary:
+        rooms["dormitory_1"][0] = Room(
+            "杜林",
+            GROUP,
+            ["炎熔"],
+            group_bindings=[{"group": "另一组", "replacement": ["Free"]}],
+        )
+    else:
+        rooms["dormitory_1"][0] = Room("杜林", "另一组", ["Free"])
+    data = Operators(plan)
+    data.group_shift_state["另一组"] = True
+    assert data.init_and_validate() == (
+        f"{GROUP} 分组无法排班,所需宿舍数8大于当前有效宿舍数7"
+    )
+
+
+@pytest.mark.parametrize("closes_capacity", [False, True])
+def test_backup_validation_rechecks_group_scoped_free_capacity(plan, closes_capacity):
+    plan["default_plan"].config.resting_standby = []
+    plan["default_plan"].plan["dormitory_1"][0].replacement = ["Free"]
+    plan["backup_plans"] = [
+        Plan(
+            {
+                "dormitory_1": [
+                    Room("杜林", GROUP, ["炎熔"] if closes_capacity else ["Free"])
+                ]
+            },
+            PlanConfig("", "", ""),
+            name="宿管替班",
+        )
+    ]
+    data = Operators(plan)
+    assert data.init_and_validate() is None
+    result = data.validate_backup_plans()
+    assert result["success"] is not closes_capacity
+    if closes_capacity:
+        assert "所需宿舍数8大于当前有效宿舍数7" in result["message"]

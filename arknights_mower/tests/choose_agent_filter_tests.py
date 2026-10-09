@@ -371,6 +371,7 @@ def selection_solver(monkeypatch, residents=None):
         is_dynamic_dorm_position=lambda *args, **kwargs: False,
         is_dorm_replacement_for_slot=lambda *args, **kwargs: False,
         get_current_operator=lambda *args, **kwargs: None,
+        dorm_capacity_allows=lambda *args, **kwargs: True,
     )
     solver.op_data.add = lambda op: solver.op_data.operators.setdefault(op.name, op)
     solver.last_room = ""

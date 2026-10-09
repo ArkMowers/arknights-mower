@@ -649,7 +649,12 @@ class Operators:
             effective_dorm_count = sum(
                 1
                 for dorm in self.dorm
-                if self.is_effective_free_slot(dorm, active_groups={key})
+                if (slot := self.plan[dorm.position[0]][dorm.position[1]]).agent
+                == "Free"
+                or any(
+                    binding["group"] == key and "Free" in binding["replacement"]
+                    for binding in slot.bindings
+                )
             )
             for preferred in ((), required):
                 assignments = match_replacements(
@@ -2176,9 +2181,123 @@ class Operators:
             and resting_tier(self, dorm.name) != RestingTier.IDLE
         )
 
-    def _slot_takable(self, dorm, requester=None, active_groups=None):
+    def dorm_capacity_allows(self, name, position, *, active_groups=None, plan=None):
+        """绑组 Free 按数量供同组工作主班及后三层使用，不绑定物理位置。"""
+        if resting_tier(self, name) > RestingTier.PRIORITY_REPLACEMENT:
+            return True
+        if not any(
+            slot.agent != "Free" and "Free" in slot.all_replacements
+            for room, slots in self.plan.items()
+            if room.startswith("dorm")
+            for slot in slots
+        ):
+            return True
+        plan = plan or {}
+        transitions = self.arrangement_group_transitions(plan)
+        transitions.update({group: True for group in active_groups or ()})
+        active = {group for group, resting in transitions.items() if resting}
+        inactive = {group for group, resting in transitions.items() if not resting}
+        beds = {bed.position: bed for bed in self.dorm}
+        moving = {
+            member
+            for row in plan.values()
+            for member in row
+            if member not in ("", "Current", "Free")
+        } | {name}
+        capacities, residents = [], set()
+        for room, slots in self.plan.items():
+            if not room.startswith("dorm"):
+                continue
+            for index, slot in enumerate(slots):
+                location = (room, index)
+                current = self.get_current_operator(room, index)
+                bed = beds.get(location) or Dormitory(
+                    location, current.name if current else ""
+                )
+                if not self.is_effective_free_slot(
+                    bed, active_groups=active, inactive_groups=inactive
+                ):
+                    continue
+                if slot.agent == "Free":
+                    capacities.append(None)
+                else:
+                    owner = self.operators[slot.agent]
+                    groups = (
+                        [binding["group"] for binding in owner.group_bindings]
+                        if owner.multi_group
+                        else [owner.group]
+                    )
+                    capacities.append(
+                        {
+                            group
+                            for group in groups
+                            if "Free" in owner.replacements_for_group(group)
+                            and group not in inactive
+                            and (group in active or self.group_is_resting(group))
+                        }
+                    )
+                row = plan.get(room, [])
+                resident = row[index] if index < len(row) else "Current"
+                if resident == "Current":
+                    resident = bed.name or (current.name if current else "")
+                    if resident in moving:
+                        resident = ""
+                if location == position:
+                    resident = name
+                if (
+                    resident in self.operators
+                    and resident != slot.agent
+                    and resting_tier(self, resident) <= RestingTier.PRIORITY_REPLACEMENT
+                ):
+                    residents.add(resident)
+
+        # 给受保护住员匹配额度；后三层可使用任意剩余额度。
+        # 复用替班匹配，使跨组主班让出普通额度，不受实际床号影响。
+        from arknights_mower.utils.exhaust_replacement import match_replacements
+
+        residents.add(name)
+        choices = {}
+        for resident in sorted(residents):
+            op = self.operators.get(resident)
+            groups = (
+                {binding["group"] for binding in op.group_bindings}
+                if op is not None and op.multi_group
+                else {op.group}
+                if op is not None
+                else set()
+            )
+            choices[resident] = sorted(
+                [
+                    index
+                    for index, allowed in enumerate(capacities)
+                    if allowed is None
+                    or op is not None
+                    and op.is_high()
+                    and not op.room.startswith("dorm")
+                    and groups.intersection(allowed)
+                ],
+                # 同组主班优先计入绑组动态额度，普通额度留给其他前四层。
+                key=lambda index: capacities[index] is None,
+            )
+        return (
+            match_replacements(
+                choices,
+                preferred={
+                    index
+                    for index, groups in enumerate(capacities)
+                    if groups is not None
+                },
+            )
+            is not None
+        )
+
+    def _slot_takable(self, dorm, requester=None, active_groups=None, plan=None):
         """有效动态床位按共享恢复层级决定是否允许接管。"""
         if not self.is_effective_free_slot(dorm, active_groups=active_groups):
+            return False
+        if requester is not None and not self.dorm_capacity_allows(
+            requester, dorm.position, active_groups=active_groups, plan=plan
+        ):
             return False
         reserved_for = self.reserved_product_beds.get(dorm.position)
         if reserved_for and requester != reserved_for:
@@ -2305,6 +2424,7 @@ class Operators:
                 self.dorm[i],
                 requester=name,
                 active_groups=active_groups,
+                plan=plan,
             )
         ]
         now = datetime.now()

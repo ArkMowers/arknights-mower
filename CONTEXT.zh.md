@@ -153,6 +153,7 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 
 ### 动态 Free 位／实际空床 (`Dynamic Free Slot and Vacant Bed`)
 - **定义**: 排班表中的 Free 位是不固定主班、可动态安排休息者的位置；任务中的 Free 表示由选人流程确定入住者。实际空床是位置缓存确认无人占用的床位，补人还须检查任务预约。
+- 宿管绑组且替班填写Free时，离岗后增加的恢复床位按数量计入该组额度，不绑定物理位置。该额度只供同组下班的工作主班或候补、普通替班、空闲干员使用；其他前四级干员只能使用普通Free额度。入住和接管均须满足额度限制，已入住者的保床规则及接管心情阈值继续生效。
 - **代码映射**: [`vacant_dorm_slots`](arknights_mower/utils/dorm_candidates.py)
 
 ### 有效心情缓存／默认心情 (`Valid Mood Cache and Default Mood`)

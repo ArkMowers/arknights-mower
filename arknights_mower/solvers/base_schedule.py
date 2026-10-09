@@ -7303,6 +7303,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             getattr(getattr(self, "task", None), "type", None) == TaskTypes.FIAMMETTA
         ):
             return
+        capacity_plan = dict(getattr(self.task, "plan", {}) or {})
+        capacity_plan[room] = agents
         # 补床任务入队后名单也可能改变；执行时重新检查明确写入的姓名。
         for index, name in enumerate(agents):
             current = self.op_data.get_current_operator(room, index)
@@ -7315,7 +7317,15 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if (
                 name not in ("", "Current", "Free")
                 and self.op_data.is_dynamic_dorm_position(room, index, name)
-                and resting_tier(self.op_data, name) == RestingTier.EXCLUDED
+                and (
+                    resting_tier(self.op_data, name) == RestingTier.EXCLUDED
+                    or (
+                        (current is None or current.name != name)
+                        and not self.op_data.dorm_capacity_allows(
+                            name, (room, index), plan=capacity_plan
+                        )
+                    )
+                )
             ):
                 agents[index] = "Free"
         moving = (
@@ -7375,7 +7385,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             ):
                 # 满员兜底也不能重新安排被排除的原住者。
                 current = None
-            replacement = next(iter(replacements), None)
+            eligible = [
+                candidate
+                for candidate in replacements
+                if self.op_data.dorm_capacity_allows(
+                    candidate.name, (room, index), plan=capacity_plan
+                )
+            ]
+            replacement = next(iter(eligible), None)
             if (
                 current is not None
                 and self.op_data.is_dynamic_dorm_position(room, index, current.name)
@@ -7394,7 +7411,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 replacement = next(
                     (
                         candidate
-                        for candidate in replacements
+                        for candidate in eligible
                         if bed_takeover_allowed(
                             self.op_data, candidate.name, current.name
                         )
@@ -7444,7 +7461,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         replacement is None
                         or bed is None
                         or not self.op_data._slot_takable(
-                            bed, requester=replacement.name
+                            bed, requester=replacement.name, plan=capacity_plan
                         )
                     ):
                         agents[index] = current.name
@@ -7472,6 +7489,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     if name not in candidates.recovering
                     and name not in candidates.unknown
                     and name not in agents
+                    and self.op_data.dorm_capacity_allows(
+                        name, (room, index), plan=capacity_plan
+                    )
                     and (
                         name not in self.op_data.operators
                         or not self.op_data.operators[name].current_room
@@ -7837,6 +7857,25 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             observation = None
             previous_page = None
             while free_num:
+                if room.startswith("dorm"):
+                    capacity_plan = dict(getattr(self.task, "plan", {}) or {})
+                    capacity_plan[room] = agents
+                    bed_position = (room, agents.index("Free"))
+                    free_list = [
+                        name
+                        for name in free_list
+                        if self.op_data.dorm_capacity_allows(
+                            name, bed_position, plan=capacity_plan
+                        )
+                    ]
+                    if not free_list and not idle_fallback:
+                        idle_fallback = True
+                        free_list = self.get_free_list(
+                            agents, include_full=True, room=room
+                        )
+                        right_swipe = self.swipe_left(right_swipe, last_special_filter)
+                        observation, previous_page = None, None
+                        continue
                 if not free_list or right_swipe > max_swipe:
                     raise Exception("没有找到足够的可用宿舍候选干员")
                 # scan_agent 按屏幕顺序点击，单纯排序名单不能保证层级和心情顺序。
@@ -7861,7 +7900,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     candidates = [name for name in candidates if name in permitted]
                 selected_name, ret = self.scan_agent(
                     candidates,
-                    max_agent_count=free_num,
+                    max_agent_count=1
+                    if room.startswith("dorm")
+                    and any(
+                        resting_tier(self.op_data, name)
+                        <= RestingTier.PRIORITY_REPLACEMENT
+                        for name in candidates
+                    )
+                    else free_num,
                     full_scan=last_special_filter == "ALL",
                     observation=observation,
                     mood_estimates=estimates,

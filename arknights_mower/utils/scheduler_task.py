@@ -2600,11 +2600,11 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
                 return
         recovering = recovery_names.copy()
         waiting = next(iter(recovering), None)
-        full = iter(
+        full = [
             name
             for name in candidates.filling
             if name not in candidates.recovering and name not in candidates.unknown
-        )
+        ]
         search_unknown = bool(candidates.unknown) and not priority_only
         if waiting is None and not candidates.filling:
             return
@@ -2624,6 +2624,16 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
                 if bed.position not in vacancies:
                     continue
                 occupant = None
+                waiting = next(
+                    (
+                        name
+                        for name in recovering
+                        if op_data.dorm_capacity_allows(
+                            name, bed.position, plan=arrangement
+                        )
+                    ),
+                    None,
+                )
             else:
                 occupant = op_data.operators.get(bed.name)
                 if (
@@ -2637,12 +2647,11 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
                         name
                         for name in recovering
                         if bed_takeover_allowed(op_data, name, occupant.name)
+                        and op_data._slot_takable(bed, requester=name, plan=arrangement)
                     ),
                     None,
                 )
                 if waiting is None:
-                    continue
-                if not op_data._slot_takable(bed, requester=waiting):
                     continue
 
             if waiting is not None:
@@ -2653,9 +2662,19 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
                 # 未知心情统一通过游戏心情升序选人，不能把默认 24 当实读。
                 incoming = "Free"
             else:
-                incoming = next(full, None)
+                incoming = next(
+                    (
+                        name
+                        for name in full
+                        if op_data.dorm_capacity_allows(
+                            name, bed.position, plan=arrangement
+                        )
+                    ),
+                    None,
+                )
                 if incoming is None:
-                    break
+                    continue
+                full.remove(incoming)
                 if incoming in op_data.operators:
                     op_data.operators[incoming].dorm_mood_fallback = bed.position[0]
                 else:
