@@ -17,8 +17,12 @@ date: 2026-10-09
 
 Resource packages retain their historical catalog entry for existing clients and the current publisher. `write_building_skill_data` serializes once and writes identical bytes to the canonical source and an ignored compatibility export. The compatibility export is a generated publication input, not a second committed source or an application packaging input. `resource_pkg_path` translates canonical requests only for the selected resource package, preserving complete-generation isolation and cache invalidation.
 
-The [software update contract](../../../../docs/subsystems/software-update.md#7-shared-building-skill-data) defines authoritative behavior. Scheduling rules, configuration schemas and domain terminology remain unchanged.
+The physical catalog move preserves its historical resource hash identity, so clean checkouts require no generated compatibility file to match the bundled version marker.
+
+The [software update contract](../../../../docs/subsystems/software-update.md#12-shared-building-skill-data) defines authoritative behavior. Scheduling rules, configuration schemas and domain terminology remain unchanged.
 
 ## Verification
 
 Focused offline tests cover identical generation output, resource content hashing, both backend consumers without any frontend files, desktop and Android package contents, missing or empty catalog rejection, existing HTTP filenames, selected legacy resource-package priority and cache invalidation. Frontend production compilation checks the shared import.
+
+Clean-checkout regressions reproduce the missing catalog in resource hashing before the repair and verify identical hashes with and without the compatibility export, LF/CRLF normalization and changed-content detection. The existing bundled-version hash assertion passes without changing `version.json`.

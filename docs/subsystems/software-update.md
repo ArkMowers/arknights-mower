@@ -85,4 +85,6 @@ Channel indexes retain their schema and channel-specific targets. Full and OTA a
 
 Resource packages retain `ui/src/pages/basement_skill/skill.json` as their historical archive entry. `write_building_skill_data` serializes the catalog once and writes identical bytes to the shared source and an ignored compatibility export used by the existing resource publisher. The compatibility export is not an application packaging input. `resource_pkg_path` maps the shared catalog request to that entry only when a resource package is selected; a missing entry in a selected package never permits mixing in bundled data. Resource validation, content hashing and existing clients retain their archive contract.
 
+For content hashing, `package_file_paths` collects the shared source when the compatibility export is absent. `content_hash` uses the historical archive name for that catalog's ordering, path digest and text normalization. Clean checkouts and generated resource packages with identical data therefore share the same resource version on LF and CRLF checkouts, without writing a compatibility file during validation.
+
 [Shared building-skill data](../../.agents/notes/implemented/simplification/2026-10-09-shared-building-skill-data.md) records the boundary and verification.

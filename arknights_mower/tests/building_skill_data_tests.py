@@ -3,6 +3,8 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from arknights_mower.utils import building_skills, dorm_skills, resource_pkg
 from arknights_mower.utils.building_skill_data import write_building_skill_data
 from arknights_mower.utils.res_version import (
@@ -26,6 +28,34 @@ def test_generation_exports_identical_legacy_resource_entry(tmp_path):
     before = content_hash(tmp_path, paths)
     write_building_skill_data([], tmp_path)
     assert content_hash(tmp_path, package_file_paths(tmp_path)) != before
+
+
+@pytest.mark.parametrize("newline", [b"\n", b"\r\n"])
+def test_clean_checkout_skill_hash_matches_generated_resource_package(
+    tmp_path, newline
+):
+    agent = tmp_path / "arknights_mower/data/agent.json"
+    agent.parent.mkdir(parents=True)
+    agent.write_text("[]", encoding="utf-8")
+    avatar = tmp_path / "ui/public/avatar/test.webp"
+    avatar.parent.mkdir(parents=True)
+    avatar.write_bytes(b"image")
+    write_building_skill_data([{"name": "琴柳", "child_skill": []}], tmp_path)
+    generated_hash = content_hash(tmp_path, package_file_paths(tmp_path))
+    source = tmp_path / BUILDING_SKILL_DATA
+    exported = tmp_path / BUILDING_SKILL_PACKAGE_PATH
+    exported.unlink()
+    source.write_bytes(
+        source.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", newline)
+    )
+
+    paths = package_file_paths(tmp_path)
+    assert source.relative_to(tmp_path) in paths
+    assert exported.relative_to(tmp_path) not in paths
+    assert content_hash(tmp_path, paths) == generated_hash
+    assert not exported.exists()
+    source.write_text("[]", encoding="utf-8")
+    assert content_hash(tmp_path, package_file_paths(tmp_path)) != generated_hash
 
 
 def test_both_backend_consumers_work_without_any_frontend_files(tmp_path, monkeypatch):
