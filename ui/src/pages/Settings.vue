@@ -229,7 +229,7 @@ const idleOptions = computed(() => [
                 </n-radio-group>
               </n-form-item>
               <n-alert :show-icon="false">设备连接由 Android 应用管理。</n-alert>
-              <PerformanceSettings :label-width="120" />
+              <PerformanceSettings :label-width="120" :test-enabled="true" />
             </template>
             <n-form-item label="启动游戏" v-if="runtime_platform !== 'android'">
               <n-select v-model:value="tap_to_launch_game.mode" :options="launch_options" />

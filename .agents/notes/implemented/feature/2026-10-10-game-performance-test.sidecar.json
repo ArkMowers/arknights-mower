@@ -9,7 +9,8 @@
   "invariants": [
     "[INV-SCHED-45]",
     "[INV-DEV-23]",
-    "[INV-SCHED-30]"
+    "[INV-SCHED-30]",
+    "[INV-DEV-12]"
   ],
   "code_symbols": [
     "arknights_mower.solvers.performance_test.SelectionPerformanceTest",

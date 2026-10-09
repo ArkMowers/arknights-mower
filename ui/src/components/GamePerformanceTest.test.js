@@ -54,15 +54,19 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-it('adopts an actual xhigh result only on user action and preserves timings', () => {
-  const { component } = setup()
-  passed(component)
-  expect(component.recommendation.value).toBe('xhigh')
-  expect(state.config.performance_mode).toBe('auto')
-  const before = { ...state.config }
-  component.adopt()
-  expect(state.config).toEqual({ ...before, performance_mode: 'xhigh' })
-})
+it.each(['android', 'darwin'])(
+  'adopts an actual xhigh result on %s only on user action and preserves timings',
+  (platform) => {
+    const { component } = setup()
+    state.config.runtime_platform = platform
+    passed(component)
+    expect(component.recommendation.value).toBe('xhigh')
+    expect(state.config.performance_mode).toBe('auto')
+    const before = { ...state.config }
+    component.adopt()
+    expect(state.config).toEqual({ ...before, performance_mode: 'xhigh' })
+  }
+)
 it('rejects stale device and timing results, disabled adoption and failed tests', () => {
   const { component, props } = setup()
   passed(component)

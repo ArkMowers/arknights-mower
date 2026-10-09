@@ -33,12 +33,6 @@ class GamePerformanceRouteTests(unittest.TestCase):
         self.enterContext(
             patch.object(self.server, "maa_check_job", {"status": "idle"})
         )
-        self.enterContext(
-            patch(
-                "arknights_mower.utils.performance.is_android_runtime",
-                return_value=False,
-            )
-        )
 
     def start(self):
         return self.client.post(
@@ -81,15 +75,74 @@ class GamePerformanceRouteTests(unittest.TestCase):
             409,
         )
 
-    def test_active_session_and_android_reject_before_worker_creation(self):
+    def test_active_session_rejects_before_worker_creation(self):
         self.control.start()
         self.assertEqual(self.start().status_code, 409)
         self.control.close()
-        with patch(
-            "arknights_mower.utils.performance.is_android_runtime", return_value=True
-        ):
-            self.assertEqual(self.start().status_code, 400)
         self.thread.assert_not_called()
+
+    def test_android_admits_test_and_keeps_worker_and_cancellation_guards(self):
+        with patch.dict("os.environ", {"MOWER_ANDROID": "1"}):
+            response = self.start()
+            self.assertEqual(response.status_code, 202)
+            self.thread.return_value.start.assert_called_once()
+            self.assertEqual(self.start().status_code, 409)
+            job = self.client.get("/device/performance-test", headers=self.headers).json
+            self.assertEqual(job["id"], response.json["id"])
+            self.assertEqual(job["status"], "running")
+            cancelled = self.client.delete(
+                "/device/performance-test",
+                headers=self.headers,
+                json={"id": job["id"]},
+            )
+            self.assertEqual(cancelled.status_code, 200)
+            self.assertTrue(self.server.performance_test_cancel.is_set())
+            self.assertFalse(config.stop_mower.is_set())
+
+    def test_android_worker_uses_native_adapter_and_releases_run_on_all_outcomes(self):
+        from arknights_mower.tests.device_application_tests import ManualDevice
+        from arknights_mower.utils.device.application import create_device_control
+
+        before = self.path.read_bytes()
+        for outcome, status in (
+            ({"status": "passed", "recommended_mode": "xhigh"}, "passed"),
+            (MowerExit("cancelled"), "cancelled"),
+            (OSError("native capture failed"), "failed"),
+        ):
+            device = ManualDevice("Android")
+            with (
+                self.subTest(status=status),
+                patch.dict("os.environ", {"MOWER_ANDROID": "1"}),
+                patch(
+                    "arknights_mower.utils.device.device.Device.create",
+                    return_value=device,
+                ) as create,
+                patch(
+                    "arknights_mower.utils.device.preflight_io.ProductionPreflightIO",
+                    side_effect=AssertionError("Android must not probe desktop ADB"),
+                ),
+                patch(
+                    "arknights_mower.solvers.performance_test.SelectionPerformanceTest"
+                ) as solver,
+            ):
+                control = create_device_control()
+                if isinstance(outcome, Exception):
+                    solver.return_value.run.side_effect = outcome
+                else:
+                    solver.return_value.run.return_value = outcome
+                with patch.object(self.main, "device_control", control):
+                    self.server._run_performance_test(config.conf.model_copy(deep=True))
+                create.assert_called_once_with(connection_retries=1)
+                self.assertIs(solver.call_args.args[0], device)
+                self.assertEqual(self.server.performance_test_job["status"], status)
+                self.assertEqual(
+                    self.server.performance_test_job["recommended_mode"],
+                    "xhigh" if status == "passed" else None,
+                )
+                self.assertTrue(device.closed)
+                self.assertFalse(control.active)
+                self.assertFalse(control.run_active)
+                self.assertEqual(self.path.read_bytes(), before)
 
     def test_cancellation_is_bound_to_test_id_and_does_not_stop_later_run(self):
         job = self.start().json
