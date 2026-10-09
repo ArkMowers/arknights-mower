@@ -3773,7 +3773,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         return bool(invalid)
 
     def _advance_orders_before_maintenance(self, conditions):
-        """复用停服前提前跑单，完成无人机加速及原班恢复后才切副表。"""
+        """维护主班含跑单干员时直接切表，否则先完成停服前跑单。"""
         entering = any(
             active and not previous and backup.uses_major_maintenance_condition
             for active, previous, backup in zip(
@@ -3781,6 +3781,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
         )
         if not entering:
+            self.maintenance_entry_pending = False
+            return False
+        projected = copy.deepcopy(
+            self.op_data, {id(self.op_data.eval_model): self.op_data.eval_model}
+        )
+        if error := projected.swap_plan(conditions):
+            raise ValueError(f"维护副表预演失败：{error}")
+        if projected.run_order_paused:
             self.maintenance_entry_pending = False
             return False
         pending = [

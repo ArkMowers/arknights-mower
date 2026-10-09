@@ -15,7 +15,8 @@
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._advance_orders_before_maintenance",
     "arknights_mower.utils.scheduler_task.adjust_run_order_for_maintenance",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange_room",
-    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.tap_confirm"
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.tap_confirm",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._activate_shift_backup"
   ],
   "test_suites": [
     "arknights_mower/tests/maintenance_run_order_tests.py",

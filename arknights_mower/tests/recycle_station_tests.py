@@ -85,6 +85,7 @@ def test_official_animation_returns_to_occupied_dashboard():
 def test_confirm_accepts_official_recycle_dashboard_return():
     frames = [preview("selection_two"), preview("dashboard_two")]
     solver = object.__new__(BaseSchedulerSolver)
+    solver.task = SchedulerTask()
     solver.op_data = SimpleNamespace(run_order_rooms={})
     solver.recog = SimpleNamespace(w=1920, h=1080, update=MagicMock())
     state = {"frame": 0}
