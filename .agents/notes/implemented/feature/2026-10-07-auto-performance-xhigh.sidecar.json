@@ -12,12 +12,15 @@
   ],
   "code_symbols": [
     "arknights_mower.utils.performance.auto_performance_mode",
-    "arknights_mower.utils.performance.lower_performance_mode"
+    "arknights_mower.utils.performance.lower_performance_mode",
+    "arknights_mower.utils.config.conf.RIICPart.migrate_performance_mode",
+    "arknights_mower.utils.performance.effective_performance_profile"
   ],
   "test_suites": [
     "arknights_mower/tests/performance_profile_tests.py",
     "arknights_mower/tests/dorm_recovery_tests.py",
     "ui/src/utils/performanceProfile.test.js",
-    "ui/src/stores/configPartial.test.js"
+    "ui/src/stores/configPartial.test.js",
+    "ui/src/components/PerformanceSettings.test.js"
   ]
 }

@@ -13,7 +13,7 @@ date: 2026-10-07
 
 [INV-SCHED-30] Automatic Selection Baseline: Desktop automatic selection starts at `xhigh`, Android starts at `medium`, and repeated failures lower one level without exceeding the active cap or changing explicit modes and timing settings.
 
-Desktop automatic selection uses `xhigh`, `high`, `medium` and `low`. Before four feedback samples, it uses the platform baseline subject to any failure cap. An `xhigh` observation average below 0.35 retains that mode; at or above 0.35 it selects `high`. A `high` average at or below 0.2 selects `xhigh`; otherwise the existing high, medium and low thresholds apply. Two selection failures without a completed selection lower one level. Three completed selections release the failure cap. Each selection workflow retains its fixed profile.
+All platforms expose `xhigh`, `high`, `medium` and `low`. Android retains explicit `high` and `xhigh` selections across configuration loading, saving and execution. Automatic feedback can reach every level on Android. Before four feedback samples, it uses the platform baseline subject to any failure cap. An `xhigh` observation average below 0.35 retains that mode; at or above 0.35 it selects `high`. A `high` average at or below 0.2 selects `xhigh`; otherwise the existing high, medium and low thresholds apply. Two selection failures without a completed selection lower one level. Three completed selections release the failure cap. Each selection workflow retains its fixed profile.
 
 ## Implementation Boundaries
 
@@ -21,6 +21,6 @@ The pre-flight complexity check retains the existing performance policy, failure
 
 ## Verification
 
-Offline performance tests cover desktop startup, feedback hysteresis, all downgrade levels, warmup and measured-feedback caps, workflow snapshots, Android restrictions and preserved timing values. Frontend tests cover the visible desktop and Android baselines, backend verdicts and explicit modes.
+Offline performance tests cover desktop startup, feedback hysteresis, all downgrade levels, warmup and measured-feedback caps, workflow snapshots, Android high-mode persistence and feedback upgrades, and preserved timing values. Frontend tests cover the visible desktop and Android baselines, backend verdicts and explicit modes.
 
 Dormitory recovery entry tests verify that two preselection feedback failures lower desktop `xhigh` to `high` and Android `medium` to `low`, with an exact cap and effective-mode assertion for each platform.

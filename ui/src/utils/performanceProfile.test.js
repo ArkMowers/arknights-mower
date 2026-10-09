@@ -20,17 +20,18 @@ describe('performance profiles', () => {
     expect(normalizePerformanceMode(undefined, true, 'linux')).toBe('auto')
   })
 
-  it('keeps Android out of high performance for explicit and automatic modes', () => {
-    expect(normalizePerformanceMode('high', false, 'android')).toBe('medium')
-    expect(normalizePerformanceMode('xhigh', false, 'android')).toBe('medium')
-    expect(performanceProfile('high', 'android')).toEqual(performanceProfile('medium', 'android'))
+  it('preserves Android fast modes and their click strategy', () => {
+    expect(normalizePerformanceMode('high', false, 'android')).toBe('high')
+    expect(normalizePerformanceMode('xhigh', false, 'android')).toBe('xhigh')
+    for (const mode of ['high', 'xhigh'])
+      expect(performanceProfile(mode, 'android')).toMatchObject({ lowFrameRateMode: false })
     expect(normalizePerformanceMode('high', false, 'darwin')).toBe('high')
   })
 
   it('migrates custom to its saved click strategy', () => {
     expect(normalizePerformanceMode('custom', false, 'darwin')).toBe('high')
     expect(normalizePerformanceMode('custom', true, 'darwin')).toBe('medium')
-    expect(normalizePerformanceMode('custom', false, 'android')).toBe('medium')
+    expect(normalizePerformanceMode('custom', false, 'android')).toBe('high')
   })
 
   it('migrates the old ultra value to xhigh', () => {

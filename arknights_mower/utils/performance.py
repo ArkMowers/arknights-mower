@@ -57,9 +57,9 @@ def auto_performance_mode(
     android = is_android_runtime()
     if feedback_avg is None or feedback_count < 4:
         selected = "medium" if android else "xhigh"
-    elif previous_mode == "xhigh" and not android:
+    elif previous_mode == "xhigh":
         selected = "xhigh" if feedback_avg < 0.35 else "high"
-    elif previous_mode == "high" and not android:
+    elif previous_mode == "high":
         if feedback_avg <= 0.2:
             selected = "xhigh"
         else:
@@ -69,13 +69,13 @@ def auto_performance_mode(
     elif previous_mode == "medium":
         if feedback_avg >= 1.4:
             selected = "low"
-        elif feedback_avg <= 0.2 and not android:
+        elif feedback_avg <= 0.2:
             selected = "high"
         else:
             selected = "medium"
     elif feedback_avg >= 1.2:
         selected = "low"
-    elif feedback_avg >= 0.35 or android:
+    elif feedback_avg >= 0.35:
         selected = "medium"
     else:
         selected = "xhigh"
@@ -96,9 +96,7 @@ def effective_performance_profile(
     """Choose the selection strategy while keeping user timing values intact."""
     mode = conf.performance_mode
     if mode != "auto":
-        selected = (
-            "medium" if is_android_runtime() and mode in ("xhigh", "high") else mode
-        )
+        selected = mode
     else:
         selected = auto_performance_mode(
             feedback_avg, feedback_count, previous_mode, mode_cap

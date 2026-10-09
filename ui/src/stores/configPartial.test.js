@@ -123,6 +123,20 @@ describe('partial configuration saves', () => {
     expect(store.performance_effective_mode).toBe('high')
   })
 
+  it.each(['high', 'xhigh'])('preserves Android %s through load and save', async (mode) => {
+    await setup({ runtime_platform: 'android', performance_mode: mode })
+    expect(store.performance_mode).toBe(mode)
+    expect(store.performance_effective_mode).toBe(mode)
+    expect(store.build_config()).toMatchObject({
+      performance_mode: mode,
+      low_frame_rate_mode: false
+    })
+    store.performance_mode = mode === 'high' ? 'xhigh' : 'high'
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.lastCall[1]).toMatchObject({ performance_mode: store.performance_mode })
+  })
+
   it('keeps legacy switching disabled and saves only an explicit master toggle', async () => {
     await setup({
       product_switching: { grandet_mode: false, waiting_seconds: 4 },

@@ -12,13 +12,7 @@ const props = defineProps({
 const config = useConfigStore()
 const gameTestRunning = ref(false)
 const labels = { auto: '自动', xhigh: '极高', high: '高', medium: '中', low: '低' }
-const options = computed(() =>
-  Object.entries(labels)
-    .filter(
-      ([value]) => config.runtime_platform !== 'android' || !['xhigh', 'high'].includes(value)
-    )
-    .map(([value, label]) => ({ value, label }))
-)
+const options = computed(() => Object.entries(labels).map(([value, label]) => ({ value, label })))
 const resourceLabel = computed(() => {
   const info = props.observation
   return info?.status === 'available'

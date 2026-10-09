@@ -52,7 +52,7 @@ def test_existing_screenshot_interval_remains_independent():
 
 @pytest.mark.parametrize(
     ("average", "expected"),
-    [(0, "medium"), (0.34, "medium"), (0.35, "medium"), (1.19, "medium"), (1.2, "low")],
+    [(0, "xhigh"), (0.34, "xhigh"), (0.35, "medium"), (1.19, "medium"), (1.2, "low")],
 )
 def test_auto_selects_profile_from_operation_feedback(monkeypatch, average, expected):
     monkeypatch.setenv("MOWER_ANDROID", "1")
@@ -60,22 +60,59 @@ def test_auto_selects_profile_from_operation_feedback(monkeypatch, average, expe
     assert performance.effective_performance_profile(conf, average, 8).mode == expected
 
 
-def test_android_explicit_fast_modes_use_medium(monkeypatch):
+@pytest.mark.parametrize(
+    "mode,expected",
+    [("high", "high"), ("xhigh", "xhigh"), ("ultra", "xhigh"), ("custom", "high")],
+)
+@pytest.mark.parametrize("android_source", ["environment", "platform"])
+def test_android_explicit_fast_modes_survive_save_reload_and_execution(
+    monkeypatch, mode, expected, android_source
+):
+    monkeypatch.delenv("MOWER_ANDROID", raising=False)
+    monkeypatch.setattr(
+        performance,
+        "__system__",
+        "android" if android_source == "platform" else "linux",
+    )
+    if android_source == "environment":
+        monkeypatch.setenv("MOWER_ANDROID", "1")
+    conf = RIICPart(
+        performance_mode=mode,
+        low_frame_rate_mode=False,
+        selection_poll_interval=0.8,
+        run_order_delay=7.5,
+    )
+    restored = RIICPart.model_validate(conf.model_dump())
+    assert restored.performance_mode == expected
+    assert not restored.low_frame_rate_mode
+    profile = performance.effective_performance_profile(
+        restored, 10, 20, mode_cap="low"
+    )
+    assert profile.mode == expected
+    assert not profile.low_frame_rate
+    assert profile.poll_interval == 0.8
+    assert profile.run_order_delay == 7.5
+    assert (
+        performance.effective_performance_profile(
+            SimpleNamespace(performance_mode=expected)
+        ).mode
+        == expected
+    )
+
+
+def test_android_automatic_feedback_can_reach_fast_modes_and_respects_failure_cap(
+    monkeypatch,
+):
     monkeypatch.setenv("MOWER_ANDROID", "1")
-    for settings in (
-        {"performance_mode": "high"},
-        {"performance_mode": "xhigh"},
-        {"performance_mode": "ultra"},
-    ):
-        conf = RIICPart(**settings)
-        assert conf.performance_mode == "medium"
-        assert conf.low_frame_rate_mode
-        assert performance.effective_performance_profile(conf).mode == "medium"
-    direct = SimpleNamespace(performance_mode="high")
-    assert performance.effective_performance_profile(direct).mode == "medium"
+    choose = performance.auto_performance_mode
+    assert choose(0, 3) == "medium"
+    assert choose(0.2, 4, "medium") == "high"
+    assert choose(0.2, 5, "high") == "xhigh"
+    assert choose(0.34, 6, "xhigh") == "xhigh"
+    assert choose(0.35, 6, "xhigh") == "high"
+    assert choose(0, 6, "xhigh", "low") == "low"
     legacy = RIICPart(low_frame_rate_mode=False)
     assert legacy.performance_mode == "auto"
-    assert legacy.low_frame_rate_mode
     assert performance.effective_performance_profile(legacy).mode == "medium"
 
 

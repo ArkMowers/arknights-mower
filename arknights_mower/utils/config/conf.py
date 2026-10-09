@@ -543,8 +543,6 @@ class RIICPart(ConfModel):
             else:
                 data["performance_mode"] = default_performance_mode()
         mode = data.get("performance_mode")
-        if mode in ("xhigh", "high") and is_android_runtime():
-            mode = data["performance_mode"] = "medium"
         if mode in PERFORMANCE_PRESETS:
             data["low_frame_rate_mode"] = PERFORMANCE_PRESETS[mode].low_frame_rate
         elif is_android_runtime() and "low_frame_rate_mode" in data:

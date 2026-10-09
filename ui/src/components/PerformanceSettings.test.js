@@ -55,11 +55,22 @@ it('keeps manual choices when information is unavailable or changes', () => {
   expect(state.config.performance_mode).toBe('xhigh')
 })
 
-it('preserves Android restrictions and rejects disabled or invalid choices', () => {
+it('opens every Android mode while rejecting disabled or invalid choices', () => {
   const { component, props } = setup()
   state.config.runtime_platform = 'android'
-  expect(component.options.value.map((item) => item.value)).toEqual(['auto', 'medium', 'low'])
-  for (const mode of ['high', 'xhigh', undefined, 'unknown']) component.applyMode(mode)
+  expect(component.options.value.map((item) => item.value)).toEqual([
+    'auto',
+    'xhigh',
+    'high',
+    'medium',
+    'low'
+  ])
+  for (const mode of ['high', 'xhigh']) {
+    component.applyMode(mode)
+    expect(state.config.performance_mode).toBe(mode)
+  }
+  state.config.performance_mode = 'auto'
+  for (const mode of [undefined, 'unknown']) component.applyMode(mode)
   expect(state.config.performance_mode).toBe('auto')
   props.disabled = true
   component.applyMode('low')

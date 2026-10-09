@@ -23,7 +23,7 @@ The settings page owns one performance selector and one mode update handler. Dev
 
 ## Verification
 
-Offline tests cover CPU range parsing, resource-only payloads across small and large device configurations, pinned ADB arguments, bounded execution, unavailable readings, readiness and cancellation isolation, informational UI display, Android restrictions, and stale observation clearance. Existing performance tests verify automatic selection and timing preservation. The game test decision owns explicit adoption evidence.
+Offline tests cover CPU range parsing, resource-only payloads across small and large device configurations, pinned ADB arguments, bounded execution, unavailable readings, readiness and cancellation isolation, informational UI display, Android mode options, and stale observation clearance. Existing performance tests verify automatic selection and timing preservation. The game test decision owns explicit adoption evidence.
 
 Verification against alpha base `9021f4de` passes 161 focused Python cases, 182 focused frontend cases, the frontend production build, changed-file Ruff and ESLint checks, formatting and the governance structure checks. Governance retains two historical archived-reference warnings. That initial resource-observation verification uses offline adapters. The game test decision records subsequent live simulator verification.
 
