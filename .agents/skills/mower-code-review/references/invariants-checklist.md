@@ -21,6 +21,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ## 2. Subsystem Invariants
 
+- [ ] **[INV-WORKSHOP-02] T5 Specialist Priority**: Do Homebound's elite-two recommendations and allocation stay within her T5 specialty, do copied manual settings exclude non-T5 recipes without changing saved settings, and does Nian retain priority through her higher bonus? See the [workshop contract](../../../../docs/subsystems/growth-planning.md#3-subsystem-invariants).
+
 - [ ] **[INV-GROWTH-02] Public Survey Isolation**: Does public survey retrieval omit local identity and credentials? Are missing rates unknown and plans preserved during survey display and filtering? Does a configured token produce only one fixed-endpoint upload after each actual successful Skland refresh, or an explicit manual sync, with no upload merely on token save or cache read? Are uploaded fields limited to game UID, nickname, server and progression, credentials absent from responses and logs, and upload failure isolated from local cache and Skland success?
 
 - [ ] **[INV-GROWTH-01] Shared Growth Budget**: Do admission and crafting tests distinguish unready projects from dispatched training, count shared costs once and avoid consuming stock twice? See the [registered guarantee](../../../../CODING_STANDARDS.md#2-subsystem-invariants).

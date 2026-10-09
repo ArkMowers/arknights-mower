@@ -34,6 +34,8 @@ Chips never become workshop recipes. Each missing dual chip adds two same-profes
 
 ## 3. Subsystem Invariants
 
+- **[INV-WORKSHOP-02] T5 Specialist Priority**: Homebound recommendations and crafting allocation use only her elite-two T5 specialty, saved execution copies exclude non-T5 recipes, and higher-bonus workers retain execution priority. The [Homebound workshop decision](../../.agents/notes/implemented/feature/2026-10-09-traveler-t5-workshop.md) defines compilation and resource compatibility.
+
 - **[INV-WORKSHOP-01] Rejected Recipe Handoff**: Game-rejected recipes do not dispatch another worker against unchanged relevant inventory and configuration; rejections remain transient, renewed inventory observations permit retries without fabricated counts, and processing failures stop consecutive handoffs.
 
 - **[INV-GROWTH-02] Public Survey Isolation**: Public survey retrieval sends no local identity or credentials, missing survey rates remain unknown, and survey display or filtering never mutates plans; a configured write-only token permits one fixed-endpoint upload of game identity and progression after each successful Skland refresh or an explicit manual sync, without exposing the credential or invalidating local refresh success on upload failure.
