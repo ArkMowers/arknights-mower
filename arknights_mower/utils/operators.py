@@ -612,13 +612,13 @@ class Operators:
         for key in binding_groups:
             self.groups.setdefault(key, [])
             members = self.shift_group_members(key)
-            if any(self.operators[name].multi_group for name in members) and not any(
-                not self.operators[name].multi_group
-                and not self.operators[name].workaholic
-                and not self.operators[name].room.startswith("dorm")
-                for name in members
+            if not any(
+                self.is_group_shift_anchor(self.operators[name]) for name in members
             ):
-                return f"{key} 多绑组需要至少一名参与心情计算的非宿舍干员"
+                return (
+                    f"{key} 缺少决定上下班的工作主班：至少需要一名非宿舍、"
+                    "非零心情工作、非多绑组且非候补的主班"
+                )
             working = tuple(
                 name
                 for name in members
@@ -628,8 +628,7 @@ class Operators:
             mandatory = tuple(
                 name for name in working if not self._can_standby(self.operators[name])
             )
-            # 没有必需恢复成员时，候补不能独自提供待命后的回班时机。
-            required = set(mandatory or working)
+            required = set(mandatory)
             replacement_options = {}
             for name in members:
                 operator = self.operators[name]
@@ -641,11 +640,6 @@ class Operators:
                 replacement_options[name] = [
                     r for r in replacements if r not in TRADE_ORDER_AGENTS
                 ]
-            if (
-                any(self.operators[n].room.startswith("dorm") for n in members)
-                and not working
-            ):
-                return f"{key} 宿舍绑组需要至少一名可轮休的非宿舍干员"
             effective_dorm_count = sum(
                 1
                 for dorm in self.dorm

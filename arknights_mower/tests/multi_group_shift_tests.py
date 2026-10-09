@@ -202,7 +202,7 @@ def test_follower_recovery_time_does_not_delay_group_return(solver):
         ([{"group": "甲", "replacement": ["黑角"]}], "重复"),
         ([{"group": "", "replacement": ["黑角"]}], "不能为空"),
         ([{"group": "乙", "replacement": []}], "需要替班"),
-        ([{"group": "无主组", "replacement": ["黑角"]}], "至少一名"),
+        ([{"group": "无主组", "replacement": ["黑角"]}], "缺少决定上下班的工作主班"),
         ([{"group": "乙", "replacement": [B]}], "不可用高效组"),
     ],
 )

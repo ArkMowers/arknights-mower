@@ -733,7 +733,7 @@ def test_validation_rejects_missing_resident_cover(solver):
 
 def test_validation_rejects_group_without_working_trigger(solver):
     solver.global_plan["default_plan"].plan["dormitory_1"][0].group = "只有宿舍"
-    assert "非宿舍干员" in solver.initialize_operators()
+    assert "只有宿舍 缺少决定上下班的工作主班" in solver.initialize_operators()
 
 
 def test_absent_resident_does_not_change_average_work_mood(solver):
