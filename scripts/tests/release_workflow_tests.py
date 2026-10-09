@@ -197,7 +197,6 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         self.assertEqual(
             self.jobs["build-macos"]["strategy"]["matrix"]["include"],
             [
-                {"runner": "macos-15-intel", "arch": "x64", "macho": "x86_64"},
                 {"runner": "macos-15", "arch": "arm64", "macho": "arm64"},
             ],
         )

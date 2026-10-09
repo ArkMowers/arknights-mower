@@ -15,6 +15,7 @@
 - **[INV-RES-01] Template Glyph Coverage**: Resource generation requires a real glyph for each rendered character and preserves the calibrated glyphs already present in its subsets. Missing source coverage stops generation before either subset file changes.
 
 - **[INV-UPD-04] MAA Resource Platform Parity**: Installed MAA on Windows, macOS and Linux exposes independent resource checks and updates; installation preserves core and Python files, rejects active MAA use, and retains resource rollback copies.
+- **[INV-UPD-05] Release Artifact Scope**: Future release builds exclude macOS x64; OTA publication targets only Windows x64 and Android ARM64, including Nightly, and rejects unsafe Android runtime paths without publishing a new channel index.
 - **[INV-UPD-03] Nightly Direction Evidence**: Same-alpha Nightly updates use valid publication times or verified upstream commit ancestry to determine direction; missing index history alone never establishes a downgrade, and unverified direction retains manual confirmation.
 - **[INV-UPD-01] Owned Command Completion**: Windows update commands own their descendants before execution and verify tree completion within a finite budget before releasing the temporary checkout; cancellation preserves other application instances.
 - **[INV-UPD-02] Complete Registration Scan**: Strict registration scans retry unreadable files within one shared monotonic budget, preserve unverified registrations and raise `InstanceScanError` when that budget expires instead of returning an incomplete snapshot.
@@ -59,3 +60,9 @@ Resource update checks accept a different compatible content hash on the same da
 The immutable resource installer records `builtin_version` in the shared `index.json` alongside the ordered accepted packages. Same-day revisions follow installation order only while that baseline matches the current builtin resource version. A software update that changes builtin resources clears this precedence implicitly through the version mismatch, so an older same-day cache cannot replace the new builtin set. Legacy indexes without a baseline retain conservative selection until another resource installation records one. Installation failures restore both the prior package list and baseline; running instances switch complete generations only at existing task boundaries.
 
 [Verified Resource OTA](../../.agents/notes/implemented/architecture/2026-10-09-resource-ota.md) records installer reuse and verification for full packages and same-day OTA revisions.
+
+## 10. Published Artifact Scope
+
+Release builds produce Windows x64, Linux x64/ARM64, macOS ARM64 and Android ARM64 full packages. MowerRelease generates OTA packages only for Windows x64 and Android ARM64, for public releases and Nightly. Linux and macOS updates use full packages. Runtime filenames use canonical relative POSIX paths; Debian multiarch colons remain valid, while traversal, drive prefixes, duplicate entries and host data files remain invalid. OTA validation errors prevent channel index publication.
+
+[OTA release target scope](../../.agents/notes/implemented/simplification/2026-10-09-ota-release-target-scope.md) records focused verification.

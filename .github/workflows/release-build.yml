@@ -1,4 +1,4 @@
-# 正式版与 alpha 测试版共用的跨平台发布流水线（五个平台）
+# 正式版与 alpha 测试版共用的跨平台发布流水线（五个产物）
 #
 # - 外部合法 tag push 可以直接进入；发布准备流程通过 workflow_call 显式调用
 # - 两个入口先验证 tag；校验和打包固定检出 tag 对应的提交 SHA，不写回分支
@@ -7,13 +7,13 @@
 # - build-* 下载 release-metadata，用生成的 CHANGELOG 覆盖工作区文件，使打包产物
 #   包含本次变更记录
 # - 在经过验证的 tag 上运行代码回归测试；通过后再启动跨平台构建
-# - release 在全部构建成功后只调用一次 action-gh-release，一次性附加五个平台产物
+# - release 在全部构建成功后只调用一次 action-gh-release，一次性附加五个产物
 #   与统一 SHA-256 清单（SHA256SUMS）；alpha 为 prerelease，正式版为普通 Release
 #
 # 平台矩阵：
 #   Windows x64        windows-latest        webui_zip.spec                 .zip
 #   Linux x64/arm64    ubuntu-24.04(-arm)     webui_zip_for_linux.spec      .tar.gz
-#   macOS x64/arm64    macos-15-intel/15      webui_zip_for_macos.spec      .dmg
+#   macOS arm64        macos-15               webui_zip_for_macos.spec      .dmg
 # Windows ARM64 暂缓：锁定的核心原生依赖（opencv-python、rjieba 等）在 PyPI
 # 上没有 win_arm64 wheel，当前矩阵不包含该平台。见 doc/release-platforms.md。
 # macOS 与 Linux 一样依赖宿主机系统库（libzbar 等）；macOS 的 .app 仅有
@@ -454,9 +454,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15-intel
-            arch: x64
-            macho: x86_64
           - runner: macos-15
             arch: arm64
             macho: arm64
