@@ -55,7 +55,7 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 ### Scheduling Plan
 - Backup operator lists add entries to the effective Scheduling Plan; per-field removal lists remove entries after additions, in backup order. Deactivation rebuilds the effective lists from the main plan and remaining active backups.
 - **Definition**: The declarative configuration specifying assigned primary operators, operator groups, replacements, facility products, and rest/shift rules. Contains baseline master plan (`plan1`) and condition-triggered backup plans (`backup_plans`).
-- Maintenance backups activate at a configured lead time before announced major downtime, complete the existing pre-maintenance Drone Acceleration tasks before Dynamic Shift Transition, and pause all trade order runs while their effective primary slots contain trade order agents.
+- Maintenance backups activate at a configured lead time before announced major downtime. When their effective primary slots contain trade order agents, entry skips pre-maintenance Drone Acceleration tasks and pauses all trade order runs; otherwise entry completes the existing pre-maintenance Drone Acceleration tasks before Dynamic Shift Transition.
 - **Code Mapping**: [`PlanModel`](arknights_mower/utils/config/plan.py), [`Plan1`](arknights_mower/utils/config/plan.py), [`BackupPlan`](arknights_mower/utils/config/plan.py)
 - **_Avoid_**: `Task script`, `Macro`, `Work plan`
 

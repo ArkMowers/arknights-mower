@@ -3172,9 +3172,64 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         )
         solver.agent_arrange_room({}, room, solver.task.plan)
         self.assertEqual(solver.task.time, original_time)
-        self.assertEqual(events, ["countdown", "choose", "confirm", "verify"])
-        self.assertEqual(solver.turn_on_room_detail.call_count, 2)
+        self.assertEqual(events, ["choose", "confirm", "verify"])
+        solver.get_order_remaining_time.assert_not_called()
+        self.assertEqual(solver.turn_on_room_detail.call_count, 1)
         solver.reset_room_time.assert_not_called()
+
+    def test_maintenance_order_keeps_advanced_time_with_nearby_countdown(self):
+        solver, room, _ = self.make_solver()
+        solver.task.adjusted = True
+        solver.task.maintenance_advance_before_backup = True
+        original_time = solver.task.time
+        solver.get_order_remaining_time.side_effect = None
+        solver.get_order_remaining_time.return_value = 453
+
+        result = solver.agent_arrange_room({}, room, solver.task.plan)
+
+        self.assertEqual(result, {room: ["旧干员"]})
+        self.assertEqual(solver.task.time, original_time)
+        solver.get_order_remaining_time.assert_not_called()
+        solver.sleep = MagicMock()
+        solver.find.return_value = None
+        with patch.object(base_schedule, "datetime") as clock:
+            clock.now.return_value = original_time
+            BaseSchedulerSolver.tap_confirm(solver, room, result)
+        solver.sleep.assert_not_called()
+
+    def test_maintenance_primary_arrangement_does_not_run_order_countdown(self):
+        for kind, target, remaining in itertools.product(
+            (TaskTypes.SHIFT_ON, TaskTypes.SHIFT_OFF, TaskTypes.NOT_SPECIFIC),
+            ("但书", "龙舌兰", "可露希尔"),
+            (0, 453),
+        ):
+            with self.subTest(kind=kind, target=target, remaining=remaining):
+                solver, room, _ = self.make_solver(target=target)
+                solver.task.type = kind
+                solver.op_data.run_order_rooms = {}
+                solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
+                solver.get_order_remaining_time.side_effect = None
+                solver.get_order_remaining_time.return_value = remaining
+                original_time = solver.task.time
+
+                result = solver.agent_arrange_room({}, room, solver.task.plan)
+
+                self.assertEqual(result, {})
+                self.assertEqual(solver.task.plan, {})
+                self.assertEqual(solver.task.time, original_time)
+                solver.choose_agent.assert_called_once()
+                solver.get_order_remaining_time.assert_not_called()
+                solver.reset_room_time.assert_not_called()
+
+    def test_ordinary_arrangement_confirms_without_order_wait(self):
+        solver, room, _ = self.make_solver()
+        solver.task.type = TaskTypes.SHIFT_ON
+        solver.sleep = MagicMock()
+        solver.find.return_value = None
+        with patch.object(base_schedule, "datetime") as clock:
+            clock.now.return_value = solver.task.time
+            BaseSchedulerSolver.tap_confirm(solver, room, {room: ["旧干员"]})
+        solver.sleep.assert_not_called()
 
     def test_non_buffer_mode_does_not_read_before_check_in(self):
         self.conf.run_order_buffer_time = 0

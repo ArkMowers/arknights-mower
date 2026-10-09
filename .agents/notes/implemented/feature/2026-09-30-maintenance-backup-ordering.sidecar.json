@@ -13,9 +13,15 @@
     "arknights_mower.utils.operators.Operators.next_major_maintenance_check",
     "arknights_mower.utils.operators.Operators.swap_plan",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._advance_orders_before_maintenance",
-    "arknights_mower.utils.scheduler_task.adjust_run_order_for_maintenance"
+    "arknights_mower.utils.scheduler_task.adjust_run_order_for_maintenance",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange_room",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.tap_confirm",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._activate_shift_backup"
   ],
   "test_suites": [
-    "arknights_mower/tests/maintenance_run_order_tests.py"
+    "arknights_mower/tests/maintenance_run_order_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py",
+    "arknights_mower/tests/emergency_compensation_tests.py",
+    "arknights_mower/tests/dorm_run_order_guard_tests.py"
   ]
 }

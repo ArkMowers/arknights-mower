@@ -3773,7 +3773,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         return bool(invalid)
 
     def _advance_orders_before_maintenance(self, conditions):
-        """复用停服前提前跑单，完成无人机加速及原班恢复后才切副表。"""
+        """维护主班含跑单干员时直接切表，否则先完成停服前跑单。"""
         entering = any(
             active and not previous and backup.uses_major_maintenance_condition
             for active, previous, backup in zip(
@@ -3781,6 +3781,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
         )
         if not entering:
+            self.maintenance_entry_pending = False
+            return False
+        projected = copy.deepcopy(
+            self.op_data, {id(self.op_data.eval_model): self.op_data.eval_model}
+        )
+        if error := projected.swap_plan(conditions):
+            raise ValueError(f"维护副表预演失败：{error}")
+        if projected.run_order_paused:
             self.maintenance_entry_pending = False
             return False
         pending = [
@@ -6923,7 +6931,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             new_plan = {}
         self.recog.update()
         if (
-            room in self.op_data.run_order_rooms
+            self.task.type == TaskTypes.RUN_ORDER
+            and not self.task.adjusted
+            and room in self.op_data.run_order_rooms
             and len(new_plan) == 1
             and config.conf.run_order_buffer_time > 0
         ):
@@ -8783,7 +8793,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         config.stop_mower.set()
                         raise MowerExit(message)
                     if (
-                        any(
+                        self.task.type == TaskTypes.RUN_ORDER
+                        and any(
                             any(char in item for item in plan[room])
                             for char in TRADE_ORDER_AGENTS
                         )
@@ -8931,7 +8942,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         self.get_agent_from_room(room, departing_plan=plan[room])
                     # 沿用原跑单流程：换人前校准确认时刻，选人失败重试不重复读。
                     if (
-                        len(new_plan) == 1
+                        self.task.type == TaskTypes.RUN_ORDER
+                        and not self.task.adjusted
+                        and len(new_plan) == 1
                         and config.conf.run_order_buffer_time > 0
                         and choose_error <= 0
                     ):
@@ -8943,9 +8956,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                                 - timedelta(minutes=config.conf.run_order_delay)
                             )
                             logger.info(f"订单倒计时 {remaining_time}秒")
-                            self.back()
-                            self.turn_on_room_detail(room)
-                        elif self.task.adjusted:
                             self.back()
                             self.turn_on_room_detail(room)
                         else:
