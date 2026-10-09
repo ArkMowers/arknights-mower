@@ -178,7 +178,7 @@ jobs:
           cache-dependency-path: requirements-dev.txt
       - run: |
           python3.12 -m venv venv
-          ./venv/bin/pip install -r requirements-dev.txt
+          ./venv/bin/pip install -r requirements-dev.txt pytest
       - name: Assert upstream libraries are importable
         # 缺少任何一个都会让等价性用例静默跳过，这里先失败，避免任务假绿。
         run: ./venv/bin/python3 -c "import scipy, skimage, sklearn"
