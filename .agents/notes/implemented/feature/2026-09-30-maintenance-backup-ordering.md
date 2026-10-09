@@ -23,6 +23,10 @@ Entry advances only the existing pre-maintenance order batch through `adjust_run
 
 The maintenance condition has a contextual question-mark description using `HelpText`. Existing conditions preserve their stored thresholds. The user-approved glossary addition records maintenance backups in terms of Scheduling Plan, Dynamic Shift Transition, and Drone Acceleration; persistent configuration schemas remain unchanged.
 
+`agent_arrange_room` captures temporary trade-order staffing only for RUN_ORDER tasks; maintenance primary assignments use ordinary staffing confirmation. Unadjusted RUN_ORDER tasks retain countdown calibration and missed-order checks. Adjusted orders skip calibration and the ordinary confirmation wait in `tap_confirm`, preserving the advanced deadline before Drone Acceleration. Task identity replaces operator-name inference without another scheduling abstraction, evaluator or configuration.
+
 ## Verification
 
 Hermetic tests cover every trade order agent, nested and literal conditions, slot precedence, replacements, all-room suppression, unrelated task preservation, deadline deduplication, exit checks, entry sequencing, retry delays, and roster restoration. Existing order-product, backup-condition, rescue-condition, and scheduler tests verify adjacent behavior. Frontend tests cover the half-hour default and compatibility with existing comparisons.
+
+`TestRunOrderCountdownTiming` exercises maintenance primary arrangements containing trade order agents, nearby and out-of-range countdowns on adjusted orders, immediate confirmation, ordinary countdown validation and selection retries. Focused maintenance, dormitory order-guard and rescue compensation suites verify batch completion and roster restoration. Stable domain concepts retain their existing glossary definitions.
