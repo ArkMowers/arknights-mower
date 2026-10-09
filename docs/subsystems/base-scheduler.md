@@ -148,6 +148,8 @@ The [Rescue Capacity and Standby decision](../../.agents/notes/implemented/simpl
 - A normal card with less than 45% blue coverage on each horizontal edge, less than 20% on each vertical edge and less than 20% on the leading lower edge is unselected. Partial status-badge color and an adjacent lower card's border do not block roster verification. Unknown borders log their card names and name scopes before the next observation. The [status badge decision](../../.agents/notes/implemented/bug-fix/2026-10-07-selection-status-badge.md) defines the color-boundary regression and archive evidence limits.
 - The [operator selection decision](../../.agents/notes/implemented/bug-fix/2026-09-29-notice-occluded-operator-selection.md) records the failure case and verification.
 
+Selection page swipes acquire a Capture Frame while the endpoint remains held, under [INV-DEV-24](device-control.md#3-subsystem-invariants). Fast selection consumes that frame through the existing single-use page observation; intervening input invalidates it. Slower profiles retain fresh-frame stability checks before selecting.
+
 ### 2.9 Worker Status
 - `/status` reports `starting` while a live worker initializes without a scheduler, and `recovering` while the device state is failed or paused. An established scheduler also reports `recovering` during device startup; its task times and backup-plan metadata remain visible. Normal dispatch retains `working` and `sleeping`.
 - Only a missing or finished worker reports `stopped`. The log toolbar retains Stop during startup and recovery and labels those states explicitly; device settings remain locked while the worker owns the target. Stopping the worker releases that lock through the existing cleanup and settings cancellation boundaries.

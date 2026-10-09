@@ -1,6 +1,7 @@
 """两种选人模式的兼容性、等待预算与平台默认值。"""
 
 from importlib import import_module
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -254,11 +255,26 @@ def test_fast_training_search_stops_at_unchanged_end_page(monkeypatch):
     solver.scan_agent = MagicMock(
         return_value=([], page(("杜林", "芬", "苍苔", "炎熔")))
     )
-    solver.swipe_noinertia = MagicMock()
+    solver.recog = SimpleNamespace(_img=None)
+    held_images = [object() for _ in range(3)]
+    frames = iter(held_images)
+
+    def swipe(*args, **kwargs):
+        assert kwargs["capture"] is True
+        solver.recog._img = next(frames)
+
+    solver.swipe_noinertia = MagicMock(side_effect=swipe)
     solver.verify_agent = MagicMock()
     with pytest.raises(AgentSelectionNotReady, match="末尾"):
         solver.choose_train_ope("砾")
     assert solver.swipe_noinertia.call_count == 3
+    assert solver.scan_agent.call_count == 4
+    assert solver.scan_agent.call_args_list[0].kwargs["observation"] is None
+    for call, image in zip(solver.scan_agent.call_args_list[1:], held_images):
+        observation = call.kwargs["observation"]
+        assert observation.recognizer is solver.recog
+        assert observation.image is image
+        assert observation.train
     solver.verify_agent.assert_not_called()
 
 

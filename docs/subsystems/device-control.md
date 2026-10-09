@@ -80,6 +80,10 @@ classDiagram
 
 ---
 
+### 1.4 Held Gesture Capture
+
+Selection page gestures use an endpoint callback on the selected input helper. The callback captures once without device recovery, starting 100 ms into a minimum 400 ms hold. Slow capture extends that hold within the existing input budget. Capture errors propagate after release; release errors retain uncertain-input handling. Release of the owned touch has a one-second cleanup budget independent of task cancellation. No-inertia gestures use the shared 400 ms hold. The [decision record](../../.agents/notes/implemented/simplification/2026-10-09-held-swipe-capture.md) records the implementation and simplification audit.
+
 ## 2. Vendor Discovery & Compatibility Presets
 
 The subsystem integrates platform-specific emulators through deterministic discovery mechanisms:
@@ -101,6 +105,7 @@ Windows MuMu 12 discovery and IPC share the manager locations `shell/`, `nx_main
 ---
 
 ## 3. Subsystem Invariants
+- **[INV-DEV-24] Held Swipe Capture**: Selection page swipes acquire one Capture Frame during a shared 400 ms minimum endpoint hold, release the owned touch before reporting capture failure or cancellation, and never recover or replay input while held.
 - **[INV-DEV-22] Recoverable Owned Cleanup**: Failed cleanup retains its original resource owners and retries only unfinished work; successful cleanup clears the failure before verified startup, while unresolved cleanup blocks replacement and preserves foreign resources, Device Profile and shared ADB state.
 - **[INV-DEV-21] ADB Default Cohesion**: A Device Profile without an explicit ADB path uses the legacy platform default, preferring the bundled executable while preserving explicit paths and empty values through unrelated updates and save/reload.
 

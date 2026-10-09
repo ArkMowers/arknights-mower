@@ -103,6 +103,11 @@ class Recognizer:
             raise MowerExit
         self.clear()
 
+    def set_frame(self, frame) -> None:
+        """安装本次手势按住期间的截图，后续输入仍照常清空缓存。"""
+        self.update()
+        self._screencap, self._img, self._gray = frame
+
     def reset_after_external_control(self) -> None:
         """重新开始连续观测时，丢弃旧标准画面帧及场景停留计时。"""
         self.update()

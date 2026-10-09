@@ -354,6 +354,7 @@ class BaseSolver:
         interval: float = 0.2,
         *,
         retry: bool = False,
+        capture: bool = False,
     ) -> None:
         """无惯性滑动；调用方确认未生效后可用 retry=True 延长拖动。
 
@@ -362,11 +363,18 @@ class BaseSolver:
         if config.stop_mower.is_set():
             raise MowerExit
         points, durations = noinertia_path(start, movement, duration, retry=retry)
-        self.device.swipe_ext(points, durations=durations)
+        frame = self.device.swipe_ext(
+            points,
+            durations=durations,
+            up_wait=400,
+            **({"capture": True} if capture else {}),
+        )
         if interval > 0:
             self.sleep(interval)
         else:
             self.recog.update()
+        if capture:
+            self.recog.set_frame(frame)
 
     def back(self, interval: float = 1) -> None:
         """send back keyevent"""
