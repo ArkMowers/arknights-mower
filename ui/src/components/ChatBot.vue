@@ -13,10 +13,10 @@ import {
   GridOutline,
   MailOutline,
   SchoolOutline,
-  SettingsOutline,
-  SparklesOutline
+  SettingsOutline
 } from '@vicons/ionicons5'
 import markdownit from 'markdown-it'
+import MowerAIIcon from './MowerAIIcon.vue'
 
 const props = defineProps({ show: Boolean })
 const emit = defineEmits(['update:show'])
@@ -34,6 +34,51 @@ const loading = ref(false)
 const connecting = ref(false)
 const historyRef = ref(null)
 const inputRef = ref(null)
+const panelRef = ref(null)
+const panelPosition = ref(null)
+const dragging = ref(false)
+const panelStyle = computed(() =>
+  panelPosition.value
+    ? { '--chat-left': `${panelPosition.value.x}px`, '--chat-top': `${panelPosition.value.y}px` }
+    : {}
+)
+let dragOrigin = null
+function startDrag(event) {
+  if (
+    dragOrigin ||
+    event.button !== 0 ||
+    window.innerWidth <= 640 ||
+    event.target.closest('button, a, input, textarea, select, [role="button"], [contenteditable]')
+  )
+    return
+  const rect = panelRef.value?.getBoundingClientRect()
+  if (!rect) return
+  dragOrigin = {
+    id: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    left: rect.left,
+    top: rect.top
+  }
+  dragging.value = true
+  event.currentTarget.setPointerCapture(event.pointerId)
+  event.preventDefault()
+}
+function moveDrag(event) {
+  if (!dragOrigin || event.pointerId !== dragOrigin.id) return
+  panelPosition.value = {
+    x: dragOrigin.left + event.clientX - dragOrigin.x,
+    y: dragOrigin.top + event.clientY - dragOrigin.y
+  }
+}
+function endDrag(event) {
+  if (!dragOrigin || event.pointerId !== dragOrigin.id) return
+  dragOrigin = null
+  dragging.value = false
+  if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+    event.currentTarget.releasePointerCapture(event.pointerId)
+  }
+}
 const atBottom = ref(true)
 const canSend = computed(() => Boolean(userInput.value.trim()) && !loading.value)
 const statusLabel = computed(() =>
@@ -206,9 +251,24 @@ onBeforeUnmount(closeConnection)
 </script>
 
 <template>
-  <section v-show="show" class="chatbot-container" role="dialog" aria-label="Mower AI 助手">
-    <header class="chatbot-header">
-      <div class="assistant-mark" aria-hidden="true"><n-icon :component="SparklesOutline" /></div>
+  <section
+    ref="panelRef"
+    v-show="show"
+    class="chatbot-container"
+    :style="panelStyle"
+    role="dialog"
+    aria-label="Mower AI 助手"
+  >
+    <header
+      class="chatbot-header"
+      :class="{ dragging }"
+      @pointerdown="startDrag"
+      @pointermove="moveDrag"
+      @pointerup="endDrag"
+      @pointercancel="endDrag"
+      @lostpointercapture="endDrag"
+    >
+      <div class="assistant-mark" aria-hidden="true"><n-icon :component="MowerAIIcon" /></div>
       <div class="assistant-heading">
         <h2>Mower AI <span>助手</span></h2>
         <div class="assistant-status" role="status">
@@ -234,8 +294,8 @@ onBeforeUnmount(closeConnection)
           quaternary
           circle
           class="icon-button"
-          aria-label="模型设置"
-          title="模型设置"
+          aria-label="Mower 设置"
+          title="前往 Mower 设置"
           @click="openSettings"
         >
           <template #icon><n-icon :component="SettingsOutline" /></template>
@@ -256,9 +316,8 @@ onBeforeUnmount(closeConnection)
     <div class="history-container">
       <div ref="historyRef" class="chatbot-history" @scroll="trackScroll" :aria-busy="loading">
         <div v-if="!chatHistory.length" class="chatbot-welcome">
-          <div class="welcome-mark" aria-hidden="true"><n-icon :component="SparklesOutline" /></div>
           <h3>从一个问题开始</h3>
-          <p>查日志、理解排班、跟进专精，<br />也可以一起整理遇到的问题。</p>
+          <p>查日志、理解排班、跟进专精、整理反馈。</p>
           <div class="suggestion-grid">
             <button
               v-for="suggestion in suggestions"
@@ -379,17 +438,20 @@ onBeforeUnmount(closeConnection)
 
 <style scoped>
 .chatbot-container {
+  --chat-width: min(440px, calc(100vw - 32px));
+  --chat-height: min(560px, calc(100dvh - 32px));
   position: fixed;
-  right: 24px;
-  bottom: 24px;
+  left: clamp(16px, var(--chat-left, 100vw), calc(100vw - var(--chat-width) - 16px));
+  top: clamp(16px, var(--chat-top, 100dvh), calc(100dvh - var(--chat-height) - 16px));
   z-index: 2000;
   display: flex;
   flex-direction: column;
-  width: min(560px, calc(100vw - 48px));
-  height: min(720px, calc(100dvh - 48px));
+  width: var(--chat-width);
+  height: var(--chat-height);
+  box-sizing: border-box;
   overflow: hidden;
   border: 1px solid var(--mower-border);
-  border-radius: 20px;
+  border-radius: 16px;
   background: var(--mower-surface);
   color: var(--mower-text);
   box-shadow:
@@ -404,11 +466,17 @@ onBeforeUnmount(closeConnection)
   align-items: center;
   flex-shrink: 0;
   gap: 12px;
-  padding: 16px 18px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--mower-divider);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.assistant-mark,
-.welcome-mark {
+.chatbot-header.dragging {
+  cursor: grabbing;
+}
+.assistant-mark {
   display: grid;
   place-items: center;
   flex-shrink: 0;
@@ -419,7 +487,7 @@ onBeforeUnmount(closeConnection)
   width: 40px;
   height: 40px;
   border-radius: 12px;
-  font-size: 21px;
+  font-size: 26px;
 }
 .assistant-heading {
   min-width: 0;
@@ -470,19 +538,12 @@ onBeforeUnmount(closeConnection)
   scrollbar-gutter: stable;
 }
 .chatbot-welcome {
-  padding: 36px 24px 28px;
+  padding: 20px 16px 16px;
   text-align: center;
 }
-.welcome-mark {
-  width: 56px;
-  height: 56px;
-  margin: 0 auto 18px;
-  border-radius: 18px;
-  font-size: 28px;
-}
 .chatbot-welcome h3 {
-  margin: 0 0 10px;
-  font-size: 24px;
+  margin: 0 0 8px;
+  font-size: 20px;
   font-weight: 600;
   text-wrap: balance;
 }
@@ -495,8 +556,8 @@ onBeforeUnmount(closeConnection)
 .suggestion-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin: 28px 0 16px;
+  gap: 8px;
+  margin: 16px 0 12px;
   text-align: left;
 }
 .suggestion {
@@ -504,7 +565,7 @@ onBeforeUnmount(closeConnection)
   grid-template-columns: 20px 1fr;
   align-content: start;
   gap: 7px 8px;
-  padding: 14px;
+  padding: 10px;
   border: 1px solid var(--mower-divider);
   border-radius: 12px;
   background: var(--mower-control-surface);
@@ -777,9 +838,11 @@ onBeforeUnmount(closeConnection)
   }
   .chatbot-header {
     padding: max(12px, env(safe-area-inset-top)) 14px 12px;
+    cursor: default;
+    touch-action: auto;
   }
   .chatbot-welcome {
-    padding: 28px 18px 20px;
+    padding: 20px 18px;
   }
   .message-list {
     padding: 20px 16px 12px;

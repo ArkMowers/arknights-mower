@@ -46,7 +46,7 @@ beforeEach(() => {
   state.push = vi.fn()
   FakeSocket.instances = []
   vi.useFakeTimers()
-  vi.stubGlobal('window', { location: { search: '?token=test-session' } })
+  vi.stubGlobal('window', { location: { search: '?token=test-session' }, innerWidth: 1280 })
   vi.stubGlobal('WebSocket', FakeSocket)
   vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockResolvedValue() } })
   scope = effectScope()
@@ -66,6 +66,58 @@ function send(text = '检查日志') {
 }
 
 describe('AI chat interactions', () => {
+  it('drags by the header with pointer capture and stops after cancellation', () => {
+    component.panelRef.value = { getBoundingClientRect: () => ({ left: 800, top: 300 }) }
+    const handle = {
+      setPointerCapture: vi.fn(),
+      hasPointerCapture: vi.fn(() => true),
+      releasePointerCapture: vi.fn()
+    }
+    const event = {
+      button: 0,
+      pointerId: 4,
+      clientX: 830,
+      clientY: 320,
+      target: { closest: () => null },
+      currentTarget: handle,
+      preventDefault: vi.fn()
+    }
+    component.startDrag(event)
+    expect(handle.setPointerCapture).toHaveBeenCalledWith(4)
+    component.startDrag({ ...event, pointerId: 5 })
+    expect(handle.setPointerCapture).toHaveBeenCalledTimes(1)
+    component.moveDrag({ pointerId: 5, clientX: 300, clientY: 200 })
+    expect(component.panelPosition.value).toBeNull()
+    component.moveDrag({ pointerId: 4, clientX: 330, clientY: 220 })
+    expect(component.panelStyle.value).toEqual({ '--chat-left': '300px', '--chat-top': '200px' })
+    component.endDrag(event)
+    expect(handle.releasePointerCapture).toHaveBeenCalledWith(4)
+    expect(component.dragging.value).toBe(false)
+    component.moveDrag({ pointerId: 4, clientX: 430, clientY: 320 })
+    expect(component.panelPosition.value).toEqual({ x: 300, y: 200 })
+    expect(component.chatHistory.value).toEqual([])
+    expect(FakeSocket.instances).toHaveLength(0)
+  })
+
+  it('leaves header controls and the mobile panel free of dragging', () => {
+    component.panelRef.value = { getBoundingClientRect: () => ({ left: 800, top: 300 }) }
+    const event = {
+      button: 0,
+      pointerId: 1,
+      target: { closest: () => ({}) },
+      currentTarget: { setPointerCapture: vi.fn() },
+      preventDefault: vi.fn()
+    }
+    component.startDrag(event)
+    event.target.closest = () => null
+    component.startDrag({ ...event, button: 2 })
+    window.innerWidth = 390
+    component.startDrag(event)
+    expect(event.currentTarget.setPointerCapture).not.toHaveBeenCalled()
+    expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(component.dragging.value).toBe(false)
+  })
+
   it('fills suggestions without sending and waits for the whole streamed reply', () => {
     expect(component.chatHistory.value).toEqual([])
     component.useSuggestion(component.suggestions[0])

@@ -275,7 +275,7 @@
                 </n-tab>
                 <n-tab name="Mower AI 助手" @click="handleMenuClick('chatbot')">
                   <div style="display: flex; flex-direction: column; align-items: center">
-                    <n-icon size="20" style="margin-bottom: -1px" :component="BulbOutline" />
+                    <n-icon size="20" style="margin-bottom: -1px" :component="MowerAIIcon" />
                     AI助手
                   </div>
                 </n-tab>
@@ -291,7 +291,7 @@
 <script setup>
 import SkillLevelAdvanced from '@vicons/carbon/SkillLevelAdvanced'
 import WikipediaW from '@vicons/fa/WikipediaW'
-import BulbOutline from '@vicons/ionicons5/BulbOutline'
+import MowerAIIcon from '@/components/MowerAIIcon.vue'
 import Wrench from '@vicons/fa/Wrench'
 import Bag from '@vicons/ionicons5/Bag'
 import BarChart from '@vicons/ionicons5/BarChart'
@@ -511,7 +511,7 @@ const menuOptions = [
   },
   {
     label: () => 'Mower AI 助手',
-    icon: renderIcon(BulbOutline),
+    icon: renderIcon(MowerAIIcon),
     key: 'chatbot'
   }
 ]

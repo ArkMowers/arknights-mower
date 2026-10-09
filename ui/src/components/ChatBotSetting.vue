@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { SparklesOutline } from '@vicons/ionicons5'
+import MowerAIIcon from './MowerAIIcon.vue'
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
 const store = useConfigStore()
@@ -40,7 +40,7 @@ const deepseekModels = [
       </div>
     </template>
     <div class="service-overview">
-      <n-icon :component="SparklesOutline" aria-hidden="true" />
+      <n-icon :component="MowerAIIcon" aria-hidden="true" />
       <div>
         <strong>{{
           type_options.find((option) => option.value === ai_type)?.label || '选择模型服务'
@@ -121,7 +121,7 @@ const deepseekModels = [
 }
 .service-overview > .n-icon {
   margin-top: 2px;
-  font-size: 21px;
+  font-size: 26px;
   color: var(--mower-primary-text);
 }
 .service-overview strong {
