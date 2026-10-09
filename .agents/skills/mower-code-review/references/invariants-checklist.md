@@ -181,6 +181,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.8 MAA Integration
 
+- [ ] **[INV-MAA-07] Normal Long-Task Termination**: Do completed and scheduler-interrupted Roguelike, SSSCopilot and Reclamation tasks avoid errors inferred solely from `running()` returning false, while core errors and invocation exceptions retain their reporting?
+
 - [ ] **[INV-MAA-04] Inventory Stage Priority**: Do backend dispatch and frontend preview put selected annihilation first, defer unbound stages while selected inventory-bound stages survive their limits, admit ordinary fallback stages after all bound stages are skipped even with annihilation present, and preserve saved selections?
 
 - [ ] **[INV-MAA-01] Total Callback Handling**: Does every callback path consume its payload without raising, so a missing, empty, or unrecognized field stays confined to at most one diagnostic line at the C callback boundary?

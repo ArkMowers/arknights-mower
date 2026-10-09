@@ -144,6 +144,7 @@
 ### 2.8 MAA Integration
 
 - **[INV-MAA-06] Expired Source Plan Cleanup**: Successful automatic activity fallback removes only expired activity selections from the source weekly plan, preserving the destination, ordinary and still-open stages, daily settings and inventory rules.
+- **[INV-MAA-07] Normal Long-Task Termination**: Roguelike, SSSCopilot and Reclamation completion or scheduler interruption never creates an error solely because `running()` returns false; core error callbacks and invocation exceptions retain their error reporting.
 - **[INV-MAA-05] Local Inventory Execution**: Workshop execution and inventory stage selection use persisted local stock without fetching Skland; accepted MAA cumulative drops update that stock once per task, and configured stage caps stop only the reached Fight task while preserving automatic series and subsequent tasks.
 - **[INV-MAA-04] Inventory Stage Priority**: Inventory selection keeps selected annihilation first and defers unbound stages while any selected inventory-bound stage survives its limits; when all bound stages are skipped, ordinary stages remain eligible even with annihilation present, and backend dispatch and frontend preview agree without changing saved selections.
 - **[INV-MAA-01] Total Callback Handling**: Every MAA callback is consumed without raising; a missing, empty, or unrecognized payload field yields at most one diagnostic line at the C callback boundary instead of an exception.
