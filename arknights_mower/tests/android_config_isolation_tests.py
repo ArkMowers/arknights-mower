@@ -160,14 +160,20 @@ def assert_android_owned(conf):
     assert conf.webview.token == "android-session-token"
 
 
-def test_desktop_profile_cannot_override_android_settings(
-    android_settings, desktop_settings
+@pytest.mark.parametrize("mode", ["auto", "xhigh", "high", "medium", "low"])
+def test_desktop_profile_cannot_override_android_settings_but_preserves_performance(
+    android_settings, desktop_settings, mode
 ):
+    desktop_settings.update(
+        performance_mode=mode, selection_poll_interval=0.8, run_order_delay=7.5
+    )
     original = copy.deepcopy(desktop_settings)
     conf = Conf(**desktop_settings)
     assert_android_owned(conf)
-    assert conf.performance_mode == "medium"
-    assert conf.low_frame_rate_mode
+    assert conf.performance_mode == mode
+    assert conf.low_frame_rate_mode is (mode in ("medium", "low"))
+    assert conf.selection_poll_interval == 0.8
+    assert conf.run_order_delay == 7.5
     assert conf.webview.scale == 1.5
     assert desktop_settings == original
     android_settings.assert_called_once()

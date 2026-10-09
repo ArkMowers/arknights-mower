@@ -11,7 +11,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from arknights_mower.utils.device import manager_io
+from arknights_mower.utils.device import manager_io, preflight_io
 
 FIXTURE = Path(__file__).parent / "fixtures" / "inherited_command.py"
 
@@ -71,6 +71,23 @@ def test_inherited_output_does_not_extend_command_deadline(tmp_path, adapter, ou
     else:
         assert result["error"] is None
         assert result["stdout"] == "command stdout\n"
+
+
+@pytest.mark.parametrize("maximum,expected", [(None, 0.75), (3, 3)])
+def test_preflight_adb_resolves_default_timeout_at_call_time(
+    monkeypatch, maximum, expected
+):
+    monkeypatch.setattr(preflight_io, "COMMAND_TIMEOUT", 0.75)
+    runner = Mock(return_value=SimpleNamespace(stdout=b"ready"))
+    monkeypatch.setattr(preflight_io, "run_adb", runner)
+    io = preflight_io.ProductionPreflightIO()
+    argv = ["chosen-adb", "-s", "chosen-target", "shell", "getprop"]
+    output = (
+        io._run_adb(argv) if maximum is None else io._run_adb(argv, maximum=maximum)
+    )
+    assert output == b"ready"
+    assert runner.call_args.args[0] == argv
+    assert runner.call_args.kwargs["timeout"] == expected
 
 
 def run_python(script, **options):

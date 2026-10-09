@@ -2,6 +2,7 @@
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDialog, useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
+import PerformanceSettings from './PerformanceSettings.vue'
 import {
   deviceSettingsState,
   sameDeviceProfile,
@@ -28,6 +29,7 @@ const base = `${import.meta.env.VITE_HTTP_URL || ''}/device`
 const draft = ref({ ...config.device_profile })
 const metadata = ref({})
 const result = ref(null)
+const performanceObservation = ref(null)
 const busy = ref(false)
 const advanced = ref(false)
 const manual = ref(false)
@@ -83,6 +85,29 @@ watch(
     if (!dirty.value && !busy.value) draft.value = { ...profile }
   },
   { deep: true }
+)
+
+watch(
+  () =>
+    JSON.stringify(
+      [
+        'preset_id',
+        'installation_path',
+        'manager_path',
+        'config_path',
+        'adb_path',
+        'instance_id',
+        'instance_name',
+        'instance_uuid',
+        'topology_fingerprint',
+        'last_serial',
+        'game_package'
+      ].map((key) => draft.value[key])
+    ),
+  () => {
+    performanceObservation.value = null
+  },
+  { flush: 'sync' }
 )
 
 function flashSaved() {
@@ -196,8 +221,12 @@ async function acceptPreflight(data) {
   if (data.host_platform) metadata.value.host_platform = data.host_platform
   if (data.preset_id && data.preset_id !== draft.value.preset_id) dirty.value = true
   draft.value = deviceDetectionDraft(draft.value, data)
-  if (!data.ok) return
+  if (!data.ok) {
+    performanceObservation.value = data.observations?.performance || null
+    return
+  }
   draft.value = await savePreflightDevice({ config, profile: draft.value, result: data })
+  performanceObservation.value = data.observations?.performance || null
   dirty.value = false
   manual.value = false
   advanced.value = false
@@ -261,6 +290,7 @@ async function detect(
   if (state.value.locked) return
   detectionRevision += 1
   busy.value = true
+  performanceObservation.value = null
   requestError.value = ''
   try {
     await config.flush_config_saves()
@@ -298,6 +328,7 @@ async function startBound() {
   if (state.value.locked || !state.value.actions.startBound.visible) return
   detectionRevision += 1
   busy.value = true
+  performanceObservation.value = null
   requestError.value = ''
   try {
     await config.flush_config_saves()
@@ -646,6 +677,12 @@ onUnmounted(() => {
         </template>
       </n-grid>
     </div>
+
+    <PerformanceSettings
+      :observation="performanceObservation"
+      :disabled="busy"
+      :test-enabled="!dirty && !state.locked"
+    />
 
     <template v-if="advanced">
       <div class="advanced-divider">

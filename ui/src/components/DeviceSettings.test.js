@@ -308,6 +308,41 @@ it('keeps the read-only connection test free of startup even when the target is 
   expect(state.client.post).toHaveBeenCalledOnce()
 })
 
+it('retains performance from a tested target and clears it on identity edits', async () => {
+  state.config.flush_config_saves = vi.fn(async () => {})
+  const performance = {
+    status: 'available',
+    cpu_cores: 4,
+    memory_mb: 3840
+  }
+  await component.acceptPreflight({ ok: true, serial: 'USB-123', observations: { performance } })
+  expect(component.performanceObservation.value).toEqual(performance)
+  expect(state.config).not.toHaveProperty('performance')
+  component.edit('last_serial', 'USB-other')
+  expect(component.performanceObservation.value).toBe(null)
+})
+
+it('displays resources even if game validation fails and clears them before retesting', async () => {
+  const performance = {
+    status: 'available',
+    cpu_cores: 2,
+    memory_mb: 1920
+  }
+  await component.acceptPreflight({
+    ok: false,
+    observations: { performance },
+    error: { code: 'package_missing' }
+  })
+  expect(component.performanceObservation.value).toEqual(performance)
+  state.config.flush_config_saves = vi.fn(async () => {})
+  state.client.post = vi.fn(async () => {
+    expect(component.performanceObservation.value).toBe(null)
+    return { data: { ok: false, error: { code: 'target_absent' } } }
+  })
+  await component.selectDetect('preflight')
+  expect(component.performanceObservation.value).toBe(null)
+})
+
 it('keeps multiple stopped candidates pending until a user selects one', async () => {
   state.client.get.mockResolvedValue({ data: { host_platform: 'macos' } })
   const candidates = ['0', '1'].map((instance_id) => ({

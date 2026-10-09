@@ -63,6 +63,7 @@ classDiagram
 - Enforces `[INV-04]`: IPC capture and touch backends operate as an indivisible pair.
 
 ### 1.2 Session Lifecycle (`DeviceSession`)
+- `DeviceControl.run(defer_cancel_close=True)` retains the current session after operation cancellation so its owner can perform bounded compensation before scope exit closes it. The selection performance test uses this option; ordinary runs retain immediate cancellation close. Shutdown and device closure still reject further operations.
 - Enforces `[INV-03]`: The session binds to a verified instance identity. If the target is absent, offline, or unresponsive, recovery attempts target that instance only, without silent fallback to other online devices on the host.
 - Enforces `[INV-05]`: ADB operations route through [`guard_adb`](../../arknights_mower/utils/device/adb_client/server.py), verifying socket server availability without issuing implicit `kill-server` commands.
 - Read-only Nox inspection never registers ADB transports. Runtime recovery of an unresolved Nox endpoint verifies its saved VM identity, reconnects only current enabled loopback ADB forwards, and confirms manager/direct boot identity before helper reconstruction. A selected `emulator-*` alias receiving an exact already-registered response performs targeted `-s serial reconnect` inside the registration deadline. The [bound endpoint registration decision](../../.agents/notes/implemented/bug-fix/2026-10-01-adb-endpoint-registration.md) records these recovery boundaries and regressions.
@@ -106,6 +107,10 @@ Windows MuMu 12 discovery and IPC share the manager locations `shell/`, `nx_main
 
 ## 3. Subsystem Invariants
 - **[INV-DEV-24] Held Swipe Capture**: Selection page swipes acquire one Capture Frame during a shared 400 ms minimum endpoint hold, release the owned touch before reporting capture failure or cancellation, and never recover or replay input while held.
+- **[INV-DEV-23] Performance Observation Isolation**: Connection testing reads resource information only from its verified ready target through bounded read-only commands; unavailable information preserves readiness, cancellation propagates, and resource readings never recommend or modify modes or timing settings.
+
+Connection testing returns transient CPU and memory fields under `observations.performance`; neither the payload nor the connection form derives a recommendation from resources. Host resources and capture latency do not select a mode. The [connection performance decision](../../.agents/notes/implemented/feature/2026-10-09-connection-performance.md) defines resource observation and unavailable-data behavior. The [in-game selection test](../../.agents/notes/implemented/feature/2026-10-10-game-performance-test.md) provides a recommendation that the user can explicitly adopt.
+
 - **[INV-DEV-22] Recoverable Owned Cleanup**: Failed cleanup retains its original resource owners and retries only unfinished work; successful cleanup clears the failure before verified startup, while unresolved cleanup blocks replacement and preserves foreign resources, Device Profile and shared ADB state.
 - **[INV-DEV-21] ADB Default Cohesion**: A Device Profile without an explicit ADB path uses the legacy platform default, preferring the bundled executable while preserving explicit paths and empty values through unrelated updates and save/reload.
 

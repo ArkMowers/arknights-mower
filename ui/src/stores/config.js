@@ -459,17 +459,12 @@ export const useConfigStore = defineStore('config', () => {
       runtime_platform.value = response.data.runtime_platform || ''
       performance_mode.value = normalizePerformanceMode(
         response.data.performance_mode,
-        response.data.low_frame_rate_mode,
-        runtime_platform.value
+        response.data.low_frame_rate_mode
       )
       performance_effective_mode.value =
         response.data.performance_effective_mode ||
-        (performance_mode.value === 'auto'
-          ? runtime_platform.value === 'android'
-            ? 'medium'
-            : 'xhigh'
-          : performance_mode.value)
-      const fallbackProfile = performanceProfile('auto', runtime_platform.value)
+        (performance_mode.value === 'auto' ? 'xhigh' : performance_mode.value)
+      const fallbackProfile = performanceProfile('auto')
       low_frame_rate_mode.value =
         response.data.low_frame_rate_mode ?? fallbackProfile.lowFrameRateMode
       selection_poll_interval.value =
@@ -702,8 +697,7 @@ export const useConfigStore = defineStore('config', () => {
       timezone_offset: timezone_offset.value,
       custom_smtp_server: custom_smtp_server.value,
       run_order_delay: run_order_delay.value,
-      low_frame_rate_mode: performanceProfile(performance_mode.value, runtime_platform.value)
-        .lowFrameRateMode,
+      low_frame_rate_mode: performanceProfile(performance_mode.value).lowFrameRateMode,
       performance_mode: performance_mode.value,
       selection_poll_interval: selection_poll_interval.value,
       selection_transition_timeout: selection_transition_timeout.value,

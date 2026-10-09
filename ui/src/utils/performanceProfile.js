@@ -9,27 +9,25 @@ export function defaultPerformanceMode() {
   return 'auto'
 }
 
-export function normalizePerformanceMode(mode, legacyLowFrameRateMode, platform) {
+export function normalizePerformanceMode(mode, legacyLowFrameRateMode) {
   if (mode === 'ultra') mode = 'xhigh'
   if (['auto', 'xhigh', 'high', 'medium', 'low'].includes(mode)) {
-    return platform === 'android' && ['xhigh', 'high'].includes(mode) ? 'medium' : mode
+    return mode
   }
   // Old custom profiles stored their click strategy separately. Keep all
   // numeric settings, but map that strategy to one of the remaining modes.
   if (mode === 'custom' && legacyLowFrameRateMode !== undefined)
-    return legacyLowFrameRateMode || platform === 'android' ? 'medium' : 'high'
-  return defaultPerformanceMode(platform)
+    return legacyLowFrameRateMode ? 'medium' : 'high'
+  return defaultPerformanceMode()
 }
 
-export function performanceProfile(mode, platform) {
-  const selected = platform === 'android' && ['xhigh', 'high'].includes(mode) ? 'medium' : mode
+export function performanceProfile(mode) {
   return {
     screenshotInterval: 500,
-    selectionPollInterval: platform === 'android' ? 0.5 : 0.1,
+    selectionPollInterval: 0.1,
     selectionTransitionTimeout: 2.5,
-    runOrderDelay: platform === 'android' ? 5 : 3,
+    runOrderDelay: 3,
     grandetBufferTime: 15,
-    ...(performancePresets[selected] ||
-      performancePresets[platform === 'android' ? 'medium' : 'xhigh'])
+    ...(performancePresets[mode] || performancePresets.xhigh)
   }
 }

@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia'
 import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 
 import DeviceSettings from '@/components/DeviceSettings.vue'
+import PerformanceSettings from '@/components/PerformanceSettings.vue'
 import ChatBotSetting from '../components/ChatBotSetting.vue'
 import SoftwareUpdate from '../components/SoftwareUpdate.vue'
 import NetworkSettings from '../components/NetworkSettings.vue'
@@ -20,8 +21,6 @@ const mobile = inject('mobile')
 
 const {
   run_order_delay,
-  performance_mode,
-  performance_effective_mode,
   selection_poll_interval,
   selection_transition_timeout,
   drone_room,
@@ -57,25 +56,6 @@ const archive_limit_gib = computed({
       screenshot_archive_limit_mb.value = Math.max(0, Math.round(value * 1024))
   }
 })
-
-const performance_mode_options = computed(() => [
-  { label: '自动', value: 'auto' },
-  ...(runtime_platform.value === 'android' ? [] : [{ label: '极高', value: 'xhigh' }]),
-  ...(runtime_platform.value === 'android' ? [] : [{ label: '高', value: 'high' }]),
-  { label: '中', value: 'medium' },
-  { label: '低', value: 'low' }
-])
-const performance_effective_label = computed(
-  () =>
-    ({ xhigh: '极高性能', high: '高性能', medium: '中性能', low: '低性能' })[
-      performance_effective_mode.value
-    ] || performance_effective_mode.value
-)
-
-function apply_performance_mode(mode) {
-  if (runtime_platform.value === 'android' && ['xhigh', 'high'].includes(mode)) mode = 'medium'
-  performance_mode.value = mode
-}
 
 const hide_macos_menu_bar = computed({
   get: () => !webview.value.tray,
@@ -249,6 +229,7 @@ const idleOptions = computed(() => [
                 </n-radio-group>
               </n-form-item>
               <n-alert :show-icon="false">设备连接由 Android 应用管理。</n-alert>
+              <PerformanceSettings :label-width="120" />
             </template>
             <n-form-item label="启动游戏" v-if="runtime_platform !== 'android'">
               <n-select v-model:value="tap_to_launch_game.mode" :options="launch_options" />
@@ -320,28 +301,6 @@ const idleOptions = computed(() => [
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
-            </n-form-item>
-            <n-form-item label="设备性能适配">
-              <n-radio-group :value="performance_mode" @update:value="apply_performance_mode">
-                <n-flex>
-                  <n-radio
-                    v-for="option in performance_mode_options"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </n-radio>
-                </n-flex>
-              </n-radio-group>
-              <help-text>
-                自动档根据选人操作后的画面反馈和连续失败情况选择{{
-                  runtime_platform === 'android' ? '中、低' : '极高、高、中、低'
-                }}档；桌面端从极高档开始，Android 从中档开始；所有平台默认自动。
-                极高性能连续点击重排；高性能缩短清空和翻页等待，以 0.1
-                秒间隔重排，完成后统一校验；中性能等待稳定画面；低性能多确认一帧。时间参数独立设置，切换档位不会修改。当前自动判定：{{
-                  performance_effective_label
-                }}。
-              </help-text>
             </n-form-item>
             <n-form-item label="截图最短间隔">
               <mower-input-number v-model:value="screenshot_interval" :precision="0">
