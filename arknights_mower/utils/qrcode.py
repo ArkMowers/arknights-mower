@@ -69,7 +69,7 @@ def _scan_and_cover(img: Image.Image) -> List:
     """
     result = []
     while True:
-        data = pyzbar.decode(img)
+        data = pyzbar.decode(img, symbols=[pyzbar.ZBarSymbol.QRCODE])
         if not data:
             break
         draw = ImageDraw.Draw(img)

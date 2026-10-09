@@ -4,7 +4,7 @@ from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageDraw
 
 # 回归覆盖回收站区域、旧版布局及第三方扩大或缩小后的图片导入。
 #
@@ -47,8 +47,43 @@ def _legacy_export_img(plan):
     return img
 
 
+def _add_non_qr_barcode(img):
+    patterns = ["wnnnw", "nwnnw", "wwnnn", "nnwnw", "wnwnn", "nwwnn"]
+    widths = [3] * 4
+    for idx in (0, 2, 4):
+        for bar, space in zip(patterns[idx], patterns[idx + 1]):
+            widths.extend((9 if bar == "w" else 3, 9 if space == "w" else 3))
+    widths.extend([9, 3, 3])
+    barcode = Image.new("RGB", (sum(widths) + 40, 100), "white")
+    draw = ImageDraw.Draw(barcode)
+    left = 20
+    for idx, width in enumerate(widths):
+        if idx % 2 == 0:
+            draw.rectangle((left, 10, left + width - 1, 10), fill="black")
+        left += width
+    img.paste(barcode, (400, 450))
+
+
 @unittest.skipIf(qrcode is None, _SKIP_REASON)
 class QRCodeDecodeTests(unittest.TestCase):
+    def test_non_qr_barcode_does_not_corrupt_plan_data(self):
+        plan = _plan()
+        for legacy in (False, True):
+            for theme in ("light", "dark"):
+                with self.subTest(legacy=legacy, theme=theme):
+                    img = _legacy_export_img(plan) if legacy else _export_img(plan)
+                    _add_non_qr_barcode(img)
+                    symbols = qrcode.pyzbar.decode(img)
+                    self.assertTrue(
+                        any(
+                            symbol.type == "I25" and symbol.quality == 1
+                            for symbol in symbols
+                        )
+                    )
+                    if theme == "dark":
+                        img = ImageChops.invert(img)
+                    self.assertEqual(qrcode.decode(img), plan)
+
     def test_export_keeps_right_side_facilities(self):
         for theme in ("light", "dark"):
             with self.subTest(theme=theme):
