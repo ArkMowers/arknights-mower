@@ -172,6 +172,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.7 Software Update
 
+- [ ] **[INV-UPD-06] Cross-Channel Upgrade Selection**: Do development and beta checks offer newer public releases, retain the selected channel and bind OTA and full-package fallback to one target? See the [software update contract](../../../../docs/subsystems/software-update.md#11-cross-channel-upgrades).
+
 - [ ] **[INV-UPD-04] MAA Resource Platform Parity**: Do installed Windows, macOS and Linux MAA installations expose independent resource checks and updates while preserving core and Python files, rejecting active MAA use and retaining resource rollback copies?
 
 - [ ] **[INV-UPD-05] Release Artifact Scope**: Future release builds exclude macOS x64; OTA publication targets only Windows x64 and Android ARM64, including Nightly, and rejects unsafe Android runtime paths without publishing a new channel index.

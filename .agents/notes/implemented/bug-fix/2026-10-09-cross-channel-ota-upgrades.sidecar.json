@@ -1,0 +1,23 @@
+{
+  "title": "Cross-channel OTA upgrades",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-UPD-06]",
+    "[INV-UPD-03]",
+    "[INV-UPD-05]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.software_update.latest_release_index",
+    "arknights_mower.utils.software_update.check"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/software_update_channel_tests.py",
+    "arknights_mower/tests/software_update_tests.py",
+    "arknights_mower/tests/software_ota_tests.py"
+  ]
+}

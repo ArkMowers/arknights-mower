@@ -348,7 +348,7 @@ class ReleaseDiscoveryTests(unittest.TestCase):
                 marker.unlink()
                 with patch.object(update, "__version__", version.lstrip("v")):
                     self.assertTrue(update.check_on_launch())
-                self.assertEqual(api.call_count, 3)
+                self.assertEqual(api.call_count, 3 if channel == "stable" else 6)
                 start.assert_called_once()
                 self.assertFalse(
                     runtime.read_json(runtime.state_dir() / "last-check.json")[
@@ -430,7 +430,10 @@ class ReleaseDiscoveryTests(unittest.TestCase):
             self.assertEqual(
                 update._checks[result["check_id"]]["ota_asset"]["name"], ota_name
             )
-            index.assert_called_once_with("dev")
+            self.assertEqual(
+                [call.args[0] for call in index.call_args_list],
+                ["dev", "beta", "stable"],
+            )
             source_api.assert_not_called()
 
         with (
@@ -644,7 +647,9 @@ class ReleaseDiscoveryTests(unittest.TestCase):
             result = update.check("beta")
             self.assertTrue(result["available"])
             self.assertTrue(result["check_id"])
-            network.assert_called_once_with("beta")
+            self.assertEqual(
+                [call.args[0] for call in network.call_args_list], ["beta", "stable"]
+            )
             github.assert_not_called()
 
     def test_release_index_prefers_optimized_ota_and_uses_mirrored_full_package(self):
@@ -673,7 +678,9 @@ class ReleaseDiscoveryTests(unittest.TestCase):
         self.assertEqual(plan["asset"]["size"], 100)
         self.assertIn(update.OTA_REPO, plan["asset"]["url"])
         self.assertEqual(plan["ota_asset"]["name"], base + "_v2.zip")
-        network.assert_called_once_with("beta")
+        self.assertEqual(
+            [call.args[0] for call in network.call_args_list], ["beta", "stable"]
+        )
         github.assert_not_called()
 
     def test_stable_install_can_use_ota_to_beta_or_development(self):
