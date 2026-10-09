@@ -37,12 +37,14 @@ def test_training_and_resource_reload_do_not_reuse_other_model(monkeypatch):
     args = pixels.shape, pixels.tobytes()
     assert recognition._match_name_template(False, *args) == "甲"
     assert recognition._match_name_template(True, *args) == "乙"
+    assert recognition._match_name_template(True, *args, right_align=True) == "乙"
     monkeypatch.setattr(
         recognition, "_load_models", lambda: ({"丙": template}, {"丁": template})
     )
     recognition.reload_resource_models()
     assert recognition._match_name_template(False, *args) == "丙"
     assert recognition._match_name_template(True, *args) == "丁"
+    assert recognition._match_name_template(True, *args, right_align=True) == "丁"
     recognition._match_name_template.cache_clear()
 
 

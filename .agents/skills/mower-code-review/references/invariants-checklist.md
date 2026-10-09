@@ -143,6 +143,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.4 Vision & Recognition Domain
 
+- [ ] **[INV-REC-09] Training Name Decoration**: Do names with Special Focus markers retain their full identity when decoration overlaps text, including letters, hyphens and middle dots, with unchanged unknown-name rejection and correct cache invalidation after resource reload?
+
 - [ ] **[INV-REC-07] Base Report Field Integrity**: Does each base report field retain its independent reading, with missing anchors, empty crops and unscorable digits remaining unread? Do compatible templates retain their scores, unsuccessful writes stop before post-storage panel input and email, confirmed storage end reading retries, and cancellation or Device Control recovery propagate without consuming reading attempts or replaying uncertain input?
 - [ ] **[INV-REC-08] Idle Observation Boundary**: Does successful scheduler idle resumption invalidate cached Capture Frames and scene state and reset continuous scene and loading observation across deadline, early wake and maintenance waits, while routine capture refresh and active observation retain freeze detection and cancellation preserves stop propagation?
 - [ ] **[INV-REC-05] Training Panel Identity**: Does training identity use full-name templates on the current Capture Frame with score, closing-bracket and distinct-name margin checks, while unknown readings retain bounded retry without an OCR name fallback or plan-derived occupant?

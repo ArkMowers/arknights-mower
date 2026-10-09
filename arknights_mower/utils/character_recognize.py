@@ -100,12 +100,19 @@ def reload_resource_models() -> None:
 
 
 @lru_cache(maxsize=256)
-def _match_name_template(train, shape, pixels):
+def _match_name_template(train, shape, pixels, *, right_align=False):
     """仅复用完全相同的归一化名字像素；卡片坐标每帧重新分割。"""
     tpl = np.frombuffer(pixels, dtype=np.uint8).reshape(shape)
     max_score = 0
     best_operator = ""
     for operator, template in (OP_TRAIN if train else OP_SELECT).items():
+        if train and right_align:
+            columns = np.flatnonzero(template.any(axis=0))
+            if columns.size:
+                # 与归一化姓名相同，文字右侧保留膨胀产生的五像素边距。
+                template = np.roll(
+                    template, template.shape[1] - columns[-1] - 6, axis=1
+                )
         result = cv2.matchTemplate(tpl, template, cv2.TM_CCORR_NORMED)
         _, max_val, _, _ = cv2.minMaxLoc(result)
         if max_val > max_score:
@@ -266,6 +273,25 @@ def operator_list_train(img, draw=False, full_scan=True):
         im = cropimg(gray, p)
         im = thres2(im, 140)
         im = cv2.copyMakeBorder(im, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
+        leading = cv2.cvtColor(cropimg(img, p)[:, :12], cv2.COLOR_RGB2HSV)
+        yellow = cv2.inRange(leading, (15, 100, 140), (40, 255, 255))
+        special_focus = cv2.countNonZero(yellow) >= 12
+        if special_focus:
+            # 特别关注图案仅在与完整姓名分离时清除，不能沿中点或连字符截断。
+            upper = im[: 10 + (p[1][1] - p[0][1]) // 2]
+            contours, _ = cv2.findContours(
+                cv2.dilate(upper, kernel), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+            text_regions = [
+                rect
+                for contour in contours
+                if (rect := cv2.boundingRect(contour))[2] > 30
+            ]
+            if (
+                len(text_regions) == 2
+                and min(text_regions, key=lambda rect: rect[0])[2] <= 45
+            ):
+                im[:, : max(text_regions, key=lambda rect: rect[0])[0]] = 0
         dilation = cv2.dilate(im, kernel, iterations=1)
         contours, _ = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         rect = map(lambda c: cv2.boundingRect(c), contours)
@@ -281,12 +307,15 @@ def operator_list_train(img, draw=False, full_scan=True):
         w = w if w <= 200 else 200
         im = im[y : y + h, x : x + w]
         tpl = np.zeros((42, 200), dtype=np.uint8)
-        tpl[: im.shape[0], : im.shape[1]] = im
+        left = tpl.shape[1] - im.shape[1] if special_focus else 0
+        tpl[: im.shape[0], left : left + im.shape[1]] = im
         tpl = cv2.copyMakeBorder(tpl, 2, 2, 2, 2, cv2.BORDER_CONSTANT, None, (0,))
         """cv2.imshow("tpl", tpl)
         cv2.waitKey(0)
         cv2.destroyAllWindows()"""
-        return _match_name_template(True, tpl.shape, tpl.tobytes())
+        return _match_name_template(
+            True, tpl.shape, tpl.tobytes(), right_align=special_focus
+        )
 
     with ThreadPoolExecutor() as executor:
         op_name = list(executor.map(process_name_region, name_p))
