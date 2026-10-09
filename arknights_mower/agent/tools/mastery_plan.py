@@ -28,7 +28,7 @@ def add_mastery_plan(
 
 
 def list_plans(status_filter: str = ""):
-    """List mastery plans, optionally filtered by status (pending/in_progress/completed/failed)."""
+    """List mastery plans, optionally filtered by their stored status."""
     if status_filter:
         plans = [p for p in get_all_plans() if p["status"] == status_filter]
     else:
@@ -85,7 +85,7 @@ add_mastery_plan_tool_def = {
     "type": "function",
     "function": {
         "name": "add_mastery_plan",
-        "description": "新增一个干员技能的专精计划",
+        "description": "按用户明确要求新增专精计划。使用已知干员ID，技能索引从0开始，目标等级缺省3；不猜测干员ID或技能。以返回结果确认是否添加成功。",
         "parameters": {
             "type": "object",
             "properties": {
@@ -116,8 +116,16 @@ list_plans_tool_def = {
             "properties": {
                 "status_filter": {
                     "type": "string",
-                    "description": "筛选状态: pending/completed/failed/in_progress，留空则全部",
-                    "enum": ["", "pending", "in_progress", "completed", "failed"],
+                    "description": "筛选数据库实际状态：idle 待执行、arranging 安排中、training 训练中、waiting_collect 待收取、completed 已完成、failed 失败；留空则全部。查询进行中需分别查询安排、训练和待收取状态，或查询全部后汇总。",
+                    "enum": [
+                        "",
+                        "idle",
+                        "arranging",
+                        "training",
+                        "waiting_collect",
+                        "completed",
+                        "failed",
+                    ],
                 },
             },
             "required": [],
@@ -129,7 +137,7 @@ set_route_tool_def = {
     "type": "function",
     "function": {
         "name": "set_route",
-        "description": "保存某个职业的自定义专精路线",
+        "description": "按用户明确要求保存某个职业的自定义专精路线，会覆盖该职业已有路线。先核对职业和完整 supports 内容，不推测协助干员或效率；中枢加成与换人缓冲不属于此工具的路线参数。",
         "parameters": {
             "type": "object",
             "properties": {
@@ -169,12 +177,18 @@ retry_plan_tool_def = {
     "type": "function",
     "function": {
         "name": "retry_plan_tool",
-        "description": "重试一个失败的专精计划",
+        "description": "将全部失败的专精计划重置为 idle 待执行。当前实现不按 char_id 或 skill_index 筛选，这两个参数仅为兼容参数。用户只要求重试单个计划时，说明批量范围并取得确认后调用；不要声称只重试了指定干员。",
         "parameters": {
             "type": "object",
             "properties": {
-                "char_id": {"type": "string", "description": "干员ID"},
-                "skill_index": {"type": "integer", "description": "技能索引 0/1/2"},
+                "char_id": {
+                    "type": "string",
+                    "description": "兼容参数，不用于筛选；批量重试可传空字符串",
+                },
+                "skill_index": {
+                    "type": "integer",
+                    "description": "兼容参数，不用于筛选；批量重试可传0",
+                },
             },
             "required": ["char_id", "skill_index"],
         },

@@ -153,6 +153,10 @@
 - **[INV-MAA-03] Detached Bounded Upload**: A delegated report upload runs off the MAA callback thread, applies a finite connect and read deadline within a bounded number of attempts, and reports its outcome as a log line rather than an exception.
 
 
+### 2.9 AI Assistant
+
+- **[INV-AI-01] Tool Instruction Alignment**: Published assistant instructions reference registered tools, describe actual argument formats and mutation scopes, and agree on response formatting.
+
 ## 3. Concurrency & Resource Lifecycle
 
 - **Monotonic Deadline Budgets**: All external process invocations, socket I/O, and manager commands must operate within a bounded deadline (e.g., `COMMAND_TIMEOUT`, `DISCOVERY_TIMEOUT`, `RecoveryPolicy.timeout`).

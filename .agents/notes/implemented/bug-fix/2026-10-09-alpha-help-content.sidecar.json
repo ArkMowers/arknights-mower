@@ -1,0 +1,20 @@
+{
+  "title": "Alpha Help and FAQ Content",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-AI-01]"
+  ],
+  "code_symbols": [
+    "arknights_mower.agent.agent._build_ai_intro",
+    "arknights_mower.agent.tools.faq.FAQ_LIST",
+    "arknights_mower.agent.tools.faq.get_faq"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/ai_prompt_contract_tests.py"
+  ]
+}

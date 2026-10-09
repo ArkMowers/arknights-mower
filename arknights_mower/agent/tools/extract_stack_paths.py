@@ -24,12 +24,11 @@ extract_stack_paths_tool_def = {
     "function": {
         "name": "extract_stack_paths",
         "description": (
-            "从用户提供的文本中提取python的栈追踪信息，"
+            "从已有错误堆栈中提取 Python、C#、Java、JavaScript 或 TypeScript 文件位置，"
             "提取出文件路径和可选的行号。适用于错误日志、异常堆栈等情况。"
-            "如果get_faq工具输出 {[FAQ未命中] 未找到相关常见问题，请尝试其他工具。} 必须调用此工具进行进一步分析。"
-            "如果get_faq工具输出的结果你判断相关性不大，你也可以直接调用此工具。"
-            "如果结果不为空则调用get_source_snippet工具获取源代码片段。"
-            "如果结果为多个而且报错不一样，则你需要返回报错信息以及相关内容给用户让用户确认其中一条"
+            "没有堆栈时不要仅因 FAQ 未命中就调用。"
+            "返回 JSON 数组，行号可能为空；仅对有效路径和正整数行号调用 get_source_snippet。"
+            "多个栈帧按异常关联程度选择，不要求用户逐帧选择；空结果时说明未提取到位置。"
         ),
         "parameters": {
             "type": "object",

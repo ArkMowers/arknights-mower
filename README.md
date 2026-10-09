@@ -247,6 +247,8 @@ docker run -d \
 
 ## 建议与反馈
 
+[Mower 反馈表](https://docs.qq.com/sheet/DUEJ6UWN5VFVRU0dG?tab=BB08J2)：查看已有问题；表格填写需相应编辑权限。提交反馈时请附软件版本、系统与设备、实际现象、期望行为及相关日志，并去除账号密码、访问令牌和密钥。
+
 **提出建议、反馈 Bug，欢迎加入 QQ 群 (521857729) 或 QQ 频道 (ArkMower)（频道号：2r118jwue4）**
 
 ## 关于 Mower-NG

@@ -2,17 +2,15 @@ import rjieba
 
 
 def get_faq(question: str) -> str:
-    q_words = set(rjieba.cut(question))
+    q_words = {word.casefold() for word in rjieba.cut(question)}
     candidates = []
     for item in FAQ_LIST:
-        kw_set = set(item["keywords"])
+        kw_set = {word.casefold() for word in item["keywords"]}
         if q_words & kw_set:
             candidates.append(item)
     if not candidates:
-        return (
-            "[FAQ未命中] 未找到相关常见问题，请使用extract_stack_paths进行进一步分析。"
-        )
-    result = "为你找到以下相关常见问题，请选择最符合的：\n"
+        return "[FAQ未命中] 未找到相关常见问题，请根据问题查询记录，或补充报错信息。"
+    result = "找到以下相关 FAQ（按当前 alpha 功能整理）：\n"
     for idx, item in enumerate(candidates, 1):
         result += f"{idx}. {item['question']}\n{item['answer']}\n"
     return result
@@ -23,10 +21,11 @@ faq_tool_def = {
     "function": {
         "name": "get_faq",
         "description": (
-            "无论何时用户提问，优先调用本工具判断是否为常见FAQ问题。"
-            "如果本工具返回未命中，请继续尝试其他工具。"
-            "根据用户问题返回所有相关FAQ修复方法，"
-            "如果有多个候选，请根据用户问题选择最相关的并返回修复方法。"
+            "查询一般软件使用问题或常见报错的 FAQ。明确的数据库查询、漏单分析、"
+            "专精操作和反馈请求直接使用对应工具。"
+            "内容依据当前 alpha 代码和界面整理，结果按关键词匹配；"
+            "结合用户版本及平台选择相关建议，不把关键词命中当作已证实的根因。"
+            "未命中时根据问题查询记录或询问缺少的信息，仅在已有错误堆栈时提取路径。"
         ),
         "parameters": {
             "type": "object",
@@ -40,101 +39,314 @@ faq_tool_def = {
 
 FAQ_LIST = [
     {
-        "keywords": ["dll", "maa", "dll was not found", "dll加载失败", "dll报错"],
-        "question": "无法调用MAA,提示缺少dll",
-        "answer": "可以使用最新版下崽器替换更新dll，使用时确保Mower 已经后台关闭,或者群文件有替换攻略",
+        "keywords": [
+            "更新",
+            "下载",
+            "下载器",
+            "更新器",
+            "下崽",
+            "下崽器",
+            "升级",
+            "版本",
+        ],
+        "question": "如何安装或更新 Mower？旧版下载器还能用吗？",
+        "answer": "当前 alpha 使用内置更新，不再使用独立的 Mower 下载器或旧更新器。已安装用户进入 Mower 设置 → "
+        "软件更新，选择正式版、公测版或开发版渠道，检查更新并按提示安装。软件更新会重启同一安装目录下的运行实例并恢复原运行状态。首次安装从官方发布仓库 "
+        "https://github.com/ArkMowers/MowerRelease 获取适合系统和架构的独立包；独立包也可在“手动应用”上传 "
+        "Release 安装包，支持 OTA 的平台可使用与本地版本匹配的差异包。源码部署使用页面的源码更新，不上传 Release "
+        "安装包。更新失败时提供当前版本、目标版本和页面中的更新日志，不再建议下载群文件中的旧下载器。",
+        "sources": ["README.md", "ui/src/components/SoftwareUpdate.vue"],
     },
     {
-        "keywords": ["频道", "QQ", "联系方式", "群"],
-        "question": "我想要提出功能建议/遇到问题了需要寻求帮助",
-        "answer": "加入QQ 频道 ArkMower（频道号：2r118jwue4）,QQ群：521857729",
+        "keywords": ["dll", "maa", "运行库", "加载失败"],
+        "question": "MAA 无法加载、缺少 DLL 或运行库怎么办？",
+        "answer": "先进入 MAA 设置，检查 MAA目录是否指向与当前系统、架构匹配的完整 MAA，并点击“测试连接”。当前页面提供 MAA "
+        "本体下载安装、检查更新和 MAA 资源更新；未安装时可用“下载 MAA”，已有安装可用“更新 MAA”。不要用旧版 Mower 下载器替换 "
+        "DLL，也不要只复制单个 DLL。Android 的 MAA 目录和设备连接由 Android "
+        "应用管理；桌面平台按页面提示选择对应组件。仍失败时提供完整错误、平台、架构及 MAA 日志，区分路径错误、库加载失败和连接失败。",
+        "sources": ["ui/src/components/MaaBasic.vue"],
     },
     {
-        "keywords": ["更新", "器", "报错", "更新器报错", "下崽"],
-        "question": "更新器报错",
-        "answer": "检查是否在群文件下载最新的更新器（带资源更新版本）",
+        "keywords": ["资源", "模板", "热更新", "识别资源"],
+        "question": "软件更新、Mower 资源更新和 MAA 资源更新有什么区别？",
+        "answer": "Mower 设置 → 软件更新用于程序版本；同页的“资源更新”用于 Mower 识别等资源。资源更新支持检查、自动更新或手动上传更新包，同一套 "
+        "Mower 的实例共用资源，在任务间歇加载新资源，通常不需要为资源更新重启程序。MAA 本体和 MAA 资源在 MAA 设置中单独更新；更新 "
+        "Mower 资源不等于更新 MAA。",
+        "sources": [
+            "ui/src/components/ResourceUpdate.vue",
+            "ui/src/components/SoftwareUpdate.vue",
+            "ui/src/components/MaaBasic.vue",
+        ],
+    },
+    {
+        "keywords": ["代理", "网络", "下载失败", "超时", "github"],
+        "question": "内置更新下载失败或 GitHub 无法连接怎么办？",
+        "answer": "在 Mower 设置 → 网络与下载代理检查全局网络代理和 GitHub 下载代理站点，并使用页面的测试功能检查实际下载路径。文件下载代理与 "
+        "GitHub API、Git 使用的网络代理不是同一项。独立包可手动上传官方 Release 安装包，Mower "
+        "资源可单独上传资源更新包。提供失败步骤和日志，不改用旧下载器，也不要把更新失败直接当作模拟器连接故障。",
+        "sources": ["README.md", "ui/src/components/NetworkSettings.vue"],
+    },
+    {
+        "keywords": ["频道", "qq", "联系方式", "群", "反馈", "建议"],
+        "question": "遇到问题或有功能建议，如何寻求帮助？",
+        "answer": "先查阅 [Mower 反馈表](https://docs.qq.com/sheet/DUEJ6UWN5VFVRU0dG?tab=BB08J2)，核对已有记录；表格填写需相应编辑权限。整理 Mower "
+        "版本、系统与架构、目标模拟器或设备、实际现象、期望结果和发生时间，并附相关日志或报错归档。QQ群：521857729；QQ频道：ArkMower，频道号：2r118jwue4。助手也可按你的明确要求发送问题反馈，Bug "
+        "反馈需要对应的本地时间范围和可用日志；只整理描述不会自动发送。不要公开账号密码、API密钥或访问令牌。",
+        "sources": [
+            "README.md",
+            "ui/src/components/Feedback.vue",
+            "arknights_mower/agent/tools/submit_issue.py",
+        ],
     },
     {
         "keywords": [
             "模拟器",
-            "安装",
+            "mumu",
+            "mumu12",
+            "雷电",
+            "蓝叠",
+            "bluestacks",
+            "连接",
+            "实例",
+            "路径",
         ],
-        "question": "我的模拟器安装位置在哪？",
-        "answer": "首先找到你的mumu模拟器安装在什么位置，例如我是安装在C:\\Program Files\\Netease\\MuMuPlayer-12.0\\,以后称这个位置为模拟器安装位置。\n如果你没找到你的模拟器安装位置，请看下一个Q&A。\n知道你的模拟器在哪，之后，一步一步来。\nADB路径：在你的模拟器安装位置下面有个shell文件夹，下面有个adb.exe，选这个\nADB地址：在没有多开的情况下，是127.0.0.1:16384\n模拟器文件夹：在你的模拟器安装位置下，有个shell文件夹，选到这个文件夹\n多开编号：如果没有多开请填0\n截图方案：换ADB+Gzip,右键点击模拟器的快捷方式，左键点击属性。\n以Xmind举例（无论什么软件都一样的）\n点击快捷方式，再点击打开文件所在的位置。\n打开的文件夹就是你模拟器（或者其他软件）的安装位置",
+        "question": "alpha 如何连接模拟器、选择多开实例和填写路径？",
+        "answer": "在 Mower "
+        "设置的设备连接区域选择与当前平台匹配的预设，使用页面提供的“检测实例”或“启动并检测”，有多个实例时明确选择目标。检测到的实例先保存编号和身份信息，ADB地址和游戏包在验证通过后保存；连接失败不撤销已选实例。需补路径时按当前预设字段的问号填写安装、管理器或配置路径，不再统一填写旧版 "
+        "shell 文件夹、多开编号0或固定端口。下拉“测试连接（只读）”不会启动或重启模拟器；只有支持启停的预设才提供对应动作，具体以页面能力提示为准。",
+        "sources": [
+            "ui/src/components/DeviceSettings.vue",
+            "ui/src/utils/deviceSettings.js",
+            "docs/subsystems/device-control.md",
+        ],
     },
     {
-        "keywords": ["模拟器", "路径", "连接", "adb"],
-        "question": "mower怎么设置模拟器路径和连接地址（mumu模拟器简化版）",
-        "answer": 'mower设置。ADB路径可以直接从MAA中抄取。\n地址是[模拟器地址\\adb.exe]\n如D:\\Program Files\\Netease\\MuMu Player 12\\shell\\adb.exe。\nADB连接地址格式为127.0.0.1:（），括号内容为选用模拟器的端口号\n*以下为几个常见模拟器的默认端口：\n- 蓝叠模拟器 5555\n- 夜神模拟器 62001\n- MuMu模拟器/MuMu模拟器X 7555\n- MuMu12模拟器16384\n- 逍遥模拟器 21503\n- 雷电模拟器 5555 或emulator-5554\n大部分模拟器自带的多开器也有查询每个实例端口的功能\n*怎么查看ADB连接地址(较详):\n在win10系统中，直接win+R键，然后输入cmd，回车，接着将目录切换至adb.exe所在的文件夹。\n具体操作：当前目录与adb.exe所在的文件夹同盘符时\n输入"cd 具体的文件夹名"并回车，具体的文件夹名可右键文件资源管理器地址栏中直接复制。输入"adb devices"并回车，即可显示ADB地址。(如图)\n当前目录与adb.exe所在的文件夹不同盘符时，需首先输入盘符名，如\nD: ，再继续操作。',
+        "keywords": ["adb", "adb.exe", "serial", "端口", "实体", "手机"],
+        "question": "没有 adb.exe，或需要手动连接其他模拟器、实体设备怎么办？",
+        "answer": "未指定自定义 ADB 路径时，Mower 使用平台默认路径并优先采用自带 ADB，不需要照旧教程另找 adb-buildin "
+        "文件夹。优先用对应预设检测实例；不支持自动发现的环境可在高级设置使用“其他模拟器”或“实体设备”，明确填写目标 "
+        "serial，再测试连接。不要根据模拟器名称猜端口或自动换到另一台在线设备。实体设备默认检查横屏1920×1080；如页面提供临时整备，授权只对本次运行有效，结束时按恢复规则还原尺寸。",
+        "sources": [
+            "docs/subsystems/device-control.md",
+            "ui/src/components/DeviceSettings.vue",
+            "ui/src/utils/deviceSettings.js",
+        ],
     },
     {
-        "keywords": ["无法", "模拟器", "启动", "设备"],
-        "question": "没有adb.exe?\nA: 通过下方网站下载后解压，或直接使用 mower 安装路径下adb-buildin里的adb.exe\nhttps://dl.google.​co​m/android/repository/​platform-tool​s-latest-windows.zip​\nQ：“未检测到相应设备”无法启动模拟器（如图）。",
-        "answer": "ADB路径/ABD连接地址填写有误，方法详见Q&A怎么设置模拟器地址；\n模拟器文件夹/多开编号填写有误，详见输入框上❓提示，(MuMu默认模拟器多开编号为0)\nMuMu模拟器专属问题：选项“任务结束后关闭模拟器”与“关闭MuMu模拟器12时断开该实例的adb连接”应一起勾选或都不勾选",
+        "keywords": ["未检测", "设备", "offline", "离线", "启动失败", "未就绪"],
+        "question": "检测不到设备、设备离线或模拟器启动失败怎么办？",
+        "answer": "查看设备连接区域的具体状态和修复提示，核对预设、所选实例、安装或管理器路径及设备自身的 ADB "
+        "设置。只读测试不会帮你启动设备；支持自动启停的预设可使用“启动并检测”或“启动并测试连接”，其他环境先手动启动目标。连接与恢复的超时和重试有上限；目标离线时保留原实例绑定，不会转连其他实例。按提示处理当前目标，不沿用旧版 "
+        "MuMu 关闭时断开 ADB 的成对开关说明。",
+        "sources": [
+            "ui/src/utils/deviceSettings.js",
+            "docs/subsystems/device-control.md",
+        ],
     },
     {
-        "keywords": ["目录名称无效", "WinError 267"],
-        "question": "“[WinError 267] 目录名称无效。”",
-        "answer": "模拟器文件夹设置得不对，请认真阅读问号内的信息，修改该项设置后再试。",
+        "keywords": ["目录名称无效", "winerror", "267", "目录"],
+        "question": "出现 WinError 267 或目录名称无效怎么办？",
+        "answer": "先从完整报错确认是哪一个路径无效，再检查对应设置。模拟器相关路径按当前设备预设的字段说明填写；MAA 路径在 MAA "
+        "设置中检查；软件更新失败查看软件更新日志。不要只凭 WinError 267 "
+        "就断言一定是旧版“模拟器文件夹”填错。修改设备身份相关字段后重新检测或测试连接。",
+        "sources": [
+            "ui/src/components/DeviceSettings.vue",
+            "ui/src/components/MaaBasic.vue",
+            "ui/src/components/SoftwareUpdate.vue",
+        ],
     },
     {
-        "keywords": ["重启", "退出"],
-        "question": "mower没法退出/重启",
-        "answer": "在托盘处手动退出无效时，直接ctrl+alt+delete打开任务管理器，强杀mower后重新打开。",
+        "keywords": ["重启", "退出", "结束", "续接", "进程"],
+        "question": "如何正常重启、继续任务或退出 Mower？",
+        "answer": "Mower 设置页底部的“进程操作”提供“重启 Mower 进程”和“结束 Mower "
+        "进程”，只操作当前实例。运行中可用“重启续接”保存任务队列继续运行；普通进程重启会重置运行缓存后重新开始。关闭窗口不一定等于退出，托盘与后台行为取决于当前设置及多开管理器。优先使用正常进程操作，界面和进程均无响应时再根据系统工具处理明确的 "
+        "Mower 实例，避免结束其他实例或模拟器。",
+        "sources": [
+            "ui/src/components/ProcessControl.vue",
+            "ui/src/pages/Settings.vue",
+        ],
     },
     {
-        "keywords": ["白屏"],
-        "question": "初次使用mower出现白屏情况\nA:请从以下链接下载webview\nhttps://developer.microsoft.com/zh-cn/microsoft-edge/webview2/?form=MT00IS#download\nQ：Mower.exe下载后/运行一半不见了",
-        "answer": "mower被系统误认为病毒删除。可通过将mower所在文件夹加入防火墙白名单解决。白名单设置（以win10为例）：电脑设置-更新和安全-Windows安全中心-病毒和威胁防护-病毒和威胁防护设置-排除项（将整个mower文档加入）",
+        "keywords": ["白屏", "webview", "webview2", "webkit", "gtk"],
+        "question": "Mower 窗口白屏或无法初始化界面怎么办？",
+        "answer": "先区分窗口渲染失败与程序文件被拦截，查看启动日志和系统平台。Windows 检查 WebView2 "
+        "运行环境，可从微软官方获取：https://developer.microsoft.com/zh-cn/microsoft-edge/webview2/ "
+        "。Linux 独立包依赖宿主的 GTK/WebKit2 原生库，按启动提示或 README "
+        "安装对应发行版依赖。白屏不是文件被杀毒软件删除的证据，不要因此直接给整个程序目录添加安全排除。",
+        "sources": ["webview_ui.py", "README.md"],
     },
     {
-        "keywords": ["reshape", "array", "size"],
-        "question": "mower运行后识别出现问题，“程序出错--->OpenCV……”或者“程序出错--->cannot reshape array of size……”",
-        "answer": "修改模拟器的分辨率为1920*1080\n报错模式：",
+        "keywords": ["删除", "消失", "拦截", "安全", "smartscreen", "病毒"],
+        "question": "下载的程序被系统拦截或运行文件消失怎么办？",
+        "answer": "从官方发布入口核对下载来源及 SHA256SUMS，再查看系统的安全提示或隔离记录。Windows 与 macOS 独立包未签名，首次运行可能出现 "
+        "SmartScreen "
+        "或隐私与安全性提示，按官方安装说明处理。不要把防火墙白名单当作杀毒隔离的通用修复，也不要关闭安全防护或默认排除整个目录。提供实际拦截信息后再定位原因。",
+        "sources": ["README.md"],
     },
     {
-        "keywords": ["not", "broadcast", "input", "array"],
-        "question": "mower运行后报错“could not broadcast input array from shape……”",
-        "answer": "检查排班表布局与基建实际布局是否对应,当仅为设施位置不对应时，拖动排班界面的设施，即可直接调整设施的位置",
+        "keywords": ["reshape", "opencv", "分辨率", "截图", "黑边", "横屏"],
+        "question": "截图识别异常、cannot reshape 或画面尺寸错误怎么办？",
+        "answer": "检查当前绑定设备的实际画面及设备连接状态，标准截图为1920×1080 "
+        "RGB。模拟器使用横屏并核对分辨率、黑边及所选截图后端，设备连接验证会报告具体尺寸或后端问题。MuMu IPC 仅适用于 Windows MuMu "
+        "12，截图与触控必须配套；雷电截图增强仅适用于 Windows 雷电9或14。其他平台按页面支持的后端选择，不统一改成旧版 "
+        "ADB+Gzip。实体设备优先使用页面提供的本次临时整备，不长期修改显示设置。仍失败时提供完整堆栈和报错截图，不能仅凭 reshape "
+        "判断唯一根因。",
+        "sources": [
+            "docs/subsystems/device-control.md",
+            "ui/src/utils/deviceSettings.js",
+        ],
     },
     {
-        "keywords": ["基建", "布局", "推荐"],
-        "question": "基建布局选择",
-        "answer": "252布局操作简单，易于掌握，推荐新手从252 21贸布局开始（21贸指两个贸易站的等级分别是2级和1级），制造站产物选择3赤金2经验，无人机加速经验。\n基建水平较高后，有鸿雪组可以研究2/4赤金互切；也可以尝试243/153互切。\n新手搓玉推荐252 31贸加速1级贸易站；对于基建有一定掌握，有鸿雪组可尝试252/342互切，252 2赤金2经验1碎片、342 4赤金、252 4赤金1经验的时间占比大致2:2:1。",
+        "keywords": ["broadcast", "shape", "数组", "布局"],
+        "question": "could not broadcast input array 或基建布局识别错误怎么办？",
+        "answer": "数组形状异常需要结合完整堆栈、当前截图和截图尺寸定位，不能直接等同于排班表布局错误。若日志确实指向设施位置或岗位数，再核对排班表与游戏基建的设施类型、等级、岗位数及办公室/训练室位置设置；排班编辑器可调整设施位置。主副表生产设施类型和岗位数必须兼容，校验报错时先按具体设施修正，再启动运行。",
+        "sources": [
+            "docs/subsystems/plan-editor.md",
+            "docs/subsystems/base-scheduler.md",
+            "ui/src/pages/Settings.vue",
+        ],
     },
     {
-        "keywords": ["换人", "重复"],
-        "question": "重复换人任务",
-        "answer": "检查排班表同组干员心情是否差距过大？是否有循环触发的副表任务？或者是否触发其他bug",
+        "keywords": ["基建", "推荐", "252", "243", "153", "排班"],
+        "question": "如何选择基建布局、导入排班并检查兼容性？",
+        "answer": "按实际设施布局、干员练度和可用替班选择排班，不存在适合所有账号的固定最优252或243方案。排班页面支持独立排班 JSON、排班图片，以及从配置 "
+        "ZIP 中读取 "
+        "config/plan.json；导入后核对主表、副表、设施类型和岗位数、绑组、替班及个人心情规则，再运行校验。副表不能改变主表生产设施类型与岗位数；产物和订单切换还受“自动切换产物与订单”开关约束。校验预算不足表示检查未完成，不等于已经证实所有组合可用。",
+        "sources": [
+            "doc/config-backup.md",
+            "docs/subsystems/base-scheduler.md",
+            "docs/subsystems/plan-editor.md",
+        ],
     },
     {
-        "keywords": ["产能", "算法"],
-        "question": "如何描述基建产能",
-        "answer": "刷钱书时用钱+书：订单*0.2+赤金*0.8+经验。注意赤金由三部分组成：制造站生产，基建外获取（一般按5000算），贸易站龙舌兰节省。\n如果不刷钱书，基建产出不能以单一指标衡量，具体看mower的文档（链接）",
+        "keywords": ["换人", "重复", "反复", "回班", "循环"],
+        "question": "反复换人、重复任务或整组提前回班怎么办？",
+        "answer": "先在运行日志查看任务类型、时间、设施、干员名单及副表触发记录，区分正常任务重规划与同一操作反复失败。核对副表是否循环触发、共享主班的替班是否同时可用、床位是否被预约，以及组内恢复时间差设置。当前“组内心情差距过大时延后回班”按参与计时成员的最晚与最早预计恢复完成时间之差判断，阈值默认60分钟；不是按固定心情点差。排班异常可选择报错归档分析后再调整，不只凭“重复换人”就认定是心情差过大。",
+        "sources": [
+            "ui/src/components/PlanAdvancedSettings.vue",
+            "docs/subsystems/base-scheduler.md",
+            "ui/src/pages/Log.vue",
+        ],
     },
     {
-        "keywords": ["理智", "生息演算", "刷理智", "MAA"],
-        "question": "mower为什么不刷理智/生息演算",
-        "answer": "周计划为总开关,mower-全部设置中下拉，勾选刷理智计划，选定关卡。大型任务，如生息演算，在勾选的同时也需要勾选刷理智计划（即使计划为空），才能在跑单之余运行。不需要担心出现勾选之后mower不刷的情况，刷图任务每隔固定时间执行一次。\n勾选后务必查看对应位置问号，检查开始时间与停止时间。",
+        "keywords": ["产能", "产出", "收益", "龙门币", "赤金", "基报"],
+        "question": "如何核对基建产出或描述产能问题？",
+        "answer": "先明确统计时间、实际布局、制造产物、贸易站订单类型、无人机使用方向及是否启用切产物。查订单和龙门币记录用 "
+        "trading_history，任务执行与报错用 "
+        "log；历史订单记录不等于实时设施状态。比较产能时说明钱、经验、赤金和搓玉的统计口径，不用缺少来源的固定折算公式断言某套排班更优。缺少记录时说明证据不足。",
+        "sources": [
+            "arknights_mower/solvers/record.py",
+            "arknights_mower/agent/tools/call_db.py",
+        ],
     },
     {
-        "keywords": ["邮件", "address", "测试"],
-        "question": "发送测试邮件失败，501,b'Bad address syntax.（如下图）。",
-        "answer": "若希望给自己发邮件（收件人＝发件人），则需要点击“减号”删除收件人，不能留空。\n若希望是其他收件人，则需要填写正确的邮箱地址。",
+        "keywords": [
+            "理智",
+            "周计划",
+            "刷图",
+            "生息",
+            "演算",
+            "肉鸽",
+            "保全",
+            "大型",
+            "隐秘",
+        ],
+        "question": "为什么不刷理智或不运行生息演算等大型任务？",
+        "answer": "在 MAA 设置页分别检查“刷理智周计划”和“大型任务”。周计划有自己的开关及“执行方式”：MAA 调用 MAA，Mower 使用本地作战，不依赖 "
+        "MAA；检查当前方案、当天关卡、药品、理智阈值及库存选关限制。大型任务由独立开关、任务类型和开始/停止时间控制，不需要为此开启一个空刷理智计划；开始与停止时间相同表示全天，停止时间更早表示跨天。带“(MAA)”的类型依赖 "
+        "MAA，其余类型使用相应的 Mower 流程。日常任务还受 Mower 设置中的“日常任务间隔”和基建任务空闲时间约束，具体原因查看日志。",
+        "sources": [
+            "ui/src/components/MaaWeekly.vue",
+            "ui/src/components/LongTasks.vue",
+            "arknights_mower/utils/config/conf.py",
+            "arknights_mower/solvers/base_schedule.py",
+        ],
     },
     {
-        "keywords": ["红脸", "不下班", "心情低", "下班"],
-        "question": "为什么我的干员红脸/到阈值了还不下班？",
-        "answer": "mower判断需要下班的条件如下：\n组内有干员心情＜心情上限*心情阈值（对于设置了用尽心情的干员，mower会按照预测心情消耗速度、提前2~3个小时生成用尽下班任务，但是对于中枢这种不显示心情耗尽时间的、以及心情减免效果频繁变动导致心情消耗速度不稳定的，会产生一定的预测波动，导致下班时间不准。因此对于中枢干员应当尽量避免设置为用尽。）\n宿舍VIP空位≥组内高优先人数\n宿舍非VIP空位≥组内低优先人数\n该组的所有替班干员目前未在上班\n没有马上要跑单的任务\n所以，如果你的干员没有下班，可以逐项检查这些条件。比如：\n心情太高、或者心情没有被mower读到，这种一般不会导致红脸不下班。\n当前宿舍有人在休息，VIP位是指宿舍里能吃到单回宿管的位置，绝大多数时间设置为4个（每个宿舍1个）。假如你当前要下班的组有4个高优先，但是宿舍里有1个干员正在VIP位休息，那就只剩下3个高优先的VIP位，不能满足这4个干员休息，这个时候mower就不会让这一组下班，直到宿舍里的干员休息好上班，宿舍VIP位变成4个空位时，这一组才可以休息。因此，我们在制定班表时，需要尽量多的把干员设置为低优先，保证剩下的高优先干员可以轮流上班、休息。设置低优先的几个建议:\n主班与替班效率一致或差距不大的（如夜烟和斑点，会客室的陈红星级远山）\n心情消耗速度比同组慢较多的（如红云稀音帕拉斯，红云帕拉斯都有心情减免，消耗速度比稀音慢，可以设置为低优先）\n有心情恢复技能的（比如红松林骑士团中的远牙有自恢复，不需要吃单回）\n会客室干员（因为线索收集对应信用点带来的收益相对较低，对于伊内斯这种需要用尽回满的会客室干员很容易卡到其他组休息，来不及休息带来损失较大）\n假如你有两个超级大组，组A有3个高优5个低优，组B有1个高优4个低优，虽然VIP位1+3=4可以休息，但是非VIP位5+4>8(假设我们有8个非VIP位置），所以这两组也是不可能同时休息的。\n比如mower的经典用法1替3，夜烟 作为 苍苔斑点砾 三个人的替班，那么斑点在休息时夜烟上班，这个时候苍苔和砾就不能休息了，直到斑点休息好把夜烟释放、余下两个人才能休息。相当于使用相同替班的主班，会交替休息。如果交替休息不能满足主班的心情恢复要求，则可能造成红脸不下班。这种情况有两个解决办法：1）使用不同的替班，减少休息等待。2）使用多个替班。\n设置班表时，应当注意小组的划分、低优先的设置。不同的组与优先级就像是不同形状的积木，能否拼在一起轮流休息、还是会卡住彼此无法休息，是制定班表时需要关注的一大问题。",
+        "keywords": ["邮件", "address", "smtp", "501", "收件人", "邮箱"],
+        "question": "测试邮件失败或提示 Bad address syntax 怎么办？",
+        "answer": "在 Mower 设置 → 邮件提醒检查发件账号、授权码或密码、收件人，以及自定义 SMTP 的服务器、端口和 SSL/TLS 或 STARTTLS "
+        "设置。收件人列表为空时发给自己；列表中有空白项或无效地址时删除或修正该项，不要只留一条空字符串。再点“发送测试邮件”查看具体返回。地址语法错误与认证、网络、加密失败分开排查，不向助手发送授权码或密码。",
+        "sources": ["ui/src/components/Email.vue", "arknights_mower/utils/email.py"],
     },
     {
-        "keywords": ["心情报表", "清理"],
-        "question": "我的心情报表不显示，显示乱了想清理怎么办?",
-        "answer": "删除mower目录下，tmp文件夹中的data.db文件。如果对数据库有所了解，可以用数据库管理软件（如开源的DBeaver）进行编辑。",
+        "keywords": ["红脸", "不下班", "心情", "下班", "替班", "床位"],
+        "question": "干员低心情、红脸或到阈值后仍不下班怎么办？",
+        "answer": "下班还需满足有效心情观测、个人阈值或用尽规则、完整替班匹配、可用恢复床位及任务预约。先查日志中具体等待条件，再核对主班绑组、共享主班与替班、宿舍占用和预约、个人上下限及回满设置。当前宿舍按分床优先级、单回位归属和心情恢复缺口安排，不套用固定“4个VIP加8个非VIP”的床位公式；共享主班在各依赖组都有兼容替班时可同时休息，否则等待。卡牌心情预估只辅助筛选，不是实测回满或确认下班的证据；用尽下班依赖有效消耗速率，不保证固定提前两三小时。需要时检查自动救急配置，但不能仅凭红脸保证会启动。",
+        "sources": ["docs/subsystems/base-scheduler.md", "CONTEXT.zh.md"],
     },
     {
-        "keywords": ["配置", "更新"],
-        "question": "如何更新Mower的时候保持配置不变？",
-        "answer": "目录下的conf.yml, plan.json 必须要复制到新版本文件夹下，可选复制：1.temp文件夹（存储了所有相关数据）2.screenshot文件夹（存储了所有截图）3.logs文件夹（存储了所有日志）",
+        "keywords": ["报表", "曲线", "数据库", "清理", "历史", "清空"],
+        "question": "心情报表不显示、历史数据异常或想清理记录怎么办？",
+        "answer": "先核对当前实例、查询时间范围和是否已有有效心情记录；报表空白不能直接认定数据库损坏。需要清理时先用 Mower 设置 → "
+        "配置导出与导入备份，再在运行日志页面打开“数据库管理”，仅选择“干员心情记录”等确实要删除的数据类别，核对范围后确认。“专精计划”“专精路线配置”“仓库库存”等是独立类别，不要全选，也不要直接删除 "
+        "data.db，否则会同时丢失其他业务数据。",
+        "sources": [
+            "ui/src/pages/Log.vue",
+            "doc/config-backup.md",
+            "arknights_mower/solvers/record.py",
+        ],
+    },
+    {
+        "keywords": ["配置", "备份", "迁移", "导出", "导入", "保留"],
+        "question": "升级、迁移电脑或重装时如何保留配置与数据？",
+        "answer": "使用 Mower 设置 → 配置导出与导入 → 导出配置，得到当前实例的 ZIP，包含 config 原文件、主副排班以及持久化 tmp "
+        "数据，包括专精计划、专精路线、历史和库存。不要只复制旧教程中的根目录 conf.yml、plan.json 或 temp 文件夹。迁移后先停止 "
+        "Mower 任务，再导入 "
+        "ZIP；导入前自动生成恢复备份，保留当前管理端口、访问令牌及本机网络等设置，成功后刷新页面加载。资源包、更新文件、日志、其他实例和浏览器偏好不在备份中，迁移后重新核对设备与 "
+        "MAA 路径。备份含凭据，请妥善保管。",
+        "sources": ["doc/config-backup.md", "ui/src/components/ConfigBackup.vue"],
+    },
+    {
+        "keywords": ["产物", "切换", "葛朗台", "副表", "搓玉"],
+        "question": "副表不切换制造产物、贸易订单或葛朗台设置不生效怎么办？",
+        "answer": "检查排班高级设置中的“自动切换产物与订单”，当前默认关闭。关闭时不切制造产物或贸易订单类型，相关设施状态条件与葛朗台切产物选项隐藏；普通换班、产物收取和葛朗台跑单仍保留。副表指定与主表不同产物或订单目标会产生启动校验冲突，不能靠副表绕过开关。需要切换时明确开启并检查无人机、切换损耗设置及主副表设施兼容性。",
+        "sources": [
+            "ui/src/components/PlanAdvancedSettings.vue",
+            "docs/subsystems/base-scheduler.md",
+        ],
+    },
+    {
+        "keywords": ["闲人", "清退", "宿舍", "单回", "优先级", "回满"],
+        "question": "关闭宿舍不养闲人后还会补床或让干员离宿吗？",
+        "answer": "“宿舍不养闲人”仅控制普通满心情清退任务的创建。关闭后仍安排心情恢复、补空床及按优先级接管床位，个人心情上限和令夕上限仍会要求离宿。单回位按已有归属、优先级和恢复需求安排，不会仅因心情变化把已入住者全部重新排序；预约和专项任务保护仍生效。回满目标不一定是24，达到个人上限离宿也不等于立即安排上班。",
+        "sources": [
+            "ui/src/components/PlanAdvancedSettings.vue",
+            "docs/subsystems/base-scheduler.md",
+            "CONTEXT.zh.md",
+        ],
+    },
+    {
+        "keywords": ["救急", "救急线", "救急排班"],
+        "question": "自动救急在哪里开启，什么时候接管和退出？",
+        "answer": "入口在 Mower 设置 → 基建设置 → "
+        "自动救急，旁边“救急排班”编辑独立主表和副表，默认关闭。初始化观测发现多组正常主班低于各自救急线，仍有主班等待休息且普通轮休无法安排时才接管；正常与救急副表生效后的工作设施类型、等级及产物必须一致。救急期间冻结正常副表，按救急排班安排驻员、宿管、跑单与菲亚梅塔，不自动继承未配置的专项任务。正常排班可以接回周转时退出，仍需恢复的组继续休息，不要求所有人都回满；开关不随正常排班导入导出。",
+        "sources": [
+            "ui/src/pages/Settings.vue",
+            "ui/src/pages/Plan.vue",
+            "docs/subsystems/base-scheduler.md",
+        ],
+    },
+    {
+        "keywords": ["专精", "养成", "合成", "加工", "模组", "精英化", "材料"],
+        "question": "全自动专精是否会自动完成精英化、基础技能和模组升级？",
+        "answer": "“全自动专精”控制自动专精与养成材料自动合成。精英化、基础技能升级和模组开启或升级仍需在游戏手动完成后同步数据，添加养成目标不等于自动完成这些操作。技能训练要求对应干员达到精英二和基础技能7级；材料准备按统一养成计划顺序及可用本地库存安排，缺料、训练保护或协助路线问题查看计划状态和失败原因。不要把“材料可准备”当作“已具备开训条件”。",
+        "sources": [
+            "ui/src/pages/MasteryRecommendation.vue",
+            "docs/subsystems/growth-planning.md",
+        ],
+    },
+    {
+        "keywords": ["ai", "deepseek", "模型", "助手", "key", "中转", "本地模型"],
+        "question": "AI 助手是否只支持 DeepSeek？本地模型如何配置？",
+        "answer": "Mower 设置 → AI 助手与模型服务支持 DeepSeek 预设、本地 OpenAI "
+        "兼容接口及在线模型或中转商。自定义接口填写实际模型ID和接口地址，本地需兼容 OpenAI Chat Completions，通常可以不填 "
+        "API密钥；在线接口要求 HTTPS 和对应密钥。聊天工具调用还要求所选模型与服务支持工具调用。日志排班报错可选择对应归档进行 AI 分析；AI "
+        "建议不会自动修改排班或证明推测就是根因。",
+        "sources": [
+            "ui/src/components/ChatBotSetting.vue",
+            "arknights_mower/agent/agent.py",
+            "arknights_mower/agent/schedule_error.py",
+        ],
     },
 ]
