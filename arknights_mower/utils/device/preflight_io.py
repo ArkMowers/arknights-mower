@@ -194,8 +194,8 @@ class ProductionPreflightIO:
             raise ValueError("设备 serial 不能为空")
         return self._run_adb([adb_path, "-s", serial, *args])
 
-    def _run_adb(self, argv: list[str], *, maximum=COMMAND_TIMEOUT) -> bytes:
-        timeout = io_timeout(maximum)
+    def _run_adb(self, argv: list[str], *, maximum: float | None = None) -> bytes:
+        timeout = io_timeout(COMMAND_TIMEOUT if maximum is None else maximum)
         logger.debug(f"设备预检 ADB 命令开始：{argv}，超时 {timeout:.3f} 秒")
         output = run_adb(
             argv,
