@@ -13,5 +13,5 @@
 `auto_get_res_new.py` 的房间干员姓名模型生成函数使用此子集。
 选人和训练位干员姓名模型也使用同一子集，不再靠带 `·` 名字的截图覆盖。
 `room-charset.txt` 记录子集字符。生成器检查字体实际字符映射；新增姓名缺字时，
-`build_font_subsets.py` 从 `MOWERFONTS_DIR/NotoSansHans-Medium.otf` 自动扩字，
+`build_font_subsets.py` 从 主仓 `font_sources/NotoSansHans-Medium.otf` 自动扩字，
 再加载字体生成模型。完整原字体缺失、指纹不符或没有所需字符时明确失败。

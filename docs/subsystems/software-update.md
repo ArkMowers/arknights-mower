@@ -48,6 +48,6 @@ Cancellation and timeout terminate only the owned command tree. Successful root-
 
 ## 7. Resource Template Fonts
 
-`auto_get_res_new.py` prepares room-name glyphs before the three operator models load fonts. `build_default_model` prepares mastery name and skill glyphs before rendering. `MOWERFONTS_DIR` selects original game fonts from MowerFonts; local generation defaults to `ArknightsGameResource/fonts`. A complete subset needs no source file. Missing source files or glyphs stop generation before font or charset mutation. Full game fonts and fontTools are generation dependencies; runtime continues loading compressed models.
+`auto_get_res_new.py` prepares room-name glyphs before the three operator models load fonts. `build_default_model` prepares mastery name and skill glyphs before rendering. An existing file in `MOWERFONTS_DIR` overrides the matching original in repository-root `font_sources/`; absent originals fall back to the legacy `ArknightsGameResource/fonts` directory. Automatic room and mastery expansion requires no MowerFonts upload. Repository source fonts are generation inputs and remain outside runtime and resource packages. A complete subset needs no source file. Missing source files or glyphs stop generation before font or charset mutation. Full game fonts and fontTools are generation dependencies; runtime continues loading compressed models.
 
 [Automatic resource font expansion](../../.agents/notes/implemented/bug-fix/2026-10-09-resource-font-expansion.md) records the decision and focused verification.

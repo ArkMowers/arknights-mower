@@ -194,3 +194,19 @@ def test_mastery_builder_expands_before_rendering(tmp_path, monkeypatch):
 def test_bundled_room_font_covers_reported_new_name_characters(tmp_path):
     with TTFont(ROOT / "arknights_mower/fonts/NotoSansHans-Medium-room.otf") as font:
         assert set(map(ord, "旅门骨")) <= font.getBestCmap().keys()
+
+
+def test_original_fonts_are_available_without_mowerfonts(tmp_path, monkeypatch):
+    import build_font_subsets as builder
+
+    monkeypatch.setenv("MOWERFONTS_DIR", str(tmp_path))
+    for name, digest in [
+        ("NotoSansHans-Medium.otf", builder.ROOM_SOURCE_SHA256),
+        ("SourceHanSansCN-Medium.ttf", builder.MASTERY_SOURCE_SHA256),
+    ]:
+        source = builder.source_font(name)
+        assert source.parent == builder.ROOT / "font_sources"
+        assert hashlib.sha256(source.read_bytes()).hexdigest() == digest
+    override = tmp_path / "NotoSansHans-Medium.otf"
+    override.write_bytes(b"explicit source")
+    assert builder.source_font(override.name) == override
