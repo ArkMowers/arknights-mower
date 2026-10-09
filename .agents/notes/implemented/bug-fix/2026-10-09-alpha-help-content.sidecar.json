@@ -20,6 +20,7 @@
   "test_suites": [
     "arknights_mower/tests/ai_prompt_contract_tests.py",
     "arknights_mower/tests/ai_feature_tests.py",
-    "ui/src/stores/configPartial.test.js"
+    "ui/src/stores/configPartial.test.js",
+    "ui/src/pages/Doc.test.js"
   ]
 }

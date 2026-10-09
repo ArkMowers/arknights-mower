@@ -1,3 +1,22 @@
+<script setup>
+import { ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useConfigStore } from '@/stores/config'
+
+const { theme } = storeToRefs(useConfigStore())
+const guideFrame = ref(null)
+const docSrc = `/docs/Mower入门指北.html?theme=${theme.value === 'dark' ? 'dark' : 'light'}`
+
+function syncTheme() {
+  guideFrame.value?.contentWindow?.postMessage(
+    { type: 'mower-doc-theme', theme: theme.value === 'dark' ? 'dark' : 'light' },
+    window.location.origin
+  )
+}
+
+watch(theme, syncTheme)
+</script>
+
 <template>
   <div class="link-container">
     <strong>本地一条龙入门说明</strong>
@@ -14,8 +33,10 @@
     </n-a>
   </div>
   <iframe
+    ref="guideFrame"
     title="Mower 一条龙入门说明"
-    src="/docs/Mower入门指北.html"
+    :src="docSrc"
+    @load="syncTheme"
     sandbox="allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin allow-forms"
     style="width: 100%; height: 100vh; border: none"
   />

@@ -29,6 +29,8 @@ User-facing help titles, link labels and FAQ wording omit the alpha label. Proje
 
 DeepSeek uses one provider option with preset or custom model selection. A separate model field preserves local/online custom-provider settings when switching providers. The [assistant contract](../../../../docs/subsystems/ai-assistant.md) owns model IDs and legacy selection migration. The former per-model dispatch map is removed; the existing model factory and key resolution remain in use. This reuses [INV-01] explicit-field persistence without a new invariant, abstraction or glossary concept.
 
+The one-stop guide has light/dark semantic colors for content, navigation, links, tables, code and callouts. The embedded page follows Mower theme changes without reload; standalone use follows system preference, with explicit query selection available. Theme synchronization accepts only validated same-origin parent messages. A dedicated scheduling theory section restores field responsibilities, a complete three-position replacement example, mood-limit and threshold interpretation, bounded work/rest estimates, backup composition and an authoring checklist; examples are checked against the current editor and scheduling contract.
+
 ## Verification
 
 Focused offline checks cover legacy downloader queries, current task-switch and database-cleanup advice, case-insensitive FAQ lookup, local source references and help navigation. Scheduling and device-control semantics remain unchanged. The additional DeepSeek model setting introduces no glossary concept.
@@ -36,6 +38,8 @@ Focused offline checks cover legacy downloader queries, current task-switch and 
 README and cookbook maintenance verifies local links and section anchors, Bash syntax without running installation, packaging output names against the platform specs, Docker commands against the server Dockerfile and entrypoint, and Node.js requirements against the frontend lockfile. Four focused help-link and Linux dependency-hint checks pass. Cross-platform installation, packaging and container execution are not performed.
 
 DeepSeek maintenance passes 18 focused AI feature/prompt tests with 16 subtests and three frontend store checks. Legacy Flash/Pro selections retain their model and key, custom IDs reach the official endpoint, Pro thinking parameters remain present, blank IDs fail before model construction, and serialization omits unselected defaults. Frontend checks cover loading preset/custom IDs and saving only the changed provider or model field while preserving unrelated settings. The settings component script/template compile and formatting checks pass; no live model request is sent.
+
+Theme verification passes nine focused frontend tests covering system defaults/changes, explicit theme selection, parent-message validation and embedded updates without iframe reload. CSS parsing and 34 text/background checks pass WCAG AA contrast (minimum 4.56:1 light and 7.04:1 dark). Help navigation/source checks pass. The browser tool blocks local file URLs, so the updated theme has no browser visual-verification evidence.
 
 ## Standards Findings
 

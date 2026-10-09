@@ -4,21 +4,88 @@
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Mower 一条龙入门说明</title>
+	<script>
+		(() => {
+			const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+			let explicitTheme = new URLSearchParams(window.location.search).get('theme');
+			function applyTheme() {
+				document.documentElement.dataset.theme = ['light', 'dark'].includes(explicitTheme)
+					? explicitTheme : systemTheme.matches ? 'dark' : 'light';
+			}
+			applyTheme();
+			systemTheme.addEventListener('change', applyTheme);
+			window.addEventListener('message', (event) => {
+				if (event.source !== window.parent || event.origin !== window.location.origin
+					|| event.data?.type !== 'mower-doc-theme'
+					|| !['light', 'dark'].includes(event.data.theme)) return;
+				explicitTheme = event.data.theme;
+				applyTheme();
+			});
+		})();
+	</script>
 	<style>
 		/* 主题变量定义 */
 		:root {
+			color-scheme: light;
 			--sidebar-width: 210px;
 			--header-height: 60px;
-			--primary-color: #4caf50;
+			--primary-color: #2e7d32;
 			--secondary-color: #2980b9;
 			--link-color: #0066cc;
-			--reference-color: #e74c3c;
+			--link-hover: #0044aa;
+			--reference-color: #c0392b;
+			--reference-hover: #a93226;
 			--border-color: #e0e0e0;
 			--light-bg: #f9f9f9;
 			--active-color: #e8f5e9;
+			--page-bg: #f8fafb;
+			--text-color: #333;
+			--muted-color: #555;
+			--heading-color: #2c3e50;
+			--hover-bg: #e0e0e0;
+			--subnav-bg: rgba(255,255,255,0.5);
+			--code-bg: #f5f5f5;
+			--error-color: #c62828;
+			--note-bg: #fff9e6;
+			--note-border: #b88700;
+			--warning-bg: #ffebee;
+			--warning-border: #d32f2f;
+			--highlight-bg: #fffacd;
+			--button-text: #fff;
+			--table-hover: #f0f7ff;
 			--transition-speed: 0.3s;
 			--shadow: 0 4px 6px rgba(0,0,0,0.1);
 			--card-bg: #fff;
+		}
+
+		:root[data-theme='dark'] {
+			color-scheme: dark;
+			--primary-color: #63e2b7;
+			--secondary-color: #70c0e8;
+			--link-color: #8acbec;
+			--link-hover: #b5e1f7;
+			--reference-color: #ffaaa0;
+			--reference-hover: #ffd0c9;
+			--border-color: #414149;
+			--light-bg: #18181c;
+			--active-color: #1d3b31;
+			--page-bg: #101014;
+			--text-color: #e8e8ec;
+			--muted-color: #b8b8c0;
+			--heading-color: #f4f4f5;
+			--hover-bg: #2c2c32;
+			--subnav-bg: #202024;
+			--code-bg: #202024;
+			--error-color: #ffaaa0;
+			--note-bg: #3c321e;
+			--note-border: #f2c97d;
+			--warning-bg: #3d2529;
+			--warning-border: #e88080;
+			--highlight-bg: #554719;
+			--button-text: #10241c;
+			--table-hover: #24303a;
+			--shadow: 0 4px 6px rgba(0,0,0,0.4);
+			--card-bg: #18181c;
 		}
 		
 		/* 全局基础样式重置 */
@@ -33,8 +100,8 @@
 			font-family: 'PingFang SC', 'Segoe UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif;
 			font-size: 16px;
 			line-height: 1.6;
-			color: #333;
-			background-color: #f8fafb;
+			color: var(--text-color);
+			background-color: var(--page-bg);
 			scroll-behavior: smooth;
 			overflow-x: hidden; /* 防止页面整体溢出 */
 		}
@@ -43,7 +110,7 @@
 		.container {
 			display: flex;
 			min-height: 100vh;
-			background: linear-gradient(to bottom, #e8f5e9 0%, #f8fafb 150px, #f8fafb 100%);
+			background: linear-gradient(to bottom, var(--active-color) 0%, var(--page-bg) 150px, var(--page-bg) 100%);
 		}
 		
 		/* 侧边栏导航样式 */
@@ -69,8 +136,8 @@
 		.nav-title {
 			padding: 15px 20px;
 			font-weight: bold;
-			background: #e8f5e9;
-			color: #4caf50;
+			background: var(--active-color);
+			color: var(--primary-color);
 			font-size: 16px;
 			position: sticky;
 			top: 0;
@@ -92,7 +159,7 @@
 		.nav-link {
 			display: block;
 			padding: 12px 20px;
-			color: #333;
+			color: var(--text-color);
 			text-decoration: none;
 			transition: all 0.2s;
 			font-size: 13px;
@@ -101,7 +168,7 @@
 		}
 		
 		.nav-link:hover {
-			background: #e0e0e0;
+			background: var(--hover-bg);
 		}
 		
 		.nav-link.active {
@@ -126,7 +193,7 @@
 			transform: translateY(-50%);
 			font-weight: bold;
 			font-size: 16px;
-			color: #666;
+			color: var(--muted-color);
 			transition: transform var(--transition-speed);
 		}
 		
@@ -141,7 +208,7 @@
 			max-height: 0;
 			overflow: hidden;
 			transition: max-height var(--transition-speed) ease;
-			background-color: rgba(255,255,255,0.5);
+			background-color: var(--subnav-bg);
 		}
 		
 		/* 二级导航展开时样式 */
@@ -153,7 +220,7 @@
 		.sub-nav-link {
 			padding: 10px 20px 10px 35px;
 			display: block;
-			color: #555;
+			color: var(--muted-color);
 			text-decoration: none;
 			font-size: 12.5px;
 			position: relative;
@@ -161,7 +228,7 @@
 		}
 		
 		.sub-nav-link:hover {
-			background: #f0f0f0;
+			background: var(--hover-bg);
 			padding-left: 38px;
 		}
 		
@@ -174,7 +241,7 @@
 			transform: translateY(-50%);
 			width: 6px;
 			height: 6px;
-			background: #999;
+			background: var(--muted-color);
 			border-radius: 50%;
 			transition: all 0.2s;
 		}
@@ -182,7 +249,7 @@
 		.sub-nav-link.active {
 			color: var(--primary-color);
 			font-weight: bold;
-			background: #e8f5e9;
+			background: var(--active-color);
 		}
 		
 		.sub-nav-link.active::before {
@@ -216,7 +283,7 @@
 			margin: 0 0 20px;
 			padding-bottom: 15px;
 			border-bottom: 2px solid var(--primary-color);
-			color: #2c3e50;
+			color: var(--heading-color);
 			scroll-margin-top: 20px;
 		}
 		
@@ -226,7 +293,7 @@
 			font-weight: bold;
 			margin: 25px 0 15px;
 			scroll-margin-top: 20px;
-			color: #2c3e50;
+			color: var(--heading-color);
 			padding-left: 10px;
 			border-left: 4px solid var(--secondary-color);
 		}
@@ -237,7 +304,7 @@
 			font-weight: bold;
 			margin: 20px 0 12px;
 			scroll-margin-top: 20px;
-			color: #34495e;
+			color: var(--heading-color);
 		}
 		
 		/* 正文段落样式 */
@@ -260,7 +327,7 @@
 		}
 		
 		.link-text:hover {
-			color: #0044aa;
+			color: var(--link-hover);
 		}
 		
 		/* 引用文本样式 */
@@ -279,13 +346,13 @@
 
 		.reference-link-text:hover {
 			text-decoration: underline;
-			color: #c0392b;
+			color: var(--reference-hover);
 		}
 		
 		/* 代码块样式 */
 		.code-block {
-			background: #f5f5f5;
-			color: #333;
+			background: var(--code-bg);
+			color: var(--text-color);
 			padding: 12px;
 			border-radius: 5px;
 			font-family: 'PingFang SC', 'Microsoft YaHei Mono', 'Menlo', 'Consolas', 'monospace';
@@ -309,7 +376,7 @@
 		}
 		
 		.code-block .error {
-			color: #ff5555;
+			color: var(--error-color);
 		}
 		
 		/* 代码块复制按钮样式 */
@@ -317,7 +384,7 @@
 			position: absolute;
 			top: 10px;
 			right: 14px;
-			background: #e8f5e9;
+			background: var(--active-color);
 			color: var(--primary-color);
 			border: none;
 			border-radius: 4px;
@@ -332,7 +399,7 @@
 		
 		.copy-btn:hover {
 			background: var(--primary-color);
-			color: #fff;
+			color: var(--button-text);
 			opacity: 1;
 		}
 		
@@ -350,32 +417,33 @@
 		/* 表头和单元格样式 */
 		.info-table th,
 		.info-table td {
-			border: 1px solid #ddd;
+			border: 1px solid var(--border-color);
 			padding: 10px 15px;
 			text-align: left;
 			max-width: 300px;
 			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
+			white-space: normal;
+			overflow-wrap: anywhere;
+			vertical-align: top;
 		}
 		/* 表头样式 */
 		.info-table th {
-			background-color: #f5f5f5;
+			background-color: var(--code-bg);
 			font-weight: bold;
 		}
 		/* 奇偶行背景色交替 */
 		.info-table tr:nth-child(even) {
-			background-color: #f9f9f9;
+			background-color: var(--light-bg);
 		}
 		/* 鼠标悬停行高亮 */
 		.info-table tr:hover {
-			background-color: #f0f7ff;
+			background-color: var(--table-hover);
 		}
 		
 		/* 引用提示框样式 */
 		.note-box {
-			background: #fff9e6;
-			border-left: 4px solid #f1c40f;
+			background: var(--note-bg);
+			border-left: 4px solid var(--note-border);
 			padding: 5px 20px;
 			margin: 20px 0;
 			border-radius: 0 4px 4px 0;
@@ -384,8 +452,8 @@
 		
 		/* 警告提示框样式 */
 		.warning-box {
-			background: #ffebee;
-			border-left: 4px solid #f44336;
+			background: var(--warning-bg);
+			border-left: 4px solid var(--warning-border);
 			padding: 5px 20px;
 			margin: 20px 0;
 			border-radius: 0 4px 4px 0;
@@ -394,8 +462,8 @@
 		
 		/* 提示框样式 */
 		.tip-box {
-			background: #e8f5e9;
-			border-left: 4px solid #4caf50;
+			background: var(--active-color);
+			border-left: 4px solid var(--primary-color);
 			padding: 5px 20px;
 			margin: 20px 0;
 			border-radius: 0 4px 4px 0;
@@ -474,7 +542,7 @@
 			left: var(--sidebar-width);
 			right: 0;
 			height: 4px;
-			background: #f0f0f0;
+			background: var(--hover-bg);
 			z-index: 1000;
 			transition: left 0.3s ease;
 		}
@@ -489,7 +557,7 @@
 		
 		/* 高亮文本样式 */
 		.highlight {
-			background-color: #fffacd;
+			background-color: var(--highlight-bg);
 			padding: 2px 4px;
 			border-radius: 3px;
 		}
@@ -500,7 +568,7 @@
 			bottom: 30px;
 			right: 30px;
 			background: var(--primary-color);
-			color: white;
+			color: var(--button-text);
 			width: 50px;
 			height: 50px;
 			border-radius: 50%;
@@ -535,6 +603,7 @@
         <li><a href="#download-update" class="nav-link">安装与更新</a></li>
         <li><a href="#device-connection" class="nav-link">设备连接</a></li>
         <li><a href="#scheduling" class="nav-link">排班与宿舍</a></li>
+        <li><a href="#schedule-theory" class="nav-link">排班表编写理论</a></li>
         <li><a href="#Mower-settings" class="nav-link">基建与日常设置</a></li>
         <li><a href="#sanity-plan" class="nav-link">MAA、作战与大型任务</a></li>
         <li><a href="#growth-workshop" class="nav-link">养成、专精与加工</a></li>
@@ -629,6 +698,79 @@
         <h2 id="schedule-issues" class="title-level-2">副表、产物与岗位兼容</h2>
         <p>副表不能改变主表生产设施的类型和岗位数。排班高级设置中的“自动切换产物与订单”默认关闭；关闭时副表不能指定与主表不同的产物或订单目标，相关状态条件和切产物选项隐藏。普通换班、产物收取及葛朗台跑单仍保留。</p>
         <p>主班身份、岗位和绑组没有相关变化时，副表切换优先保留休息、床位与回班状态；替班不足、预约或专精保护冲突时按实际规则等待或召回，不把退出副表理解为强制所有主班回班。</p>
+      </section>
+
+      <section class="content-card">
+        <h1 id="schedule-theory" class="title-level-1">排班表编写理论：从岗位到轮休</h1>
+        <p>排班表描述各岗位由谁负责、谁能替班、哪些人一起换班，以及什么条件下切换安排。Mower 根据实测心情与任务状态动态换班，不是每天按固定时刻把整张表轮换一次。编写时先让普通轮休持续运转，再加入跑单、菲亚梅塔充能和副表等专项安排。</p>
+
+        <h2 id="schedule-design-fields" class="title-level-2">主班、替班和绑组分别解决什么问题</h2>
+        <table class="info-table">
+          <thead><tr><th scope="col">配置</th><th scope="col">编写时要回答的问题</th></tr></thead>
+          <tbody>
+            <tr><td>设施与岗位</td><td>房间类型、等级、产物和岗位数是否与游戏一致？</td></tr>
+            <tr><td>主班</td><td>正常工作时，哪个干员负责这个岗位？</td></tr>
+            <tr><td>替班</td><td>主班休息时，哪些候选能接替这个岗位？</td></tr>
+            <tr><td>绑组</td><td>哪些主班需要协同下班、回班，保留技能配合？</td></tr>
+            <tr><td>宿舍 Free 位</td><td>需要轮休的干员是否有可分配的恢复床位？</td></tr>
+            <tr><td>副表</td><td>特定条件成立时，需要覆盖主表的哪些安排？</td></tr>
+          </tbody>
+        </table>
+        <p>先按基建技能的配合关系选择主班；需要一起轮休的主班填写同一个非空组名，组名本身不代表轮休顺序。无须联动的主班可以不绑组。绑组可以跨设施，但组越大，一次下班需要同时满足的替班和床位条件就越多。</p>
+        <p>替班列表是候选范围，不是把这些干员依次轮换的时间表。每次换班都要为相关岗位找到互不冲突的完整替班；把同一个干员填进多个岗位，不代表他能同时覆盖这些岗位。候选正在工作、被其他任务预约或受专精保护时，也可能暂时不可用。</p>
+
+        <h2 id="schedule-design-example" class="title-level-2">一个三人制造站的示例</h2>
+        <p>假设一间三人制造站需要三名主班一起工作、一起休息。下表的甲至己是示意称呼，实际填写账号已拥有且适合对应设施的干员。</p>
+        <table class="info-table">
+          <thead><tr><th scope="col">岗位</th><th scope="col">主班</th><th scope="col">绑组</th><th scope="col">替班候选</th></tr></thead>
+          <tbody>
+            <tr><td>制造站岗位 1</td><td>甲</td><td>制造一组</td><td>丁</td></tr>
+            <tr><td>制造站岗位 2</td><td>乙</td><td>制造一组</td><td>戊</td></tr>
+            <tr><td>制造站岗位 3</td><td>丙</td><td>制造一组</td><td>己</td></tr>
+          </tbody>
+        </table>
+        <ol>
+          <li>主班甲、乙、丙正常工作，丁、戊、己作为替班候选，不再填成其他工作岗位的主班。</li>
+          <li>配置能容纳三名主班同时恢复的有效 Free 位，并核对实际入住、优先级和专项预约。不能只数表格中写了几个 Free。</li>
+          <li>满足下班条件且替班、床位均可用时，由丁、戊、己接替三个岗位，甲、乙、丙入宿。</li>
+          <li>满足回班条件后主班恢复工作，替班释放，再按宿舍恢复规则参与休息。观察下一轮是否仍有完整替班和床位。</li>
+        </ol>
+        <div class="note-box"><p>若三个岗位都只填丁作为替班，就无法同时替换整组。多个组共用丁、戊、己时，也要检查休息窗口是否重叠；顺序可用不等于同时可用。</p></div>
+        <p>先用单绑组跑通这一类简单循环。多绑组适合处理共享主班等进阶需求：各组都需要普通单绑组成员，且共享岗位在多个组同时休息时必须存在共同可用替班；共享主班只占一张恢复床位，最后一个依赖组回班时才释放共享替班。</p>
+
+        <h2 id="schedule-design-mood" class="title-level-2">心情阈值、上下限与回满</h2>
+        <p>在“设置心情上下限”中，全体设置提供统一范围，指定干员设置优先于全体设置；未自定义时沿用程序的自动规则。下限必须小于上限，范围在 0 至 24 点内。“需要用尽心情的干员”按适用下限安排用尽，“需要回满心情的干员”以适用上限为恢复目标，不一定是 0 和 24。</p>
+        <p>普通下班参考线按上下限区间折算，未自定义上下限时程序还会取整。例如下限为 0、上限为 24、心情阈值为 50%，参考线为 12 点：</p>
+        <div class="code-block"><code>下班参考线 = 心情下限 +（心情上限 − 心情下限）× 心情阈值</code></div>
+        <p>这只是阈值换算，实际下班还受整体心情、组状态、替班、床位和任务时间约束。调高阈值通常会更早申请休息，也会增加床位和替班压力；调低则减少工作余量。“宿舍高优先级”影响分床与单回安排，不直接让某组先下班。</p>
+        <p>普通组的回班不必等所有人恢复至上限；要求回满的成员和“组内心情差距过大时延后回班”等设置会改变回班时间。不要把“达到上限离宿”理解为立即回到工作岗位。</p>
+
+        <h2 id="schedule-design-cycle" class="title-level-2">估算工休比与周转能力</h2>
+        <p>在要求回满、工作与恢复速率近似稳定的假设下，可用心情变化估算一轮工休时间。设上限为 U、下班心情为 H，工作每小时消耗 d 点，宿舍每小时恢复 r 点，且 d、r 均大于 0：</p>
+        <div class="code-block"><code>工作时间 ≈（U − H）÷ d
+恢复时间 ≈（U − H）÷ r
+工休比 ≈ r ÷ d</code></div>
+        <p>例如 U=24、H=12、d=1、r=2，则工作约 12 小时、恢复约 6 小时，工休比约 2:1。这里的速率仅用于演示；实际消耗和恢复受技能、设施与宿舍配置影响，应从自己的运行记录核对，不能直接套用为固定时间表。</p>
+        <ul>
+          <li><strong>检查替班覆盖时间：</strong>主班休息期间，替班必须有足够心情持续工作；主班回班后，替班也要有机会恢复，才能覆盖下一轮。</li>
+          <li><strong>检查床位占用时间：</strong>估算各组何时入宿、占几张床、何时释放。长期没有空余恢复容量，或多个大组集中下班时，即使所有人都填了替班，也可能排队等待。</li>
+          <li><strong>检查技能组合：</strong>替班效率、组内心情消耗差异和宿管恢复能力都会影响长期收益；不要只比较主班在岗时的加成。</li>
+        </ul>
+        <p>以上估算不包含换人耗时、排队、跑单与充能等事件。先观察至少一轮完整的下班与回班，再调整心情阈值、组规模或替班名单；一次校验通过不能证明长期周转没有瓶颈。</p>
+
+        <h2 id="schedule-design-backups" class="title-level-2">主表稳定后再增加副表</h2>
+        <p>主表是日常基准，副表是在条件成立时覆盖部分安排，不是必须手动轮流启用的第二班。先确认主表能独立轮休，再为确有需要的场景添加副表，填写触发条件并核对覆盖范围。多个副表可能同时生效，后面的覆盖会影响前面的结果，应验证组合后的最终安排。</p>
+        <p>副表仍需完整的替班与床位覆盖，也不能改变主表生产设施的类型和岗位数；切换产物或订单还需启用对应高级设置。退出副表后重新依据主表和其余生效副表安排，不保证所有主班立即回岗。</p>
+
+        <h2 id="schedule-design-checklist" class="title-level-2">从零写表的检查顺序</h2>
+        <ol>
+          <li>按游戏实际布局填写设施、等级、产物与岗位，再填主班。</li>
+          <li>按技能配合设置普通绑组，为每个需要轮休的岗位准备可用替班，先避免复杂共享。</li>
+          <li>配置宿管和 Free 位，核算最大同时休息人数；再按需要调整宿舍优先级。</li>
+          <li>核对心情上下限、回满和用尽名单；“0心情工作的干员”只填写确实适用的干员。</li>
+          <li>验证主表，再逐个添加副表、跑单、充能与专精相关安排，重新验证受影响的组合。</li>
+          <li>启动后核对实际驻员、心情变化、下班替换、入宿和回班，稳定后导出备份。</li>
+        </ol>
       </section>
 
       <section class="content-card">
