@@ -17,7 +17,7 @@ from arknights_mower.utils.scheduler_task import (
 
 
 @pytest.fixture(autouse=True)
-def settings(monkeypatch):
+def settings(monkeypatch, offline_maintenance):
     monkeypatch.setattr(config.conf, "enable_mastery", True)
     monkeypatch.setattr(config.conf, "run_order_delay", 5)
     monkeypatch.setattr(operation_timing, "_dorm_durations", {})
