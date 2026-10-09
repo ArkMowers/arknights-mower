@@ -23,6 +23,8 @@ Email submission returns the success message checked by the feedback component, 
 
 README retains the overview, screenshots, source deployment for Windows, Linux and macOS, feedback entry and project notice. Packaging and developer checks move to the linked [packaging cookbook](../../../../docs/cookbook/packaging.md); Docker instructions move to the linked [deployment cookbook](../../../../docs/cookbook/docker-deploy.md). Release details remain in the existing platform document. Source instructions use the frontend's current Node.js requirement and include direct startup commands; the Linux dependency error points to the existing platform document instead of the removed packaging section.
 
+README, the packaging cookbook, one-stop help and FAQ recommend source deployment for macOS and Linux while retaining independent package support.
+
 ## Verification
 
 Focused offline checks cover legacy downloader queries, current task-switch and database-cleanup advice, case-insensitive FAQ lookup, local source references and help navigation. No scheduling, device-control or configuration schema changes require glossary edits.

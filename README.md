@@ -20,6 +20,8 @@ Mower 是为长期运行设计的开源明日方舟脚本。
 
 ## 源码部署
 
+macOS 和 Linux 虽提供独立包，仍建议优先使用源码部署。
+
 需要 Git、Python 3.12，以及 Node.js 20.19+ 或 22.12+。Linux 需要图形桌面环境；Windows 需要 WebView2 运行时。
 
 ### 获取源码并构建前端
