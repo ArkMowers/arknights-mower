@@ -31,6 +31,7 @@
 - **[INV-REC-06] Selection Page Exit**: Known facility roster pages detected during anomalous selection readings abort selection inputs and page-local fallback; normal readings add no page-template lookup or capture.
 
 ### 2.1 Base Infrastructure & Scheduling
+- **[INV-SCHED-40] Confirmed Crafting Dispatch**: With automatic mastery enabled, confirmed crafting batches reevaluate idle plans against local stock and queue eligible starts once per plan without another depot scan; unconfirmed output, unknown stock and disabled automation never admit a start, and training-room protections remain binding.
 
 - **[INV-SCHED-38] Pending Exhaust Recovery**: Exhausted-shift generation and dispatch reuse a pending concrete off-shift arrangement only when it covers every recovery-requiring working group member through explicit dormitory assignments or preserved current rest positions; incomplete groups, unrelated tasks and specialized staffing retain their existing admission, and task consumption or cancellation reopens generation.
 - **[INV-SCHED-37] Recycle Staffing Capacity**: Recycling has two physical operator slots regardless of configured staffing; the recycling plan and task schemas reject more than two slots, explicit backup tasks allow two recycling targets even when primary staffing is absent or partial, selection and mood reading use the shared residence-information list, confirmation accepts the dashboard return, rescue evaluation and initial mood sampling retain configured recycling staff, and occupancy is committed only through existing room readback.
