@@ -3850,10 +3850,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if projected.run_order_paused:
             self.maintenance_entry_pending = False
             return False
+        blocked_orders = blocked_run_order_ids(self.tasks, self.op_data)
         pending = [
             task
             for task in self.tasks
             if getattr(task, "maintenance_advance_before_backup", False)
+            and id(task) not in blocked_orders
         ]
         if not pending and not getattr(self, "maintenance_entry_pending", False):
             pending = adjust_run_order_for_maintenance(
@@ -4748,9 +4750,19 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     def _prepare_shift_cycle(self, task):
         """在副本中收敛换班、副表、后续轮休和补床，成功后一次提交最终安排。"""
         if getattr(self, "maintenance_entry_pending", False):
-            raise ProductSwitchDeferred(
-                "等待停服前提前跑单及原班恢复完成后再换班", minutes=1
-            )
+            blocked_orders = blocked_run_order_ids(self.tasks, self.op_data)
+            pending = [
+                queued
+                for queued in self.tasks
+                if getattr(queued, "maintenance_advance_before_backup", False)
+            ]
+            if not pending or any(
+                id(queued) not in blocked_orders for queued in pending
+            ):
+                raise ProductSwitchDeferred(
+                    "等待停服前提前跑单及原班恢复完成后再换班", minutes=1
+                )
+            self.maintenance_entry_pending = False
         if (self._initial_mood_read_pending()) or getattr(
             task, "backup_shift_active", False
         ):

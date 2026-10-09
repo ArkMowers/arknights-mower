@@ -3202,7 +3202,6 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
     def test_adjusted_order_can_continue_with_out_of_range_countdown(self):
         solver, room, events = self.make_solver()
         solver.task.adjusted = True
-        original_time = solver.task.time
         solver.get_order_remaining_time.side_effect = lambda: (
             events.append("countdown") or 900
         )

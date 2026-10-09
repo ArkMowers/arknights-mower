@@ -1029,12 +1029,14 @@ def adjust_run_order_for_maintenance(tasks, run_order_delay=5, advance_time=None
         return []
     window_start = st - timedelta(minutes=time_gap)
     window_end = ed + timedelta(minutes=time_gap)
+    blocked_orders = blocked_run_order_ids(tasks)
     # 找出需要调整的任务
     run_order_tasks = [
         t
         for t in tasks
         if t.type == TaskTypes.RUN_ORDER
         and not getattr(t, "run_order_restore_pending", False)
+        and id(t) not in blocked_orders
         and (
             window_start < t.time < window_end
             or advance_time is not None

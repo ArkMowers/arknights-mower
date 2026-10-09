@@ -268,6 +268,12 @@ class EmergencyRecoveryMixin:
         self._emergency_save()
         if not config.conf.automatic_rescue_enable:
             return
+        if any(
+            getattr(task, "run_order_restore_pending", False) for task in self.tasks
+        ):
+            # 普通纠错先释放原驻员；救急准入不能清除这条补偿依赖。
+            logger.info("自动救急准入等待普通跑单恢复原驻员")
+            return
         now = datetime.now()
         trial = copy.copy(self)
         data = trial.op_data = self.op_data.project_arrangements([])
@@ -536,6 +542,7 @@ class EmergencyRecoveryMixin:
             for name in row
         )
         pending = {}
+        deferred = {}
         for room, names in plan.items():
             current = data.get_current_room(room, True)
             if current is not None and all(
@@ -544,15 +551,19 @@ class EmergencyRecoveryMixin:
             ):
                 continue
             if any(
-                (
-                    hasattr(task, "emergency_original_roster")
-                    and room in set(task.plan) | set(task.emergency_original_roster)
-                )
-                or room in getattr(task, "run_order_original_roster", {})
+                hasattr(task, "emergency_original_roster")
+                and room in set(task.plan) | set(task.emergency_original_roster)
                 for task in self.tasks
             ):
                 logger.info("自动救急 %s：等待专项任务恢复原驻员后执行救急主表", room)
                 return False
+            if any(
+                room in getattr(task, "run_order_original_roster", {})
+                for task in self.tasks
+            ):
+                # 已保存的救急先安排其他房间，释放普通跑单的原驻员。
+                deferred[room] = list(names)
+                continue
             for index, name in enumerate(names):
                 if name in ("", "Current"):
                     continue
@@ -574,6 +585,8 @@ class EmergencyRecoveryMixin:
                     return False
             pending[room] = list(names)
         if not pending:
+            if deferred:
+                return False
             state["staffing_complete"] = True
             state["staffing_plan"] = {}
             state.pop("staffing_members", None)
@@ -585,7 +598,8 @@ class EmergencyRecoveryMixin:
             for name in row:
                 if name not in ("", "Current") and name not in data.operators:
                     data.add(Operator(name, ""))
-        state["staffing_plan"] = copy.deepcopy(pending)
+        # 只派发可执行房间，但完成核验仍包含等待补偿的全部目标。
+        state["staffing_plan"] = copy.deepcopy(pending | deferred)
         state["staffing_members"] = list(state["targets"])
         state["temporary_roster"] = {
             room: data.get_current_room(room, True) for room in plan
