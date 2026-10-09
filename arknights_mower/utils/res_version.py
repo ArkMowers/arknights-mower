@@ -46,6 +46,16 @@ RES_PACKAGE_DATA = (
 )
 
 
+def is_package_file(name: str) -> bool:
+    """Identify files managed by a complete resource generation."""
+    return (
+        name == "arknights_mower/data/version.json"
+        or name
+        in (*RES_PACKAGE_DATA, *RES_PACKAGE_MODELS, *RES_PACKAGE_OPTIONAL_MODELS)
+        or any(name.startswith(directory + "/") for directory in RES_PACKAGE_DIRS)
+    )
+
+
 def package_file_paths(root) -> list:
     """展开资源包实际存在的文件（相对 root 的路径），按路径排序。"""
     root = Path(root)

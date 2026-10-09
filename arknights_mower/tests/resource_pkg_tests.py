@@ -77,6 +77,9 @@ class ResourcePkgTestBase(unittest.TestCase):
             "_rejected_resource_signature": None,
         }.items():
             stack.enter_context(patch.object(rp, name, value))
+        stack.enter_context(
+            patch.object(rp, "_fetch_resource_update_index", return_value=None)
+        )
         self.reload_caches = stack.enter_context(
             patch.object(rp, "reload_resource_caches")
         )

@@ -12,6 +12,8 @@
 
 ## 2. Subsystem Invariants
 
+- **[INV-RES-02] Resource OTA Reconstruction**: Resource OTA requires the exact starting resource version, verifies every reconstructed target file and publishes a complete compatible immutable generation; online failures fall back to the same release’s full package, while manual updates remain offline.
+
 - **[INV-WORKSHOP-02] T5 Specialist Priority**: Homebound recommendations and crafting allocation use only her elite-two T5 specialty, saved execution copies exclude non-T5 recipes, and higher-bonus workers retain execution priority.
 
 - **[INV-WORKSHOP-01] Rejected Recipe Handoff**: Game-rejected recipes do not dispatch another worker against unchanged relevant inventory and configuration; rejections remain transient, renewed inventory observations permit retries without fabricated counts, and processing failures stop consecutive handoffs.
