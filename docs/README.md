@@ -4,46 +4,29 @@ hide:
   - toc
 ---
 
-<div align="center" markdown>
+# Arknights Mower
 
-![Mower](./assets/logo/logo.png)
+![Mower](assets/logo/logo.png){ width="120" }
 
-***Arknights-Mower***
+Mower 是为长期运行设计的开源明日方舟脚本，支持 Windows、macOS 与 Linux。
 
----
+[项目主页](https://github.com/ArkMowers/arknights-mower) · [官方 Releases](https://github.com/ArkMowers/arknights-mower/releases) · [一条龙入门](manual/README.md)
 
-Mower 是为长期运行设计的、开源的明日方舟脚本，支持 Windows、macOS 与 Linux 平台
+## 开始使用
 
-[![GitHub License](https://img.shields.io/github/license/ArkMowers/arknights-mower)](https://github.com/ArkMowers/arknights-mower/blob/master/LICENSE)
-[![GitHub last commit (branch)](https://img.shields.io/github/last-commit/ArkMowers/arknights-mower/dev)](https://github.com/ArkMowers/arknights-mower/commits/dev/)
-[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/ArkMowers/arknights-mower/pyinstaller-win-shawn.yml?branch=dev&)](https://github.com/ArkMowers/arknights-mower/actions/workflows/pyinstaller-win-shawn.yml)
-[![qq_guild](https://img.shields.io/badge/QQ%E9%A2%91%E9%81%93-2r118jwue4-blue)](https://pd.qq.com/s/5t91c3gx9)
-[![QQ群](https://img.shields.io/badge/QQ群-521857729(mower用户交流群)-green)](https://qm.qq.com/q/uALU6yjUuk)
+- [源码部署](manual/source-deploy.md)：Windows、Linux、macOS 的环境、安装和启动步骤。macOS 和 Linux 虽提供独立包，仍推荐源码部署。
+- [安装与更新](manual/install.md)：独立包、内置软件更新及资源更新。
+- [排班教学](manual/schedule.md)：从岗位、替班和绑组开始，理解宿舍恢复与主副表组合。
+- [常见问题](manual/qa.md)：根据具体状态和日志排查问题。
 
-初次使用，建议阅读
+自行构建见[本地打包](manual/packaging.md)，容器部署见[Docker 说明](manual/docker-deploy.md)。
 
-[《Mower入门一条龙》](./manual/README.md)
+## 功能
 
-提出建议、反馈 Bug 或交流基建知识，欢迎加入 QQ 频道 [ArkMower（频道号：2r118jwue4）](https://pd.qq.com/s/5t91c3gx9)
+基建支持跑单、按心情动态换班、材料合成和自动专精；日常支持公招、邮件、线索、森空岛签到及仓库读取。刷理智周计划可选择 MAA 或 Mower，大型任务独立配置，具体可用任务以当前页面为准。
 
-</div>
+## 建议与反馈
 
-## 功能介绍
+[Mower 反馈表](https://docs.qq.com/sheet/DUEJ6UWN5VFVRU0dG?tab=BB08J2)可查阅已有问题，填写需相应编辑权限。程序内反馈通过邮件发送，不自动写入表格。提交前请阅读[反馈与求助](manual/feedback.md)，准备版本、系统、目标设备、发生时间及相关日志。
 
-- 基建：跑单、按心情动态换班、自动合成材料、自动专精；
-- 森空岛：签到、仓库读取；
-- 日常：公招、邮件、线索、清理智；
-- 大型任务：生息演算、隐秘战线；
-- 签到：五周年月卡、限定池每日一抽、矿区、孤星领箱子、端午签到……
-- 调用 maa：肉鸽、保全。
-
-## 界面截图
-
-=== "运行日志"
-    ![log](./assets/img/log.png){ width="1000" }
-=== "Mower设置"
-    ![settings](./assets/img/settings.png){ width="1000" }
-=== "排班编辑"
-    ![plan-editor](./assets/img/plan-editor.png){ width="1000" }
-=== "基建报表"
-    ![riic-report](./assets/img/riic-report.png){ width="1000" }
+QQ群：521857729；QQ 频道：ArkMower，频道号 2r118jwue4。

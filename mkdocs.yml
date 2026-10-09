@@ -112,13 +112,21 @@ nav:
   - Mower入门一条龙:
     - manual/README.md
     - 前言: manual/intro.md
-    - 下载及更新: manual/install.md
+    - 源码部署: manual/source-deploy.md
+    - 安装与更新: manual/install.md
+    - 本地打包: manual/packaging.md
     - Docker 部署: manual/docker-deploy.md
-    - Mower使用: manual/mower-settings.md
+    - 设备连接: manual/device.md
+    - 基建与日常: manual/mower-settings.md
     - 排班教学: manual/schedule.md
+    - 作战与大型任务: manual/tasks.md
+    - 养成与加工: manual/growth.md
     - 专精推荐: manual/MasteryRecommendation.md
+    - 备份与多开: manual/backup.md
+    - 日志与 AI: manual/diagnostics.md
     - 数据图表: manual/chart.md
     - 常见问题: manual/qa.md
+    - 反馈与求助: manual/feedback.md
   - 旧版手册:
     - former-manual/README.md
     - 入门指北: 
