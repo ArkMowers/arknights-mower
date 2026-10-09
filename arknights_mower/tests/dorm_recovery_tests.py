@@ -719,7 +719,7 @@ def test_readback_with_remaining_competitor_never_marks_success(solver):
         ("windows", "xhigh", "high"),
         ("darwin", "xhigh", "high"),
         ("linux", "xhigh", "high"),
-        ("android", "medium", "low"),
+        ("android", "xhigh", "high"),
     ],
 )
 def test_preselection_feedback_failures_downgrade_auto_mode(

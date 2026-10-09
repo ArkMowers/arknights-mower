@@ -1,0 +1,46 @@
+{
+  "title": "In-game Selection Performance Test",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-10",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-45]",
+    "[INV-DEV-23]",
+    "[INV-SCHED-30]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.performance_test.SelectionPerformanceTest",
+    "arknights_mower.solvers.base_mixin.BaseMixin.reorder_selected_agents",
+    "server.device_performance_test",
+    "server._run_performance_test",
+    "arknights_mower.utils.device.application.DeviceControl.run",
+    "server.performance_test_screenshot",
+    "arknights_mower.views.screenshot.latest_screenshot_response",
+    "arknights_mower.solvers.performance_test.SelectionPerformanceTest.prepare_round",
+    "arknights_mower.solvers.base_mixin.BaseMixin.swipe_agent_page"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/game_performance_tests.py",
+    "arknights_mower/tests/game_performance_route_tests.py",
+    "arknights_mower/tests/agent_selection_settle_tests.py",
+    "arknights_mower/tests/performance_profile_tests.py",
+    "arknights_mower/tests/selection_filter_reset_tests.py",
+    "arknights_mower/tests/selection_page_identity_tests.py",
+    "arknights_mower/tests/device_settings_route_tests.py",
+    "arknights_mower/tests/server_status_tests.py",
+    "ui/src/components/GamePerformanceTest.test.js",
+    "ui/src/components/PerformanceSettings.test.js",
+    "ui/src/components/DeviceSettings.test.js",
+    "ui/src/utils/performanceProfile.test.js",
+    "ui/src/utils/deviceSettings.test.js",
+    "ui/src/stores/configPartial.test.js",
+    "arknights_mower/tests/device_application_tests.py",
+    "arknights_mower/tests/device_control_shutdown_tests.py",
+    "arknights_mower/tests/held_swipe_capture_tests.py",
+    "arknights_mower/tests/screenshot_tests.py",
+    "ui/src/utils/screenshotPreview.test.js"
+  ]
+}

@@ -7623,13 +7623,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         clear_interval = 0.3 if self.performance_profile.mode == "high" else 0.5
         if getattr(getattr(self, "task", None), "emergency_staffing", False):
             fast_mode = False
-        position = [
-            (0.35, 0.35),
-            (0.35, 0.75),
-            (0.45, 0.35),
-            (0.45, 0.75),
-            (0.55, 0.35),
-        ]
         mood_fallback = (
             self.prepare_dorm_selection(
                 agents,
@@ -7679,8 +7672,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if current_room[pos] != "":
                     self.tap(
                         (
-                            self.recog.w * position[pos][0],
-                            self.recog.h * position[pos][1],
+                            self.recog.w * self.agent_selection_positions[pos][0],
+                            self.recog.h * self.agent_selection_positions[pos][1],
                         ),
                         interval=0.2 if self.low_frame_rate_mode else 0,
                     )
@@ -8045,26 +8038,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             logger.info(exists)
             # 蓝框只说明卡片被选中；返回名单按页面位置排序，不能由此推断
             # 卡片上的选择编号。即使页面顺序恰好等于目标也须重新按目标点击。
-            click_order = []
-            for a in agents:
-                if a in exists:
-                    click_order.append(exists.index(a))
-                else:
-                    raise Exception("检测到干员选择错误，重新选择")
-            if click_order:
+            if any(a not in exists for a in agents):
+                raise Exception("检测到干员选择错误，重新选择")
+            if agents:
                 # 按目标顺序完成点击后统一校验完整名单。
-                reorder_mode = self.performance_profile.mode
-                click_interval = {"xhigh": 0, "high": 0.1}.get(reorder_mode, 0.2)
-                logger.debug(
-                    f"选人重排清空：性能档位{reorder_mode}，页面已选{exists}，目标{agents}"
-                )
-                self.tap(
-                    (self.recog.w * 0.38, self.recog.h * 0.95), interval=clear_interval
-                )
-                for p_idx in click_order:
-                    x = self.recog.w * position[p_idx][0]
-                    y = self.recog.h * position[p_idx][1]
-                    self.tap((x, y), interval=click_interval)
+                self.reorder_selected_agents(agents, exists)
                 reordered = True
             else:
                 # 空目标没有需要重排和校验的卡片。

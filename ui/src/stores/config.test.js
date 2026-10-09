@@ -279,7 +279,7 @@ describe('low frame rate adaptation', () => {
     }
   })
   it.each([
-    ['android', undefined, true],
+    ['android', undefined, false],
     ['android', false, false],
     ['android', true, true],
     ['darwin', undefined, false],
@@ -320,7 +320,7 @@ describe('low frame rate adaptation', () => {
     await nextTick()
     await store.flush_config_saves()
     expect(axios.patch).not.toHaveBeenCalled()
-    store.performance_mode = platform === 'android' ? 'low' : 'medium'
+    store.performance_mode = 'medium'
     await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
     const savedValue = performanceProfile(store.performance_mode, platform).lowFrameRateMode
     expect(store.build_config().low_frame_rate_mode).toBe(savedValue)

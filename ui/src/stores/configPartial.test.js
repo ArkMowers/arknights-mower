@@ -94,8 +94,8 @@ describe('partial configuration saves', () => {
     }
   )
 
-  it.each(['windows', 'darwin', 'linux'])(
-    'starts desktop auto at xhigh on %s',
+  it.each(['windows', 'darwin', 'linux', 'android'])(
+    'starts auto at xhigh on %s',
     async (platform) => {
       await setup({ runtime_platform: platform, performance_mode: 'auto' })
       expect(store.performance_mode).toBe('auto')
@@ -103,9 +103,11 @@ describe('partial configuration saves', () => {
     }
   )
 
-  it('keeps the Android auto baseline at medium', async () => {
+  it('uses shared numeric defaults for Android auto', async () => {
     await setup({ runtime_platform: 'android', performance_mode: 'auto' })
-    expect(store.performance_effective_mode).toBe('medium')
+    expect(store.performance_effective_mode).toBe('xhigh')
+    expect(store.selection_poll_interval).toBe(0.1)
+    expect(store.build_config().low_frame_rate_mode).toBe(false)
   })
 
   it('shows the backend automatic verdict after a downgrade', async () => {
@@ -121,6 +123,20 @@ describe('partial configuration saves', () => {
     await setup({ runtime_platform: 'darwin', performance_mode: 'high' })
     expect(store.performance_mode).toBe('high')
     expect(store.performance_effective_mode).toBe('high')
+  })
+
+  it.each(['high', 'xhigh'])('preserves Android %s through load and save', async (mode) => {
+    await setup({ runtime_platform: 'android', performance_mode: mode })
+    expect(store.performance_mode).toBe(mode)
+    expect(store.performance_effective_mode).toBe(mode)
+    expect(store.build_config()).toMatchObject({
+      performance_mode: mode,
+      low_frame_rate_mode: false
+    })
+    store.performance_mode = mode === 'high' ? 'xhigh' : 'high'
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.lastCall[1]).toMatchObject({ performance_mode: store.performance_mode })
   })
 
   it('keeps legacy switching disabled and saves only an explicit master toggle', async () => {

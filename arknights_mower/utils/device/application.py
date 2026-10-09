@@ -272,6 +272,7 @@ class DeviceControl(Generic[D]):
         self._genymotion = genymotion
         self._run_authorization: str | None = None
         self._run_active = False
+        self._defer_cancel_close = False
         self._session_error: Exception | None = None
         self._dispatch_pause: TouchFailure | None = None
         self._last_error: dict | None = None
@@ -859,8 +860,13 @@ class DeviceControl(Generic[D]):
         return self._device.device_id if self._device is not None else self._serial
 
     @contextmanager
-    def run(self, *, preparation_serial: str | None = None):
-        """Own authorization and cleanup for one whole scheduling run."""
+    def run(
+        self,
+        *,
+        preparation_serial: str | None = None,
+        defer_cancel_close: bool = False,
+    ):
+        """Own a run; optional bounded compensation precedes cancellation close."""
         if self._shutdown.is_set() or self._pending_close.is_set():
             self._closing_failure().unwrap()
         if self.active:
@@ -870,12 +876,14 @@ class DeviceControl(Generic[D]):
             # rather than treating its cached result as a permanent failure.
             self.close()
         self._run_active = True
+        self._defer_cancel_close = defer_cancel_close
         self._run_authorization = preparation_serial
         try:
             yield
         finally:
             self._run_authorization = None
             self._run_active = False
+            self._defer_cancel_close = False
             if not self.shutdown_requested:
                 self.close()
 
@@ -1261,7 +1269,7 @@ class DeviceControl(Generic[D]):
                     self._close_failure(exc, "device_cleanup_failed")
                 return self._failure("recovery_failed", exc)
             if isinstance(exc, MowerExit):
-                if not self.shutdown_requested:
+                if not self.shutdown_requested and not self._defer_cancel_close:
                     self.close()
                 return self._failure("operation_failed", exc)
             if self._session is not None and not isinstance(exc, MowerExit):
