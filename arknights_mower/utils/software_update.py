@@ -41,12 +41,12 @@ CHANNELS = [
     {
         "value": "beta",
         "label": "公测版",
-        "description": "跟随预发布 Release（如 v4.1.6-alpha.3），提前体验修复和功能，可能存在不稳定行为。",
+        "description": "接收公测版和更新的正式版，提前体验修复和功能，可能存在不稳定行为。",
     },
     {
         "value": "dev",
         "label": "开发版",
-        "description": "安装版跟随 alpha 分支的 Windows x64 Nightly；源码部署仍通过 Git 跟随所选分支。开发版可能不稳定。",
+        "description": "安装版接收 Windows x64 Nightly、更新的公测版和正式版；源码部署通过 Git 跟随所选分支。开发版可能不稳定。",
     },
 ]
 VERSION_RE = re.compile(
@@ -732,9 +732,29 @@ def release_index(channel):
         or not isinstance(data.get("full_assets"), list)
         or not isinstance(data.get("ota_assets"), list)
         or not isinstance(data.get("history"), list)
+        or any(
+            not isinstance(asset, dict)
+            for asset in data["full_assets"] + data["ota_assets"]
+        )
     ):
         raise ValueError("MowerRelease 版本索引格式错误")
     return data
+
+
+def latest_release_index(channel):
+    """Admit newer, installable releases from more stable channels."""
+    selected = release_index(channel)
+    for promoted in {"dev": ("beta", "stable"), "beta": ("stable",)}.get(channel, ()):
+        try:
+            candidate = release_index(promoted)
+            if version_key(candidate["version"]) <= version_key(selected["version"]):
+                continue
+            choose_asset(candidate, repo=OTA_REPO)
+        except ValueError:
+            # Optional channels may have no published package or index yet.
+            continue
+        selected = candidate
+    return selected
 
 
 def release_rollback_candidates(channel, proxy):
@@ -865,11 +885,17 @@ def choose_asset(release, *, repo=REPO):
             message += "；macOS 旧版 ZIP 请手动安装"
         raise ValueError(message)
     digest = asset.get("digest") or ""
-    if not re.fullmatch(r"sha256:[a-fA-F0-9]{64}", digest):
+    if not isinstance(digest, str) or not re.fullmatch(
+        r"sha256:[a-fA-F0-9]{64}", digest
+    ):
         raise ValueError("Release 缺少 SHA-256 校验值；请下载安装包后手动上传")
     url = asset.get("url") or asset.get("browser_download_url") or ""
-    if not url.startswith(f"https://github.com/{repo}/releases/download/"):
+    if not isinstance(url, str) or not url.startswith(
+        f"https://github.com/{repo}/releases/download/"
+    ):
         raise ValueError("Release 下载地址不属于官方仓库")
+    if type(asset.get("size")) is not int or asset["size"] <= 0:
+        raise ValueError("Release 安装包大小无效")
     return {
         "name": name,
         "url": url,
@@ -1113,7 +1139,7 @@ def check(channel, proxy=None):
     elif deployment == "release":
         release_repo = OTA_REPO
         try:
-            release = release_index(channel)
+            release = latest_release_index(channel)
         except ValueError:
             if channel != "stable":
                 raise
