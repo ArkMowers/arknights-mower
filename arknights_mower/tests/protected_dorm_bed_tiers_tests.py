@@ -7,10 +7,15 @@ from unittest.mock import MagicMock
 import pytest
 
 from arknights_mower.solvers import base_schedule, record
-from arknights_mower.tests import dorm_release_tests, mass_mood_recovery_tests
+from arknights_mower.tests import (
+    dorm_recovery_tests,
+    dorm_release_tests,
+    mass_mood_recovery_tests,
+)
 from arknights_mower.tests.resting_priority_tests import set_tier
 from arknights_mower.utils import config, mastery_db
 from arknights_mower.utils.operators import Dormitory, Operator
+from arknights_mower.utils.plan import Room
 from arknights_mower.utils.resting_priority import RestingTier
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
@@ -21,6 +26,7 @@ from arknights_mower.utils.scheduler_task import (
 ROOM = dorm_release_tests.ROOM
 op_data = dorm_release_tests.op_data
 group_solver = mass_mood_recovery_tests.solver
+single_solver = dorm_recovery_tests.solver
 PROTECTED = (
     RestingTier.PRIORITY,
     RestingTier.MAIN,
@@ -318,6 +324,164 @@ def test_standby_takeover_does_not_recall_completed_protected_group_member(
     assert data.project_arrangements([fill.plan]).operators[names[1]].is_resting()
     assert original in tasks
     assert vars(data.dorm[1]) == before
+
+
+@pytest.mark.parametrize("entry", ["planning", "dispatch"])
+@pytest.mark.parametrize("secondary", [False, True])
+def test_standby_takeover_retains_protected_member_on_fixed_recovery_bed(
+    group_solver, entry, secondary
+):
+    data = group_solver.op_data
+    standby, anchor, other = mass_mood_recovery_tests.PRIMARY[:3]
+    data.groups["轮休"] = [standby, anchor, "冰酿"]
+    for name in (standby, anchor, "冰酿"):
+        data.operators[name].group = "轮休"
+    if secondary:
+        data.operators[anchor].group = "其他"
+        data.operators[anchor].group_bindings = [
+            {"group": "其他", "replacement": ["槐琥"]},
+            {"group": "轮休", "replacement": ["槐琥"]},
+        ]
+    data.plan["dormitory_1"][0] = Room("冰酿", "轮休", [anchor])
+    data.operators["冰酿"].replacement = [anchor]
+    data.group_dorm = [Dormitory(("dormitory_1", 0), anchor)]
+    data.operators["冰酿"]._current_room = ""
+    data.operators[anchor]._current_room, data.operators[anchor].current_index = (
+        "dormitory_1",
+        0,
+    )
+    data.operators[anchor].mood = 10
+    for bed, name in zip(data.dorm[:2], (standby, other)):
+        op = data.operators[name]
+        op._current_room, op.current_index = bed.position
+        op.mood = 10
+        bed.name = name
+    data.add(Operator("空爆", ""))
+    idle = data.operators["空爆"]
+    idle._current_room, idle.current_index = data.dorm[2].position
+    idle.mood, idle.time_stamp = 10, mass_mood_recovery_tests.NOW
+    data.dorm[2].name = idle.name
+    data.operators[standby].resting_priority = "standby"
+    data.config.resting_standby = [standby]
+    incoming = data.operators["陈"]
+    incoming._current_room, incoming.current_index, incoming.mood = "", -1, 5
+    returning = SchedulerTask(
+        time=mass_mood_recovery_tests.NOW + timedelta(hours=3),
+        task_type=TaskTypes.SHIFT_ON,
+        task_plan={data.operators[name].room: [name] for name in (standby, anchor)},
+    )
+    tasks = [returning]
+    try_add_release_dorm({}, None, data, tasks)
+    fill = next(task for task in tasks if task is not returning)
+    if entry == "dispatch":
+        instance = selection_solver(data, fill)
+        instance.tasks = [fill, returning]
+        instance._emergency_frozen = lambda: False
+        instance._track_idle_dorm_shift = lambda _: None
+        instance._finish_idle_dorm_shift = lambda: None
+        instance.agent_arrange_room = MagicMock(return_value=False)
+        instance.agent_arrange(fill.plan)
+        tasks = instance.tasks
+    assert not any(
+        anchor in row for room, row in fill.plan.items() if not room.startswith("dorm")
+    )
+    assert data.project_arrangements([fill.plan]).operators[anchor].is_resting()
+    assert returning in tasks
+
+
+def test_dispatch_compensation_uses_observed_resident_instead_of_stale_group_cache(
+    group_solver,
+):
+    data = group_solver.op_data
+    stale, anchor, other = mass_mood_recovery_tests.PRIMARY[:3]
+    data.groups["深海"] = [stale, anchor]
+    for name in (stale, anchor):
+        data.operators[name].group = "深海"
+        data.operators[name].mood = 10
+    data.operators[stale]._current_room = ""
+    for bed, name in zip(data.dorm[1:], (anchor, other)):
+        op = data.operators[name]
+        op._current_room, op.current_index = bed.position
+        bed.name = name
+    data.add(Operator("空爆", ""))
+    actual = data.operators["空爆"]
+    actual._current_room, actual.current_index = data.dorm[0].position
+    actual.mood, actual.time_stamp = 10, mass_mood_recovery_tests.NOW
+    data.dorm[0].name = stale
+    incoming = data.operators["陈"]
+    incoming._current_room, incoming.current_index, incoming.mood = "", -1, 5
+    returning = SchedulerTask(
+        time=mass_mood_recovery_tests.NOW + timedelta(hours=3),
+        task_type=TaskTypes.SHIFT_ON,
+        task_plan={data.operators[anchor].room: [anchor]},
+    )
+    fill = SchedulerTask(
+        task_plan={
+            "dormitory_1": ["Current", "Current", incoming.name, "Current", "Current"]
+        },
+    )
+    fill.dorm_fill_plan = deepcopy(fill.plan)
+    instance = selection_solver(data, fill)
+    instance.tasks = [fill, returning]
+    instance._emergency_frozen = lambda: False
+    instance._track_idle_dorm_shift = lambda _: None
+    instance._finish_idle_dorm_shift = lambda: None
+    instance.agent_arrange_room = MagicMock(return_value=False)
+
+    instance.agent_arrange(fill.plan)
+
+    assert not any(
+        room in fill.plan
+        for room in (data.operators[stale].room, data.operators[anchor].room)
+    )
+    assert returning in instance.tasks
+    assert data.operators[anchor].is_resting()
+
+
+@pytest.mark.parametrize("event", ["none", "vacancy", "takeover"])
+def test_recovery_fill_keeps_established_single_manager_and_target(
+    single_solver, event
+):
+    instance = single_solver
+    dorm_recovery_tests.arrange(instance)
+    data = instance.op_data.project_arrangements([{}])
+    instance.op_data = data
+    target, manager = data.operators["银灰"], data.operators["琴柳"]
+    before = (
+        manager.current_room,
+        manager.current_index,
+        target.current_room,
+        target.current_index,
+        target.dorm_recovery_fixed,
+    )
+    confirmations = len(instance.confirms)
+    if event == "none":
+        data.operators["陈"].mood = 2
+    else:
+        set_tier(data, "空爆", RestingTier.PRIORITY_REPLACEMENT, 5)
+        if event == "vacancy":
+            bed = data.get_dorm_by_name("陈")[1]
+            data.operators["陈"].current_room = ""
+            data.operators["陈"].current_index = -1
+            instance.physical[-1] = ""
+            bed.reset()
+    tasks = []
+    try_add_release_dorm({}, None, data, tasks)
+    if event == "none":
+        assert tasks == []
+    else:
+        instance.task, instance.tasks = tasks[0], tasks
+        dorm_recovery_tests.arrange(instance)
+    assert (
+        manager.current_room,
+        manager.current_index,
+        target.current_room,
+        target.current_index,
+        target.dorm_recovery_fixed,
+    ) == before
+    assert instance.physical[1] == manager.name
+    assert instance.physical[3] == target.name
+    assert len(instance.confirms) == confirmations + (event != "none")
 
 
 @pytest.mark.parametrize("kind", [TaskTypes.RUN_ORDER, TaskTypes.SWAP_SUPPORT])

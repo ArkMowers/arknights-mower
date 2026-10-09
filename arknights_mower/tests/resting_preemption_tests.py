@@ -216,7 +216,7 @@ def test_uncached_required_resident_still_gets_explicit_return_compensation(solv
     assert previous[position] == name
     bed.name = OTHERS[0]
     plan = {}
-    restore_displaced_resting(data, previous, plan, [])
+    restore_displaced_resting(data, previous, plan, [], admitted={position: OTHERS[0]})
     assert set(DEEP) <= {name for names in plan.values() for name in names}
     assert bed.name == OTHERS[0]
 
@@ -232,7 +232,13 @@ def test_free_opening_keeps_new_required_anchor_and_does_not_recall_standby(solv
     room, index = anchor_bed.position
     plan = {room: ["Current"] * 5}
     plan[room][index] = "Free"
-    restore_displaced_resting(data, previous, plan, [])
+    restore_displaced_resting(
+        data,
+        previous,
+        plan,
+        [],
+        admitted={anchor_bed.position: DEEP[0], standby_bed.position: OTHERS[0]},
+    )
     assert all(
         name not in {name for names in plan.values() for name in names} for name in DEEP
     )

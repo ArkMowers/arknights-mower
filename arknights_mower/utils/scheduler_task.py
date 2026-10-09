@@ -2444,23 +2444,25 @@ def try_workshop_tasks(op_data, tasks, *, minimum_mood=22):
 
 
 def dorm_residents(op_data):
-    """床位缓存缺名时用实际驻员补齐，让床补偿与接管判定使用同一身份。"""
+    """全部恢复床优先使用实际驻员；无人观测时保留床位预约。"""
     return {
-        bed.position: bed.name
-        or (
+        bed.position: (
             resident.name
             if (resident := op_data.get_current_operator(*bed.position)) is not None
             and op_data.is_recovery_dorm(bed, resident.name)
             else ""
+            if resident is not None
+            else bed.name
         )
-        for bed in op_data.dorm
+        for bed in op_data.all_dorms()
     }
 
 
-def restore_displaced_resting(op_data, previous, plan, tasks):
+def restore_displaced_resting(op_data, previous, plan, tasks, *, admitted=None):
     """已恢复成员和候补让床不打断同组恢复；必需组员失床召回整组。"""
-    current = dorm_residents(op_data)
-    for bed in op_data.dorm:
+    # 同一份实际观测贯穿补偿；分床器明确返回的预约单独覆盖，避免旧缓存冒充入住者。
+    current = {**previous, **(admitted or {})}
+    for bed in op_data.all_dorms():
         names = plan.get(bed.position[0], [])
         index = bed.position[1]
         if (
@@ -2468,8 +2470,8 @@ def restore_displaced_resting(op_data, previous, plan, tasks):
             and names[index] != "Current"
             and not (
                 names[index] in ("Free", "")
-                and bed.name != previous.get(bed.position, "")
-                and bed.name
+                and current.get(bed.position) != previous.get(bed.position, "")
+                and current.get(bed.position)
             )
         ):
             current[bed.position] = "" if names[index] in ("Free", "") else names[index]
@@ -2484,7 +2486,7 @@ def restore_displaced_resting(op_data, previous, plan, tasks):
         op = op_data.operators.get(name)
         if op is None or not op.is_high() or op.room not in op_data.plan:
             continue
-        members = op_data.groups[op.group] if op.group else [name]
+        members = op_data.shift_group_members(op.group) if op.group else [name]
         completed = (
             bool(op.group)
             and has_resting_mood(op)
@@ -2505,7 +2507,7 @@ def restore_displaced_resting(op_data, previous, plan, tasks):
                     and resting_mood(anchor) >= anchor.upper_limit
                 )
             )
-            and (not op.group or anchor.group == op.group)
+            and (not op.group or anchor.name in members)
             for anchor in op_data.operators.values()
         ):
             logger.info(f"{name}让出床位，随组待命，同组保留成员继续休息")
@@ -2518,8 +2520,8 @@ def restore_displaced_resting(op_data, previous, plan, tasks):
         )
     if recalled:
         logger.info(f"休息床位被更高优先级接管，安排整组回班：{sorted(recalled)}")
-        for bed in op_data.dorm:
-            if bed.name in recalled:
+        for bed in op_data.all_dorms():
+            if bed.name in recalled or current.get(bed.position) in recalled:
                 room, index = bed.position
                 if current.get(bed.position) in recalled:
                     plan.setdefault(room, ["Current"] * len(op_data.plan[room]))[
@@ -2528,7 +2530,7 @@ def restore_displaced_resting(op_data, previous, plan, tasks):
                 bed.reset()
     changed_slots = {
         bed.position
-        for bed in op_data.dorm
+        for bed in op_data.all_dorms()
         if previous.get(bed.position) != current.get(bed.position)
     }
     # 已接管床位不能继续执行旧的释放任务；已召回成员也不重复预约回班。

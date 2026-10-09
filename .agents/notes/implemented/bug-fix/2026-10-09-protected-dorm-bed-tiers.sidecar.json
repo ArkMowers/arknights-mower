@@ -18,7 +18,9 @@
     "arknights_mower.utils.scheduler_task.try_add_release_dorm",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.preserve_resting_crafters",
     "arknights_mower.utils.resting_priority.bed_takeover_allowed",
-    "arknights_mower.utils.operators.Operators.init_and_validate"
+    "arknights_mower.utils.operators.Operators.init_and_validate",
+    "arknights_mower.utils.scheduler_task.dorm_residents",
+    "arknights_mower.utils.scheduler_task.restore_displaced_resting"
   ],
   "test_suites": [
     "arknights_mower/tests/protected_dorm_bed_tiers_tests.py",
@@ -37,6 +39,9 @@
     "arknights_mower/tests/dorm_group_tests.py",
     "arknights_mower/tests/rescue_dorm_fill_tests.py",
     "arknights_mower/tests/manufacture_product_switch_tests.py",
-    "arknights_mower/tests/plan_binding_coverage_tests.py"
+    "arknights_mower/tests/plan_binding_coverage_tests.py",
+    "arknights_mower/tests/dorm_recovery_tests.py",
+    "arknights_mower/tests/dorm_recovery_record_tests.py",
+    "arknights_mower/tests/dorm_single_free_departure_tests.py"
   ]
 }

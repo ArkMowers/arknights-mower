@@ -4338,7 +4338,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 __plan.setdefault(x.room, ["Current"] * len(self.op_data.plan[x.room]))[
                     x.index
                 ] = replacement
-            restore_displaced_resting(self.op_data, previous, __plan, self.tasks)
+            restore_displaced_resting(
+                self.op_data,
+                previous,
+                __plan,
+                self.tasks,
+                admitted={bed.position: bed.name for bed in dorms},
+            )
             logger.debug(f"当前替换{__replacement}")
             exist_replacement.extend(__replacement)
             logger.debug(dorms)
