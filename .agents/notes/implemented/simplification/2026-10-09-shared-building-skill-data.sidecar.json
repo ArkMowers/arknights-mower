@@ -20,6 +20,7 @@
     "arknights_mower/tests/res_version_tests.py",
     "arknights_mower/tests/resource_version_tests.py",
     "arknights_mower/tests/dorm_skills_tests.py",
+    "arknights_mower/tests/dorm_recovery_tests.py",
     "arknights_mower/tests/resource_pkg_tests.py",
     "scripts/tests/android_release_tests.py"
   ]
