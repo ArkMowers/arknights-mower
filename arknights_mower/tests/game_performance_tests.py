@@ -55,6 +55,7 @@ def test_three_successes_recommend_xhigh_without_changing_conf_or_feedback(solve
     assert solver.run()["recommended_mode"] == "xhigh"
     assert modes == ["xhigh"] * 3
     assert solver.prepare_round.call_count == 3
+    assert [call.args[0] for call in solver.prepare_round.call_args_list] == modes
     assert config.conf.model_dump() == before
     assert feedback == (config.operation_feedback_avg, config.operation_feedback_count)
     solver.cancel_selection.assert_called_once()
@@ -231,6 +232,71 @@ def test_each_selection_follows_three_swipes_using_the_latest_page(solver):
     assert events == ["swipe", "read", "swipe", "read", "swipe", "select"]
 
 
+@pytest.mark.parametrize("mode", module.MODES)
+def test_prepared_targets_remain_reachable_after_three_production_swipes(
+    solver, monkeypatch, mode
+):
+    from arknights_mower.solvers import base_mixin
+
+    offset = 0
+    selected = []
+
+    def refresh():
+        image = [
+            (
+                f"operator-{offset * 2 + index}",
+                (
+                    (631 + index // 2 * 216, 488 + index % 2 * 421),
+                    (820 + index // 2 * 216, 520 + index % 2 * 421),
+                ),
+            )
+            for index in range(12)
+        ]
+        solver.recog.img = solver.recog._img = image
+
+    def swipe(start, movement, **_):
+        nonlocal offset
+        offset += round(-movement[0] / 216)
+        refresh()
+
+    def reset(*_, **__):
+        nonlocal offset
+        offset = 0
+        refresh()
+        return 0, None
+
+    def tap(position, **_):
+        if isinstance(position[0], tuple):
+            selected.extend(
+                name for name, scope in solver.recog.img if scope == position
+            )
+        else:
+            selected.clear()
+        refresh()
+
+    monkeypatch.setattr(base_mixin, "operator_list", lambda image, **_: image)
+    monkeypatch.setattr(module, "agent_card_selected", lambda *_: False)
+    solver.recog.update = MagicMock(side_effect=refresh)
+    solver.wait_for_next_observation = MagicMock(side_effect=lambda *_: refresh())
+    solver.find = MagicMock(return_value=False)
+    solver.scene = MagicMock(return_value=Scene.INFRA_ARRANGE_ORDER)
+    solver.profession_filter = MagicMock()
+    solver.switch_arrange_order = MagicMock()
+    solver.swipe_left = MagicMock(side_effect=reset)
+    solver.swipe_noinertia = MagicMock(side_effect=swipe)
+    solver.tap = MagicMock(side_effect=tap)
+    solver.reorder_selected_agents = MagicMock()
+    refresh()
+    # Exercise the actual page geometry and scanner, rather than scripting
+    # matching preparation/trial pages that hide a distance mismatch.
+    before, targets = SelectionPerformanceTest.prepare_round(solver, mode)
+    solver.wait_for_arranged_agents = MagicMock(return_value=targets)
+    with solver.profile(mode):
+        SelectionPerformanceTest.trial(solver, before, targets)
+    assert selected == targets
+    assert solver.swipe_noinertia.call_count == 6
+
+
 def test_cancellation_between_swipes_stops_before_selection(solver):
     solver.swipe_agent_page = MagicMock(return_value=(1, object()))
 
@@ -267,13 +333,13 @@ def test_preparation_finds_targets_beyond_all_three_swipes(solver, monkeypatch):
     solver.tap = MagicMock()
     solver.switch_arrange_order = MagicMock()
     solver.swipe_left = MagicMock()
-    solver.wait_for_agent_page = MagicMock(side_effect=[pages[0], pages[0]])
+    solver.wait_for_agent_page = MagicMock(side_effect=[*pages, pages[0]])
     solver.swipe_agent_page = MagicMock(
         side_effect=[(1, SimpleNamespace(page=p)) for p in pages[1:]]
     )
     solver.recog.img = object()
     monkeypatch.setattr(module, "agent_card_selected", lambda *_: False)
-    before, targets = SelectionPerformanceTest.prepare_round(solver)
+    before, targets = SelectionPerformanceTest.prepare_round(solver, "low")
     assert before == pages[0]
     assert targets == ["翎羽", "玫兰莎"]
     assert [call.args[0] for call in solver.swipe_agent_page.call_args_list] == pages[
@@ -390,12 +456,14 @@ def test_preparation_requires_two_new_targets_and_a_restored_first_page(
     solver.tap = MagicMock()
     solver.switch_arrange_order = MagicMock()
     solver.swipe_left = MagicMock()
-    solver.wait_for_agent_page = MagicMock(return_value=before)
+    solver.wait_for_agent_page = MagicMock(
+        side_effect=[before, page(["夜刀", "芬"]), page(["香草", "翎羽"]), after]
+    )
     solver.swipe_agent_page = MagicMock(return_value=(1, SimpleNamespace(page=after)))
     solver.recog.img = object()
     monkeypatch.setattr(module, "agent_card_selected", lambda *_: False)
     with pytest.raises(RuntimeError, match="不足两名"):
-        SelectionPerformanceTest.prepare_round(solver)
+        SelectionPerformanceTest.prepare_round(solver, "low")
 
 
 def test_real_fast_scan_and_roster_verification_reject_known_log_misselection(

@@ -18,7 +18,9 @@
     "server._run_performance_test",
     "arknights_mower.utils.device.application.DeviceControl.run",
     "server.performance_test_screenshot",
-    "arknights_mower.views.screenshot.latest_screenshot_response"
+    "arknights_mower.views.screenshot.latest_screenshot_response",
+    "arknights_mower.solvers.performance_test.SelectionPerformanceTest.prepare_round",
+    "arknights_mower.solvers.base_mixin.BaseMixin.swipe_agent_page"
   ],
   "test_suites": [
     "arknights_mower/tests/game_performance_tests.py",

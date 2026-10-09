@@ -147,7 +147,7 @@ class SelectionPerformanceTest(BaseMixin, SceneGraphSolver):
                 self.sleep(0.5)
         raise RuntimeError("未进入宿舍一选人页面，请检查游戏画面")
 
-    def prepare_round(self):
+    def prepare_round(self, mode):
         """Locate repeatable targets with conservative input before measurement."""
         with self.profile("low", preparation=True):
             self.checkpoint()
@@ -168,8 +168,14 @@ class SelectionPerformanceTest(BaseMixin, SceneGraphSolver):
             for _ in range(SWIPES_PER_SELECTION):
                 self.checkpoint()
                 original.update(name for name, _ in page)
-                _, observation = self.swipe_agent_page(page, [], return_page=True)
-                page = observation.page
+                # Match the measured mode's swipe geometry while confirming
+                # preparation pages with the conservative observation policy.
+                with self.profile(mode, preparation=True):
+                    _, observation = self.swipe_agent_page(page, [], return_page=True)
+                actual = self.wait_for_agent_page(before=page, observation=observation)
+                if self.same_agent_page(actual, page, allow_unknown=True):
+                    raise RuntimeError("准备阶段滑动未推进，无法进行性能测试")
+                page = actual
             after = page
             targets = list(
                 dict.fromkeys(
@@ -239,7 +245,7 @@ class SelectionPerformanceTest(BaseMixin, SceneGraphSolver):
                         self.report(
                             {"mode": mode, "round": round_number, "phase": "preparing"}
                         )
-                        before, targets = self.prepare_round()
+                        before, targets = self.prepare_round(mode)
                         self.report({"phase": "testing"})
                         try:
                             with self.profile(mode):
