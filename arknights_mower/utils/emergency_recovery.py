@@ -13,6 +13,7 @@ from arknights_mower.utils.resting_priority import (
     crafting_rest_order,
     has_resting_mood,
     resting_key,
+    resting_mood,
     resting_tier,
 )
 from arknights_mower.utils.scheduler_task import TaskTypes
@@ -250,6 +251,8 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
             op = data.operators[name]
             if (
                 op.multi_group
+                or op.group
+                and not data.is_group_shift_anchor(op)
                 or op.is_resting()
                 or (current_only and not exhaust_rest_due(data, op, trial.tasks, when))
             ):
@@ -326,7 +329,13 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                 continue
             op = data.operators.get(bed.name)
             event_id = ("bed", bed.name, bed.position)
-            if op is None or op.multi_group or event_id in used:
+            if (
+                op is None
+                or op.multi_group
+                or op.group
+                and not data.is_group_shift_anchor(op)
+                or event_id in used
+            ):
                 continue
             if bed.time is None:
                 if op.is_high():
@@ -502,7 +511,34 @@ def emergency_dorm_plan(
             room, index = bed.position
             plan.setdefault(room, ["Current"] * len(data.plan[room]))[index] = ""
             bed.name, bed.time = "", None
-    probe = data.project_arrangements([plan]) if reallocate else copy.copy(data)
+    manager_departures = {}
+    if not reallocate:
+        for index, bed in enumerate(beds):
+            resident = data.get_current_operator(*bed.position)
+            if (
+                resident is not None
+                and resident.name in data.emergency_dorm_agents
+                and resident.name not in reserved | protected
+                and resident.room.startswith("dorm")
+                and resident.index < 2
+                and resting_tier(data, resident.name) != RestingTier.PRIORITY
+                and not data.is_free_room_excluded(resident.name)
+                and has_resting_mood(resident)
+                and not resident.mood_is_prediction
+                and resting_mood(resident) >= resident.upper_limit
+            ):
+                # 救急临时开放宿管位按既有离宿流程投影，不授权恢复床位抢占。
+                room, position = bed.position
+                manager_departures.setdefault(room, ["Current"] * len(data.plan[room]))[
+                    position
+                ] = ""
+                beds[index] = copy.copy(bed)
+                beds[index].reset()
+    probe = (
+        data.project_arrangements([plan if reallocate else manager_departures])
+        if reallocate or manager_departures
+        else copy.copy(data)
+    )
     probe.dorm = beds
     groups = {}
     recovery_order = recovery_order or {}

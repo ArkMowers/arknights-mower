@@ -7,7 +7,7 @@ import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
-from arknights_mower.utils.operators import Operators  # noqa: E402
+from arknights_mower.utils.operators import Operator, Operators  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig  # noqa: E402
 
 
@@ -78,12 +78,9 @@ def test_started_major_maintenance_does_not_trigger(monkeypatch, hours):
 def test_group_mood_supports_min_max_and_excludes_zero_mood_workers():
     op_data = operators()
     op_data.groups = {"鸿雪组": ["鸿雪", "图耶", "爱丽丝", "焰影苇草"]}
-    op_data.operators = {
-        "鸿雪": SimpleNamespace(current_mood=lambda: 0, workaholic=True),
-        "图耶": SimpleNamespace(current_mood=lambda: 24, workaholic=True),
-        "爱丽丝": SimpleNamespace(current_mood=lambda: 7.25, workaholic=False),
-        "焰影苇草": SimpleNamespace(current_mood=lambda: 18.5, workaholic=False),
-    }
+    op_data.config.workaholic = ["鸿雪", "图耶"]
+    for name, mood in [("鸿雪", 0), ("图耶", 24), ("爱丽丝", 7.25), ("焰影苇草", 18.5)]:
+        op_data.add(Operator(name, "room_1_1", mood=mood, operator_type="high"))
 
     assert op_data.group_min_mood("鸿雪组") == 7.25
     assert op_data.group_max_mood("鸿雪组") == 18.5
@@ -99,9 +96,8 @@ def test_group_min_mood_rejects_unknown_group():
 def test_group_mood_rejects_group_with_only_zero_mood_workers():
     op_data = operators()
     op_data.groups = {"零心情组": ["鸿雪"]}
-    op_data.operators = {
-        "鸿雪": SimpleNamespace(current_mood=lambda: 24, workaholic=True)
-    }
+    op_data.config.workaholic = ["鸿雪"]
+    op_data.add(Operator("鸿雪", "room_1_1", mood=24, operator_type="high"))
 
     with pytest.raises(ValueError, match="没有可统计心情"):
         op_data.group_max_mood("零心情组")

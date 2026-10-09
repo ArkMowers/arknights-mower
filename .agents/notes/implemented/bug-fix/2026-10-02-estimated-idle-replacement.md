@@ -9,14 +9,16 @@ date: 2026-10-02
 
 ## Contract
 
-[INV-SCHED-13] requires eligible low selection-card estimates to permit replacing completed ordinary residents despite previous full-occupancy retention or exhausted-search flags. Unknown candidates remain subject to selection-page confirmation; estimates never establish measured mood or recovery deadlines. Unfinished residents, idle-release exclusions, reservations and mandatory personal limits retain their existing rules.
+[INV-SCHED-13] shares eligible low selection-card estimates between candidate screening and vacant-bed selection. An estimate does not independently authorize occupied-bed replacement or clear full-occupancy retention. Unknown candidates require selection-page confirmation; estimates never establish measured mood or recovery deadlines. Ordinary release, exclusions, reservations and mandatory personal limits retain their own admission rules.
 
-## Failure Boundary
+The [protected-bed decision](2026-10-09-protected-dorm-bed-tiers.md), under [INV-SCHED-43], supersedes this record's former guarantee that a low estimate bypasses completed-resident retention. Estimated candidates in the first four protected tiers retain legal lower-tier takeovers. Standby and ordinary replacement applicants require valid current mood no greater than 80% of their own upper limit; same-tier takeovers remain denied.
 
-A low card estimate suppresses another physical scan, but the ordinary replacement planner has no measured recovering candidate and skips residents marked for full-occupancy fallback. An exhausted search independently blocks unknown selection and resolves an already queued Free slot back to its full resident, causing the room to be skipped as unchanged. The retained resident then blocks later replacement planning despite an eligible low card candidate. The shared estimate subset connects those decisions without clearing unrelated estimates or residents.
+## Historical Failure Boundary
+
+The original repair connects low-estimate screening and unknown selection after an exhausted search. The shared estimate subset remains active, but an estimate alone no longer releases a retained resident. Selection consumes the subset after vacancy or release admission; tier-aware takeover uses the shared protected-bed predicate.
 
 The [classification audit](../simplification/2026-10-02-estimated-idle-candidate-classification.md) records the simplification. The [subsystem contract](../../../../docs/subsystems/base-scheduler.md) owns the permanent behavior. Existing glossary definitions remain accurate.
 
 ## Verification
 
-Offline tests reproduce registered and unregistered low-card candidates with active and exhausted search, normal planning without a new scan, actual selection and low-mood readback. Negative cases cover expired, future and full estimates, working and reserved candidates, blacklists, mandatory limits and unfinished residents. Planning preserves operator samples and bed deadlines. The real dormitory 3 arrangement entry confirms replacement rather than skipping an unchanged roster, for registered and unregistered candidates with active or exhausted search.
+Offline tests verify that registered and unregistered low-card candidates, with active or exhausted search and either idle-release switch setting, preserve full-occupancy retention until an independently admitted ordinary release. Selection then fills the vacancy without establishing measured mood. Negative cases cover expired, future and full estimates, working and reserved candidates, blacklists, mandatory limits and unfinished residents. Planning preserves operator samples and bed deadlines. The real dormitory 3 arrangement entry confirms the admitted release and fill rather than skipping an unchanged roster.

@@ -1,4 +1,4 @@
-"""低心情卡片候选仍能替换满员兜底住客，实读与恢复计时保持独立。"""
+"""低心情卡片候选等待合法清退后补位，实读与恢复计时保持独立。"""
 
 import copy
 from datetime import datetime, timedelta
@@ -12,7 +12,11 @@ from arknights_mower.tests.dorm_unregistered_idle_tests import (
     screen_only,
 )
 from arknights_mower.utils import scheduler_task
-from arknights_mower.utils.scheduler_task import try_add_release_dorm
+from arknights_mower.utils.scheduler_task import (
+    SchedulerTask,
+    TaskTypes,
+    try_add_release_dorm,
+)
 
 solver = dorm_empty_release_tests.solver
 op_data = dorm_empty_release_tests.op_data
@@ -39,7 +43,7 @@ def estimated_candidate(instance, monkeypatch, *, registered=True, stopped=True)
 @pytest.mark.parametrize("free_room", [False, True])
 @pytest.mark.parametrize("registered", [True, False])
 @pytest.mark.parametrize("stopped", [True, False])
-def test_low_card_replaces_retained_full_resident_without_rescanning(
+def test_low_card_waits_for_normal_release_before_replacing_full_resident(
     solver, monkeypatch, registered, stopped, free_room
 ):
     instance, selected = solver
@@ -56,12 +60,18 @@ def test_low_card_replaces_retained_full_resident_without_rescanning(
 
     instance.plan_solver()
 
-    assert instance.tasks
-    task = next(t for t in instance.tasks if ROOM in t.plan)
-    assert task.plan[ROOM][-1] == "Free"
+    assert instance.tasks == []
     instance._scan_card_moods.assert_not_called()
     assert {key: vars(op) for key, op in data.operators.items()} == before
     assert data.dorm[0].time == bed_time
+    # 卡片预估不解除满员兜底；正常清退另行满足自己的准入条件。
+    data.operators["空爆"].dorm_mood_fallback = ""
+    task = SchedulerTask(
+        task_type=TaskTypes.RELEASE_DORM,
+        task_plan={ROOM: ["Current"] * 4 + ["Free"]},
+        meta_data="空爆",
+    )
+    assert instance.prepare_release_dorm(task)
     instance.task = task
     screen_only(instance, [name])
     plan = selected[:4] + ["Free"]
@@ -145,8 +155,15 @@ def test_dorm_three_execution_does_not_skip_low_card_replacement(
     data.operators["空爆"].dorm_mood_fallback = room
     instance.task = None
     try_add_release_dorm({}, None, data, instance.tasks)
-    instance.task = instance.tasks[0]
-    assert instance.task.plan[room][-1] == "Free"
+    assert instance.tasks == []
+    data.operators["空爆"].dorm_mood_fallback = ""
+    instance.task = SchedulerTask(
+        task_type=TaskTypes.RELEASE_DORM,
+        task_plan={room: ["Current"] * 4 + ["Free"]},
+        meta_data="空爆",
+    )
+    instance.tasks = [instance.task]
+    assert instance.prepare_release_dorm(instance.task)
     screen_only(instance, [name])
     instance.enter_room = MagicMock()
     instance.back = MagicMock()

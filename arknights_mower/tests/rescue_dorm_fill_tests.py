@@ -58,9 +58,12 @@ def test_lower_priority_unfinished_standby_yields_to_required_primary(solver):
     data.operators[incoming]._current_room = ""
     data.operators[incoming].mood = 8
 
-    plan = emergency_dorm_plan(data, episode())
+    state = episode()
+    state["targets"].pop(standby)
+    plan = emergency_dorm_plan(data, state)
 
     assert incoming in admissions(plan)
+    assert standby not in admissions(plan)
     assert plan["dormitory_1"][:2] == ["Current", "Current"]
 
 

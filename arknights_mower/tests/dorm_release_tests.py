@@ -56,6 +56,7 @@ def op_data(monkeypatch):
 @pytest.mark.parametrize("last", ["银灰", "红"])
 def test_full_occupant_replaced_regardless_of_last_operator(op_data, last):
     op_data.operators[last] = op_data.operators.pop(last)
+    op_data.config.resting_priority_replacement = ["红"]
     tasks = []
     try_add_release_dorm({}, None, op_data, tasks)
     assert [task.plan for task in tasks] == [{ROOM: ["Current"] * 4 + ["红"]}]
@@ -137,12 +138,12 @@ def test_single_release_without_completion_evidence_keeps_resident(op_data):
     assert occupant.current_room == ROOM
 
 
-def test_full_main_is_replaced_by_free_room(op_data):
+def test_full_main_keeps_bed_during_automatic_fill(op_data):
     occupant = op_data.operators["空爆"]
     occupant.operator_type = "high"
     tasks = []
     try_add_release_dorm({}, None, op_data, tasks)
-    assert [task.plan for task in tasks] == [{ROOM: ["Current"] * 4 + ["红"]}]
+    assert tasks == []
 
 
 @pytest.mark.parametrize("priority", ["high", "low", "standby"])
@@ -158,7 +159,7 @@ def test_unfinished_standby_or_higher_is_protected_from_free_room(op_data, prior
 
 
 @pytest.mark.parametrize("priority", ["high", "low", "standby"])
-def test_finished_standby_or_higher_is_replaced_by_free_room(op_data, priority):
+def test_expired_countdown_does_not_authorize_ordinary_replacement(op_data, priority):
     occupant = op_data.operators["空爆"]
     occupant.operator_type = "high"
     occupant.resting_priority = priority
@@ -166,7 +167,7 @@ def test_finished_standby_or_higher_is_replaced_by_free_room(op_data, priority):
     op_data.dorm[0].time = datetime.now() - timedelta(minutes=1)
     tasks = []
     try_add_release_dorm({}, None, op_data, tasks)
-    assert [task.plan for task in tasks] == [{ROOM: ["Current"] * 4 + ["红"]}]
+    assert tasks == []
 
 
 def test_free_room_reads_dynamic_slot_countdown(op_data):
@@ -183,6 +184,7 @@ def test_non_free_room_skips_free_and_current_slots_without_keyerror(op_data):
 @pytest.mark.parametrize("free_room", [False, True])
 def test_full_resident_replacement_is_independent_of_idle_release(op_data, free_room):
     op_data.config.free_room = free_room
+    op_data.config.resting_priority_replacement = ["红"]
     tasks = []
     try_add_release_dorm({}, None, op_data, tasks)
     assert [task.plan for task in tasks] == [{ROOM: ["Current"] * 4 + ["红"]}]
@@ -204,6 +206,7 @@ def test_disabled_free_room_does_not_schedule_release_before_upcoming_work(op_da
 
 
 def test_repeated_planning_does_not_duplicate_bed_or_candidate(op_data):
+    op_data.config.resting_priority_replacement = ["红"]
     tasks = []
     try_add_release_dorm({}, None, op_data, tasks)
     try_add_release_dorm({}, None, op_data, tasks)
@@ -247,6 +250,8 @@ def test_non_recovering_operator_does_not_bypass_shared_candidate_check(
 
 def test_replacement_precedes_lower_mood_unplanned_operator(op_data):
     op_data.add(Operator("陈", "", mood=0, time_stamp=datetime.now()))
+    op_data.dorm[0].reset()
+    op_data.operators["空爆"].current_room = ""
     tasks = []
     try_add_release_dorm({}, None, op_data, tasks)
     assert tasks[0].plan[ROOM][-1] == "红"
@@ -255,12 +260,16 @@ def test_replacement_precedes_lower_mood_unplanned_operator(op_data):
 def test_same_tier_compares_absolute_mood(op_data):
     op_data.add(Operator("陈", "", mood=12, lower_limit=10, time_stamp=datetime.now()))
     op_data.plan["meeting"][0].replacement.append("陈")
+    op_data.dorm[0].reset()
+    op_data.operators["空爆"].current_room = ""
     tasks = []
     try_add_release_dorm({}, None, op_data, tasks)
     assert tasks[0].plan[ROOM][-1] == "红"
 
 
-@pytest.mark.parametrize("mood,expected", [(22, True), (22.01, True)])
+@pytest.mark.parametrize(
+    "mood,expected", [(19.19, True), (19.2, True), (19.21, False), (22, False)]
+)
 def test_free_room_obeys_strict_identity_priority(op_data, mood, expected):
     op_data.operators["空爆"].mood = 2
     op_data.dorm[0].time = datetime.now() + timedelta(hours=5)

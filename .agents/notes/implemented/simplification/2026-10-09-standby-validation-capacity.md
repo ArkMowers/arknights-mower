@@ -9,7 +9,7 @@ date: 2026-10-09
 
 ## Contract
 
-[INV-SCHED-42] counts eligible standby workers as optional during group capacity validation when the group has a non-standby recovery member. A group containing only standby workers retains its complete bed requirement. Ordinary workers, exhausted-shift workers and workers configured for full recovery retain mandatory recovery. Fixed dormitory assignments reduce only the mandatory workers' dynamic bed demand. Every member still requires a unique replacement, and each binding and effective backup combination receives the same validation.
+[INV-SCHED-42] counts eligible standby workers as optional during group capacity validation when the group has a non-standby recovery member. All-standby groups fail the [group validation boundary](../bug-fix/2026-10-09-protected-dorm-bed-tiers.md#group-validation-boundary) before capacity matching. Ordinary workers, exhausted-shift workers and workers configured for full recovery retain mandatory recovery. Fixed dormitory assignments reduce only the mandatory workers' dynamic bed demand. Every member still requires a unique replacement, and each binding and effective backup combination receives the same validation.
 
 ## Simplification
 
@@ -25,4 +25,4 @@ PASS: Shared eligibility preserves mandatory recovery restrictions and unique re
 
 ## Spec Findings
 
-PASS: Eight working members with three eligible standby workers and seven Free beds validate and complete shift projection, including a standby worker's additional binding. Ordinary, exhausted, full-recovery and all-standby groups still reject insufficient beds. Fixed standby assignments do not reduce mandatory demand; constrained fixed matching prefers mandatory workers. Backup full-recovery settings reapply the same capacity boundary without mutating the caller's active plan.
+PASS: Eight working members with three eligible standby workers and seven Free beds validate and complete shift projection, including a standby worker's additional binding. Ordinary, exhausted and full-recovery groups still reject insufficient beds; all-standby groups fail the group validation boundary. Fixed standby assignments do not reduce mandatory demand; constrained fixed matching prefers mandatory workers. Backup full-recovery settings reapply the same capacity boundary without mutating the caller's active plan.

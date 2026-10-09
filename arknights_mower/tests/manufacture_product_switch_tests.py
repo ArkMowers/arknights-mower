@@ -1008,16 +1008,18 @@ def test_reserved_product_bed_accepts_only_temporary_low_priority(monkeypatch):
     operators.is_effective_free_slot = MagicMock(return_value=True)
     operators.reserved_product_beds = {("dormitory_1", 0): "鸿雪"}
     operators.operators = {}
-    monkeypatch.setattr(
-        "arknights_mower.utils.operators.resting_tier",
-        lambda data, name: {
+
+    def tier(data, name):
+        return {
             "鸿雪": RestingTier.MAIN,
             "陈": RestingTier.MAIN,
             "红": RestingTier.STANDBY,
             "Lancet-2": RestingTier.REPLACEMENT,
             "城墙": RestingTier.IDLE,
-        }[name],
-    )
+        }[name]
+
+    for module in ("operators", "resting_priority"):
+        monkeypatch.setattr(f"arknights_mower.utils.{module}.resting_tier", tier)
     bed = SimpleNamespace(position=("dormitory_1", 0), name="")
 
     assert operators._slot_takable(bed, requester="鸿雪")

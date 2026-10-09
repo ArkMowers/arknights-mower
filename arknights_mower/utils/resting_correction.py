@@ -39,12 +39,12 @@ def _resting_members(op_data):
         unfinished = end > now if end is not None else 0 <= op.mood < op.upper_limit
         if unfinished:
             resting.add(name)
-            if op.group:
+            if op.group and op_data.is_group_shift_anchor(op):
                 groups.add(op.group)
     for group in groups:
         members = [
             op_data.operators[name]
-            for name in op_data.groups[group]
+            for name in op_data.shift_group_members(group)
             if not op_data.operators[name].room.startswith("dorm")
             and not op_data.operators[name].workaholic
         ]
@@ -60,6 +60,7 @@ def _resting_members(op_data):
                 )
             )
             for op in members
+            if op_data.is_group_shift_anchor(op)
         ):
             # 半组在岗、或成员离岗却没有有效满心情记录，不能当作整组
             # 正常轮休。让原有整组纠错完成回班，而不是逐人保留休息。
@@ -214,7 +215,7 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
                     # 独立暖机干员继续本轮恢复；正常规划按床位时间重建回班任务。
                     slots[index] = "Current"
                     continue
-                if op.group:
+                if op.group and op_data.is_group_shift_anchor(op):
                     recalling_groups.add(op.group)
                 logger.debug(
                     f"{name}所在组正在休息，{room}暂无可用替班，保留原纠错叫回安排"
@@ -254,8 +255,7 @@ def correct_group_dorms(op_data, fix_plan, is_busy, *, positions=None):
             continue
         # 纠错已经决定叫回工作成员时，宿舍成员也必须回班。
         recalling = any(
-            not op_data.operators[n].room.startswith("dorm")
-            and not op_data.operators[n].workaholic
+            op_data.is_group_shift_anchor(op_data.operators[n])
             and _requested(
                 fix_plan, op_data.operators[n].room, op_data.operators[n].index
             )

@@ -159,14 +159,14 @@ def test_opened_manager_slots_increase_capacity_without_mutating_actual_rooms(so
     assert data.operators["冰酿"].current_room == "dormitory_1"
 
 
-def test_full_high_priority_manager_yields_when_emergency_slot_is_open(solver):
+def test_full_high_priority_manager_keeps_bed_when_emergency_slot_is_open(solver):
     data = solver.op_data
     state = recovery(data, capacity=0)
     data.config.ope_resting_priority = ["冰酿"]
     opened_beds(data)
     data.dorm[:] = [bed for bed in data.dorm if bed.position[1] == 0]
 
-    assert admissions(emergency_dorm_plan(data, state)) == {PRIMARY[0]}
+    assert emergency_dorm_plan(data, state) == {}
     assert data.is_planned_operator("冰酿")
 
 

@@ -272,6 +272,8 @@ def test_shared_planning_admits_ordinary_cover_despite_nearby_unrelated_task(
     data = instance.op_data
     data.config.free_room = free_room
     data.operators["红"].mood = 5
+    data.dorm[0].reset()
+    data.operators["空爆"].current_room = ""
     instance._plan_primary_recovery = MagicMock(return_value=True)
     instance._fill_empty_dorms = MagicMock()
     existing = SchedulerTask(
@@ -282,7 +284,7 @@ def test_shared_planning_admits_ordinary_cover_despite_nearby_unrelated_task(
     assert instance._plan_dorm_recovery()
     assert instance.tasks[0] is existing
     assert instance.tasks[1].plan == {ROOM: ["Current"] * 4 + ["红"]}
-    assert data.dorm[0].name == "空爆"
+    assert data.dorm[0].name == ""
 
 
 @pytest.mark.parametrize("free_room", [False, True])

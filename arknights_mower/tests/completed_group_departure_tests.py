@@ -1,4 +1,4 @@
-"""已恢复组员让床保留未恢复成员及整组回班任务。"""
+"""已恢复主班保床，明确离宿补偿保留整组恢复边界。"""
 
 from datetime import timedelta
 
@@ -10,7 +10,6 @@ from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
     dorm_residents,
-    plan_metadata,
     restore_displaced_resting,
     try_add_release_dorm,
 )
@@ -42,7 +41,7 @@ def prepare_group(solver, full_mood=24):
 
 @pytest.mark.parametrize("free_room", [False, True])
 @pytest.mark.parametrize("low_priority", [False, True])
-def test_completed_group_member_fill_keeps_unfinished_group_resting(
+def test_completed_primary_keeps_group_beds_until_ordinary_return(
     solver, free_room, low_priority
 ):
     data, names, return_task = prepare_group(solver)
@@ -55,26 +54,10 @@ def test_completed_group_member_fill_keeps_unfinished_group_resting(
 
     try_add_release_dorm({}, None, data, tasks)
 
-    fill = next(task for task in tasks if task is not return_task)
-    assert set(fill.plan) == {"dormitory_1"}
-    assert return_task in tasks
+    assert tasks == [return_task]
     assert return_task.time == NOW + timedelta(hours=3)
-    projected = data.project_arrangements([fill.plan])
-    assert projected.operators[names[0]].current_room == ""
-    assert projected.operators[names[1]].is_resting()
-    assert data.operators[names[0]].is_resting()
-    # 换床执行后读房重新建立恢复时间，仍由未完成成员带整组回班。
-    _, remaining_bed = projected.get_dorm_by_name(names[1])
-    remaining_bed.time = NOW + timedelta(hours=3)
-    rebuilt = plan_metadata(projected, [return_task])
-    assert any(
-        task.type == TaskTypes.SHIFT_ON
-        and all(
-            name in [n for row in task.plan.values() for n in row] for name in names
-        )
-        and task.time > NOW
-        for task in rebuilt
-    )
+    assert all(data.operators[name].is_resting() for name in names)
+    assert incoming.current_room == ""
 
 
 @pytest.mark.parametrize("measured", [True, False])

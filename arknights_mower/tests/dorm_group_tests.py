@@ -733,7 +733,7 @@ def test_validation_rejects_missing_resident_cover(solver):
 
 def test_validation_rejects_group_without_working_trigger(solver):
     solver.global_plan["default_plan"].plan["dormitory_1"][0].group = "只有宿舍"
-    assert "非宿舍干员" in solver.initialize_operators()
+    assert "只有宿舍 缺少决定上下班的工作主班" in solver.initialize_operators()
 
 
 def test_absent_resident_does_not_change_average_work_mood(solver):
@@ -821,6 +821,343 @@ def test_explicit_free_uses_resident_slot_as_resting_bed(solver):
     assert tasks[0].plan["meeting"] == ["伊内丝", "银灰"]
     assert tasks[0].plan["contact"] == ["讯使"]
     assert tasks[0].plan["dormitory_1"][0] == "塑心"
+
+
+@pytest.fixture
+def grouped_free_capacity(solver):
+    """Three ordinary units and one group unit; all ordinary units are protected."""
+    configure_explicit_free_bed(solver)
+    data = solver.op_data
+    data.group_shift_state["联动"] = True
+    data.operators["塑心"].current_room = ""
+    for name in ("泥岩", "能天使", "年"):
+        op = data.operators[name]
+        op.operator_type, op.resting_priority, op.room = "high", "low", "factory"
+    apply_plan(solver, {"dormitory_1": ["Free", "冰酿", "泥岩", "能天使", "年"]})
+    data.operators["银灰"].current_room = ""
+    return solver
+
+
+@pytest.mark.parametrize("position", [0, 2, 3, 4])
+@pytest.mark.parametrize("same_group", [False, True])
+def test_grouped_free_capacity_is_independent_of_bed_position(
+    grouped_free_capacity, position, same_group
+):
+    instance = grouped_free_capacity
+    data = instance.op_data
+    # Move the vacancy, including to an ordinary Free position.
+    current = data.get_current_operator("dormitory_1", position)
+    if current is not None:
+        apply_plan(instance, {"dormitory_1": [current.name]})
+        current.current_index = 0
+        for bed in data.dorm:
+            bed.name = (
+                resident.name
+                if (resident := data.get_current_operator(*bed.position))
+                else ""
+            )
+    incoming = data.operators["银灰"]
+    incoming.group = "联动" if same_group else "外组"
+    bed = data.assign_dorm(incoming.name)
+    assert (bed is not None) is same_group
+    if same_group:
+        assert bed.position == ("dormitory_1", position)
+
+
+@pytest.mark.parametrize("entry", ["allocation", "planner", "selection", "rescue"])
+@pytest.mark.parametrize("same_group", [False, True])
+def test_grouped_free_capacity_guards_real_admission_paths(
+    grouped_free_capacity, entry, same_group
+):
+    from arknights_mower.utils.emergency_recovery import emergency_dorm_plan
+
+    instance = grouped_free_capacity
+    data = instance.op_data
+    incoming = data.operators["银灰"]
+    incoming.group = "联动" if same_group else "外组"
+    before = deepcopy([vars(bed) for bed in data.dorm])
+    if entry == "allocation":
+        assert (data.assign_dorm(incoming.name) is not None) is same_group
+        return
+    if entry == "planner":
+        # Ordinary primaries rest through group allocation, not automatic Free fill.
+        # Exercise automatic fill with an ordinary/priority replacement instead.
+        incoming.operator_type = "low"
+        data.plan["meeting"][0].replacement.append(incoming.name)
+        if not same_group:
+            data.config.resting_priority_replacement.append(incoming.name)
+        tasks = []
+        try_add_release_dorm({}, None, data, tasks)
+        admitted = any(
+            incoming.name in row for task in tasks for row in task.plan.values()
+        )
+    elif entry == "selection":
+        instance.task = SchedulerTask(
+            task_plan={
+                "dormitory_1": [
+                    incoming.name,
+                    "Current",
+                    "Current",
+                    "Current",
+                    "Current",
+                ]
+            }
+        )
+        row = instance.task.plan["dormitory_1"]
+        instance.preserve_resting_crafters(row, "dormitory_1")
+        admitted = incoming.name in row
+    else:
+        plan = emergency_dorm_plan(data, {"targets": {incoming.name: 24}})
+        admitted = any(incoming.name in row for row in plan.values())
+    assert admitted is same_group
+    assert [vars(bed) for bed in data.dorm] == before
+
+
+@pytest.mark.parametrize("priority", ["explicit", "main", "low", "replacement"])
+def test_grouped_free_capacity_cannot_admit_outside_protected_tiers(
+    grouped_free_capacity, priority
+):
+    data = grouped_free_capacity.op_data
+    incoming = data.operators["银灰"]
+    incoming.group = "外组"
+    if priority == "explicit":
+        data.config.ope_resting_priority.append(incoming.name)
+    elif priority == "low":
+        incoming.resting_priority = "low"
+    elif priority == "replacement":
+        incoming.operator_type = "low"
+        data.config.resting_priority_replacement.append(incoming.name)
+        data.plan["meeting"][0].replacement.append(incoming.name)
+    assert data.assign_dorm(incoming.name) is None
+
+
+@pytest.mark.parametrize("tier", ["standby", "replacement", "idle"])
+def test_grouped_free_capacity_admits_lower_three_tiers(grouped_free_capacity, tier):
+    data = grouped_free_capacity.op_data
+    incoming = data.operators["银灰"]
+    incoming.group = "外组"
+    if tier == "standby":
+        incoming.resting_priority = "standby"
+    else:
+        incoming.operator_type = "low"
+        if tier == "replacement":
+            data.plan["meeting"][0].replacement.append(incoming.name)
+    assert data.assign_dorm(incoming.name) is not None
+
+
+def test_same_group_primary_can_use_group_capacity_from_ordinary_bed(
+    grouped_free_capacity,
+):
+    instance = grouped_free_capacity
+    data = instance.op_data
+    # Two outsiders plus one same-group primary leave one ordinary unit for an outsider.
+    apply_plan(
+        instance, {"dormitory_1": ["泥岩", "Current", "伊内丝", "能天使", "Free"]}
+    )
+    data.operators["年"].current_room = ""
+    data.operators["年"].current_index = -1
+    data.dorm[-1].reset()
+    incoming = data.operators["银灰"]
+    incoming.group = "外组"
+    assert data.assign_dorm(incoming.name) is not None
+
+
+def test_grouped_free_capacity_keeps_same_group_protected_resident(
+    grouped_free_capacity,
+):
+    instance = grouped_free_capacity
+    data = instance.op_data
+    apply_plan(instance, {"dormitory_1": ["伊内丝"]})
+    data.operators["伊内丝"].mood = 24
+    data.config.ope_resting_priority.append("银灰")
+    assert data.assign_dorm("银灰") is None
+
+
+@pytest.mark.parametrize("same_group", [False, True])
+def test_grouped_free_capacity_checks_occupied_takeover(
+    grouped_free_capacity, same_group
+):
+    instance = grouped_free_capacity
+    data = instance.op_data
+    apply_plan(instance, {"dormitory_1": ["陈"]})
+    data.operators["银灰"].group = "联动" if same_group else "外组"
+    result = data.assign_dorm("银灰")
+    assert (result is not None) is same_group
+
+
+def test_grouped_free_capacity_does_not_borrow_other_group_quota(grouped_free_capacity):
+    data = grouped_free_capacity.op_data
+    # Open another group unit without adding ordinary capacity.
+    data.plan["dormitory_1"][1] = Room("冰酿", "乙", ["Free"])
+    owner = data.operators["冰酿"]
+    owner.group, owner.replacement, owner.current_room = "乙", ["Free"], ""
+    data.group_shift_state["乙"] = True
+    data.dorm.append(Dormitory(("dormitory_1", 1)))
+    data.operators["伊内丝"].current_room = ""
+    before = deepcopy([vars(bed) for bed in data.dorm])
+    assert data.assign_dorm_group(["银灰", "伊内丝"], active_groups={"联动"}) is None
+    assert [vars(bed) for bed in data.dorm] == before
+
+
+@pytest.mark.parametrize("cached_name", ["", "伊内丝", "陈"])
+def test_resting_plan_counts_actual_outsiders_despite_stale_bed_cache(
+    grouped_free_capacity, cached_name
+):
+    instance = grouped_free_capacity
+    data = instance.op_data
+    data.operators["银灰"].group = "外组"
+    bed = next(bed for bed in data.dorm if bed.position == ("dormitory_1", 2))
+    bed.name, bed.time = cached_name, None
+    before = deepcopy([vars(bed) for bed in data.dorm])
+    plan, replacements = {}, []
+
+    assert not instance.get_resting_plan(["银灰"], replacements, plan, 3)
+
+    assert data.get_current_operator("dormitory_1", 2).name == "泥岩"
+    assert plan == {}
+    assert replacements == []
+    assert [vars(bed) for bed in data.dorm] == before
+
+
+@pytest.mark.parametrize("vacant", [False, True])
+@pytest.mark.parametrize("same_group", [False, True])
+def test_resting_plan_counts_explicit_admissions_across_groups(
+    grouped_free_capacity, same_group, vacant
+):
+    instance = grouped_free_capacity
+    data = instance.op_data
+    # Two protected outsiders and one idle resident leave one ordinary unit.
+    apply_plan(instance, {"dormitory_1": ["Free" if vacant else "红", "Current", "陈"]})
+    data.operators["银灰"].group = "外组"
+    data.operators["伊内丝"].group = "联动" if same_group else "另一组"
+    plan, replacements, admissions = {}, [], {}
+    assert instance.get_resting_plan(
+        ["银灰"], replacements, plan, 2, dorm_admissions=admissions
+    )
+    assert list(admissions.values()) == ["银灰"]
+    before = deepcopy((plan, replacements, admissions, data.dorm))
+
+    accepted = instance.get_resting_plan(
+        ["伊内丝"], replacements, plan, 2, dorm_admissions=admissions
+    )
+
+    assert bool(accepted) is same_group
+    assert data.get_current_operator("dormitory_1", 2).name == "陈"
+    if same_group:
+        assert set(admissions.values()) == {"银灰", "伊内丝"}
+    else:
+        assert (plan, replacements, admissions) == before[:3]
+        assert [vars(bed) for bed in data.dorm] == [vars(bed) for bed in before[3]]
+
+
+def test_resting_round_retains_prior_group_admissions(grouped_free_capacity):
+    instance = grouped_free_capacity
+    data = instance.op_data
+    apply_plan(instance, {"dormitory_1": ["Free", "Current", "陈"]})
+    for name in ("银灰", "伊内丝"):
+        op = data.operators[name]
+        op.group = ""
+        op.mood = 5
+    data.operators["银灰"].current_room = "meeting"
+    data.operators["银灰"].current_index = 1
+    data.operators["讯使"].mood = 24
+    instance.total_agent = list(data.operators.values())
+    instance.plan_metadata = MagicMock()
+
+    plan = instance.resting()
+
+    assert plan.get("meeting", []).count("Current") == 1
+    assert len([bed for bed in data.dorm if bed.name in ("银灰", "伊内丝")]) == 1
+
+
+@pytest.mark.parametrize("same_group", [False, True])
+def test_resting_plan_counts_admissions_in_queued_shift(
+    grouped_free_capacity, same_group
+):
+    instance = grouped_free_capacity
+    data = instance.op_data
+    apply_plan(instance, {"dormitory_1": ["Free", "Current", "陈"]})
+    data.operators["银灰"].group = "外组"
+    data.operators["伊内丝"].group = "联动" if same_group else "另一组"
+    queued_plan = {}
+    assert instance.get_resting_plan(["银灰"], [], queued_plan, 2)
+    queued_plan.update(try_reorder(data, queued_plan))
+    instance.tasks.append(
+        SchedulerTask(task_plan=queued_plan, task_type=TaskTypes.SHIFT_OFF)
+    )
+    plan = {}
+
+    accepted = instance.get_resting_plan(["伊内丝"], [], plan, 2)
+
+    assert bool(accepted) is same_group
+
+
+def test_grouped_free_capacity_uses_secondary_binding(grouped_free_capacity):
+    data = grouped_free_capacity.op_data
+    owner = data.operators["塑心"]
+    owner.replacement = ["黑角"]
+    owner.group_bindings = [
+        {"group": "联动", "replacement": ["黑角"]},
+        {"group": "附加", "replacement": ["Free"]},
+    ]
+    slot = data.plan["dormitory_1"][0]
+    slot.replacement = ["黑角"]
+    slot.group_bindings = [{"group": "附加", "replacement": ["Free"]}]
+    data.group_shift_state["联动"] = False
+    data.operators["银灰"].group = "附加"
+    assert data.assign_dorm_group(["银灰"], active_groups={"附加"}) is not None
+
+
+@pytest.mark.parametrize("mood_fallback", [False, True])
+def test_unknown_page_selection_respects_grouped_free_capacity(
+    grouped_free_capacity, monkeypatch, mood_fallback
+):
+    from arknights_mower.tests.choose_agent_filter_tests import selection_solver
+
+    data = grouped_free_capacity.op_data
+    for name in ("伊芙利特", "杜林"):
+        data.add(Operator(name, ""))
+        data.operators[name].time_stamp = None
+    data.config.ope_resting_priority.append("伊芙利特")
+    instance, selected = selection_solver(
+        monkeypatch, residents=["冰酿", "泥岩", "能天使", "年"]
+    )
+    instance.op_data = data
+    instance.get_free_list = MagicMock(
+        side_effect=lambda *args, **kwargs: (
+            ["杜林"] if kwargs.get("include_full") else ["伊芙利特"]
+        )
+    )
+    row = ["Free", "冰酿", "泥岩", "能天使", "年"]
+    instance.choose_agent(
+        row,
+        "dormitory_1",
+        dorm_mood_candidates=["伊芙利特", "杜林"] if mood_fallback else [],
+    )
+    assert row[0] == "杜林"
+    assert selected == row
+    if not mood_fallback:
+        assert any(
+            call.kwargs.get("include_full")
+            for call in instance.get_free_list.call_args_list
+        )
+
+
+def test_returning_group_reclaims_lower_tier_capacity_across_positions(
+    grouped_free_capacity,
+):
+    instance = grouped_free_capacity
+    data = instance.op_data
+    # An outsider occupies the manager's physical position; the idle resident is elsewhere.
+    data.operators["陈"].current_room = ""
+    apply_plan(instance, {"dormitory_1": ["泥岩", "Current", "陈", "能天使", "年"]})
+    data.plan["meeting"][0].replacement = ["黑角"]
+    data.operators["陈"].operator_type = "low"
+    plan = {"dormitory_1": ["塑心", "Current", "Current", "Current", "Current"]}
+    recalled = rebalance_closing_dorm_slots(data, plan, {"塑心"})
+    assert recalled == {"塑心"}
+    assert {bed.name for bed in data.dorm if bed.name} == {"泥岩", "能天使", "年"}
+    assert "泥岩" in plan["dormitory_1"]
 
 
 def test_later_release_follows_occupant_after_projected_bed_closure(solver):
@@ -1006,15 +1343,21 @@ def test_release_ignores_operator_with_stale_empty_position(solver):
     )
 
 
-def test_explicit_free_correction_can_remove_fixed_resident(solver):
+@pytest.mark.parametrize("resident", ["塑心", "银灰"])
+def test_explicit_free_correction_only_removes_fixed_resident(solver, resident):
     configure_explicit_free_bed(solver)
+    if resident != "塑心":
+        apply_plan(solver, {"dormitory_1": [resident] + ["Current"] * 4})
     solver.task = None
     agents = ["Free", "冰酿", "泥岩", "能天使", "年"]
 
     solver.preserve_resting_crafters(agents, "dormitory_1")
 
-    # 显式组下班仍应移走固定宿管；有满心情替班可用时补齐，不制造空床。
-    assert agents[0] in {"陈", "初雪", "红", "黑角"}
+    # 固定宿管遵循明确离宿；占用同一动态床位的工作主班仍须保床。
+    if resident == "塑心":
+        assert agents[0] in {"陈", "初雪", "红", "黑角"}
+    else:
+        assert agents[0] == resident
     assert agents[1:] == ["冰酿", "泥岩", "能天使", "年"]
 
 
@@ -1103,8 +1446,9 @@ def test_closing_bed_keeps_existing_single_recovery_target(solver):
 
 
 @pytest.mark.parametrize("other_beds_occupied", [False, True])
+@pytest.mark.parametrize("replacement", [False, True])
 def test_auto_free_recovery_fills_vacancy_before_replacing_full_resident(
-    solver, other_beds_occupied
+    solver, other_beds_occupied, replacement
 ):
     configure_explicit_free_bed(solver)
     data = solver.op_data
@@ -1130,16 +1474,27 @@ def test_auto_free_recovery_fills_vacancy_before_replacing_full_resident(
     data.operators["年"].mood = 24
     data.operators["泥岩"].mood = 5
     data.operators["泥岩"].time_stamp = datetime.now()
+    if replacement:
+        data.plan["meeting"][0].replacement.append("泥岩")
     tasks = []
 
     try_add_release_dorm({}, None, data, tasks)
 
-    # 有空床先补空床；满员时才接管已恢复的临时床位。
+    # 有空床先补空床；空闲候选不接管同级已占床位。
+    if other_beds_occupied and not replacement:
+        assert tasks == []
+        assert data.operators["年"].current_index == 0
+        return
     assert len(tasks) == 1
     row = tasks[0].plan["dormitory_1"]
-    assert row[0 if other_beds_occupied else 4] == "泥岩"
+    projected = data.project_arrangements([tasks[0].plan])
+    assert projected.operators["泥岩"].is_resting()
     if not other_beds_occupied:
-        assert row[0] == "Current"
+        # 单回分配可以把原住者移入空床，但不能因填空床而清退原住者。
+        assert projected.operators["年"].is_resting()
+        assert {bed.name for bed in projected.dorm} == {"泥岩", "年", "陈", "能天使"}
+    else:
+        assert row[0] == "泥岩"
     assert data.operators["年"].current_index == 0
     assert data.operators["泥岩"].current_room == ""
 
