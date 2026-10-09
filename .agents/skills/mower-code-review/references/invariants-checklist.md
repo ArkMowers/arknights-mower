@@ -174,6 +174,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 - [ ] **[INV-UPD-04] MAA Resource Platform Parity**: Do installed Windows, macOS and Linux MAA installations expose independent resource checks and updates while preserving core and Python files, rejecting active MAA use and retaining resource rollback copies?
 
+- [ ] **[INV-UPD-05] Release Artifact Scope**: Future release builds exclude macOS x64; OTA publication targets only Windows x64 and Android ARM64, including Nightly, and rejects unsafe Android runtime paths without publishing a new channel index.
 - [ ] **[INV-UPD-03] Nightly Direction Evidence**: Do same-alpha Nightly updates use publication times or upstream commit ancestry when index history is missing, preserve genuine rollback confirmation, and retain confirmation when direction cannot be verified?
 - [ ] **[INV-UPD-01] Owned Command Completion**: Does each Windows update command own descendants before execution, verify completion within its budget, and preserve other instances when preparation is cancelled?
 - [ ] **[INV-UPD-02] Complete Registration Scan**: Do strict registration scans retry within one shared monotonic budget, preserve unverified registrations and raise `InstanceScanError` instead of returning an incomplete snapshot after budget exhaustion?
