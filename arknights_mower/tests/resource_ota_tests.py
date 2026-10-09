@@ -106,6 +106,24 @@ class TestResourceOTA(ResourcePkgTestBase):
         response.iter_content.return_value = iter([data[:17], data[17:]])
         return response
 
+    def test_same_day_ota_revision_becomes_selected_resource(self):
+        target = "v2026.08.23-1111111"
+        new = rewrite(
+            self.new,
+            lambda files: files.update(
+                {rp._RESOURCE_MARKER: json.dumps({"res_version": target}).encode()}
+            ),
+        )
+        self.new_path.write_bytes(new)
+        build_ota(self.old_path, self.new_path, self.ota_path, is_package_file)
+        self.assertTrue(rp.install_resource_pkg(self.ota_path.read_bytes()))
+        self.assertEqual(self.installed_version(), target)
+        self.assertEqual(
+            rp.resource_pkg_path("ui/public/avatar/new.webp").read_bytes(), b"new image"
+        )
+        with patch.object(rp, "_active_resource", None):
+            self.assertEqual(self.installed_version(), target)
+
     def test_reconstructs_complete_generation_and_omits_deleted_files(self):
         removed = RES_PACKAGE_DIRS[0] + "/large.webp"
         extra = RES_PACKAGE_DIRS[0] + "/y.webp"

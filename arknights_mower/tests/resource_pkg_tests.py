@@ -107,6 +107,64 @@ class TestSharedResourceScope(unittest.TestCase):
 
 
 class TestInstallResourcePkg(ResourcePkgTestBase):
+    def test_same_day_rebuild_is_installed_and_survives_restart(self):
+        self.assertTrue(rp.install_resource_pkg(resource_zip()))
+        previous = rp.resource_pkg_path(rp._RESOURCE_MARKER)
+        self.assertTrue(rp.install_resource_pkg(resource_zip("v2026.08.23-1111111")))
+        self.assertEqual(self.installed_version(), "v2026.08.23-1111111")
+        self.assertIn("v2026.08.23-aaaaaaa", previous.read_text())
+        with patch.object(rp, "_active_resource", None):
+            self.assertEqual(self.installed_version(), "v2026.08.23-1111111")
+        self.assertTrue(rp.install_resource_pkg(resource_zip("v2026.08.23-1111111")))
+        self.assertEqual(self.installed_version(), "v2026.08.23-1111111")
+
+    def test_same_day_rebuild_can_replace_builtin_with_unchanged_snapshot(self):
+        snapshot = "26-09-22-07-47-20_6c71fa"
+        (self.builtin / "data/version.json").write_text(
+            json.dumps({"res_version": "v2026.10.09-23806b7", "last_updated": snapshot})
+        )
+        self.assertTrue(
+            rp.install_resource_pkg(
+                resource_zip("v2026.10.09-3c94100", manifest={"last_updated": snapshot})
+            )
+        )
+        self.assertEqual(self.installed_version(), "v2026.10.09-3c94100")
+
+    def test_new_builtin_is_not_overridden_by_old_same_day_cache(self):
+        self.assertTrue(rp.install_resource_pkg(resource_zip()))
+        with rp._install_lock:
+            (self.builtin / "data/version.json").write_text(
+                '{"res_version":"v2026.08.23-1111111"}'
+            )
+            self.assertTrue(rp.reload_resource_caches_if_changed())
+        self.assertEqual(self.installed_version(), "v2026.08.23-1111111")
+        self.assertIsNone(rp.resource_ui_path("depot/x.webp"))
+
+    def test_legacy_same_day_index_stays_conservative_until_reinstallation(self):
+        (self.builtin / "data/version.json").write_text(
+            '{"res_version":"v2026.08.23-aaaaaaa"}'
+        )
+        package = resource_zip("v2026.08.23-1111111")
+        self.assertTrue(rp.install_resource_pkg(package))
+        index_path = self.overlay / "index.json"
+        index = json.loads(index_path.read_text())
+        index.pop("builtin_version")
+        index_path.write_text(json.dumps(index))
+        with patch.object(rp, "_active_resource", None):
+            self.assertEqual(self.installed_version(), "v2026.08.23-aaaaaaa")
+        self.assertTrue(rp.install_resource_pkg(package))
+        self.assertEqual(self.installed_version(), "v2026.08.23-1111111")
+
+    def test_same_day_failed_reload_preserves_index_and_selection(self):
+        self.assertTrue(rp.install_resource_pkg(resource_zip()))
+        before = (self.overlay / "index.json").read_bytes()
+        self.reload_caches.reset_mock()
+        self.reload_caches.side_effect = [RuntimeError("bad models"), None]
+        self.assertFalse(rp.install_resource_pkg(resource_zip("v2026.08.23-1111111")))
+        self.assertEqual((self.overlay / "index.json").read_bytes(), before)
+        self.assertEqual(self.installed_version(), "v2026.08.23-aaaaaaa")
+        self.assertEqual(self.reload_caches.call_count, 2)
+
     def test_optional_mastery_model_can_be_installed_or_absent(self):
         model = RES_PACKAGE_OPTIONAL_MODELS[0]
         self.assertTrue(rp.install_resource_pkg(resource_zip()))
@@ -211,7 +269,7 @@ class TestInstallResourcePkg(ResourcePkgTestBase):
 
             def publish_from_web_thread():
                 results.append(
-                    rp.install_resource_pkg(resource_zip("v2026.08.24-bbbbbbb"))
+                    rp.install_resource_pkg(resource_zip("v2026.08.23-1111111"))
                 )
                 results.append(rp.reload_resource_caches_if_changed())
 
@@ -224,7 +282,7 @@ class TestInstallResourcePkg(ResourcePkgTestBase):
             self.reload_caches.assert_not_called()
             self.assertTrue(rp.reload_resource_caches_if_changed())
             self.assertFalse(rp.reload_resource_caches_if_changed())
-            self.assertEqual(self.installed_version(), "v2026.08.24-bbbbbbb")
+            self.assertEqual(self.installed_version(), "v2026.08.23-1111111")
         self.reload_caches.assert_called_once()
         self.assertTrue(previous.is_file())
         self.assertIsNone(rp._task_owner)
@@ -350,6 +408,20 @@ class ResourceCompatibilityTests(unittest.TestCase):
         older["last_updated"] = "2026-08-23 10:00:00"
         newer["last_updated"] = "2026-08-23 11:00:00"
         self.assertTrue(resource_newer(newer, older))
+
+    def test_same_day_revision_still_rejects_observed_older_timestamp(self):
+        current = {
+            "res_version": "v2026.08.23-aaaaaaa",
+            "last_updated": "2026-08-23T11:00:00",
+        }
+        older = {
+            "res_version": "v2026.08.23-1111111",
+            "last_updated": "2026-08-23T10:00:00",
+        }
+        self.assertFalse(resource_newer(older, current, allow_same_day=True))
+        older["last_updated"] = current["last_updated"]
+        self.assertTrue(resource_newer(older, current, allow_same_day=True))
+        self.assertFalse(resource_newer(current, current, allow_same_day=True))
 
     def test_legacy_schema_and_explicit_mower_range(self):
         self.assertIsNone(compatibility_error({}, "4.1.6-alpha.1+abc"))

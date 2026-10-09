@@ -119,6 +119,7 @@ def check_resource_update(local_only: bool = False) -> dict:
         "current_display": current_display,
         "remote_version": remote_version,
         "remote_display": display_version(remote) or "",
-        "update_available": not incompatible and resource_newer(remote, local),
+        "update_available": not incompatible
+        and resource_newer(remote, local, allow_same_day=True),
         "error": incompatible,
     }

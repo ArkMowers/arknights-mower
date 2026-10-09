@@ -51,3 +51,11 @@ Cancellation and timeout terminate only the owned command tree. Successful root-
 `auto_get_res_new.py` prepares room-name glyphs before the three operator models load fonts. `build_default_model` prepares mastery name and skill glyphs before rendering. Complete originals and licenses reside in MowerFonts under `fonts/`. Resource builds pass that checkout through `MOWERFONTS_DIR`; local generation without the variable uses `ArknightsGameResource/fonts`. Source fonts remain outside runtime and resource packages. A complete subset needs no source file. Missing source files or glyphs stop generation before font or charset mutation. Full game fonts and fontTools are generation dependencies; runtime continues loading compressed models.
 
 [Automatic resource font expansion](../../.agents/notes/implemented/bug-fix/2026-10-09-resource-font-expansion.md) records the decision and focused verification.
+
+## 9. Shared Resource Revisions
+
+Resource update checks accept a different compatible content hash on the same date when source timestamps are equal, missing or incomparable. Hashes identify content and are never sorted to infer release order. Earlier resource dates and comparable older timestamps remain rejected; identical content reports no update.
+
+The immutable resource installer records `builtin_version` in the shared `index.json` alongside the ordered accepted packages. Same-day revisions follow installation order only while that baseline matches the current builtin resource version. A software update that changes builtin resources clears this precedence implicitly through the version mismatch, so an older same-day cache cannot replace the new builtin set. Legacy indexes without a baseline retain conservative selection until another resource installation records one. Installation failures restore both the prior package list and baseline; running instances switch complete generations only at existing task boundaries.
+
+[Verified Resource OTA](../../.agents/notes/implemented/architecture/2026-10-09-resource-ota.md) records installer reuse and verification for full packages and same-day OTA revisions.

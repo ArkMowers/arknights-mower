@@ -45,7 +45,7 @@ def test_curated_recommendations_have_independent_material_and_book_floors(
     }
     assert recommended["fodder_operators"][:2] == ["九色鹿", "蚀清"]
     assert {"号角", "休谟斯", "熔泉"} <= set(recommended["fodder_operators"])
-    assert recommended["t5_operators"] == ["年"]
+    assert recommended["t5_operators"] == ["年", "旅骨"]
     assert {"子月", "赫拉格", "司霆惊蛰", "凯尔希·思衡托"} <= set(
         recommended["book_operators"]
     )

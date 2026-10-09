@@ -56,8 +56,10 @@ def _updated_at(manifest: dict) -> datetime | None:
         return None
 
 
-def resource_newer(candidate: dict, current: dict) -> bool:
-    """Hashes identify content, not chronological order; ambiguous ties stay put."""
+def resource_newer(
+    candidate: dict, current: dict, *, allow_same_day: bool = False
+) -> bool:
+    """Same-day revisions require channel or installation-order evidence."""
     candidate_version = parse_version(candidate.get("res_version"))
     current_version = parse_version(current.get("res_version"))
     if candidate_version is None:
@@ -74,8 +76,8 @@ def resource_newer(candidate: dict, current: dict) -> bool:
         or older is None
         or (newer.tzinfo is None) != (older.tzinfo is None)
     ):
-        return False
-    return newer > older
+        return allow_same_day
+    return newer > older or (allow_same_day and newer == older)
 
 
 def validate_package(root: Path, mower_version: str) -> dict:
@@ -100,7 +102,7 @@ class ResourceSelection:
     manifest: dict
 
 
-def read_index(root: Path) -> list[str]:
+def read_index_state(root: Path) -> dict:
     try:
         data = json.loads((root / "index.json").read_text(encoding="utf-8"))
         names = data["packages"]
@@ -110,10 +112,20 @@ def read_index(root: Path) -> list[str]:
             or any(c not in "0123456789abcdef" for c in name)
             for name in names
         ):
-            return []
-        return names
-    except (OSError, ValueError, KeyError, TypeError):
-        return []
+            raise ValueError("资源索引目录无效")
+        builtin_version = data.get("builtin_version")
+        return {
+            "packages": names,
+            "builtin_version": (
+                builtin_version if parse_version(builtin_version) is not None else None
+            ),
+        }
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return {"packages": [], "builtin_version": None}
+
+
+def read_index(root: Path) -> list[str]:
+    return read_index_state(root)["packages"]
 
 
 def select_resource(root: Path, builtin: Path, mower_version: str) -> ResourceSelection:
@@ -122,12 +134,19 @@ def select_resource(root: Path, builtin: Path, mower_version: str) -> ResourceSe
     except (OSError, ValueError, TypeError):
         manifest = {}
     selected = ResourceSelection(None, manifest)
-    for name in read_index(root):
+    index = read_index_state(root)
+    # Installation order applies only to the builtin version that accepted it.
+    # A software update must not inherit an older same-day overlay's precedence.
+    baseline_version = index["builtin_version"]
+    allow_same_day = baseline_version is not None and baseline_version == manifest.get(
+        "res_version"
+    )
+    for name in index["packages"]:
         package = root / "packages" / name
         try:
             candidate = validate_package(package, mower_version)
         except (OSError, ValueError, TypeError):
             continue
-        if resource_newer(candidate, selected.manifest):
+        if resource_newer(candidate, selected.manifest, allow_same_day=allow_same_day):
             selected = ResourceSelection(package, candidate)
     return selected
