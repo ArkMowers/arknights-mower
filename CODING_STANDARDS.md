@@ -31,6 +31,8 @@
 - **[INV-REC-06] Selection Page Exit**: Known facility roster pages detected during anomalous selection readings abort selection inputs and page-local fallback; normal readings add no page-template lookup or capture.
 
 ### 2.1 Base Infrastructure & Scheduling
+
+- **[INV-SCHED-42] Standby Validation Capacity**: Group validation counts eligible standby workers as optional only when a non-standby recovery member exists, subtracts fixed dormitory assignments only for mandatory workers, and retains complete unique replacements, mandatory recovery restrictions and runtime admission checks for every binding and backup combination.
 - **[INV-SCHED-40] Confirmed Crafting Dispatch**: With automatic mastery enabled, confirmed crafting batches reevaluate idle plans against local stock and queue eligible starts once per plan without another depot scan; unconfirmed output, unknown stock and disabled automation never admit a start, and training-room protections remain binding.
 
 - **[INV-SCHED-38] Pending Exhaust Recovery**: Exhausted-shift generation and dispatch reuse a pending concrete off-shift arrangement only when it covers every recovery-requiring working group member through explicit dormitory assignments or preserved current rest positions; incomplete groups, unrelated tasks and specialized staffing retain their existing admission, and task consumption or cancellation reopens generation.
