@@ -1,30 +1,55 @@
 {
-  "baseline": "d4e22126",
+  "baseline": "3c3ce4e039b23f1b0200fc9416f6b11549364833",
+  "source_hash_format": "SHA-256 of UTF-8 source with LF newlines",
+  "harness_sha256": "51c8b7df5bbbfb8fc07d16ad01a88942364a0f7550004f4f7002e96ba9ce640c",
+  "source_hashes": {
+    "before": {
+      "arknights_mower/utils/device/maatouch/session.py": "f3bc9c35c77f9de49e62e65dc48602a981ba92149b4768851a680040b5fac0b1",
+      "arknights_mower/utils/device/adb_client/server.py": "8bc28e28ab97622beb3851e4bb8c57bf2a069721f3a5e52273b98ee7bd4a3d8a",
+      "arknights_mower/utils/device/maatouch/core.py": "d750adc43aa3b52b4048ed7926d17f02573ade18a45231cf54f6d622b617a3ec",
+      "arknights_mower/utils/device/maatouch/command.py": "88bf6dc1172ca985a3baabf3825e078a6c087d9eeeffa53d5bf195b34d84c4dc",
+      "arknights_mower/utils/device/manager_io.py": "39e637d905de678fa054fdf6633105b611e3625e14975718e4f68a7a7d9d5d9c",
+      "arknights_mower/utils/device/io_budget.py": "a062c88c25eac991c18c3a97754783fa98de87bf2c801c0a0921c17030e80be9"
+    },
+    "after": {
+      "arknights_mower/utils/device/maatouch/session.py": "d0f7d48205632d1e6f0f762c62398768522205ede819bf8dd22e6b3e51ef02c5",
+      "arknights_mower/utils/device/adb_client/server.py": "7b602ac6a1d48127997e5e43852bef803ea65d928d3406808dd1613f40c2e69a",
+      "arknights_mower/utils/device/maatouch/core.py": "d750adc43aa3b52b4048ed7926d17f02573ade18a45231cf54f6d622b617a3ec",
+      "arknights_mower/utils/device/maatouch/command.py": "88bf6dc1172ca985a3baabf3825e078a6c087d9eeeffa53d5bf195b34d84c4dc",
+      "arknights_mower/utils/device/manager_io.py": "39e637d905de678fa054fdf6633105b611e3625e14975718e4f68a7a7d9d5d9c",
+      "arknights_mower/utils/device/io_budget.py": "a062c88c25eac991c18c3a97754783fa98de87bf2c801c0a0921c17030e80be9"
+    }
+  },
   "python": "3.12.10",
   "platform": "win32",
   "scope": "Fake process/pipes/ADB probe; real gesture waits. Optional local version only.",
+  "sampling_order": [
+    "before",
+    "after"
+  ],
+  "warmup_samples": 0,
   "pipes": {
     "before": {
       "handshake_send_close": {
         "n": 40,
-        "median_ms": 21.043,
-        "p95_ms": 22.553,
-        "min_ms": 20.669,
-        "max_ms": 22.73
+        "median_ms": 21.529,
+        "p95_ms": 22.101,
+        "min_ms": 20.616,
+        "max_ms": 22.456
       },
       "tap": {
         "n": 40,
-        "median_ms": 71.956,
-        "p95_ms": 72.732,
-        "min_ms": 70.867,
-        "max_ms": 73.197
+        "median_ms": 71.941,
+        "p95_ms": 73.299,
+        "min_ms": 70.932,
+        "max_ms": 73.88
       },
       "swipe_100ms": {
         "n": 40,
-        "median_ms": 295.077,
-        "p95_ms": 297.738,
-        "min_ms": 293.624,
-        "max_ms": 299.909
+        "median_ms": 295.462,
+        "p95_ms": 297.559,
+        "min_ms": 292.921,
+        "max_ms": 298.246
       },
       "counts": {
         "processes": 120,
@@ -35,24 +60,24 @@
     "after": {
       "handshake_send_close": {
         "n": 40,
-        "median_ms": 4.124,
-        "p95_ms": 4.778,
-        "min_ms": 3.531,
-        "max_ms": 5.444
+        "median_ms": 4.614,
+        "p95_ms": 4.959,
+        "min_ms": 3.506,
+        "max_ms": 5.05
       },
       "tap": {
         "n": 40,
-        "median_ms": 54.871,
-        "p95_ms": 55.945,
-        "min_ms": 53.756,
-        "max_ms": 57.053
+        "median_ms": 55.223,
+        "p95_ms": 56.056,
+        "min_ms": 53.924,
+        "max_ms": 59.223
       },
       "swipe_100ms": {
         "n": 40,
-        "median_ms": 260.036,
-        "p95_ms": 261.402,
-        "min_ms": 258.508,
-        "max_ms": 262.105
+        "median_ms": 260.182,
+        "p95_ms": 261.781,
+        "min_ms": 258.293,
+        "max_ms": 266.29
       },
       "counts": {
         "processes": 120,
@@ -61,26 +86,32 @@
       "pipe_delay_ms": 1.0
     }
   },
+  "adb_executable": {
+    "name": "adb.exe",
+    "size_bytes": 2583552,
+    "protocol": 41,
+    "sha256": "f1f654df0a74b171da34750b4ff34f15a49b75d45aed54123b72998aef619968"
+  },
   "local_version": {
     "before": {
-      "first_ms": 88.776,
+      "first_ms": 65.056,
       "subsequent": {
         "n": 40,
-        "median_ms": 67.162,
-        "p95_ms": 86.789,
-        "min_ms": 59.947,
-        "max_ms": 90.267
+        "median_ms": 61.17,
+        "p95_ms": 89.206,
+        "min_ms": 52.45,
+        "max_ms": 92.591
       },
       "version_processes": 41
     },
     "after": {
-      "first_ms": 81.481,
+      "first_ms": 92.441,
       "subsequent": {
         "n": 40,
-        "median_ms": 5.644,
-        "p95_ms": 6.175,
-        "min_ms": 5.111,
-        "max_ms": 6.376
+        "median_ms": 7.252,
+        "p95_ms": 8.152,
+        "min_ms": 6.404,
+        "max_ms": 8.789
       },
       "version_processes": 1
     }

@@ -8,16 +8,16 @@ The [Device Control contract](../subsystems/device-control.md#3-subsystem-invari
 2. Run the offline comparison from the repository root:
 
    ```powershell
-   python scripts/benchmark_maatouch.py --baseline d4e22126 --iterations 40 --pipe-delay-ms 1 --output maatouch-benchmark.json
+   python scripts/benchmark_maatouch.py --baseline 3c3ce4e0 --iterations 40 --pipe-delay-ms 1 --output maatouch-benchmark.json
    ```
 
 3. To measure local ADB version execution as well, add `--adb` with an absolute path to a trusted installed native ADB executable. This runs only `adb version`; the shared-server socket probe is replaced. For the recorded Windows measurement:
 
    ```powershell
-   python scripts/benchmark_maatouch.py --baseline d4e22126 --iterations 40 --pipe-delay-ms 1 --adb E:/adb/adb.exe --output maatouch-benchmark.json
+   python scripts/benchmark_maatouch.py --baseline 3c3ce4e0 --iterations 40 --pipe-delay-ms 1 --adb E:/adb/adb.exe --output maatouch-benchmark.json
    ```
 
-4. Compare medians, p95 values and process counts. New output resolves the baseline to a full commit, records hashes of the harness and compared/shared Python sources, and includes the optional ADB executable's name, size, protocol and content hash. Python source hashes use UTF-8 with LF newlines. Both comparisons run before samples followed by after samples, without warmup; each local-version side begins with an empty process-local cache. The pipe cases replace process startup, pipes, installation checks and the ADB guard, retain real gesture waits and disable logging. Each header-line read and command write waits for the configured simulated delay. These samples exclude Android startup, transport latency, scene recognition, screenshots and solver waits. Operating-system scheduling and fixed sample order remain sources of variation.
+4. Compare medians, p95 values and process counts. The output resolves the baseline to a full commit, records hashes of the harness and compared/shared Python sources, and includes the optional ADB executable's name, size, protocol and content hash. Python source hashes use UTF-8 with LF newlines. Both comparisons run before samples followed by after samples, without warmup; each local-version side begins with an empty process-local cache. The pipe cases replace process startup, pipes, installation checks and the ADB guard, retain real gesture waits and disable logging. Each header-line read and command write waits for the configured simulated delay. These samples exclude Android startup, transport latency, scene recognition, screenshots and solver waits. Operating-system scheduling and fixed sample order remain sources of variation.
 5. Run the focused regressions below. A faster sample does not establish correct failure classification or cleanup:
 
    ```powershell
@@ -26,16 +26,16 @@ The [Device Control contract](../subsystems/device-control.md#3-subsystem-invari
 
 ## Recorded evidence: 2026-10-09
 
-The baseline is the main repository's `alpha` at `d4e22126`, including the MaaTouch termination-before-pipe-closure repair. The [raw benchmark output](maatouch-benchmark-20261009.json) records Windows, Python 3.12.10 and 40 samples per case. The local ADB executable is 2,583,552 bytes and reports protocol 41.
+This comparison was collected again after rebasing onto upstream `alpha` at `3c3ce4e0`. That commit is the baseline and includes the MaaTouch termination-before-pipe-closure repair; the after source hashes identify the rebased optimization. The [raw benchmark output](maatouch-benchmark-20261009.json) records Windows, Python 3.12.10 and 40 samples per case. Its local ADB executable metadata records 2,583,552 bytes and protocol 41.
 
 | Case | Before median | After median | Reduction | Before / after p95 |
 | :--- | ---: | ---: | ---: | ---: |
-| Local version guard after its first sample; socket probe replaced | 67.162 ms | 5.644 ms | 91.6% | 86.789 / 6.175 ms |
-| Simulated handshake, send and close | 21.043 ms | 4.124 ms | 80.4% | 22.553 / 4.778 ms |
-| Simulated tap including its existing wait | 71.956 ms | 54.871 ms | 23.7% | 72.732 / 55.945 ms |
-| Simulated 100 ms swipe including its existing waits | 295.077 ms | 260.036 ms | 11.9% | 297.738 / 261.402 ms |
+| Local version guard after its first sample; socket probe replaced | 61.170 ms | 7.252 ms | 88.1% | 89.206 / 8.152 ms |
+| Simulated handshake, send and close | 21.529 ms | 4.614 ms | 78.6% | 22.101 / 4.959 ms |
+| Simulated tap including its existing wait | 71.941 ms | 55.223 ms | 23.2% | 73.299 / 56.056 ms |
+| Simulated 100 ms swipe including its existing waits | 295.462 ms | 260.182 ms | 11.9% | 297.559 / 261.781 ms |
 
-The local-version section executes 41 version processes before the change and one after it: one first guard plus 40 subsequent guards. Its first sample remains 88.776 ms before and 81.481 ms after. This is the first measured guard after version calibration, not operating-system cold startup. The after samples include executable-content hashing and file-identity checks. The pipe section creates 120 simulated processes and performs 120 guards on each side; process reuse is not part of this change. The two sections measure separate costs and their reductions cannot be added into an end-to-end claim.
+The local-version section executes 41 version processes before the change and one after it: one first guard plus 40 subsequent guards. Its first sample is 65.056 ms before and 92.441 ms after. The first measured guard follows version calibration and executable-content hashing, so it excludes operating-system cold startup. The after samples include executable-content hashing and file-identity checks. The pipe section creates 120 simulated processes and performs 120 guards on each side; process reuse is not part of this change. The two sections measure separate costs and their reductions cannot be added into an end-to-end claim.
 
 An earlier local analysis of `runtime.log.2026-10-09_16` reported one helper startup per gesture. That log is not checked in, and this review cannot independently reproduce its statistics. Entry-to-handshake observations combine input preparation, Shared ADB Guard, host process startup and the Android handshake, so they do not establish the independent cost of any stage or measured recoverable savings.
 
