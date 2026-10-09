@@ -9,7 +9,7 @@ date: 2026-10-09
 
 ## Contract
 
-[INV-SCHED-42] protects occupied recovery beds of explicit-priority operators, normal primaries, low-priority primaries and priority replacements. These four tiers displace standby primaries, ordinary replacements and idle operators. Standby primaries displace ordinary replacements and idle operators, and ordinary replacements displace idle operators, only with valid current mood no greater than 90% of their own mood upper limit. Same-tier takeovers remain denied. Completion predictions, expired deadlines and rescue mode do not bypass occupancy protection. Vacant-bed ranking and single-target position allocation retain their existing order. Ordinary returns, ordinary full-mood releases, mandatory personal-limit departures and explicit staffing tasks retain their own admission.
+[INV-SCHED-42] protects occupied recovery beds of explicit-priority operators, normal primaries, low-priority primaries and priority replacements. These four tiers displace standby primaries, ordinary replacements and idle operators. Standby primaries displace ordinary replacements and idle operators, and ordinary replacements displace idle operators, only with valid current mood no greater than 80% of their own mood upper limit. Same-tier takeovers remain denied. Completion predictions, expired deadlines and rescue mode do not bypass occupancy protection. Vacant-bed ranking and single-target position allocation retain their existing order. Ordinary returns, ordinary full-mood releases, mandatory personal-limit departures and explicit staffing tasks retain their own admission.
 
 ## Simplification Preflight
 
@@ -21,7 +21,7 @@ Commit `0cb1e21f7a58050999a8cb874827042defb967a1` removes the primary-resident p
 
 ## Verification
 
-[Focused regressions](../../../../arknights_mower/tests/protected_dorm_bed_tiers_tests.py) cover occupied-bed protection, completed and unknown readings, expired deadlines, planning and Free selection, automatic named dispatch, and legal lower-tier takeovers at 90% of personal mood limits of 12, 20 and 24. A standby applicant above the threshold does not block a later eligible replacement; queued named fills recheck the applicant mood before dispatch. Tier matrices cover ordinary and rescue admission. Device inputs, live network and workspace databases are excluded.
+[Focused regressions](../../../../arknights_mower/tests/protected_dorm_bed_tiers_tests.py) cover occupied-bed protection, completed and unknown readings, expired deadlines, planning and Free selection, automatic named dispatch, and legal lower-tier takeovers at 80% of personal mood limits of 12, 20 and 24. A standby applicant above the threshold does not block a later eligible replacement; queued named fills recheck the applicant mood before dispatch. Tier matrices cover ordinary and rescue admission. Device inputs, live network and workspace databases are excluded.
 
 ## Dispatch and Compensation
 

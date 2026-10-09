@@ -117,11 +117,11 @@ def test_protected_priority_replacement_does_not_yield_in_rescue(op_data, tier):
 @pytest.mark.parametrize("offset", [-0.01, 0, 0.01, None])
 @pytest.mark.parametrize("resident_mood", [2, 24])
 @pytest.mark.parametrize("entry", ["planner", "selection"])
-def test_lower_tier_takeovers_require_ninety_percent_mood(
+def test_lower_tier_takeovers_require_eighty_percent_mood(
     op_data, requester, resident_tier, upper, offset, resident_mood, entry
 ):
     data = op_data
-    mood = 24 if offset is None else upper * 0.9 + offset
+    mood = 24 if offset is None else upper * 0.8 + offset
     incoming = set_tier(data, "红", requester, mood)
     incoming.upper_limit, incoming.depletion_rate = upper, 0
     if requester == RestingTier.STANDBY:
@@ -175,7 +175,7 @@ def test_queued_named_fill_rechecks_applicant_mood_threshold(op_data, upper):
     data = op_data
     resident = data.operators["空爆"]
     resident.mood = 2
-    incoming = set_tier(data, "红", RestingTier.REPLACEMENT, upper * 0.9)
+    incoming = set_tier(data, "红", RestingTier.REPLACEMENT, upper * 0.8)
     incoming.upper_limit, incoming.depletion_rate = upper, 0
     tasks = []
     try_add_release_dorm({}, None, data, tasks)

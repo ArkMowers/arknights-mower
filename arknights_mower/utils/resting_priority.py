@@ -72,7 +72,7 @@ def resting_tier(op_data, name):
 
 
 def bed_takeover_allowed(op_data, requester, resident):
-    """前四级保床；候补与普通替班不超过个人上限九成时可接管更低级。"""
+    """前四级保床；候补与普通替班不超过个人上限八成时可接管更低级。"""
     requester_tier = resting_tier(op_data, requester)
     resident_tier = resting_tier(op_data, resident)
     if not (
@@ -83,7 +83,7 @@ def bed_takeover_allowed(op_data, requester, resident):
     if requester_tier <= RestingTier.PRIORITY_REPLACEMENT:
         return True
     op = op_data.operators.get(requester)
-    return has_resting_mood(op) and resting_mood(op) <= op.upper_limit * 0.9
+    return has_resting_mood(op) and resting_mood(op) <= op.upper_limit * 0.8
 
 
 def has_resting_mood(op, now=None):

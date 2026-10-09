@@ -268,7 +268,7 @@ def test_same_tier_compares_absolute_mood(op_data):
 
 
 @pytest.mark.parametrize(
-    "mood,expected", [(21.59, True), (21.6, True), (21.61, False), (22, False)]
+    "mood,expected", [(19.19, True), (19.2, True), (19.21, False), (22, False)]
 )
 def test_free_room_obeys_strict_identity_priority(op_data, mood, expected):
     op_data.operators["空爆"].mood = 2

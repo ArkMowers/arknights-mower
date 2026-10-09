@@ -55,7 +55,7 @@ def set_tier(data, name, tier, mood=10):
 @pytest.mark.parametrize("offset", [-0.01, 0, 0.01, None])
 def test_cross_tier_takeover_matrix(op_data, incoming, occupant, upper, offset):
     data = op_data
-    mood = 24 if offset is None else upper * 0.9 + offset
+    mood = 24 if offset is None else upper * 0.8 + offset
     request = set_tier(data, "银灰", incoming, mood)
     request.upper_limit, request.depletion_rate = upper, 0
     if offset is None:
