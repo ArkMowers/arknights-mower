@@ -485,3 +485,35 @@ describe('version update mood policy', () => {
     })
   })
 })
+
+describe('资源更新后的周计划元数据', () => {
+  it('重新读取结束时间时保留本地库存规则和所选关卡', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', ref(false))
+    store = app.runWithContext(() => useConfigStore())
+    store.maa_weekly_plan_active = '活动'
+    store.maa_weekly_plan = [{ weekday: '周一', stage: ['YW-8'] }]
+    store.maa_stage_limit_rules = [{ stage: 'YW-8', items: [] }]
+    store.maa_weekly_plan_activity_switch_times = { 活动: 1234 }
+    const plans = JSON.stringify(store.maa_weekly_plan)
+    const rules = JSON.stringify(store.maa_stage_limit_rules)
+    axios.get.mockResolvedValue({
+      data: {
+        plans: ['活动', '常规'],
+        activity_plan_end_times: { 活动: 1792699199 },
+        activity_fallback_switch_times: { 活动: 1234 },
+        inventory_config: { enabled: false, limit_rules: [] }
+      }
+    })
+    await store.refresh_weekly_plan_metadata()
+    expect(store.maa_weekly_plan_activity_end_times).toEqual({ 活动: 1792699199 })
+    expect(store.maa_weekly_plan_activity_switch_times).toEqual({ 活动: 1234 })
+    expect(JSON.stringify(store.maa_weekly_plan)).toBe(plans)
+    expect(JSON.stringify(store.maa_stage_limit_rules)).toBe(rules)
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+})

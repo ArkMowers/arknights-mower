@@ -3,6 +3,7 @@ import Close from '@vicons/ionicons5/Close'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
+import { useResourceVersionStore } from '@/stores/resourceVersion'
 
 defineProps({
   compact: {
@@ -12,6 +13,7 @@ defineProps({
 })
 
 const store = useConfigStore()
+const resourceVersion = useResourceVersionStore()
 const {
   maa_weekly_plan,
   maa_weekly_plan_active,
@@ -22,6 +24,17 @@ const {
 } = storeToRefs(store)
 const { update_weekly_plan_active, delete_weekly_plan, update_weekly_plan_activity_fallback } =
   store
+
+watch(
+  () => resourceVersion.info.current_version,
+  async () => {
+    try {
+      await store.refresh_weekly_plan_metadata()
+    } catch {
+      error.value = '活动结束时间读取失败，请重新打开周计划'
+    }
+  }
+)
 
 const loading = ref(false)
 const error = ref('')

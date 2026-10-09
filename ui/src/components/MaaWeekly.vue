@@ -2,8 +2,9 @@
 import { storeToRefs } from 'pinia'
 import { NTag, NCheckbox } from 'naive-ui'
 import axios from 'axios'
-import { computed, h, inject, onMounted, ref, watch } from 'vue'
+import { computed, h, inject, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
+import { useResourceVersionStore } from '@/stores/resourceVersion'
 import {
   CHIP_STAGES,
   WEEKDAYS,
@@ -38,18 +39,33 @@ const mobile = inject('mobile')
 
 // 最近开启活动（后端当前资源包）：prepend 到关卡下拉最前
 const latestActivityOptions = ref([])
+const activityLoading = ref(false)
+const activityError = ref('')
+const resourceVersion = useResourceVersionStore()
+let activityRequest = 0
+onBeforeUnmount(() => {
+  activityRequest += 1
+})
 
 async function loadLatestActivityStages() {
+  const request = ++activityRequest
+  activityLoading.value = true
+  activityError.value = ''
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/stage/latest-activity`)
+    if (request !== activityRequest) return
     latestActivityOptions.value = Array.isArray(response.data) ? response.data : []
-  } catch (error) {
-    // 接口不可用时静默忽略，保住基础常驻关下拉
+  } catch {
+    if (request !== activityRequest) return
     latestActivityOptions.value = []
+    activityError.value = '活动关卡读取失败，请重新读取'
+  } finally {
+    if (request === activityRequest) activityLoading.value = false
   }
 }
 
 onMounted(loadLatestActivityStages)
+watch(() => resourceVersion.info.current_version, loadLatestActivityStages)
 
 const copyDialogVisible = ref(false)
 const copyStageValue = ref('')
@@ -394,6 +410,18 @@ function cancelCopyDialogLongPress() {
         </n-flex>
       </n-form-item>
     </n-form>
+
+    <n-flex align="center" :size="8" class="activity-resource-status">
+      <span v-if="activityLoading">正在读取活动关卡…</span>
+      <span v-else-if="activityError" role="alert">{{ activityError }}</span>
+      <span v-else-if="!latestActivityOptions.length">
+        当前资源没有可用活动关卡；如游戏中已有活动，请在设置中更新 Mower 资源包。
+      </span>
+      <span v-else>已读取当前活动关卡</span>
+      <n-button size="small" :loading="activityLoading" @click="loadLatestActivityStages">
+        重新读取活动
+      </n-button>
+    </n-flex>
 
     <div class="weekly-plan-selector-wrap">
       <WeeklyPlanSelector compact />

@@ -320,13 +320,18 @@ export const useConfigStore = defineStore('config', () => {
     maa_weekly_plan_activity_end_times.value = normalizeTimestampMap(data.activity_plan_end_times)
   }
 
-  async function load_weekly_plan_state() {
+  async function refresh_weekly_plan_metadata() {
     const listResponse = await axios.get(`${import.meta.env.VITE_HTTP_URL}/weekly-plans`)
     maa_weekly_plan_options.value = Array.isArray(listResponse.data.plans)
       ? listResponse.data.plans
       : []
     applyWeeklyPlanMetadata(listResponse.data)
-    applyWeeklyPlanInventoryConfig(listResponse.data.inventory_config)
+    return listResponse.data
+  }
+
+  async function load_weekly_plan_state() {
+    const data = await refresh_weekly_plan_metadata()
+    applyWeeklyPlanInventoryConfig(data.inventory_config)
 
     if (!maa_weekly_plan_active.value) {
       await update_weekly_plan_active('默认', normalizeWeeklyPlan(maa_weekly_plan.value))
@@ -1149,6 +1154,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_mining,
     maa_specialaccess,
     load_weekly_plan_state,
+    refresh_weekly_plan_metadata,
     update_weekly_plan_active,
     sync_active_weekly_plan,
     delete_weekly_plan,

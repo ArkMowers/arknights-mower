@@ -85,3 +85,14 @@ Failure modes: an exception raised inside the C callback is reported by ctypes a
 MAA Fight and local operation planning consume this same selection. `previewInventorySelection` mirrors it for the inventory panel. Focused selection and scheduler tests cover partial and complete chip limits, annihilation, inactive rules, ratio bindings and unchanged saved selections. The [inventory priority decision](../../.agents/notes/implemented/feature/2026-10-06-inventory-stage-priority.md) records reuse and verification.
 
 Native settlement accounting and per-batch cap handling follow the [local operation contract](local-operation.md).
+
+
+## 5. Activity Weekly Plans
+
+**[INV-MAA-06] Expired Source Plan Cleanup** governs automatic activity fallback. After selecting the destination successfully, the manager removes source-plan selections whose observed or cached stage end times have passed according to the calibrated server clock. The destination, ordinary stages, still-open activity stages, daily row settings and inventory rules remain unchanged. A failed destination selection causes no selection cleanup. Without stage-specific end-time evidence, the manager preserves selections.
+
+Selected activity end times are cached per plan and stage, retained across resource-window removal, refreshed from current data and pruned when selections change. The existing atomic weekly-plan writer persists cleanup and removes obsolete plan-end metadata. Manual plan selection does not perform expiry cleanup.
+
+Frontend activity options, inventory suggestions and plan-end metadata reload on installed resource-version changes. Refreshing plan metadata does not overwrite inventory drafts or selected stages; custom switch times keep precedence.
+
+[Expired source plan cleanup](../../.agents/notes/implemented/bug-fix/2026-10-09-expired-activity-plan-cleanup.md) records the decision and focused verification.
