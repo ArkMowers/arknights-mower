@@ -106,6 +106,10 @@ Windows MuMu 12 discovery and IPC share the manager locations `shell/`, `nx_main
 
 ## 3. Subsystem Invariants
 - **[INV-DEV-24] Held Swipe Capture**: Selection page swipes acquire one Capture Frame during a shared 400 ms minimum endpoint hold, release the owned touch before reporting capture failure or cancellation, and never recover or replay input while held.
+- **[INV-DEV-23] Performance Observation Isolation**: Connection testing reads performance information only from its verified ready target through bounded read-only commands; unavailable information preserves readiness, cancellation propagates, and recommendations never change persisted selections or timing settings without a user edit.
+
+Connection testing returns transient CPU, memory and recommendation fields under `observations.performance`. The connection form exposes explicit adoption; host resources and capture latency do not select a mode. The [connection performance decision](../../.agents/notes/implemented/feature/2026-10-09-connection-performance.md) defines thresholds and unavailable-data behavior.
+
 - **[INV-DEV-22] Recoverable Owned Cleanup**: Failed cleanup retains its original resource owners and retries only unfinished work; successful cleanup clears the failure before verified startup, while unresolved cleanup blocks replacement and preserves foreign resources, Device Profile and shared ADB state.
 - **[INV-DEV-21] ADB Default Cohesion**: A Device Profile without an explicit ADB path uses the legacy platform default, preferring the bundled executable while preserving explicit paths and empty values through unrelated updates and save/reload.
 

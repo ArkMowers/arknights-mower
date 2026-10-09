@@ -287,17 +287,33 @@ class DeviceSettingsRouteTests(unittest.TestCase):
         )
         self.main.device_control = self.control
         before = self.path.read_bytes()
-        response = self.client.post(
-            "/device/preflight",
-            headers=self.headers,
-            json={"device": {"last_serial": "USB-123"}},
-        )
+        with patch.object(
+            io,
+            "performance_info",
+            create=True,
+            return_value={"cpu_cores": 4, "memory_mb": 3840},
+        ) as performance_info:
+            response = self.client.post(
+                "/device/preflight",
+                headers=self.headers,
+                json={"device": {"last_serial": "USB-123"}},
+            )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json["ok"])
         self.assertEqual(response.json["host_platform"], "linux")
         self.assertEqual(
             response.json["game_package"], "com.hypergryph.arknights.bilibili"
         )
+        self.assertEqual(
+            response.json["observations"]["performance"],
+            {
+                "status": "available",
+                "cpu_cores": 4,
+                "memory_mb": 3840,
+                "recommended_mode": "high",
+            },
+        )
+        performance_info.assert_called_once_with("product-adb", "USB-123")
         self.assertEqual(self.path.read_bytes(), before)
         self.assertEqual(config.conf.device.game_package, "com.hypergryph.arknights")
         self.assertEqual(
