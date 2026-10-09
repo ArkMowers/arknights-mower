@@ -53,7 +53,7 @@ const visibleLogs = computed(() => {
 function parseLog(message) {
   const firstLine = message.split('\n', 1)[0]
   const match = firstLine.match(
-    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} .*? (DEBUG|INFO|WARNING|ERROR|CRITICAL) .*?: (.*)$/
+    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:,\d{3})? .*? (DEBUG|INFO|WARNING|ERROR|CRITICAL) .*?: (.*)$/
   )
   if (!match) {
     return { level: 'INFO', summary: firstLine, detail: message.slice(firstLine.length).trim() }

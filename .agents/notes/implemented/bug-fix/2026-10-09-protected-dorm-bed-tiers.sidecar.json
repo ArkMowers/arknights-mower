@@ -7,7 +7,7 @@
     "Codex"
   ],
   "invariants": [
-    "[INV-SCHED-42]",
+    "[INV-SCHED-43]",
     "[INV-SCHED-13]",
     "[INV-SCHED-21]"
   ],
@@ -22,6 +22,8 @@
     "arknights_mower/tests/resting_priority_tests.py",
     "arknights_mower/tests/rescue_priority_takeover_tests.py",
     "arknights_mower/tests/emergency_capacity_tests.py",
-    "arknights_mower/tests/dorm_estimated_replacement_tests.py"
+    "arknights_mower/tests/dorm_estimated_replacement_tests.py",
+    "arknights_mower/tests/standby_validation_capacity_tests.py",
+    "arknights_mower/tests/run_order_planning_wakeup_tests.py"
   ]
 }

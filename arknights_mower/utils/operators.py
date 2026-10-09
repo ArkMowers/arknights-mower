@@ -619,7 +619,17 @@ class Operators:
                 for name in members
             ):
                 return f"{key} 多绑组需要至少一名参与心情计算的非宿舍干员"
-            total_count = 0
+            working = tuple(
+                name
+                for name in members
+                if not self.operators[name].room.startswith("dorm")
+                and not self.operators[name].workaholic
+            )
+            mandatory = tuple(
+                name for name in working if not self._can_standby(self.operators[name])
+            )
+            # 没有必需恢复成员时，候补不能独自提供待命后的回班时机。
+            required = set(mandatory or working)
             replacement_options = {}
             for name in members:
                 operator = self.operators[name]
@@ -631,14 +641,9 @@ class Operators:
                 replacement_options[name] = [
                     r for r in replacements if r not in TRADE_ORDER_AGENTS
                 ]
-                if self.operators[name].workaholic or self.operators[
-                    name
-                ].room.startswith("dorm"):
-                    continue
-                total_count += 1
             if (
                 any(self.operators[n].room.startswith("dorm") for n in members)
-                and not total_count
+                and not working
             ):
                 return f"{key} 宿舍绑组需要至少一名可轮休的非宿舍干员"
             effective_dorm_count = sum(
@@ -646,13 +651,7 @@ class Operators:
                 for dorm in self.dorm
                 if self.is_effective_free_slot(dorm, active_groups={key})
             )
-            working = tuple(
-                name
-                for name in members
-                if not self.operators[name].room.startswith("dorm")
-                and not self.operators[name].workaholic
-            )
-            for preferred in ((), working):
+            for preferred in ((), required):
                 assignments = match_replacements(
                     replacement_options, preferred=preferred
                 )
@@ -668,7 +667,7 @@ class Operators:
                     and not self.operators[replacement].room.startswith("dorm")
                     and not self.operators[replacement].workaholic
                 }
-                required_beds = total_count - len(fixed_replacements)
+                required_beds = len(required - fixed_replacements)
                 if required_beds <= effective_dorm_count:
                     break
             else:

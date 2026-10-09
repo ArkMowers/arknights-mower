@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import time
 from threading import Event, RLock, Thread
@@ -159,34 +160,34 @@ class Session:
         if process is None:
             return
         failures = []
-        # A blocked writer owns the pipe lock; never close its stream until the
-        # process has exited and released that writer.
-        if worker is None or not worker.is_alive():
+        # MaaTouch dereferences null on stdin EOF. Stop the owned process before
+        # closing its pipes, also allowing blocked I/O to release the stream lock.
+        expected_returncodes = {0}
+        stop_returncodes = (
+            (1, 1) if __system__ == "windows" else (-signal.SIGTERM, -signal.SIGKILL)
+        )
+        for action, stopped_returncode in zip(
+            (process.terminate, process.kill), stop_returncodes
+        ):
+            if process.poll() is not None:
+                break
             try:
-                process.stdin.close()
+                action()
+                expected_returncodes.add(stopped_returncode)
             except Exception as exc:
                 failures.append(exc)
-        for action in (None, process.terminate, process.kill):
-            if action is not None:
-                if process.poll() is not None:
-                    break
-                try:
-                    action()
-                except Exception as exc:
-                    failures.append(exc)
             try:
                 process.wait(timeout=1)
-                if action is None and process.returncode not in (None, 0):
-                    failures.append(
-                        RuntimeError(f"MaaTouch 进程异常退出：{process.returncode}")
-                    )
             except subprocess.TimeoutExpired:
                 pass
             except Exception as exc:
                 failures.append(exc)
         if worker is not None:
             worker.join(timeout=1)
-        if process.poll() is None:
+        returncode = process.poll()
+        if returncode is not None and returncode not in expected_returncodes:
+            failures.append(RuntimeError(f"MaaTouch 进程异常退出：{returncode}"))
+        if returncode is None:
             failures.append(RuntimeError("MaaTouch 进程在有限等待后仍未退出"))
         elif worker is not None and worker.is_alive():
             failures.append(RuntimeError("MaaTouch I/O 在进程退出后仍未结束"))
