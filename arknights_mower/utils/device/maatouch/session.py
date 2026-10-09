@@ -159,27 +159,22 @@ class Session:
         if process is None:
             return
         failures = []
-        # A blocked writer owns the pipe lock; never close its stream until the
-        # process has exited and released that writer.
-        if worker is None or not worker.is_alive():
+        # MaaTouch dereferences null on stdin EOF. Stop the owned process before
+        # closing its pipes, also allowing blocked I/O to release the stream lock.
+        for attempt, action in enumerate((process.terminate, process.kill)):
+            returncode = process.poll()
+            if returncode is not None:
+                if attempt == 0 and returncode != 0:
+                    failures.append(
+                        RuntimeError(f"MaaTouch 进程异常退出：{returncode}")
+                    )
+                break
             try:
-                process.stdin.close()
+                action()
             except Exception as exc:
                 failures.append(exc)
-        for action in (None, process.terminate, process.kill):
-            if action is not None:
-                if process.poll() is not None:
-                    break
-                try:
-                    action()
-                except Exception as exc:
-                    failures.append(exc)
             try:
                 process.wait(timeout=1)
-                if action is None and process.returncode not in (None, 0):
-                    failures.append(
-                        RuntimeError(f"MaaTouch 进程异常退出：{process.returncode}")
-                    )
             except subprocess.TimeoutExpired:
                 pass
             except Exception as exc:

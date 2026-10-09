@@ -470,6 +470,58 @@ class TouchTests(unittest.TestCase):
         self.assertIsNotNone(device.control)
         self.assertTrue(process.stdin.closed)
 
+    def test_real_maatouch_cleanup_avoids_eof_crash_and_preserves_dispatch(self):
+        device = self.real_maatouch(OwnedProcess())
+        commands = []
+
+        class CommandPipe(io.StringIO):
+            def write(self, content):
+                commands.append(content)
+                return super().write(content)
+
+        def create_process(*args, **kwargs):
+            current = OwnedProcess()
+            current.stdin = CommandPipe()
+            current.exit_on_eof = 137
+            return current
+
+        with patch(
+            "arknights_mower.utils.device.maatouch.session.subprocess.Popen",
+            side_effect=create_process,
+        ) as factory:
+            for _ in range(2):
+                result = self.control.execute(lambda target: target.tap((665, 741)))
+                self.assertTrue(result.ok, result.error)
+        self.assertEqual(factory.call_count, 2)
+        self.assertEqual(commands, ["d 0 665 741 100\nc\nu 0\nc\n"] * 2)
+        self.assertIsNotNone(device.control)
+        self.assertIsNone(self.control._dispatch_pause)
+
+    def test_real_maatouch_early_exit_137_pauses_without_replaying_input(self):
+        commands = []
+
+        class CommandPipe(io.StringIO):
+            def write(self, content):
+                commands.append(content)
+                return super().write(content)
+
+        process = OwnedProcess()
+        process.stdin = CommandPipe()
+        self.real_maatouch(process)
+        with patch(
+            "arknights_mower.utils.device.maatouch.session.Session.wait",
+            side_effect=lambda seconds: setattr(process, "returncode", 137),
+        ):
+            result = self.control.execute(lambda target: target.tap((665, 741)))
+        self.assertFalse(result.ok)
+        self.assertTrue(result.error.cause.delivery_unknown)
+        self.assertTrue(result.error.cause.cleanup_failed)
+        self.assertIs(self.control._dispatch_pause, result.error.cause)
+        self.assertIn("137", str(result.error.cause))
+        self.assertEqual(process.events, [])
+        self.assertFalse(self.control.execute(lambda target: target.tap((665, 741))).ok)
+        self.assertEqual(commands, ["d 0 665 741 100\nc\nu 0\nc\n"])
+
     def test_real_maatouch_swipe_builds_integer_millisecond_commands(self):
         commands = []
 
@@ -526,7 +578,7 @@ class TouchTests(unittest.TestCase):
     def test_real_maatouch_presend_cleanup_failure_stays_permanently_blocked(self):
         process = OwnedProcess()
         process.stdout = io.StringIO("invalid header\n")
-        process.exit_on_eof = 3
+        process.terminate_error = OSError("cannot terminate")
         self.real_maatouch(process)
         result = self.control.execute(lambda target: target.tap((20, 30)))
         self.assertFalse(result.error.cause.delivery_unknown)

@@ -129,13 +129,39 @@ class MaaTouchApplicationTests(unittest.TestCase):
         self.assertTrue(self.control.execute(lambda device: device.tap()).ok)
         self.assertEqual(len(self.processes), 2)
         for process in self.processes:
-            self.assertEqual(process.events, ["wait"])
-            self.assertEqual(process.returncode, 0)
+            self.assertEqual(process.events, ["terminate", "wait"])
+            self.assertIsNotNone(process.poll())
             self.assertTrue(process.stdin.closed)
             self.assertTrue(process.stdout.closed)
             self.assertTrue(all(0 < timeout <= 1 for timeout in process.waits))
         self.assertTrue(self.control.close().ok)
         self.assertTrue(self.control.close().ok)
+
+    def test_each_operation_stops_the_process_before_eof_crash(self):
+        commands = []
+
+        class CommandPipe(io.StringIO):
+            def write(self, content):
+                commands.append(content)
+                return super().write(content)
+
+        def create_process(*args, **kwargs):
+            process = OwnedProcess()
+            process.stdin = CommandPipe()
+            process.exit_on_eof = 137
+            self.processes.append(process)
+            return process
+
+        self.factory.side_effect = create_process
+        for _ in range(2):
+            result = self.control.execute(lambda device: device.tap())
+            self.assertTrue(result.ok, result.error)
+        self.assertEqual(len(commands), 2)
+        self.assertEqual(self.factory.call_count, 2)
+        for process in self.processes:
+            self.assertEqual(process.events, ["terminate", "wait"])
+            self.assertTrue(process.stdin.closed)
+            self.assertTrue(process.stdout.closed)
 
     def test_handshake_timeout_reaps_the_process_without_sending_input(self):
         process = OwnedProcess()
@@ -185,7 +211,7 @@ class MaaTouchApplicationTests(unittest.TestCase):
         self.assertFalse(self.control.start().ok)
         self.assertFalse(self.control.execute(lambda device: device.tap()).ok)
         self.assertEqual(len(process.stdin.writes), 1)
-        self.assertEqual(process.events, ["wait", "terminate", "wait", "kill", "wait"])
+        self.assertEqual(process.events, ["terminate", "wait", "kill", "wait"])
         self.assertIsNotNone(process.poll())
         self.assertTrue(process.stdin.closed)
         self.assertTrue(process.stdout.closed)
@@ -209,14 +235,14 @@ class MaaTouchApplicationTests(unittest.TestCase):
                 self.assertTrue(process.stdin.closed)
                 self.assertTrue(process.stdout.closed)
 
-    def test_live_process_is_killed_only_after_bounded_wait_and_terminate(self):
+    def test_live_process_is_killed_after_bounded_terminate_wait(self):
         process = OwnedProcess()
         process.ignore_eof = True
         process.ignore_terminate = True
         self.factory.side_effect = None
         self.factory.return_value = process
         self.assertTrue(self.control.execute(lambda device: device.tap()).ok)
-        self.assertEqual(process.events, ["wait", "terminate", "wait", "kill", "wait"])
+        self.assertEqual(process.events, ["terminate", "wait", "kill", "wait"])
         self.assertEqual(process.returncode, -9)
         self.assertTrue(all(0 < timeout <= 1 for timeout in process.waits))
 
@@ -228,18 +254,21 @@ class MaaTouchApplicationTests(unittest.TestCase):
         self.assertEqual(len(self.processes), 1)
         self.assertIsNotNone(self.processes[0].poll())
 
-    def test_abnormal_exit_on_eof_is_reported_without_retry(self):
+    def test_abnormal_exit_before_cleanup_is_reported_without_retry(self):
         process = OwnedProcess()
-        process.exit_on_eof = 3
         self.factory.side_effect = None
         self.factory.return_value = process
-        result = self.control.execute(lambda device: device.tap())
+        with patch(
+            "arknights_mower.utils.device.maatouch.session.Session.wait",
+            side_effect=lambda seconds: setattr(process, "returncode", 3),
+        ):
+            result = self.control.execute(lambda device: device.tap())
         self.assertFalse(result.ok)
         self.assertIn("3", str(result.error.cause))
         self.assertEqual(self.factory.call_count, 1)
-        self.assertEqual(process.events, ["wait"])
+        self.assertEqual(process.events, [])
 
-    def test_real_host_process_exits_gracefully_after_each_operation(self):
+    def test_real_host_process_is_stopped_before_eof_crash(self):
         processes = []
 
         def spawn(*args, **kwargs):
@@ -248,7 +277,8 @@ class MaaTouchApplicationTests(unittest.TestCase):
                     sys.executable,
                     "-u",
                     "-c",
-                    "import sys; print('^ 10 1920 1080 255'); print('$ 123'); sys.stdin.read()",
+                    "import sys; print('^ 10 1920 1080 255'); print('$ 123'); "
+                    "sys.stdin.read(); sys.exit(137)",
                 ],
                 **kwargs,
             )
@@ -261,7 +291,8 @@ class MaaTouchApplicationTests(unittest.TestCase):
             self.assertTrue(result.ok, result.error)
         self.assertEqual(len(processes), 2)
         for process in processes:
-            self.assertEqual(process.poll(), 0)
+            self.assertIsNotNone(process.poll())
+            self.assertNotEqual(process.returncode, 137)
             self.assertTrue(process.stdin.closed)
             self.assertTrue(process.stdout.closed)
 
