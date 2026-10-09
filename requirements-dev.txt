@@ -86,6 +86,8 @@ flatbuffers==24.3.25
     # via
     #   -r requirements.txt
     #   onnxruntime
+fonttools==4.66.1
+    # via -r requirements-dev.in
 fusepy==3.0.1
     # via
     #   -r requirements.txt

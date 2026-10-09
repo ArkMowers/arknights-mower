@@ -55,7 +55,7 @@ jobs:
 
               - 'arknights_mower/{__init__,__main__}.py'
               - 'arknights_mower/{utils,views,tests}/__init__.py'
-              - '{manager,webview_ui,server,build_assets,setup,auto_get_res_new}.py'
+              - '{manager,webview_ui,server,build_assets,setup,auto_get_res_new,build_font_subsets,build_mastery_panel_model}.py'
               # Resource payloads covered by content-hash regressions.
               - 'arknights_mower/{data,models}/**'
               - 'ui/public/{depot,avatar,building_skill}/**'
@@ -182,6 +182,8 @@ jobs:
       - name: Assert upstream libraries are importable
         # 缺少任何一个都会让等价性用例静默跳过，这里先失败，避免任务假绿。
         run: ./venv/bin/python3 -c "import scipy, skimage, sklearn"
+      - name: Verify resource font generation
+        run: ./venv/bin/python3 -m pytest arknights_mower/tests/font_subset_generation_tests.py -q
       - name: Compare vision_np against upstream implementations
         run: ./venv/bin/python3 -m unittest arknights_mower.tests.vision_np_tests -v
 
