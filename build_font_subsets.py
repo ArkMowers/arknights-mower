@@ -14,10 +14,16 @@ MASTERY_SOURCE_SHA256 = (
 
 
 def source_font(filename):
-    return (
-        Path(os.environ.get("MOWERFONTS_DIR", ROOT / "ArknightsGameResource/fonts"))
-        / filename
-    )
+    """Use explicit originals when present, otherwise use repository build inputs."""
+    configured = os.environ.get("MOWERFONTS_DIR")
+    if configured:
+        candidate = Path(configured) / filename
+        if candidate.is_file():
+            return candidate
+    bundled = ROOT / "font_sources" / filename
+    if bundled.is_file():
+        return bundled
+    return ROOT / "ArknightsGameResource/fonts" / filename
 
 
 def ensure_font_characters(text, font_path, charset_path, source_path, source_sha256):
