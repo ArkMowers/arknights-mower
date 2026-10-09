@@ -1,253 +1,95 @@
 # arknights-mower
 
-Mower 是为长期运行设计的开源明日方舟脚本。
+Mower 是为长期运行设计的开源明日方舟脚本，支持基建动态排班、跑单、日常任务、养成材料准备和自动专精，并可调用 MAA 执行作战与大型任务。
 
-## 功能介绍
+## 源码部署
 
-- 基建：跑单、按心情动态换班；
-- 森空岛：签到、仓库读取；
-- 日常：公招、邮件、线索、清理智；
-- 大型任务：生息演算、隐秘战线；
-- 签到：五周年月卡、限定池每日一抽、矿区、孤星领箱子、端午签到……
-- 调用 MAA：肉鸽、保全。
+macOS 和 Linux 虽有独立包，仍建议优先使用源码部署。以下说明适用于 Windows、Linux 和 macOS。
 
-排班验证可检查账号是否持有主表、副表和副表任务中的干员。检查条件与报错处理见[排班干员持有检查](doc/plan-roster-validation.md)。
+准备 Git、Python 3.12、Node.js 20.19+ 或 22.12+。Windows 需要 WebView2 运行时；Linux 桌面启动需要图形环境和 GTK/WebKit2。
 
-MAA 设置中可开启 **任务结束后恢复主题**，从下拉列表选择账号已解锁的主题（如“夜间”），支持搜索和清空选择。
-本功能必须使用 **MAA v6.17.3 或更高版本**的核心及配套资源；旧版或无法确认版本时会提示并跳过恢复。
-恢复在本轮 MAA 日常及大型任务结束后、休息前执行，最长等待两分钟，并为下一次调度预留时间。
-默认关闭；未选择目标主题、手动停止、异常退出或调度时间不足时不执行恢复。
+### 获取源码与构建前端
 
-主题名称来自国服游戏数据 `display_meta_table.json` 的 `homeBackgroundData.themeList[].tmName`，
-当前内置 18 个主题，随 Mower 更新。MAA 资源包中的识别模板不包含完整中文主题列表，也无法判断账号的解锁状态。
+```bash
+git clone --branch alpha https://github.com/ArkMowers/arknights-mower.git
+cd arknights-mower
+cd ui
+npm ci
+npm run build
+cd ..
+```
+
+以下 Python 命令均在仓库根目录执行，直接使用虚拟环境中的解释器，无须激活环境。
+
+### Windows
+
+在 PowerShell 中执行：
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe webview_ui.py
+```
+
+### Linux
+
+以下以 Ubuntu 24.04 桌面环境为例，安装系统窗口依赖，再创建能读取系统 PyGObject 的环境：
+
+```bash
+sudo apt update
+sudo apt install python3.12-venv python3-tk python3-gi \
+    gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-soup-3.0 \
+    libzbar0 libgl1 libglib2.0-0 adb
+python3.12 -m venv --system-site-packages .venv
+./.venv/bin/python -m pip install -r requirements.in
+./.venv/bin/python webview_ui.py
+```
+
+其他发行版需安装对应依赖，并确保 PyGObject 与环境中的 Python 版本一致。窗口及系统库说明见[平台依赖](doc/release-platforms.md#linux-独立包的窗口后端与宿主依赖)；无桌面的服务器可参考 [Docker 部署](docs/cookbook/docker-deploy.md)。
+
+### macOS
+
+安装 Python、Tk、二维码识别依赖，并准备程序默认使用的 ADB：
+
+```bash
+brew install python@3.12 python-tk@3.12 zbar
+python3.12 -m venv .venv
+./.venv/bin/python -m pip install -r requirements.in
+./.venv/bin/python scripts/prepare_macos_adb.py
+./.venv/bin/python webview_ui.py
+```
+
+ADB 准备脚本下载并校验官方 Platform Tools。已有对应离线 ZIP 时，可通过脚本的 `--archive` 参数指定。Intel Mac 使用源码部署；后续官方发行不再构建 macOS x64 独立包。
+
+### 后续启动与首次配置
+
+后续只需在仓库根目录执行对应系统的最后一条启动命令。将 `webview_ui.py` 换成 `manager.py` 可打开多开管理器。
+
+1. 在 **Mower 设置** 中选择设备预设、检测并选定实例，完成连接测试。
+2. 导入或编写排班，核对设施、主班、替班及宿舍容量，点击「验证排班」。
+3. 按需配置日常任务、MAA、养成与专精，启动后观察一轮换班。
+4. 使用 **配置导出与导入** 保存当前实例的配置和持久化业务数据。
+
+性能档位通常保留「自动」。「设备性能适配」位于连接设置中，桌面端和 Android 均提供「游戏内性能测试」，从极高开始逐档验证；操作步骤见一条龙的「设备连接与性能适配」。训练位提示技能条件不符时，先在游戏中完成升级或更换干员，再到 **养成规划 → 刷新**，重新验证排班。
+
+完整步骤及排班理论见程序内「一条龙」（[仓库 HTML 原文](ui/Mower入门指北.html)）。首次下载独立包仍从[项目 Releases](https://github.com/ArkMowers/arknights-mower/releases)获取；已有安装使用 **Mower 设置 → 软件更新**。源码部署更新前保留自己的改动，操作与恢复说明见[软件更新](doc/software-update.md)。
+
+打包与其他部署方式：[本地打包](docs/cookbook/packaging.md) · [Docker 部署](docs/cookbook/docker-deploy.md)。
 
 ## 界面截图
 
-![log](./img/log.png)
-![settings](./img/settings.png)
-![plan-editor](./img/plan-editor.png)
-![riic-report](./img/riic-report.png)
-
-## 下载与安装
-
-已部署的程序可在 **Mower 设置 → 软件更新** 中检查正式版、公测版或开发版更新，并在更新后重启同一安装目录下所有运行实例、恢复原运行状态。运行中的实例按“重启续接”模式恢复已保存的心情、位置和任务队列，包括跑单与专精任务；专精计划也保存在数据库中。Release 独立包支持手动上传安装包离线安装；源码与独立包部署均可选择后台静默重启。首次启用、平台支持与失败恢复说明见 [软件更新与实例恢复](doc/software-update.md)。
-
-Windows 和 Linux 独立包可优先使用 [MowerRelease](https://github.com/ArkMowers/MowerRelease) 发布的跨版本 OTA 差异包；Windows x64 开发版 Nightly 也支持同一 alpha 版本内的提交构建直达 OTA。本地版本不匹配或差异包校验失败时自动使用目标完整包。macOS 继续使用完整 DMG。
-
-软件更新可选择启动时自动检查及自动安装。设置页最底部的 **进程操作** 可单独重启或结束当前实例；重启保留多开管理器传入的名称、数据目录、端口和原运行状态。macOS 可勾选 **隐藏菜单栏图标**，重启后不创建托盘进程。
-
-源码更新允许 npm 锁文件的纯元数据改写；其他本地源码改动可在二次确认后使用 **强制更新** 覆盖，不备份本地修改。展开 **源码版本管理** 可选择远端分支、近期提交或手动填写 SHA / tag，切回包含实例恢复功能的旧提交。支持 Windows、macOS、Linux 源码部署，不限制 Python 环境名称与位置；使用当前解释器的 pip 或可用的 uv 安装依赖，均不可用时先尝试 ensurepip。
-
-设置页下方的 **网络与下载代理** 可配置全局网络连接及 GitHub 下载代理站点。下载站点留空时，安装包、资源包和原始文件先直连 GitHub；连接失败后自动尝试 `https://ghfast.top/`。填写站点后优先使用指定站点。GitHub API 和 Git / Git LFS 使用全局网络代理。设置自动保存，并可测试实际文件下载路径。Release 独立包还可选择当前版本之前同渠道最近 3 个兼容版本回退；源码部署仍使用源码版本管理。软件更新与资源更新位于其下方，宽屏并排显示。
-
-**Mower 设置 → 配置导出与导入** 位于「进程操作」板块上方，支持将当前实例的 `config` 文件夹打包为 ZIP，包含配置原文件、主排班与备用排班，排除 `state.json`。导入时保留本机网络访问、托盘、窗口和状态配置，自动刷新页面生效，并在导入前生成恢复备份。范围与操作说明见 [配置导出与导入](doc/config-backup.md)。
-
-资源包保存在共享的持久目录 `@app/resources`，各实例在任务间歇加载，不修改 internal 或已签名的 macOS 程序包。详见[共享资源存储与实例加载](doc/resource-storage.md)。
-
-### 运行环境准备
-
-git、Python 3.12、Node.js 16
-
-### 克隆仓库
-
-```bash
-git clone -c lfs.concurrenttransfers=200 https://github.com/ArkMowers/arknights-mower.git
-cd arknights-mower
-```
-
-### 构建前端
-
-```bash
-cd ui
-npm install
-npm run build
-```
-
-### 构建后端（Windows）
-
-```bash
-cd ..
-python -m venv venv
-.\venv\Scripts\activate.bat
-pip install -r requirements.txt
-pip install Flask flask-cors flask-sock pywebview
-```
-
-### 构建后端（Linux）
-
-```bash
-cd ..
-python3 -m venv venv
-. ./venv/bin/activate
-pip install -r requirements.in
-pip install Flask flask-cors flask-sock pywebview
-```
-
-### 识别等价测试与模型重训
-
-scipy、scikit-image、scikit-learn 仅用于开发期 golden 对照与模型重训，不属于运行依赖：
-
-```bash
-pip install -r requirements-dev.txt
-python -m unittest arknights_mower.tests.vision_np_tests
-```
-
-这些用例在上述三个库缺失时会整体跳过，因此 CI 的 `recognition-equivalence` 任务会安装开发依赖真正执行它们。
-
-识别层加载的是不含 sklearn 对象的 numpy 字典，而 `auto_get_res_new.py` 重新训练仓库识别模型（`NORMAL.pkl`、`CONSUME.pkl`）后写出的仍是 sklearn 对象，需要再折叠一次才能被加载：
-
-```bash
-python scripts/collapse_recognition_models.py
-```
-
-折叠脚本会先用 sklearn 原模型逐样本校验折叠结果，校验通过才原地替换；模型已经是折叠格式时会跳过并提示。
-
-运行依赖与开发依赖的锁文件必须由 Python 3.12 统一生成，避免环境 marker 与交付运行时不一致：
-
-```bash
-python -m pip install pip==25.3 pip-tools==7.6.0
-python scripts/compile_requirements.py
-```
-
-两份锁文件必须成对生成，`scripts/tests/requirements_sync_tests.py` 会校验它们的公共依赖版本一致。
-
-### 打包（Windows）
-
-```bash
-pip install pyinstaller
-python scripts/prune_opencv.py
-pyinstaller webui_zip.spec
-```
-
-生成的 `mower.exe` 在 `dist` 文件夹中，到此打包完成，已可使用。
-
-### 打包（Linux）
-
-先安装**构建机**上打包 pywebview GTK 后端所需的系统依赖（PyGObject 与 GTK/WebKit2
-的 gir typelib，否则打包时 gi 收不进产物）：
-
-```bash
-sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-soup-3.0 libgirepository1.0-dev
-```
-
-如果用的是 venv，需要让 venv 能看到系统的 PyGObject，用 `--system-site-packages`
-创建，或在 venv 里 `pip install pygobject`（后者需要先安装编译依赖）。
-
-再打包：
-
-```bash
-pip install pyinstaller
-python scripts/prune_opencv.py
-pyinstaller webui_zip_for_linux.spec
-```
-
-生成的 `mower` 在 `dist` 文件夹中，到此打包完成，已可使用。Linux 独立包的窗口后端是
-GTK（`gi`/PyGObject），Qt 后端不随包分发。宿主若缺 GTK/WebKit2 原生库与 gir typelib，
-程序启动时会给出中文安装提示，也可按发行版安装：
-
-```bash
-# Debian / Ubuntu
-sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0 gir1.2-webkit2-4.1 gir1.2-gtk-3.0 gir1.2-soup-3.0
-# Fedora
-sudo dnf install webkit2gtk4.1 gi-girepository libgtk-3
-# Arch Linux
-sudo pacman -S webkit2gtk-4.1 gobject-introspection
-```
-
-各发行版的详细依赖与打包命令见 `doc/release-platforms.md`。
-
-注：Linux 下运行时，shell 会显示如 `Running on http://127.0.0.1:53703` 的输出，本地浏览器访问 `http://127.0.0.1:53703` 即进入 Mower 页面。
-
-> Linux 独立包仍依赖宿主机的部分系统动态库，并非完全便携。产物在 Ubuntu 24.04
-> 上构建，运行时要求 glibc >= 2.39，且需安装：`libzbar0`（二维码识别）、
-> `libgl1` 与 `libglib2.0-0`（OpenCV）、`libgtk-3-0` 与 `libwebkit2gtk-4.1-0`
-> （WebView 界面，Ubuntu 24.04 对应包名）。
-
-### 打包（macOS）
-
-```bash
-pip install pyinstaller
-brew install zbar
-python scripts/prune_opencv.py
-pyinstaller webui_zip_for_macos.spec
-```
-
-生成的 `mower.app` 在 `dist` 文件夹中，包含主程序与多开管理器。macOS 产物为
-**unsigned experimental build**（PyInstaller 仅做 ad-hoc 签名，非 Developer ID
-签名、未经 notarization），首次运行若被 Gatekeeper 拦截，需在「隐私与安全性」
-中手动允许；二维码识别依赖宿主机 `zbar`（`brew install zbar`）。
-
-### 正式版与 alpha 的产物和签名说明
-
-正式版与 alpha 共用跨平台发布流水线，为五个平台生成统一命名的独立包，并附带
-统一的 SHA-256 清单（SHA256SUMS）：
-
-```text
-arknights-mower_<version>_windows_x64.zip
-arknights-mower_<version>_linux_x64.tar.gz
-arknights-mower_<version>_linux_arm64.tar.gz
-arknights-mower_<version>_macos_x64.dmg
-arknights-mower_<version>_macos_arm64.dmg
-```
-
-发布入口、版本格式、构建检查和系统依赖见
-[跨平台发布流水线](doc/release-platforms.md)。
-
-开发版安装包由 [MowerRelease](https://github.com/ArkMowers/MowerRelease)
-每天北京时间 06:00 从主仓库 `alpha` 分支构建，首阶段仅提供 Windows x64。
-版本沿用 `alpha.x` 并附加提交短码，例如 `v4.1.6-alpha.9.g40ac54e4`；
-普通 `alpha.x` 仍属于公测版。`alpha` 提交未变化时跳过。完整包与开发版之间
-的 OTA 差异包均发布在 MowerRelease，主仓库不创建 nightly Release。
-安装版在「软件更新」选择开发版；源码版仍由 Git 跟随所选分支。
-
-Windows 与 macOS 产物均未签名：Windows 首次运行可能出现 SmartScreen 提示，请
-选择「更多信息 -> 仍要运行」；macOS 为 unsigned experimental build，可能需要在
-「隐私与安全性」中手动允许。建议下载后先核对 SHA256SUMS 再使用。
-
-## Docker 部署
-
-Docker 部署说明见 [Arknights-Mower 文档 - Docker 部署](https://arkmowers.github.io/arknights-mower/manual/docker-deploy/)。
-
-## Linux系统下的Docker一键部署
-
-### 运行环境准备
-
-Docker version 28.1.128.1.1、Linux
-
-### 克隆仓库
-
-```bash
-git clone -c lfs.concurrenttransfers=200 https://github.com/ArkMowers/arknights-mower.git
-cd arknights-mower
-```
-
-### 镜像构建
-
-```bash
-docker build -t mower .
-```
-
-### 启动容器
-
-```bash
-docker run -d \
-    --name mower\
-    --network host \
-    -e TZ="Asia/Shanghai" \
-    --restart always \
-    --memory 2g \
-    mower
-```
-
-### 进入 Mower
-
-容器在后台启动以后，可以本地浏览器访问 `http://127.0.0.1:58000?token=mower` 或 `http://局域网IP:58000?token=mower`。
-
-此时，该容器已预先配置好 MAA 以及 ADB 设置，仅需要手动配置 ADB 连接地址。
+![运行日志](img/log.png)
+![设置](img/settings.png)
+![排班编辑器](img/plan-editor.png)
+![基建报表](img/riic-report.png)
 
 ## 建议与反馈
 
-**提出建议、反馈 Bug，欢迎加入 QQ 群 (521857729) 或 QQ 频道 (ArkMower)（频道号：2r118jwue4）**
+先查阅 [Mower 反馈表](https://docs.qq.com/sheet/DUEJ6UWN5VFVRU0dG?tab=BB08J2)，填写需要相应编辑权限。程序内反馈窗口通过已配置邮箱发送邮件；AI 助手也可在你明确要求后发送反馈，邮件提交不会自动写入腾讯表格。
+
+请提供 Mower 版本、系统与架构、设备或模拟器、复现步骤、期望行为及实际现象，并附发生时间和相关日志。不要公开密码、授权码、访问令牌、API 密钥或完整配置备份。
+
+QQ群：521857729；QQ 频道：ArkMower（频道号：2r118jwue4）。
 
 ## 关于 Mower-NG
 

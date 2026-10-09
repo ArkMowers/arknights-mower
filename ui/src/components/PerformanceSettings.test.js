@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { effectScope, reactive } from 'vue'
+import { createSSRApp, effectScope, h, reactive } from 'vue'
+import { renderToString } from 'vue/server-renderer'
 import PerformanceSettings from './PerformanceSettings.vue'
 
 const state = vi.hoisted(() => ({ config: null }))
@@ -8,6 +9,37 @@ vi.mock('vue', async (original) => ({
   useSSRContext: () => ({ modules: new Set() })
 }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
+vi.mock('naive-ui', () => {
+  const wrapper = {
+    inheritAttrs: false,
+    setup:
+      (_, { slots }) =>
+      () =>
+        slots.default?.()
+  }
+  return Object.fromEntries(
+    ['NFormItem', 'NSpace', 'NRadioGroup', 'NFlex', 'NRadio', 'NText'].map((name) => [
+      name,
+      wrapper
+    ])
+  )
+})
+vi.mock('./HelpText.vue', () => ({
+  default: {
+    setup:
+      (_, { slots }) =>
+      () =>
+        slots.default?.()
+  }
+}))
+vi.mock('./GamePerformanceTest.vue', () => ({
+  default: {
+    props: ['disabled'],
+    render() {
+      return h('button', { disabled: this.disabled }, '游戏内性能测试')
+    }
+  }
+}))
 
 let scope
 function setup(overrides = {}) {
@@ -78,4 +110,14 @@ it('opens every Android mode while rejecting disabled or invalid choices', () =>
   props.disabled = false
   component.applyMode('medium')
   expect(state.config.performance_mode).toBe('medium')
+})
+
+it.each(['android', 'darwin'])('renders an enabled game test for %s', async (platform) => {
+  setup()
+  state.config.runtime_platform = platform
+  const app = createSSRApp(PerformanceSettings, { testEnabled: true })
+  const html = await renderToString(app)
+  expect(html).toMatch(/<button\b[^>]*>游戏内性能测试<\/button>/)
+  expect(html).not.toMatch(/<button\b[^>]*disabled/)
+  expect(html).toContain(`自动从${platform === 'android' ? '中' : '极高'}开始`)
 })

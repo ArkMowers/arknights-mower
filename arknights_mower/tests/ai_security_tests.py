@@ -113,8 +113,39 @@ class WebSocketSecurityTests(unittest.TestCase):
             self.assertEqual(
                 json.loads(authorized.receive(timeout=2)), {"reply": "reply"}
             )
+            self.assertEqual(json.loads(authorized.receive(timeout=2)), {"done": True})
             ask.assert_called_once()
             authorized.close()
+
+    def test_chat_completion_follows_all_chunks_and_handles_empty_or_failed_streams(
+        self,
+    ):
+        def failed_stream():
+            yield "部分回复"
+            raise ValueError("模型错误")
+
+        for stream, expected in (
+            (
+                iter(["正在查询", "结果"]),
+                [{"reply": "正在查询"}, {"reply": "结果"}, {"done": True}],
+            ),
+            (iter([]), [{"done": True}]),
+            (failed_stream(), [{"reply": "部分回复"}, {"error": "模型错误"}]),
+        ):
+            with self.subTest(expected=expected):
+                ws = FakeSocket(
+                    json.dumps({"token": "test-secret"}),
+                    json.dumps({"message": "查询"}),
+                )
+                with (
+                    server.app.test_request_context(
+                        "/ws/chat",
+                        headers={"Host": "localhost", "Origin": "http://localhost"},
+                    ),
+                    patch("arknights_mower.agent.agent.ask_llm", return_value=stream),
+                ):
+                    server.app.view_functions["ws_chat"].__wrapped__(ws)
+                self.assertEqual(ws.sent, expected)
 
 
 class SourceSnippetSecurityTests(unittest.TestCase):

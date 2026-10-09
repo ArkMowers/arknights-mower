@@ -47,7 +47,11 @@ def solver(monkeypatch):
     return result
 
 
-def test_three_successes_recommend_xhigh_without_changing_conf_or_feedback(solver):
+@pytest.mark.parametrize("android", [False, True])
+def test_three_successes_recommend_xhigh_without_changing_conf_or_feedback(
+    solver, monkeypatch, android
+):
+    monkeypatch.setenv("MOWER_ANDROID", "1" if android else "0")
     before = config.conf.model_dump()
     feedback = config.operation_feedback_avg, config.operation_feedback_count
     modes = []
@@ -62,10 +66,12 @@ def test_three_successes_recommend_xhigh_without_changing_conf_or_feedback(solve
     assert not hasattr(solver, "_selection_profile_snapshot")
 
 
+@pytest.mark.parametrize("android", [False, True])
 @pytest.mark.parametrize("failed_round", [1, 2, 3])
 def test_first_failure_immediately_restarts_three_rounds_at_lower_mode(
-    solver, failed_round
+    solver, monkeypatch, android, failed_round
 ):
+    monkeypatch.setenv("MOWER_ANDROID", "1" if android else "0")
     modes = []
 
     def trial(*_):

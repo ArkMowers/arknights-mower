@@ -20,6 +20,19 @@
 					|| !['light', 'dark'].includes(event.data.theme)) return;
 				explicitTheme = event.data.theme;
 				applyTheme();
+				for (const property of [
+					'--page-bg', '--card-bg', '--light-bg', '--text-color', '--heading-color',
+					'--muted-color', '--primary-color', '--secondary-color', '--link-color',
+					'--link-hover', '--reference-color', '--reference-hover', '--border-color',
+					'--hover-bg', '--active-color', '--code-bg', '--note-border',
+					'--warning-border', '--error-color'
+				]) {
+					document.documentElement.style.removeProperty(property);
+					const color = event.data.colors?.[property];
+					if (typeof color === 'string' && CSS.supports('color', color)) {
+						document.documentElement.style.setProperty(property, color);
+					}
+				}
 			});
 		})();
 	</script>
@@ -29,32 +42,30 @@
 			color-scheme: light;
 			--sidebar-width: 210px;
 			--header-height: 60px;
-			--primary-color: #2e7d32;
-			--secondary-color: #2980b9;
-			--link-color: #0066cc;
-			--link-hover: #0044aa;
-			--reference-color: #c0392b;
-			--reference-hover: #a93226;
-			--border-color: #e0e0e0;
-			--light-bg: #f9f9f9;
-			--active-color: #e8f5e9;
-			--page-bg: #f8fafb;
-			--text-color: #333;
-			--muted-color: #555;
-			--heading-color: #2c3e50;
-			--hover-bg: #e0e0e0;
+			--primary-color: #18a058;
+			--secondary-color: #2080f0;
+			--link-color: #0c7a43;
+			--link-hover: #0c7a43;
+			--reference-color: #0c7a43;
+			--reference-hover: #0c7a43;
+			--border-color: rgb(239, 239, 245);
+			--light-bg: #fff;
+			--active-color: rgb(243, 243, 245);
+			--page-bg: #fff;
+			--text-color: rgb(51, 54, 57);
+			--muted-color: rgb(118, 124, 130);
+			--heading-color: rgb(31, 34, 37);
+			--hover-bg: rgb(243, 243, 245);
 			--subnav-bg: rgba(255,255,255,0.5);
-			--code-bg: #f5f5f5;
-			--error-color: #c62828;
-			--note-bg: #fff9e6;
-			--note-border: #b88700;
-			--warning-bg: #ffebee;
-			--warning-border: #d32f2f;
+			--code-bg: rgb(250, 250, 252);
+			--error-color: #d03050;
+			--note-border: #f0a020;
+			--warning-border: #d03050;
 			--highlight-bg: #fffacd;
 			--button-text: #fff;
-			--table-hover: #f0f7ff;
+			--table-hover: var(--hover-bg);
 			--transition-speed: 0.3s;
-			--shadow: 0 4px 6px rgba(0,0,0,0.1);
+			--shadow: none;
 			--card-bg: #fff;
 		}
 
@@ -62,29 +73,25 @@
 			color-scheme: dark;
 			--primary-color: #63e2b7;
 			--secondary-color: #70c0e8;
-			--link-color: #8acbec;
-			--link-hover: #b5e1f7;
-			--reference-color: #ffaaa0;
-			--reference-hover: #ffd0c9;
-			--border-color: #414149;
+			--link-color: #63e2b7;
+			--link-hover: #5acea7;
+			--reference-color: #63e2b7;
+			--reference-hover: #5acea7;
+			--border-color: rgba(255, 255, 255, 0.09);
 			--light-bg: #18181c;
-			--active-color: #1d3b31;
+			--active-color: rgba(255, 255, 255, 0.09);
 			--page-bg: #101014;
-			--text-color: #e8e8ec;
-			--muted-color: #b8b8c0;
-			--heading-color: #f4f4f5;
-			--hover-bg: #2c2c32;
+			--text-color: rgba(255, 255, 255, 0.82);
+			--muted-color: rgba(255, 255, 255, 0.52);
+			--heading-color: rgba(255, 255, 255, 0.9);
+			--hover-bg: rgba(255, 255, 255, 0.09);
 			--subnav-bg: #202024;
-			--code-bg: #202024;
-			--error-color: #ffaaa0;
-			--note-bg: #3c321e;
+			--code-bg: rgba(255, 255, 255, 0.06);
+			--error-color: #e88080;
 			--note-border: #f2c97d;
-			--warning-bg: #3d2529;
 			--warning-border: #e88080;
 			--highlight-bg: #554719;
 			--button-text: #10241c;
-			--table-hover: #24303a;
-			--shadow: 0 4px 6px rgba(0,0,0,0.4);
 			--card-bg: #18181c;
 		}
 		
@@ -98,11 +105,11 @@
 		/* 页面主体样式 */
 		body {
 			font-family: 'PingFang SC', 'Segoe UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif;
-			font-size: 16px;
-			line-height: 1.6;
+			font-size: 14px;
+			line-height: 1.8;
+			-webkit-font-smoothing: antialiased;
 			color: var(--text-color);
 			background-color: var(--page-bg);
-			scroll-behavior: smooth;
 			overflow-x: hidden; /* 防止页面整体溢出 */
 		}
 		
@@ -110,7 +117,7 @@
 		.container {
 			display: flex;
 			min-height: 100vh;
-			background: linear-gradient(to bottom, var(--active-color) 0%, var(--page-bg) 150px, var(--page-bg) 100%);
+			background: var(--page-bg);
 		}
 		
 		/* 侧边栏导航样式 */
@@ -123,7 +130,6 @@
 			top: 0;
 			overflow-y: auto;
 			z-index: 100;
-			transition: all var(--transition-speed) ease;
 			box-shadow: var(--shadow);
 		}
 		
@@ -136,8 +142,8 @@
 		.nav-title {
 			padding: 15px 20px;
 			font-weight: bold;
-			background: var(--active-color);
-			color: var(--primary-color);
+			background: var(--light-bg);
+			color: var(--heading-color);
 			font-size: 16px;
 			position: sticky;
 			top: 0;
@@ -161,7 +167,7 @@
 			padding: 12px 20px;
 			color: var(--text-color);
 			text-decoration: none;
-			transition: all 0.2s;
+			transition: background-color 0.2s, color 0.2s;
 			font-size: 13px;
 			font-weight: bold;
 			position: relative;
@@ -173,7 +179,7 @@
 		
 		.nav-link.active {
 			background: var(--active-color);
-			color: var(--primary-color);
+			color: var(--link-color);
 			font-weight: bold;
 			border-left: 3px solid var(--primary-color);
 		}
@@ -224,7 +230,7 @@
 			text-decoration: none;
 			font-size: 12.5px;
 			position: relative;
-			transition: all 0.2s;
+			transition: color 0.2s, background-color 0.2s, padding-left 0.2s;
 		}
 		
 		.sub-nav-link:hover {
@@ -243,7 +249,7 @@
 			height: 6px;
 			background: var(--muted-color);
 			border-radius: 50%;
-			transition: all 0.2s;
+			transition: background-color 0.2s, width 0.2s, height 0.2s;
 		}
 		
 		.sub-nav-link.active {
@@ -261,18 +267,20 @@
 		/* 主内容区域样式 */
 		.main-content {
 			flex: 1;
-			padding: 20px 40px 60px;
-			max-width: calc(100% - var(--sidebar-width));
+			min-width: 0;
+			padding: 24px 28px 60px;
+			max-width: min(1120px, calc(100% - var(--sidebar-width)));
 			overflow-x: hidden; /* 防止内容溢出 */
 		}
 		
 		/* 内容卡片样式 */
 		.content-card {
 			background: var(--card-bg);
-			border-radius: 10px;
+			border-radius: 12px;
+			border: 1px solid var(--border-color);
 			box-shadow: var(--shadow);
-			padding: 25px;
-			margin-bottom: 30px;
+			padding: 24px;
+			margin-bottom: 20px;
 			overflow: hidden; /* 防止卡片内内容溢出 */
 		}
 		
@@ -310,7 +318,7 @@
 		/* 正文段落样式 */
 		.text-content p {
 			margin-bottom: 15px;
-			text-align: justify;
+			text-align: left;
 			overflow-wrap: break-word; /* 防止长文本溢出 */
 		}
 		
@@ -323,7 +331,7 @@
 			color: var(--link-color);
 			text-decoration: underline;
 			cursor: pointer;
-			transition: all 0.2s;
+			transition: color 0.2s;
 		}
 		
 		.link-text:hover {
@@ -341,7 +349,7 @@
 			text-decoration: none;
 			color: var(--reference-color);
 			font-weight: bold;
-			transition: all 0.2s;
+			transition: color 0.2s;
 		}
 
 		.reference-link-text:hover {
@@ -440,35 +448,23 @@
 			background-color: var(--table-hover);
 		}
 		
-		/* 引用提示框样式 */
-		.note-box {
-			background: var(--note-bg);
-			border-left: 4px solid var(--note-border);
-			padding: 5px 20px;
-			margin: 20px 0;
-			border-radius: 0 4px 4px 0;
-			overflow: hidden; /* 防止内容溢出 */
-		}
-		
-		/* 警告提示框样式 */
-		.warning-box {
-			background: var(--warning-bg);
-			border-left: 4px solid var(--warning-border);
-			padding: 5px 20px;
-			margin: 20px 0;
-			border-radius: 0 4px 4px 0;
-			overflow: hidden;
-		}
-		
-		/* 提示框样式 */
+		/* 提示框共用中性背景和对称留白，用侧边色条区分语义。 */
+		.note-box,
+		.warning-box,
 		.tip-box {
-			background: var(--active-color);
-			border-left: 4px solid var(--primary-color);
-			padding: 5px 20px;
-			margin: 20px 0;
-			border-radius: 0 4px 4px 0;
-			overflow: hidden;
+			background: var(--code-bg);
+			border-radius: 6px;
+			border-left: 3px solid var(--primary-color);
+			padding: 12px 16px;
+			margin: 18px 0;
 		}
+
+		.note-box { border-left-color: var(--note-border); }
+		.warning-box { border-left-color: var(--warning-border); }
+		.text-content :is(.note-box, .warning-box, .tip-box) p:last-child {
+			margin-bottom: 0;
+		}
+		.tip-box strong { display: block; margin-bottom: 4px; }
 		
 		/* 列表样式 */
 		ol, ul {
@@ -581,7 +577,7 @@
 			z-index: 99;
 			opacity: 0;
 			transform: translateY(20px);
-			transition: all 0.3s ease;
+			transition: opacity 0.3s ease, transform 0.3s ease;
 		}
 		
 		/* 回到顶部按钮可见时样式 */
@@ -591,6 +587,10 @@
 		}
 	html { scroll-behavior: smooth; }
 .back-to-top { border: 0; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { transition: none !important; }
+}
 </style>
 </head>
 
@@ -601,8 +601,8 @@
       <ul class="nav-list">
         <li><a href="#preface" class="nav-link">首次运行一条龙</a></li>
         <li><a href="#download-update" class="nav-link">安装与更新</a></li>
-        <li><a href="#device-connection" class="nav-link">设备连接</a></li>
-        <li><a href="#scheduling" class="nav-link">排班与宿舍</a></li>
+        <li><a href="#device-connection" class="nav-link">设备连接与性能适配</a></li>
+        <li><a href="#scheduling" class="nav-link">排班导入与校验</a></li>
         <li><a href="#schedule-theory" class="nav-link">排班表编写理论</a></li>
         <li><a href="#Mower-settings" class="nav-link">基建与日常设置</a></li>
         <li><a href="#sanity-plan" class="nav-link">MAA、作战与大型任务</a></li>
@@ -617,316 +617,420 @@
     <main class="main-content text-content">
       <section class="content-card">
         <h1 id="preface" class="title-level-1">Mower 一条龙入门说明</h1>
-        <p>本说明介绍 Mower 的当前功能与界面，更新时间：2026-10-09。实际软件版本和可用操作以你所用平台的页面提示为准。</p>
-        <div class="tip-box"><p><strong>先完成设备连接和排班核对，再逐项打开需要的自动化。</strong>软件更新、资源更新、刷理智周计划和大型任务各有自己的入口与开关。</p></div>
+        <p>本说明更新于 2026-10-10，按首次运行顺序介绍部署、连接、排班和任务配置。已有用户可从左侧目录查找对应功能。</p>
+        <div class="tip-box"><p><strong>先完成设备连接和普通轮休，再逐项添加自动化。</strong>遇到校验失败或任务等待时，按页面提示和日志调整配置。</p></div>
         <ol>
-          <li><a class="link-text" href="#download-update">安装或更新</a>：首次安装使用官方发布包，已有程序在“软件更新”检查版本。</li>
-          <li><a class="link-text" href="#device-connection">绑定设备</a>：选择平台预设，检测并选定目标实例，核对连接状态。</li>
-          <li><a class="link-text" href="#scheduling">导入或编辑排班</a>：核对设施、主班、绑组、替班、宿舍和副表，完成校验。</li>
-          <li><a class="link-text" href="#Mower-settings">选择基建与日常任务</a>：按需要开启线索、跑单、邮件和签到等功能。</li>
-          <li><a class="link-text" href="#sanity-plan">配置作战</a>：周计划选择 MAA 或 Mower 执行方式；大型任务独立设置。</li>
-          <li><a class="link-text" href="#growth-workshop">配置养成与专精</a>：先同步练度和库存，再核对目标、路线与自动合成。</li>
-          <li><a class="link-text" href="#diagnostics-ai">启动并观察</a>：先确认一轮换班和所选任务正常，出现异常查看对应日志或归档。</li>
-          <li><a class="link-text" href="#configuration-backup">导出备份</a>：保存当前实例的配置及持久化数据，迁移前再导出一次。</li>
+          <li><a href="#download-update" class="link-text">部署并确认版本</a>：源码部署或从项目 Releases 获取完整包，确认平台依赖。</li>
+          <li><a href="#device-connection" class="link-text">绑定设备与选择性能档位</a>：检测实例、明确选择，再测试连接；性能通常保留自动。</li>
+          <li><a href="#scheduling" class="link-text">导入或编写排班</a>：核对设施、干员、替班、宿舍与校验结果。</li>
+          <li><a href="#Mower-settings" class="link-text">配置基建与日常</a>：只开启需要的任务，先观察一轮下班和回班。</li>
+          <li><a href="#sanity-plan" class="link-text">配置 MAA 与作战</a>：区分刷理智周计划与独立大型任务。</li>
+          <li><a href="#growth-workshop" class="link-text">安排养成与专精</a>：同步练度和库存，再准备材料及训练路线。</li>
+          <li><a href="#configuration-backup" class="link-text">导出完整备份</a>：保存配置和持久化业务数据，迁移或重要修改前重新导出。</li>
         </ol>
-        <p>问题与建议可查阅 <a href="https://docs.qq.com/sheet/DUEJ6UWN5VFVRU0dG?tab=BB08J2" class="reference-link-text" target="_blank" rel="noopener noreferrer">Mower 反馈表</a>。</p>
+        <p>出现问题时，按<a href="#diagnostics-ai" class="link-text">日志与 AI 排错步骤</a>整理证据，再通过<a href="#feedback" class="link-text">反馈入口</a>求助。</p>
       </section>
 
       <section class="content-card">
         <h1 id="download-update" class="title-level-1">安装、软件更新与资源更新</h1>
-        <h2 id="windows" class="title-level-2">首次安装</h2>
-        <p>macOS 和 Linux 虽提供独立包，仍建议优先使用源码部署，安装步骤见 <a href="https://arkmowers.github.io/arknights-mower/manual/source-deploy/" class="link-text" target="_blank" rel="noopener noreferrer">源码部署说明</a>。选择独立包时，按下列步骤安装。</p>
+        <h2 id="mower-sources" class="title-level-2">优先按部署方式选择安装步骤</h2>
+        <p>macOS 和 Linux 虽有独立包，仍建议优先使用源码部署。Windows、Linux、macOS 的环境、前端构建及启动命令统一放在<a href="https://github.com/ArkMowers/arknights-mower#源码部署" class="link-text" target="_blank" rel="noopener noreferrer">项目主页 README</a>；本地打包和 Docker 的 Markdown 链接也在 README 中。</p>
+        <h2 id="windows" class="title-level-2">首次使用独立包</h2>
         <ol>
-          <li>从 <a href="https://github.com/ArkMowers/arknights-mower/releases" class="link-text" target="_blank" rel="noopener noreferrer">项目主页的 Releases</a>下载对应系统和架构的独立包，并核对发布说明及 SHA256SUMS。</li>
-          <li>Windows 解压完整包后启动其中的程序；macOS 使用对应架构的 DMG；Linux 使用对应架构的完整压缩包。</li>
-          <li>Windows 和 macOS 包未签名，首次运行可能出现系统安全提示。核对来源后按官方说明处理；Linux 如提示缺少 GTK/WebKit2，按提示安装宿主依赖。</li>
-          <li>打开界面后先查看 Mower 设置 → 软件更新中的当前版本和渠道。</li>
+          <li>从<a href="https://github.com/ArkMowers/arknights-mower/releases" class="link-text" target="_blank" rel="noopener noreferrer">项目主页的 Releases</a>获取适合系统、架构的完整包，核对发布说明与 SHA256SUMS。</li>
+          <li>Windows 解压完整目录后运行主程序；Linux 解压后检查宿主系统库；macOS 将应用移出 DMG，放到可写位置再运行。</li>
+          <li>独立包支持 Windows x64、Linux x64/ARM64 和 macOS ARM64；Intel Mac 使用源码部署。Android 的程序更新 ZIP 在已有应用内导入。</li>
+          <li>Windows 与 macOS 包没有平台发行签名。确认下载来源后按系统提示处理；Linux 缺少 GTK/WebKit2 时按启动提示安装依赖。</li>
         </ol>
-        <p>不再使用旧版独立 Mower 下载器，也不按旧教程直接覆盖未知增量包。</p>
-        <h2 id="windows-update-auto" class="title-level-2">已有安装：内置软件更新</h2>
+        <p>首次安装从项目 Releases 下载，后续使用程序内更新。</p>
+        <h2 id="windows-update-auto" class="title-level-2">已有安装：使用内置更新</h2>
         <ol>
-          <li>进入 Mower 设置 → 软件更新，选择正式版、公测版或开发版渠道。</li>
-          <li>检查目标版本和更新说明，再按页面提示安装。也可按需开启“自动检查更新”“自动更新”。</li>
-          <li>更新会重启同一安装目录下的运行实例并恢复原运行状态；“更新后后台静默重启”控制是否重新打开窗口。</li>
-          <li>独立包可在“手动应用”上传 Release 安装包；支持 OTA 的平台可用与当前版本匹配的差异包。版本不匹配或差异校验失败时使用完整包。</li>
+          <li>打开 Mower 设置 → 软件更新，核对当前版本、部署方式及渠道，再检查更新。</li>
+          <li>选择页面提供的正式版、公测版或开发版目标。源码开发版跟随所选分支。</li>
+          <li>更新会重启同一安装目录下的运行实例并恢复原运行状态；后台静默重启控制是否重新打开窗口。</li>
+          <li>独立包可在“手动应用”上传匹配的 Release 包；源码部署使用在线源码更新或 Git 更新。强制源码更新会覆盖本地修改，操作前先保存。</li>
         </ol>
-        <h2 id="mower-sources" class="title-level-2">源码部署与平台差异</h2>
-        <p>源码部署使用“软件更新”的在线源码更新及“源码版本管理”。本地源码有修改时，先自行保存需要的改动，再判断是否接受强制更新；不要向源码部署上传 Release 独立包。源码安装和平台依赖详见 <a href="https://arkmowers.github.io/arknights-mower/manual/source-deploy/" class="link-text" target="_blank" rel="noopener noreferrer">源码部署说明</a>，不沿用旧文档中指定的环境名、手工拼装 macOS MAA 或固定安装路径。</p>
-        <h2 id="resource-update" class="title-level-2">资源与网络</h2>
-        <p>Mower 设置 → 资源更新管理 Mower 识别等资源，支持检查、自动更新和手动上传资源包。共享安装下各实例在任务间歇加载资源，通常无需重启。MAA 本体和 MAA 资源在 MAA 设置中单独更新。</p>
-        <p>下载失败时，在“网络与下载代理”检查全局网络代理和 GitHub 下载站点，并使用页面的下载测试。软件更新日志、资源更新日志和设备连接日志应分别查看。</p>
+        <h2 id="resource-update" class="title-level-2">三类更新分别处理</h2>
+        <table class="info-table">
+          <thead><tr><th scope="col">内容</th><th scope="col">入口与生效方式</th></tr></thead>
+          <tbody>
+            <tr><td>Mower 程序</td><td>Mower 设置 → 软件更新，安装后重启相关实例。</td></tr>
+            <tr><td>Mower 识别等资源</td><td>Mower 设置 → 资源更新；同一安装共享，在任务间歇加载，通常无需重启程序。</td></tr>
+            <tr><td>MAA 本体与资源</td><td>MAA 设置中分别更新；MAA 正在执行任务或测试连接时，等待其释放后操作。</td></tr>
+          </tbody>
+        </table>
+        <p>下载失败时，在“网络与下载代理”运行对应测试，并查看下载日志。</p>
       </section>
 
       <section class="content-card">
-        <h1 id="device-connection" class="title-level-1">设备连接与恢复</h1>
-        <h2 id="basic-settings" class="title-level-2">选择预设与目标实例</h2>
+        <h1 id="device-connection" class="title-level-1">设备连接与性能适配</h1>
+        <h2 id="basic-settings" class="title-level-2">先选预设，再选实例</h2>
         <ol>
-          <li>在 Mower 设置的设备连接区域选择当前系统对应的预设。Windows、macOS、Linux 的支持范围和操作不同。</li>
-          <li>使用页面提供的“检测实例”或“启动并检测”。如果检测到多个实例，先明确选择目标。</li>
-          <li>需要补充路径时，按当前字段的问号说明填写安装、管理器或配置路径。不要统一填旧 shell 文件夹、多开编号0或某个默认端口。</li>
-          <li>查看状态、修复提示及所选实例。检测到的实例身份先保存，ADB 地址和游戏包通过验证后保存；测试失败不撤销已经选择的实例。</li>
+          <li>进入 Mower 设置的设备连接区域，选择与当前系统和模拟器对应的预设。</li>
+          <li>按字段帮助填写路径，使用“检测实例”或“启动并检测”，从结果中选择目标实例。</li>
+          <li>核对实例及游戏包，执行连接测试。程序保存所选实例，并在连接验证通过后保存 ADB 地址和游戏包。</li>
+          <li>检查游戏区服、横屏尺寸与连接状态，使用预设检测到的路径和端口。</li>
         </ol>
-        <p>未指定自定义 ADB 路径时优先使用 Mower 自带的 ADB。需要手动连接时，在高级设置选择“其他模拟器”或“实体设备”，填写明确目标 serial，再测试连接。</p>
-        <h2 id="connection-actions" class="title-level-2">区分检测、测试与启动</h2>
-        <ul>
-          <li><strong>测试连接（只读）</strong>：只检查当前连接，不启动或重启模拟器及其管理器。</li>
-          <li><strong>启动并检测</strong>：支持该动作的预设核验所选实例，停止时先启动再检查。多实例环境仍需明确目标。</li>
-          <li><strong>启动并测试连接</strong>：按当前连接与恢复设置处理选定实例，不自动切换到其他在线实例。</li>
-          <li>BlueStacks Air 需要在应用中手动开启 ADB 及启停；AVD、redroid、Genymotion 等以页面的本次启动确认和退出提示为准。</li>
-        </ul>
+        <p>例如 MuMu 12 同时开着主号和小号：选择 MuMu 12 预设，检测实例后选中主号对应的实例，再测试连接。以后继续使用这个实例，地址由检测结果填写。</p>
+        <h2 id="connection-actions" class="title-level-2">检测、只读测试与启动的区别</h2>
+        <p>“测试连接（只读）”检查已运行的设备；“启动并检测”用于支持自动启动的预设。连接失败时，按状态提示检查设备启动、ADB 或实例信息。</p>
         <h2 id="capture-settings" class="title-level-2">截图、触控与实体设备</h2>
-        <p>标准画面为横屏1920×1080 RGB。截图与触控在“连接与恢复”调整；MuMu IPC 只适用于 Windows MuMu 12，截图与触控配套；雷电截图增强只适用于 Windows 雷电9或14。其他后端按页面支持情况选择，不统一切成 ADB+Gzip。</p>
-        <p>实体设备默认只检查画面尺寸。页面提供“临时整备”时，授权仅对本次运行有效，结束、取消或失败时按尺寸恢复规则还原；先手动横屏，Mower 不修改旋转、密度或导航栏。Android 应用内的设备连接由应用管理，桌面预设说明不适用。</p>
-        <p>启动保护时间、连接超时和重试次数均有边界。遇到离线或启动失败，按当前目标的状态提示修复，不反复增加等待时间或改连其他设备。</p>
+        <p>优先使用预设推荐的截图和触控组合。选择 MuMu IPC 截图时，触控也使用 MuMu IPC。</p>
+        <p>其他模拟器或实体设备在高级设置中明确填写目标 serial，再测试连接。实体设备默认检查横屏 1920×1080；页面提供的临时整备只对本次运行授权，结束后按恢复规则还原。macOS 源码部署需按 README 准备 ADB，Linux 使用配置的路径或系统 adb。</p>
+        <h2 id="performance-settings" class="title-level-2">性能档位如何选择</h2>
+        <p>在 Mower 设置的设备连接区域选择性能档位，首次运行建议使用“自动”。自动档根据选人反馈调整，桌面端从极高开始，Android 从中开始。两端均可手动选择低、中、高或极高档。</p>
+        <table class="info-table">
+          <thead><tr><th scope="col">档位</th><th scope="col">选人策略</th></tr></thead>
+          <tbody>
+            <tr><td>极高</td><td>连续点击重排，适合能及时响应输入的设备。</td></tr>
+            <tr><td>高</td><td>缩短清空和翻页等待，操作完成后统一校验。</td></tr>
+            <tr><td>中</td><td>等待稳定画面后继续操作。</td></tr>
+            <tr><td>低</td><td>多确认一帧，优先处理响应较慢的情况。</td></tr>
+          </tbody>
+        </table>
+        <p>连接测试会显示设备的 CPU 核数和内存总量。截图间隔、选人采样间隔和页面切换超时可单独配置，建议先使用默认值。</p>
+        <h2 id="game-performance-test" class="title-level-2">游戏内性能测试</h2>
+        <ol>
+          <li>停止 Mower 自动任务，等待 MAA 测试、更新及其他设备操作结束。桌面端核对并保存设备设置，再测试连接；Android 由应用管理后台设备。</li>
+          <li>点击“游戏内性能测试”。程序连接所选设备，启动游戏并进入基建宿舍一。需手动启动设备、完成登录验证或协议确认时，按提示处理后重试。</li>
+          <li>测试从极高档开始。每次先清空暂选、复位列表并连续滑动三次，再选人、重排并核验实际名单。每档须连续三次完整选人通过；一次选人失败立即降一档重新计数，低档失败不给出建议。导航、准备或设备故障直接中止，先排查具体错误。</li>
+          <li>进度下方显示本次游戏画面，点击可放大。测试期间保持游戏交由程序操作；需要中止时点击“取消测试”，等待退出选人页。</li>
+          <li>完成后核对“实测建议”，点击“采用建议”才保存该档位。结果只适用于本次设备和截图、采样及页面切换时间参数；修改这些设置后重新测试。</li>
+        </ol>
+        <div class="note-box"><p>测试结束或取消时会放弃暂选，保留原驻员。若设备断开导致清理未完成，先在游戏中返回并放弃换人。采用建议后使用手动档位，也可选回“自动”。</p></div>
+        <p>例如极高档第一轮通过、第二轮选人失败，测试会降到高档，从第一轮重新计数；高档连续三轮通过后，点击“采用建议”即可保存为高档。</p>
+        <h2 id="selection-troubleshooting" class="title-level-2">滑动、选人或重排失败时</h2>
+        <p>核对目标实例、截图与触控后端，记录失败档位、轮次、画面及日志。导航失败时检查登录和页面状态；误选或重排失败时，附上实际选中名单。</p>
       </section>
 
       <section class="content-card">
-        <h1 id="scheduling" class="title-level-1">排班、主副表与宿舍</h1>
-        <h2 id="import-schedules" class="title-level-2">导入与核对</h2>
+        <h1 id="scheduling" class="title-level-1">导入排班与启动校验</h1>
+        <h2 id="import-schedules" class="title-level-2">导入后逐项核对</h2>
         <ol>
-          <li>排班页面可导入排班 JSON、排班图片，或从配置 ZIP 读取 config/plan.json。完整配置迁移使用“配置导出与导入”。</li>
-          <li>核对基建设施的位置、类型、等级与岗位数；办公室、训练室和回收站可在排班编辑器拖动交换顺序，须与游戏布局一致。该顺序用于界面显示和房间导航，只保存在本机，不随排班导出。</li>
-          <li>检查主表、副表、触发条件、显式换人任务，以及对应的主班、绑组和替班。</li>
-          <li>运行排班校验，按具体设施和干员修复冲突。超时或预算不足表示未完成校验，不等于所有组合已经通过。</li>
+          <li>排班页面支持排班 JSON、排班图片，以及从备份 ZIP 中只读取排班。导入别人的表后，先替换未持有或不适用的干员。</li>
+          <li>核对设施类型、等级、产物与岗位数。办公室、训练室、回收站的本地显示及导航顺序须与游戏布局一致；这项顺序不随排班导出。</li>
+          <li>核对主表及全部副表中的主班、每列绑组与替班，检查副表任务及触发条件。</li>
+          <li>点击“验证排班”，按错误提示修改后重新验证；校验超时时按提示重试。</li>
         </ol>
-        <h2 id="main-and-replacement" class="title-level-2">主班、替班与绑组</h2>
-        <p>主班确定岗位身份，替班提供休息时的完整替换。一个干员可参与多个绑组；共享主班只有在各休息组都具备兼容替班时才允许同时休息，否则相关组等待。只有最后一个依赖组回班后，共享替班才释放。不要把“替班已填写”当作“当前替班一定可用”。</p>
-        <p>工作主班之间不能互填替班；同组主班互替仅在至少一方属于宿舍绑组岗位等条件成立时允许。最终以排班校验与实际任务安排为准。</p>
-        <h2 id="dorm-management" class="title-level-2">宿舍与恢复优先级</h2>
-        <p>Free 是可动态安排休息者的位置，不等于当前已确认空床。床位分配还受实际入住、预约、个人上下限和专项任务保护约束。宿舍按分床优先级、单回位归属及心情恢复缺口安排，不使用固定“4个VIP加8个非VIP”的通用公式。</p>
-        <p>已有单回目标不因心情变化主动重排；更高优先级的新入住者可按规则接管较低优先级单回位，同级不抢占。个人回满目标可能低于24，达到上限离宿不等于立即安排上班。</p>
-        <h2 id="schedule-issues" class="title-level-2">副表、产物与岗位兼容</h2>
-        <p>副表不能改变主表生产设施的类型和岗位数。排班高级设置中的“自动切换产物与订单”默认关闭；关闭时副表不能指定与主表不同的产物或订单目标，相关状态条件和切产物选项隐藏。普通换班、产物收取及葛朗台跑单仍保留。</p>
-        <p>主班身份、岗位和绑组没有相关变化时，副表切换优先保留休息、床位与回班状态；替班不足、预约或专精保护冲突时按实际规则等待或召回，不把退出副表理解为强制所有主班回班。</p>
+        <h2 id="schedule-roster" class="title-level-2">持有和训练位检查</h2>
+        <p>同步森空岛干员名单后，校验会检查主表、副表及换人任务中的干员。</p>
+        <p>训练室第二个位置是训练位，要求基础技能达到 7 级且至少有一项技能尚未专三。这项检查覆盖训练位主班、各绑组替班和副表换人任务；协助位沿用原有条件。</p>
+        <ol>
+          <li>基础技能不足 7 级：先在游戏中升级至 7 级；所有技能均已专三：更换训练对象，或按用途放到协助位。</li>
+          <li>到“养成规划”页面手动点击“刷新”，同步最新干员数据，再回到排班页面重新验证。技能字段缺失或缓存无效时也使用这一入口。</li>
+          <li>提示未持有干员时，核对账号并获取或替换干员，再刷新验证；提示资源缺少森空岛 ID 时，更新资源包。</li>
+        </ol>
+        <p>例如阿米娅被填在训练位，校验提示基础技能只有 6 级：在游戏中升至 7 级，再到“养成规划”点击“刷新”，回排班页面验证。</p>
+        <h2 id="main-and-replacement" class="title-level-2">通过校验后仍要观察一轮</h2>
+        <p>静态校验确认配置是否可行，运行时还要考虑实际心情、占床、任务预约和训练保护。先确认普通下班、替班接岗、主班入宿与回班连续正常，再开启复杂副表或专项安排。</p>
       </section>
 
       <section class="content-card">
-        <h1 id="schedule-theory" class="title-level-1">排班表编写理论：从岗位到轮休</h1>
-        <p>排班表描述各岗位由谁负责、谁能替班、哪些人一起换班，以及什么条件下切换安排。Mower 根据实测心情与任务状态动态换班，不是每天按固定时刻把整张表轮换一次。编写时先让普通轮休持续运转，再加入跑单、菲亚梅塔充能和副表等专项安排。</p>
-
-        <h2 id="schedule-design-fields" class="title-level-2">主班、替班和绑组分别解决什么问题</h2>
+        <h1 id="schedule-theory" class="title-level-1">排班表编写理论：岗位、轮休与副表</h1>
+        <p>Mower 根据心情、驻员和任务状态动态调度。编写排班时确定四件事：谁工作、谁接岗、哪些人一起换班、到哪里恢复。</p>
+        <h2 id="schedule-design-fields" class="title-level-2">先确定主班与绑组</h2>
+        <p>每个主班占一个岗位。需要配合技能、一起上下班的成员填写同一组名，其余成员可单独安排。为每组分别配置替班和恢复床位。</p>
+        <div class="note-box"><p>每组至少有一名普通或低优的固定工作主班决定上下班。这名干员应只绑定该组，并且属于非宿舍、非零心情工作、非候补的工作主班。宿舍跟随成员、候补和共享成员按各自规则参与换班。</p></div>
+        <h2 id="schedule-design-example" class="title-level-2">三人贸易站的完整替班示例</h2>
+        <p>以下各例分别演示一种填法，可按持有干员、已解锁的基建技能和设施布局调整。</p>
         <table class="info-table">
-          <thead><tr><th scope="col">配置</th><th scope="col">编写时要回答的问题</th></tr></thead>
+          <thead><tr><th scope="col">岗位</th><th scope="col">主班</th><th scope="col">组</th><th scope="col">替班</th></tr></thead>
           <tbody>
-            <tr><td>设施与岗位</td><td>房间类型、等级、产物和岗位数是否与游戏一致？</td></tr>
-            <tr><td>主班</td><td>正常工作时，哪个干员负责这个岗位？</td></tr>
-            <tr><td>替班</td><td>主班休息时，哪些候选能接替这个岗位？</td></tr>
-            <tr><td>绑组</td><td>哪些主班需要协同下班、回班，保留技能配合？</td></tr>
-            <tr><td>宿舍岗位与 Free 位</td><td>哪些岗位固定驻员，哪些随组换人或临时开放？需要恢复的人分别使用哪些床位？</td></tr>
-            <tr><td>副表</td><td>特定条件成立时，需要覆盖主表的哪些安排？</td></tr>
+            <tr><td>贸易站第 1 位</td><td>能天使</td><td>贸易一组</td><td>空爆</td></tr>
+            <tr><td>贸易站第 2 位</td><td>德克萨斯</td><td>贸易一组</td><td>古米</td></tr>
+            <tr><td>贸易站第 3 位</td><td>拉普兰德</td><td>贸易一组</td><td>月见夜</td></tr>
           </tbody>
         </table>
-        <p>先按基建技能的配合关系选择主班；需要一起轮休的主班填写同一个非空组名，组名本身不代表轮休顺序。无须联动的主班可以不绑组。绑组可以跨设施；普通工作成员越多，一次下班需要同时满足的替班和恢复容量条件就越多。宿舍成员和“0心情工作的干员”不能直接按普通轮休人数计算。</p>
-        <p>替班列表是候选范围，不是把这些干员依次轮换的时间表。每次换班都要为相关岗位找到互不冲突的完整替班；把同一个干员填进多个岗位，不代表他能同时覆盖这些岗位。候选正在工作、被其他任务预约或受专精保护时，也可能暂时不可用。</p>
-
-        <h2 id="schedule-design-example" class="title-level-2">一个三人制造站的示例</h2>
-        <p>假设一间三人制造站需要三名主班一起工作、一起休息。下表的甲至己是示意称呼，实际填写账号已拥有且适合对应设施的干员。</p>
+        <p>这组下班时，空爆、古米、月见夜分别接替三个岗位，能天使、德克萨斯、拉普兰德进入宿舍恢复，需要三张可用恢复床。整组满足回班条件后，三名主班回到贸易站，替班离岗。与另一组共用替班时，安排错开的休息窗口。</p>
+        <p>替班列表填写候选干员，程序结合岗位占用、任务预约和训练保护选择当前可用的人选。</p>
+        <h2 id="schedule-design-dorm" class="title-level-2">宿舍固定岗位、Free 与绑组</h2>
+        <p>主表每间宿舍填满五个位置：先填具名驻员，再连续填写 Free，至少保留一个直接填写的 Free。宿管人数按实际技能和恢复需求安排。Free 与菲亚梅塔保持无绑组，菲亚梅塔的替换名单填写充能对象。</p>
+        <p>例如一间宿舍依次填“杜林、安赛尔、Free、Free、Free”，两名具名驻员均不绑组，就提供三张普通恢复床。</p>
         <table class="info-table">
-          <thead><tr><th scope="col">岗位</th><th scope="col">主班</th><th scope="col">绑组</th><th scope="col">替班候选</th></tr></thead>
+          <thead><tr><th scope="col">宿舍具名成员的替换</th><th scope="col">组下班时</th><th scope="col">恢复容量</th></tr></thead>
           <tbody>
-            <tr><td>制造站岗位 1</td><td>甲</td><td>制造一组</td><td>丁</td></tr>
-            <tr><td>制造站岗位 2</td><td>乙</td><td>制造一组</td><td>戊</td></tr>
-            <tr><td>制造站岗位 3</td><td>丙</td><td>制造一组</td><td>己</td></tr>
+            <tr><td>非主班干员</td><td>候选接替固定宿舍岗位。</td><td>保留固定宿舍岗位。</td></tr>
+            <tr><td>同组工作主班</td><td>工作主班进入该固定宿舍岗位恢复，可与宿舍主班双向互替。</td><td>使用该固定恢复位。</td></tr>
+            <tr><td>Free</td><td>宿舍成员随组离岗待命，临时开放恢复容量。</td><td>在相应组状态允许时，计入绑组 Free 额度。</td></tr>
           </tbody>
         </table>
-        <ol>
-          <li>主班甲、乙、丙正常工作，丁、戊、己作为替班候选，不再填成其他工作岗位的主班。</li>
-          <li>配置能容纳三名主班同时恢复的有效 Free 位，并核对实际入住、优先级和专项预约。不能只数表格中写了几个 Free。</li>
-          <li>满足下班条件且替班、床位均可用时，由丁、戊、己接替三个岗位，甲、乙、丙入宿。</li>
-          <li>满足回班条件后主班恢复工作，替班释放，再按宿舍恢复规则参与休息。观察下一轮是否仍有完整替班和床位。</li>
-        </ol>
-        <div class="note-box"><p>若三个岗位都只填丁作为替班，就无法同时替换整组。多个组共用丁、戊、己时，也要检查休息窗口是否重叠；顺序可用不等于同时可用。</p></div>
-        <p>这个示例使用普通工作主班与非主班替班。当前也支持宿舍绑组、同组主班互替和多绑组，床位需求需按下面的对应关系另算。</p>
-
-        <h2 id="schedule-design-dorm" class="title-level-2">宿舍绑组：固定互替与临时 Free</h2>
-        <p>宿舍中的具名干员也可填写组名，随同组工作成员换班。宿舍成员本身不作为普通下班、用尽或回班计时的依据，也不因随组离开宿舍而额外申请一张恢复床。该组必须有可轮休的非宿舍成员，多绑组还须满足下一节的单绑组成员要求。</p>
+        <p>例如古米在贸易站、月见夜在固定宿舍，两人都填“贸易二组”，古米的替班填月见夜，月见夜的替班填古米。换班时月见夜接贸易站，古米进入月见夜的固定宿舍位置恢复，使用这一张固定恢复床即可。</p>
+        <p>另一种填法是古米的替班改为空爆，月见夜的替班改为 Free，组名仍相同。下班时空爆接贸易站，月见夜离宿待命，临时增加一份“贸易二组”的恢复额度，供古米等符合条件的成员使用；月见夜待命期间没有心情恢复。主班互替仅限同组且至少一方是宿舍成员。</p>
+        <h2 id="schedule-design-capacity" class="title-level-2">普通 Free 与绑组 Free 额度</h2>
+        <p>Free 额度按数量计算。需要恢复的受保护工作主班使用普通额度或自身绑组额度，高优替班使用普通额度；候补、普通替班和空闲干员可使用两类额度。分配时优先使用符合条件的绑组额度，为外组保留普通额度。</p>
+        <p>运行时按实际驻员、入住预约和本轮已安排人数计算剩余容量；静态校验计算普通额度与本组配置额度。宿管回班收回额度时，程序通过换位或安排离宿调整容量。</p>
+        <p>例如当前剩余普通 Free 额度为 2，“贸易一组”的绑组额度为 1：能天使、德克萨斯、拉普兰德这组三名普通主班可合计使用三份额度。若另组的空爆、古米、月见夜也需要一起休息，它们只能使用两份普通额度，要等普通容量增加后再下班。两组均需先备齐各自替班。</p>
+        <h2 id="schedule-design-bindings" class="title-level-2">一个岗位参与多个绑组</h2>
+        <p>在同一个岗位点击组旁“+”，为每个绑组分别填写不同的组名和替班。每个关联组仍须有只绑该组的普通固定工作主班决定上下班。</p>
         <table class="info-table">
-          <thead><tr><th scope="col">宿舍「替换」的写法</th><th scope="col">组下班时的效果</th><th scope="col">恢复容量怎么计算</th></tr></thead>
+          <thead><tr><th scope="col">主班</th><th scope="col">组</th><th scope="col">该组替班候选</th></tr></thead>
           <tbody>
-            <tr><td>填写非主班干员</td><td>由候选接替宿舍固定岗位；按已知心情从低到高选择，已在该岗位者可保留。</td><td>仍是固定岗位，不能把换下宿舍成员的原位另算成 Free 床。</td></tr>
-            <tr><td>填写同组工作主班</td><td>工作主班可入住这个固定宿舍岗位并恢复；也可与宿舍主班双向互替。</td><td>已在固定岗位恢复的工作主班不再重复申请动态床，该岗位也不开放给任意休息者。</td></tr>
-            <tr><td>填写 Free</td><td>宿舍成员随组离岗后，该岗位临时开放为动态恢复床；回班关闭时重新安排其住客。</td><td>仅在对应组状态允许开放时增加有效床位，不能当作永久空床。</td></tr>
+            <tr><td>砾（同一岗位第一列）</td><td>赤金一组</td><td>香草、芬</td></tr>
+            <tr><td>砾（同一岗位新增列）</td><td>赤金二组</td><td>芬、克洛丝</td></tr>
+            <tr><td>斑点（只绑赤金一组）</td><td>赤金一组</td><td>史都华德</td></tr>
+            <tr><td>泡普卡（只绑赤金二组）</td><td>赤金二组</td><td>安德切尔</td></tr>
           </tbody>
         </table>
-        <p>例如，以下两名主班属于同一个“互替组”，甲是工作干员，乙原本在宿舍：</p>
-        <table class="info-table">
-          <thead><tr><th scope="col">岗位</th><th scope="col">主班</th><th scope="col">组</th><th scope="col">替换</th></tr></thead>
-          <tbody>
-            <tr><td>办公室岗位</td><td>甲</td><td>互替组</td><td>乙</td></tr>
-            <tr><td>宿舍固定岗位</td><td>乙</td><td>互替组</td><td>甲</td></tr>
-          </tbody>
-        </table>
-        <p>满足换班条件时，乙去办公室接岗，甲进入乙的固定宿舍岗位恢复；回班时交换回来。两人的主班身份不变，甲使用固定恢复位，无须再占一张 Free 床。实际干员须适合对应设施，并满足完整匹配、预约、个人心情限制和训练保护。工作主班之间互替、跨组互替和自身替班仍不允许；宿舍主班之间互替不会减少同组工作成员所需的恢复容量。</p>
-        <p>若改用临时开放方案，可以让甲的替换为非主班丙，乙的替换为 Free。组下班时丙接办公室，乙离开固定岗位待命，该宿舍位置临时用于恢复。乙离岗待命不恢复心情，不额外占恢复床；这与上面的固定互替是两种不同写法。</p>
-        <div class="note-box"><p>主表每间宿舍填写完整五个位置，至少保留一个直接填写的 Free，且这些 Free 连续排在具名驻员之后；只有宿舍替换中的 Free 不能代替这项主表要求。当前不强制每间固定配置两名宿管，恢复速度取决于实际技能组合。Free 本身和菲亚梅塔不能绑组；菲亚梅塔的替换名单用于充能对象，不是普通宿舍替班。</p></div>
-
-        <h2 id="schedule-design-bindings" class="title-level-2">多绑组：每组分别填写替班</h2>
-        <p>同一主班仍只占一个配置岗位。点击组旁的“+”新增绑组，在每个绑组内分别填写组名和替换；不要在多个岗位重复填写同一主班。该岗位的各个组名必须非空且互不重复，每个绑组都要有替班。每个关联组至少有一名只绑该组、需要轮休的非宿舍工作成员，负责该组的心情与回班计时；共享成员不参与这些计算。</p>
-        <p>例如甲共享给 A、B 两组，乙只属于 A 组，丙只属于 B 组。下面甲的两行是<strong>同一个岗位中的两个绑组</strong>：</p>
-        <table class="info-table">
-          <thead><tr><th scope="col">工作主班</th><th scope="col">组</th><th scope="col">该组替换候选</th></tr></thead>
-          <tbody>
-            <tr><td>甲（同一岗位）</td><td>A</td><td>己、庚</td></tr>
-            <tr><td>甲（新增绑组）</td><td>B</td><td>庚、辛</td></tr>
-            <tr><td>乙</td><td>A</td><td>丁</td></tr>
-            <tr><td>丙</td><td>B</td><td>戊</td></tr>
-          </tbody>
-        </table>
-        <p>A、B 同时休息时，甲的共同候选只有庚；还需丁、戊等其他岗位替班均可用，且不能重复占岗。若两列没有共同可用候选，新申请休息的组等待，不能简单把两列候选合并使用。甲需要恢复时只占一张床；甲若配置为 0 心情工作则不占恢复床，仍须满足共享岗位的替班兼容条件。</p>
-        <p>某组回班时，仍保留其他休息组需要的共享替班，最后一个依赖组回班后才恢复共享主班。共享宿舍成员也遵守逐组兼容关系；多个依赖组使用同一临时 Free 时，该床保持开放直到最后一个依赖组回班。</p>
-
-        <h2 id="schedule-design-mood" class="title-level-2">心情阈值、上下限与回满</h2>
-        <p>在“设置心情上下限”中，全体设置提供统一范围；令夕及其组内规则可覆盖全体设置，指定干员设置的优先级最高。未自定义时沿用程序的自动规则。下限必须小于上限，范围在 0 至 24 点内。“需要用尽心情的干员”按适用下限安排用尽，“需要回满心情的干员”以适用上限为恢复目标，不一定是 0 和 24。</p>
-        <p>普通下班参考线按上下限区间折算，未自定义上下限时程序还会取整。例如下限为 0、上限为 24、心情阈值为 50%，参考线为 12 点：</p>
-        <div class="code-block"><code>下班参考线 = 心情下限 +（心情上限 − 心情下限）× 心情阈值</code></div>
-        <p>这只是阈值换算，实际下班还受整体心情、组状态、替班、床位和任务时间约束。调高阈值通常会更早申请休息，也会增加床位和替班压力；调低则减少工作余量。“宿舍高优先级”影响分床与单回安排，不直接让某组先下班。</p>
-        <p>普通组的回班不必等所有人恢复至上限；要求回满的成员和“组内心情差距过大时延后回班”等设置会改变回班时间。全体上限用于确定回满目标，不会仅因此强制留空宿舍；个人设置及令夕规则的强制离宿仍生效。不要把“达到上限离宿”理解为立即回到工作岗位。</p>
-
-        <h2 id="schedule-design-priority" class="title-level-2">分床优先级与休息候补</h2>
-        <p>当前分床顺序为：宿舍高优先级干员 → 普通主班 → 宿舍低优先级主班 → 宿舍高优先级替班 → 休息候补 → 普通替班 → 空闲干员。同级比较距各自心情上限的缺口，缺口更大者优先；有效床位、预约与已有入住保护仍需满足。优先级决定分床和单回机会，不直接改变下班顺序。</p>
-        <p>“宿舍休息候补干员”有床时恢复，无床或被更高优先级接管后可离岗待命，需要有正常优先级主班在休息。绑组候补随组回班，未绑组候补随下一批回班；低于个人急救线后升为低优并保床。待命不恢复心情；用尽、回满、固定宿舍和 0 心情工作干员不适用。</p>
-        <p>“宿舍优先级排序”默认按 1→2→3→4 的高优位，再安排各宿舍低优位，也可把低优位插入顺序。它决定选用哪些有效床位，不增加床位数量；每间最前面的有效 Free 位作为高优位，不能固定认定为某个物理编号。副表留空继承此前顺序，改变生效顺序时可重新分床，日常不会仅因心情变化反复搬床。</p>
-
-        <h2 id="schedule-design-cycle" class="title-level-2">估算工休比与周转能力</h2>
-        <p>在要求回满、工作与恢复速率近似稳定的假设下，可用心情变化估算一轮工休时间。设上限为 U、下班心情为 H，工作每小时消耗 d 点，宿舍每小时恢复 r 点，且 d、r 均大于 0：</p>
-        <div class="code-block"><code>工作时间 ≈（U − H）÷ d
-恢复时间 ≈（U − H）÷ r
-工休比 ≈ r ÷ d</code></div>
-        <p>例如 U=24、H=12、d=1、r=2，则工作约 12 小时、恢复约 6 小时，工休比约 2:1。这里的速率仅用于演示；实际消耗和恢复受技能、设施与宿舍配置影响，应从自己的运行记录核对，不能直接套用为固定时间表。</p>
-        <ul>
-          <li><strong>检查替班覆盖时间：</strong>主班休息期间，替班必须有足够心情持续工作；主班回班后，替班也要有机会恢复，才能覆盖下一轮。</li>
-          <li><strong>检查床位占用时间：</strong>估算各组何时入宿、占几张床、何时释放。长期没有空余恢复容量，或多个大组集中下班时，即使所有人都填了替班，也可能排队等待。</li>
-          <li><strong>检查技能组合：</strong>替班效率、组内心情消耗差异和宿管恢复能力都会影响长期收益；不要只比较主班在岗时的加成。</li>
-        </ul>
-        <p>以上估算不包含换人耗时、排队、跑单与充能等事件。先观察至少一轮完整的下班与回班，再调整心情阈值、组规模或替班名单；一次校验通过不能证明长期周转没有瓶颈。</p>
-
+        <p>两个组同时休息时，砾的替班取两列的共同候选，此例为芬；史都华德、安德切尔分别接替斑点、泡普卡，三名替班都须可用。若芬已被其他任务占用，新申请休息的组等待。砾作为共享主班只占一张恢复床，零心情工作成员不申请恢复床。</p>
+        <p>每组保留独立状态。一个组回班不提前释放另一个在休组仍需的共享替班；最后一个依赖组回班后再恢复共享主班。共享宿舍成员和临时 Free 同样遵守依赖关系。共享成员或候补个人失床不召回整个组。</p>
+        <h2 id="schedule-design-priority" class="title-level-2">分床顺序与已占床保护</h2>
+        <p>分床顺序为：宿舍高优先级干员 → 普通主班 → 宿舍低优先级主班 → 宿舍高优先级替班 → 休息候补 → 普通替班 → 空闲干员。同级按距各自心情上限的缺口排序，缺口较大者优先。</p>
+        <p>前四层已占用的恢复床受保护，保留到按清退、个人上限、正常回班或明确排班任务等规则离宿。同级恢复申请保持已有住员。</p>
+        <p>前四层申请者可接管候补、普通替班和空闲床位。候补可接管普通替班和空闲床位；普通替班可接管空闲床位，但这两类申请者都须有有效实测心情且不超过自身上限的 80%。普通满心情清退、个人上限强制离宿、正常回班和明确排班任务另按各自条件执行。</p>
+        <p>单回目标保留已有安排，符合条件的新高优目标可替换较低层级目标。宿舍优先级决定有效床位的选用顺序。</p>
+        <h2 id="schedule-design-standby" class="title-level-2">候补待命与升优</h2>
+        <p>“宿舍休息候补干员”对符合条件的工作主班生效。需要有符合规则的正常恢复主班提供待命依据；有床则恢复，无床可离岗待命，待命不恢复心情。用尽、强制回满、固定宿舍和零心情工作配置保留各自规则，不直接按普通候补处理。</p>
+        <p>下班分床前，候补低于个人急救线会升为低优并必须取得床位；恢复途中越过急救线也不降回候补，实际回到工作岗位后才清除本轮提升。因此静态配置容量通过，运行时仍可能因升优成员需要额外床位而暂缓下班。</p>
+        <h2 id="schedule-design-mood" class="title-level-2">心情上下限与工休估算</h2>
+        <p>全体设置提供默认范围，令夕及其组内规则可覆盖，指定干员设置优先级最高。上下限在 0 至 24 点内且下限小于上限；用尽以下限为目标，回满以上限为目标。</p>
+        <div class="code-block"><code>下班参考线 = 下限 +（上限 − 下限）× 心情阈值
+工作时间 ≈（回班心情 − 下班心情）÷ 每小时消耗
+恢复时间 ≈（回班心情 − 下班心情）÷ 每小时恢复</code></div>
+        <p>无自定义上下限时，下班参考线还按程序规则取整。阈值只是参考，实际下班还要求整组替班、合法床位与任务时间均可行。提高阈值通常更早申请休息，也增加周转压力。</p>
+        <p>例如给能天使设置下限 4、上限 20、心情阈值 0.5，下班参考线就是 12。假设你观测到当前组合每小时消耗 2 点心情、宿舍每小时恢复 4 点，从 20 工作到 12 约需 4 小时，从 12 恢复到 20 约需 2 小时。</p>
+        <p>估算后再留出换人、排队、跑单和充能余量。普通组按组内恢复情况回班；强制回满和组内心情差设置会改变回班时间。成员达到个人上限后可先离宿待命，等整组满足条件再回岗。</p>
         <h2 id="schedule-design-backups" class="title-level-2">主表稳定后再增加副表</h2>
-        <p>主表是日常基准，副表是在条件成立时覆盖部分安排，不是必须手动轮流启用的第二班。先确认主表能独立轮休，再为确有需要的场景添加副表，填写触发条件并核对覆盖范围。多个副表可能同时生效，后面的覆盖会影响前面的结果，应验证组合后的最终安排。</p>
-        <p>副表岗位选择 Current 表示继承前面合并结果的<strong>整个岗位</strong>，包括主班、绑组和替换，不是保留游戏此刻驻员；不能靠在 Current 后填写组名或替换来局部覆盖。要修改某岗位的替班，需明确填写该岗位主班及完整绑组、替换。主表不使用 Current，Free 只用于宿舍。副表可增减宿舍 Free 位，仍须保证每间至少一个直接填写的 Free，以及最终恢复容量可行。</p>
-        <p>普通副表的回满、用尽及宿舍优先级等干员名单分为“增”和“减”：先加入增列，再移除减列，后面的副表可以重新加入。留空表示继承此前结果，不是清空名单。例如要让甲在某副表生效时不再要求回满，在“需要回满心情的干员”的减列填写甲；副表退出后按主表和其余生效副表重新合并。独立救急表仍使用单列名单。</p>
-        <p>副表仍需完整的替班与床位覆盖，也不能改变主表生产设施的类型和岗位数；切换产物或订单还需启用对应高级设置。退出副表后重新依据主表和其余生效副表安排，不保证所有主班立即回岗。</p>
-        <p>主表页面的“验证排班”会检查主表及可能同时生效的副表组合，而非只看当前编辑的一张表。预算不足时提示未完成，不能当作验证通过。验证通过也不代表启动时替班一定空闲或能长期持续周转，仍需观察实际换班。</p>
-
+        <p>主表写日常配置，副表写特定条件下的变化。例如深海组下班后调整制造站替班，或固源岩积攒到一定数量后开始搓玉。在排班页面点击“新建副表”，命名后分别填写触发条件和需要覆盖的岗位、名单、产物。</p>
+        <h2 id="schedule-backup-states" class="title-level-2">工作、休息与空闲：怎样判断绑组下班</h2>
+        <p>写条件时，先区分干员当前的三种状态。这里看的是进驻位置，和主表中给他安排了什么岗位是两回事。</p>
+        <table class="info-table">
+          <thead><tr><th scope="col">状态</th><th scope="col">当前位置示例</th><th scope="col">在工作</th><th scope="col">在休息</th></tr></thead>
+          <tbody>
+            <tr><td>工作</td><td>歌蕾蒂娅在控制中枢，或鸿雪在贸易站。</td><td>True</td><td>False</td></tr>
+            <tr><td>休息</td><td>歌蕾蒂娅进驻任意宿舍，包括已经回满但尚未离宿。</td><td>False</td><td>True</td></tr>
+            <tr><td>空闲／待命</td><td>歌蕾蒂娅离宿后等待整组回班，当前没有进驻设施。</td><td>False</td><td>False</td></tr>
+          </tbody>
+        </table>
+        <p><strong>训练室也算工作设施。</strong>干员只要进驻训练室，“在工作”就是 True；要判断专精是否正在进行，选择“设施状态 → 训练室 → 是否正在训练”。例如余在训练室协助，即使没有正在执行的专精，也属于在工作。</p>
+        <p>下面从已有的普通轮休主表增加一张副表：在主表中，歌蕾蒂娅是控制中枢的普通固定工作主班，只绑定“深海”组，替班与休息床位已经配好；3-1 是日常生产中级作战记录的制造站。现在希望深海组下班时，3-1 改做赤金，就新建副表并命名为“深海下班”，填写<strong>“歌蕾蒂娅 → 在工作 == False”</strong>。她在宿舍恢复、回满后离宿待命，都能保持副表生效。若改写成“在休息 == True”，她一离宿，副表就会退出。</p>
+        <ol>
+          <li>新建“深海下班”副表，点击“编辑触发条件”。</li>
+          <li>左侧选“值 → 干员属性 → 歌蕾蒂娅 → 在工作”，中间填 <code>==</code>。</li>
+          <li>右侧选“值 → 常量/自定义”，填写 <code>False</code>，首字母大写。</li>
+          <li>副表的 3-1 保持同等级制造站，产物选赤金，各岗位及其他设施用 Current 继承。排班高级设置开启“自动切换产物与订单”，保存后回主表验证。</li>
+        </ol>
+        <p>同理，“鸿雪下班”可写鸿雪的“在工作 == False”。“森蚺在工作 != True”也是同一种布尔判断。用来代表绑组的干员应符合<a href="#schedule-design-fields">工作主班规则</a>，不要选固定宿管、零心情工作成员、休息候补或多绑组共享成员；这些成员的个人位置不适合代表整组上下班。“在工作”包含所有工作设施，若要限定原岗位，改用“当前位置”，例如鸿雪的当前位置 <code>== room_1_1</code>。</p>
+        <h2 id="schedule-backup-combinations" class="title-level-2">多个条件用 and、or 连接</h2>
+        <p><code>and</code> 表示两边都满足，<code>or</code> 表示任意一边满足。要组合条件，把编辑器对应一侧从“值”改为“表达式”，再填写里面的左右两项。嵌套层级就是括号的层级。</p>
+        <p>例如结城理和娜斯提已在主表安排工作岗位，现在想按两人的工作状态调整一个两人会客室。新建下面两张副表，会客室以外的岗位均填 Current：</p>
+        <table class="info-table">
+          <thead><tr><th scope="col">新建副表名</th><th scope="col">触发条件</th><th scope="col">副表会客室两位主班</th></tr></thead>
+          <tbody>
+            <tr><td>结城理单独上班</td><td>（结城理在工作 == True）and（娜斯提在工作 == False）</td><td>埃癸斯、虎狼丸。</td></tr>
+            <tr><td>结城理与娜斯提同班</td><td>（结城理在工作 == True）and（娜斯提在工作 == True）</td><td>塞雷娅、虎狼丸。</td></tr>
+          </tbody>
+        </table>
+        <p>编辑第一张时，最外层运算符填 <code>and</code>，左右都选“表达式”：左边填结城理的“在工作 == True”，右边填娜斯提的“在工作 == False”。结城理不上班时，两张都不触发，会客室沿用主表及其他生效副表的安排。两张副表中的具名主班也要填写自己的绑组和替班，并核对其他房间占用。</p>
+        <p>如果希望“歌蕾蒂娅和薇薇安娜都在工作，而且阿罗玛正在宿舍”时触发，可以嵌套三项：</p>
+        <div class="code-block"><code>（（歌蕾蒂娅在工作 == True）and（薇薇安娜在工作 == True））
+and（阿罗玛在休息 == True）</code></div>
+        <p>最外层填 <code>and</code>，左侧表达式再用 <code>and</code> 连接两人的工作判断，右侧表达式填阿罗玛的休息判断。这里确实要求阿罗玛人在宿舍，所以使用“在休息”。</p>
+        <h2 id="schedule-backup-inventory" class="title-level-2">按库存切产物：高水位启动，低水位退出</h2>
+        <p>先在排班页面的高级设置开启“自动切换产物与订单”，同步仓库库存，再填写主表的日常产物和副表的目标产物。条件里的“仓库资源”使用已记录的库存数量；在仓库资源选项中核对读数后，再设置启动和退出数量。</p>
+        <p>下面给 3-3 制造站增加自动搓玉功能：日常生产赤金，仓库固源岩超过 1200 时改做源石碎片，已经在搓玉时继续生产，直到仓库余量不超过 200。3-3 表示地下三层的第三间可建造设施；使用其他位置时，把副表岗位和条件中的设施位置一起改成实际位置。</p>
+        <table class="info-table">
+          <thead><tr><th scope="col">需要填写的位置</th><th scope="col">设施与产物</th><th scope="col">岗位填法</th></tr></thead>
+          <tbody>
+            <tr><td>主表 → 3-3</td><td>制造站，产物选赤金。</td><td>保留已经能正常轮休的主班、绑组与替班。</td></tr>
+            <tr><td>新建副表“搓玉” → 3-3</td><td>同等级制造站，产物选源石碎片（固源岩）。</td><td>所有岗位填 Current，继承原有人员配置，本例只切产物。</td></tr>
+            <tr><td>“搓玉”副表的其他设施</td><td>沿用主表。</td><td>所有岗位填 Current。</td></tr>
+          </tbody>
+        </table>
+        <p>这张副表使用两条库存线：1200 决定何时开始，200 决定已经开始后何时退出。两条线拉开，就能连续生产一段时间。</p>
+        <p><strong>切入搓玉后，补满制造队列会先把固源岩转入制造站备料。</strong>每份源石碎片需要 2 个固源岩，按 99 份队列计算，一次占用 <code>99 × 2 = 198</code> 个。比如仓库原有 1201 个，补满队列后变为 1003 个；这 198 个已放进制造站，并非立即全部制成了碎片。“仓库资源”条件比较仓库里的数量，不包含制造站中已投入的备料，数量变化会在库存记录更新后反映到条件中。</p>
+        <div class="code-block"><code>（固源岩数量 &gt; 1200）or
+（（固源岩数量 &gt; 200）and（3-3 当前产物 == 源石碎片（固源岩）））</code></div>
+        <ol>
+          <li>新建“搓玉”副表，最外层运算符填 <code>or</code>。</li>
+          <li>左侧选“表达式”：左值选“仓库资源 → 固源岩”，运算符填 <code>&gt;</code>，右值填 <code>1200</code>。</li>
+          <li>右侧选“表达式”，运算符填 <code>and</code>。其左侧再建表达式“固源岩 &gt; 200”，右侧再建表达式“设施状态 → 3-3 → 当前产物 == 源石碎片（固源岩）”。产物的保存值为 <code>orirock</code>。</li>
+          <li>按上表填写主表与副表的 3-3；副表各岗位用 Current 继承已有轮休，不必另换一套干员。</li>
+          <li>保存后回主表点击“验证排班”。这张副表退出且没有其他副表覆盖 3-3 时，产物恢复为主表的赤金。</li>
+        </ol>
+        <table class="info-table">
+          <thead><tr><th scope="col">记录的固源岩数量</th><th scope="col">3-3 当前产物</th><th scope="col">“搓玉”条件结果</th></tr></thead>
+          <tbody>
+            <tr><td>800</td><td>赤金</td><td>False，继续日常生产。</td></tr>
+            <tr><td>1201</td><td>赤金</td><td>True，开始切换到源石碎片。</td></tr>
+            <tr><td>1003（1201 − 198）</td><td>源石碎片（固源岩）</td><td>补满 99 份队列后的仓库数量；更新库存后仍为 True，继续搓玉。</td></tr>
+            <tr><td>800</td><td>源石碎片（固源岩）</td><td>True，继续搓玉。</td></tr>
+            <tr><td>200</td><td>源石碎片（固源岩）</td><td>False，退出搓玉。</td></tr>
+          </tbody>
+        </table>
+        <p>这里用的是严格大于：恰好 1200 且尚未搓玉时不启动，恰好 200 时退出。“当前产物”取最近识别的设施状态，尚未读取时使用主表配置；因此应把主表设为日常产物，让副表负责切入搓玉。</p>
+        <p>设置两条库存线时，要给制造站备料留出余量。例如把启动线改成 300、退出线仍为 200，仓库 301 个时会启动，补满 99 份后只剩 103 个；更新库存后就满足退出条件，容易刚切入又切出。示例的 1200／200 留出了这部分空间。退出线 200 表示仓库余量，制造站里还可能有已投入的固源岩；多站同时搓玉时，按各站实际队列合计预留原料。</p>
+        <p>再单独给 1-1 贸易站增加自动卖玉功能。先把主表的 1-1 设为三级贸易站，订单类型选“龙门商法”，保留已有轮休人员；新建副表并命名“卖玉”，同一站订单类型改选“开采协力”，各岗位及其他设施均填 Current。这样只切接单策略，人员继续沿用原配置。触发目标为：源石碎片超过 2000 时开始接合成玉订单，已经在接时继续到仓库碎片不超过 50。</p>
+        <div class="code-block"><code>（源石碎片数量 &gt; 2000）or
+（（源石碎片数量 &gt; 50）and（1-1 当前订单类型 == 开采协力））</code></div>
+        <p>在“卖玉”的触发条件编辑器中，最外层填 <code>or</code>，左侧表达式填“仓库资源 → 源石碎片 &gt; 2000”；右侧用 <code>and</code> 连接“源石碎片 &gt; 50”和“设施状态 → 1-1 → 当前订单类型 == 开采协力”，右值的保存值为 <code>orundum</code>。例如仓库碎片为 1000、当前策略为开采协力时继续；降到 50 时退出，恢复龙门商法。搓玉与卖玉分成两张副表，可分别控制原料消耗和碎片消耗。</p>
+        <h2 id="schedule-product-switch-flow" class="title-level-2">切产物怎样执行：先切目标，再换班</h2>
+        <p>主副表中的产物是生产目标；设施状态里的“当前产物／当前订单类型”是从游戏读取的状态。以一个换班触发的例子说明：主表把 3-1 制造站设为赤金；新建“鸿雪下班”副表，条件填“鸿雪在工作 == False”，将 3-1 产物改为中级作战记录、各岗位填 Current。鸿雪是主表贸易站的普通固定工作主班，其他轮休配置保持原样。她下班会改变副表条件，3-1 就要从赤金切成经验。</p>
+        <ol>
+          <li>根据副表条件合并生产目标；若这次换班会改变条件，先演算换班后的目标。多张副表覆盖同一设施时，以最后生效的目标为准。</li>
+          <li>进入相关设施，读取实际产物、当前一份的制造进度、生产力与无人机数量。实际产物已符合目标的站点直接跳过。</li>
+          <li>制造站按下面的无人机设置完成当前一份，再取消后续旧计划、改选新配方，并把新队列补到仓库容量允许的最大值。贸易站直接切换接单策略。</li>
+          <li>重新读取并确认目标，再执行对应的切表与换人。换班依赖切产物时，等待期间保留原班；例如鸿雪下班会触发赤金转经验，就等当前一份赤金处理完、目标切成经验后，再完成相应换班。</li>
+        </ol>
+        <p>制造站处理的是<strong>正在生产的这一份</strong>，不必把整条旧队列全部生产完。制造站已空闲时直接更换配方。多个制造站同时需要切换时，先巡检再统一计算无人机用量，执行前复核进度，已自然生产掉的部分会减少无人机需求。</p>
+        <table class="info-table">
+          <thead><tr><th scope="col">设施</th><th scope="col">可选目标</th><th scope="col">执行方式</th></tr></thead>
+          <tbody>
+            <tr><td>制造站</td><td>赤金、中级作战记录、源石碎片（固源岩）、源石碎片（装置）。</td><td>处理当前一份后改配方，再补满新队列。</td></tr>
+            <tr><td>贸易站</td><td>龙门商法、开采协力。</td><td>修改接单策略，已有订单仍按原订单交付，新订单按新策略生成。开采协力需要三级贸易站。</td></tr>
+          </tbody>
+        </table>
+        <p>例如 1-1 切到开采协力后，新接合成玉订单；原有贵金属订单仍需赤金交付。切贸易策略本身不消耗无人机。生效目标或实际订单类型为开采协力时，该站退出葛朗台跑单，恢复龙门商法后再按跑单配置参与。</p>
+        <h2 id="schedule-product-switch-drones" class="title-level-2">葛朗台切产物与无人机：带数值的例子</h2>
+        <p>“葛朗台切产物”默认开启。每架无人机抵扣 3 分钟基础制造时间；程序先用整架无人机抵扣，再决定剩余零头是否值得多用一架。默认“无人机损耗容限”为 30 秒：零头达到 2 分 30 秒就再用一架，否则等它自然完成。关闭葛朗台切产物后，按完成当前一份所需的数量向上取整使用无人机。</p>
+        <p>以下“剩余时间”均指加速面板的基础时间。自然等待还要除以制造站生产力，例如生产力为 2，80 秒基础时间约需等待 40 秒。</p>
+        <table class="info-table">
+          <thead><tr><th scope="col">当前一份剩余基础时间</th><th scope="col">葛朗台模式，损耗容限 30 秒</th><th scope="col">关闭葛朗台模式</th></tr></thead>
+          <tbody>
+            <tr><td>7 分 20 秒</td><td>用 2 架，余下 80 秒基础时间自然完成。</td><td>用 3 架完成。</td></tr>
+            <tr><td>2 分 40 秒</td><td>用 1 架，损耗 20 秒，在容限内。</td><td>用 1 架完成。</td></tr>
+            <tr><td>2 分 20 秒</td><td>用 0 架，等当前一份自然完成。</td><td>用 1 架完成。</td></tr>
+          </tbody>
+        </table>
+        <p>“切产物单次无人机上限”默认 0，表示不限制；每个制造站切换时分别应用。例如当前一份还剩 7 分 20 秒，上限设为 1，就只用一架，剩余 4 分 20 秒基础时间自然完成。这个上限在关闭葛朗台模式时也生效。</p>
+        <p>葛朗台模式下，关闭“切出源石碎片时使用无人机”，就会等当前一份碎片自然完成再切回赤金或经验；相关换班也一起等待。例如“搓玉”条件在固源岩降到 200 时退出，3-3 正在做的这一份碎片仍先完成。</p>
+        <p>“允许无人机不足时直接切换产物”默认关闭：无人机不够时，程序结合制造进度和无人机恢复时间安排复核；换班依赖切换时保留原班。开启后，可取消当前未完成这一份的进度并直接切换。例如切换计划需要 5 架、当前只有 2 架，关闭时等待，开启时允许放弃当前份进度；关闭“切出源石碎片时使用无人机”的自然等待规则仍保留。</p>
+        <p>“葛朗台切产物缓冲时间”默认 2 秒，表示当前一份预计完成后，再稍等两秒确认取消旧制造计划。日常无人机加速使用独立的“无人机使用阈值”和“无人机加速间隔”；要给切产物留更多无人机，可提高日常使用阈值。首次配置可保留默认损耗容限和缓冲时间，先观察日志里的计划用量、等待时间与最终产物。</p>
+        <h2 id="schedule-backup-overlays" class="title-level-2">副表顺序、Current 与名单增减</h2>
+        <p>副表可以同时生效，按列表从前往后覆盖；同一岗位或产物有冲突时，后面的生效副表优先。例如建立下面两张副表，生产设施均保持主表的类型与岗位数，各岗位填 Current，只修改 3-1 的产物：</p>
+        <table class="info-table">
+          <thead><tr><th scope="col">副表列表顺序</th><th scope="col">名字与触发条件</th><th scope="col">3-1 产物</th></tr></thead>
+          <tbody>
+            <tr><td>前</td><td>深海下班：歌蕾蒂娅在工作 == False。</td><td>赤金。</td></tr>
+            <tr><td>后</td><td>鸿雪下班：鸿雪在工作 == False。</td><td>中级作战记录。</td></tr>
+          </tbody>
+        </table>
+        <p>两张同时生效时，后面的“鸿雪下班”覆盖产物，3-1 生产中级作战记录；只有“深海下班”生效时，3-1 生产赤金。两张都退出时，使用主表及其他生效副表的目标。编写完成后，回主表点击“验证排班”，核对可能同时生效的组合。</p>
+        <p>Current 用于副表，继承前面合并结果的整个岗位，包括主班、组与替班。需要修改时，填写主班及完整绑定。Free 用于宿舍。例如主表某个岗位填能天使、组填“贸易一组”、替班填空爆，副表有以下两种填法：</p>
+        <table class="info-table">
+          <thead><tr><th scope="col">想实现的效果</th><th scope="col">副表填法</th><th scope="col">生效结果</th></tr></thead>
+          <tbody>
+            <tr><td>沿用主表岗位</td><td>主班填 Current。</td><td>继承能天使／贸易一组／空爆的整套配置。</td></tr>
+            <tr><td>保留主班，只改替班</td><td>主班填能天使，组填贸易一组，替班填月见夜。</td><td>能天使仍在原岗位，该组改由月见夜替班。</td></tr>
+          </tbody>
+        </table>
+        <p>普通副表的回满、用尽及优先级名单使用“增”“减”列，先增后减；留空表示继承，后面的副表仍可重新加入。救急表使用独立名单。副表可调整 Free，但最终每间宿舍仍至少一个直接 Free，恢复容量也必须可行。</p>
+        <p>例如主表“回满”名单只有能天使，副表在“增”填德克萨斯、“减”填能天使，这张副表生效后，“回满”名单变为德克萨斯；退出副表后恢复主表名单。</p>
+        <p>副表的生产设施类型与岗位数须和主表一致；切换产物或订单时，开启对应高级开关。退出副表后，程序按最终合并表和当前休息状态安排岗位。</p>
+        <h2 id="schedule-backup-tasks" class="title-level-2">副表配置与“编辑任务”分别何时使用</h2>
+        <p>副表岗位描述生效期间的排班与替班规则；“编辑任务”填写这张副表从未生效变为生效时，要明确执行的换人安排。任务中的 Current 表示这个位置保持原驻员。只调整轮休规则或切产物时，先填写副表配置；需要切入时立即换指定干员，再填写任务。</p>
+        <p>用一个位置演示任务填写：主表中枢第 1 位是歌蕾蒂娅，现在希望她心情超过 23.5 时明确安排回该位置。新建“中枢回岗”副表，触发条件填“干员属性 → 歌蕾蒂娅 → 心情 &gt; 23.5”；副表岗位全部填 Current，再点“编辑任务”，中枢第 1 位填歌蕾蒂娅，后四位填 Current，其他房间不安排任务。</p>
+        <div class="code-block"><code>中枢任务：歌蕾蒂娅、Current、Current、Current、Current</code></div>
+        <p>这张副表在条件从 False 变为 True 时生成一次回岗安排，持续为 True 时不重复生成。要安排整组回岗，就在任务里逐个填写该组所有需要回岗的设施位置。副表退出时，任务改过的岗位按最终生效排班恢复，仍在休息的主班按替班规则安排。</p>
         <h2 id="schedule-design-checklist" class="title-level-2">从零写表的检查顺序</h2>
         <ol>
-          <li>按游戏实际布局填写设施、等级、产物与岗位，再填主班。</li>
-          <li>按技能配合设置普通绑组，为每个需要轮休的岗位准备可用替班，先避免复杂共享。</li>
-          <li>填满宿舍五个位置并保留连续 Free；按普通动态床、宿舍固定互替和临时开放床分别核算恢复容量，再调整分床及床位顺序。</li>
-          <li>核对心情上下限、回满和用尽名单；“0心情工作的干员”只填写确实适用的干员。</li>
-          <li>验证主表，再逐个添加副表、跑单、充能与专精相关安排，重新验证受影响的组合。</li>
-          <li>启动后核对实际驻员、心情变化、下班替换、入宿和回班，稳定后导出备份。</li>
+          <li>按游戏布局填设施与主班，先建立简单、完整的普通轮休。</li>
+          <li>为每个组保留合格的普通固定工作主班，并为每个岗位准备不冲突的替班。</li>
+          <li>区分固定恢复位、普通 Free 和绑组额度；再核对保护住员、预约和候补升优后的容量。</li>
+          <li>需要共享时逐组填写候选，检查同时休息的交集和最后依赖组回班行为。</li>
+          <li>同步干员练度，校验持有、训练位及主副表组合；观察完整下班与回班后再增加专项功能。</li>
         </ol>
       </section>
 
       <section class="content-card">
-        <h1 id="Mower-settings" class="title-level-1">基建、日常与排班高级设置</h1>
+        <h1 id="Mower-settings" class="title-level-1">基建与日常设置</h1>
         <h2 id="email-notification" class="title-level-2">邮件、签到与线索</h2>
-        <p>在“邮件提醒”配置账号及 SMTP，使用“发送测试邮件”验证。收件人列表为空时发给自己；删除空白项，不要保留一条空字符串。QQ 邮箱使用授权码，自定义邮箱按服务商要求选择 SSL/TLS 或 STARTTLS，勿向助手提供密码或授权码。</p>
-        <p id="skland">“每日任务”按需选择森空岛及游戏签到等项目；森空岛账号、库存与干员数据同步按对应页面配置。基建设置中的“线索收集”和赠送选项控制会客室任务，好友和信用任务按各自入口选择执行方式。</p>
+        <p>按需要配置公招、游戏邮件、好友和线索等日常任务，活动领取以当前设置与活动开放情况为准。通知邮箱填写发件地址、SMTP 与授权信息，先测试连接；它同时用于需要邮件的反馈流程。</p>
         <h2 id="order-running" class="title-level-2">跑单、无人机与产物</h2>
-        <p>按实际排班配置跑单干员、房间与无人机使用方向。葛朗台跑单与葛朗台切产物分别配置；关闭自动切产物不会关闭普通跑单。启用切换时核对无人机和损耗设置，避免把切产物等待误当作连接故障。</p>
-        <h2 id="mood-threshold" class="title-level-2">下班与回班</h2>
-        <p>达到心情阈值后还需有效观测、完整替班匹配和可用恢复床位。用尽下班使用有效消耗速率，不保证固定提前两三小时。心情卡牌预估辅助筛选，不能当作实测回满或确定的恢复结束时间。</p>
-        <p>“组内心情差距过大时延后回班”比较参与计时成员的最晚与最早预计恢复完成时间，默认阈值60分钟，并受额外等待上限约束；不是固定心情点差。</p>
-        <h2 id="dorm-optimization" class="title-level-2">宿舍不养闲人与分床顺序</h2>
-        <p>“宿舍不养闲人”只控制普通满心情清退任务。关闭后仍安排恢复、补床和优先级接管，个人及令夕上限仍生效。主表与副表可设置宿舍优先级顺序，留空按当前规则处理；更换宿舍布局后核对相应设置。</p>
-        <h2 id="emergency-threshold" class="title-level-2">自动救急</h2>
-        <p>在 Mower 设置 → 基建设置开启“自动救急”，通过旁边“救急排班”编辑独立主表和副表。默认关闭；初始化发现多组主班低于各自救急线、仍有人等待休息且普通轮休无法安排时才接管。双方副表生效后的工作设施类型、等级和产物必须一致。</p>
-        <p>救急冻结正常副表，驻员、跑单、宿管和菲亚梅塔按救急表配置，未配置专项任务不自动继承正常表。正常排班可以接回周转时退出，仍需恢复的组继续休息，不要求所有组回满。开关不随正常排班导入导出。</p>
+        <p>配置贸易站、跑单干员、无人机目标与时间设置。排查漏单时，按日志中的原任务时间查找对应记录。</p>
+        <p>“自动切换产物与订单”默认关闭，在排班页面的高级设置中开启。关闭后仍可普通换班、收取产物和葛朗台跑单。库存触发的完整填法见<a href="#schedule-backup-inventory">按库存切产物</a>，执行顺序与无人机数值示例见<a href="#schedule-product-switch-flow">切产物怎样执行</a>。</p>
+        <h2 id="dorm-optimization" class="title-level-2">宿舍不养闲人与自动救急</h2>
+        <p>开启“宿舍不养闲人”后，程序安排普通满心情干员离宿。床位恢复和接管按排班规则执行，达到个人或令夕心情上限时也会离宿。</p>
+        <p>自动救急默认关闭，入口在 Mower 设置 → 基建设置，独立编辑救急排班。初始化观测满足接管条件且普通轮休无法安排时才使用救急表；正常与救急的设施类型、等级和产物须一致。期间正常副表冻结，跑单、宿管和菲亚梅塔按救急表配置，不自动继承未填写专项任务。</p>
         <h2 id="phalanx" class="title-level-2">菲亚梅塔充能</h2>
-        <p>配置菲亚梅塔的宿舍位置、充能对象及相关阈值，充能期间保留专项任务和床位保护。自动救急使用救急表自己的配置；存在主班等待床位时，菲亚梅塔按救急分床规则让床。调整前先核对当前生效排班和具体日志，不把普通宿舍补床当作充能任务。</p>
+        <p>按编辑器帮助填写充能目标及相关选项。菲亚梅塔不参与普通宿舍绑组或单回目标选择；充能记录、心情读数与正常换班分别处理。</p>
       </section>
 
       <section class="content-card">
-        <h1 id="sanity-plan" class="title-level-1">MAA、刷理智与大型任务</h1>
-        <h2 id="maa-install" class="title-level-2">MAA 安装与测试</h2>
+        <h1 id="sanity-plan" class="title-level-1">MAA、作战与大型任务</h1>
+        <h2 id="maa-install" class="title-level-2">安装完整 MAA 并测试</h2>
         <ol>
-          <li>需要 MAA 执行的任务，在 MAA 设置检查目录及平台，未安装时按页面“下载 MAA”获取组件。</li>
-          <li>已有安装使用“检查 MAA 更新”“更新 MAA”；MAA 资源独立检查和更新。下载后的目录需包含完整的平台运行库、资源与接口。</li>
-          <li>点击“测试连接”，按日志区分目录、运行库加载与设备连接故障。Android 的组件和连接按应用管理提示处理。</li>
+          <li>在 MAA 设置配置与系统、架构匹配的完整 MAA 目录。页面支持下载 MAA、检查或安装本体更新及资源更新。</li>
+          <li>核对 MAA 的 ADB 路径、目标设备与连接参数，执行测试连接。</li>
+          <li>Android 的目录及设备能力由宿主管理；桌面平台以当前页面帮助为准。</li>
         </ol>
-        <p>当前页面提供各平台的组件管理，不再按旧教程手动复制 Windows Python 文件夹拼装 macOS MAA，也不通过旧版 Mower 下载器替换 DLL。</p>
         <h2 id="weekly-plan" class="title-level-2">刷理智周计划</h2>
-        <ol>
-          <li>开启“刷理智周计划”，选择或创建方案，再选择执行方式：MAA 或 Mower。Mower 本地作战不依赖 MAA。</li>
-          <li>在列表或表格安排每天关卡，两种视图编辑同一份计划；在列表配置吃药次数及理智阈值。</li>
-          <li>库存选关规则按方案保存，只作用于已选择的关卡，不自动加入关卡；检查限制是否使关卡被跳过。</li>
-          <li>活动方案可设置结束后的目标和切换时间，查看当天实际生效方案。</li>
-        </ol>
-        <h2 id="long-tasks" class="title-level-2">大型任务独立开关</h2>
-        <p>“大型任务”独立控制集成战略、保全派驻、生息演算和隐秘战线等任务，不需要额外开启一个空刷理智计划。带“(MAA)”的任务依赖 MAA，其余类型使用对应的 Mower 流程。</p>
-        <p>开始时间与停止时间相同表示全天；停止时间早于开始时间表示运行到次日。还需检查对应任务模式、日常任务间隔、基建任务空闲时间及运行日志。</p>
+        <p>按星期配置执行方式、关卡、药品与理智限制。选择 MAA 时先验证 MAA 连接；选择 Mower 时使用对应支持范围。没有刷图时先检查当天方案、时间窗口与库存条件。</p>
+        <h2 id="long-tasks" class="title-level-2">大型任务独立配置</h2>
+        <p>肉鸽、保全、生息演算或隐秘战线在各自入口配置，通过独立开关启用。</p>
+        <p>任务结束后恢复游戏主题在 MAA 设置中配置，需 MAA 核心与资源满足页面版本要求，并选择账号已解锁的主题。手动停止、异常退出或下一调度时间不足时不保证执行。</p>
       </section>
 
       <section class="content-card">
         <h1 id="growth-workshop" class="title-level-1">养成、专精与加工</h1>
-        <h2 id="growth-plan" class="title-level-2">先同步，再添加目标</h2>
-        <p>养成页面统一管理等级/精英化、基础技能、专精和模组目标，并展示材料、龙门币及经验需求。同步干员练度与库存后再安排目标，区分“需要准备的材料”和“已经满足的开训条件”。</p>
-        <h2 id="material-synthesis" class="title-level-2">自动专精与材料合成的范围</h2>
-        <p>“全自动专精”控制自动专精及养成材料自动合成。精英化、基础技能升级和模组开启/升级仍需在游戏手动完成后同步；添加目标不代表 Mower 会自动点击完成全部养成。</p>
-        <p>专精开训要求精英二、基础技能7级及对应材料，并受训练室岗位和协助路线保护。计划可处于待执行、安排中、训练中、待收取、已完成或失败；查看失败原因后再决定重试。</p>
-        <p>自动合成按统一养成计划顺序及本地库存预算备料，保护正在训练的需求和已确认的库存变动。完整材料不足的未开工项目不会部分占用材料；刷新较晚的云端库存不等于可以覆盖本地刚完成的合成。</p>
-        <div class="note-box"><p>AI 助手当前的专精重试工具会重置<strong>全部失败计划</strong>，不按传入干员筛选；只想重试一项时，先核对页面支持的操作及实际范围。</p></div>
+        <h2 id="growth-plan" class="title-level-2">先同步练度和库存</h2>
+        <p>“养成规划”页面管理等级、精英化、基础技能、专精和模组目标，并展示材料、龙门币及经验需求。绑定账号后点击“刷新”同步练度，再排序目标；游戏中升级、获取干员或完成专精后再次刷新。通过库存扫描更新本地材料数量。</p>
+        <h2 id="material-synthesis" class="title-level-2">自动化范围与训练冲突</h2>
+        <p>“全自动专精”控制自动专精和养成材料自动合成。精英化、基础技能升级、模组开启与升级仍需在游戏手动完成，再同步数据。开训要求精英二、基础技能 7 级和对应材料，并核对训练位、协助路线及训练保护。</p>
+        <p>自动专精的被训练干员不能同时占用非训练室排班；出现冲突时按计划原因解除冲突，等待下一次库存扫描重新评估。训练位的基础技能和全技能专三校验也检查主副表替班和任务，见<a href="#schedule-roster" class="link-text">排班校验</a>。</p>
+        <p>合成按计划顺序和本地库存备料，并保留正在训练阶段所需的材料。进度和缺料情况在计划状态中查看。</p>
+        <div class="note-box"><p>AI 助手的专精重试会重置全部失败计划，执行前核对范围。</p></div>
       </section>
 
       <section class="content-card">
-        <h1 id="configuration-backup" class="title-level-1">配置备份、迁移、多开与退出</h1>
-        <h2 id="backup-export" class="title-level-2">完整备份与恢复</h2>
+        <h1 id="configuration-backup" class="title-level-1">备份、迁移与多开</h1>
+        <h2 id="backup-export" class="title-level-2">导出完整实例备份</h2>
         <ol>
-          <li>在 Mower 设置 → 配置导出与导入点击“导出配置”，保存当前实例 ZIP。</li>
-          <li>ZIP 包含 config 原文件、主副排班及持久化 tmp 数据，包括专精计划、专精路线、历史与库存；不包含 state.json、资源包、更新文件、日志、其他实例和浏览器偏好。</li>
-          <li>导入前停止任务，选择备份 ZIP，核对覆盖范围再确认；导入前自动生成恢复 ZIP。</li>
-          <li>成功后页面刷新加载配置，不自动开始任务。当前管理端口、访问令牌与本机网络等设置保留；旧调度缓存清空。</li>
-          <li>换电脑后重新检查设备与 MAA 路径。需要撤销时可导入自动生成的恢复 ZIP。</li>
+          <li>在 Mower 设置 → 配置导出与导入导出 ZIP。包含 config 原文件、主副排班及持久化 tmp 数据，例如专精计划、路线、历史和库存。</li>
+          <li>日志、资源包及其他实例数据需另行保存。</li>
+          <li>迁移时停止自动任务并等待更新结束，选择备份导入。覆盖前会生成恢复 ZIP；失败时按页面提示处理，成功后刷新配置，不自动开始任务。</li>
+          <li>当前管理端口、令牌及本机网络等设置保留，旧调度缓存清空。换电脑后重新核对设备、ADB 和 MAA 路径。</li>
         </ol>
-        <p>不要只按旧教程复制根目录 conf.yml、plan.json 或 temp 文件夹；完整备份包含凭据，请妥善保管。</p>
-        <h2 id="multi-instance" class="title-level-2">实例隔离与进程操作</h2>
-        <p>多开时确认当前实例名称、数据目录、端口和绑定设备，各实例的配置与运行数据分别管理，软件和资源更新按共享安装范围生效。</p>
-        <p>设置页底部“进程操作”只操作当前实例。“重启续接”保留队列继续运行；普通“重启 Mower 进程”重置运行缓存后重新开始；“结束 Mower 进程”正常停止任务并结束此实例。关闭窗口可能仍在后台运行，以托盘或多开管理器设置为准。</p>
+        <p>备份包含凭据，请妥善保管并通过私密方式传输。</p>
+        <h2 id="multi-instance" class="title-level-2">区分任务停止、进程退出与窗口关闭</h2>
+        <p>多开管理器分别管理实例名称、数据目录、端口与绑定设备。配置和运行数据按实例隔离，同一安装的程序及资源更新按共享范围生效。</p>
+        <p>“进程操作”只处理当前实例；重启续接保留已保存队列，普通重启重新安排运行缓存。结束进程会停止该实例；关闭窗口可能仍保留后台运行，具体由托盘和多开管理器的关闭设置决定。手动操作游戏前先停止自动任务。</p>
       </section>
 
       <section class="content-card">
         <h1 id="diagnostics-ai" class="title-level-1">日志、排错与 AI 助手</h1>
-        <h2 id="error-archives" class="title-level-2">先看具体证据</h2>
-        <p>运行日志查看任务、时间、设施、干员和异常堆栈。报错归档保留对应现场；选择具体归档后可使用 AI 分析。连接状态、更新日志和排班任务日志分别对应不同问题，单独一条 ERROR 不能证明唯一根因。</p>
-        <p>清理数据先导出备份，再在运行日志页面的“数据库管理”选择确实需要删除的类别。心情记录、专精计划、专精路线、库存和运行缓存彼此独立，不全选、不直接删 data.db。</p>
-        <h2 id="local-ai-assistant" class="title-level-2">DeepSeek、本地与在线模型</h2>
+        <h2 id="error-archives" class="title-level-2">先定位任务和时间</h2>
         <ol>
-          <li>在 Mower 设置 → AI 助手与模型服务选择 DeepSeek、本地 OpenAI 兼容接口或在线模型/中转商。选择 DeepSeek 后，在“DeepSeek 模型”选择 Flash / Pro 预设，或输入官方模型 ID 后回车，并填写 DeepSeek 密钥。</li>
-          <li>自定义接口填实际模型ID与接口地址。本地需兼容 OpenAI Chat Completions，通常可不填密钥；在线接口要求 HTTPS 和对应密钥。</li>
-          <li>聊天工具调用需要服务及模型支持工具调用。助手可查 FAQ、日志及数据库、分析漏单与错误、管理专精计划及按明确要求发送反馈。</li>
-          <li>核对工具实际返回。AI 建议中的推测不等于已证实的根因，也不代表排班已自动修改。不要发送密码、API密钥或访问令牌。</li>
+          <li>确认当前实例、发生时间及具体任务，区分设备连接、软件更新、排班和 MAA 日志。</li>
+          <li>保留完整错误上下文、实际画面及对应报错归档。排班等待先读缺少的替班、恢复容量或保护条件。</li>
+          <li>需要清理数据时先备份，再从运行日志页的“数据库管理”选择对应类别；不要全选或直接删除 data.db。</li>
         </ol>
-        <p>漏单分析先选择具体记录或提供完整本地时间，再结合任务时间线；漏单报警的时间不一定是原任务时间。</p>
+        <h2 id="local-ai-assistant" class="title-level-2">配置模型后从左侧打开助手</h2>
+        <p>模型配置放在 Mower 设置 → AI 助手与模型服务。DeepSeek 使用一个服务选项，可选 deepseek-flash、deepseek-v4-pro 预设，或填写官方模型 ID；本地及在线接口分别填写实际地址、模型和密钥。本地接口须兼容 OpenAI Chat Completions，在线接口须使用 HTTPS；工具调用还需服务和模型支持。</p>
+        <p>点击左侧“Mower AI 助手”直接打开对话。桌面窗口可拖动标题栏调整位置，收起保留草稿和当前会话；新对话会清空会话。Enter 发送，Shift+Enter 换行，回复期间可继续写草稿。</p>
+        <p>助手可查询 FAQ、日志与数据库，分析漏单和报错、管理专精计划，并按要求发送反馈。分析报错时选择对应归档，分析漏单时提供具体记录或完整本地时间范围。</p>
+        <p>排错建议结合日志核对后再应用。提交给模型的问题和日志需隐去密码、访问令牌及 API 密钥。</p>
       </section>
 
       <section class="content-card">
         <h1 id="faq" class="title-level-1">常见问题</h1>
-        <h2 id="connection-issues" class="title-level-2">连接不上，是否直接换端口或截图方案？</h2>
-        <p>先看设备连接状态与修复提示，核对预设和所选实例。不同平台、模拟器及实例的能力不同，不猜默认端口，不把所有问题都改为 ADB+Gzip，也不改连另一台在线设备。详见 <a href="#device-connection" class="link-text">设备连接</a>。</p>
-        <h2 id="rest-issues" class="title-level-2">红脸或到阈值还不下班？</h2>
-        <p>检查有效心情、个人规则、组绑定、完整替班、床位和预约。共享替班、训练保护或无法安排完整恢复都可能造成等待；按日志中的阻塞条件调整。详见 <a href="#scheduling" class="link-text">排班与宿舍</a>。</p>
-        <h2 id="task-issues" class="title-level-2">不刷图、不运行生息演算，是否要打开空周计划？</h2>
-        <p>大型任务与刷理智周计划是独立开关。分别检查执行方式、任务类型、时间窗口、当天方案及库存限制。详见 <a href="#sanity-plan" class="link-text">作战与大型任务</a>。</p>
-        <h2 id="other-issues" class="title-level-2">白屏、数组报错或历史报表为空？</h2>
-        <p>白屏先区分平台窗口依赖和页面加载；数组异常结合堆栈与实际画面；报表先核对实例、时间范围及有效记录。不要直接断言被杀毒删除、排班布局错误或数据库损坏。保留证据后查对应归档或让 AI 分析。</p>
-        <p>更多功能问题可直接向 AI 助手提问；内置 FAQ 按当前功能入口提供建议。</p>
+        <h2 id="connection-issues" class="title-level-2">连接失败如何排查？</h2>
+        <p>核对预设、目标实例和设备状态，按页面提示检测或修复。操作步骤见<a href="#device-connection" class="link-text">设备连接</a>。</p>
+        <h2 id="rest-issues" class="title-level-2">有空床或已到心情线，为什么不下班？</h2>
+        <p>下班需要整组替班和恢复容量同时可用。检查共享替班、Free 额度、入住预约及训练保护，具体规则见<a href="#schedule-theory" class="link-text">排班理论</a>。</p>
+        <h2 id="training-issues" class="title-level-2">训练位导致验证失败，如何修复？</h2>
+        <p>核对训练室第二个位置及其替班、副表任务。基础技能不足时在游戏中升至 7 级，全技能专三时更换训练对象；随后到“养成规划”手动点击“刷新”，再验证排班。协助位不受这两项训练位检查。具体步骤见<a href="#schedule-roster" class="link-text">持有和训练位检查</a>。</p>
+        <h2 id="performance-issues" class="title-level-2">如何选择性能档位？</h2>
+        <p>建议先用自动档。桌面端和 Android 均可运行游戏内性能测试，从极高开始，根据选人及重排结果采用建议。见<a href="#performance-settings" class="link-text">性能适配</a>。</p>
+        <h2 id="task-issues" class="title-level-2">刷图或大型任务未运行，检查哪些设置？</h2>
+        <p>周计划与大型任务独立。分别检查执行方式、当天配置、时间窗口、库存条件和独立开关，见<a href="#sanity-plan" class="link-text">作战配置</a>。</p>
+        <h2 id="other-issues" class="title-level-2">白屏、数组错误或报表缺记录怎么办？</h2>
+        <p>白屏时检查窗口依赖和页面加载；数组错误附完整堆栈和画面；报表缺记录时核对实例和时间范围。将对应日志或报错归档交给 AI 分析，也可附在反馈中。</p>
       </section>
 
       <section class="content-card">
-        <h1 id="feedback" class="title-level-1">反馈表与求助</h1>
-        <p><a href="https://docs.qq.com/sheet/DUEJ6UWN5VFVRU0dG?tab=BB08J2" class="reference-link-text" target="_blank" rel="noopener noreferrer">打开 Mower 反馈表</a>，查阅已有问题或建议；表格填写需相应编辑权限。</p>
+        <h1 id="feedback" class="title-level-1">反馈表与邮件反馈</h1>
+        <p>已有问题和处理进展可查阅<a href="https://docs.qq.com/sheet/DUEJ6UWN5VFVRU0dG?tab=BB08J2" class="reference-link-text" target="_blank" rel="noopener noreferrer">Mower 反馈表</a>，直接填写需登录并取得编辑权限。</p>
         <ol>
-          <li>记录 Mower 版本与渠道、系统及架构、设备或模拟器、目标实例。</li>
-          <li>描述操作步骤、期望行为、实际现象和完整本地时间范围，附相关日志、报错归档或截图。</li>
-          <li>去除账号密码、授权码、API密钥和访问令牌；不要公开完整配置备份。</li>
-          <li>内置反馈窗口通过已配置邮箱向开发组发送邮件；反馈表可单独查阅，填写需相应编辑权限。邮件提交成功不等于表格已经记录。</li>
+          <li>说明 Mower 版本、系统及架构、设备或模拟器和目标实例。</li>
+          <li>给出复现步骤、期望结果与实际现象，附完整本地时间范围、相关日志或报错归档。</li>
+          <li>在内置反馈窗口提交，或请 AI 发送反馈，使用已配置邮箱发给维护者。</li>
+          <li>Bug 反馈需可用日志和对应时间范围。去除密码、授权码、令牌及密钥，不公开完整配置。</li>
         </ol>
-        <p>社区求助：QQ群521857729；QQ频道 ArkMower，频道号2r118jwue4。请提供具体证据，避免只描述“不能用”。</p>
-        <h2 id="user-notice" class="title-level-2">运行与数据提示</h2>
-        <p>首次使用或调整排班后观察一轮运行；手动操作游戏前停止自动任务，避免与自动操作冲突。配置备份包含凭据，删除历史记录、覆盖导入和版本回退前核对范围并备份。</p>
-        <h2 id="acknowledgements" class="title-level-2">项目与文档</h2>
-        <p>感谢 Mower、MAA 开发者及社区文档贡献者。项目及详细部署说明见 <a href="https://github.com/ArkMowers/arknights-mower" class="link-text" target="_blank" rel="noopener noreferrer">Mower 仓库</a>。</p>
+        <p>社区求助：QQ群 521857729；QQ 频道 ArkMower（频道号 2r118jwue4）。</p>
+        <h2 id="user-notice" class="title-level-2">调整后先观察，再长期运行</h2>
+        <p>首次使用、导入排班或改变宿舍规则后，至少观察一轮完整上下班。导入覆盖、清理数据、版本回退前核对范围并备份，手动操作游戏前停止自动任务。</p>
+        <h2 id="acknowledgements" class="title-level-2">项目与部署文档</h2>
+        <p>感谢 Mower、MAA 开发者与社区贡献者。源码部署、打包与 Docker 说明从<a href="https://github.com/ArkMowers/arknights-mower" class="link-text" target="_blank" rel="noopener noreferrer">Mower 项目主页</a>进入。</p>
       </section>
     </main>
   </div>
@@ -948,7 +1052,7 @@
         const section = current.closest('.content-card').querySelector('.title-level-1');
         for (const link of links) link.classList.toggle('active', link.hash === `#${section.id}`);
       }
-      backToTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+      backToTop.addEventListener('click', () => window.scrollTo({ top: 0 }));
       window.addEventListener('scroll', updateScrollState, { passive: true });
       window.addEventListener('resize', updateScrollState);
       updateScrollState();

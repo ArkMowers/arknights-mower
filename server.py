@@ -1079,7 +1079,6 @@ def device_preflight():
 def device_performance_test():
     global mower_thread
     from arknights_mower.__main__ import device_control
-    from arknights_mower.utils.performance import is_android_runtime
 
     if request.method == "GET":
         return _performance_test_status()
@@ -1095,9 +1094,7 @@ def device_performance_test():
             _report_performance_test({"message": "正在取消测试并退出选人页"})
             return _performance_test_status()
     if payload != {}:
-        return {"message": "性能测试使用已保存的设备设置，请先保存并测试连接"}, 400
-    if is_android_runtime():
-        return {"message": "游戏内性能测试目前仅支持桌面端"}, 400
+        return {"message": "性能测试使用已保存的设置，请先保存当前配置"}, 400
     _collect_maa_check_result()
     with (
         backup_lock,
@@ -3744,6 +3741,7 @@ def ws_chat(ws):
                     last_reply = reply
                 if last_reply:
                     context.append({"role": "assistant", "content": reply})
+                ws.send(json.dumps({"done": True}))
         except (ConnectionClosed, OSError):
             break
         except Exception as e:
