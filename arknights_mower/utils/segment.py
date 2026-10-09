@@ -4,6 +4,7 @@ import numpy as np
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import RecognizeError
+from arknights_mower.utils.riic_layout import RIGHT_SIDE_ROOM_ORDERS
 
 
 class FloodCheckFailed(Exception):
@@ -292,10 +293,10 @@ def base(
         )
 
         right_rooms = ("contact", "train", "recycle")
-        if len(right_side_room_order) != 3 or set(right_side_room_order) != set(
-            right_rooms
-        ):
-            raise ValueError("右侧设施顺序必须包含办公室、训练室和回收站各一次")
+        if tuple(right_side_room_order) not in RIGHT_SIDE_ROOM_ORDERS:
+            raise ValueError(
+                "右侧设施顺序不合法：回收站只能在办公室与训练室互换后与办公室互换"
+            )
         positions = [ret[room] for room in right_rooms]
         ret.update(zip(right_side_room_order, positions))
 

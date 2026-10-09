@@ -49,7 +49,7 @@ afterEach(() => {
 
 describe('plan facility display order', () => {
   it.each(['main', 0])(
-    'follows all local room permutations without changing plan %s',
+    'follows all legal local room orders without changing plan %s',
     async (subPlan) => {
       const pinia = createPinia()
       function editorApp() {
@@ -85,11 +85,8 @@ describe('plan facility display order', () => {
       const original = JSON.stringify(plan.build_plan())
       const orders = [
         ['contact', 'train', 'recycle'],
-        ['contact', 'recycle', 'train'],
         ['train', 'contact', 'recycle'],
-        ['train', 'recycle', 'contact'],
-        ['recycle', 'contact', 'train'],
-        ['recycle', 'train', 'contact']
+        ['train', 'recycle', 'contact']
       ]
       for (const order of orders) {
         config.right_side_room_order = order

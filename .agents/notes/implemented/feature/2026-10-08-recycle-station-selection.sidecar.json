@@ -16,7 +16,12 @@
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.tap_confirm",
     "arknights_mower.utils.emergency_plan.effective_rescue_plan",
     "arknights_mower.utils.emergency_plan.configured_rescue_names",
-    "arknights_mower.utils.backup_validation.validate_backup_facilities"
+    "arknights_mower.utils.backup_validation.validate_backup_facilities",
+    "arknights_mower.utils.config.conf.RIICPart.validate_right_side_room_order",
+    "arknights_mower.utils.config.load_conf",
+    "arknights_mower.utils.segment.base",
+    "arknights_mower.utils.riic_layout.RIGHT_SIDE_ROOM_ORDERS",
+    "ui/src/stores/config.js"
   ],
   "test_suites": [
     "arknights_mower/tests/recycle_station_tests.py",

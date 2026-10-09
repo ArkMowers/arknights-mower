@@ -21,6 +21,7 @@ from arknights_mower.utils.performance import (
     default_performance_profile,
     is_android_runtime,
 )
+from arknights_mower.utils.riic_layout import RIGHT_SIDE_ROOM_ORDERS
 
 DEFAULT_LAUNCH_COMMAND = (
     "input keyevent KEYCODE_WAKEUP; "
@@ -450,6 +451,10 @@ class RIICPart(ConfModel):
     def validate_right_side_room_order(cls, value):
         if len(set(value)) != 3:
             raise ValueError("办公室、训练室和回收站必须各出现一次")
+        if tuple(value) not in RIGHT_SIDE_ROOM_ORDERS:
+            raise ValueError(
+                "回收站只能在办公室与训练室互换后与办公室互换，不能位于训练室上方"
+            )
         return value
 
     class RunOrderGrandetModeConf(ConfModel):

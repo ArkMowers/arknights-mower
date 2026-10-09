@@ -451,7 +451,7 @@ function set_facility(e) {
           :key="r"
           :draggable="!edit_locked"
           :aria-label="`${right_room_names[r]}，拖动交换设施位置`"
-          title="拖动交换办公室、训练室与回收站位置；仅保存在本机，不随排班导出"
+          title="办公室与训练室可互换；互换后回收站可与办公室互换。仅保存在本机，不随排班导出"
           @dragstart="drag_right_facility(r, $event)"
           @dragover.prevent="$event.dataTransfer.dropEffect = 'move'"
           @dragenter.prevent

@@ -26,6 +26,7 @@ export const useConfigStore = defineStore('config', () => {
     const to = order.indexOf(target)
     if (from < 0 || to < 0 || from === to) return
     ;[order[from], order[to]] = [order[to], order[from]]
+    if (order[0] === 'recycle' || order.indexOf('recycle') < order.indexOf('train')) return
     right_side_room_order.value = order
   }
   const drone_interval = ref(4)
@@ -615,6 +616,10 @@ export const useConfigStore = defineStore('config', () => {
         (response.data.swap_contact_train
           ? ['train', 'contact', 'recycle']
           : ['contact', 'train', 'recycle'])
+      const order = right_side_room_order.value
+      if (order[0] === 'recycle' || order.indexOf('recycle') < order.indexOf('train')) {
+        right_side_room_order.value = [...order.filter((room) => room !== 'recycle'), 'recycle']
+      }
       sign_in.value = response.data.sign_in
       droidcast.value = response.data.droidcast
       mumu12IPC.value = response.data.mumu12IPC

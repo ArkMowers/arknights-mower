@@ -427,12 +427,12 @@ it('saves room drag swaps locally with a layout-only patch', async () => {
   await setup({ swap_contact_train: true })
   expect(store.right_side_room_order).toEqual(['train', 'contact', 'recycle'])
   axios.patch.mockClear()
-  store.swap_right_side_facilities('train', 'recycle')
+  store.swap_right_side_facilities('contact', 'recycle')
   await nextTick()
   await store.flush_config_saves()
   expect(axios.patch).toHaveBeenCalledTimes(1)
   expect(axios.patch.mock.lastCall[1]).toEqual({
-    right_side_room_order: ['recycle', 'contact', 'train']
+    right_side_room_order: ['train', 'recycle', 'contact']
   })
   expect(store.build_advanced_settings()).not.toHaveProperty('right_side_room_order')
   const before = store.build_config().right_side_room_order
@@ -446,7 +446,59 @@ it('saves room drag swaps locally with a layout-only patch', async () => {
 })
 
 it('loads the explicit three-room order before the legacy switch', async () => {
-  await setup({ swap_contact_train: true, right_side_room_order: ['recycle', 'train', 'contact'] })
-  expect(store.right_side_room_order).toEqual(['recycle', 'train', 'contact'])
+  await setup({ swap_contact_train: true, right_side_room_order: ['train', 'recycle', 'contact'] })
+  expect(store.right_side_room_order).toEqual(['train', 'recycle', 'contact'])
   expect(store.build_config()).not.toHaveProperty('swap_contact_train')
+})
+
+const legalOrders = [
+  ['contact', 'train', 'recycle'],
+  ['train', 'contact', 'recycle'],
+  ['train', 'recycle', 'contact']
+]
+
+it.each(legalOrders)('only saves legal swaps from %s, %s, %s', async (...order) => {
+  await setup({ right_side_room_order: order })
+  for (const source of order) {
+    for (const target of order) {
+      store.right_side_room_order = [...order]
+      await nextTick()
+      await store.flush_config_saves()
+      axios.patch.mockClear()
+      const next = [...order]
+      const from = next.indexOf(source)
+      const to = next.indexOf(target)
+      ;[next[from], next[to]] = [next[to], next[from]]
+      const allowed = legalOrders.some((legal) => legal.every((room, i) => room === next[i]))
+      store.swap_right_side_facilities(source, target)
+      expect(store.right_side_room_order).toEqual(allowed ? next : order)
+      await nextTick()
+      await store.flush_config_saves()
+      if (allowed && source !== target) {
+        expect(axios.patch).toHaveBeenCalledTimes(1)
+        expect(axios.patch.mock.lastCall[1]).toEqual({ right_side_room_order: next })
+      } else {
+        expect(axios.patch).not.toHaveBeenCalled()
+      }
+    }
+  }
+})
+
+it.each([
+  [
+    ['contact', 'recycle', 'train'],
+    ['contact', 'train', 'recycle']
+  ],
+  [
+    ['recycle', 'contact', 'train'],
+    ['contact', 'train', 'recycle']
+  ],
+  [
+    ['recycle', 'train', 'contact'],
+    ['train', 'contact', 'recycle']
+  ]
+])('repairs an impossible saved order %s on load', async (order, expected) => {
+  await setup({ right_side_room_order: order })
+  expect(store.right_side_room_order).toEqual(expected)
+  expect(store.build_config().right_side_room_order).toEqual(expected)
 })

@@ -20,7 +20,7 @@ from arknights_mower.solvers.base_mixin import (  # noqa: E402
     agent_card_selected,
 )
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
-from arknights_mower.utils import segment  # noqa: E402
+from arknights_mower.utils import config, segment  # noqa: E402
 from arknights_mower.utils.character_recognize import operator_list  # noqa: E402
 from arknights_mower.utils.config.conf import Conf  # noqa: E402
 from arknights_mower.utils.config.plan import Plan1, PlanModel, Task  # noqa: E402
@@ -28,11 +28,22 @@ from arknights_mower.utils.config.plan_advanced import (  # noqa: E402
     export_advanced_settings,
 )
 from arknights_mower.utils.operators import Operators  # noqa: E402
-from arknights_mower.utils.recognize import Recognizer  # noqa: E402
+from arknights_mower.utils.recognize import RecognizeError, Recognizer  # noqa: E402
 from arknights_mower.utils.scene import Scene  # noqa: E402
 from arknights_mower.utils.scheduler_task import SchedulerTask  # noqa: E402
 
 FIXTURES = Path(__file__).parent / "fixtures" / "recycle"
+
+LEGAL_ORDERS = [
+    ("contact", "train", "recycle"),
+    ("train", "contact", "recycle"),
+    ("train", "recycle", "contact"),
+]
+ILLEGAL_ORDERS = [
+    order
+    for order in permutations(("contact", "train", "recycle"))
+    if order not in LEGAL_ORDERS
+]
 
 
 def preview(name):
@@ -105,7 +116,7 @@ def test_recycle_map_matches_preview_and_is_independent_of_room_swap():
     x1 = 254 * 1920 / 1192 - 643 * alpha
     y1 = 245 * 1080 / 671 - 252 * alpha
     anchor = ((x1, y1), (x1 + 262 * alpha, y1 + 160 * alpha))
-    for order in permutations(("contact", "train", "recycle")):
+    for order in LEGAL_ORDERS:
         rooms = segment.base(frame, anchor, right_side_room_order=order)
         x, y = np.mean(rooms[order[2]], axis=0)
         assert 254 < x * 1192 / 1920 < 437
@@ -250,8 +261,8 @@ def test_arrangement_uses_residence_list_and_reads_actual_mood(staff, initial):
     assert plan == {}
 
 
-@pytest.mark.parametrize("order", list(permutations(("contact", "train", "recycle"))))
-def test_all_three_room_permutations_preserve_physical_locations(order):
+@pytest.mark.parametrize("order", LEGAL_ORDERS)
+def test_legal_room_orders_preserve_physical_locations(order):
     img = np.zeros((1080, 1920, 3), dtype=np.uint8)
     anchor = ((400, 80), (600, 240))
     default = segment.base(img, anchor)
@@ -273,7 +284,7 @@ def test_legacy_layout_migration_and_new_order_precedence(swapped):
     )
     assert conf.right_side_room_order == expected
     assert "swap_contact_train" not in conf.model_dump()
-    explicit = ["recycle", "train", "contact"]
+    explicit = ["train", "recycle", "contact"]
     assert (
         Conf(
             swap_contact_train=swapped, right_side_room_order=explicit
@@ -293,3 +304,105 @@ def test_legacy_layout_migration_and_new_order_precedence(swapped):
 def test_invalid_local_layout_is_rejected(order):
     with pytest.raises(ValidationError):
         Conf(right_side_room_order=order)
+
+
+@pytest.mark.parametrize("order", ILLEGAL_ORDERS)
+def test_impossible_recycling_layout_is_rejected_before_navigation(order):
+    with pytest.raises(ValidationError, match="回收站"):
+        Conf(right_side_room_order=order)
+    with pytest.raises(RecognizeError, match="回收站"):
+        segment.base(
+            np.zeros((1080, 1920, 3), dtype=np.uint8),
+            ((400, 80), (600, 240)),
+            right_side_room_order=order,
+        )
+
+
+@pytest.mark.parametrize("order", LEGAL_ORDERS + ILLEGAL_ORDERS)
+def test_saved_layout_loading_repairs_only_impossible_orders(
+    monkeypatch, tmp_path, order
+):
+    import yaml
+
+    saved = tmp_path / "conf.yml"
+    raw = {"right_side_room_order": list(order), "account": "saved account"}
+    saved.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    original = saved.read_bytes()
+    monkeypatch.setattr(config, "conf_path", saved)
+    monkeypatch.setattr(config, "conf", config.conf.model_copy(deep=True))
+    config.load_conf()
+    expected = (
+        list(order)
+        if order in LEGAL_ORDERS
+        else [room for room in order if room != "recycle"] + ["recycle"]
+    )
+    assert config.conf.right_side_room_order == expected
+    assert config.conf.account == "saved account"
+    assert saved.read_bytes() == original
+    config.save_conf()
+    config.load_conf()
+    assert config.conf.right_side_room_order == expected
+
+
+@pytest.mark.parametrize("order", ILLEGAL_ORDERS)
+def test_configuration_update_rejects_layout_without_mutating_current_config(order):
+    conf = Conf(right_side_room_order=LEGAL_ORDERS[2], account="saved account")
+    original = conf.model_dump()
+    with pytest.raises(ValidationError, match="回收站"):
+        conf.updated({"right_side_room_order": list(order)})
+    assert conf.model_dump() == original
+
+
+@pytest.mark.parametrize(
+    "order",
+    [
+        ["contact", "train"],
+        ["train", "train", "recycle"],
+        ["contact", "train", "factory"],
+    ],
+)
+def test_saved_malformed_layout_still_fails_validation(monkeypatch, tmp_path, order):
+    import yaml
+
+    saved = tmp_path / "conf.yml"
+    saved.write_text(yaml.safe_dump({"right_side_room_order": order}), encoding="utf-8")
+    original = saved.read_bytes()
+    monkeypatch.setattr(config, "conf_path", saved)
+    monkeypatch.setattr(config, "conf", config.conf.model_copy(deep=True))
+    with pytest.raises(ValidationError):
+        config.load_conf()
+    assert saved.read_bytes() == original
+
+
+@pytest.mark.parametrize("order", ILLEGAL_ORDERS)
+@pytest.mark.parametrize("method", ["post", "patch"])
+def test_configuration_route_rejects_impossible_layout_without_writing(
+    monkeypatch, tmp_path, order, method
+):
+    import server
+
+    saved = tmp_path / "conf.yml"
+    saved.write_text("account: saved account\n", encoding="utf-8")
+    original_file = saved.read_bytes()
+    original_conf = Conf(right_side_room_order=LEGAL_ORDERS[2], account="saved account")
+    original_data = original_conf.model_dump()
+    monkeypatch.setattr(config, "conf_path", saved)
+    monkeypatch.setattr(config, "conf", original_conf)
+    monkeypatch.setattr(server.app, "token", "layout-test-token", raising=False)
+    manager = MagicMock()
+    manager.get_active_plan_key.return_value = ""
+    monkeypatch.setattr(
+        "arknights_mower.utils.config.weekly_plan_loader.get_weekly_plan_manager",
+        lambda: manager,
+    )
+    client = server.app.test_client()
+    response = getattr(client, method)(
+        "/conf",
+        json={"right_side_room_order": list(order)},
+        headers={"token": "layout-test-token"},
+    )
+    assert response.status_code == 400
+    assert response.json["error"] == "invalid_configuration"
+    assert "回收站" in response.json["message"]
+    assert config.conf.model_dump() == original_data
+    assert saved.read_bytes() == original_file

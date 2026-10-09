@@ -24,6 +24,7 @@ from arknights_mower.utils.config.plan import (
 )
 from arknights_mower.utils.network_settings import apply_http_proxy
 from arknights_mower.utils.path import get_path
+from arknights_mower.utils.riic_layout import RIGHT_SIDE_ROOM_ORDERS
 
 apply_http_proxy()
 
@@ -185,6 +186,18 @@ def load_conf():
         }
         & raw.keys()
     )
+    order = raw.get("right_side_room_order")
+    if (
+        isinstance(order, list)
+        and len(order) == 3
+        and all(isinstance(room, str) for room in order)
+        and set(order) == {"contact", "train", "recycle"}
+        and tuple(order) not in RIGHT_SIDE_ROOM_ORDERS
+    ):
+        raw["right_side_room_order"] = [room for room in order if room != "recycle"] + [
+            "recycle"
+        ]
+        logger.warning("旧配置的回收站位置不合法，已移回底部，请核对本机设施布局")
     conf = Conf(**raw)
 
 

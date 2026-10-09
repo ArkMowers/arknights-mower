@@ -250,7 +250,7 @@ def test_drag_relocates_using_new_frame_and_new_central_anchor(
 
 def test_enter_room_passes_configured_right_side_layout(monkeypatch):
     monkeypatch.setattr(
-        config.conf, "right_side_room_order", ["recycle", "contact", "train"]
+        config.conf, "right_side_room_order", ["train", "recycle", "contact"]
     )
     room = rectangle(450, 350, 750, 600)
     solver, segmentation = navigation_solver(
@@ -258,7 +258,7 @@ def test_enter_room_passes_configured_right_side_layout(monkeypatch):
     )
     solver.enter_room(ROOM)
     assert segmentation.call_args.kwargs == {
-        "right_side_room_order": ["recycle", "contact", "train"]
+        "right_side_room_order": ["train", "recycle", "contact"]
     }
 
 
