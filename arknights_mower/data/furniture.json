@@ -14382,6 +14382,126 @@
       "quantity": 1,
       "canBeDestroy": false
     },
+    "furni_clmsRoom_lamp_01": {
+      "name": "绞盘杆式装饰灯",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_floorlamp_01": {
+      "name": "一体式鞋架",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_pool_01": {
+      "name": "全覆盖式加湿器",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_stonedesk_01": {
+      "name": "立式经书台",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_biglamp_01": {
+      "name": "辉煌吊灯",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_stonelamp_01": {
+      "name": "海晶装饰墙",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_chair_01": {
+      "name": "“左满舵”",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_chair_02": {
+      "name": "“右满舵”",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_longchair_01": {
+      "name": "过时长椅",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_roundtable_01": {
+      "name": "置香台",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_stoneclock_01": {
+      "name": "喷泉钟",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_carpet_01": {
+      "name": "配套吸水毯",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_chandelier_01": {
+      "name": "伪装吊灯",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_lighthouse_01": {
+      "name": "阿戈尔风格演讲台",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_sidetable_01": {
+      "name": "经文抄写台",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_plantplatform_01": {
+      "name": "藻类培养池",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_broadcast_01": {
+      "name": "全域广播扬声器",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_equiplight_01": {
+      "name": "感应式夜灯",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_wallpaper_01": {
+      "name": "港都盛景壁纸",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
+    "furni_clmsRoom_floor_01": {
+      "name": "半透明海景地板",
+      "themeId": "furni_set_clmsRoom",
+      "quantity": 1,
+      "canBeDestroy": false
+    },
     "furni_oct1st_deckChair_01": {
       "name": "一体式休闲座舱",
       "themeId": "",
@@ -15932,6 +16052,18 @@
     },
     "furni_terracommericials_vanillaSoda_01": {
       "name": "饰牌《清甜》",
+      "themeId": "",
+      "quantity": 0,
+      "canBeDestroy": false
+    },
+    "furni_vector_S3_touch_01": {
+      "name": "饰牌《拟生》",
+      "themeId": "",
+      "quantity": 0,
+      "canBeDestroy": false
+    },
+    "furni_terracommericials_rawPulp_01": {
+      "name": "饰牌《活力》",
       "themeId": "",
       "quantity": 0,
       "canBeDestroy": false
@@ -20161,6 +20293,31 @@
         "furni_dessertShop_carpet_01": 1,
         "furni_dessertShop_wallpaper_01": 1,
         "furni_dessertShop_floor_01": 1
+      }
+    },
+    "furni_set_clmsRoom": {
+      "name": "港都会客室",
+      "counts": {
+        "furni_clmsRoom_lamp_01": 1,
+        "furni_clmsRoom_floorlamp_01": 1,
+        "furni_clmsRoom_pool_01": 1,
+        "furni_clmsRoom_stonedesk_01": 1,
+        "furni_clmsRoom_biglamp_01": 1,
+        "furni_clmsRoom_stonelamp_01": 1,
+        "furni_clmsRoom_chair_01": 1,
+        "furni_clmsRoom_chair_02": 1,
+        "furni_clmsRoom_longchair_01": 1,
+        "furni_clmsRoom_roundtable_01": 1,
+        "furni_clmsRoom_stoneclock_01": 1,
+        "furni_clmsRoom_carpet_01": 1,
+        "furni_clmsRoom_chandelier_01": 1,
+        "furni_clmsRoom_lighthouse_01": 1,
+        "furni_clmsRoom_sidetable_01": 1,
+        "furni_clmsRoom_plantplatform_01": 1,
+        "furni_clmsRoom_broadcast_01": 1,
+        "furni_clmsRoom_equiplight_01": 1,
+        "furni_clmsRoom_wallpaper_01": 1,
+        "furni_clmsRoom_floor_01": 1
       }
     },
     "furniM_set_basicRoom": {

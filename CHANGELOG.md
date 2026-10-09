@@ -1,5 +1,38 @@
 # CHANGELOG
 
+## 4.1.6-alpha.10 - 2026-09-27
+
+### New
+
+- 为报错归档增加可配置磁盘上限 [PR](https://github.com/ArkMowers/arknights-mower/pull/1168) @ALEXsun0
+- 支持报错归档筛选、合并与清理 [PR](https://github.com/ArkMowers/arknights-mower/pull/1160) @ALEXsun0
+- 支持 Windows 与 Android Nightly OTA 开发版 [PR](https://github.com/ArkMowers/arknights-mower/pull/1159) @ALEXsun0
+- 支持调整右侧训练室与办公室位置 [PR](https://github.com/ArkMowers/arknights-mower/pull/1155) @ALEXsun0
+
+### Bug Fixes
+
+- 使用游戏字体修正文字模板并移除截图覆盖 [PR](https://github.com/ArkMowers/arknights-mower/pull/1165) @ALEXsun0
+- 固定单回床位并修正重配条件 [PR](https://github.com/ArkMowers/arknights-mower/pull/1166) @ALEXsun0
+- 修复 γ 型技能识别并清理不可专精资源 [PR](https://github.com/ArkMowers/arknights-mower/pull/1163) @ALEXsun0
+- 修复房间误判与训练室剩余时间日志 [PR](https://github.com/ArkMowers/arknights-mower/pull/1164) @ALEXsun0
+- 恢复空床补人并修正心情上下限调度 [PR](https://github.com/ArkMowers/arknights-mower/pull/1162) @ALEXsun0
+- 禁用高性能档位并限制自动档 [PR](https://github.com/ArkMowers/arknights-mower/pull/1161) @ALEXsun0
+- 修复上下班副表收敛、补床与跑单校时 [PR](https://github.com/ArkMowers/arknights-mower/pull/1158) @ALEXsun0
+- 更新后按载入心情数据模式重启 [PR](https://github.com/ArkMowers/arknights-mower/pull/1157) @ALEXsun0
+- 移除房间位置选项中的截图提示 @ALEXsun0
+- 调整不养闲人排除干员设置位置 [PR](https://github.com/ArkMowers/arknights-mower/pull/1156) @ALEXsun0
+
+### Documentation
+
+- 添加中英双语安全政策 @ALEXsun0
+
+### Other
+
+- prerelease v4.1.6-alpha.10 [PR](https://github.com/ArkMowers/arknights-mower/pull/1169) @ALEXsun0
+- 精简重复用例并验证真实专精队列判断 [PR](https://github.com/ArkMowers/arknights-mower/pull/1167) @ALEXsun0
+
+**Full Changelog**: [v4.1.6-alpha.9...v4.1.6-alpha.10](https://github.com/ArkMowers/arknights-mower/compare/v4.1.6-alpha.9...v4.1.6-alpha.10)
+
 ## 4.1.6-alpha.9 - 2026-09-26
 
 ### New
