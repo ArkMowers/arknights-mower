@@ -20,6 +20,19 @@
 					|| !['light', 'dark'].includes(event.data.theme)) return;
 				explicitTheme = event.data.theme;
 				applyTheme();
+				for (const property of [
+					'--page-bg', '--card-bg', '--light-bg', '--text-color', '--heading-color',
+					'--muted-color', '--primary-color', '--secondary-color', '--link-color',
+					'--link-hover', '--reference-color', '--reference-hover', '--border-color',
+					'--hover-bg', '--active-color', '--code-bg', '--note-border',
+					'--warning-border', '--error-color'
+				]) {
+					document.documentElement.style.removeProperty(property);
+					const color = event.data.colors?.[property];
+					if (typeof color === 'string' && CSS.supports('color', color)) {
+						document.documentElement.style.setProperty(property, color);
+					}
+				}
 			});
 		})();
 	</script>
@@ -29,32 +42,30 @@
 			color-scheme: light;
 			--sidebar-width: 210px;
 			--header-height: 60px;
-			--primary-color: #2e7d32;
-			--secondary-color: #2980b9;
-			--link-color: #0066cc;
-			--link-hover: #0044aa;
-			--reference-color: #c0392b;
-			--reference-hover: #a93226;
-			--border-color: #e0e0e0;
-			--light-bg: #f9f9f9;
-			--active-color: #e8f5e9;
-			--page-bg: #f8fafb;
-			--text-color: #333;
-			--muted-color: #555;
-			--heading-color: #2c3e50;
-			--hover-bg: #e0e0e0;
+			--primary-color: #18a058;
+			--secondary-color: #2080f0;
+			--link-color: #0c7a43;
+			--link-hover: #0c7a43;
+			--reference-color: #0c7a43;
+			--reference-hover: #0c7a43;
+			--border-color: rgb(239, 239, 245);
+			--light-bg: #fff;
+			--active-color: rgb(243, 243, 245);
+			--page-bg: #fff;
+			--text-color: rgb(51, 54, 57);
+			--muted-color: rgb(118, 124, 130);
+			--heading-color: rgb(31, 34, 37);
+			--hover-bg: rgb(243, 243, 245);
 			--subnav-bg: rgba(255,255,255,0.5);
-			--code-bg: #f5f5f5;
-			--error-color: #c62828;
-			--note-bg: #fff9e6;
-			--note-border: #b88700;
-			--warning-bg: #ffebee;
-			--warning-border: #d32f2f;
+			--code-bg: rgb(250, 250, 252);
+			--error-color: #d03050;
+			--note-border: #f0a020;
+			--warning-border: #d03050;
 			--highlight-bg: #fffacd;
 			--button-text: #fff;
-			--table-hover: #f0f7ff;
+			--table-hover: var(--hover-bg);
 			--transition-speed: 0.3s;
-			--shadow: 0 4px 6px rgba(0,0,0,0.1);
+			--shadow: none;
 			--card-bg: #fff;
 		}
 
@@ -62,29 +73,25 @@
 			color-scheme: dark;
 			--primary-color: #63e2b7;
 			--secondary-color: #70c0e8;
-			--link-color: #8acbec;
-			--link-hover: #b5e1f7;
-			--reference-color: #ffaaa0;
-			--reference-hover: #ffd0c9;
-			--border-color: #414149;
+			--link-color: #63e2b7;
+			--link-hover: #5acea7;
+			--reference-color: #63e2b7;
+			--reference-hover: #5acea7;
+			--border-color: rgba(255, 255, 255, 0.09);
 			--light-bg: #18181c;
-			--active-color: #1d3b31;
+			--active-color: rgba(255, 255, 255, 0.09);
 			--page-bg: #101014;
-			--text-color: #e8e8ec;
-			--muted-color: #b8b8c0;
-			--heading-color: #f4f4f5;
-			--hover-bg: #2c2c32;
+			--text-color: rgba(255, 255, 255, 0.82);
+			--muted-color: rgba(255, 255, 255, 0.52);
+			--heading-color: rgba(255, 255, 255, 0.9);
+			--hover-bg: rgba(255, 255, 255, 0.09);
 			--subnav-bg: #202024;
-			--code-bg: #202024;
-			--error-color: #ffaaa0;
-			--note-bg: #3c321e;
+			--code-bg: rgba(255, 255, 255, 0.06);
+			--error-color: #e88080;
 			--note-border: #f2c97d;
-			--warning-bg: #3d2529;
 			--warning-border: #e88080;
 			--highlight-bg: #554719;
 			--button-text: #10241c;
-			--table-hover: #24303a;
-			--shadow: 0 4px 6px rgba(0,0,0,0.4);
 			--card-bg: #18181c;
 		}
 		
@@ -98,11 +105,11 @@
 		/* 页面主体样式 */
 		body {
 			font-family: 'PingFang SC', 'Segoe UI', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif;
-			font-size: 16px;
-			line-height: 1.6;
+			font-size: 14px;
+			line-height: 1.8;
+			-webkit-font-smoothing: antialiased;
 			color: var(--text-color);
 			background-color: var(--page-bg);
-			scroll-behavior: smooth;
 			overflow-x: hidden; /* 防止页面整体溢出 */
 		}
 		
@@ -110,7 +117,7 @@
 		.container {
 			display: flex;
 			min-height: 100vh;
-			background: linear-gradient(to bottom, var(--active-color) 0%, var(--page-bg) 150px, var(--page-bg) 100%);
+			background: var(--page-bg);
 		}
 		
 		/* 侧边栏导航样式 */
@@ -123,7 +130,6 @@
 			top: 0;
 			overflow-y: auto;
 			z-index: 100;
-			transition: all var(--transition-speed) ease;
 			box-shadow: var(--shadow);
 		}
 		
@@ -136,8 +142,8 @@
 		.nav-title {
 			padding: 15px 20px;
 			font-weight: bold;
-			background: var(--active-color);
-			color: var(--primary-color);
+			background: var(--light-bg);
+			color: var(--heading-color);
 			font-size: 16px;
 			position: sticky;
 			top: 0;
@@ -161,7 +167,7 @@
 			padding: 12px 20px;
 			color: var(--text-color);
 			text-decoration: none;
-			transition: all 0.2s;
+			transition: background-color 0.2s, color 0.2s;
 			font-size: 13px;
 			font-weight: bold;
 			position: relative;
@@ -173,7 +179,7 @@
 		
 		.nav-link.active {
 			background: var(--active-color);
-			color: var(--primary-color);
+			color: var(--link-color);
 			font-weight: bold;
 			border-left: 3px solid var(--primary-color);
 		}
@@ -224,7 +230,7 @@
 			text-decoration: none;
 			font-size: 12.5px;
 			position: relative;
-			transition: all 0.2s;
+			transition: color 0.2s, background-color 0.2s, padding-left 0.2s;
 		}
 		
 		.sub-nav-link:hover {
@@ -243,7 +249,7 @@
 			height: 6px;
 			background: var(--muted-color);
 			border-radius: 50%;
-			transition: all 0.2s;
+			transition: background-color 0.2s, width 0.2s, height 0.2s;
 		}
 		
 		.sub-nav-link.active {
@@ -261,18 +267,20 @@
 		/* 主内容区域样式 */
 		.main-content {
 			flex: 1;
-			padding: 20px 40px 60px;
-			max-width: calc(100% - var(--sidebar-width));
+			min-width: 0;
+			padding: 24px 28px 60px;
+			max-width: min(1120px, calc(100% - var(--sidebar-width)));
 			overflow-x: hidden; /* 防止内容溢出 */
 		}
 		
 		/* 内容卡片样式 */
 		.content-card {
 			background: var(--card-bg);
-			border-radius: 10px;
+			border-radius: 12px;
+			border: 1px solid var(--border-color);
 			box-shadow: var(--shadow);
-			padding: 25px;
-			margin-bottom: 30px;
+			padding: 24px;
+			margin-bottom: 20px;
 			overflow: hidden; /* 防止卡片内内容溢出 */
 		}
 		
@@ -310,7 +318,7 @@
 		/* 正文段落样式 */
 		.text-content p {
 			margin-bottom: 15px;
-			text-align: justify;
+			text-align: left;
 			overflow-wrap: break-word; /* 防止长文本溢出 */
 		}
 		
@@ -323,7 +331,7 @@
 			color: var(--link-color);
 			text-decoration: underline;
 			cursor: pointer;
-			transition: all 0.2s;
+			transition: color 0.2s;
 		}
 		
 		.link-text:hover {
@@ -341,7 +349,7 @@
 			text-decoration: none;
 			color: var(--reference-color);
 			font-weight: bold;
-			transition: all 0.2s;
+			transition: color 0.2s;
 		}
 
 		.reference-link-text:hover {
@@ -440,35 +448,23 @@
 			background-color: var(--table-hover);
 		}
 		
-		/* 引用提示框样式 */
-		.note-box {
-			background: var(--note-bg);
-			border-left: 4px solid var(--note-border);
-			padding: 5px 20px;
-			margin: 20px 0;
-			border-radius: 0 4px 4px 0;
-			overflow: hidden; /* 防止内容溢出 */
-		}
-		
-		/* 警告提示框样式 */
-		.warning-box {
-			background: var(--warning-bg);
-			border-left: 4px solid var(--warning-border);
-			padding: 5px 20px;
-			margin: 20px 0;
-			border-radius: 0 4px 4px 0;
-			overflow: hidden;
-		}
-		
-		/* 提示框样式 */
+		/* 提示框共用中性背景和对称留白，用侧边色条区分语义。 */
+		.note-box,
+		.warning-box,
 		.tip-box {
-			background: var(--active-color);
-			border-left: 4px solid var(--primary-color);
-			padding: 5px 20px;
-			margin: 20px 0;
-			border-radius: 0 4px 4px 0;
-			overflow: hidden;
+			background: var(--code-bg);
+			border-radius: 6px;
+			border-left: 3px solid var(--primary-color);
+			padding: 12px 16px;
+			margin: 18px 0;
 		}
+
+		.note-box { border-left-color: var(--note-border); }
+		.warning-box { border-left-color: var(--warning-border); }
+		.text-content :is(.note-box, .warning-box, .tip-box) p:last-child {
+			margin-bottom: 0;
+		}
+		.tip-box strong { display: block; margin-bottom: 4px; }
 		
 		/* 列表样式 */
 		ol, ul {
@@ -581,7 +577,7 @@
 			z-index: 99;
 			opacity: 0;
 			transform: translateY(20px);
-			transition: all 0.3s ease;
+			transition: opacity 0.3s ease, transform 0.3s ease;
 		}
 		
 		/* 回到顶部按钮可见时样式 */
@@ -591,6 +587,10 @@
 		}
 	html { scroll-behavior: smooth; }
 .back-to-top { border: 0; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { transition: none !important; }
+}
 </style>
 </head>
 
@@ -918,7 +918,7 @@
         const section = current.closest('.content-card').querySelector('.title-level-1');
         for (const link of links) link.classList.toggle('active', link.hash === `#${section.id}`);
       }
-      backToTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+      backToTop.addEventListener('click', () => window.scrollTo({ top: 0 }));
       window.addEventListener('scroll', updateScrollState, { passive: true });
       window.addEventListener('resize', updateScrollState);
       updateScrollState();
