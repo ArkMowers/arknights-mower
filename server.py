@@ -3557,6 +3557,7 @@ def ws_chat(ws):
                     last_reply = reply
                 if last_reply:
                     context.append({"role": "assistant", "content": reply})
+                ws.send(json.dumps({"done": True}))
         except (ConnectionClosed, OSError):
             break
         except Exception as e:

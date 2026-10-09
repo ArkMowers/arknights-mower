@@ -28,6 +28,8 @@
     "arknights_mower/tests/dorm_priority_refresh_tests.py",
     "arknights_mower/tests/experimental_backup_free_tests.py",
     "arknights_mower/tests/backup_operator_removal_tests.py",
-    "arknights_mower/tests/custom_mood_limits_tests.py"
+    "arknights_mower/tests/custom_mood_limits_tests.py",
+    "ui/src/components/ChatBot.test.js",
+    "arknights_mower/tests/ai_security_tests.py"
   ]
 }
