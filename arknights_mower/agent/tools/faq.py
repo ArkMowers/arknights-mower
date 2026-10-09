@@ -10,7 +10,7 @@ def get_faq(question: str) -> str:
             candidates.append(item)
     if not candidates:
         return "[FAQ未命中] 未找到相关常见问题，请根据问题查询记录，或补充报错信息。"
-    result = "找到以下相关 FAQ（按当前 alpha 功能整理）：\n"
+    result = "找到以下相关 FAQ：\n"
     for idx, item in enumerate(candidates, 1):
         result += f"{idx}. {item['question']}\n{item['answer']}\n"
     return result
@@ -23,7 +23,7 @@ faq_tool_def = {
         "description": (
             "查询一般软件使用问题或常见报错的 FAQ。明确的数据库查询、漏单分析、"
             "专精操作和反馈请求直接使用对应工具。"
-            "内容依据当前 alpha 代码和界面整理，结果按关键词匹配；"
+            "内容依据当前代码和界面整理，结果按关键词匹配；"
             "结合用户版本及平台选择相关建议，不把关键词命中当作已证实的根因。"
             "未命中时根据问题查询记录或询问缺少的信息，仅在已有错误堆栈时提取路径。"
         ),
@@ -50,7 +50,7 @@ FAQ_LIST = [
             "版本",
         ],
         "question": "如何安装或更新 Mower？旧版下载器还能用吗？",
-        "answer": "当前 alpha 使用内置更新，不再使用独立的 Mower 下载器或旧更新器。已安装用户进入 Mower 设置 → "
+        "answer": "Mower 使用内置更新，不再使用独立的 Mower 下载器或旧更新器。已安装用户进入 Mower 设置 → "
         "软件更新，选择正式版、公测版或开发版渠道，检查更新并按提示安装。软件更新会重启同一安装目录下的运行实例并恢复原运行状态。首次安装从官方发布仓库 "
         "https://github.com/ArkMowers/MowerRelease 获取适合系统和架构的独立包；macOS 和 Linux 虽提供独立包，仍建议优先使用源码部署，"
         "安装步骤见 https://github.com/ArkMowers/arknights-mower/blob/alpha/README.md#源码部署 。独立包也可在“手动应用”上传 "
@@ -111,7 +111,7 @@ FAQ_LIST = [
             "实例",
             "路径",
         ],
-        "question": "alpha 如何连接模拟器、选择多开实例和填写路径？",
+        "question": "如何连接模拟器、选择多开实例和填写路径？",
         "answer": "在 Mower "
         "设置的设备连接区域选择与当前平台匹配的预设，使用页面提供的“检测实例”或“启动并检测”，有多个实例时明确选择目标。检测到的实例先保存编号和身份信息，ADB地址和游戏包在验证通过后保存；连接失败不撤销已选实例。需补路径时按当前预设字段的问号填写安装、管理器或配置路径，不再统一填写旧版 "
         "shell 文件夹、多开编号0或固定端口。下拉“测试连接（只读）”不会启动或重启模拟器；只有支持启停的预设才提供对应动作，具体以页面能力提示为准。",

@@ -25,6 +25,8 @@ README retains the overview, screenshots, source deployment for Windows, Linux a
 
 README, the packaging cookbook, one-stop help and FAQ recommend source deployment for macOS and Linux while retaining independent package support.
 
+User-facing help titles, link labels and FAQ wording omit the alpha label. Repository URLs and clone commands retain the actual branch name.
+
 ## Verification
 
 Focused offline checks cover legacy downloader queries, current task-switch and database-cleanup advice, case-insensitive FAQ lookup, local source references and help navigation. No scheduling, device-control or configuration schema changes require glossary edits.

@@ -1,6 +1,6 @@
 <template>
   <div class="link-container">
-    <strong>本地一条龙入门说明（alpha）</strong>
+    <strong>本地一条龙入门说明</strong>
     <n-a
       href="https://docs.qq.com/sheet/DUEJ6UWN5VFVRU0dG?tab=BB08J2"
       target="_blank"

@@ -3,7 +3,7 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Mower 一条龙入门说明（alpha）</title>
+	<title>Mower 一条龙入门说明</title>
 	<style>
 		/* 主题变量定义 */
 		:root {
@@ -529,7 +529,7 @@
 <body>
   <div class="container">
     <nav class="sidebar" id="sidebar" aria-label="入门说明目录">
-      <div class="nav-title">Mower 一条龙 · alpha</div>
+      <div class="nav-title">Mower 一条龙</div>
       <ul class="nav-list">
         <li><a href="#preface" class="nav-link">首次运行一条龙</a></li>
         <li><a href="#download-update" class="nav-link">安装与更新</a></li>
@@ -548,7 +548,7 @@
     <main class="main-content text-content">
       <section class="content-card">
         <h1 id="preface" class="title-level-1">Mower 一条龙入门说明</h1>
-        <p>本说明按 alpha 的当前功能与界面编写，更新时间：2026-10-09。实际软件版本和可用操作以你所用平台的页面提示为准。</p>
+        <p>本说明介绍 Mower 的当前功能与界面，更新时间：2026-10-09。实际软件版本和可用操作以你所用平台的页面提示为准。</p>
         <div class="tip-box"><p><strong>先完成设备连接和排班核对，再逐项打开需要的自动化。</strong>软件更新、资源更新、刷理智周计划和大型任务各有自己的入口与开关。</p></div>
         <ol>
           <li><a class="link-text" href="#download-update">安装或更新</a>：首次安装使用官方发布包，已有程序在“软件更新”检查版本。</li>
@@ -566,7 +566,7 @@
       <section class="content-card">
         <h1 id="download-update" class="title-level-1">安装、软件更新与资源更新</h1>
         <h2 id="windows" class="title-level-2">首次安装</h2>
-        <p>macOS 和 Linux 虽提供独立包，仍建议优先使用源码部署，安装步骤见 <a href="https://github.com/ArkMowers/arknights-mower/blob/alpha/README.md#源码部署" class="link-text" target="_blank" rel="noopener noreferrer">alpha README</a>。选择独立包时，按下列步骤安装。</p>
+        <p>macOS 和 Linux 虽提供独立包，仍建议优先使用源码部署，安装步骤见 <a href="https://github.com/ArkMowers/arknights-mower/blob/alpha/README.md#源码部署" class="link-text" target="_blank" rel="noopener noreferrer">README</a>。选择独立包时，按下列步骤安装。</p>
         <ol>
           <li>从 <a href="https://github.com/ArkMowers/MowerRelease" class="link-text" target="_blank" rel="noopener noreferrer">MowerRelease 官方发布仓库</a>选择对应系统和架构的独立包，并核对发布说明及 SHA256SUMS。</li>
           <li>Windows 解压完整包后启动其中的程序；macOS 使用对应架构的 DMG；Linux 使用对应架构的完整压缩包。</li>
@@ -582,7 +582,7 @@
           <li>独立包可在“手动应用”上传 Release 安装包；支持 OTA 的平台可用与当前版本匹配的差异包。版本不匹配或差异校验失败时使用完整包。</li>
         </ol>
         <h2 id="mower-sources" class="title-level-2">源码部署与平台差异</h2>
-        <p>源码部署使用“软件更新”的在线源码更新及“源码版本管理”。本地源码有修改时，先自行保存需要的改动，再判断是否接受强制更新；不要向源码部署上传 Release 独立包。源码安装和平台依赖详见 <a href="https://github.com/ArkMowers/arknights-mower/blob/alpha/README.md" class="link-text" target="_blank" rel="noopener noreferrer">alpha README</a>，不沿用旧文档中指定的环境名、手工拼装 macOS MAA 或固定安装路径。</p>
+        <p>源码部署使用“软件更新”的在线源码更新及“源码版本管理”。本地源码有修改时，先自行保存需要的改动，再判断是否接受强制更新；不要向源码部署上传 Release 独立包。源码安装和平台依赖详见 <a href="https://github.com/ArkMowers/arknights-mower/blob/alpha/README.md" class="link-text" target="_blank" rel="noopener noreferrer">README</a>，不沿用旧文档中指定的环境名、手工拼装 macOS MAA 或固定安装路径。</p>
         <h2 id="resource-update" class="title-level-2">资源与网络</h2>
         <p>Mower 设置 → 资源更新管理 Mower 识别等资源，支持检查、自动更新和手动上传资源包。共享安装下各实例在任务间歇加载资源，通常无需重启。MAA 本体和 MAA 资源在 MAA 设置中单独更新。</p>
         <p>下载失败时，在“网络与下载代理”检查全局网络代理和 GitHub 下载站点，并使用页面的下载测试。软件更新日志、资源更新日志和设备连接日志应分别查看。</p>
@@ -723,7 +723,7 @@
         <p>大型任务与刷理智周计划是独立开关。分别检查执行方式、任务类型、时间窗口、当天方案及库存限制。详见 <a href="#sanity-plan" class="link-text">作战与大型任务</a>。</p>
         <h2 id="other-issues" class="title-level-2">白屏、数组报错或历史报表为空？</h2>
         <p>白屏先区分平台窗口依赖和页面加载；数组异常结合堆栈与实际画面；报表先核对实例、时间范围及有效记录。不要直接断言被杀毒删除、排班布局错误或数据库损坏。保留证据后查对应归档或让 AI 分析。</p>
-        <p>更多功能问题可直接向 AI 助手提问；内置 FAQ 按当前 alpha 的功能入口提供建议。</p>
+        <p>更多功能问题可直接向 AI 助手提问；内置 FAQ 按当前功能入口提供建议。</p>
       </section>
 
       <section class="content-card">
@@ -739,7 +739,7 @@
         <h2 id="user-notice" class="title-level-2">运行与数据提示</h2>
         <p>首次使用或调整排班后观察一轮运行；手动操作游戏前停止自动任务，避免与自动操作冲突。配置备份包含凭据，删除历史记录、覆盖导入和版本回退前核对范围并备份。</p>
         <h2 id="acknowledgements" class="title-level-2">项目与文档</h2>
-        <p>感谢 Mower、MAA 开发者及社区文档贡献者。项目及详细部署说明见 <a href="https://github.com/ArkMowers/arknights-mower/tree/alpha" class="link-text" target="_blank" rel="noopener noreferrer">Mower alpha 仓库</a>。</p>
+        <p>感谢 Mower、MAA 开发者及社区文档贡献者。项目及详细部署说明见 <a href="https://github.com/ArkMowers/arknights-mower/tree/alpha" class="link-text" target="_blank" rel="noopener noreferrer">Mower 仓库</a>。</p>
       </section>
     </main>
   </div>
