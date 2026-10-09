@@ -196,17 +196,23 @@ def test_bundled_room_font_covers_reported_new_name_characters(tmp_path):
         assert set(map(ord, "旅门骨")) <= font.getBestCmap().keys()
 
 
-def test_original_fonts_are_available_without_mowerfonts(tmp_path, monkeypatch):
+def test_original_fonts_use_mowerfonts_or_legacy_local_directory(tmp_path, monkeypatch):
     import build_font_subsets as builder
 
-    monkeypatch.setenv("MOWERFONTS_DIR", str(tmp_path))
-    for name, digest in [
-        ("NotoSansHans-Medium.otf", builder.ROOM_SOURCE_SHA256),
-        ("SourceHanSansCN-Medium.ttf", builder.MASTERY_SOURCE_SHA256),
-    ]:
-        source = builder.source_font(name)
-        assert source.parent == builder.ROOT / "font_sources"
-        assert hashlib.sha256(source.read_bytes()).hexdigest() == digest
-    override = tmp_path / "NotoSansHans-Medium.otf"
-    override.write_bytes(b"explicit source")
-    assert builder.source_font(override.name) == override
+    monkeypatch.setattr(builder, "ROOT", tmp_path)
+    local = tmp_path / "ArknightsGameResource/fonts"
+    library = tmp_path / "MowerFonts/fonts"
+    local.mkdir(parents=True)
+    library.mkdir(parents=True)
+    filename = "NotoSansHans-Medium.otf"
+    _font(local / filename, "阿旅", cff=True)
+    _font(library / filename, "阿旅门骨", cff=True)
+    monkeypatch.delenv("MOWERFONTS_DIR", raising=False)
+    assert builder.source_font(filename).read_bytes() == (local / filename).read_bytes()
+    monkeypatch.setenv("MOWERFONTS_DIR", str(library))
+    assert (
+        builder.source_font(filename).read_bytes() == (library / filename).read_bytes()
+    )
+    # An explicitly configured checkout must not silently use another original.
+    (library / filename).unlink()
+    assert builder.source_font(filename) == library / filename
