@@ -25,7 +25,7 @@ README retains the overview, screenshots, source deployment for Windows, Linux a
 
 README, the packaging cookbook, one-stop help and FAQ recommend source deployment for macOS and Linux while retaining independent package support.
 
-User-facing help titles, link labels and FAQ wording omit the alpha label. Repository URLs and clone commands retain the actual branch name.
+User-facing help titles, link labels and FAQ wording omit the alpha label. Project links point to the repository homepage without selecting a branch; clone commands retain the actual branch name.
 
 ## Verification
 

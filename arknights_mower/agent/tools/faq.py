@@ -53,7 +53,7 @@ FAQ_LIST = [
         "answer": "Mower 使用内置更新，不再使用独立的 Mower 下载器或旧更新器。已安装用户进入 Mower 设置 → "
         "软件更新，选择正式版、公测版或开发版渠道，检查更新并按提示安装。软件更新会重启同一安装目录下的运行实例并恢复原运行状态。首次安装从官方发布仓库 "
         "https://github.com/ArkMowers/MowerRelease 获取适合系统和架构的独立包；macOS 和 Linux 虽提供独立包，仍建议优先使用源码部署，"
-        "安装步骤见 https://github.com/ArkMowers/arknights-mower/blob/alpha/README.md#源码部署 。独立包也可在“手动应用”上传 "
+        "安装步骤见 https://github.com/ArkMowers/arknights-mower#源码部署 。独立包也可在“手动应用”上传 "
         "Release 安装包，支持 OTA 的平台可使用与本地版本匹配的差异包。源码部署使用页面的源码更新，不上传 Release "
         "安装包。更新失败时提供当前版本、目标版本和页面中的更新日志，不再建议下载群文件中的旧下载器。",
         "sources": ["README.md", "ui/src/components/SoftwareUpdate.vue"],
