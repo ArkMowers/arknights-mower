@@ -2,12 +2,12 @@
 
 完整资源包安装到共享的 `@app/resources`。软件自带资源保留在 internal，作为内置基线。源码部署的运行期资源目录已加入 Git 忽略规则；macOS 资源写在用户数据目录，不改动已签名的 `.app`。
 
-| 部署方式 | 默认持久目录 |
-| --- | --- |
-| 源码 | 仓库根目录下的 `resources/` |
-| Windows / Linux 独立包 | 程序目录下的 `resources/` |
-| macOS 独立包 | `~/Library/Application Support/arknights_mower/resources/` |
-| 指定 `MOWER_DATA_DIR` | 该目录下的 `resources/` |
+| 部署方式               | 默认持久目录                                               |
+| ---------------------- | ---------------------------------------------------------- |
+| 源码                   | 仓库根目录下的 `resources/`                                |
+| Windows / Linux 独立包 | 程序目录下的 `resources/`                                  |
+| macOS 独立包           | `~/Library/Application Support/arknights_mower/resources/` |
+| 指定 `MOWER_DATA_DIR`  | 该目录下的 `resources/`                                    |
 
 这些路径显式使用 `space=""`，同一数据根目录的多开实例共享一份文件。首次启动会检查原共享 `tmp/resource` 和当前实例旧资源目录，将可用资源复制到持久目录，并保留旧目录供旧程序恢复使用。已有持久索引时不会重复迁移。
 

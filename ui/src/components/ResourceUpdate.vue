@@ -178,7 +178,8 @@ function set_auto_update(checked) {
       </n-form-item>
       <n-form-item :show-label="false">
         <span class="hint">
-          优先下载 OTA 增量包，不可用时自动下载整包。同一套 mower 的所有实例共用资源包，空闲实例自动加载；仅软件更新需要重启 Mower
+          优先下载 OTA 增量包，不可用时自动下载整包。同一套 mower
+          的所有实例共用资源包，空闲实例自动加载；仅软件更新需要重启 Mower
         </span>
       </n-form-item>
       <n-form-item label="手动应用">

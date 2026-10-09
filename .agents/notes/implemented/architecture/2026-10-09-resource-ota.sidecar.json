@@ -3,12 +3,8 @@
   "status": "implemented",
   "category": "architecture",
   "date": "2026-10-09",
-  "authors": [
-    "Codex"
-  ],
-  "invariants": [
-    "[INV-RES-02]"
-  ],
+  "authors": ["Codex"],
+  "invariants": ["[INV-RES-02]"],
   "code_symbols": [
     "arknights_mower.utils.resource_ota.build_ota",
     "arknights_mower.utils.resource_ota.apply_ota",
