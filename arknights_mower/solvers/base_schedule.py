@@ -4306,8 +4306,21 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
             previous = dorm_residents(self.op_data)
             allocation_plan = copy.deepcopy({**plan, **__plan})
-            # 本轮先前组的成功分床显式占用额度，不从可能陈旧的床位缓存推断。
-            for (room, index), name in (dorm_admissions or {}).items():
+            admissions = {}
+            for task in sorted(self.tasks, key=lambda task: task.time):
+                if task.type != TaskTypes.SHIFT_OFF:
+                    continue
+                for room, names in task.plan.items():
+                    if not room.startswith("dorm"):
+                        continue
+                    for index, name in enumerate(names):
+                        if index < len(self.op_data.plan.get(room, [])) and (
+                            name in self.op_data.operators
+                        ):
+                            admissions.setdefault((room, index), name)
+            admissions.update(dorm_admissions or {})
+            # 已入队和本轮成功分床显式占用额度，不从陈旧床位缓存推断预约。
+            for (room, index), name in admissions.items():
                 row = allocation_plan.setdefault(
                     room, ["Current"] * len(self.op_data.plan[room])
                 )

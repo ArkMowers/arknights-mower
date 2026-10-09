@@ -1070,6 +1070,28 @@ def test_resting_round_retains_prior_group_admissions(grouped_free_capacity):
     assert len([bed for bed in data.dorm if bed.name in ("银灰", "伊内丝")]) == 1
 
 
+@pytest.mark.parametrize("same_group", [False, True])
+def test_resting_plan_counts_admissions_in_queued_shift(
+    grouped_free_capacity, same_group
+):
+    instance = grouped_free_capacity
+    data = instance.op_data
+    apply_plan(instance, {"dormitory_1": ["Free", "Current", "陈"]})
+    data.operators["银灰"].group = "外组"
+    data.operators["伊内丝"].group = "联动" if same_group else "另一组"
+    queued_plan = {}
+    assert instance.get_resting_plan(["银灰"], [], queued_plan, 2)
+    queued_plan.update(try_reorder(data, queued_plan))
+    instance.tasks.append(
+        SchedulerTask(task_plan=queued_plan, task_type=TaskTypes.SHIFT_OFF)
+    )
+    plan = {}
+
+    accepted = instance.get_resting_plan(["伊内丝"], [], plan, 2)
+
+    assert bool(accepted) is same_group
+
+
 def test_grouped_free_capacity_uses_secondary_binding(grouped_free_capacity):
     data = grouped_free_capacity.op_data
     owner = data.operators["塑心"]
