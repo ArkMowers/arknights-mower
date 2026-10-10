@@ -1,0 +1,60 @@
+{
+  "title": "Protected Dormitory Bed Tiers",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-43]",
+    "[INV-SCHED-13]",
+    "[INV-SCHED-21]",
+    "[INV-SCHED-42]",
+    "[INV-SCHED-25]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators._slot_takable",
+    "arknights_mower.utils.operators.Operators.dorm_capacity_allows",
+    "arknights_mower.utils.scheduler_task.try_add_release_dorm",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.preserve_resting_crafters",
+    "arknights_mower.utils.resting_priority.bed_takeover_allowed",
+    "arknights_mower.utils.operators.Operators.init_and_validate",
+    "arknights_mower.utils.scheduler_task.dorm_residents",
+    "arknights_mower.utils.scheduler_task.restore_displaced_resting",
+    "arknights_mower.utils.operators.Operators.is_group_shift_anchor",
+    "arknights_mower.utils.operators.Operators.update_standby_low_priority",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.resting",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.get_resting_plan",
+    "ui.src.pages.Plan.validate_plan"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/protected_dorm_bed_tiers_tests.py",
+    "arknights_mower/tests/resting_priority_tests.py",
+    "arknights_mower/tests/rescue_priority_takeover_tests.py",
+    "arknights_mower/tests/emergency_capacity_tests.py",
+    "arknights_mower/tests/dorm_estimated_replacement_tests.py",
+    "arknights_mower/tests/standby_validation_capacity_tests.py",
+    "arknights_mower/tests/run_order_planning_wakeup_tests.py",
+    "arknights_mower/tests/dorm_batch_release_tests.py",
+    "arknights_mower/tests/workshop_dorm_tests.py",
+    "arknights_mower/tests/group_resting_capacity_tests.py",
+    "arknights_mower/tests/dorm_standby_integration_tests.py",
+    "arknights_mower/tests/dorm_unknown_selection_tests.py",
+    "arknights_mower/tests/dorm_vacancy_planning_tests.py",
+    "arknights_mower/tests/dorm_group_tests.py",
+    "arknights_mower/tests/rescue_dorm_fill_tests.py",
+    "arknights_mower/tests/manufacture_product_switch_tests.py",
+    "arknights_mower/tests/plan_binding_coverage_tests.py",
+    "arknights_mower/tests/dorm_recovery_tests.py",
+    "arknights_mower/tests/dorm_recovery_record_tests.py",
+    "arknights_mower/tests/dorm_single_free_departure_tests.py",
+    "arknights_mower/tests/group_shift_independence_tests.py",
+    "arknights_mower/tests/resting_correction_tests.py",
+    "arknights_mower/tests/shift_off_mood_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py",
+    "arknights_mower/tests/backup_condition_tests.py",
+    "arknights_mower/tests/local_backup_replay_tests.py",
+    "ui/src/stores/planValidation.test.js"
+  ]
+}

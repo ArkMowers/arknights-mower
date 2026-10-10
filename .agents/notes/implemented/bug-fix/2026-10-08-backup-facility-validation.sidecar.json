@@ -1,0 +1,25 @@
+{
+  "title": "Backup Facility Validation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-34]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.backup_validation.validate_backup_facilities",
+    "arknights_mower.utils.operators.Operators.validate_backup_plans",
+    "arknights_mower.utils.operators.Operators.swap_plan",
+    "arknights_mower.utils.config.conf.Conf"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/backup_validation_tests.py",
+    "arknights_mower/tests/manufacture_product_switch_tests.py",
+    "ui/src/stores/config.test.js",
+    "ui/src/stores/configPartial.test.js",
+    "ui/src/components/ProductSwitchingSettings.test.js"
+  ]
+}

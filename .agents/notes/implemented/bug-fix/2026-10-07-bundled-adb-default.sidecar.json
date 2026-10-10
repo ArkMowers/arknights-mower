@@ -1,0 +1,22 @@
+{
+  "title": "Bundled ADB Default",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-21]",
+    "[INV-01]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.config.device_profile.default_adb_path",
+    "arknights_mower.utils.config.device_profile.DeviceProfile"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/config_tests.py",
+    "arknights_mower/tests/device_config_tests.py",
+    "arknights_mower/tests/device_preflight_tests.py"
+  ]
+}

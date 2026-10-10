@@ -5,11 +5,48 @@ import { defineStore } from 'pinia'
 export const useMasteryStore = defineStore('mastery', () => {
   const loading = ref(false)
   const recommendations = ref([])
+  const statistics = ref(null)
+  const personalStatistics = ref(null)
+  const history = ref([])
+  const goals = ref([])
   const hasData = ref(false)
   const error = ref('')
   const filterAchievable = ref(false)
   const cultivateOk = ref(false)
   const cultivateMsg = ref('')
+  const yituliuSyncResult = ref(null)
+  const planCount = ref(0)
+  const isTraining = ref(false)
+  const planSummaryLoaded = ref(false)
+  const planSummaryError = ref('')
+  let planSummaryLoadedAt = 0
+  let planSummaryRequest = null
+
+  async function loadPlanSummary(force = false) {
+    if (!force && planSummaryLoaded.value && Date.now() - planSummaryLoadedAt < 30_000) {
+      return { planCount: planCount.value, isTraining: isTraining.value }
+    }
+    if (planSummaryRequest) return planSummaryRequest
+    planSummaryError.value = ''
+    planSummaryRequest = axios
+      .get(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`)
+      .then((response) => {
+        const plans = Array.isArray(response.data?.plans) ? response.data.plans : []
+        planCount.value = plans.length
+        isTraining.value = plans.some(({ status }) => status === 'training')
+        planSummaryLoaded.value = true
+        planSummaryLoadedAt = Date.now()
+        return { planCount: planCount.value, isTraining: isTraining.value }
+      })
+      .catch((e) => {
+        planSummaryError.value = e?.message || '读取专精计划失败'
+        throw e
+      })
+      .finally(() => {
+        planSummaryRequest = null
+      })
+    return planSummaryRequest
+  }
 
   async function fetchRecommendations() {
     loading.value = true
@@ -22,6 +59,10 @@ export const useMasteryStore = defineStore('mastery', () => {
         return
       }
       recommendations.value = data.operators || []
+      statistics.value = data.statistics || null
+      personalStatistics.value = data.personal_statistics || null
+      history.value = data.history || []
+      goals.value = data.goals || []
       hasData.value = data.has_data || false
     } catch (e) {
       error.value = `请求失败: ${e.message || e}`
@@ -45,9 +86,11 @@ export const useMasteryStore = defineStore('mastery', () => {
     error.value = ''
     cultivateOk.value = false
     cultivateMsg.value = ''
+    yituliuSyncResult.value = null
     try {
       const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/cultivate-fetch`)
       const data = response.data
+      yituliuSyncResult.value = data.yituliu_sync || null
       if (data.success) {
         cultivateOk.value = true
         cultivateMsg.value = data.message || '拉取成功'
@@ -69,6 +112,10 @@ export const useMasteryStore = defineStore('mastery', () => {
   return {
     loading,
     recommendations,
+    statistics,
+    personalStatistics,
+    history,
+    goals,
     hasData,
     error,
     filterAchievable,
@@ -76,6 +123,12 @@ export const useMasteryStore = defineStore('mastery', () => {
     fetchRecommendations,
     fetchCultivate,
     cultivateOk,
-    cultivateMsg
+    cultivateMsg,
+    yituliuSyncResult,
+    planCount,
+    isTraining,
+    planSummaryLoaded,
+    planSummaryError,
+    loadPlanSummary
   }
 })

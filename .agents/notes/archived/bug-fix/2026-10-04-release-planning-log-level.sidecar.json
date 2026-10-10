@@ -1,0 +1,19 @@
+{
+  "title": "Release Planning Log Level",
+  "status": "archived",
+  "category": "bug-fix",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.scheduler_task._advance_mood_limit_releases"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/mood_limit_deadline_tests.py",
+    "arknights_mower/tests/custom_mood_limits_tests.py"
+  ]
+}

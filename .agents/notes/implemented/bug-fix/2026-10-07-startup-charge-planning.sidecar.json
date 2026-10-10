@@ -1,0 +1,22 @@
+{
+  "title": "Startup Charge Planning",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-04]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.infra_main",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.backup_plan_solver",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.run"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/fiammetta_dorm_isolation_tests.py",
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/run_order_planning_wakeup_tests.py"
+  ]
+}

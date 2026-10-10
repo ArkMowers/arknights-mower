@@ -1,0 +1,37 @@
+{
+  "title": "Shared ADB Recovery",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-01",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-19]",
+    "[INV-05]",
+    "[INV-03]",
+    "[INV-DEV-18]",
+    "[INV-SCHED-39]"
+  ],
+  "code_symbols": [
+    "arknights_mower/utils/device/adb_client/shared.py",
+    "arknights_mower/utils/device/adb_client/server.py",
+    "arknights_mower/utils/device/adb_client/socket.py",
+    "arknights_mower/utils/device/adb_client/session.py",
+    "arknights_mower/utils/device/application.py",
+    "server.py",
+    "ui/src/stores/mower.js",
+    "ui/src/pages/Log.vue"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/adb_shared_server_tests.py",
+    "arknights_mower/tests/adb_shared_transport_tests.py",
+    "arknights_mower/tests/device_adb_recovery_tests.py",
+    "arknights_mower/tests/device_control_shutdown_tests.py",
+    "arknights_mower/tests/scheduler_recovery_preservation_tests.py",
+    "arknights_mower/tests/server_status_tests.py",
+    "ui/src/stores/mower.test.js",
+    "ui/src/pages/Log.test.js",
+    "ui/src/components/DeviceSettings.test.js"
+  ]
+}

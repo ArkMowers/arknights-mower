@@ -1,0 +1,21 @@
+{
+  "title": "Estimated Idle Candidate Classification",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-13]",
+    "[INV-SCHED-15]",
+    "[INV-SCHED-43]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.dorm_candidates.DormCandidates",
+    "arknights_mower.utils.dorm_candidates.dorm_candidates"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/dorm_estimated_replacement_tests.py"
+  ]
+}

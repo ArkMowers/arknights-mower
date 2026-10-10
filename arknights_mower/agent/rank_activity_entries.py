@@ -2,16 +2,10 @@ import json
 import time
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 
 from arknights_mower.agent.tools.pick_activity_entry import pick_activity_entry
 from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
-
-model_name_map = {
-    "deepseek-v4-flash": ["deepseek-v4-flash", "https://api.deepseek.com"],
-    "deepseek-v4-pro": ["deepseek-v4-pro", "https://api.deepseek.com"],
-}
 
 
 def _normalize_indices(indices, max_len):
@@ -43,24 +37,13 @@ def rank_activity_entries_with_agent(
     """
     if api_key is None:
         api_key = config.conf.resolved_ai_key
-    if not api_key or not api_key.strip():
+    if config.conf.ai_type != "custom-local" and (not api_key or not api_key.strip()):
         logger.info("rank_activity_entries_with_agent: missing api_key")
-        return []
-    if config.conf.ai_type not in model_name_map:
-        logger.info(
-            f"rank_activity_entries_with_agent: unsupported ai_type={config.conf.ai_type}"
-        )
         return []
 
     start = time.perf_counter()
     logger.info(
         f"rank_activity_entries_with_agent: start stage={target_stage} ocr_count={len(ocr_items or [])}"
-    )
-    llm = ChatOpenAI(
-        model=model_name_map[config.conf.ai_type][0],
-        base_url=model_name_map[config.conf.ai_type][1],
-        api_key=api_key,
-        temperature=0,
     )
     # 本地工具先给出一版稳定排序，作为 LLM 失败时兜底
     fallback_indices = []
@@ -108,6 +91,9 @@ def rank_activity_entries_with_agent(
     ]
     logger.info("rank_activity_entries_with_agent: invoke single-shot")
     try:
+        from arknights_mower.agent.agent import build_llm
+
+        llm = build_llm(api_key, with_tools=False)
         response = llm.invoke(messages)
         text = response.content if isinstance(response.content, str) else ""
         parsed = json.loads(text)

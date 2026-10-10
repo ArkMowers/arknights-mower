@@ -1,0 +1,31 @@
+name: 文档格式、相对链接与禁用词检查
+
+on:
+  push:
+    branches: [alpha, main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      comparison_base:
+        description: "比较基准提交或引用；留空检查所有 active 记录的引用"
+        type: string
+        required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    # Preserve the job name used by existing required-check configurations.
+    name: 校验文档规范、相对链接与术语一致性
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 运行文档格式、链接与禁用词检查
+        run: python scripts/verify_governance.py --ci

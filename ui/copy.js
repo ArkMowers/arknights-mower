@@ -8,6 +8,12 @@ const destDir = 'dist/docs'
 fs.mkdirSync(destDir, { recursive: true })
 fs.copyFileSync(sourceFile, path.join(destDir, path.basename(sourceFile)))
 
+// OTA reconstructs unchanged buffer data from its original bytes, not compiled JS.
+const bufferFile = 'src/pages/basement_skill/buffer.json'
+const bufferDest = 'dist/pages/basement_skill'
+fs.mkdirSync(bufferDest, { recursive: true })
+fs.copyFileSync(bufferFile, path.join(bufferDest, path.basename(bufferFile)))
+
 // 预压缩静态资源，server.py 会按 Accept-Encoding 返回 .gz
 function precompress(dir) {
   let count = 0

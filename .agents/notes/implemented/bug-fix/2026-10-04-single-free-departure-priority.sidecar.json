@@ -1,0 +1,19 @@
+{
+  "title": "Single-Free Departure Priority",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-20]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.scheduler_task.prioritize_new_dorm_recovery",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.arrange_release_dorm"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/dorm_single_free_departure_tests.py"
+  ]
+}

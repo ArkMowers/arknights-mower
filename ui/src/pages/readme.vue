@@ -144,7 +144,7 @@
           >https://arkn.lolicon.app</n-a
         >
       </p>
-      <p>Maa：<n-a target="_blank" href="https://maa.plus/">https://maa.plus/</n-a></p>
+      <p>MAA：<n-a target="_blank" href="https://maa.plus/">https://maa.plus/</n-a></p>
       <p>
         明日方舟定价理论（施工中）：<n-a
           target="_blank"

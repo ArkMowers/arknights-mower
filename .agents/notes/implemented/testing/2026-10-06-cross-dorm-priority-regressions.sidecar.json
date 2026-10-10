@@ -1,0 +1,21 @@
+{
+  "title": "Cross-Dormitory Priority Regressions",
+  "status": "implemented",
+  "category": "testing",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-20]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.scheduler_task.prioritize_new_dorm_recovery"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/group_resting_capacity_tests.py",
+    "arknights_mower/tests/rescue_priority_takeover_tests.py",
+    "arknights_mower/tests/resting_priority_tests.py",
+    "arknights_mower/tests/scheduler_task_tests.py"
+  ]
+}

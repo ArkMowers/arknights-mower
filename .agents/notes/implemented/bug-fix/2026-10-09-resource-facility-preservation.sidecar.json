@@ -1,0 +1,18 @@
+{
+  "title": "Building Skill Facility Preservation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-RES-03]"
+  ],
+  "code_symbols": [
+    "auto_get_res_new.Arknights数据处理器.获得干员基建描述"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/resource_generation_tests.py"
+  ]
+}

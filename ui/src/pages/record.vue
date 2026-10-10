@@ -13,7 +13,7 @@
         <Line :data="groupData.moodData" :options="chartOptions" />
       </template>
       <template v-else-if="currentReport === 'workRest'">
-        <Pie :data="groupData.workRestData" :options="pieOptions" />
+        <Pie :data="groupData.workRestData" :options="pieOptions" :plugins="[ChartDataLabels]" />
       </template>
     </div>
   </div>
@@ -53,8 +53,7 @@ ChartJS.register(
   Tooltip,
   Legend,
   Colors,
-  ArcElement,
-  ChartDataLabels
+  ArcElement
 )
 // Mock report data
 const reportData = ref([])

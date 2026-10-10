@@ -1,0 +1,23 @@
+{
+  "title": "Exhaustion admission and training deployment",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.emergency_recovery.exhaust_rest_due",
+    "arknights_mower.utils.emergency_staffing.worker_block_reason"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/emergency_group_staffing_tests.py",
+    "arknights_mower/tests/emergency_staffing_tests.py",
+    "arknights_mower/tests/exhaust_replacement_tests.py",
+    "arknights_mower/tests/mass_mood_recovery_tests.py"
+  ]
+}

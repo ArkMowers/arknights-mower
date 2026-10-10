@@ -13,7 +13,23 @@ from arknights_mower.utils import config, rapidocr
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import loadres, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.nav_steps import (
+    empty_nav_steps,
+    load_nav_file,
+    merge_nav_steps,
+    select_replay_steps,
+)
 from arknights_mower.utils.scene import Scene
+
+# 剧情/故事「进入」按钮（OCR 常读成 "Story >>"）不是关卡入口，LLM 在线构建选它只会
+# 录进没用的路由，从导航候选中剔除。"Story Line · XX" 章节名不带 ">>"，不受影响。
+_NAV_ENTRY_EXCLUDE = ("story", "剧情")
+
+
+def _is_story_entry(text) -> bool:
+    """命中剧情入口按钮形态：以 ">>" 结尾且含 story/剧情 关键词。"""
+    t = str(text).strip()
+    return t.endswith(">>") and any(kw in t.lower() for kw in _NAV_ENTRY_EXCLUDE)
 
 
 class NavigationSolver(SceneGraphSolver, BaseMixin):
@@ -165,6 +181,10 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         elif scene in self.waiting_scene:
             self.waiting_solver()
         else:
+            # LLM 导航会进入活动页，这些页面场景识别为 UNKNOWN；导航已成功
+            # （success）就别退回终端主界面，直接结束，否则会退掉刚进入的活动页
+            if self.success:
+                return True
             self.scene_graph_navigation(Scene.TERMINAL_MAIN)
 
     def enter_annihilation_from_terminal_main(self) -> bool:
@@ -821,6 +841,8 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
                 except Exception:
                     continue
                 score = float(item[2]) if len(item) > 2 else 0.0
+                if _is_story_entry(text):
+                    continue
                 candidates.append(
                     {"text": str(text).strip(), "center": center, "score": score}
                 )
@@ -1003,45 +1025,34 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         return f"{self.stage_pattern_stem(stage_name)}*"
 
     def load_nav_steps_data(self) -> dict:
-        path = Path(__rootdir__) / "data" / "nav_trie_steps.json"
-        if not path.exists():
-            return {"version": 1, "stages": {}, "patterns": {}}
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if "stages" not in data or not isinstance(data["stages"], dict):
-                data["stages"] = {}
-            if "patterns" not in data or not isinstance(data["patterns"], dict):
-                data["patterns"] = {}
-            return data
-        except Exception:
-            return {"version": 1, "stages": {}, "patterns": {}}
+        """本机用户自学文件（nav_trie_steps.json）——persist_nav_steps 只写这儿。
+
+        与官方层分开存，互不覆盖。
+        """
+        return load_nav_file(Path(__rootdir__) / "data" / "nav_trie_steps.json")
+
+    def load_official_nav_steps(self) -> dict:
+        """读取随程序发布的官方导航步骤；本地自学步骤单独保存。"""
+        path = Path(__rootdir__) / "data" / "nav_steps.json"
+        if not path.is_file():
+            return empty_nav_steps()
+        return load_nav_file(path)
+
+    def load_merged_nav_steps(self) -> dict:
+        """官方打底 + 本机优先的合并视图（回放用）。"""
+        return merge_nav_steps(
+            self.load_official_nav_steps(), self.load_nav_steps_data()
+        )
 
     def get_replay_steps(self) -> list[dict]:
-        data = self.load_nav_steps_data()
-        stage_entry = data["stages"].get(self.name, {})
-        stage_steps = stage_entry.get("steps", [])
-        if stage_steps and stage_entry.get("success") is True:
-            logger.debug(
-                f"找到精确关卡历史步骤: {self.name} steps={len(stage_steps)} success=true"
-            )
-            return stage_steps
-        if stage_steps:
-            logger.debug(f"忽略精确关卡历史步骤: {self.name}（缺少success=true）")
+        data = self.load_merged_nav_steps()
         pattern_key = self.stage_pattern_key(self.name)
-        if pattern_key:
-            # Fallback to shared prefix path when exact stage path is absent.
-            pattern_entry = data["patterns"].get(pattern_key, {})
-            pattern_steps = pattern_entry.get("steps", [])
-            if pattern_steps and pattern_entry.get("success") is True:
-                logger.debug(
-                    f"找到同pattern历史步骤: {pattern_key} steps={len(pattern_steps)} success=true"
-                )
-                return pattern_steps
-            if pattern_steps:
-                logger.debug(
-                    f"忽略同pattern历史步骤: {pattern_key}（缺少success=true）"
-                )
-        return []
+        steps = select_replay_steps(data, self.name, pattern_key)
+        if steps:
+            logger.debug(
+                f"命中导航步骤（官方+本机合并）: {self.name} steps={len(steps)}"
+            )
+        return steps
 
     def try_replay_nav_steps(self) -> bool:
         if not self.back_to_terminal_main():
@@ -1083,14 +1094,27 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
                 )
                 self.wait_for_scene_stable(timeout_seconds=5, interval_seconds=0.2)
             # Verify target after each step; return immediately on success.
-            if self.is_stage_code(self.name) and self.find_target_stage_after_entry(
-                self.name, max_swipes=3, pattern_only=True
-            ):
-                return True
+            # 验证期间的定位滑动不该混入录制结果（路由只到同 pattern 页面，
+            # 具体关卡定位由 find_target_stage_after_entry 运行时完成），临时压制录制。
+            prev_suppress = self._suppress_nav_recording
+            self._suppress_nav_recording = True
+            try:
+                if self.is_stage_code(self.name) and self.find_target_stage_after_entry(
+                    self.name, max_swipes=3, pattern_only=True
+                ):
+                    return True
+            finally:
+                self._suppress_nav_recording = prev_suppress
         if self.is_stage_code(self.name):
-            return self.find_target_stage_after_entry(
-                self.name, max_swipes=6, pattern_only=True
-            )
+            prev_suppress = self._suppress_nav_recording
+            self._suppress_nav_recording = True
+            try:
+                ok = self.find_target_stage_after_entry(
+                    self.name, max_swipes=6, pattern_only=True
+                )
+            finally:
+                self._suppress_nav_recording = prev_suppress
+            return ok
         return False
 
     def persist_nav_steps(self):

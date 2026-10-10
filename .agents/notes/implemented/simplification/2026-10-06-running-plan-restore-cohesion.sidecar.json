@@ -1,0 +1,20 @@
+{
+  "title": "Running Plan Restore Cohesion",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-CFG-02]"
+  ],
+  "code_symbols": [
+    "server.restore_running_plan",
+    "arknights_mower.utils.operators.build_global_plan"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/restore_running_plan_tests.py",
+    "ui/src/stores/configBackup.test.js"
+  ]
+}

@@ -21,7 +21,9 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { richText2HTML, findTerm } from '@/stores/richText2HTML'
-import buffer1 from '@/pages/basement_skill/buffer.json'
+import { useBasementSkill } from '@/stores/basementSkill'
+
+const { buffer: buffer1 } = useBasementSkill()
 const showModal = ref(false)
 const props = defineProps({
   des: String,

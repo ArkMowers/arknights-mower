@@ -1,0 +1,47 @@
+{
+  "baseline_commit": "87b9d3aa2c265cb90adb7b1a62f07bd8c505e97c",
+  "trace": [
+    {
+      "source_file": "runtime.log.2026-10-08_09",
+      "source_line": 29556,
+      "at": "2026-10-08 10:46:50,620",
+      "event": "convergence",
+      "queued_shift_off_count": 38
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 5756,
+      "at": "2026-10-08 11:03:58,968",
+      "event": "convergence",
+      "queued_shift_off_count": 45
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 8523,
+      "at": "2026-10-08 11:05:55,813",
+      "event": "convergence",
+      "queued_shift_off_count": 1
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 12465,
+      "at": "2026-10-08 11:09:23,534",
+      "event": "convergence",
+      "queued_shift_off_count": 1
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 16500,
+      "at": "2026-10-08 11:12:39,505",
+      "event": "convergence",
+      "queued_shift_off_count": 1
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 20328,
+      "at": "2026-10-08 11:15:57,295",
+      "event": "convergence",
+      "queued_shift_off_count": 1
+    }
+  ]
+}

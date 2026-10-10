@@ -134,7 +134,10 @@ class CaptchaClickSolver(BaseSolver):
         if not self._title_text:
             title = self._recognize_title(img)
             if not title:
-                logger.error("无法识别题目文字，刷新重试")
+                logger.error(
+                    "无法识别题目文字，刷新重试",
+                    extra={"archive_screenshots": False},
+                )
                 return self._fail_retry()
             self._title_text = title
             logger.info(f"题目文字：'{self._title_text}'")
@@ -142,7 +145,10 @@ class CaptchaClickSolver(BaseSolver):
         # 2) ddddocr 检测点击区所有汉字
         items = self._detect_click_items(img)
         if not items:
-            logger.error("点击区域内未检测到任何汉字，刷新重试")
+            logger.error(
+                "点击区域内未检测到任何汉字，刷新重试",
+                extra={"archive_screenshots": False},
+            )
             return self._fail_retry()
         logger.info(f"检测到 {len(items)} 个汉字, 结果如下：{str(items)}")
         for i, it in enumerate(items):
@@ -152,20 +158,24 @@ class CaptchaClickSolver(BaseSolver):
         # 检测到的汉字少于题目字数 → 直接刷新，不调 LLM
         if len(items) < len(self._title_text):
             logger.error(
-                f"检测到 {len(items)} 个汉字，少于题目 {len(self._title_text)} 个字，刷新重试"
+                f"检测到 {len(items)} 个汉字，少于题目 {len(self._title_text)} 个字，刷新重试",
+                extra={"archive_screenshots": False},
             )
             return self._fail_retry()
 
         # 3) LLM 排序（复用 agent/tools/captcha_ocr_match.py）
         order = match_captcha_order(self._title_text, items)
         if not order:
-            logger.error("LLM 排序失败，刷新重试")
+            logger.error("LLM 排序失败，刷新重试", extra={"archive_screenshots": False})
             return self._fail_retry()
 
         # 校验索引合法性
         valid = [i for i in order if 0 <= i < len(items)]
         if not valid:
-            logger.error("LLM 返回的索引全部越界，刷新重试")
+            logger.error(
+                "LLM 返回的索引全部越界，刷新重试",
+                extra={"archive_screenshots": False},
+            )
             return self._fail_retry()
 
         self._click_order = valid
@@ -312,7 +322,7 @@ class CaptchaClickSolver(BaseSolver):
         from arknights_mower.utils import rapidocr
 
         if not rapidocr.engine:
-            logger.error("RapidOCR 未初始化")
+            logger.error("RapidOCR 未初始化", extra={"archive_screenshots": False})
             return ""
 
         x1, y1, x2, y2 = self.title_area

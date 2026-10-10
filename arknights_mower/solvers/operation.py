@@ -9,15 +9,25 @@ from arknights_mower.solvers.local_operation import (
     compute_next_threshold_time,
 )
 from arknights_mower.solvers.record import (
+    apply_workshop_inventory,
+    battle_inventory_active,
+    get_inventory_counts,
     get_stage_operation_duration,
     record_operation_batch,
 )
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.datetime import get_server_weekday
+from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.maa_stage_inventory import (
+    load_inventory_snapshot,
+    stage_limit_status,
+)
+from arknights_mower.utils.operation_drops import read_operation_drops
 from arknights_mower.utils.recognize import Scene
 
 
@@ -34,164 +44,237 @@ class OperationSolver(SceneGraphSolver):
         sanity_threshold: int | None = None,
         stage_duration_seconds: int | None = None,
     ):
-        logger.info("Start: 代理作战")
-        logger.info("start operation solver")
-        self.stage_id = stage_id
-        self.next_task_time = next_task_time or stop_time
-        self.target_total_runs = target_total_runs
-        # Seeded once from SKLand before entering operation; after that we only
-        # simulate AP locally based on successful runs and do not refetch SKLand.
-        self.simulated_current_ap = simulated_current_ap
-        self.ap_cost = ap_cost
-        self.sanity_threshold = sanity_threshold
-        self.sanity_drain = False
-        self.stopped_by_deadline = False
-        self.executed_runs = 0
-        self.remaining_runs = (
-            None if target_total_runs is None else max(0, int(target_total_runs))
-        )
-        self.last_batch_duration_seconds = None
-        self.estimated_stage_duration_seconds = (
-            stage_duration_seconds
-            or get_stage_operation_duration(
-                stage_id or "",
-                DEFAULT_STAGE_DURATION_SECONDS,
+        battle_inventory_active.set()
+        try:
+            logger.info("Start: 代理作战")
+            logger.info("start operation solver")
+            self.stage_id = stage_id
+            self.next_task_time = next_task_time or stop_time
+            self.target_total_runs = target_total_runs
+            # Seeded once from SKLand before entering operation; after that we only
+            # simulate AP locally based on successful runs and do not refetch SKLand.
+            self.simulated_current_ap = simulated_current_ap
+            self.ap_cost = ap_cost
+            self.sanity_threshold = sanity_threshold
+            self.sanity_drain = False
+            self.stopped_by_deadline = False
+            self.stopped_by_inventory = False
+            self.inventory_unconfirmed = False
+            self.executed_runs = 0
+            self.remaining_runs = (
+                None if target_total_runs is None else max(0, int(target_total_runs))
             )
-        )
-        logger.debug(
-            "operation context | stage_id=%s | next_task_time=%s | target_total_runs=%s | simulated_current_ap=%s | ap_cost=%s | sanity_threshold=%s | estimated_stage_duration_seconds=%s",
-            self.stage_id,
-            self.next_task_time.strftime("%Y-%m-%d %H:%M:%S")
-            if self.next_task_time is not None
-            else None,
-            self.target_total_runs,
-            self.simulated_current_ap,
-            self.ap_cost,
-            self.sanity_threshold,
-            self.estimated_stage_duration_seconds,
-        )
-
-        while True:
-            if self.remaining_runs is not None and self.remaining_runs <= 0:
-                logger.debug(
-                    "stop operation loop because remaining_runs reached zero | stage_id=%s | executed_runs=%s",
-                    self.stage_id,
-                    self.executed_runs,
+            self.last_batch_duration_seconds = None
+            self.estimated_stage_duration_seconds = (
+                stage_duration_seconds
+                or get_stage_operation_duration(
+                    stage_id or "",
+                    DEFAULT_STAGE_DURATION_SECONDS,
                 )
-                break
-            if (
-                self.ap_cost is not None
-                and self.simulated_current_ap is not None
-                and self.simulated_current_ap < self.ap_cost
-            ):
-                self.sanity_drain = True
-                logger.info(
-                    "stop operation loop because simulated ap is below stage cost | stage_id=%s | simulated_current_ap=%s | ap_cost=%s",
-                    self.stage_id,
-                    self.simulated_current_ap,
-                    self.ap_cost,
-                )
-                break
-            if self._should_stop_for_deadline():
-                self.stopped_by_deadline = True
-                logger.info(
-                    "stop operation loop because next task deadline is too close | stage_id=%s | now=%s | next_task_time=%s | estimated_stage_duration_seconds=%s",
-                    self.stage_id,
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    self.next_task_time.strftime("%Y-%m-%d %H:%M:%S")
-                    if self.next_task_time is not None
-                    else None,
-                    self.estimated_stage_duration_seconds,
-                )
-                break
-
-            self._prepare_batch_state()
-            logger.info(
-                "operation batch start | stage_id=%s | desired_repeat_times=%s | remaining_runs=%s | simulated_current_ap=%s",
+            )
+            logger.debug(
+                "operation context | stage_id=%s | next_task_time=%s | target_total_runs=%s | simulated_current_ap=%s | ap_cost=%s | sanity_threshold=%s | estimated_stage_duration_seconds=%s",
                 self.stage_id,
-                self.desired_repeat_times,
-                self.remaining_runs,
+                self.next_task_time.strftime("%Y-%m-%d %H:%M:%S")
+                if self.next_task_time is not None
+                else None,
+                self.target_total_runs,
                 self.simulated_current_ap,
+                self.ap_cost,
+                self.sanity_threshold,
+                self.estimated_stage_duration_seconds,
             )
-            super().run()
 
-            if self.current_batch_success:
-                self.executed_runs += self.current_batch_repeat_count
-                if self.remaining_runs is not None:
-                    self.remaining_runs = max(
-                        0, self.remaining_runs - self.current_batch_repeat_count
+            while True:
+                if self._inventory_limit_reached():
+                    self.stopped_by_inventory = True
+                    break
+                if self.remaining_runs is not None and self.remaining_runs <= 0:
+                    logger.debug(
+                        "stop operation loop because remaining_runs reached zero | stage_id=%s | executed_runs=%s",
+                        self.stage_id,
+                        self.executed_runs,
                     )
-                if self.ap_cost is not None and self.simulated_current_ap is not None:
-                    self.simulated_current_ap = max(
-                        0,
-                        self.simulated_current_ap
-                        - self.current_batch_repeat_count * self.ap_cost,
-                    )
-                self.last_batch_duration_seconds = self.current_batch_duration_seconds
+                    break
                 if (
-                    self.stage_id
-                    and self.current_batch_started_at is not None
-                    and self.current_batch_finished_at is not None
-                    and self.ap_cost is not None
+                    self.ap_cost is not None
+                    and self.simulated_current_ap is not None
+                    and self.simulated_current_ap < self.ap_cost
                 ):
-                    record_operation_batch(
-                        stage_id=self.stage_id,
-                        run_count=self.current_batch_repeat_count,
-                        ap_cost=self.ap_cost,
-                        started_at=self.current_batch_started_at,
-                        finished_at=self.current_batch_finished_at,
-                        duration_seconds=self.current_batch_duration_seconds,
+                    self.sanity_drain = True
+                    logger.info(
+                        "stop operation loop because simulated ap is below stage cost | stage_id=%s | simulated_current_ap=%s | ap_cost=%s",
+                        self.stage_id,
+                        self.simulated_current_ap,
+                        self.ap_cost,
                     )
+                    break
+                if self._should_stop_for_deadline():
+                    self.stopped_by_deadline = True
+                    logger.info(
+                        "stop operation loop because next task deadline is too close | stage_id=%s | now=%s | next_task_time=%s | estimated_stage_duration_seconds=%s",
+                        self.stage_id,
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        self.next_task_time.strftime("%Y-%m-%d %H:%M:%S")
+                        if self.next_task_time is not None
+                        else None,
+                        self.estimated_stage_duration_seconds,
+                    )
+                    break
+
+                self._prepare_batch_state()
                 logger.info(
-                    "operation batch success | stage_id=%s | batch_repeat_count=%s | batch_duration_seconds=%.2f | executed_runs=%s | remaining_runs=%s | simulated_current_ap=%s",
+                    "operation batch start | stage_id=%s | desired_repeat_times=%s | remaining_runs=%s | simulated_current_ap=%s",
                     self.stage_id,
-                    self.current_batch_repeat_count,
-                    self.current_batch_duration_seconds,
-                    self.executed_runs,
+                    self.desired_repeat_times,
                     self.remaining_runs,
                     self.simulated_current_ap,
                 )
-            else:
-                logger.info(
-                    "operation batch ended without success | stage_id=%s | sanity_drain=%s | repeat_count=%s",
-                    self.stage_id,
-                    self.sanity_drain,
-                    self.current_batch_repeat_count,
-                )
-                break
+                super().run()
 
-            if self.target_total_runs is None:
-                logger.info(
-                    "stop operation loop because target_total_runs is not limited | stage_id=%s",
-                    self.stage_id,
-                )
-                break
+                if self.current_batch_success:
+                    self.executed_runs += self.current_batch_repeat_count
+                    if self.remaining_runs is not None:
+                        self.remaining_runs = max(
+                            0, self.remaining_runs - self.current_batch_repeat_count
+                        )
+                    if (
+                        self.ap_cost is not None
+                        and self.simulated_current_ap is not None
+                    ):
+                        self.simulated_current_ap = max(
+                            0,
+                            self.simulated_current_ap
+                            - self.current_batch_repeat_count * self.ap_cost,
+                        )
+                    self.last_batch_duration_seconds = (
+                        self.current_batch_duration_seconds
+                    )
+                    if (
+                        self.stage_id
+                        and self.current_batch_started_at is not None
+                        and self.current_batch_finished_at is not None
+                        and self.ap_cost is not None
+                    ):
+                        record_operation_batch(
+                            stage_id=self.stage_id,
+                            run_count=self.current_batch_repeat_count,
+                            ap_cost=self.ap_cost,
+                            started_at=self.current_batch_started_at,
+                            finished_at=self.current_batch_finished_at,
+                            duration_seconds=self.current_batch_duration_seconds,
+                        )
+                    logger.info(
+                        "operation batch success | stage_id=%s | batch_repeat_count=%s | batch_duration_seconds=%.2f | executed_runs=%s | remaining_runs=%s | simulated_current_ap=%s",
+                        self.stage_id,
+                        self.current_batch_repeat_count,
+                        self.current_batch_duration_seconds,
+                        self.executed_runs,
+                        self.remaining_runs,
+                        self.simulated_current_ap,
+                    )
+                else:
+                    logger.info(
+                        "operation batch ended without success | stage_id=%s | sanity_drain=%s | repeat_count=%s",
+                        self.stage_id,
+                        self.sanity_drain,
+                        self.current_batch_repeat_count,
+                    )
+                    break
 
-        next_threshold_time = None
-        if self.simulated_current_ap is not None and self.sanity_threshold is not None:
-            next_threshold_time = compute_next_threshold_time(
-                self.simulated_current_ap,
-                self.sanity_threshold,
+                if self.inventory_unconfirmed:
+                    break
+                if self._inventory_limit_reached():
+                    self.stopped_by_inventory = True
+                    break
+                if self.target_total_runs is None:
+                    logger.info(
+                        "stop operation loop because target_total_runs is not limited | stage_id=%s",
+                        self.stage_id,
+                    )
+                    break
+
+            next_threshold_time = None
+            if (
+                self.simulated_current_ap is not None
+                and self.sanity_threshold is not None
+            ):
+                next_threshold_time = compute_next_threshold_time(
+                    self.simulated_current_ap,
+                    self.sanity_threshold,
+                )
+
+            result = {
+                "executed_runs": self.executed_runs,
+                "sanity_drain": self.sanity_drain,
+                "next_threshold_time": next_threshold_time,
+                "stopped_by_deadline": self.stopped_by_deadline,
+                "stopped_by_inventory": self.stopped_by_inventory,
+                "inventory_unconfirmed": self.inventory_unconfirmed,
+                "last_batch_duration_seconds": self.last_batch_duration_seconds,
+                "simulated_current_ap": self.simulated_current_ap,
+                "remaining_runs": self.remaining_runs,
+            }
+            logger.info(
+                "operation finished | stage_id=%s | result=%s", self.stage_id, result
             )
+            return result
+        finally:
+            battle_inventory_active.clear()
 
-        result = {
-            "executed_runs": self.executed_runs,
-            "sanity_drain": self.sanity_drain,
-            "next_threshold_time": next_threshold_time,
-            "stopped_by_deadline": self.stopped_by_deadline,
-            "last_batch_duration_seconds": self.last_batch_duration_seconds,
-            "simulated_current_ap": self.simulated_current_ap,
-            "remaining_runs": self.remaining_runs,
-        }
-        logger.info(
-            "operation finished | stage_id=%s | result=%s", self.stage_id, result
-        )
-        return result
+    def _inventory_limit_reached(self):
+        if not config.conf.maa_stage_inventory_enable or not self.stage_id:
+            return False
+        inventory, _ = load_inventory_snapshot()
+        return stage_limit_status(
+            self.stage_id, config.conf.maa_stage_limit_rules, inventory
+        )[1]
+
+    def _record_batch_drops(self):
+        if self.current_batch_inventory_recorded:
+            return
+        try:
+            previous = None
+            confirmed = None
+            for attempt in range(3):
+                if attempt:
+                    self.sleep(0.5)
+                observed = (
+                    read_operation_drops(self.recog.img, self.stage_id)
+                    if self.scene() == Scene.OPERATOR_FINISH
+                    else None
+                )
+                if observed and observed == previous:
+                    confirmed = observed
+                    break
+                previous = observed
+            if confirmed is None:
+                self.inventory_unconfirmed = True
+                logger.warning(
+                    "作战掉落未能稳定识别，未修改库存，结束本次刷关，请读取仓库校准",
+                    extra={"archive_screenshots": True},
+                )
+                return
+            unknown = confirmed.keys() - get_inventory_counts(list(confirmed)).keys()
+            apply_workshop_inventory(confirmed)
+            self.current_batch_inventory_recorded = True
+            logger.info("本地作战掉落入库: %s", confirmed)
+            if unknown:
+                logger.warning(
+                    "掉落材料缺少库存基线，未估算总库存，请读取仓库: %s",
+                    "、".join(sorted(unknown)),
+                )
+        except (MowerExit, DeviceRecoveryError):
+            raise
+        except Exception:
+            self.inventory_unconfirmed = True
+            logger.exception("本地作战掉落入库失败，结束本次刷关，请检查库存")
 
     def _prepare_batch_state(self):
         self.auto_repeat = True
         self.repeat_button_attempts = 0
         self.current_batch_success = False
+        self.current_batch_inventory_recorded = False
         self.current_batch_repeat_count = 1
         self.current_batch_started_at = None
         self.current_batch_finished_at = None
@@ -362,6 +445,12 @@ class OperationSolver(SceneGraphSolver):
         elif scene == Scene.OPERATOR_SELECT:
             self.tap((1655, 781))
         elif scene == Scene.OPERATOR_FINISH:
+            if self.current_batch_started_at is None:
+                # A settlement left open before this run has no owned receipt.
+                logger.warning("跳过未由本批次启动的作战结算，不重复入库")
+                self.tap((310, 330))
+                return
+            self._record_batch_drops()
             self._finish_batch(True)
             logger.info(
                 "operation scene finish | stage_id=%s | repeat_count=%s",
@@ -395,8 +484,8 @@ class OperationSolver(SceneGraphSolver):
             return True
         elif scene == Scene.OPERATOR_RECOVER_POTION:
             use_medicine = False
-            if config.conf.maa_expiring_medicine:
-                if config.conf.exipring_medicine_on_weekend:
+            if config.conf.medicine_expire_days > 0:
+                if config.conf.expiring_medicine_on_weekend:
                     use_medicine = get_server_weekday() >= 5
                 else:
                     use_medicine = True

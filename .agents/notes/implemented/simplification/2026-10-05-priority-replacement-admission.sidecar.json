@@ -1,0 +1,36 @@
+{
+  "title": "Independent Dormitory Recovery",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-05",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-21]",
+    "[INV-SCHED-07]",
+    "[INV-SCHED-13]",
+    "[INV-SCHED-15]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.scheduler_task.try_add_release_dorm",
+    "arknights_mower.utils.scheduler_task.add_release_dorm",
+    "arknights_mower.utils.operators.Operators.get_refresh_index",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._plan_dorm_recovery",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.prepare_dorm_selection"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/priority_replacement_admission_tests.py",
+    "arknights_mower/tests/dorm_recovery_record_tests.py",
+    "arknights_mower/tests/initial_dorm_mood_tests.py",
+    "arknights_mower/tests/dorm_recovery_tests.py",
+    "arknights_mower/tests/dorm_estimated_replacement_tests.py",
+    "arknights_mower/tests/custom_mood_limits_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py",
+    "arknights_mower/tests/exhausted_working_timer_tests.py",
+    "arknights_mower/tests/mastery_choose_train_tests.py",
+    "arknights_mower/tests/scheduler_wakeup_tests.py",
+    "arknights_mower/tests/visible_production_target_tests.py",
+    "arknights_mower/tests/workshop_resident_restore_tests.py"
+  ]
+}

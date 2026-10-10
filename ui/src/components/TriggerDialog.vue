@@ -1,21 +1,33 @@
 <script setup>
-import { inject } from 'vue'
+import { inject, ref, watch } from 'vue'
 const show = inject('show_trigger_editor')
+const edit_locked = inject('planEditLocked', ref(false))
+watch(edit_locked, (locked) => {
+  if (locked) show.value = false
+})
 
 import { storeToRefs } from 'pinia'
 import { usePlanStore } from '@/stores/plan'
+import { usedepotStore } from '@/stores/depot'
+import { useFacilityStore } from '@/stores/facility'
+import { useMasteryStore } from '@/stores/mastery'
 
-const plan_store = usePlanStore()
+const plan_store = inject('planStore', null) || usePlanStore()
 const { sub_plan, backup_plans } = storeToRefs(plan_store)
+const depot_store = usedepotStore()
+const facility_store = useFacilityStore()
+const mastery_store = useMasteryStore()
 
-const triggerTimingOptions = [
-  { label: '任务开始', value: 'BEGINNING' },
-  { label: '下班结束', value: 'BEFORE_PLANNING' },
-  { label: '上班结束', value: 'AFTER_PLANNING' },
-  { label: '任务结束', value: 'END' }
-]
+watch(show, (visible) => {
+  if (visible) {
+    depot_store.loadInventory(true).catch(() => {})
+    facility_store.load(true).catch(() => {})
+    mastery_store.loadPlanSummary(true).catch(() => {})
+  }
+})
 
 function update_trigger(data) {
+  if (edit_locked.value) return
   backup_plans.value[sub_plan.value].trigger = data
 }
 </script>
@@ -25,28 +37,10 @@ function update_trigger(data) {
     v-model:show="show"
     preset="card"
     title="触发条件"
+    :auto-focus="false"
     transform-origin="center"
     style="width: auto; max-width: 90vw"
   >
-    <div class="dropdown-container">
-      <label class="dropdown-label"
-        >触发时机
-        <help-text>
-          <div>任务开始：单个任务开始时</div>
-          <div>下班结束：高效组下班任务安排完毕，生成上班时间任务前</div>
-          <div>上班结束：高效组上班安排结束时</div>
-          <div>任务结束：单个任务结束时</div>
-        </help-text>
-      </label>
-      <n-select
-        v-model:value="backup_plans[sub_plan].trigger_timing"
-        :options="triggerTimingOptions"
-        placeholder="Select Trigger Timing"
-        class="dropdown-select"
-      >
-      </n-select>
-    </div>
-
     <n-scrollbar style="max-height: 80vh; margin-top: 5px">
       <n-scrollbar x-scrollable>
         <trigger-editor :data="backup_plans[sub_plan].trigger" @update="update_trigger" />

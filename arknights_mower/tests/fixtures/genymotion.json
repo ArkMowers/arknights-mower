@@ -1,0 +1,19 @@
+{
+  "provenance": "Constructed from Genymotion's official gmtool 3.9.0 runbook; not a Linux field recording. See doc/device-control-genymotion.md.",
+  "version": "Version  : 3.9.0\n",
+  "list": {
+    "exit_code": 0,
+    "exit_code_desc": "SUCCESS",
+    "instances": [
+      {
+        "uuid": "b54fe1d2-0e30-42e6-b62b-94b3596088b9",
+        "name": "Mower Linux VM",
+        "state": "on",
+        "adb_serial": "127.0.0.1:6555",
+        "adb_serial_port": 6555
+      }
+    ]
+  },
+  "details": "Name : Mower Linux VM\nUUID : b54fe1d2-0e30-42e6-b62b-94b3596088b9\nAndroid Version : 15.0.0\nState : On\nIP : 127.0.0.1\nADB Serial : 127.0.0.1:6555\n",
+  "stopped_details": "Name : Mower Linux VM\nUUID : b54fe1d2-0e30-42e6-b62b-94b3596088b9\nState : Off\nADB Serial : 127.0.0.1:6554\n"
+}

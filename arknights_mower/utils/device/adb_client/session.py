@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
 import socket
 import struct
 import time
+from threading import Lock
 
+from arknights_mower.utils.device.adb_client.server import ADB_SERVER_ADDRESS
 from arknights_mower.utils.device.adb_client.socket import Socket
+from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.log import logger
 
 
@@ -12,7 +16,10 @@ class Session:
     """Session between ADB client and ADB server"""
 
     def __init__(self):
-        self.server = "127.0.0.1", 5037
+        self.owner_pid = os.getpid()
+        self._lock = Lock()
+        self._closed = False
+        self.server = ADB_SERVER_ADDRESS
         self.timeout = 5
         self.device_id = None
         self.sock = Socket(self.server, self.timeout)
@@ -21,22 +28,83 @@ class Session:
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback) -> None:
-        pass
+        self.close()
 
-    def request(self, cmd: str, reconnect: bool = False) -> Session:
-        """make a service request to ADB server, consult ADB sources for available services"""
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    def close(self):
+        if self.owner_pid != os.getpid():
+            return
+        with self._lock:
+            self._closed = True
+            sock, self.sock = getattr(self, "sock", None), None
+        if sock is not None:
+            sock.close()
+
+    def interrupt(self):
+        if self.owner_pid != os.getpid():
+            return
+        with self._lock:
+            self._closed = True
+            sock = getattr(self, "sock", None)
+        if sock is not None:
+            sock.interrupt()
+
+    def detach(self):
+        """Transfer the live stream to its helper, with one explicit owner."""
+        with self._lock:
+            if self._closed:
+                raise ConnectionError("ADB 会话已关闭")
+            sock, self.sock = self.sock, None
+            self._closed = True
+            return sock
+
+    def request(self, cmd: str) -> Session:
+        """Retry only read-only host queries and connection-local transport selection."""
         cmdbytes = cmd.encode()
         data = b"%04X%b" % (len(cmdbytes), cmdbytes)
+        retryable = cmd in {
+            "host:version",
+            "host:devices",
+            "host:transport-any",
+        } or cmd.startswith("host:transport:")
         while self.timeout <= 10:
             try:
+                try:
+                    if self._closed or self.owner_pid != os.getpid():
+                        raise ConnectionError("ADB 会话已关闭或所有权不匹配")
+                    io_timeout(self.timeout)
+                except Exception as exc:
+                    exc.input_not_sent = True
+                    raise
                 self.sock.send(data).check_okay()
                 return self
             except socket.timeout:
+                # A send or acknowledgement timeout cannot prove the service
+                # did not run. Its caller owns recovery and the input verdict.
+                if not retryable:
+                    self.close()
+                    raise
+                # Never open another socket after the application deadline.
+                with self._lock:
+                    expired, self.sock = self.sock, None
+                if expired is not None:
+                    expired.close()
+                io_timeout(self.timeout)
+                if self.timeout >= 10:
+                    raise
                 logger.warning(f"socket.timeout: {self.timeout}s, +5s")
                 self.timeout += 5
-                self.sock = Socket(self.server, self.timeout)
-                if reconnect:
-                    self.device(self.device_id)
+                replacement = Socket(self.server, self.timeout)
+                with self._lock:
+                    if self._closed:
+                        replacement.close()
+                        raise ConnectionError("ADB 会话已关闭")
+                    self.sock = replacement
         raise socket.timeout(f"server: {self.server}")
 
     def response(self, recv_all: bool = False) -> bytes:
@@ -50,25 +118,25 @@ class Session:
         """exec: cmd"""
         if len(cmd) == 0:
             raise ValueError("no command specified for exec")
-        return self.request("exec:" + cmd, True).response(True)
+        return self.request("exec:" + cmd).response(True)
 
     def shell(self, cmd: str) -> bytes:
         """shell: cmd"""
         if len(cmd) == 0:
             raise ValueError("no command specified for shell")
-        return self.request("shell:" + cmd, True).response(True)
+        return self.request("shell:" + cmd).response(True)
 
     def host(self, cmd: str) -> bytes:
         """host: cmd"""
         if len(cmd) == 0:
             raise ValueError("no command specified for host")
-        return self.request("host:" + cmd, True).response()
+        return self.request("host:" + cmd).response()
 
     def run(self, cmd: str, recv_all: bool = False) -> bytes:
         """run command"""
         if len(cmd) == 0:
             raise ValueError("no command specified")
-        return self.request(cmd, True).response(recv_all)
+        return self.request(cmd).response(recv_all)
 
     def device(self, device_id: str = None) -> Session:
         """switch to a device"""
@@ -101,7 +169,7 @@ class Session:
 
     def push(self, target_path: str, target: bytes, mode=0o100755, mtime: int = None):
         """push data to device"""
-        self.request("sync:", True)
+        self.request("sync:")
         request = b"%s,%d" % (target_path.encode(), mode)
         self.sock.send(b"SEND" + struct.pack("<I", len(request)) + request)
         buf = bytearray(65536 + 8)

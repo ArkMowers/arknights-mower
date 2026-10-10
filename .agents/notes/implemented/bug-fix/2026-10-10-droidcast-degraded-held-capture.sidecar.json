@@ -1,0 +1,25 @@
+{
+  "title": "DroidCast Degraded Held Capture",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-10",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-07]",
+    "[INV-DEV-17]",
+    "[INV-DEV-24]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.application.DeviceControl.capture_once",
+    "arknights_mower.utils.device.application.DeviceControl.capture",
+    "arknights_mower.utils.device.application.DeviceControl.recover",
+    "arknights_mower.utils.device.device.Device.screencap",
+    "arknights_mower.utils.device.droidcast.DroidCastSession._mapping_matches"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_droidcast_tests.py",
+    "arknights_mower/tests/held_swipe_capture_tests.py"
+  ]
+}

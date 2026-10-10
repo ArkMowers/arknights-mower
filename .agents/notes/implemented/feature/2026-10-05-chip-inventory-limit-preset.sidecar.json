@@ -1,0 +1,19 @@
+{
+  "title": "Chip Inventory Limit Preset",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-05",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-UI-05]"
+  ],
+  "code_symbols": [
+    "ui/src/utils/maa_stage_inventory.js:applyChipLimitPreset",
+    "ui/src/components/MaaStageInventory.vue:applyChipLimits"
+  ],
+  "test_suites": [
+    "ui/src/utils/maa_stage_inventory.test.js"
+  ]
+}
