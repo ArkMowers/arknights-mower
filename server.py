@@ -740,7 +740,10 @@ def _authorize_websocket(ws, allow_local_log=False):
     origin = request.headers.get("Origin", "")
     if allow_local_log and _local_log_request_allowed(require_origin=True):
         return True
-    if not expected or not origin or not _diagnostic_delete_origin_allowed(origin):
+    if not expected or (
+        not allow_local_log
+        and (not origin or not _diagnostic_delete_origin_allowed(origin))
+    ):
         return reject()
     try:
         first = ws.receive(timeout=5)

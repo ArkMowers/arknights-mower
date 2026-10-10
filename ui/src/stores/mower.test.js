@@ -15,6 +15,7 @@ afterEach(() => {
   vi.clearAllTimers()
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
   vi.clearAllMocks()
 })
 
@@ -77,6 +78,26 @@ describe('worker status', () => {
 })
 
 describe('log WebSocket access', () => {
+  it.each([
+    ['http://mower.example:18000', 'ws://mower.example:18000/log'],
+    ['https://mower.example', 'wss://mower.example/log'],
+    ['https://mower.example:8443', 'wss://mower.example:8443/log'],
+    ['https://[2001:db8::1]:8443', 'wss://[2001:db8::1]:8443/log']
+  ])('preserves the public origin %s and authenticates each connection', (origin, url) => {
+    vi.stubEnv('DEV', false)
+    vi.stubGlobal('window', { location: { search: '?token=test%2Bsecret%26value' } })
+    vi.stubGlobal('location', { origin })
+    setActivePinia(createPinia())
+    const store = useMowerStore()
+
+    store.listen_ws()
+    expect(ReconnectingWebSocket).toHaveBeenCalledWith(url)
+    store.ws.onopen()
+    store.ws.onopen()
+    expect(store.ws.send).toHaveBeenCalledTimes(2)
+    expect(store.ws.send).toHaveBeenLastCalledWith(JSON.stringify({ token: 'test+secret&value' }))
+  })
+
   it.each([
     ['', null],
     ['?token=runtime-secret', 'runtime-secret']
