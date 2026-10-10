@@ -158,6 +158,14 @@ Completed `RE_ORDER` and backup-generated `SELF_CORRECTION` tasks reuse a due an
 
 The [run-order roster decision](../../.agents/notes/implemented/bug-fix/2026-10-08-run-order-roster-compensation.md) records rationale and focused verification. The [startup charge planning decision](../../.agents/notes/implemented/bug-fix/2026-10-07-startup-charge-planning.md) records immediate post-charge planning.
 
+#### 2.5.2 Trade Order Countdown Admission
+
+`get_run_order_time` accepts an order-page marker after opening the page, including pages without an acceleration button. A valid digit-template countdown returns the run time with the configured delay deducted; a measured zero remains valid. Only a failed countdown read invokes OCR to check for confirmed order acquisition pause. An unconfirmed failure raises `RecognizeError` instead of supplying the current time.
+
+A confirmed pause returns `None` after navigating back to room details and reading Actual Occupancy and Operator Mood, clearing cached occupants absent from that observation. `plan_run_order` creates no order task from this result. It requests cached ordinary correction, or resumes normal planning after the current refresh task is consumed, while retaining the room's eligibility under the effective schedule and product rules. Ordinary correction retains existing replacements, projection and task priority boundaries under [INV-SCHED-04] and [INV-SCHED-05].
+
+A successful non-`RUN_ORDER` room arrangement queues one `REFRESH_TIME` when the room remains eligible and has neither an existing order nor an order-time refresh task. This supplies the next countdown observation after staffing resumes production. Run-order insertion and original-roster restoration retain their existing executor. The [paused order admission decision](../../.agents/notes/implemented/bug-fix/2026-10-10-paused-trade-order-admission.md) records the separate failure cause and verification.
+
 ### 2.6 Clue Collection & Exchange
 - Directs operators stationed in the Reception Room to gather clues 1 through 7, receive clues from friends, and gift surplus clues.
 - Initiates 24-hour Clue Parties upon completing full clue sets and tracks active party state (`party_time`) to activate corresponding backup plans.
