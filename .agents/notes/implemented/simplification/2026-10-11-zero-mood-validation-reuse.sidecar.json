@@ -17,6 +17,7 @@
   ],
   "test_suites": [
     "arknights_mower/tests/zero_mood_replacement_tests.py",
-    "arknights_mower/tests/backup_validation_tests.py"
+    "arknights_mower/tests/backup_validation_tests.py",
+    "ui/src/stores/planValidation.test.js"
   ]
 }

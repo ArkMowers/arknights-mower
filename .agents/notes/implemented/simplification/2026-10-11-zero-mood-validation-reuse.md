@@ -19,7 +19,7 @@ Validation reuses successful effective schedules only within one invocation. Its
 
 ## Verification
 
-Focused zero-mood, backup validation, multi-group and dormitory group tests cover exemptions, conflicting merged configurations, isolation, budgets and result reuse. Source plans and actual occupancy remain isolated. The subsystem contract owns the active behavioral specification.
+Focused zero-mood, backup validation, multi-group and dormitory group tests cover exemptions, conflicting merged configurations, isolation, budgets and result reuse. Source plans and actual occupancy remain isolated. `ui/src/stores/planValidation.test.js` covers save ordering, duplicate clicks during saving and validation, and retry after either operation fails; its harness supplies the page’s transient validation state. The subsystem contract owns the active behavioral specification.
 
 ## Standards Findings
 
