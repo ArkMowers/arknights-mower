@@ -13,7 +13,7 @@ date: 2026-10-09
 
 ## Simplification audit and implementation
 
-The four production selection-page callers share `BaseMixin.swipe_agent_page`. The existing `AgentPageObservation` carries the held frame to fast selection without a second capture. Slower profiles retain fresh-frame stability checks. The change reuses synchronous capture and existing input budgets instead of adding a capture thread, queue or separate selection engine. Other gesture paths retain their capture behavior; no-inertia gestures use the same 400 ms endpoint hold.
+The four production selection-page callers share `BaseMixin.swipe_agent_page`. The existing `AgentPageObservation` carries ordinary filled-page held frames to fast selection without a second capture. Blank-tail frames follow the separate [released-coordinate decision](../../implemented/bug-fix/2026-10-10-selection-tail-rebound.md). Slower profiles retain fresh-frame stability checks. The change reuses synchronous capture and existing input budgets instead of adding a capture thread, queue or separate selection engine. Other gesture paths retain their capture behavior; no-inertia gestures use the same 400 ms endpoint hold.
 
 A single optional endpoint callback reaches the selected MuMu IPC, scrcpy or MaaTouch helper. Capture starts 100 ms after reaching the endpoint and the remaining hold follows capture. A slow capture extends the hold within the existing input budget. The callback collects errors until release finishes; release failure retains the structured uncertain-input verdict. Release of an already held touch has a separate one-second cleanup allowance and does not replay a gesture. Existing Capture Frame terminology covers this interface without glossary changes.
 

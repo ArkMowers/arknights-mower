@@ -562,6 +562,24 @@ class BaseMixin:
             return True
         return False
 
+    @staticmethod
+    def agent_page_has_right_gap(img, page, *, train=False):
+        """名字横带右侧全为空白时，按住画面不能作为抬手后坐标。"""
+        if not isinstance(img, np.ndarray):
+            return False
+        if not page or any(scope is None for _, scope in page):
+            return True
+        left = max(scope[1][0] for _, scope in page) + 4
+        # 普通页排除职业栏，训练页保留完整列表；半张卡片也阻止空白判定。
+        right = 1920 if train else 1790
+        if right - left < 20:
+            return False
+        rows = ((479, 506), (895, 922)) if train else ((488, 520), (909, 941))
+        return all(
+            np.mean(np.min(img[bottom - 8 : bottom, left:right], axis=2) > 85) >= 0.9
+            for _, bottom in rows
+        )
+
     def wait_for_agent_page(
         self, *, full_scan=True, train=False, before=None, observation=None
     ):
@@ -613,6 +631,12 @@ class BaseMixin:
                 stable_matches = 0
                 continue
             self.check_agent_page(ret, train=train)
+            if previous == () and self.agent_page_has_right_gap(
+                self.recog.img, ret, train=train
+            ):
+                # 末页抬手后会回弹，按住帧不能计入两帧位置稳定证据。
+                previous = None
+                continue
             if (
                 before is not None
                 and ret
@@ -804,6 +828,11 @@ class BaseMixin:
                 mood_estimates,
                 skip_full_mood,
             )
+        if held_page == () and self.agent_page_has_right_gap(
+            self.recog.img, ret, train=train
+        ):
+            logger.debug("选人末页右侧空白，抬手后重新确认卡片位置")
+            ret = self.wait_for_agent_page(full_scan=full_scan, train=train)
         eligible = self.observe_agent_moods(
             ret, agent, mood_estimates, skip_full_mood, train=train
         )
