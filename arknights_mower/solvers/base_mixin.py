@@ -570,8 +570,8 @@ class BaseMixin:
         if not page or any(scope is None for _, scope in page):
             return True
         left = max(scope[1][0] for _, scope in page) + 4
-        # 普通页排除职业栏，训练页保留完整列表；半张卡片也阻止空白判定。
-        right = 1920 if train else 1790
+        # 两种布局均排除职业栏；半张卡片也阻止空白判定。
+        right = 1790
         if right - left < 20:
             return False
         rows = ((479, 506), (895, 922)) if train else ((488, 520), (909, 941))

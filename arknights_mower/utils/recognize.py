@@ -1004,6 +1004,17 @@ class Recognizer:
             if max_val >= threshold:
                 logger.debug(f"find: {res_name} {top_left=} {max_val=}")
                 return top_left, va(top_left, (w, h))
+            if res_name == "connecting":
+                # 进驻信息面板从 x=1231 开始遮住提交提示，只复核仍可见的文字。
+                # 高分文字和面板标题同时存在才判连接中，避免读取提交前的驻员。
+                visible_width = 1231 - scope[0][0]
+                visible_scope = scope[0], va(scope[0], (visible_width, h))
+                visible = cropimg(self.gray, visible_scope)
+                partial_score = cv2.matchTemplate(
+                    visible, res[:, :visible_width], cv2.TM_CCOEFF_NORMED
+                )[0, 0]
+                if partial_score >= 0.9 and self.find("room_detail"):
+                    return visible_scope
             return None
 
         dpi_aware = res in [
