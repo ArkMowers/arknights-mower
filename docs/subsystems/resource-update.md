@@ -8,6 +8,10 @@ The client selects an OTA only for its exact current resource version and only w
 
 [Verified resource OTA](../../.agents/notes/implemented/architecture/2026-10-09-resource-ota.md) records scope and verification.
 
+Bundled reconstruction reads the historical skill entry from `arknights_mower/data/building_skill.json`. The WebUI build retains the unchanged bytes of `ui/src/pages/basement_skill/buffer.json` under `ui/dist/pages/basement_skill/buffer.json`, alongside the copied public images. A source checkout can use its UI source files; desktop and Android packages require no `ui/src` directory. Selected external generations use their archive paths exclusively; a missing or corrupt base file never borrows bundled data.
+
+Bundled files declared in `RES_PACKAGE_DATA` can contain CRLF from a Windows checkout while sharing the published LF resource version. Reconstruction converts CRLF to LF only when such a base file is larger than the declared target, within the existing input limit and at most twice the target size. The staged result still requires the exact target size and SHA-256. Base files remain unchanged; binary resources, OTA payloads and external generations retain exact byte validation.
+
 ## 2. Resource Publication
 
 OTA reconstruction writes only staging files. The resource installer validates the target package against the running Mower version, rejects older resources, publishes an immutable version directory under the process and cross-process install locks, and updates the package index atomically. Cache loading retains task-boundary ownership and restores the previous index and selection on failure. Old generation directories remain available to instances that still use them.

@@ -51,10 +51,25 @@ def _members(archive):
     return {item.filename: item for item in members}
 
 
+def _chunks(stream, *, normalize=False):
+    """Stream bytes with bounded CRLF conversion, including split byte pairs."""
+    pending = b""
+    while chunk := stream.read(1024 * 1024):
+        if normalize:
+            chunk = pending + chunk
+            pending = b"\r" if chunk.endswith(b"\r") else b""
+            if pending:
+                chunk = chunk[:-1]
+            chunk = chunk.replace(b"\r\n", b"\n")
+        yield chunk
+    if pending:
+        yield pending
+
+
 def _digest(stream):
     digest = hashlib.sha256()
     size = 0
-    while chunk := stream.read(1024 * 1024):
+    for chunk in _chunks(stream):
         size += len(chunk)
         if size > MAX_BYTES:
             raise ValueError("资源 OTA 文件过大")
@@ -126,7 +141,14 @@ def build_ota(source, target, output, allowed_file):
 
 
 def apply_ota(
-    archive, destination, *, from_version, source_file, allowed_file, callback=None
+    archive,
+    destination,
+    *,
+    from_version,
+    source_file,
+    allowed_file,
+    callback=None,
+    normalize_base_files=(),
 ):
     """Reconstruct and verify every target file in an empty staging directory."""
     report = callback or (lambda **values: None)
@@ -184,21 +206,26 @@ def apply_ota(
     for name, info in sorted(files.items()):
         target = destination / name
         target.parent.mkdir(parents=True, exist_ok=True)
+        normalize = False
         if name in changed:
             stream = archive.open("payload/" + name)
         else:
             source = Path(source_file(name))
-            if (
-                source.is_symlink()
-                or not source.is_file()
-                or source.stat().st_size != info["size"]
-            ):
+            if source.is_symlink() or not source.is_file():
+                raise ValueError(f"资源 OTA 起点文件不匹配：{name}")
+            source_size = source.stat().st_size
+            # A bundled Windows checkout can differ only by CRLF expansion.
+            # Keep the codec standalone; the caller supplies the declared text set.
+            normalize = name in normalize_base_files and info[
+                "size"
+            ] < source_size <= min(MAX_BYTES, 2 * info["size"])
+            if not normalize and source_size != info["size"]:
                 raise ValueError(f"资源 OTA 起点文件不匹配：{name}")
             stream = source.open("rb")
         digest = hashlib.sha256()
         written = 0
         with stream, target.open("wb") as output:
-            while chunk := stream.read(1024 * 1024):
+            for chunk in _chunks(stream, normalize=normalize):
                 written += len(chunk)
                 if written > info["size"]:
                     raise ValueError("资源 OTA 文件超过声明大小")

@@ -28,6 +28,7 @@ from arknights_mower.utils.path import get_path
 from arknights_mower.utils.res_version import (
     BUILDING_SKILL_DATA,
     BUILDING_SKILL_PACKAGE_PATH,
+    RES_PACKAGE_DATA,
     is_package_file,
     parse_version,
 )
@@ -448,15 +449,24 @@ def _extract_package(data, callback=None):
             selection = _selection()
 
             def source_file(name):
-                source = resource_pkg_path(name)
+                builtin_skill = (
+                    selection.root is None and name == BUILDING_SKILL_PACKAGE_PATH
+                )
+                source = resource_pkg_path(
+                    BUILDING_SKILL_DATA if builtin_skill else name
+                )
                 if selection.root is not None:
                     root = selection.root
+                elif builtin_skill:
+                    root = Path(__rootdir__)
                 elif name.startswith("ui/"):
-                    # Bundled UI images may be outside the Python package.
+                    # Bundled images and raw OTA data live in the UI build output.
                     root = Path(__rootdir__).parent / "ui"
                     source = root / name.removeprefix("ui/")
-                    if not source.exists() and name.startswith("ui/public/"):
-                        source = root / "dist" / name.removeprefix("ui/public/")
+                    if not source.exists() and name.startswith(
+                        ("ui/public/", "ui/src/")
+                    ):
+                        source = root / "dist" / name.split("/", 2)[2]
                 else:
                     root = Path(__rootdir__)
                 if not source.resolve().is_relative_to(root.resolve()):
@@ -469,6 +479,7 @@ def _extract_package(data, callback=None):
                 from_version=selection.manifest.get("res_version"),
                 source_file=source_file,
                 allowed_file=is_package_file,
+                normalize_base_files=RES_PACKAGE_DATA if selection.root is None else (),
                 callback=callback,
             )
             return validate_package(_STAGING, __version__)
