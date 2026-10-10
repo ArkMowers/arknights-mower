@@ -11,6 +11,7 @@
   ],
   "code_symbols": [
     "scripts.verify_governance.run_all_checks",
+    "scripts.verify_governance.github_comparison_scope",
     "scripts.verify_agent_note_format.verify_agent_notes",
     "scripts.verify_agent_note_format.changed_note_paths",
     "scripts.verify_agent_note_format.declared_invariants"
