@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -183,7 +184,16 @@ class InstanceScanTests(unittest.TestCase):
         self.assertTrue(other.exists())
 
     def test_invalid_content_is_preserved(self):
-        for value in ("{", "[]", "{}", '{"pid":true}', '{"pid":0}', '{"pid":"123"}'):
+        for value in (
+            "",
+            "not-json",
+            "{",
+            "[]",
+            "{}",
+            '{"pid":true}',
+            '{"pid":0}',
+            '{"pid":"123"}',
+        ):
             with self.subTest(value=value):
                 self.path.write_text(value, encoding="utf-8")
                 with self.assertRaises(runtime.InstanceScanError):
@@ -308,6 +318,325 @@ class AtomicJsonTests(unittest.TestCase):
                     runtime.write_json(path, {"version": "new"})
             self.assertEqual(runtime.read_json(path), {"version": "old"})
             self.assertEqual(list(Path(folder).iterdir()), [path])
+
+
+class RuntimeRegistrationTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="mower registration ")
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name)
+        state = patch.object(runtime, "state_dir", return_value=self.directory)
+        state.start()
+        self.addCleanup(state.stop)
+        backups = patch.object(
+            runtime.RuntimeRegistration, "_retry_backups", return_value=None
+        )
+        backups.start()
+        self.addCleanup(backups.stop)
+        self.registration = runtime.RuntimeRegistration("instance", name="test")
+        runtime.atexit.unregister(self.registration.close)
+        self.addCleanup(self.registration.close)
+
+    def test_heartbeat_recovers_after_failed_replace_and_preserves_old_registration(
+        self,
+    ):
+        initial = runtime.read_json(self.registration.path)
+        failed = threading.Event()
+        recovered = threading.Event()
+        real_replace = os.replace
+
+        def replace(source, destination):
+            if Path(destination) == self.registration.path and not failed.is_set():
+                failed.set()
+                raise OSError("registration disk temporarily unavailable")
+            real_replace(source, destination)
+            recovered.set()
+
+        with (
+            patch.object(runtime.os, "replace", side_effect=replace),
+            patch.object(threading, "excepthook"),
+            self.assertLogs(runtime.__name__, level="WARNING") as logged,
+        ):
+            self.assertTrue(failed.wait(3), "heartbeat never attempted publication")
+            self.assertEqual(runtime.read_json(self.registration.path), initial)
+            self.assertTrue(recovered.wait(3), "heartbeat did not retry publication")
+        self.assertTrue(self.registration.thread.is_alive())
+        self.assertGreater(
+            runtime.read_json(self.registration.path)["heartbeat"], initial["heartbeat"]
+        )
+        self.assertIn(str(self.registration.path), " ".join(logged.output))
+
+    def test_heartbeat_recovers_after_json_encoder_exception(self):
+        initial = runtime.read_json(self.registration.path)
+        failed = threading.Event()
+        recovered = threading.Event()
+        real_chunks = json.JSONEncoder.iterencode
+        real_replace = os.replace
+
+        def chunks(encoder, value, _one_shot=False):
+            if (
+                threading.current_thread() is self.registration.thread
+                and not failed.is_set()
+            ):
+                failed.set()
+                yield "{"
+                raise RuntimeError("JSON encoder interrupted")
+            yield from real_chunks(encoder, value, _one_shot)
+
+        def replace(source, destination):
+            real_replace(source, destination)
+            recovered.set()
+
+        with (
+            patch.object(json.JSONEncoder, "iterencode", chunks),
+            patch.object(runtime.os, "replace", side_effect=replace),
+            self.assertLogs(runtime.__name__, level="WARNING") as logged,
+        ):
+            self.assertTrue(failed.wait(3))
+            self.assertEqual(runtime.read_json(self.registration.path), initial)
+            self.assertTrue(recovered.wait(3), "encoder failure stopped the heartbeat")
+        self.assertTrue(self.registration.thread.is_alive())
+        self.assertIn("JSON encoder interrupted", " ".join(logged.output))
+        self.assertEqual(
+            list(self.registration.path.parent.iterdir()), [self.registration.path]
+        )
+
+    def test_publish_encodes_a_snapshot_while_launcher_adds_registration_fields(self):
+        encoding = threading.Event()
+        resume = threading.Event()
+        errors = []
+        published = []
+        real_chunks = json.JSONEncoder.iterencode
+        real_replace = os.replace
+
+        def chunks(encoder, value, _one_shot=False):
+            for index, chunk in enumerate(real_chunks(encoder, value, _one_shot)):
+                if threading.current_thread() is publisher and index == 2:
+                    encoding.set()
+                    if not resume.wait(3):
+                        raise TimeoutError("launcher did not release JSON encoding")
+                yield chunk
+
+        def replace(source, destination):
+            if threading.current_thread() is publisher:
+                published.append(json.loads(Path(source).read_text(encoding="utf-8")))
+            real_replace(source, destination)
+
+        def publish():
+            try:
+                self.registration.publish()
+            except Exception as exc:
+                errors.append(exc)
+
+        publisher = threading.Thread(target=publish)
+        with (
+            patch.object(json.JSONEncoder, "iterencode", chunks),
+            patch.object(runtime.os, "replace", side_effect=replace),
+        ):
+            publisher.start()
+            try:
+                self.assertTrue(encoding.wait(3), "publication never began encoding")
+                self.registration.record.update(
+                    listen_host="127.0.0.1", token_hash="test"
+                )
+            finally:
+                resume.set()
+                publisher.join(3)
+        self.assertFalse(publisher.is_alive())
+        self.assertEqual(errors, [])
+        self.assertNotIn("listen_host", published[0])
+        self.registration.publish()
+        self.assertEqual(
+            runtime.read_json(self.registration.path)["listen_host"], "127.0.0.1"
+        )
+
+    def test_late_launcher_publish_cannot_recreate_closed_registration(self):
+        self.registration.close()
+        self.registration.record.update(ready=True, port=58001)
+        self.registration.publish()
+        self.assertFalse(self.registration.path.exists())
+        self.assertFalse(self.registration.thread.is_alive())
+
+    @unittest.skipUnless(os.name == "nt", "Windows native sharing locks")
+    def test_close_waits_for_inflight_heartbeat_before_removing_registration(self):
+        attempted = threading.Event()
+        closed = threading.Event()
+        held = []
+        errors = []
+        released = False
+        real_replace = os.replace
+
+        def replace(source, destination):
+            if (
+                Path(destination) == self.registration.path
+                and threading.current_thread() is self.registration.thread
+                and not held
+            ):
+                lock = windows_read_handle(source)
+                lock.__enter__()
+                held.append(lock)
+                attempted.set()
+            real_replace(source, destination)
+
+        def close():
+            try:
+                self.registration.close()
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                closed.set()
+
+        closer = threading.Thread(target=close)
+        try:
+            with patch.object(runtime.os, "replace", side_effect=replace):
+                self.assertTrue(
+                    attempted.wait(3), "heartbeat never reached replacement"
+                )
+                closer.start()
+                self.assertFalse(
+                    closed.wait(3.3), "close returned before publication ended"
+                )
+                self.assertTrue(self.registration.path.exists())
+                held[0].__exit__(None, None, None)
+                released = True
+                self.assertTrue(closed.wait(3), "close never completed after release")
+                closer.join(3)
+                self.registration.thread.join(3)
+        finally:
+            if held and not released:
+                held[0].__exit__(None, None, None)
+            if closer.ident is not None:
+                closer.join(6)
+            self.registration.thread.join(6)
+        self.assertEqual(errors, [])
+        self.assertFalse(self.registration.path.exists())
+        self.assertFalse(self.registration.thread.is_alive())
+
+    def test_close_timeout_keeps_registration_and_allows_cleanup_after_publication(
+        self,
+    ):
+        initial = runtime.read_json(self.registration.path)
+        real_lock = self.registration._publication_lock
+        publishing = threading.Event()
+        resume = threading.Event()
+        closed = threading.Event()
+        errors = []
+        real_replace = os.replace
+
+        class ShortWaitLock:
+            def __enter__(self):
+                real_lock.acquire()
+
+            def __exit__(self, *args):
+                real_lock.release()
+
+            def acquire(self, *, timeout):
+                return real_lock.acquire(timeout=min(timeout, 0.05))
+
+            def release(self):
+                real_lock.release()
+
+        self.registration._publication_lock = ShortWaitLock()
+
+        def replace(source, destination):
+            if threading.current_thread() is publisher:
+                publishing.set()
+                if not resume.wait(3):
+                    raise TimeoutError("publication was not released")
+            real_replace(source, destination)
+
+        def close():
+            try:
+                self.registration.close()
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                closed.set()
+
+        publisher = threading.Thread(target=self.registration.publish)
+        closer = threading.Thread(target=close)
+        with patch.object(runtime.os, "replace", side_effect=replace):
+            publisher.start()
+            try:
+                self.assertTrue(publishing.wait(3))
+                closer.start()
+                self.assertTrue(closed.wait(0.5), "close did not bound its lock wait")
+                self.assertEqual(len(errors), 1)
+                self.assertIsInstance(errors[0], TimeoutError)
+                self.assertTrue(self.registration.closed.is_set())
+                self.assertEqual(runtime.read_json(self.registration.path), initial)
+            finally:
+                resume.set()
+                publisher.join(3)
+                if closer.ident is not None:
+                    closer.join(3)
+        self.assertFalse(publisher.is_alive())
+        self.assertTrue(self.registration.path.exists())
+        self.registration.close()
+        self.assertFalse(self.registration.path.exists())
+        self.assertFalse(self.registration.thread.is_alive())
+
+    def test_registration_syncs_complete_temporary_json_before_replacement(self):
+        events = []
+        real_sync = os.fsync
+        real_replace = os.replace
+
+        def sync(fd):
+            kind = "directory" if stat.S_ISDIR(os.fstat(fd).st_mode) else "file"
+            events.append(kind)
+            if kind == "file":
+                temporary = next(
+                    path
+                    for path in self.registration.path.parent.iterdir()
+                    if path != self.registration.path
+                )
+                self.assertEqual(
+                    runtime.read_json(temporary)["id"], self.registration.id
+                )
+            real_sync(fd)
+
+        def replace(source, destination):
+            events.append("replace")
+            real_replace(source, destination)
+
+        with (
+            patch.object(runtime.os, "fsync", side_effect=sync),
+            patch.object(runtime.os, "replace", side_effect=replace),
+        ):
+            self.registration.publish()
+        expected = ["file", "replace"]
+        if os.name != "nt":
+            expected.append("directory")
+        self.assertEqual(events, expected)
+
+    def test_failed_registration_sync_preserves_old_valid_json(self):
+        initial = runtime.read_json(self.registration.path)
+        self.registration.record["ready"] = True
+        with patch.object(runtime.os, "fsync", side_effect=OSError("sync failed")):
+            with self.assertRaisesRegex(OSError, "sync failed"):
+                self.registration.publish()
+        self.assertEqual(runtime.read_json(self.registration.path), initial)
+        self.assertEqual(
+            list(self.registration.path.parent.iterdir()), [self.registration.path]
+        )
+
+    @unittest.skipUnless(os.name == "posix", "POSIX directory sync")
+    def test_directory_sync_failure_leaves_new_valid_registration_published(self):
+        real_sync = os.fsync
+
+        def sync(fd):
+            if stat.S_ISDIR(os.fstat(fd).st_mode):
+                raise OSError("directory sync failed")
+            real_sync(fd)
+
+        self.registration.record["ready"] = True
+        with patch.object(runtime.os, "fsync", side_effect=sync):
+            with self.assertRaisesRegex(OSError, "directory sync failed"):
+                self.registration.publish()
+        self.assertTrue(runtime.read_json(self.registration.path)["ready"])
+        self.assertEqual(
+            list(self.registration.path.parent.iterdir()), [self.registration.path]
+        )
 
 
 class Utf8OutputTests(unittest.TestCase):

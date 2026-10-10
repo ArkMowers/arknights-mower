@@ -50,14 +50,23 @@ def read_json(path, default=None):
         return default
 
 
-def write_json(path, value, *, indent=None):
+def write_json(path, value, *, indent=None, sync=False):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, temporary = tempfile.mkstemp(dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(value, stream, ensure_ascii=False, indent=indent)
+            if sync:
+                stream.flush()
+                os.fsync(stream.fileno())
         replace_with_retry(temporary, path)
+        if sync and os.name != "nt":
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
     finally:
         Path(temporary).unlink(missing_ok=True)
 
@@ -265,6 +274,7 @@ class RuntimeRegistration:
         self.request = self.directory / "shutdown" / f"{self.id}.json"
         self.running = running or (lambda: False)
         self.closed = threading.Event()
+        self._publication_lock = threading.Lock()
         self.record = {
             "id": self.id,
             "pid": os.getpid(),
@@ -302,12 +312,22 @@ class RuntimeRegistration:
             logging.getLogger(__name__).warning("历史更新备份暂无法清理")
 
     def publish(self):
-        self.record.update(running=bool(self.running()), heartbeat=time.time())
-        write_json(self.path, self.record)
+        with self._publication_lock:
+            if self.closed.is_set():
+                return
+            self.record.update(running=bool(self.running()), heartbeat=time.time())
+            write_json(self.path, self.record.copy(), sync=True)
 
     def _heartbeat(self):
+        import logging
+
         while not self.closed.wait(1):
-            self.publish()
+            try:
+                self.publish()
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "实例登记发布失败，下次心跳将重试：%s", self.path
+                )
 
     def shutdown_requested(self):
         return self.request.exists()
@@ -325,10 +345,15 @@ class RuntimeRegistration:
         from shutil import rmtree
 
         self.closed.set()
+        if not self._publication_lock.acquire(timeout=6):
+            raise TimeoutError("实例登记仍在发布，保留登记文件，请稍后重试关闭")
+        try:
+            self.path.unlink(missing_ok=True)
+            self.request.unlink(missing_ok=True)
+            rmtree(self.directory / "commands" / self.id, ignore_errors=True)
+        finally:
+            self._publication_lock.release()
         self.thread.join(timeout=3)
-        self.path.unlink(missing_ok=True)
-        self.request.unlink(missing_ok=True)
-        rmtree(self.directory / "commands" / self.id, ignore_errors=True)
 
 
 def hide_macos_dock_icon():
