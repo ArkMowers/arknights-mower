@@ -70,6 +70,7 @@ class TestSchedulingRoomPlans(unittest.TestCase):
         data.dorm = []
         data.group_dorm = []
         data.backup_plans = []
+        data.run_order_rooms = {}
         return data
 
     def test_duration_uses_room_kind_and_actual_roster(self, _get_update_time):

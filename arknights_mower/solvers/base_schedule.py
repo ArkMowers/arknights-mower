@@ -1901,31 +1901,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                                     f"房间 {self.translate_room(room)}  {mood_info}"
                                 )
                     else:
-                        num = len(self.op_data.plan[room])
-                        previous = {
-                            op.name
-                            for op in self.op_data.operators.values()
-                            if op.current_room == room
-                        }
-                        _mood_data = self.get_agent_from_room(
-                            room,
-                            list(range(num))
-                            if room in self.op_data.true_exhaust_room
-                            else None,
-                            **({"force_mood": True} if room in force_rooms else {}),
-                        )
-                        actual = {
-                            item["agent"] for item in _mood_data if item.get("agent")
-                        }
-                        for name in previous - actual:
-                            op = self.op_data.operators[name]
-                            op.current_room, op.current_index = "", -1
-                            op.time_stamp = None
-                        mood_info = [
-                            f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
-                            for item in _mood_data
-                        ]
-                        logger.info(f"房间 {self.translate_room(room)}  {mood_info}")
+                        self._read_room_mood(room, force_mood=room in force_rooms)
                     break
                 except MowerExit:
                     raise
@@ -1960,6 +1936,29 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     self.tasks, op_data=getattr(self, "op_data", None)
                 )
                 self._emergency_save()
+
+    def _read_room_mood(self, room, *, force_mood=False):
+        """实读普通房间的驻员与心情，清除已离开房间的缓存驻员。"""
+        previous = {
+            op.name for op in self.op_data.operators.values() if op.current_room == room
+        }
+        mood_data = self.get_agent_from_room(
+            room,
+            list(range(len(self.op_data.plan[room])))
+            if room in self.op_data.true_exhaust_room
+            else None,
+            **({"force_mood": True} if force_mood else {}),
+        )
+        actual = {item["agent"] for item in mood_data if item.get("agent")}
+        for name in previous - actual:
+            op = self.op_data.operators[name]
+            op.current_room, op.current_index = "", -1
+            op.time_stamp = None
+        mood_info = [
+            f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
+            for item in mood_data
+        ]
+        logger.info(f"房间 {self.translate_room(room)}  {mood_info}")
 
     def _read_initial_card_mood(self):
         """首次规划复用选人卡片预估，不选人或确认换班；失败仍继续启动。"""
@@ -2911,6 +2910,19 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         execute_time = self.get_run_order_time(room)
         # 读取订单页可能首次发现实际仍在卖玉，不能据此创建空转任务。
         self._sync_run_order_tasks()
+        if execute_time is None:
+            # 暂停订单已实读驻员，空岗位由普通纠错接管，不等待有效倒计时。
+            current = self.op_data.get_current_room(room, bypass=True)
+            if current and "" in current:
+                logger.info(
+                    f"房间 {self.translate_room(room)} 缺少进驻干员，重新安排干员进驻"
+                )
+            if self.task is None:
+                self.agent_get_mood(skip_dorm=True, read_rooms=False)
+            else:
+                # 当前刷新任务消费后继续普通规划，不能把它自身当成纠错阻挡。
+                self.planned = False
+            return
         if room not in self.op_data.run_order_rooms:
             return
         self.tasks.append(
@@ -5492,17 +5504,40 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if self.find("connecting") or not ready:
             raise RecognizeError("未成功进入订单或制造详情界面")
 
-    def get_run_order_time(self, room):
+    def get_run_order_time(self, room) -> datetime | None:
+        """读取跑单时刻；确认订单暂停时，本轮不安排跑单。"""
         logger.info("基建：读取插拔时间")
         # 点击进入该房间
         self.enter_room(room)
         # 进入房间详情
-        self._wait_drone_interface(interval=1, accelerate_template="bill_accelerate")
+        self._wait_drone_interface(
+            interval=1,
+            accelerate_template="bill_accelerate",
+            page_template="order_label",
+        )
         self._cache_facility_state_from_current_page(room, "trade")
-        execute_time = self.double_read_time(
+        # 正常倒计时用数字模板读取，失败后才 OCR 确认订单暂停。
+        remaining = self.read_time(
             self._run_order_time_region(),
+            None,
             use_digit_reader=True,
         )
+        if remaining is None:
+            status_scope = (
+                (self.recog.w * 405 // 1920, self.recog.h * 350 // 1080),
+                (self.recog.w * 725 // 1920, self.recog.h * 410 // 1080),
+            )
+            if "订单暂停获取中" in self._product_ocr_text(status_scope):
+                logger.info(
+                    f"房间 {self.translate_room(room)} 订单暂停获取，检查是否缺少进驻干员"
+                )
+                self.scene_graph_navigation(Scene.INFRA_DETAILS)
+                self._read_room_mood(room, force_mood=True)
+                self.scene_graph_navigation(Scene.INFRA_MAIN)
+                return None
+            # 读取失败不能回退为当前时间，否则会误创建立即执行的跑单任务。
+            raise RecognizeError("无法读取贸易站订单倒计时，未确认订单暂停")
+        execute_time = datetime.now() + timedelta(seconds=remaining)
         execute_time = execute_time - timedelta(
             seconds=(60 * config.conf.run_order_delay)
         )
@@ -9613,6 +9648,21 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if getattr(self.task, "run_order_restore_pending", False):
                     return self._retain_run_order_restoration(delay=True)
                 return False
+            if (
+                self.task.type != TaskTypes.RUN_ORDER
+                and room not in plan
+                and room in self.op_data.run_order_rooms
+                and not self.find_next_task(
+                    meta_data=room, task_type=TaskTypes.RUN_ORDER
+                )
+                and not self.find_next_task(
+                    meta_data=room, task_type=TaskTypes.REFRESH_TIME
+                )
+            ):
+                # 原先暂停的房间没有跑单预约；排班确认后主动重读订单时间。
+                self.tasks.append(
+                    SchedulerTask(task_type=TaskTypes.REFRESH_TIME, meta_data=room)
+                )
         self._finish_idle_dorm_shift()
         if restoring_order:
             del self.task.run_order_original_roster
