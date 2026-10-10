@@ -62,11 +62,13 @@ def timeline(
     *,
     start=None,
     end=None,
+    images=None,
 ):
     """返回指定时间窗口的日志及最近截图。"""
     start = start or center - _WINDOW
     end = end or center + _WINDOW
-    images = screenshots_between(screenshot_folder, start, end)
+    if images is None:
+        images = screenshots_between(screenshot_folder, start, end)
     timestamps = [item[0] for item in images]
     rows = []
     if not log_folder.exists():
@@ -86,12 +88,14 @@ def timeline(
         )
     ]
     for path in sorted(files, key=lambda item: (item.name == "runtime.log", item.name)):
+        current_row = None
         with path.open(encoding="utf-8", errors="replace") as stream:
             for line in stream:
                 if not _LOG_START.match(line):
-                    if rows and len(rows[-1]["message"]) < 8000:
-                        rows[-1]["message"] += "\n" + line.rstrip("\n")
+                    if current_row is not None and len(current_row["message"]) < 8000:
+                        current_row["message"] += "\n" + line.rstrip("\r\n")
                     continue
+                current_row = None
                 try:
                     when = datetime.strptime(line[:19], "%Y-%m-%d %H:%M:%S")
                 except ValueError:
@@ -111,6 +115,7 @@ def timeline(
                         "screenshot": screenshot,
                     }
                 )
+                current_row = rows[-1]
     return rows[-limit:] if limit is not None else rows
 
 

@@ -1,8 +1,12 @@
 <script setup>
-import { computed, inject, onMounted, ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 
 const axios = inject('axios')
 const queryAt = ref(Date.now())
+const loadedAt = ref(queryAt.value)
+const timeCenter = ref(queryAt.value)
+const browseMode = ref('time')
+const truncated = ref(false)
 const events = ref([])
 const logs = ref([])
 const eventLoading = ref(false)
@@ -10,9 +14,8 @@ const logLoading = ref(false)
 const eventError = ref('')
 const logError = ref('')
 const activeEventId = ref('')
-const archiveImages = ref([])
+const screenshots = ref([])
 const imageIndex = ref(0)
-const manualImage = ref('')
 const imageFailed = ref(false)
 const searchText = ref('')
 const levelFilter = ref('all')
@@ -25,17 +28,30 @@ const analysisLoading = ref(false)
 const analysisText = ref('')
 const analysisError = ref('')
 let requestVersion = 0
+let eventRequestVersion = 0
 
 const levelOptions = [
   { label: '全部级别', value: 'all' },
   { label: '错误', value: 'ERROR' },
+  { label: '严重错误', value: 'CRITICAL' },
   { label: '警告', value: 'WARNING' },
   { label: '信息', value: 'INFO' },
   { label: '调试', value: 'DEBUG' }
 ]
 
 const activeEvent = computed(() => events.value.find((event) => event.id === activeEventId.value))
-const imagePath = computed(() => manualImage.value || archiveImages.value[imageIndex.value] || '')
+const imagePath = computed(() => screenshots.value[imageIndex.value] || '')
+const canExport = computed(
+  () => !logLoading.value && !logError.value && (browseMode.value === 'time' || !!activeEvent.value)
+)
+const windowLabel = computed(() => {
+  const first = activeEvent.value ? Number(activeEvent.value.time_ns) / 1e6 : loadedAt.value
+  const last = activeEvent.value
+    ? Number(activeEvent.value.last_error_ns || activeEvent.value.time_ns) / 1e6
+    : first
+  const format = (value) => new Date(value).toLocaleString('zh-CN', { hour12: false })
+  return `${format(first - 300000)} — ${format(last + 300000)}`
+})
 const imageUrl = computed(() =>
   imagePath.value ? `${import.meta.env.VITE_HTTP_URL}/screenshots/${imagePath.value}` : ''
 )
@@ -53,7 +69,7 @@ const visibleLogs = computed(() => {
 function parseLog(message) {
   const firstLine = message.split('\n', 1)[0]
   const match = firstLine.match(
-    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:,\d{3})? .*? (DEBUG|INFO|WARNING|ERROR|CRITICAL) .*?: (.*)$/
+    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:,\d+)? .*? (DEBUG|INFO|WARNING|ERROR|CRITICAL) [^:]*: (.*)$/
   )
   if (!match) {
     return { level: 'INFO', summary: firstLine, detail: message.slice(firstLine.length).trim() }
@@ -74,14 +90,12 @@ function imageTime(path) {
   return /^\d{18,}$/.test(stem) ? formatTime(stem) : stem
 }
 
-function imageAtEvent(event) {
-  const images = event.screenshots || []
-  if (!images.length) return 0
+function imageNearest(center) {
   let best = 0
   let distance = Infinity
-  for (let index = 0; index < images.length; index++) {
-    const timestamp = Number(images[index].split('/').at(-1).replace('.jpg', ''))
-    const nextDistance = Math.abs(timestamp - Number(event.time_ns))
+  for (let index = 0; index < screenshots.value.length; index++) {
+    const timestamp = Number(screenshots.value[index].split('/').at(-1).replace('.jpg', '')) / 1e6
+    const nextDistance = Math.abs(timestamp - center)
     if (nextDistance < distance) {
       best = index
       distance = nextDistance
@@ -91,95 +105,148 @@ function imageAtEvent(event) {
 }
 
 async function loadEvents() {
+  const version = ++eventRequestVersion
   eventLoading.value = true
   eventError.value = ''
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/diagnostics/errors`)
+    if (version !== eventRequestVersion) return
     events.value = response.data.events || []
+    if (browseMode.value === 'archives') {
+      if (events.value.length) selectEvent(activeEvent.value || events.value[0])
+      else {
+        ++requestVersion
+        activeEventId.value = ''
+        logLoading.value = false
+        clearEvidence()
+      }
+    }
   } catch {
-    eventError.value = '异常记录读取失败'
+    if (version === eventRequestVersion) eventError.value = '异常记录读取失败'
   } finally {
-    eventLoading.value = false
+    if (version === eventRequestVersion) eventLoading.value = false
   }
 }
 
-async function loadWindow() {
-  if (!Number.isFinite(queryAt.value)) return
-  const version = ++requestVersion
-  logLoading.value = true
-  logError.value = ''
-  activeEventId.value = ''
-  analysisText.value = ''
-  analysisError.value = ''
-  archiveImages.value = []
-  manualImage.value = ''
-  try {
-    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/diagnostics/timeline`, {
-      params: { at: queryAt.value }
-    })
-    if (version === requestVersion) logs.value = response.data.logs || []
-  } catch {
-    if (version === requestVersion) logError.value = '该时段的日志读取失败，请重试'
-  } finally {
-    if (version === requestVersion) logLoading.value = false
-  }
-}
-
-async function selectEvent(event) {
-  const version = ++requestVersion
-  activeEventId.value = event.id
-  analysisText.value = ''
-  analysisError.value = ''
-  queryAt.value = Math.floor(event.time_ns / 1000000)
-  archiveImages.value = event.screenshots || []
-  imageIndex.value = imageAtEvent(event)
-  manualImage.value = ''
+function clearEvidence() {
+  logs.value = []
+  screenshots.value = []
+  imageIndex.value = 0
   imageFailed.value = false
-  logLoading.value = true
+  truncated.value = false
   logError.value = ''
+  exportError.value = ''
+  analysisText.value = ''
+  analysisError.value = ''
+}
+
+async function loadLogs(center, event = null) {
+  const version = ++requestVersion
+  clearEvidence()
+  activeEventId.value = event?.id || ''
+  loadedAt.value = center
+  logLoading.value = true
+  const path = event ? `/diagnostics/errors/${event.id}/logs` : '/diagnostics/timeline'
   try {
-    const response = await axios.get(
-      `${import.meta.env.VITE_HTTP_URL}/diagnostics/errors/${event.id}/logs`
-    )
-    if (version === requestVersion) logs.value = response.data.logs || []
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}${path}`, {
+      params: event ? undefined : { at: center }
+    })
+    if (version !== requestVersion) return
+    logs.value = response.data.logs || []
+    screenshots.value = event
+      ? [...(event.screenshots || [])]
+      : response.data.screenshots || [
+          ...new Set(logs.value.map((row) => row.screenshot).filter(Boolean))
+        ]
+    imageIndex.value = imageNearest(center)
+    truncated.value = !!response.data.truncated
   } catch {
-    if (version === requestVersion) logError.value = '报错时段的日志读取失败，请重试'
+    if (version === requestVersion) logError.value = '日志读取失败，请点击刷新重试'
   } finally {
     if (version === requestVersion) logLoading.value = false
   }
+}
+
+function loadWindow(center = queryAt.value) {
+  if (!Number.isFinite(center)) return
+  browseMode.value = 'time'
+  queryAt.value = center
+  timeCenter.value = center
+  return loadLogs(center)
+}
+
+function selectEvent(event) {
+  browseMode.value = 'archives'
+  return loadLogs(Math.floor(event.time_ns / 1e6), event)
+}
+
+function setBrowseMode(mode) {
+  if (mode === browseMode.value) return
+  if (mode === 'time') return loadWindow(timeCenter.value)
+  browseMode.value = 'archives'
+  if (events.value.length) return selectEvent(events.value[0])
+  ++requestVersion
+  activeEventId.value = ''
+  logLoading.value = false
+  clearEvidence()
+}
+
+function moveWindow(step) {
+  return loadWindow(Math.max(0, Math.min(Date.now(), loadedAt.value + step * 600000)))
+}
+
+function refreshLogs() {
+  if (browseMode.value === 'archives' && !activeEvent.value) return
+  return activeEvent.value ? selectEvent(activeEvent.value) : loadWindow(loadedAt.value)
+}
+
+function onTabKeydown(event) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  const mode =
+    event.key === 'Home'
+      ? 'time'
+      : event.key === 'End'
+        ? 'archives'
+        : browseMode.value === 'time'
+          ? 'archives'
+          : 'time'
+  setBrowseMode(mode)
+  event.currentTarget.parentElement
+    .querySelector(`#${mode === 'time' ? 'time' : 'archives'}-tab`)
+    .focus()
 }
 
 function showScreenshot(path) {
-  const index = archiveImages.value.indexOf(path)
-  if (index >= 0) {
-    imageIndex.value = index
-    manualImage.value = ''
-  } else {
-    manualImage.value = path
+  let index = screenshots.value.indexOf(path)
+  if (index < 0) {
+    screenshots.value.push(path)
+    index = screenshots.value.length - 1
   }
+  imageIndex.value = index
   imageFailed.value = false
 }
 
 function moveImage(step) {
-  imageIndex.value = Math.max(0, Math.min(archiveImages.value.length - 1, imageIndex.value + step))
-  manualImage.value = ''
+  imageIndex.value = Math.max(0, Math.min(screenshots.value.length - 1, imageIndex.value + step))
   imageFailed.value = false
 }
 
 function onImageSeek() {
-  manualImage.value = ''
   imageFailed.value = false
 }
 
 function jumpToNow() {
-  queryAt.value = Date.now()
-  loadWindow()
+  return loadWindow(Date.now())
 }
 
 async function exportWindow() {
+  if (!canExport.value || exporting.value) return
   exporting.value = true
   exportError.value = ''
-  const center = activeEvent.value ? Math.floor(activeEvent.value.time_ns / 1000000) : queryAt.value
+  const center = activeEvent.value
+    ? Math.floor(activeEvent.value.time_ns / 1000000)
+    : loadedAt.value
   const path = activeEvent.value
     ? `/diagnostics/errors/${activeEvent.value.id}/export`
     : '/diagnostics/export'
@@ -251,9 +318,13 @@ async function deleteEvent() {
     events.value = events.value.filter((item) => item.id !== event.id)
     pendingDeleteEvent.value = null
     if (activeEventId.value === event.id) {
-      loadWindow()
-    } else if (manualImage.value.startsWith(`errors/${event.id}/`)) {
-      manualImage.value = ''
+      if (events.value.length) selectEvent(events.value[0])
+      else {
+        ++requestVersion
+        activeEventId.value = ''
+        logLoading.value = false
+        clearEvidence()
+      }
     }
   } catch {
     deleteError.value = '删除失败，请重试'
@@ -261,6 +332,11 @@ async function deleteEvent() {
     deleting.value = false
   }
 }
+
+onUnmounted(() => {
+  ++requestVersion
+  ++eventRequestVersion
+})
 
 onMounted(() => {
   loadEvents()
@@ -272,39 +348,96 @@ onMounted(() => {
   <main class="schedule-page">
     <header class="page-heading">
       <div>
-        <div class="eyebrow">运行记录 / 问题回看</div>
         <h1>日志调度</h1>
         <p>按时间查看日志与画面。发生错误时，前后各 5 分钟的截图会单独保存。</p>
       </div>
       <router-link class="back-link" to="/">返回运行日志</router-link>
     </header>
 
-    <section class="time-bar mower-surface-panel" aria-label="时间筛选">
-      <div class="time-field">
-        <label for="schedule-time">查看时间</label>
-        <n-date-picker
-          id="schedule-time"
-          v-model:value="queryAt"
-          type="datetime"
-          :clearable="false"
-        />
-      </div>
-      <n-button type="primary" :loading="logLoading" @click="loadWindow">查看前后 5 分钟</n-button>
-      <n-button secondary @click="jumpToNow">跳到现在</n-button>
-      <n-button class="export-button" secondary :loading="exporting" @click="exportWindow">
+    <div class="browse-tabs" role="tablist" aria-label="日志来源">
+      <button
+        id="time-tab"
+        type="button"
+        role="tab"
+        :aria-selected="browseMode === 'time'"
+        :tabindex="browseMode === 'time' ? 0 : -1"
+        aria-controls="log-workspace"
+        @click="setBrowseMode('time')"
+        @keydown="onTabKeydown"
+      >
+        按时间查看
+      </button>
+      <button
+        id="archives-tab"
+        type="button"
+        role="tab"
+        :aria-selected="browseMode === 'archives'"
+        :tabindex="browseMode === 'archives' ? 0 : -1"
+        aria-controls="log-workspace"
+        @click="setBrowseMode('archives')"
+        @keydown="onTabKeydown"
+      >
+        异常归档 <span>{{ events.length }}</span>
+      </button>
+    </div>
+
+    <section class="time-bar mower-surface-panel" aria-label="日志浏览操作">
+      <template v-if="browseMode === 'time'">
+        <n-button secondary :disabled="loadedAt <= 0" @click="moveWindow(-1)"
+          >← 前 10 分钟</n-button
+        >
+        <div class="time-field">
+          <label for="schedule-time">查看时间</label>
+          <n-date-picker
+            id="schedule-time"
+            v-model:value="queryAt"
+            type="datetime"
+            :clearable="false"
+          />
+        </div>
+        <n-button type="primary" :loading="logLoading" @click="loadWindow()">查看</n-button>
+        <n-button secondary :disabled="loadedAt >= Date.now()" @click="moveWindow(1)"
+          >后 10 分钟 →</n-button
+        >
+        <n-button secondary @click="jumpToNow">跳到现在</n-button>
+      </template>
+      <n-button
+        secondary
+        :loading="logLoading"
+        :disabled="browseMode === 'archives' && !activeEvent"
+        @click="refreshLogs"
+        >刷新日志</n-button
+      >
+      <n-button
+        class="export-button"
+        secondary
+        :disabled="!canExport"
+        :loading="exporting"
+        @click="exportWindow"
+      >
         导出日志与截图
       </n-button>
     </section>
     <p v-if="exportError" class="export-error" role="alert">{{ exportError }}</p>
 
-    <div class="workspace">
-      <aside class="panel events-panel mower-surface-panel" aria-label="异常记录">
+    <div
+      id="log-workspace"
+      class="workspace"
+      :class="{ 'with-archives': browseMode === 'archives' }"
+      role="tabpanel"
+      :aria-labelledby="browseMode === 'time' ? 'time-tab' : 'archives-tab'"
+    >
+      <aside
+        v-if="browseMode === 'archives'"
+        class="panel events-panel mower-surface-panel"
+        aria-label="异常记录"
+      >
         <div class="panel-heading">
           <div>
             <span class="section-kicker">已归档</span>
             <h2>异常记录</h2>
           </div>
-          <span class="count-pill">{{ events.length }}</span>
+          <n-button secondary :loading="eventLoading" @click="loadEvents">刷新归档</n-button>
         </div>
         <p class="panel-intro">选择记录，查看对应日志和留存画面。</p>
         <div v-if="eventError" class="state-message error" role="alert">{{ eventError }}</div>
@@ -350,13 +483,10 @@ onMounted(() => {
         </div>
         <p class="panel-intro">
           {{
-            activeEvent
-              ? activeEvent.error_count > 1
-                ? `${formatTime(activeEvent.time_ns)} 至 ${formatTime(activeEvent.last_error_ns)}`
-                : formatTime(activeEvent.time_ns)
-              : new Date(queryAt).toLocaleString('zh-CN')
+            browseMode === 'archives' && !activeEvent
+              ? '选择一条异常记录查看日志与画面'
+              : windowLabel
           }}
-          附近的运行记录
         </p>
         <div v-if="activeEvent" class="ai-analysis">
           <n-button type="primary" secondary :loading="analysisLoading" @click="analyzeEvent">
@@ -378,15 +508,24 @@ onMounted(() => {
           />
           <n-select v-model:value="levelFilter" :options="levelOptions" aria-label="筛选日志级别" />
         </div>
+        <p v-if="truncated" class="window-notice">
+          当前显示此时段最近 1000 条日志，导出可获取完整日志。
+        </p>
         <div v-if="logError" class="state-message error" role="alert">{{ logError }}</div>
         <div v-else-if="logLoading" class="state-message">正在读取日志…</div>
         <div v-else-if="!visibleLogs.length" class="state-message">
-          {{ logs.length ? '没有符合筛选条件的日志' : '这个时间段没有日志' }}
+          {{
+            logs.length
+              ? '没有符合筛选条件的日志'
+              : browseMode === 'archives' && !activeEvent
+                ? '暂无选中的异常记录'
+                : '这个时间段没有日志，可查看前后时段或跳到现在'
+          }}
         </div>
         <div v-else class="log-list">
           <article v-for="entry in visibleLogs" :key="entry.index" class="log-entry">
             <div class="log-meta">
-              <time>{{ entry.time.slice(11) }}</time>
+              <time :title="entry.time">{{ entry.time.slice(11) }}</time>
               <span class="level" :class="entry.level.toLowerCase()">{{ entry.level }}</span>
             </div>
             <div class="log-body">
@@ -414,17 +553,17 @@ onMounted(() => {
             <span class="section-kicker">画面证据</span>
             <h2>关联截图</h2>
           </div>
-          <span v-if="archiveImages.length" class="count-pill">
-            {{ imageIndex + 1 }} / {{ archiveImages.length }}
+          <span v-if="screenshots.length" class="count-pill">
+            {{ imageIndex + 1 }} / {{ screenshots.length }}
           </span>
         </div>
         <p class="panel-intro">
-          {{ imagePath ? imageTime(imagePath) : '选择异常记录或日志中的“查看画面”' }}
+          {{ imagePath ? imageTime(imagePath) : '当前窗口没有可读取的截图' }}
         </p>
         <div class="image-stage">
           <div v-if="!imagePath" class="image-empty">
-            <strong>暂无选中截图</strong>
-            <span>从异常记录或日志中选择画面</span>
+            <strong>{{ logLoading ? '正在读取画面…' : '暂无截图' }}</strong>
+            <span>普通截图可能已过期清理，异常归档单独保留。</span>
           </div>
           <div v-else-if="imageFailed" class="image-empty">截图文件暂时无法读取</div>
           <img
@@ -436,19 +575,19 @@ onMounted(() => {
             @error="imageFailed = true"
           />
         </div>
-        <div v-if="archiveImages.length" class="image-navigation">
+        <div v-if="screenshots.length" class="image-navigation">
           <n-button secondary :disabled="imageIndex === 0" @click="moveImage(-1)">上一张</n-button>
           <input
             v-model.number="imageIndex"
             type="range"
             min="0"
-            :max="archiveImages.length - 1"
-            aria-label="选择异常窗口中的截图"
+            :max="screenshots.length - 1"
+            aria-label="选择当前窗口中的截图"
             @input="onImageSeek"
           />
           <n-button
             secondary
-            :disabled="imageIndex === archiveImages.length - 1"
+            :disabled="imageIndex === screenshots.length - 1"
             @click="moveImage(1)"
           >
             下一张
@@ -525,6 +664,7 @@ onMounted(() => {
   min-height: 100%;
   margin: 0 auto;
   padding: clamp(16px, 2.5vw, 30px);
+  padding-inline: clamp(16px, 3.33cqi, 40px);
 }
 
 .page-heading,
@@ -538,10 +678,10 @@ onMounted(() => {
 }
 
 .page-heading {
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 12px 20px;
   margin-bottom: 20px;
 }
-.eyebrow,
 .section-kicker {
   color: var(--mower-primary);
   font-size: 12px;
@@ -572,6 +712,8 @@ h2 {
   white-space: nowrap;
 }
 .back-link {
+  flex-shrink: 0;
+  margin-left: auto;
   padding: 10px;
   min-height: 40px;
   box-sizing: border-box;
@@ -601,6 +743,44 @@ h2 {
 .time-field :deep(.n-date-picker) {
   min-width: 210px;
 }
+.browse-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.browse-tabs button {
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.browse-tabs button:hover {
+  background: var(--mower-control-hover);
+}
+.browse-tabs button[aria-selected='true'] {
+  background: var(--mower-control-surface);
+  color: var(--mower-primary);
+  font-weight: 700;
+  box-shadow: inset 0 -2px var(--mower-primary);
+}
+.browse-tabs button:focus-visible {
+  outline: 2px solid var(--mower-primary);
+  outline-offset: 2px;
+}
+.browse-tabs span {
+  margin-left: 4px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.window-notice {
+  color: var(--mower-warning);
+  font-size: 12px;
+  line-height: 1.5;
+}
 .export-button {
   margin-left: auto;
 }
@@ -612,9 +792,12 @@ h2 {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(215px, 0.7fr) minmax(330px, 1.3fr) minmax(310px, 1fr);
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
   align-items: start;
   gap: 16px;
+}
+.workspace.with-archives {
+  grid-template-columns: minmax(215px, 0.7fr) minmax(330px, 1.3fr) minmax(310px, 1fr);
 }
 .panel {
   min-width: 0;
@@ -875,6 +1058,7 @@ h2 {
 .image-navigation input {
   flex: 1;
   min-width: 40px;
+  min-height: 40px;
   accent-color: var(--mower-primary);
 }
 .open-image {
@@ -885,8 +1069,9 @@ h2 {
 }
 
 @container main-content (max-width: 1160px) {
-  .workspace {
-    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  .workspace,
+  .workspace.with-archives {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
   }
   .events-panel {
     grid-column: 1 / -1;
@@ -917,7 +1102,8 @@ h2 {
 }
 
 @container main-content (max-width: 730px) {
-  .workspace {
+  .workspace,
+  .workspace.with-archives {
     grid-template-columns: minmax(0, 1fr);
   }
   .events-panel,
@@ -929,6 +1115,15 @@ h2 {
     grid-row: 2;
   }
   .logs-panel {
+    grid-row: 1;
+  }
+  .with-archives .events-panel {
+    grid-row: 1;
+  }
+  .with-archives .logs-panel {
+    grid-row: 2;
+  }
+  .with-archives .image-panel {
     grid-row: 3;
   }
   .log-list {

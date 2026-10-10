@@ -179,6 +179,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.5 Web Access
 
+- [ ] **[INV-UI-12] Log Window Cohesion**: Do logs, screenshots and export use the loaded source despite date edits and out-of-order responses, with stale evidence cleared on source changes and errors?
+
 - [ ] **[INV-WEB-01] Local Log Read Boundary**: In a WebView session without a configured token, do read-only log requests require loopback and valid browser origin metadata while AI chat and mutating endpoints retain credential checks?
 
 ### 2.6 Configuration Backup
