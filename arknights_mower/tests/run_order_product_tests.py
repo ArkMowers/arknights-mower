@@ -212,7 +212,9 @@ def use_order_pages(solver, order_states):
         return None
 
     def get_agent(room, *args, **kwargs):
-        assert not page["open"], "进入房间读取干员心情前，必须先退出订单详情界面返回房间视图"
+        assert not page["open"], (
+            "进入房间读取干员心情前，必须先退出订单详情界面返回房间视图"
+        )
         return [
             {"agent": name, "mood": 24}
             for name in solver.op_data.get_current_room(room, True)
@@ -258,9 +260,9 @@ def use_mood_pages(solver, monkeypatch, occupants):
 
     def read_room(room, *args, **kwargs):
         if hasattr(solver, "_page"):
-            assert (
-                not solver._page["open"]
-            ), "进入房间读取干员心情前，必须先退出订单详情界面返回房间视图"
+            assert not solver._page["open"], (
+                "进入房间读取干员心情前，必须先退出订单详情界面返回房间视图"
+            )
         result = []
         for index, name in enumerate(occupants[room]):
             if name:
