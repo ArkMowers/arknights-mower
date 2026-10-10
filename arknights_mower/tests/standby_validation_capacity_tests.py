@@ -101,13 +101,12 @@ def test_standby_setting_does_not_bypass_mandatory_recovery(plan, restriction):
 
 
 @pytest.mark.parametrize("beds", [7, 9])
-@pytest.mark.parametrize("role", ["standby", "workaholic"])
 @pytest.mark.parametrize("grouped_dorm", [False, True])
 def test_group_without_shift_anchor_is_rejected_even_with_enough_beds(
-    plan, beds, role, grouped_dorm
+    plan, beds, grouped_dorm
 ):
     conf = plan["default_plan"].config
-    setattr(conf, "resting_standby" if role == "standby" else role, WORKERS.copy())
+    conf.resting_standby = WORKERS.copy()
     if not grouped_dorm:
         plan["default_plan"].plan["dormitory_1"][0].group = ""
     if beds == 9:
@@ -120,6 +119,127 @@ def test_group_without_shift_anchor_is_rejected_even_with_enough_beds(
         f"{GROUP} 缺少决定上下班的工作主班：至少需要一名非宿舍、"
         "非零心情工作、非多绑组且非候补的主班"
     )
+
+
+@pytest.mark.parametrize("grouped_dorm", [False, True])
+def test_all_zero_mood_workers_do_not_require_shift_anchor(plan, grouped_dorm):
+    plan["default_plan"].config.workaholic = WORKERS.copy()
+    if not grouped_dorm:
+        plan["default_plan"].plan["dormitory_1"][0].group = ""
+    data = Operators(plan)
+    assert data.init_and_validate() is None
+    assert not any(data.is_group_shift_anchor(data.operators[n]) for n in WORKERS)
+    assert data.validate_backup_plans()["success"]
+
+
+def zero_mood_plan(room="room_1_1", *, fia=True):
+    workers = WORKERS[:2] if room == "train" else WORKERS[:3]
+    rooms = {
+        room: [Room(name, "充能组", [cover]) for name, cover in zip(workers, COVERS)],
+        "dormitory_1": [
+            Room("菲亚梅塔", "", workers) if fia else Room("塑心", "", []),
+            *[Room("Free", "", []) for _ in range(4)],
+        ],
+    }
+    return {
+        "default_plan": Plan(
+            rooms, PlanConfig("", "", "", workaholic=",".join(workers))
+        ),
+        "backup_plans": [],
+    }
+
+
+@pytest.mark.parametrize("room,fia", [("room_1_1", True), ("train", False)])
+def test_zero_mood_groups_validate_and_survive_repeated_edits(plan, room, fia):
+    schedule = zero_mood_plan(room, fia=fia)
+    data = Operators(schedule)
+    zero_names = schedule["default_plan"].config.workaholic.copy()
+    for names in (zero_names, zero_names[:1], zero_names, zero_names):
+        schedule["default_plan"].config.workaholic = names.copy()
+        assert data.swap_plan([], refresh=True) is None
+        assert data.validate_backup_plans()["success"]
+        assert all(
+            data.operators[name].workaholic == (name in names) for name in zero_names
+        )
+
+
+def test_zero_mood_fiammetta_group_still_selects_lowest_target(plan):
+    data = Operators(zero_mood_plan())
+    assert data.init_and_validate() is None
+    config.conf.fia_fool = True
+    for name, mood in zip(WORKERS[:3], [8, 4, 12]):
+        op = data.operators[name]
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp, op.depletion_rate = mood, datetime.now(), 1
+    solver = object.__new__(base_schedule.BaseSchedulerSolver)
+    solver.op_data, solver.tasks = data, []
+    solver.task = SchedulerTask(task_type=TaskTypes.FIAMMETTA)
+    solver.enter_room = MagicMock(
+        side_effect=AssertionError("unexpected device access")
+    )
+
+    solver.plan_fia()
+
+    assert len(solver.tasks) == 1
+    assert solver.tasks[0].plan == {"dormitory_1": [WORKERS[1], "菲亚梅塔"]}
+    solver.enter_room.assert_not_called()
+
+
+def test_zero_mood_group_retains_complete_replacement_validation(plan):
+    schedule = zero_mood_plan()
+    for slot in schedule["default_plan"].plan["room_1_1"]:
+        slot.replacement = [COVERS[0]]
+    assert (
+        Operators(schedule).init_and_validate() == "充能组 分组无法排班,替换组数量不够"
+    )
+
+
+@pytest.mark.parametrize("ordinary_worker", [False, True])
+def test_zero_mood_additional_binding_keeps_ordinary_anchor_requirement(
+    plan, ordinary_worker
+):
+    schedule = zero_mood_plan()
+    schedule["default_plan"].plan["room_1_1"][0].group_bindings = [
+        {"group": "附加组", "replacement": [COVERS[0]]}
+    ]
+    if ordinary_worker:
+        schedule["default_plan"].config.workaholic = WORKERS[1:3]
+    data = Operators(schedule)
+    error = data.init_and_validate()
+    if ordinary_worker:
+        assert error.startswith("充能组 缺少决定上下班的工作主班")
+    else:
+        assert error is None
+        assert data.validate_backup_plans()["success"]
+
+
+def test_dormitory_only_group_still_requires_working_member(plan):
+    schedule = zero_mood_plan(fia=False)
+    schedule["default_plan"].plan["dormitory_1"][0].group = "宿舍组"
+    schedule["default_plan"].plan["dormitory_1"][0].replacement = ["炎熔"]
+
+    error = Operators(schedule).init_and_validate()
+
+    assert error.startswith("宿舍组 缺少决定上下班的工作主班")
+
+
+def test_backup_can_make_every_working_member_zero_mood(plan):
+    schedule = zero_mood_plan()
+    schedule["default_plan"].config.workaholic = []
+    schedule["backup_plans"] = [
+        Plan(
+            {},
+            PlanConfig("", "", "", workaholic=",".join(WORKERS[:3])),
+            name="持续工作",
+        )
+    ]
+    data = Operators(schedule)
+    assert data.init_and_validate() is None
+    assert data.validate_backup_plans()["success"]
+    assert data.swap_plan([True], refresh=True) is None
+    assert all(data.operators[name].workaholic for name in WORKERS[:3])
+    assert data.swap_plan([False], refresh=True) is None
+    assert all(data.is_group_shift_anchor(data.operators[name]) for name in WORKERS[:3])
 
 
 @pytest.mark.parametrize("priority", ["high", "low", "exhaust_require", "rest_in_full"])

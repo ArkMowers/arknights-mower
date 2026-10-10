@@ -612,19 +612,22 @@ class Operators:
         for key in binding_groups:
             self.groups.setdefault(key, [])
             members = self.shift_group_members(key)
-            if not any(
+            working_members = tuple(
+                name
+                for name in members
+                if not self.operators[name].room.startswith("dorm")
+            )
+            working = tuple(
+                name for name in working_members if not self.operators[name].workaholic
+            )
+            # 全零心情工作组不触发普通轮休，不要求决定上下班的主班。
+            if (working or not working_members) and not any(
                 self.is_group_shift_anchor(self.operators[name]) for name in members
             ):
                 return (
                     f"{key} 缺少决定上下班的工作主班：至少需要一名非宿舍、"
                     "非零心情工作、非多绑组且非候补的主班"
                 )
-            working = tuple(
-                name
-                for name in members
-                if not self.operators[name].room.startswith("dorm")
-                and not self.operators[name].workaholic
-            )
             mandatory = tuple(
                 name for name in working if not self._can_standby(self.operators[name])
             )
