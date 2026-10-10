@@ -228,7 +228,7 @@ def test_startup_finishes_pending_order_before_rescue(
 
 
 @pytest.mark.parametrize("saved_plan", ["restoration", "insertion", "empty"])
-@pytest.mark.parametrize("rescue_worker", ["original", "different"])
+@pytest.mark.parametrize("rescue_worker", ["original", "different", "current"])
 def test_saved_rescue_releases_order_original_before_remaining_staffing(
     solver, pending_normal_order, saved_plan, rescue_worker
 ):
@@ -244,7 +244,11 @@ def test_saved_rescue_releases_order_original_before_remaining_staffing(
     if rescue_worker == "different":
         target = "图耶"
         solver.op_data.add(Operator(target, "", mood=24, time_stamp=NOW))
-        state["rescue_plan"]["room_1_1"] = [target]
+    elif rescue_worker == "current":
+        target = "但书"
+        solver.op_data.operators[target].mood = 24
+        solver.op_data.operators[target].time_stamp = NOW
+    state["rescue_plan"]["room_1_1"] = [target]
     solver._emergency_startup()
     solver._emergency_filter_tasks()
     assert release not in solver.tasks
@@ -273,7 +277,11 @@ def test_saved_rescue_releases_order_original_before_remaining_staffing(
 
     assert restore not in solver.tasks
     assert solver.op_data.get_current_room("room_1_1", True) == [COVERS[0]]
-    if rescue_worker == "different":
+    assert all(
+        "但书" not in call.args[0] for call in solver.choose_agent.call_args_list
+    )
+    solver.drone.assert_not_called()
+    if rescue_worker != "original":
         assert not solver._emergency_reconcile_staffing()
         assert not state["staffing_complete"]
         assert emergency.EmergencyRecoveryMixin._emergency_schedule_staffing(solver)
@@ -288,9 +296,52 @@ def test_saved_rescue_releases_order_original_before_remaining_staffing(
     assert solver._emergency_reconcile_staffing()
     assert state["staffing_complete"] and state["staffing_plan"] == {}
     assert state["phase"] == "recovering"
-    assert all(
-        "但书" not in call.args[0] for call in solver.choose_agent.call_args_list
-    )
+    proviso_selections = [
+        call.args[0]
+        for call in solver.choose_agent.call_args_list
+        if "但书" in call.args[0]
+    ]
+    assert proviso_selections == ([[target]] if rescue_worker == "current" else [])
+    solver.drone.assert_not_called()
+
+
+@pytest.mark.parametrize("entry", ["schedule", "reconcile"])
+@pytest.mark.parametrize("staffing_complete", [False, True])
+def test_saved_rescue_keeps_matching_temporary_worker_pending_until_restoration(
+    solver, pending_normal_order, entry, staffing_complete
+):
+    restore, _, _ = pending_normal_order
+    solver.tasks = [restore]
+    state = make_episode(solver)
+    state["staffing_complete"] = staffing_complete
+    phase = "recovering" if staffing_complete else "staffing"
+    state["phase"] = phase
+    state["rescue_plan"]["room_1_1"] = ["但书"]
+    state["staffing_plan"] = {"room_1_1": ["但书"]}
+    for room, row in state["rescue_plan"].items():
+        for operator in solver.op_data.operators.values():
+            if operator.current_room == room:
+                operator._current_room, operator.current_index = "", -1
+        for index, name in enumerate(row):
+            operator = solver.op_data.operators[name]
+            operator._current_room, operator.current_index = room, index
+
+    solver._emergency_startup()
+    if entry == "schedule":
+        completed = emergency.EmergencyRecoveryMixin._emergency_schedule_staffing(
+            solver
+        )
+    else:
+        completed = solver._emergency_reconcile_staffing()
+
+    assert not completed
+    assert not state["staffing_complete"]
+    assert state["staffing_plan"] == {"room_1_1": ["但书"]}
+    assert state["phase"] == phase
+    assert restore in solver.tasks and restore.run_order_restore_pending
+    assert solver.op_data.get_current_room("room_1_1", True) == ["但书"]
+    assert not any(getattr(task, "emergency_staffing", False) for task in solver.tasks)
+    solver.choose_agent.assert_not_called()
     solver.drone.assert_not_called()
 
 

@@ -35,6 +35,13 @@
     "arknights_mower/tests/base_scheduler_tests.py",
     "arknights_mower/tests/automatic_rescue_tests.py",
     "arknights_mower/tests/maintenance_run_order_tests.py",
-    "arknights_mower/tests/scheduler_recovery_preservation_tests.py"
+    "arknights_mower/tests/scheduler_recovery_preservation_tests.py",
+    "arknights_mower/tests/run_order_planning_wakeup_tests.py",
+    "arknights_mower/tests/emergency_compensation_tests.py",
+    "arknights_mower/tests/dorm_run_order_guard_tests.py",
+    "arknights_mower/tests/run_order_room_change_guard_tests.py",
+    "arknights_mower/tests/mood_limit_deadline_tests.py",
+    "arknights_mower/tests/run_order_product_tests.py",
+    "arknights_mower/tests/shift_backup_convergence_tests.py"
   ]
 }

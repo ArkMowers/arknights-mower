@@ -528,6 +528,13 @@ class EmergencyRecoveryMixin:
             or any(getattr(task, "emergency_staffing", False) for task in self.tasks)
         ):
             return True
+        compensation_rooms = {
+            room
+            for task in self.tasks
+            for room in getattr(task, "run_order_original_roster", {})
+        }
+        if compensation_rooms.intersection(state["rescue_plan"]):
+            state["staffing_complete"] = False
         if state.get("staffing_complete") and not self._emergency_replace_low_workers():
             return True
         plan = rescue_plan_for(data, state["rescue_plan"])
@@ -544,6 +551,10 @@ class EmergencyRecoveryMixin:
         pending = {}
         deferred = {}
         for room, names in plan.items():
+            if room in compensation_rooms:
+                # 临时驻员符合救急目标也要等原班恢复，再核验最终驻员。
+                deferred[room] = list(names)
+                continue
             current = data.get_current_room(room, True)
             if current is not None and all(
                 name == "Current" or index < len(current) and current[index] == name
@@ -557,13 +568,6 @@ class EmergencyRecoveryMixin:
             ):
                 logger.info("自动救急 %s：等待专项任务恢复原驻员后执行救急主表", room)
                 return False
-            if any(
-                room in getattr(task, "run_order_original_roster", {})
-                for task in self.tasks
-            ):
-                # 已保存的救急先安排其他房间，释放普通跑单的原驻员。
-                deferred[room] = list(names)
-                continue
             for index, name in enumerate(names):
                 if name in ("", "Current"):
                     continue
@@ -953,16 +957,23 @@ class EmergencyRecoveryMixin:
             return False
         if "train" in pending:
             self._suppress_train_correction(pending)
+        compensation_rooms = {
+            room
+            for task in self.tasks
+            for room in getattr(task, "run_order_original_roster", {})
+        }
         state["staffing_plan"] = {
             room: row
             for room, row in pending.items()
-            if (actual := self.op_data.get_current_room(room, True)) is None
+            if room in compensation_rooms
+            or (actual := self.op_data.get_current_room(room, True)) is None
             or any(
                 name != "Current" and (index >= len(actual) or name != actual[index])
                 for index, name in enumerate(row)
             )
         }
         if state["staffing_plan"]:
+            state["staffing_complete"] = False
             return False
         state.pop("staffing_members", None)
         state["staffing_complete"] = True
