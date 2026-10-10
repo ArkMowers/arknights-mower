@@ -1,5 +1,6 @@
 import ast
 import copy
+import json
 from datetime import datetime, timedelta
 from time import monotonic
 from typing import Any, Literal, overload
@@ -401,7 +402,7 @@ class Operators:
     def merge_plan(self, idx, ext_config, default_plan=None):
         if default_plan is None:
             default_plan = copy.deepcopy(self.global_plan["default_plan"].plan)
-        plan = copy.deepcopy(self.global_plan["backup_plans"][idx])
+        plan = self.global_plan["backup_plans"][idx]
         # 更新切换排班表
         for key, value in plan.plan.items():
             if key in RIGHT_SIDE_ROOM_CAPACITY:
@@ -410,13 +411,13 @@ class Operators:
                 target = default_plan.setdefault(key, [])
                 for index, operator in enumerate(value):
                     if index >= len(target):
-                        target.append(operator)
+                        target.append(copy.deepcopy(operator))
                     elif operator.agent != "Current":
-                        target[index] = operator
+                        target[index] = copy.deepcopy(operator)
             elif key in default_plan:
                 for idx, operator in enumerate(value):
                     if operator.agent != "Current":
-                        default_plan[key][idx] = operator
+                        default_plan[key][idx] = copy.deepcopy(operator)
         return default_plan, ext_config.merge_config(plan.config)
 
     def init_and_validate(self, update=False):
@@ -455,8 +456,6 @@ class Operators:
                         return f"{data.agent}的多绑组名称不能为空或重复"
                     if data.agent in ("Free", "菲亚梅塔"):
                         return f"{data.agent}不能配置多绑组"
-                    if any(not binding["replacement"] for binding in data.bindings):
-                        return f"{data.agent}的每个绑组都需要替班"
                 if data.group and data.agent in ["Free", "菲亚梅塔"]:
                     return f"{data.agent}不能参与宿舍绑组换班"
                 if data.agent in self.operators and data.agent != "Free":
@@ -473,6 +472,21 @@ class Operators:
                         group_bindings=data.bindings if data.group_bindings else None,
                     )
                 )
+        binding_members = {}
+        for op in self.operators.values():
+            groups = (
+                [binding["group"] for binding in op.group_bindings]
+                if op.multi_group
+                else [op.group]
+            )
+            for group in groups:
+                if group:
+                    binding_members.setdefault(group, []).append(op.name)
+        zero_mood_groups = {
+            group
+            for group, members in binding_members.items()
+            if all(self.operators[name].workaholic for name in members)
+        }
         missing_replacements = []
         for room in self.plan.keys():
             if room.startswith("dorm") and len(self.plan[room]) != 5:
@@ -481,17 +495,31 @@ class Operators:
                 # 菲亚梅塔替换组做特例判断
                 for binding in data.bindings:
                     replacements = binding["replacement"]
+                    optional = (
+                        data.agent != "菲亚梅塔"
+                        and not room.startswith("dorm")
+                        and self.operators[data.agent].workaholic
+                        and (
+                            not binding["group"] or binding["group"] in zero_mood_groups
+                        )
+                    )
+                    if data.group_bindings and not replacements and not optional:
+                        return f"{data.agent}的每个绑组都需要替班"
                     if sum(name in replacements for name in TRADE_ORDER_AGENTS) > 1:
                         return f"替换组不可同时安排多个跑单干员 房间->{room}, 干员->{data.agent}"
                     if "菲亚梅塔" in replacements:
                         return (
                             f"替换组不可安排菲亚梅塔 房间->{room}, 干员->{data.agent}"
                         )
-                    if not any(
-                        name not in TRADE_ORDER_AGENTS for name in replacements
-                    ) and (
-                        (data.agent != "Free" and not room.startswith("dorm"))
-                        or data.agent == "菲亚梅塔"
+                    if (
+                        not optional
+                        and not any(
+                            name not in TRADE_ORDER_AGENTS for name in replacements
+                        )
+                        and (
+                            (data.agent != "Free" and not room.startswith("dorm"))
+                            or data.agent == "菲亚梅塔"
+                        )
                     ):
                         missing_replacements.append(data.agent)
                 for _replacement in data.all_replacements:
@@ -599,19 +627,24 @@ class Operators:
         self.refresh_run_order_rooms()
         from arknights_mower.utils.exhaust_replacement import match_replacements
 
-        binding_groups = dict.fromkeys(
-            [
-                *self.groups,
-                *(
-                    binding["group"]
-                    for op in self.operators.values()
-                    for binding in op.group_bindings
-                ),
-            ]
-        )
-        for key in binding_groups:
+        for key, members in binding_members.items():
             self.groups.setdefault(key, [])
             members = self.shift_group_members(key)
+            if key in zero_mood_groups and not any(
+                self.operators[name].room.startswith("dorm") for name in members
+            ):
+                configured = {}
+                for name in members:
+                    candidates = [
+                        cover
+                        for cover in self.operators[name].replacements_for_group(key)
+                        if cover not in TRADE_ORDER_AGENTS
+                    ]
+                    if candidates:
+                        configured[name] = candidates
+                if configured and match_replacements(configured) is None:
+                    return f"{key} 分组无法排班,替换组数量不够"
+                continue
             working_members = tuple(
                 name
                 for name in members
@@ -2558,6 +2591,32 @@ class Operators:
         ret += "'dorms': [" + ",".join(dorm) + "]}"
         return ret
 
+    def _schedule_validation_key(self):
+        """Identify all effective configuration consumed by merged-plan validation."""
+        return (
+            tuple(
+                (
+                    room,
+                    tuple(
+                        (
+                            slot.agent,
+                            slot.facility,
+                            slot.product,
+                            tuple(
+                                (binding["group"], tuple(binding["replacement"]))
+                                for binding in slot.bindings
+                            ),
+                        )
+                        for slot in slots
+                    ),
+                )
+                for room, slots in self.plan.items()
+            ),
+            json.dumps(vars(self.config), sort_keys=True, default=sorted),
+            tuple(sorted(self.products.items())),
+            tuple(sorted(self.maintenance_primary_slots)),
+        )
+
     def validate_backup_plans(self, *, max_seconds=None):
         """独立检查可能的副表组合；可选耗时预算覆盖条件分析和组合检查。"""
         from arknights_mower.utils.backup_validation import (
@@ -2580,6 +2639,7 @@ class Operators:
             return {"success": False, "status": "failed", "message": error}
 
         baseline = Operators(self.global_plan)
+        validated = {baseline._schedule_validation_key()}
         if error := baseline.init_and_validate():
             return {
                 "success": False,
@@ -2588,7 +2648,7 @@ class Operators:
             }
         backup_count = len(self.backup_plans)
         deadline = None if max_seconds is None else monotonic() + max_seconds
-        tested_count = 0
+        tested_count = 1
         # 仅按条件证明互斥；主力不重叠不能证明合并配置互不影响。
         try:
             combinations = possible_backup_conditions(
@@ -2603,8 +2663,17 @@ class Operators:
                 # 每个组合从独立模型开始，失败及检查顺序都不影响实际排班和驻员。
                 simulation = copy.copy(baseline)
                 simulation.operators, simulation.dorm = {}, []
-                error = simulation.swap_plan(condition, refresh=True)
-                tested_count += 1
+                error = simulation.swap_plan(condition)
+                if error is None:
+                    key = simulation._schedule_validation_key()
+                    if key in validated:
+                        check_validation_deadline(deadline)
+                        continue
+                    error = simulation.init_and_validate(True)
+                    simulation.first_init = False
+                    tested_count += 1
+                    if error is None:
+                        validated.add(key)
                 if error is not None:
                     active = "、".join(
                         backup.name or f"副表{index + 1}"

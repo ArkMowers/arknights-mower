@@ -2216,9 +2216,6 @@ def validate_backup_plans_route():
     try:
         global_plan = build_global_plan()
         op = Operators(global_plan)
-        validation_msg = op.init_and_validate()
-        if validation_msg is not None:
-            return {"success": False, "status": "failed", "message": validation_msg}
         result = op.validate_backup_plans()
         return result
     except Exception as e:

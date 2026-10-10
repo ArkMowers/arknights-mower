@@ -436,7 +436,11 @@ watch(show_replace_dialog, (open) => {
   }
 })
 
+const validating_plan = ref(false)
+
 async function validate_plan() {
+  if (validating_plan.value) return
+  validating_plan.value = true
   try {
     await nextTick()
     await plan_store.save_plan()
@@ -456,6 +460,8 @@ async function validate_plan() {
     }
   } catch (error) {
     message.error('验证失败: ' + error.message)
+  } finally {
+    validating_plan.value = false
   }
 }
 
@@ -688,7 +694,13 @@ function movePlanForward() {
             </template>
             新建副表
           </n-button>
-          <n-button v-if="sub_plan == 'main'" title="验证排班" @click="validate_plan">
+          <n-button
+            v-if="sub_plan == 'main'"
+            title="验证排班"
+            :loading="validating_plan"
+            :disabled="validating_plan"
+            @click="validate_plan"
+          >
             <template #icon>
               <n-icon><help /></n-icon>
             </template>
