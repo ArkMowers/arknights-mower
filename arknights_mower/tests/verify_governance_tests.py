@@ -2,6 +2,7 @@ import importlib.util
 import io
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -9,6 +10,8 @@ import unittest
 from contextlib import ExitStack, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
+
+import yaml
 
 from scripts.verify_agent_note_format import verify_agent_notes
 from scripts.verify_doc_links import verify_doc_links
@@ -706,6 +709,145 @@ class VerifyGovernanceTests(unittest.TestCase):
             )
             self.assertEqual(current.returncode, 0, current.stdout + current.stderr)
             self.assertIn("COMPATIBILITY WARNINGS", current.stdout)
+
+    def run_governance_workflow(self, root, event_name, event):
+        repository = Path(__file__).resolve().parents[2]
+        workflow = yaml.safe_load(
+            (repository / ".github/workflows/docs-consistency.yml").read_text("utf-8")
+        )
+        steps = workflow["jobs"]["verify"]["steps"]
+        command = shlex.split(
+            next(
+                step["run"]
+                for step in steps
+                if "scripts/verify_governance.py" in step.get("run", "")
+            )
+        )
+        event_path = root / "github-event.json"
+        event_path.write_text(json.dumps(event), encoding="utf-8")
+        return subprocess.run(
+            [sys.executable, "-X", "utf8", str(repository / command[1]), *command[2:]],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+            env={
+                **os.environ,
+                "GITHUB_EVENT_NAME": event_name,
+                "GITHUB_EVENT_PATH": str(event_path),
+            },
+        )
+
+    def test_github_workflow_checks_committed_notes_and_preserves_historical_warnings(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, old_sidecar, old_metadata = self.make_reference_repo(
+                tmpdir, slug="2026-10-07-existing-decision"
+            )
+            old_metadata["test_suites"] = ["arknights_mower/tests/retired_tests.py"]
+            old_sidecar.write_text(json.dumps(old_metadata), encoding="utf-8")
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            self.commit_reference_fixture(root, "existing fixture")
+            base = (
+                subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"], cwd=root, timeout=15
+                )
+                .decode()
+                .strip()
+            )
+            _, sidecar, metadata = self.make_reference_repo(
+                tmpdir, slug="2026-10-08-new-decision"
+            )
+            metadata["test_suites"] = ["arknights_mower/tests/missing_tests.py"]
+            sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+            self.commit_reference_fixture(root, "new fixture")
+
+            events = (
+                ("pull_request", {"pull_request": {"base": {"sha": base}}}),
+                ("push", {"before": base}),
+                ("workflow_dispatch", {"inputs": {"comparison_base": base}}),
+            )
+            for event_name, event in events:
+                with self.subTest(event_name=event_name):
+                    result = self.run_governance_workflow(root, event_name, event)
+                    self.assertEqual(
+                        result.returncode, 1, result.stdout + result.stderr
+                    )
+                    self.assertIn("missing_tests.py", result.stdout)
+                    self.assertNotIn("STRUCTURAL CHECKS PASSED", result.stdout)
+
+            metadata["test_suites"] = ["arknights_mower/tests/field_tests.py"]
+            sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+            self.commit_reference_fixture(root, "repaired fixture")
+            for event_name, event in events:
+                with self.subTest(repaired=event_name):
+                    result = self.run_governance_workflow(root, event_name, event)
+                    self.assertEqual(
+                        result.returncode, 0, result.stdout + result.stderr
+                    )
+                    self.assertIn("COMPATIBILITY WARNINGS", result.stdout)
+                    self.assertIn("retired_tests.py", result.stdout)
+                    self.assertIn(base, result.stdout)
+
+            for event_name, event in (
+                ("workflow_dispatch", {}),
+                ("push", {"before": "0" * 40}),
+            ):
+                with self.subTest(full_audit=event_name):
+                    result = self.run_governance_workflow(root, event_name, event)
+                    self.assertEqual(
+                        result.returncode, 1, result.stdout + result.stderr
+                    )
+                    self.assertIn("retired_tests.py", result.stdout)
+
+    def test_github_workflow_rejects_missing_or_unavailable_comparison_scope(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _, _ = self.make_reference_repo(tmpdir)
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            self.commit_reference_fixture(root, "fixture")
+            for event_name, event in (
+                ("pull_request", {}),
+                ("pull_request", {"pull_request": None}),
+                ("pull_request", []),
+                ("push", {}),
+                ("push", {"before": "a" * 40}),
+                ("pull_request", {"pull_request": {"base": {"sha": "0" * 40}}}),
+                ("pull_request", {"pull_request": {"base": {"sha": "HEAD"}}}),
+                ("workflow_dispatch", {"inputs": None}),
+                ("workflow_dispatch", {"inputs": {"comparison_base": "missing-base"}}),
+                ("unknown-event", {}),
+            ):
+                with self.subTest(event_name=event_name, event=event):
+                    result = self.run_governance_workflow(root, event_name, event)
+                    self.assertEqual(
+                        result.returncode, 1, result.stdout + result.stderr
+                    )
+                    self.assertNotIn("STRUCTURAL CHECKS PASSED", result.stdout)
+
+        repository = Path(__file__).resolve().parents[2]
+        workflow = yaml.safe_load(
+            (repository / ".github/workflows/docs-consistency.yml").read_text("utf-8")
+        )
+        checkout = next(
+            step
+            for step in workflow["jobs"]["verify"]["steps"]
+            if step.get("uses", "").startswith("actions/checkout@")
+        )
+        self.assertEqual(checkout.get("with", {}).get("fetch-depth"), 0)
 
     def test_malformed_metadata_returns_errors_instead_of_crashing_gate(self):
         for field, value in (

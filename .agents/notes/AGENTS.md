@@ -58,6 +58,8 @@ For newly created or changed active triplets, invariant identifiers resolve to d
 
 The governance entry checks these references strictly for changed `proposed/` and `implemented/` triplets, including staged, unstaged and untracked files. For a branch or commit review, pass `--base <actual-comparison-commit>` to include committed changes from that baseline to HEAD. Unchanged historical and archived/rejected records retain structural validation; missing references are reported as compatibility warnings rather than prompting bulk edits. Outside Git, active reference checks are strict because a historical baseline cannot be established. `--all-active` on the note checker requests a full active-reference audit.
 
+GitHub checks compare PRs against their base SHA and pushes against the prior SHA. Manual runs accept a comparison base; a new branch or a manual run without a base audits every active reference. Missing event data or an unavailable supplied base fails the check.
+
 `code_symbols` are descriptive references whose existence is reviewed without importing production modules; the structural checker verifies their type, not runtime resolution. Metadata overlap can guide a semantic ownership review but never automatically rejects records as duplicates. File existence is not evidence that tests passed.
 
 ## 6. Decentralized Linking (No-Index)

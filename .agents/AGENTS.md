@@ -54,6 +54,11 @@ Each selected skill declares inputs, outputs and a completion condition. Read on
 
 Choose tests from the changed behavior and its real callers. Verify return values, state, persistence, side effects or exceptions as required by the guarantee. A helper tested only against itself is insufficient evidence that a production call path is repaired.
 
+Apply these checks when the change crosses a boundary:
+
+- **File or data-source migration**: Account for readers, writers, generators, archive names, application packaging and OTA starting files. Verify installation from a layout collected by the real packaging code, with only the files shipped to users and the affected platforms' text-file conversions.
+- **Policy or default change**: Compare runtime behavior with UI controls, help, FAQ and the active contract on every affected platform. Set test expectations from that contract and verify saved explicit choices and independent settings where relevant.
+
 For documentation or governance changes, run:
 
 ```bash
@@ -67,3 +72,5 @@ pytest arknights_mower/tests/verify_governance_tests.py
 ```
 
 Report structural checks, behavior tests and semantic review separately. Structural success does not establish runtime correctness, record independence, contract consistency, glossary approval or implementation status. Missing evidence remains explicit rather than becoming a pass.
+
+When delivery includes merging a PR, verify that every required repository CI check for its current head has completed successfully before merging. Pending, failed or cancelled checks leave that delivery step incomplete. Recheck after the head changes; report unavailable check evidence explicitly.

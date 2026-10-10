@@ -15,6 +15,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **Record Ownership**: Are same-topic repairs, tests and incidental simplification recorded under the existing decision, with any independent record justified by [ownership rules](../../../notes/AGENTS.md#1-record-ownership)?
 - [ ] **[INV-06] Concept Impact**: Does the review identify changed names, meanings, boundaries or relationships, or justify why they are unchanged? Does any glossary diff have exact [root approval](../../../../AGENTS.md#4-global-execution-constraints)?
 - [ ] **Verification Evidence**: Are structural gate results, real behavior tests and semantic review conclusions separate? Does evidence support implementation status independently of Git commit status?
+- [ ] **Migration and Policy Coverage**: Do changed paths or defaults account for their consumers and shipped installation layout under the [verification workflow](../../../AGENTS.md#4-verification-and-reporting)?
 - [ ] **Targeted Verification Only**: Reviews run targeted, hermetic unit tests (`pytest arknights_mower/tests/...`); live emulator integration runs are strictly prohibited.
 
 ---
@@ -38,7 +39,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-REC-06] Selection Page Exit**: Do anomalous selection readings detect the known facility roster marker on the same Capture Frame and propagate page exit without filter reset or further selection input, while normal readings avoid additional page lookups or captures and existing room recovery reads actual occupants?
 
 ### 2.1 Device Control & Transport Domain
-- [ ] **[INV-DEV-24] Held Swipe Capture**: Selection page swipes acquire one Capture Frame during a shared 400 ms minimum endpoint hold, release the owned touch before reporting capture failure or cancellation, and never recover or replay input while held.
+- [ ] **[INV-DEV-24] Held Swipe Capture**: Do failure and cancellation tests observe touch release before propagation, and do all backends use the shared capture behavior? See the [held gesture contract](../../../../docs/subsystems/device-control.md#14-held-gesture-capture).
 - [ ] **[INV-DEV-23] Performance Observation Isolation**: Do performance queries stay bounded and pinned to the verified target, preserve readiness on unavailable data and propagate cancellation? Do resource observations avoid recommending or modifying modes and timing settings? See the [device contract](../../../../docs/subsystems/device-control.md#3-subsystem-invariants).
 - [ ] **[INV-DEV-22] Recoverable Owned Cleanup**: Failed cleanup retains its original resource owners and retries only unfinished work; successful cleanup clears the failure before verified startup, while unresolved cleanup blocks replacement and preserves foreign resources, Device Profile and shared ADB state.
 - [ ] **[INV-DEV-21] ADB Default Cohesion**: Do omitted ADB paths use the shared platform default and prefer the bundled executable while explicit paths and empty values survive unrelated updates and save/reload?
@@ -187,7 +188,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 - [ ] **[INV-UPD-04] MAA Resource Platform Parity**: Do installed Windows, macOS and Linux MAA installations expose independent resource checks and updates while preserving core and Python files, rejecting active MAA use and retaining resource rollback copies?
 
-- [ ] **[INV-UPD-05] Release Artifact Scope**: Future release builds exclude macOS x64; OTA publication targets only Windows x64 and Android ARM64, including Nightly, and rejects unsafe Android runtime paths without publishing a new channel index.
+- [ ] **[INV-UPD-05] Release Artifact Scope**: Do changed publication workflows cover the permitted platform set and preserve the channel index when Android archive validation fails? See the [artifact scope contract](../../../../docs/subsystems/software-update.md#10-published-artifact-scope).
 
 - [ ] **[INV-UPD-07] Shared Skill Data Packaging**: Do backend reads and frontend imports share the catalog under `arknights_mower/data`, do Android and desktop archives include it without frontend sources or build output, and do generated resource packages preserve historical path compatibility and selected-package priority?
 - [ ] **[INV-UPD-03] Nightly Direction Evidence**: Do same-alpha Nightly updates use publication times or upstream commit ancestry when index history is missing, preserve genuine rollback confirmation, and retain confirmation when direction cannot be verified?

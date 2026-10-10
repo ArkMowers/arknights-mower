@@ -5,6 +5,11 @@ on:
     branches: [alpha, main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      comparison_base:
+        description: "比较基准提交或引用；留空检查所有 active 记录的引用"
+        type: string
+        required: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
@@ -17,8 +22,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: 运行文档格式、链接与禁用词检查
-        run: python scripts/verify_governance.py
+        run: python scripts/verify_governance.py --ci

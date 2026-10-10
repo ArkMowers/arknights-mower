@@ -11,6 +11,9 @@ These checks do not establish behavior, semantic consistency or glossary approva
 """
 
 import argparse
+import json
+import os
+import re
 import sys
 from pathlib import Path
 
@@ -25,7 +28,10 @@ except ImportError:
 
 
 def run_all_checks(
-    repo_root: str | Path = ".", *, comparison_base: str | None = None
+    repo_root: str | Path = ".",
+    *,
+    comparison_base: str | None = None,
+    all_active: bool = False,
 ) -> int:
     repository = Path(repo_root).resolve()
     print("=" * 60)
@@ -42,6 +48,7 @@ def run_all_checks(
         repo_root=repository,
         warnings=note_warnings,
         comparison_base=comparison_base,
+        all_active=all_active,
     )
     if note_warnings:
         print(f"  COMPATIBILITY WARNINGS: {len(note_warnings)} historical reference(s)")
@@ -95,9 +102,14 @@ def run_all_checks(
         "Not evaluated: behavior tests, record independence, contract consistency, "
         "concept meaning, glossary approval or implementation status."
     )
-    print(
-        "Reference policy: changed active notes are strict; historical warnings remain."
-    )
+    if all_active:
+        print(
+            "Reference policy: full active-reference audit; archived warnings remain."
+        )
+    else:
+        print(
+            "Reference policy: changed active notes are strict; historical warnings remain."
+        )
     if comparison_base is not None:
         print(f"Committed note changes are also checked against: {comparison_base}")
     print("Code-symbol resolution is not checked; review those references statically.")
@@ -110,16 +122,62 @@ def run_all_checks(
     return 0
 
 
+def github_comparison_scope() -> tuple[str | None, bool]:
+    """Select committed scope from GitHub's event payload without shell interpolation."""
+    event_name = os.environ["GITHUB_EVENT_NAME"]
+    event = json.loads(
+        Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8")
+    )
+    if not isinstance(event, dict):
+        raise ValueError("GitHub event must be an object")
+    if event_name == "workflow_dispatch":
+        inputs = event.get("inputs", {})
+        if not isinstance(inputs, dict):
+            raise ValueError("Manual-run inputs must be an object")
+        base = inputs.get("comparison_base", "")
+        if not isinstance(base, str):
+            raise ValueError("Manual comparison base must be a string")
+        base = base.strip()
+        return base or None, not bool(base)
+    if event_name == "pull_request":
+        base = event["pull_request"]["base"]["sha"]
+    elif event_name == "push":
+        base = event["before"]
+    else:
+        raise ValueError(f"Unsupported GitHub event: {event_name}")
+    if not isinstance(base, str) or not re.fullmatch(r"[0-9a-f]{40}", base):
+        raise ValueError("GitHub comparison base must be a full commit SHA")
+    if base == "0" * 40:
+        if event_name == "push":
+            return None, True
+        raise ValueError("Pull-request comparison base is missing")
+    return base, False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run scoped structural governance checks"
     )
     parser.add_argument("--repo-root", default=".", help="Repository reference root")
-    parser.add_argument(
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument(
         "--base", help="Also check active notes changed from this commit/ref to HEAD"
     )
+    scope.add_argument(
+        "--all-active", action="store_true", help="Check every active note reference"
+    )
+    scope.add_argument(
+        "--ci", action="store_true", help="Use GitHub event comparison scope"
+    )
     args = parser.parse_args()
-    return run_all_checks(args.repo_root, comparison_base=args.base)
+    base, all_active = args.base, args.all_active
+    if args.ci:
+        try:
+            base, all_active = github_comparison_scope()
+        except (KeyError, TypeError, OSError, ValueError) as error:
+            print(f"FAILED: Cannot determine CI comparison scope: {error}")
+            return 1
+    return run_all_checks(args.repo_root, comparison_base=base, all_active=all_active)
 
 
 if __name__ == "__main__":
