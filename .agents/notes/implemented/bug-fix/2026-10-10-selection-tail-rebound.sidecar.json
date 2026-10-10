@@ -1,0 +1,20 @@
+{
+  "title": "Released Selection Tail Coordinates",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-10",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-REC-10]",
+    "[INV-DEV-24]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_mixin.BaseMixin.scan_agent",
+    "arknights_mower.solvers.base_mixin.BaseMixin.wait_for_agent_page"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/selection_tail_rebound_tests.py"
+  ]
+}
