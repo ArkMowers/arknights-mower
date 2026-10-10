@@ -1090,14 +1090,19 @@ def _recovery_aware_assignments(
     宿舍任务重新执行一次单回入驻。同房换床也不能沿用旧单回标记。
     """
     capacity = len(beds)
+    eligible = [
+        candidate
+        for candidate in candidates
+        if resting_tier(op_data, candidate[2]) != RestingTier.EXCLUDED
+    ]
     protected = {
         candidate[2]
         for candidate in candidates
         if _active_recovery_room(op_data, candidate[2])
     }
-    kept = list(candidates[:capacity])
+    kept = list(eligible[:capacity])
     kept_names = {candidate[2] for candidate in kept}
-    for candidate in candidates[capacity:]:
+    for candidate in eligible[capacity:]:
         name = candidate[2]
         if name not in protected:
             continue
@@ -1117,6 +1122,7 @@ def _recovery_aware_assignments(
         kept[replace_index] = candidate
         kept_names.add(name)
     kept.sort(key=candidates.index)
+    # 被排除者仍交给调用方释放原床或恢复工作主班。
     dropped = [candidate for candidate in candidates if candidate[2] not in kept_names]
 
     available = list(beds)

@@ -4780,6 +4780,15 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 index
             ] = name
         original_transitions = self.op_data.arrangement_group_transitions(expected_plan)
+        for room, names in expected_plan.items():
+            for index, name in enumerate(names):
+                if (
+                    name != "Current"
+                    and self.op_data.is_dynamic_dorm_position(room, index, name)
+                    and resting_tier(self.op_data, name) == RestingTier.EXCLUDED
+                ):
+                    # 执行已拒绝的动态恢复目标不再触发每分钟重新入住。
+                    names[index] = "Current"
         # The execution gate may legitimately skip training slots. Reuse its
         # scheduling protection instead of recreating those slots every minute.
         self._suppress_train_correction(expected_plan)
