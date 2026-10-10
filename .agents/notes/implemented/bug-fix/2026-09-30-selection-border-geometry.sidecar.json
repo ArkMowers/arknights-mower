@@ -11,6 +11,7 @@
     "[INV-REC-04]"
   ],
   "code_symbols": [
+    "arknights_mower.utils.character_recognize.operator_list",
     "arknights_mower.solvers.base_mixin.agent_card_selected",
     "arknights_mower.solvers.base_mixin.BaseMixin.scan_agent",
     "arknights_mower.solvers.base_mixin.BaseMixin.wait_for_arranged_agents"

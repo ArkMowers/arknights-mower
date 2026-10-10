@@ -14,6 +14,7 @@ from arknights_mower.solvers.base_mixin import (
     BaseMixin,
     agent_card_selected,
 )
+from arknights_mower.utils import character_recognize as recognition
 from arknights_mower.utils import config
 from arknights_mower.utils.character_recognize import operator_list
 
@@ -66,6 +67,125 @@ def test_shifted_selected_card_and_unselected_neighbor(shifted_selected_page):
 
     assert agent_card_selected(frame, page[-2][1]) is True
     assert agent_card_selected(frame, page[-1][1]) is False
+
+
+def test_shifted_selected_cards_keep_real_name_recognition(shifted_selected_page):
+    frame, known_page = shifted_selected_page
+    page = operator_list(frame)
+
+    assert [name for name, _ in page] == [name for name, _ in known_page]
+    assert [scope[0][0] for _, scope in page[-2:]] == [
+        scope[0][0] for _, scope in known_page[-2:]
+    ]
+    assert [agent_card_selected(frame, scope) for _, scope in page[-2:]] == [
+        True,
+        False,
+    ]
+
+
+@pytest.mark.parametrize("low_frame_rate", [False, True])
+@pytest.mark.parametrize("verify", [False, True], ids=["scan", "roster"])
+def test_clipped_selected_card_uses_real_recognition_without_extra_observation(
+    monkeypatch, shifted_selected_page, low_frame_rate, verify
+):
+    monkeypatch.setattr(config.conf, "low_frame_rate_mode", low_frame_rate)
+    frame, _ = shifted_selected_page
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame, update=MagicMock())
+    solver.find = MagicMock(return_value=False)
+    solver.sleep = MagicMock()
+    solver.wait_for_next_observation = MagicMock(
+        side_effect=lambda *_: solver.recog.update()
+    )
+    solver.selection_observation_timing = lambda: (0, 3)
+    solver.tap = MagicMock()
+    targets = ["斑点"]
+
+    if verify:
+        assert solver.wait_for_arranged_agents(targets) == ["斑点"]
+    else:
+        selected, _ = solver.scan_agent(targets)
+        assert selected == ["斑点"]
+        assert targets == []
+    solver.tap.assert_not_called()
+    solver.recog.update.assert_called()
+    assert solver.recog.update.call_count == (2 if low_frame_rate else 1)
+    assert solver.wait_for_next_observation.call_count == (1 if low_frame_rate else 0)
+    solver.sleep.assert_not_called()
+
+
+def test_reduced_scan_keeps_its_existing_right_boundary(shifted_selected_page):
+    frame, known_page = shifted_selected_page
+
+    assert [name for name, _ in operator_list(frame, full_scan=False)] == [
+        name for name, _ in known_page[:-2]
+    ]
+
+
+@pytest.mark.parametrize("shift,readable", [(16, True), (17, False)])
+def test_open_terminal_name_keeps_small_cut_limit(shift, readable):
+    frame = cv2.cvtColor(
+        cv2.imread(str(FIXTURES / "right_edge_spot_20260930.jpg")), cv2.COLOR_BGR2RGB
+    )
+    shifted = np.zeros_like(frame)
+    shifted[:, shift:] = frame[:, :-shift]
+    page = operator_list(shifted)
+
+    assert len(page) == (12 if readable else 10)
+    assert ("斑点" in [name for name, _ in page]) is readable
+
+
+def test_open_terminal_name_with_missing_text_stays_unknown(shifted_selected_page):
+    frame, known_page = shifted_selected_page
+    frame = frame.copy()
+    name_left = known_page[-2][1][0][0]
+    frame[488:519, name_left:] = 50
+    page = operator_list(frame)
+
+    assert len(page) == 12
+    assert page[-2][0] == ""
+    assert page[-1][0] == "清流"
+
+
+@pytest.mark.parametrize("low_frame_rate", [False, True])
+def test_open_terminal_name_with_cut_glyph_never_selects_or_verifies(
+    monkeypatch, shifted_selected_page, low_frame_rate
+):
+    monkeypatch.setattr(config.conf, "low_frame_rate_mode", low_frame_rate)
+    frame, known_page = shifted_selected_page
+    frame = frame.copy()
+    name_left = known_page[-2][1][0][0]
+    frame[488:519, name_left:] = 50
+    # 将完整斑点字形放到画面右缘并裁去七像素；残字不能确认干员身份。
+    template = recognition.OP_SELECT["斑点"]
+    x, y, width, height = cv2.boundingRect(template)
+    glyph = template[y : y + height, x : x + width]
+    visible = width - 7
+    frame[490 : 490 + height, -visible:] = glyph[:, :visible, None]
+    page = operator_list(frame)
+    assert len(page) == 12 and page[-2][0] == ""
+
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame, update=MagicMock())
+    solver.find = MagicMock(return_value=False)
+    solver.sleep = MagicMock()
+    solver.wait_for_next_observation = MagicMock()
+    solver.selection_observation_timing = lambda: (0, 3)
+    solver.tap = MagicMock()
+    targets = ["斑点"]
+
+    selected, _ = solver.scan_agent(targets)
+
+    assert selected == [] and targets == ["斑点"]
+    with pytest.raises(AgentSelectionNotReady):
+        solver.wait_for_arranged_agents(["斑点"])
+    solver.tap.assert_not_called()
+
+
+def test_dark_page_without_terminal_start_stays_empty():
+    frame = np.full((1080, 1920, 3), 50, dtype=np.uint8)
+
+    assert operator_list(frame) == ()
 
 
 @pytest.mark.parametrize("low_frame_rate", [False, True])

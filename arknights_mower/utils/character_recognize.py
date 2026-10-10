@@ -143,6 +143,15 @@ def operator_list(img, draw=False, full_scan=True):
             start = i
         prev = curr
 
+    right_clipped_name_left = None
+    if full_scan and img.shape[1] == 1920 and prev == 0 and start is not None:
+        name_left = start + 600
+        # 选中边框扩宽姓名条后可能没有结束像素；只接纳右缘少量裁切。
+        # 沿用普通卡片的 225 像素宽度和 95% 可见要求，缩小扫描不补尾列。
+        if name_left + 203 > 1920 and 1920 - (name_left - 22) >= 225 * 0.95:
+            right_clipped_name_left = name_left
+            name_x.append((name_left, 1918))
+
     name_p = []
     for x in name_x:
         for y in name_y:
@@ -175,6 +184,9 @@ def operator_list(img, draw=False, full_scan=True):
             return ""
         rect = map(lambda c: cv2.boundingRect(c), contours)
         x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
+        if x0 == right_clipped_name_left and x + w >= im.shape[1] - 10:
+            # 姓名轮廓触及裁切边界时不能按残字猜身份。
+            return ""
         im = im[y : y + h, x : x + w]
         tpl = np.zeros((42, 200), dtype=np.uint8)
         if im.shape[0] > tpl.shape[0] or im.shape[1] > tpl.shape[1]:
