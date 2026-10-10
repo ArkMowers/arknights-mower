@@ -1,5 +1,170 @@
 # CHANGELOG
 
+## 4.1.6-alpha.11 - 2026-10-09
+
+### New
+
+- 支持资源包增量 OTA 与整包回退 [PR](https://github.com/ArkMowers/arknights-mower/pull/1308) @ALEXsun0
+- 适配旅骨 T5 加工并保留年的优先级 [PR](https://github.com/ArkMowers/arknights-mower/pull/1303) @ALEXsun0
+- 选择干员时显示基建技能并优化排班编辑布局 [PR](https://github.com/ArkMowers/arknights-mower/pull/1298) @ALEXsun0
+- 初步适配回收站选人与右侧设施拖动布局 [PR](https://github.com/ArkMowers/arknights-mower/pull/1295) @ALEXsun0
+- 支持宿舍低优位排序及副表切换重排 [PR](https://github.com/ArkMowers/arknights-mower/pull/1293) @ALEXsun0
+- 放宽宿管配置并按位置选择单回宿管 [PR](https://github.com/ArkMowers/arknights-mower/pull/1292) @ALEXsun0
+- 支持养成项目合成排序与备齐提醒 [PR](https://github.com/ArkMowers/arknights-mower/pull/1282) @ALEXsun0
+- 新增养成规划、一图流同步与库存联动 [PR](https://github.com/ArkMowers/arknights-mower/pull/1281) @ALEXsun0
+- MAA 运行日志改为播报任务进度并上传掉落数据 [PR](https://github.com/ArkMowers/arknights-mower/pull/1249) @NiceAfternoon
+- 新增默认开启的切产物总开关 [PR](https://github.com/ArkMowers/arknights-mower/pull/1262) @ALEXsun0
+- 支持干员多绑组及独立替班 [PR](https://github.com/ArkMowers/arknights-mower/pull/1258) @ALEXsun0
+- 副表支持干员名单增减 [PR](https://github.com/ArkMowers/arknights-mower/pull/1259) @ALEXsun0
+- 添加加工候选内部休息顺序 [PR](https://github.com/ArkMowers/arknights-mower/pull/1254) @ALEXsun0
+- 库存选关新增一键芯片上限、勾选与排序 [PR](https://github.com/ArkMowers/arknights-mower/pull/1247) @ALEXsun0
+- 高级设置新增宿舍隔离分组 [PR](https://github.com/ArkMowers/arknights-mower/pull/1246) @ALEXsun0
+- 支持同组宿舍绑组主班互填替班 [PR](https://github.com/ArkMowers/arknights-mower/pull/1244) @ALEXsun0
+- 独立自动救急排班与初始化调度修复 [PR](https://github.com/ArkMowers/arknights-mower/pull/1236) @ALEXsun0
+- 智能救急与基建技能练度筛选 [PR](https://github.com/ArkMowers/arknights-mower/pull/1227) @ALEXsun0
+- 集成维护副表定时条件与提前跑单 [PR](https://github.com/ArkMowers/arknights-mower/pull/1219) @ALEXsun0
+- 可选救急副表条件与个人恢复上限保护 [PR](https://github.com/ArkMowers/arknights-mower/pull/1215) @ALEXsun0
+- 配置导出导入包含 tmp 数据表 [PR](https://github.com/ArkMowers/arknights-mower/pull/1211) @ALEXsun0
+- 支持多模拟器实例绑定连接与设置页面一键启动测试 [PR](https://github.com/ArkMowers/arknights-mower/pull/1206) @NiceAfternoon
+- 按生效排班自动补货源石碎片 [PR](https://github.com/ArkMowers/arknights-mower/pull/1201) @ALEXsun0
+- 所有平台默认自动档 [PR](https://github.com/ArkMowers/arknights-mower/pull/1184) @ALEXsun0
+- 支持排班报错分析与自定义模型接口 @ALEXsun0
+- 支持还原当前运行排班 [PR](https://github.com/ArkMowers/arknights-mower/pull/1183) @ALEXsun0
+- 可配置组内心情差距回班等待 [PR](https://github.com/ArkMowers/arknights-mower/pull/1172) @ALEXsun0
+
+### Bug Fixes
+
+- 校验干员头像并刷新活动数据与到期方案 [PR](https://github.com/ArkMowers/arknights-mower/pull/1310) @ALEXsun0
+- 排班图片导入仅识别二维码，避免头像误认条码 [PR](https://github.com/ArkMowers/arknights-mower/pull/1309) @ALEXsun0
+- isolate generator dependencies and OTA proxy fixtures @ALEXsun0
+- preserve recycle and unknown building skills @ALEXsun0
+- 自动补字使用主仓完整原字体 [PR](https://github.com/ArkMowers/arknights-mower/pull/1307) @ALEXsun0
+- 补齐旅门骨并自动扩充模板字体子集 [PR](https://github.com/ArkMowers/arknights-mower/pull/1306) @ALEXsun0
+- 排班图片导出适配回收站并兼容旧码 [PR](https://github.com/ArkMowers/arknights-mower/pull/1305) @ALEXsun0
+- 修复维护副表跑单抑制及提前任务等待 [PR](https://github.com/ArkMowers/arknights-mower/pull/1304) @ALEXsun0
+- 修复维护前专精换人及远期跑单避让日志 [PR](https://github.com/ArkMowers/arknights-mower/pull/1300) @ALEXsun0
+- 修复 ADB 服务停止后连接恢复反复超时 [PR](https://github.com/ArkMowers/arknights-mower/pull/1299) @NiceAfternoon
+- 修复休眠唤醒后误触发场景超时退出 [PR](https://github.com/ArkMowers/arknights-mower/pull/1297) @NiceAfternoon
+- 修复延期后重复生成用尽下班任务 [PR](https://github.com/ArkMowers/arknights-mower/pull/1296) @NiceAfternoon
+- 修复基建报告读取失败导致的数据丢失与重复记录问题 [PR](https://github.com/ArkMowers/arknights-mower/pull/1294) @NiceAfternoon
+- 修复开发与审查流程中产生冗余决策记录的问题 [PR](https://github.com/ArkMowers/arknights-mower/pull/1291) @NiceAfternoon
+- 允许固定宿舍替班留任原岗位 [PR](https://github.com/ArkMowers/arknights-mower/pull/1290) @ALEXsun0
+- 修复 Windows MAA 资源更新入口缺失 [PR](https://github.com/ArkMowers/arknights-mower/pull/1289) @ALEXsun0
+- 避免不可加工配方重复轮换干员 [PR](https://github.com/ArkMowers/arknights-mower/pull/1288) @ALEXsun0
+- 统一专精换人与跑单的任务避让 [PR](https://github.com/ArkMowers/arknights-mower/pull/1287) @ALEXsun0
+- 修复离线清理错误阻塞设备重连 [PR](https://github.com/ArkMowers/arknights-mower/pull/1286) @ALEXsun0
+- 修复换班耗时估算与跑单前任务排期 [PR](https://github.com/ArkMowers/arknights-mower/pull/1285) @ALEXsun0
+- 补齐菲亚梅塔交换前心情并对齐充能记录 [PR](https://github.com/ArkMowers/arknights-mower/pull/1284) @ALEXsun0
+- 修复回班延期并加强副表设施校验 [PR](https://github.com/ArkMowers/arknights-mower/pull/1283) @ALEXsun0
+- 修复共享换班挂起与专精保护确认 [PR](https://github.com/ArkMowers/arknights-mower/pull/1280) @ALEXsun0
+- 修复索引历史外开发版的更新方向判断 [PR](https://github.com/ArkMowers/arknights-mower/pull/1279) @ALEXsun0
+- 一键设置按类别递减空名单档位 [PR](https://github.com/ArkMowers/arknights-mower/pull/1278) @ALEXsun0
+- 恢复默认填写 Mower 自带 ADB 路径 [PR](https://github.com/ArkMowers/arknights-mower/pull/1277) @ALEXsun0
+- 按组确认上下班并修复多绑组共享替班 [PR](https://github.com/ArkMowers/arknights-mower/pull/1275) @ALEXsun0
+- 识别 MuMu 12 运行时目录下的管理器并修正前端构建路径 [PR](https://github.com/ArkMowers/arknights-mower/pull/1276) @Fui-Reconk @ALEXsun0
+- 自动性能从极高档开始 [PR](https://github.com/ArkMowers/arknights-mower/pull/1274) @ALEXsun0
+- 移除同技能保护并保留中途缺料计划 [PR](https://github.com/ArkMowers/arknights-mower/pull/1273) @ALEXsun0
+- 缩短高档选人等待并修复退出页面误判 [PR](https://github.com/ArkMowers/arknights-mower/pull/1271) @ALEXsun0
+- 补齐多绑组替班的一键替换候选名单 [PR](https://github.com/ArkMowers/arknights-mower/pull/1269) @NiceAfternoon
+- 修复初始充能和休息唤醒的调度衔接 [PR](https://github.com/ArkMowers/arknights-mower/pull/1268) @NiceAfternoon
+- 修复共享 ADB 卡死恢复 [PR](https://github.com/ArkMowers/arknights-mower/pull/1267) @NiceAfternoon
+- 跳过缺料计划并限制受保护训练室同技能续训 [PR](https://github.com/ArkMowers/arknights-mower/pull/1272) @ALEXsun0
+- 修复选人状态图标干扰导致的名单校验超时 [PR](https://github.com/ArkMowers/arknights-mower/pull/1270) @ALEXsun0
+- 库存选关优先剿灭和库存关卡并延后普通关卡 [PR](https://github.com/ArkMowers/arknights-mower/pull/1266) @ALEXsun0
+- 副表切入切出保留休息状态 [PR](https://github.com/ArkMowers/arknights-mower/pull/1265) @ALEXsun0
+- 切产物保留休息并在替班不足时召回主班 [PR](https://github.com/ArkMowers/arknights-mower/pull/1264) @ALEXsun0
+- 副表替班切换保留主班状态并支持设施导入 [PR](https://github.com/ArkMowers/arknights-mower/pull/1263) @ALEXsun0
+- 修复多绑组准入和副表纠错并隔离测试时钟 [PR](https://github.com/ArkMowers/arknights-mower/pull/1261) @ALEXsun0
+- 修复多绑组色条及宿舍替班校验 [PR](https://github.com/ArkMowers/arknights-mower/pull/1260) @ALEXsun0
+- 限定设施布局更新拖拽并同步训练室位置 [PR](https://github.com/ArkMowers/arknights-mower/pull/1257) @ALEXsun0
+- 配置组内恢复时间差阈值并统一默认值 [PR](https://github.com/ArkMowers/arknights-mower/pull/1256) @ALEXsun0
+- 已恢复组员让床不提前召回整组 [PR](https://github.com/ArkMowers/arknights-mower/pull/1255) @ALEXsun0
+- 区分新入住单回抢占与空位补位 [PR](https://github.com/ArkMowers/arknights-mower/pull/1253) @ALEXsun0
+- 撤回运行排班时同步恢复高级设置 [PR](https://github.com/ArkMowers/arknights-mower/pull/1252) @ALEXsun0
+- 启动副表校验增加五秒预算，手动校验不限制耗时 [PR](https://github.com/ArkMowers/arknights-mower/pull/1250) @ALEXsun0
+- 避免 MuMu 启动命令因继承输出句柄而阻塞 [PR](https://github.com/ArkMowers/arknights-mower/pull/1232) @NiceAfternoon
+- 锁单回时保留菲亚梅塔原位 [PR](https://github.com/ArkMowers/arknights-mower/pull/1243) @ALEXsun0
+- 解耦宿舍恢复与不养闲人清退 [PR](https://github.com/ArkMowers/arknights-mower/pull/1242) @ALEXsun0
+- 按当前排班覆盖退出救急并调整候补恢复目标 [PR](https://github.com/ArkMowers/arknights-mower/pull/1241) @ALEXsun0
+- 副表变更后撤销受影响的旧用尽预约 [PR](https://github.com/ArkMowers/arknights-mower/pull/1240) @ALEXsun0
+- 修复自动救急周转、绑组替班及续行 [PR](https://github.com/ArkMowers/arknights-mower/pull/1237) @ALEXsun0
+- 随开放日过滤开关隐藏表格占位 [PR](https://github.com/ArkMowers/arknights-mower/pull/1239) @ALEXsun0
+- 单 Free 宿舍离宿后跨宿舍重算单回优先级 [PR](https://github.com/ArkMowers/arknights-mower/pull/1238) @ALEXsun0
+- 修复未绑组候补回班遗漏 [PR](https://github.com/ArkMowers/arknights-mower/pull/1235) @ALEXsun0
+- 修复智能救急启动并简化重复演算 [PR](https://github.com/ArkMowers/arknights-mower/pull/1234) @ALEXsun0
+- 加工任务不依赖加工站静态人员 [PR](https://github.com/ArkMowers/arknights-mower/pull/1233) @ALEXsun0
+- 改用模板识别训练室干员姓名 [PR](https://github.com/ArkMowers/arknights-mower/pull/1231) @ALEXsun0
+- 跑单冲突时提前专精换人并保留跑单时间 [PR](https://github.com/ArkMowers/arknights-mower/pull/1230) @ALEXsun0
+- 替换低心情候选对应的满员宿舍住客 [PR](https://github.com/ArkMowers/arknights-mower/pull/1229) @ALEXsun0
+- 修复训练室身份确认与异常截图归档 [PR](https://github.com/ArkMowers/arknights-mower/pull/1228) @ALEXsun0
+- 统一宿舍优先级与让床补偿 [PR](https://github.com/ArkMowers/arknights-mower/pull/1226) @ALEXsun0
+- 完整校验副表组合，超限警告允许启动 [PR](https://github.com/ArkMowers/arknights-mower/pull/1225) @ALEXsun0
+- 移除 ADB 接管，统一共享服务与异常恢复 [PR](https://github.com/ArkMowers/arknights-mower/pull/1224) @ALEXsun0
+- 统一宿舍恢复规划与卡牌心情预估 [PR](https://github.com/ArkMowers/arknights-mower/pull/1223) @ALEXsun0
+- 重构设备恢复并隔离自有 ADB 服务 [PR](https://github.com/ArkMowers/arknights-mower/pull/1222) @ALEXsun0
+- 统一模拟器空闲关闭与输入前恢复 [PR](https://github.com/ArkMowers/arknights-mower/pull/1221) @ALEXsun0
+- 修复最右列干员选中校验失败 [PR](https://github.com/ArkMowers/arknights-mower/pull/1220) @ALEXsun0
+- 修复设备消失后的 DroidCast 清理阻塞 [PR](https://github.com/ArkMowers/arknights-mower/pull/1218) @ALEXsun0
+- 隔离设置检测取消信号并调整启动文案 [PR](https://github.com/ArkMowers/arknights-mower/pull/1216) @ALEXsun0
+- 适配仓库暗色模式与吸顶导航并修复界面缩放下的浮层定位 [PR](https://github.com/ArkMowers/arknights-mower/pull/1217) @NiceAfternoon
+- 按候补配置顺序使用替班 [PR](https://github.com/ArkMowers/arknights-mower/pull/1212) @983122046 @ALEXsun0
+- 在连接验证前保存已选择的模拟器实例 [PR](https://github.com/ArkMowers/arknights-mower/pull/1214) @ALEXsun0
+- 保留 MuMu Pro 唤醒后的 ADB 重连预算 [PR](https://github.com/ArkMowers/arknights-mower/pull/1213) @ALEXsun0
+- 恢复所选模拟器自动启动并统一检测设置 [PR](https://github.com/ArkMowers/arknights-mower/pull/1210) @ALEXsun0
+- 隔离托管设备配置与备份导入 [PR](https://github.com/ArkMowers/arknights-mower/pull/1209) @ALEXsun0
+- 修复 MuMu Pro 连接并支持多实例选择 [PR](https://github.com/ArkMowers/arknights-mower/pull/1208) @ALEXsun0
+- 按宿舍合并清退并兼容未配置训练室 [PR](https://github.com/ArkMowers/arknights-mower/pull/1207) @ALEXsun0
+- 修复无人机加速后切产物跨份延期 [PR](https://github.com/ArkMowers/arknights-mower/pull/1204) @ALEXsun0
+- 完整收敛换班并保留充能消耗速度 [PR](https://github.com/ArkMowers/arknights-mower/pull/1203) @ALEXsun0
+- 修复滚动通告遮挡时的干员选中校验失败 [PR](https://github.com/ArkMowers/arknights-mower/pull/1202) @ALEXsun0
+- 修复维护唤醒后继续执行任务 [PR](https://github.com/ArkMowers/arknights-mower/pull/1200) @ALEXsun0
+- 恢复无令牌本机日志读取 @ALEXsun0
+- 修复重启后用尽回满干员提前回班 [PR](https://github.com/ArkMowers/arknights-mower/pull/1199) @ALEXsun0
+- 修复专精期间协助位跟随排班纠错 [PR](https://github.com/ArkMowers/arknights-mower/pull/1198) @ALEXsun0
+- 提前安排心情上限清退并优先到期关键任务 [PR](https://github.com/ArkMowers/arknights-mower/pull/1197) @ALEXsun0
+- 隐藏子进程的 cmd 窗口 [PR](https://github.com/ArkMowers/arknights-mower/pull/1196) @ALEXsun0
+- 隔离肥鸭充能并修复宿舍清退补位 [PR](https://github.com/ArkMowers/arknights-mower/pull/1194) @ALEXsun0
+- 修复测试设置误报未绑定角色 [PR](https://github.com/ArkMowers/arknights-mower/pull/1193) @ALEXsun0
+- 森空岛与网络测试结果支持复制 [PR](https://github.com/ArkMowers/arknights-mower/pull/1192) @ALEXsun0 @983122046
+- 低心情合法替班重新考察候补 [PR](https://github.com/ArkMowers/arknights-mower/pull/1191) @ALEXsun0 @983122046
+- 修复公招票数识别因数字碎片报错 [PR](https://github.com/ArkMowers/arknights-mower/pull/1190) @ALEXsun0
+- 清理验证成功后的安装包与临时更新器 [PR](https://github.com/ArkMowers/arknights-mower/pull/1186) @ALEXsun0
+- 修复登录过程与剿灭弹窗场景误判 [PR](https://github.com/ArkMowers/arknights-mower/pull/1188) @ALEXsun0
+- 校准 Nightly OTA 版本方向并保障更新后实例恢复 [PR](https://github.com/ArkMowers/arknights-mower/pull/1187) @ALEXsun0
+- 修复排班表头像遮挡操作栏 [PR](https://github.com/ArkMowers/arknights-mower/pull/1185) @ALEXsun0
+- 修复满心情主班遗漏不养闲人清退 [PR](https://github.com/ArkMowers/arknights-mower/pull/1182) @ALEXsun0
+- 收敛副表旧任务并避免房间重试阻塞调度 [PR](https://github.com/ArkMowers/arknights-mower/pull/1181) @ALEXsun0
+- 统一跑单与专精换人前的宿舍避让 [PR](https://github.com/ArkMowers/arknights-mower/pull/1180) @ALEXsun0
+- sort tray instances by port [PR](https://github.com/ArkMowers/arknights-mower/pull/1179) @ALEXsun0
+- 修复归档中的选人及房间识别错误 [PR](https://github.com/ArkMowers/arknights-mower/pull/1177) @ALEXsun0
+- 独立空床补位并保留重排唤醒任务 [PR](https://github.com/ArkMowers/arknights-mower/pull/1176) @ALEXsun0
+- 从上一房间恢复后再进入目标房间 [PR](https://github.com/ArkMowers/arknights-mower/pull/1175) @ALEXsun0
+- 隔离初始化补读并修复副表换班与肥鸭计时 [PR](https://github.com/ArkMowers/arknights-mower/pull/1174) @ALEXsun0
+- 更新包仅包含构建后的 WebUI [PR](https://github.com/ArkMowers/arknights-mower/pull/1170) @ALEXsun0
+- 更新后续接原任务队列 [PR](https://github.com/ArkMowers/arknights-mower/pull/1171) @ALEXsun0
+
+### Improvements
+
+- move generation originals to MowerFonts @ALEXsun0
+- 统一宿舍逻辑并固定单回目标位置 [PR](https://github.com/ArkMowers/arknights-mower/pull/1205) @ALEXsun0
+- 独立性能参数并增加极高选人档 [PR](https://github.com/ArkMowers/arknights-mower/pull/1178) @ALEXsun0
+
+### Maintenance
+
+- ignore local Codex workspace files @ALEXsun0
+
+### Documentation
+
+- 补充系统架构规范文档与一致性校验体系 [PR](https://github.com/ArkMowers/arknights-mower/pull/1195) @NiceAfternoon
+
+### Other
+
+- prerelease v4.1.6-alpha.11 [PR](https://github.com/ArkMowers/arknights-mower/pull/1311) @ALEXsun0
+- fix(rescue) : 修正用尽干员救急准入与训练室部署 [PR](https://github.com/ArkMowers/arknights-mower/pull/1251) @ALEXsun0
+- fix(rescue) : 修正救急替班门槛与退出导向分床 [PR](https://github.com/ArkMowers/arknights-mower/pull/1248) @ALEXsun0
+
+**Full Changelog**: [v4.1.6-alpha.10...v4.1.6-alpha.11](https://github.com/ArkMowers/arknights-mower/compare/v4.1.6-alpha.10...v4.1.6-alpha.11)
+
 ## 4.1.6-alpha.10 - 2026-09-27
 
 ### New
