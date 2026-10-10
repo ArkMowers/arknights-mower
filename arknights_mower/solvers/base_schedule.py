@@ -7249,6 +7249,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.profession_filter(profession)
         if ope == "Free":
             self.profession_filter("ALL")
+        # 训练卡片延伸到屏幕右侧，职业栏会遮住末列姓名。
+        self._close_profession_filter()
         right_swipe = 0
         max_swipe = 50
         observation = None
@@ -9124,9 +9126,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             "Free",
                             "Current",
                         ):
-                            if not (room == "train" and idx == 1):
-                                same = False
-                                break
+                            same = False
+                            break
                     if same:
                         logger.info(f"重试复核发现 {room} 目标干员已在岗并完成采样")
                 else:
@@ -9227,11 +9228,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             "Free",
                             "Current",
                         ):
-                            if not (room == "train" and idx == 1):
-                                logger.error(
-                                    f"检测到的干员{current[idx]['agent']},需要安排的干员{name}"
-                                )
-                                raise Exception("检测到安排干员未成功")
+                            logger.error(
+                                f"检测到的干员{current[idx]['agent']},需要安排的干员{name}"
+                            )
+                            raise Exception("检测到安排干员未成功")
                 elif choose_error == 0:
                     if fia_arrangement:
                         # 失败重试或回岗名单恰好一致，也必须刷新充能后的计时。

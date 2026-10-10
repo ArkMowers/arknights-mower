@@ -195,3 +195,69 @@ def test_right_gap_requires_both_name_rows_to_be_blank(train):
     rows = ((479, 506), (895, 922)) if train else ((488, 520), (909, 941))
     frame[rows[1][1] - 8 : rows[1][1], 1600:1790] = 0
     assert not BaseMixin.agent_page_has_right_gap(frame, page(train=train), train=train)
+
+
+@pytest.mark.parametrize("mode", ["xhigh", "high"])
+def test_original_training_tail_discards_target_hidden_after_release(monkeypatch, mode):
+    monkeypatch.setattr(config, "stop_mower", Event())
+    monkeypatch.setattr(config.conf, "performance_mode", mode)
+    held = image("training_tail_held_20261010.jpg")
+    returned = image("training_tail_returned_20261010.jpg")
+    solver = BaseMixin()
+    solver.device = SimpleNamespace(
+        screencap=MagicMock(return_value=(None, returned, returned[:, :, 0]))
+    )
+    solver.recog = Recognizer(solver.device)
+    solver.recog.set_frame((None, held, held[:, :, 0]))
+    solver.find = MagicMock(return_value=False)
+    solver.sleep = MagicMock(side_effect=lambda *_: solver.recog.update())
+    solver.tap = MagicMock()
+    held_page = base_mixin.operator_list_train(held)
+    assert next(scope for name, scope in held_page if name == "桃金娘") == (
+        (1263, 479),
+        (1438, 506),
+    )
+    targets = ["桃金娘"]
+
+    selected, actual = solver.scan_agent(
+        targets,
+        train=True,
+        respect_train_selection=True,
+        observation=solver.observe_agent_page((), train=True),
+    )
+
+    assert selected == [] and targets == ["桃金娘"]
+    assert "桃金娘" not in [name for name, _ in actual]
+    assert solver.device.screencap.call_count >= 1
+    solver.tap.assert_not_called()
+
+
+@pytest.mark.parametrize("mode", ["xhigh", "high"])
+def test_training_tail_with_sidebar_uses_released_target(monkeypatch, mode):
+    solver, settled = solver_for(monkeypatch, mode, train=True)
+    solver.recog.img[:, 1795:] = 0
+
+    selected, actual = solver.scan_agent(
+        ["歌蕾蒂娅"], train=True, observation=solver.observe_agent_page((), train=True)
+    )
+
+    assert selected == ["歌蕾蒂娅"] and actual == settled
+    solver.tap.assert_called_once_with(target_scope(settled), interval=0)
+
+
+@pytest.mark.parametrize("mode,captures", [("medium", 2), ("low", 3)])
+def test_training_sidebar_tail_requires_fresh_stability(monkeypatch, mode, captures):
+    solver, _ = solver_for(monkeypatch, mode, train=True, frames=[page(train=True)] * 5)
+    solver.recog.img[:, 1795:] = 0
+
+    assert solver.wait_for_agent_page(
+        train=True, observation=solver.observe_agent_page((), train=True)
+    ) == page(train=True)
+    assert solver.device.screencap.call_count == captures
+
+
+def test_original_returned_training_page_is_not_a_blank_tail():
+    returned = image("training_tail_returned_20261010.jpg")
+    returned_page = base_mixin.operator_list_train(returned)
+
+    assert not BaseMixin.agent_page_has_right_gap(returned, returned_page, train=True)

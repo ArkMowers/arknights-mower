@@ -8,13 +8,18 @@
   ],
   "invariants": [
     "[INV-REC-10]",
+    "[INV-REC-05]",
     "[INV-DEV-24]"
   ],
   "code_symbols": [
     "arknights_mower.solvers.base_mixin.BaseMixin.scan_agent",
-    "arknights_mower.solvers.base_mixin.BaseMixin.wait_for_agent_page"
+    "arknights_mower.solvers.base_mixin.BaseMixin.wait_for_agent_page",
+    "arknights_mower.solvers.base_mixin.BaseMixin.agent_page_has_right_gap",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.choose_train_ope",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange_room"
   ],
   "test_suites": [
-    "arknights_mower/tests/selection_tail_rebound_tests.py"
+    "arknights_mower/tests/selection_tail_rebound_tests.py",
+    "arknights_mower/tests/train_follow_correction_tests.py"
   ]
 }
