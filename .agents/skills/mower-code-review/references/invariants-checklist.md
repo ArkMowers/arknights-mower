@@ -156,6 +156,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 - [ ] **[INV-REC-07] Base Report Field Integrity**: Does each base report field retain its independent reading, with missing anchors, empty crops and unscorable digits remaining unread? Do compatible templates retain their scores, unsuccessful writes stop before post-storage panel input and email, confirmed storage end reading retries, and cancellation or Device Control recovery propagate without consuming reading attempts or replaying uncertain input?
 - [ ] **[INV-REC-08] Idle Observation Boundary**: Does successful scheduler idle resumption invalidate cached Capture Frames and scene state and reset continuous scene and loading observation across deadline, early wake and maintenance waits, while routine capture refresh and active observation retain freeze detection and cancellation preserves stop propagation?
+- [ ] **[INV-REC-10] Recycling Collection Prompt**: Does recycling collection require its icon and collection badge in the base to-do footer, reject missing badges and other collection icons, retain the existing cooldown, and close rewards through the shared materiel transition?
+
 - [ ] **[INV-REC-05] Training Panel Identity**: Does training identity use full-name templates on the current Capture Frame with score, closing-bracket and distinct-name margin checks, while unknown readings retain bounded retry without an OCR name fallback or plan-derived occupant?
 - [ ] **[INV-DIAG-06] Error Notification Evidence**: Does every ERROR notification log before mail configuration checks or delivery, while only explicit visual failures request screenshots, including disabled email, through the existing archive store?
 
