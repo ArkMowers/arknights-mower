@@ -4,15 +4,26 @@ import hashlib
 import io
 import json
 import os
+import shutil
+import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 from zipfile import ZIP_DEFLATED, ZipFile
 
+import build_assets
 from arknights_mower.tests.resource_pkg_tests import ResourcePkgTestBase, resource_zip
 from arknights_mower.utils import manual_update
 from arknights_mower.utils import resource_pkg as rp
-from arknights_mower.utils.res_version import RES_PACKAGE_DIRS, is_package_file
+from arknights_mower.utils.res_version import (
+    BUILDING_SKILL_PACKAGE_PATH,
+    RES_PACKAGE_DATA,
+    RES_PACKAGE_DIRS,
+    is_package_file,
+)
 from arknights_mower.utils.resource_ota import OTA_MARKER, build_ota
 from arknights_mower.utils.resource_update_job import ResourceUpdateJob
+from scripts.package_android import package
+from scripts.tests.android_release_tests import runtime_fixture
 
 BASE = "v2026.08.23-aaaaaaa"
 TARGET = "v2026.08.24-bbbbbbb"
@@ -46,7 +57,12 @@ class TestResourceOTA(ResourcePkgTestBase):
         self.old = rewrite(
             self.old,
             lambda files: files.update(
-                {RES_PACKAGE_DIRS[0] + "/large.webp": os.urandom(16000)}
+                {
+                    RES_PACKAGE_DIRS[0] + "/large.webp": os.urandom(16000),
+                    RES_PACKAGE_DIRS[0] + "/x.webp": b"WEB\nP",
+                    BUILDING_SKILL_PACKAGE_PATH: b'[\n  {"name": "Fixture"}\n]\n',
+                    "ui/src/pages/basement_skill/buffer.json": b"[\n]\n",
+                }
             ),
         )
         self.new = rewrite(
@@ -143,33 +159,163 @@ class TestResourceOTA(ResourcePkgTestBase):
         self.assertFalse(rp.resource_pkg_path(removed).exists())
         self.assertTrue((previous / removed).exists())
 
-    def test_reuses_bundled_resource_and_bundled_dist_images(self):
-        from arknights_mower.utils.resource_ota import VERSION_MARKER
-
-        # Model a portable installation's Python data and UI dist layout.
+    def use_bundled_base(self, platform, *, crlf=False):
+        source_root = self.base / f"source-{platform}-{crlf}"
+        installed_root = self.base / f"installed-{platform}-{crlf}"
+        # Source inputs reflect the committed catalog, not its ignored export.
         with ZipFile(io.BytesIO(self.old)) as archive:
             for name in archive.namelist():
-                if name.startswith("arknights_mower/"):
-                    target = self.builtin / name.removeprefix("arknights_mower/")
+                if name == "ui/src/pages/basement_skill/skill.json":
+                    target = source_root / "arknights_mower/data/building_skill.json"
                 elif name.startswith("ui/public/"):
-                    target = (
-                        self.builtin.parent
-                        / "ui/dist"
-                        / name.removeprefix("ui/public/")
-                    )
+                    # Vite copies public files unchanged into dist.
+                    target = source_root / "ui/dist" / name.removeprefix("ui/public/")
                 else:
-                    target = self.builtin.parent / name
+                    target = source_root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(archive.read(name))
+                data = archive.read(name)
+                if crlf and name in RES_PACKAGE_DATA:
+                    data = data.replace(b"\n", b"\r\n")
+                target.write_bytes(data)
+
+        for name in (
+            "logo.png",
+            "CHANGELOG.md",
+            "LICENSE",
+            "requirements.txt",
+            "server.py",
+            "ui/dist/index.html",
+            "ui/Mower入门指北.html",
+        ):
+            target = source_root / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("fixture", encoding="utf-8")
+        (source_root / "arknights_mower/__init__.py").write_text(
+            '__version__ = "4.2.0"\n', encoding="utf-8"
+        )
+        copy_script = Path(__file__).resolve().parents[2] / "ui/copy.js"
+        subprocess.run(
+            [shutil.which("node"), str(copy_script)],
+            cwd=source_root / "ui",
+            check=True,
+            capture_output=True,
+            timeout=15,
+        )
+        if platform == "desktop":
+            with (
+                patch.object(build_assets, "PROJECT_ROOT", source_root),
+                patch.object(build_assets, "ensure_frontend_built"),
+            ):
+                collected = build_assets.get_pyinstaller_common_datas()
+            for source, destination in collected:
+                target = installed_root / destination / Path(source).name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, target)
+        else:
+            bundled = package(
+                source_root,
+                source_root / "out",
+                "4.2.0",
+                "a" * 40,
+                runtime_fixture(source_root),
+            )
+            with ZipFile(bundled) as archive:
+                for name in archive.namelist():
+                    if name.startswith("mower/"):
+                        target = installed_root / name.removeprefix("mower/")
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_bytes(archive.read(name))
+
+        self.builtin = installed_root / "arknights_mower"
+        rp.__rootdir__ = self.builtin
         rp._write_index([])
         rp._active_resource = None
+        self.assertEqual(self.installed_version(), BASE)
+        self.assertFalse((installed_root / "ui/src").exists())
+        with ZipFile(io.BytesIO(self.old)) as archive:
+            catalog = archive.read(BUILDING_SKILL_PACKAGE_PATH)
+        if crlf:
+            catalog = catalog.replace(b"\n", b"\r\n")
         self.assertEqual(
-            json.loads(rp.resource_pkg_path(VERSION_MARKER).read_bytes())[
-                "res_version"
-            ],
-            BASE,
+            (self.builtin / "data/building_skill.json").read_bytes(), catalog
         )
-        self.assertTrue(rp.install_resource_pkg(self.delta))
+
+    def test_reuses_bundled_resource_and_bundled_dist_images(self):
+        for platform in ("desktop", "android"):
+            for crlf in (False, True):
+                with self.subTest(platform=platform, crlf=crlf):
+                    self.use_bundled_base(platform, crlf=crlf)
+                    self.assertTrue(rp.install_resource_pkg(self.delta))
+                    self.assert_target()
+
+    def test_manual_ota_reuses_packaged_data_without_frontend_sources_or_network(self):
+        for platform in ("desktop", "android"):
+            for crlf in (False, True):
+                with self.subTest(platform=platform, crlf=crlf):
+                    self.use_bundled_base(platform, crlf=crlf)
+                    with patch.object(
+                        rp,
+                        "request_download",
+                        side_effect=AssertionError("manual OTA must remain offline"),
+                    ):
+                        result = manual_update.apply_manual_update(self.delta)
+                    self.assertTrue(result["ok"], result)
+                    self.assertFalse(result["restart_required"])
+                    self.assert_target()
+
+    def test_external_base_never_borrows_bundled_skill_data(self):
+        with ZipFile(io.BytesIO(self.old)) as archive:
+            (self.builtin / "data/building_skill.json").write_bytes(
+                archive.read(BUILDING_SKILL_PACKAGE_PATH)
+            )
+        rp.resource_pkg_path("ui/src/pages/basement_skill/skill.json").unlink()
+        before = (self.overlay / "index.json").read_bytes()
+        self.assertFalse(rp.install_resource_pkg(self.delta))
+        self.assertEqual((self.overlay / "index.json").read_bytes(), before)
+        self.assertEqual(self.installed_version(), BASE)
+
+    def test_builtin_crlf_corruption_and_binary_changes_keep_the_previous_generation(
+        self,
+    ):
+        self.use_bundled_base("desktop", crlf=True)
+        before = (self.overlay / "index.json").read_bytes()
+        catalog = self.builtin / "data/building_skill.json"
+        original = catalog.read_bytes()
+        catalog.write_bytes(original.replace(b"Fixture", b"Damaged"))
+        self.assertFalse(rp.install_resource_pkg(self.delta))
+        self.assertEqual((self.overlay / "index.json").read_bytes(), before)
+        catalog.write_bytes(original)
+        image = self.builtin.parent / "ui/dist/depot/x.webp"
+        image.write_bytes(image.read_bytes().replace(b"\n", b"\r\n"))
+        self.assertFalse(rp.install_resource_pkg(self.delta))
+        self.assertEqual((self.overlay / "index.json").read_bytes(), before)
+        self.assertEqual(self.installed_version(), BASE)
+        self.assertFalse(rp._STAGING.exists())
+
+    def test_external_text_base_requires_exact_bytes(self):
+        source = rp.resource_pkg_path(BUILDING_SKILL_PACKAGE_PATH)
+        source.write_bytes(source.read_bytes().replace(b"\n", b"\r\n"))
+        before = (self.overlay / "index.json").read_bytes()
+        self.assertFalse(rp.install_resource_pkg(self.delta))
+        self.assertEqual((self.overlay / "index.json").read_bytes(), before)
+        self.assertEqual(self.installed_version(), BASE)
+
+    def test_builtin_crlf_across_read_boundary_reconstructs_exact_target_bytes(self):
+        catalog = b'["' + b"x" * (1024 * 1024 - 5) + b'"]\n'
+        for attribute in ("old", "new"):
+            setattr(
+                self,
+                attribute,
+                rewrite(
+                    getattr(self, attribute),
+                    lambda files: files.update({BUILDING_SKILL_PACKAGE_PATH: catalog}),
+                ),
+            )
+        self.old_path.write_bytes(self.old)
+        self.new_path.write_bytes(self.new)
+        build_ota(self.old_path, self.new_path, self.ota_path, is_package_file)
+        self.use_bundled_base("desktop", crlf=True)
+        self.assertTrue(rp.install_resource_pkg(self.ota_path.read_bytes()))
         self.assert_target()
 
     def test_unchanged_corrupt_base_file_keeps_index_and_previous_generation(self):
