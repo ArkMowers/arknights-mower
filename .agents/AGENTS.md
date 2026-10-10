@@ -52,7 +52,7 @@ Each selected skill declares inputs, outputs and a completion condition. Read on
 
 ## 4. Verification and Reporting
 
-Choose tests from the changed behavior and its real callers. Verify return values, state, persistence, side effects or exceptions as required by the guarantee. A helper tested only against itself is insufficient evidence that a production call path is repaired.
+Choose tests from the changed behavior and its real callers. Apply the [verification discipline](../CODING_STANDARDS.md#5-verification-discipline) when designing or reviewing tests. Verify return values, state, persistence, side effects or exceptions as required by the guarantee. A helper tested only against itself is insufficient evidence that a production call path is repaired.
 
 Apply these checks when the change crosses a boundary:
 

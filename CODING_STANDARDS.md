@@ -188,7 +188,12 @@
 ## 5. Verification Discipline
 
 - **Targeted Unit Testing**: Run only focused unit test suites during development (e.g., `device_session_tests.py`, `deviceSettings.test.js`). Full integration runs against live devices are reserved for isolated environments.
-- **Hermetic Unit Tests**: Unit tests must stub external processes, network sockets, and filesystem resources to ensure deterministic offline execution.
+- **Hermetic Unit Tests**: Isolate external device processes, network sockets and user filesystem state for deterministic offline execution. Persistence tests may exercise real file or database operations in isolated temporary locations managed by the test lifecycle.
+- **Independent Expectations**: Derive expected results from the governing contract, confirmed examples or independent calculations. Avoid reproducing the production algorithm or using the behavior under test to generate its own expected result.
+- **Business Logic Under Test**: Use test doubles to control external I/O, time, faults and race conditions while keeping the business decisions covered by the guarantee real. Interaction arguments, prohibited calls, counts and necessary ordering are valid assertions when they belong to that contract.
+- **Fault Detection**: Choose assertions that would fail for a plausible violation of the tested contract. Check the relevant result, state, persistence, exception or side effect; a presence check is sufficient when presence itself is the guarantee. For reproducible defects, observed failure before the repair and success after it provide direct evidence when readily available.
+
+Apply these principles during test design and review without requiring a per-test record, a fixed case count or a mutation-testing run. Coverage and passing tests provide evidence, not proof of correctness.
 
 - **[INV-STOCK-01] Confirmed Workshop Inventory**: A later cloud request timestamp alone never replaces locally confirmed crafting changes. Pending outputs and consumed ingredients remain protected until single-direction cloud counts reach the predicted inventory in that direction, or a newer actual inventory read reconciles them. Items both produced and consumed require exact predicted cloud counts or a newer actual inventory read. Workshop upper and lower limits remain absolute inventory thresholds.
 
