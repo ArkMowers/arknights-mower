@@ -325,7 +325,7 @@ class RuntimeRegistration:
             try:
                 self.publish()
             except Exception:
-                logging.getLogger(__name__).exception(
+                logging.getLogger("arknights_mower.utils.log").exception(
                     "实例登记发布失败，下次心跳将重试：%s", self.path
                 )
 

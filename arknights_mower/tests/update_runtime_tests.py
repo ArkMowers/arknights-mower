@@ -2,6 +2,7 @@
 
 import io
 import json
+import logging
 import os
 import stat
 import subprocess
@@ -337,6 +338,39 @@ class RuntimeRegistrationTests(unittest.TestCase):
         runtime.atexit.unregister(self.registration.close)
         self.addCleanup(self.registration.close)
 
+    def test_heartbeat_failure_reaches_application_log_without_console(self):
+        log_path = self.directory / "runtime.log"
+        handler = logging.FileHandler(log_path, encoding="utf-8")
+        self.addCleanup(handler.close)
+        logger = logging.getLogger("arknights_mower.utils.log")
+        failed = threading.Event()
+        recovered = threading.Event()
+        real_replace = os.replace
+
+        def replace(source, destination):
+            if Path(destination) == self.registration.path:
+                if not failed.is_set():
+                    failed.set()
+                    raise OSError("registration disk temporarily unavailable")
+                real_replace(source, destination)
+                recovered.set()
+            else:
+                real_replace(source, destination)
+
+        with (
+            patch.object(logger, "handlers", [handler]),
+            patch.object(logger, "level", logging.ERROR),
+            patch.object(logger, "propagate", False),
+            patch.object(sys, "stderr", None),
+            patch.object(runtime.os, "replace", side_effect=replace),
+        ):
+            self.assertTrue(recovered.wait(3), "heartbeat did not retry publication")
+        self.assertTrue(self.registration.thread.is_alive())
+        detail = log_path.read_text(encoding="utf-8")
+        self.assertIn("实例登记发布失败", detail)
+        self.assertIn(str(self.registration.path), detail)
+        self.assertIn("registration disk temporarily unavailable", detail)
+
     def test_heartbeat_recovers_after_failed_replace_and_preserves_old_registration(
         self,
     ):
@@ -355,7 +389,7 @@ class RuntimeRegistrationTests(unittest.TestCase):
         with (
             patch.object(runtime.os, "replace", side_effect=replace),
             patch.object(threading, "excepthook"),
-            self.assertLogs(runtime.__name__, level="WARNING") as logged,
+            self.assertLogs("arknights_mower.utils.log", level="ERROR") as logged,
         ):
             self.assertTrue(failed.wait(3), "heartbeat never attempted publication")
             self.assertEqual(runtime.read_json(self.registration.path), initial)
@@ -390,7 +424,7 @@ class RuntimeRegistrationTests(unittest.TestCase):
         with (
             patch.object(json.JSONEncoder, "iterencode", chunks),
             patch.object(runtime.os, "replace", side_effect=replace),
-            self.assertLogs(runtime.__name__, level="WARNING") as logged,
+            self.assertLogs("arknights_mower.utils.log", level="ERROR") as logged,
         ):
             self.assertTrue(failed.wait(3))
             self.assertEqual(runtime.read_json(self.registration.path), initial)
