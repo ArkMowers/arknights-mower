@@ -268,7 +268,7 @@ import { usedepotStore } from '@/stores/depot'
 import { useFacilityStore } from '@/stores/facility'
 import { useMasteryStore } from '@/stores/mastery'
 const plan_store = inject('planStore', null) || usePlanStore()
-const { operators, groups, plan } = storeToRefs(plan_store)
+const { operators, all_groups: groups, plan } = storeToRefs(plan_store)
 const { left_side_facility } = plan_store
 const depot_store = usedepotStore()
 const { inventory, inventoryLoaded, inventoryLoadError } = storeToRefs(depot_store)
@@ -495,7 +495,7 @@ function render_custom_tip(option) {
   />
   <n-select
     v-if="op_type == 'group_mood'"
-    :default-value="op_data.group"
+    :value="op_data.group"
     :options="groups.map((group) => ({ label: group, value: group }))"
     :on-update:value="update_group"
     filterable
@@ -503,7 +503,7 @@ function render_custom_tip(option) {
   />
   <n-select
     v-if="op_type == 'group_mood'"
-    :default-value="op_data.mode"
+    :value="op_data.mode"
     :options="group_mood_mode_options"
     :on-update:value="update_group_mood_mode"
     :consistent-menu-width="false"
