@@ -62,8 +62,8 @@ onMounted(loadStatus)
     <n-space vertical :size="14">
       <n-text depth="3">
         在一图流账号页生成“干员数据写入”权限的只写 Token
-        后填入。保存后，每次成功刷新森空岛数据都会自动同步至一图流；清除 Token
-        即可停止。保存本身不会上传。
+        后填入。保存后，成功刷新森空岛数据时自动检查同步；与上次成功上传的内容相同则不传输。清除
+        Token 即可停止。保存本身不会上传。
         <n-a href="https://ark.yituliu.cn" target="_blank" rel="noopener noreferrer"
           >打开一图流</n-a
         >
@@ -97,7 +97,8 @@ onMounted(loadStatus)
       </n-space>
       <n-alert type="info" :bordered="false">
         将当前森空岛缓存中的游戏 UID、昵称、区服和全部已拥有干员的等级、精英化、潜能、技能及模组练度
-        上传至一图流，更新对应账号的干员数据。不会上传仓库、养成计划、森空岛账号密码或登录凭据。
+        在本地校验后上传至一图流，更新对应账号的干员数据；与上次成功上传的内容相同则跳过。
+        不会上传仓库、养成计划、森空岛账号密码或登录凭据。
         旧缓存缺少游戏账号信息时，请先重新同步一次森空岛。
       </n-alert>
       <n-text v-if="status.last_synced_at" depth="3">

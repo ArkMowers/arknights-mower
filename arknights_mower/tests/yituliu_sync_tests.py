@@ -232,3 +232,164 @@ def test_token_and_sync_routes_require_local_auth_and_explicit_manual_action(
     assert (
         client.delete("/growth-sync-token", headers=headers).json["configured"] is False
     )
+
+
+@pytest.mark.parametrize("automatic", [False, True])
+def test_identical_confirmed_payload_skips_manual_and_automatic_network(
+    sync_case, automatic
+):
+    paths, session, _, snapshot, _ = sync_case
+    sync.save_token(TOKEN)
+    first = sync.sync_cached_operators()
+    # Re-reading persisted settings exercises the baseline used after a restart.
+    saved = json.loads(paths["@app/config/yituliu_sync.json"].read_text())
+    assert len(saved["last_synced_fingerprint"]) == 64
+    result = (
+        sync.sync_after_cultivate(snapshot)
+        if automatic
+        else sync.sync_cached_operators()
+    )
+    assert result["success"] and result["skipped"]
+    assert result["synced_at"] == first["synced_at"]
+    assert result["count"] == 1
+    assert "未传输" in result["message"]
+    assert sync.token_status()["last_synced_at"] == first["synced_at"]
+    assert "fingerprint" not in json.dumps(sync.token_status())
+    session.post.assert_called_once()
+
+
+def test_order_inventory_and_snapshot_timestamps_do_not_trigger_upload(sync_case):
+    _, session, _, snapshot, definitions = sync_case
+    second = copy.deepcopy(snapshot["data"]["characters"][0])
+    second["id"] = "char_second"
+    definitions["char_second"] = copy.deepcopy(definitions["char_test"])
+    snapshot["data"]["characters"].append(second)
+    sync.save_token(TOKEN)
+    sync.sync_cached_operators(snapshot)
+    snapshot["data"]["characters"].reverse()
+    snapshot["data"]["items"][0]["count"] += 1
+    snapshot["_mower_inventory_observed_at"] = 12345
+    snapshot["_mower_player"]["cred"] = "different-secret"
+    assert sync.sync_cached_operators(snapshot)["skipped"]
+    session.post.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "level",
+        "elite",
+        "potential",
+        "basic",
+        "skill",
+        "module",
+        "uid",
+        "nickname",
+        "server",
+        "rarity",
+    ],
+)
+def test_changed_upload_fields_transmit_again(sync_case, field):
+    _, session, _, snapshot, definitions = sync_case
+    sync.save_token(TOKEN)
+    sync.sync_cached_operators(snapshot)
+    char = snapshot["data"]["characters"][0]
+    if field == "level":
+        char["level"] = 89
+    elif field == "elite":
+        char["evolvePhase"] = 1
+    elif field == "potential":
+        char["potentialRank"] = 4
+    elif field == "basic":
+        char["mainSkillLevel"] = 6
+    elif field == "skill":
+        char["skills"][0]["level"] = 2
+    elif field == "module":
+        char["equips"][1]["level"] = 3
+    elif field == "uid":
+        snapshot["_mower_player"]["uid"] = "87654321"
+    elif field == "nickname":
+        snapshot["_mower_player"]["nickName"] = "改名"
+    elif field == "server":
+        snapshot["_mower_player"]["channelMasterId"] = "2"
+    else:
+        definitions["char_test"]["rarity"] = 5
+    assert not sync.sync_cached_operators(snapshot).get("skipped")
+    assert session.post.call_count == 2
+    assert sync.sync_cached_operators(snapshot)["skipped"]
+    assert session.post.call_count == 2
+
+
+def test_failed_changed_upload_preserves_baseline_and_can_retry(sync_case):
+    paths, session, _, snapshot, _ = sync_case
+    sync.save_token(TOKEN)
+    sync.sync_cached_operators(snapshot)
+    first = json.loads(paths["@app/config/yituliu_sync.json"].read_text())
+    snapshot["data"]["characters"][0]["level"] = 89
+    session.post.side_effect = requests.Timeout()
+    assert not sync.sync_after_cultivate(snapshot)["success"]
+    failed = json.loads(paths["@app/config/yituliu_sync.json"].read_text())
+    assert failed["last_synced_fingerprint"] == first["last_synced_fingerprint"]
+    session.post.side_effect = None
+    assert not sync.sync_cached_operators(snapshot).get("skipped")
+    assert session.post.call_count == 3
+
+
+def test_payload_validation_happens_before_deduplication(sync_case):
+    _, session, _, snapshot, _ = sync_case
+    sync.save_token(TOKEN)
+    sync.sync_cached_operators(snapshot)
+    snapshot["data"]["characters"][0]["level"] = True
+    with pytest.raises(ValueError, match="等级无效"):
+        sync.sync_cached_operators(snapshot)
+    session.post.assert_called_once()
+
+
+def test_same_token_preserves_baseline_and_replacement_or_clear_resets_it(sync_case):
+    _, session, _, snapshot, _ = sync_case
+    sync.save_token(TOKEN)
+    sync.sync_cached_operators(snapshot)
+    sync.save_token("  " + TOKEN + "  ")
+    assert sync.sync_cached_operators(snapshot)["skipped"]
+    session.post.assert_called_once()
+    replacement = "abcdef0123456789abcdef0123456789"
+    sync.save_token(replacement)
+    assert not sync.sync_cached_operators(snapshot).get("skipped")
+    assert session.post.call_args.kwargs["headers"] == {"Authorization": replacement}
+    sync.clear_token()
+    sync.save_token(replacement)
+    assert not sync.sync_cached_operators(snapshot).get("skipped")
+    assert session.post.call_count == 3
+
+
+def test_concurrent_identical_sync_requests_upload_once(sync_case):
+    from concurrent.futures import ThreadPoolExecutor
+
+    _, session, _, snapshot, _ = sync_case
+    sync.save_token(TOKEN)
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        results = list(
+            workers.map(lambda _: sync.sync_cached_operators(snapshot), range(2))
+        )
+    assert all(result["success"] for result in results)
+    assert sum(bool(result.get("skipped")) for result in results) == 1
+    session.post.assert_called_once()
+
+
+def test_saving_token_repairs_unreadable_settings(sync_case):
+    paths, session, _, _, _ = sync_case
+    paths["@app/config/yituliu_sync.json"].write_text("invalid-json")
+    assert sync.save_token(TOKEN)["configured"]
+    session.post.assert_not_called()
+
+
+def test_first_failed_upload_cannot_establish_deduplication_baseline(sync_case):
+    paths, session, response, snapshot, _ = sync_case
+    sync.save_token(TOKEN)
+    response.json.return_value = {"code": 403}
+    assert not sync.sync_after_cultivate(snapshot)["success"]
+    saved = json.loads(paths["@app/config/yituliu_sync.json"].read_text())
+    assert "last_synced_fingerprint" not in saved
+    response.json.return_value = {"code": 200}
+    assert not sync.sync_cached_operators(snapshot).get("skipped")
+    assert session.post.call_count == 2

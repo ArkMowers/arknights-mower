@@ -1,0 +1,19 @@
+{
+  "title": "Local Growth Sync Deduplication",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-10",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-GROWTH-04]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.yituliu_sync.sync_cached_operators"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/yituliu_sync_tests.py",
+    "arknights_mower/tests/cultivate_depot_tests.py"
+  ]
+}
