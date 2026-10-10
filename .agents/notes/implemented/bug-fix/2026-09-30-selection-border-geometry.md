@@ -11,14 +11,14 @@ date: 2026-09-30
 
 ## Contract
 
-- **[INV-REC-04] Selection Border Geometry**: Normal operator card borders remain anchored to card geometry when a selected border widens the recognized name region; dim blue borders preserve selection, and genuinely clipped or ambiguous borders retain bounded recognition recovery.
+- **[INV-REC-04] Selection Border Geometry**: The [selection verification contract](../../../../docs/subsystems/base-scheduler.md#28-operator-selection-verification) owns card geometry, dim-border recognition, small right-edge cuts and recovery for substantial clipping or ambiguous evidence.
 - **[INV-REC-02] Occluded Operator Selection**: Neighboring borders cannot confirm an unselected card; an obscured upper border requires both vertical borders and the leading portion of the lower border.
 
 ## Evidence and implementation
 
 The supplied scheduling archive shows seven selection failures from 22:23:05 through 22:27:36 while assigning Purestream and Spot to Manufacturing Station 2. The [captured frame](../../../../arknights_mower/tests/fixtures/selection/right_edge_spot_20260930.jpg) shows Spot selected at the right edge and Purestream unselected below. Name segmentation widens their shared name boundary from 1902 to 1912 after selection. Adding the former 14-pixel margin exceeds the 1920-pixel Capture Frame width, so both cards receive an unknown selection state. Spot's shadow also lowers the brightness of its blue border below the previous mask threshold.
 
-`agent_card_selected` anchors normal card width to the name region's left edge and the fixed Capture Frame layout. Its normal-card blue mask accepts brightness values from 140 while retaining hue, saturation, and border coverage requirements. Training-card geometry and its brightness threshold remain unchanged. Actual clipping still returns an unknown state. The [subsystem contract](../../../../docs/subsystems/base-scheduler.md) owns the permanent recognition rule.
+`agent_card_selected` anchors normal card width to the name region's left edge and the fixed Capture Frame layout. Its normal-card blue mask accepts brightness values from 140 while retaining hue, saturation, and border coverage requirements. Training-card geometry and its brightness threshold remain unchanged. Small right-edge cuts use the actual visible borders; substantial clipping or ambiguous evidence still returns an unknown state. The [subsystem contract](../../../../docs/subsystems/base-scheduler.md#28-operator-selection-verification) owns the permanent recognition rule.
 
 Pre-flight simplification finds no redundant production abstraction in this path. The shared detector serves both scan modes and roster verification; the correction stays inside that detector and adds no selection retries or alternate state.
 
@@ -29,6 +29,16 @@ Pre-flight simplification finds no redundant production abstraction in this path
 Differential replay against the alpha detector preserves all 2,192 unselected and 212 selected card observations. The 14 newly recognized selected observations all belong to Spot; no unselected observation changes to selected.
 
 All seven captured failure frames replay with Spot selected, Purestream unselected, and no unknown card borders. The focused selection and governance suites pass 270 tests and four subtests.
+
+## Further right-edge evidence
+
+The [dormitory frame](../../../../arknights_mower/tests/fixtures/selection/dorm_right_edge_20261010.png) and [manufacturing frame](../../../../arknights_mower/tests/fixtures/selection/manufacturing_right_edge_20261010.png) retain stable rightmost name positions at 1725 and 1726 after release. The expected border region exceeds the 1920-pixel Capture Frame by eight and nine pixels. Both rooms start at the same column positions, so this evidence does not establish a facility-specific layout offset. The manufacturing probe calls the release's original selection-page and no-inertia gestures through MuMu IPC; its short diagnostic distance is deliberately chosen and does not establish which normal gesture produced the reported failure.
+
+The correction runs only inside the detector's existing out-of-bounds branch; complete-card processing and selection timing remain unchanged. It reuses [INV-REC-04] rather than creating another guarantee. Under [INV-06], operator identity, selection state and Capture Frame meaning remain stable, so the glossary needs no edit. Unknown-state scan failures log the operator name, name scope, frame dimensions and training-layout flag before existing recovery.
+
+[Right-edge regressions](../../../../arknights_mower/tests/selection_right_edge_tests.py) use real name recognition on both lossless captured frames. Constructed selected cases translate the archived Spot/Purestream image and supply its known shifted name scopes, isolating border detection from name recognition. Both scan modes preserve Spot, click only Purestream, and retain their existing observation and wait counts. Roster verification accepts Spot without additional observations. Bright and dim borders, the small-cut boundary, substantial clipping, notice occlusion, a colored screen edge and neighboring borders retain their required states. Selected clipping is verified by constructed cases; a complete live scheduling task is not run.
+
+The focused right-edge, existing geometry, training, tail-rebound, page-observation, delayed-frame and page-identity suites pass 357 tests. Ruff lint and formatting checks pass. Syntax-tree comparison confirms unchanged complete-card processing and unchanged swipe, page-observation and roster-verification methods. Standards and requirement review confirms the existing recovery and input-timing boundaries; structural governance checks pass with two existing archived-reference warnings.
 
 ## Standards Findings
 

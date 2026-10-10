@@ -17,6 +17,7 @@
   ],
   "test_suites": [
     "arknights_mower/tests/selection_border_geometry_tests.py",
+    "arknights_mower/tests/selection_right_edge_tests.py",
     "arknights_mower/tests/train_card_selection_tests.py"
   ]
 }
