@@ -13,6 +13,7 @@
     "arknights_mower.utils.resource_ota.build_ota",
     "arknights_mower.utils.resource_ota.apply_ota",
     "arknights_mower.utils.resource_pkg.install_resource_pkg",
+    "scripts.package_android.package",
     "arknights_mower.utils.resource_store.select_resource",
     "arknights_mower.utils.resource_version.check_resource_update"
   ],
@@ -23,6 +24,7 @@
     "arknights_mower/tests/manual_update_tests.py",
     "arknights_mower/tests/resource_version_tests.py",
     "arknights_mower/tests/res_version_tests.py",
-    "arknights_mower/tests/network_settings_tests.py"
+    "arknights_mower/tests/network_settings_tests.py",
+    "scripts/tests/android_release_tests.py"
   ]
 }

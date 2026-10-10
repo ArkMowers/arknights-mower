@@ -520,10 +520,6 @@ const idleOptions = computed(() => [
                 </n-checkbox>
               </n-flex>
             </n-form-item>
-            <n-alert v-if="runtime_platform === 'android'" :show-icon="false">
-              Android
-              默认使用自动性能适配。自动档依据选人操作的画面反馈和连续失败情况调节；各项时间参数可独立设置。
-            </n-alert>
             <n-form-item>
               <template #label>
                 <span>跑单前置延时</span>

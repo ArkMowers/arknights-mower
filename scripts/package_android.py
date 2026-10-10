@@ -29,6 +29,7 @@ REQUIRED = (
     "arknights_mower/data/version.json",
     "arknights_mower/data/building_skill.json",
     "ui/dist/index.html",
+    "ui/dist/pages/basement_skill/buffer.json",
     "server.py",
     "LICENSE",
     "requirements.txt",
@@ -46,8 +47,9 @@ def package(
     for name in REQUIRED:
         if not (root / name).is_file():
             raise ValueError(f"missing build input: {name}")
-    if not (root / "CHANGELOG.md").read_text(encoding="utf-8").strip():
-        raise ValueError("empty build input: CHANGELOG.md")
+    for name in ("CHANGELOG.md", "ui/dist/pages/basement_skill/buffer.json"):
+        if not (root / name).read_text(encoding="utf-8").strip():
+            raise ValueError(f"empty build input: {name}")
     source = (root / "arknights_mower/__init__.py").read_text()
     if f'__version__ = "{version}"' not in source:
         raise ValueError("package version does not match injected Mower version")
