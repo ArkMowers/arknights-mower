@@ -29,6 +29,7 @@ function setup(rescue) {
   store = app.runWithContext(() => (rescue ? useRescuePlanStore() : usePlanStore()))
   store.plan = store.fill_empty({})
   const message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() }
+  const validating_plan = ref(false)
   const validate = new Function(
     'plan_store',
     'nextTick',
@@ -36,9 +37,10 @@ function setup(rescue) {
     'rescue',
     'token',
     'message',
+    'validating_plan',
     `${handlerCode}; return validate_plan`
-  )(store, nextTick, axios, rescue, 'fixture-token', message)
-  return { validate, message }
+  )(store, nextTick, axios, rescue, 'fixture-token', message, validating_plan)
+  return { validate, message, validating_plan }
 }
 
 describe('manual schedule validation', () => {
@@ -80,8 +82,8 @@ describe('manual schedule validation', () => {
   )
 
   it('does not validate stale configuration when saving fails', async () => {
-    const { validate, message } = setup(false)
-    axios.post.mockRejectedValue(new Error('保存失败'))
+    const { validate, message, validating_plan } = setup(false)
+    axios.post.mockRejectedValueOnce(new Error('保存失败'))
 
     await validate()
 
@@ -89,5 +91,63 @@ describe('manual schedule validation', () => {
     expect(axios.post.mock.calls[0][0]).toBe(`${import.meta.env.VITE_HTTP_URL}/plan`)
     expect(message.error).toHaveBeenCalledWith('验证失败: 保存失败')
     expect(message.success).not.toHaveBeenCalled()
+    expect(validating_plan.value).toBe(false)
+
+    axios.post.mockResolvedValue({ data: { success: true, message: '验证通过' } })
+    await validate()
+    expect(message.success).toHaveBeenCalledWith('验证通过')
+  })
+
+  it.each([false, true])(
+    'suppresses duplicate clicks during save and request (rescue=%s)',
+    async (rescue) => {
+      const { validate, validating_plan } = setup(rescue)
+      let finishSave
+      let finishRequest
+      axios.post
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishSave = resolve
+            })
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishRequest = resolve
+            })
+        )
+
+      const validation = validate()
+      expect(validating_plan.value).toBe(true)
+      await validate()
+      await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1))
+      await validate()
+      expect(axios.post).toHaveBeenCalledTimes(1)
+
+      finishSave({ data: {} })
+      await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2))
+      await validate()
+      expect(axios.post).toHaveBeenCalledTimes(2)
+      expect(validating_plan.value).toBe(true)
+
+      finishRequest({ data: { success: true, message: '验证通过' } })
+      await validation
+      expect(validating_plan.value).toBe(false)
+    }
+  )
+
+  it('allows retry after the validation request fails', async () => {
+    const { validate, message, validating_plan } = setup(false)
+    axios.post.mockResolvedValueOnce({ data: {} }).mockRejectedValueOnce(new Error('请求失败'))
+
+    await validate()
+    expect(message.error).toHaveBeenCalledWith('验证失败: 请求失败')
+    expect(validating_plan.value).toBe(false)
+
+    axios.post.mockResolvedValue({ data: { success: true, message: '验证通过' } })
+    await validate()
+    expect(axios.post).toHaveBeenCalledTimes(4)
+    expect(message.success).toHaveBeenCalledWith('验证通过')
   })
 })

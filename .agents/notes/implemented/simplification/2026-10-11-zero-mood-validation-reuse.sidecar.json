@@ -1,0 +1,23 @@
+{
+  "title": "Zero-Mood Replacement Exemptions and Validation Reuse",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-11",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-16]",
+    "[INV-SCHED-46]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators.init_and_validate",
+    "arknights_mower.utils.operators.Operators.validate_backup_plans",
+    "arknights_mower.utils.operators.Operators.merge_plan"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/zero_mood_replacement_tests.py",
+    "arknights_mower/tests/backup_validation_tests.py",
+    "ui/src/stores/planValidation.test.js"
+  ]
+}

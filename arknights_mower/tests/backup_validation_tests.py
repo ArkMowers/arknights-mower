@@ -1,5 +1,6 @@
 """排班校验覆盖与副表演算相同的合并配置错误，且不修改实际驻员。"""
 
+import ast
 import copy
 import json
 from datetime import datetime
@@ -342,7 +343,7 @@ def test_corrected_image_plan_skips_mutually_exclusive_combinations(image_plan):
     assert result == {
         "success": True,
         "status": "passed",
-        "message": "验证成功，共验证 32 次",
+        "message": "验证成功，共验证 13 次",
     }
 
 
@@ -370,7 +371,7 @@ def test_mutually_exclusive_backups_do_not_report_an_impossible_conflict():
     assert result == {
         "success": True,
         "status": "passed",
-        "message": "验证成功，共验证 2 次",
+        "message": "验证成功，共验证 3 次",
     }
 
 
@@ -392,7 +393,7 @@ def test_twenty_mutually_exclusive_backups_are_supported():
     assert result == {
         "success": True,
         "status": "passed",
-        "message": "验证成功，共验证 21 次",
+        "message": "验证成功，共验证 2 次",
     }
 
 
@@ -532,7 +533,7 @@ def test_later_backup_overrides_a_shared_slot_without_duplicate_primary_error():
     assert result == {
         "success": True,
         "status": "passed",
-        "message": "验证成功，共验证 4 次",
+        "message": "验证成功，共验证 3 次",
     }
 
 
@@ -570,6 +571,125 @@ def test_no_backups_still_validates_the_main_plan():
     result = Operators(plan).validate_backup_plans()
     assert not result["success"]
     assert "基础验证失败" in result["message"]
+
+
+@pytest.mark.parametrize("count", [0, 8])
+def test_identical_effective_schedules_are_validated_once(monkeypatch, count):
+    plan = two_backups()
+    plan["backup_plans"] = [
+        copy.deepcopy(plan["backup_plans"][0]) for _ in range(count)
+    ]
+    data = Operators(plan)
+    original = Operators.init_and_validate
+    calls = []
+
+    def check(self, update=False):
+        calls.append(tuple(self.plan_condition))
+        return original(self, update)
+
+    monkeypatch.setattr(Operators, "init_and_validate", check)
+    assert data.validate_backup_plans()["success"]
+    assert len(calls) == (2 if count else 1)
+    assert len(set(calls)) == len(calls)
+
+
+@pytest.mark.parametrize("valid", [False, True])
+def test_manual_route_checks_baseline_only_once(monkeypatch, valid):
+    plan = two_backups()
+    plan["backup_plans"] = []
+    if not valid:
+        plan["default_plan"].plan["central"][0].replacement = []
+    original = Operators.init_and_validate
+    check = MagicMock(side_effect=lambda self, update=False: original(self, update))
+    monkeypatch.setattr(
+        Operators, "init_and_validate", lambda self, update=False: check(self, update)
+    )
+    server = Path(__file__).resolve().parents[2] / "server.py"
+    route = next(
+        node
+        for node in ast.parse(server.read_text()).body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "validate_backup_plans_route"
+    )
+    route.decorator_list = []
+    namespace = {
+        "build_global_plan": lambda: plan,
+        "Operators": Operators,
+        "logger": MagicMock(),
+    }
+    exec(
+        compile(ast.Module(body=[route], type_ignores=[]), str(server), "exec"),
+        namespace,
+    )
+    result = namespace["validate_backup_plans_route"]()
+    assert result["success"] is valid
+    assert result["status"] == ("passed" if valid else "failed")
+    check.assert_called_once()
+
+
+def test_validation_reuse_does_not_survive_a_configuration_edit():
+    plan = two_backups()
+    plan["backup_plans"][1].plan["central"][1].replacement = ["初雪"]
+    data = Operators(plan)
+    assert data.validate_backup_plans()["success"]
+    plan["backup_plans"][1].plan["central"][1].replacement = ["八幡海铃"]
+    assert data.validate_backup_plans()["status"] == "failed"
+
+
+def test_same_staffing_with_different_zero_mood_configuration_is_rechecked():
+    plan = {
+        "default_plan": Plan(
+            {"central": [Room("能天使", "", [])]},
+            PlanConfig("", "", "", workaholic="能天使"),
+        ),
+        "backup_plans": [
+            Plan({}, PlanConfig("", "", "", removed_operators={"workaholic": "能天使"}))
+        ],
+    }
+    data = initialize(plan)
+    result = data.validate_backup_plans()
+    assert result["status"] == "failed"
+    assert "能天使" in result["message"]
+    assert "替换组缺失" in result["message"]
+    assert data.swap_plan([True], refresh=True) == "以下干员替换组缺失：能天使"
+
+
+def test_same_staffing_does_not_reuse_maintenance_permission(monkeypatch):
+    plan = two_backups()
+    slot = {"central": [Room("但书", "", ["红"])]}
+    plan["backup_plans"] = [
+        Plan(slot, PlanConfig("", "", ""), name="普通副表"),
+        Plan(
+            copy.deepcopy(slot),
+            PlanConfig("", "", ""),
+            LogicExpression("op_data.major_maintenance_remaining_hours()", "<=", "0.5"),
+            name="维护副表",
+        ),
+    ]
+    monkeypatch.setattr(
+        backup_validation,
+        "possible_backup_conditions",
+        lambda *args, **kwargs: [(False, True), (True, False)],
+    )
+    result = Operators(plan).validate_backup_plans()
+    assert result["status"] == "failed"
+    assert "普通副表" in result["message"]
+    assert "高效组不可用" in result["message"]
+
+
+@pytest.mark.parametrize("room", ["central", "meeting", "train", "recycle"])
+def test_backup_slot_copy_preserves_source_bindings_and_config(room):
+    plan = two_backups()
+    backup = plan["backup_plans"][0]
+    backup.plan = {room: [Room("八幡海铃", "甲", ["红"])]}
+    backup.plan[room][0].group_bindings = [{"group": "乙", "replacement": ["黑角"]}]
+    data = Operators(plan)
+    merged, conf = data.merge_plan(0, data.config)
+    merged[room][0].group_bindings[0]["replacement"].append("砾")
+    conf.workaholic.append("能天使")
+    assert backup.plan[room][0].group_bindings[0]["replacement"] == ["黑角"]
+    assert "能天使" not in backup.config.workaholic
+    assert "能天使" not in data.config.workaholic
 
 
 def test_main_dorm_layout_uses_initial_validation_rules():
@@ -692,6 +812,10 @@ def test_elapsed_budget_stops_combinations_and_manual_validation_is_untimed(
 ):
     plan = two_backups()
     plan["backup_plans"] = [copy.deepcopy(plan["backup_plans"][0]) for _ in range(4)]
+    for backup, name in zip(plan["backup_plans"], ("能天使", "银灰", "芬", "初雪")):
+        backup.config = PlanConfig(
+            "", "", "", operator_mood_limits={name: {"lower": 1, "upper": 24}}
+        )
     data = initialize(plan)
     op = data.operators["能天使"]
     op.mood = 7
@@ -708,16 +832,16 @@ def test_elapsed_budget_stops_combinations_and_manual_validation_is_untimed(
         return combinations
 
     monkeypatch.setattr(backup_validation, "possible_backup_conditions", slow_analysis)
-    original = Operators.swap_plan
+    original = Operators.init_and_validate
 
-    def slow_check(self, condition, refresh=False):
-        error = original(self, condition, refresh)
-        if refresh:
-            checked.append(condition)
+    def slow_check(self, update=False):
+        error = original(self, update)
+        if update:
+            checked.append(self.plan_condition)
             clock[0] += 2
         return error
 
-    monkeypatch.setattr(Operators, "swap_plan", slow_check)
+    monkeypatch.setattr(Operators, "init_and_validate", slow_check)
     result = data.validate_backup_plans(max_seconds=max_seconds)
     if max_seconds is None:
         assert result == {
@@ -725,13 +849,13 @@ def test_elapsed_budget_stops_combinations_and_manual_validation_is_untimed(
             "status": "passed",
             "message": "验证成功，共验证 16 次",
         }
-        assert len(checked) == 16
+        assert len(checked) == 15
     else:
         assert result["status"] == "incomplete"
         assert result["success"] is False
         assert "耗时预算" in result["message"]
         expected_checks = 1 if analysis_seconds else 3
-        assert f"已验证 {expected_checks} 次" in result["message"]
+        assert f"已验证 {expected_checks + 1} 次" in result["message"]
         assert "允许启动" in result["message"]
         assert len(checked) == expected_checks
     assert clock[0] >= 105
@@ -758,7 +882,7 @@ def test_condition_analysis_uses_the_same_deadline_as_combinations(monkeypatch):
     data = initialize(plan)
     result = data.validate_backup_plans(max_seconds=5)
     assert result["status"] == "incomplete"
-    assert "已验证 0 次" in result["message"]
+    assert "已验证 1 次" in result["message"]
 
 
 def test_error_from_current_combination_blocks_even_if_the_deadline_has_elapsed(
@@ -767,15 +891,15 @@ def test_error_from_current_combination_blocks_even_if_the_deadline_has_elapsed(
     clock = [100.0]
     monkeypatch.setattr(operators, "monotonic", lambda: clock[0])
     monkeypatch.setattr(backup_validation, "monotonic", lambda: clock[0])
-    original = Operators.swap_plan
+    original = Operators.init_and_validate
 
-    def slow_conflict(self, condition, refresh=False):
-        error = original(self, condition, refresh)
-        if refresh and all(condition):
+    def slow_conflict(self, update=False):
+        error = original(self, update)
+        if update and all(self.plan_condition):
             clock[0] += 5
         return error
 
-    monkeypatch.setattr(Operators, "swap_plan", slow_conflict)
+    monkeypatch.setattr(Operators, "init_and_validate", slow_conflict)
     result = initialize(two_backups()).validate_backup_plans(max_seconds=5)
     assert clock[0] == 105
     assert result["status"] == "failed"
@@ -790,5 +914,5 @@ def test_valid_plan_passes_within_the_startup_budget(monkeypatch):
     assert initialize(plan).validate_backup_plans(max_seconds=5) == {
         "success": True,
         "status": "passed",
-        "message": "验证成功，共验证 4 次",
+        "message": "验证成功，共验证 3 次",
     }
