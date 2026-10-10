@@ -268,6 +268,12 @@ class EmergencyRecoveryMixin:
         self._emergency_save()
         if not config.conf.automatic_rescue_enable:
             return
+        if any(
+            getattr(task, "run_order_restore_pending", False) for task in self.tasks
+        ):
+            # 普通纠错先释放原驻员；救急准入不能清除这条补偿依赖。
+            logger.info("自动救急准入等待普通跑单恢复原驻员")
+            return
         now = datetime.now()
         trial = copy.copy(self)
         data = trial.op_data = self.op_data.project_arrangements([])
@@ -522,6 +528,13 @@ class EmergencyRecoveryMixin:
             or any(getattr(task, "emergency_staffing", False) for task in self.tasks)
         ):
             return True
+        compensation_rooms = {
+            room
+            for task in self.tasks
+            for room in getattr(task, "run_order_original_roster", {})
+        }
+        if compensation_rooms.intersection(state["rescue_plan"]):
+            state["staffing_complete"] = False
         if state.get("staffing_complete") and not self._emergency_replace_low_workers():
             return True
         plan = rescue_plan_for(data, state["rescue_plan"])
@@ -536,7 +549,12 @@ class EmergencyRecoveryMixin:
             for name in row
         )
         pending = {}
+        deferred = {}
         for room, names in plan.items():
+            if room in compensation_rooms:
+                # 临时驻员符合救急目标也要等原班恢复，再核验最终驻员。
+                deferred[room] = list(names)
+                continue
             current = data.get_current_room(room, True)
             if current is not None and all(
                 name == "Current" or index < len(current) and current[index] == name
@@ -571,6 +589,8 @@ class EmergencyRecoveryMixin:
                     return False
             pending[room] = list(names)
         if not pending:
+            if deferred:
+                return False
             state["staffing_complete"] = True
             state["staffing_plan"] = {}
             state.pop("staffing_members", None)
@@ -582,7 +602,8 @@ class EmergencyRecoveryMixin:
             for name in row:
                 if name not in ("", "Current") and name not in data.operators:
                     data.add(Operator(name, ""))
-        state["staffing_plan"] = copy.deepcopy(pending)
+        # 只派发可执行房间，但完成核验仍包含等待补偿的全部目标。
+        state["staffing_plan"] = copy.deepcopy(pending | deferred)
         state["staffing_members"] = list(state["targets"])
         state["temporary_roster"] = {
             room: data.get_current_room(room, True) for room in plan
@@ -919,6 +940,7 @@ class EmergencyRecoveryMixin:
                 task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
                 and task.meta_data
                 and not hasattr(task, "emergency_original_roster")
+                and not getattr(task, "run_order_restore_pending", False)
                 and not self._emergency_run_order_available(task.meta_data, task.plan)
             )
         ]
@@ -935,16 +957,23 @@ class EmergencyRecoveryMixin:
             return False
         if "train" in pending:
             self._suppress_train_correction(pending)
+        compensation_rooms = {
+            room
+            for task in self.tasks
+            for room in getattr(task, "run_order_original_roster", {})
+        }
         state["staffing_plan"] = {
             room: row
             for room, row in pending.items()
-            if (actual := self.op_data.get_current_room(room, True)) is None
+            if room in compensation_rooms
+            or (actual := self.op_data.get_current_room(room, True)) is None
             or any(
                 name != "Current" and (index >= len(actual) or name != actual[index])
                 for index, name in enumerate(row)
             )
         }
         if state["staffing_plan"]:
+            state["staffing_complete"] = False
             return False
         state.pop("staffing_members", None)
         state["staffing_complete"] = True
@@ -1237,6 +1266,7 @@ class EmergencyRecoveryMixin:
             or any(
                 getattr(task, "emergency_staffing", False)
                 or hasattr(task, "emergency_original_roster")
+                or getattr(task, "run_order_restore_pending", False)
                 or task.plan
                 and task.type in (TaskTypes.FIAMMETTA, TaskTypes.RUN_ORDER)
                 and task.time <= datetime.now()
@@ -1392,6 +1422,7 @@ class EmergencyRecoveryMixin:
                 or getattr(task, "strict_mood_limit", False)
                 and task.time <= datetime.now()
                 or hasattr(task, "emergency_original_roster")
+                or getattr(task, "run_order_restore_pending", False)
             )
             for task in self.tasks
         ):

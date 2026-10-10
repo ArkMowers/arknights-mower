@@ -659,7 +659,10 @@ def simulate(saved):
                         base_scheduler.run()
                         from arknights_mower.utils.scheduler_task import scheduling
 
-                        scheduling(base_scheduler.tasks)
+                        scheduling(
+                            base_scheduler.tasks,
+                            op_data=base_scheduler.op_data,
+                        )
                     if len(base_scheduler.tasks) > 0:
                         base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False)
                         remaining_time = (

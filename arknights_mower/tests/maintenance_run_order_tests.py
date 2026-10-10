@@ -1,5 +1,6 @@
 """停服大更新副表允许跑单干员主班，并在生效期间暂停全部跑单。"""
 
+import copy
 import sys
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
@@ -340,12 +341,107 @@ def test_entry_advances_existing_maintenance_orders_before_swap(solver, monkeypa
     assert unaffected in solver.tasks
 
 
+@pytest.mark.parametrize("entry", ["adjustment", "backup"])
+def test_maintenance_entry_preserves_insertions_waiting_on_normal_restoration(
+    solver, monkeypatch, entry
+):
+    solver.op_data.backup_plans[0].plan = {}
+    info = maintenance_info(datetime.now() + timedelta(minutes=20))
+    monkeypatch.setattr(NewsChecker, "get_maintenance", lambda: info)
+    monkeypatch.setattr(NewsChecker, "get_update_time", lambda: (info.start, info.end))
+    restoration = SchedulerTask(
+        task_type=TaskTypes.RUN_ORDER, task_plan={"room_1_1": ["鸿雪"]}
+    )
+    restoration.run_order_original_roster = copy.deepcopy(restoration.plan)
+    restoration.run_order_restore_pending = True
+    insertion = SchedulerTask(
+        time=info.start + timedelta(hours=1),
+        task_type=TaskTypes.RUN_ORDER,
+        meta_data="room_2_2",
+        task_plan={"room_2_2": ["龙舌兰"]},
+    )
+    solver.tasks = [restoration, insertion]
+    original_states = [copy.deepcopy(vars(t)) for t in solver.tasks]
+
+    if entry == "adjustment":
+        assert adjust_run_order_for_maintenance(solver.tasks) == []
+    else:
+        solver.backup_plan_solver()
+        assert solver.op_data.plan_condition == [True]
+        assert not solver.maintenance_entry_pending
+
+    for task, original in zip((restoration, insertion), original_states):
+        assert any(queued is task for queued in solver.tasks)
+        assert vars(task) == original
+
+    if entry == "adjustment":
+        solver.tasks.remove(restoration)
+        assert adjust_run_order_for_maintenance(solver.tasks) == [insertion]
+        assert insertion.adjusted
+        assert insertion.time < original_states[1]["time"]
+
+
 def test_shift_projection_cannot_bypass_pending_maintenance_orders(solver):
     solver.maintenance_entry_pending = True
     task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF)
     with pytest.raises(ProductSwitchDeferred, match="提前跑单"):
         solver._prepare_shift_cycle(task)
     assert solver.op_data.plan_condition == [False]
+
+
+@pytest.mark.parametrize("original_is_busy", [True, False])
+def test_marked_maintenance_orders_allow_source_correction_for_waiting_restoration(
+    solver, monkeypatch, original_is_busy
+):
+    solver.op_data.backup_plans[0].plan = {}
+    info = maintenance_info(datetime.now() + timedelta(minutes=20))
+    monkeypatch.setattr(NewsChecker, "get_maintenance", lambda: info)
+    monkeypatch.setattr(NewsChecker, "get_update_time", lambda: (info.start, info.end))
+    if original_is_busy:
+        for name, room in (
+            ("鸿雪", "room_2_2"),
+            ("图耶", ""),
+            ("但书", "room_1_1"),
+        ):
+            op = solver.op_data.operators[name]
+            op.current_room, op.current_index = room, 0 if room else -1
+    restoration = SchedulerTask(
+        task_type=TaskTypes.RUN_ORDER, task_plan={"room_1_1": ["鸿雪"]}
+    )
+    restoration.run_order_original_roster = copy.deepcopy(restoration.plan)
+    restoration.run_order_restore_pending = True
+    restoration.maintenance_advance_before_backup = True
+    insertion = SchedulerTask(
+        time=info.start,
+        task_type=TaskTypes.RUN_ORDER,
+        task_plan={"room_2_2": ["龙舌兰"]},
+        meta_data="room_2_2",
+        adjusted=True,
+    )
+    insertion.maintenance_advance_before_backup = True
+    source_correction = SchedulerTask(
+        task_type=TaskTypes.SELF_CORRECTION, task_plan={"room_2_2": ["图耶"]}
+    )
+    solver.tasks = [restoration, insertion, source_correction]
+    solver.maintenance_entry_pending = True
+    original_states = [copy.deepcopy(vars(t)) for t in (restoration, insertion)]
+
+    if original_is_busy:
+        solver._prepare_shift_cycle(source_correction)
+        assert source_correction.plan["room_2_2"] == ["图耶"]
+        assert solver.op_data.operators["鸿雪"].current_room == "room_2_2"
+        solver._activate_shift_backup(source_correction)
+        assert solver.op_data.plan_condition == [True]
+        assert not solver.maintenance_entry_pending
+    else:
+        with pytest.raises(ProductSwitchDeferred, match="提前跑单"):
+            solver._prepare_shift_cycle(source_correction)
+        assert solver._advance_orders_before_maintenance([True])
+        assert solver.op_data.plan_condition == [False]
+
+    for task, original in zip((restoration, insertion), original_states):
+        assert any(queued is task for queued in solver.tasks)
+        assert vars(task) == original
 
 
 def test_projected_backup_activation_advances_orders_first(solver, monkeypatch):
