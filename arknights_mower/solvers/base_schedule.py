@@ -5513,19 +5513,20 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     def todo_list(self) -> None:
         """处理基建 Todo 列表"""
         tapped = False
-        collect = {"bill": "订单", "factory": "制造站产物", "trust": "信赖"}
+        collect = {
+            "bill": "订单",
+            "factory": "制造站产物",
+            "trust": "信赖",
+            "recycle": "回收站产物",
+        }
         if self.last_execution["todo"] is None or self.last_execution[
             "todo"
         ] <= datetime.now() - timedelta(minutes=15):
             for res, name in collect.items():
-                tap_times = 0
-                while pos := self.find(f"infra_collect_{res}"):
+                if pos := self.find(f"infra_collect_{res}"):
                     logger.info(f"收取{name}")
                     self.tap(pos)
                     tapped = True
-                    tap_times += 1
-                    if tap_times > 0:
-                        break
             self.last_execution["todo"] = datetime.now()
         if not tapped:
             # 点击右上角的通知图标

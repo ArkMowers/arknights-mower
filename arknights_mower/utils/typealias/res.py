@@ -46,6 +46,7 @@ Res = Literal[
     "index_nav",
     "infra_collect_bill",
     "infra_collect_factory",
+    "infra_collect_recycle",
     "infra_collect_trust",
     "infra_credit_complete",
     "infra_exp_complete",

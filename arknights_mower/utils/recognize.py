@@ -894,6 +894,7 @@ class Recognizer:
 
         template_matching = {
             "recycle/dashboard": ((465, 148), (682, 264)),
+            "infra_collect_recycle": ((240, 980), (1920, 1080)),
             # "arrange_check_in": ((30, 300), (175, 700)),
             "terminal_main": ((0, 0), (1920, 1080)),
             "arrange_check_in_on": ((30, 300), (175, 700)),
