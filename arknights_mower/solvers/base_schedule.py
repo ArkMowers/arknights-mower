@@ -9641,9 +9641,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     return self._retain_run_order_restoration(delay=True)
                 return False
             if (
-                room not in plan
+                self.task.type != TaskTypes.RUN_ORDER
+                and room not in plan
                 and room in self.op_data.run_order_rooms
-                and self.task.type != TaskTypes.RUN_ORDER
                 and not self.find_next_task(
                     meta_data=room, task_type=TaskTypes.RUN_ORDER
                 )
