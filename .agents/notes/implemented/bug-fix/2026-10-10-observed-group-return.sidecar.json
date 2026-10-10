@@ -10,9 +10,12 @@
     "[INV-SCHED-25]"
   ],
   "code_symbols": [
-    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._observed_group_return_plan"
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._observed_group_return_plan",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._suppress_train_correction"
   ],
   "test_suites": [
-    "arknights_mower/tests/observed_group_return_tests.py"
+    "arknights_mower/tests/observed_group_return_tests.py",
+    "arknights_mower/tests/group_shift_training_protection_tests.py",
+    "arknights_mower/tests/train_follow_correction_tests.py"
   ]
 }

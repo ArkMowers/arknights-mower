@@ -2122,6 +2122,22 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             anchor = next(
                 (op for op in members if op.room not in ("train", "factory")), None
             )
+            if anchor is None:
+                training = {}
+                for op in members:
+                    if op.room == "train":
+                        training.setdefault(
+                            "train", ["Current"] * len(self.op_data.plan["train"])
+                        )[op.index] = op.name
+                self._suppress_train_correction(training)
+                anchor = next(
+                    (
+                        self.op_data.operators[name]
+                        for name in training.get("train", [])
+                        if name != "Current"
+                    ),
+                    None,
+                )
             if anchor is not None:
                 plan.setdefault(
                     anchor.room, ["Current"] * len(self.op_data.plan[anchor.room])

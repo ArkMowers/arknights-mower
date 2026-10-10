@@ -10,9 +10,9 @@ import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
-from arknights_mower.solvers import base_schedule
+from arknights_mower.solvers import base_schedule, mastery_reader
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
-from arknights_mower.utils import config
+from arknights_mower.utils import config, mastery_db
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
@@ -204,3 +204,85 @@ def test_only_working_standby_members_do_not_authorize_return(solver):
     data.operators["绮良"].resting_priority = "standby"
     assert solver._observed_group_return_plan() == {}
     assert data.group_is_resting("自动化")
+
+
+@pytest.fixture(params=[0, 1], ids=["assistant", "trainee"])
+def training_return(solver, monkeypatch, request):
+    plan = solver.global_plan["default_plan"].plan
+    for room in ("central", "meeting", "dormitory_3"):
+        plan.pop(room)
+    plan["train"] = [Room("褐果", "", ["能天使"]) for _ in range(request.param + 1)]
+    plan["train"][request.param] = Room("森蚺", "自动化", ["夕"])
+    assert solver.initialize_operators() is None
+    del solver._suppress_train_correction
+    monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", False)
+    monkeypatch.setattr(mastery_db, "get_active_plan", lambda: None)
+    solver._notify_train_correction_skipped = MagicMock()
+    for op in solver.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, datetime.now()
+    solver.op_data.operators["流明"]._current_room = ""
+    solver.op_data.operators["流明"].current_index = -1
+    solver.op_data.operators["妮芙"]._current_room = "dormitory_2"
+    solver.op_data.operators["妮芙"].current_index = 0
+    solver.op_data.commit_group_shifts({"自动化": True})
+    return solver
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("follow", [False, True])
+@pytest.mark.parametrize(
+    "protection", ["none", "database", "queue", "observed", "protected", "scan"]
+)
+def test_training_only_observed_return_respects_actual_protection(
+    training_return, monkeypatch, enabled, follow, protection
+):
+    s = training_return
+    config.conf.enable_mastery = enabled
+    config.conf.assistant_follows_schedule = follow
+    if protection == "database":
+        monkeypatch.setattr(
+            mastery_db, "get_active_plan", lambda: {"id": 1, "char_name": "桃金娘"}
+        )
+    elif protection == "queue":
+        s.tasks = [SchedulerTask(task_type=TaskTypes.SWAP_SUPPORT)]
+        s.find_next_task.side_effect = lambda **kw: next(
+            (task for task in s.tasks if task.type == kw.get("task_type")), None
+        )
+    elif protection == "observed":
+        s.train_room_state = mastery_reader.RoomState("training")
+    elif protection == "protected":
+        s.train_room_state = mastery_reader.RoomState("empty", protected=True)
+    elif protection == "scan":
+        monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", True)
+    worker = s.op_data.operators["森蚺"]
+    allowed = protection != "scan" and (
+        not enabled or protection == "none" or follow and worker.index == 0
+    )
+    pending = list(s.tasks)
+    result = s.agent_get_mood()
+    assert s.op_data.group_is_resting("自动化")
+    if not allowed:
+        assert result is None
+        assert s.tasks == pending
+        assert s.op_data.get_current_operator("dormitory_2", 0).name == "妮芙"
+        return
+    assert result == "self_correction"
+    task = s.tasks[-1]
+    assert task.plan["train"][worker.index] == "森蚺"
+    assert task.plan["dormitory_2"][0] == "流明"
+    s.task = task
+    s._prepare_group_shift(task)
+    s._prepare_shift_cycle(task)
+    s._prepare_group_shift(task, remember_targets=True)
+    assert task.group_shift_transitions["自动化"] is False
+    assert task.group_shift_expected["dormitory_2", 0] == "流明"
+    assert not s._complete_group_shift(task)
+    assert s.op_data.group_is_resting("自动化")
+    data = s.op_data
+    s.op_data = data.project_arrangements([task.plan])
+    s.op_data.group_shift_state = dict(data.group_shift_state)
+    assert s._complete_group_shift(task)
+    assert not s.op_data.group_is_resting("自动化")
+    assert s.op_data.get_current_operator("dormitory_2", 0).name == "流明"
+    s.enter_room.assert_not_called()
