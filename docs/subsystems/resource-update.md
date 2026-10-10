@@ -10,6 +10,8 @@ The client selects an OTA only for its exact current resource version and only w
 
 Bundled reconstruction reads the historical skill entry from `arknights_mower/data/building_skill.json`. The WebUI build retains the unchanged bytes of `ui/src/pages/basement_skill/buffer.json` under `ui/dist/pages/basement_skill/buffer.json`, alongside the copied public images. A source checkout can use its UI source files; desktop and Android packages require no `ui/src` directory. Selected external generations use their archive paths exclusively; a missing or corrupt base file never borrows bundled data.
 
+Android application packaging requires the built buffer artifact and rejects missing, empty or whitespace-only input before creating an update archive. Release validation also rejects an empty buffer entry in an existing archive.
+
 Bundled files declared in `RES_PACKAGE_DATA` can contain CRLF from a Windows checkout while sharing the published LF resource version. Reconstruction converts CRLF to LF only when such a base file is larger than the declared target, within the existing input limit and at most twice the target size. The staged result still requires the exact target size and SHA-256. Base files remain unchanged; binary resources, OTA payloads and external generations retain exact byte validation.
 
 ## 2. Resource Publication
