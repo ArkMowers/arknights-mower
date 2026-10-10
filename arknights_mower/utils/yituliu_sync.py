@@ -2,6 +2,7 @@
 
 import json
 import re
+from hashlib import sha256
 from threading import RLock
 from time import time
 
@@ -53,6 +54,12 @@ def save_token(token):
     ):
         raise ValueError("请输入有效的一图流只写 Token，不要填写森空岛凭据")
     with _lock:
+        try:
+            saved = _settings()
+        except ValueError:
+            saved = {}
+        if saved.get("token") == token.strip():
+            return token_status()
         path = get_path("@app/config/yituliu_sync.json")
         atomic_write(path, lambda stream: json.dump({"token": token.strip()}, stream))
         path.chmod(0o600)
@@ -146,13 +153,7 @@ def build_upload_payload(snapshot, definitions):
     }
 
 
-def _upload(snapshot, token):
-    from arknights_mower.utils.growth import growth_data
-    from arknights_mower.utils.mastery_recommendation import get_skill_data
-
-    payload = build_upload_payload(
-        snapshot, growth_data(get_skill_data())["characters"]
-    )
+def _upload(payload, token):
     try:
         with requests.Session() as session:
             session.trust_env = False
@@ -190,9 +191,32 @@ def sync_cached_operators(snapshot=None):
         if not saved.get("token"):
             raise ValueError("请先保存一图流只写 Token")
         try:
-            result = _upload(
-                _snapshot() if snapshot is None else snapshot, saved["token"]
+            from arknights_mower.utils.growth import growth_data
+            from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+            payload = build_upload_payload(
+                _snapshot() if snapshot is None else snapshot,
+                growth_data(get_skill_data())["characters"],
             )
+            canonical = {
+                **payload,
+                "operatorDataList": sorted(
+                    payload["operatorDataList"], key=lambda row: row["charId"]
+                ),
+            }
+            fingerprint = sha256(
+                json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            if fingerprint == saved.get("last_synced_fingerprint"):
+                result = {
+                    "success": True,
+                    "skipped": True,
+                    "count": len(payload["operatorDataList"]),
+                    "synced_at": saved["last_synced_at"],
+                    "message": "与上次成功同步的数据相同，已跳过上传，未传输数据",
+                }
+            else:
+                result = _upload(payload, saved["token"])
         except ValueError as exc:
             result = {"success": False, "message": str(exc)}
         except Exception:
@@ -207,7 +231,9 @@ def sync_cached_operators(snapshot=None):
         )
         if result["success"]:
             saved.update(
-                last_synced_at=result["synced_at"], last_synced_count=result["count"]
+                last_synced_at=result["synced_at"],
+                last_synced_count=result["count"],
+                last_synced_fingerprint=fingerprint,
             )
         try:
             path = get_path("@app/config/yituliu_sync.json")
@@ -215,7 +241,7 @@ def sync_cached_operators(snapshot=None):
             path.chmod(0o600)
         except OSError:
             if result["success"]:
-                result["message"] = "同步成功，但本地同步时间未能保存"
+                result["message"] += "；本地同步记录未能保存"
         if not result["success"]:
             raise ValueError(result["message"])
         return result

@@ -24,9 +24,11 @@
 
 - **[INV-WORKSHOP-01] Rejected Recipe Handoff**: Game-rejected recipes do not dispatch another worker against unchanged relevant inventory and configuration; rejections remain transient, renewed inventory observations permit retries without fabricated counts, and processing failures stop consecutive handoffs.
 
-- **[INV-GROWTH-02] Public Survey Isolation**: Public survey retrieval sends no local identity or credentials, missing survey rates remain unknown, and survey display or filtering never mutates plans; a configured write-only token permits one fixed-endpoint upload of game identity and progression after each successful Skland refresh or an explicit manual sync, without exposing the credential or invalidating local refresh success on upload failure.
+- **[INV-GROWTH-02] Public Survey Isolation**: Public survey retrieval sends no local identity or credentials, missing survey rates remain unknown, and survey display or filtering never mutates plans; a configured write-only token permits at most one fixed-endpoint upload of game identity and progression after each successful Skland refresh or an explicit manual sync, without exposing the credential or invalidating local refresh success on upload failure.
 
 - **[INV-GROWTH-01] Shared Growth Budget**: Growth planning admits unready operators without dispatching training, counts shared prerequisites once, reserves stock in crafting-project order, emits only outstanding permitted recipes for fully supplied projects, and keeps manual chip conversion separate from automatic crafting.
+
+- **[INV-GROWTH-04] Local Progression Sync Check**: Automatic and manual Yituliu sync validate the upload payload locally and send nothing when it matches the last confirmed upload for the configured token, while failed uploads never advance the comparison baseline.
 
 - **[INV-GROWTH-03] Ordered Crafting Prerequisites**: The saved unified plan order determines crafting priority and relative skill training priority, active training remains fixed first, each admitted project prepares its minimum unsatisfied promotion and basic-skill prerequisites before its own costs without counting shared prerequisites twice, and an unstarted shortage skips that project while a protected training shortage blocks later preparation.
 
