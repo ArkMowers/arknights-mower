@@ -20,6 +20,7 @@
   ],
   "test_suites": [
     "arknights_mower/tests/selection_tail_rebound_tests.py",
-    "arknights_mower/tests/train_follow_correction_tests.py"
+    "arknights_mower/tests/train_follow_correction_tests.py",
+    "arknights_mower/tests/low_frame_rate_tests.py"
   ]
 }

@@ -241,7 +241,8 @@ def test_resting_operator_shortcut_only_runs_with_adaptation_disabled(
     assert solver.swipe_noinertia.call_count == (0 if enabled else 3)
 
 
-def test_fast_training_search_stops_at_unchanged_end_page(monkeypatch):
+@pytest.mark.parametrize("opened", [False, True])
+def test_fast_training_search_stops_at_unchanged_end_page(monkeypatch, opened):
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", False)
@@ -251,6 +252,10 @@ def test_fast_training_search_stops_at_unchanged_end_page(monkeypatch):
         return_value=([], page(("杜林", "芬", "苍苔", "炎熔")))
     )
     solver.recog = SimpleNamespace(_img=None)
+    solver.sleep = MagicMock()
+    sidebar = configure_real_filter(
+        solver, monkeypatch, initial="SPECIAL", opened=opened, train=True
+    )
     held_images = [object() for _ in range(3)]
     frames = iter(held_images)
 
@@ -262,6 +267,11 @@ def test_fast_training_search_stops_at_unchanged_end_page(monkeypatch):
     solver.verify_agent = MagicMock()
     with pytest.raises(AgentSelectionNotReady, match="末尾"):
         solver.choose_train_ope("砾")
+    assert not sidebar["opened"] and sidebar["label"] == "SPECIAL"
+    solver.profession_filter.assert_called_once_with("SPECIAL")
+    assert solver.device.tap.call_count == int(opened)
+    if opened:
+        solver.device.tap.assert_called_once_with((1860, 60))
     assert solver.swipe_noinertia.call_count == 3
     assert solver.scan_agent.call_count == 4
     assert solver.scan_agent.call_args_list[0].kwargs["observation"] is None
