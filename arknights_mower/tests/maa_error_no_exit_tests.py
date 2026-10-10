@@ -163,7 +163,9 @@ class MaaErrorNoExitTests(unittest.TestCase):
                 asst = MagicMock()
                 asst.return_value.connect.return_value = True
                 response = MagicMock()
-                response.__enter__.return_value.content = b"{}"
+                response.__enter__.return_value.content = (
+                    b'{"YW-8": {"algorithm": "JustReturn"}}'
+                )
                 conf = SimpleNamespace(
                     maa_path=maa_path,
                     maa_adb_path=configured_adb,

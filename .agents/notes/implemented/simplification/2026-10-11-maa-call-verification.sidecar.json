@@ -1,0 +1,22 @@
+{
+  "title": "MAA Call Verification",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-11",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-MAA-08]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.maa_backup.MaaCallError",
+    "arknights_mower.utils.maa_backup.VerifiedAsst",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.initialize_maa",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.maa_plan_solver"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/maa_admission_tests.py",
+    "arknights_mower/tests/maa_backup_tests.py"
+  ]
+}

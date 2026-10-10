@@ -58,7 +58,17 @@ Inventory-bound Fight tasks receive `drops` targets equal to task cumulative dro
 
 The decision is recorded in [Local Inventory Execution](../../.agents/notes/implemented/simplification/2026-10-08-local-inventory-execution.md).
 
+### 2.7 Resource and Task Admission
+
+Desktop initialization validates the downloaded activity navigation as a nonempty JSON object and atomically replaces the cached file through `write_json`. Download or validation failure preserves the existing cache. A download-complete line reports file installation only. A separate resource-loaded line follows a successful `Asst.load` and records the loaded core version, installed resource timestamp, resource directory and incremental directory. A false load result prevents handle construction and connection. The Android host retains resource-loading ownership.
+
+`VerifiedAsst.append_task` requires a positive integer task identifier. `VerifiedAsst.start` requires a successful native result. Rejection raises `MaaCallError` with `operation`, optional `task_type` and optional `stage`; its message names the phase and target and points to the native MAA log without including reporting identifiers or complete task parameters. Native exceptions preserve their original type.
+
+The scheduler records a stage only after its submission succeeds. An ordinary call failure stops queued work, preserves the original diagnostic if ordinary stop cleanup also fails, and leaves the last execution time unchanged. Cancellation and classified device failures propagate. Rejected calls cannot verify a run for rollback backup retirement. The [call verification decision](../../.agents/notes/implemented/simplification/2026-10-11-maa-call-verification.md) records the shared boundary and offline regression coverage.
+
 ## 3. Subsystem Invariants
+
+- **[INV-MAA-08] Verified MAA Admission**: Resource loading, task submission and task startup require positive MAA results; rejected calls identify their phase and target, clear the pending run without recording successful execution, and preserve rollback backups.
 
 - **[INV-MAA-07] Normal Long-Task Termination**: Roguelike, SSSCopilot and Reclamation completion or scheduler interruption never creates an error solely because `running()` returns false; core error callbacks and invocation exceptions retain their error reporting.
 - Long-task polling returns to the existing idle path after completion or scheduler interruption. Callback lines describe completion and stop; polling adds no generic interruption error or ERROR notification. The [normal termination decision](../../.agents/notes/implemented/simplification/2026-10-09-maa-normal-termination.md) records the removed crash inference.

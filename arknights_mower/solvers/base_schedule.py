@@ -1,4 +1,5 @@
 import copy
+import json
 import math
 import os
 import pathlib
@@ -9993,8 +9994,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             logger.log(line.level, line.text)
 
     def initialize_maa(self):
-        from arknights_mower.utils.maa_backup import VerifiedAsst, update_transaction
+        from arknights_mower.utils.maa_backup import (
+            MaaCallError,
+            VerifiedAsst,
+            update_transaction,
+        )
         from arknights_mower.utils.maa_inventory import MaaDropInventory
+        from arknights_mower.utils.update_runtime import read_json, write_json
 
         self.maa_drop_inventory = MaaDropInventory()
         self.maa_inventory_tasks = {}
@@ -10043,9 +10049,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             with requests.get(ota_tasks_url, headers=headers, timeout=60) as response:
                 response.raise_for_status()
                 res = response.content.decode("utf-8")
-            with open(ota_tasks_path, "w", encoding="utf-8") as f:
-                f.write(res)
-            logger.info("MAA活动关卡导航更新成功")
+            tasks = json.loads(res)
+            if not isinstance(tasks, dict) or not tasks:
+                raise ValueError("MAA 活动导航必须是非空 JSON 对象")
+            write_json(ota_tasks_path, tasks)
+            logger.info("MAA 活动关卡导航下载完成，等待资源加载确认")
         except Exception as e:
             logger.error(
                 f"MAA活动关卡导航更新失败：{str(e)}",
@@ -10055,8 +10063,25 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
         @update_transaction
         def create_verified_asst():
-            Asst.load(path=path, incremental_path=path / "cache")
-            return VerifiedAsst(Asst, path, self.on_maa_callback)
+            if not Asst.load(path=path, incremental_path=path / "cache"):
+                raise MaaCallError(
+                    "load", detail=f"目录={path}，增量目录={path / 'cache'}"
+                )
+            instance = VerifiedAsst(Asst, path, self.on_maa_callback)
+            resource = read_json(path / "resource" / "version.json", {})
+            resource_version = (
+                resource.get("last_updated", "未知")
+                if isinstance(resource, dict)
+                else "未知"
+            )
+            logger.info(
+                "MAA 资源加载成功 | core=%s | resource=%s | path=%s | incremental_path=%s",
+                instance.get_version(),
+                resource_version,
+                path,
+                path / "cache",
+            )
+            return instance
 
         # 覆盖 Asst.load 与连接阶段：连接信息回调在 connect 期间就会到达。
         self.maa_callback = MaaCallbackLog()
@@ -10121,7 +10146,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 targets = maa_fight_drop_targets(stage, rules, inventory)
                 if targets["reached"]:
                     continue
-                logger.info(f"添加关卡:{stage}")
+                logger.info(f"提交关卡:{stage}")
                 params = {
                     # 空值表示上一次
                     # 'stage': '',
@@ -10145,6 +10170,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if targets["bound"] and task_id:
                     self.maa_inventory_tasks[task_id] = (params, rules)
                 self.stages.append(stage)
+                logger.info("MAA 已接受关卡:%s | task_id=%s", stage, task_id)
 
         elif type == "Mall":
             conf = config.conf
@@ -10653,6 +10679,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         except Exception as e:
             save_exception(e)
             logger.exception(e)
+            if getattr(self, "MAA", None) is not None:
+                try:
+                    self.MAA.stop()
+                except (MowerExit, DeviceRecoveryError, SharedADBError):
+                    raise
+                except Exception:
+                    logger.exception("MAA 异常后的任务清理失败，保留原始调用错误")
             self.MAA = None
             battle_inventory_active.clear()
             send_message(str(e), "MAA调用出错！", level="ERROR")
