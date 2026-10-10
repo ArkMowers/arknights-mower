@@ -37,6 +37,10 @@ class TestRunOrderRestorationScheduling(unittest.TestCase):
                 return_value=(None, None),
             ),
             patch(
+                "arknights_mower.utils.scheduler_task.NewsChecker.get_maintenance",
+                return_value=None,
+            ),
+            patch(
                 "arknights_mower.utils.scheduler_task.estimate_dorm_minutes",
                 return_value=1,
             ),

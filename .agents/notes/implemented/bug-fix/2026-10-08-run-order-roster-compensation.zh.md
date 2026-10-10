@@ -41,4 +41,4 @@ date: 2026-10-08
 
 [调度恢复套件](../../../../arknights_mower/tests/scheduler_recovery_preservation_tests.py)在仓库扫描与到期专精派发后执行真实的 `simulate` 与 `scheduling` 调用。回归离线替换设备和扫描 I/O，验证立即派发源设施纠错，恢复任务时间与快照保持不变。该入口传入实际驻员之前，回归测试失败；修复后整个套件的 147 个测试通过。
 
-在 rebase 到 `ed674a9f9a448c3839b379fdf219760c33387121` 后，验证在测试进程内阻止网络连接和 HTTP 请求，执行 14 个针对性的离线套件：815 个测试及 52 个子测试通过。[跑单规划唤醒套件](../../../../arknights_mower/tests/run_order_planning_wakeup_tests.py)验证副表换班完成后立即恢复正常规划，覆盖延期和重启；原有完成规则保留在换班补偿契约中。变更范围内的 Ruff 代码与格式检查通过。`python scripts/verify_governance.py --base ed674a9f9a448c3839b379fdf219760c33387121` 的三个治理检查均通过，保留两条未变动的归档测试引用警告。
+在 rebase 到 `a9c37e108d6a75ed29557043e1d8ee37a8de1dae` 后，验证在测试进程内阻止网络连接和 HTTP 请求，执行 14 个针对性的离线套件：815 个测试及 52 个子测试通过，网络访问尝试为零。原班恢复调度夹具替换 `NewsChecker.get_update_time` 和 `NewsChecker.get_maintenance`，启用专精换人时也不查询真实公告。[跑单规划唤醒套件](../../../../arknights_mower/tests/run_order_planning_wakeup_tests.py)验证副表换班完成后立即恢复正常规划，覆盖延期和重启；原有完成规则保留在换班补偿契约中。变更范围内的 Ruff 代码与格式检查通过。`python scripts/verify_governance.py --base a9c37e108d6a75ed29557043e1d8ee37a8de1dae` 的三个治理检查均通过，保留两条未变动的归档测试引用警告。
