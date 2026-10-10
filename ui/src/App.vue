@@ -300,6 +300,7 @@ import HelpCircle from '@vicons/ionicons5/HelpCircle'
 import Home from '@vicons/ionicons5/Home'
 import PieChart from '@vicons/ionicons5/PieChart'
 import ReaderOutline from '@vicons/ionicons5/ReaderOutline'
+import TimeOutline from '@vicons/ionicons5/TimeOutline'
 import Newspaper from '@vicons/ionicons5/Newspaper'
 import Settings from '@vicons/ionicons5/Settings'
 import StatsChart from '@vicons/ionicons5/StatsChart'
@@ -461,7 +462,7 @@ const menuOptions = [
       {
         label: () =>
           h(RouterLink, { to: { path: '/record/log-schedule' } }, { default: () => '日志调度' }),
-        icon: renderIcon(ReaderOutline),
+        icon: renderIcon(TimeOutline),
         key: 'go-to-log-schedule'
       }
     ]
