@@ -664,6 +664,7 @@ onMounted(() => {
   min-height: 100%;
   margin: 0 auto;
   padding: clamp(16px, 2.5vw, 30px);
+  padding-inline: clamp(16px, 3.33cqi, 40px);
 }
 
 .page-heading,
@@ -677,7 +678,8 @@ onMounted(() => {
 }
 
 .page-heading {
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 12px 20px;
   margin-bottom: 20px;
 }
 .section-kicker {
@@ -710,6 +712,8 @@ h2 {
   white-space: nowrap;
 }
 .back-link {
+  flex-shrink: 0;
+  margin-left: auto;
   padding: 10px;
   min-height: 40px;
   box-sizing: border-box;

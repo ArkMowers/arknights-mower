@@ -35,12 +35,14 @@ const deferred = () => {
 describe('log schedule browsing', () => {
   let scope, page
   beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-10-11T00:00:00Z').getTime())
     state.client = { get: vi.fn(), post: vi.fn(), delete: vi.fn() }
     scope = effectScope()
     page = scope.run(() => LogSchedule.setup({}, { expose: vi.fn() }))
   })
   afterEach(() => {
     scope.stop()
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
 
