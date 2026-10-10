@@ -630,7 +630,12 @@ class Device:
             # 手指仍按下时只读当前后端一次，禁止恢复或重建输入资源。
             budget_sleep(0)
             try:
-                img = self._validated(self.capture_frame())
+                control = getattr(self, "session_control", None)
+                img = self._validated(
+                    control.capture_once()
+                    if control is not None
+                    else self.capture_frame()
+                )
             except (MowerExit, DeviceRecoveryError):
                 raise
             except Exception as exc:

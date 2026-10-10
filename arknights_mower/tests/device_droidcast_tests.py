@@ -7,6 +7,7 @@ import re
 import struct
 import subprocess
 import unittest
+from datetime import datetime
 from pathlib import Path
 from threading import Event, RLock
 from types import SimpleNamespace
@@ -931,6 +932,137 @@ class DroidCastTests(unittest.TestCase):
         serial, _ = next(iter(self.android.forwards.values()))
         self.assertEqual(serial, "USB-A")
         self.assertEqual(self.android.processes[0].terminated, 1)
+
+    def test_missing_mapping_and_input_eof_rebuild_capture_before_degradation(self):
+        self.assertTrue(self.control.capture().ok)
+        helper = self.device._droidcast
+        del self.android.forwards[f"tcp:{helper.port}"]
+        helper._frames_until_mapping_check = 0
+        self.android.forwards["tcp:23456"] = ("OTHER", "tcp:12345")
+        self.input_control.input_alive.return_value = False
+
+        def repair_input():
+            self.input_control.input_alive.return_value = True
+
+        self.device.rebuild_input = Mock(side_effect=repair_input)
+        rebind = self.control._adapter.rebind
+
+        self.control._adapter.rebind = Mock(wraps=rebind)
+        result = self.control.capture()
+        self.assertTrue(result.ok, result.error)
+        self.assertFalse(
+            self.control.settings_status()["screenshot_backend"]["degraded"]
+        )
+        self.assertTrue(np.all(result.value == 0))
+        self.assertEqual(len(self.android.processes), 2)
+        self.device.rebuild_input.assert_called_once()
+        self.control._adapter.rebind.assert_not_called()
+        self.assertEqual(self.android.forwards["tcp:23456"], ("OTHER", "tcp:12345"))
+        self.assertEqual(self.conf.model_dump(), self.before)
+        self.assertEqual(self.simulator.actions, [])
+
+    def test_held_swipe_keeps_degraded_backend_and_releases_once(self):
+        self.http.failure = requests.ReadTimeout("read stalled")
+        self.assert_adb_degraded(self.control.capture(), "droidcast_http_timeout")
+        self.android.forwards.clear()
+        self.android.forwards["tcp:23456"] = ("OTHER", "tcp:12345")
+        self.device._droidcast._frames_until_mapping_check = 0
+        helper_calls = len(self.android.commands), len(self.http.calls)
+        events = []
+
+        def swipe(*args, before_release, **kwargs):
+            events.append("down")
+            before_release()
+            events.append("up")
+
+        self.input_control.swipe_ext = swipe
+        for name, value in (
+            ("screenshot_time", datetime.min),
+            ("screenshot_avg", None),
+            ("screenshot_count", 0),
+        ):
+            self.enterContext(patch.object(config, name, value))
+        self.conf.screenshot_interval = 0
+        before = self.conf.model_dump()
+        with (
+            patch("arknights_mower.utils.device.device.budget_sleep", self.clock.sleep),
+            patch("arknights_mower.utils.device.device.save_screenshot_frame"),
+        ):
+            result = self.control.execute(
+                lambda device: device.swipe_ext(
+                    [(900, 970), (800, 970)], [0], up_wait=400, capture=True
+                )
+            )
+        self.assertTrue(result.ok, result.error)
+        self.assertTrue(np.array_equal(result.value[1], self.standard.frame))
+        self.assertEqual(events, ["down", "up"])
+        self.assertEqual(
+            (len(self.android.commands), len(self.http.calls)), helper_calls
+        )
+        self.assertEqual(self.conf.model_dump(), before)
+        self.assertEqual(self.simulator.actions, [])
+        self.assertEqual(self.adb.actions, [])
+        self.assertEqual(self.android.forwards, {"tcp:23456": ("OTHER", "tcp:12345")})
+
+    def test_held_degraded_capture_failure_releases_without_helper_recovery(self):
+        self.http.failure = requests.ReadTimeout("read stalled")
+        self.assert_adb_degraded(self.control.capture(), "droidcast_http_timeout")
+        self.standard.failure = OSError("ADB capture unavailable")
+        helper_calls = len(self.android.commands), len(self.http.calls)
+        events = []
+
+        def swipe(*args, before_release, **kwargs):
+            before_release()
+            events.append("up")
+
+        self.input_control.swipe_ext = swipe
+        self.conf.screenshot_interval = 0
+        with patch(
+            "arknights_mower.utils.device.device.budget_sleep", self.clock.sleep
+        ):
+            result = self.control.execute(
+                lambda device: device.swipe_ext(
+                    [(900, 970), (800, 970)], [0], up_wait=400, capture=True
+                )
+            )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error.code, "screenshot_failed")
+        self.assertEqual(events, ["up"])
+        self.assertIsNone(getattr(self.device, "_recovery_error", None))
+        self.assertEqual(
+            (len(self.android.commands), len(self.http.calls)), helper_calls
+        )
+        self.assertEqual(self.simulator.actions, [])
+
+    def test_held_capture_cancellation_does_not_close_resources_before_release(self):
+        self.assertTrue(self.control.capture().ok)
+        helper_calls = len(self.android.commands), len(self.http.calls)
+        events = []
+
+        def swipe(*args, before_release, **kwargs):
+            self.control._pending_close.set()
+            self.control._deferred_close = True
+            before_release()
+            self.input_control.close.assert_not_called()
+            self.assertEqual(
+                (len(self.android.commands), len(self.http.calls)), helper_calls
+            )
+            events.append("up")
+
+        self.input_control.swipe_ext = swipe
+        self.conf.screenshot_interval = 0
+        with patch(
+            "arknights_mower.utils.device.device.budget_sleep", self.clock.sleep
+        ):
+            result = self.control.execute(
+                lambda device: device.swipe_ext(
+                    [(900, 970), (800, 970)], [0], up_wait=400, capture=True
+                )
+            )
+        self.assertFalse(result.ok)
+        self.assertEqual(events, ["up"])
+        self.assertIsNone(self.control._device)
+        self.assertEqual(self.simulator.actions, [])
 
 
 if __name__ == "__main__":

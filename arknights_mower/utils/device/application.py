@@ -231,6 +231,7 @@ class DeviceResult(Generic[T]):
     value: T | None = None
     error: DeviceError | None = None
     readiness: ReadinessResult | None = None
+    helpers_rebuilt: bool = False
 
     def unwrap(self) -> T:
         """Compatibility boundary for callers using the existing exceptions."""
@@ -1039,7 +1040,12 @@ class DeviceControl(Generic[D]):
         if self._dispatch_pause is not None:
             self._last_error = self._dispatch_pause.to_dict()
         return DeviceResult(
-            True, self._state, self.serial, self._device, readiness=self._readiness
+            True,
+            self._state,
+            self.serial,
+            self._device,
+            readiness=self._readiness,
+            helpers_rebuilt=True,
         )
 
     def _check_profile(self, profile):
@@ -1144,6 +1150,26 @@ class DeviceControl(Generic[D]):
         with self._configuration():
             return self._execute(operation)
 
+    def capture_once(self) -> np.ndarray:
+        """Read the effective backend once within the caller's input budget."""
+        # The enclosing input operation drains deferred cleanup after release.
+        with self.configuration_lock:
+            if (
+                self._shutdown.is_set()
+                or self._pending_close.is_set()
+                or self._closing_count
+            ):
+                raise MowerExit("设备会话正在关闭")
+            if self._helper_cleanup_error is not None:
+                raise self._helper_cleanup_error
+            if self._session_error is not None:
+                raise self._session_error
+            if self._device is None:
+                raise DeviceRecoveryError("设备会话尚未建立")
+            if self._screenshot is not None and self._screenshot.degraded:
+                return validate_frame(self._device.standard_frame())
+            return validate_frame(self._device.capture_frame())
+
     def capture(self) -> DeviceResult[np.ndarray]:
         """Capture may be repeated, but only within the selected backend budget."""
         if self._shutdown.is_set() or self._pending_close.is_set():
@@ -1169,15 +1195,15 @@ class DeviceControl(Generic[D]):
             def recover():
                 nonlocal recovering_capture
                 if self._session is not None:
-                    serial = self.serial
                     frame_probe = (
                         self._session.adb.standard_frame_size
                         if self._screenshot.backend == "droidcast"
                         else None
                     )
-                    self.recover(frame_probe=frame_probe).unwrap()
+                    recovered = self.recover(frame_probe=frame_probe)
+                    recovered.unwrap()
                     recovering_capture = True
-                    return bool(self._session.actions or self.serial != serial)
+                    return recovered.helpers_rebuilt
                 return False
 
             def capture():
@@ -1190,6 +1216,7 @@ class DeviceControl(Generic[D]):
                 with self._io_budget():
                     return self._standard_adb_ready()
 
+            was_degraded = self._screenshot.degraded
             result = self._execute(
                 lambda device: self._screenshot.capture(
                     capture, rebuild, recover, standard_adb
@@ -1198,6 +1225,10 @@ class DeviceControl(Generic[D]):
             )
             if result.ok and self._screenshot.failure is not None:
                 self._last_error = self._screenshot.failure.to_dict()
+                if not was_degraded and self._screenshot.degraded:
+                    logger.warning(
+                        f"截图已降级到同一设备的标准 ADB 后端：{self._screenshot.failure}"
+                    )
             return result
 
     def _standard_adb_ready(self) -> np.ndarray:
@@ -1334,6 +1365,7 @@ class DeviceControl(Generic[D]):
                     return self._failure("recovery_failed", exc)
             try:
                 deadline = None
+                helpers_rebuilt = False
                 if self._adb_recovery is not None:
                     deadline = self._session.begin_budget()
                     self._recover_adb_server(deadline)
@@ -1429,6 +1461,7 @@ class DeviceControl(Generic[D]):
                                 )
                                 self._session._action(lambda timeout: True, deadline)
                             self._adapter.rebind(self._device, result)
+                            helpers_rebuilt = True
                             if input_probe is not None and not input_probe():
                                 raise TouchFailure(
                                     profile,
@@ -1453,7 +1486,12 @@ class DeviceControl(Generic[D]):
                     else None
                 )
                 return DeviceResult(
-                    True, self._state, self.serial, self._device, readiness=ready
+                    True,
+                    self._state,
+                    self.serial,
+                    self._device,
+                    readiness=ready,
+                    helpers_rebuilt=helpers_rebuilt,
                 )
             except Exception as exc:
                 if (
