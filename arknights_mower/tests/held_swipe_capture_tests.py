@@ -178,12 +178,15 @@ def test_raw_capture_never_invokes_session_recovery(monkeypatch):
     device = object.__new__(Device)
     image = np.zeros((1080, 1920, 3), dtype=np.uint8)
     device.capture_frame = MagicMock(return_value=image)
-    device.session_control = MagicMock()
+    device.session_control = SimpleNamespace(
+        capture_once=MagicMock(return_value=image), capture=MagicMock()
+    )
     monkeypatch.setattr(config.conf, "screenshot_interval", 0)
     monkeypatch.setattr(device_module, "save_screenshot_frame", MagicMock())
     assert device.screencap(recover=False)[1] is image
     device.session_control.capture.assert_not_called()
-    device.capture_frame.assert_called_once()
+    device.session_control.capture_once.assert_called_once()
+    device.capture_frame.assert_not_called()
 
 
 @pytest.mark.parametrize("mode", ["xhigh", "high", "medium", "low"])
@@ -272,15 +275,19 @@ def test_invalid_held_frame_produces_structured_capture_failure(monkeypatch):
 
     device = object.__new__(Device)
     device._profile = config.conf.device.model_copy()
-    device.capture_frame = MagicMock(return_value=np.zeros((10, 10, 3), dtype=np.uint8))
-    device.session_control = MagicMock()
+    invalid = np.zeros((10, 10, 3), dtype=np.uint8)
+    device.capture_frame = MagicMock()
+    device.session_control = SimpleNamespace(
+        capture_once=MagicMock(return_value=invalid), capture=MagicMock()
+    )
     monkeypatch.setattr(config, "stop_mower", Event())
     monkeypatch.setattr(config.conf, "screenshot_interval", 0)
     with pytest.raises(ScreenshotFailure) as caught:
         device.screencap(recover=False)
     assert caught.value.code == "frame_size_mismatch"
     device.session_control.capture.assert_not_called()
-    device.capture_frame.assert_called_once()
+    device.session_control.capture_once.assert_called_once()
+    device.capture_frame.assert_not_called()
 
 
 def test_slow_held_capture_extends_hold_and_still_releases(gesture):

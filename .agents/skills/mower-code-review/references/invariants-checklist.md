@@ -68,7 +68,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 - [ ] **[INV-DEV-08] Uncertain Input Delivery**: Does an ADB input transmission or acknowledgement timeout reach the structured input failure boundary without replaying the command, while known read-only queries retain bounded retries?
 
-- [ ] **[INV-DEV-07] Capture Recovery Separation**: Do normal frames use a fresh operation deadline, and does degraded ADB validate the bound target without starting the replaced helper?
+- [ ] **[INV-DEV-07] Capture Recovery Separation**: Do normal frames use a fresh operation deadline, does degraded ADB validate the bound target without starting the replaced helper, do held captures retain the effective backend without recovery, and does input-only repair leave screenshot reconstruction required?
 
 - [ ] **[INV-DEV-05] Capture Preset Compatibility**: Do saves reject incompatible capture presets, do capture entry points check the host, and do UI preset changes clear incompatible draft backends without prematurely persisting a new identity?
 - [ ] **[INV-DEV-06] LD Capture Binding**: Does LD screenshot enhancement verify the selected endpoint and reject changed process identity or dimensions before accepting a frame?

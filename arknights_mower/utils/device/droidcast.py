@@ -23,6 +23,7 @@ from arknights_mower.utils.device.adb_client.server import (
 from arknights_mower.utils.device.io_budget import budget_sleep, io_timeout
 from arknights_mower.utils.device.manager_io import run_command
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
+from arknights_mower.utils.log import logger
 from arknights_mower.utils.network import get_new_port
 
 PACKAGE = "com.rayworks.droidcast"
@@ -267,6 +268,7 @@ class DroidCastSession:
         ).decode("utf-8", "replace")
         expected = [self.serial, f"tcp:{self.port}", f"tcp:{self.port}"]
         matched = False
+        observed = []
         for row in rows.splitlines():
             entry = row.split()
             if not entry:
@@ -279,6 +281,12 @@ class DroidCastSession:
                     "DroidCast 转发清单格式无效，无法确认自有映射",
                 )
             matched = matched or entry == expected
+            if entry[1] == expected[1] and len(observed) < 4:
+                observed.append(entry)
+        if not matched and not cleanup:
+            logger.debug(
+                f"DroidCast 转发映射不匹配：expected={expected!r} observed={observed!r}"
+            )
         return matched
 
     def _arm_mapping_check(self):

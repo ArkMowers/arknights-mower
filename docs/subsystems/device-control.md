@@ -85,6 +85,8 @@ classDiagram
 
 Selection page gestures use an endpoint callback on the selected input helper. The callback captures once without device recovery, starting 100 ms into a minimum 400 ms hold. Slow capture extends that hold within the existing input budget. Capture errors propagate after release; release errors retain uncertain-input handling. Release of the owned touch has a one-second cleanup budget independent of task cancellation. No-inertia gestures use the shared 400 ms hold. The [decision record](../../.agents/notes/implemented/simplification/2026-10-09-held-swipe-capture.md) records the implementation and simplification audit.
 
+`DeviceControl.capture_once()` retains the session's effective screenshot backend, including standard ADB after DroidCast degradation, within the caller's input deadline. It performs no readiness recovery, helper rebuild or task-cancellation cleanup while touch remains held. The input boundary retains ownership until release; capture errors propagate through the existing gesture boundary.
+
 ## 2. Vendor Discovery & Compatibility Presets
 
 The subsystem integrates platform-specific emulators through deterministic discovery mechanisms:
@@ -184,7 +186,8 @@ Connection testing returns transient CPU and memory fields under `observations.p
 - The [shared screenshot encoding contract](../../.agents/notes/implemented/simplification/2026-09-29-shared-screenshot-encoding.md) specifies ownership and offline verification.
 - The [preservation review repairs](../../.agents/notes/implemented/bug-fix/2026-09-29-preservation-review-repairs.md) define the regression contracts and their [shared boundaries](../../.agents/notes/implemented/simplification/2026-09-29-preservation-repair-boundaries.md).
 
-- **[INV-DEV-07] Capture Recovery Separation**: Normal frames use a fresh per-operation deadline; a degraded ADB backend verifies its bound target without invoking the replaced capture helper.
+- **[INV-DEV-07] Capture Recovery Separation**: Normal frames use a fresh per-operation deadline; a degraded ADB backend verifies its bound target without invoking the replaced capture helper. Held captures retain the effective backend without recovery, and input-only repair never counts as capture reconstruction.
+- `DeviceResult.helpers_rebuilt` records successful full helper construction or rebind. Screenshot recovery uses that evidence to skip its own rebuild; action counts and input-only repair do not establish capture reconstruction. DroidCast diagnostics retain the expected forward and up to four mappings for that local port, and successful degradation logs its cause once per transition. The [degraded held-capture repair](../../.agents/notes/implemented/bug-fix/2026-10-10-droidcast-degraded-held-capture.md) records the incident limits and offline evidence.
 - The first screenshot recovery, rebuild and degradation share the current Recovery Budget. Subsequent degraded frames validate target identity, boot completion and the actual ADB frame within a new operation deadline. Instance commands never exceed the lesser of their remaining local deadline, the enclosing Recovery Budget and the command limit.
 - Immediate backend edits compare against the saved Device Profile to preserve IPC pairing while identity drafts remain unpersisted.
 - The [session review repairs](../../.agents/notes/implemented/bug-fix/2026-09-29-session-review-repairs.md) and [ownership simplification](../../.agents/notes/implemented/simplification/2026-09-29-review-recovery-ownership.md) record the regression coverage.
