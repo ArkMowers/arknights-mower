@@ -112,12 +112,15 @@ it('opens every Android mode while rejecting disabled or invalid choices', () =>
   expect(state.config.performance_mode).toBe('medium')
 })
 
-it.each(['android', 'darwin'])('renders an enabled game test for %s', async (platform) => {
-  setup()
-  state.config.runtime_platform = platform
-  const app = createSSRApp(PerformanceSettings, { testEnabled: true })
-  const html = await renderToString(app)
-  expect(html).toMatch(/<button\b[^>]*>游戏内性能测试<\/button>/)
-  expect(html).not.toMatch(/<button\b[^>]*disabled/)
-  expect(html).toContain(`自动从${platform === 'android' ? '中' : '极高'}开始`)
-})
+it.each(['android', 'darwin', 'windows', 'linux'])(
+  'renders the shared automatic baseline and an enabled game test for %s',
+  async (platform) => {
+    setup()
+    state.config.runtime_platform = platform
+    const app = createSSRApp(PerformanceSettings, { testEnabled: true })
+    const html = await renderToString(app)
+    expect(html).toMatch(/<button\b[^>]*>游戏内性能测试<\/button>/)
+    expect(html).not.toMatch(/<button\b[^>]*disabled/)
+    expect(html).toContain('自动从极高开始')
+  }
+)
