@@ -107,20 +107,21 @@ def test_binding_schema_roundtrip_and_legacy_default():
     assert legacy.plan1.contact.plans[0].group_bindings == []
 
 
-def test_group_members_and_mood_exclude_follower(solver):
+@pytest.mark.parametrize("shared_mood", [0, 24])
+def test_group_members_and_mood_exclude_follower(solver, shared_mood):
     data = solver.op_data
     data.operators[A].mood = 10
     data.operators[B].mood = 20
-    data.operators[SHARED].mood = 0
+    data.operators[SHARED].mood = shared_mood
     assert data.shift_group_members("甲") == [A, SHARED]
     assert data.shift_group_members("乙") == [B, SHARED]
     assert data.group_min_mood("甲") == data.group_max_mood("甲") == 10
-    assert data.group_min_mood("乙") == 20
+    assert data.group_min_mood("乙") == data.group_max_mood("乙") == 20
     assert data.average_mood() == 30 / 48
     data.select_group_binding(SHARED, "乙")
     assert SHARED not in data.groups["甲"]
     assert data.operators[SHARED].replacement == ["黑角"]
-    assert data.group_min_mood("乙") == 20
+    assert data.group_min_mood("乙") == data.group_max_mood("乙") == 20
 
 
 def test_different_covers_are_mutually_exclusive(solver):

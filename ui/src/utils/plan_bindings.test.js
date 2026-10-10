@@ -133,11 +133,13 @@ it('shares colors across main and backup tables independently of the selected ta
   for (const selected of ['main', 0, 1, 'main']) {
     store.sub_plan = selected
     expect(store.group_colors).toEqual(colors)
+    expect(store.all_groups).toEqual(['甲', '乙', '丙'])
   }
   store.sub_plan = 0
   expect(store.groups).toEqual(['丙', '乙'])
   store.backup_plans[1].plan.contact.plans[0].group = '丁'
   expect(store.group_colors).toHaveProperty('丁')
   expect(store.group_colors).toHaveProperty('甲')
+  expect(store.all_groups).toEqual(['甲', '乙', '丙', '丁'])
   store.$dispose()
 })
