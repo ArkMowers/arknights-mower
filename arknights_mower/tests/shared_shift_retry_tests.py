@@ -240,3 +240,23 @@ def test_resume_requires_current_normal_observation(
     s._resume_waiting_group_shifts()
     assert s.waiting_group_shifts == [task]
     assert task not in s.tasks
+
+
+def test_shared_follower_retains_cover_for_other_resting_group(solver):
+    data = solver.op_data
+    data.operators[B]._current_room = "dormitory_1"
+    data.operators[B].current_index = 2
+    data.operators[SHARED]._current_room = ""
+    data.operators[SHARED].current_index = -1
+    data.operators["黑角"]._current_room = "contact"
+    data.operators["黑角"].current_index = 0
+    data.commit_group_shifts({"甲": True, "乙": True})
+    plan = solver._observed_group_return_plan()
+    assert plan == {"meeting": [A, "Current"]}
+    task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION, task_plan=plan)
+    solver.tasks, solver.task = [task], task
+    solver._prepare_group_shift(task)
+    assert task.group_shift_transitions == {"甲": False}
+    assert SHARED not in task.plan.get("contact", [])
+    assert data.group_shift_state == {"甲": True, "乙": True}
+    assert data.get_current_operator("contact", 0).name == "黑角"

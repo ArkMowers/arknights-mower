@@ -1,0 +1,18 @@
+{
+  "title": "Observed Group Return",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-10",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-25]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._observed_group_return_plan"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/observed_group_return_tests.py"
+  ]
+}

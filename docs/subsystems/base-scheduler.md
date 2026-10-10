@@ -126,6 +126,7 @@ The [Rescue Capacity and Standby decision](../../.agents/notes/implemented/simpl
 - Handles off-shift rotation for exhausted operators, on-shift deployment for replacements, post-rest stationing, trade order runs (Proviso, Tequila, Closure), and Fiammetta energy charges.
 
 - Ordinary shifts converge backup conditions, subsequent eligible off-shift groups, cached corrections, and final empty-bed filling in an isolated projection. Failed convergence preserves actual occupancy and the original task.
+- Ordinary observation confirming every working group member accepted by `is_group_shift_anchor` in its exact effective primary slot schedules a corrective return for a group still recorded as resting. Unknown positions, initialization, emergency protection and unfinished arrangements block inference. The task restores dependent dormitory and shared positions before committing confirmed state; cached projections do not independently infer returns, and returning groups do not rest again in the same projection round. The [observed group return decision](../../.agents/notes/implemented/bug-fix/2026-10-10-observed-group-return.md) specifies verification.
 - Temporary Fiammetta dorm visits retain the measured work depletion rate; mood and sample timestamps still refresh.
 - Decision record: [Complete shift convergence](../../.agents/notes/implemented/simplification/2026-09-29-complete-shift-convergence.md).
 

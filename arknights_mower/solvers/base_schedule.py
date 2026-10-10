@@ -2085,6 +2085,49 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         finally:
             self.back_to_infrastructure()
 
+    def _observed_group_return_plan(self):
+        """完整在岗观测生成回班意图，实际组状态仍由任务确认提交。"""
+        if self._initial_mood_read_pending() or self._emergency_frozen():
+            return {}
+        pending = [
+            getattr(self, "task", None),
+            *getattr(self, "tasks", []),
+            *getattr(self, "waiting_group_shifts", []),
+        ]
+        if any(
+            getattr(task, "group_shift_expected", {})
+            or getattr(task, "backup_shift_active", False)
+            or getattr(task, "dorm_recovery_restore", [])
+            or task is not None
+            and task.type == TaskTypes.FIAMMETTA
+            and task.time <= datetime.now()
+            for task in pending
+        ):
+            return {}
+        plan = {}
+        for group, resting in self.op_data.group_shift_state.items():
+            if not resting:
+                continue
+            members = [
+                self.op_data.operators[name]
+                for name in self.op_data.shift_group_members(group)
+                if self.op_data.is_group_shift_anchor(self.op_data.operators[name])
+            ]
+            if not members or any(
+                op.time_stamp is None
+                or (op.current_room, op.current_index) != (op.room, op.index)
+                for op in members
+            ):
+                continue
+            anchor = next(
+                (op for op in members if op.room not in ("train", "factory")), None
+            )
+            if anchor is not None:
+                plan.setdefault(
+                    anchor.room, ["Current"] * len(self.op_data.plan[anchor.room])
+                )[anchor.index] = anchor.name
+        return plan
+
     def agent_get_mood(
         self,
         skip_dorm=False,
@@ -2101,8 +2144,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         ``return_plan=True`` 返回差异而不把纠错任务塞进队列。
         ``explicit_slots`` 保留预演中已应用的副表显式驻员，优先于普通纠错。
         """
-        if read_rooms:
-            self._read_agent_mood()
+        if read_rooms and self._read_agent_mood() is False:
+            return {} if return_plan else None
         if self._emergency_frozen():
             return {} if return_plan else None
         plan = self.op_data.plan
@@ -2291,6 +2334,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             suppress_completed_dorm_returns,
         )
 
+        if read_rooms and not return_plan:
+            _merge_plan_overlay(
+                fix_plan, self._observed_group_return_plan(), self.op_data
+            )
         if self.op_data.has_dorm_groups():
             correct_group_dorms(self.op_data, fix_plan, _is_mastery_busy)
         if read_rooms:
@@ -4860,7 +4907,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         step = SchedulerTask(task_type=task.type, task_plan=copy.deepcopy(intent))
         step.backup_explicit_slots = explicit_slots
         step.dorm_fill_plan = copy.deepcopy(getattr(task, "dorm_fill_plan", {}))
-        returning = set()
+        returning = {
+            name
+            for group, resting in getattr(task, "group_shift_transitions", {}).items()
+            if not resting
+            for name in simulation.op_data.shift_group_members(group)
+        }
         seen = set()
         # Free 是执行时按游戏列表选人的占位符，预演不能把它当作已知干员。
         unresolved = set()
