@@ -25,4 +25,6 @@ Offline performance tests cover shared startup defaults, feedback hysteresis, al
 
 Dormitory recovery entry tests verify that two preselection feedback failures lower `xhigh` to `high` on every platform, with an exact cap and effective-mode assertion for each platform.
 
+Settings rendering, the callable FAQ and the shipped guide now state the same starting mode as runtime execution. The regression first rejects the stale Android medium guidance, then verifies the corrected notice for Android, macOS, Windows and Linux. No performance strategy or saved configuration changes are needed for this repair.
+
 The platform-unification repair passes 332 focused backend cases across performance, legacy selection, Android-managed configuration, configuration persistence, dormitory recovery and game tests. It removes Android-specific startup and numeric defaults while preserving saved independent settings. The CI failure in Android configuration isolation is an outdated assertion that forces an imported extreme selection to medium; the repaired regression covers every mode while retaining Android-owned device settings. Five focused frontend suites pass 79 cases, including shared defaults, save/reload and explicit adoption.

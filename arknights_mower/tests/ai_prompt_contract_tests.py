@@ -4,6 +4,7 @@ import re
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
@@ -13,9 +14,28 @@ from arknights_mower.agent import agent
 from arknights_mower.agent.tools import call_db as db_tool
 from arknights_mower.agent.tools import faq, mastery_plan, submit_issue
 from arknights_mower.solvers.record import _DB_TABLE_STMTS
+from arknights_mower.utils import performance
+from arknights_mower.utils.config.conf import RIICPart
 
 
 class AIPromptContractTests(unittest.TestCase):
+    def test_performance_guidance_matches_the_runtime_starting_mode(self):
+        guide = (
+            Path(__file__).resolve().parents[2] / "ui/Mower入门指北.html"
+        ).read_text(encoding="utf-8")
+        answer = faq.get_faq("设备性能适配如何选择")
+        for platform in ("android", "darwin", "windows", "linux"):
+            with (
+                self.subTest(platform=platform),
+                patch.dict("os.environ", {"MOWER_ANDROID": "0"}),
+                patch.object(performance, "__system__", platform),
+            ):
+                profile = performance.effective_performance_profile(RIICPart())
+                self.assertEqual(profile.mode, "xhigh")
+                baseline = "所有平台均从极高开始"
+                self.assertIn(baseline, answer)
+                self.assertIn(baseline, guide)
+
     def test_legacy_downloader_questions_use_current_software_update_entry(self):
         for question in ("Mower下载器报错怎么更新", "下崽器打不开", "更新器报错"):
             with self.subTest(question=question):
@@ -74,7 +94,7 @@ class AIPromptContractTests(unittest.TestCase):
         self.assertEqual(len(queries), 3)
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "data.db"
-            with sqlite3.connect(path) as conn:
+            with closing(sqlite3.connect(path)) as conn, conn:
                 for statement in _DB_TABLE_STMTS:
                     conn.execute(statement)
                 conn.executemany(

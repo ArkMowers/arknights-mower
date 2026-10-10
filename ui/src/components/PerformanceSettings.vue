@@ -43,8 +43,7 @@ function applyMode(mode) {
           </n-flex>
         </n-radio-group>
         <help-text>
-          自动从{{ config.runtime_platform === 'android' ? '中' : '极高' }}开始，按选人反馈调整。
-          极高、高优先速度，中、低增加画面确认。
+          自动从极高开始，按选人反馈调整。 极高、高优先速度，中、低增加画面确认。
           切换档位不改时间参数；资源信息仅供参考。当前生效：{{
             labels[config.performance_effective_mode] || '待运行'
           }}。

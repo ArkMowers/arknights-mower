@@ -18,6 +18,7 @@
   ],
   "test_suites": [
     "arknights_mower/tests/performance_profile_tests.py",
+    "arknights_mower/tests/ai_prompt_contract_tests.py",
     "arknights_mower/tests/dorm_recovery_tests.py",
     "ui/src/utils/performanceProfile.test.js",
     "ui/src/stores/configPartial.test.js",
