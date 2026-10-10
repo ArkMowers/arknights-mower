@@ -25,7 +25,7 @@ REAL_FURNITURE_RUN = furniture.FurnitureDismantler.run
 
 
 @pytest.fixture
-def scheduler(monkeypatch):
+def scheduler(monkeypatch, offline_maintenance):
     class Clock(datetime):
         current = datetime(2026, 9, 9, 10)
 
