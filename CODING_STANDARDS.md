@@ -142,6 +142,7 @@
 
 ### 2.5 Web Access
 - **[INV-WEB-01] Local Log Read Boundary**: A WebView session without a configured token permits read-only log requests from loopback with valid browser origin metadata; remote and cross-origin requests are rejected, and AI chat and mutating endpoints retain their credential checks.
+- **[INV-WEB-02] Credentialed Log Forwarding**: Log WebSockets with a valid first-frame token are authorized independently of Origin, Host and forwarded headers; tokenless access remains restricted to the local log-read boundary.
 
 ### 2.6 Configuration Backup
 - **[INV-CFG-02] Running Plan Restore Cohesion**: Restoring the running Scheduling Plan restores its startup advanced settings with it, preserves unrelated configuration, retains previous models and files on validation or write failure, and resumes frontend autosave only after both stores reload successfully.
