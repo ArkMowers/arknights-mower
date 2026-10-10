@@ -234,6 +234,8 @@ Does an existing guarantee cover the changed path? Adding a module does not by i
 
 Does verification exercise the real caller and assert the guarantee's observable result, state, persistence, side effect or exception? The expected outcome follows the governing contract; it is not uniformly a raised error.
 
+Which plausible contract violation would the changed test's assertions detect? Assess that evidence under the [verification discipline](../../../../CODING_STANDARDS.md#5-verification-discipline).
+
 
 - [ ] **[INV-RES-04] Operator Avatar Completeness**: Does generation reject an unreadable source even when an old output exists, and does publication validate every directory avatar? See [Resource Update](../../../../docs/subsystems/resource-update.md).
 - [ ] **[INV-MAA-06] Expired Source Plan Cleanup**: Does successful automatic fallback clean only expired selections in the source, retain the destination and other settings, and preserve stages without end-time evidence? See [MAA Integration](../../../../docs/subsystems/maa-integration.md).
