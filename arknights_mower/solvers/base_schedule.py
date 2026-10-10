@@ -2912,6 +2912,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self._sync_run_order_tasks()
         if execute_time is None:
             # 暂停订单已实读驻员，空岗位由普通纠错接管，不等待有效倒计时。
+            current = self.op_data.get_current_room(room, bypass=True)
+            if current and "" in current:
+                logger.info(
+                    f"房间 {self.translate_room(room)} 缺少进驻干员，重新安排干员进驻"
+                )
             if self.task is None:
                 self.agent_get_mood(skip_dorm=True, read_rooms=False)
             else:
@@ -5523,7 +5528,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 (self.recog.w * 725 // 1920, self.recog.h * 410 // 1080),
             )
             if "订单暂停获取中" in self._product_ocr_text(status_scope):
-                logger.info(f"{self.translate_room(room)}订单暂停获取，本轮不安排跑单")
+                logger.info(
+                    f"房间 {self.translate_room(room)} 订单暂停获取，检查是否缺少进驻干员"
+                )
+                self.scene_graph_navigation(Scene.INFRA_DETAILS)
                 self._read_room_mood(room, force_mood=True)
                 self.scene_graph_navigation(Scene.INFRA_MAIN)
                 return None

@@ -193,6 +193,9 @@ def use_order_pages(solver, order_states):
         page["open"] = True
 
     def return_to_base(scene):
+        if scene == Scene.INFRA_DETAILS:
+            page["open"] = False
+            return
         assert scene == Scene.INFRA_MAIN
         page.update(room=None, open=False)
 
@@ -208,6 +211,14 @@ def use_order_pages(solver, order_states):
             return marker
         return None
 
+    def get_agent(room, *args, **kwargs):
+        assert not page["open"], "进入房间读取干员心情前，必须先退出订单详情界面返回房间视图"
+        return [
+            {"agent": name, "mood": 24}
+            for name in solver.op_data.get_current_room(room, True)
+        ]
+
+    solver._page = page
     solver.get_run_order_time = BaseSchedulerSolver.get_run_order_time.__get__(solver)
     solver.recog = SimpleNamespace(w=1920, h=1080)
     solver.enter_room = MagicMock(side_effect=enter_room)
@@ -236,12 +247,7 @@ def use_order_pages(solver, order_states):
     solver.double_read_time = MagicMock(
         return_value=datetime.now() + timedelta(hours=1)
     )
-    solver.get_agent_from_room = MagicMock(
-        side_effect=lambda room, *args, **kwargs: [
-            {"agent": name, "mood": 24}
-            for name in solver.op_data.get_current_room(room, True)
-        ]
-    )
+    solver.get_agent_from_room = MagicMock(side_effect=get_agent)
 
 
 def use_mood_pages(solver, monkeypatch, occupants):
@@ -251,6 +257,10 @@ def use_mood_pages(solver, monkeypatch, occupants):
     solver._plan_dorm_recovery = MagicMock(return_value=True)
 
     def read_room(room, *args, **kwargs):
+        if hasattr(solver, "_page"):
+            assert (
+                not solver._page["open"]
+            ), "进入房间读取干员心情前，必须先退出订单详情界面返回房间视图"
         result = []
         for index, name in enumerate(occupants[room]):
             if name:
@@ -276,7 +286,10 @@ def test_inactive_order_page_returns_no_run_order_time(solver, state):
     )
     solver._product_ocr_text.assert_called_once()
     solver.double_read_time.assert_not_called()
-    solver.scene_graph_navigation.assert_called_once_with(Scene.INFRA_MAIN)
+    assert solver.scene_graph_navigation.call_args_list == [
+        call(Scene.INFRA_DETAILS),
+        call(Scene.INFRA_MAIN),
+    ]
 
 
 def test_no_run_order_time_does_not_create_an_immediate_task(solver):
@@ -544,6 +557,10 @@ def test_paused_order_with_observed_staff_does_not_force_an_empty_room_correctio
     solver.get_agent_from_room.assert_called_once_with(
         "room_1_1", None, force_mood=True
     )
+    assert solver.scene_graph_navigation.call_args_list == [
+        call(Scene.INFRA_DETAILS),
+        call(Scene.INFRA_MAIN),
+    ]
 
 
 def test_failed_paused_room_read_preserves_cache_and_existing_tasks(solver):
