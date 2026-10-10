@@ -53,7 +53,17 @@ const free_blacklist = rescue
   : normal_free_blacklist
 const { load_plan, fill_empty } = plan_store
 
-import { computed, inject, onMounted, onUnmounted, provide, ref, watch, watchEffect } from 'vue'
+import {
+  computed,
+  inject,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  provide,
+  ref,
+  watch,
+  watchEffect
+} from 'vue'
 const axios = inject('axios')
 
 const facility = ref('')
@@ -428,6 +438,8 @@ watch(show_replace_dialog, (open) => {
 
 async function validate_plan() {
   try {
+    await nextTick()
+    await plan_store.save_plan()
     const { data } = await axios.post(
       `${import.meta.env.VITE_HTTP_URL}/${rescue ? 'rescue-plan/validate' : 'validate-plan'}`,
       {},
