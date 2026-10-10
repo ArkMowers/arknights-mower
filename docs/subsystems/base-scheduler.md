@@ -182,6 +182,8 @@ Selection page swipes acquire a Capture Frame while the endpoint remains held, u
 
 Training-slot selection closes the profession sidebar after choosing a profession, preserving that filter and exposing the rightmost card names. Retry readings and post-assignment readings compare every explicitly named training-room target, including the trainee. A mismatch retains the existing bounded room retry and cannot complete the assignment. `Current` and `Free` retain their placeholder semantics; the training-room gate freezes a locked, protected or unreadable trainee slot as `Current` when the assistant follows the schedule.
 
+Confirmation and training-room readback wait for submission feedback before reading occupants. When the residence-information panel hides the right side of the submission prompt, recognition requires the visible text at its fixed position and the panel title on the same Capture Frame. A completed room view remains actionable. This fallback adds no capture, input or wait to ordinary prompt checks.
+
 ### 2.9 Worker Status
 - `/status` reports `starting` while a live worker initializes without a scheduler, and `recovering` while the device state is failed or paused. An established scheduler also reports `recovering` during device startup; its task times and backup-plan metadata remain visible. Normal dispatch retains `working` and `sleeping`.
 - Only a missing or finished worker reports `stopped`. The log toolbar retains Stop during startup and recovery and labels those states explicitly; device settings remain locked while the worker owns the target. Stopping the worker releases that lock through the existing cleanup and settings cancellation boundaries.
