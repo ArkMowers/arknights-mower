@@ -119,7 +119,36 @@ class MaaTouchIOTests(unittest.TestCase):
         process = OwnedProcess()
         entered = threading.Event()
         released = threading.Event()
+        caller_waiting = threading.Event()
+        shutdown_signalled = threading.Event()
+        awakened = []
+        shutdown_caller = threading.get_ident()
+        caller = None
         writes = []
+
+        class ObservedEvent:
+            def __init__(self):
+                self.event = threading.Event()
+                self.waiting = False
+
+            def set(self):
+                if self.waiting and threading.get_ident() == shutdown_caller:
+                    shutdown_signalled.set()
+                self.event.set()
+
+            def is_set(self):
+                return self.event.is_set()
+
+            def wait(self, timeout=None):
+                if threading.current_thread() is caller:
+                    self.waiting = True
+                    caller_waiting.set()
+                    # Observe the signal itself, with a safety bound instead of
+                    # relying on the production budget polling interval.
+                    signalled = self.event.wait(1)
+                    awakened.append(signalled)
+                    return signalled
+                return self.event.wait(timeout)
 
         class Writer(io.StringIO):
             def write(self, content):
@@ -135,10 +164,16 @@ class MaaTouchIOTests(unittest.TestCase):
         def stop_process():
             self.assertFalse(process.stdin.closed)
             self.assertFalse(process.stdout.closed)
+            # Completion after termination must not substitute for a shutdown
+            # signal while the send caller and its writer are both blocked.
+            self.assertTrue(shutdown_signalled.is_set())
             terminate()
             released.set()
 
         process.terminate = stop_process
+        self.enterContext(
+            patch("arknights_mower.utils.device.maatouch.session.Event", ObservedEvent)
+        )
         session = self.open_session(process)
         results = []
 
@@ -153,12 +188,15 @@ class MaaTouchIOTests(unittest.TestCase):
         self.addCleanup(caller.join, 2)
         self.addCleanup(released.set)
         self.assertTrue(entered.wait(1))
+        self.assertTrue(caller_waiting.wait(1))
         if close:
             session.close()
         else:
             session.interrupt()
+        self.assertTrue(shutdown_signalled.is_set())
         caller.join(1)
         self.assertFalse(caller.is_alive())
+        self.assertEqual(awakened, [True])
         self.assertEqual(len(results), 1)
         self.assertIsInstance(results[0], ConnectionError)
         self.assertTrue(session.input_started)

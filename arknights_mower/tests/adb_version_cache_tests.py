@@ -2,6 +2,7 @@
 
 import os
 import socket
+import struct
 import subprocess
 from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock
@@ -14,6 +15,29 @@ from arknights_mower.utils.device.adb_client import server
 from arknights_mower.utils.device.maatouch import session as maatouch
 
 NATIVE_HEADER = b"MZ" + bytes(58) + (64).to_bytes(4, "little") + b"PE\0\0"
+UNIVERSAL_FORMATS = [
+    (byteorder, wide) for byteorder in (">", "<") for wide in (False, True)
+]
+
+
+def universal_macho(byteorder, wide):
+    image = bytearray(320)
+    magic = 0xCAFEBABF if wide else 0xCAFEBABE
+    entry_format = f"{byteorder}IIQQII" if wide else f"{byteorder}IIIII"
+    entries = []
+    for cpu, offset in ((0x1000007, 128), (0x100000C, 256)):
+        fields = [cpu, 0, offset, 64, 7]
+        if wide:
+            fields.append(0)
+        entries.append(struct.pack(entry_format, *fields))
+        image[offset : offset + 64] = (
+            struct.pack("<IIIIIIII", 0xFEEDFACF, cpu, 0, 2, 0, 0, 0, 0)
+            + b"client41"
+            + bytes(24)
+        )
+    table = struct.pack(f"{byteorder}II", magic, 2) + b"".join(entries)
+    image[: len(table)] = table
+    return image
 
 
 @pytest.fixture(autouse=True)
@@ -275,6 +299,110 @@ def test_supported_native_headers_reuse_local_version(executable, command_io, he
     for _ in range(2):
         assert server.adb_client_version(executable, timeout=5) == 41
     assert command_io.calls == [[executable, "version"]]
+
+
+@pytest.mark.parametrize(("byteorder", "wide"), UNIVERSAL_FORMATS)
+@pytest.mark.parametrize("explicit_default", [False, True])
+def test_universal_macho_reuses_local_version_on_default_command_path(
+    executable, command_io, byteorder, wide, explicit_default
+):
+    with open(executable, "wb") as stream:
+        stream.write(universal_macho(byteorder, wide))
+    options = {"run": manager_io.run_command} if explicit_default else {}
+    for _ in range(2):
+        assert server.adb_client_version(executable, timeout=5, **options) == 41
+    assert command_io.calls == [[executable, "version"]]
+
+
+@pytest.mark.parametrize(("byteorder", "wide"), UNIVERSAL_FORMATS)
+def test_universal_macho_content_change_rereads_version(
+    executable, command_io, byteorder, wide
+):
+    with open(executable, "wb") as stream:
+        stream.write(universal_macho(byteorder, wide))
+    original = os.stat(executable)
+    assert server.adb_client_version(executable, timeout=5) == 41
+    with open(executable, "r+b") as stream:
+        stream.seek(128 + 32)
+        stream.write(b"client40")
+    os.utime(executable, ns=(original.st_atime_ns, original.st_mtime_ns))
+    command_io.output = b"Android Debug Bridge version 1.0.40\n"
+    assert server.adb_client_version(executable, timeout=5) == 40
+    assert server.adb_client_version(executable, timeout=5) == 40
+    assert command_io.calls == [[executable, "version"], [executable, "version"]]
+
+
+@pytest.mark.parametrize(("byteorder", "wide"), UNIVERSAL_FORMATS)
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "java-class",
+        "truncated-header",
+        "empty-table",
+        "excessive-table",
+        "truncated-table",
+        "inside-table",
+        "short-slice",
+        "outside-file",
+        "past-file-end",
+        "overlapping-slices",
+        "invalid-slice-header",
+        "misaligned-slice",
+        "excessive-alignment",
+    ],
+)
+def test_invalid_universal_macho_is_not_cached(
+    executable, command_io, byteorder, wide, failure
+):
+    image = universal_macho(byteorder, wide)
+    width = 8 if wide else 4
+    entry_size = 32 if wide else 20
+    if failure == "java-class":
+        image = b"\xca\xfe\xba\xbe\x00\x00\x00\x3d" + bytes(64)
+    elif failure == "truncated-header":
+        image = image[:6]
+    elif failure == "empty-table":
+        image[4:8] = struct.pack(f"{byteorder}I", 0)
+    elif failure == "excessive-table":
+        image[4:8] = struct.pack(f"{byteorder}I", 17)
+    elif failure == "truncated-table":
+        image = image[: 8 + 2 * entry_size - 1]
+    elif failure == "invalid-slice-header":
+        image[256:260] = b"\x7fELF"
+    else:
+        field, value = {
+            "inside-table": (16, 8),
+            "short-slice": (16 + width, 28),
+            "outside-file": (16, 512),
+            "past-file-end": (16 + width, 512),
+            "overlapping-slices": (16 + entry_size, 128),
+            "misaligned-slice": (16, 129),
+            "excessive-alignment": (16 + 2 * width, 64),
+        }[failure]
+        field_width = 4 if failure == "excessive-alignment" else width
+        number_format = "Q" if field_width == 8 else "I"
+        image[field : field + field_width] = struct.pack(
+            f"{byteorder}{number_format}", value
+        )
+    with open(executable, "wb") as stream:
+        stream.write(image)
+    assert server.adb_client_version(executable, timeout=5) == 41
+    command_io.output = b"Android Debug Bridge version 1.0.40\n"
+    assert server.adb_client_version(executable, timeout=5) == 40
+    assert command_io.calls == [[executable, "version"], [executable, "version"]]
+
+
+@pytest.mark.parametrize("byteorder", [">", "<"])
+def test_universal_macho_64_invalid_reserved_field_is_not_cached(
+    executable, command_io, byteorder
+):
+    image = universal_macho(byteorder, True)
+    image[36:40] = struct.pack(f"{byteorder}I", 1)
+    with open(executable, "wb") as stream:
+        stream.write(image)
+    for _ in range(2):
+        assert server.adb_client_version(executable, timeout=5) == 41
+    assert command_io.calls == [[executable, "version"], [executable, "version"]]
 
 
 def test_unreadable_binary_header_does_not_cache_version(

@@ -181,13 +181,60 @@ def _is_native_adb(path):
     try:
         with open(path, "rb") as executable:
             header = executable.read(64)
-            if header[:4] in {
-                b"\x7fELF",
-                b"\xfe\xed\xfa\xce",
-                b"\xce\xfa\xed\xfe",
-                b"\xfe\xed\xfa\xcf",
-                b"\xcf\xfa\xed\xfe",
-            }:
+            macho_headers = {
+                b"\xfe\xed\xfa\xce": 28,
+                b"\xce\xfa\xed\xfe": 28,
+                b"\xfe\xed\xfa\xcf": 32,
+                b"\xcf\xfa\xed\xfe": 32,
+            }
+            if header[:4] == b"\x7fELF" or header[:4] in macho_headers:
+                return True
+            fat_format = {
+                b"\xca\xfe\xba\xbe": ("big", 4),
+                b"\xbe\xba\xfe\xca": ("little", 4),
+                b"\xca\xfe\xba\xbf": ("big", 8),
+                b"\xbf\xba\xfe\xca": ("little", 8),
+            }.get(header[:4])
+            if fat_format is not None and len(header) >= 8:
+                byteorder, width = fat_format
+                count = int.from_bytes(header[4:8], byteorder)
+                # Universal ADB has few slices. Bound the table before reading;
+                # CAFEBABE also begins Java class files, which are not native.
+                if not 0 < count <= 16:
+                    return False
+                entry_size = 20 if width == 4 else 32
+                executable.seek(8)
+                table = executable.read(count * entry_size)
+                if len(table) != count * entry_size:
+                    return False
+                table_end = 8 + len(table)
+                executable.seek(0, os.SEEK_END)
+                file_size = executable.tell()
+                ranges = []
+                for index in range(count):
+                    entry = table[index * entry_size : (index + 1) * entry_size]
+                    offset = int.from_bytes(entry[8 : 8 + width], byteorder)
+                    size = int.from_bytes(entry[8 + width : 8 + 2 * width], byteorder)
+                    alignment = int.from_bytes(entry[8 + 2 * width :][:4], byteorder)
+                    if (
+                        offset < table_end
+                        or size < 28
+                        or offset + size > file_size
+                        or alignment > 63
+                        or offset % (1 << alignment)
+                        or (width == 8 and entry[28:32] != bytes(4))
+                    ):
+                        return False
+                    ranges.append((offset, offset + size))
+                ranges.sort()
+                for index, (start, end) in enumerate(ranges):
+                    if index and start < ranges[index - 1][1]:
+                        return False
+                    executable.seek(start)
+                    slice_header = executable.read(min(32, end - start))
+                    required = macho_headers.get(slice_header[:4])
+                    if required is None or len(slice_header) < required:
+                        return False
                 return True
             if len(header) == 64 and header[:2] == b"MZ":
                 offset = int.from_bytes(header[60:64], "little")
