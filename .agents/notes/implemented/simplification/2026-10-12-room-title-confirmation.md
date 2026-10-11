@@ -29,4 +29,4 @@ Pass: recognition uses the same Capture Frame, adds no external operation or ret
 
 Pass: all 590 archived frames replay offline. Against alpha baseline `798630d5`, five former training identities become recycling; every other identity remains unchanged. The strongest interfering crop also reproduces training color under the current icon classifier, while title recognition and entry confirmation identify recycling.
 
-Validation on the alpha-based branch: `python -m pytest arknights_mower/tests/room_map_relocation_tests.py arknights_mower/tests/verify_governance_tests.py -q` passes 84 tests. `python scripts/verify_governance.py --base origin/alpha`, targeted Ruff lint and format checks, and `git diff --check` pass. Device execution remains unverified.
+Validation on the alpha-based branch: `python -m pytest arknights_mower/tests/room_map_relocation_tests.py arknights_mower/tests/verify_governance_tests.py -q` passes 84 tests. `python scripts/verify_governance.py --base origin/alpha`, repository-wide Ruff lint and format checks, and `git diff --check` pass. Device execution remains unverified.

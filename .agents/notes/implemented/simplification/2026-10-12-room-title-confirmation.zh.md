@@ -29,4 +29,4 @@ date: 2026-10-12
 
 通过：全部 590 张归档截图完成离线回放。相对 alpha 基准 `798630d5`，原先的五次训练室识别改为回收站，其他身份结果均保持不变。颜色干扰最强的裁剪图在当前图标分类器上同样复现训练室结果，而标题识别与进入确认正确判定回收站。
 
-迁移至 alpha 后的验证：`python -m pytest arknights_mower/tests/room_map_relocation_tests.py arknights_mower/tests/verify_governance_tests.py -q` 通过 84 项测试。`python scripts/verify_governance.py --base origin/alpha`、定向 Ruff 静态与格式检查、`git diff --check` 均通过。设备运行待实测。
+迁移至 alpha 后的验证：`python -m pytest arknights_mower/tests/room_map_relocation_tests.py arknights_mower/tests/verify_governance_tests.py -q` 通过 84 项测试。`python scripts/verify_governance.py --base origin/alpha`、全仓 Ruff 静态与格式检查、`git diff --check` 均通过。设备运行待实测。
