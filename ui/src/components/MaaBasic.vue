@@ -94,6 +94,10 @@ const maa_update_platform_label = computed(() =>
 )
 const maa_update_arch = ref('')
 const maa_update_source = ref('github')
+const android_resource_source = ref('github')
+const maa_resource_source = computed(() =>
+  runtime_platform.value === 'android' ? android_resource_source.value : maa_update_source.value
+)
 let maa_update_source_initialized = false
 const maa_latest_version = ref('')
 const maa_installed = ref(false)
@@ -292,7 +296,10 @@ watch(
   (token, previousToken = '') => {
     if (runtime_platform.value !== 'android' && token.trim() && !previousToken.trim())
       maa_update_source.value = 'mirrorchyan'
-    if (token !== previousToken && maa_update_source.value === 'mirrorchyan') {
+    if (
+      token !== previousToken &&
+      (maa_update_source.value === 'mirrorchyan' || maa_resource_source.value === 'mirrorchyan')
+    ) {
       reset_maa_update_check()
       reset_maa_resource_update_check()
     }
@@ -319,6 +326,12 @@ watch(maa_update_source, async (source, previous_source) => {
   reset_maa_update_check()
   reset_maa_resource_update_check()
   await Promise.all([get_maa_update_info(), get_maa_resource_update_info()])
+  schedule_auto_check_updates()
+})
+
+watch(android_resource_source, async () => {
+  reset_maa_resource_update_check()
+  await get_maa_resource_update_info()
   schedule_auto_check_updates()
 })
 
@@ -409,7 +422,9 @@ const maa_resource_update_action_disabled = computed(
     maa_resource_versions_equal.value ||
     !maa_resource_update_check.value.available ||
     !maa_resource_update_check.value.id ||
-    (maa_update_source.value === 'mirrorchyan' && !mirrorchyan_cdk_ready.value)
+    (maa_resource_source.value === 'mirrorchyan' &&
+      runtime_platform.value !== 'android' &&
+      !mirrorchyan_cdk_ready.value)
 )
 const maa_update_progress_status = computed(() => {
   if (maa_update_job.value.status === 'error') return 'error'
@@ -580,7 +595,7 @@ async function get_maa_resource_update_info() {
   const request_id = ++maa_resource_update_info_request_id
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/maa-resource-update/info`, {
-      params: { maa_path: maa_path.value, source: maa_update_source.value }
+      params: { maa_path: maa_path.value, source: maa_resource_source.value }
     })
     if (request_id !== maa_resource_update_info_request_id) return
     const data = response.data
@@ -698,7 +713,7 @@ async function check_maa_resource_update() {
     maa_resource_update_check.value.message = '请先设置 MAA 目录'
     return
   }
-  if (maa_update_source.value === 'mirrorchyan') {
+  if (maa_resource_source.value === 'mirrorchyan' && runtime_platform.value !== 'android') {
     const valid = await check_mirrorchyan_cdk()
     if (!valid) {
       maa_resource_update_check.value.status = 'error'
@@ -714,8 +729,8 @@ async function check_maa_resource_update() {
       `${import.meta.env.VITE_HTTP_URL}/maa-resource-update/check`,
       {
         maa_path: maa_path.value,
-        source: maa_update_source.value,
-        mirror_token: maa_update_source.value === 'mirrorchyan' ? maa_mirrorchyan_token.value : ''
+        source: maa_resource_source.value,
+        mirror_token: maa_resource_source.value === 'mirrorchyan' ? maa_mirrorchyan_token.value : ''
       }
     )
     const data = response.data
@@ -807,7 +822,7 @@ async function start_maa_resource_update() {
     maa_resource_update_job.value.message = '请先设置 MAA 目录'
     return
   }
-  if (maa_update_source.value === 'mirrorchyan') {
+  if (maa_resource_source.value === 'mirrorchyan' && runtime_platform.value !== 'android') {
     const valid = await check_mirrorchyan_cdk()
     if (!valid) {
       maa_resource_update_job.value.status = 'error'
@@ -821,8 +836,9 @@ async function start_maa_resource_update() {
       `${import.meta.env.VITE_HTTP_URL}/maa-resource-update/start`,
       {
         maa_path: maa_path.value,
-        source: maa_update_source.value,
-        mirror_token: maa_update_source.value === 'mirrorchyan' ? maa_mirrorchyan_token.value : '',
+        source: maa_resource_source.value,
+        mirror_token:
+          maa_resource_source.value === 'mirrorchyan' ? maa_mirrorchyan_token.value : '',
         check_id: maa_resource_update_check.value.id
       }
     )
@@ -1134,9 +1150,28 @@ onUnmounted(() => {
         <div v-if="maa_resource_release_note" class="update-hint">
           最新活动资源：{{ maa_resource_release_note }}
         </div>
+        <template v-if="runtime_platform === 'android'">
+          <div class="update-option">
+            <span class="update-option-label">资源更新源</span>
+            <n-radio-group v-model:value="android_resource_source">
+              <n-space>
+                <n-radio value="github">GitHub</n-radio>
+                <n-radio value="mirrorchyan">Mirror酱</n-radio>
+              </n-space>
+            </n-radio-group>
+          </div>
+          <n-input
+            v-if="android_resource_source === 'mirrorchyan'"
+            v-model:value="maa_mirrorchyan_token"
+            type="password"
+            show-password-on="mousedown"
+            placeholder="Mirror酱 CDK"
+            :disabled="maa_resource_updating"
+          />
+        </template>
         <div class="update-hint">
-          MAA 资源更新不区分正式版与公测版，将使用上方选择的
-          {{ maa_update_source === 'mirrorchyan' ? 'Mirror酱' : 'GitHub' }}
+          MAA 资源更新不区分正式版与公测版，使用
+          {{ maa_resource_source === 'mirrorchyan' ? 'Mirror酱' : 'GitHub' }}
           更新源。资源包会增量合并到 resource 目录，不会替换 MaaCore 与 Python。
           <template v-if="runtime_platform === 'android'">
             安卓版会自动准备 OCR 模型，完成后停止并重新启动手机服务生效。

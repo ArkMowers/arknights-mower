@@ -153,12 +153,47 @@ def test_execution_keeps_live_trainee_and_off_does_not_run_mastery(
     monkeypatch.setattr(mastery_reader, "reconcile_short", reconcile)
     solver.agent_arrange_room({}, "train", plan)
     assert reconcile.called is enabled
-    if state != "empty" and not follow:
+    if state != "empty" and enabled and not follow:
         solver.turn_on_room_detail.assert_not_called()
     else:
         solver.turn_on_room_detail.assert_called_once_with("train")
         if state != "empty":
             solver.refresh_current_room.assert_not_called()
+            solver.choose_train.assert_called_once_with(
+                ["褐果", "Current"], fast_mode=True, choose_error=0
+            )
+    assert not plan
+
+
+@pytest.mark.parametrize("follow", [False, True])
+def test_mastery_off_ignores_assistant_protection_during_execution(monkeypatch, follow):
+    monkeypatch.setattr(config.conf, "enable_mastery", False)
+    monkeypatch.setattr(config.conf, "assistant_follows_schedule", follow)
+    monkeypatch.setattr(BaseSchedulerSolver, "__init__", lambda _: None)
+    plan = {"train": ["艾丽妮", "桃金娘"]}
+    solver = base_scheduler_tests.TestTrainGateReadThenJudge._make_solver(plan)
+    solver.op_data.get_current_room.return_value = ["逻各斯", "桃金娘"]
+    solver.task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION, task_plan=plan)
+    solver._can_refresh_idle_dorm_search = lambda: False
+    solver.choose_train = MagicMock()
+    solver.record_selection_success = MagicMock()
+    solver.get_agent_from_room = MagicMock(
+        return_value=[{"agent": "艾丽妮"}, {"agent": "桃金娘"}]
+    )
+    monkeypatch.setattr(
+        mastery_reader,
+        "read_room_state",
+        lambda *args, **kw: mastery_reader.RoomState("empty", protected=True),
+    )
+    reconcile = MagicMock(side_effect=AssertionError("mastery disabled"))
+    monkeypatch.setattr(mastery_reader, "reconcile_short", reconcile)
+
+    solver.agent_arrange_room({}, "train", plan)
+
+    solver.choose_train.assert_called_once_with(
+        ["艾丽妮", "桃金娘"], fast_mode=True, choose_error=0
+    )
+    reconcile.assert_not_called()
     assert not plan
 
 

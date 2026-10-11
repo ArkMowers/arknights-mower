@@ -72,6 +72,7 @@
     "arknights_mower/tests/pending_dorm_execution_tests.py",
     "arknights_mower/tests/scheduler_recovery_preservation_tests.py",
     "arknights_mower/tests/idle_scene_watchdog_tests.py",
-    "arknights_mower/tests/scheduler_wakeup_tests.py"
+    "arknights_mower/tests/scheduler_wakeup_tests.py",
+    "arknights_mower/tests/group_shift_training_protection_tests.py"
   ]
 }

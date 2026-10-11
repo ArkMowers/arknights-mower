@@ -98,6 +98,33 @@ describe('Android MAA companion update checks', () => {
     expect(check).toHaveBeenCalledOnce()
     expect(component.maa_update_check.value.status).toBe('error')
   })
+  it('uses Mirror for Android resources while keeping the core on GitHub', async () => {
+    state.config.maa_mirrorchyan_token.value = 'fixture-cdk'
+    component.android_resource_source.value = 'mirrorchyan'
+    await component.check_maa_resource_update()
+    expect(state.client.post).toHaveBeenCalledWith(
+      expect.stringMatching(/\/maa-resource-update\/check$/),
+      expect.objectContaining({ source: 'mirrorchyan', mirror_token: 'fixture-cdk' })
+    )
+    await component.check_maa_update()
+    expect(state.client.post).toHaveBeenCalledWith(
+      expect.stringMatching(/\/maa-update\/check$/),
+      expect.objectContaining({ source: 'github', mirror_token: '' })
+    )
+    expect(state.client.post.mock.calls.some(([url]) => url.endsWith('/mirrorchyan-status'))).toBe(
+      false
+    )
+  })
+  it('invalidates the resource receipt when its Android source changes', async () => {
+    component.maa_resource_update_check.value = {
+      status: 'success',
+      available: true,
+      id: 'old-receipt'
+    }
+    component.android_resource_source.value = 'mirrorchyan'
+    await Promise.resolve()
+    expect(component.maa_resource_update_check.value.id).toBe('')
+  })
   it.each(['linux', 'darwin', 'windows'])(
     'does not add requests or controls on %s',
     async (platform) => {

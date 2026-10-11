@@ -1,4 +1,5 @@
 import copy
+import json
 import math
 import os
 import pathlib
@@ -2471,7 +2472,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             return
         if not config.conf.enable_mastery:
             # 关闭自动专精后不消费旧计划／旧房态保护；执行前仍会实读训练室，
-            # 保留训练位被占用时不强行换人的原有保护。
+            # 正在训练、待收取或读取失败时只跳过训练位。
             self.train_room_state = None
             return
         train_room_state = getattr(self, "train_room_state", None)
@@ -4803,8 +4804,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 ):
                     # 执行已拒绝的动态恢复目标不再触发每分钟重新入住。
                     names[index] = "Current"
-        # The execution gate may legitimately skip training slots. Reuse its
-        # scheduling protection instead of recreating those slots every minute.
+        # Execution skips apply before cached mastery protection and confirmation.
+        for index in getattr(task, "training_skipped_slots", ()):
+            if index < len(expected_plan.get("train", [])):
+                expected_plan["train"][index] = "Current"
         self._suppress_train_correction(expected_plan)
         remaining_transitions = self.op_data.arrangement_group_transitions(
             expected_plan
@@ -4842,6 +4845,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if changes:
             logger.info("绑组换班确认完成：%s", changes)
         task.group_shift_expected = {}
+        task.__dict__.pop("training_skipped_slots", None)
         self._resume_waiting_group_shifts()
         return True
 
@@ -9138,11 +9142,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if not skip_enter:
                     self.enter_room(room)
                     if room == "train":
-                        # #74 gate L0 先读再判：删除「DB active 就跳过」的预判（原
-                        # base_schedule.py:3257 死锁——DB 是意图缓存可能过期，排班一进门
-                        # 就因 DB active 整房跳过、永不读屏幕、永不修正 DB → 重启后训练室
-                        # 僵住，违背「截图为准」铁律）。现在一律先进房读屏幕，截图权威更新
-                        # DB，再按锁定/保护判定跳过/冻结；空闲×未保护正常安排。
+                        self.task.training_skipped_slots = set()
+                        # 实读房态决定可换岗位；自动专精开启时顺路核对专精记录。
                         from arknights_mower.solvers.mastery_reader import (
                             _compute_protected,
                             read_room_state,
@@ -9192,21 +9193,30 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                                 self.train_room_state = (
                                     room_state if config.conf.enable_mastery else None
                                 )
-                        # §4.4 保护检查：locked（训练中/待收取）、protected（逻各斯/艾丽妮
-                        # 保护训练室）或读失败（room_state=None）都算「不能排班」→ 冻结/
-                        # 跳过（#211：读失败保守不碰训练位，替代已删除的 train_slot_locked）。
+                        # 关闭自动专精时协助位正常排班；实测不可用的训练位单独跳过。
                         if (
                             room_state is None
                             or room_state.locked
-                            or room_state.protected
+                            or (config.conf.enable_mastery and room_state.protected)
                         ):
                             self.train_room_state = (
                                 room_state if config.conf.enable_mastery else None
                             )
-                            if config.conf.assistant_follows_schedule:
+                            if (
+                                not config.conf.enable_mastery
+                                or config.conf.assistant_follows_schedule
+                            ):
                                 if len(plan[room]) > 1:
                                     plan[room][1] = "Current"
+                                    self.task.training_skipped_slots.add(1)
+                                if all(name == "Current" for name in plan[room]):
+                                    del plan[room]
+                                    self.back()
+                                    return new_plan
                             else:
+                                self.task.training_skipped_slots.update(
+                                    range(len(plan[room]))
+                                )
                                 del plan[room]
                                 self.back()
                                 return new_plan
@@ -10162,9 +10172,47 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if line is not None:
             logger.log(line.level, line.text)
 
+    def update_maa_navigation(self, path):
+        """Download navigation atomically, falling back to an intact local cache."""
+        from arknights_mower.utils.update_runtime import read_json, write_json
+
+        ota_tasks_path = path / "cache" / "resource" / "tasks.json"
+        try:
+            logger.debug("开始更新MAA活动关卡导航……")
+            ota_tasks_url = (
+                "https://api.maa.plus/MaaAssistantArknights/api/resource/tasks.json"
+            )
+            ota_tasks_path.parent.mkdir(parents=True, exist_ok=True)
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edg/133.0.0.0"
+            }
+            with requests.get(ota_tasks_url, headers=headers, timeout=60) as response:
+                response.raise_for_status()
+                res = response.content.decode("utf-8")
+            tasks = json.loads(res)
+            if not isinstance(tasks, dict) or not tasks:
+                raise ValueError("MAA 活动导航必须是非空 JSON 对象")
+            write_json(ota_tasks_path, tasks)
+            logger.info("MAA 活动关卡导航下载完成，等待资源加载确认")
+            return tasks
+        except Exception as e:
+            logger.error(
+                f"MAA活动关卡导航更新失败：{str(e)}",
+                extra={"archive_screenshots": False},
+            )
+            save_exception(e)
+
+        cached = read_json(ota_tasks_path, None)
+        return cached if isinstance(cached, dict) and cached else None
+
     def initialize_maa(self):
-        from arknights_mower.utils.maa_backup import VerifiedAsst, update_transaction
+        from arknights_mower.utils.maa_backup import (
+            MaaCallError,
+            VerifiedAsst,
+            update_transaction,
+        )
         from arknights_mower.utils.maa_inventory import MaaDropInventory
+        from arknights_mower.utils.update_runtime import read_json
 
         self.maa_drop_inventory = MaaDropInventory()
         self.maa_inventory_tasks = {}
@@ -10177,6 +10225,19 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.maa_callback = MaaCallbackLog()
             self.MAA = VerifiedAsst(Asst, config.conf.maa_path, self.on_maa_callback)
             self.stages = []
+            navigation = self.update_maa_navigation(
+                pathlib.Path(resolve_config_path(config.conf.maa_path))
+            )
+            if navigation is not None:
+                from arknights_mower.utils.maa_resource_update import (
+                    load_android_maa_navigation,
+                )
+
+                if not load_android_maa_navigation(
+                    pathlib.Path(resolve_config_path(config.conf.maa_path)), navigation
+                ):
+                    raise MaaCallError("load", detail="Android 活动导航加载失败")
+                logger.info("MAA Android 活动关卡导航加载成功")
             if not self.MAA.connect():
                 raise RuntimeError("安卓 MAA 引擎未连接")
             return
@@ -10200,33 +10261,29 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
             raise Exception("MAA Python模块导入失败")
 
-        try:
-            logger.debug("开始更新MAA活动关卡导航……")
-            ota_tasks_url = (
-                "https://api.maa.plus/MaaAssistantArknights/api/resource/tasks.json"
-            )
-            ota_tasks_path = path / "cache" / "resource" / "tasks.json"
-            ota_tasks_path.parent.mkdir(parents=True, exist_ok=True)
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36 Edg/133.0.0.0"
-            }
-            with requests.get(ota_tasks_url, headers=headers, timeout=60) as response:
-                response.raise_for_status()
-                res = response.content.decode("utf-8")
-            with open(ota_tasks_path, "w", encoding="utf-8") as f:
-                f.write(res)
-            logger.info("MAA活动关卡导航更新成功")
-        except Exception as e:
-            logger.error(
-                f"MAA活动关卡导航更新失败：{str(e)}",
-                extra={"archive_screenshots": False},
-            )
-            save_exception(e)
+        self.update_maa_navigation(path)
 
         @update_transaction
         def create_verified_asst():
-            Asst.load(path=path, incremental_path=path / "cache")
-            return VerifiedAsst(Asst, path, self.on_maa_callback)
+            if not Asst.load(path=path, incremental_path=path / "cache"):
+                raise MaaCallError(
+                    "load", detail=f"目录={path}，增量目录={path / 'cache'}"
+                )
+            instance = VerifiedAsst(Asst, path, self.on_maa_callback)
+            resource = read_json(path / "resource" / "version.json", {})
+            resource_version = (
+                resource.get("last_updated", "未知")
+                if isinstance(resource, dict)
+                else "未知"
+            )
+            logger.info(
+                "MAA 资源加载成功 | core=%s | resource=%s | path=%s | incremental_path=%s",
+                instance.get_version(),
+                resource_version,
+                path,
+                path / "cache",
+            )
+            return instance
 
         # 覆盖 Asst.load 与连接阶段：连接信息回调在 connect 期间就会到达。
         self.maa_callback = MaaCallbackLog()
@@ -10291,7 +10348,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 targets = maa_fight_drop_targets(stage, rules, inventory)
                 if targets["reached"]:
                     continue
-                logger.info(f"添加关卡:{stage}")
+                logger.info(f"提交关卡:{stage}")
                 params = {
                     # 空值表示上一次
                     # 'stage': '',
@@ -10315,6 +10372,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if targets["bound"] and task_id:
                     self.maa_inventory_tasks[task_id] = (params, rules)
                 self.stages.append(stage)
+                logger.info("MAA 已接受关卡:%s | task_id=%s", stage, task_id)
 
         elif type == "Mall":
             conf = config.conf
@@ -10823,6 +10881,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         except Exception as e:
             save_exception(e)
             logger.exception(e)
+            if getattr(self, "MAA", None) is not None:
+                try:
+                    self.MAA.stop()
+                except (MowerExit, DeviceRecoveryError, SharedADBError):
+                    raise
+                except Exception:
+                    logger.exception("MAA 异常后的任务清理失败，保留原始调用错误")
             self.MAA = None
             battle_inventory_active.clear()
             send_message(str(e), "MAA调用出错！", level="ERROR")

@@ -58,7 +58,23 @@ Inventory-bound Fight tasks receive `drops` targets equal to task cumulative dro
 
 The decision is recorded in [Local Inventory Execution](../../.agents/notes/implemented/simplification/2026-10-08-local-inventory-execution.md).
 
+### 2.7 Resource and Task Admission
+
+Desktop and Android initialization download the official activity navigation before task submission. Both validate it as a nonempty JSON object and atomically replace the cached file through `write_json`. Download or validation failure preserves the existing cache. A download-complete line reports file installation only. On desktop, a separate resource-loaded line follows a successful `Asst.load` and records the loaded core version, installed resource timestamp, resource directory and incremental directory. A false load result prevents handle construction and connection. Android sends the validated navigation, or the intact previous local cache after a download failure, through `maa_navigation`. The host atomically installs it in the active component cache and checks `AsstLoadResource` while no MAA task is running. Host loading completes before connection verification and task submission. Older hosts without this RPC use the existing component packer. Matching navigation already present in the loaded component is accepted; changed navigation is packed for the next service start and blocks task submission until the loaded component hash matches. This compatibility path requests a service restart and explains that an APK update enables direct navigation loading; the update is optional for this path.
+
+`VerifiedAsst.append_task` requires a positive integer task identifier. `VerifiedAsst.start` requires a successful native result. Rejection raises `MaaCallError` with `operation`, optional `task_type` and optional `stage`; its message names the phase and target and points to the native MAA log without including reporting identifiers or complete task parameters. Native exceptions preserve their original type.
+
+The scheduler records a stage only after its submission succeeds. An ordinary call failure stops queued work, preserves the original diagnostic if ordinary stop cleanup also fails, and leaves the last execution time unchanged. Cancellation and classified device failures propagate. Rejected calls cannot verify a run for rollback backup retirement. The [call verification decision](../../.agents/notes/implemented/simplification/2026-10-11-maa-call-verification.md) records the shared boundary and offline regression coverage.
+
+### 2.8 Android Resource Update Sources
+
+Android resource updates use either GitHub or the existing MirrorChyan `MaaResource` service. Resource source selection is independent of the Android core source. The same download, archive validation, resource merge, backup and update-check receipt flow applies to both resource sources. Android repacks the installed resources for its host and requires a service restart after a full resource update. Per-run activity navigation refresh uses the idle host RPC instead.
+
+Android core updates continue to require the official Android component package. MAA-Meow's MirrorChyan application resource distributes its own APK and is not a Mower core update source. The integration follows MAA-Meow's [resource download resolver](https://github.com/Aliothmoon/MAA-Meow/blob/4e6a4d910d8b5f0b34c9cce2e5cc08a9da4f4f1b/app/src/main/java/com/aliothmoon/maameow/data/datasource/update/MirrorChyanResourceDownloadUrlResolver.kt).
+
 ## 3. Subsystem Invariants
+
+- **[INV-MAA-08] Verified MAA Admission**: Resource loading, task submission and task startup require positive MAA results; rejected calls identify their phase and target, clear the pending run without recording successful execution, and preserve rollback backups.
 
 - **[INV-MAA-07] Normal Long-Task Termination**: Roguelike, SSSCopilot and Reclamation completion or scheduler interruption never creates an error solely because `running()` returns false; core error callbacks and invocation exceptions retain their error reporting.
 - Long-task polling returns to the existing idle path after completion or scheduler interruption. Callback lines describe completion and stop; polling adds no generic interruption error or ERROR notification. The [normal termination decision](../../.agents/notes/implemented/simplification/2026-10-09-maa-normal-termination.md) records the removed crash inference.

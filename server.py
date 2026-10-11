@@ -2722,11 +2722,6 @@ def check_maa_resource_update():
     ).strip()
     if source not in {"github", "mirrorchyan"}:
         return {"ok": False, "message": "未知的 MAA 资源更新源"}
-    if os.environ.get("MOWER_ANDROID") == "1" and source == "mirrorchyan":
-        return {
-            "ok": False,
-            "message": "Android 暂不支持 Mirror酱，请使用 GitHub 官方源",
-        }
     if source == "mirrorchyan" and not mirror_token:
         return {"ok": False, "message": "请填写 Mirror酱 CDK"}
 
@@ -2789,11 +2784,6 @@ def start_maa_resource_update():
         return {"ok": False, "message": "请先下载并设置有效的 MAA 目录"}
     if source not in {"github", "mirrorchyan"}:
         return {"ok": False, "message": "未知的 MAA 资源更新源"}
-    if os.environ.get("MOWER_ANDROID") == "1" and source == "mirrorchyan":
-        return {
-            "ok": False,
-            "message": "Android 暂不支持 Mirror酱，请使用 GitHub 官方源",
-        }
     if source == "mirrorchyan" and not mirror_token:
         return {"ok": False, "message": "请填写 Mirror酱 CDK"}
     if source == "mirrorchyan" and mirror_token != config.conf.maa_mirrorchyan_token:
