@@ -30,6 +30,8 @@
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.choose_agent",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._complete_group_shift",
     "arknights_mower.utils.operators.Operators.is_effective_free_slot",
+    "arknights_mower.utils.operators.Operators.is_dynamic_dorm_position",
+    "arknights_mower.utils.operators.Operators.is_auto_free_dorm_operator",
     "arknights_mower.solvers.base_schedule.GroupShiftTargetConflict",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._check_group_shift_targets"
   ],

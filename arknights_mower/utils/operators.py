@@ -1888,7 +1888,7 @@ class Operators:
             and (operator.room.startswith("dorm") or cover.room.startswith("dorm"))
         )
 
-    def is_auto_free_dorm_operator(self, operator):
+    def is_auto_free_dorm_operator(self, operator, *, group_transitions=None):
         """宿舍替班显式填写 Free 时，该固定位按动态床使用。
 
         宿舍常驻成员随组离岗后，这个位置交给统一床位分配和
@@ -1901,20 +1901,26 @@ class Operators:
         ):
             return False
         replacements = (
-            self.shared_replacements(operator, self.resting_binding_groups(operator))
+            self.shared_replacements(
+                operator, self.resting_binding_groups(operator, group_transitions)
+            )
             if operator.multi_group
             else operator.replacement
         )
         return "Free" in replacements
 
-    def is_auto_free_dorm_slot(self, room, index):
+    def is_auto_free_dorm_slot(self, room, index, *, group_transitions=None):
         slots = self.plan.get(room, [])
         if not room.startswith("dorm") or not 0 <= index < len(slots):
             return False
         resident = self.operators.get(slots[index].agent)
-        return resident is not None and self.is_auto_free_dorm_operator(resident)
+        return resident is not None and self.is_auto_free_dorm_operator(
+            resident, group_transitions=group_transitions
+        )
 
-    def is_dynamic_dorm_position(self, room, index, name=None):
+    def is_dynamic_dorm_position(
+        self, room, index, name=None, *, group_transitions=None
+    ):
         """判断某位置在当前阵容中是否按动态床位处理。"""
         slots = self.plan.get(room, [])
         if not room.startswith("dorm") or not 0 <= index < len(slots):
@@ -1922,7 +1928,9 @@ class Operators:
         slot = slots[index]
         if slot.agent == "Free":
             return True
-        if not self.is_auto_free_dorm_slot(room, index):
+        if not self.is_auto_free_dorm_slot(
+            room, index, group_transitions=group_transitions
+        ):
             return False
         # 固定宿舍干员本人在位时仍是宿管，不是休息者。
         return name is None or name not in (slot.agent, "Current")

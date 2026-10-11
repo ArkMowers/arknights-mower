@@ -4789,11 +4789,15 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 index
             ] = name
         original_transitions = self.op_data.arrangement_group_transitions(expected_plan)
+        transitions = dict(task.group_shift_transitions)
+        transitions.update(original_transitions)
         for room, names in expected_plan.items():
             for index, name in enumerate(names):
                 if (
                     name != "Current"
-                    and self.op_data.is_dynamic_dorm_position(room, index, name)
+                    and self.op_data.is_dynamic_dorm_position(
+                        room, index, name, group_transitions=transitions
+                    )
                     and resting_tier(self.op_data, name) == RestingTier.EXCLUDED
                 ):
                     # 执行已拒绝的动态恢复目标不再触发每分钟重新入住。
@@ -7514,7 +7518,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             return
         capacity_plan = dict(getattr(self.task, "plan", {}) or {})
         capacity_plan[room] = agents
-        group_transitions = getattr(self.task, "group_shift_transitions", {})
+        group_transitions = dict(getattr(self.task, "group_shift_transitions", {}))
+        group_transitions.update(
+            self.op_data.arrangement_group_transitions(capacity_plan)
+        )
         # 补床任务入队后名单也可能改变；执行时重新检查明确写入的姓名。
         for index, name in enumerate(agents):
             current = self.op_data.get_current_operator(room, index)
@@ -7524,24 +7531,40 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 and current.name == name
             ):
                 continue
+            if name in (
+                "",
+                "Current",
+                "Free",
+            ) or not self.op_data.is_dynamic_dorm_position(
+                room, index, name, group_transitions=group_transitions
+            ):
+                continue
+            excluded = resting_tier(self.op_data, name) == RestingTier.EXCLUDED
+            capped = name in self.op_data.operators and self.op_data.rest_mood_complete(
+                name
+            )
             if (
-                name not in ("", "Current", "Free")
-                and self.op_data.is_dynamic_dorm_position(room, index, name)
-                and (
-                    resting_tier(self.op_data, name) == RestingTier.EXCLUDED
-                    or (
-                        (current is None or current.name != name)
-                        and not self.op_data.dorm_capacity_allows(
-                            name,
-                            (room, index),
-                            plan=capacity_plan,
-                            group_transitions=group_transitions,
-                        )
+                excluded
+                or capped
+                or (
+                    (current is None or current.name != name)
+                    and not self.op_data.dorm_capacity_allows(
+                        name,
+                        (room, index),
+                        plan=capacity_plan,
+                        group_transitions=group_transitions,
                     )
                 )
             ):
+                if excluded or capped:
+                    expected = getattr(self.task, "group_shift_expected", {})
+                    if expected.get((room, index)) == name:
+                        expected.pop((room, index))
+                if capped:
+                    self.op_data.operators[name].depletion_rate = 0
+                    logger.info("检测个人心情上限释放休息位")
                 agents[index] = "Free"
-                if resting_tier(self.op_data, name) != RestingTier.EXCLUDED:
+                if not (excluded or capped):
                     self._check_group_shift_targets(
                         agents, room, reason=f"具名入住 {name} 未通过绑组宿舍额度检查"
                     )
@@ -7568,7 +7591,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 current is not None
                 and current.name not in (set(agents) | moving)
                 and self.op_data.is_free_room_excluded(current.name)
-                and self.op_data.is_dynamic_dorm_position(room, index, current.name)
+                and self.op_data.is_dynamic_dorm_position(
+                    room, index, current.name, group_transitions=group_transitions
+                )
                 and not (
                     getattr(self.task, "strict_mood_limit", False)
                     and self.task.meta_data == current.name
@@ -7615,7 +7640,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             replacement = next(iter(eligible), None)
             if (
                 current is not None
-                and self.op_data.is_dynamic_dorm_position(room, index, current.name)
+                and self.op_data.is_dynamic_dorm_position(
+                    room, index, current.name, group_transitions=group_transitions
+                )
                 and current.name not in (set(agents) | moving)
                 and not (
                     getattr(self.task, "strict_mood_limit", False)
@@ -7672,7 +7699,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if (
                     current.is_high()
                     and not full
-                    and self.op_data.is_auto_free_dorm_slot(room, index)
+                    and self.op_data.is_auto_free_dorm_slot(
+                        room, index, group_transitions=group_transitions
+                    )
                     and slot.agent == current.name
                 ):
                     continue
@@ -7694,7 +7723,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 replacements.remove(replacement)
             elif (
                 current is not None
-                and self.op_data.is_dynamic_dorm_position(room, index, current.name)
+                and self.op_data.is_dynamic_dorm_position(
+                    room, index, current.name, group_transitions=group_transitions
+                )
                 and not self.op_data.rest_mood_complete(current.name)
             ):
                 # 无人需要接替时保留原住者，满心情本身不应制造空床。
@@ -7786,6 +7817,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         # 普通补床不能把充能对象改成 Free，也不能用原入住者覆盖它。
         if getattr(getattr(self, "task", None), "type", None) == TaskTypes.FIAMMETTA:
             return []
+        task = getattr(self, "task", None)
+        plan = dict(getattr(task, "plan", {}) or {})
+        plan[room] = agents
+        group_transitions = dict(getattr(task, "group_shift_transitions", {}))
+        group_transitions.update(self.op_data.arrangement_group_transitions(plan))
         current_list = set()
         for idx, n in enumerate(agents):
             if getattr(getattr(self, "task", None), "simple_dorm_fill", False):
@@ -7799,19 +7835,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 agents[idx] = "Free"
             if (
                 room.startswith("dorm")
-                and self.op_data.is_dynamic_dorm_position(room, idx, agents[idx])
-                and resting_tier(self.op_data, agents[idx]) == RestingTier.EXCLUDED
-            ):
-                expected = getattr(
-                    getattr(self, "task", None), "group_shift_expected", {}
-                )
-                if expected.get((room, idx)) == agents[idx]:
-                    expected.pop((room, idx))
-            if (
-                room.startswith("dorm")
                 and agents[idx] in self.op_data.operators
                 and self.op_data.rest_mood_complete(agents[idx])
-                and self.op_data.is_dynamic_dorm_position(room, idx, agents[idx])
+                and self.op_data.is_dynamic_dorm_position(
+                    room, idx, agents[idx], group_transitions=group_transitions
+                )
             ):
                 self.op_data.operators[agents[idx]].depletion_rate = 0
                 expected = getattr(
