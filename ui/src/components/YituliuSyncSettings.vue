@@ -29,7 +29,7 @@ async function act(action) {
         await axios.put(`${base}/growth-sync-token`, { token: token.value.trim() })
       ).data
       token.value = ''
-      feedback.value = '只写 Token 已保存，下次森空岛刷新成功后自动同步'
+      feedback.value = 'OAuth access_token 已保存，下次森空岛刷新成功后自动同步'
     } else if (action === 'clear') {
       status.value = (await axios.delete(`${base}/growth-sync-token`)).data
       token.value = ''
@@ -48,7 +48,7 @@ async function act(action) {
     }
   } catch (error) {
     failed.value = true
-    feedback.value = error.response?.data?.message || '操作未成功，请检查本地连接或只写 Token'
+    feedback.value = error.response?.data?.message || '操作未成功，请检查本地连接或 OAuth 令牌'
   } finally {
     busy.value = false
   }
@@ -61,11 +61,11 @@ onMounted(loadStatus)
   <n-card title="一图流干员同步">
     <n-space vertical :size="14">
       <n-text depth="3">
-        在一图流账号页生成“干员数据写入”权限的只写 Token
-        后填入。保存后，成功刷新森空岛数据时自动检查同步；与上次成功上传的内容相同则不传输。清除
+        填入已授权 gama-data.write（干员数据写入）的一图流 OAuth
+        access_token。保存后，成功刷新森空岛数据时自动检查同步；与上次成功上传的内容相同则不传输。清除
         Token 即可停止。保存本身不会上传。
-        <n-a href="https://ark.yituliu.cn" target="_blank" rel="noopener noreferrer"
-          >打开一图流</n-a
+        <n-a href="https://auth.yituliu.cn" target="_blank" rel="noopener noreferrer"
+          >打开一图流用户中心</n-a
         >
       </n-text>
       <n-input
@@ -75,9 +75,11 @@ onMounted(loadStatus)
         autocomplete="new-password"
         :disabled="busy"
         :placeholder="
-          status.configured ? '••••••••（已保存，输入新 Token 可替换）' : '粘贴一图流只写 Token'
+          status.configured
+            ? '••••••••（已保存，输入新 Token 可替换）'
+            : '粘贴一图流 OAuth access_token'
         "
-        aria-label="一图流只写 Token"
+        aria-label="一图流 OAuth access_token"
       />
       <n-space align="center" :size="8">
         <n-button :disabled="busy || !token.trim()" @click="act('save')">保存 Token</n-button>
@@ -96,10 +98,10 @@ onMounted(loadStatus)
         </n-tag>
       </n-space>
       <n-alert type="info" :bordered="false">
-        将当前森空岛缓存中的游戏 UID、昵称、区服和全部已拥有干员的等级、精英化、潜能、技能及模组练度
+        将当前森空岛缓存中的游戏 UID 和全部已拥有干员的等级、精英化、潜能、技能及模组练度
         在本地校验后上传至一图流，更新对应账号的干员数据；与上次成功上传的内容相同则跳过。
         不会上传仓库、养成计划、森空岛账号密码或登录凭据。
-        旧缓存缺少游戏账号信息时，请先重新同步一次森空岛。
+        旧缓存缺少游戏账号信息时，请先重新同步一次森空岛。令牌失效后请重新获取并保存。
       </n-alert>
       <n-text v-if="status.last_synced_at" depth="3">
         最近同步：{{ new Date(status.last_synced_at * 1000).toLocaleString() }} ·

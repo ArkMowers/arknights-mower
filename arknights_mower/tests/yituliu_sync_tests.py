@@ -25,7 +25,10 @@ def sync_case(tmp_path, monkeypatch):
     session.__enter__.return_value = session
     response = MagicMock(status_code=200)
     response.__enter__.return_value = response
-    response.json.return_value = {"code": 200, "data": {"affectedRows": 1}}
+    response.json.return_value = {
+        "code": 200,
+        "data": {"createdCount": 1, "updatedCount": 0, "unchangedCount": 0},
+    }
     session.post.return_value = response
     monkeypatch.setattr(sync.requests, "Session", lambda: session)
     snapshot = {
@@ -98,30 +101,24 @@ def test_payload_matches_documented_fields_and_potential_index(sync_case):
     _, _, _, snapshot, definitions = sync_case
     original = copy.deepcopy(snapshot)
     body = sync.build_upload_payload(snapshot, definitions)
-    assert set(body) == {
-        "uid",
-        "nickName",
-        "channelName",
-        "channelMasterId",
-        "operatorDataList",
-    }
-    assert body["operatorDataList"] == [
+    assert set(body) == {"playerInfo", "operators"}
+    assert body["playerInfo"] == {"akUid": "12345678"}
+    assert body["operators"] == [
         {
-            "charId": "char_test",
-            "own": True,
+            "id": "char_test",
             "level": 90,
-            "elite": 2,
-            "potential": 6,
+            "evolvePhase": 2,
+            "potentialRank": 5,
             "rarity": 6,
-            "mainSkill": 7,
-            "skill1": 1,
-            "skill2": 3,
+            "mainSkillLevel": 7,
+            "skill1": 8,
+            "skill2": 10,
             "skill3": 0,
-            "modX": 2,
-            "modY": 0,
-            "modD": 0,
-            "modA": 0,
-            "modB": 0,
+            "equipX": 2,
+            "equipY": 0,
+            "equipD": 0,
+            "equipA": 0,
+            "equipB": 0,
         }
     ]
     assert "must-not-upload" not in json.dumps(body)
@@ -147,7 +144,7 @@ def test_explicit_sync_sends_only_fixed_target_header_and_whitelisted_snapshot(
     assert result["success"] and result["count"] == 1
     session.post.assert_called_once_with(
         sync.UPLOAD_URL,
-        headers={"Authorization": TOKEN},
+        headers={"Authorization": f"Bearer {TOKEN}"},
         json=sync.build_upload_payload(snapshot, definitions),
         timeout=(3, 15),
         allow_redirects=False,
@@ -175,7 +172,8 @@ def test_automatic_refresh_uses_passed_snapshot_once_without_reading_newer_cache
     assert sync.sync_after_cultivate(snapshot)["success"] is True
     session.post.assert_called_once()
     assert (
-        session.post.call_args.kwargs["json"]["uid"] == snapshot["_mower_player"]["uid"]
+        session.post.call_args.kwargs["json"]["playerInfo"]["akUid"]
+        == snapshot["_mower_player"]["uid"]
     )
 
 
@@ -259,7 +257,8 @@ def test_identical_confirmed_payload_skips_manual_and_automatic_network(
 
 
 def test_order_inventory_and_snapshot_timestamps_do_not_trigger_upload(sync_case):
-    _, session, _, snapshot, definitions = sync_case
+    _, session, response, snapshot, definitions = sync_case
+    response.json.return_value["data"]["createdCount"] = 2
     second = copy.deepcopy(snapshot["data"]["characters"][0])
     second["id"] = "char_second"
     definitions["char_second"] = copy.deepcopy(definitions["char_test"])
@@ -284,8 +283,6 @@ def test_order_inventory_and_snapshot_timestamps_do_not_trigger_upload(sync_case
         "skill",
         "module",
         "uid",
-        "nickname",
-        "server",
         "rarity",
     ],
 )
@@ -308,10 +305,6 @@ def test_changed_upload_fields_transmit_again(sync_case, field):
         char["equips"][1]["level"] = 3
     elif field == "uid":
         snapshot["_mower_player"]["uid"] = "87654321"
-    elif field == "nickname":
-        snapshot["_mower_player"]["nickName"] = "改名"
-    elif field == "server":
-        snapshot["_mower_player"]["channelMasterId"] = "2"
     else:
         definitions["char_test"]["rarity"] = 5
     assert not sync.sync_cached_operators(snapshot).get("skipped")
@@ -355,7 +348,9 @@ def test_same_token_preserves_baseline_and_replacement_or_clear_resets_it(sync_c
     replacement = "abcdef0123456789abcdef0123456789"
     sync.save_token(replacement)
     assert not sync.sync_cached_operators(snapshot).get("skipped")
-    assert session.post.call_args.kwargs["headers"] == {"Authorization": replacement}
+    assert session.post.call_args.kwargs["headers"] == {
+        "Authorization": f"Bearer {replacement}"
+    }
     sync.clear_token()
     sync.save_token(replacement)
     assert not sync.sync_cached_operators(snapshot).get("skipped")
@@ -390,6 +385,142 @@ def test_first_failed_upload_cannot_establish_deduplication_baseline(sync_case):
     assert not sync.sync_after_cultivate(snapshot)["success"]
     saved = json.loads(paths["@app/config/yituliu_sync.json"].read_text())
     assert "last_synced_fingerprint" not in saved
-    response.json.return_value = {"code": 200}
+    response.json.return_value = {
+        "code": 200,
+        "data": {"createdCount": 1, "updatedCount": 0, "unchangedCount": 0},
+    }
     assert not sync.sync_cached_operators(snapshot).get("skipped")
     assert session.post.call_count == 2
+
+
+@pytest.mark.parametrize(
+    "confirmation",
+    [
+        {"code": 200},
+        {
+            "code": 200.0,
+            "data": {"createdCount": 1, "updatedCount": 0, "unchangedCount": 0},
+        },
+        {"code": 200, "data": None},
+        {
+            "code": 200,
+            "data": {"createdCount": 0, "updatedCount": 0, "unchangedCount": 0},
+        },
+        {
+            "code": 200,
+            "data": {"createdCount": True, "updatedCount": 0, "unchangedCount": 0},
+        },
+        {
+            "code": 200,
+            "data": {"createdCount": -1, "updatedCount": 2, "unchangedCount": 0},
+        },
+        {
+            "code": 200,
+            "data": {"createdCount": "1", "updatedCount": 0, "unchangedCount": 0},
+        },
+    ],
+)
+def test_invalid_confirmation_never_advances_success_baseline(sync_case, confirmation):
+    paths, session, response, snapshot, _ = sync_case
+    sync.save_token(TOKEN)
+    sync.sync_cached_operators(snapshot)
+    first = json.loads(paths["@app/config/yituliu_sync.json"].read_text())
+    snapshot["data"]["characters"][0]["level"] -= 1
+    response.json.return_value = confirmation
+    result = sync.sync_after_cultivate(snapshot)
+    assert not result["success"]
+    saved = json.loads(paths["@app/config/yituliu_sync.json"].read_text())
+    assert saved["last_synced_fingerprint"] == first["last_synced_fingerprint"]
+    assert saved["last_synced_at"] == first["last_synced_at"]
+    assert session.post.call_count == 2
+
+
+@pytest.mark.parametrize(
+    "code, expected",
+    [
+        (80001, "失效"),
+        (80008, "gama-data.write"),
+        (10002, "字段"),
+        (30006, "2 秒"),
+        (40003, "限流服务"),
+        (40004, "冲突"),
+        (40001, "繁忙"),
+    ],
+)
+def test_oauth_business_errors_are_actionable_without_retry_or_remote_echo(
+    sync_case, code, expected, caplog
+):
+    paths, session, response, snapshot, _ = sync_case
+    sync.save_token(TOKEN)
+    response.json.return_value = {
+        "code": code,
+        "msg": TOKEN,
+        "data": {"retryAfterSeconds": 2},
+    }
+    result = sync.sync_after_cultivate(snapshot)
+    assert not result["success"] and expected in result["message"]
+    assert TOKEN not in json.dumps(result) + caplog.text
+    assert "last_synced_fingerprint" not in json.loads(
+        paths["@app/config/yituliu_sync.json"].read_text()
+    )
+    session.post.assert_called_once()
+
+
+def test_oauth_target_and_legacy_baseline_migration(sync_case):
+    paths, session, _, snapshot, _ = sync_case
+    assert (
+        sync.UPLOAD_URL == "https://auth.yituliu.cn/oauth2/ak-accounts/operators/save"
+    )
+    paths["@app/config/yituliu_sync.json"].write_text(
+        json.dumps(
+            {
+                "token": TOKEN,
+                "last_synced_fingerprint": "legacy-payload-digest",
+                "last_synced_at": 1,
+            }
+        )
+    )
+    assert not sync.sync_cached_operators(snapshot).get("skipped")
+    assert sync.sync_cached_operators(snapshot)["skipped"]
+    session.post.assert_called_once()
+
+
+def test_only_bound_uid_is_required_and_untransmitted_identity_does_not_upload(
+    sync_case,
+):
+    _, session, _, snapshot, _ = sync_case
+    sync.save_token(TOKEN)
+    sync.sync_cached_operators(snapshot)
+    snapshot["_mower_player"] = {"uid": "12345678"}
+    assert sync.sync_cached_operators(snapshot)["skipped"]
+    snapshot["_mower_player"].update(nickName="changed", channelMasterId="2")
+    assert sync.sync_cached_operators(snapshot)["skipped"]
+    session.post.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "basic, mastery, expected",
+    [(1, 0, 1), (6, 0, 6), (7, 0, 7), (7, 1, 8), (7, 2, 9), (7, 3, 10)],
+)
+def test_oauth_skill_levels_and_zero_based_potential(
+    sync_case, basic, mastery, expected
+):
+    _, _, _, snapshot, definitions = sync_case
+    char = snapshot["data"]["characters"][0]
+    char.update(
+        mainSkillLevel=basic, potentialRank=0, skills=[{"id": "s1", "level": mastery}]
+    )
+    row = sync.build_upload_payload(snapshot, definitions)["operators"][0]
+    assert row["skill1"] == expected
+    assert row["skill2"] == row["skill3"] == 0
+    assert row["potentialRank"] == 0
+
+
+@pytest.mark.parametrize("cid", ["", "a" * 65, "char test", "char_中文", "char_\n"])
+def test_invalid_operator_ids_are_rejected_before_network(sync_case, cid):
+    _, session, _, snapshot, definitions = sync_case
+    definitions[cid] = definitions.pop("char_test")
+    snapshot["data"]["characters"][0]["id"] = cid
+    sync.save_token(TOKEN)
+    assert not sync.sync_after_cultivate(snapshot)["success"]
+    session.post.assert_not_called()

@@ -11,8 +11,7 @@ import requests
 from arknights_mower.utils.config import atomic_write
 from arknights_mower.utils.path import get_path
 
-UPLOAD_URL = "https://backend.yituliu.cn/open-api/operator/upload"
-PLAYER_FIELDS = ("uid", "nickName", "channelName", "channelMasterId")
+UPLOAD_URL = "https://auth.yituliu.cn/oauth2/ak-accounts/operators/save"
 _lock = RLock()
 
 
@@ -52,7 +51,7 @@ def save_token(token):
     if not isinstance(token, str) or not re.fullmatch(
         r"[A-Za-z0-9._~-]{16,512}", token.strip()
     ):
-        raise ValueError("请输入有效的一图流只写 Token，不要填写森空岛凭据")
+        raise ValueError("请输入有效的一图流 OAuth access_token，不要填写森空岛凭据")
     with _lock:
         try:
             saved = _settings()
@@ -79,24 +78,15 @@ def _integer(value, lower, upper, label):
 
 
 def build_upload_payload(snapshot, definitions):
-    """Map cached fields to the official PlayerInfoDTO without account secrets."""
+    """Map the bound UID and progression to the OAuth save request."""
     player = snapshot.get("_mower_player") if isinstance(snapshot, dict) else None
-    if not isinstance(player, dict) or any(key not in player for key in PLAYER_FIELDS):
+    if not isinstance(player, dict) or "uid" not in player:
         raise ValueError(
             "当前缓存缺少游戏账号信息，请先重新同步一次森空岛，再立即同步一图流"
         )
-    uid = str(player["uid"])
-    if not re.fullmatch(r"[0-9]{1,20}", uid):
+    uid = player["uid"]
+    if not isinstance(uid, str) or not re.fullmatch(r"[\x21-\x7e]{1,32}", uid):
         raise ValueError("缓存中的游戏 UID 无效，请重新同步森空岛")
-    for key in ("nickName", "channelName"):
-        if not isinstance(player[key], str) or len(player[key]) > 100:
-            raise ValueError("缓存中的游戏账号信息无效，请重新同步森空岛")
-    try:
-        channel = int(player["channelMasterId"])
-    except (TypeError, ValueError):
-        raise ValueError("缓存中的区服信息无效，请重新同步森空岛") from None
-    if channel < 0 or channel > 100 or type(player["channelMasterId"]) is bool:
-        raise ValueError("缓存中的区服信息无效，请重新同步森空岛")
     data = snapshot.get("data")
     chars = data.get("characters") if isinstance(data, dict) else None
     if not isinstance(chars, list) or not 1 <= len(chars) <= 2000:
@@ -106,19 +96,22 @@ def build_upload_payload(snapshot, definitions):
         if not isinstance(char, dict) or not isinstance(char.get("id"), str):
             raise ValueError("干员缓存格式无效，请重新同步森空岛")
         cid = char["id"]
+        if not re.fullmatch(r"[\x21-\x7e]{1,64}", cid):
+            raise ValueError("干员编码无效，请重新同步森空岛")
         definition = definitions.get(cid)
         if not definition or cid in seen:
             raise ValueError("部分干员资源缺失或缓存重复，请更新资源并重新同步森空岛")
         seen.add(cid)
         row = {
-            "charId": cid,
-            "own": True,
+            "id": cid,
             "level": _integer(char.get("level"), 1, 90, "等级"),
-            "elite": _integer(char.get("evolvePhase"), 0, 2, "精英化阶段"),
-            "potential": _integer(char.get("potentialRank"), 0, 5, "潜能等级") + 1,
+            "evolvePhase": _integer(char.get("evolvePhase"), 0, 2, "精英化阶段"),
+            "potentialRank": _integer(char.get("potentialRank"), 0, 5, "潜能等级"),
             "rarity": _integer(definition.get("rarity"), 1, 6, "星级"),
-            "mainSkill": _integer(char.get("mainSkillLevel"), 1, 7, "基础技能等级"),
-            **{f"mod{branch}": 0 for branch in "XYDAB"},
+            "mainSkillLevel": _integer(
+                char.get("mainSkillLevel"), 1, 7, "基础技能等级"
+            ),
+            **{f"equip{branch}": 0 for branch in "XYDAB"},
             **{f"skill{index}": 0 for index in range(1, 4)},
         }
         skills, equips = char.get("skills"), char.get("equips")
@@ -131,7 +124,9 @@ def build_upload_payload(snapshot, definitions):
         for index, skill in enumerate(skills, 1):
             if not isinstance(skill, dict):
                 raise ValueError("干员技能缓存无效，请重新同步森空岛")
-            row[f"skill{index}"] = _integer(skill.get("level"), 0, 3, "专精等级")
+            row[f"skill{index}"] = row["mainSkillLevel"] + _integer(
+                skill.get("level"), 0, 3, "专精等级"
+            )
         modules = {m["id"]: m for m in definition.get("modules", [])}
         for equip in equips:
             if not isinstance(equip, dict) or not isinstance(equip.get("id"), str):
@@ -142,14 +137,11 @@ def build_upload_payload(snapshot, definitions):
             branch = modules.get(equip["id"], {}).get("type", "").rsplit("-", 1)[-1]
             if branch not in ("X", "Y", "D", "A", "B"):
                 raise ValueError("部分模组资源缺失，请更新资源后再同步一图流")
-            row[f"mod{branch}"] = max(row[f"mod{branch}"], level)
+            row[f"equip{branch}"] = max(row[f"equip{branch}"], level)
         rows.append(row)
     return {
-        "uid": uid,
-        "nickName": player["nickName"],
-        "channelName": player["channelName"],
-        "channelMasterId": channel,
-        "operatorDataList": rows,
+        "playerInfo": {"akUid": uid},
+        "operators": rows,
     }
 
 
@@ -159,7 +151,7 @@ def _upload(payload, token):
             session.trust_env = False
             with session.post(
                 UPLOAD_URL,
-                headers={"Authorization": token},
+                headers={"Authorization": f"Bearer {token}"},
                 json=payload,
                 timeout=(3, 15),
                 allow_redirects=False,
@@ -174,14 +166,46 @@ def _upload(payload, token):
         ) from None
     except (TypeError, ValueError):
         raise ValueError("一图流返回无效响应，同步结果尚未确认") from None
-    if not isinstance(result, dict) or result.get("code") != 200:
-        raise ValueError("一图流未确认同步成功，请检查只写 Token 的有效性及写入权限")
-    count = len(payload["operatorDataList"])
+    if not isinstance(result, dict) or type(result.get("code")) is not int:
+        raise ValueError("一图流返回无效响应，同步结果尚未确认")
+    if result["code"] != 200:
+        messages = {
+            80001: "一图流 OAuth 令牌已失效，请重新获取并保存 access_token",
+            80008: "一图流令牌缺少 gama-data.write 权限，请重新授权后保存 access_token",
+            10002: "一图流拒绝上传字段，请更新资源并重新同步森空岛",
+            30006: "一图流上传过于频繁，请稍后手动重试",
+            40003: "一图流限流服务暂不可用，请稍后手动重试",
+            40004: "一图流数据保存冲突，请稍后重新同步",
+            40001: "一图流服务繁忙，请稍后手动重试",
+        }
+        if result["code"] == 30006:
+            data = result.get("data")
+            delay = data.get("retryAfterSeconds") if isinstance(data, dict) else None
+            if type(delay) is int and 1 <= delay <= 3600:
+                raise ValueError(f"一图流上传过于频繁，请在 {delay} 秒后手动重试")
+        raise ValueError(
+            messages.get(result["code"], "一图流未确认同步成功，请稍后重试")
+        )
+    count = len(payload["operators"])
+    data = result.get("data")
+    if not isinstance(data, dict):
+        raise ValueError("一图流返回无效保存计数，同步结果尚未确认")
+    counts = [
+        data.get(key) for key in ("createdCount", "updatedCount", "unchangedCount")
+    ]
+    if (
+        any(type(value) is not int or value < 0 for value in counts)
+        or sum(counts) != count
+    ):
+        raise ValueError("一图流返回无效保存计数，同步结果尚未确认")
     return {
         "success": True,
         "count": count,
         "synced_at": time(),
-        "message": f"已同步 {count} 名干员的练度至一图流",
+        "message": (
+            f"已同步 {count} 名干员的练度至一图流"
+            f"（新增 {counts[0]}，更新 {counts[1]}，未变更 {counts[2]}）"
+        ),
     }
 
 
@@ -189,7 +213,9 @@ def sync_cached_operators(snapshot=None):
     with _lock:
         saved = _settings()
         if not saved.get("token"):
-            raise ValueError("请先保存一图流只写 Token")
+            raise ValueError(
+                "请先保存具有 gama-data.write 权限的一图流 OAuth access_token"
+            )
         try:
             from arknights_mower.utils.growth import growth_data
             from arknights_mower.utils.mastery_recommendation import get_skill_data
@@ -200,9 +226,7 @@ def sync_cached_operators(snapshot=None):
             )
             canonical = {
                 **payload,
-                "operatorDataList": sorted(
-                    payload["operatorDataList"], key=lambda row: row["charId"]
-                ),
+                "operators": sorted(payload["operators"], key=lambda row: row["id"]),
             }
             fingerprint = sha256(
                 json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()
@@ -211,7 +235,7 @@ def sync_cached_operators(snapshot=None):
                 result = {
                     "success": True,
                     "skipped": True,
-                    "count": len(payload["operatorDataList"]),
+                    "count": len(payload["operators"]),
                     "synced_at": saved["last_synced_at"],
                     "message": "与上次成功同步的数据相同，已跳过上传，未传输数据",
                 }
