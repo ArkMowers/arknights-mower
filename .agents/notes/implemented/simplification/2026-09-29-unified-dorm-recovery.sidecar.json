@@ -9,14 +9,18 @@
   "invariants": [
     "[INV-SCHED-02]",
     "[INV-SCHED-03]",
-    "[INV-SCHED-07]"
+    "[INV-SCHED-07]",
+    "[INV-SCHED-15]"
   ],
   "code_symbols": [
     "arknights_mower.utils.dorm_recovery.recovery_order_plan",
-    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._prepare_shift_cycle"
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._prepare_shift_cycle",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.ensure_dorm_recovery_order"
   ],
   "test_suites": [
     "arknights_mower/tests/dorm_recovery_tests.py",
-    "arknights_mower/tests/unified_dorm_tests.py"
+    "arknights_mower/tests/unified_dorm_tests.py",
+    "arknights_mower/tests/dorm_recovery_full_padding_tests.py",
+    "arknights_mower/tests/selection_card_mood_tests.py"
   ]
 }

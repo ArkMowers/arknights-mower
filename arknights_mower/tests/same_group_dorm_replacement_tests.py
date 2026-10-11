@@ -221,6 +221,25 @@ def mock_arrangement(solver, monkeypatch, final, *, contact_cover=RESIDENT):
         return [{"agent": name} for name in solver.physical]
 
     def choose(agents, room, fast_mode=True, **kwargs):
+        if kwargs.get("recovery_padding") and "Free" in agents:
+            from arknights_mower.utils.dorm_candidates import full_dorm_candidate
+            from arknights_mower.utils.dorm_recovery import (
+                DormRecoveryPaddingUnavailable,
+            )
+            from arknights_mower.utils.dorm_skills import is_single_recovery_manager
+
+            visible = iter(
+                name
+                for name in solver.get_dorm_candidates(agents, room=room).filling
+                if name in solver.op_data.operators
+                and full_dorm_candidate(solver.op_data, name)
+                and not is_single_recovery_manager(name)
+            )
+            while "Free" in agents:
+                name = next(visible, None)
+                if name is None:
+                    raise DormRecoveryPaddingUnavailable()
+                agents[agents.index("Free")] = name
         solver.selected = agents.copy()
 
     def confirm(room, new_plan):
