@@ -113,9 +113,9 @@ def recovery_order_plan(
             retained.append("")
             continue
         op = op_data.operators.get(name)
-        if op_data.is_dorm_replacement_for_slot(name, room, index) and (
-            op is None or op.time_stamp is None or op.mood < 24
-        ):
+        if op_data.is_dorm_replacement_for_slot(
+            name, room, index, group_transitions=group_transitions
+        ) and (op is None or op.time_stamp is None or op.mood < 24):
             retained.append("")
             continue
         if name in ("", "Free", "Current"):

@@ -105,6 +105,36 @@ def arrange(solver, agents=None):
     solver.agent_arrange_room({}, ROOM, solver.task.plan)
 
 
+@pytest.mark.parametrize("cover_mood", [1, 24, None])
+def test_pending_fixed_cover_behind_target_uses_same_context(solver, cover_mood):
+    plans = solver.global_plan["default_plan"].plan
+    plans[ROOM][0] = Room("杜林", "联动", ["银灰"])
+    plans[ROOM][2].group_bindings = [{"group": "另一组", "replacement": ["Free"]}]
+    plans["contact"] = [Room("讯使", "另一组", ["芬"])]
+    assert solver.initialize_operators() is None
+    data = solver.op_data
+    data.add(Operator("陈", ""))
+    for op in data.operators.values():
+        op.mood, op.time_stamp = 5, datetime.now()
+    data.operators["琴柳"].mood = 24
+    cover = data.operators["红"]
+    cover.mood = cover_mood if cover_mood is not None else 24
+    if cover_mood is None:
+        cover.time_stamp = None
+    data.commit_group_shifts({"联动": False, "另一组": True})
+    solver.task.group_shift_transitions = {"联动": True, "另一组": False}
+    solver.physical = ["黑角", "琴柳", "红", "银灰", "陈"]
+    solver.get_agent_from_room()
+    final = ["银灰", "琴柳", "红", "陈", "黑角"]
+
+    arrange(solver, final)
+
+    temporary = ["银灰", "琴柳", "红" if cover_mood == 24 else "", "", ""]
+    assert solver.confirms == [temporary, final]
+    assert solver.op_data.operators["银灰"].dorm_recovery_index == 0
+    assert data.group_shift_state == {"联动": False, "另一组": True}
+
+
 def test_simple_fill_skips_temporary_recovery_arrangement(solver):
     solver.task.type = TaskTypes.FILL_DORM
     solver.task.simple_dorm_fill = True

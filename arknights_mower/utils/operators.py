@@ -1953,7 +1953,9 @@ class Operators:
             name, op.current_room, op.current_index
         )
 
-    def is_dorm_replacement_for_slot(self, name, room, index):
+    def is_dorm_replacement_for_slot(
+        self, name, room, index, *, group_transitions=None
+    ):
         """按目标位置识别绑组宿舍替班，也用于尚未入驻时的选人保护。"""
         slots = self.plan.get(room, [])
         if not room.startswith("dorm") or not 0 <= index < len(slots):
@@ -1962,7 +1964,9 @@ class Operators:
         return bool(
             slot.group
             and slot.agent not in ("Free", "菲亚梅塔")
-            and not self.is_auto_free_dorm_slot(room, index)
+            and not self.is_auto_free_dorm_slot(
+                room, index, group_transitions=group_transitions
+            )
             and name in slot.all_replacements
         )
 

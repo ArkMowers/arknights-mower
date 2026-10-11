@@ -43,7 +43,8 @@
     "arknights_mower.solvers.record.save_current_state",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.ensure_dorm_recovery_order",
     "arknights_mower.utils.dorm_recovery.recovery_target",
-    "arknights_mower.utils.dorm_recovery.recovery_order_plan"
+    "arknights_mower.utils.dorm_recovery.recovery_order_plan",
+    "arknights_mower.utils.operators.Operators.is_dorm_replacement_for_slot"
   ],
   "test_suites": [
     "arknights_mower/tests/protected_dorm_bed_tiers_tests.py",
