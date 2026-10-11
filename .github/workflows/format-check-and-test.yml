@@ -307,6 +307,7 @@ jobs:
           python -m unittest -v \
             arknights_mower.tests.android_distribution_tests \
             arknights_mower.tests.android_component_tests \
+            arknights_mower.tests.maa_resource_update_tests \
             scripts.tests.android_release_tests
       - name: Build shared WebUI
         working-directory: ui

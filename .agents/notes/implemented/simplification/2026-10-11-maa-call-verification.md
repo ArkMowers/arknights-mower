@@ -17,6 +17,6 @@ Navigation downloads validate a nonempty JSON object before atomic replacement t
 
 `MaaCallError` carries the failed phase and optional task type and stage. `VerifiedAsst` rejects a nonpositive task identifier and a rejected startup. The scheduler releases queued work on the ordinary failure path and preserves the original diagnostic if stopping also fails. Rejected admission never updates the last execution time or retires backups. Existing cancellation and device-failure propagation retain their exception types.
 
-Android resource updates reuse the existing MirrorChyan MaaResource installer and remain independent of the official Android core component source. Source changes invalidate the resource update receipt. No new configuration fields or domain concepts are introduced.
+Android resource updates reuse the existing MirrorChyan MaaResource installer and remain independent of the official Android core component source. Source changes invalidate the resource update receipt. Android compatibility CI keeps the core Mirror restrictions and runs resource regressions separately, including resource Mirror availability and legacy navigation loading. No new configuration fields or domain concepts are introduced.
 
 The [MAA integration specification](../../../../docs/subsystems/maa-integration.md) owns the interface contract. Offline regressions in `maa_admission_tests.py` cover rejection after partial submission, resource load failure and malformed downloads; `maa_backup_tests.py` covers rollback preservation.

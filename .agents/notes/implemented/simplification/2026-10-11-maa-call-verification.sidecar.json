@@ -3,12 +3,8 @@
   "status": "implemented",
   "category": "simplification",
   "date": "2026-10-11",
-  "authors": [
-    "Codex"
-  ],
-  "invariants": [
-    "[INV-MAA-08]"
-  ],
+  "authors": ["Codex"],
+  "invariants": ["[INV-MAA-08]"],
   "code_symbols": [
     "arknights_mower.utils.maa_backup.MaaCallError",
     "arknights_mower.utils.maa_backup.VerifiedAsst",
@@ -21,6 +17,7 @@
     "arknights_mower/tests/maa_admission_tests.py",
     "arknights_mower/tests/maa_backup_tests.py",
     "arknights_mower/tests/maa_resource_update_tests.py",
+    "arknights_mower/tests/android_component_tests.py",
     "arknights_mower/tests/maa_update_route_tests.py",
     "ui/src/components/MaaBasic.test.js"
   ]
