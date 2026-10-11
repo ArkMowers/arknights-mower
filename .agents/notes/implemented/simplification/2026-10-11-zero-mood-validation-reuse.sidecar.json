@@ -33,6 +33,8 @@
     "arknights_mower/tests/multi_group_shift_tests.py",
     "arknights_mower/tests/backup_replacement_state_tests.py",
     "arknights_mower/tests/mass_mood_recovery_tests.py",
-    "arknights_mower/tests/automatic_rescue_tests.py"
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/custom_mood_limits_tests.py",
+    "arknights_mower/tests/same_group_dorm_replacement_tests.py"
   ]
 }

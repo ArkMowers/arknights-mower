@@ -12,7 +12,7 @@ from arknights_mower.solvers import base_schedule  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.dorm_recovery import recovery_order_plan  # noqa: E402
-from arknights_mower.utils.operators import Operators  # noqa: E402
+from arknights_mower.utils.operators import Operator, Operators  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
     TaskTypes,
@@ -390,6 +390,8 @@ def test_blocked_primary_cover_preserves_whole_shift(monkeypatch, blocked):
         data.reserved_product_replacements.add(RESIDENT)
     elif blocked == "exhausted":
         data.operators[RESIDENT].mood = 0
+        data.operators[WORKER].replacement.append("夜刀")
+        data.add(Operator("夜刀", "", mood=0, time_stamp=datetime.now()))
     else:
         data.operators[RESIDENT].current_room = "train"
     before = data.get_current_room(ROOM, True)
@@ -398,6 +400,22 @@ def test_blocked_primary_cover_preserves_whole_shift(monkeypatch, blocked):
     assert plan == {} and covers == []
     assert data.get_current_room(ROOM, True) == before
     assert all(not bed.name for bed in data.all_dorms())
+
+
+def test_only_dormitory_primary_cover_at_zero_mood_accepts_whole_shift(monkeypatch):
+    solver = make_solver(monkeypatch, reciprocal=True)
+    initialize(solver)
+    data = solver.op_data
+    data.operators[RESIDENT].mood = 0
+    before = data.get_current_room(ROOM, True)
+    plan, covers = {}, []
+
+    solver.get_resting_plan(data.groups["公招"].copy(), covers, plan, 0)
+
+    assert plan["contact"] == [RESIDENT]
+    assert plan[ROOM][0] == WORKER
+    assert len(covers) == len(set(covers)) == 2
+    assert data.get_current_room(ROOM, True) == before
 
 
 def test_fixed_records_survive_refresh_and_snapshot_without_free_capacity(monkeypatch):
