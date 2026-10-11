@@ -391,7 +391,10 @@ class RecruitSolver(SceneGraphSolver):
                 return
             elif recruit_result_level == 5:
                 if config.conf.recruit_auto_5 == 2:
-                    if config.conf.recruit_auto_only5 and len(recruit_cal_result) > 1:
+                    if (
+                        not config.conf.recruit_auto_only5
+                        or len(recruit_cal_result) > 1
+                    ):
                         logger.debug(
                             f"{recruit_result_level}星稀有tag,但不止一个或纯手动选择"
                         )
