@@ -25,9 +25,16 @@ from arknights_mower.utils.scheduler_task import (
 )
 
 
+@pytest.fixture(autouse=True)
+def save_conflict_state(monkeypatch):
+    save = MagicMock(return_value=True)
+    monkeypatch.setattr(base_schedule, "save_current_state", save)
+    return save
+
+
 @pytest.mark.parametrize("entry", ["prepare", "room"])
 def test_rewritten_confirmation_target_stops_without_room_retry(
-    solver, monkeypatch, entry
+    solver, monkeypatch, entry, save_conflict_state
 ):
     monkeypatch.setattr(base_schedule.config, "stop_mower", Event())
     error_log = MagicMock()
@@ -64,6 +71,7 @@ def test_rewritten_confirmation_target_stops_without_room_retry(
     assert task.time == before_time and solver.tasks == [task]
     assert not solver.op_data.group_is_resting("乙")
     assert base_schedule.config.stop_mower.is_set()
+    save_conflict_state.assert_called_once()
     error_log.assert_called_once()
     message = error_log.call_args.args[0]
     assert "dormitory_1" in message and B in message and "杜林" in message

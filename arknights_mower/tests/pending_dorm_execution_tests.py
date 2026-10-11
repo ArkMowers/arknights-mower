@@ -18,6 +18,101 @@ from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
+@pytest.mark.parametrize("consumed_work", [False, True])
+@pytest.mark.parametrize("free_resting", [False, True])
+def test_single_recovery_uses_pending_mixed_binding_through_readback(
+    solver, monkeypatch, consumed_work, free_resting
+):
+    plans = solver.global_plan["default_plan"].plan
+    plans["meeting"][1].group = "另一组"
+    plans["dormitory_1"][0].replacement = ["伊内丝"]
+    plans["dormitory_1"][0].group_bindings = [
+        {"group": "另一组", "replacement": ["Free"]}
+    ]
+    plans["dormitory_1"][1].agent = "琴柳"
+    assert solver.initialize_operators() is None
+    data = solver.op_data
+    for name in ("泥岩", "能天使", "年"):
+        data.add(Operator(name, ""))
+    apply_plan(
+        solver,
+        {
+            "meeting": ["伊内丝", "银灰"],
+            "contact": ["讯使"],
+            "dormitory_1": ["塑心", "琴柳", "泥岩", "能天使", "年"],
+        },
+    )
+    for op in data.operators.values():
+        op.mood, op.time_stamp = 5, datetime.now()
+    data.commit_group_shifts({"联动": False, "另一组": not free_resting})
+    incoming = "银灰" if free_resting else "伊内丝"
+    work = (
+        {"meeting": ["Current", "初雪"]}
+        if free_resting
+        else {"meeting": ["陈", "银灰"], "contact": ["红"]}
+    )
+    final = [incoming, "琴柳", "泥岩", "能天使", "年"]
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={**work, "dormitory_1": final.copy()},
+    )
+    solver.task, solver.tasks = task, [task]
+    solver._prepare_group_shift(task, remember_targets=True)
+    if consumed_work:
+        apply_plan(solver, {room: task.plan.pop(room) for room in work})
+        assert not solver._complete_group_shift(task)
+        solver._prepare_group_shift(task, remember_targets=True)
+    else:
+        # 剩余明确工作目标必须优先于旧的待确认状态。
+        task.group_shift_transitions = {
+            group: not resting
+            for group, resting in task.group_shift_transitions.items()
+        }
+    confirmed = dict(data.group_shift_state)
+    remaining = list(task.plan["dormitory_1"])
+    context = solver._execution_group_transitions()
+    selected = []
+    due = datetime.now() + timedelta(hours=2)
+    monkeypatch.setattr(
+        "arknights_mower.solvers.record.save_agent_action", lambda *a, **kw: None
+    )
+    solver.find = MagicMock(return_value=True)
+    solver.choose_agent = MagicMock(
+        side_effect=lambda names, *a, **kw: selected.extend(names)
+    )
+    solver.tap_confirm = MagicMock()
+
+    def read_temporary_room(room):
+        for op in data.operators.values():
+            if op.current_room == room:
+                op.current_room, op.current_index = "", -1
+        names = selected + [""] * (5 - len(selected))
+        for index, name in enumerate(names):
+            if not name:
+                continue
+            data.update_detail(
+                name, data.operators[name].mood, room, index, group_transitions=context
+            )
+        _, bed = data.get_dorm_by_name(incoming, group_transitions=context)
+        assert bed is not None and bed.name == incoming
+        bed.time = due
+        return [{"agent": name} for name in names]
+
+    solver.get_agent_from_room = MagicMock(side_effect=read_temporary_room)
+    assert solver.ensure_dorm_recovery_order("dormitory_1", final)
+    assert selected == [incoming, "琴柳"]
+    target = data.operators[incoming]
+    assert (target.dorm_recovery_room, target.dorm_recovery_index) == ("dormitory_1", 0)
+    assert data.operators["泥岩"].dorm_recovery_room == ""
+    assert data.get_dorm_by_name(incoming, group_transitions=context)[1].time is None
+    assert task.plan["dormitory_1"] == remaining
+    assert data.group_shift_state == confirmed
+    # 临时阵容已读回，重试只恢复最终名单，不能再次清房或换目标。
+    solver.tap_confirm.reset_mock()
+    assert solver.ensure_dorm_recovery_order("dormitory_1", final)
+    solver.tap_confirm.assert_not_called()
+
+
 @pytest.mark.parametrize("pending", [False, True])
 @pytest.mark.parametrize("off_shift", [False, True])
 def test_explicit_work_targets_override_pending_context(solver, pending, off_shift):

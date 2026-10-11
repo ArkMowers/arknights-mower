@@ -51,6 +51,7 @@ from arknights_mower.solvers.record import (
     get_inventory_counts,
     invalidate_workshop_inventory,
     save_agent_action,
+    save_current_state,
     save_exception,
     save_log,
 )
@@ -7833,13 +7834,23 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             f"第{item['index'] + 1}位确认 {item['expected']}，选人 {item['selected'] or '空位'}"
             for item in conflicts
         )
+        config.stop_mower.set()
+        try:
+            saved = save_current_state()
+            save_error = ""
+        except Exception as exc:
+            saved, save_error = False, f"（{exc}）"
+        preservation = (
+            "任务已保存并停止自动化，请检查排班与宿舍准入条件后重新启动"
+            if saved
+            else f"运行状态保存失败{save_error}，任务仅保留在内存，重启可能无法恢复本次目标；自动化已停止"
+        )
         message = (
             f"换班确认目标冲突：任务={task.type.display_value}@{task.time.isoformat()}，"
             f"房间={room}，目标差异={differences}，最终名单={resolved}，原因={reason}，"
             f"待确认换班={getattr(task, 'group_shift_transitions', {})}；"
-            "已保留任务并停止自动化，请检查排班与宿舍准入条件后重新启动"
+            f"{preservation}"
         )
-        config.stop_mower.set()
         logger.error(message, extra={"archive_screenshots": False})
         raise GroupShiftTargetConflict(room, conflicts, message)
 
@@ -9037,10 +9048,21 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if task is not self.task or task_room != room
             for name in names
         }
-        retained = recovery_order_plan(self.op_data, room, agents, reserved_names)
+        plan = dict(self.task.plan)
+        plan[room] = agents
+        group_transitions = self._execution_group_transitions(plan)
+        retained = recovery_order_plan(
+            self.op_data,
+            room,
+            agents,
+            reserved_names,
+            group_transitions=group_transitions,
+        )
         if retained is None:
             return room in pending
-        target = recovery_target(self.op_data, room, agents)
+        target = recovery_target(
+            self.op_data, room, agents, group_transitions=group_transitions
+        )
         vip_index = agents.index(target.name)
         # 一轮下班先替班接岗、再分床；不要为即将被下一条分床任务换走的
         # 原占位者额外清房。以队列中明确的目标覆盖为准，不猜测未来排班。
@@ -9090,7 +9112,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if current != agents:
             # 目标床位不再移动，不能因此沿用临时阵容下的恢复倒计时。
             # 补回宿管和其余入住者后，由紧接着的正常读房重新采样。
-            _, bed = self.op_data.get_dorm_by_name(target.name)
+            _, bed = self.op_data.get_dorm_by_name(
+                target.name, group_transitions=group_transitions
+            )
             if bed is not None and bed.name == target.name:
                 bed.time = None
         # 垫位者的缓存可能已过期，读回无法保证目标最低时只恢复最终阵容，
