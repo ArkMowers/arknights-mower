@@ -2208,7 +2208,9 @@ class Operators:
             and resting_tier(self, dorm.name) != RestingTier.IDLE
         )
 
-    def dorm_capacity_allows(self, name, position, *, active_groups=None, plan=None):
+    def dorm_capacity_allows(
+        self, name, position, *, active_groups=None, plan=None, group_transitions=None
+    ):
         """绑组 Free 按数量供同组工作主班及后三层使用，不绑定物理位置。"""
         if resting_tier(self, name) > RestingTier.PRIORITY_REPLACEMENT:
             return True
@@ -2220,7 +2222,9 @@ class Operators:
         ):
             return True
         plan = plan or {}
-        transitions = self.arrangement_group_transitions(plan)
+        # 已执行的工作房间会移出 plan；任务仍持有尚待读房确认的完整换班状态。
+        transitions = dict(group_transitions or {})
+        transitions.update(self.arrangement_group_transitions(plan))
         transitions.update({group: True for group in active_groups or ()})
         active = {group for group, resting in transitions.items() if resting}
         inactive = {group for group, resting in transitions.items() if not resting}
@@ -2319,12 +2323,26 @@ class Operators:
             is not None
         )
 
-    def _slot_takable(self, dorm, requester=None, active_groups=None, plan=None):
+    def _slot_takable(
+        self,
+        dorm,
+        requester=None,
+        active_groups=None,
+        plan=None,
+        group_transitions=None,
+    ):
         """有效动态床位按共享恢复层级决定是否允许接管。"""
-        if not self.is_effective_free_slot(dorm, active_groups=active_groups):
+        transitions = dict(group_transitions or {})
+        transitions.update(self.arrangement_group_transitions(plan or {}))
+        transitions.update({group: True for group in active_groups or ()})
+        active = {group for group, resting in transitions.items() if resting}
+        inactive = {group for group, resting in transitions.items() if not resting}
+        if not self.is_effective_free_slot(
+            dorm, active_groups=active, inactive_groups=inactive
+        ):
             return False
         if requester is not None and not self.dorm_capacity_allows(
-            requester, dorm.position, active_groups=active_groups, plan=plan
+            requester, dorm.position, plan=plan, group_transitions=transitions
         ):
             return False
         reserved_for = self.reserved_product_beds.get(dorm.position)

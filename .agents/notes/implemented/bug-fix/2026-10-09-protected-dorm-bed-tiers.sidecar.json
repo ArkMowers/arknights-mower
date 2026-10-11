@@ -26,7 +26,9 @@
     "arknights_mower.utils.operators.Operators.update_standby_low_priority",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.resting",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.get_resting_plan",
-    "ui.src.pages.Plan.validate_plan"
+    "ui.src.pages.Plan.validate_plan",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.choose_agent",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._complete_group_shift"
   ],
   "test_suites": [
     "arknights_mower/tests/protected_dorm_bed_tiers_tests.py",
@@ -55,6 +57,7 @@
     "arknights_mower/tests/base_scheduler_tests.py",
     "arknights_mower/tests/backup_condition_tests.py",
     "arknights_mower/tests/local_backup_replay_tests.py",
-    "ui/src/stores/planValidation.test.js"
+    "ui/src/stores/planValidation.test.js",
+    "arknights_mower/tests/group_shift_confirmation_tests.py"
   ]
 }

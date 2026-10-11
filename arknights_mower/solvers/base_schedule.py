@@ -7505,6 +7505,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             return
         capacity_plan = dict(getattr(self.task, "plan", {}) or {})
         capacity_plan[room] = agents
+        group_transitions = getattr(self.task, "group_shift_transitions", {})
         # 补床任务入队后名单也可能改变；执行时重新检查明确写入的姓名。
         for index, name in enumerate(agents):
             current = self.op_data.get_current_operator(room, index)
@@ -7522,7 +7523,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     or (
                         (current is None or current.name != name)
                         and not self.op_data.dorm_capacity_allows(
-                            name, (room, index), plan=capacity_plan
+                            name,
+                            (room, index),
+                            plan=capacity_plan,
+                            group_transitions=group_transitions,
                         )
                     )
                 )
@@ -7589,7 +7593,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 candidate
                 for candidate in replacements
                 if self.op_data.dorm_capacity_allows(
-                    candidate.name, (room, index), plan=capacity_plan
+                    candidate.name,
+                    (room, index),
+                    plan=capacity_plan,
+                    group_transitions=group_transitions,
                 )
             ]
             replacement = next(iter(eligible), None)
@@ -7661,7 +7668,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         replacement is None
                         or bed is None
                         or not self.op_data._slot_takable(
-                            bed, requester=replacement.name, plan=capacity_plan
+                            bed,
+                            requester=replacement.name,
+                            plan=capacity_plan,
+                            group_transitions=group_transitions,
                         )
                     ):
                         agents[index] = current.name
@@ -7690,7 +7700,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     and name not in candidates.unknown
                     and name not in agents
                     and self.op_data.dorm_capacity_allows(
-                        name, (room, index), plan=capacity_plan
+                        name,
+                        (room, index),
+                        plan=capacity_plan,
+                        group_transitions=group_transitions,
                     )
                     and (
                         name not in self.op_data.operators
@@ -8058,7 +8071,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         name
                         for name in free_list
                         if self.op_data.dorm_capacity_allows(
-                            name, bed_position, plan=capacity_plan
+                            name,
+                            bed_position,
+                            plan=capacity_plan,
+                            group_transitions=getattr(
+                                self.task, "group_shift_transitions", {}
+                            ),
                         )
                     ]
                     if not free_list and not idle_fallback:
