@@ -163,12 +163,14 @@ jobs:
       - name: 自动发现全部 Python 回归测试（兼容 unittest 和 pytest）
         shell: bash
         run: |
-          set -o pipefail
+          status=0
           timeout --signal=TERM --kill-after=30s 10m \
             ./venv/bin/python3 -u -m pytest -v -o faulthandler_timeout=60 \
-            2>&1 | tee "${RUNNER_TEMP}/python-regressions.log"
+            > "${RUNNER_TEMP}/python-regressions.log" 2>&1 || status=$?
+          tail -n 200 "${RUNNER_TEMP}/python-regressions.log"
+          exit "${status}"
       - name: 保存 Python 回归测试日志
-        if: ${{ failure() }}
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: python-regressions-${{ github.run_attempt }}
