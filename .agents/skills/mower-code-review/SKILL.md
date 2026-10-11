@@ -22,10 +22,22 @@ Inputs: requested scope, actual comparison base where applicable, requirements a
    ```
 
    Read untracked files in scope; they are absent from `git diff`. For a branch use the requested merge-base comparison, `git diff <base>...<head>`; for two commits use `git diff <before> <after>`, and for one commit use `git show <commit>`. If the necessary base is missing, obtain it rather than substituting a default remote branch.
-2. Read the relevant [standards](../../../CODING_STANDARDS.md), subtree instructions, subsystem contract and existing decision. Use only affected sections of the [invariants checklist](references/invariants-checklist.md). Follow production callers through return values, state, persistence, side effects and recovery; tests around an unused helper do not establish that path's correctness.
+2. Read the relevant [standards](../../../CODING_STANDARDS.md), subtree instructions, subsystem contract and existing decision. Use only affected sections of the [invariants checklist](references/invariants-checklist.md). Check new Python modules against the [shared logger rule](#shared-logger). Follow production callers through return values, state, persistence, side effects and recovery; tests around an unused helper do not establish that path's correctness.
 3. Compare behavior with the requirements. Check record ownership and concept impact through [Agent Workflow](../../AGENTS.md#2-authority-and-record-ownership). Distinguish evidence of a changed definition from a repaired operation.
 4. Run focused offline behavior tests when needed for the finding. For document/governance changes run `python scripts/verify_governance.py`; changes to its scripts also require `pytest arknights_mower/tests/verify_governance_tests.py`. For a branch or commit review, run checks in a checkout at the reviewed head and pass `--base <actual-comparison-commit>`. Checks run elsewhere describe only that checkout. Separate structural results from functional results and the semantic review conclusion.
 5. Report concrete locations, impact and supporting observations. A read-only request ends with findings. If repairs are authorized, use the selected [task workflow](../../AGENTS.md#1-task-selection) and update the owning record rather than opening a second review workflow.
+
+## Shared Logger
+
+New Python modules that emit application logs use the shared logger from `arknights_mower.utils.log`:
+
+```python
+from arknights_mower.utils.log import logger
+```
+
+Application log calls use this object. Do not create a module logger with `logging.getLogger(__name__)` or use root logging calls such as `logging.info()`. Runtime file logging, frontend delivery, and child-process forwarding attach to the shared logger; an independent module logger does not reach those handlers.
+
+When an eager import creates a circular dependency, import the shared logger inside the calling function after logging initialization, or use an existing logger injection point supplied with the shared logger. Do not bypass the rule by creating another logger. Handler configuration remains owned by `utils/log.py`.
 
 ## Completion
 

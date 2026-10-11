@@ -10,6 +10,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **Monotonic Deadline Budgets**: All external process invocations (`subprocess.run`), socket operations, and recovery polling have finite timeouts (`time.monotonic() + timeout`).
 - [ ] **Guaranteed Compensation**: Acquired runtime resources (temporary screen overrides, open sockets, child processes, file locks) register cleanup in `PreparationSession`, `close_process`, or `finally` blocks.
 - [ ] **Bounded Memory**: In-memory logs, frame buffers, and queue collections have explicit capacity bounds and eviction policies.
+- [ ] **Shared Logger**: Do new Python modules that emit application logs follow the [shared logger rule](../SKILL.md#shared-logger), including import-cycle handling?
 - [ ] **Controlled Language**: Code comments, docstrings, and documentation use terms defined in `CONTEXT.md` / `CONTEXT.zh.md` and avoid all prohibited synonyms.
 - [ ] **Scope**: Does the review cover the actual requested comparison, including staged, unstaged and untracked files for worktree requests? Are production callers and affected tests inspected?
 - [ ] **Record Ownership**: Are same-topic repairs, tests and incidental simplification recorded under the existing decision, with any independent record justified by [ownership rules](../../../notes/AGENTS.md#1-record-ownership)?
