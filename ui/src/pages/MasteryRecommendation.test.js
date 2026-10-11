@@ -67,8 +67,9 @@ describe('阿米娅跨形态专精提示', () => {
     page.plan.value.char_1001_amiya2_0 = true
     await nextTick()
     expect(page.crossFormWarning.value).toContain('术师、近卫')
-    expect(page.crossFormWarning.value).toContain('不支持跨形态自动连续专精')
-    expect(page.crossFormWarning.value).toContain('请关闭「全自动专精」')
+    expect(page.crossFormWarning.value).toContain('Mower 不会自动切换形态')
+    expect(page.crossFormWarning.value).toContain('在轮到对应形态训练前及时在游戏内手动切换形态')
+    expect(page.crossFormWarning.value).not.toContain('关闭')
     expect(state.feedback.warning).toHaveBeenCalledWith(page.crossFormWarning.value, {
       duration: 10000
     })

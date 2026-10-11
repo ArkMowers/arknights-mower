@@ -41,6 +41,6 @@ export function masteryFormWarning(charIds) {
   }
   const selected = Object.keys(forms).filter((id) => charIds.includes(id))
   if (selected.length < 2) return ''
-  return `已选择阿米娅的${selected.map((id) => forms[id]).join('、')}形态专精。森空岛养成数据无法确认当前启用形态，Mower 不会自动切换形态，也不支持跨形态自动连续专精。请关闭「全自动专精」，在游戏内手动切换到目标形态后，再执行对应技能专精。`
+  return `已选择阿米娅的${selected.map((id) => forms[id]).join('、')}形态专精。森空岛养成数据无法确认当前启用形态，Mower 不会自动切换形态。请留意专精队列，在轮到对应形态训练前及时在游戏内手动切换形态。`
 }
 import { planReplacements } from './plan_bindings'
