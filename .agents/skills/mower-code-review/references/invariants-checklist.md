@@ -22,6 +22,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ## 2. Subsystem Invariants
 
+- [ ] **[INV-RECRUIT-01] Manual Selection Authority**: Does manual five-star recruitment leave selection unqueued when the unique-choice exception is disabled or multiple calculated choices remain, while automatic mode and existing equivalent-result collapsing retain their behavior?
+
 - [ ] **[INV-WEB-03] Process-Owned Desktop Autostart**: Does foreground and background startup admit tasks once without a page, preserve resource ordering and explicit restart policy, and keep stopped tasks stopped through refresh and tray actions? See the [desktop startup contract](../../../../docs/subsystems/web-access.md#5-desktop-startup).
 
 - [ ] **[INV-RES-03] Building Skill Facility Preservation**: Does the generator retain skills for known and unknown facility codes, including RECYCLE, without changing their phase, description or icon? See [resource generation contract](../../../../docs/subsystems/resource-update.md#4-resource-generation).

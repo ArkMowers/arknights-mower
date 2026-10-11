@@ -12,6 +12,8 @@
 
 ## 2. Subsystem Invariants
 
+- **[INV-RECRUIT-01] Manual Selection Authority**: Manual five-star recruitment never queues automatic selection unless the unique-choice exception is enabled and exactly one calculated choice remains.
+
 - **[INV-SCHED-48] Trust Rotation Isolation**: Trust Rotation retains protected incumbents, excludes same-kind occupants while allowing assistant/activity overlap, preserves ordinary working and resting state, and commits only verified selections; saturated unassigned candidates end the current inspection without clearing assignments.
 
 - **[INV-SCHED-45] Selection Performance Test Isolation**: Explicit game tests recommend a mode only after three consecutive verified selection operations following multiple swipes, lower it on the first selection failure, preserve staffing and saved settings, and own finite cancellable trials with bounded I/O and compensation. See the [scheduler contract](docs/subsystems/base-scheduler.md#selection-performance-test).
