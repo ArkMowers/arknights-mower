@@ -481,7 +481,7 @@ class TestMasteryPlanView(unittest.TestCase):
         delete_mock.return_value = True
         r = self.client.delete("/mastery-plan", json={"id": 3})
         self.assertEqual(r.status_code, 200)
-        delete_mock.assert_called_once_with(3, protect_active=True)
+        delete_mock.assert_called_once_with(3)
         purge_mock.assert_called_once_with(3)
 
     @patch("arknights_mower.views.mastery.delete_plan")
@@ -575,6 +575,28 @@ class TestMasteryPlanView(unittest.TestCase):
         fake.base_scheduler = None
         with patch.dict(sys.modules, {"arknights_mower.__main__": fake}):
             _purge_plan_tasks(5)  # 不应抛异常
+
+    def test_purge_deleted_amiya_plan_releases_only_its_waiting_flag(self):
+        from arknights_mower.solvers.mastery_reader import RoomState
+        from arknights_mower.views.mastery import _purge_plan_tasks
+
+        room = RoomState("empty", protected=True, amiya_form_waiting=True)
+        sched = types.SimpleNamespace(
+            tasks=[], task=None, amiya_pending_plan_id=5, train_room_state=room
+        )
+        fake = types.ModuleType("arknights_mower.__main__")
+        fake.base_scheduler = sched
+        with (
+            patch.dict(sys.modules, {"arknights_mower.__main__": fake}),
+            patch("arknights_mower.solvers.record.current_state", return_value=None),
+        ):
+            _purge_plan_tasks(9)
+            self.assertEqual(sched.amiya_pending_plan_id, 5)
+            self.assertTrue(room.amiya_form_waiting)
+            _purge_plan_tasks(5)
+        self.assertIsNone(sched.amiya_pending_plan_id)
+        self.assertFalse(room.amiya_form_waiting)
+        self.assertTrue(room.protected)
 
     def test_purge_plan_tasks_snapshot_excludes_current_deleted_plan(self):
         # 边界：被删计划的任务当前正被派发（base_scheduler.task）→ live 队列保留

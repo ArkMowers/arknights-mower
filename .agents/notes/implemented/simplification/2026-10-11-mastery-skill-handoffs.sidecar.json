@@ -19,6 +19,9 @@
   "test_suites": [
     "arknights_mower/tests/mastery_skill_handoff_tests.py",
     "arknights_mower/tests/mastery_amiya_form_tests.py",
+    "arknights_mower/tests/mastery_restart_tests.py",
+    "arknights_mower/tests/mastery_db_tests.py",
+    "arknights_mower/tests/growth_crafting_order_tests.py",
     "arknights_mower/tests/mastery_view_tests.py",
     "ui/src/pages/MasteryRecommendation.test.js"
   ]

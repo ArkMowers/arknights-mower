@@ -97,7 +97,9 @@ def test_dispatch_missing_form_preserves_halving_and_next_visit_resumes(
     started.assert_not_called()
     solver.choose_train.assert_not_called()
     solver.ctap.assert_not_called()
-    update.assert_any_call(candidate["id"], "idle")
+    update.assert_any_call(
+        candidate["id"], "idle", failed_reason=reader.AMIYA_FORM_WAIT_REASON
+    )
     assert not any(call.args[1] == "failed" for call in update.call_args_list)
     assert notification.call_args.kwargs["level"] == "ERROR"
     assert "手动切换" in notification.call_args.args[0]

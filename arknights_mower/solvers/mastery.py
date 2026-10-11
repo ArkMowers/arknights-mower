@@ -1076,7 +1076,10 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
 
 
 def _defer_amiya_form(solver, plan, room, available):
-    from arknights_mower.solvers.mastery_reader import _schedule_amiya_form_recheck
+    from arknights_mower.solvers.mastery_reader import (
+        AMIYA_FORM_WAIT_REASON,
+        _schedule_amiya_form_recheck,
+    )
     from arknights_mower.utils.mastery_db import update_plan_status
 
     # No assistant mutation has occurred before the skill-name check.
@@ -1090,7 +1093,7 @@ def _defer_amiya_form(solver, plan, room, available):
         solver.amiya_pending_plan_id = plan["id"]
         if room is not None:
             room.amiya_form_waiting = True
-    update_plan_status(plan["id"], "idle")
+    update_plan_status(plan["id"], "idle", failed_reason=AMIYA_FORM_WAIT_REASON)
     _schedule_amiya_form_recheck(solver, plan)
     _notify_amiya_form_wait(plan, available, holding)
     solver.back_to_infrastructure()

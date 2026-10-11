@@ -79,6 +79,11 @@ def _purge_plan_tasks(plan_id):
     if not isinstance(tasks, list):
         return
     current = getattr(base_scheduler, "task", None)
+    if getattr(base_scheduler, "amiya_pending_plan_id", None) == plan_id:
+        base_scheduler.amiya_pending_plan_id = None
+        room = getattr(base_scheduler, "train_room_state", None)
+        if room is not None:
+            room.amiya_form_waiting = False
     keys = {str(plan_id)}
     tasks[:] = [
         t for t in tasks if t is current or getattr(t, "plan_key", None) not in keys
@@ -521,10 +526,7 @@ class MasteryPlanView(MethodView):
         # （True==1）也不得静默接受。对齐 #97 retry 畸形 id 400 的校验。
         if isinstance(plan_id, bool) or not isinstance(plan_id, int):
             return {"error": f"invalid id: {plan_id}"}, 400
-        try:
-            deleted = delete_plan(plan_id, protect_active=True)
-        except ValueError as exc:
-            return {"error": str(exc)}, 409
+        deleted = delete_plan(plan_id)
         if deleted:
             # #97：删计划清残留队列任务（该 plan_key 的 SKILL_UPGRADE/SWAP/fill），
             # 否则残留任务仍会按 plan_key 派发到已删计划。

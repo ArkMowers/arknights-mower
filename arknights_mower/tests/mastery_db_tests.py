@@ -193,6 +193,18 @@ class TestMasteryDb(unittest.TestCase):
             "删除后该计划通知可重发（去重行已清）",
         )
 
+    def test_delete_plan_cleans_prefixed_form_and_support_notifications(self):
+        pid = insert_plan("char_001", 0, 3, path=self.db_path)
+        for kind in ("support_swap", "amiya_form"):
+            for key in (f"{pid}:mismatch:1", f"{pid + 10}:mismatch:1"):
+                self.assertTrue(should_notify(kind, key, path=self.db_path))
+        self.assertTrue(delete_plan(pid, path=self.db_path))
+        for kind in ("support_swap", "amiya_form"):
+            self.assertTrue(should_notify(kind, f"{pid}:mismatch:1", path=self.db_path))
+            self.assertFalse(
+                should_notify(kind, f"{pid + 10}:mismatch:1", path=self.db_path)
+            )
+
     def test_ensure_tables_once_per_path(self):
         # #82：同一库路径进程内只建表一次（_tables_created 记录已建库路径）
         from arknights_mower.utils import mastery_db

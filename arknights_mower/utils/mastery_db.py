@@ -673,22 +673,10 @@ def auto_interleave_new_plans(
         return False
 
 
-def delete_plan(
-    plan_id: int, path: Optional[str] = None, *, protect_active=False
-) -> bool:
+def delete_plan(plan_id: int, path: Optional[str] = None) -> bool:
     try:
         with _conn(path) as conn:
-            if protect_active:
-                conn.execute("BEGIN IMMEDIATE")
-                row = conn.execute(
-                    "SELECT * FROM mastery_plan WHERE id=?", (plan_id,)
-                ).fetchone()
-                plan = dict(row) if row else None
-                if plan and (
-                    plan["status"] in ("arranging", "training", "waiting_collect")
-                    or get_material_waiting_plan([plan]) is not None
-                ):
-                    raise ValueError("正在训练或等待继续的计划不能删除")
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute("DELETE FROM mastery_plan WHERE id=?", (plan_id,))
             # #97：删计划顺带清通知去重（②③⑥⑦⑧ 用 str(plan_id) 作 dedup_key）——
             # 避免孤儿 dedup 残留；重加同计划（新 id）本就会重新通知，这里是卫生清理。
@@ -697,14 +685,12 @@ def delete_plan(
             )
             prefix = f"{plan_id}:"
             conn.execute(
-                "DELETE FROM mastery_notify WHERE notify_type='support_swap' "
+                "DELETE FROM mastery_notify WHERE notify_type IN ('support_swap', 'amiya_form') "
                 "AND substr(dedup_key, 1, ?) = ?",
                 (len(prefix), prefix),
             )
             conn.commit()
             return True
-    except ValueError:
-        raise
     except Exception as e:
         logger.error(f"delete_plan failed: {e}")
         return False

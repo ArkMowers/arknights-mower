@@ -67,6 +67,7 @@ ARRANGING_RETRY_BUFFER = timedelta(minutes=2)
 PROTECT_OPERATORS = ("逻各斯", "艾丽妮")
 AMIYA_FORM_IDS = ("char_002_amiya", "char_1001_amiya2", "char_1037_amiya3")
 AMIYA_SKILL_LIST_REGION = ((0, 125), (1000, 1080))
+AMIYA_FORM_WAIT_REASON = "等待确认阿米娅升变技能"
 
 # 技能选择页目标技能槽的专精星（已到target检测）。实机坐标已校准：
 # 每个技能 3 颗星，三角排列，点亮顺序 顶→右下→左下：专一=顶、专二=右下、
@@ -460,11 +461,35 @@ def _check_pending_amiya_form(solver, room):
     """Recheck on every room visit; never turn a missing form into a global pause."""
     from arknights_mower.utils.csleep import MowerExit
     from arknights_mower.utils.device.recovery import DeviceRecoveryError
-    from arknights_mower.utils.mastery_db import get_plan_by_id
+    from arknights_mower.utils.mastery_db import (
+        get_all_plans,
+        get_plan_by_id,
+        update_plan_status,
+    )
 
     pending_id = getattr(solver, "amiya_pending_plan_id", None)
     if not isinstance(pending_id, int):
-        return
+        if not (
+            room.slots_reliable
+            and room.state == "empty"
+            and room.train_slot == "阿米娅"
+            and room.support_slot in PROTECT_OPERATORS
+        ):
+            return
+        pending = next(
+            (
+                p
+                for p in get_all_plans()
+                if p["status"] == "idle"
+                and p["char_id"] in AMIYA_FORM_IDS
+                and p.get("failed_reason") == AMIYA_FORM_WAIT_REASON
+            ),
+            None,
+        )
+        if pending is None:
+            return
+        pending_id = pending["id"]
+        solver.amiya_pending_plan_id = pending_id
     plan = get_plan_by_id(pending_id)
     if not plan or plan["status"] in ("completed", "failed"):
         solver.amiya_pending_plan_id = None
@@ -489,6 +514,7 @@ def _check_pending_amiya_form(solver, room):
             available = None
         returned = _back_to_train_main(solver)
         if available is True and returned:
+            update_plan_status(plan["id"], "idle", failed_reason="")
             solver.amiya_pending_plan_id = None
             _schedule_scan_start(solver, plan)
             return
@@ -1352,13 +1378,13 @@ def _reset_fake(solver, plan, room):
 
 
 def _update_expiry(solver, plan, room):
-    """training×🔴 一致：重读倒计时、更新 expires_at（同值跳过 DB 写）。
+    """training×🔴 一致：同步训练状态与 expires_at，两者均一致时跳过写入。
 
     B8：本函数不校验采纳条件——两个调用点（active/hit）都先过 `_can_adopt_expiry`
     （面板干员名+技能名可读且匹配）。任一采纳漏掉该门，不可读的外人倒计时会持续
     「祝福」计划、或把 waiting_collect 无校验降回 training。
-    #82：拆出「排收取」——只写 expires_at（同值不重写，进房不再无谓写 DB），
-    收取由调用方在换人判定后决定（排了换人则不排收取，§5.2 半重叠消除）。
+    收取由调用方在换人判定后决定；本函数只同步状态和截止时间，
+    排了换人则不排收取（§5.2 半重叠消除）。
     """
     from arknights_mower.utils.mastery_db import update_plan_status
 
@@ -1366,7 +1392,7 @@ def _update_expiry(solver, plan, room):
     if countdown is None:
         return
     expires_at = countdown.strftime("%Y-%m-%d %H:%M:%S")
-    if plan.get("expires_at") != expires_at:
+    if plan.get("status") != "training" or plan.get("expires_at") != expires_at:
         update_plan_status(plan["id"], "training", expires_at=expires_at)
 
 
@@ -1988,6 +2014,9 @@ def _reconcile(
     # arranging × 任何列 → 重置 idle
     if active is not None and active["status"] == "arranging":
         _reset_to_idle(solver, active)
+        for plan in plans:
+            if plan["id"] == active["id"]:
+                plan["status"] = "idle"
         active = None
 
     # §4.3 OCR 失败 5 次仍不一致 → 保守训练中：不动 + 记日志。
@@ -2233,11 +2262,13 @@ def reconcile_short(solver, room_state: RoomState, defer_collect=False):
     """
     from arknights_mower.utils.mastery_db import get_active_plan, get_reconcile_plans
 
-    _reconcile(
+    start_plan, _ = _reconcile(
         solver,
         room_state,
         get_active_plan(),
         get_reconcile_plans(),
         defer_collect=defer_collect,
     )
+    if start_plan is not None:
+        _schedule_scan_start(solver, start_plan)
     return room_state.collected
