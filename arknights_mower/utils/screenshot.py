@@ -103,7 +103,10 @@ class ScreenshotStore:
             raise ValueError("截图清理间隔必须大于 0")
         self.folder = Path(folder)
         self.retention_hours = retention_hours
-        self.logger = logger or logging.getLogger(__name__)
+        if logger is None:
+            from arknights_mower.utils.log import logger
+
+        self.logger = logger
         self.cleanup_interval = cleanup_interval
         self.max_pending_count = max_pending_count
         self.max_pending_bytes = max_pending_bytes

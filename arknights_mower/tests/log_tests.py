@@ -9,7 +9,7 @@ from pathlib import Path
 from queue import Queue
 from unittest.mock import Mock, patch
 
-from arknights_mower.utils import log, path
+from arknights_mower.utils import config, log, path
 from arknights_mower.utils.log_retention import RUNTIME_LOG_RETENTION_HOURS
 
 
@@ -148,7 +148,7 @@ class ErrorArchivePolicyTest(MultiProcessLogTestBase):
         store = Mock()
         with (
             patch.object(log, "get_screenshot_store", return_value=store),
-            patch.object(log.config.log_queue, "put") as put,
+            patch.object(config.log_queue, "put") as put,
         ):
             log.whlr.emit(self.record("utils/resource_pkg.py"))
         store.mark_error.assert_not_called()
@@ -160,7 +160,7 @@ class ErrorArchivePolicyTest(MultiProcessLogTestBase):
         store.mark_error.return_value = "123"
         with (
             patch.object(log, "get_screenshot_store", return_value=store),
-            patch.object(log.config.log_queue, "put") as put,
+            patch.object(config.log_queue, "put") as put,
         ):
             log.whlr.emit(self.record("solvers/base_schedule.py"))
         store.mark_error.assert_called_once()
@@ -176,7 +176,7 @@ class ErrorArchivePolicyTest(MultiProcessLogTestBase):
         )
         with (
             patch.object(log, "get_screenshot_store", return_value=store),
-            patch.object(log.config.log_queue, "put") as put,
+            patch.object(config.log_queue, "put") as put,
         ):
             log.whlr.emit(record)
         self.assertEqual(store.mark_error.call_args.args[1], "警告：运行失败")

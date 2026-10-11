@@ -1,6 +1,5 @@
 """One process-owned, ordered shutdown for desktop and server entry points."""
 
-import logging
 import os
 from enum import IntEnum
 from threading import Event, Lock, Thread, get_ident
@@ -89,9 +88,9 @@ class Shutdown:
             resource.close()
         except Exception as exc:
             self.errors.append((resource.name, exc))
-            logging.getLogger("arknights_mower.utils.log").exception(
-                "关闭自有资源失败：%s", resource.name
-            )
+            from arknights_mower.utils.log import logger
+
+            logger.exception("关闭自有资源失败：%s", resource.name)
 
     def close(self, reason="exit"):
         self.request(reason)

@@ -15,6 +15,7 @@ from arknights_mower.utils.config_backup import (
     export_archive,
     import_configuration,
 )
+from arknights_mower.utils.log import logger
 
 config_backup_bp = Blueprint("config_backup", __name__, url_prefix="/config-backup")
 
@@ -83,7 +84,7 @@ def import_backup():
                 "message": "备份格式不正确或配置值无效，请选择包含 config 文件夹的 ZIP 备份（需要 conf.yml 和 plan.json）",
             }, 400
         except (OSError, sqlite3.Error):
-            current_app.logger.exception("配置导入写入失败")
+            logger.exception("配置导入写入失败")
             return {
                 "ok": False,
                 "message": "配置写入失败，请检查磁盘空间和目录权限；导入前备份保存在 config-backups 目录",

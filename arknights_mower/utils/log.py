@@ -10,7 +10,6 @@ from threading import Lock, Thread
 
 import colorlog
 
-from arknights_mower.utils import config
 from arknights_mower.utils.log_retention import RUNTIME_LOG_RETENTION_HOURS
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.screenshot import ScreenshotStore
@@ -108,10 +107,11 @@ class Handler(logging.StreamHandler):
         msg = f"{record.asctime} {record.levelname} {summary}"
         if record.exc_info and record.levelno < logging.ERROR:
             msg += "\n" + "".join(traceback.format_exception(*record.exc_info))
-        config.log_queue.put(msg)
+        frontend_log_queue.put(msg)
 
 
 # w(ebsocket)hlr: WebSocket
+frontend_log_queue = Queue()
 whlr = Handler()
 whlr.setLevel(logging.INFO)
 
@@ -243,6 +243,8 @@ def _store() -> ScreenshotStore | None:
     多份清理线程并发删除同一批文件时，Windows 会让其中一次以 WinError 5 失败
     并记一条清理错误。
     """
+    from arknights_mower.utils import config
+
     global _store_instance
     with _store_lock:
         if _store_closed:

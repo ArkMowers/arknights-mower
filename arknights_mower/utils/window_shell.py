@@ -1,8 +1,9 @@
 import json
-import logging
 import platform
 from threading import Lock
 from typing import Any, NamedTuple
+
+from arknights_mower.utils.log import logger
 
 WINDOW_SHELL_PROTOCOL = "mower-window-shell-v1"
 WINDOW_SHELL_EVENT = "mower-window-state"
@@ -39,8 +40,6 @@ _BACKGROUND_COLORS = {
     "light": "#FAF9F7",
     "dark": "#18181C",
 }
-
-logger = logging.getLogger(__name__)
 
 # Cached after the first successful probe: it is read before the window exists
 # (the process is not yet DPI-aware, so Windows returns *logical* pixels), and

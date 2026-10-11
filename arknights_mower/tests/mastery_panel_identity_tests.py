@@ -11,7 +11,7 @@ import pytest
 from PIL import ImageFont
 
 from arknights_mower.solvers import mastery, mastery_reader
-from arknights_mower.utils import email, log, mastery_db, mastery_recommendation
+from arknights_mower.utils import config, email, log, mastery_db, mastery_recommendation
 from arknights_mower.utils.mastery_panel_model import FONT_SIZE, render_template
 from arknights_mower.utils.scene import Scene
 
@@ -160,7 +160,7 @@ def test_terminal_failure_reaches_archive_before_notification_and_exit(
         events.append("archive") or "mastery-archive"
     )
     monkeypatch.setattr(log, "get_screenshot_store", lambda: store)
-    monkeypatch.setattr(log.config.log_queue, "put", MagicMock())
+    monkeypatch.setattr(config.log_queue, "put", MagicMock())
     monkeypatch.setattr(mastery_db, "update_plan_status", MagicMock())
 
     def make_email(*_, **__):
@@ -211,7 +211,7 @@ def test_terminal_failure_reaches_archive_before_notification_and_exit(
     assert "白面鸮 二技能·脑啡肽 专1" in store.mark_error.call_args.args[1]
     assert any(
         "记录编号 mastery-archive" in call.args[0]
-        for call in log.config.log_queue.put.call_args_list
+        for call in config.log_queue.put.call_args_list
     )
 
 

@@ -1,7 +1,6 @@
 """Shared proxy settings for subsequent requests and newly launched children."""
 
 import json
-import logging
 import os
 import threading
 from urllib.parse import urlsplit
@@ -170,7 +169,9 @@ def start_proxy_sync():
                 try:
                     apply_http_proxy()
                 except Exception:
-                    logging.getLogger(__name__).exception("同步网络代理设置失败")
+                    from arknights_mower.utils.log import logger
+
+                    logger.exception("同步网络代理设置失败")
 
         _sync_thread = threading.Thread(
             target=sync, name="mower-proxy-sync", daemon=True

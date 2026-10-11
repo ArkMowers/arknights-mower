@@ -3,10 +3,11 @@ import re
 from dataclasses import asdict
 
 from arknights_mower.agent.tools.debuginfo import DebugInfo
+from arknights_mower.utils.log import logger
 
 
 def extract_stack_paths(text: str) -> str:
-    print("正在提取栈追踪信息...", text)
+    logger.debug("正在提取栈追踪信息：%s", text)
     pattern = re.compile(
         r"(?:File|at)\s+['\"]?(.*?\.(?:py|cs|java|js|ts))['\"]?(?:[:,\s]+line\s+)?(\d+)?",
         re.IGNORECASE,

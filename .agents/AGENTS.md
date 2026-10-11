@@ -17,6 +17,8 @@ A local repair that reveals an independent contract decision moves that decision
 
 ### Before Implementation
 
+New Python modules that emit application logs apply the [shared logger rule](skills/mower-code-review/SKILL.md#shared-logger).
+
 Before changing production behavior, check relevant prior work within the affected scope:
 
 1. Locate the affected entry points, callers, governing contract and existing invariant identifiers.
