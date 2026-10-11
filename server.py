@@ -2978,7 +2978,8 @@ def recycling_settings():
             if not isinstance(payload, dict) or "ratios" not in payload:
                 raise ValueError("请提供产物价值比例")
             return record.update_recycling_valuation(
-                ratios=validate_ratios(payload["ratios"])
+                ratios=validate_ratios(payload["ratios"]),
+                base_algorithm=payload.get("base_algorithm"),
             )
         return record.get_recycling_valuation()
     except ValueError as exc:

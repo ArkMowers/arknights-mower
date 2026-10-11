@@ -18,7 +18,7 @@ CHAR_ID = "char_4186_tmoris"
 
 
 @pytest.fixture
-def roster(tmp_path, monkeypatch):
+def roster(tmp_path, monkeypatch, income_db):
     path = tmp_path / "cultivate.json"
     skills_path = tmp_path / "skill_data.json"
     skills_path.write_text(

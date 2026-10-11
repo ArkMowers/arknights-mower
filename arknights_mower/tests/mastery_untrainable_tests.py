@@ -9,6 +9,8 @@ import pytest
 from arknights_mower.utils import mastery_db as db
 from arknights_mower.utils import mastery_recommendation as rec
 
+pytestmark = pytest.mark.usefixtures("income_db")
+
 
 def test_bundled_mastery_data_contains_only_trainable_characters():
     data_path = Path(__file__).parents[1] / "data/skill_data.json"

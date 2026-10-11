@@ -20,6 +20,9 @@
     "arknights_mower/tests/infra_collection_tests.py",
     "arknights_mower/tests/automatic_rescue_tests.py",
     "arknights_mower/tests/recycling_valuation_tests.py",
-    "ui/src/pages/RecyclingStats.test.js"
+    "ui/src/components/IncomeSettings.test.js",
+    "ui/src/utils/incomeSettings.test.js",
+    "ui/src/pages/report.test.js",
+    "arknights_mower/tests/growth_value_tests.py"
   ]
 }

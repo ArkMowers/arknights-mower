@@ -1,14 +1,16 @@
 """Validate local Yituliu valuation imports and calculator assumptions."""
 
+import json
 import math
 import posixpath
 import re
 import xml.etree.ElementTree as ET
+from functools import lru_cache
 from io import BytesIO
+from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
 from arknights_mower.data import key_mapping
-from arknights_mower.utils.recycling import recycling_model
 
 DEFAULT_RATIOS = {
     "experience": 1.0,
@@ -16,26 +18,50 @@ DEFAULT_RATIOS = {
     "order": 733 / 2990,
     "efficiency": 1.0,
 }
+BASE_ALGORITHMS = {
+    0: {"experience": 1.0, "gold": 0.8, "order": 0.2},
+    1: {"experience": 1.0, "gold": 0.8, "order": 733 / 2990},
+    2: {"experience": 0.9568, "gold": 0.76544, "order": 0.23456},
+}
 MAX_IMPORT_BYTES = 2 * 1024 * 1024
 _NS = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 _REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
 
+@lru_cache(maxsize=1)
+def default_price_catalog():
+    return json.loads(
+        (Path(__file__).parents[1] / "data/growth_values.json").read_text("utf-8")
+    )
+
+
 def default_valuation():
-    model = recycling_model()
+    catalog = default_price_catalog()
     return {
         "prices": {
-            row["name"]: row["sanity"] for row in model["ordinary"] + model["extra"]
+            row["name"]: row["value"]
+            for iid, row in catalog["items"].items()
+            if iid != "4001"
         },
-        "lmd_sanity": 0.0036,
-        "source": "计算器内置价值快照",
+        "lmd_sanity": catalog["items"]["4001"]["value"],
+        "source": catalog["_meta"]["source"],
+        "metadata": dict(catalog["_meta"]),
         "imported_at": None,
         "ratios": dict(DEFAULT_RATIOS),
-        "item_ids": {
-            row["name"]: str(key_mapping[row["name"]][0])
-            for row in model["ordinary"] + model["extra"]
-        },
+        "base_algorithm": 1,
+        "base_algorithm_saved": False,
+        "item_ids": {row["name"]: iid for iid, row in catalog["items"].items()},
     }
+
+
+def validate_base_algorithm(algorithm, ratios):
+    if type(algorithm) is not int or algorithm not in (-1, 0, 1, 2):
+        raise ValueError("请选择有效的基报收益算法")
+    if algorithm != -1 and any(
+        ratios[key] != value for key, value in BASE_ALGORITHMS[algorithm].items()
+    ):
+        raise ValueError("收益系数与所选基报算法不一致")
+    return algorithm
 
 
 def validate_ratios(values):

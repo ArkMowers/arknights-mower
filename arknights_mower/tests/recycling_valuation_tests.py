@@ -30,7 +30,10 @@ def value_file(
     optional_unpriced=False,
     lmd_price="0.01",
 ):
-    names = sorted(default_valuation()["prices"])
+    from arknights_mower.utils.recycling import recycling_model
+
+    model = recycling_model()
+    names = sorted({row["name"] for row in model["ordinary"] + model["extra"]})
     rows = [("物品id", "物品名称", "等效理智", "物品稀有度")]
     for name in names:
         if name != omit:
@@ -193,7 +196,10 @@ def test_saved_import_revalues_history_and_export_using_same_snapshot(db):
         > result["calculator"]["manufacturing_equivalent"]
     )
     record.update_recycling_valuation(reset=True)
-    assert record.get_recycling_valuation() == default_valuation()
+    assert record.get_recycling_valuation() == {
+        **default_valuation(),
+        "base_algorithm_saved": True,
+    }
     assert (
         record.get_recycling_history("2026-10-10", "2026-10-10")["records"]
         == report["records"]
@@ -243,7 +249,10 @@ def test_import_and_settings_routes_preserve_previous_snapshot_on_errors(
     for payload in [{}, {"ratios": None}, {"ratios": {"experience": 1}}]:
         assert client.put(route, headers=headers, json=payload).status_code == 400
         assert client.get(route, headers=headers).json == before
-    assert client.delete(route, headers=headers).json == default_valuation()
+    assert client.delete(route, headers=headers).json == {
+        **default_valuation(),
+        "base_algorithm_saved": True,
+    }
 
 
 def test_incremental_import_keeps_new_materials_and_previous_prices(db):
@@ -257,7 +266,7 @@ def test_incremental_import_keeps_new_materials_and_previous_prices(db):
     assert saved["last_import"] == {
         "updated": 1,
         "added": 1,
-        "retained": 50,
+        "retained": len(original["prices"]),
         "unpriced": [],
     }
     record.save_recycling_collection("new", at(10), [], {"未来新材料": 3})
@@ -294,3 +303,128 @@ def test_new_material_identity_conflict_leaves_saved_prices_unchanged(db):
     with pytest.raises(ValueError, match="已保存 ID"):
         record.update_recycling_valuation(imported=conflicting)
     assert record.get_recycling_valuation() == before
+
+
+@pytest.mark.parametrize("algorithm", [0, 1, 2, -1])
+def test_shared_base_algorithm_persists_and_rejects_mismatched_preset(db, algorithm):
+    from arknights_mower.utils.recycling_valuation import BASE_ALGORITHMS
+
+    ratios = {**DEFAULT_RATIOS, **BASE_ALGORITHMS.get(algorithm, {"gold": 2})}
+    saved = record.update_recycling_valuation(ratios=ratios, base_algorithm=algorithm)
+    assert record.get_recycling_valuation() == saved
+    assert saved["base_algorithm"] == algorithm
+    assert saved["base_algorithm_saved"] is True
+    with pytest.raises(ValueError, match="不一致"):
+        record.update_recycling_valuation(
+            ratios={**ratios, "gold": 9}, base_algorithm=0
+        )
+    assert record.get_recycling_valuation() == saved
+
+
+def test_imported_values_reach_growth_and_recycling_with_same_source(db):
+    from arknights_mower.utils.growth_value import consumed_statistics, price_catalog
+
+    record.update_recycling_valuation(
+        imported=import_yituliu_values(value_file(only_new=True, price="20"))
+    )
+    record.save_recycling_collection("future", at(10), [], {"未来新材料": 3})
+    catalog = price_catalog()
+    assert catalog["items"]["future_999"]["value"] == 20
+    char = {"id": "char_test", "evolvePhase": 0, "level": 1, "mainSkillLevel": 2}
+    definition = {
+        "rarity": 6,
+        "phases": [{"max_level": 1}],
+        "basic_skills": [[{"id": "future_999", "count": 3}]],
+    }
+    data = {
+        "characters": {"char_test": definition},
+        "experience": [],
+        "level_gold": [],
+        "promotion_gold": [],
+    }
+    row = consumed_statistics([char], {}, data)["6"]
+    comparison = record.get_recycling_history("2026-10-10", "2026-10-10")["comparison"]
+    assert row["sanity_value"] == comparison["actual_sanity"] == 60
+    assert row["sanity_source"] == comparison["valuation"]["metadata"]
+    assert row["sanity_source"]["pricing_mode"] == "imported"
+    assert comparison["expected_sanity"] is None
+
+
+def test_legacy_builtin_prices_upgrade_but_custom_imports_survive(db):
+    import json
+
+    with record._conn() as connection:
+        connection.execute(
+            "INSERT INTO recycling_valuation VALUES (1, ?)",
+            (
+                json.dumps(
+                    {
+                        "source": "计算器内置价值快照",
+                        "prices": {"装置": 8.159},
+                        "item_ids": {"装置": "30062"},
+                        "ratios": DEFAULT_RATIOS,
+                    }
+                ),
+            ),
+        )
+    assert record.get_recycling_valuation()["prices"]["装置"] == pytest.approx(
+        8.16879195924877
+    )
+    with record._conn() as connection:
+        connection.execute(
+            "UPDATE recycling_valuation SET payload = ?",
+            (
+                json.dumps(
+                    {
+                        "source": "一图流导入（未提供的价值保留原值）",
+                        "prices": {"装置": 11},
+                        "item_ids": {"装置": "30062"},
+                        "ratios": DEFAULT_RATIOS,
+                        "imported_at": 1,
+                    }
+                ),
+            ),
+        )
+    saved = record.get_recycling_valuation()
+    assert saved["base_algorithm_saved"] is False
+    assert saved["prices"]["装置"] == 11
+    assert saved["metadata"]["pricing_mode"] == "imported"
+    assert saved["metadata"]["source"] == saved["source"]
+    assert "中级作战记录" in saved["prices"]
+
+
+def test_settings_api_preserves_explicit_custom_algorithm(db, monkeypatch):
+    import server
+
+    monkeypatch.setattr(server.app, "token", "", raising=False)
+    client = server.app.test_client()
+    saved = client.put(
+        "/report/recycling_settings",
+        json={"ratios": DEFAULT_RATIOS, "base_algorithm": -1},
+    )
+    assert saved.status_code == 200
+    assert saved.json["base_algorithm"] == -1
+    before = saved.json
+    assert (
+        client.put(
+            "/report/recycling_settings",
+            json={"ratios": DEFAULT_RATIOS, "base_algorithm": 2},
+        ).status_code
+        == 400
+    )
+    assert client.get("/report/recycling_settings").json == before
+
+
+def test_default_assumptions_use_ce6_ls6_and_quarter_algorithm(db):
+    from arknights_mower.utils.growth_value import price_catalog
+
+    saved = record.get_recycling_valuation()
+    assert saved["base_algorithm"] == 1
+    assert saved["ratios"] == {
+        "experience": 1,
+        "gold": 0.8,
+        "order": 733 / 2990,
+        "efficiency": 1,
+    }
+    assert saved["metadata"]["pricing_config"]["expCoefficient"] == 0.9568
+    assert price_catalog()["items"]["2003"]["value"] == pytest.approx(3.44448)

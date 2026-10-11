@@ -355,7 +355,7 @@ def material_entries(
     return entries
 
 
-def statistics(chars, skills):
+def statistics(chars, skills, catalog=None):
     from arknights_mower.utils.growth_value import consumed_statistics
 
     definitions = growth_data(skills).get("characters", {})
@@ -388,7 +388,7 @@ def statistics(chars, skills):
         )
         row["masteries"] += sum(s.get("level") == 3 for s in char.get("skills", []))
     for rarity, values in consumed_statistics(
-        chars, skills, growth_data(skills)
+        chars, skills, growth_data(skills), catalog
     ).items():
         result[rarity].update(values)
     return result

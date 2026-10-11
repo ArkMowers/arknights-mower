@@ -16,7 +16,7 @@ from arknights_mower.utils import workshop_recommendation as workshop  # noqa: E
 
 
 @pytest.fixture
-def next_skill(monkeypatch, tmp_path):
+def next_skill(monkeypatch, tmp_path, income_db):
     from arknights_mower.utils import workshop_config
 
     monkeypatch.setattr(config, "conf", config.Conf())

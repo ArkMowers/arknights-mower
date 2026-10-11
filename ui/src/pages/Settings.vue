@@ -478,6 +478,9 @@ const idleOptions = computed(() => [
         <YituliuSyncSettings />
       </div>
       <div>
+        <IncomeSettings />
+      </div>
+      <div>
         <Depotswitch />
       </div>
       <div>

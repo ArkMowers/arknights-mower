@@ -21,7 +21,7 @@ The source-bound collection helper serves both entry paths. Existing material ic
 
 The bundled `recycling_model.json` preserves the supplied workbook's calculation inputs, including its sanity valuations. Production reads JSON without an Excel runtime dependency. Equal material quantity is the comparison denominator because a collection can contain several materials and does not expose the underlying ordinary or extra draw counts. This benchmark describes a long-run mixture, not operator efficiency or a short-run guarantee.
 
-The ordinary and extra weights each sum to 10000. Their weighted sanity values are 19.60789962777894 and 76.77420071774533. The extra-draw rate is 0.052613 per ordinary draw; dividing combined return by combined material quantity yields the displayed per-material benchmark. The formula and source ranges reside in the subsystem contract and the page's expandable explanation.
+The ordinary and extra weights each sum to 10000. The original workbook's weighted sanity values are 19.60789962777894 and 76.77420071774533. The extra-draw rate is 0.052613 per ordinary draw; dividing combined return by combined material quantity yields the displayed per-material benchmark. The formula and source ranges reside in the subsystem contract and the page's expandable explanation.
 
 The valuation settings reuse the existing SQLite boundary. A bounded standard-library Excel reader merges one-time Yituliu price imports, retains omitted values, rejects identity conflicts atomically and stores future item identities without inventing drop probabilities. Reports and exports share the saved snapshot. Editable product ratios and recycling efficiency reproduce the supplied calculator’s theoretical conversion; they do not alter observed materials or the probability pool. The subsystem contract owns input rules and formulas.
 
@@ -48,3 +48,15 @@ Pass: the change preserves device recovery propagation, uses existing SQLite own
 ## Spec Findings
 
 Pass for offline evidence and UI: both collection entry paths, time and actual roster snapshots, quantities, quality statistics and equal-material sanity comparison and full-range Excel export have focused coverage. Live recycling occupant-panel recognition remains a stated verification limit.
+
+## Shared Income Settings
+
+Mower settings places material valuation and base-report algorithms beside Yituliu synchronization. The report retains preset selection and custom coefficient editing at its original position, saving to the same configuration; the recycling page exposes the active assumptions and a settings link. The existing SQLite row stores algorithm selection, product coefficients and recycling efficiency. Confirmed server values take precedence over browser configuration; valid legacy report selections migrate once after a successful save. Reset is an explicit saved choice, so an old browser selection cannot restore itself afterward.
+
+The offline default is the Yituliu SideStory export captured on 2026-10-12, including its activity-average-stage switch and currency coefficients. The bundled growth catalog owns this snapshot and attribution. Legacy calculator defaults upgrade to these values, while imported prices and omitted-item defaults remain available. Recycling summaries, Excel exports and current growth statistics use the same active valuation. One recommendation response captures its catalog once for both growth aggregates. Historical growth observations retain their original values and provenance.
+
+Focused tests cover algorithm persistence and mismatched presets, authenticated API saves, migration, explicit reset precedence, failure preservation, imported future-item prices shared by recycling and growth, and retained legacy imports. Browser checks use example data rather than account or device traffic.
+
+The preset uses CE6 for LMD and CE6/LS6 for EXP (0.245 base-report algorithm), includes activity-token LMD value, retains four retired materials at token-equivalent LMD prices, and values purple sugar/polyester through crafting. White-to-green and green-to-blue crafting use Nine-Colored Deer; blue-to-purple and purple-to-gold use Nian.
+
+Focused verification of the shared settings and defaults passes 316 backend tests and 38 frontend tests. Report tests exercise preset and custom saves, immediate earnings recalculation including special gold, tooltip rendering and failed-save preservation. Backend tests cover exact bundled pricing parameters and values, shared future-material imports, legacy migration and saved-choice precedence. The frontend production build and governance checks pass; live-device collection remains pending.

@@ -109,7 +109,15 @@ def test_probability_snapshot_reconciles_with_calculation_sheet():
     model = recycling.recycling_model()
     assert sum(row["weight"] for row in model["ordinary"]) == 10000
     assert sum(row["weight"] for row in model["extra"]) == 10000
-    stats = recycling.recycling_expectation([{"name": "装置", "count": 2}])
+    from arknights_mower.utils.recycling_valuation import default_valuation
+
+    valuation = default_valuation()
+    valuation["prices"] = {
+        row["name"]: row["sanity"] for row in model["ordinary"] + model["extra"]
+    }
+    stats = recycling.recycling_expectation(
+        [{"name": "装置", "count": 2}], valuation=valuation
+    )
     assert stats["ordinary_sanity"] == pytest.approx(19.60789962777894)
     assert stats["extra_sanity"] == pytest.approx(76.77420071774533)
     assert stats["extra_rate"] == pytest.approx(0.052613)

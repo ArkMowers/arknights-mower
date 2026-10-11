@@ -106,10 +106,8 @@
               = 卷1 ÷ 9 + 卷2 ÷ 3 + 卷3，不计加工副产品。
             </p>
             <p>
-              物品使用一图流已发布价值快照（{{
-                statistics.source?.retrieved_at
-              }}），材料价格包含其副产物估值；EXP 以中级作战记录每 1000 经验折算。自然恢复按每 6
-              分钟 1 理智、每天 240
+              物品价值使用 Mower 设置中的当前保存值（{{ statistics.source?.source }}）；EXP
+              以中级作战记录每 1000 经验折算。自然恢复按每 6 分钟 1 理智、每天 240
               理智折算。无法识别直升券等历史优惠，集成战略专属养成不计普通仓库材料。
             </p>
             <p>
@@ -118,7 +116,7 @@
               >
               ·
               <a :href="statistics.source?.values_url" target="_blank" rel="noopener noreferrer"
-                >固定价值快照</a
+                >一图流材料价值</a
               >
             </p>
           </n-collapse-item></n-collapse

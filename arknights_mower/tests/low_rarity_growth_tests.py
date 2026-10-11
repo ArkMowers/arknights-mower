@@ -13,6 +13,8 @@ from arknights_mower.tests.growth_planning_tests import (
 from arknights_mower.utils import growth, mastery_recommendation
 from arknights_mower.utils.operator_statistics import personal_statistics
 
+pytestmark = pytest.mark.usefixtures("income_db")
+
 
 @pytest.fixture
 def low_case(growth_case):

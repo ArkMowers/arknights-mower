@@ -712,12 +712,45 @@ def _recycling_date_bounds(start_date, end_date):
 
 
 def _recycling_valuation(connection):
-    from arknights_mower.utils.recycling_valuation import default_valuation
+    from arknights_mower.utils.recycling_valuation import (
+        BASE_ALGORITHMS,
+        default_valuation,
+    )
 
     row = connection.execute(
         "SELECT payload FROM recycling_valuation WHERE id = 1"
     ).fetchone()
-    return json.loads(row[0]) if row else default_valuation()
+    current = default_valuation()
+    if not row:
+        return current
+    saved = json.loads(row[0])
+    if saved.get("source") == "计算器内置价值快照":
+        saved.pop("prices", None)
+        saved.pop("item_ids", None)
+        saved.pop("source", None)
+    current["prices"].update(saved.pop("prices", {}))
+    current["item_ids"].update(saved.pop("item_ids", {}))
+    current.update(saved)
+    if "metadata" not in saved and current["source"] != default_valuation()["source"]:
+        current["metadata"] = {
+            **current["metadata"],
+            "source": current["source"],
+            "imported_at": current["imported_at"],
+            "pricing_mode": "imported",
+        }
+    if "base_algorithm" not in saved:
+        current["base_algorithm"] = next(
+            (
+                key
+                for key, values in BASE_ALGORITHMS.items()
+                if all(
+                    current["ratios"][name] == value for name, value in values.items()
+                )
+            ),
+            -1,
+        )
+        current["base_algorithm_saved"] = False
+    return current
 
 
 def get_recycling_valuation():
@@ -725,20 +758,40 @@ def get_recycling_valuation():
         return _recycling_valuation(connection)
 
 
-def update_recycling_valuation(*, ratios=None, imported=None, reset=False):
+def update_recycling_valuation(
+    *, ratios=None, imported=None, reset=False, base_algorithm=None
+):
     """Atomically update assumptions while retaining independent saved inputs."""
     from arknights_mower.utils.recycling_valuation import (
+        BASE_ALGORITHMS,
         default_valuation,
+        validate_base_algorithm,
         validate_ratios,
     )
 
     if ratios is not None:
         ratios = validate_ratios(ratios)
+        if base_algorithm is None:
+            base_algorithm = next(
+                (
+                    key
+                    for key, values in BASE_ALGORITHMS.items()
+                    if all(ratios[name] == value for name, value in values.items())
+                ),
+                -1,
+            )
+        base_algorithm = validate_base_algorithm(base_algorithm, ratios)
+    elif base_algorithm is not None:
+        raise ValueError("请同时提供收益系数")
     with _conn() as connection:
         connection.execute("BEGIN IMMEDIATE")
         current = default_valuation() if reset else _recycling_valuation(connection)
+        if reset:
+            current["base_algorithm_saved"] = True
         if ratios is not None:
             current["ratios"] = ratios
+            current["base_algorithm"] = base_algorithm
+            current["base_algorithm_saved"] = True
         if imported is not None:
             known_ids = current.get("item_ids", {})
             for name, item_id in imported["item_ids"].items():
@@ -761,6 +814,12 @@ def update_recycling_valuation(*, ratios=None, imported=None, reset=False):
                 current["lmd_sanity"] = imported["lmd_sanity"]
             current["source"] = "一图流导入（未提供的价值保留原值）"
             current["imported_at"] = datetime.now().timestamp()
+            current["metadata"] = {
+                **current["metadata"],
+                "source": current["source"],
+                "imported_at": current["imported_at"],
+                "pricing_mode": "imported",
+            }
         connection.execute(
             "INSERT OR REPLACE INTO recycling_valuation VALUES (1, ?)",
             (json.dumps(current, ensure_ascii=False, allow_nan=False),),

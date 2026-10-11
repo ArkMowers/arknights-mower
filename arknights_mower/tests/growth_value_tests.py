@@ -150,15 +150,34 @@ def test_integrated_strategy_unlocks_do_not_invent_depot_costs(valuation_case):
     assert row["sanity_incomplete"] == []
 
 
-def test_offline_snapshot_has_immutable_source_and_documented_currency_values():
+def test_offline_snapshot_has_ss_pricing_and_documented_currency_values(income_db):
     catalog = price_catalog()
-    assert catalog["_meta"]["commit"] in catalog["_meta"]["values_url"]
+    assert catalog["_meta"]["pricing_mode"] == "ss_activity"
+    assert catalog["_meta"]["pricing_config"]["useActivityAverageStage"] is True
+    assert (
+        catalog["_meta"]["pricing_config"]["useActivityAverageStageAndUnlimitedItem"]
+        is True
+    )
+    assert catalog["items"]["30062"]["value"] == pytest.approx(8.16879195924877)
     values = {iid: row["value"] for iid, row in catalog["items"].items()}
     assert values["4001"] == pytest.approx(36 / 10000)
+    assert values["2003"] == pytest.approx(3.44448)
+    for iid, lmd in [("30073", 500), ("30083", 600), ("30093", 700), ("30103", 800)]:
+        assert values[iid] == pytest.approx(lmd * values["4001"])
+    assert values["30024"] == pytest.approx(61.213545117368554)
+    assert values["30034"] == pytest.approx(60.83346032185234)
+    strategy = catalog["_meta"]["pricing_config"]["workshopStrategy"]
+    for key in ["eliteMaterialT1toT2", "eliteMaterialT2toT3"]:
+        assert strategy[key]["strategy"] == "WORKSHOP_STRATEGY_NINE_COLORED_DEER_OBTAIN"
+    for key in ["eliteMaterialT3toT4", "eliteMaterialT4toT5"]:
+        assert strategy[key] == {
+            "strategy": "WORKSHOP_STRATEGY_COMMON",
+            "byproductRateIncrease": 1,
+        }
     assert values["4006"] == pytest.approx(30 * (1 - 12 * values["4001"]) / 21)
     assert values["32001"] == pytest.approx(values["4006"] * 90)
     assert values["mod_unlock_token"] == pytest.approx(values["4006"] * 120)
-    assert "mod_update_token_1" not in values
+    assert values["mod_update_token_1"] == 0
 
 
 def test_compiler_preserves_all_module_levels_and_shared_progression():

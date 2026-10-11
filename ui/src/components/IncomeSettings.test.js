@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope } from 'vue'
-import RecyclingStats from './RecyclingStats.vue'
+import IncomeSettings from './IncomeSettings.vue'
 const state = vi.hoisted(() => ({ client: null }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
@@ -15,10 +15,12 @@ vi.mock('@/stores/config', async () => {
 const settings = () => ({
   prices: { 装置: 8 },
   source: '内置快照',
+  base_algorithm: -1,
+  base_algorithm_saved: true,
   ratios: { experience: 1, gold: 0.8, order: 0.25, efficiency: 1 }
 })
 const report = { total: 0, materials: [], qualities: [], records: [], comparison: null }
-describe('回收站收益配置', () => {
+describe('Mower 统一收益配置', () => {
   let scope, page
   beforeEach(() => {
     state.client = {
@@ -28,14 +30,14 @@ describe('回收站收益配置', () => {
       delete: vi.fn()
     }
     scope = effectScope()
-    page = scope.run(() => RecyclingStats.setup({}, { expose: vi.fn() }))
+    page = scope.run(() => IncomeSettings.setup({}, { expose: vi.fn() }))
     page.applySettings(settings())
   })
   afterEach(() => {
     scope.stop()
     vi.restoreAllMocks()
   })
-  it('提交比例快照并在保存成功后重新读取统计', async () => {
+  it('提交算法与比例快照，保存成功后采用确认值', async () => {
     page.ratios.experience = 2
     const saved = { ...settings(), ratios: { ...page.ratios } }
     let complete
@@ -48,13 +50,14 @@ describe('回收站收益配置', () => {
     const pending = page.updateSettings('ratios')
     page.ratios.experience = 3
     expect(state.client.put.mock.calls[0][1].ratios.experience).toBe(2)
+    expect(state.client.put.mock.calls[0][1].base_algorithm).toBe(-1)
     expect(page.settingsBusy.value).toBe(true)
     await page.updateSettings('reset')
     expect(state.client.delete).not.toHaveBeenCalled()
     complete({ data: saved })
     await pending
     expect(page.ratios.experience).toBe(2)
-    expect(state.client.get.mock.calls[0][0]).toContain('/report/recycling_history')
+    expect(state.client.get).not.toHaveBeenCalled()
     expect(page.settingsBusy.value).toBe(false)
   })
   it('导入新增材料显示合并结果，并允许再次选择同一文件', async () => {
