@@ -10040,7 +10040,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         battle_inventory_active.set()
 
         if os.environ.get("MOWER_ANDROID") == "1":
-            from mower_android.bridge import Bridge
             from mower_android.maa import Asst
 
             config.stop_maa.clear()
@@ -10051,15 +10050,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 pathlib.Path(resolve_config_path(config.conf.maa_path))
             )
             if navigation is not None:
-                try:
-                    loaded = Bridge().call("maa_navigation", tasks=navigation)
-                except RuntimeError as error:
-                    if "Unknown MAA operation" in str(error):
-                        raise MaaCallError(
-                            "load", detail="Android 宿主不支持活动导航加载，请更新 APK"
-                        ) from error
-                    raise
-                if not loaded:
+                from arknights_mower.utils.maa_resource_update import (
+                    load_android_maa_navigation,
+                )
+
+                if not load_android_maa_navigation(
+                    pathlib.Path(resolve_config_path(config.conf.maa_path)), navigation
+                ):
                     raise MaaCallError("load", detail="Android 活动导航加载失败")
                 logger.info("MAA Android 活动关卡导航加载成功")
             if not self.MAA.connect():

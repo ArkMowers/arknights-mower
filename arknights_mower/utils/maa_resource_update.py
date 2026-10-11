@@ -86,6 +86,43 @@ def _emit(
         callback(phase, current, total, message)
 
 
+@update_transaction
+def load_android_maa_navigation(target: Path, tasks: dict) -> bool:
+    """Load navigation through the host or prepare its existing component flow."""
+    from mower_android.bridge import Bridge
+
+    from arknights_mower.utils.maa_backup import MaaCallError
+
+    bridge = Bridge()
+    try:
+        return bool(bridge.call("maa_navigation", tasks=tasks))
+    except RuntimeError as error:
+        if "Unknown MAA operation" not in str(error):
+            raise
+
+    from mower_android.managed import COMPONENT, pack_component
+
+    try:
+        with ZipFile(COMPONENT) as archive:
+            packaged = json.loads(archive.read("cache/resource/tasks.json"))
+    except (OSError, BadZipFile, KeyError, ValueError):
+        packaged = None
+    if packaged != tasks:
+        pack_component(target)
+    component_hash = COMPONENT.with_suffix(".sha256").read_text().strip()
+    status = bridge.call("maa_status")
+    if (
+        len(component_hash) == 64
+        and all(char in "0123456789abcdef" for char in component_hash)
+        and status.get("component_hash") == component_hash
+    ):
+        return True
+    raise MaaCallError(
+        "load",
+        detail="活动导航已准备，请停止并重新启动手机服务后生效；更新 APK 后可直接热加载导航",
+    )
+
+
 def parse_resource_version(value: str) -> datetime:
     """把 MaaResource ``last_updated`` 解析为 UTC 时间。"""
     try:
