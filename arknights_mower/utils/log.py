@@ -117,7 +117,11 @@ whlr.setLevel(logging.INFO)
 
 log_queue = Queue()
 queue_handler = QueueHandler(log_queue)
-logger.addHandler(queue_handler)
+# The websocket path also lives on the package logger, the common ancestor of every
+# module logger. A record then reaches the listener exactly once: attaching this
+# handler to the shared logger as well would feed it twice, because the shared
+# branch queues its own record and again as it bubbles up.
+logging.getLogger("arknights_mower").addHandler(queue_handler)
 listener = QueueListener(log_queue, dhlr, whlr, respect_handler_level=True)
 listener.start()
 
@@ -145,7 +149,20 @@ def init_file_logging() -> None:
     fhlr.setFormatter(basic_formatter)
     fhlr.setLevel("DEBUG")
     fhlr.addFilter(filter)
-    logger.addHandler(fhlr)
+    # The queue path moves to the shared package logger, the common ancestor of
+    # every module logger, so a record from any module reaches the listener once.
+    # whlr stays out of the logger tree: it is the listener's own frontend sink,
+    # and a second path to it would deliver each record twice.
+    package_logger = logging.getLogger("arknights_mower")
+    if queue_handler in logger.handlers:
+        logger.removeHandler(queue_handler)
+    if queue_handler not in package_logger.handlers:
+        package_logger.addHandler(queue_handler)
+    package_logger.addHandler(fhlr)
+    if package_logger.getEffectiveLevel() > logging.DEBUG:
+        # The file handler itself is set to DEBUG; leaving the package logger at
+        # the root WARNING level would drop every module record before it.
+        package_logger.setLevel(logging.DEBUG)
     # 已有报错归档时，即使本次启动尚未截图，也要继续定期清理过期记录。
     if (Path(get_path("@app/screenshot")) / "errors").is_dir():
         _store()
@@ -159,20 +176,26 @@ def init_file_logging() -> None:
 # [WinError 32]。两个通过 subprocess.Popen 拉起的 worker（进程控制 / 软件更新）与主进程
 # 之间没有共享的 mp.Queue，走不进这条路，它们各自把输出写进 process.log / update.log。
 mp_queue_handler = None  # 子进程侧：把本进程的 logger 记录送上共享队列
-mp_listener = None  # 主进程侧：把共享队列里的记录写入 fhlr
+mp_listener = None  # 主进程侧：把共享队列里的记录写入 fhlr 与前端运行日志
 
 
 def bind_mp_queue(queue) -> None:
     """mp.Process 子进程使用：把本进程日志上行到主进程的共享队列。
 
-    子进程不调用 init_file_logging（不建 fhlr），只把 logger 挂到 QueueHandler(queue)，
-    记录由主进程的 start_mp_listener 消费后写入 runtime.log。
+    子进程不调用 init_file_logging（不建 fhlr），因此上行 handler 与主进程的 fhlr 一样挂在
+    共同祖先 arknights_mower 上：挂在共享 logger 上只覆盖 arknights_mower.utils.log 这一支，
+    子进程里真正运行的 window_shell、windows_frameless 等模块的 INFO/WARNING 虽然在本进程内
+    可见，却永远不会上行到主进程的 runtime.log。等级同理：包级 logger 留在 root 的 WARNING
+    时，INFO/DEBUG 在进入任何 handler 之前就被滤掉，所以一并设为 DEBUG，与 fhlr 的级别一致。
     """
     global mp_queue_handler
     if mp_queue_handler is not None:
         return
     mp_queue_handler = QueueHandler(queue)
-    logger.addHandler(mp_queue_handler)
+    package_logger = logging.getLogger("arknights_mower")
+    package_logger.addHandler(mp_queue_handler)
+    if package_logger.getEffectiveLevel() > logging.DEBUG:
+        package_logger.setLevel(logging.DEBUG)
 
 
 def start_mp_listener(queue) -> None:
@@ -181,12 +204,16 @@ def start_mp_listener(queue) -> None:
     QueueHandler.prepare 会把 message 连同异常栈一起格式化进 record.message，随后清空
     args / exc_info / exc_text，因此跨进程 pickle 安全，子进程的异常栈会随 message 落盘。
     须在能取得 fhlr 之后调用（内部会兜底 init_file_logging）。
+
+    子进程的记录与主进程走同样两条出口：fhlr 落盘、whlr 进前端运行日志。whlr 是 listener
+    自己的出口而非 logger 树上的 handler，两个 listener 共用同一个实例不会重复投递；fhlr 排
+    在 whlr 之前，先由它的 formatter 写入 record.asctime，Handler.emit 才取得到时间。
     """
     global mp_listener
     if mp_listener is not None:
         return
     init_file_logging()
-    mp_listener = QueueListener(queue, fhlr, respect_handler_level=True)
+    mp_listener = QueueListener(queue, fhlr, whlr, respect_handler_level=True)
     mp_listener.start()
 
 
@@ -219,14 +246,16 @@ def close_mp_logging():
 def close_logging():
     """Release only mower's listeners and file handler, after other resources."""
     global fhlr
+    package_logger = logging.getLogger("arknights_mower")
     close_mp_logging()
-    logger.removeHandler(queue_handler)
+    package_logger.removeHandler(queue_handler)
     if mp_queue_handler is not None:
-        logger.removeHandler(mp_queue_handler)
+        package_logger.removeHandler(mp_queue_handler)
     _stop_listener(listener)
     current, fhlr = fhlr, None
     if current is not None:
         logger.removeHandler(current)
+        package_logger.removeHandler(current)
         current.close()
 
 
