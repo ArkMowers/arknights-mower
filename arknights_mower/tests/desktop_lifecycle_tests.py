@@ -7,7 +7,7 @@ from time import monotonic
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from flask import Flask
+from flask import Flask, request
 
 from arknights_mower import utils
 from arknights_mower.tests.device_application_tests import ManualAdapter, ManualDevice
@@ -249,6 +249,7 @@ class DesktopStartupTests(unittest.TestCase):
         existing_install=False,
         cancel=None,
     ):
+        import server as task_server
         import webview_ui
 
         with ExitStack() as stack:
@@ -260,6 +261,8 @@ class DesktopStartupTests(unittest.TestCase):
             config.conf.resource_update.auto_update = resource
             config.stop_mower = threading.Event()
             server = Mock(app=Flask(__name__))
+            server.start = Mock(wraps=task_server.start)
+            stack.enter_context(patch.object(task_server, "app", server.app))
             server.resource_update.running.return_value = existing_install
             server.stop.return_value = "true"
             registration = Mock(record={})
@@ -284,6 +287,7 @@ class DesktopStartupTests(unittest.TestCase):
                 return {"update_available": True}
 
             def install_resource():
+                self.assertEqual(request.method, "POST")
                 events.append("install resource")
                 if cancel == "stop":
                     config.stop_mower.set()
@@ -293,7 +297,14 @@ class DesktopStartupTests(unittest.TestCase):
 
             server.get_resource_version.side_effect = check_resource
             server.install_resource.side_effect = install_resource
-            server.start.side_effect = lambda mode: events.append(("start", mode))
+
+            def start_worker(mode):
+                events.append(("start", mode))
+                return True
+
+            stack.enter_context(
+                patch.object(task_server, "_start_mower", side_effect=start_worker)
+            )
             workers = []
 
             def make_thread(*args, **kwargs):
@@ -355,6 +366,11 @@ class DesktopStartupTests(unittest.TestCase):
             for worker in workers:
                 worker()
             return events, server
+
+    def test_normal_autostart_admits_task_through_the_start_route(self):
+        events, server = self.launch()
+        self.assertEqual(events, [("start", "0")])
+        server.start.assert_called_once_with("0")
 
     def test_resource_install_finishes_before_the_single_process_start(self):
         for result in ({"ok": True}, {"ok": False}):
