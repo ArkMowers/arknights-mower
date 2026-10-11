@@ -34,6 +34,8 @@
 
 ### 2.1 Base Infrastructure & Scheduling
 
+- **[INV-SCHED-47] Consecutive Mastery Halving**: Eligible same-operator skills remain adjacent in ascending unstarted mastery order and admit training only when their joint remaining costs are craftable while preparing only the current skill; final-stage reducer handoffs require a same-operator successor above basic skill level, inherited halving requires observed continuous assistant work, and confirmed Control Center staffing changes refresh countdowns with a ten-minute default handoff margin.
+
 - **[INV-SCHED-46] Zero-Mood Replacement Exemption**: Working primaries configured for zero-mood work may omit replacements only when ungrouped or when every member of that binding is configured for zero-mood work; mixed groups and Fiammetta charging retain required replacements.
 - **[INV-SCHED-44] Training Slot Eligibility**: Manual and startup validation reject named training-slot assignments with synchronized basic skill level below seven or all skills at mastery three; assistant slots and placeholders are exempt, missing skill fields request synchronization, a failed refresh does not suppress known training eligibility errors, and failure messages direct users to meet the conditions and manually refresh Growth Planning.
 

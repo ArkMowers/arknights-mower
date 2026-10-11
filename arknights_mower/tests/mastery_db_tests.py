@@ -326,8 +326,8 @@ class TestMasteryDb(unittest.TestCase):
                 "mastery_swap_buffer": 10,
                 "mastery_swap_buffers": {
                     "no_central": 10,
-                    "central": 15,
-                    "central_unhalved_m2": 30,
+                    "central": 10,
+                    "central_unhalved_m2": 10,
                 },
             },
         )

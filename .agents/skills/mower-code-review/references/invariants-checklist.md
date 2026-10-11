@@ -87,6 +87,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-DEV-01] Native Back Dispatch**: With MuMu IPC selected, does Android BACK use the owned MuMu IPC worker, and does an uncertain result interrupt the operation without input replay or ADB fallback?
 
 ### 2.2 Base Infrastructure & Scheduling Domain
+
+- [ ] **[INV-SCHED-47] Consecutive Mastery Halving**: Eligible same-operator skills remain adjacent in ascending unstarted mastery order and admit training only when their joint remaining costs are craftable while preparing only the current skill; final-stage reducer handoffs require a same-operator successor above basic skill level, inherited halving requires observed continuous assistant work, and confirmed Control Center staffing changes refresh countdowns with a ten-minute default handoff margin.
 - [ ] **[INV-SCHED-46] Zero-Mood Replacement Exemption**: Does replacement omission depend on configured zero-mood work for the ungrouped primary or every member of that particular binding, while mixed groups, supplied replacement validity and Fiammetta targets remain checked?
 
 - [ ] **[INV-SCHED-44] Training Slot Eligibility**: Do manual and startup validation check training-slot primaries, every binding replacement and explicit backup tasks, share at most one refresh, report known skill failures after a failed refresh, direct users to meet the conditions and manually refresh Growth Planning, and preserve assistant, placeholder and missing-roster exemptions? See the [training-slot contract](../../../../docs/subsystems/base-scheduler.md#3-subsystem-invariants).

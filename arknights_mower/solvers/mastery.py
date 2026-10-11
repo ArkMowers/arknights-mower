@@ -348,9 +348,9 @@ def _fmt_completion_time(dt: datetime) -> str:
 
 
 def _swap_speed_totals(job_match, efficiency, central_bonus) -> tuple[float, float]:
-    """排期采用保守速率：当前协助者不计中枢，减半干员计入中枢。"""
+    """预览按全程中枢加成计算当前协助者和减半干员。"""
     swap_total = 100 + 5 + (30 if job_match else 0) + central_bonus
-    current_total = 100 + efficiency + 5
+    current_total = 100 + efficiency + 5 + central_bonus
     return swap_total, current_total
 
 
@@ -360,6 +360,8 @@ def calc_swap_threshold(
     central_bonus: int,
     remaining_minutes: float,
     buffer: int = DEFAULT_SWAP_BUFFER_MINUTES,
+    *,
+    current_central: int | None = None,
 ) -> tuple[bool, float]:
     """计算是否应该换入减半对象。
 
@@ -377,16 +379,16 @@ def calc_swap_threshold(
     """
     target_minutes = 300 + buffer  # 5小时 + 缓冲
 
-    # 排期继续保守提前；最后检查按同一中枢设置计算两边速度。
+    # 预览两边计入中枢；运行时可传入当前实际中枢加成。
     swap_total, current_total = _swap_speed_totals(
         swap_job_match, current_efficiency, central_bonus
     )
+    if current_central is not None:
+        current_total += current_central - central_bonus
 
     threshold = target_minutes * swap_total / current_total
 
-    real_time_after_swap = (
-        remaining_minutes * (current_total + central_bonus) / swap_total
-    )
+    real_time_after_swap = remaining_minutes * current_total / swap_total
     if real_time_after_swap < 301:
         return False, threshold
 
@@ -739,10 +741,8 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
 
     #16 决议：进房先读倒计时定分支，不盲点技能按钮。
     #15 决议：全程纯墙钟 5 分钟 deadline，各分支短处理、超时走统一退出路径。
-    #103：路线 operator 每次开始照常安排（2026-08-17 用户拍板）——原 #63 减半守卫在
-    「收取→下一次开始」边界传 arrange_support=False、不动协助位，把「专三不换减半对象」
-    过度实现成「完全不动协助位」（路线 operator 也没放，专三只留上一级减半干员）；
-    减半与否由路线 swap_target + _schedule_swap_if_needed 管，与 arrange_support 无关。
+    每次开始按路线安排协助位；减半继承由实读身份和出勤记录确认。
+    减半换人由路线 swap_target 与后续训练决定。
     #93：room 是 dispatch 的 reconcile_and_act 已读的房间状态（截图权威，含槽位）——
     开始流程直接复用，不再重复 enter_room、不再开进驻详情浮窗重读槽位（消除重复进房
     与重复浮窗开关）。room=None（冷启动/直接调用）保持旧行为：进房 + 现读槽位。
@@ -793,6 +793,32 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
         logger.warning(f"[mastery] 暂不开始训练：{requirement_error}")
         update_plan_status(plan["id"], "failed", failed_reason=requirement_error)
         return
+
+    if not plan.get("expires_at") and not plan.get("support_runtime"):
+        from arknights_mower.utils.mastery_db import get_all_plans
+        from arknights_mower.utils.mastery_order import mastery_groups
+        from arknights_mower.utils.mastery_recommendation import (
+            auto_schedule_mastery_tasks,
+            get_current_mastery_level,
+        )
+
+        siblings = [p for p in get_all_plans() if p["char_id"] == plan["char_id"]]
+        levels = {
+            (p["char_id"], p["skill_index"]): get_current_mastery_level(
+                p["char_id"], p["skill_index"]
+            )
+            or 0
+            for p in siblings
+        }
+        if mastery_groups(siblings, levels):
+            admitted = auto_schedule_mastery_tasks().get("scheduled", [])
+            if not any(
+                entry["char_id"] == plan["char_id"]
+                and entry["skill_index"] == plan["skill_index"]
+                for entry in admitted
+            ):
+                logger.info("同干员联合专精尚未满足材料或顺序条件，保持待执行")
+                return
 
     _log_transition(
         plan,
@@ -1339,12 +1365,14 @@ def _schedule_swap_if_needed(
     §5.2：返回 SWAP 任务触发时刻（None=不排换人）——排了换人则不排收取（等
     SWAP_SUPPORT 完成后重读倒计时再排收取）。立即换人（remaining ≤ threshold）也排
     任务（修旧 silent-drop）。#90 邮件「有减半」的完成时间 = 返回时刻 + (300+缓冲) 分。
-    只有读到当前步低于计划最终目标时，才为下一阶段安排减半换人。
-    专一、专二和专三的最终阶段都不排换人；步级未知时保守跳过。
+    当前技能的后续阶段或同干员已达专一的下一技能需要减半时安排换人。
+    步级未知或下一技能尚未专一时，最终阶段不安排减半换人。
     """
     from arknights_mower.utils import config
+    from arknights_mower.utils.mastery_order import halving_successor
+    from arknights_mower.utils.mastery_support_data import actual_central_bonus
 
-    if (step_level or plan["target_level"]) >= plan["target_level"]:
+    if not halving_successor(plan, step_level):
         return None
 
     if config.conf.assistant_follows_schedule:
@@ -1369,6 +1397,7 @@ def _schedule_swap_if_needed(
         central_bonus,
         remaining,
         buffer,
+        current_central=actual_central_bonus(solver, central_bonus),
     )
     logger.info(
         f"[mastery] 换人公式 id={plan['id']} 效率={route['efficiency']} "
@@ -1397,26 +1426,38 @@ def _schedule_swap_if_needed(
         )
     else:
         level_text = ""
-    task = SchedulerTask(
-        time=swap_time,
-        task_type=TaskTypes.SWAP_SUPPORT,
-        meta_data=f"{_plan_label(plan)} {level_text}换入{route['swap_target']}",
+    existing = next(
+        (
+            task
+            for task in solver.tasks
+            if task is not getattr(solver, "task", None)
+            and task.type == TaskTypes.SWAP_SUPPORT
+            and getattr(task, "plan_key", None) == str(plan["id"])
+        ),
+        None,
     )
-    # #77 补排去重键（与 SKILL_UPGRADE 同形）：reconcile 恢复 / 重试都按 plan_key 去重
-    task.plan_key = str(plan["id"])
-    solver.tasks.append(task)
+    if existing is not None:
+        existing.time = (
+            min(existing.time, swap_time)
+            if getattr(existing, "advance_support_swap", False)
+            else swap_time
+        )
+    else:
+        task = SchedulerTask(
+            time=swap_time,
+            task_type=TaskTypes.SWAP_SUPPORT,
+            meta_data=f"{_plan_label(plan)} {level_text}换入{route['swap_target']}",
+        )
+        task.plan_key = str(plan["id"])
+        solver.tasks.append(task)
     logger.info(f"已安排换人任务，预计 {swap_time.strftime('%H:%M:%S')} 执行")
     return swap_time
 
 
 def run_swap_support(solver):
-    """被 SWAP_SUPPORT 任务触发：换入减半对象
+    """被 SWAP_SUPPORT 任务触发：确认房间与下一训练后换入减半干员。
 
-    #76：换人前进房读主面板专精图标 = 当前步目标级（亮 N 颗=专N），路线按当前步
-    加载——专三计划的专一/专二步也减半换人，专三步由 level_3 路线 swap_target=None
-    挡住（铁律 7，用户 08-15 定案靠路线数据）。SWAP 任务只为非专三步排（level_1/2
-    路线有 swap_target），正常路径不会为专三步进房空转；跨步残留的旧 swap 按当前步
-    判（自纠错）。读失败/不在训练主页面回退 target_level（保守不换）。
+    专三及其他最终目标级在下一技能为同干员且已达专一时仍允许换人。
     #78 整合：换人前先读全（read_main_panel 一次截图）确认训练——场景必须在训练室
     主页面（TRAIN_MAIN，219=技能选择页读不出倒计时、不再放行）且倒计时非 0 非空
     （countdown_state=="active"）才算训练确认，才读图标/算路线/换人（铁律 1）。
@@ -1436,6 +1477,7 @@ def run_swap_support(solver):
     """
     from arknights_mower.utils import config
     from arknights_mower.utils.mastery_db import get_active_plan
+    from arknights_mower.utils.mastery_support_data import actual_central_bonus
 
     logger.debug("[mastery] 训练室动作 触发源=定时任务 动作=swap")
     if not config.conf.enable_mastery:
@@ -1470,6 +1512,10 @@ def run_swap_support(solver):
     _warn_training_room_group(plan)
 
     route = _get_plan_route(plan, step_level)
+    if route:
+        route["current_central"] = actual_central_bonus(
+            solver, route.get("central_bonus", 0)
+        )
     operator = route.get("operator") if route else None
     swap_target = route.get("swap_target") if route else None
 
@@ -1529,6 +1575,9 @@ def run_swap_support(solver):
                         route.get("central_bonus", 0),
                         remaining,
                         route.get("mastery_swap_buffer", DEFAULT_SWAP_BUFFER_MINUTES),
+                        current_central=actual_central_bonus(
+                            solver, route.get("central_bonus", 0)
+                        ),
                     )
                     place_swap_target = should_swap
                 if place_swap_target:
@@ -1651,6 +1700,10 @@ def run_swap_support(solver):
                 )
                 step_level = panel.mastery_tier if panel is not None else None
                 route = _get_plan_route(plan, step_level)
+                if route:
+                    route["current_central"] = actual_central_bonus(
+                        solver, route.get("central_bonus", 0)
+                    )
                 swap_target = route.get("swap_target") if route else None
 
     # #80：换人前用当前倒计时判「值不值得换」（_swap_worthwhileness = calc_swap_threshold
@@ -1794,9 +1847,10 @@ def _swap_worthwhileness(remaining_minutes, route) -> bool:
         route["efficiency"],
         route.get("central_bonus", 0),
     )
-    real_time_after_swap = (
-        remaining_minutes * (current_total + route.get("central_bonus", 0)) / swap_total
-    )
+    current_total += route.get(
+        "current_central", route.get("central_bonus", 0)
+    ) - route.get("central_bonus", 0)
+    real_time_after_swap = remaining_minutes * current_total / swap_total
     return real_time_after_swap >= 301
 
 
@@ -1867,11 +1921,14 @@ def _get_plan_route(plan, step_level=None) -> dict | None:
     （None/0）时回退 plan["target_level"]（=旧行为，保守）。
     """
     level = step_level or plan["target_level"]
+    from arknights_mower.utils.mastery_order import halving_successor
+
+    successor = halving_successor(plan, step_level)
     if plan.get("support_plan"):
         from arknights_mower.utils.mastery_support import stage_for
 
         route = stage_for(plan, level)
-        if route and level >= plan["target_level"]:
+        if route and not successor:
             route["swap_target"] = None
         return route
     try:
@@ -1884,11 +1941,16 @@ def _get_plan_route(plan, step_level=None) -> dict | None:
 
         route = get_route_config(prof_cn, level)
         if route:
-            # Legacy plans have no verified halving record; use the longer M2
-            # margin unless inheritance is explicitly known.
             route = {**route, "mastery_swap_buffer": route_swap_buffer(route, level)}
-            if level >= plan["target_level"]:
+            if not successor:
                 route = {**route, "swap_target": None}
+            elif level >= plan["target_level"] and not route.get("swap_target"):
+                reducer = DEFAULT_ROUTES.get(prof_cn, {}).get("level_2", {})
+                route = {
+                    **route,
+                    "swap_target": reducer.get("swap_target"),
+                    "job_match": reducer.get("job_match", False),
+                }
         return route
     except Exception as e:
         logger.error(f"获取路线配置失败: {e}")

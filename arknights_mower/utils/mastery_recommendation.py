@@ -761,9 +761,6 @@ def auto_schedule_mastery_tasks(*, inventory=None):
     )
 
     plans = get_all_plans()
-    waiting = get_material_waiting_plan(plans)
-    if waiting is not None:
-        plans = [waiting]
     plan_set = {(p["char_id"], p["skill_index"]): p for p in plans}
     if not plan_set:
         return result
@@ -773,6 +770,25 @@ def auto_schedule_mastery_tasks(*, inventory=None):
         return result
 
     operators = rec_result.get("operators", [])
+    from .mastery_db import normalize_mastery_queue
+    from .mastery_order import mastery_groups
+
+    recommendations = {
+        (op["char_id"], rec["skill_index"]): rec
+        for op in operators
+        if not op.get("mastery_error")
+        for rec in op.get("recommendations", [])
+    }
+    levels = {key: rec.get("current_level", 0) for key, rec in recommendations.items()}
+    plans = normalize_mastery_queue(levels)
+    groups = mastery_groups(plans, levels)
+    group_heads = {
+        cid: next((p["id"] for p in group if p.get("status") == "idle"), None)
+        for cid, group in groups.items()
+    }
+    waiting = get_material_waiting_plan(plans)
+    if waiting is not None:
+        plan_set = {(waiting["char_id"], waiting["skill_index"]): waiting}
     from arknights_mower.utils.mastery_support_data import trainee_schedule_conflict
 
     if inventory is None:
@@ -789,17 +805,46 @@ def auto_schedule_mastery_tasks(*, inventory=None):
             except Exception:
                 pass
 
-        skill_data_path = _find_skill_data()
-        name_to_id = {}
-        if os.path.exists(skill_data_path):
-            try:
-                with open(skill_data_path, "r", encoding="utf-8") as f:
-                    items_table = json.load(f).get("items", {})
-                for iid, info in items_table.items():
-                    name_to_id[info.get("name", "")] = iid
-            except Exception:
-                pass
+    skill_data_path = _find_skill_data()
+    name_to_id = {}
+    skill_data = {}
+    if os.path.exists(skill_data_path):
+        try:
+            with open(skill_data_path, "r", encoding="utf-8") as f:
+                skill_data = json.load(f)
+                items_table = skill_data.get("items", {})
+            for iid, info in items_table.items():
+                name_to_id[info.get("name", "")] = iid
+        except Exception:
+            pass
+    if inventory is None:
         inventory = {name: counts.get(iid, 0) for name, iid in name_to_id.items()}
+
+    from arknights_mower.data import workshop_formula
+
+    from .mastery_materials import MaterialBudget
+    from .workshop_material_policy import protected_workshop_materials
+
+    budget = MaterialBudget(
+        skill_data,
+        {name_to_id.get(name, name): count for name, count in inventory.items()},
+        workshop_formula,
+        blocked_materials=protected_workshop_materials(),
+    )
+    group_craftable = {}
+    for cid, group in groups.items():
+        materials = []
+        for member in group:
+            member_rec = recommendations.get((cid, member["skill_index"]))
+            if member_rec is None:
+                group_craftable[cid] = False
+                break
+            materials.extend(
+                {"id": name_to_id.get(mat["name"], mat["name"]), "count": mat["count"]}
+                for mat in _remaining_mastery_materials(member, member_rec)
+            )
+        else:
+            group_craftable[cid] = budget.calculate(materials)["craftable"]
 
     for op in operators:
         if op.get("mastery_error"):
@@ -837,11 +882,29 @@ def auto_schedule_mastery_tasks(*, inventory=None):
                 entry["achievable"] = False
                 entry["reason"] = schedule_conflict
                 result["skipped"].append(entry)
+            elif not group_craftable.get(op["char_id"], True):
+                entry["achievable"] = False
+                entry["reason"] = "同干员相邻技能的联合材料需求尚不可合成"
+                result["skipped"].append(entry)
+            elif (
+                plan.get("status") == "idle"
+                and op["char_id"] in group_heads
+                and plan["id"] != group_heads[op["char_id"]]
+            ):
+                entry["achievable"] = False
+                entry["reason"] = "等待同干员前序技能，当前仅筹备一个技能的材料"
+                result["skipped"].append(entry)
             elif all_materials_sufficient:
                 result["scheduled"].append(entry)
             else:
                 result["skipped"].append(entry)
 
+    ranks = {(p["char_id"], p["skill_index"]): i for i, p in enumerate(plans)}
+    result["scheduled"].sort(
+        key=lambda entry: ranks.get(
+            (entry["char_id"], entry["skill_index"]), len(ranks)
+        )
+    )
     return result
 
 

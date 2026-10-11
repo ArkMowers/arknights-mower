@@ -9708,6 +9708,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 int(x.split("_")[1]) if x.startswith("dormitory_") else 0,
             )
         )
+        from arknights_mower.solvers.mastery_support_runtime import (
+            central_training_occupants,
+            refresh_after_central_change,
+        )
+
+        central_before = central_training_occupants(self)
         for room in rooms:
             if (not new_plan) and defer_dorm_before_priority_task(
                 self.task, self.tasks, room, datetime.now(), self.op_data
@@ -9723,6 +9729,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 raise
             if new_plan is False or new_plan is None:
                 self._finish_idle_dorm_shift()
+                refresh_after_central_change(self, central_before)
                 if getattr(self.task, "run_order_restore_pending", False):
                     return self._retain_run_order_restoration(delay=True)
                 return False
@@ -9854,6 +9861,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
             # 急速换班
             self.skip()
+        refresh_after_central_change(self, central_before)
         logger.info("返回基建主界面")
 
     def skip(self, task_names="All"):

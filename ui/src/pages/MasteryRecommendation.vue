@@ -570,9 +570,7 @@
         />
       </div>
       <n-text depth="3" style="font-size: 11px; margin-top: 2px">
-        默认{{
-          autoCentralBonus ? '分别为 15、30' : '为 10'
-        }}分钟，可自行调整；清空单项恢复该项默认值。
+        默认均为 10 分钟，可自行调整；清空单项恢复默认值。
       </n-text>
       <template #footer>
         <n-space justify="end" align="center">

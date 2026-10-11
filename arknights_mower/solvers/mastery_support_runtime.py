@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from arknights_mower.utils.mastery_order import halving_successor
 from arknights_mower.utils.mastery_support import (
     BASE_HOURS,
     REDUCERS,
@@ -61,7 +62,11 @@ def _carried_halving(plan, level, occupants):
     previous = decode_json(plan.get("support_runtime")) or {}
     if not (
         trainee == plan.get("char_name")
-        and previous.get("level") == level - 1
+        and (
+            previous.get("level") == level - 1
+            or previous.get("carry_from_skill") is not None
+            and previous["carry_from_skill"] != plan.get("skill_index")
+        )
         and previous.get("working_operator") == support
         and previous.get("working_halves")
         and previous.get("working_since")
@@ -103,6 +108,16 @@ def prepare_plan_supports(solver, plan, level):
     trainers = _stage_trainers(options, route, level)
     occupants = _observed_support(solver)
     first, swap = _follow_schedule(trainers, options, level, occupants[0])
+    from arknights_mower.utils import config
+
+    if not config.conf.assistant_follows_schedule and level >= plan["target_level"]:
+        if halving_successor(plan, level):
+            reducers = [
+                stats[level] for stats in options.values() if stats[level]["halves"]
+            ]
+            swap = max(reducers, key=lambda item: item["efficiency"], default=None)
+        else:
+            swap = None
     carry = _carried_halving(plan, level, occupants)
     spec = StageSpec(
         level,
@@ -118,9 +133,8 @@ def prepare_plan_supports(solver, plan, level):
 
 
 def recover(solver, plan, room):
-    """Reuse the room visit; no roster scan or optimizer in the scheduler loop."""
+    """Reuse the room visit and restore a final-stage reducer when the queue changes."""
     from arknights_mower.solvers.mastery_reader import (
-        _find_swap_task,
         _read_slots_checked,
     )
 
@@ -128,6 +142,29 @@ def recover(solver, plan, room):
     route = stage_for(plan, level)
     if not route or plan.get("swap_frozen"):
         return False
+    if (
+        level >= plan["target_level"]
+        and not route.get("swap_target")
+        and halving_successor(plan, level)
+    ):
+        from arknights_mower.utils import config
+
+        if not config.conf.assistant_follows_schedule:
+            options, central = candidates(
+                plan["char_id"], inputs=TrainingInputs(schedule=schedule_context())
+            )
+            reducers = [
+                stats[level] for stats in options.values() if stats[level]["halves"]
+            ]
+            reducer = max(reducers, key=lambda item: item["efficiency"], default=None)
+            if reducer and reducer["name"] != route["operator"]:
+                route.update(
+                    swap_target=reducer["name"],
+                    swap_efficiency=reducer["efficiency"],
+                    swap_halves=True,
+                    central_bonus=central,
+                )
+                save_runtime(plan, route)
     support, _, _, reliable = _read_slots_checked(solver)
     if not reliable:
         return False
@@ -144,10 +181,43 @@ def recover(solver, plan, room):
             return False
         enqueue_support_swap(solver, plan, datetime.now(), route["operator"])
         return True
-    if _find_swap_task(solver, str(plan["id"])) is not None:
-        return True
     if not route.get("working_operator"):
         # Observed now; do not invent a historical start time or a halving credit.
         route["working_operator"] = support
         save_runtime(plan, route)
     return schedule_support_swap(solver, plan, room.panel.countdown, level) is not None
+
+
+def central_training_occupants(solver):
+    from arknights_mower.utils.mastery_support_types import CONTROL_TRAINERS
+
+    return frozenset(
+        name
+        for name, op in solver.op_data.operators.items()
+        if name in CONTROL_TRAINERS and op.current_room == "central"
+    )
+
+
+def refresh_after_central_change(solver, previous):
+    """Refresh only after a relevant operator actually enters or leaves central."""
+    from arknights_mower.solvers.mastery_reader import read_room_state, reconcile_short
+    from arknights_mower.utils import config
+    from arknights_mower.utils.csleep import MowerExit
+    from arknights_mower.utils.device.recovery import DeviceRecoveryError
+    from arknights_mower.utils.log import logger
+    from arknights_mower.utils.mastery_db import get_active_plan
+
+    if previous == central_training_occupants(solver) or not config.conf.enable_mastery:
+        return
+    plan = get_active_plan()
+    if not plan or plan.get("status") != "training":
+        return
+    try:
+        room = read_room_state(solver)
+        solver.train_room_state = room
+        reconcile_short(solver, room, defer_collect=True)
+    except (MowerExit, DeviceRecoveryError):
+        raise
+    except Exception as exc:
+        logger.warning(f"中枢换班已确认，训练倒计时本次刷新失败：{exc}")
+    solver.back_to_infrastructure()

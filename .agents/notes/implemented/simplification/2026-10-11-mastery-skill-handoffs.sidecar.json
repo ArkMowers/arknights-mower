@@ -1,0 +1,20 @@
+{
+  "title": "Mastery Skill Handoffs",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-11",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-47]",
+    "[INV-SCHED-29]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.mastery_order.halving_successor",
+    "arknights_mower.solvers.mastery_support_state.schedule_support_swap"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/mastery_skill_handoff_tests.py"
+  ]
+}

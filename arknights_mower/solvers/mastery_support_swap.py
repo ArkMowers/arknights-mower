@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from arknights_mower.utils.mastery_order import halving_successor
 from arknights_mower.utils.mastery_support import (
     REDUCERS,
     SupportPlanError,
@@ -13,6 +14,7 @@ from arknights_mower.utils.mastery_support import (
     schedule_context,
     stage_for,
 )
+from arknights_mower.utils.mastery_support_data import actual_central_bonus
 
 from .mastery_support_state import (
     enqueue_support_swap,
@@ -145,10 +147,13 @@ def _current_rate(options, support, level, central=0):
 
 def _apply_swap(execution, support, options, central):
     route, level = execution.route, execution.level
-    speed = _current_rate(options, support, level, central)
-    schedule_speed = _current_rate(options, support, level)
+    speed = _current_rate(
+        options, support, level, actual_central_bonus(execution.solver, central)
+    )
     stats = _swap_candidates(execution, options)
-    swapping = bool(route.get("swap_target")) and level < execution.plan["target_level"]
+    swapping = bool(route.get("swap_target")) and bool(
+        halving_successor(execution.plan, level)
+    )
     correcting = support != route["operator"]
     if not swapping and not correcting:
         return execution.collect()
@@ -162,7 +167,6 @@ def _apply_swap(execution, support, options, central):
             speed,
             stats,
             (central, route["mastery_swap_buffer"]),
-            schedule_rate=schedule_speed,
         )
         if swapping
         else (None, 0)

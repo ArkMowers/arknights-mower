@@ -1289,6 +1289,13 @@ def _refresh_training_plan(solver, plan, room):
     消除「收取+换人两任务同队列」的中间态（§5.2，排了换人等 SWAP 完成后重读再排收取）。
     """
     _update_expiry(solver, plan, room)
+    if plan.get("support_plan") and plan.get("swap_frozen") and room.slots_reliable:
+        from arknights_mower.solvers.mastery_support_state import refresh_end
+        from arknights_mower.utils.mastery_support import stage_for
+
+        route = stage_for(plan, room.panel.mastery_tier)
+        if route and route.get("working_operator") == room.support_slot:
+            refresh_end(plan, room.panel.mastery_tier, room.panel.countdown)
     if not _maybe_recover_swap(solver, plan, room):
         countdown = room.panel.countdown
         if countdown is not None:
@@ -1310,8 +1317,8 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
     不依赖排班读心情的数据——数据未留存、时间点不可控）——协助位 ∉ {operator,
     swap_target}（陌生人/坐错）且队列无换人任务 → 排一个纠错任务（派发走
     run_swap_support：先纠成路线 operator，重读倒计时判值不值得再换 swap_target）。
-    专三/时间不足的步也纠（swap_target=None / <5h 只是不换减半对象，协助位仍要纠成
-    路线人）。已减半（协助位 == swap_target）→ 不再排换人，只排收取。
+    无后续减半需求或时间不足的步仍纠正协助位为路线人。
+    已减半（协助位 == swap_target）→ 不再排换人，只排收取。
     #101：协助位**可靠地空着**（`_read_slots_checked` 读成功，读失败不算空）同样需纠——
     确保一条 plan_key=id SWAP 任务现在执行（`_upsert_swap_task_now`，已有则改到 now）；
     dispatch 时按 calc_swap_threshold(0,...) 一步定夺放 operator 还是 swap_target
@@ -1378,10 +1385,8 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
             # 已减半（协助位已是 swap_target）→ 不再排换人，调用方排收取
             return False
 
-    # 半程换人（减半）：队列已有同计划 SWAP 任务 → 不重复排（#77 去重）。空位补位的
-    # now-task 也带 plan_key=id，这里一并挡住（dispatch 自决放 operator/swap_target，
-    # 不再单独排阈值任务）。
-    if _find_swap_task(solver, str(plan["id"])) is not None:
+    # 纠错任务保持立即执行；普通换人按最新倒计时原位更新时间。
+    if scheduled:
         return True
     if _schedule_swap_if_needed(solver, plan, countdown, step_level) is not None:
         logger.info(f"[mastery] #77 重启恢复：补排换人任务 id={plan['id']}")
@@ -1702,13 +1707,10 @@ def collect_flow(solver, plan, panel: RoomPanel):
 
 
 def _reconcile_after_collect(solver, plan, panel: RoomPanel):
-    """收集后更新状态：档位==target completed（不级联，等扫描）/ ≠target 继续本级。
+    """收取按实读档位结算；同干员可承接减半的下一技能材料就绪时继续。
 
-    #67/B6：档位**高于**计划目标时，本次收取不属于该计划（计划早已满足），
-    不按"专{target} 完成"记录，保持 idle——由已到target检测按真实档位正确完成，
-    防止"专二收取关掉专一计划"的错记。返回需要开始的计划或 None：继续本级返回
-    本级（当场开与否由调用方按「扫描链记号」判定，#74 第3段 Q2）；收取完成返回
-    None 等扫描，不再级联开始下一个计划。
+    实读档位高于目标时保持 idle，不将本次收取记为该计划完成。
+    非最终阶段返回当前计划，最终阶段仅返回可承接减半且材料就绪的相邻技能。
     """
     from arknights_mower.utils.mastery_db import update_plan_status
 
@@ -1716,10 +1718,41 @@ def _reconcile_after_collect(solver, plan, panel: RoomPanel):
         return None
     tier = panel.mastery_tier
     if tier == plan["target_level"]:
+        from arknights_mower.utils.mastery_order import halving_successor
+
+        successor = halving_successor(plan, tier)
         logger.info(
             f"{_plan_label(plan)} 专{plan['target_level']} 完成（收集档位 专{tier}）"
         )
         update_plan_status(plan["id"], "completed")
+        if successor is not None:
+            from arknights_mower.solvers.mastery_support_state import save_runtime
+            from arknights_mower.utils.mastery_recommendation import (
+                auto_schedule_mastery_tasks,
+            )
+            from arknights_mower.utils.mastery_support import decode_json
+
+            try:
+                previous = decode_json(plan.get("support_runtime")) or {}
+                if previous:
+                    save_runtime(
+                        successor, {**previous, "carry_from_skill": plan["skill_index"]}
+                    )
+                ready = auto_schedule_mastery_tasks().get("scheduled", [])
+                if any(
+                    entry["char_id"] == successor["char_id"]
+                    and entry["skill_index"] == successor["skill_index"]
+                    for entry in ready
+                ):
+                    _schedule_scan_start(solver, successor)
+                    return successor
+            except Exception as exc:
+                from arknights_mower.utils.csleep import MowerExit
+                from arknights_mower.utils.device.recovery import DeviceRecoveryError
+
+                if isinstance(exc, (MowerExit, DeviceRecoveryError)):
+                    raise
+                logger.warning(f"专精收取已完成，同干员后续技能暂不衔接：{exc}")
         return None
     if tier > plan["target_level"]:
         logger.warning(
@@ -1735,7 +1768,7 @@ def _reconcile_after_collect(solver, plan, panel: RoomPanel):
 
 
 def _collect_plan(solver, plan, room: RoomState):
-    """命中计划：收集 + 更新状态 + 点勾确认（C-34 固定顺序，#106）。返回继续本级需要开始的计划或 None（收取完成不级联）。"""
+    """命中计划依次收取、结算状态、点勾确认，返回可继续的计划。"""
     room.collected = True  # #210：收集后房间物理变空闲（面板全空），gate 据此免重读
     collect_flow(solver, plan, room.panel)
     result = _reconcile_after_collect(solver, plan, room.panel)
@@ -2028,14 +2061,8 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
         return None, True
 
     if hit is not None:
-        # 干员+技能都在计划（非专三）：恢复流程——正常收取 → 优先级排前 +
-        # 置 idle → 继续本级**当场开下一级**（2026-08-14 用户拍板「都去掉」：不再区分
-        # 扫描链/重启，一律当场开；重启后也不保守等扫描）。**路线 operator 照常安排**
-        # （2026-08-17 用户拍板：原「减半守卫」跨「收取→下一次开始」边界传
-        # arrange_support=False、不重排协助位，把「专三不换减半对象」过度实现成「完全
-        # 不动协助位」——路线 operator 也没放，专三只留上一级减半换入的干员；减半与否
-        # 由路线 swap_target + _schedule_swap_if_needed 管，专三 swap_target=None 本
-        # 就不排换人，路线 operator 照常进协助位拿加成）。
+        # 收取后按实读档位继续本技能或符合条件的同干员下一技能。
+        # 开始时按路线安排协助位，继承减半由实读身份和出勤记录确认。
         _log_judgment(
             solver,
             room,
@@ -2048,7 +2075,7 @@ def _reconcile_waiting_collect(solver, room, active, plans, defer_collect=False)
         if plan is not None and plan["id"] == hit["id"]:
             _promote_plan(solver, plan)  # 非专三继续本级 → 排前
             return plan, True
-        # 收取完成（档位==target）不级联，等扫描
+        # 最终阶段仅衔接材料就绪且可承接减半的同干员技能。
         return plan, True
 
     # 干员不在计划 / 干员在技能不在：收取 + 通知④帮收（非专三，无论保护与否）

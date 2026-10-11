@@ -53,6 +53,7 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 ## 2. Facility & Scheduling Domain
 
 ### Scheduling Plan
+- Different mastery skills of the same operator run consecutively when at least one has reached mastery one, starting only when shared stock and permitted crafting cover their joint remaining costs, while preparing materials for the current skill only; subsequent training above mastery one inherits halving. Halving handoffs default to a ten-minute margin; only relevant operators actually entering or leaving the Control Center refresh the observed training countdown, and moves between other facilities do not trigger a refresh.
 - Backup operator lists add entries to the effective Scheduling Plan; per-field removal lists remove entries after additions, in backup order. Deactivation rebuilds the effective lists from the main plan and remaining active backups.
 - **Definition**: The declarative configuration specifying assigned primary operators, operator groups, replacements, facility products, and rest/shift rules. Contains baseline master plan (`plan1`) and condition-triggered backup plans (`backup_plans`).
 - Maintenance backups activate at a configured lead time before announced major downtime. When their effective primary slots contain trade order agents, entry skips pre-maintenance Drone Acceleration tasks and pauses all trade order runs; otherwise entry completes the existing pre-maintenance Drone Acceleration tasks before Dynamic Shift Transition.
