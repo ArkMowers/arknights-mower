@@ -12,10 +12,14 @@
   ],
   "code_symbols": [
     "webview_ui._run_desktop",
+    "server.start",
     "server.get_status"
   ],
   "test_suites": [
     "arknights_mower/tests/desktop_lifecycle_tests.py",
+    "arknights_mower/tests/process_control_tests.py",
+    "arknights_mower/tests/application_shutdown_tests.py",
+    "arknights_mower/tests/device_settings_route_tests.py",
     "arknights_mower/tests/software_update_tests.py",
     "arknights_mower/tests/server_status_tests.py",
     "ui/src/App.test.js"

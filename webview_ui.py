@@ -840,7 +840,10 @@ def _run_desktop():
                 # A cached page or manual request can already own the install.
                 if server.resource_update.running():
                     server.resource_update.thread.join()
-            if resume and not startup_cancelled():
+        if resume and not startup_cancelled():
+            with server.app.test_request_context(
+                method="GET", headers={"token": runtime_token}
+            ):
                 if resume_mode in ("0", "1"):
                     server.start(resume_mode)
                 else:
