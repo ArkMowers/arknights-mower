@@ -72,7 +72,7 @@
     <n-alert
       v-if="crossFormWarning"
       type="warning"
-      title="阿米娅跨形态专精需手动切换"
+      title="阿米娅专精请注意切换升变"
       :closable="false"
       style="margin-top: 12px"
     >

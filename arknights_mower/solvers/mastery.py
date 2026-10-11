@@ -758,6 +758,9 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
     from arknights_mower.utils.mastery_support import SupportPlanError
     from arknights_mower.utils.mastery_support_data import trainee_schedule_conflict
 
+    if getattr(room, "amiya_form_waiting", False) is True:
+        solver.back()
+        return
     if room is not None and getattr(room, "protected", False):
         if not _protected_trainee_matches(plan, room):
             logger.info("训练室受保护，当前计划不是已确认的同一训练位干员，保持待执行")
@@ -990,6 +993,16 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                 _exit_occupied(solver, plan, None, trigger="技能选择页归属未确认")
                 return
             if not checked_target:
+                from arknights_mower.solvers.mastery_reader import (
+                    AMIYA_FORM_IDS,
+                    read_amiya_skill_available,
+                )
+
+                if plan["char_id"] in AMIYA_FORM_IDS:
+                    available = read_amiya_skill_available(solver, plan)
+                    if available is not True:
+                        _defer_amiya_form(solver, plan, room, available)
+                        return
                 # #63 已到target检测：读目标技能槽亮灯，≥target → 判 completed（防 false-fail）
                 checked_target = True
                 tier = _read_slot_mastery_tier(solver, plan["skill_index"])
@@ -1060,6 +1073,57 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                 solver, plan, tracker.format_stats(), tracker.stuck_scene()
             )
             return
+
+
+def _defer_amiya_form(solver, plan, room, available):
+    from arknights_mower.solvers.mastery_reader import _schedule_amiya_form_recheck
+    from arknights_mower.utils.mastery_db import update_plan_status
+
+    # No assistant mutation has occurred before the skill-name check.
+    if room is not None and room.slots_reliable:
+        support, trainee, reliable = room.support_slot, room.train_slot, True
+    else:
+        _back_to_train_main(solver)
+        support, trainee, _, reliable = _read_slots_checked(solver)
+    holding = reliable and trainee == "阿米娅" and support in PROTECT_OPERATORS
+    if holding:
+        solver.amiya_pending_plan_id = plan["id"]
+        if room is not None:
+            room.amiya_form_waiting = True
+    update_plan_status(plan["id"], "idle")
+    _schedule_amiya_form_recheck(solver, plan)
+    _notify_amiya_form_wait(plan, available, holding)
+    solver.back_to_infrastructure()
+
+
+def _notify_amiya_form_wait(plan, available, holding):
+    from arknights_mower.utils.csleep import MowerExit
+    from arknights_mower.utils.device.recovery import DeviceRecoveryError
+    from arknights_mower.utils.email import send_message
+    from arknights_mower.utils.mastery_db import should_notify
+
+    if available is False:
+        message = (
+            f"{_plan_fail_label(plan)}：训练室显示其他升变形态的技能，"
+            "请在游戏内手动切换到对应升变形态"
+        )
+    else:
+        message = f"{_plan_fail_label(plan)}：目标技能读取失败，暂不开始专精"
+    if holding:
+        message += "；保留当前减半干员，本轮跳过所有训练室操作，后续仍会进房检查"
+    logger.warning(message)
+    try:
+        reason = "mismatch" if available is False else "unreadable"
+        if should_notify("amiya_form", f"{plan['id']}:{reason}:{int(holding)}"):
+            send_message(
+                message,
+                level="ERROR" if holding and available is False else "WARNING",
+                archive_screenshots=True,
+            )
+    except (MowerExit, DeviceRecoveryError):
+        raise
+    except Exception as exc:
+        logger.warning(f"阿米娅升变提醒发送失败：{exc}")
 
 
 def _confirm_training_started(
@@ -1314,6 +1378,10 @@ def _arrange_support(solver, plan, step_level=None) -> Optional[str]:
     try:
         if plan.get("support_plan"):
             plan["swap_frozen"] = 0
+            if "exclude_reducer" in route:
+                from arknights_mower.solvers.mastery_support_state import save_runtime
+
+                save_runtime(plan, route)
             from arknights_mower.solvers.mastery_support_swap import place_support
 
             place_support(solver, plan, step_level, support_name)
@@ -1486,10 +1554,20 @@ def run_swap_support(solver):
     if config.conf.assistant_follows_schedule:
         return
 
+    if isinstance(getattr(solver, "amiya_pending_plan_id", None), int):
+        from arknights_mower.solvers.mastery_reader import read_room_state
+
+        room = read_room_state(solver)
+        if room.amiya_form_waiting:
+            solver.back_to_infrastructure()
+            return
+
     plan = get_active_plan()
     if not plan or plan["status"] != "training":
         return
-    if plan["swap_frozen"]:
+    from arknights_mower.utils.mastery_order import basic_mastery_successor
+
+    if plan["swap_frozen"] and not basic_mastery_successor(plan, 3):
         return
 
     # 进房读全：read_main_panel 一次截图读干员/技能/图标/倒计时。倒计时 active（读到
@@ -1508,6 +1586,9 @@ def run_swap_support(solver):
             logger.debug(f"主面板读取失败: {e}")
     countdown_active = bool(panel is not None and panel.countdown_state == "active")
     step_level = panel.mastery_tier if panel is not None else None
+    if plan["swap_frozen"] and not basic_mastery_successor(plan, step_level):
+        solver.back()
+        return
 
     _warn_training_room_group(plan)
 
@@ -1538,6 +1619,7 @@ def run_swap_support(solver):
         # 直接换减半对象，绕过「不换人」。
         if (
             support_slot in PROTECT_OPERATORS
+            and not route.get("exclude_reducer")
             and panel is not None
             and panel.countdown is not None
         ):
@@ -1921,6 +2003,9 @@ def _get_plan_route(plan, step_level=None) -> dict | None:
     （None/0）时回退 plan["target_level"]（=旧行为，保守）。
     """
     level = step_level or plan["target_level"]
+    from arknights_mower.solvers.mastery_support_runtime import (
+        route_without_unusable_reducer,
+    )
     from arknights_mower.utils.mastery_order import halving_successor
 
     successor = halving_successor(plan, step_level)
@@ -1930,7 +2015,7 @@ def _get_plan_route(plan, step_level=None) -> dict | None:
         route = stage_for(plan, level)
         if route and not successor:
             route["swap_target"] = None
-        return route
+        return route_without_unusable_reducer(plan, step_level, route)
     try:
         from arknights_mower.utils.mastery_recommendation import get_skill_data
 
@@ -1951,7 +2036,7 @@ def _get_plan_route(plan, step_level=None) -> dict | None:
                     "swap_target": reducer.get("swap_target"),
                     "job_match": reducer.get("job_match", False),
                 }
-        return route
+        return route_without_unusable_reducer(plan, step_level, route)
     except Exception as e:
         logger.error(f"获取路线配置失败: {e}")
         return None

@@ -65,6 +65,8 @@ ARRANGING_RETRY_BUFFER = timedelta(minutes=2)
 
 # §4.4 保护检查：协助位是这些干员时训练室受保护（不能被排班/mower 改动）
 PROTECT_OPERATORS = ("逻各斯", "艾丽妮")
+AMIYA_FORM_IDS = ("char_002_amiya", "char_1001_amiya2", "char_1037_amiya3")
+AMIYA_SKILL_LIST_REGION = ((0, 125), (1000, 1080))
 
 # 技能选择页目标技能槽的专精星（已到target检测）。实机坐标已校准：
 # 每个技能 3 颗星，三角排列，点亮顺序 顶→右下→左下：专一=顶、专二=右下、
@@ -127,6 +129,7 @@ class RoomState:
     slots_reliable: bool = False
     support_mood: Optional[float] = None  # 协助位心情（浮窗扫描，仅 reliable 时有效）
     train_mood: Optional[float] = None  # 训练位心情（浮窗扫描，仅 reliable 时有效）
+    amiya_form_waiting: bool = False
 
     @property
     def locked(self) -> bool:
@@ -394,6 +397,113 @@ def _read_slot_mastery_tier(solver, skill_index):
     except Exception:
         # 读不到（非数组/越界等）→ 返回 None，调用方保守处理（保持 idle 重排）
         return None
+
+
+def read_amiya_skill_available(solver, plan):
+    """Confirm the requested skill or another form; unreadable text stays unknown."""
+    from arknights_mower.utils import rapidocr
+    from arknights_mower.utils.csleep import MowerExit
+    from arknights_mower.utils.device.recovery import DeviceRecoveryError
+    from arknights_mower.utils.mastery_recommendation import get_skill_data
+    from arknights_mower.utils.skill_label import normalize_skill_text
+
+    characters = get_skill_data().get("characters", {})
+    names = {}
+    for cid in AMIYA_FORM_IDS:
+        for index, skill in enumerate(characters.get(cid, {}).get("skills", [])):
+            name = normalize_skill_text(skill.get("name")).replace("·", "")
+            if name:
+                names[name] = (cid, index)
+    requested = (plan["char_id"], plan["skill_index"])
+    for attempt in range(3):
+        if solver.train_scene() != Scene.TRAIN_SKILL_SELECT:
+            return None
+        image = cropimg(solver.recog.img, AMIYA_SKILL_LIST_REGION)
+        try:
+            results, _ = rapidocr.engine(
+                image, use_det=True, use_cls=False, use_rec=True
+            )
+        except (MowerExit, DeviceRecoveryError):
+            raise
+        except Exception as exc:
+            logger.debug(f"阿米娅技能名本次读取失败：{exc}")
+            results = None
+        matches = set()
+        for box, text, confidence in results or []:
+            key = normalize_skill_text(text).replace("·", "")
+            match = names.get(key)
+            row = int(sum(point[1] for point in box) / len(box) / 316)
+            if confidence >= 0.8 and match and match[1] == row:
+                matches.add(match)
+        forms = {cid for cid, _ in matches}
+        if len(forms) == 1:
+            if plan["char_id"] not in forms:
+                return False
+            if requested in matches:
+                return True
+        if attempt < 2:
+            solver.sleep(0.5)
+            solver.recog.update()
+    return None
+
+
+def _schedule_amiya_form_recheck(solver, plan):
+    _upsert_skill_upgrade_task(
+        solver,
+        datetime.now() + ARRANGING_RETRY_BUFFER,
+        meta_data=f"{_plan_label(plan)} 检查升变技能",
+        plan_key=str(plan["id"]),
+    )
+
+
+def _check_pending_amiya_form(solver, room):
+    """Recheck on every room visit; never turn a missing form into a global pause."""
+    from arknights_mower.utils.csleep import MowerExit
+    from arknights_mower.utils.device.recovery import DeviceRecoveryError
+    from arknights_mower.utils.mastery_db import get_plan_by_id
+
+    pending_id = getattr(solver, "amiya_pending_plan_id", None)
+    if not isinstance(pending_id, int):
+        return
+    plan = get_plan_by_id(pending_id)
+    if not plan or plan["status"] in ("completed", "failed"):
+        solver.amiya_pending_plan_id = None
+        return
+    if not room.slots_reliable:
+        room.amiya_form_waiting = True
+    elif room.train_slot != "阿米娅" or room.support_slot not in PROTECT_OPERATORS:
+        solver.amiya_pending_plan_id = None
+        return
+    elif room.state == "empty":
+        solver.tap((solver.recog.w * 0.05, solver.recog.h * 0.95), interval=0.5)
+        try:
+            for _ in range(5):
+                if solver.train_scene() == Scene.TRAIN_SKILL_SELECT:
+                    break
+                solver.sleep(0.5)
+            available = read_amiya_skill_available(solver, plan)
+        except (MowerExit, DeviceRecoveryError):
+            raise
+        except Exception as exc:
+            logger.warning(f"阿米娅升变本次检查失败：{exc}")
+            available = None
+        returned = _back_to_train_main(solver)
+        if available is True and returned:
+            solver.amiya_pending_plan_id = None
+            _schedule_scan_start(solver, plan)
+            return
+        if available is not True:
+            from arknights_mower.solvers.mastery import _notify_amiya_form_wait
+
+            _notify_amiya_form_wait(plan, available, holding=True)
+        room.amiya_form_waiting = True
+    elif _plan_matches_room(plan, room):
+        solver.amiya_pending_plan_id = None
+        return
+    else:
+        room.amiya_form_waiting = True
+    room.protected = True
+    _schedule_amiya_form_recheck(solver, plan)
 
 
 def _read_panel_text(solver, img=None) -> RoomPanel:
@@ -744,7 +854,10 @@ def _fill_slots_and_protection(solver, room, want_mood=False, scan_plan=None):
         )
     else:
         mood = None
-    room.protected = _compute_protected(solver, room, scan_plan=scan_plan)
+    if config.conf.enable_mastery:
+        _check_pending_amiya_form(solver, room)
+    if not room.amiya_form_waiting:
+        room.protected = _compute_protected(solver, room, scan_plan=scan_plan)
     return mood
 
 
@@ -802,6 +915,8 @@ def read_room_state(solver, enter=True, want_mood=False, scan_plan=None):
         # 完成横幅页：只读左下角面板供收取，不读进驻详情/不算保护（该页 get_agent_from_room
         # 不可靠）。保护判定等收取完成回 TRAIN_MAIN 后再读（§4.3 读全以主页面为主）。
         room = RoomState("waiting_collect", _safe_read_panel(solver) or RoomPanel())
+        if config.conf.enable_mastery:
+            _check_pending_amiya_form(solver, room)
         return (room, []) if want_mood else room
     if scene == Scene.TRAIN_MAIN:
         panel = read_main_panel(solver)
@@ -809,10 +924,14 @@ def read_room_state(solver, enter=True, want_mood=False, scan_plan=None):
             # 读的过程中画面离开了训练室主界面 → 这块画面上的读数不算数。保守按训练中
             # 处理，不读左下角面板、不开进驻浮窗（非主页面上的面板区域与槽位都是垃圾）。
             room = RoomState("training", RoomPanel())
+            if config.conf.enable_mastery:
+                _check_pending_amiya_form(solver, room)
             return (room, []) if want_mood else room
         state = _classify_panel(solver, panel)
         if state == "ocr_fail":
             room = _retry_ocr(solver, scan_plan=scan_plan)
+            if config.conf.enable_mastery and not room.slots_read:
+                _check_pending_amiya_form(solver, room)
             # OCR 失败路径（含重试成功后的槽位填，未带心情）→ 心情取不到
             return (room, []) if want_mood else room
         room = RoomState(state, panel)
@@ -829,6 +948,8 @@ def read_room_state(solver, enter=True, want_mood=False, scan_plan=None):
     # 身份/假倒计时——219 尤其会反复 OCR 出类时间文本；空面板 = 不可读 = 匹配保守，
     # 不消费假干员/假倒计时，等下次自然进房到主页面再读）。
     room = RoomState("training", RoomPanel())
+    if config.conf.enable_mastery:
+        _check_pending_amiya_form(solver, room)
     return (room, []) if want_mood else room
 
 
@@ -1326,12 +1447,15 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
     返回 True = 已排补位/换人任务（或队列已有）→ 调用方不排收取。
     """
     from arknights_mower.utils import config
+    from arknights_mower.utils.mastery_order import basic_mastery_successor
 
     if not config.conf.enable_mastery:
         return False
     if config.conf.assistant_follows_schedule:
         return False
-    if plan.get("swap_frozen"):
+    if plan.get("swap_frozen") and not basic_mastery_successor(
+        plan, room.panel.mastery_tier
+    ):
         return False
     countdown = room.panel.countdown
     if countdown is None:
@@ -1370,7 +1494,7 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
             # #107 保护门（2026-08-17）：逻各斯/艾丽妮在协助位（非路线干员/减半对象）
             # 且剩余不足 5h+缓冲 → 不纠不换（她们本身是最优加成；expires_at 已由调用方
             # _update_expiry 刷新），返回 False 让调用方排收取；剩余足够才照常纠错。
-            if support_slot in PROTECT_OPERATORS:
+            if support_slot in PROTECT_OPERATORS and not route.get("exclude_reducer"):
                 remaining = (countdown - datetime.now()).total_seconds() / 60
                 buffer_min = route.get("mastery_swap_buffer", 10)
                 if remaining < 300 + buffer_min:
@@ -1856,6 +1980,10 @@ def _reconcile(
         get_material_waiting_plan,
         update_plan_status,
     )
+
+    if room.amiya_form_waiting:
+        logger.info("阿米娅升变技能尚未确认，本轮跳过训练室操作，下次进房继续检查")
+        return None, True
 
     # arranging × 任何列 → 重置 idle
     if active is not None and active["status"] == "arranging":

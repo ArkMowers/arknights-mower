@@ -2,7 +2,10 @@
 
 from datetime import datetime
 
-from arknights_mower.utils.mastery_order import halving_successor
+from arknights_mower.utils.mastery_order import (
+    basic_mastery_successor,
+    halving_successor,
+)
 from arknights_mower.utils.mastery_support import (
     BASE_HOURS,
     REDUCERS,
@@ -12,6 +15,7 @@ from arknights_mower.utils.mastery_support import (
     candidates,
     decode_json,
     decode_supports,
+    rate,
     schedule_context,
     stage_for,
     stage_route,
@@ -92,6 +96,54 @@ def _prepare_stage(first, swap, spec, carry):
     return selected
 
 
+def _non_reducer(options, level):
+    selected = max(
+        (stats[level] for stats in options.values() if not stats[level]["halves"]),
+        key=lambda trainer: trainer["efficiency"],
+        default=None,
+    )
+    if selected is None:
+        raise SupportPlanError("下一技能为七级升专一，专三需要可用的非减半协助者")
+    return selected
+
+
+def route_without_unusable_reducer(plan, level, route):
+    if not route:
+        return route
+    if not basic_mastery_successor(plan, level):
+        return (
+            dict(route, exclude_reducer=False)
+            if route.get("exclude_reducer")
+            else route
+        )
+    selected = dict(
+        route,
+        swap_target=None,
+        swap_halves=False,
+        switch_after=None,
+        exclude_reducer=True,
+    )
+    if route["operator"] in REDUCERS:
+        options, central = candidates(
+            plan["char_id"],
+            include_dynamic=route.get("manual", False),
+            inputs=TrainingInputs(schedule=schedule_context()),
+        )
+        trainer = _non_reducer(options, level)
+        selected.update(
+            operator=trainer["name"],
+            efficiency=trainer["efficiency"],
+            first_halves=False,
+            central_bonus=central,
+        )
+    selected["hours"] = (
+        BASE_HOURS[level]
+        * (0.5 if route.get("half_inherited") else 1)
+        / rate(selected["efficiency"], selected.get("central_bonus", 0))
+    )
+    return selected
+
+
 def prepare_plan_supports(solver, plan, level):
     """Validate the stage and carried halving without changing occupants."""
     saved = decode_supports(plan)
@@ -105,11 +157,19 @@ def prepare_plan_supports(solver, plan, level):
         include_dynamic=route.get("manual", False),
         inputs=TrainingInputs(schedule=schedule_context()),
     )
-    trainers = _stage_trainers(options, route, level)
-    occupants = _observed_support(solver)
-    first, swap = _follow_schedule(trainers, options, level, occupants[0])
     from arknights_mower.utils import config
 
+    exclude_reducer = (
+        not config.conf.assistant_follows_schedule
+        and basic_mastery_successor(plan, level)
+    )
+    trainers = (
+        (_non_reducer(options, level), None)
+        if exclude_reducer
+        else _stage_trainers(options, route, level)
+    )
+    occupants = _observed_support(solver)
+    first, swap = _follow_schedule(trainers, options, level, occupants[0])
     if not config.conf.assistant_follows_schedule and level >= plan["target_level"]:
         if halving_successor(plan, level):
             reducers = [
@@ -129,7 +189,9 @@ def prepare_plan_supports(solver, plan, level):
         ),
         manual=route.get("manual", False),
     )
-    save_runtime(plan, _prepare_stage(first, swap, spec, carry))
+    prepared = _prepare_stage(first, swap, spec, carry)
+    prepared["exclude_reducer"] = exclude_reducer
+    save_runtime(plan, prepared)
 
 
 def recover(solver, plan, room):
@@ -139,8 +201,13 @@ def recover(solver, plan, room):
     )
 
     level = room.panel.mastery_tier
-    route = stage_for(plan, level)
-    if not route or plan.get("swap_frozen"):
+    saved_route = stage_for(plan, level)
+    route = route_without_unusable_reducer(plan, level, saved_route)
+    if not route:
+        return False
+    if route != saved_route:
+        save_runtime(plan, route)
+    if plan.get("swap_frozen") and not route.get("exclude_reducer"):
         return False
     if (
         level >= plan["target_level"]
@@ -175,6 +242,7 @@ def recover(solver, plan, room):
     if support != route["operator"]:
         if (
             support in REDUCERS
+            and not route.get("exclude_reducer")
             and (room.panel.countdown - datetime.now()).total_seconds()
             < (300 + route["mastery_swap_buffer"]) * 60
         ):

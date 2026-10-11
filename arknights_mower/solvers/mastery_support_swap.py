@@ -182,7 +182,11 @@ def _apply_swap(execution, support, options, central):
         delay = 0
     if correcting and (selected is None or delay > 5):
         # Do not remove a reducer that cannot earn five hours again.
-        if support in REDUCERS and seconds < (300 + route["mastery_swap_buffer"]) * 60:
+        if (
+            support in REDUCERS
+            and not route.get("exclude_reducer")
+            and seconds < (300 + route["mastery_swap_buffer"]) * 60
+        ):
             execution.collect()
         else:
             execution.restore_first(
@@ -227,6 +231,12 @@ def _prepare_swap_execution(solver, plan, panel):
         )
         return None
     route = stage_for(plan, level)
+    from .mastery_support_runtime import route_without_unusable_reducer
+
+    selected_route = route_without_unusable_reducer(plan, level, route)
+    if selected_route != route:
+        save_runtime(plan, selected_route)
+    route = selected_route
     if not route:
         stop_support_swap(
             solver, plan, level, "当前阶段缺少协助方案，停止换人并安排收取检查"

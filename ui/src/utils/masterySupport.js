@@ -40,7 +40,7 @@ export function masteryFormWarning(charIds) {
     char_1037_amiya3: '医疗'
   }
   const selected = Object.keys(forms).filter((id) => charIds.includes(id))
-  if (selected.length < 2) return ''
-  return `已选择阿米娅的${selected.map((id) => forms[id]).join('、')}形态专精。森空岛养成数据无法确认当前启用形态，Mower 不会自动切换形态。请留意专精队列，在轮到对应形态训练前及时在游戏内手动切换形态。`
+  if (!selected.length) return ''
+  return `已选择阿米娅的${selected.map((id) => forms[id]).join('、')}形态专精。森空岛养成数据无法确认当前启用形态，Mower 不会自动切换升变。请留意专精队列，在轮到对应形态训练前及时在游戏内手动切换升变。持有减半时若未找到对应技能，本轮跳过训练室操作，后续仍会进房检查。`
 }
 import { planReplacements } from './plan_bindings'

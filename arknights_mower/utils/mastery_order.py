@@ -45,12 +45,7 @@ def consecutive_mastery_plans(plans, levels):
     return ordered
 
 
-def halving_successor(plan, level, *, plans=None, levels=None):
-    """Return the next same-trainee training that can consume halving."""
-    if not isinstance(level, int) or level < 1:
-        return None
-    if level < plan["target_level"]:
-        return plan
+def _next_skill_plan(plan, plans=None):
     if plans is None:
         from .mastery_db import get_all_plans
 
@@ -61,6 +56,36 @@ def halving_successor(plan, level, *, plans=None, levels=None):
     if not next_plan or next_plan["char_id"] != plan.get("char_id"):
         return None
     if next_plan["skill_index"] == plan.get("skill_index"):
+        return None
+    return next_plan
+
+
+def basic_mastery_successor(plan, level, *, plans=None, levels=None):
+    """A same-operator seven-to-one successor does not need reducer attendance."""
+    if level != 3:
+        return False
+    next_plan = _next_skill_plan(plan, plans)
+    if next_plan is None:
+        return False
+    if levels is None:
+        from .mastery_recommendation import get_current_mastery_level
+
+        current = get_current_mastery_level(
+            next_plan["char_id"], next_plan["skill_index"]
+        )
+    else:
+        current = levels.get((next_plan["char_id"], next_plan["skill_index"]))
+    return current == 0
+
+
+def halving_successor(plan, level, *, plans=None, levels=None):
+    """Return the next same-trainee training that can consume halving."""
+    if not isinstance(level, int) or level < 1:
+        return None
+    if level < plan["target_level"]:
+        return plan
+    next_plan = _next_skill_plan(plan, plans)
+    if next_plan is None:
         return None
     if levels is None:
         from .mastery_recommendation import get_current_mastery_level

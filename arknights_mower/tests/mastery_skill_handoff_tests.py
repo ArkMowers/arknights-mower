@@ -17,6 +17,7 @@ from arknights_mower.utils import mastery_db as db
 from arknights_mower.utils import mastery_recommendation as rec
 from arknights_mower.utils.mastery_optimizer import stage_route
 from arknights_mower.utils.mastery_order import (
+    basic_mastery_successor,
     consecutive_mastery_plans,
     halving_successor,
 )
@@ -26,6 +27,7 @@ from arknights_mower.utils.mastery_support_types import (
     StageSpec,
     stage_for,
 )
+from arknights_mower.utils.scheduler_task import TaskTypes
 
 
 def plan(pid, cid="a", skill=0, status="idle", **extras):
@@ -85,6 +87,140 @@ def test_final_stage_admission_depends_on_next_training(next_level, other, expec
         is expected
     )
     assert halving_successor(current, 2) is current
+
+
+@pytest.mark.parametrize(
+    "current_level,other,expected",
+    [(0, False, True), (1, False, False), (0, True, False), (None, False, False)],
+)
+def test_basic_successor_only_excludes_reducers_from_mastery_three(
+    current_level, other, expected
+):
+    current = plan(1, status="training")
+    next_plan = plan(2, "b" if other else "a", skill=1)
+    args = dict(
+        plans=[current, next_plan], levels={(next_plan["char_id"], 1): current_level}
+    )
+    assert basic_mastery_successor(current, 3, **args) is expected
+    assert not basic_mastery_successor(current, 2, **args)
+
+
+@pytest.mark.parametrize("running", [False, True])
+def test_basic_successor_replaces_even_the_fastest_reducer(
+    database, monkeypatch, running
+):
+    from arknights_mower.solvers import mastery_support_swap as swap
+
+    first_id = db.insert_plan("a", 0, 3, "测试", "学员")
+    db.insert_plan("a", 1, 3, "下一技能", "学员")
+    current = db.get_plan_by_id(first_id)
+    route = stage_route(stat("逻各斯", 100, True), None, StageSpec(3, 24, 0, 10))
+    route.update(first_halves=True, swap_halves=False, working_operator="逻各斯")
+    db.save_support_plan(first_id, {"stages": [route]})
+    current = db.get_plan_by_id(first_id)
+    monkeypatch.setattr(rec, "get_current_mastery_level", lambda *_: 0)
+    monkeypatch.setattr(config.conf, "assistant_follows_schedule", False)
+    monkeypatch.setattr(config.conf, "enable_mastery", True)
+    monkeypatch.setattr(config, "plan", {})
+    options = {
+        "逻各斯": {3: stat("逻各斯", 100, True)},
+        "普通教官": {3: stat("普通教官", 50)},
+    }
+    monkeypatch.setattr(runtime, "candidates", lambda *a, **kw: (options, 0))
+    monkeypatch.setattr(runtime, "_observed_support", lambda _: ("逻各斯", "学员"))
+    monkeypatch.setattr(runtime, "schedule_context", lambda: ({}, 0))
+    solver = MagicMock(tasks=[], task=None)
+    if not running:
+        current["support_runtime"] = dict(
+            level=2,
+            working_operator="逻各斯",
+            working_halves=True,
+            working_since=(datetime.now() - timedelta(hours=6)).isoformat(),
+        )
+        runtime.prepare_plan_supports(solver, current, 3)
+        prepared = stage_for(current, 3)
+        assert prepared["operator"] == "普通教官"
+        assert prepared["swap_target"] is None
+        assert prepared["exclude_reducer"]
+        assert prepared["activate_with"] == "逻各斯"
+        assert prepared["half_inherited"]
+        # The training-confirmation assistant placement consumes the same effective route.
+        monkeypatch.setattr(swap, "place_support", MagicMock())
+        assert mastery._arrange_support(solver, current, 3) is None
+        assert swap.place_support.call_args.args[-1] == "普通教官"
+        return
+
+    current.update(status="training", swap_frozen=1)
+    db.update_plan_status(first_id, "training", swap_frozen=1)
+    panel = mastery_reader.RoomPanel(
+        "学员",
+        "测试",
+        mastery_tier=3,
+        countdown=datetime.now() + timedelta(hours=2),
+        countdown_state="active",
+    )
+    room = mastery_reader.RoomState(
+        "training", panel, support_slot="逻各斯", train_slot="学员", slots_reliable=True
+    )
+    monkeypatch.setattr(
+        mastery_reader, "_read_slots_checked", lambda _: ("逻各斯", "学员", [], True)
+    )
+    assert runtime.recover(solver, current, room)
+    assert solver.tasks[0].type == TaskTypes.SWAP_SUPPORT
+    monkeypatch.setattr(swap, "candidates", lambda *a, **kw: (options, 0))
+    monkeypatch.setattr(swap, "confirm_training_panel", lambda *a: panel)
+    replacement = MagicMock(return_value=panel)
+    monkeypatch.setattr(swap, "place_support", replacement)
+    swap.perform_swap(solver, current, panel, "逻各斯")
+    replacement.assert_called_once()
+    assert replacement.call_args.args[-1] == "普通教官"
+
+
+@pytest.mark.parametrize("frozen", [False, True])
+def test_removed_basic_successor_restores_reducer_protection(
+    database, monkeypatch, frozen
+):
+    from arknights_mower.solvers import mastery_support_swap as swap
+
+    first_id = db.insert_plan("a", 0, 3, "测试", "学员")
+    next_id = db.insert_plan("a", 1, 3, "下一技能", "学员")
+    db.update_plan_status(next_id, "failed")
+    route = stage_route(stat("普通教官", 50), None, StageSpec(3, 24, 0, 10))
+    route.update(exclude_reducer=True, working_operator="逻各斯")
+    assert db.save_support_plan(first_id, {"stages": [route]})
+    db.update_plan_status(first_id, "training", swap_frozen=int(frozen))
+    current = db.get_plan_by_id(first_id)
+    state.save_runtime(current, route)
+    monkeypatch.setattr(config.conf, "assistant_follows_schedule", False)
+    monkeypatch.setattr(config.conf, "enable_mastery", True)
+    monkeypatch.setattr(config, "plan", {})
+    panel = mastery_reader.RoomPanel(
+        "学员",
+        "测试",
+        mastery_tier=3,
+        countdown=datetime.now() + timedelta(hours=2),
+        countdown_state="active",
+    )
+    room = mastery_reader.RoomState("training", panel)
+    monkeypatch.setattr(
+        mastery_reader, "_read_slots_checked", lambda _: ("逻各斯", "学员", [], True)
+    )
+    solver = MagicMock(tasks=[], task=None)
+    assert not runtime.recover(solver, current, room)
+    assert not stage_for(db.get_plan_by_id(first_id), 3)["exclude_reducer"]
+    assert not solver.tasks
+
+    # A swap queued before the queue edit must also preserve the current reducer.
+    options = {
+        "逻各斯": {3: stat("逻各斯", 100, True)},
+        "普通教官": {3: stat("普通教官", 50)},
+    }
+    monkeypatch.setattr(swap, "candidates", lambda *a, **kw: (options, 0))
+    monkeypatch.setattr(swap, "confirm_training_panel", lambda *a: panel)
+    replacement = MagicMock(return_value=panel)
+    monkeypatch.setattr(swap, "place_support", replacement)
+    swap.perform_swap(solver, current, panel, "逻各斯")
+    replacement.assert_not_called()
 
 
 @pytest.mark.parametrize("supplied_inventory", [False, True])

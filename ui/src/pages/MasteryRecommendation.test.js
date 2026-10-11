@@ -57,18 +57,22 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('阿米娅跨形态专精提示', () => {
-  it('同形态多个技能不提示，跨形态持续提示且移除后清除', async () => {
+describe('阿米娅专精升变提示', () => {
+  it('任一形态即提示，跨形态更新且移除阿米娅后清除', async () => {
     const page = setup()
-    page.plan.value = { char_002_amiya_0: true, char_002_amiya_1: true, char_123_other_0: true }
+    page.plan.value = { char_123_other_0: true }
     await nextTick()
     expect(page.crossFormWarning.value).toBe('')
     expect(state.feedback.warning).not.toHaveBeenCalled()
+    page.plan.value = { char_002_amiya_0: true, char_002_amiya_1: true, char_123_other_0: true }
+    await nextTick()
+    expect(page.crossFormWarning.value).toContain('术师形态专精')
     page.plan.value.char_1001_amiya2_0 = true
     await nextTick()
     expect(page.crossFormWarning.value).toContain('术师、近卫')
-    expect(page.crossFormWarning.value).toContain('Mower 不会自动切换形态')
-    expect(page.crossFormWarning.value).toContain('在轮到对应形态训练前及时在游戏内手动切换形态')
+    expect(page.crossFormWarning.value).toContain('Mower 不会自动切换升变')
+    expect(page.crossFormWarning.value).toContain('在轮到对应形态训练前及时在游戏内手动切换升变')
+    expect(page.crossFormWarning.value).toContain('后续仍会进房检查')
     expect(page.crossFormWarning.value).not.toContain('关闭')
     expect(state.feedback.warning).toHaveBeenCalledWith(page.crossFormWarning.value, {
       duration: 10000
@@ -82,6 +86,9 @@ describe('阿米娅跨形态专精提示', () => {
     delete page.plan.value.char_002_amiya_0
     delete page.plan.value.char_002_amiya_1
     delete page.plan.value.char_1001_amiya2_0
+    await nextTick()
+    expect(page.crossFormWarning.value).toContain('医疗形态专精')
+    delete page.plan.value.char_1037_amiya3_0
     await nextTick()
     expect(page.crossFormWarning.value).toBe('')
   })
@@ -106,7 +113,7 @@ describe('阿米娅跨形态专精提示', () => {
     })
     await page.refreshPlanFromServer()
     await nextTick()
-    expect(page.crossFormWarning.value).toBe('')
+    expect(page.crossFormWarning.value).toContain('医疗形态专精')
   })
 
   it.each(['toggleSkillPlan', 'addAllToPlan'])('%s 提交选中的形态 ID', async (method) => {
