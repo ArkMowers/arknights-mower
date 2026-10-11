@@ -1643,7 +1643,7 @@ class EmergencyRecoveryMixin:
                     or occupant.name not in data.replacement_candidates(op)
                     or not has_resting_mood(occupant)
                     or occupant.mood_is_prediction
-                    or data.replacement_exhausted(occupant.name)
+                    or data.replacement_exhausted(occupant.name, operator=op)
                 ):
                     return False
                 continue

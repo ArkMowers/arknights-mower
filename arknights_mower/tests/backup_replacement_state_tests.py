@@ -15,6 +15,7 @@ from arknights_mower.tests.multi_group_shift_tests import (
 )
 from arknights_mower.utils import config
 from arknights_mower.utils.logic_expression import LogicExpression
+from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
@@ -163,6 +164,8 @@ def test_protected_replacements_defer_while_shared_primary_is_required(
         solver.tasks = [SchedulerTask(task_plan={"factory": ["黑角"]})]
     else:
         solver.op_data.operators["黑角"].mood = 0
+        solver.op_data.backup_plans[-1].plan["contact"][0].replacement.append("夜刀")
+        solver.op_data.add(Operator("夜刀", "", mood=0, time_stamp=datetime.now()))
     before = recovery(solver)
     plan = transition(solver)
     assert plan == {}
@@ -500,7 +503,8 @@ def test_product_shortage_defers_shared_group_recall(product_solver, monkeypatch
 def test_recall_respects_primary_protection(solver, monkeypatch, blocking):
     s = solver
     assert shift_off(s, "甲")[0]
-    backup(s, replacements=("黑角",))
+    backup(s, replacements=("黑角", "夜刀"))
+    s.op_data.add(Operator("夜刀", "", mood=0, time_stamp=datetime.now()))
     s.op_data.operators["黑角"].mood = 0
     if blocking == "busy":
         monkeypatch.setattr(
@@ -545,7 +549,8 @@ def test_primary_recall_rebuilds_ordinary_return(solver, protected):
     s.op_data.operators[SHARED].mood = 0
     due = datetime.now() + timedelta(hours=4)
     s.op_data.get_dorm_by_name(SHARED)[1].time = due
-    backup(s, replacements=("陈",))
+    backup(s, replacements=("陈", "夜刀"))
+    s.op_data.add(Operator("夜刀", "", mood=0, time_stamp=datetime.now()))
     s.op_data.operators["陈"].mood = 0
     pending = SchedulerTask(
         time=due, task_type=TaskTypes.SHIFT_ON, task_plan={"contact": [SHARED]}
@@ -565,6 +570,20 @@ def test_primary_recall_rebuilds_ordinary_return(solver, protected):
         assert not any(t.type == TaskTypes.SHIFT_ON for t in s.tasks)
         apply(s, plan)
         assert SHARED not in recovery(s)
+
+
+def test_backup_only_cover_at_zero_mood_preserves_recovering_primary(solver):
+    assert shift_off(solver, "甲")[0]
+    before = recovery(solver)
+    backup(solver, replacements=("黑角",))
+    solver.op_data.operators["黑角"].mood = 0
+
+    plan = transition(solver)
+
+    assert plan == {"contact": ["黑角"]}
+    assert solver.op_data.plan_condition == [True]
+    assert solver.op_data.group_is_resting("甲")
+    assert recovery(solver) == before
 
 
 @pytest.mark.parametrize("protect_first", [False, True])

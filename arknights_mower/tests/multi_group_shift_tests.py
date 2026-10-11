@@ -84,6 +84,26 @@ def shift_off(solver, group):
     return admitted, plan
 
 
+@pytest.mark.parametrize("compatible", [False, True])
+def test_exhausted_only_shared_cover_retains_binding_compatibility(solver, compatible):
+    data = solver.op_data
+    shared = data.operators[SHARED]
+    if compatible:
+        shared.group_bindings[1]["replacement"] = ["红"]
+    data.operators["红"].mood = 0
+    assert shift_off(solver, "甲")[0]
+
+    admitted, plan = shift_off(solver, "乙")
+
+    if compatible:
+        assert admitted
+        assert plan["contact"] == ["红"]
+    else:
+        assert not admitted
+        assert plan == {}
+    assert solver.op_data.group_is_resting("甲")
+
+
 def test_binding_schema_roundtrip_and_legacy_default():
     doc = {
         "plan1": {

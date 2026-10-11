@@ -2537,7 +2537,9 @@ def dorm_residents(op_data):
     }
 
 
-def restore_displaced_resting(op_data, previous, plan, tasks, *, admitted=None):
+def restore_displaced_resting(
+    op_data, previous, plan, tasks, *, admitted=None, group_transitions=None
+):
     """候补和多绑组成员失床不触发绑组回班；普通必需主班失床召回整组。"""
     # 同一份实际观测贯穿补偿；分床器明确返回的预约单独覆盖，避免旧缓存冒充入住者。
     current = {**previous, **(admitted or {})}
@@ -2592,6 +2594,23 @@ def restore_displaced_resting(op_data, previous, plan, tasks, *, admitted=None):
             logger.info(f"{name}让出床位，随组待命，同组保留成员继续休息")
             continue
         recalled.update(members)
+    # 普通成员回班后仍有下班绑定的共享干员保留替班，不覆盖具名恢复目标。
+    transitions = op_data.arrangement_group_transitions(
+        plan, group_transitions=group_transitions
+    )
+    transitions.update(
+        {
+            op.group: False
+            for name in recalled
+            if (op := op_data.operators[name]).group and not op.multi_group
+        }
+    )
+    recalled = {
+        name
+        for name in recalled
+        if not (op := op_data.operators[name]).multi_group
+        or not op_data.resting_binding_groups(op, transitions)
+    }
     for name in recalled:
         op = op_data.operators[name]
         plan.setdefault(op.room, ["Current"] * len(op_data.plan[op.room]))[op.index] = (

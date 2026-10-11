@@ -4372,9 +4372,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     )
                 ):
                     return False
-                if not x.room.startswith("dorm") and self.op_data.replacement_exhausted(
-                    obj
-                ):
+                if self.op_data.replacement_exhausted(obj, operator=x):
                     return False
                 return (
                     obj not in TRADE_ORDER_AGENTS
@@ -4499,6 +4497,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 __plan,
                 self.tasks,
                 admitted={bed.position: bed.name for bed in dorms},
+                group_transitions=self._execution_group_transitions(plan),
             )
             logger.debug(f"当前替换{__replacement}")
             exist_replacement.extend(__replacement)
@@ -9996,7 +9995,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             for dorm_room in list(plan):
                 if dorm_room.startswith("dorm"):
                     self.preserve_resting_crafters(plan[dorm_room], dorm_room)
-            restore_displaced_resting(self.op_data, previous, plan, self.tasks)
+            restore_displaced_resting(
+                self.op_data,
+                previous,
+                plan,
+                self.tasks,
+                group_transitions=self._execution_group_transitions(plan),
+            )
         rooms = list(plan.keys())
         # 救急跑单失败沿用换入意图；普通跑单由实测原班补偿接续。
         original_plan = (
