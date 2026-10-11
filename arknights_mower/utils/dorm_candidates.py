@@ -27,33 +27,24 @@ class DormCandidates:
     filling: list[str]
 
 
-def dorm_candidate_mood(op_data, name, now=None):
+def dorm_candidate_mood(op_data, name, now=None, *, estimates=None):
     """候选筛选先用实读，缺失时用短期卡片预估；计时仍只用实读。"""
     now = now or datetime.now()
     op = op_data.operators.get(name)
     if has_resting_mood(op, now):
         return resting_mood(op, now)
-    estimate = getattr(op_data, "dorm_mood_estimates", {}).get(name)
+    estimate = (
+        getattr(op_data, "dorm_mood_estimates", {}) if estimates is None else estimates
+    ).get(name)
     if estimate is not None and timedelta() <= now - estimate[1] < timedelta(hours=1):
         return estimate[0]
     return None
 
 
 def full_dorm_candidate(op_data, name, *, estimates=None, now=None):
-    """单回垫位接受满心情实读或较新的绿笑脸，不接受排序推断。"""
-    now = now or datetime.now()
-    op = op_data.operators.get(name)
-    estimate = (
-        getattr(op_data, "dorm_mood_estimates", {}) if estimates is None else estimates
-    ).get(name)
-    if (
-        estimate is not None
-        and timedelta() <= now - estimate[1] < timedelta(hours=1)
-        and (op is None or op.time_stamp is None or estimate[1] > op.time_stamp)
-    ):
-        # 实际卡片使用二元组；按排序推断的值带第三项 False，仅供候选筛选。
-        return estimate[0] == 24 and len(estimate) == 2
-    return has_resting_mood(op, now) and resting_mood(op, now) >= 24
+    """单回满心情判断沿用实读优先，缺失时接受有效卡片观测或排序推断。"""
+    mood = dorm_candidate_mood(op_data, name, now, estimates=estimates)
+    return mood is not None and mood >= 24
 
 
 def dorm_task_reservations(op_data, tasks, excluded=()):

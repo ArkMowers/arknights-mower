@@ -1,6 +1,7 @@
 """Single-target confirmation uses full non-provider padding before the target."""
 
 from datetime import datetime, timedelta
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -98,7 +99,7 @@ def test_low_fixed_cover_and_priority_target_arriving_together_confirm_in_two_st
 
 
 @pytest.mark.parametrize("measured", [None, 5])
-def test_green_card_padding_confirms_without_numeric_mood(solver, measured):
+def test_green_card_padding_respects_numeric_mood(solver, measured):
     data = solver.op_data
     op = data.operators["黑角"]
     op.mood = measured or 24
@@ -115,31 +116,34 @@ def test_green_card_padding_confirms_without_numeric_mood(solver, measured):
 
     solver.get_agent_from_room.side_effect = read_roster
     arrange(solver)
-    assert solver.confirms == [["杜林", "琴柳", "黑角", "银灰", ""], FINAL]
-    assert data.operators["银灰"].dorm_recovery_index == 3
+    if measured is None:
+        assert solver.confirms == [["杜林", "琴柳", "黑角", "银灰", ""], FINAL]
+        assert data.operators["银灰"].dorm_recovery_index == 3
+    else:
+        assert solver.confirms == [FINAL]
+        assert not data.operators["银灰"].dorm_recovery_room
     assert op.mood == (measured or 24)
     assert (op.time_stamp is None) == (measured is None)
 
 
 @pytest.mark.parametrize("age", [-1, 3600, 7200])
-def test_invalid_green_card_cache_cannot_supply_padding(solver, age):
+@pytest.mark.parametrize("inferred", [False, True])
+def test_invalid_green_card_cache_cannot_supply_padding(solver, age, inferred):
     data = solver.op_data
     data.operators["黑角"].time_stamp = None
-    data.dorm_mood_estimates["黑角"] = (
-        24,
-        datetime.now() - timedelta(seconds=age),
-    )
+    estimate = (24, datetime.now() - timedelta(seconds=age))
+    data.dorm_mood_estimates["黑角"] = (*estimate, False) if inferred else estimate
     arrange(solver)
     assert solver.confirms == [FINAL]
     assert not data.operators["银灰"].dorm_recovery_room
 
 
-def test_new_yellow_card_invalidates_old_full_padding(solver):
+def test_new_yellow_card_preserves_valid_full_measurement(solver):
     data = solver.op_data
     data.dorm_mood_estimates["黑角"] = (23.9, datetime.now())
     arrange(solver)
-    assert solver.confirms == [FINAL]
-    assert not data.operators["银灰"].dorm_recovery_room
+    assert solver.confirms == [["杜林", "琴柳", "黑角", "银灰", ""], FINAL]
+    assert data.operators["银灰"].dorm_recovery_index == 3
 
 
 def test_green_card_single_provider_cannot_supply_padding(solver):
@@ -152,15 +156,74 @@ def test_green_card_single_provider_cannot_supply_padding(solver):
     assert not data.operators["银灰"].dorm_recovery_room
 
 
-def test_only_inferred_full_never_confirms_without_observed_card(solver):
+def test_inferred_full_padding_confirms_without_numeric_mood(solver):
     data = solver.op_data
-    data.operators["黑角"].time_stamp = None
-    data.dorm_mood_estimates["黑角"] = (24, datetime.now(), False)
-    assert not full_dorm_candidate(data, "黑角")
+    op = data.operators["黑角"]
+    op.time_stamp = None
+    data.dorm_mood_estimates[op.name] = (24, datetime.now(), False)
+    assert full_dorm_candidate(data, op.name)
     arrange(solver)
-    assert solver.confirms == [FINAL]
-    assert solver.choose_agent.call_count == 2
-    assert not data.operators["银灰"].dorm_recovery_room
+    assert solver.confirms == [["杜林", "琴柳", "黑角", "银灰", ""], FINAL]
+    assert data.operators["银灰"].dorm_recovery_index == 3
+    assert op.time_stamp is None
+
+
+@pytest.mark.parametrize("measured", [None, -1, 5, 23, 24])
+@pytest.mark.parametrize("snapshot", [False, True])
+@pytest.mark.parametrize("inferred", [False, True])
+def test_full_candidate_uses_valid_measurement_before_estimate(
+    solver, measured, snapshot, inferred
+):
+    data = solver.op_data
+    op = data.operators["杜林"]
+    now = datetime.now()
+    op.mood = 24 if measured is None else measured
+    op.time_stamp = None if measured is None else now - timedelta(minutes=10)
+    estimates = {op.name: (24, now, False) if inferred else (24, now)}
+    if not snapshot:
+        data.dorm_mood_estimates.update(estimates)
+
+    assert full_dorm_candidate(
+        data, op.name, estimates=estimates if snapshot else None, now=now
+    ) is (measured in (None, -1, 24))
+    assert op.mood == (24 if measured is None else measured)
+    assert op.time_stamp == (None if measured is None else now - timedelta(minutes=10))
+
+
+@pytest.mark.parametrize("full_fixed_index", [0, 2])
+@pytest.mark.parametrize("measured", [None, 24])
+def test_real_card_scan_keeps_full_fixed_occupants_in_temporary_roster(
+    solver, monkeypatch, full_fixed_index, measured
+):
+    from arknights_mower.solvers import base_schedule
+
+    data = solver.op_data
+    fixed = FINAL[full_fixed_index]
+    data.operators[fixed].mood = 24
+    if measured is None:
+        data.operators[fixed].time_stamp = None
+    sample = data.operators[fixed].time_stamp
+    monkeypatch.setattr(base_schedule, "agent_card_selected", lambda img, scope: False)
+    monkeypatch.setattr(base_schedule, "estimate_agent_mood", lambda img, scope: 24)
+    monkeypatch.setattr(base_schedule, "monotonic", lambda: 0)
+    solver.recog.w, solver.recog.h = 1920, 1080
+    solver.tap = MagicMock()
+    solver.no_pending_task = MagicMock(return_value=True)
+    solver.swipe_left = MagicMock()
+    solver.switch_arrange_order = MagicMock()
+    solver.wait_for_agent_page = MagicMock(return_value=[("黑角", 0)])
+    solver.back_to_infrastructure = MagicMock()
+
+    solver._scan_card_moods()
+    assert data.dorm_mood_estimates[fixed][2] is False
+    assert data.operators[fixed].time_stamp == sample
+    arrange(solver)
+
+    assert len(solver.confirms) == 2
+    assert solver.confirms[0][full_fixed_index] == fixed
+    assert solver.confirms[0][0] == "杜林"
+    assert solver.confirms[-1] == FINAL
+    assert data.operators["银灰"].dorm_recovery_index == 3
 
 
 @pytest.mark.parametrize("observed", [False, True])
