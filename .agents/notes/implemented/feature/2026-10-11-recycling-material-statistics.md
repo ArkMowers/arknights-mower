@@ -35,6 +35,8 @@ The focused recycling suite contains 34 passing offline tests covering event ide
 
 On the current alpha baseline, recycling statistics, infrastructure collection, recycling-facility staffing and room relocation suites pass (139 tests in total). Existing trading debounce checks from the source baseline and structural governance checks also pass, as do frontend route and chart-isolation tests. The frontend production build passes. Browser checks cover desktop, 390px mobile without horizontal overflow, and dark mode with example data and no console errors. Actual recycling occupant-panel calibration and live-device collection remain unverified; no live-device suite runs.
 
+The automatic-rescue collection-deadline test limits visible prompts to orders and manufacturing products and asserts the complete tap sequence. This preserves its ordinary-collection scope under [INV-SCHED-09] while recycling-specific tests exercise reward recognition. The automatic-rescue, infrastructure-collection and recycling-collection suites pass together (252 offline tests).
+
 ## Standards Findings
 
 Pass: the change preserves device recovery propagation, uses existing SQLite ownership and bounded recognition retries, avoids Scheduling Plan mutation, and includes only the explicitly approved glossary wording.

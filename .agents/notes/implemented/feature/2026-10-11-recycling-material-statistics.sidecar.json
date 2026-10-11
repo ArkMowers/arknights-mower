@@ -15,6 +15,8 @@
     "arknights_mower.solvers.record.export_recycling_history"
   ],
   "test_suites": [
-    "arknights_mower/tests/recycling_collection_tests.py"
+    "arknights_mower/tests/recycling_collection_tests.py",
+    "arknights_mower/tests/infra_collection_tests.py",
+    "arknights_mower/tests/automatic_rescue_tests.py"
   ]
 }
