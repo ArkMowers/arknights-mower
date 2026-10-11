@@ -39,10 +39,8 @@ def dorm_candidate_mood(op_data, name, now=None):
     return None
 
 
-def full_dorm_candidate(
-    op_data, name, *, estimates=None, allow_inferred=False, now=None
-):
-    """单回垫位接受满心情实读或较新的绿笑脸；排序推断仅供选人候选。"""
+def full_dorm_candidate(op_data, name, *, estimates=None, now=None):
+    """单回垫位接受满心情实读或较新的绿笑脸，不接受排序推断。"""
     now = now or datetime.now()
     op = op_data.operators.get(name)
     estimate = (
@@ -54,7 +52,7 @@ def full_dorm_candidate(
         and (op is None or op.time_stamp is None or estimate[1] > op.time_stamp)
     ):
         # 实际卡片使用二元组；按排序推断的值带第三项 False，仅供候选筛选。
-        return estimate[0] == 24 and (allow_inferred or len(estimate) == 2)
+        return estimate[0] == 24 and len(estimate) == 2
     return has_resting_mood(op, now) and resting_mood(op, now) >= 24
 
 

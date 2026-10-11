@@ -16,6 +16,7 @@ from arknights_mower.tests.choose_agent_filter_tests import RESIDENTS, selection
 from arknights_mower.utils import resting_priority
 from arknights_mower.utils.character_recognize import estimate_agent_mood
 from arknights_mower.utils.dorm_candidates import dorm_candidate_mood, dorm_candidates
+from arknights_mower.utils.dorm_recovery import DormRecoveryPaddingUnavailable
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.resting_priority import has_resting_mood
 from arknights_mower.utils.scheduler_task import try_add_release_dorm
@@ -102,7 +103,12 @@ def test_color_endpoints_are_exact(label, expected):
 
 
 @pytest.mark.parametrize("slow", [False, True])
-def test_scan_uses_existing_frame_without_per_candidate_capture(monkeypatch, slow):
+@pytest.mark.parametrize(
+    "full_only,cache", [(False, True), (True, True), (True, False)]
+)
+def test_scan_uses_existing_frame_without_per_candidate_capture(
+    monkeypatch, slow, full_only, cache
+):
     instance = object.__new__(BaseMixin)
     page = (("满条", SCOPE), ("低条", ((0, 96), (189, 128))))
     frame = np.concatenate([strip("full"), strip("low")])
@@ -118,15 +124,20 @@ def test_scan_uses_existing_frame_without_per_candidate_capture(monkeypatch, slo
     estimates = {}
     remaining = ["满条", "低条"]
     selected, _ = instance.scan_agent(
-        remaining, max_agent_count=1, mood_estimates=estimates, skip_full_mood=True
+        remaining,
+        max_agent_count=1,
+        mood_estimates=estimates if cache else None,
+        skip_full_mood=not full_only,
+        require_full_mood=full_only,
     )
-    assert selected == ["低条"]
-    assert remaining == ["满条"]
+    assert selected == (["满条"] if full_only else ["低条"])
+    assert remaining == (["低条"] if full_only else ["满条"])
     instance.tap.assert_called_once()
     assert instance.recog.update.call_count == (0 if slow else 1)
     assert instance.wait_for_agent_page.call_count == (1 if slow else 0)
-    assert estimates["满条"][0] == 24
-    assert estimates["低条"][0] < 3
+    if cache:
+        assert estimates["满条"][0] == 24
+        assert estimates["低条"][0] < 3
 
 
 def test_estimates_do_not_establish_verified_full_or_timers(solver):
@@ -162,6 +173,79 @@ def test_temporary_named_dorm_selection_observes_card_moods(monkeypatch):
     instance.choose_agent(final.copy(), ROOM, False, preserve_dorm_occupants=True)
     assert selected == final
     assert set(instance.op_data.dorm_mood_estimates) == set(final)
+
+
+@pytest.mark.parametrize("count", [1, 2])
+def test_padding_selects_visible_descending_cards_without_registration(
+    monkeypatch, count
+):
+    instance, selected = selection_solver(monkeypatch, residents=[])
+    assert not instance.op_data.operators
+    worker = Operator("杜林", "")
+    worker._current_room = "meeting"
+    instance.op_data.operators[worker.name] = worker
+    instance.get_dorm_candidates = MagicMock(
+        return_value=SimpleNamespace(filling=["梅", "闪灵", "杜林", "伊芙利特", "妮芙"])
+    )
+    scan = instance.scan_agent.side_effect
+    owned = ["伊芙利特", "妮芙"][:count]
+
+    def observe(names, **kwargs):
+        if kwargs.get("require_full_mood"):
+            assert instance.switch_arrange_order.call_args.args == ("心情", ROOM, False)
+            assert "梅" in names  # 图鉴姓名可以是搜索池，不能指定不存在者。
+            assert "闪灵" not in names
+            assert "杜林" not in names
+            assert all(name not in instance.op_data.operators for name in owned)
+            result = scan(owned.copy(), **kwargs)
+            for name in result[0]:
+                kwargs["mood_estimates"][name] = (24, datetime.now())
+            return result
+        return scan(names, **kwargs)
+
+    instance.scan_agent.side_effect = observe
+    agents = ["爱丽丝"] + ["Free"] * count
+    instance.choose_agent(
+        agents, ROOM, False, preserve_dorm_occupants=True, recovery_padding=True
+    )
+    assert selected == agents == ["爱丽丝"] + owned
+    assert set(instance.op_data.operators) == set(owned) | {worker.name}
+    assert all(instance.op_data.operators[name].time_stamp is None for name in owned)
+
+
+@pytest.mark.parametrize("mood", [None, 23.9])
+def test_descending_unavailable_cards_stop_padding_search_without_retry(
+    monkeypatch, mood
+):
+    instance, selected = selection_solver(monkeypatch, residents=[])
+    instance.get_dorm_candidates = MagicMock(
+        return_value=SimpleNamespace(filling=["杜林", "梅"])
+    )
+    scan = instance.scan_agent.side_effect
+
+    def observe(names, **kwargs):
+        if kwargs.get("require_full_mood"):
+            if mood is None:
+                return [], [("闪灵", None)]
+            kwargs["mood_estimates"]["杜林"] = (mood, datetime.now())
+            return [], [("杜林", None)]
+        return scan(names, **kwargs)
+
+    instance.scan_agent.side_effect = observe
+    instance.swipe_agent_page.side_effect = base_mixin.AgentSelectionNotReady(
+        "已到末页"
+    )
+    with pytest.raises(DormRecoveryPaddingUnavailable):
+        instance.choose_agent(
+            ["爱丽丝", "Free"],
+            ROOM,
+            False,
+            preserve_dorm_occupants=True,
+            recovery_padding=True,
+        )
+    assert selected == ["爱丽丝"]
+    assert instance.swipe_agent_page.call_count == (1 if mood is None else 0)
+    assert not instance.op_data.operators
 
 
 def test_low_card_stays_unknown_and_sorts_before_full_unknown(solver):

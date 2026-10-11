@@ -82,6 +82,7 @@ from arknights_mower.utils.dorm_candidates import (
     dorm_task_reservations,
     vacant_dorm_slots,
 )
+from arknights_mower.utils.dorm_recovery import DormRecoveryPaddingUnavailable
 from arknights_mower.utils.email import maa_template, send_message, task_template
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
@@ -7941,6 +7942,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         preserve_dorm_occupants=False,
         choose_error=0,
         dorm_mood_candidates=None,
+        recovery_padding=False,
     ) -> None:
         """
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
@@ -7959,6 +7961,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             else dorm_mood_candidates
         )
         fallback_selected = []
+        padding_selected = []
         # Free 已尝试满心情和未登记空闲者兜底，明确留空的位置不参与选人。
         if "" in agents:
             fast_mode = False
@@ -8181,6 +8184,57 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     if last_special_filter != "ALL":
                         right_swipe = 0
                 break
+
+        if free_num and recovery_padding:
+            from arknights_mower.utils.dorm_skills import is_single_recovery_manager
+
+            self.profession_filter("ALL")
+            last_special_filter = "ALL"
+            right_swipe = self.swipe_left(right_swipe, last_special_filter)
+            self.switch_arrange_order("心情", room, False)
+            candidates = [
+                name
+                for name in self.get_dorm_candidates(agents, room=room).filling
+                if not getattr(self.op_data.operators.get(name), "current_room", "")
+                and not is_single_recovery_manager(name)
+            ]
+            estimates = self.op_data.dorm_mood_estimates
+            observation = None
+            for page_index in range(max_swipe + 1):
+                if not candidates:
+                    raise DormRecoveryPaddingUnavailable()
+                chosen, page = self.scan_agent(
+                    candidates.copy(),
+                    max_agent_count=free_num,
+                    observation=observation,
+                    mood_estimates=estimates,
+                    require_full_mood=True,
+                )
+                padding_selected.extend(chosen)
+                selected.extend(chosen)
+                for name in chosen:
+                    agents[agents.index("Free")] = name
+                    candidates.remove(name)
+                free_num -= len(chosen)
+                if not free_num:
+                    break
+                # 降序页面出现合格黄脸后，后续没有满心情者可补足垫位。
+                if page_index == max_swipe or any(
+                    name in candidates
+                    and (estimate := estimates.get(name)) is not None
+                    and estimate[0] < 24
+                    for name, _ in page
+                ):
+                    raise DormRecoveryPaddingUnavailable()
+                try:
+                    moved, observation = self.swipe_agent_page(
+                        page, candidates, return_page=True
+                    )
+                    right_swipe += moved
+                except AgentSelectionPageChanged:
+                    raise
+                except AgentSelectionNotReady:
+                    raise DormRecoveryPaddingUnavailable() from None
 
         # 安排空闲干员
         if free_num:
@@ -8419,6 +8473,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             logger.debug(room)
             raise Exception("检测到干员选择错误，重新选择")
         self.last_room = room
+        for name in padding_selected:
+            if name not in self.op_data.operators:
+                self.op_data.add(Operator(name, ""))
         if fallback_selected and self.task is not None:
             # 查找机会由所有宿舍共享，必须等实际读回心情才判定耗尽。
             pending = getattr(self.task, "idle_dorm_search_names", {})
@@ -9093,11 +9150,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.op_data, room, agents, group_transitions=group_transitions
         )
         vip_index = agents.index(target.name)
-        padding = {
-            name
-            for name in retained[:vip_index]
-            if name != "菲亚梅塔" and not is_single_recovery_manager(name)
-        }
         # 卡片观测随入住换位失效；本次确认保留选人时的证据供阵容读回使用。
         padding_estimates = self.op_data.dorm_mood_estimates.copy()
         # 一轮下班先替班接岗、再分床；不要为即将被下一条分床任务换走的
@@ -9128,14 +9180,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
             try:
                 self.choose_agent(
-                    retained.copy(),
+                    retained,
                     room,
-                    fast_mode
-                    and all(
-                        full_dorm_candidate(self.op_data, name) for name in padding
-                    ),
+                    fast_mode,
                     preserve_dorm_occupants=True,
+                    recovery_padding=True,
                 )
+                expected = retained + [""] * (len(agents) - len(retained))
                 padding_estimates = self.op_data.dorm_mood_estimates.copy()
                 self.tap_confirm(room, {})
                 current = [item["agent"] for item in self.get_agent_from_room(room)]
@@ -9143,6 +9194,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     raise Exception("宿舍单回排序确认失败，保留原任务重试")
             except MowerExit:
                 raise
+            except DormRecoveryPaddingUnavailable:
+                target.clear_dorm_recovery()
+                self.back()
+                logger.info(f"{room} 满心情空闲垫位不足，继续恢复正常阵容")
+                return True
             except Exception as e:
                 if (
                     isinstance(e, AgentSelectionNotReady)
@@ -9161,6 +9217,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if bed is not None and bed.name == target.name:
                 bed.time = None
         # 绿笑脸即可确认满心情；较新的低心情实读仍使本次确认失效。
+        padding = {
+            name
+            for name in retained[:vip_index]
+            if name != "菲亚梅塔" and not is_single_recovery_manager(name)
+        }
         if any(
             not full_dorm_candidate(self.op_data, name, estimates=padding_estimates)
             for name in padding

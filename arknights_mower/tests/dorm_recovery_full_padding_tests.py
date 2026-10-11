@@ -142,28 +142,6 @@ def test_new_yellow_card_invalidates_old_full_padding(solver):
     assert not data.operators["银灰"].dorm_recovery_room
 
 
-@pytest.mark.parametrize("observed", [None, 23.9, 24])
-def test_inferred_full_candidate_requires_selection_card_confirmation(solver, observed):
-    data = solver.op_data
-    data.operators["黑角"].time_stamp = None
-    data.dorm_mood_estimates["黑角"] = (24, datetime.now(), False)
-    choose = solver.choose_agent.side_effect
-
-    def select(agents, room, fast_mode=True, **kwargs):
-        if kwargs.get("preserve_dorm_occupants"):
-            assert not fast_mode
-            if observed is None:
-                data.dorm_mood_estimates.pop("黑角", None)
-            else:
-                data.dorm_mood_estimates["黑角"] = (observed, datetime.now())
-        choose(agents, room, fast_mode, **kwargs)
-
-    solver.choose_agent.side_effect = select
-    arrange(solver)
-    assert solver.confirms[-1] == FINAL
-    assert bool(data.operators["银灰"].dorm_recovery_room) == (observed == 24)
-
-
 def test_green_card_single_provider_cannot_supply_padding(solver):
     data = solver.op_data
     data.config.free_blacklist.append("黑角")
@@ -180,5 +158,51 @@ def test_only_inferred_full_never_confirms_without_observed_card(solver):
     data.dorm_mood_estimates["黑角"] = (24, datetime.now(), False)
     assert not full_dorm_candidate(data, "黑角")
     arrange(solver)
-    assert solver.confirms[-1] == FINAL
+    assert solver.confirms == [FINAL]
+    assert solver.choose_agent.call_count == 2
     assert not data.operators["银灰"].dorm_recovery_room
+
+
+@pytest.mark.parametrize("observed", [False, True])
+def test_unregistered_padding_never_blocks_normal_roster(solver, observed):
+    from arknights_mower.data import agent_list
+    from arknights_mower.solvers.base_mixin import AgentSelectionNotReady
+
+    data = solver.op_data
+    data.config.free_blacklist.append("黑角")
+    now = datetime.now()
+    data.dorm_mood_estimates.update(
+        (name, (24, now) if observed else (24, now, False))
+        for name in agent_list
+        if name not in data.operators
+    )
+    choose = solver.choose_agent.side_effect
+
+    def select(agents, *args, **kwargs):
+        if any(name != "Free" and name not in data.operators for name in agents):
+            raise AgentSelectionNotReady("干员列表已到末尾，返回房间重试")
+        choose(agents, *args, **kwargs)
+
+    solver.choose_agent.side_effect = select
+    arrange(solver)
+    assert solver.confirms == [FINAL]
+    assert solver.choose_agent.call_count == 2
+    assert not data.operators["银灰"].dorm_recovery_room
+
+
+def test_padding_uses_idle_operator_without_moving_another_dorm_resident(solver):
+    solver.physical = ["杜林", "琴柳", "红", "陈", "黑角"]
+    solver.get_agent_from_room()
+    arrange(solver)
+    assert solver.confirms == [FINAL]
+    assert not solver.op_data.operators["银灰"].dorm_recovery_room
+
+
+def test_highest_full_idle_non_provider_is_selected(solver):
+    data = solver.op_data
+    data.operators["黑角"].mood = 23
+    data.add(Operator("芬", "", mood=24, time_stamp=datetime.now()))
+    data.add(Operator("闪灵", "", mood=24, time_stamp=datetime.now()))
+    arrange(solver)
+    assert solver.confirms == [["杜林", "琴柳", "芬", "银灰", ""], FINAL]
+    assert data.operators["银灰"].dorm_recovery_index == 3

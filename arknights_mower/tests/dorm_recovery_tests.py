@@ -86,6 +86,26 @@ def solver(monkeypatch):
         return [{"agent": name} for name in instance.physical]
 
     def choose(agents, room, fast_mode=True, **kwargs):
+        if kwargs.get("recovery_padding") and "Free" in agents:
+            from arknights_mower.utils.dorm_candidates import full_dorm_candidate
+            from arknights_mower.utils.dorm_recovery import (
+                DormRecoveryPaddingUnavailable,
+            )
+            from arknights_mower.utils.dorm_skills import is_single_recovery_manager
+
+            # 此夹具的选人页只显示已配置的这些持有者；卡片现场选择另有专项。
+            candidates = iter(
+                name
+                for name in instance.get_dorm_candidates(agents, room=room).filling
+                if name in instance.op_data.operators
+                and full_dorm_candidate(instance.op_data, name)
+                and not is_single_recovery_manager(name)
+            )
+            while "Free" in agents:
+                name = next(candidates, None)
+                if name is None:
+                    raise DormRecoveryPaddingUnavailable()
+                agents[agents.index("Free")] = name
         instance.selected = agents.copy()
 
     def confirm(room, new_plan):
@@ -554,7 +574,7 @@ def test_unknown_replacement_mood_is_not_assumed_full(solver):
     assert recovery_order_plan(solver.op_data, ROOM, FINAL) == [
         "杜林",
         "琴柳",
-        "黑角",
+        "Free",
         "银灰",
     ]
 

@@ -1,7 +1,14 @@
 """在目标最终床位建立单回入驻顺序。"""
 
 from arknights_mower.utils import dorm_skills
-from arknights_mower.utils.dorm_candidates import dorm_candidates, full_dorm_candidate
+from arknights_mower.utils.dorm_candidates import (
+    dorm_candidates,
+    full_dorm_candidate,
+)
+
+
+class DormRecoveryPaddingUnavailable(Exception):
+    """选人页没有足够的满心情空闲垫位者，继续正常阵容。"""
 
 
 def active_recovery_position(op):
@@ -107,9 +114,7 @@ def recovery_order_plan(
             continue
         op = op_data.operators.get(name)
         if index < target_index:
-            retained.append(
-                name if full_dorm_candidate(op_data, name, allow_inferred=True) else ""
-            )
+            retained.append(name if full_dorm_candidate(op_data, name) else "")
             continue
         if op_data.is_dynamic_dorm_position(
             room, index, name, group_transitions=group_transitions
@@ -129,23 +134,25 @@ def recovery_order_plan(
     while retained and not retained[-1]:
         retained.pop()
     if "" in retained:
+        current = op_data.get_current_room(room, True)
         candidates = dorm_candidates(
             op_data,
             set(agents) | set(reserved_names),
-            current_residents=op_data.get_current_room(room, True),
-        )
-        padding = iter(
-            name
-            for name in candidates.filling
-            if getattr(op_data.operators.get(name), "current_room", "") in ("", room)
-            and full_dorm_candidate(op_data, name, allow_inferred=True)
-            and not dorm_skills.is_single_recovery_manager(name)
+            current_residents=current,
         )
         for index, name in enumerate(retained):
             if not name:
-                retained[index] = next(padding, None)
-                if retained[index] is None:
-                    return None
+                # 重试保留原位垫位者；新垫位在选人页按心情降序实际选择。
+                previous = current[index]
+                retained[index] = (
+                    previous
+                    if (target.current_room, target.current_index)
+                    == (room, target_index)
+                    and previous in candidates.filling
+                    and full_dorm_candidate(op_data, previous)
+                    and not dorm_skills.is_single_recovery_manager(previous)
+                    else "Free"
+                )
     return retained
 
 

@@ -757,6 +757,7 @@ class BaseMixin:
         respect_train_selection=False,
         mood_estimates=None,
         skip_full_mood=False,
+        require_full_mood=False,
     ):
         if not self.low_frame_rate_mode:
             return self._scan_agent_fast(
@@ -769,6 +770,7 @@ class BaseMixin:
                 mood_estimates,
                 skip_full_mood,
                 observation=observation,
+                require_full_mood=require_full_mood,
             )
         # 无目标时仍返回已复核的页面供调用方判断，但不进行点击。
         ret = self.wait_for_agent_page(
@@ -777,7 +779,12 @@ class BaseMixin:
         select_name = []
         while True:
             eligible = self.observe_agent_moods(
-                ret, agent, mood_estimates, skip_full_mood, train=train
+                ret,
+                agent,
+                mood_estimates,
+                skip_full_mood,
+                train=train,
+                require_full=require_full_mood,
             )
             target = next(
                 ((name, scope) for name, scope in ret if name in eligible), None
@@ -822,6 +829,7 @@ class BaseMixin:
         mood_estimates=None,
         skip_full_mood=False,
         observation=None,
+        require_full_mood=False,
     ):
         """普通设备沿用单帧批量选人及缩小扫描区域的识别重试。"""
         try:
@@ -855,6 +863,7 @@ class BaseMixin:
                 respect_train_selection,
                 mood_estimates,
                 skip_full_mood,
+                require_full_mood=require_full_mood,
             )
         if held_page == () and self.agent_page_has_right_gap(
             self.recog.img, ret, train=train
@@ -862,7 +871,12 @@ class BaseMixin:
             logger.debug("选人末页右侧空白，抬手后重新确认卡片位置")
             ret = self.wait_for_agent_page(full_scan=full_scan, train=train)
         eligible = self.observe_agent_moods(
-            ret, agent, mood_estimates, skip_full_mood, train=train
+            ret,
+            agent,
+            mood_estimates,
+            skip_full_mood,
+            train=train,
+            require_full=require_full_mood,
         )
         selected = []
         for name, scope in ret:
@@ -892,7 +906,7 @@ class BaseMixin:
         return selected, ret
 
     def observe_agent_moods(
-        self, page, candidates, estimates, skip_full, *, train=False
+        self, page, candidates, estimates, skip_full, *, train=False, require_full=False
     ):
         """复用识别帧记录候选预估，不刷新截图或修改干员实读数据。"""
         eligible = set(candidates)
@@ -923,7 +937,9 @@ class BaseMixin:
                         f"自动救急候选 {name} {reason}，取消本次选人"
                     )
         if estimates is None:
-            return eligible
+            if not require_full:
+                return eligible
+            estimates = {}
         now = datetime.now()
         for name, scope in page:
             if name not in eligible:
@@ -931,9 +947,13 @@ class BaseMixin:
             mood = estimate_agent_mood(self.recog.img, scope)
             if mood is None:
                 estimates.pop(name, None)
+                if require_full:
+                    eligible.discard(name)
                 continue
             estimates[name] = (mood, now)
             if skip_full and mood >= 24:
+                eligible.discard(name)
+            if require_full and mood != 24:
                 eligible.discard(name)
         return eligible
 
