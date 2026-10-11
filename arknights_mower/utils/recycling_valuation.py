@@ -12,17 +12,12 @@ from zipfile import BadZipFile, ZipFile
 
 from arknights_mower.data import key_mapping
 
-DEFAULT_RATIOS = {
-    "experience": 1.0,
-    "gold": 0.8,
-    "order": 733 / 2990,
-    "efficiency": 1.0,
-}
 BASE_ALGORITHMS = {
     0: {"experience": 1.0, "gold": 0.8, "order": 0.2},
     1: {"experience": 1.0, "gold": 0.8, "order": 733 / 2990},
     2: {"experience": 0.9568, "gold": 0.76544, "order": 0.23456},
 }
+DEFAULT_RATIOS = {**BASE_ALGORITHMS[2], "efficiency": 1.0}
 MAX_IMPORT_BYTES = 2 * 1024 * 1024
 _NS = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 _REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -48,7 +43,7 @@ def default_valuation():
         "metadata": dict(catalog["_meta"]),
         "imported_at": None,
         "ratios": dict(DEFAULT_RATIOS),
-        "base_algorithm": 1,
+        "base_algorithm": 2,
         "base_algorithm_saved": False,
         "item_ids": {row["name"]: iid for iid, row in catalog["items"].items()},
     }

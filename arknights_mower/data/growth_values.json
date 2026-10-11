@@ -14,7 +14,7 @@
       "expCoefficient": 0.9568,
       "lmdPricingStrategy": "LMD_PRICING_CE-6",
       "expPricingStrategy": "EXP_PRICING_LS-6",
-      "base_algorithm": 1,
+      "base_algorithm": 2,
       "customItem": [
         {
           "itemId": "30073",
@@ -53,7 +53,7 @@
       }
     },
     "license_url": "https://creativecommons.org/licenses/by-nc/4.0/deed.zh",
-    "method": "Offline export: CE6 LMD; CE6/LS6 EXP, base-report algorithm 0.245; SideStory average drops including token-to-LMD value; four retired materials use token-equivalent LMD. White/green crafting uses Nine-Colored Deer; blue/purple crafting uses Nian. Purple sugar/polyester retain crafting values. EXP uses intermediate battle record / 1000; inventory is not deducted; unknown items are excluded."
+    "method": "Offline export: CE6 LMD; CE6/LS6 EXP, base-report algorithm 0.23456; SideStory average drops including token-to-LMD value; four retired materials use token-equivalent LMD. White/green crafting uses Nine-Colored Deer; blue/purple crafting uses Nian. Purple sugar/polyester retain crafting values. EXP uses intermediate battle record / 1000; inventory is not deducted; unknown items are excluded."
   },
   "items": {
     "30145": {

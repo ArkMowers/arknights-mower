@@ -116,7 +116,7 @@ const valuation = ref(null)
 const algorithmBusy = ref(false)
 const algorithmError = ref('')
 const showCustomAlgorithm = ref(false)
-const customRatios = reactive({ experience: 1, gold: 0.8, order: 733 / 2990 })
+const customRatios = reactive({ experience: 0.9568, gold: 0.76544, order: 0.23456 })
 const customFields = [
   { key: 'gold', label: '赤金' },
   { key: 'order', label: '订单' },

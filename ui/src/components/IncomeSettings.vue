@@ -3,14 +3,14 @@ import { inject, onMounted, reactive, ref } from 'vue'
 import { incomeAlgorithms, incomeSettingsUrl, loadIncomeSettings } from '@/utils/incomeSettings'
 const axios = inject('axios')
 const valuation = ref(null)
-const ratios = reactive({ experience: 1, gold: 0.8, order: 733 / 2990, efficiency: 1 })
+const ratios = reactive({ experience: 0.9568, gold: 0.76544, order: 0.23456, efficiency: 1 })
 const settingsLoading = ref(false)
 const settingsBusy = ref(false)
 const settingsError = ref('')
 const settingsMessage = ref('')
 const importInput = ref(null)
 const settingsUrl = incomeSettingsUrl
-const algorithm = ref(1)
+const algorithm = ref(2)
 function selectAlgorithm(value) {
   const preset = incomeAlgorithms.find((row) => row.value === value)
   if (preset?.ratios) Object.assign(ratios, preset.ratios)
@@ -85,7 +85,7 @@ onMounted(loadSettings)
   <n-card id="income-settings" title="材料价值与基报算法">
     <n-spin :show="settingsLoading || settingsBusy">
       <p class="settings-description">
-        默认采用 CE6 / 0.245 算法与 SS 活动计价（含代币折币）。导入“物品价值表”Excel
+        默认采用 CE6 / 0.23456 算法与 SS 活动计价（含代币折币）。导入“物品价值表”Excel
         可更新价值或添加新材料，未提供的项目保留原值。回收站与养成统计共用此设置。
       </p>
       <div v-if="valuation" class="valuation-source">
@@ -126,7 +126,7 @@ onMounted(loadSettings)
       <n-collapse style="margin-top: 14px">
         <n-collapse-item title="默认估值口径" name="default-method">
           <n-text depth="3" style="font-size: 13px; line-height: 1.8">
-            龙门币按 CE6、钱书按 0.245 算法；蓝材料按 SS 活动计价，包含代币和龙门币价值。
+            龙门币按 CE6、钱书按 0.23456 算法；蓝材料按 SS 活动计价，包含代币和龙门币价值。
             扭转醇、轻锰矿、研磨石、RMA70-12 按代币等价龙门币计价。
             紫糖、紫酯按加工价值计价。白→绿、绿→蓝用九色鹿，蓝→紫、紫→金用年。
           </n-text>

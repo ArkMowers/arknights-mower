@@ -408,22 +408,22 @@ def test_settings_api_preserves_explicit_custom_algorithm(db, monkeypatch):
     assert (
         client.put(
             "/report/recycling_settings",
-            json={"ratios": DEFAULT_RATIOS, "base_algorithm": 2},
+            json={"ratios": DEFAULT_RATIOS, "base_algorithm": 0},
         ).status_code
         == 400
     )
     assert client.get("/report/recycling_settings").json == before
 
 
-def test_default_assumptions_use_ce6_ls6_and_quarter_algorithm(db):
+def test_default_assumptions_use_ce6_ls6_and_lmd_normalized_algorithm(db):
     from arknights_mower.utils.growth_value import price_catalog
 
     saved = record.get_recycling_valuation()
-    assert saved["base_algorithm"] == 1
+    assert saved["base_algorithm"] == 2
     assert saved["ratios"] == {
-        "experience": 1,
-        "gold": 0.8,
-        "order": 733 / 2990,
+        "experience": 0.9568,
+        "gold": 0.76544,
+        "order": 0.23456,
         "efficiency": 1,
     }
     assert saved["metadata"]["pricing_config"]["expCoefficient"] == 0.9568
