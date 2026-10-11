@@ -1,5 +1,4 @@
 import json
-import logging
 import os
 import tempfile
 import threading
@@ -22,12 +21,11 @@ from arknights_mower.utils.config.plan import (
     migrate_legacy_dorm_order,
     retire_rescue_backups,
 )
+from arknights_mower.utils.log import logger
 from arknights_mower.utils.network_settings import apply_http_proxy
 from arknights_mower.utils.path import get_path
 
 apply_http_proxy()
-
-logger = logging.getLogger(__name__)
 
 # 应用配置文件统一收敛到 @app/config/。老路径（@app/xxx）由 migrate_app_config_paths
 # 在启动时搬一次——不搬会静默生成默认配置、把老配置弄丢。

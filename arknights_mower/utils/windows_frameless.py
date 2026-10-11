@@ -9,10 +9,10 @@ handling, cursor feedback, and multi-monitor interaction.
 """
 
 import ctypes
-import logging
 from ctypes import wintypes
 from typing import Any
 
+from arknights_mower.utils.log import logger
 from arknights_mower.utils.window_shell import (
     DESKTOP_WINDOW_CONTROLS_WIDTH,
     DESKTOP_WINDOW_SIDEBAR_CONTROL_WIDTH,
@@ -22,8 +22,6 @@ from arknights_mower.utils.window_shell import (
     is_windows,
     window_dpi_scale,
 )
-
-logger = logging.getLogger(__name__)
 
 _hooks: dict[str, tuple[Any, ...]] = {}
 

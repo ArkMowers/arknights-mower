@@ -10,7 +10,6 @@ from threading import Lock, Thread
 
 import colorlog
 
-from arknights_mower.utils import config
 from arknights_mower.utils.log_retention import RUNTIME_LOG_RETENTION_HOURS
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.screenshot import ScreenshotStore
@@ -83,6 +82,9 @@ dhlr.addFilter(filter)
 
 class Handler(logging.StreamHandler):
     def emit(self, record: logging.LogRecord):
+        # Config can emit while importing; resolve it after its initialization.
+        from arknights_mower.utils import config
+
         detail = record.getMessage()
         summary = detail.split("\nTraceback (most recent call last):", 1)[0]
         if record.levelno >= logging.ERROR:
@@ -243,6 +245,8 @@ def _store() -> ScreenshotStore | None:
     多份清理线程并发删除同一批文件时，Windows 会让其中一次以 WinError 5 失败
     并记一条清理错误。
     """
+    from arknights_mower.utils import config
+
     global _store_instance
     with _store_lock:
         if _store_closed:

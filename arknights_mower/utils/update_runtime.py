@@ -307,9 +307,9 @@ class RuntimeRegistration:
             retry_backup_cleanup(self.directory, self.record["root"])
         except Exception:
             # This optional maintenance cannot prevent registration or startup.
-            import logging
+            from arknights_mower.utils.log import logger
 
-            logging.getLogger(__name__).warning("历史更新备份暂无法清理")
+            logger.warning("历史更新备份暂无法清理")
 
     def publish(self):
         with self._publication_lock:
@@ -319,15 +319,13 @@ class RuntimeRegistration:
             write_json(self.path, self.record.copy(), sync=True)
 
     def _heartbeat(self):
-        import logging
-
         while not self.closed.wait(1):
             try:
                 self.publish()
             except Exception:
-                logging.getLogger("arknights_mower.utils.log").exception(
-                    "实例登记发布失败，下次心跳将重试：%s", self.path
-                )
+                from arknights_mower.utils.log import logger
+
+                logger.exception("实例登记发布失败，下次心跳将重试：%s", self.path)
 
     def shutdown_requested(self):
         return self.request.exists()

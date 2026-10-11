@@ -1,7 +1,6 @@
 """Retire MAA rollback copies only after a completed, successful task run."""
 
 import functools
-import logging
 import os
 import shutil
 import threading
@@ -88,7 +87,9 @@ class BackupCheckpoint:
                     shutil.rmtree(path)
             return True
         except OSError:
-            logging.getLogger(__name__).warning("MAA 任务已完成，旧备份暂无法清理")
+            from arknights_mower.utils.log import logger
+
+            logger.warning("MAA 任务已完成，旧备份暂无法清理")
             return False
         finally:
             _update_lock.release()
@@ -189,7 +190,9 @@ class VerifiedAsst:
             try:
                 self._retire = BackupCheckpoint(target).retire
             except OSError:
-                logging.getLogger(__name__).warning("MAA 备份状态无法读取，保留备份")
+                from arknights_mower.utils.log import logger
+
+                logger.warning("MAA 备份状态无法读取，保留备份")
                 self._retire = lambda: False
 
     def __getattr__(self, name):
@@ -244,9 +247,9 @@ class VerifiedAsst:
                 try:
                     self._retired = self._retire()
                 except Exception:
-                    logging.getLogger(__name__).warning(
-                        "MAA 任务已完成，旧备份清理暂不可用"
-                    )
+                    from arknights_mower.utils.log import logger
+
+                    logger.warning("MAA 任务已完成，旧备份清理暂不可用")
 
             self._cleanup_thread = threading.Thread(
                 target=retire, name="maa-backup-cleanup", daemon=True
