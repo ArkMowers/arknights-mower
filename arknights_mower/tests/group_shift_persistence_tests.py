@@ -15,8 +15,97 @@ from arknights_mower.tests.dorm_group_tests import (
     configure_explicit_free_bed,
 )
 from arknights_mower.tests.dorm_group_tests import solver as solver
+from arknights_mower.tests.dorm_state_restore_tests import (
+    recovery_snapshot as recovery_snapshot,
+)
 from arknights_mower.utils import config
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+
+def test_conflict_restart_retains_completed_room_recovery(
+    recovery_snapshot, monkeypatch, tmp_path
+):
+    solver, task, incoming, due = recovery_snapshot
+    task.plan = {"dormitory_2": ["闪灵", "杜林", "Free", "Free", "Free"]}
+    task.group_shift_expected["dormitory_2", 2] = "能天使"
+    future = SchedulerTask(
+        time=task.time + timedelta(hours=4), task_type=TaskTypes.SHIFT_ON
+    )
+    # 未开始的未来任务不能覆盖本次已经观测到的换班意图。
+    future.group_shift_transitions = {
+        group: not resting for group, resting in task.group_shift_transitions.items()
+    }
+    solver.tasks.append(future)
+    for attr in ("daily_visit_friend", "daily_report", "daily_skland", "daily_mail"):
+        setattr(solver, attr, datetime.now().date())
+    solver.task_count = 7
+    monkeypatch.setattr(config, "stop_mower", Event())
+    monkeypatch.setattr(mower, "base_scheduler", solver)
+    monkeypatch.setattr(mower.device_control, "run", lambda **kw: nullcontext())
+    monkeypatch.setattr(mower, "resource_task_session", nullcontext)
+    monkeypatch.setattr(mower, "_close_device_session", MagicMock())
+    monkeypatch.setattr(mower, "_cancel_maintenance_timer", MagicMock())
+    monkeypatch.setattr(
+        record,
+        "get_path",
+        lambda path: tmp_path if path == "@app/tmp" else tmp_path / "record.db",
+    )
+    monkeypatch.setattr(record, "_tables_created", False)
+
+    def stopped_loop(saved):
+        try:
+            solver._check_group_shift_targets(
+                task.plan["dormitory_2"], "dormitory_2", reason="最终选人"
+            )
+        except base_schedule.MowerExit:
+            return
+
+    monkeypatch.setattr(mower, "_main", stopped_loop)
+    mower.main({})
+    assert config.stop_mower.is_set() and mower.base_scheduler is None
+    saved = record.load_state()
+    assert any(bed.name == incoming and bed.time == due for bed in saved["dorm"])
+    resumed = object.__new__(base_schedule.BaseSchedulerSolver)
+    resumed.__dict__.update(solver.__dict__)
+    resumed.global_plan = copy.deepcopy(solver.global_plan)
+    resumed.tasks, resumed.task = [], None
+    resumed.emergency_state = None
+    config.stop_mower.clear()
+    monkeypatch.setattr(mower, "initialize", lambda *a, **kw: resumed)
+    monkeypatch.setattr(mower.NewsChecker, "get_maintenance", lambda: None)
+    monkeypatch.setattr(mower, "refresh_resource_at_boundary", lambda: None)
+
+    def resume_remaining_room():
+        if resumed.run.call_count > 1:
+            pytest.fail("unexpected scheduler recovery during snapshot restoration")
+        try:
+            resumed.task = resumed.tasks[0]
+            assert "dormitory_1" not in resumed.task.plan
+            data = resumed.op_data
+            context = resumed._execution_group_transitions()
+            assert (
+                data.get_dorm_by_name(incoming, group_transitions=context)[1].time
+                == due
+            )
+            assert data.group_shift_state == saved["group_shift_state"]
+            for index, name in enumerate(resumed.task.plan["dormitory_2"]):
+                if name not in ("Free", "Current", ""):
+                    data.update_detail(
+                        name, 5, "dormitory_2", index, group_transitions=context
+                    )
+            resumed.task.plan.clear()
+            assert resumed._complete_group_shift(resumed.task)
+            data.correct_dorm()
+        except Exception as exc:
+            pytest.fail(f"snapshot restoration failed: {exc}")
+        raise base_schedule.MowerExit
+
+    resumed.run = MagicMock(side_effect=resume_remaining_room)
+    mower.simulate(saved)
+    resumed.run.assert_called_once()
+    bed = resumed.op_data.get_dorm_by_name(incoming)[1]
+    assert bed is not None and (bed.name, bed.time) == (incoming, due)
+    assert resumed.tasks[1].time == future.time
 
 
 def test_conflict_saves_remaining_task_before_worker_cleanup_and_resumes(
@@ -107,6 +196,43 @@ def test_conflict_saves_remaining_task_before_worker_cleanup_and_resumes(
     resumed.run = MagicMock(side_effect=resume_remaining_room)
     mower.simulate(saved)
     resumed.run.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "recovery_snapshot", ["free_only", "mixed_dynamic"], indirect=True
+)
+@pytest.mark.parametrize("case", ["unstarted", "explicit_return", "retired"])
+def test_restart_does_not_open_beds_from_ineligible_or_overridden_shifts(
+    recovery_snapshot, monkeypatch, case
+):
+    solver, task, incoming, _ = recovery_snapshot
+    if case == "unstarted":
+        task.group_shift_expected = {}
+    elif case == "explicit_return":
+        task.plan = {"meeting": ["伊内丝", "银灰"]}
+    for attr in ("daily_visit_friend", "daily_report", "daily_skland", "daily_mail"):
+        setattr(solver, attr, datetime.now().date())
+    solver.task_count = 7
+    monkeypatch.setattr(config, "stop_mower", Event())
+    monkeypatch.setattr(mower, "base_scheduler", solver)
+    saved = copy.deepcopy(record.current_state())
+    if case == "retired":
+        saved["backup_plan_names"] = ["retired"]
+    monkeypatch.setattr(mower, "initialize", lambda *a, **kw: solver)
+    monkeypatch.setattr(mower.NewsChecker, "get_maintenance", lambda: None)
+    monkeypatch.setattr(mower, "refresh_resource_at_boundary", lambda: None)
+    solver.emergency_state = None
+    solver.tasks, solver.task = [], None
+    solver.run = MagicMock(side_effect=base_schedule.MowerExit)
+
+    mower.simulate(saved)
+
+    solver.run.assert_called_once()
+    assert solver.op_data.group_shift_state == saved["group_shift_state"]
+    assert all(not bed.name for bed in solver.op_data.all_dorms())
+    assert solver.op_data.get_current_operator("dormitory_1", 0).name == incoming
+    if case == "retired":
+        assert solver.tasks == []
 
 
 @pytest.mark.parametrize("failure", [False, RuntimeError("snapshot unavailable")])

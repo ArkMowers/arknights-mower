@@ -44,7 +44,9 @@
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.ensure_dorm_recovery_order",
     "arknights_mower.utils.dorm_recovery.recovery_target",
     "arknights_mower.utils.dorm_recovery.recovery_order_plan",
-    "arknights_mower.utils.operators.Operators.is_dorm_replacement_for_slot"
+    "arknights_mower.utils.operators.Operators.is_dorm_replacement_for_slot",
+    "arknights_mower.utils.operators.Operators.restore_dorm_state",
+    "arknights_mower.__main__.simulate"
   ],
   "test_suites": [
     "arknights_mower/tests/protected_dorm_bed_tiers_tests.py",
@@ -82,6 +84,7 @@
     "arknights_mower/tests/group_shift_training_protection_tests.py",
     "arknights_mower/tests/selection_missing_input_tests.py",
     "arknights_mower/tests/visible_production_target_tests.py",
-    "arknights_mower/tests/group_shift_persistence_tests.py"
+    "arknights_mower/tests/group_shift_persistence_tests.py",
+    "arknights_mower/tests/dorm_state_restore_tests.py"
   ]
 }

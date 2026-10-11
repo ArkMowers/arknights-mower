@@ -1,6 +1,7 @@
 import ast
 import copy
 import json
+from collections import defaultdict
 from datetime import datetime, timedelta
 from time import monotonic
 from typing import Any, Literal, overload
@@ -1446,26 +1447,44 @@ class Operators:
             if agent.room.startswith("dorm"):
                 agent.time_stamp = None
 
-    def restore_dorm_state(self, saved_dorms):
+    def restore_dorm_state(self, saved_dorms, *, group_transitions=None):
         """按床位恢复宿舍状态，保留当前排班生成的顺序和床位集合。"""
-        saved_by_position = {
-            tuple(dorm.position): dorm
-            for dorm in saved_dorms
-            if hasattr(dorm, "position")
+        saved_by_position = defaultdict(list)
+        for dorm in saved_dorms:
+            if hasattr(dorm, "position") and dorm.name:
+                saved_by_position[tuple(dorm.position)].append(dorm)
+        active_groups = {
+            group for group, resting in (group_transitions or {}).items() if resting
+        }
+        inactive_groups = {
+            group for group, resting in (group_transitions or {}).items() if not resting
         }
         restored = set()
         for dorm in self.all_dorms():
-            if saved := saved_by_position.get(tuple(dorm.position)):
-                if (
-                    dorm in self.group_dorm or self.is_effective_free_slot(dorm)
-                ) and self.is_recovery_dorm(dorm, saved.name):
-                    dorm.name = saved.name
-                    dorm.time = saved.time
-                    restored.add(tuple(dorm.position))
+            if dorm not in self.group_dorm and not self.is_effective_free_slot(
+                dorm, active_groups=active_groups, inactive_groups=inactive_groups
+            ):
+                continue
+            position = tuple(dorm.position)
+            current = self.get_current_operator(*position)
+            saved = next(
+                (
+                    saved
+                    for saved in saved_by_position[position]
+                    if (current is None or current.name == saved.name)
+                    and self.is_recovery_dorm(
+                        dorm, saved.name, group_transitions=group_transitions
+                    )
+                ),
+                None,
+            )
+            if saved is not None:
+                dorm.name, dorm.time = saved.name, saved.time
+                restored.add((position, saved.name))
         return [
             dorm
             for dorm in saved_dorms
-            if dorm.name and tuple(dorm.position) not in restored
+            if dorm.name and (tuple(dorm.position), dorm.name) not in restored
         ]
 
     @save_action_to_sqlite_decorator
