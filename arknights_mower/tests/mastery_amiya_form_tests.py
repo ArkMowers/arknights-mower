@@ -201,7 +201,6 @@ def test_arrangement_gate_blocks_both_slots_only_for_current_observation(
 ):
     solver, _, _, _, _, _ = case
     monkeypatch.setattr(config.conf, "assistant_follows_schedule", follow)
-    solver.task = None
     room = reader.RoomState("empty", amiya_form_waiting=True)
     monkeypatch.setattr(reader, "read_room_state", lambda *a, **kw: room)
     new_plan = {"train": ["褐果", "阿米娅"]}
