@@ -164,6 +164,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.4 Vision & Recognition Domain
 
+- [ ] **[INV-REC-11] Facility Title Priority**: Does a positively matched facility title override conflicting icon color on the same Capture Frame, including entry animation, while unknown titles retain icon recognition and bounded entry recovery? See the [facility title contract](../../../../docs/subsystems/base-scheduler.md#3-subsystem-invariants).
+
 - [ ] **[INV-REC-10] Released Tail Coordinates**: Does a blank right tail discard the held frame for both fast selection coordinates and slower stability checks, while ordinary filled pages retain reuse and unsettled or cancelled observations send no input? See the [selection contract](../../../../docs/subsystems/base-scheduler.md#28-operator-selection-verification).
 
 - [ ] **[INV-REC-09] Training Name Decoration**: Do names with Special Focus markers retain their full identity when decoration overlaps text, including letters, hyphens and middle dots, with unchanged unknown-name rejection and correct cache invalidation after resource reload?
