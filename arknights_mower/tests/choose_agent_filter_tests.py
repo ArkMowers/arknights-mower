@@ -46,9 +46,8 @@ def test_single_operator_still_selects_correctly(monkeypatch):
     assert selected == ["伊芙利特"]
 
 
-@pytest.mark.parametrize("preserve", [False, True])
 def test_unexpected_dorm_residents_rebuild_selection_before_canceling_cards(
-    monkeypatch, preserve
+    monkeypatch,
 ):
     actual = ["Lancet-2", "澄闪", "玛露西尔", "菲亚梅塔", "槐琥"]
     cached = ["冰酿", "闪灵", "桃金娘", "菲亚梅塔", "槐琥"]
@@ -56,9 +55,7 @@ def test_unexpected_dorm_residents_rebuild_selection_before_canceling_cards(
     solver, selected = selection_solver(monkeypatch, residents=actual)
     solver.op_data.get_current_room = lambda *args: cached.copy()
 
-    solver.choose_agent(
-        expected.copy(), "dormitory_1", preserve_dorm_occupants=preserve
-    )
+    solver.choose_agent(expected.copy(), "dormitory_1")
 
     assert selected == expected
     # 不能按旧缓存先点第五张，更不能保留 Lancet-2；首次点击须清空选择。
@@ -107,79 +104,6 @@ def test_matching_card_names_still_clear_and_reselect(monkeypatch):
     solver.scan_agent.assert_not_called()
     assert solver.switch_arrange_order.call_count == 2
     solver.swipe_left.assert_not_called()
-
-
-@pytest.mark.parametrize("mode", ["high", "medium", "low"])
-@pytest.mark.parametrize("phase", ["setup", "restore"])
-def test_recovery_reorder_keeps_all_matching_fixed_occupants(monkeypatch, mode, phase):
-    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", mode)
-    initial = ["杜林", "闪灵", "菲亚梅塔", "爱丽丝"]
-    target = initial[:3] + ["伊芙利特"] if phase == "setup" else initial
-    solver, selected = selection_solver(monkeypatch, residents=initial)
-    tap = solver.tap.side_effect
-    transitions = []
-
-    def record_tap(*args, **kwargs):
-        tap(*args, **kwargs)
-        transitions.append(selected.copy())
-
-    solver.tap.side_effect = record_tap
-    solver.choose_agent(target.copy(), "dormitory_1", preserve_dorm_occupants=True)
-
-    assert selected == target
-    assert all(names[:3] == initial[:3] for names in transitions)
-    assert all(call.args[0] != (729.6, 1026.0) for call in solver.tap.call_args_list)
-    if phase == "restore":
-        solver.tap.assert_not_called()
-
-
-@pytest.mark.parametrize("page_order", ["same", "reversed"])
-def test_recovery_inserts_padding_after_full_fixed_occupants(monkeypatch, page_order):
-    initial = ["杜林", "闪灵", "菲亚梅塔", "爱丽丝", "伊芙利特"]
-    target = initial[:3] + ["妮芙", "伊芙利特"]
-    solver, selected = selection_solver(monkeypatch, residents=initial)
-    order = solver.switch_arrange_order.side_effect
-    tap = solver.tap.side_effect
-    transitions = []
-
-    def reorder_cards(kind, *args):
-        order(kind, *args)
-        if kind == "技能" and page_order == "reversed":
-            count = len(selected)
-            solver.selection_cards[:count] = reversed(solver.selection_cards[:count])
-
-    def record_tap(*args, **kwargs):
-        tap(*args, **kwargs)
-        transitions.append(selected.copy())
-
-    solver.switch_arrange_order.side_effect = reorder_cards
-    solver.tap.side_effect = record_tap
-    solver.choose_agent(target.copy(), "dormitory_1", preserve_dorm_occupants=True)
-
-    assert selected == target
-    assert transitions
-    assert all(names[:3] == initial[:3] for names in transitions)
-    assert all("爱丽丝" not in names for names in transitions)
-
-
-def test_recovery_reorder_preserves_first_manager_with_different_page_order(
-    monkeypatch,
-):
-    initial = ["杜林", "爱丽丝", "闪灵", "菲亚梅塔"]
-    target = ["杜林", "闪灵", "菲亚梅塔", "爱丽丝"]
-    solver, selected = selection_solver(monkeypatch, residents=initial)
-    tap = solver.tap.side_effect
-    transitions = []
-
-    def record_tap(*args, **kwargs):
-        tap(*args, **kwargs)
-        transitions.append(selected.copy())
-
-    solver.tap.side_effect = record_tap
-    solver.choose_agent(target.copy(), "dormitory_1", preserve_dorm_occupants=True)
-
-    assert selected == target
-    assert all(names and names[0] == "杜林" for names in transitions)
 
 
 def test_fast_click_strategy_keeps_zero_interval_reorder(
@@ -433,7 +357,6 @@ def selection_solver(monkeypatch, residents=None):
     current = list(RESIDENTS if residents is None else residents)
     selected = current.copy()
     cards = current.copy()
-    solver.selection_cards = cards
     profession = "ALL"
     first_scan = True
     roster = RESIDENTS + ["伊芙利特", "杜林", "妮芙", "特米米", "深靛"]

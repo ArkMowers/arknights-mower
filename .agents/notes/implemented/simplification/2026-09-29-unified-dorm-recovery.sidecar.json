@@ -15,7 +15,9 @@
   "code_symbols": [
     "arknights_mower.utils.dorm_recovery.recovery_order_plan",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._prepare_shift_cycle",
-    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.ensure_dorm_recovery_order"
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.ensure_dorm_recovery_order",
+    "arknights_mower.utils.dorm_candidates.dorm_candidate_mood",
+    "arknights_mower.utils.dorm_candidates.full_dorm_candidate"
   ],
   "test_suites": [
     "arknights_mower/tests/dorm_recovery_tests.py",

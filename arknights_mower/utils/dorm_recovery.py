@@ -75,9 +75,9 @@ def recovery_order_plan(
 ):
     """建立单回时就占住最终床位，补回其他人后目标仍在原位。
 
-    保留单回宿管、菲亚梅塔及所有已确认满心情的入住者；
-    其他前置位置使用无单回技能的满心情空闲者垫位，
-    不能留空让游戏压缩名单。没有足够合格垫位者时不执行这次单回确认。
+    目标前方保留单回宿管、菲亚梅塔与已满心情的入住者；其他位置使用
+    无单回技能的满心情空闲者垫位，不能留空让游戏压缩名单。
+    没有足够合格垫位者时不执行这次单回确认。
     """
     managers = recovery_managers(op_data, room, agents)
     if not managers:
@@ -112,18 +112,19 @@ def recovery_order_plan(
         ):
             retained.append(name)
             continue
-        if full_dorm_candidate(op_data, name):
-            retained.append(name)
+        op = op_data.operators.get(name)
+        if index < target_index:
+            retained.append(name if full_dorm_candidate(op_data, name) else "")
             continue
-        if (
-            index < target_index
-            or op_data.is_dynamic_dorm_position(
-                room, index, name, group_transitions=group_transitions
-            )
-            or op_data.is_dorm_replacement_for_slot(
-                name, room, index, group_transitions=group_transitions
-            )
+        if op_data.is_dynamic_dorm_position(
+            room, index, name, group_transitions=group_transitions
         ):
+            retained.append("")
+            continue
+        op = op_data.operators.get(name)
+        if op_data.is_dorm_replacement_for_slot(
+            name, room, index, group_transitions=group_transitions
+        ) and (op is None or op.time_stamp is None or op.mood < 24):
             retained.append("")
             continue
         if name in ("", "Free", "Current"):
