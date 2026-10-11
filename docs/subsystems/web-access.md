@@ -20,6 +20,8 @@ The log schedule page opens in time browsing with adjacent ten-minute windows an
 
 ## 4. Subsystem Invariants
 
+- **[INV-WEB-04] Frontend Navigation Dispatch**: Known frontend page navigation resolves before API dispatch according to the [frontend navigation contract](#6-frontend-navigation).
+
 - **[INV-UI-12] Log Window Cohesion**: Displayed logs, screenshot navigation and export share one loaded time window or error archive; date drafts and superseded requests never replace that source, and failed source changes expose no stale evidence.
 
 - **[INV-WEB-01] Local Log Read Boundary**: A WebView session without a configured token permits read-only log requests from loopback with valid browser origin metadata; remote and cross-origin requests are rejected, and AI chat and mutating endpoints retain their credential checks.
@@ -38,3 +40,11 @@ The startup worker waits for the active software update operation to finish. Whe
 Update and process-operation restarts preserve their explicit policy: `MOWER_RESUME_MODE` values `0` and `1` select that task mode; otherwise `MOWER_RESTART_JOB` requires `MOWER_RESUME_RUN=1` and resumes mode `2`. The persisted autostart option does not override an explicit stopped restart. Other hosts that do not claim desktop startup ownership retain their existing frontend fallback; this change does not alter the separate Android launcher.
 
 [INV-WEB-03] governs this boundary. The [desktop startup decision](../../.agents/notes/implemented/bug-fix/2026-10-11-desktop-process-autostart.md) records the cause and verification.
+
+## 6. Frontend Navigation
+
+For GET and HEAD requests, an explicit positive `text/html` Accept entry and a missing, `document` or `iframe` Sec-Fetch-Dest identify page navigation. Known pages use `frontend-routes.json` from the distribution, falling back to the source manifest when absent; matching ignores case and trailing slashes. Navigation to these pages returns `index.html` before API dispatch, including `/mastery-recommendation`, which shares its URL with a JSON endpoint. Both representations declare `Vary: Accept, Sec-Fetch-Dest`.
+
+JSON clients, wildcard Accept requests and non-read methods retain API dispatch and credential checks. Documentation files and directories retain their static responses. Unknown APIs and missing assets retain 404 responses; unknown extensionless page navigation outside API and resource prefixes retains Vue's missing-page display.
+
+The [navigation dispatch decision](../../.agents/notes/implemented/bug-fix/2026-10-12-frontend-navigation-dispatch.md) records the defect and focused verification.

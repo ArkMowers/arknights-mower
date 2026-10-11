@@ -758,6 +758,44 @@ def _authorize_websocket(ws, allow_local_log=False):
     return True
 
 
+def _is_frontend_page(path):
+    # routes.test.js keeps this manifest aligned with Vue, including older dist.
+    manifest = Path(app.static_folder) / "frontend-routes.json"
+    if not manifest.is_file():
+        manifest = get_path("@internal/ui/public/frontend-routes.json")
+    try:
+        pages = {
+            p.rstrip("/").lower() or "/"
+            for p in json.loads(manifest.read_text("utf-8"))
+        }
+    except (OSError, ValueError):
+        pages = set()
+    return (path.rstrip("/").lower() or "/") in pages
+
+
+def _is_html_navigation():
+    return any(
+        mime == "text/html" and quality > 0
+        for mime, quality in request.accept_mimetypes
+    ) and request.headers.get("Sec-Fetch-Dest", "") in {"", "document", "iframe"}
+
+
+@app.before_request
+def serve_frontend_page():
+    if request.method not in {"GET", "HEAD"} or not _is_frontend_page(request.path):
+        return None
+    g.frontend_page = True
+    if _is_html_navigation():
+        return send_from_directory(app.static_folder, "index.html")
+
+
+@app.after_request
+def vary_frontend_response(response):
+    if g.get("frontend_page"):
+        response.vary.update(("Accept", "Sec-Fetch-Dest"))
+    return response
+
+
 @app.before_request
 def serialize_configuration_requests():
     # Export/restore must not interleave with form saves, plan edits or startup.
@@ -911,18 +949,7 @@ def not_found(e):
         except NotFound:
             return "<h1>404 Not Found</h1>", 404
 
-    # 与 Vue 路由表保持一致（routes.test.js 校验）；源码部署兼容尚未重建的 dist。
-    manifest = Path(app.static_folder) / "frontend-routes.json"
-    if not manifest.is_file():
-        manifest = get_path("@internal/ui/public/frontend-routes.json")
-    try:
-        pages = {
-            p.rstrip("/").lower() or "/"
-            for p in json.loads(manifest.read_text("utf-8"))
-        }
-    except (OSError, ValueError):
-        pages = set()
-    if (path.rstrip("/").lower() or "/") in pages:
+    if _is_frontend_page(path):
         return send_from_directory(app.static_folder, "index.html")
 
     # 未知 API 和缺失资源必须保留 404，不能用首页掩盖错误。
@@ -940,11 +967,11 @@ def not_found(e):
         "basement_skill",
         "screenshots",
     }
-    navigation = any(
-        mime == "text/html" and quality > 0
-        for mime, quality in request.accept_mimetypes
-    ) and request.headers.get("Sec-Fetch-Dest", "") in {"", "document", "iframe"}
-    if navigation and root not in api_roots | resource_roots and not Path(path).suffix:
+    if (
+        _is_html_navigation()
+        and root not in api_roots | resource_roots
+        and not Path(path).suffix
+    ):
         # 保留 Vue 的未知页面提示；接口客户端和静态资源请求不进入该兜底。
         return send_from_directory(app.static_folder, "index.html")
     return {"error": "Not Found"}, 404

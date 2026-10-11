@@ -196,6 +196,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.5 Web Access
 
+- [ ] **[INV-WEB-04] Frontend Navigation Dispatch**: Do all known page refreshes return HTML, including API collisions, while JSON clients, non-read methods, missing assets and unknown APIs preserve their behavior? See the [frontend navigation contract](../../../../docs/subsystems/web-access.md#6-frontend-navigation).
+
 - [ ] **[INV-WEB-02] Credentialed Log Forwarding**: Does a valid first-frame token authorize log WebSockets despite changed Origin, Host or ports, while missing or invalid tokens fail outside the local log-read boundary and other routes retain their origin checks?
 
 - [ ] **[INV-UI-12] Log Window Cohesion**: Do logs, screenshots and export use the loaded source despite date edits and out-of-order responses, with stale evidence cleared on source changes and errors?

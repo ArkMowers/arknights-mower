@@ -1,0 +1,21 @@
+{
+  "title": "Frontend navigation and API dispatch",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-12",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-WEB-04]"
+  ],
+  "code_symbols": [
+    "server.serve_frontend_page",
+    "server.not_found"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/web_routing_tests.py",
+    "arknights_mower/tests/verify_governance_tests.py",
+    "ui/src/routes.test.js"
+  ]
+}
