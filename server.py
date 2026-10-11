@@ -849,6 +849,15 @@ def serve_basement_skill(filename):
 
 
 @app.after_request
+def forbid_caching_sensitive_responses(response):
+    # /conf carries the sign-in password value, so no HTTP cache may retain it. The
+    # static assets below stay cacheable; only this endpoint is marked no-store.
+    if request.path == "/conf":
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.after_request
 def gzip_static(response):
     # ui/dist 里的文本类静态资源由 Flask 静态路由直接服务，
     # 通过 after_request 统一对支持 gzip 的客户端返回预压缩 .gz 文件。
