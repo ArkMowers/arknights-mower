@@ -83,6 +83,47 @@ def test_rejected_resource_load_prevents_handle_creation(desktop):
     assert desktop.scheduler.MAA is None
 
 
+@pytest.mark.parametrize(
+    "content, message",
+    [
+        (None, "配置文件不存在"),
+        (b"broken", "配置文件格式无效"),
+        (b"\xff", "配置文件格式无效"),
+    ],
+)
+def test_rejected_resource_load_distinguishes_missing_and_invalid_config(
+    desktop, content, message
+):
+    if content is not None:
+        (desktop.root / "resource" / "config.json").write_bytes(content)
+    desktop.asst.load.return_value = False
+    with pytest.raises(maa_backup.MaaCallError, match=message) as raised:
+        desktop.scheduler.initialize_maa()
+    assert "访问被拒绝" not in str(raised.value)
+    desktop.asst.assert_not_called()
+    desktop.native.connect.assert_not_called()
+
+
+def test_rejected_resource_load_reports_read_denied_config(desktop, monkeypatch):
+    from pathlib import Path
+
+    original_open = Path.open
+    config_file = desktop.root / "resource" / "config.json"
+
+    def denied(path, *args, **kwargs):
+        if path == config_file:
+            raise PermissionError("denied")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", denied)
+    desktop.asst.load.return_value = False
+    with pytest.raises(maa_backup.MaaCallError, match="访问被拒绝") as raised:
+        desktop.scheduler.initialize_maa()
+    assert str(config_file) in str(raised.value)
+    desktop.asst.assert_not_called()
+    desktop.native.connect.assert_not_called()
+
+
 def test_download_is_loaded_before_success_is_reported(desktop):
     desktop.scheduler.initialize_maa()
     cached = desktop.root / "cache/resource/tasks.json"

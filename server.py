@@ -2817,7 +2817,8 @@ def start_maa_resource_update():
                 check_id,
             )
             try:
-                newer = parse_resource_version(checked_latest) > parse_resource_version(
+                published = parse_resource_version(checked_latest)
+                newer = not current_version or published > parse_resource_version(
                     current_version
                 )
             except MaaUpdateError:
@@ -2871,12 +2872,23 @@ def get_maa_conn_presets():
     config_path = os.path.join(
         resolve_config_path(config.conf.maa_path), "resource", "config.json"
     )
-    if not os.path.exists(config_path):
-        logger.warning(f"MAA 配置文件不存在，返回空预设: {config_path}")
-        return []
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             presets = [item["configName"] for item in json.load(f)["connection"]]
+    except FileNotFoundError:
+        return {
+            "ok": False,
+            "message": f"MAA 连接配置文件不存在：{config_path}。请更新 MAA 资源或重新安装完整的 MAA。",
+        }
+    except PermissionError:
+        message = f"无法读取 MAA 连接配置 {config_path}：访问被拒绝。请关闭外部 MAA 后重试，并检查当前用户的文件读取权限。"
+        logger.warning(message)
+        return {"ok": False, "message": message}
+    except (json.JSONDecodeError, UnicodeDecodeError, KeyError, TypeError):
+        return {
+            "ok": False,
+            "message": f"MAA 连接配置文件格式无效：{config_path}。请更新 MAA 资源或重新安装完整的 MAA。",
+        }
     except Exception as e:
         logger.exception(e)
         presets = []

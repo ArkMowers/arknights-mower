@@ -22,6 +22,42 @@ from manager import (
 
 
 class ManagerApiTests(unittest.TestCase):
+    def test_windows_instances_launch_directly_with_manager_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = str(Path(directory).resolve())
+            api = Api(Path(directory) / "instances.json")
+            api.add("一号 实例", "C:\\Mower Data\\一号")
+            api.add("二号", "C:\\Mower Data\\二号")
+            with (
+                patch("manager.sys.platform", "win32"),
+                patch("manager.sys.frozen", True, create=True),
+                patch("manager.sys._MEIPASS", directory, create=True),
+                patch(
+                    "manager.sys.executable", str(Path(directory) / "多开管理器.exe")
+                ),
+                patch.object(
+                    runtime, "installation_root", return_value=Path(directory)
+                ),
+                patch.object(runtime, "active_job", return_value=False),
+                patch("subprocess.Popen") as process,
+                patch("threading.Thread"),
+            ):
+                self.assertTrue(api.start(0)["ok"])
+                self.assertTrue(api.start(1)["ok"])
+            self.assertEqual(process.call_count, 2)
+            for call, instance in zip(process.call_args_list, api.instances):
+                self.assertEqual(
+                    call.args[0],
+                    [
+                        str(Path(directory) / "mower.exe"),
+                        instance["path"],
+                        instance["name"],
+                    ],
+                )
+                self.assertEqual(call.kwargs["env"]["MOWER_MANAGED"], "1")
+                self.assertEqual(call.kwargs["cwd"], Path(directory))
+                self.assertEqual(call.kwargs["creationflags"], 0x08000000)
+
     def test_instances_are_stored_at_explicit_writable_path(self):
         with tempfile.TemporaryDirectory() as temporary_dir:
             storage_path = Path(temporary_dir) / "nested" / "instances.json"

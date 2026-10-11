@@ -177,3 +177,7 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 
 ### 理智药有效期阈值 (`Medicine Expiry Threshold`)
 - **定义**：`medicine_expire_days` 控制临期理智药的使用，不受星期限制。MAA Fight 接收配置的剩余天数阈值；本地作战在阈值大于零时启用现有临期理智药识别。零表示不使用临期理智药。已删除的周末限定设置不再生效。
+
+### MAA 更新策略 (`MAA Update Policy`)
+- **定义**: MAA 本体与资源分别配置自动检查和自动更新开关。自动更新要求匹配的更新检查结果，且 MAA 引擎处于空闲状态。
+- **代码映射**: [`MaaPart`](arknights_mower/utils/config/conf.py)

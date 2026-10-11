@@ -20,6 +20,14 @@ macOS 和 Linux 虽提供独立包，仍建议优先使用 [源码部署](../../
 
 检查 `dist/mower/mower.exe` 和 `dist/mower/多开管理器.exe`，并验证两者可以打开。分发时保留整个 `dist/mower` 目录，不能只复制可执行文件。
 
+1. 从普通权限的桌面分别启动两个 EXE，确认 Windows 请求管理员权限；取消后程序不启动。
+2. 批准多开管理器的请求后，启动两个实例，确认实例不再分别弹出 UAC，并能正常读取配置。
+3. 在任务管理器的“详细信息”页启用“已提升”列，确认管理器和两个实例均为已提升。
+
+权限与源码部署边界见 [Windows 桌面提权契约](../subsystems/software-update.md#14-windows-desktop-elevation)。
+
+首次从未提权的旧版更新到此包时，先退出旧版，以“管理员身份运行”重新打开后再更新；旧更新器无法从普通权限进程重启新的提权 EXE。
+
 ## 3. Linux
 
 1. 确保构建环境可以导入 PyGObject，并提供 GTK/WebKit2 typelib、ADB 和 `patchelf`。Ubuntu 24.04 的源码环境已按 README 安装窗口依赖，还需：

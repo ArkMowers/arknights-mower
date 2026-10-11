@@ -10399,9 +10399,21 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         @update_transaction
         def create_verified_asst():
             if not Asst.load(path=path, incremental_path=path / "cache"):
-                raise MaaCallError(
-                    "load", detail=f"目录={path}，增量目录={path / 'cache'}"
-                )
+                detail = f"目录={path}，增量目录={path / 'cache'}"
+                try:
+                    with (path / "resource" / "config.json").open(
+                        encoding="utf-8"
+                    ) as config_file:
+                        json.load(config_file)
+                except FileNotFoundError:
+                    detail += f"；配置文件不存在：{path / 'resource' / 'config.json'}，请更新 MAA 资源或重新安装完整的 MAA"
+                except PermissionError:
+                    detail += f"；无法读取 {path / 'resource' / 'config.json'}：访问被拒绝，请关闭外部 MAA 后重试，并检查当前用户的读取权限"
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    detail += f"；配置文件格式无效：{path / 'resource' / 'config.json'}，请更新 MAA 资源或重新安装完整的 MAA"
+                except OSError as error:
+                    detail += f"；配置文件读取失败：{error}"
+                raise MaaCallError("load", detail=detail)
             instance = VerifiedAsst(Asst, path, self.on_maa_callback)
             resource = read_json(path / "resource" / "version.json", {})
             resource_version = (

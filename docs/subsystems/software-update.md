@@ -12,6 +12,8 @@
 
 ## 3. Subsystem Invariants
 
+- **[INV-UPD-08] Elevated Windows Desktop Launch**: Both packaged Windows desktop executables require administrator elevation before application startup; manager-launched instances inherit the manager's elevated token through ordinary process creation.
+
 - **[INV-UPD-06] Cross-Channel Upgrade Selection**: Installed development and beta channels admit newer installable releases from more stable channels, preserve the selected channel and use only a verified OTA from the exact installed version to the selected target.
 
 - **[INV-RES-01] Template Glyph Coverage**: Resource generation requires a real glyph for each rendered character and preserves the calibrated glyphs already present in its subsets. Missing source coverage stops generation before either subset file changes.
@@ -47,7 +49,7 @@ Cancellation and timeout terminate only the owned command tree. Successful root-
 
 ## 7. MAA Resource Updates
 
-`/maa-resource-update/info` reports support for installed MAA on Windows, macOS and Linux. `MaaBasic` displays its independent resource controls from that response. `/maa-resource-update/check` uses the selected GitHub or Mirror酱 source; `/maa-resource-update/start` requires a matching successful check showing a newer resource version. Both resource and core updates share the maintenance lock and reject active MAA use.
+`/maa-resource-update/info` reports support for installed MAA on Windows, macOS and Linux. `MaaBasic` displays its independent resource controls from that response. `/maa-resource-update/check` uses the selected GitHub or Mirror酱 source; `/maa-resource-update/start` follows the [MAA update admission policy](maa-integration.md#29-independent-update-policies), including unknown local versions. Both resource and core updates share the maintenance lock and reject active MAA use.
 
 `install_maa_resource_update` stages an incremental resource merge, preserves core and Python files, and replaces only `resource`. The previous resource tree remains in `resource.old`; failed replacement or version verification restores the original tree and previous backup.
 
@@ -96,3 +98,13 @@ OTA starting-file reads follow the [bundled reconstruction contract](resource-up
 ## 13. Temporary Update Progress Service
 
 `ProgressServers` reuses registered instance ports and credentials while the application is replaced. Its POST handler reads supported request bodies within the existing 1024-byte limit and five-second socket timeout before returning a rejection, preventing unread POST data from aborting the response on Windows. Invalid credentials, update headers or origins retain HTTP 403 precedence; an authenticated unknown path returns HTTP 404. Only an authorized cancellation request with a valid body reaches `cancel_update`; body-reading failures retain the applicable rejection or return HTTP 400. Closing the service releases its registered ports for the restarted application.
+
+## 14. Windows Desktop Elevation
+
+The Windows package embeds `requireAdministrator` with `uiAccess=false` in both `mower.exe` and `多开管理器.exe`. Windows requests elevation before application startup; cancelling consent leaves that application stopped. The elevated manager starts instances through ordinary `Popen`, so they inherit its token without separate elevation requests. Existing desktop children, maintenance workers and restarts retain their parent's permissions. Starting the manager independently from a non-elevated shell still requires its own authorization.
+
+The release workflow verifies both built executable manifests before creating the archive. Source deployments inherit the Python process permissions and require an elevated terminal for administrator access. Elevation does not repair missing or malformed resources or guarantee access through every file ACL.
+
+The first upgrade from an older non-elevated package requires restarting that old application as administrator before updating. Its existing updater uses ordinary process creation and cannot restart the new administrator-required executable from a non-elevated token.
+
+[Windows desktop elevation](../../.agents/notes/implemented/feature/2026-10-11-windows-desktop-elevation.md) records the startup decision and verification limits.

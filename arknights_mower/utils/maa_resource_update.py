@@ -155,7 +155,13 @@ def read_maa_resource_info(target: Path | str) -> dict[str, str]:
     try:
         payload = json.loads(version_file.read_text(encoding="utf-8"))
         return _resource_info_from_payload(payload)
-    except (OSError, json.JSONDecodeError, MaaUpdateError):
+    except PermissionError:
+        return {
+            "version": "",
+            "release_note": "",
+            "error": f"无法读取 MAA 资源文件 {version_file}：访问被拒绝。请关闭外部 MAA 后重试，并检查当前用户的文件读取权限。",
+        }
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, MaaUpdateError):
         return {"version": "", "release_note": ""}
 
 
@@ -430,6 +436,8 @@ def merge_resource_archive(
                     destination.mkdir(parents=True, exist_ok=True)
                     continue
                 destination.parent.mkdir(parents=True, exist_ok=True)
+                if destination.exists():
+                    destination.chmod(destination.stat().st_mode | stat.S_IWUSR)
                 with archive.open(info) as source, destination.open("wb") as target:
                     shutil.copyfileobj(source, target)
                 file_index += 1

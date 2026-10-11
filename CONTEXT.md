@@ -177,3 +177,7 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 
 ### Medicine Expiry Threshold
 - **Definition**: `medicine_expire_days` controls expiring sanity potion use independently of weekday. MAA Fight receives the configured remaining-day threshold; local operation enables its existing expiring-potion recognition when the threshold is positive. Zero disables expiring-potion use. Retired weekend-only settings have no effect.
+
+### MAA Update Policy
+- **Definition**: MAA core and resource updates have independent automatic-check and automatic-install switches. Automatic installation requires a matching update check and an idle MAA engine.
+- **Code Mapping**: [`MaaPart`](arknights_mower/utils/config/conf.py)

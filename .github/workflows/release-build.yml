@@ -272,6 +272,36 @@ jobs:
           PYTHONUTF8: "1"
         run: python scripts/check_pe_arch.py dist/mower --arch x64
 
+      - name: Verify administrator manifests
+        shell: bash
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree
+          import pefile
+
+          for name in ("mower.exe", "多开管理器.exe"):
+              path = Path("dist/mower") / name
+              with pefile.PE(str(path), fast_load=True) as executable:
+                  executable.parse_data_directories(directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_RESOURCE"]])
+                  manifests = [
+                      executable.get_data(language.data.struct.OffsetToData, language.data.struct.Size)
+                      for entry in executable.DIRECTORY_ENTRY_RESOURCE.entries if entry.id == 24
+                      for resource in entry.directory.entries if resource.id == 1
+                      for language in resource.directory.entries
+                  ]
+              if not manifests:
+                  raise SystemExit(f"{path}: missing executable manifest")
+              for manifest in manifests:
+                  levels = [node.attrib for node in ElementTree.fromstring(manifest).iter()
+                            if node.tag.rsplit("}", 1)[-1] == "requestedExecutionLevel"]
+                  if levels != [{"level": "requireAdministrator", "uiAccess": "false"}]:
+                      raise SystemExit(f"{path}: administrator manifest required, got {levels}")
+              print(f"Administrator manifest verified: {path}")
+          PY
+
       - name: Package into zip
         shell: pwsh
         run: |

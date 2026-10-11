@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, ref } from 'vue'
+import { effectScope, nextTick, ref } from 'vue'
 import Component from './MaaBasic.vue'
 
 const state = vi.hoisted(() => ({ client: null, config: {}, unmounted: [] }))
@@ -17,6 +17,8 @@ describe('Android MAA companion update checks', () => {
   let scope
   let component
   beforeEach(() => {
+    vi.useFakeTimers()
+    vi.stubGlobal('window', { setTimeout, clearTimeout })
     state.unmounted = []
     state.config = Object.fromEntries(
       Object.entries({
@@ -25,6 +27,9 @@ describe('Android MAA companion update checks', () => {
         maa_mirrorchyan_token: '',
         maa_update_channel: 'beta',
         maa_auto_check_update: false,
+        maa_auto_update: false,
+        maa_resource_auto_check_update: false,
+        maa_resource_auto_update: false,
         maa_restore_theme_enable: false,
         maa_restore_theme: '',
         maa_conn_preset: '',
@@ -58,6 +63,8 @@ describe('Android MAA companion update checks', () => {
   afterEach(() => {
     state.unmounted.forEach((callback) => callback())
     scope.stop()
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
   })
   it('starts both checks concurrently and preserves the core check token', async () => {
     let complete
@@ -100,7 +107,7 @@ describe('Android MAA companion update checks', () => {
   })
   it('uses Mirror for Android resources while keeping the core on GitHub', async () => {
     state.config.maa_mirrorchyan_token.value = 'fixture-cdk'
-    component.android_resource_source.value = 'mirrorchyan'
+    component.maa_resource_source.value = 'mirrorchyan'
     await component.check_maa_resource_update()
     expect(state.client.post).toHaveBeenCalledWith(
       expect.stringMatching(/\/maa-resource-update\/check$/),
@@ -121,7 +128,7 @@ describe('Android MAA companion update checks', () => {
       available: true,
       id: 'old-receipt'
     }
-    component.android_resource_source.value = 'mirrorchyan'
+    component.maa_resource_source.value = 'mirrorchyan'
     await Promise.resolve()
     expect(component.maa_resource_update_check.value.id).toBe('')
   })
@@ -139,4 +146,210 @@ describe('Android MAA companion update checks', () => {
       expect(state.client.post.mock.calls[0][0]).toMatch(/\/maa-update\/check$/)
     }
   )
+  function mockAvailableUpdates() {
+    state.client.post.mockImplementation(async (url) => ({
+      data: url.endsWith('/start')
+        ? { ok: true, job: { id: 'update-job', status: 'running' } }
+        : {
+            ok: true,
+            available: true,
+            check_id: 'checked',
+            latest: { tag: 'v6.19.0', version: '2026-10-09 23:31:13.000' },
+            current: { version: '' }
+          }
+    }))
+    state.client.get.mockImplementation(async (url) => ({
+      data: url.endsWith('/status')
+        ? { ok: true, job: { status: 'running' } }
+        : {
+            ok: true,
+            supported: true,
+            installed: true,
+            default_source: 'github',
+            current: { version: '' }
+          }
+    }))
+    component.maa_update_supported.value = true
+    component.maa_resource_update_supported.value = true
+  }
+
+  it.each(['core', 'resource'])(
+    'automatically checks only the enabled %s component',
+    async (kind) => {
+      mockAvailableUpdates()
+      state.config[
+        kind === 'core' ? 'maa_auto_check_update' : 'maa_resource_auto_check_update'
+      ].value = true
+      await nextTick()
+      await component.auto_check_updates()
+      expect(
+        state.client.post.mock.calls.map(([url]) => url.split('/').slice(-2).join('/'))
+      ).toEqual([kind === 'core' ? 'maa-update/check' : 'maa-resource-update/check'])
+    }
+  )
+
+  it.each(['core', 'resource'])(
+    'automatically installs only the opted-in %s component',
+    async (kind) => {
+      mockAvailableUpdates()
+      state.config[kind === 'core' ? 'maa_auto_update' : 'maa_resource_auto_update'].value = true
+      await nextTick()
+      await component.auto_check_updates()
+      const prefix = kind === 'core' ? 'maa-update' : 'maa-resource-update'
+      expect(
+        state.client.post.mock.calls.map(([url]) => url.split('/').slice(-2).join('/'))
+      ).toEqual([`${prefix}/check`, `${prefix}/start`])
+      expect(state.client.post.mock.calls[1][1].check_id).toBe('checked')
+    }
+  )
+
+  it('does not let an invalid core Mirror CDK suppress independent GitHub resource checks', async () => {
+    mockAvailableUpdates()
+    await component.get_maa_update_info()
+    component.maa_update_source.value = 'mirrorchyan'
+    state.config.maa_auto_check_update.value = true
+    state.config.maa_resource_auto_check_update.value = true
+    await nextTick()
+    state.client.post.mockClear()
+    await component.auto_check_updates()
+    expect(state.client.post.mock.calls.map(([url]) => url)).toEqual([
+      expect.stringMatching(/\/maa-resource-update\/check$/)
+    ])
+  })
+
+  it.each(['disable', 'target', 'source', 'channel', 'unmount'])(
+    'does not automatically install an obsolete core check after %s',
+    async (change) => {
+      mockAvailableUpdates()
+      await component.get_maa_update_info()
+      state.config.maa_auto_update.value = true
+      await nextTick()
+      let complete
+      state.client.post.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            complete = resolve
+          })
+      )
+      const pending = component.auto_check_updates()
+      if (change === 'disable') state.config.maa_auto_update.value = false
+      if (change === 'target') state.config.maa_path.value = '/other'
+      if (change === 'source') component.maa_update_source.value = 'mirrorchyan'
+      if (change === 'channel') state.config.maa_update_channel.value = 'stable'
+      if (change === 'unmount') state.unmounted.forEach((callback) => callback())
+      await nextTick()
+      complete({
+        data: { ok: true, available: true, check_id: 'obsolete', latest: { tag: 'v6.19.0' } }
+      })
+      await pending
+      expect(state.client.post.mock.calls.some(([url]) => url.endsWith('/start'))).toBe(false)
+      expect(component.maa_update_check.value.id).not.toBe('obsolete')
+    }
+  )
+
+  it('checks the new core channel after an invalidated slow check finishes', async () => {
+    mockAvailableUpdates()
+    await component.get_maa_update_info()
+    state.config.maa_auto_update.value = true
+    await nextTick()
+    let complete
+    state.client.post.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve
+        })
+    )
+    const pending = component.auto_check_updates()
+    state.config.maa_update_channel.value = 'stable'
+    await vi.advanceTimersByTimeAsync(400)
+    expect(state.client.post).toHaveBeenCalledTimes(1)
+    complete({
+      data: { ok: true, available: true, check_id: 'obsolete', latest: { tag: 'v6.19.0' } }
+    })
+    await pending
+    await vi.advanceTimersByTimeAsync(400)
+    expect(state.client.post.mock.calls.map(([url]) => url.split('/').slice(-2).join('/'))).toEqual(
+      ['maa-update/check', 'maa-update/check', 'maa-update/start']
+    )
+    expect(state.client.post.mock.calls[2][1]).toMatchObject({
+      channel: 'stable',
+      check_id: 'checked'
+    })
+  })
+
+  it('checks resources while an unrelated manual core check is pending', async () => {
+    mockAvailableUpdates()
+    state.config.maa_resource_auto_check_update.value = true
+    await nextTick()
+    let complete
+    state.client.post.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve
+        })
+    )
+    const pending = component.check_maa_update()
+    await component.auto_check_updates()
+    expect(state.client.post.mock.calls[1][0]).toMatch(/\/maa-resource-update\/check$/)
+    complete({ data: { ok: true, available: false } })
+    await pending
+  })
+
+  it.each(['disable', 'target', 'source', 'unmount'])(
+    'does not automatically install an obsolete resource check after %s',
+    async (change) => {
+      mockAvailableUpdates()
+      state.config.maa_resource_auto_update.value = true
+      await nextTick()
+      let complete
+      state.client.post.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            complete = resolve
+          })
+      )
+      const pending = component.auto_check_updates()
+      if (change === 'disable') state.config.maa_resource_auto_update.value = false
+      if (change === 'target') state.config.maa_path.value = '/other'
+      if (change === 'source') component.maa_resource_source.value = 'mirrorchyan'
+      if (change === 'unmount') state.unmounted.forEach((callback) => callback())
+      await nextTick()
+      complete({
+        data: {
+          ok: true,
+          available: true,
+          check_id: 'obsolete',
+          latest: { version: '2026-10-09 23:31:13.000' }
+        }
+      })
+      await pending
+      expect(state.client.post.mock.calls.some(([url]) => url.endsWith('/start'))).toBe(false)
+      expect(component.maa_resource_update_check.value.id).not.toBe('obsolete')
+    }
+  )
+
+  it('does not hide a resource read-denied diagnostic behind an available update', async () => {
+    mockAvailableUpdates()
+    state.client.post.mockResolvedValueOnce({
+      data: {
+        ok: true,
+        available: true,
+        check_id: 'repair',
+        current: { version: '', error: 'version.json：访问被拒绝' },
+        latest: { version: '2026-10-09 23:31:13.000' }
+      }
+    })
+    await component.check_maa_resource_update()
+    expect(component.maa_resource_update_info_msg.value).toContain('访问被拒绝')
+    expect(component.maa_resource_update_check.value.id).toBe('repair')
+  })
+
+  it('displays structured connection-config permission failures', async () => {
+    state.client.get.mockResolvedValueOnce({
+      data: { ok: false, message: 'config.json：访问被拒绝' }
+    })
+    await component.get_maa_conn_presets()
+    expect(component.maa_msg.value).toContain('config.json：访问被拒绝')
+    expect(component.maa_conn_presets.value).toEqual([])
+  })
 })

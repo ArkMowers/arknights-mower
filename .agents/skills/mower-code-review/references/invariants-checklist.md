@@ -200,6 +200,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.7 Software Update
 
+- [ ] **[INV-UPD-08] Elevated Windows Desktop Launch**: Do both Windows executable manifests require administrator elevation, and does the manager launch instances directly without per-instance elevation wrappers? See the [launch contract](../../../../docs/subsystems/software-update.md#14-windows-desktop-elevation).
+
 - [ ] **[INV-UPD-06] Cross-Channel Upgrade Selection**: Do development and beta checks offer newer public releases, retain the selected channel and bind OTA and full-package fallback to one target? See the [software update contract](../../../../docs/subsystems/software-update.md#11-cross-channel-upgrades).
 
 - [ ] **[INV-UPD-04] MAA Resource Platform Parity**: Do installed Windows, macOS and Linux MAA installations expose independent resource checks and updates while preserving core and Python files, rejecting active MAA use and retaining resource rollback copies?
@@ -212,6 +214,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-UPD-02] Complete Registration Scan**: Do strict registration scans retry within one shared monotonic budget, preserve unverified registrations and raise `InstanceScanError` instead of returning an incomplete snapshot after budget exhaustion?
 
 ### 2.8 MAA Integration
+
+- [ ] **[INV-MAA-10] Independent Update Admission**: Are automatic policies independent, obsolete automatic-check results ignored, and unknown local resource versions accepted only through an unused matching check while MAA is idle?
 - [ ] **[INV-MAA-09] Weekday-Independent Medicine**: Does MAA Fight pass the configured expiry threshold on every weekday, does local potion use retain positive-threshold and expiring-potion checks, and are both retired weekend-only spellings ignored and omitted on save?
 
 - [ ] **[INV-MAA-08] Verified MAA Admission**: Do resource loading, task submission and startup check their MAA results, identify rejection by phase and target, clear pending work without recording successful execution, and preserve rollback backups?

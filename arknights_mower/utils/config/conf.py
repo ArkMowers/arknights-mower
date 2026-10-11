@@ -293,7 +293,36 @@ class MaaPart(ConfModel):
     maa_update_channel: str = "stable"
     "MAA 版本通道：stable 正式版，beta 公测版"
     maa_auto_check_update: bool = False
-    "进入 MAA 设置页后自动检查 MAA 本体及资源更新"
+    "进入 MAA 设置页后自动检查 MAA 本体更新"
+    maa_auto_update: bool = False
+    "检查发现 MAA 本体新版本时自动更新"
+    maa_resource_auto_check_update: bool = False
+    "进入 MAA 设置页后自动检查 MAA 资源更新"
+    maa_resource_auto_update: bool = False
+    "检查发现 MAA 资源新版本时自动更新"
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_maa_update_policy(cls, values):
+        if (
+            isinstance(values, dict)
+            and "maa_auto_check_update" in values
+            and "maa_resource_auto_check_update" not in values
+        ):
+            values = dict(values)
+            values["maa_resource_auto_check_update"] = values.get(
+                "maa_auto_check_update", False
+            )
+        return values
+
+    @model_validator(mode="after")
+    def maa_install_requires_check(self):
+        if self.maa_auto_update:
+            self.maa_auto_check_update = True
+        if self.maa_resource_auto_update:
+            self.maa_resource_auto_check_update = True
+        return self
+
     maa_conn_preset: str = Field(
         default_factory=lambda: "CompatMac" if sys.platform == "darwin" else "General"
     )
