@@ -2463,7 +2463,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             return
         if not config.conf.enable_mastery:
             # 关闭自动专精后不消费旧计划／旧房态保护；执行前仍会实读训练室，
-            # 保留训练位被占用时不强行换人的原有保护。
+            # 正在训练、待收取或读取失败时只跳过训练位。
             self.train_room_state = None
             return
         train_room_state = getattr(self, "train_room_state", None)
@@ -4790,8 +4790,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 ):
                     # 执行已拒绝的动态恢复目标不再触发每分钟重新入住。
                     names[index] = "Current"
-        # The execution gate may legitimately skip training slots. Reuse its
-        # scheduling protection instead of recreating those slots every minute.
+        # Execution skips apply before cached mastery protection and confirmation.
+        for index in getattr(task, "training_skipped_slots", ()):
+            if index < len(expected_plan.get("train", [])):
+                expected_plan["train"][index] = "Current"
         self._suppress_train_correction(expected_plan)
         remaining_transitions = self.op_data.arrangement_group_transitions(
             expected_plan
@@ -4829,6 +4831,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if changes:
             logger.info("绑组换班确认完成：%s", changes)
         task.group_shift_expected = {}
+        task.__dict__.pop("training_skipped_slots", None)
         self._resume_waiting_group_shifts()
         return True
 
@@ -8978,11 +8981,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if not skip_enter:
                     self.enter_room(room)
                     if room == "train":
-                        # #74 gate L0 先读再判：删除「DB active 就跳过」的预判（原
-                        # base_schedule.py:3257 死锁——DB 是意图缓存可能过期，排班一进门
-                        # 就因 DB active 整房跳过、永不读屏幕、永不修正 DB → 重启后训练室
-                        # 僵住，违背「截图为准」铁律）。现在一律先进房读屏幕，截图权威更新
-                        # DB，再按锁定/保护判定跳过/冻结；空闲×未保护正常安排。
+                        self.task.training_skipped_slots = set()
+                        # 实读房态决定可换岗位；自动专精开启时顺路核对专精记录。
                         from arknights_mower.solvers.mastery_reader import (
                             _compute_protected,
                             read_room_state,
@@ -9032,21 +9032,30 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                                 self.train_room_state = (
                                     room_state if config.conf.enable_mastery else None
                                 )
-                        # §4.4 保护检查：locked（训练中/待收取）、protected（逻各斯/艾丽妮
-                        # 保护训练室）或读失败（room_state=None）都算「不能排班」→ 冻结/
-                        # 跳过（#211：读失败保守不碰训练位，替代已删除的 train_slot_locked）。
+                        # 关闭自动专精时协助位正常排班；实测不可用的训练位单独跳过。
                         if (
                             room_state is None
                             or room_state.locked
-                            or room_state.protected
+                            or (config.conf.enable_mastery and room_state.protected)
                         ):
                             self.train_room_state = (
                                 room_state if config.conf.enable_mastery else None
                             )
-                            if config.conf.assistant_follows_schedule:
+                            if (
+                                not config.conf.enable_mastery
+                                or config.conf.assistant_follows_schedule
+                            ):
                                 if len(plan[room]) > 1:
                                     plan[room][1] = "Current"
+                                    self.task.training_skipped_slots.add(1)
+                                if all(name == "Current" for name in plan[room]):
+                                    del plan[room]
+                                    self.back()
+                                    return new_plan
                             else:
+                                self.task.training_skipped_slots.update(
+                                    range(len(plan[room]))
+                                )
                                 del plan[room]
                                 self.back()
                                 return new_plan

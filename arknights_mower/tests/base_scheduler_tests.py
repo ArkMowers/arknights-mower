@@ -2148,9 +2148,8 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
         self.assertNotIn("train", plan)
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_enable_mastery_off_keeps_blocked_room_check_no_reconcile(self):
-        """§7.3：OFF 时排班照常但保留「被占用就不硬塞」防卡检查——锁定房仍跳过，
-        但不跑 reconcile（自动收取/对账全停）。"""
+    def test_enable_mastery_off_keeps_busy_trainee_and_arranges_assistant(self):
+        """自动专精关闭时仅跳过训练位，协助位正常换班且不执行专精核对。"""
         plan = {"train": ["干员A", "干员B"]}
         solver = self._make_solver(plan)
         with (
@@ -2166,7 +2165,10 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
         ):
             solver.agent_arrange_room({}, "train", plan)
         rec.assert_not_called()
-        solver.back.assert_called_once_with()
+        solver.turn_on_room_detail.assert_called_once_with("train")
+        solver.choose_train.assert_called_once_with(
+            ["干员A", "Current"], fast_mode=True, choose_error=0
+        )
         self.assertNotIn("train", plan)
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
