@@ -930,15 +930,15 @@ def test_final_roster_reads_time_again_even_when_target_keeps_same_slot(
 
 
 @pytest.mark.parametrize("mood", [23, 15])
-def test_highest_idle_mood_can_pad_target_without_being_full(solver, mood):
+def test_non_full_idle_candidates_do_not_confirm_single_recovery(solver, mood):
     solver.op_data.operators["黑角"].mood = mood
     solver.op_data.add(Operator("芬", ""))
     other = solver.op_data.operators["芬"]
     other.mood, other.time_stamp = mood - 1, datetime.now()
     arrange(solver)
-    assert solver.confirms == [["杜林", "琴柳", "黑角", "银灰", ""], FINAL]
+    assert solver.confirms == [FINAL]
     assert all(names[3] == "银灰" for names in solver.confirms)
-    assert solver.op_data.operators["银灰"].dorm_recovery_index == 3
+    assert solver.op_data.operators["银灰"].dorm_recovery_index == -1
 
 
 def test_full_preceding_resident_is_not_replaced_by_idle_padding(solver):

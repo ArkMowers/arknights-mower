@@ -364,6 +364,7 @@ def selection_solver(monkeypatch, residents=None):
     solver.recog = SimpleNamespace(w=1920, h=1080, img=None, update=MagicMock())
     solver.op_data = SimpleNamespace(
         operators={},
+        dorm_mood_estimates={},
         plan={},
         config=SimpleNamespace(free_blacklist=[], ope_resting_priority=[]),
         profession_filter=set(),

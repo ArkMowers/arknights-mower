@@ -39,6 +39,25 @@ def dorm_candidate_mood(op_data, name, now=None):
     return None
 
 
+def full_dorm_candidate(
+    op_data, name, *, estimates=None, allow_inferred=False, now=None
+):
+    """单回垫位接受满心情实读或较新的绿笑脸；排序推断仅供选人候选。"""
+    now = now or datetime.now()
+    op = op_data.operators.get(name)
+    estimate = (
+        getattr(op_data, "dorm_mood_estimates", {}) if estimates is None else estimates
+    ).get(name)
+    if (
+        estimate is not None
+        and timedelta() <= now - estimate[1] < timedelta(hours=1)
+        and (op is None or op.time_stamp is None or estimate[1] > op.time_stamp)
+    ):
+        # 实际卡片使用二元组；按排序推断的值带第三项 False，仅供候选筛选。
+        return estimate[0] == 24 and (allow_inferred or len(estimate) == 2)
+    return has_resting_mood(op, now) and resting_mood(op, now) >= 24
+
+
 def dorm_task_reservations(op_data, tasks, excluded=()):
     """规划与执行采用相同预约；待命候补的回班任务不阻止其临时恢复。"""
     names = set(excluded) - {"", "Current", "Free"}

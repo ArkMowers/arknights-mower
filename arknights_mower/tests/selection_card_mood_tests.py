@@ -12,6 +12,7 @@ import pytest
 from arknights_mower.solvers import base_mixin, record
 from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.tests import dorm_empty_release_tests
+from arknights_mower.tests.choose_agent_filter_tests import RESIDENTS, selection_solver
 from arknights_mower.utils import resting_priority
 from arknights_mower.utils.character_recognize import estimate_agent_mood
 from arknights_mower.utils.dorm_candidates import dorm_candidate_mood, dorm_candidates
@@ -142,6 +143,25 @@ def test_estimates_do_not_establish_verified_full_or_timers(solver):
     assert not has_resting_mood(op)
     assert snapshot == (op.mood, op.time_stamp, op.depletion_rate)
     assert not data.rest_mood_complete("红")
+
+
+def test_temporary_named_dorm_selection_observes_card_moods(monkeypatch):
+    instance, selected = selection_solver(monkeypatch, residents=[])
+    scan = instance.scan_agent.side_effect
+
+    def observe(names, **kwargs):
+        estimates = kwargs.get("mood_estimates")
+        assert estimates is instance.op_data.dorm_mood_estimates
+        result = scan(names, **kwargs)
+        for name in result[0]:
+            estimates[name] = (24, datetime.now())
+        return result
+
+    instance.scan_agent.side_effect = observe
+    final = RESIDENTS + ["伊芙利特"]
+    instance.choose_agent(final.copy(), ROOM, False, preserve_dorm_occupants=True)
+    assert selected == final
+    assert set(instance.op_data.dorm_mood_estimates) == set(final)
 
 
 def test_low_card_stays_unknown_and_sorts_before_full_unknown(solver):

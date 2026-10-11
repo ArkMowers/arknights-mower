@@ -281,6 +281,8 @@ def test_first_green_non_target_stops_and_defaults_all_later_candidates(solver):
     assert dorm_candidate_mood(data, "银灰") == 3
     assert dorm_candidate_mood(data, "红") == 24
     assert data.dorm_mood_estimates["迷迭香"][0] == 24
+    assert data.dorm_mood_estimates["红"][2] is False
+    assert len(data.dorm_mood_estimates["空爆"]) == 2
     solver.swipe_agent_page.assert_not_called()
     assert not has_resting_mood(data.operators["红"])
 

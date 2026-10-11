@@ -20,6 +20,7 @@
   "test_suites": [
     "arknights_mower/tests/dorm_recovery_tests.py",
     "arknights_mower/tests/dorm_priority_refresh_tests.py",
-    "arknights_mower/tests/dorm_skills_tests.py"
+    "arknights_mower/tests/dorm_skills_tests.py",
+    "arknights_mower/tests/dorm_recovery_full_padding_tests.py"
   ]
 }

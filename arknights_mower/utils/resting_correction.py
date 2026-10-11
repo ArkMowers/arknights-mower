@@ -241,6 +241,7 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
 
 def correct_group_dorms(op_data, fix_plan, is_busy, *, positions=None):
     """按工作成员的轮休状态安排宿舍岗位；切表时可限定到发生变化的位置。"""
+    transitions = op_data.arrangement_group_transitions(fix_plan)
     for group, names in op_data.groups.items():
         residents = [
             op_data.operators[n]
@@ -262,11 +263,15 @@ def correct_group_dorms(op_data, fix_plan, is_busy, *, positions=None):
             == n
             for n in names
         )
-        resting = op_data.group_is_resting(group) and not recalling
+        group_resting = op_data.group_is_resting(group) and not recalling
         changes = {}
         for op in residents:
+            # 清缓存后当前绑定列不代表实际休息组；共享岗位检查全部绑定。
+            resting_groups = [group] if group_resting else []
+            if op.multi_group:
+                resting_groups = op_data.resting_binding_groups(op, transitions)
             desired = op.name
-            if resting:
+            if resting_groups:
                 actual = op_data.get_current_operator(op.room, op.index)
                 if op_data.is_auto_free_dorm_operator(op):
                     # 该位置已经转为普通动态床位；保留现有休息者，空床则
@@ -298,7 +303,12 @@ def correct_group_dorms(op_data, fix_plan, is_busy, *, positions=None):
                             and not is_busy(name)
                             and (
                                 not op_data.operators[name].is_high()
-                                or op_data.is_same_group_dorm_replacement(op, name)
+                                or any(
+                                    op_data.is_same_group_dorm_replacement(
+                                        op, name, resting_group
+                                    )
+                                    for resting_group in resting_groups
+                                )
                             )
                             and (
                                 actual is not None

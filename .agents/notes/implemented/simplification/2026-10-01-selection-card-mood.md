@@ -9,7 +9,7 @@ date: 2026-10-01
 
 ## Contract
 
-Dormitory candidate selection reads each recognized card's face color in the existing selection frame: green maps to 24 and red maps to 0. Yellow cards use approximate white-bar length strictly between 0 and 24. Approximate readings support candidate ordering, full-card screening, and primary shift selection. Room inspection owns measured mood, sample timestamps, depletion rates, recovery deadlines, and mandatory personal limits.
+Dormitory candidate selection reads each recognized card's face color in the existing selection frame: green maps to 24 and red maps to 0. Yellow cards use approximate white-bar length strictly between 0 and 24. Approximate readings support candidate ordering, full-card screening, primary shift selection and green-card single-target padding confirmation. Room inspection owns measured mood, sample timestamps, depletion rates, recovery deadlines, and mandatory personal limits.
 
 ## Simplification Audit
 
@@ -17,9 +17,9 @@ Dormitory candidate selection reads each recognized card's face color in the exi
 
 ## Guarantees
 
-[INV-SCHED-15] Selection Estimate Isolation: Selection-card mood estimates support candidate screening, ordering, and primary shift selection only; they never overwrite measured mood, timestamps, depletion rates, recovery deadlines, or mandatory personal limits. Facility-completion events refresh only affected candidates and preserve unrelated estimates and search checks. Regular candidate planning scans cards only when no eligible idle recovery candidate has valid measured or estimated mood.
+[INV-SCHED-15] Selection Estimate Isolation: Selection-card mood estimates support candidate screening, ordering, primary shift selection and green-card single-target padding confirmation; they never overwrite measured mood, timestamps, depletion rates, recovery deadlines, or mandatory personal limits. Facility-completion events refresh only affected candidates and preserve unrelated estimates and search checks. Regular candidate planning scans cards only when no eligible idle recovery candidate has valid measured or estimated mood.
 
-Card estimates expire after one hour. Actual mood readback and position changes invalidate only the affected estimate; cached occupancy reads preserve it. Facility-completion events refresh only affected candidates. An hourly exhausted-search reset clears all estimates. Actual valid mood takes precedence. Exclusions and task reservations remain authoritative.
+Card estimates expire after one hour. Actual mood readback and position changes invalidate only the affected estimate; cached occupancy reads preserve it. Facility-completion events refresh only affected candidates. An hourly exhausted-search reset clears all estimates. Ordinary candidate sorting gives actual valid mood precedence. Single-target padding uses newer green-card evidence without changing numeric samples; newer numeric observations override it. Unscanned names inferred full retain separate provenance and require card confirmation during selection. Exclusions and task reservations remain authoritative.
 
 [English](2026-10-01-selection-card-mood.md) | [中文](2026-10-01-selection-card-mood.zh.md)
 

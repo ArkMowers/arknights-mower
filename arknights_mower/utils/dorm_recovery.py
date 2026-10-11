@@ -1,8 +1,7 @@
 """在目标最终床位建立单回入驻顺序。"""
 
 from arknights_mower.utils import dorm_skills
-from arknights_mower.utils.dorm_candidates import dorm_candidates
-from arknights_mower.utils.resting_priority import has_resting_mood, resting_mood
+from arknights_mower.utils.dorm_candidates import dorm_candidates, full_dorm_candidate
 
 
 def active_recovery_position(op):
@@ -69,9 +68,9 @@ def recovery_order_plan(
 ):
     """建立单回时就占住最终床位，补回其他人后目标仍在原位。
 
-    保留位置最靠前的单回宿管；其他 Free 位和未满心情（或心情未知）的
-    绑组宿舍替班暂时撤下。目标前方保留菲亚梅塔与已满心情的入住者，其他中间空缺用最高心情的空闲者垫位，
-    不能留空让游戏压缩名单。没有可用垫位者时不执行这次单回确认。
+    目标前方保留单回宿管、菲亚梅塔与已满心情的入住者；其他位置使用
+    无单回技能的满心情空闲者垫位，不能留空让游戏压缩名单。
+    没有足够合格垫位者时不执行这次单回确认。
     """
     managers = recovery_managers(op_data, room, agents)
     if not managers:
@@ -98,13 +97,18 @@ def recovery_order_plan(
         return None
     retained = []
     for index, name in enumerate(agents):
-        if name in (target.name, "菲亚梅塔") or name in manager_names:
+        if (
+            name in (target.name, "菲亚梅塔")
+            or name in manager_names
+            or index < target_index
+            and dorm_skills.is_single_recovery_manager(name)
+        ):
             retained.append(name)
             continue
         op = op_data.operators.get(name)
         if index < target_index:
             retained.append(
-                name if has_resting_mood(op) and resting_mood(op) >= 24 else ""
+                name if full_dorm_candidate(op_data, name, allow_inferred=True) else ""
             )
             continue
         if op_data.is_dynamic_dorm_position(
@@ -131,15 +135,11 @@ def recovery_order_plan(
             current_residents=op_data.get_current_room(room, True),
         )
         padding = iter(
-            sorted(
-                (
-                    name
-                    for name in candidates.recovering + candidates.full
-                    if op_data.operators[name].current_room in ("", room)
-                ),
-                key=lambda name: resting_mood(op_data.operators[name]),
-                reverse=True,
-            )
+            name
+            for name in candidates.filling
+            if getattr(op_data.operators.get(name), "current_room", "") in ("", room)
+            and full_dorm_candidate(op_data, name, allow_inferred=True)
+            and not dorm_skills.is_single_recovery_manager(name)
         )
         for index, name in enumerate(retained):
             if not name:

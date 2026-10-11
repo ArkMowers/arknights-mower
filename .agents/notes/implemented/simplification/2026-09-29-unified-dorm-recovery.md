@@ -11,7 +11,7 @@ date: 2026-09-29
 
 All scheduling uses one Dormitory Recovery policy. Retired experimental, workshop-rest-priority, initialization-restart, and backup-timing settings do not select alternate behavior. Older configuration files remain importable. Configuration and UI expose only active settings.
 
-[INV-SCHED-07] Unified Dormitory Policy requires the same scheduling behavior regardless of retired mode keys. [INV-SCHED-02] preserves the Single-Target Recovery Target at its final slot throughout temporary selection and roster restoration. Earlier non-manager slots retain confirmed full residents or use the highest-mood eligible idle operators. Actual readback must confirm competitors cannot take the target's recovery before recording the assignment. Missing candidates or failed reads preserve the final roster and do not mark an unverified recovery assignment.
+[INV-SCHED-07] Unified Dormitory Policy requires the same scheduling behavior regardless of retired mode keys. [INV-SCHED-02] preserves the Single-Target Recovery Target at its final slot throughout temporary selection and roster restoration. Preceding single-target providers and Fiammetta retain their positions regardless of mood. Other preceding slots retain full residents or use full eligible idle operators without single-target skills. A green selection-card smiley counts as full without an extra numeric reading. Roster readback and confirmed full padding precede recording the assignment. Missing candidates or failed reads preserve the final roster and do not mark an unverified recovery assignment.
 
 ## Simplification evidence
 
@@ -19,4 +19,4 @@ The experimental flag selected parallel implementations throughout `base_schedul
 
 ## Verification
 
-Focused offline scheduling tests cover backup convergence, admission, initialization, charging, release deadlines, legacy configuration imports, and stable target placement with non-full padding. Frontend configuration tests and a production build verify the removed controls and retained settings.
+Focused offline scheduling tests cover backup convergence, admission, initialization, charging, release deadlines, legacy configuration imports, and stable target placement, full padding, green-card confirmation, provider preservation and simultaneous low-mood fixed-cover arrivals. The focused recovery, card and selection suites verify these paths offline. Frontend configuration tests and a production build verify the removed controls and retained settings.

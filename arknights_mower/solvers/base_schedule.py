@@ -2068,7 +2068,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         # 心情升序首次出现绿色后，其余姓名只获得短期满值预估。
                         # 绿色之前已观测但不可读的卡牌不被默认值覆盖。
                         estimates.update(
-                            (candidate, (24, observed_at))
+                            (candidate, (24, observed_at, False))
                             for candidate in agent_list
                             if candidate not in observed_names
                         )
@@ -8048,7 +8048,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         interval=clear_interval,
                     )
                 changed, ret = self.scan_agent(
-                    agent, full_scan=last_special_filter == "ALL"
+                    agent,
+                    full_scan=last_special_filter == "ALL",
+                    mood_estimates=self.op_data.dorm_mood_estimates
+                    if is_dorm and preserve_dorm_occupants
+                    else None,
                 )
                 if changed:
                     selected.extend(changed)
@@ -8142,6 +8146,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 agent,
                 full_scan=last_special_filter == "ALL",
                 observation=observation,
+                mood_estimates=self.op_data.dorm_mood_estimates
+                if is_dorm and preserve_dorm_occupants
+                else None,
             )
             observation = None
             if changed:
@@ -9050,11 +9057,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         中间名单只用于这次点击，不能覆盖持久化任务中的完整恢复名单。
         目标及垫位结果均识别成功后才记录；床位未变时不重复确认。
         """
+        from arknights_mower.utils.dorm_candidates import full_dorm_candidate
         from arknights_mower.utils.dorm_recovery import (
             recovery_managers,
             recovery_order_plan,
             recovery_target,
         )
+        from arknights_mower.utils.dorm_skills import is_single_recovery_manager
 
         if not room.startswith("dorm") or self.task.type == TaskTypes.FIAMMETTA:
             return False
@@ -9084,6 +9093,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.op_data, room, agents, group_transitions=group_transitions
         )
         vip_index = agents.index(target.name)
+        padding = {
+            name
+            for name in retained[:vip_index]
+            if name != "菲亚梅塔" and not is_single_recovery_manager(name)
+        }
+        # 卡片观测随入住换位失效；本次确认保留选人时的证据供阵容读回使用。
+        padding_estimates = self.op_data.dorm_mood_estimates.copy()
         # 一轮下班先替班接岗、再分床；不要为即将被下一条分床任务换走的
         # 原占位者额外清房。以队列中明确的目标覆盖为准，不猜测未来排班。
         for task in self.tasks:
@@ -9112,8 +9128,15 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
             try:
                 self.choose_agent(
-                    retained.copy(), room, fast_mode, preserve_dorm_occupants=True
+                    retained.copy(),
+                    room,
+                    fast_mode
+                    and all(
+                        full_dorm_candidate(self.op_data, name) for name in padding
+                    ),
+                    preserve_dorm_occupants=True,
                 )
+                padding_estimates = self.op_data.dorm_mood_estimates.copy()
                 self.tap_confirm(room, {})
                 current = [item["agent"] for item in self.get_agent_from_room(room)]
                 if current != expected:
@@ -9137,20 +9160,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
             if bed is not None and bed.name == target.name:
                 bed.time = None
-        # 垫位者的缓存可能已过期，读回无法保证目标最低时只恢复最终阵容，
-        # 不把本次单回当作已确认。下一次按新的真实心情重新选垫位者。
-        manager_names = {
-            name for name, _, _ in recovery_managers(self.op_data, room, agents)
-        }
-        # 菲亚梅塔不接受单回加成，不参与垫位者的心情比较。
-        padding = set(retained[:vip_index]) - manager_names - {"菲亚梅塔"}
+        # 绿笑脸即可确认满心情；较新的低心情实读仍使本次确认失效。
         if any(
-            not has_resting_mood(self.op_data.operators[name])
-            or self.op_data.operators[name].mood <= target.mood
+            not full_dorm_candidate(self.op_data, name, estimates=padding_estimates)
             for name in padding
         ):
             target.clear_dorm_recovery()
-            logger.info(f"{room} 单回垫位者心情不高于目标，恢复阵容后重新确认")
+            logger.info(f"{room} 单回垫位者未确认满心情，恢复阵容后重新确认")
             return True
         if target.mood < 24:
             target.dorm_recovery_room = room
