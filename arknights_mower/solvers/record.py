@@ -44,6 +44,8 @@ _DB_TABLE_STMTS = (
     "operators TEXT, materials TEXT NOT NULL)",
     "CREATE INDEX IF NOT EXISTS recycling_collection_time "
     "ON recycling_collection(collected_at)",
+    "CREATE TABLE IF NOT EXISTS recycling_valuation ("
+    "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS workshop_inventory_updates ("
     "item_name TEXT PRIMARY KEY, observed_at REAL NOT NULL)",
     "CREATE TABLE IF NOT EXISTS workshop_inventory_pending ("
@@ -709,6 +711,64 @@ def _recycling_date_bounds(start_date, end_date):
     return start.timestamp(), (end + timedelta(days=1)).timestamp()
 
 
+def _recycling_valuation(connection):
+    from arknights_mower.utils.recycling_valuation import default_valuation
+
+    row = connection.execute(
+        "SELECT payload FROM recycling_valuation WHERE id = 1"
+    ).fetchone()
+    return json.loads(row[0]) if row else default_valuation()
+
+
+def get_recycling_valuation():
+    with _conn() as connection:
+        return _recycling_valuation(connection)
+
+
+def update_recycling_valuation(*, ratios=None, imported=None, reset=False):
+    """Atomically update assumptions while retaining independent saved inputs."""
+    from arknights_mower.utils.recycling_valuation import (
+        default_valuation,
+        validate_ratios,
+    )
+
+    if ratios is not None:
+        ratios = validate_ratios(ratios)
+    with _conn() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        current = default_valuation() if reset else _recycling_valuation(connection)
+        if ratios is not None:
+            current["ratios"] = ratios
+        if imported is not None:
+            known_ids = current.get("item_ids", {})
+            for name, item_id in imported["item_ids"].items():
+                if name in known_ids and known_ids[name] != item_id:
+                    raise ValueError(f"物品名称与已保存 ID 不符：{name}")
+                if any(
+                    saved_id == item_id and saved_name != name
+                    for saved_name, saved_id in known_ids.items()
+                ):
+                    raise ValueError(f"物品 ID 与已保存名称不符：{item_id}")
+            current["last_import"] = {
+                "updated": len(imported["prices"]),
+                "added": len(imported["prices"].keys() - current["prices"].keys()),
+                "retained": len(current["prices"].keys() - imported["prices"].keys()),
+                "unpriced": imported.get("unpriced", []),
+            }
+            current["prices"].update(imported["prices"])
+            current.setdefault("item_ids", {}).update(imported["item_ids"])
+            if "lmd_sanity" in imported:
+                current["lmd_sanity"] = imported["lmd_sanity"]
+            current["source"] = "一图流导入（未提供的价值保留原值）"
+            current["imported_at"] = datetime.now().timestamp()
+        connection.execute(
+            "INSERT OR REPLACE INTO recycling_valuation VALUES (1, ?)",
+            (json.dumps(current, ensure_ascii=False, allow_nan=False),),
+        )
+        connection.commit()
+        return current
+
+
 def _recycling_summary(connection, bounds):
     from arknights_mower.data import key_mapping
     from arknights_mower.utils.mastery_recommendation import get_skill_data
@@ -741,7 +801,9 @@ def _recycling_summary(connection, bounds):
     return {
         "total": total,
         "materials": totals,
-        "comparison": recycling_expectation(totals, unknown_collections),
+        "comparison": recycling_expectation(
+            totals, unknown_collections, _recycling_valuation(connection)
+        ),
         "qualities": [
             {"rarity": rarity, "count": count}
             for rarity, count in sorted(quality.items(), key=lambda row: row[0] or 0)

@@ -114,9 +114,13 @@ def recycling_model():
     )
 
 
-def recycling_expectation(materials, unknown_collections=0):
+def recycling_expectation(materials, unknown_collections=0, valuation=None):
     """Compare equal material quantities using the calculator's long-run mixture."""
     model = recycling_model()
+    if valuation is None:
+        from arknights_mower.utils.recycling_valuation import default_valuation
+
+        valuation = default_valuation()
     ordinary, extra = model["ordinary"], model["extra"]
     normal_weight = sum(item["weight"] for item in ordinary)
     extra_weight = sum(item["weight"] for item in extra)
@@ -124,11 +128,13 @@ def recycling_expectation(materials, unknown_collections=0):
         sum(item["weight"] * item["points"] / normal_weight for item in ordinary)
         / model["point_threshold"]
     )
-    valuations = {item["name"]: item["sanity"] for item in ordinary + extra}
+    valuations = valuation["prices"]
     normal_ev = sum(
-        item["sanity"] * item["weight"] / normal_weight for item in ordinary
+        valuations[item["name"]] * item["weight"] / normal_weight for item in ordinary
     )
-    extra_ev = sum(item["sanity"] * item["weight"] / extra_weight for item in extra)
+    extra_ev = sum(
+        valuations[item["name"]] * item["weight"] / extra_weight for item in extra
+    )
     per_material = (normal_ev + extra_rate * extra_ev) / (1 + extra_rate)
     probabilities = {}
     for pool, weight, rate in (
@@ -144,17 +150,29 @@ def recycling_expectation(materials, unknown_collections=0):
     unknown = [item["name"] for item in materials if item["name"] not in valuations]
     actual = sum(item["count"] * valuations.get(item["name"], 0) for item in materials)
     complete = not unknown and not unknown_collections
+    modeled = {item["name"] for item in ordinary + extra}
+    unmodeled = [item["name"] for item in materials if item["name"] not in modeled]
     expected = count * per_material
+    ratios = valuation["ratios"]
+    daily = (normal_ev + extra_rate * extra_ev) / 2
+    manufacture = (
+        daily
+        / valuation["lmd_sanity"]
+        * (ratios["gold"] + ratios["order"])
+        / ratios["experience"]
+        / 8000
+    )
     return {
         "actual_sanity": actual if complete else None,
         "known_sanity": actual,
-        "expected_sanity": expected if complete else None,
-        "difference": actual - expected if complete else None,
+        "expected_sanity": expected if complete and not unmodeled else None,
+        "difference": actual - expected if complete and not unmodeled else None,
         "per_material": per_material,
         "ordinary_sanity": normal_ev,
         "extra_sanity": extra_ev,
         "extra_rate": extra_rate,
         "unknown_materials": unknown,
+        "unmodeled_materials": unmodeled,
         "unknown_collections": unknown_collections,
         "qualities": [
             {
@@ -165,4 +183,12 @@ def recycling_expectation(materials, unknown_collections=0):
             for rarity, probability in sorted(probabilities.items())
         ],
         "source": {key: model[key] for key in ("source", "sheet", "ranges")},
+        "valuation": valuation,
+        "calculator": {
+            "daily_sanity": daily,
+            "configured_daily_sanity": daily * ratios["efficiency"],
+            "manufacturing_equivalent": manufacture * ratios["efficiency"],
+            "elite0_equivalent": manufacture * 0.2,
+            "elite2_equivalent": manufacture * 0.3,
+        },
     }

@@ -28,6 +28,71 @@ const loading = ref(false)
 const error = ref('')
 const exporting = ref(false)
 const exportError = ref('')
+const valuation = ref(null)
+const ratios = reactive({ experience: 1, gold: 0.8, order: 733 / 2990, efficiency: 1 })
+const settingsLoading = ref(false)
+const settingsBusy = ref(false)
+const settingsError = ref('')
+const settingsMessage = ref('')
+const importInput = ref(null)
+const settingsUrl = `${import.meta.env.VITE_HTTP_URL}/report/recycling_settings`
+function applySettings(value) {
+  valuation.value = value
+  Object.assign(ratios, value.ratios)
+}
+async function loadSettings() {
+  settingsLoading.value = true
+  settingsError.value = ''
+  try {
+    applySettings((await axios.get(settingsUrl)).data)
+  } catch {
+    settingsError.value = '收益设置读取失败，请重试'
+  } finally {
+    settingsLoading.value = false
+  }
+}
+async function updateSettings(action, file = null) {
+  if (settingsBusy.value || settingsLoading.value || !valuation.value) return
+  settingsBusy.value = true
+  settingsError.value = ''
+  settingsMessage.value = ''
+  const submitted = { ...ratios }
+  try {
+    let response
+    if (action === 'import') {
+      const body = new FormData()
+      body.append('file', file)
+      response = await axios.post(`${settingsUrl}/import`, body)
+    } else if (action === 'reset') {
+      response = await axios.delete(settingsUrl)
+    } else {
+      response = await axios.put(settingsUrl, { ratios: submitted })
+    }
+    applySettings(response.data)
+    settingsMessage.value =
+      action === 'import'
+        ? `已更新 ${response.data.last_import.updated} 项价值，新增 ${response.data.last_import.added} 项，其余 ${response.data.last_import.retained} 项保留原值；跳过 ${response.data.last_import.unpriced?.length || 0} 项无有效价格的项目`
+        : '收益设置已保存'
+    await load()
+  } catch (error) {
+    settingsError.value = error.response?.data?.error || '收益设置保存失败，请重新读取设置确认'
+  } finally {
+    settingsBusy.value = false
+  }
+}
+async function importValues(event) {
+  const file = event.target.files?.[0]
+  try {
+    if (!file) return
+    if (!file.name.toLowerCase().endsWith('.xlsx') || file.size > 2 * 1024 * 1024) {
+      settingsError.value = '请选择不超过 2 MiB 的一图流 .xlsx 物品价值表'
+      return
+    }
+    await updateSettings('import', file)
+  } finally {
+    event.target.value = ''
+  }
+}
 const emptyData = () => ({ total: 0, materials: [], qualities: [], records: [], comparison: null })
 const data = ref(emptyData())
 const failedIcons = reactive(new Set())
@@ -160,7 +225,10 @@ async function exportExcel() {
     exporting.value = false
   }
 }
-onMounted(load)
+onMounted(() => {
+  load()
+  loadSettings()
+})
 </script>
 
 <template>
@@ -196,6 +264,78 @@ onMounted(load)
     </header>
     <n-alert v-if="error" type="error" class="notice">{{ error }}</n-alert>
     <n-alert v-if="exportError" type="error" class="notice">{{ exportError }}</n-alert>
+    <section class="valuation-panel">
+      <n-collapse>
+        <n-collapse-item title="收益设置 · 材料价值与产物比例" name="valuation">
+          <n-spin :show="settingsLoading || settingsBusy">
+            <p class="settings-description">
+              从一图流导出“物品价值表”Excel 后导入，也可以只导入新增材料。按物品 ID
+              和名称合并价值，未提供的价格保留原值；新材料也会保存。普通池、额外池概率保持计算表口径，价格导入不修改概率和收取记录。
+            </p>
+            <div v-if="valuation" class="valuation-source">
+              <span>{{ valuation.source }}</span>
+              <span>{{ Object.keys(valuation.prices).length }} 项价值</span>
+              <span>{{
+                valuation.imported_at ? formatTime(valuation.imported_at) : '内置快照'
+              }}</span>
+            </div>
+            <div class="valuation-actions">
+              <input ref="importInput" type="file" accept=".xlsx" hidden @change="importValues" />
+              <n-button
+                secondary
+                :disabled="!valuation || settingsBusy || settingsLoading"
+                @click="importInput.click()"
+                >导入一图流材料价值</n-button
+              >
+              <n-button quaternary :disabled="settingsBusy || settingsLoading" @click="loadSettings"
+                >重新读取</n-button
+              >
+              <n-button
+                quaternary
+                :disabled="!valuation || settingsBusy || settingsLoading"
+                @click="updateSettings('reset')"
+                >恢复全部默认值</n-button
+              >
+            </div>
+            <p class="settings-description">
+              经验书：赤金：订单价值比例用于等效制造站效率换算，不改变材料理智价值。回收站效率用于理论日产量换算，100%填
+              1。
+            </p>
+            <div class="ratio-fields">
+              <label
+                v-for="field in [
+                  { key: 'experience', label: '经验书价值比例' },
+                  { key: 'gold', label: '赤金价值比例' },
+                  { key: 'order', label: '订单价值比例' },
+                  { key: 'efficiency', label: '回收站效率（1 = 100%）' }
+                ]"
+                :key="field.key"
+              >
+                <span>{{ field.label }}</span>
+                <n-input-number
+                  v-model:value="ratios[field.key]"
+                  :min="field.key === 'experience' ? 0.000001 : 0"
+                  :max="1000"
+                  :disabled="!valuation || settingsBusy || settingsLoading"
+                  :show-button="false"
+                />
+              </label>
+            </div>
+            <n-button
+              type="primary"
+              :loading="settingsBusy"
+              :disabled="!valuation || settingsLoading"
+              @click="updateSettings('ratios')"
+              >保存比例并重新计算</n-button
+            >
+            <n-alert v-if="settingsError" type="error" class="settings-feedback">{{
+              settingsError
+            }}</n-alert>
+            <p v-if="settingsMessage" class="settings-feedback">{{ settingsMessage }}</p>
+          </n-spin>
+        </n-collapse-item>
+      </n-collapse>
+    </section>
     <n-alert
       v-if="comparison?.unknown_collections || comparison?.unknown_materials.length"
       type="warning"
@@ -205,6 +345,11 @@ onMounted(load)
         v-if="comparison.unknown_materials.length"
         >，未定价材料：{{ comparison.unknown_materials.join('、') }}</span
       >。材料汇总仅含已识别数量，总理智收益和预期对比暂不计算。
+    </n-alert>
+    <n-alert v-if="comparison?.unmodeled_materials?.length" type="warning" class="notice">
+      以下材料尚未加入概率表：{{
+        comparison.unmodeled_materials.join('、')
+      }}。已导入价格可用于实际收益；期望收益对比暂不计算，等待概率表更新。
     </n-alert>
     <n-spin :show="loading">
       <div class="metrics">
@@ -218,7 +363,7 @@ onMounted(load)
           <div class="metric-value accent">
             {{ number(comparison?.actual_sanity) }}<small>理智</small>
           </div>
-          <span class="metric-note">按实际材料及计算表价值折算</span>
+          <span class="metric-note">按实际材料及当前保存价值折算</span>
         </section>
         <section class="metric">
           <span class="metric-label">理论期望收益</span>
@@ -353,10 +498,39 @@ onMounted(load)
         </div>
       </div>
       <section v-if="comparison" class="model-note">
+        <div v-if="comparison.calculator" class="calculator-results">
+          <div>
+            <span>100%效率理论日产</span
+            ><strong
+              >{{ number(comparison.calculator.daily_sanity, 3) }}<small> 理智/天</small></strong
+            >
+          </div>
+          <div>
+            <span>设定效率理论日产</span
+            ><strong
+              >{{ number(comparison.calculator.configured_daily_sanity, 3)
+              }}<small> 理智/天</small></strong
+            >
+          </div>
+          <div>
+            <span>等效制造站效率</span
+            ><strong>{{ percent(comparison.calculator.manufacturing_equivalent) }}</strong>
+          </div>
+          <div>
+            <span>旅骨精零 / 精二等效制造站</span
+            ><strong
+              >{{ percent(comparison.calculator.elite0_equivalent) }} /
+              {{ percent(comparison.calculator.elite2_equivalent) }}</strong
+            >
+          </div>
+        </div>
+        <p>
+          理论换算沿用计算器：100%回收站效率每两天一次普通抽取，100%制造站每日产出8000经验。旅骨精零/精二分别按20%/30%回收站效率换算；这些数值不是实测日产量。
+        </p>
         <n-collapse
           ><n-collapse-item title="计算口径与概率来源" name="model"
             ><p>
-              实际理智收益 = 各材料数量 × 计算表中的理智价值。理论期望 = 材料总数 ×
+              实际理智收益 = 各材料数量 × 当前材料理智价值。理论期望 = 材料总数 ×
               {{ number(comparison.per_material, 4) }} 理智/件。
             </p>
             <p>
@@ -366,7 +540,9 @@ onMounted(load)
             </p>
             <p>
               来源：{{ comparison.source.source }} · {{ comparison.source.sheet }}
-              {{ comparison.source.ranges.join('、') }}。材料价值使用工作簿快照，不随实时行情变化。
+              {{ comparison.source.ranges.join('、') }}。材料价值：{{
+                comparison.valuation?.source || '计算器内置价值快照'
+              }}，使用本地保存的快照，不自动更新。
             </p></n-collapse-item
           ></n-collapse
         >
@@ -376,6 +552,68 @@ onMounted(load)
 </template>
 
 <style scoped>
+.valuation-panel {
+  margin-bottom: 18px;
+  padding: 18px 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.settings-description,
+.valuation-source,
+.calculator-results span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.8;
+}
+.valuation-source,
+.valuation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px 0;
+}
+.ratio-fields,
+.calculator-results {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 18px 0;
+}
+.ratio-fields label {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  min-width: 0;
+}
+.settings-feedback {
+  margin-top: 12px;
+}
+.calculator-results > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.calculator-results strong {
+  font-size: 19px;
+  overflow-wrap: anywhere;
+}
+.calculator-results small {
+  font-size: 12px;
+  font-weight: 400;
+}
+@media (max-width: 800px) {
+  .ratio-fields,
+  .calculator-results {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 480px) {
+  .valuation-panel {
+    padding: 16px;
+  }
+}
 .recycling-page {
   --surface: #fff;
   --ink: #25333c;

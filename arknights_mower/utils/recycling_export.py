@@ -76,7 +76,7 @@ def _detail_rows(records):
 
 
 def write_recycling_workbook(start_date, end_date, summary, records):
-    """Stream detail rows into four sheets; spill archives above 8 MiB to disk."""
+    """Stream evidence and valuation inputs; spill archives above 8 MiB to disk."""
     comparison = summary["comparison"]
     materials = summary["materials"]
     quantity = sum(item["count"] for item in materials)
@@ -90,7 +90,7 @@ def write_recycling_workbook(start_date, end_date, summary, records):
         ),
         ("收取次数", summary["total"], "一次收取可以包含多件材料"),
         ("已识别材料总数", quantity, "未完整识别的批次不估算数量"),
-        ("总理智收益", comparison["actual_sanity"], "实际材料数量 × 计算表理智价值"),
+        ("总理智收益", comparison["actual_sanity"], "实际材料数量 × 当前材料理智价值"),
         ("理论期望收益", comparison["expected_sanity"], "相同材料总数 × 长期单件期望"),
         ("与期望的差额", comparison["difference"], "实际收益减去理论期望"),
         (
@@ -109,7 +109,7 @@ def write_recycling_workbook(start_date, end_date, summary, records):
             "存在未定价材料时不计算总收益对比",
         ),
         (
-            "概率与价值来源",
+            "概率来源",
             source["source"],
             f"{source['sheet']}：{'、'.join(source['ranges'])}",
         ),
@@ -124,6 +124,47 @@ def write_recycling_workbook(start_date, end_date, summary, records):
             "同一收取标识的多行属于同一次收取；未知干员与无人进驻分别保留",
         ),
     ]
+    valuation = comparison["valuation"]
+    calculator = comparison["calculator"]
+    overview.extend(
+        [
+            (
+                "缺少概率的材料",
+                "、".join(comparison["unmodeled_materials"]) or "无",
+                "新材料价值不代表掉落概率；缺少概率时不计算期望对比",
+            ),
+            (
+                "材料价值来源",
+                valuation["source"],
+                "导入为本地快照，具体价值见价值参数表",
+            ),
+            (
+                "100%回收站理论日产理智",
+                calculator["daily_sanity"],
+                "计算器假设：100%效率每两天一次普通抽取；不是实测日产量",
+            ),
+            (
+                "设定效率下理论日产理智",
+                calculator["configured_daily_sanity"],
+                "按价值参数中的回收站效率计算",
+            ),
+            (
+                "等效制造站效率",
+                calculator["manufacturing_equivalent"],
+                "理论换算，以每日8000经验为100%制造站效率",
+            ),
+            (
+                "精零旅骨等效制造站效率",
+                calculator["elite0_equivalent"],
+                "计算器20%回收站效率假设",
+            ),
+            (
+                "精二旅骨等效制造站效率",
+                calculator["elite2_equivalent"],
+                "计算器30%回收站效率假设",
+            ),
+        ]
+    )
     actual_quality = {item["rarity"]: item["count"] for item in summary["qualities"]}
     expected_quality = {
         item["rarity"]: item["probability"] for item in comparison["qualities"]
@@ -165,6 +206,45 @@ def write_recycling_workbook(start_date, end_date, summary, records):
             (22, 18, 18, 18),
             (2, 3),
         ),
+        (
+            "价值参数",
+            ("参数或材料", "数值", "说明"),
+            [
+                ("价值来源", valuation["source"], "本次导出的估值快照"),
+                (
+                    "导入时间",
+                    datetime.fromtimestamp(valuation["imported_at"]).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                    if valuation["imported_at"]
+                    else "内置快照",
+                    "运行 Mower 的本机时区",
+                ),
+                (
+                    "经验书价值比例",
+                    valuation["ratios"]["experience"],
+                    "用于制造站效率换算",
+                ),
+                ("赤金价值比例", valuation["ratios"]["gold"], "用于制造站效率换算"),
+                ("订单价值比例", valuation["ratios"]["order"], "用于制造站效率换算"),
+                (
+                    "回收站效率",
+                    valuation["ratios"]["efficiency"],
+                    "1表示100%，只用于理论换算",
+                ),
+                ("龙门币", valuation["lmd_sanity"], "理智/龙门币"),
+                *(
+                    (
+                        name,
+                        price,
+                        "理智/件；物品 ID：" + valuation["item_ids"].get(name, "未知"),
+                    )
+                    for name, price in sorted(valuation["prices"].items())
+                ),
+            ],
+            (30, 30, 55),
+            (),
+        ),
     ]
     output = SpooledTemporaryFile(max_size=8 * 1024 * 1024, mode="w+b")
     try:
@@ -178,7 +258,7 @@ def write_recycling_workbook(start_date, end_date, summary, records):
                 '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
                 + "".join(
                     f'<Override PartName="/xl/worksheets/sheet{index}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-                    for index in range(1, 5)
+                    for index in range(1, len(sheets) + 1)
                 )
                 + "</Types>",
             )
@@ -200,9 +280,9 @@ def write_recycling_workbook(start_date, end_date, summary, records):
                 '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
                 + "".join(
                     f'<Relationship Id="rId{index}" Type="{_REL}/worksheet" Target="worksheets/sheet{index}.xml"/>'
-                    for index in range(1, 5)
+                    for index in range(1, len(sheets) + 1)
                 )
-                + f'<Relationship Id="rId5" Type="{_REL}/styles" Target="styles.xml"/></Relationships>',
+                + f'<Relationship Id="rId{len(sheets) + 1}" Type="{_REL}/styles" Target="styles.xml"/></Relationships>',
             )
             archive.writestr(
                 "xl/styles.xml",

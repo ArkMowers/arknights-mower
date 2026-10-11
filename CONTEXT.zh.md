@@ -69,7 +69,7 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 - **_Avoid_**: `Physical energy`, `Fatigue level`
 
 ### 基建设施 (`Base Facility`)
-- 回收站收取统计保留收取时间、实读的回收站进驻干员和已识别的材料数量。理智收益对比按相同材料数量使用所提供计算表的概率与价值快照；未知读数保持未知。
+- 回收站收取统计保留收取时间、实读的回收站进驻干员和已识别的材料数量。理智收益对比按相同材料数量使用所提供计算表的概率快照与当前保存的材料价值快照；未知读数保持未知。
 - **定义**：罗德岛基建中具备独立功能与进驻槽位的各类房间。划分为工作设施（中枢、制造、贸易、发电、办公、会客、训练、加工、回收）与休息设施（1~4 号宿舍）。
 - **代码映射**：[`Facility`](arknights_mower/utils/config/plan.py), [`base_room_list`](arknights_mower/data/__init__.py)
 - **_Avoid_**: `Building slot`, `Isolated room`
