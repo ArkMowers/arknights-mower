@@ -47,6 +47,7 @@ Use one primary workflow for each responsibility. Repository skills own reposito
 | Document placement | [mower-doc](skills/mower-doc/SKILL.md) | Domain modeling supplies concept analysis; repository routing and approval remain authoritative. |
 | Prose | [mower-prose-standard](skills/mower-prose-standard/SKILL.md) | General prose skills refine wording after placement, without adding records or invariants. |
 | Record transition | [mower-archive-agent-notes](skills/mower-archive-agent-notes/SKILL.md) | Use only for an actual lifecycle change; documentation merges can retain state. |
+| PR writing | [mower-pr](skills/mower-pr/SKILL.md) | Generic pr supplies presentation ideas; mower-pr owns the project template and instruction records. |
 
 Each selected skill declares inputs, outputs and a completion condition. Read only references relevant to the task. Do not execute the catalog as a pipeline.
 
