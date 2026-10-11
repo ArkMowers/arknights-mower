@@ -30,7 +30,7 @@ from arknights_mower.utils.device.session import (  # noqa: E402
 )
 from arknights_mower.utils.device.touch_backend import TouchFailure  # noqa: E402
 from arknights_mower.utils.logic_expression import LogicExpression  # noqa: E402
-from arknights_mower.utils.operators import Operator  # noqa: E402
+from arknights_mower.utils.operators import Operator, Operators  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.recognize import (  # noqa: E402
     RecognizeError,
@@ -2842,6 +2842,9 @@ class TestDroneAccelerate(unittest.TestCase):
         solver.tasks = [task]
         solver.op_data = SimpleNamespace(
             dorm=[], operators={}, plan={}, all_dorms=lambda: []
+        )
+        solver.op_data.arrangement_group_transitions = (
+            Operators.arrangement_group_transitions.__get__(solver.op_data)
         )
         arrangements = []
 
