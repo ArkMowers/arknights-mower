@@ -358,16 +358,26 @@ class BaseMixin:
         )
         return profile.poll_interval, attempts
 
-    def reorder_selected_agents(self, agents, actual):
+    def reorder_selected_agents(self, agents, actual, *, retained_prefix=()):
         """Reapply selection order using the current mode's production timing."""
         click_order = [actual.index(name) for name in agents]
         mode = self.performance_profile.mode
         interval = {"xhigh": 0, "high": 0.1}.get(mode, 0.2)
-        logger.debug(f"选人重排清空：性能档位{mode}，页面已选{actual}，目标{agents}")
-        self.tap(
-            (self.recog.w * 0.38, self.recog.h * 0.95),
-            interval=0.3 if mode == "high" else 0.5,
-        )
+        if retained_prefix:
+            # 保留已确认入房顺序的完整前缀；变化后段按页面卡片位置取消。
+            for index, name in enumerate(actual):
+                if name not in retained_prefix:
+                    x, y = self.agent_selection_positions[index]
+                    self.tap((self.recog.w * x, self.recog.h * y), interval=interval)
+            click_order = click_order[len(retained_prefix) :]
+        else:
+            logger.debug(
+                f"选人重排清空：性能档位{mode}，页面已选{actual}，目标{agents}"
+            )
+            self.tap(
+                (self.recog.w * 0.38, self.recog.h * 0.95),
+                interval=0.3 if mode == "high" else 0.5,
+            )
         for index in click_order:
             x, y = self.agent_selection_positions[index]
             self.tap((self.recog.w * x, self.recog.h * y), interval=interval)

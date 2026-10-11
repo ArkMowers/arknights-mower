@@ -356,6 +356,8 @@ def test_idle_single_manager_in_free_slot_is_not_its_own_target(solver):
     manager = solver.op_data.operators["闪灵"]
     manager.mood = 1
     manager.time_stamp = datetime.now()
+    # 后置低心情住客一起撤下，不让尾部满心情住客额外引入中间垫位。
+    solver.op_data.operators["黑角"].mood = 23
     updated = ["闪灵", "银灰", "陈", "红", "黑角"]
     assert not manager.single_recovery_manager
     assert recovery_target(solver.op_data, ROOM, updated).name == "银灰"
@@ -561,11 +563,80 @@ def test_higher_priority_admission_reestablishes_single_recovery(solver):
     assert {3, 4}.issubset(solver.reads[-1])
 
 
-def test_full_replacement_kept_and_full_free_occupant_temporarily_removed(solver):
+def test_full_replacement_and_full_free_occupant_are_kept(solver):
     solver.op_data.operators["红"].mood = 24
     solver.op_data.operators["陈"].mood = 24
     arrange(solver)
-    assert solver.confirms == [["杜林", "琴柳", "红", "银灰", ""], FINAL]
+    assert solver.confirms == [FINAL]
+    assert solver.op_data.operators["银灰"].dorm_recovery_index == 3
+
+
+@pytest.mark.parametrize("index", [0, 2, 4])
+def test_full_group_manager_keeps_position_during_recovery_setup(solver, index):
+    final = FINAL.copy()
+    solver.op_data.operators[final[index]].mood = 24
+    final[0], final[index] = final[index], final[0]
+    solver.physical = final.copy()
+    solver.get_agent_from_room()
+
+    assert solver.ensure_dorm_recovery_order(ROOM, final)
+    assert solver.confirms
+    assert all(names[index] == "杜林" for names in solver.confirms)
+    assert solver.op_data.operators["银灰"].dorm_recovery_index == 3
+
+
+def test_unknown_trailing_full_mood_is_not_retained(solver):
+    solver.op_data.operators["陈"].mood = 24
+    solver.op_data.operators["陈"].time_stamp = None
+
+    assert recovery_order_plan(solver.op_data, ROOM, FINAL) == [
+        "杜林",
+        "琴柳",
+        "Free",
+        "银灰",
+    ]
+
+
+def test_trailing_full_resident_readback_must_not_compete_with_target(solver):
+    solver.op_data.operators["陈"].mood = 24
+    read = solver.get_agent_from_room.side_effect
+
+    def read_mood(*args, **kwargs):
+        result = read(*args, **kwargs)
+        if solver.confirms:
+            solver.op_data.operators["陈"].mood = 1
+        return result
+
+    solver.get_agent_from_room.side_effect = read_mood
+    arrange(solver)
+
+    assert solver.confirms[0][4] == "陈"
+    assert solver.physical == FINAL
+    assert solver.op_data.operators["银灰"].dorm_recovery_room == ""
+
+
+@pytest.mark.parametrize("unknown", [False, True])
+def test_unchanged_full_roster_checks_actual_mood_without_selection(solver, unknown):
+    for name in ("红", "陈"):
+        solver.op_data.operators[name].mood = 24
+    solver.physical = FINAL.copy()
+    solver.get_agent_from_room()
+    read = solver.get_agent_from_room.side_effect
+
+    def read_mood(*args, **kwargs):
+        result = read(*args, **kwargs)
+        if unknown:
+            solver.op_data.operators["陈"].time_stamp = None
+        else:
+            solver.op_data.operators["陈"].mood = 1
+        return result
+
+    solver.get_agent_from_room.side_effect = read_mood
+
+    assert solver.ensure_dorm_recovery_order(ROOM, FINAL)
+    solver.choose_agent.assert_not_called()
+    solver.tap_confirm.assert_not_called()
+    assert solver.op_data.operators["银灰"].dorm_recovery_room == ""
 
 
 def test_unknown_replacement_mood_is_not_assumed_full(solver):
@@ -966,6 +1037,66 @@ def test_full_preceding_resident_is_not_replaced_by_idle_padding(solver):
     arrange(solver)
     assert solver.confirms == [["杜林", "琴柳", "红", "银灰", ""], FINAL]
     assert solver.op_data.operators["银灰"].dorm_recovery_index == 3
+
+
+def test_actual_selection_retains_fixed_occupants_during_setup_and_restore(
+    solver, monkeypatch
+):
+    from arknights_mower.tests.choose_agent_filter_tests import selection_solver
+
+    fixed = ["杜林", "琴柳", "菲亚梅塔"]
+    solver.op_data.plan[ROOM][2] = Room("菲亚梅塔", "", [])
+    solver.op_data.add(Operator("菲亚梅塔", ROOM, 2, mood=0, time_stamp=datetime.now()))
+    solver.physical = fixed + ["陈", "银灰"]
+    solver.get_agent_from_room()
+    final = fixed + ["银灰", "陈"]
+    ui, selected = selection_solver(monkeypatch, residents=solver.physical)
+    ui.op_data = solver.op_data
+    ui.task = solver.task
+    tap = ui.tap.side_effect
+    transitions = []
+
+    def record_tap(*args, **kwargs):
+        tap(*args, **kwargs)
+        transitions.append(selected.copy())
+
+    def choose(*args, **kwargs):
+        ui.choose_agent(*args, **kwargs)
+        solver.selected = selected.copy()
+
+    ui.tap.side_effect = record_tap
+    solver.choose_agent.side_effect = choose
+
+    arrange(solver, final)
+
+    assert transitions
+    assert all(names[:3] == fixed for names in transitions)
+    assert solver.confirms == [fixed + ["银灰", ""], final]
+    assert solver.op_data.operators["银灰"].dorm_recovery_index == 3
+
+
+@pytest.mark.parametrize("index", [0, 2])
+@pytest.mark.parametrize("mood", [0, 23, 24, None])
+def test_fixed_occupants_use_mood_instead_of_position_for_temporary_padding(
+    solver, index, mood
+):
+    solver.op_data.plan[ROOM][2] = Room("红", "", [])
+    solver.op_data.operators["红"].mood = 24
+    name = FINAL[index]
+    operator = solver.op_data.operators[name]
+    operator.mood = 24 if mood is None else mood
+    operator.time_stamp = None if mood is None else datetime.now()
+    temporary = FINAL[:4]
+    if mood != 24:
+        temporary[index] = "黑角"
+
+    arrange(solver)
+
+    assert solver.confirms == [temporary + [""], FINAL]
+    assert solver.op_data.operators["银灰"].dorm_recovery_index == 3
+    for position in (0, 1, 2):
+        if position != index or mood == 24:
+            assert all(names[position] == FINAL[position] for names in solver.confirms)
 
 
 @pytest.mark.parametrize("index", [0, 2])

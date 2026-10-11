@@ -271,9 +271,12 @@ def test_ordinary_dorm_cover_competes_in_actual_lock_confirmation(
     assert solver.physical == final
     confirmed = mood == 24 or padding
     assert (target.dorm_recovery_room == ROOM) is confirmed
-    if confirmed:
+    if mood == 24:
+        assert solver.confirms == []
+        assert tuple(name for name, _, _ in target.dorm_recovery_fixed) == ("蜜莓",)
+    elif confirmed:
         assert solver.confirms[0][:3] == [
-            "夜莺" if mood == 24 else "黑角",
+            "黑角",
             "蜜莓",
             WORKER,
         ]

@@ -8096,11 +8096,18 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
         agent = copy.deepcopy(agents)
         exists = []
+        retained_prefix = []
         if fast_mode:
             current_room = self.op_data.get_current_room(room, True)
             if room.startswith("dorm"):
+                if preserve_dorm_occupants:
+                    # 入房名单提供原选择顺序；页面名单只用于定位点击位置。
+                    for current_name, target_name in zip(current_room, agents):
+                        if not current_name or current_name != target_name:
+                            break
+                        retained_prefix.append(current_name)
                 self.profession_filter()
-                # 缓存只提供名单，差量取消必须使用页面实际卡片顺序。
+                # 已选校验确认名单集合，差量取消使用页面实际卡片位置。
                 # 意外入住或缺人时完整重选，不能把错人当作原宿管保留。
                 current_room = self.wait_for_arranged_agents(
                     [n for n in current_room if n], ordered=False
@@ -8109,6 +8116,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     logger.info(f"{room} 实际已选名单与缓存不一致，改为完整选人")
                     fast_mode = False
                     current_room = []
+                    retained_prefix = []
             # 如果空位置进房间会被向前挤
             # 训练室的协助位和训练位固定，空协助位不能让训练位前移。
             if room != "train":
@@ -8556,13 +8564,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if exists is None:
                 raise Exception("检测到干员选择错误，重新选择")
             logger.info(exists)
-            # 蓝框只说明卡片被选中；返回名单按页面位置排序，不能由此推断
-            # 卡片上的选择编号。即使页面顺序恰好等于目标也须重新按目标点击。
+            # 页面卡片提供点击位置；入房名单提供可保留的原选择顺序。
             if any(a not in exists for a in agents):
                 raise Exception("检测到干员选择错误，重新选择")
             if agents:
-                # 按目标顺序完成点击后统一校验完整名单。
-                self.reorder_selected_agents(agents, exists)
+                self.reorder_selected_agents(
+                    agents, exists, retained_prefix=retained_prefix
+                )
                 reordered = True
             else:
                 # 空目标没有需要重排和校验的卡片。
@@ -9292,17 +9300,19 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self.task.dorm_recovery_restore = pending
         current = self.op_data.get_current_room(room, True)
         expected = retained + [""] * (len(agents) - len(retained))
-        if current != expected:
-            logger.info(f"宿舍单回排序：{room} 保留目标 {target.name}，暂留 {retained}")
-            for attempt in range(5):
-                if self.find("confirm_blue") is not None:
-                    break
-                if attempt == 4:
-                    raise Exception("未成功进入干员选择界面")
-                # 首次点按可能被线索弹窗或过渡帧吞掉；ctap 的 10 秒去重
-                # 会使后续循环完全没有重试操作。
-                self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
-            try:
+        try:
+            if current != expected:
+                logger.info(
+                    f"宿舍单回排序：{room} 保留目标 {target.name}，暂留 {retained}"
+                )
+                for attempt in range(5):
+                    if self.find("confirm_blue") is not None:
+                        break
+                    if attempt == 4:
+                        raise Exception("未成功进入干员选择界面")
+                    # 首次点按可能被线索弹窗或过渡帧吞掉；ctap 的 10 秒去重
+                    # 会使后续循环完全没有重试操作。
+                    self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
                 self.choose_agent(
                     retained,
                     room,
@@ -9313,25 +9323,31 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 expected = retained + [""] * (len(agents) - len(retained))
                 padding_estimates = self.op_data.dorm_mood_estimates.copy()
                 self.tap_confirm(room, {})
-                current = [item["agent"] for item in self.get_agent_from_room(room)]
-                if current != expected:
-                    raise Exception("宿舍单回排序确认失败，保留原任务重试")
-            except MowerExit:
-                raise
-            except DormRecoveryPaddingUnavailable:
-                target.clear_dorm_recovery()
-                self.back()
-                logger.info(f"{room} 满心情空闲垫位不足，继续恢复正常阵容")
-                return True
-            except Exception as e:
-                if (
-                    isinstance(e, AgentSelectionNotReady)
-                    or "检测到干员选择错误" in str(e)
-                    or "宿舍单回排序确认失败" in str(e)
-                    or (isinstance(e, RecognizeError) and str(e).startswith("干员确认"))
-                ):
-                    self.record_selection_failure()
-                raise
+            # 阵容无需变动时仍读实际心情；完整阵容可同时刷新目标倒计时。
+            current = [
+                item["agent"]
+                for item in self.get_agent_from_room(
+                    room, [vip_index] if expected == agents else None
+                )
+            ]
+            if current != expected:
+                raise Exception("宿舍单回排序确认失败，保留原任务重试")
+        except MowerExit:
+            raise
+        except DormRecoveryPaddingUnavailable:
+            target.clear_dorm_recovery()
+            self.back()
+            logger.info(f"{room} 满心情空闲垫位不足，继续恢复正常阵容")
+            return True
+        except Exception as e:
+            if (
+                isinstance(e, AgentSelectionNotReady)
+                or "检测到干员选择错误" in str(e)
+                or "宿舍单回排序确认失败" in str(e)
+                or (isinstance(e, RecognizeError) and str(e).startswith("干员确认"))
+            ):
+                self.record_selection_failure()
+            raise
         if current != agents:
             # 目标床位不再移动，不能因此沿用临时阵容下的恢复倒计时。
             # 补回宿管和其余入住者后，由紧接着的正常读房重新采样。
@@ -9341,17 +9357,18 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if bed is not None and bed.name == target.name:
                 bed.time = None
         # 绿笑脸即可确认满心情；较新的低心情实读仍使本次确认失效。
-        padding = {
+        competitors = {
             name
-            for name in retained[:vip_index]
-            if name != "菲亚梅塔" and not is_single_recovery_manager(name)
+            for name in retained
+            if name not in (target.name, "菲亚梅塔")
+            and not is_single_recovery_manager(name)
         }
         if any(
             not full_dorm_candidate(self.op_data, name, estimates=padding_estimates)
-            for name in padding
+            for name in competitors
         ):
             target.clear_dorm_recovery()
-            logger.info(f"{room} 单回垫位者未确认满心情，恢复阵容后重新确认")
+            logger.info(f"{room} 单回暂留者未确认满心情，恢复阵容后重新确认")
             return True
         if target.mood < 24:
             target.dorm_recovery_room = room
