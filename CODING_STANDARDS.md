@@ -162,6 +162,8 @@
 - **[INV-CFG-01] Configuration Data Cohesion**: Configuration imports validate all archive members before writing, restore included persistent tmp data with configuration, preserve local access settings, clear saved scheduling state, and roll back file changes if any write or database restore fails.
 
 ### 2.7 Software Update
+
+- **[INV-UPD-09] Local Update Cache**: Software update coordination, uploads, downloaded packages and job workspaces reside under shared `@app/tmp/updates/`, with installation identity isolation; package-inspection temporary directories use the same tree instead of system cache or temporary directories.
 - **[INV-UPD-08] Elevated Windows Desktop Launch**: Both packaged Windows desktop executables require administrator elevation before application startup; manager-launched instances inherit the manager's elevated token through ordinary process creation.
 - **[INV-UPD-06] Cross-Channel Upgrade Selection**: Installed development and beta channels admit newer installable releases from more stable channels, preserve the selected channel and use only a verified OTA from the exact installed version to the selected target.
 - **[INV-UPD-04] MAA Resource Platform Parity**: Installed MAA on Windows, macOS and Linux exposes independent resource checks and updates; installation preserves core and Python files, rejects active MAA use, and retains resource rollback copies.

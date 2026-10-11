@@ -16,7 +16,46 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.request import getproxies_environment
 
+from arknights_mower.utils import path as mower_path
 from arknights_mower.utils import update_runtime as runtime
+
+
+class UpdateStorageTests(unittest.TestCase):
+    def test_shared_tmp_storage_preserves_installation_isolation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch.object(mower_path, "_data_dir", root / "data"):
+                with patch.object(mower_path, "global_space", "first"):
+                    first = runtime.state_dir(root / "install")
+                with patch.object(mower_path, "global_space", "second"):
+                    second = runtime.state_dir(root / "install")
+                other = runtime.state_dir(root / "another-install")
+            self.assertEqual(first.parent, root / "data/tmp/updates")
+            self.assertEqual(first, second)
+            self.assertNotEqual(first, other)
+
+    def test_dmg_inspection_uses_tmp_and_removes_failed_mount_workspace(self):
+        from arknights_mower.utils import software_update_package as package
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            mounts = []
+
+            def fail_mount(arguments, **kwargs):
+                mount = Path(arguments[arguments.index("-mountpoint") + 1])
+                self.assertEqual(mount.parent.parent, root / "tmp/updates")
+                self.assertTrue(mount.is_dir())
+                mounts.append(mount)
+                raise OSError("mount failed")
+
+            with (
+                patch.object(mower_path, "_data_dir", root),
+                patch.object(package.subprocess, "run", side_effect=fail_mount),
+                self.assertRaisesRegex(ValueError, "无法只读挂载"),
+            ):
+                package._dmg_version(root / "release.dmg")
+            self.assertEqual(len(mounts), 1)
+            self.assertFalse(mounts[0].parent.exists())
 
 
 class ProxyEnvironmentTests(unittest.TestCase):

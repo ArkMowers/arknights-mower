@@ -127,7 +127,13 @@ def _tar_version(path: Path) -> dict:
 
 
 def _dmg_version(path: Path) -> dict:
-    with tempfile.TemporaryDirectory(prefix="mower-release-") as temporary:
+    from .path import get_path
+
+    directory = get_path("@app/tmp/updates", space="")
+    directory.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix="mower-release-", dir=directory
+    ) as temporary:
         mount = Path(temporary) / "mount"
         mount.mkdir()
 
