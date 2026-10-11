@@ -60,6 +60,9 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 - **代码映射**：[`PlanModel`](arknights_mower/utils/config/plan.py), [`Plan1`](arknights_mower/utils/config/plan.py), [`BackupPlan`](arknights_mower/utils/config/plan.py)
 - **_Avoid_**: `Task script`, `Macro`, `Work plan`
 
+### 自动切换信赖
+- **定义**：日常任务期间定期检查基建副手及已建造活动室的使用者。默认保留现任至200%；启用阈值后，现任达到X%且有低于X%的同类合格候选时允许更换，否则保留至200%。副手与活动室分别排除本类现任，允许跨类重复，并保留干员原有工作或休息状态。替换优先选择低于已启用阈值的干员，其后选择信赖低于200%的最低者。当信赖升序名单确认所有干员均达到200%信赖时，保留当前安排，并跳过本轮剩余设施检查。
+
 ### 干员心情 (`Operator Mood`)
 - **定义**：衡量干员在基建中工作与休息状态的数值（上限为 24 点）。进驻工作设施持续消耗，进驻宿舍恢复。降至 0 点注意力涣散后技能失效。
 - **代码映射**：[`Operator.mood`](arknights_mower/utils/operators.py), [`Operator.current_mood()`](arknights_mower/utils/operators.py)

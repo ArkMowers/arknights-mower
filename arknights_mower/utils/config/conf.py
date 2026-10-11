@@ -406,6 +406,14 @@ class RegularTaskPart(ConfModel):
     "访问好友处理方式：mower 原生 / maa 交 MAA"
     report_enable: bool = True
     "读取基报"
+    trust_rotation_enable: bool = False
+    "日常窗口检查基建副手与活动室信赖"
+    trust_rotation_prefer_low: bool = False
+    "优先选择低于信赖阈值的干员"
+    trust_rotation_threshold: int = Field(default=100, ge=1, le=200)
+    "优先信赖阈值（百分比）"
+    trust_rotation_interval: float = Field(default=24, ge=1, le=168)
+    "信赖检查间隔（小时）"
 
 
 class WorkShopItem(ConfModel):

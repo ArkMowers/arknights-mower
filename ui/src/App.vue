@@ -192,7 +192,7 @@
                       </div>
                       <div>
                         <n-button @click=";((showModal2 = false), $router.push('/maasettings'))">
-                          MAA设置
+                          日常设置
                         </n-button>
                       </div>
                     </n-card>
@@ -404,7 +404,7 @@ const menuOptions = [
         key: 'go-to-mowersetting'
       },
       {
-        label: () => h(RouterLink, { to: { path: '/maasettings' } }, { default: () => 'MAA设置' }),
+        label: () => h(RouterLink, { to: { path: '/maasettings' } }, { default: () => '日常设置' }),
         icon: renderIcon(RoseOutline),
         key: 'go-to-maasetting'
       }

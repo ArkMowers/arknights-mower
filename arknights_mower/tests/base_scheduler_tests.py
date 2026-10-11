@@ -239,6 +239,9 @@ class TestMoodInitialization(unittest.TestCase):
         scheduler.rest_until_next_task.side_effect = base_schedule.MowerExit
         self.initialize.return_value = scheduler
         with (
+            patch(
+                "arknights_mower.solvers.trust_rotation.run_trust_rotation"
+            ) as trust_rotation,
             patch.object(self.main.NewsChecker, "get_maintenance", return_value=None),
             patch.object(self.main, "refresh_resource_at_boundary"),
             patch.object(
@@ -262,6 +265,9 @@ class TestMoodInitialization(unittest.TestCase):
         scheduler.recruit_plan_solver.assert_called_once()
         scheduler.mower_plan_solver.assert_called_once()
         scheduler.maa_plan_solver.assert_called_once()
+        trust_rotation.assert_called_once_with(
+            scheduler.device, scheduler.recog, scheduler.tasks[0].time
+        )
 
     def test_fresh_start_defers_backup_plan_until_mood_read(self):
         scheduler = MagicMock()

@@ -60,6 +60,9 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 - **Code Mapping**: [`PlanModel`](arknights_mower/utils/config/plan.py), [`Plan1`](arknights_mower/utils/config/plan.py), [`BackupPlan`](arknights_mower/utils/config/plan.py)
 - **_Avoid_**: `Task script`, `Macro`, `Work plan`
 
+### Trust Rotation
+- **Definition**: Periodic inspection of base assistants and built activity-room occupants during daily tasks. Incumbents remain until 200% by default. With the threshold enabled, an incumbent at or above X% yields to an eligible same-kind candidate below X%; otherwise it remains until 200%. Assistant and activity-room rosters each exclude their own incumbents, permit cross-kind overlap and preserve ordinary working or resting state. Replacements prefer operators below the enabled threshold, then the lowest trust below 200%. When an ascending-trust roster confirms that all operators have 200% trust, current assignments remain and the remaining facilities are skipped for that inspection.
+
 ### Operator Mood
 - **Definition**: The numerical stamina metric (0 to 24) tracking operator working and resting states. Consumed in facilities and restored in dormitories. Active skills deactivate upon reaching morale depletion at 0 mood.
 - **Code Mapping**: [`Operator.mood`](arknights_mower/utils/operators.py), [`Operator.current_mood()`](arknights_mower/utils/operators.py)

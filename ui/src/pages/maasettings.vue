@@ -11,6 +11,7 @@ for (let i = 0.5; i <= 3.0; i += 0.25) {
 <template>
   <div class="grid-two">
     <div class="grid-left">
+      <div><trust-settings /></div>
       <div><maa-basic /></div>
       <div><maa-reward /></div>
     </div>
