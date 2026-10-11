@@ -56,6 +56,24 @@ class ServerStatusTests(unittest.TestCase):
             tasks=[],
         )
 
+    def test_desktop_startup_stays_handled_after_stop_and_repeated_status_reads(self):
+        for owned, restart in ((True, ""), (False, ""), (False, "update")):
+            with (
+                self.subTest(owned=owned, restart=restart),
+                patch.dict(self.server.app.config, {"DESKTOP_STARTUP_HANDLED": owned}),
+                patch.dict(os.environ, {"MOWER_RESTART_JOB": restart}),
+                patch.object(self.server, "_start_mower") as start,
+            ):
+                self.worker.is_alive.return_value = False
+                for _ in range(3):
+                    response = self.client.get("/status")
+                    self.assertEqual(response.json["status"], "stopped")
+                    self.assertEqual(response.json["desktop_startup_handled"], owned)
+                    self.assertEqual(
+                        response.json["auto_start_handled"], owned or bool(restart)
+                    )
+                start.assert_not_called()
+
     def test_alive_worker_without_scheduler_reports_starting_or_recovering(self):
         for state, expected in (
             ("idle", "starting"),

@@ -1652,13 +1652,15 @@ class ArchiveAndLauncherTests(unittest.TestCase):
         from arknights_mower.utils import network, path
         from arknights_mower.utils.lifecycle import Shutdown
 
-        for system, background, tray_enabled, restart, managed in product(
-            ("darwin", "linux", "win32"), *[(True, False)] * 4
+        for system, background, tray_enabled, restart, managed, automatic in product(
+            ("darwin", "linux", "win32"), *[(True, False)] * 5
         ):
             config = Mock()
             config.conf.webview.tray = tray_enabled
             config.conf.webview.token = ""
-            config.conf.start_automatically = False
+            config.conf.start_automatically = automatic
+            config.conf.resource_update.enable = False
+            config.stop_mower = threading.Event()
             server = Mock(app=Flask(__name__))
             server._job_running.return_value = False
             server.resource_update.running.side_effect = [True, False]
@@ -1783,13 +1785,14 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                     for call in threads.call_args_list
                     if call.kwargs["target"].__name__ == "resume_after_update"
                 ]
-                self.assertEqual(len(resumes), int(restart))
+                self.assertTrue(server.app.config["DESKTOP_STARTUP_HANDLED"])
+                self.assertEqual(len(resumes), int(restart or automatic))
                 if resumes:
-                    server.start.assert_called_once_with("2")
+                    server.start.assert_called_once_with("2" if restart else "0")
                     registration.shutdown_requested.return_value = False
                     resumes[0]()
                     # A late worker cannot restart automation after shutdown.
-                    server.start.assert_called_once_with("2")
+                    server.start.assert_called_once_with("2" if restart else "0")
 
     def test_tray_always_hides_its_dock_icon(self):
         from webview_ui import start_tray

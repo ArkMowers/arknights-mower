@@ -1586,7 +1586,11 @@ def get_status():
     with scheduled_start_lock:
         start_at = scheduled_start_at.isoformat() if scheduled_start_at else None
     response = {
-        "auto_start_handled": bool(os.environ.get("MOWER_RESTART_JOB")),
+        "desktop_startup_handled": bool(app.config.get("DESKTOP_STARTUP_HANDLED")),
+        "auto_start_handled": bool(
+            app.config.get("DESKTOP_STARTUP_HANDLED")
+            or os.environ.get("MOWER_RESTART_JOB")
+        ),
         "plan_condition": [],
         "status": "stopped",
         "scheduled_start_at": start_at,

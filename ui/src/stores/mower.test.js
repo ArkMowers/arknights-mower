@@ -75,6 +75,25 @@ describe('worker status', () => {
     store.running = false
     expect(store.status_label).toBe('已停止')
   })
+
+  it('reads desktop startup ownership while stopped without starting tasks', async () => {
+    axios.get.mockResolvedValue({
+      data: {
+        status: 'stopped',
+        plan_condition: [],
+        auto_start_handled: true,
+        desktop_startup_handled: true
+      }
+    })
+    for (let i = 0; i < 3; i++) {
+      await store.get_running()
+      expect(store.running).toBe(false)
+      expect(store.auto_start_handled).toBe(true)
+      expect(store.desktop_startup_handled).toBe(true)
+    }
+    expect(axios.get.mock.calls.every(([url]) => url.endsWith('/status'))).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+  })
 })
 
 describe('log WebSocket access', () => {

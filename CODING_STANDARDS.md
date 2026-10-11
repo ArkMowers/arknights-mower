@@ -150,6 +150,7 @@
 - **[INV-DEV-01] Native Back Dispatch**: When the selected touch backend is MuMu IPC, Android BACK uses the owned MuMu IPC worker; an uncertain result interrupts the operation without input replay or ADB fallback.
 
 ### 2.5 Web Access
+- **[INV-WEB-03] Process-Owned Desktop Autostart**: Desktop process startup admits configured automatic tasks once, after automatic resource installation; browser mounts never rearm startup, and stop or shutdown cancels pending admission. The [Web Access contract](docs/subsystems/web-access.md#5-desktop-startup) owns restart policy and host compatibility.
 - **[INV-WEB-01] Local Log Read Boundary**: A WebView session without a configured token permits read-only log requests from loopback with valid browser origin metadata; remote and cross-origin requests are rejected, and AI chat and mutating endpoints retain their credential checks.
 - **[INV-WEB-02] Credentialed Log Forwarding**: Log WebSockets with a valid first-frame token are authorized independently of Origin, Host and forwarded headers; tokenless access remains restricted to the local log-read boundary.
 
