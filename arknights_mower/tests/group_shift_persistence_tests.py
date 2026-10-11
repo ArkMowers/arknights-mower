@@ -18,12 +18,14 @@ from arknights_mower.tests.dorm_group_tests import solver as solver
 from arknights_mower.tests.dorm_state_restore_tests import (
     recovery_snapshot as recovery_snapshot,
 )
+from arknights_mower.tests.pending_dorm_context_tests import prepare_scheduler_entry
 from arknights_mower.utils import config
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
+@pytest.mark.parametrize("interleaved", [False, True])
 def test_conflict_restart_retains_completed_room_recovery(
-    recovery_snapshot, monkeypatch, tmp_path
+    recovery_snapshot, monkeypatch, tmp_path, interleaved
 ):
     solver, task, incoming, due = recovery_snapshot
     task.plan = {"dormitory_2": ["闪灵", "杜林", "Free", "Free", "Free"]}
@@ -36,6 +38,10 @@ def test_conflict_restart_retains_completed_room_recovery(
         group: not resting for group, resting in task.group_shift_transitions.items()
     }
     solver.tasks.append(future)
+    if interleaved:
+        intervening = SchedulerTask(time=task.time)
+        task.time = datetime.now() + timedelta(minutes=1)
+        solver.tasks.insert(0, intervening)
     for attr in ("daily_visit_friend", "daily_report", "daily_skland", "daily_mail"):
         setattr(solver, attr, datetime.now().date())
     solver.task_count = 7
@@ -74,12 +80,19 @@ def test_conflict_restart_retains_completed_room_recovery(
     monkeypatch.setattr(mower, "initialize", lambda *a, **kw: resumed)
     monkeypatch.setattr(mower.NewsChecker, "get_maintenance", lambda: None)
     monkeypatch.setattr(mower, "refresh_resource_at_boundary", lambda: None)
+    prepare_scheduler_entry(resumed, monkeypatch)
 
     def resume_remaining_room():
         if resumed.run.call_count > 1:
             pytest.fail("unexpected scheduler recovery during snapshot restoration")
         try:
-            resumed.task = resumed.tasks[0]
+            base_schedule.BaseSchedulerSolver.run(resumed)
+            if interleaved:
+                assert not getattr(resumed.task, "group_shift_expected", {})
+                resumed.tasks.remove(resumed.task)
+                resumed.tasks[0].time = datetime.now() - timedelta(seconds=1)
+                base_schedule.BaseSchedulerSolver.run(resumed)
+            assert resumed.task.group_shift_expected
             assert "dormitory_1" not in resumed.task.plan
             data = resumed.op_data
             context = resumed._execution_group_transitions()
@@ -105,7 +118,7 @@ def test_conflict_restart_retains_completed_room_recovery(
     resumed.run.assert_called_once()
     bed = resumed.op_data.get_dorm_by_name(incoming)[1]
     assert bed is not None and (bed.name, bed.time) == (incoming, due)
-    assert resumed.tasks[1].time == future.time
+    assert resumed.tasks[-1].time == future.time
 
 
 def test_conflict_saves_remaining_task_before_worker_cleanup_and_resumes(

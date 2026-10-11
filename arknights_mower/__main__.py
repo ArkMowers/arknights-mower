@@ -505,20 +505,9 @@ def simulate(saved):
                     - {backup.name for backup in base_scheduler.op_data.backup_plans}
                 ),
             )
-            pending_shift = next(
-                (
-                    task
-                    for task in base_scheduler.tasks
-                    if getattr(task, "group_shift_expected", {})
-                ),
-                None,
-            )
-            group_transitions = base_scheduler.op_data.arrangement_group_transitions(
-                getattr(pending_shift, "plan", {}),
-                group_transitions=getattr(pending_shift, "group_shift_transitions", {}),
-            )
             base_scheduler.op_data.restore_dorm_state(
-                saved["dorm"], group_transitions=group_transitions
+                saved["dorm"],
+                group_transitions=base_scheduler._pending_group_transitions(),
             )
             base_scheduler.op_data.facility_states = copy.deepcopy(
                 saved.get("facility_states", {})

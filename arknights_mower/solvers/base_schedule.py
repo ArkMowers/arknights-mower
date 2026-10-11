@@ -517,7 +517,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.initialize_operators()
         if not self._product_switching_enabled():
             self._discard_product_switches()
-        self.op_data.correct_dorm(group_transitions=self._execution_group_transitions())
+        self.op_data.correct_dorm(group_transitions=self._pending_group_transitions())
         if not getattr(self, "defer_backup_plan_until_mood_read", False):
             self.backup_plan_solver()
             # 首次启动先随心情读取刷新实际产物；恢复缓存后也以实际状态为准。
@@ -4748,7 +4748,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self.waiting_group_shifts = waiting
         self.tasks[:] = [pending for pending in self.tasks if pending is not task]
         self._refresh_deferred_product_reservations()
-        self.op_data.correct_dorm()
+        self.op_data.correct_dorm(group_transitions=self._pending_group_transitions())
 
     def _resume_waiting_group_shifts(self):
         """Cached state changes release suspended work; no timer dispatch is used."""
@@ -7516,14 +7516,30 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             return []
         return names
 
+    def _pending_group_transitions(self):
+        """队列中已开始且仍待确认的换班保留已观测恢复上下文。"""
+        pending = next(
+            (
+                task
+                for task in getattr(self, "tasks", ())
+                if getattr(task, "group_shift_expected", {})
+            ),
+            None,
+        )
+        return self.op_data.arrangement_group_transitions(
+            getattr(pending, "plan", {}) or {},
+            group_transitions=getattr(pending, "group_shift_transitions", {}),
+        )
+
     def _execution_group_transitions(self, plan=None):
         """执行与读房共用待确认状态，剩余明确安排优先覆盖。"""
         task = getattr(self, "task", None)
-        if task is None and plan is None:
-            return {}
         return self.op_data.arrangement_group_transitions(
             (getattr(task, "plan", {}) if plan is None else plan) or {},
-            group_transitions=getattr(task, "group_shift_transitions", {}),
+            group_transitions={
+                **self._pending_group_transitions(),
+                **getattr(task, "group_shift_transitions", {}),
+            },
         )
 
     def _cancel_dorm_recovery_targets(self, plan, group_transitions):
@@ -8492,10 +8508,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if self._can_refresh_idle_dorm_search():
             released_support = self.op_data.get_current_operator("train", 0)
         retain_dorm_time = room.startswith("dorm")
+        group_transitions = (
+            self._execution_group_transitions() if retain_dorm_time else {}
+        )
         recovery_context = (
-            {"group_transitions": self._execution_group_transitions()}
-            if retain_dorm_time and getattr(self.task, "group_shift_transitions", {})
-            else {}
+            {"group_transitions": group_transitions} if group_transitions else {}
         )
         if read_time_index is None:
             read_time_index = []
