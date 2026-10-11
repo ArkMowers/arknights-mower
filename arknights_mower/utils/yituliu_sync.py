@@ -271,6 +271,33 @@ def sync_cached_operators(snapshot=None):
         return result
 
 
+def refresh_and_sync_operators():
+    """Refresh Skland now and return that refresh's single upload result."""
+    if not token_status()["configured"]:
+        raise ValueError("请先保存具有 gama-data.write 权限的一图流 OAuth access_token")
+    try:
+        from arknights_mower.solvers.cultivate_depot import cultivate
+
+        syncer = cultivate()
+        refreshed = syncer.start()
+    except Exception:
+        raise ValueError(
+            "森空岛同步失败，请检查账号和网络后重试；未上传旧缓存"
+        ) from None
+    if not refreshed:
+        raise ValueError(
+            "未同步到干员数据，请检查森空岛账号及官服/B服选择；未上传旧缓存"
+        )
+    result = syncer.yituliu_sync_result
+    if not result:
+        raise ValueError(
+            "森空岛已同步，一图流 Token 未配置或已被清除，请重新保存后重试"
+        )
+    if not result["success"]:
+        raise ValueError(result["message"])
+    return result
+
+
 def sync_after_cultivate(snapshot):
     """A failed automatic upload never changes the completed Skland refresh."""
     with _lock:

@@ -1,16 +1,19 @@
-"""Value observed growth costs using a pinned, offline Yituliu price snapshot."""
+"""Value observed growth costs using the active saved material prices."""
 
-import json
 from collections import Counter
-from functools import lru_cache
-from pathlib import Path
 
 
-@lru_cache(maxsize=1)
 def price_catalog():
-    return json.loads(
-        (Path(__file__).parents[1] / "data/growth_values.json").read_text("utf-8")
-    )
+    from arknights_mower.solvers.record import get_recycling_valuation
+
+    valuation = get_recycling_valuation()
+    items = {
+        valuation["item_ids"][name]: {"name": name, "value": value}
+        for name, value in valuation["prices"].items()
+        if name in valuation["item_ids"]
+    }
+    items["4001"] = {"name": "龙门币", "value": valuation["lmd_sanity"]}
+    return {"_meta": dict(valuation["metadata"]), "items": items}
 
 
 def consumed_materials(char, definition, data, skills, *, shared=True):

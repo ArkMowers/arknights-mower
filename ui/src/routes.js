@@ -90,6 +90,12 @@ export const routes = [
             name: 'trading_analysis'
           },
           {
+            path: 'recycling',
+            component: () => import('@/pages/RecyclingStats.vue'),
+            meta: { title: '回收站材料统计' },
+            name: 'recycling'
+          },
+          {
             path: 'log-schedule',
             component: () => import('@/pages/LogSchedule.vue'),
             meta: { title: '日志调度' },

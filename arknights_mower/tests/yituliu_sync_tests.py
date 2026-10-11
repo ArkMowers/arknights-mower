@@ -4,6 +4,7 @@ import copy
 import json
 import stat
 import sys
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -217,6 +218,19 @@ def test_token_and_sync_routes_require_local_auth_and_explicit_manual_action(
 
     monkeypatch.setattr(server.app, "token", "local-token", raising=False)
     client = server.app.test_client()
+    _, _, _, snapshot, _ = sync_case
+    syncer = SimpleNamespace(yituliu_sync_result=None)
+
+    def refresh():
+        syncer.yituliu_sync_result = sync.sync_after_cultivate(snapshot)
+        return True
+
+    syncer.start = MagicMock(side_effect=refresh)
+    monkeypatch.setitem(
+        sys.modules,
+        "arknights_mower.solvers.cultivate_depot",
+        SimpleNamespace(cultivate=lambda: syncer),
+    )
     headers = {"token": "local-token"}
     assert client.put("/growth-sync-token", json={"token": TOKEN}).status_code == 403
     response = client.put("/growth-sync-token", json={"token": TOKEN}, headers=headers)
@@ -227,6 +241,7 @@ def test_token_and_sync_routes_require_local_auth_and_explicit_manual_action(
     assert client.post("/growth-sync", json={"confirmed": True}, headers=headers).json[
         "success"
     ]
+    syncer.start.assert_called_once_with()
     assert (
         client.delete("/growth-sync-token", headers=headers).json["configured"] is False
     )
@@ -524,3 +539,66 @@ def test_invalid_operator_ids_are_rejected_before_network(sync_case, cid):
     sync.save_token(TOKEN)
     assert not sync.sync_after_cultivate(snapshot)["success"]
     session.post.assert_not_called()
+
+
+def test_manual_sync_refreshes_skland_before_single_upload_and_uses_new_roster(
+    sync_case, monkeypatch
+):
+    _, session, _, snapshot, _ = sync_case
+    sync.save_token(TOKEN)
+    fresh = copy.deepcopy(snapshot)
+    fresh["data"]["characters"][0]["level"] = 80
+    syncer = SimpleNamespace(yituliu_sync_result=None)
+
+    def refresh():
+        session.post.assert_not_called()
+        syncer.yituliu_sync_result = sync.sync_after_cultivate(fresh)
+        return True
+
+    syncer.start = MagicMock(side_effect=refresh)
+    monkeypatch.setitem(
+        sys.modules,
+        "arknights_mower.solvers.cultivate_depot",
+        SimpleNamespace(cultivate=lambda: syncer),
+    )
+    assert sync.refresh_and_sync_operators()["success"]
+    syncer.start.assert_called_once_with()
+    session.post.assert_called_once()
+    assert session.post.call_args.kwargs["json"]["operators"][0]["level"] == 80
+
+
+@pytest.mark.parametrize("outcome", [False, ValueError("must-not-expose-credential")])
+def test_manual_refresh_failure_never_uploads_old_cache(
+    sync_case, monkeypatch, outcome
+):
+    _, session, _, _, _ = sync_case
+    sync.save_token(TOKEN)
+    before = sync.token_status()
+    start = (
+        MagicMock(side_effect=outcome)
+        if isinstance(outcome, Exception)
+        else MagicMock(return_value=outcome)
+    )
+    syncer = SimpleNamespace(start=start, yituliu_sync_result=None)
+    monkeypatch.setitem(
+        sys.modules,
+        "arknights_mower.solvers.cultivate_depot",
+        SimpleNamespace(cultivate=lambda: syncer),
+    )
+    with pytest.raises(ValueError, match="未上传旧缓存") as error:
+        sync.refresh_and_sync_operators()
+    assert "must-not-expose" not in str(error.value)
+    session.post.assert_not_called()
+    assert sync.token_status() == before
+
+
+def test_manual_sync_without_oauth_token_does_not_start_refresh(sync_case, monkeypatch):
+    factory = MagicMock()
+    monkeypatch.setitem(
+        sys.modules,
+        "arknights_mower.solvers.cultivate_depot",
+        SimpleNamespace(cultivate=factory),
+    )
+    with pytest.raises(ValueError, match="先保存"):
+        sync.refresh_and_sync_operators()
+    factory.assert_not_called()

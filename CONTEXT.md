@@ -69,6 +69,7 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 - **_Avoid_**: `Physical energy`, `Fatigue level`
 
 ### Base Facility
+- Recycling collection statistics preserve the collection time, observed recycling-facility occupants and recognized material quantities. Sanity-value comparisons use the supplied calculator’s probability snapshot and the active saved material-valuation snapshot at equal material counts; unknown observations remain unknown.
 - **Definition**: Distinct functional rooms with assignable slots in the Rhode Island infrastructure. Classified into working facilities (Control Center, Manufacturing, Trading, Power, Office, Reception, Training, Workshop, Recycling) and resting facilities (Dormitories 1-4).
 - **Code Mapping**: [`Facility`](arknights_mower/utils/config/plan.py), [`base_room_list`](arknights_mower/data/__init__.py)
 - **_Avoid_**: `Building slot`, `Isolated room`

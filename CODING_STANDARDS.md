@@ -12,6 +12,8 @@
 
 ## 2. Subsystem Invariants
 
+- **[INV-REC-12] Recycling Collection Evidence**: Recycling statistics record only confirmed recycling rewards once per collection, preserve the collection time and observed facility occupants, and keep unknown occupants distinct from an empty facility without deriving them from the Scheduling Plan.
+
 - **[INV-RECRUIT-01] Manual Selection Authority**: Manual five-star recruitment never queues automatic selection unless the unique-choice exception is enabled and exactly one calculated choice remains.
 
 - **[INV-SCHED-48] Trust Rotation Isolation**: Trust Rotation retains protected incumbents, excludes same-kind occupants while allowing assistant/activity overlap, preserves ordinary working and resting state, and commits only verified selections; saturated unassigned candidates end the current inspection without clearing assignments.

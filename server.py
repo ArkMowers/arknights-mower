@@ -2946,6 +2946,94 @@ def getTradingHistory():
     return record.get_trading_history(start_date, end_date)
 
 
+@app.route("/report/recycling_history")
+@require_token
+def get_recycling_history():
+    from arknights_mower.solvers import record
+
+    today = datetime.datetime.now().date()
+    try:
+        return record.get_recycling_history(
+            request.args.get("startDate", str(today - datetime.timedelta(days=29))),
+            request.args.get("endDate", str(today)),
+            int(request.args.get("page", 1)),
+            int(request.args.get("pageSize", 50)),
+        )
+    except (ValueError, OverflowError) as exc:
+        return {"error": str(exc)}, 400
+
+
+@app.route("/report/recycling_settings", methods=["GET", "PUT", "DELETE"])
+@require_token
+def recycling_settings():
+    from arknights_mower.solvers import record
+
+    try:
+        if request.method == "DELETE":
+            return record.update_recycling_valuation(reset=True)
+        if request.method == "PUT":
+            from arknights_mower.utils.recycling_valuation import validate_ratios
+
+            payload = request.get_json(silent=True)
+            if not isinstance(payload, dict) or "ratios" not in payload:
+                raise ValueError("请提供产物价值比例")
+            return record.update_recycling_valuation(
+                ratios=validate_ratios(payload["ratios"]),
+                base_algorithm=payload.get("base_algorithm"),
+            )
+        return record.get_recycling_valuation()
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+
+@app.route("/report/recycling_settings/import", methods=["POST"])
+@require_token
+def import_recycling_values():
+    from arknights_mower.solvers import record
+    from arknights_mower.utils.recycling_valuation import (
+        MAX_IMPORT_BYTES,
+        import_yituliu_values,
+    )
+
+    if request.content_length and request.content_length > MAX_IMPORT_BYTES + 65536:
+        return {"error": "请导入不超过 2 MiB 的一图流物品价值表 Excel"}, 400
+    upload = request.files.get("file")
+    if upload is None or not (upload.filename or "").lower().endswith(".xlsx"):
+        return {"error": "请选择一图流导出的 .xlsx 物品价值表"}, 400
+    try:
+        imported = import_yituliu_values(upload.stream.read(MAX_IMPORT_BYTES + 1))
+        return record.update_recycling_valuation(imported=imported)
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+
+@app.route("/report/recycling_history/export")
+@require_token
+def export_recycling_history():
+    from arknights_mower.solvers import record
+
+    today = datetime.datetime.now().date()
+    start = request.args.get("startDate", str(today - datetime.timedelta(days=29)))
+    end = request.args.get("endDate", str(today))
+    try:
+        workbook = record.export_recycling_history(start, end)
+    except (ValueError, OverflowError) as exc:
+        return {"error": str(exc)}, 400
+    try:
+        response = send_file(
+            workbook,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=f"回收站材料统计-{start}-{end}.xlsx",
+            max_age=0,
+        )
+        response.call_on_close(workbook.close)
+        return response
+    except BaseException:
+        workbook.close()
+        raise
+
+
 @app.route("/record/clear-data", methods=["DELETE"])
 def clear_data_route():
     date_time_str = request.json.get("date_time")
@@ -3366,13 +3454,13 @@ def growth_sync_token():
 @app.route("/growth-sync", methods=["POST"])
 @require_token
 def growth_sync():
-    from arknights_mower.utils.yituliu_sync import sync_cached_operators
+    from arknights_mower.utils.yituliu_sync import refresh_and_sync_operators
 
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict) or payload.get("confirmed") is not True:
         return {"message": "请在设置中明确选择立即同步"}, 400
     try:
-        return sync_cached_operators()
+        return refresh_and_sync_operators()
     except ValueError as exc:
         return {"success": False, "message": str(exc)}, 400
     except OSError:

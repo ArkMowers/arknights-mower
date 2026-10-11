@@ -10,6 +10,8 @@ from arknights_mower.utils import growth
 from arknights_mower.utils.growth_farming import chip_farming_plan
 from arknights_mower.utils.growth_workshop import next_recipe
 
+pytestmark = pytest.mark.usefixtures("income_db")
+
 
 @pytest.fixture
 def growth_case():

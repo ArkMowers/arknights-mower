@@ -35,6 +35,7 @@ async function act(action) {
       token.value = ''
       feedback.value = '已清除本地 Token，自动同步已停止'
     } else if (action === 'sync') {
+      feedback.value = '正在同步森空岛并更新一图流…'
       const { data } = await axios.post(`${base}/growth-sync`, { confirmed: true })
       if (!data.success) throw new Error('同步结果未确认')
       status.value = {
@@ -62,8 +63,7 @@ onMounted(loadStatus)
     <n-space vertical :size="14">
       <n-text depth="3">
         填入已授权 gama-data.write（干员数据写入）的一图流 OAuth
-        access_token。保存后，成功刷新森空岛数据时自动检查同步；与上次成功上传的内容相同则不传输。清除
-        Token 即可停止。保存本身不会上传。
+        access_token。保存后，森空岛刷新成功时自动同步；清除 Token 即可停止。
         <n-a href="https://auth.yituliu.cn" target="_blank" rel="noopener noreferrer"
           >打开一图流用户中心</n-a
         >
@@ -98,10 +98,8 @@ onMounted(loadStatus)
         </n-tag>
       </n-space>
       <n-alert type="info" :bordered="false">
-        将当前森空岛缓存中的游戏 UID 和全部已拥有干员的等级、精英化、潜能、技能及模组练度
-        在本地校验后上传至一图流，更新对应账号的干员数据；与上次成功上传的内容相同则跳过。
-        不会上传仓库、养成计划、森空岛账号密码或登录凭据。
-        旧缓存缺少游戏账号信息时，请先重新同步一次森空岛。令牌失效后请重新获取并保存。
+        点击“立即同步”先刷新森空岛，再上传游戏 UID
+        和干员练度；内容未变则跳过上传。仓库和登录凭据不会上传。
       </n-alert>
       <n-text v-if="status.last_synced_at" depth="3">
         最近同步：{{ new Date(status.last_synced_at * 1000).toLocaleString() }} ·

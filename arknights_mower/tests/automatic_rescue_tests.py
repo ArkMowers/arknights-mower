@@ -1146,10 +1146,14 @@ def test_history_schema_migration_and_bounded_query_are_hermetic(tmp_path, monke
 def test_exact_collection_deadline_collects_both_orders_and_products(solver):
     make_episode(solver)
     solver.last_execution["todo"] = NOW - timedelta(minutes=15)
-    solver.find = lambda template: template
+    solver.find = lambda template: (
+        template
+        if template in {"infra_collect_bill", "infra_collect_factory"}
+        else None
+    )
     solver.tap = MagicMock()
     solver.todo_list()
-    assert [call.args[0] for call in solver.tap.call_args_list][:2] == [
+    assert [call.args[0] for call in solver.tap.call_args_list] == [
         "infra_collect_bill",
         "infra_collect_factory",
     ]

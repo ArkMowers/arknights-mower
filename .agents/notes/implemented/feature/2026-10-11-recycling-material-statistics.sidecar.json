@@ -1,0 +1,28 @@
+{
+  "title": "Recycling Material Statistics",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-11",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-REC-12]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.record.save_recycling_collection",
+    "arknights_mower.solvers.record.get_recycling_history",
+    "arknights_mower.solvers.record.export_recycling_history",
+    "arknights_mower.solvers.record.update_recycling_valuation"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/recycling_collection_tests.py",
+    "arknights_mower/tests/infra_collection_tests.py",
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/recycling_valuation_tests.py",
+    "ui/src/components/IncomeSettings.test.js",
+    "ui/src/utils/incomeSettings.test.js",
+    "ui/src/pages/report.test.js",
+    "arknights_mower/tests/growth_value_tests.py"
+  ]
+}

@@ -151,6 +151,7 @@ def get_mastery_recommendations():
         statistics,
         statistics_history,
     )
+    from arknights_mower.utils.growth_value import price_catalog
     from arknights_mower.utils.mastery_materials import MaterialBudget
     from arknights_mower.utils.operator_statistics import personal_statistics
     from arknights_mower.utils.workshop_material_policy import (
@@ -172,8 +173,11 @@ def get_mastery_recommendations():
             blocked_materials=protected_workshop_materials(),
         )
         result["goals"] = load_goals()
-        result["statistics"] = statistics(box["characters"], skills)
-        result["personal_statistics"] = personal_statistics(box["characters"], skills)
+        catalog = price_catalog()
+        result["statistics"] = statistics(box["characters"], skills, catalog)
+        result["personal_statistics"] = personal_statistics(
+            box["characters"], skills, catalog
+        )
         result["history"] = statistics_history()
     except (OSError, ValueError, KeyError) as exc:
         result["error"] = f"请从森空岛同步干员数据：{exc}"

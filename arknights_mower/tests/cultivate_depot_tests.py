@@ -5,6 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("income_db")
+
 # Importing the real sign-in helper performs network work; all sync tests are local.
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 from arknights_mower.solvers import cultivate_depot as module  # noqa: E402

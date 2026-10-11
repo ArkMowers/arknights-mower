@@ -34,6 +34,8 @@ def solver(monkeypatch):
     result.last_execution = {"todo": None}
     result.todo_task = False
     result.tap = Mock()
+    result.scene = Mock(return_value=Scene.INFRA_TODOLIST)
+    result.sleep = Mock()
     return result
 
 
@@ -145,6 +147,7 @@ def test_non_todo_screens_have_no_recycling_prompt(name):
 
 
 def test_collection_reward_returns_through_existing_scene_graph(solver, monkeypatch):
+    from arknights_mower.utils import recycling
     from arknights_mower.utils import solver as base_solver
 
     monkeypatch.setattr(base_solver, "csleep", lambda _: None)
@@ -170,10 +173,19 @@ def test_collection_reward_returns_through_existing_scene_graph(solver, monkeypa
     solver.device.tap.side_effect = advance
     solver.device.screencap.side_effect = lambda: captures[position]
     solver.tap = base_solver.BaseSolver.tap.__get__(solver)
+    solver.sleep = base_solver.BaseSolver.sleep.__get__(solver)
+    solver.scene = base_solver.BaseSolver.scene.__get__(solver)
+    solver._read_recycling_operators = Mock(return_value=["旅骨"])
+    monkeypatch.setattr(
+        recycling, "read_recycling_materials", Mock(return_value={"装置": 1})
+    )
+    save = Mock()
+    monkeypatch.setattr(base_schedule, "save_recycling_collection", save)
+    monkeypatch.setattr(base_schedule, "update_recycling_operators", Mock())
     solver.todo_list()
-    assert solver.scene() == Scene.MATERIEL
-    solver.transition()
     assert solver.scene() == Scene.INFRA_MAIN
+    save.assert_called_once()
+    assert save.call_args.args[3] == {"装置": 1}
     assert position == 3
     assert solver.last_execution["todo"] == NOW
     solver.device.exit.assert_not_called()
