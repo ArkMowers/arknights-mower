@@ -185,6 +185,8 @@ def save_action_to_sqlite_decorator(func):
         mood_event=None,
         recorded_at=None,
         preserve_depletion_rate=False,
+        *,
+        group_transitions=None,
     ):
         agent = self.operators[name]  # 干员
 
@@ -192,6 +194,11 @@ def save_action_to_sqlite_decorator(func):
         agent_is_high = agent.is_high()  # 是否高优先级
 
         # 调用原函数
+        recovery_context = (
+            {"group_transitions": group_transitions}
+            if group_transitions is not None
+            else {}
+        )
         result = func(
             self,
             name,
@@ -200,6 +207,7 @@ def save_action_to_sqlite_decorator(func):
             current_index,
             update_time,
             preserve_depletion_rate=preserve_depletion_rate,
+            **recovery_context,
         )
         if not update_time:
             return

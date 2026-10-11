@@ -1108,6 +1108,436 @@ def test_grouped_free_capacity_uses_secondary_binding(grouped_free_capacity):
     assert data.assign_dorm_group(["银灰"], active_groups={"附加"}) is not None
 
 
+def test_capacity_rejection_reports_confirmation_conflict(
+    grouped_free_capacity, monkeypatch
+):
+    from threading import Event
+
+    instance = grouped_free_capacity
+    data = instance.op_data
+    monkeypatch.setattr(config, "stop_mower", Event())
+    error_log = MagicMock()
+    monkeypatch.setattr(base_schedule.logger, "error", error_log)
+    data.operators["银灰"].group = "外组"
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={"dormitory_1": ["银灰", "冰酿", "泥岩", "能天使", "年"]},
+    )
+    task.group_shift_transitions = {"联动": True}
+    task.group_shift_expected = {("dormitory_1", 0): "银灰"}
+    instance.task, instance.tasks = task, [task]
+
+    with pytest.raises(
+        base_schedule.GroupShiftTargetConflict, match="未通过绑组宿舍额度检查"
+    ):
+        instance.prepare_dorm_selection(task.plan["dormitory_1"], "dormitory_1")
+
+    assert task.plan["dormitory_1"][0] == "银灰"
+    assert task.group_shift_expected == {("dormitory_1", 0): "银灰"}
+    assert data.group_is_resting("联动")
+    assert config.stop_mower.is_set()
+    assert "最终名单=['Free'" in error_log.call_args.args[0]
+
+
+@pytest.mark.parametrize("entry", ["prepare", "arrange"])
+@pytest.mark.parametrize("exclusion", ["blacklist", "workaholic"])
+def test_excluded_target_cancels_confirmation_before_roster_rewrite(
+    grouped_free_capacity, monkeypatch, entry, exclusion
+):
+    from threading import Event
+
+    instance = grouped_free_capacity
+    data = instance.op_data
+    monkeypatch.setattr(config, "stop_mower", Event())
+    error_log = MagicMock()
+    monkeypatch.setattr(base_schedule.logger, "error", error_log)
+    if exclusion == "blacklist":
+        data.config.free_blacklist.append("银灰")
+    else:
+        data.operators["银灰"].workaholic = True
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={"dormitory_1": ["银灰", "冰酿", "泥岩", "能天使", "年"]},
+    )
+    task.group_shift_transitions = {"联动": True}
+    task.group_shift_expected = {
+        ("dormitory_1", 0): "银灰",
+        ("dormitory_1", 1): "冰酿",
+    }
+    instance.task, instance.tasks = task, [task]
+
+    def select_room(new_plan, room, plan, **kwargs):
+        instance.prepare_dorm_selection(plan[room], room)
+        return new_plan
+
+    monkeypatch.setattr(instance, "agent_arrange_room", select_room)
+    if entry == "arrange":
+        instance.agent_arrange(task.plan)
+    else:
+        instance.prepare_dorm_selection(task.plan["dormitory_1"], "dormitory_1")
+
+    assert "银灰" not in task.plan["dormitory_1"]
+    assert task.group_shift_expected == {("dormitory_1", 1): "冰酿"}
+    assert not config.stop_mower.is_set()
+    error_log.assert_not_called()
+    task.plan.clear()
+    assert instance._complete_group_shift(task)
+    assert not task.plan and not task.group_shift_expected
+
+
+@pytest.mark.parametrize("retry", [False, True])
+@pytest.mark.parametrize("consumed", [False, True])
+@pytest.mark.parametrize(
+    "applicant", ["outside", "same", "blacklist", "workaholic", "cap", "outside_cap"]
+)
+def test_mixed_shared_binding_checks_capacity_at_arrangement_entry(
+    solver, monkeypatch, retry, consumed, applicant
+):
+    from threading import Event
+
+    instance = solver
+    monkeypatch.setattr(config, "stop_mower", Event())
+    monkeypatch.setattr(base_schedule.logger, "error", MagicMock())
+    plans = instance.global_plan["default_plan"].plan
+    plans["meeting"][1].group = "另一组"
+    plans["contact"][0].group = "第三组"
+    plans["dormitory_1"][0].group_bindings = [
+        {"group": "另一组", "replacement": ["Free"]}
+    ]
+    assert instance.initialize_operators() is None
+    data = instance.op_data
+    for name in ("泥岩", "能天使", "年"):
+        data.add(Operator(name, "factory"))
+        data.operators[name].operator_type = "high"
+        data.operators[name].resting_priority = "low"
+    apply_plan(
+        instance,
+        {
+            "meeting": ["伊内丝", "银灰"],
+            "contact": ["讯使"],
+            "dormitory_1": ["塑心", "冰酿", "泥岩", "能天使", "年"],
+        },
+    )
+    for op in data.operators.values():
+        op.mood, op.time_stamp = 5, datetime.now()
+    data.commit_group_shifts({"联动": False, "另一组": False, "第三组": False})
+    incoming = "讯使" if applicant in ("outside", "outside_cap") else "银灰"
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "meeting": ["Current", "初雪"],
+            "contact": ["红"],
+            "dormitory_1": [incoming, "冰酿", "泥岩", "能天使", "年"],
+        },
+    )
+    instance.task, instance.tasks = task, [task]
+    instance._prepare_group_shift(task, remember_targets=True)
+    work = {room: list(task.plan[room]) for room in ("meeting", "contact")}
+    apply_plan(instance, work)
+    if consumed:
+        for room in work:
+            task.plan.pop(room)
+    if retry:
+        assert not instance._complete_group_shift(task)
+        instance._prepare_group_shift(task, remember_targets=True)
+    if applicant == "blacklist":
+        data.config.free_blacklist.append(incoming)
+    elif applicant == "workaholic":
+        data.operators[incoming].workaholic = True
+    elif applicant in ("cap", "outside_cap"):
+        data.config.operator_mood_limits[incoming] = {"lower": 0, "upper": 12}
+        data.operators[incoming].upper_limit = 12
+        data.operators[incoming].mood = 12
+    before_time = task.time
+    before_expected = dict(task.group_shift_expected)
+    room_selection = MagicMock()
+
+    def select_room(new_plan, room, plan, **kwargs):
+        instance.prepare_dorm_selection(plan[room], room)
+        room_selection(room)
+        return new_plan
+
+    monkeypatch.setattr(instance, "agent_arrange_room", select_room)
+    if applicant != "outside":
+        instance.agent_arrange(task.plan)
+        if applicant == "same":
+            assert task.plan["dormitory_1"][0] == incoming
+        else:
+            assert incoming not in task.plan["dormitory_1"]
+            assert incoming not in task.group_shift_expected.values()
+        room_selection.assert_any_call("dormitory_1")
+        assert not config.stop_mower.is_set()
+        assert not data.group_is_resting("另一组")
+        apply_plan(instance, {"dormitory_1": task.plan["dormitory_1"]})
+        task.plan.clear()
+        assert instance._complete_group_shift(task)
+        assert data.group_is_resting("另一组")
+    else:
+        with pytest.raises(
+            base_schedule.GroupShiftTargetConflict, match="未通过绑组宿舍额度检查"
+        ):
+            instance.agent_arrange(task.plan)
+        room_selection.assert_not_called()
+        assert task.plan["dormitory_1"][0] == incoming
+        assert task.group_shift_expected == before_expected
+        assert task.time == before_time
+        assert config.stop_mower.is_set()
+        assert not data.group_is_resting("另一组")
+        assert not data.group_is_resting("第三组")
+
+
+@pytest.mark.parametrize("consumed", [False, True])
+@pytest.mark.parametrize("exclusion", ["blacklist", "workaholic"])
+def test_mixed_shared_pending_return_keeps_named_fixed_cover(
+    solver, monkeypatch, consumed, exclusion
+):
+    from threading import Event
+
+    monkeypatch.setattr(config, "stop_mower", Event())
+    plans = solver.global_plan["default_plan"].plan
+    plans["meeting"][1].group = "另一组"
+    plans["dormitory_1"][0].group_bindings = [
+        {"group": "另一组", "replacement": ["Free"]}
+    ]
+    assert solver.initialize_operators() is None
+    data = solver.op_data
+    for op in data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 5, datetime.now()
+    data.commit_group_shifts({"联动": False, "另一组": True})
+    if exclusion == "blacklist":
+        data.config.free_blacklist.append("黑角")
+    else:
+        data.operators["黑角"].workaholic = True
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "meeting": ["陈", "银灰"],
+            "contact": ["红"],
+            "dormitory_1": ["黑角", *["Current"] * 4],
+        },
+    )
+    solver.task, solver.tasks = task, [task]
+    solver._prepare_group_shift(task, remember_targets=True)
+    work = {room: list(task.plan[room]) for room in ("meeting", "contact")}
+    apply_plan(solver, work)
+    if consumed:
+        for room in work:
+            task.plan.pop(room)
+
+    def select_room(new_plan, room, plan, **kwargs):
+        solver.prepare_dorm_selection(plan[room], room)
+        return new_plan
+
+    monkeypatch.setattr(solver, "agent_arrange_room", select_room)
+    solver.agent_arrange(task.plan)
+
+    assert task.plan["dormitory_1"][0] == "黑角"
+    assert task.group_shift_expected["dormitory_1", 0] == "黑角"
+    assert not config.stop_mower.is_set()
+    assert data.group_is_resting("另一组")
+    apply_plan(solver, {"dormitory_1": task.plan["dormitory_1"]})
+    task.plan.clear()
+    assert solver._complete_group_shift(task)
+    assert data.group_is_resting("联动")
+    assert not data.group_is_resting("另一组")
+
+
+@pytest.mark.parametrize("retry", [False, True])
+@pytest.mark.parametrize("consumed", [False, True])
+@pytest.mark.parametrize("returning", ["联动", "另一组"])
+def test_shared_free_capacity_survives_first_group_return(
+    solver, retry, consumed, returning
+):
+    instance = solver
+    plans = instance.global_plan["default_plan"].plan
+    plans["meeting"][1].group = "另一组"
+    plans["contact"][0].group = "第三组"
+    plans["dormitory_1"][0].replacement = ["Free"]
+    plans["dormitory_1"][0].group_bindings = [
+        {"group": "另一组", "replacement": ["Free"]}
+    ]
+    assert instance.initialize_operators() is None
+    data = instance.op_data
+    for name in ("泥岩", "年"):
+        data.add(Operator(name, "factory"))
+        data.operators[name].operator_type = "high"
+        data.operators[name].resting_priority = "low"
+    for op in data.operators.values():
+        op.current_room, op.current_index = "", -1
+        op.mood, op.time_stamp = 5, datetime.now()
+    first, remaining = ("伊内丝", "银灰") if returning == "联动" else ("银灰", "伊内丝")
+    apply_plan(
+        instance,
+        {
+            "meeting": ["陈", "初雪"],
+            "contact": ["讯使"],
+            "dormitory_1": [first, "冰酿", remaining, "泥岩", "年"],
+        },
+    )
+    data.commit_group_shifts({"联动": True, "另一组": True, "第三组": False})
+    data.select_group_binding("塑心", returning)
+    work = {
+        "meeting": [first, "Current"] if returning == "联动" else ["Current", first],
+        "contact": ["红"],
+    }
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_ON,
+        task_plan={
+            **work,
+            "dormitory_1": [remaining, "Current", "讯使", "Current", "Current"],
+        },
+    )
+    instance.task, instance.tasks = task, [task]
+    instance._prepare_group_shift(task, remember_targets=True)
+    apply_plan(instance, work)
+    if consumed:
+        for room in work:
+            task.plan.pop(room)
+    if retry:
+        assert not instance._complete_group_shift(task)
+        instance._prepare_group_shift(task, remember_targets=True)
+    row = task.plan["dormitory_1"]
+
+    instance.prepare_dorm_selection(row, "dormitory_1")
+
+    assert row[0] == remaining and row[2] == "讯使"
+    assert data.group_is_resting(returning)
+    apply_plan(instance, {"dormitory_1": row})
+    task.plan.clear()
+    assert instance._complete_group_shift(task)
+    assert not data.group_is_resting(returning)
+    other = "另一组" if returning == "联动" else "联动"
+    assert data.group_is_resting(other)
+    bed = next(bed for bed in data.dorm if bed.position == ("dormitory_1", 0))
+    assert data.is_effective_free_slot(bed)
+    assert not data.is_effective_free_slot(bed, inactive_groups={returning, other})
+
+
+@pytest.mark.parametrize("retry", [False, True])
+@pytest.mark.parametrize("occupied", [False, True])
+@pytest.mark.parametrize("secondary", [False, True])
+def test_pending_shift_keeps_capacity_after_work_rooms_finish(
+    grouped_free_capacity, retry, occupied, secondary
+):
+    instance = grouped_free_capacity
+    data = instance.op_data
+    data.commit_group_shifts({"联动": False})
+    if occupied:
+        data.add(Operator("乌尔比安", "factory"))
+        resident = data.operators["乌尔比安"]
+        resident.operator_type, resident.resting_priority, resident.mood = (
+            "high",
+            "standby",
+            19,
+        )
+        apply_plan(instance, {"dormitory_1": [resident.name]})
+    if secondary:
+        owner = data.operators["塑心"]
+        owner.group, owner.replacement = "主组", ["黑角"]
+        owner.group_bindings = [
+            {"group": "主组", "replacement": ["黑角"]},
+            {"group": "联动", "replacement": ["Free"]},
+        ]
+        slot = data.plan["dormitory_1"][0]
+        slot.group, slot.replacement = "主组", ["黑角"]
+        slot.group_bindings = [{"group": "联动", "replacement": ["Free"]}]
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "meeting": ["陈", "初雪"],
+            "contact": ["红"],
+            "dormitory_1": ["银灰", "Current", "Current", "Current", "Current"],
+        },
+    )
+    instance.task, instance.tasks = task, [task]
+    instance._prepare_group_shift(task, remember_targets=True)
+    work = {room: task.plan.pop(room) for room in ("meeting", "contact")}
+    observed = data.project_arrangements([work])
+    data.operators, data.dorm = observed.operators, observed.dorm
+    assert not data.group_is_resting("联动")
+    if occupied:
+        assert data.get_current_operator("dormitory_1", 0).name == "乌尔比安"
+    if retry:
+        assert not instance._complete_group_shift(task)
+        instance._prepare_group_shift(task, remember_targets=True)
+    row = task.plan["dormitory_1"]
+
+    instance.prepare_dorm_selection(row, "dormitory_1")
+
+    assert row[0] == "银灰"
+    assert not data.group_is_resting("联动")
+    observed = data.project_arrangements([task.plan])
+    data.operators, data.dorm = observed.operators, observed.dorm
+    task.plan.clear()
+    assert instance._complete_group_shift(task)
+    assert data.group_is_resting("联动")
+    assert not task.plan and not task.group_shift_expected
+
+
+@pytest.mark.parametrize("resting", [False, True])
+@pytest.mark.parametrize("same_group", [False, True])
+@pytest.mark.parametrize("entry", ["named", "page", "mood_page"])
+def test_pending_shift_capacity_applies_to_selection(
+    grouped_free_capacity, monkeypatch, resting, same_group, entry
+):
+    from arknights_mower.tests.choose_agent_filter_tests import selection_solver
+
+    data = grouped_free_capacity.op_data
+    data.commit_group_shifts({"联动": not resting})
+    incoming = data.operators["银灰"]
+    incoming.group = "联动" if same_group else "外组"
+    row = [incoming.name, "冰酿", "泥岩", "能天使", "年"]
+    task = SchedulerTask(task_type=TaskTypes.SHIFT_ON, task_plan={"dormitory_1": row})
+    task.group_shift_transitions = {"联动": resting}
+    grouped_free_capacity.task = task
+    if entry == "named":
+        grouped_free_capacity.prepare_dorm_selection(row, "dormitory_1")
+        assert (row[0] == incoming.name) is (resting and same_group)
+        assert data.group_is_resting("联动") is not resting
+        return
+
+    instance, selected = selection_solver(
+        monkeypatch, residents=["冰酿", "泥岩", "能天使", "年"]
+    )
+    data.add(Operator("杜林", ""))
+    instance.op_data, instance.task = data, task
+    instance.get_free_list = MagicMock(
+        side_effect=lambda *args, **kwargs: (
+            ["杜林"] if kwargs.get("include_full") else [incoming.name]
+        )
+    )
+    row = ["Free", "冰酿", "泥岩", "能天使", "年"]
+    task.plan["dormitory_1"] = row
+    instance.choose_agent(
+        row,
+        "dormitory_1",
+        dorm_mood_candidates=[incoming.name, "杜林"] if entry == "mood_page" else [],
+    )
+    assert row[0] == (incoming.name if resting and same_group else "杜林")
+    assert selected == row
+    assert data.group_is_resting("联动") is not resting
+
+
+@pytest.mark.parametrize("resting", [False, True])
+@pytest.mark.parametrize("resident", [None, "陈", "泥岩"])
+def test_pending_shift_preserves_capacity_and_occupied_bed_protection(
+    grouped_free_capacity, resting, resident
+):
+    instance = grouped_free_capacity
+    data = instance.op_data
+    data.commit_group_shifts({"联动": not resting})
+    if resident:
+        apply_plan(instance, {"dormitory_1": [resident]})
+    bed = next(bed for bed in data.dorm if bed.position == ("dormitory_1", 0))
+    transitions = {"联动": resting}
+    assert data._slot_takable(bed, requester="银灰", group_transitions=transitions) is (
+        resting and resident != "泥岩"
+    )
+    assert transitions == {"联动": resting}
+    assert data.group_is_resting("联动") is not resting
+
+
 @pytest.mark.parametrize("mood_fallback", [False, True])
 def test_unknown_page_selection_respects_grouped_free_capacity(
     grouped_free_capacity, monkeypatch, mood_fallback

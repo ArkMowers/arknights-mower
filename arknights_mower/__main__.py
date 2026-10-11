@@ -491,7 +491,24 @@ def simulate(saved):
                 saved.get("group_shift_state")
             )
             base_scheduler.waiting_group_shifts = saved.get("waiting_group_shifts", [])
-            base_scheduler.op_data.restore_dorm_state(saved["dorm"])
+            from arknights_mower.utils.config.plan import migrate_backup_tasks
+
+            base_scheduler.tasks = migrate_backup_tasks(
+                tasks,
+                saved.get("backup_plan_names", []),
+                [backup.name for backup in base_scheduler.op_data.backup_plans],
+                config.retired_backup_indices,
+                retired=bool(saved.get("rescue_state"))
+                or config.retired_backup_migrated
+                or bool(
+                    set(saved.get("backup_plan_names", []))
+                    - {backup.name for backup in base_scheduler.op_data.backup_plans}
+                ),
+            )
+            base_scheduler.op_data.restore_dorm_state(
+                saved["dorm"],
+                group_transitions=base_scheduler._pending_group_transitions(),
+            )
             base_scheduler.op_data.facility_states = copy.deepcopy(
                 saved.get("facility_states", {})
             )
@@ -525,20 +542,6 @@ def simulate(saved):
             base_scheduler.daily_skland = saved["daily_skland"]
             base_scheduler.daily_mail = saved["daily_mail"]
             base_scheduler.task_count = saved["task_count"]
-            from arknights_mower.utils.config.plan import migrate_backup_tasks
-
-            base_scheduler.tasks = migrate_backup_tasks(
-                tasks,
-                saved.get("backup_plan_names", []),
-                [backup.name for backup in base_scheduler.op_data.backup_plans],
-                config.retired_backup_indices,
-                retired=bool(saved.get("rescue_state"))
-                or config.retired_backup_migrated
-                or bool(
-                    set(saved.get("backup_plan_names", []))
-                    - {backup.name for backup in base_scheduler.op_data.backup_plans}
-                ),
-            )
             if len(base_scheduler.op_data.backup_plans) > 0:
                 # 启动的时候按照条件触发副表
                 base_scheduler.backup_plan_solver()

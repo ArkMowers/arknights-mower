@@ -29,7 +29,9 @@ def recovery_managers(op_data, room, agents):
     return ()
 
 
-def recovery_target(op_data, room, agents, manager_names=None):
+def recovery_target(
+    op_data, room, agents, manager_names=None, *, group_transitions=None
+):
     slots = op_data.plan.get(room, [])
     if not room.startswith("dorm") or len(agents) != len(slots):
         return None
@@ -43,9 +45,13 @@ def recovery_target(op_data, room, agents, manager_names=None):
             for i, name in enumerate(agents)
             if name not in manager_names
             and (
-                op_data.is_dynamic_dorm_position(room, i, name)
+                op_data.is_dynamic_dorm_position(
+                    room, i, name, group_transitions=group_transitions
+                )
                 or (bed := op_data.get_group_dorm(room, i)) is not None
-                and op_data.is_recovery_dorm(bed, name)
+                and op_data.is_recovery_dorm(
+                    bed, name, group_transitions=group_transitions
+                )
             )
         ),
         None,
@@ -58,7 +64,9 @@ def recovery_target(op_data, room, agents, manager_names=None):
     return target
 
 
-def recovery_order_plan(op_data, room, agents, reserved_names=()):
+def recovery_order_plan(
+    op_data, room, agents, reserved_names=(), *, group_transitions=None
+):
     """建立单回时就占住最终床位，补回其他人后目标仍在原位。
 
     保留位置最靠前的单回宿管；其他 Free 位和未满心情（或心情未知）的
@@ -69,7 +77,9 @@ def recovery_order_plan(op_data, room, agents, reserved_names=()):
     if not managers:
         return None
     manager_names = {name for name, _, _ in managers}
-    target = recovery_target(op_data, room, agents, manager_names)
+    target = recovery_target(
+        op_data, room, agents, manager_names, group_transitions=group_transitions
+    )
     if target is None:
         return None
     target_index = agents.index(target.name)
@@ -97,13 +107,15 @@ def recovery_order_plan(op_data, room, agents, reserved_names=()):
                 name if has_resting_mood(op) and resting_mood(op) >= 24 else ""
             )
             continue
-        if op_data.is_dynamic_dorm_position(room, index, name):
+        if op_data.is_dynamic_dorm_position(
+            room, index, name, group_transitions=group_transitions
+        ):
             retained.append("")
             continue
         op = op_data.operators.get(name)
-        if op_data.is_dorm_replacement_for_slot(name, room, index) and (
-            op is None or op.time_stamp is None or op.mood < 24
-        ):
+        if op_data.is_dorm_replacement_for_slot(
+            name, room, index, group_transitions=group_transitions
+        ) and (op is None or op.time_stamp is None or op.mood < 24):
             retained.append("")
             continue
         if name in ("", "Free", "Current"):

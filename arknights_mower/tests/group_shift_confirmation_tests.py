@@ -4,6 +4,7 @@
 
 import sys
 from datetime import datetime, timedelta
+from threading import Event
 from unittest.mock import MagicMock
 
 import pytest
@@ -22,6 +23,139 @@ from arknights_mower.utils.scheduler_task import (
     plan_metadata,
     try_reorder,
 )
+
+
+@pytest.fixture(autouse=True)
+def save_conflict_state(monkeypatch):
+    save = MagicMock(return_value=True)
+    monkeypatch.setattr(base_schedule, "save_current_state", save)
+    return save
+
+
+@pytest.mark.parametrize("entry", ["prepare", "room"])
+def test_rewritten_confirmation_target_stops_without_room_retry(
+    solver, monkeypatch, entry, save_conflict_state
+):
+    monkeypatch.setattr(base_schedule.config, "stop_mower", Event())
+    error_log = MagicMock()
+    monkeypatch.setattr(base_schedule.logger, "error", error_log)
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={"dormitory_1": ["塑心", "冰酿", B, "红", "黑角"]},
+    )
+    task.group_shift_transitions = {"乙": True}
+    task.group_shift_expected = {("dormitory_1", 2): B}
+    solver.task, solver.tasks = task, [task]
+    before_time = task.time
+    solver.preserve_resting_crafters = lambda agents, room: agents.__setitem__(
+        2, "杜林"
+    )
+    solver.enter_room = MagicMock()
+    solver.turn_on_room_detail = MagicMock()
+    solver.choose_agent = MagicMock()
+    solver.tap_confirm = MagicMock()
+    solver.recog = MagicMock()
+    solver.back_to_infrastructure = MagicMock()
+
+    with pytest.raises(base_schedule.MowerExit, match="换班确认目标冲突") as caught:
+        if entry == "prepare":
+            solver.prepare_dorm_selection(task.plan["dormitory_1"], "dormitory_1")
+        else:
+            solver.agent_arrange_room({}, "dormitory_1", task.plan)
+
+    assert caught.value.room == "dormitory_1"
+    assert caught.value.conflicts == [{"index": 2, "expected": B, "selected": "杜林"}]
+    assert task.plan["dormitory_1"][2] == B
+    assert task.group_shift_expected == {("dormitory_1", 2): B}
+    assert task.group_shift_transitions == {"乙": True}
+    assert task.time == before_time and solver.tasks == [task]
+    assert not solver.op_data.group_is_resting("乙")
+    assert base_schedule.config.stop_mower.is_set()
+    save_conflict_state.assert_called_once()
+    error_log.assert_called_once()
+    message = error_log.call_args.args[0]
+    assert "dormitory_1" in message and B in message and "杜林" in message
+    assert "第3位确认" in message
+    assert error_log.call_args.kwargs == {"extra": {"archive_screenshots": False}}
+    assert "执行边界准入与床位整理" in message and "待确认换班={'乙': True}" in message
+    solver.choose_agent.assert_not_called()
+    solver.tap_confirm.assert_not_called()
+    solver.recog.update.assert_not_called()
+    solver.back_to_infrastructure.assert_not_called()
+
+
+@pytest.mark.parametrize("preserve", [False, True])
+def test_final_selection_checks_confirmation_but_allows_temporary_roster(
+    monkeypatch, preserve
+):
+    from arknights_mower.tests.choose_agent_filter_tests import selection_solver
+
+    monkeypatch.setattr(base_schedule.config, "stop_mower", Event())
+    monkeypatch.setattr(base_schedule.logger, "error", MagicMock())
+    instance, selected = selection_solver(monkeypatch, residents=[])
+    task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF, task_plan={"dormitory_1": [B]})
+    task.group_shift_transitions = {"乙": True}
+    task.group_shift_expected = {("dormitory_1", 0): B}
+    instance.task, instance.tasks = task, [task]
+    agents = ["Free"]
+    if preserve:
+        instance.choose_agent(
+            agents, "dormitory_1", preserve_dorm_occupants=True, dorm_mood_candidates=[]
+        )
+        assert selected == ["伊芙利特"]
+        assert not base_schedule.config.stop_mower.is_set()
+    else:
+        with pytest.raises(base_schedule.MowerExit, match="换班确认目标冲突") as caught:
+            instance.choose_agent(agents, "dormitory_1", dorm_mood_candidates=[])
+        assert caught.value.conflicts == [
+            {"index": 0, "expected": B, "selected": "伊芙利特"}
+        ]
+        assert base_schedule.config.stop_mower.is_set()
+    assert task.plan == {"dormitory_1": [B]}
+    assert task.group_shift_expected == {("dormitory_1", 0): B}
+
+
+def test_training_support_selection_does_not_check_the_trainee_slot(monkeypatch):
+    from arknights_mower.tests.choose_agent_filter_tests import selection_solver
+
+    monkeypatch.setattr(base_schedule.config, "stop_mower", Event())
+    instance, selected = selection_solver(monkeypatch, residents=[])
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF, task_plan={"train": ["伊芙利特", B]}
+    )
+    task.group_shift_transitions = {"乙": True}
+    task.group_shift_expected = {("train", 0): "伊芙利特", ("train", 1): B}
+    instance.task, instance.tasks = task, [task]
+
+    instance.choose_agent(["伊芙利特"], "train")
+
+    assert selected == ["伊芙利特"]
+    assert not base_schedule.config.stop_mower.is_set()
+    assert task.group_shift_expected == {("train", 0): "伊芙利特", ("train", 1): B}
+
+
+@pytest.mark.parametrize("matches", [False, True])
+def test_current_placeholder_requires_observed_confirmation_target(
+    solver, monkeypatch, matches
+):
+    monkeypatch.setattr(base_schedule.config, "stop_mower", Event())
+    monkeypatch.setattr(base_schedule.logger, "error", MagicMock())
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF, task_plan={"dormitory_1": ["Current"] * 5}
+    )
+    task.group_shift_transitions = {"乙": True}
+    name = "塑心" if matches else B
+    task.group_shift_expected = {("dormitory_1", 0): name}
+    solver.task, solver.tasks = task, [task]
+
+    if matches:
+        solver.prepare_dorm_selection(task.plan["dormitory_1"], "dormitory_1")
+        assert not base_schedule.config.stop_mower.is_set()
+    else:
+        with pytest.raises(base_schedule.GroupShiftTargetConflict):
+            solver.prepare_dorm_selection(task.plan["dormitory_1"], "dormitory_1")
+        assert task.plan["dormitory_1"][0] == name
+    assert task.group_shift_expected == {("dormitory_1", 0): name}
 
 
 @pytest.fixture

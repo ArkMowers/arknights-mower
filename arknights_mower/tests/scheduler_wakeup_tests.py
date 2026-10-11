@@ -18,6 +18,7 @@ from arknights_mower.utils.furniture_task import (  # noqa: E402
     FurnitureNavigationError,
     FurnitureSafetyError,
 )
+from arknights_mower.utils.operators import Operators  # noqa: E402
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
 from arknights_mower.views import task as task_view  # noqa: E402
 
@@ -51,6 +52,9 @@ def scheduler(monkeypatch, offline_maintenance):
         dorm=[],
         correct_dorm=MagicMock(),
         rescue_mode=False,
+    )
+    solver.op_data.arrangement_group_transitions = (
+        Operators.arrangement_group_transitions.__get__(solver.op_data)
     )
     solver.recog = MagicMock()
     solver._simulator_closed_for_idle = False

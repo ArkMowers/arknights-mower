@@ -15,6 +15,8 @@ from arknights_mower.tests.agent_page_observation_tests import (  # noqa: E402
 )
 from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
+from arknights_mower.utils.operators import Operators  # noqa: E402
+from arknights_mower.utils.plan import Plan, PlanConfig  # noqa: E402
 from arknights_mower.utils.solver import BaseSolver  # noqa: E402
 
 pytestmark = pytest.mark.usefixtures("low_frame_rate")
@@ -84,11 +86,11 @@ def production_solver(
         return page(("鸿雪", "暗索") if final_missing else tuple(selected))
 
     solver.recog = LivePageRecognizer(provider, events)
-    solver.op_data = SimpleNamespace(
-        operators={},
-        profession_filter=set(),
-        get_current_room=lambda *args: ["鸿雪", "黑键"],
+    solver.op_data = Operators(
+        {"default_plan": Plan({}, PlanConfig("", "", "")), "backup_plans": []}
     )
+    solver.op_data.profession_filter = set()
+    solver.op_data.get_current_room = lambda *args: ["鸿雪", "黑键"]
     solver.last_room = ""
     solver.choose_error = set()
     solver.preserve_resting_crafters = MagicMock()
@@ -211,9 +213,11 @@ def test_other_scopes_and_initial_multiple_targets_reset_before_searching(
 ):
     solver = object.__new__(BaseSchedulerSolver)
     solver.recog = SimpleNamespace(w=1920, h=1080, img=None, update=MagicMock())
-    solver.op_data = SimpleNamespace(
-        operators={}, profession_filter=set(), get_current_room=lambda *_: []
+    solver.op_data = Operators(
+        {"default_plan": Plan({}, PlanConfig("", "", "")), "backup_plans": []}
     )
+    solver.op_data.profession_filter = set()
+    solver.op_data.get_current_room = lambda *_: []
     solver.last_room = ""
     solver.choose_error = set()
     solver.preserve_resting_crafters = MagicMock()

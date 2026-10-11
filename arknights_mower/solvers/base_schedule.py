@@ -51,6 +51,7 @@ from arknights_mower.solvers.record import (
     get_inventory_counts,
     invalidate_workshop_inventory,
     save_agent_action,
+    save_current_state,
     save_exception,
     save_log,
 )
@@ -315,6 +316,15 @@ class RoomArrangementDeferred(RuntimeError):
         self.room = room
 
 
+class GroupShiftTargetConflict(MowerExit):
+    """执行名单与必须确认的具名目标矛盾，保留任务并停止自动化。"""
+
+    def __init__(self, room, conflicts, message):
+        super().__init__(message)
+        self.room = room
+        self.conflicts = conflicts
+
+
 # MAA 掉落统计：回调随时可能到达，模块级初值保证首次回调不会因缺名而中断。
 stage_drop = {"details": [], "summary": {}}
 
@@ -507,7 +517,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.initialize_operators()
         if not self._product_switching_enabled():
             self._discard_product_switches()
-        self.op_data.correct_dorm()
+        self.op_data.correct_dorm(group_transitions=self._pending_group_transitions())
         if not getattr(self, "defer_backup_plan_until_mood_read", False):
             self.backup_plan_solver()
             # 首次启动先随心情读取刷新实际产物；恢复缓存后也以实际状态为准。
@@ -4741,7 +4751,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self.waiting_group_shifts = waiting
         self.tasks[:] = [pending for pending in self.tasks if pending is not task]
         self._refresh_deferred_product_reservations()
-        self.op_data.correct_dorm()
+        self.op_data.correct_dorm(group_transitions=self._pending_group_transitions())
 
     def _resume_waiting_group_shifts(self):
         """Cached state changes release suspended work; no timer dispatch is used."""
@@ -4784,11 +4794,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 index
             ] = name
         original_transitions = self.op_data.arrangement_group_transitions(expected_plan)
+        transitions = self.op_data.arrangement_group_transitions(
+            expected_plan, group_transitions=task.group_shift_transitions
+        )
         for room, names in expected_plan.items():
             for index, name in enumerate(names):
                 if (
                     name != "Current"
-                    and self.op_data.is_dynamic_dorm_position(room, index, name)
+                    and self.op_data.is_dynamic_dorm_position(
+                        room, index, name, group_transitions=transitions
+                    )
                     and resting_tier(self.op_data, name) == RestingTier.EXCLUDED
                 ):
                     # 执行已拒绝的动态恢复目标不再触发每分钟重新入住。
@@ -7504,6 +7519,68 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             return []
         return names
 
+    def _pending_group_transitions(self):
+        """队列中已开始且仍待确认的换班保留已观测恢复上下文。"""
+        pending = next(
+            (
+                task
+                for task in getattr(self, "tasks", ())
+                if getattr(task, "group_shift_expected", {})
+            ),
+            None,
+        )
+        return self.op_data.arrangement_group_transitions(
+            getattr(pending, "plan", {}) or {},
+            group_transitions=getattr(pending, "group_shift_transitions", {}),
+        )
+
+    def _execution_group_transitions(self, plan=None):
+        """执行与读房共用待确认状态，剩余明确安排优先覆盖。"""
+        task = getattr(self, "task", None)
+        return self.op_data.arrangement_group_transitions(
+            (getattr(task, "plan", {}) if plan is None else plan) or {},
+            group_transitions={
+                **self._pending_group_transitions(),
+                **getattr(task, "group_shift_transitions", {}),
+            },
+        )
+
+    def _cancel_dorm_recovery_targets(self, plan, group_transitions):
+        """整批合法取消先于任何容量检查，确认目标与首次改写同步。"""
+        task = getattr(self, "task", None)
+        expected = getattr(task, "group_shift_expected", {})
+        for room, names in plan.items():
+            if not room.startswith("dorm"):
+                continue
+            for index, name in enumerate(names):
+                current = self.op_data.get_current_operator(room, index)
+                if (
+                    getattr(task, "simple_dorm_fill", False)
+                    and current is not None
+                    and current.name == name
+                ):
+                    continue
+                if name in (
+                    "",
+                    "Current",
+                    "Free",
+                ) or not self.op_data.is_dynamic_dorm_position(
+                    room, index, name, group_transitions=group_transitions
+                ):
+                    continue
+                capped = self.op_data.rest_mood_complete(name)
+                if (
+                    resting_tier(self.op_data, name) != RestingTier.EXCLUDED
+                    and not capped
+                ):
+                    continue
+                if expected.get((room, index)) == name:
+                    expected.pop((room, index))
+                if capped:
+                    self.op_data.operators[name].depletion_rate = 0
+                    logger.info("检测个人心情上限释放休息位")
+                names[index] = "Free"
+
     def preserve_resting_crafters(self, agents, room):
         """按统一层级解析 Free，并让实际选人遵守正在休息者的接管规则。"""
         if not room.startswith("dorm") or (
@@ -7512,6 +7589,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             return
         capacity_plan = dict(getattr(self.task, "plan", {}) or {})
         capacity_plan[room] = agents
+        group_transitions = self._execution_group_transitions(capacity_plan)
+        self._cancel_dorm_recovery_targets(capacity_plan, group_transitions)
         # 补床任务入队后名单也可能改变；执行时重新检查明确写入的姓名。
         for index, name in enumerate(agents):
             current = self.op_data.get_current_operator(room, index)
@@ -7521,20 +7600,26 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 and current.name == name
             ):
                 continue
+            if name in (
+                "",
+                "Current",
+                "Free",
+            ) or not self.op_data.is_dynamic_dorm_position(
+                room, index, name, group_transitions=group_transitions
+            ):
+                continue
             if (
-                name not in ("", "Current", "Free")
-                and self.op_data.is_dynamic_dorm_position(room, index, name)
-                and (
-                    resting_tier(self.op_data, name) == RestingTier.EXCLUDED
-                    or (
-                        (current is None or current.name != name)
-                        and not self.op_data.dorm_capacity_allows(
-                            name, (room, index), plan=capacity_plan
-                        )
-                    )
-                )
+                current is None or current.name != name
+            ) and not self.op_data.dorm_capacity_allows(
+                name,
+                (room, index),
+                plan=capacity_plan,
+                group_transitions=group_transitions,
             ):
                 agents[index] = "Free"
+                self._check_group_shift_targets(
+                    agents, room, reason=f"具名入住 {name} 未通过绑组宿舍额度检查"
+                )
         moving = (
             {
                 name
@@ -7558,7 +7643,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 current is not None
                 and current.name not in (set(agents) | moving)
                 and self.op_data.is_free_room_excluded(current.name)
-                and self.op_data.is_dynamic_dorm_position(room, index, current.name)
+                and self.op_data.is_dynamic_dorm_position(
+                    room, index, current.name, group_transitions=group_transitions
+                )
                 and not (
                     getattr(self.task, "strict_mood_limit", False)
                     and self.task.meta_data == current.name
@@ -7596,13 +7683,18 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 candidate
                 for candidate in replacements
                 if self.op_data.dorm_capacity_allows(
-                    candidate.name, (room, index), plan=capacity_plan
+                    candidate.name,
+                    (room, index),
+                    plan=capacity_plan,
+                    group_transitions=group_transitions,
                 )
             ]
             replacement = next(iter(eligible), None)
             if (
                 current is not None
-                and self.op_data.is_dynamic_dorm_position(room, index, current.name)
+                and self.op_data.is_dynamic_dorm_position(
+                    room, index, current.name, group_transitions=group_transitions
+                )
                 and current.name not in (set(agents) | moving)
                 and not (
                     getattr(self.task, "strict_mood_limit", False)
@@ -7659,7 +7751,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if (
                     current.is_high()
                     and not full
-                    and self.op_data.is_auto_free_dorm_slot(room, index)
+                    and self.op_data.is_auto_free_dorm_slot(
+                        room, index, group_transitions=group_transitions
+                    )
                     and slot.agent == current.name
                 ):
                     continue
@@ -7668,7 +7762,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         replacement is None
                         or bed is None
                         or not self.op_data._slot_takable(
-                            bed, requester=replacement.name, plan=capacity_plan
+                            bed,
+                            requester=replacement.name,
+                            plan=capacity_plan,
+                            group_transitions=group_transitions,
                         )
                     ):
                         agents[index] = current.name
@@ -7678,7 +7775,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 replacements.remove(replacement)
             elif (
                 current is not None
-                and self.op_data.is_dynamic_dorm_position(room, index, current.name)
+                and self.op_data.is_dynamic_dorm_position(
+                    room, index, current.name, group_transitions=group_transitions
+                )
                 and not self.op_data.rest_mood_complete(current.name)
             ):
                 # 无人需要接替时保留原住者，满心情本身不应制造空床。
@@ -7697,7 +7796,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     and name not in candidates.unknown
                     and name not in agents
                     and self.op_data.dorm_capacity_allows(
-                        name, (room, index), plan=capacity_plan
+                        name,
+                        (room, index),
+                        plan=capacity_plan,
+                        group_transitions=group_transitions,
                     )
                     and (
                         name not in self.op_data.operators
@@ -7719,12 +7821,70 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             agents[:] = [name for name in agents if name] + [""] * agents.count("")
         return [name for name in mood_fallback if name not in agents]
 
+    def _check_group_shift_targets(self, agents, room, *, reason):
+        """提交前拒绝已被改写的确认目标；实际驻员未到位仍由读房重试。"""
+        # 训练室分别选择协助位和训练位，单次选人名单不代表整房安排。
+        if room == "train":
+            return
+        task = getattr(self, "task", None)
+        expected = getattr(task, "group_shift_expected", {})
+        conflicts = []
+        for (target_room, index), name in expected.items():
+            if target_room != room:
+                continue
+            selected = agents[index] if index < len(agents) else ""
+            if selected == name:
+                continue
+            if selected == "Current":
+                actual = self.op_data.get_current_operator(room, index)
+                if actual is not None and actual.name == name:
+                    continue
+            conflicts.append({"index": index, "expected": name, "selected": selected})
+        if not conflicts:
+            return
+        resolved = list(agents)
+        # 停止后保留必须确认的安排，下一次启动不能把兜底名单当作原始意图。
+        row = task.plan.setdefault(room, list(agents))
+        for conflict in conflicts:
+            index = conflict["index"]
+            row.extend(["Current"] * max(0, index + 1 - len(row)))
+            row[index] = conflict["expected"]
+        differences = "；".join(
+            f"第{item['index'] + 1}位确认 {item['expected']}，选人 {item['selected'] or '空位'}"
+            for item in conflicts
+        )
+        config.stop_mower.set()
+        try:
+            saved = save_current_state()
+            save_error = ""
+        except Exception as exc:
+            saved, save_error = False, f"（{exc}）"
+        preservation = (
+            "任务已保存并停止自动化，请检查排班与宿舍准入条件后重新启动"
+            if saved
+            else f"运行状态保存失败{save_error}，任务仅保留在内存，重启可能无法恢复本次目标；自动化已停止"
+        )
+        message = (
+            f"换班确认目标冲突：任务={task.type.display_value}@{task.time.isoformat()}，"
+            f"房间={room}，目标差异={differences}，最终名单={resolved}，原因={reason}，"
+            f"待确认换班={getattr(task, 'group_shift_transitions', {})}；"
+            f"{preservation}"
+        )
+        logger.error(message, extra={"archive_screenshots": False})
+        raise GroupShiftTargetConflict(room, conflicts, message)
+
     def prepare_dorm_selection(self, agents, room, *, preserve_dorm_occupants=False):
         """执行边界统一解析名单；解析结果同时交给单回排序和实际选人。"""
         # 充能和归位均使用肥鸭任务的明确名单；不养闲人、上限清退及
         # 普通补床不能把充能对象改成 Free，也不能用原入住者覆盖它。
         if getattr(getattr(self, "task", None), "type", None) == TaskTypes.FIAMMETTA:
             return []
+        task = getattr(self, "task", None)
+        plan = dict(getattr(task, "plan", {}) or {})
+        plan[room] = agents
+        group_transitions = self._execution_group_transitions(plan)
+        if not preserve_dorm_occupants:
+            self._cancel_dorm_recovery_targets(plan, group_transitions)
         current_list = set()
         for idx, n in enumerate(agents):
             if getattr(getattr(self, "task", None), "simple_dorm_fill", False):
@@ -7737,10 +7897,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             elif n not in ("", "Free", "Current"):
                 agents[idx] = "Free"
             if (
-                room.startswith("dorm")
+                preserve_dorm_occupants
+                and room.startswith("dorm")
                 and agents[idx] in self.op_data.operators
                 and self.op_data.rest_mood_complete(agents[idx])
-                and self.op_data.is_dynamic_dorm_position(room, idx, agents[idx])
+                and self.op_data.is_dynamic_dorm_position(
+                    room, idx, agents[idx], group_transitions=group_transitions
+                )
             ):
                 self.op_data.operators[agents[idx]].depletion_rate = 0
                 expected = getattr(
@@ -7761,6 +7924,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     relocated[room, agents.index(name)] = name
                     expected.pop(slot)
             expected.update(relocated)
+            self._check_group_shift_targets(
+                agents, room, reason="执行边界准入与床位整理"
+            )
             return fallback
         return []
 
@@ -8065,7 +8231,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         name
                         for name in free_list
                         if self.op_data.dorm_capacity_allows(
-                            name, bed_position, plan=capacity_plan
+                            name,
+                            bed_position,
+                            plan=capacity_plan,
+                            group_transitions=getattr(
+                                self.task, "group_shift_transitions", {}
+                            ),
                         )
                     ]
                     if not free_list and not idle_fallback:
@@ -8166,6 +8337,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         return_page=True,
                     )
                     right_swipe += moved
+        if not preserve_dorm_occupants:
+            self._check_group_shift_targets(
+                agents, room, reason="选人页最终名单与 Free 解析"
+            )
         # 重排按完整已选名单的位置点击，不能保留最后一名干员的职业筛选。
         # 单回暂留名单没有 Free，也必须在重排和校验前恢复全部职业。
         if last_special_filter != "ALL":
@@ -8336,6 +8511,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if self._can_refresh_idle_dorm_search():
             released_support = self.op_data.get_current_operator("train", 0)
         retain_dorm_time = room.startswith("dorm")
+        group_transitions = (
+            self._execution_group_transitions() if retain_dorm_time else {}
+        )
+        recovery_context = (
+            {"group_transitions": group_transitions} if group_transitions else {}
+        )
         if read_time_index is None:
             read_time_index = []
         if related_operators is None:
@@ -8523,6 +8704,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 )
                 if charge_transition:
                     record_kwargs["preserve_depletion_rate"] = True
+                record_kwargs.update(recovery_context)
                 high_no_time = self.op_data.update_detail(*update_args, **record_kwargs)
                 BaseSchedulerSolver._record_dorm_admission(
                     self, _name, room, i, previous_position
@@ -8549,7 +8731,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 and _name != "菲亚梅塔"
                 and _name in self.op_data.operators
             ):
-                _, bed = self.op_data.get_dorm_by_name(_name)
+                _, bed = self.op_data.get_dorm_by_name(_name, **recovery_context)
                 if bed is not None and bed.name == _name and bed.time is not None:
                     # 位置没变时沿用预计回满记录，换位后的缺失记录顺带读取。
                     data["time"] = bed.time
@@ -8587,7 +8769,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 else:
                     logger.debug(f"开始记录时间:{room},{i}")
                     data["time"] = self.read_operator_time(room, i, time_p[i])
-                self.op_data.refresh_dorm_time(room, i, data)
+                self.op_data.refresh_dorm_time(room, i, data, **recovery_context)
                 if _name == "菲亚梅塔" and update_time and room.startswith("dorm"):
                     self._refresh_fiammetta_task(data["time"])
                 logger.debug(f"停止记录时间:{str(data)}")
@@ -8628,7 +8810,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 res["agent"] for res in result
             ]:
                 if room.startswith("dorm"):
-                    _idx, dorm = self.op_data.get_dorm_by_name(_operator)
+                    _idx, dorm = self.op_data.get_dorm_by_name(
+                        _operator, **recovery_context
+                    )
                     # 该床可能已在本次读取中写入新入住者。旧入住者仍保留
                     # 旧坐标时只能清理自己的缓存，不能把新入住者一并抹掉。
                     if dorm is not None and dorm.name == _operator:
@@ -8747,7 +8931,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 previous_position != (room, index)
                 and not (previous_position[0] or "").startswith("dorm")
                 and not op.is_high()
-                and self.op_data.is_dynamic_dorm_position(room, index, name)
+                and self.op_data.is_dynamic_dorm_position(
+                    room,
+                    index,
+                    name,
+                    group_transitions=self._execution_group_transitions(),
+                )
             ):
                 op.temporary_dorm_fill = True
         elif getattr(task, "type", None) in (
@@ -8879,10 +9068,21 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if task is not self.task or task_room != room
             for name in names
         }
-        retained = recovery_order_plan(self.op_data, room, agents, reserved_names)
+        plan = dict(self.task.plan)
+        plan[room] = agents
+        group_transitions = self._execution_group_transitions(plan)
+        retained = recovery_order_plan(
+            self.op_data,
+            room,
+            agents,
+            reserved_names,
+            group_transitions=group_transitions,
+        )
         if retained is None:
             return room in pending
-        target = recovery_target(self.op_data, room, agents)
+        target = recovery_target(
+            self.op_data, room, agents, group_transitions=group_transitions
+        )
         vip_index = agents.index(target.name)
         # 一轮下班先替班接岗、再分床；不要为即将被下一条分床任务换走的
         # 原占位者额外清房。以队列中明确的目标覆盖为准，不猜测未来排班。
@@ -8932,7 +9132,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if current != agents:
             # 目标床位不再移动，不能因此沿用临时阵容下的恢复倒计时。
             # 补回宿管和其余入住者后，由紧接着的正常读房重新采样。
-            _, bed = self.op_data.get_dorm_by_name(target.name)
+            _, bed = self.op_data.get_dorm_by_name(
+                target.name, group_transitions=group_transitions
+            )
             if bed is not None and bed.name == target.name:
                 bed.time = None
         # 垫位者的缓存可能已过期，读回无法保证目标最低时只恢复最终阵容，
@@ -9218,7 +9420,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     read_time_index = sorted(set(read_time_index))
                     logger.info("肥鸭换入完成，读取交换后心情")
                 elif get_time or recovery_ordered:
-                    refresh_indexes = self.op_data.get_refresh_index(room, plan[room])
+                    recovery_context = (
+                        {"group_transitions": self._execution_group_transitions(plan)}
+                        if room.startswith("dorm")
+                        else {}
+                    )
+                    refresh_indexes = self.op_data.get_refresh_index(
+                        room,
+                        plan[room],
+                        **recovery_context,
+                    )
                     if recovery_ordered:
                         refresh_indexes = sorted(
                             set(refresh_indexes)
