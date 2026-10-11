@@ -145,7 +145,16 @@ def init_file_logging() -> None:
     fhlr.setFormatter(basic_formatter)
     fhlr.setLevel("DEBUG")
     fhlr.addFilter(filter)
-    logger.addHandler(fhlr)
+    # The handler lives on the shared package logger, a common ancestor of every
+    # module logger, so a record from any module bubbles up to it. Attaching it
+    # to this logger as well would write this branch's own records twice, because
+    # callHandlers() deduplicates by (handler, logger) pair.
+    package_logger = logging.getLogger("arknights_mower")
+    package_logger.addHandler(fhlr)
+    if package_logger.getEffectiveLevel() > logging.DEBUG:
+        # The file handler itself is set to DEBUG; leaving the package logger at
+        # the root WARNING level would drop every module record before it.
+        package_logger.setLevel(logging.DEBUG)
     # 已有报错归档时，即使本次启动尚未截图，也要继续定期清理过期记录。
     if (Path(get_path("@app/screenshot")) / "errors").is_dir():
         _store()
@@ -227,6 +236,7 @@ def close_logging():
     current, fhlr = fhlr, None
     if current is not None:
         logger.removeHandler(current)
+        logging.getLogger("arknights_mower").removeHandler(current)
         current.close()
 
 
