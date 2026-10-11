@@ -11,7 +11,8 @@
     "[INV-SCHED-13]",
     "[INV-SCHED-21]",
     "[INV-SCHED-42]",
-    "[INV-SCHED-25]"
+    "[INV-SCHED-25]",
+    "[INV-SCHED-39]"
   ],
   "code_symbols": [
     "arknights_mower.utils.operators.Operators._slot_takable",
@@ -68,6 +69,9 @@
     "arknights_mower/tests/local_backup_replay_tests.py",
     "ui/src/stores/planValidation.test.js",
     "arknights_mower/tests/group_shift_confirmation_tests.py",
-    "arknights_mower/tests/pending_dorm_execution_tests.py"
+    "arknights_mower/tests/pending_dorm_execution_tests.py",
+    "arknights_mower/tests/scheduler_recovery_preservation_tests.py",
+    "arknights_mower/tests/idle_scene_watchdog_tests.py",
+    "arknights_mower/tests/scheduler_wakeup_tests.py"
   ]
 }

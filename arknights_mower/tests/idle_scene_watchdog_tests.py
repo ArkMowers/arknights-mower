@@ -18,6 +18,7 @@ from arknights_mower.utils import solver as solver_module  # noqa: E402
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
 from arknights_mower.utils.device import recovery  # noqa: E402
 from arknights_mower.utils.news_checker import MaintenanceInfo  # noqa: E402
+from arknights_mower.utils.operators import Operators  # noqa: E402
 from arknights_mower.utils.recognize import Recognizer, Scene  # noqa: E402
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
 
@@ -106,6 +107,9 @@ def production_idle_scheduler(idle_scheduler, monkeypatch):
         dorm=[],
         correct_dorm=MagicMock(),
         rescue_mode=False,
+    )
+    solver.op_data.arrangement_group_transitions = (
+        Operators.arrangement_group_transitions.__get__(solver.op_data)
     )
     solver._party_time = solver.free_clue = solver.credit_fight = None
     solver.task_count = 0

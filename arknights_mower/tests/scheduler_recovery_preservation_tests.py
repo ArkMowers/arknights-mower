@@ -12,6 +12,7 @@ import pytest
 from arknights_mower.utils import config, scheduler_task
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device import recovery
+from arknights_mower.utils.operators import Operators
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 CRITICAL_TYPES = {
@@ -63,6 +64,9 @@ def scheduler(monkeypatch):
         dorm=[],
         correct_dorm=Mock(),
         validate_backup_plans=Mock(return_value={"success": True}),
+    )
+    solver.op_data.arrangement_group_transitions = (
+        Operators.arrangement_group_transitions.__get__(solver.op_data)
     )
     solver.device = Mock()
     solver.recog = Mock()
@@ -305,6 +309,10 @@ def test_real_worker_resumes_same_scheduler_and_replans_after_capture_refresh(
     result = SimpleNamespace(unwrap=lambda: ready_device)
 
     def recover():
+        if control.recover.call_count > 2:
+            pytest.fail(
+                "Unexpected repeated device recovery after scheduler resumption"
+            )
         if control.recover.call_count == 1:
             assert any(task is stale for task in solver.tasks)
             assert any(task is manual for task in solver.tasks)
