@@ -1,7 +1,6 @@
 """卡片名字正确，但实际选择缺人或多人的回归。"""
 
 import sys
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -15,6 +14,8 @@ from arknights_mower.tests.visible_production_target_tests import (  # noqa: E40
     LivePageRecognizer,
 )
 from arknights_mower.utils import config  # noqa: E402
+from arknights_mower.utils.operators import Operators  # noqa: E402
+from arknights_mower.utils.plan import Plan, PlanConfig  # noqa: E402
 
 
 @pytest.mark.parametrize("enabled", [False, True])
@@ -33,11 +34,11 @@ def test_matching_names_still_rebuild_actual_selection(
     events = []
     dropped = False
     solver.recog = LivePageRecognizer(lambda: page(cards), events)
-    solver.op_data = SimpleNamespace(
-        operators={},
-        profession_filter=set(),
-        get_current_room=lambda *_: current.copy(),
+    solver.op_data = Operators(
+        {"default_plan": Plan({}, PlanConfig("", "", "")), "backup_plans": []}
     )
+    solver.op_data.profession_filter = set()
+    solver.op_data.get_current_room = lambda *_: current.copy()
     solver.last_room = ""
     solver.choose_error = set()
     solver.preserve_resting_crafters = MagicMock()

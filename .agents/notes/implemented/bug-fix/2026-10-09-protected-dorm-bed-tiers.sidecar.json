@@ -73,6 +73,8 @@
     "arknights_mower/tests/scheduler_recovery_preservation_tests.py",
     "arknights_mower/tests/idle_scene_watchdog_tests.py",
     "arknights_mower/tests/scheduler_wakeup_tests.py",
-    "arknights_mower/tests/group_shift_training_protection_tests.py"
+    "arknights_mower/tests/group_shift_training_protection_tests.py",
+    "arknights_mower/tests/selection_missing_input_tests.py",
+    "arknights_mower/tests/visible_production_target_tests.py"
   ]
 }
