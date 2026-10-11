@@ -253,6 +253,13 @@
                       </div>
                       <div>
                         <n-button
+                          @click=";((showModal = false), $router.push('/record/recycling'))"
+                        >
+                          回收站材料统计
+                        </n-button>
+                      </div>
+                      <div>
+                        <n-button
                           @click=";((showModal = false), $router.push('/record/log-schedule'))"
                         >
                           日志调度
@@ -458,6 +465,12 @@ const menuOptions = [
           ),
         icon: renderIcon(Newspaper),
         key: 'go-to-trading-analysis'
+      },
+      {
+        label: () =>
+          h(RouterLink, { to: { path: '/record/recycling' } }, { default: () => '回收站材料统计' }),
+        icon: renderIcon(PieChart),
+        key: 'go-to-recycling'
       },
       {
         label: () =>

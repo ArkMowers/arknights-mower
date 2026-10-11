@@ -2946,6 +2946,50 @@ def getTradingHistory():
     return record.get_trading_history(start_date, end_date)
 
 
+@app.route("/report/recycling_history")
+@require_token
+def get_recycling_history():
+    from arknights_mower.solvers import record
+
+    today = datetime.datetime.now().date()
+    try:
+        return record.get_recycling_history(
+            request.args.get("startDate", str(today - datetime.timedelta(days=29))),
+            request.args.get("endDate", str(today)),
+            int(request.args.get("page", 1)),
+            int(request.args.get("pageSize", 50)),
+        )
+    except (ValueError, OverflowError) as exc:
+        return {"error": str(exc)}, 400
+
+
+@app.route("/report/recycling_history/export")
+@require_token
+def export_recycling_history():
+    from arknights_mower.solvers import record
+
+    today = datetime.datetime.now().date()
+    start = request.args.get("startDate", str(today - datetime.timedelta(days=29)))
+    end = request.args.get("endDate", str(today))
+    try:
+        workbook = record.export_recycling_history(start, end)
+    except (ValueError, OverflowError) as exc:
+        return {"error": str(exc)}, 400
+    try:
+        response = send_file(
+            workbook,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=f"回收站材料统计-{start}-{end}.xlsx",
+            max_age=0,
+        )
+        response.call_on_close(workbook.close)
+        return response
+    except BaseException:
+        workbook.close()
+        raise
+
+
 @app.route("/record/clear-data", methods=["DELETE"])
 def clear_data_route():
     date_time_str = request.json.get("date_time")

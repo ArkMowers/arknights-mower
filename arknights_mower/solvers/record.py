@@ -39,6 +39,11 @@ _DB_TABLE_STMTS = (
     "price INTEGER"
     ")",
     "CREATE TABLE IF NOT EXISTS inventory (item_name TEXT PRIMARY KEY, count INTEGER)",
+    "CREATE TABLE IF NOT EXISTS recycling_collection ("
+    "event_id TEXT PRIMARY KEY, collected_at REAL NOT NULL,"
+    "operators TEXT, materials TEXT NOT NULL)",
+    "CREATE INDEX IF NOT EXISTS recycling_collection_time "
+    "ON recycling_collection(collected_at)",
     "CREATE TABLE IF NOT EXISTS workshop_inventory_updates ("
     "item_name TEXT PRIMARY KEY, observed_at REAL NOT NULL)",
     "CREATE TABLE IF NOT EXISTS workshop_inventory_pending ("
@@ -639,6 +644,157 @@ def get_trading_history(start_date: str, end_date: str):
         for date, stats in result_dict.items()
     ]
     return result_list
+
+
+def save_recycling_collection(event_id, collected_at, operators, materials):
+    """Store one observed collection; retries retain the same event identity."""
+    if (
+        not isinstance(event_id, str)
+        or not event_id
+        or not isinstance(collected_at, (int, float))
+        or not 0 < collected_at < 253402300800
+        or (
+            materials is not None and (not isinstance(materials, dict) or not materials)
+        )
+        or any(
+            not isinstance(name, str)
+            or not name
+            or type(count) is not int
+            or count <= 0
+            for name, count in (materials or {}).items()
+        )
+        or (
+            operators is not None
+            and (
+                not isinstance(operators, list)
+                or any(not isinstance(name, str) or not name for name in operators)
+            )
+        )
+    ):
+        raise ValueError("回收站收取记录必须包含有效时间、材料和数量")
+    with _conn() as connection:
+        cursor = connection.execute(
+            "INSERT OR IGNORE INTO recycling_collection VALUES (?, ?, ?, ?)",
+            (
+                event_id,
+                collected_at,
+                json.dumps(operators, ensure_ascii=False),
+                json.dumps(materials or {}, ensure_ascii=False),
+            ),
+        )
+        connection.commit()
+        return cursor.rowcount == 1
+
+
+def update_recycling_operators(event_id, operators):
+    """Complete an unknown roster after reward dismissal without replacing evidence."""
+    if not isinstance(operators, list) or any(
+        not isinstance(name, str) or not name for name in operators
+    ):
+        raise ValueError("回收站进驻干员必须来自实际房间读数")
+    with _conn() as connection:
+        connection.execute(
+            "UPDATE recycling_collection SET operators = ? "
+            "WHERE event_id = ? AND operators = 'null'",
+            (json.dumps(operators, ensure_ascii=False), event_id),
+        )
+        connection.commit()
+
+
+def _recycling_date_bounds(start_date, end_date):
+    start = datetime.strptime(start_date, "%Y-%m-%d")
+    end = datetime.strptime(end_date, "%Y-%m-%d")
+    if end < start:
+        raise ValueError("日期范围无效")
+    return start.timestamp(), (end + timedelta(days=1)).timestamp()
+
+
+def _recycling_summary(connection, bounds):
+    from arknights_mower.data import key_mapping
+    from arknights_mower.utils.mastery_recommendation import get_skill_data
+    from arknights_mower.utils.recycling import recycling_expectation
+
+    where = " WHERE collected_at >= ? AND collected_at < ?"
+    total = connection.execute(
+        "SELECT COUNT(*) FROM recycling_collection" + where, bounds
+    ).fetchone()[0]
+    unknown_collections = connection.execute(
+        "SELECT COUNT(*) FROM recycling_collection" + where + " AND materials = '{}'",
+        bounds,
+    ).fetchone()[0]
+    totals = [
+        {"name": name, "count": count}
+        for name, count in connection.execute(
+            "SELECT item.key, SUM(item.value) FROM recycling_collection, "
+            "json_each(materials) AS item"
+            + where
+            + " GROUP BY item.key ORDER BY SUM(item.value) DESC, item.key",
+            bounds,
+        )
+    ]
+    item_data = get_skill_data().get("items", {})
+    quality = collections.Counter()
+    for item in totals:
+        item_id = key_mapping.get(item["name"], [None])[0]
+        item["rarity"] = item_data.get(item_id, {}).get("rarity")
+        quality[item["rarity"]] += item["count"]
+    return {
+        "total": total,
+        "materials": totals,
+        "comparison": recycling_expectation(totals, unknown_collections),
+        "qualities": [
+            {"rarity": rarity, "count": count}
+            for rarity, count in sorted(quality.items(), key=lambda row: row[0] or 0)
+        ],
+    }
+
+
+def _recycling_snapshot(row):
+    event_id, collected_at, operators, materials = row
+    return {
+        "id": event_id,
+        "collected_at": collected_at,
+        "operators": json.loads(operators) if operators else None,
+        "materials": json.loads(materials) or None,
+    }
+
+
+def get_recycling_history(start_date, end_date, page=1, page_size=50):
+    """Return local-calendar totals and a bounded page of collection snapshots."""
+    bounds = _recycling_date_bounds(start_date, end_date)
+    if not 1 <= page or not 1 <= page_size <= 200:
+        raise ValueError("分页参数无效")
+    with _conn() as connection:
+        # One read transaction keeps counts, totals and details consistent.
+        connection.execute("BEGIN")
+        result = _recycling_summary(connection, bounds)
+        rows = connection.execute(
+            "SELECT event_id, collected_at, operators, materials "
+            "FROM recycling_collection WHERE collected_at >= ? AND collected_at < ? "
+            "ORDER BY collected_at DESC, event_id DESC LIMIT ? OFFSET ?",
+            (*bounds, page_size, (page - 1) * page_size),
+        )
+        result["records"] = [_recycling_snapshot(row) for row in rows]
+        return result
+
+
+def export_recycling_history(start_date, end_date):
+    """Export all selected records and summaries from the same read snapshot."""
+    from arknights_mower.utils.recycling_export import write_recycling_workbook
+
+    bounds = _recycling_date_bounds(start_date, end_date)
+    with _conn() as connection:
+        connection.execute("BEGIN")
+        summary = _recycling_summary(connection, bounds)
+        rows = connection.execute(
+            "SELECT event_id, collected_at, operators, materials "
+            "FROM recycling_collection WHERE collected_at >= ? AND collected_at < ? "
+            "ORDER BY collected_at DESC, event_id DESC",
+            bounds,
+        )
+        return write_recycling_workbook(
+            start_date, end_date, summary, (_recycling_snapshot(row) for row in rows)
+        )
 
 
 def save_inventory_counts(

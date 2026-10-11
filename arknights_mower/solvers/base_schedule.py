@@ -9,6 +9,7 @@ from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from time import monotonic
 from typing import Literal, Optional
+from uuid import uuid4
 
 import cv2
 import requests
@@ -54,13 +55,15 @@ from arknights_mower.solvers.record import (
     save_current_state,
     save_exception,
     save_log,
+    save_recycling_collection,
+    update_recycling_operators,
 )
 from arknights_mower.solvers.recruit import RecruitSolver
 from arknights_mower.solvers.report import ReportSolver
 from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.solvers.shop import CreditShop
 from arknights_mower.solvers.skland import SKLand
-from arknights_mower.utils import config, detector, rapidocr
+from arknights_mower.utils import config, detector, rapidocr, segment
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.character_recognize import estimate_agent_mood
 from arknights_mower.utils.csleep import MowerExit, csleep
@@ -607,6 +610,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         return len(self.tasks) > had_tasks
 
     def transition(self) -> None:
+        if getattr(self, "_recycling_pending", None):
+            if (
+                self._recycling_pending.get("recorded")
+                or self.scene() == Scene.MATERIEL
+            ):
+                self._finish_recycling_collection()
+                return
+            self._recycling_pending = None
         if (scene := self.scene()) == Scene.INFRA_MAIN:
             return self.infra_main()
         elif scene == Scene.INFRA_TODOLIST:
@@ -1727,6 +1738,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.todo_task = True
         elif not self.collect_notification:
             if self.no_pending_task(1):
+                if self.collect_recycling():
+                    return
                 notification = detector.infra_notification(self.recog.img)
                 if notification is None:
                     self.sleep(1)
@@ -5644,6 +5657,113 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self.scene_graph_navigation(Scene.INFRA_MAIN)
         return execute_time
 
+    def collect_recycling(self):
+        """Collect only a visible ready marker in the recycling facility."""
+        central = self.find("control_central")
+        if central is None:
+            return False
+        room = segment.base(
+            self.recog.img,
+            central,
+            right_side_room_order=config.conf.right_side_room_order,
+        )["recycle"]
+        (left, top), _, (right, bottom), _ = room
+        if left < 0 or top < 0 or right > 1920 or bottom > 1080:
+            return False
+        # The ready hexagon is cyan and overlaps the facility's upper-right edge.
+        size = max(24, round((bottom - top) * 0.65))
+        region = self.recog.img[
+            max(0, round(top) - size // 4) : round(top) + size,
+            round(right) - size : min(1920, round(right) + size // 4),
+        ]
+        hsv = cv2.cvtColor(region, cv2.COLOR_RGB2HSV)
+        ready = cv2.inRange(hsv, (80, 80, 120), (100, 255, 255))
+        if cv2.countNonZero(ready) < size * size * 0.08:
+            return False
+        self._tap_recycling_collection((int(right - size / 3), int(top + size / 3)))
+        return True
+
+    def _tap_recycling_collection(self, pos):
+        self._recycling_pending = {"id": str(uuid4())}
+        self.tap(pos)
+        for attempt in range(3):
+            if self.scene() == Scene.MATERIEL:
+                self._finish_recycling_collection()
+                return True
+            if attempt < 2:
+                self.sleep(0.25)
+        self._recycling_pending = None
+        return False
+
+    def _read_recycling_operators(self):
+        self.scene_graph_navigation(Scene.INFRA_MAIN)
+        self.enter_room("recycle", max_attempts=1)
+        if self.detect_room() != "recycle":
+            return None
+        for attempt in range(5):
+            if self.find("recycle/dashboard"):
+                self.back()
+                continue
+            if self.find("room_detail") and all(self.get_color((1233, 1)) > [252] * 3):
+                break
+            if pos := self.find("arrange_check_in") or self.find(
+                "arrange_check_in_small"
+            ):
+                self.tap(pos, interval=0.2)
+            else:
+                self.sleep(0.2)
+        else:
+            return None
+        names = []
+        for top in (135, 344):
+            if self.find("infra_no_operator", scope=((1288, top), (1869, top + 191))):
+                continue
+            name = self.read_screen(
+                cropimg(self.recog.gray, ((1460, top + 25), (1785, top + 80))),
+                type="name",
+            )
+            if not name or name in names:
+                return None
+            names.append(name)
+        return names
+
+    def _finish_recycling_collection(self):
+        from arknights_mower.utils.recycling import read_recycling_materials
+
+        event = self._recycling_pending
+        if not event.get("recorded"):
+            event.setdefault("at", datetime.now().timestamp())
+            previous = None
+            materials = None
+            for attempt in range(3):
+                observed = read_recycling_materials(self.recog.img)
+                if observed and observed == previous:
+                    materials = observed
+                    break
+                previous = observed
+                if attempt < 2:
+                    self.sleep(0.3)
+            if materials is None:
+                self.recog.save_screencap("recycling")
+                logger.error("回收站材料未完整识别，记录保留为未知，请查看收取截图")
+            save_recycling_collection(event["id"], event["at"], None, materials)
+            event["recorded"] = True
+        if self.scene() == Scene.MATERIEL:
+            self.tap((960, 960))
+            if self.scene() == Scene.MATERIEL:
+                return
+        try:
+            names = self._read_recycling_operators()
+        except (MowerExit, DeviceRecoveryError, SharedADBError):
+            raise
+        except (RecognizeError, RuntimeError) as exc:
+            logger.warning(f"回收站进驻干员读取失败，保留未知：{exc}")
+            names = None
+        if names is not None:
+            update_recycling_operators(event["id"], names)
+        self._recycling_pending = None
+        self.scene_graph_navigation(Scene.INFRA_MAIN)
+
     def todo_list(self) -> None:
         """处理基建 Todo 列表"""
         tapped = False
@@ -5659,7 +5779,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             for res, name in collect.items():
                 if pos := self.find(f"infra_collect_{res}"):
                     logger.info(f"收取{name}")
-                    self.tap(pos)
+                    if res == "recycle":
+                        if self._tap_recycling_collection(pos):
+                            self.last_execution["todo"] = datetime.now()
+                            return
+                    else:
+                        self.tap(pos)
                     tapped = True
             self.last_execution["todo"] = datetime.now()
         if not tapped:
