@@ -52,6 +52,9 @@ def room_reader():
             if update_time:
                 target.time_stamp = datetime.now()
 
+        op_data.arrangement_group_transitions = MethodType(
+            Operators.arrangement_group_transitions, op_data
+        )
         op_data.update_detail = update_detail
         op_data.get_current_operator = MethodType(
             Operators.get_current_operator, op_data
@@ -392,6 +395,9 @@ def test_fiammetta_swap_writes_both_operators_one_second_apart(
 
     op_data.update_detail = MagicMock(side_effect=MethodType(update_detail, op_data))
     solver = object.__new__(BaseSchedulerSolver)
+    op_data.arrangement_group_transitions = MethodType(
+        Operators.arrangement_group_transitions, op_data
+    )
     solver.op_data = op_data
     solver.tasks = []
     solver.task = SchedulerTask(task_type=TaskTypes.FIAMMETTA, meta_data="歌蕾蒂娅")

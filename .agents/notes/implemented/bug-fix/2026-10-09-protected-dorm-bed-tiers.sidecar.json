@@ -87,6 +87,7 @@
     "arknights_mower/tests/visible_production_target_tests.py",
     "arknights_mower/tests/group_shift_persistence_tests.py",
     "arknights_mower/tests/dorm_state_restore_tests.py",
-    "arknights_mower/tests/pending_dorm_context_tests.py"
+    "arknights_mower/tests/pending_dorm_context_tests.py",
+    "arknights_mower/tests/exhausted_working_timer_tests.py"
   ]
 }
