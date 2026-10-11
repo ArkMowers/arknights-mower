@@ -9,7 +9,7 @@ date: 2026-10-11
 
 ## 契约
 
-[INV-REC-11] 将回收站统计绑定到实读的收取证据。[基建调度契约](../../../../docs/subsystems/base-scheduler.md#3-subsystem-invariants)规定收取、持久化、接口和收益比较的保证。
+[INV-REC-12] 将回收站统计绑定到实读的收取证据。[基建调度契约](../../../../docs/subsystems/base-scheduler.md#3-subsystem-invariants)规定收取、持久化、接口和收益比较的保证。
 
 ## 前置简化审查
 

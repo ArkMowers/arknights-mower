@@ -9,7 +9,7 @@ date: 2026-10-11
 
 ## Contract
 
-[INV-REC-11] binds recycling statistics to observed collection evidence. The [base scheduling contract](../../../../docs/subsystems/base-scheduler.md#3-subsystem-invariants) owns collection, persistence, API and comparison guarantees.
+[INV-REC-12] binds recycling statistics to observed collection evidence. The [base scheduling contract](../../../../docs/subsystems/base-scheduler.md#3-subsystem-invariants) owns collection, persistence, API and comparison guarantees.
 
 ## Pre-flight Simplification
 

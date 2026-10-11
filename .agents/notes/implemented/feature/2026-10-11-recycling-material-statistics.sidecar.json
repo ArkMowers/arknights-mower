@@ -7,7 +7,7 @@
     "Codex"
   ],
   "invariants": [
-    "[INV-REC-11]"
+    "[INV-REC-12]"
   ],
   "code_symbols": [
     "arknights_mower.solvers.record.save_recycling_collection",
