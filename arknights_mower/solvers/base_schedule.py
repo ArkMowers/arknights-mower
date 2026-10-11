@@ -10378,14 +10378,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             server_weekday = get_server_weekday()
             _plan = conf.maa_weekly_plan[server_weekday]
             logger.info(f"现在服务器是{_plan.weekday}")
-            medicine_expire_days = 0
-            if conf.medicine_expire_days > 0:
-                if conf.expiring_medicine_on_weekend:
-                    medicine_expire_days = (
-                        conf.medicine_expire_days if server_weekday >= 5 else 0
-                    )
-                else:
-                    medicine_expire_days = conf.medicine_expire_days
             stages = self.apply_maa_stage_inventory_rules(_plan.stage)
             from arknights_mower.utils.maa_stage_inventory import (
                 load_inventory_snapshot,
@@ -10418,7 +10410,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     "penguin_id": conf.maa_penguin_id,
                     "DrGrandet": False,
                     "server": "CN",
-                    "medicine_expire_days": medicine_expire_days,
+                    "medicine_expire_days": max(0, conf.medicine_expire_days),
                     "report_to_yituliu": conf.maa_report_to_yituliu,
                     "yituliu_id": conf.maa_yituliu_id,
                 }

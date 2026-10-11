@@ -174,3 +174,6 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 - **代码映射**: [`BaseSchedulerSolver.plan_fia`](arknights_mower/solvers/base_schedule.py)
 
 - 自动救急期间，已配置的菲亚梅塔充能目标均满心情时，可从未配置特殊心情上限的正常主班中，按心情从低到高选择符合现有充能条件且无预约冲突的目标。
+
+### 理智药有效期阈值 (`Medicine Expiry Threshold`)
+- **定义**：`medicine_expire_days` 控制临期理智药的使用，不受星期限制。MAA Fight 接收配置的剩余天数阈值；本地作战在阈值大于零时启用现有临期理智药识别。零表示不使用临期理智药。已删除的周末限定设置不再生效。

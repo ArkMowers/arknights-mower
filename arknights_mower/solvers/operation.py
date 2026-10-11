@@ -18,7 +18,6 @@ from arknights_mower.solvers.record import (
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.datetime import get_server_weekday
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, thres2
@@ -483,12 +482,7 @@ class OperationSolver(SceneGraphSolver):
             self.tap_element("double_confirm/main", x_rate=1)
             return True
         elif scene == Scene.OPERATOR_RECOVER_POTION:
-            use_medicine = False
-            if config.conf.medicine_expire_days > 0:
-                if config.conf.expiring_medicine_on_weekend:
-                    use_medicine = get_server_weekday() >= 5
-                else:
-                    use_medicine = True
+            use_medicine = config.conf.medicine_expire_days > 0
             if use_medicine:
                 img = cropimg(self.recog.img, ((1015, 515), (1170, 560)))
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
