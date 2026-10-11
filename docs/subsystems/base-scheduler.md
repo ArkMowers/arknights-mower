@@ -246,6 +246,8 @@ The test has no overall deadline; device startup and individual I/O retain their
 
 ## 3. Subsystem Invariants
 
+- **[INV-REC-11] Facility Title Priority**: `BaseMixin.detect_room` confirms known facility titles before classifying icon colors on the same Capture Frame. Titles require the existing 0.78 match threshold; unknown titles retain icon recognition, and room entry retains its bounded recovery. The [room title confirmation decision](../../.agents/notes/implemented/simplification/2026-10-12-room-title-confirmation.md) records archive replay and entry confirmation verification.
+
 - **[INV-SCHED-48] Trust Rotation Isolation**: Trust Rotation preserves ordinary working and resting assignments, retains incumbents below their applicable replacement limit, excludes other occupants of the same kind and permits assistant/activity overlap. Unreadable pages never authorize confirmation; a verified ascending roster whose same-kind eligible candidates all have 200% trust ends the remaining inspection of that kind while retaining all assignments. The [decision record](../../.agents/notes/implemented/feature/2026-10-11-trust-rotation.md) defines the daily window and threshold rules.
 
 - **[INV-SCHED-47] Consecutive Mastery Halving**: Eligible same-operator skills remain adjacent in ascending unstarted mastery order and admit training only when their joint remaining costs are craftable while preparing only the current skill; final-stage reducer handoffs require a same-operator successor above basic skill level, inherited halving requires observed continuous assistant work, and confirmed Control Center staffing changes refresh countdowns with a ten-minute default handoff margin.

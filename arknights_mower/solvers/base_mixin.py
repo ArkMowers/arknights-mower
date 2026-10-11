@@ -1256,8 +1256,35 @@ class BaseMixin:
         return None
 
     def detect_room(self) -> str:
-        colored_room = self.detect_room_type()
         img = cropimg(self.recog.img, ((568, 18), (957, 95)))
+        # 标题优先于颜色；进入动画中透出的背景不能覆盖已确认的设施标题。
+        title_rooms = ["central", "dormitory", "meeting", "contact", "recycle"]
+        score = []
+        for room in title_rooms:
+            tpl = loadres(f"room/{room}")
+            result = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
+            score.append(cv2.minMaxLoc(result)[1])
+        if max(score) >= 0.78:
+            room = title_rooms[score.index(max(score))]
+            if room == "central":
+                logger.debug("控制中枢")
+            elif room == "dormitory":
+                digit = cropimg(img, ((174, 24), (195, 54)))
+                digit = self.detect_room_number(digit)
+                if digit == 4:
+                    logger.debug("宿舍B401")
+                else:
+                    logger.debug(f"宿舍B{digit}04")
+                return f"dormitory_{digit}"
+            elif room == "meeting":
+                logger.debug("会客室1F02")
+            elif room == "recycle":
+                logger.debug("回收站")
+            else:
+                logger.debug("办公室")
+            return room
+
+        colored_room = self.detect_room_type()
         if colored_room in ["制造站", "贸易站", "发电站"]:
             digit_1 = cropimg(img, ((211, 24), (232, 54)))
             digit_2 = cropimg(img, ((253, 24), (274, 54)))
@@ -1271,33 +1298,7 @@ class BaseMixin:
         elif colored_room == "加工站":
             logger.debug("加工站B105")
             return "factory"
-        white_room = ["central", "dormitory", "meeting", "contact", "recycle"]
-        score = []
-        for room in white_room:
-            tpl = loadres(f"room/{room}")
-            result = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-            score.append(max_val)
-        if max(score) < 0.78:
-            return ""
-        room = white_room[score.index(max(score))]
-        if room == "central":
-            logger.debug("控制中枢")
-        elif room == "dormitory":
-            digit = cropimg(img, ((174, 24), (195, 54)))
-            digit = self.detect_room_number(digit)
-            if digit == 4:
-                logger.debug("宿舍B401")
-            else:
-                logger.debug(f"宿舍B{digit}04")
-            return f"dormitory_{digit}"
-        elif room == "meeting":
-            logger.debug("会客室1F02")
-        elif room == "recycle":
-            logger.debug("回收站")
-        else:
-            logger.debug("办公室")
-        return room
+        return ""
 
     def adjust_room(self, _room):
         """只返回当前画面可点击的矩形；拖动后交由下一次尝试重新定位。"""

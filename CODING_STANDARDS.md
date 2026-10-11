@@ -106,6 +106,7 @@
 - **[INV-UI-02] Recovery Policy Binding**: Advanced recovery parameters must bidirectionally bind to backend defaults without local shadow overrides.
 
 ### 2.3 Vision & Recognition
+- **[INV-REC-11] Facility Title Priority**: A positively matched facility title on the current Capture Frame takes precedence over icon color, including during entry animation; unknown titles retain icon recognition and bounded room-entry recovery.
 - **[INV-REC-10] Released Tail Coordinates**: A held selection frame with a blank right tail never supplies click coordinates or stability evidence; selection uses position-stable post-release observations without replaying the swipe.
 - **[INV-REC-09] Training Name Decoration**: Training name recognition preserves complete operator names with the user-configured Special Focus marker, including overlapping decoration, and retains the existing unknown-name matching threshold.
 - **[INV-RES-01] Template Glyph Coverage**: Resource generation verifies actual font character maps, expands subsets only from the matching game font while preserving existing glyphs and metrics, and rejects unavailable source characters before changing font or charset files.
