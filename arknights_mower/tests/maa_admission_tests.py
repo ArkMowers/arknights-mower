@@ -128,6 +128,60 @@ def test_failed_atomic_write_preserves_existing_navigation(desktop, monkeypatch)
 
 
 @pytest.fixture
+def android(desktop, monkeypatch):
+    monkeypatch.setenv("MOWER_ANDROID", "1")
+    package = ModuleType("mower_android")
+    package.__path__ = []
+    maa = ModuleType("mower_android.maa")
+    maa.Asst = desktop.asst
+    bridge = ModuleType("mower_android.bridge")
+    bridge.Bridge = Mock()
+    bridge.Bridge.return_value.call.return_value = True
+    for name, value in (
+        ("mower_android", package),
+        ("mower_android.maa", maa),
+        ("mower_android.bridge", bridge),
+    ):
+        monkeypatch.setitem(sys.modules, name, value)
+    desktop.bridge = bridge.Bridge.return_value
+    return desktop
+
+
+def test_android_downloads_and_loads_navigation_before_connect(android):
+    events = []
+    base_schedule.requests.get.side_effect = lambda *a, **kw: (
+        events.append("download") or android.response
+    )
+    android.bridge.call.side_effect = lambda *a, **kw: events.append("load") or True
+    android.native.connect.side_effect = lambda: events.append("connect") or True
+    android.scheduler.initialize_maa()
+    assert events == ["download", "load", "connect"]
+    android.bridge.call.assert_called_once_with(
+        "maa_navigation", tasks={"YW-8": {"algorithm": "JustReturn"}}
+    )
+    android.asst.load.assert_not_called()
+
+
+def test_android_load_failure_prevents_task_connection(android):
+    android.bridge.call.return_value = False
+    with pytest.raises(maa_backup.MaaCallError, match="资源加载失败"):
+        android.scheduler.initialize_maa()
+    android.native.connect.assert_not_called()
+    android.native.append_task.assert_not_called()
+
+
+def test_android_invalid_download_loads_previous_cached_navigation(android):
+    cached = android.root / "cache/resource/tasks.json"
+    cached.parent.mkdir(parents=True)
+    cached.write_text('{"OLD": {"algorithm": "JustReturn"}}')
+    android.response.content = b"invalid"
+    android.scheduler.initialize_maa()
+    android.bridge.call.assert_called_once_with(
+        "maa_navigation", tasks={"OLD": {"algorithm": "JustReturn"}}
+    )
+
+
+@pytest.fixture
 def run(monkeypatch, tmp_path):
     monkeypatch.setenv("MOWER_ANDROID", "0")
     conf = Conf(
@@ -232,3 +286,11 @@ def test_accepted_plan_keeps_both_stages_and_records_execution(run):
     assert run.scheduler.stages == ["Annihilation", "YW-8"]
     assert run.scheduler.last_execution["maa"] is not None
     run.scheduler.rest_until_next_task.assert_called_once()
+
+
+def test_android_old_host_requires_apk_update(android):
+    android.bridge.call.side_effect = RuntimeError("Unknown MAA operation")
+    with pytest.raises(maa_backup.MaaCallError, match="请更新 APK"):
+        android.scheduler.initialize_maa()
+    android.native.connect.assert_not_called()
+    android.native.append_task.assert_not_called()

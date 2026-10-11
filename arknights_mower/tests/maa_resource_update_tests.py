@@ -139,6 +139,28 @@ class TestMaaResourceVersion(unittest.TestCase):
         self.assertTrue(release.available)
         self.assertEqual(release.size, 123)
 
+    def test_android_uses_the_same_maa_resource_service(self):
+        session = Mock()
+        session.get.return_value = _JsonResponse(
+            {
+                "code": 0,
+                "data": {
+                    "version_name": "2026-09-04 01:07:54.000",
+                    "url": "https://example.test/resource.zip",
+                },
+            }
+        )
+        with patch.dict("os.environ", {"MOWER_ANDROID": "1"}):
+            release = mru.get_mirrorchyan_resource_release(
+                "fixture-token",
+                current_version="2026-09-03 01:00:00.000",
+                session=session,
+            )
+        self.assertTrue(release.available)
+        self.assertEqual(session.get.call_args.args[0], mru.MIRRORCHYAN_RESOURCE_API)
+        self.assertEqual(session.get.call_args.kwargs["params"]["cdk"], "fixture-token")
+        self.assertNotIn("os", session.get.call_args.kwargs["params"])
+
     def test_mirrorchyan_error_does_not_echo_token(self):
         token = "fixture-sensitive-token"
         session = Mock()

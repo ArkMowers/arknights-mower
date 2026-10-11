@@ -13,10 +13,14 @@
     "arknights_mower.utils.maa_backup.MaaCallError",
     "arknights_mower.utils.maa_backup.VerifiedAsst",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.initialize_maa",
-    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.maa_plan_solver"
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.maa_plan_solver",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.update_maa_navigation"
   ],
   "test_suites": [
     "arknights_mower/tests/maa_admission_tests.py",
-    "arknights_mower/tests/maa_backup_tests.py"
+    "arknights_mower/tests/maa_backup_tests.py",
+    "arknights_mower/tests/maa_resource_update_tests.py",
+    "arknights_mower/tests/maa_update_route_tests.py",
+    "ui/src/components/MaaBasic.test.js"
   ]
 }
