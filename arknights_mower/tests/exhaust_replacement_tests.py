@@ -447,6 +447,8 @@ def test_unfinished_group_member_still_requires_exhaust_planning(solver, member_
 
 def test_exhaust_off_without_workable_replacements_preserves_occupancy(solver):
     data = solver.op_data
+    data.operators["机械师"].replacement.append("红")
+    data.add(Operator("红", ""))
     for op in data.operators.values():
         op.mood, op.time_stamp = 0, datetime.now()
     before = {
@@ -460,6 +462,19 @@ def test_exhaust_off_without_workable_replacements_preserves_occupancy(solver):
         name: (op.current_room, op.current_index) for name, op in data.operators.items()
     } == before
     base_schedule.send_message.assert_called_once()
+
+
+def test_exhaust_coordinates_only_cover_even_at_zero_mood(solver):
+    solver.op_data.operators["槐琥"].mood = 0
+
+    solver.overtake_room()
+
+    assert solver.tasks[0].plan == {"room_2_2": ["引星棘刺"]}
+    task = finish_support(solver)
+    assert task.type == TaskTypes.SHIFT_OFF
+    assert task.plan["room_3_3"] == ["槐琥"]
+    assert "机械师" in task.plan["dormitory_1"]
+    solver.enter_room.assert_not_called()
 
 
 def test_alternate_does_not_take_another_exhausted_members_cover(solver):

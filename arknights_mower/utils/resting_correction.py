@@ -132,11 +132,12 @@ def reconsider_low_mood_replacements(op_data, fix_plan, is_busy):
             if current not in replacements or current in TRADE_ORDER_AGENTS:
                 continue
             cover = op_data.operators.get(current)
-            if cover is None or not op_data.replacement_exhausted(current, now):
-                # 当前替班只要还有可工作心情，就继续使用；后面的候补即使
+            if cover is None or not op_data.replacement_exhausted(
+                current, now, operator=owner
+            ):
+                # 当前替班未被心情规则排除时继续使用；后面的候补即使
                 # 心情更高，也不能越过排班表里已经配置好的效率顺序。
                 continue
-            owner = op_data.operators.get(slot.agent)
             if owner is None:
                 continue
             for name in op_data.replacement_candidates(owner):
@@ -157,7 +158,7 @@ def reconsider_low_mood_replacements(op_data, fix_plan, is_busy):
                     and candidate.current_mood(now) < candidate.upper_limit
                     or op_data.is_dorm_replacement(name)
                     or is_busy(name)
-                    or op_data.replacement_exhausted(name, now)
+                    or op_data.replacement_exhausted(name, now, operator=owner)
                 ):
                     continue
                 fix_plan.setdefault(room, ["Current"] * len(slots))[index] = name
@@ -202,7 +203,7 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
                     or candidate in reserved | resting
                     or candidate in TRADE_ORDER_AGENTS
                     or op_data.is_dorm_replacement(candidate)
-                    or op_data.replacement_exhausted(candidate)
+                    or op_data.replacement_exhausted(candidate, operator=op)
                     or not _can_move(cover, room, requested, resting)
                     or is_busy(candidate)
                 ):
@@ -424,8 +425,7 @@ def preserve_backup_replacements(
                     not op_data.is_same_group_dorm_replacement(owner, candidate)
                     or source == (cover.room, cover.index)
                 )
-                or not owner.room.startswith("dorm")
-                and op_data.replacement_exhausted(candidate)
+                or op_data.replacement_exhausted(candidate, operator=owner)
                 or cover.rest_in_full
                 and cover.is_resting()
                 and cover.current_mood() < cover.upper_limit

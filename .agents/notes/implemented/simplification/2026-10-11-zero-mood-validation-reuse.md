@@ -19,6 +19,14 @@ Validation reuses successful effective schedules only within one invocation. Its
 
 ## Verification
 
+### Working-cover admission repair
+
+Runtime floor filtering previously rejected a sole exhausted cover and ignored explicit zero-mood work configuration. This prevented complete groups from resting even when their configured covers were permitted to work at zero mood. [INV-SCHED-14] and [INV-SCHED-46] cover the repair; [INV-SCHED-25] retains shared-binding compatibility. The existing `Operators.replacement_exhausted` predicate receives the target primary so its callers share candidate-count and dormitory exemptions. It reads zero-mood membership from the effective configuration, including when an older runtime operator flag differs. No persisted field or domain concept changes. The same active triplet owns this extension; no lifecycle transition is required.
+
+Focused regressions cover sole ordinary covers with trade order markers, multiple exhausted choices, configured priority, backup additions and removals, shared compatible and incompatible bindings, working and reserved candidates, mastery protection, exhausted-shift coordination, correction and rescue projections. Older exhaustion-blocking fixtures use multiple ordinary candidates so they continue to test rejection outside the sole-cover exemption.
+
+The admission and rescue batch passes 740 tests; adjacent scheduler, backup validation and governance suites pass 398 tests; shared rescue-fixture consumers pass 225 tests. After adding explicit backup-list addition coverage, the matching suite passes 24 tests. The batches include repeated cases and one existing fixture warning. Four initial reproductions fail before the repair and pass afterward. Ruff checking and formatting, whitespace checks and all three governance gates pass; two archived missing-suite warnings remain. Standards and requirement review confirms shared predicate use, effective configuration, independent admission checks and unchanged domain definitions. Live deployment remains unverified.
+
 Focused zero-mood, backup validation, multi-group and dormitory group tests cover exemptions, conflicting merged configurations, isolation, budgets and result reuse. Source plans and actual occupancy remain isolated. `ui/src/stores/planValidation.test.js` covers save ordering, duplicate clicks during saving and validation, and retry after either operation fails; its harness supplies the page’s transient validation state. The subsystem contract owns the active behavioral specification.
 
 ## Standards Findings

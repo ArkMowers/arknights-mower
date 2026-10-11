@@ -69,9 +69,7 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
                 or state.is_same_group_dorm_replacement(target, name)
             )
             and not state.is_dorm_replacement(name)
-            and (
-                target.room.startswith("dorm") or not state.replacement_exhausted(name)
-            )
+            and not state.replacement_exhausted(name, operator=target)
             and not is_busy(name)
         )
 

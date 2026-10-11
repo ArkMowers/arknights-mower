@@ -4372,9 +4372,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     )
                 ):
                     return False
-                if not x.room.startswith("dorm") and self.op_data.replacement_exhausted(
-                    obj
-                ):
+                if self.op_data.replacement_exhausted(obj, operator=x):
                     return False
                 return (
                     obj not in TRADE_ORDER_AGENTS

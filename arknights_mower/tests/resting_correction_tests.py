@@ -317,6 +317,23 @@ def test_correction_prefers_cached_healthy_cover(solver):
     solver.enter_room.assert_not_called()
 
 
+@pytest.mark.parametrize("zero_mood_work", [False, True])
+def test_correction_preserves_rest_with_exempt_zero_mood_cover(solver, zero_mood_work):
+    data = solver.op_data
+    owner = data.operators["斯卡蒂"]
+    owner.replacement = ["多萝西", "砾"] if zero_mood_work else ["多萝西"]
+    data.operators["多萝西"].current_room = ""
+    data.operators["多萝西"].mood = 0
+    if zero_mood_work:
+        data.config.workaholic = ["多萝西"]
+    plan = {"room_3_3": ["斯卡蒂", "Current"]}
+
+    prefer_resting_replacements(data, plan, MagicMock(return_value=False))
+
+    assert plan == {"room_3_3": ["多萝西", "Current"]}
+    assert data.operators["歌蕾蒂娅"].is_resting()
+
+
 @pytest.mark.parametrize(
     "moods,expected",
     [
@@ -404,6 +421,17 @@ def test_redface_legal_cover_rechecks_other_configured_replacements(solver):
     assert cover.current_room == "central"  # planning never directly moves an operator
     assert data.operators["歌蕾蒂娅"].is_resting()
     solver.enter_room.assert_not_called()
+
+
+def test_zero_mood_working_cover_is_not_rotated_for_mood(solver):
+    data, cover, _ = _redface_cover_scenario(solver)
+    data.config.workaholic = [cover.name]
+    plan = {}
+
+    reconsider_low_mood_replacements(data, plan, MagicMock(return_value=False))
+
+    assert plan == {}
+    assert cover.current_room == "central"
 
 
 @pytest.mark.parametrize(

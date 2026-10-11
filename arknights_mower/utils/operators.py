@@ -2117,8 +2117,27 @@ class Operators:
             )
         return False
 
-    def replacement_exhausted(self, name, now=None):
-        """仅对有效实测心情判断工作替班是否已到个人下限。"""
+    def replacement_exhausted(self, name, now=None, *, operator=None):
+        """按有效排班判断替班心情；唯一普通替班与零心情工作不被下限拦截。"""
+        if self.config.is_workaholic(name):
+            return False
+        if operator is not None:
+            if operator.room.startswith("dorm"):
+                return False
+            replacements = (
+                self.shared_replacements(
+                    operator, self.resting_binding_groups(operator)
+                )
+                if operator.multi_group
+                else operator.replacement
+            )
+            ordinary = {
+                cover
+                for cover in replacements
+                if cover != "Free" and cover not in TRADE_ORDER_AGENTS
+            }
+            if ordinary == {name}:
+                return False
         candidate = self.operators.get(name)
         return (
             candidate is not None
@@ -2128,7 +2147,7 @@ class Operators:
         )
 
     def replacement_candidates(self, operator):
-        """工作替班按配置顺序取用；已用尽候补稳定移到末尾。"""
+        """工作替班按配置顺序取用；未豁免的耗尽候补稳定移到末尾。"""
         replacements = (
             self.shared_replacements(operator, self.resting_binding_groups(operator))
             if operator.multi_group
@@ -2144,10 +2163,10 @@ class Operators:
             now = datetime.now()
 
             def exhausted_last(name):
-                return (self.replacement_exhausted(name, now),)
+                return (self.replacement_exhausted(name, now, operator=operator),)
 
             # 候补列表本身就是效率优先级；仍可工作的候补严格保持配置顺序。
-            # 真正到个人下限的候补只移到列表末尾，不从候补集合中删除，
+            # 未豁免且到个人下限的候补只移到列表末尾，不从候补集合中删除，
             # 避免其他分床/预留逻辑失去对该干员的完整候补关系。
             return sorted(candidates, key=exhausted_last)
         if (
