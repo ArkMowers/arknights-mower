@@ -31,6 +31,10 @@
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._complete_group_shift",
     "arknights_mower.utils.operators.Operators.is_effective_free_slot",
     "arknights_mower.utils.operators.Operators.is_dynamic_dorm_position",
+    "arknights_mower.utils.operators.Operators.arrangement_group_transitions",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._execution_group_transitions",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._cancel_dorm_recovery_targets",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.get_agent_from_room",
     "arknights_mower.utils.operators.Operators.is_auto_free_dorm_operator",
     "arknights_mower.solvers.base_schedule.GroupShiftTargetConflict",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._check_group_shift_targets"
@@ -63,6 +67,7 @@
     "arknights_mower/tests/backup_condition_tests.py",
     "arknights_mower/tests/local_backup_replay_tests.py",
     "ui/src/stores/planValidation.test.js",
-    "arknights_mower/tests/group_shift_confirmation_tests.py"
+    "arknights_mower/tests/group_shift_confirmation_tests.py",
+    "arknights_mower/tests/pending_dorm_execution_tests.py"
   ]
 }

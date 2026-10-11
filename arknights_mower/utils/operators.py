@@ -1066,8 +1066,8 @@ class Operators:
                 self.groups[group].append(name)
         op.group, op.replacement = group, replacements
 
-    def arrangement_group_transitions(self, plan):
-        """Only explicit arrangements of ordinary fixed members change group state."""
+    def arrangement_group_transitions(self, plan, *, group_transitions=None):
+        """Resolve explicit fixed-worker targets over pending state without committing it."""
         transitions = {}
         for room, names in plan.items():
             for index, name in enumerate(names):
@@ -1081,7 +1081,7 @@ class Operators:
                     transitions[op.group] = False
                 elif name in op.replacement:
                     transitions.setdefault(op.group, True)
-        return transitions
+        return {**(group_transitions or {}), **transitions}
 
     def resting_binding_groups(self, operator, transitions=None):
         transitions = transitions or {}
@@ -1478,6 +1478,8 @@ class Operators:
         update_time=False,
         related_operator=None,
         preserve_depletion_rate=False,
+        *,
+        group_transitions=None,
     ):
         """更新对象的详细信息，并记录到SQLite数据库
         参数:
@@ -1497,7 +1499,9 @@ class Operators:
         ):
             self.dorm_mood_estimates.pop(name, None)
         retained_time = None
-        _, previous_bed = self.get_dorm_by_name(name)
+        _, previous_bed = self.get_dorm_by_name(
+            name, group_transitions=group_transitions
+        )
         if (
             previous_bed is not None
             and previous_bed.name == name
@@ -1539,7 +1543,7 @@ class Operators:
             if not preserve_depletion_rate:
                 agent.depletion_rate = 0
         if from_dorm:
-            idx, dorm = self.get_dorm_by_name(name)
+            idx, dorm = self.get_dorm_by_name(name, group_transitions=group_transitions)
             if dorm and dorm.name == name:
                 dorm.reset()
         if current_room not in self.true_exhaust_room:
@@ -1580,7 +1584,7 @@ class Operators:
             agent.clear_dorm_recovery()
         # 如果是高效组且没有记录时间，则返还index
         if to_dorm:
-            idx, dorm = self.get_dorm_by_name(name)
+            idx, dorm = self.get_dorm_by_name(name, group_transitions=group_transitions)
             if dorm:
                 dorm.name = name
                 dorm.time = retained_time
@@ -1592,14 +1596,16 @@ class Operators:
         ):
             return current_index
 
-    def refresh_dorm_time(self, room, index, agent):
+    def refresh_dorm_time(self, room, index, agent, *, group_transitions=None):
         _name = agent["agent"]
         # 此方法也会作为无界函数绑定到轻量读房测试对象，避免依赖对象上存在
         # all_dorms 方法；旧对象没有 group_dorm 时按普通 Free 床位处理。
         dorms = [*self.dorm, *getattr(self, "group_dorm", [])]
         for dorm in dorms:
             if dorm.position[0] == room and dorm.position[1] == index:
-                if not Operators.is_recovery_dorm(self, dorm, _name):
+                if not Operators.is_recovery_dorm(
+                    self, dorm, _name, group_transitions=group_transitions
+                ):
                     continue
                 if (dorm.name == _name) and dorm.time is not None:
                     break
@@ -1626,10 +1632,12 @@ class Operators:
             logger.debug(f"{_name} 真实用尽时间：{_agent.exhaust_time}")
             return
 
-    def correct_dorm(self):
+    def correct_dorm(self, *, group_transitions=None):
         for dorm in self.all_dorms():
             if dorm.name != "" and dorm.name in self.operators.keys():
-                if not self.is_recovery_dorm(dorm, dorm.name):
+                if not self.is_recovery_dorm(
+                    dorm, dorm.name, group_transitions=group_transitions
+                ):
                     dorm.reset()
                     continue
                 op = self.operators[dorm.name]
@@ -1658,26 +1666,27 @@ class Operators:
                 return agent.name
         return None
 
-    def get_refresh_index(self, room, plan):
+    def get_refresh_index(self, room, plan, *, group_transitions=None):
         """动态恢复位置共用计时读取，不受满心情清退开关影响。"""
         if not room.startswith("dorm"):
             return []
-        recovery_positions = {
-            bed.position[1]: bed for bed in self.all_dorms() if bed.position[0] == room
-        }
+        recovery_beds = [bed for bed in self.all_dorms() if bed.position[0] == room]
         ret = []
         for i, name in enumerate(plan):
-            if i not in recovery_positions:
-                continue
             if name == "Current":
                 current = self.get_current_operator(room, i)
                 name = current.name if current is not None else None
-            bed = recovery_positions[i]
-            if self.is_recovery_dorm(bed, name):
+            if any(
+                bed.position[1] == i
+                and self.is_recovery_dorm(
+                    bed, name, group_transitions=group_transitions
+                )
+                for bed in recovery_beds
+            ):
                 ret.append(i)
         return ret
 
-    def get_dorm_by_name(self, name):
+    def get_dorm_by_name(self, name, *, group_transitions=None):
         if name not in self.operators:
             return None, None
         _op = self.operators[name]
@@ -1686,7 +1695,9 @@ class Operators:
             if (
                 dorm.position[0] == _op.current_room
                 and dorm.position[1] == _op.current_index
-                and self.is_recovery_dorm(dorm, name)
+                and self.is_recovery_dorm(
+                    dorm, name, group_transitions=group_transitions
+                )
             ):
                 logger.debug(idx)
                 logger.debug(dorm)
@@ -2048,11 +2059,13 @@ class Operators:
             None,
         )
 
-    def is_recovery_dorm(self, dorm, name):
+    def is_recovery_dorm(self, dorm, name, *, group_transitions=None):
         """动态位置只跟踪实际休息者，不跟踪回归的固定宿舍成员。"""
         if dorm in self.dorm:
             room, index = dorm.position
-            return self.is_dynamic_dorm_position(room, index, name)
+            return self.is_dynamic_dorm_position(
+                room, index, name, group_transitions=group_transitions
+            )
         if dorm in getattr(self, "group_dorm", []):
             room, index = dorm.position
             slots = self.plan.get(room, [])
@@ -2060,12 +2073,24 @@ class Operators:
                 return False
             resident = self.operators.get(slots[index].agent)
             cover = self.operators.get(name)
-            return (
-                resident is not None
-                and cover is not None
-                and not self.is_auto_free_dorm_operator(resident)
-                and not cover.room.startswith("dorm")
-                and self.is_same_group_dorm_replacement(resident, name)
+            if (
+                resident is None
+                or cover is None
+                or cover.room.startswith("dorm")
+                or self.is_auto_free_dorm_operator(
+                    resident, group_transitions=group_transitions
+                )
+            ):
+                return False
+            groups = (
+                self.resting_binding_groups(resident, group_transitions)
+                or [resident.group]
+                if resident.multi_group
+                else [resident.group]
+            )
+            return any(
+                self.is_same_group_dorm_replacement(resident, name, group)
+                for group in groups
             )
         return False
 
@@ -2239,8 +2264,9 @@ class Operators:
             return True
         plan = plan or {}
         # 已执行的工作房间会移出 plan；任务仍持有尚待读房确认的完整换班状态。
-        transitions = dict(group_transitions or {})
-        transitions.update(self.arrangement_group_transitions(plan))
+        transitions = self.arrangement_group_transitions(
+            plan, group_transitions=group_transitions
+        )
         transitions.update({group: True for group in active_groups or ()})
         active = {group for group, resting in transitions.items() if resting}
         inactive = {group for group, resting in transitions.items() if not resting}
@@ -2348,8 +2374,9 @@ class Operators:
         group_transitions=None,
     ):
         """有效动态床位按共享恢复层级决定是否允许接管。"""
-        transitions = dict(group_transitions or {})
-        transitions.update(self.arrangement_group_transitions(plan or {}))
+        transitions = self.arrangement_group_transitions(
+            plan or {}, group_transitions=group_transitions
+        )
         transitions.update({group: True for group in active_groups or ()})
         active = {group for group, resting in transitions.items() if resting}
         inactive = {group for group, resting in transitions.items() if not resting}
@@ -2373,7 +2400,9 @@ class Operators:
         if (
             not name
             and (resident := self.get_current_operator(*dorm.position))
-            and self.is_recovery_dorm(dorm, resident.name)
+            and self.is_recovery_dorm(
+                dorm, resident.name, group_transitions=transitions
+            )
         ):
             name = resident.name
         if not name:

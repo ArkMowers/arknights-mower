@@ -375,8 +375,8 @@ def selection_solver(monkeypatch, residents=None):
         dorm_capacity_allows=lambda *args, **kwargs: True,
     )
     solver.op_data.add = lambda op: solver.op_data.operators.setdefault(op.name, op)
-    solver.op_data.arrangement_group_transitions = lambda plan: (
-        Operators.arrangement_group_transitions(solver.op_data, plan)
+    solver.op_data.arrangement_group_transitions = lambda plan, **kwargs: (
+        Operators.arrangement_group_transitions(solver.op_data, plan, **kwargs)
     )
     solver.last_room = ""
     solver.choose_error = set()
