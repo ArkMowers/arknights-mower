@@ -4,9 +4,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
-from queue import Queue
+from queue import Empty, Queue
 from unittest.mock import Mock, patch
 
 from arknights_mower.utils import log, path
@@ -17,9 +18,7 @@ class MultiProcessLogTestBase(unittest.TestCase):
     """每次测试隔离到临时 space，避免在仓库 log/ 下留下 runtime.log，并复位多进程句柄。"""
 
     def setUp(self):
-        if log.fhlr is not None:
-            log.fhlr.close()
-            log.fhlr = None
+        self._reset_file_handler()
         self._reset_screenshot_store()
         self._orig_space = path.global_space
         self._tmp = tempfile.mkdtemp()
@@ -30,13 +29,22 @@ class MultiProcessLogTestBase(unittest.TestCase):
             log.mp_listener.stop()
             log.mp_listener = None
         if log.mp_queue_handler is not None:
-            log.logger.removeHandler(log.mp_queue_handler)
+            # 与 bind_mp_queue 的挂载位置一致：上行 handler 在包级 logger 上。
+            logging.getLogger("arknights_mower").removeHandler(log.mp_queue_handler)
             log.mp_queue_handler = None
-        if log.fhlr is not None:
-            log.fhlr.close()
-            log.fhlr = None
+        self._reset_file_handler()
         self._reset_screenshot_store()
         path.global_space = self._orig_space
+
+    @staticmethod
+    def _reset_file_handler():
+        # fhlr 挂在包级 logger 上，只 close() 而不摘掉，后续测试 emit 时仍会写这条已关闭的流。
+        if log.fhlr is None:
+            return
+        for target in (log.logger, logging.getLogger("arknights_mower")):
+            target.removeHandler(log.fhlr)
+        log.fhlr.close()
+        log.fhlr = None
 
     @staticmethod
     def _reset_screenshot_store():
@@ -232,16 +240,25 @@ class ScreenshotStoreStartupTest(MultiProcessLogTestBase):
 
 
 class MultiProcessLoggingTest(MultiProcessLogTestBase):
-    def test_bind_mp_queue_adds_queue_handler_to_logger(self):
+    def test_bind_mp_queue_attaches_the_relay_to_the_package_logger(self):
         q = Queue()
         log.bind_mp_queue(q)
         self.assertIsNotNone(log.mp_queue_handler)
-        self.assertIn(log.mp_queue_handler, log.logger.handlers)
+        package_logger = logging.getLogger("arknights_mower")
+        self.assertIn(log.mp_queue_handler, package_logger.handlers)
+        self.assertNotIn(log.mp_queue_handler, log.logger.handlers)
+        # 子进程不调用 init_file_logging，等级必须在这里放开，否则 INFO/DEBUG 在进入
+        # 任何 handler 之前就被 root 的 WARNING 滤掉。
+        self.assertLessEqual(package_logger.getEffectiveLevel(), logging.DEBUG)
 
     def test_start_mp_listener_creates_file_handler(self):
         log.start_mp_listener(Queue())
         self.assertIsNotNone(log.mp_listener)
         self.assertIsNotNone(log.fhlr)
+
+    def test_start_mp_listener_relays_child_records_to_both_sinks(self):
+        log.start_mp_listener(Queue())
+        self.assertEqual(list(log.mp_listener.handlers), [log.fhlr, log.whlr])
 
     def test_bind_mp_queue_forwards_record_to_queue(self):
         # 子进程侧：bind 后 emit 的记录应被 QueueHandler 送进共享队列（不对本进程写文件）
@@ -250,3 +267,75 @@ class MultiProcessLoggingTest(MultiProcessLogTestBase):
         log.logger.info("forwarded-msg")
         record = q.get(timeout=2)
         self.assertEqual(record.getMessage(), "forwarded-msg")
+
+    def test_bind_mp_queue_forwards_records_from_any_module_logger(self):
+        # 共享 logger 之外的模块 logger 同样上行；第三方 logger 不在该命名空间下，不上行。
+        q = Queue()
+        log.bind_mp_queue(q)
+        module_logger = logging.getLogger("arknights_mower.utils.device.window")
+        module_logger.info("module-forwarded")
+        logging.getLogger("arknights_mower.utils.log").info("shared-forwarded")
+        logging.getLogger("urllib3").info("third-party-forwarded")
+        forwarded = {q.get(timeout=2).getMessage(), q.get(timeout=2).getMessage()}
+        self.assertEqual(forwarded, {"module-forwarded", "shared-forwarded"})
+        with self.assertRaises(Empty):
+            q.get(timeout=0.2)
+
+    def test_child_record_reaches_the_frontend_sink(self):
+        q = Queue()
+        log.start_mp_listener(q)
+        record = logging.LogRecord(
+            "arknights_mower.utils.window_shell",
+            logging.INFO,
+            __file__,
+            1,
+            "child-line",
+            (),
+            None,
+        )
+        with patch.object(log.config.log_queue, "put") as put:
+            q.put(record)
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline and not put.called:
+                time.sleep(0.02)
+        put.assert_called_once()
+        self.assertIn("child-line", put.call_args.args[0])
+
+
+class ModuleLoggerRoutingTest(MultiProcessLogTestBase):
+    """包级 handler 让命名空间下任意模块的记录各写一次，第三方 logger 不写。"""
+
+    def _runtime_log_text(self):
+        """等到 flush 哨兵落盘；文件 handler 与 listener 不同线程，只能有限等待。"""
+
+        def read():
+            runtime_log = Path(log.fhlr.baseFilename)
+            return (
+                runtime_log.read_text(encoding="utf8") if runtime_log.exists() else ""
+            )
+
+        text = ""
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            text = read()
+            if "probe-flush-line" in text:
+                break
+            time.sleep(0.02)
+        return text
+
+    def test_records_from_any_module_logger_land_in_runtime_log_once(self):
+        log.init_file_logging()
+        probe_logger = logging.getLogger("arknights_mower.utils.device.probe")
+        probe_logger.debug("probe-debug-line")
+        probe_logger.info("probe-info-line")
+        logging.getLogger("arknights_mower.utils.log").info("probe-flush-line")
+        text = self._runtime_log_text()
+        for line in ("probe-debug-line", "probe-info-line", "probe-flush-line"):
+            self.assertEqual(text.count(line), 1, f"{line} 应恰好写入一次")
+
+    def test_third_party_logger_is_not_written(self):
+        log.init_file_logging()
+        logging.getLogger("urllib3.probe").info("probe-third-party-line")
+        logging.getLogger("arknights_mower.utils.probe").info("probe-flush-line")
+        text = self._runtime_log_text()
+        self.assertNotIn("probe-third-party-line", text)
