@@ -78,6 +78,7 @@ Android core updates continue to require the official Android component package.
 
 - **[INV-MAA-07] Normal Long-Task Termination**: Roguelike, SSSCopilot and Reclamation completion or scheduler interruption never creates an error solely because `running()` returns false; core error callbacks and invocation exceptions retain their error reporting.
 - Long-task polling returns to the existing idle path after completion or scheduler interruption. Callback lines describe completion and stop; polling adds no generic interruption error or ERROR notification. The [normal termination decision](../../.agents/notes/implemented/simplification/2026-10-09-maa-normal-termination.md) records the removed crash inference.
+- **[INV-MAA-09] Weekday-Independent Medicine**: MAA Fight passes the configured expiry threshold independently of weekday, local potion use retains positive-threshold and expiring-potion checks, and retired weekend-only keys never alter either rule or persist on save. The [expiry threshold decision](../../.agents/notes/implemented/simplification/2026-10-11-medicine-expiry-threshold.md) records the removed setting and native recognition boundary.
 
 - **[INV-MAA-05] Local Inventory Execution**: Workshop execution and inventory stage selection use persisted local stock without fetching Skland; accepted MAA cumulative drops update that stock once per task, and configured stage caps stop only the reached Fight task while preserving automatic series and subsequent tasks.
 

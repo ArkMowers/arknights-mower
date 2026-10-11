@@ -191,7 +191,6 @@ export const useConfigStore = defineStore('config', () => {
   const resource_update_auto_update = ref(false)
   const notification_level = ref('INFO')
   const waiting_scene = ref({})
-  const expiring_medicine_on_weekend = ref(false)
   const maa_mail = ref(false)
   const maa_recruit = ref(false)
   const maa_orundum = ref(false)
@@ -643,7 +642,6 @@ export const useConfigStore = defineStore('config', () => {
       resource_update_auto_update.value = response.data.resource_update?.auto_update ?? false
       notification_level.value = response.data.notification_level
       waiting_scene.value = response.data.waiting_scene
-      expiring_medicine_on_weekend.value = response.data.expiring_medicine_on_weekend
       maa_mail.value = response.data.maa_mail
       maa_recruit.value = response.data.maa_recruit
       maa_orundum.value = response.data.maa_orundum
@@ -820,7 +818,6 @@ export const useConfigStore = defineStore('config', () => {
       },
       notification_level: notification_level.value,
       waiting_scene: waiting_scene.value,
-      expiring_medicine_on_weekend: expiring_medicine_on_weekend.value,
       maa_mail: maa_mail.value,
       maa_recruit: maa_recruit.value,
       maa_orundum: maa_orundum.value,
@@ -1161,7 +1158,6 @@ export const useConfigStore = defineStore('config', () => {
     resource_update_auto_update,
     notification_level,
     waiting_scene,
-    expiring_medicine_on_weekend,
     maa_mail,
     maa_recruit,
     maa_orundum,

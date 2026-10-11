@@ -14,6 +14,29 @@ afterEach(() => {
 })
 
 describe('workshop config autosave', () => {
+  it('saves the medicine expiry threshold without retired weekend settings', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    expect(store.medicine_expire_days).toBe(0)
+    expect(store).not.toHaveProperty('expiring_medicine_on_weekend')
+    expect(store.build_config()).not.toHaveProperty('expiring_medicine_on_weekend')
+    expect(store.build_config()).not.toHaveProperty('exipring_medicine_on_weekend')
+    axios.patch.mockResolvedValue({ data: {} })
+    loaded.value = true
+    await nextTick()
+    await store.flush_config_saves()
+    store.medicine_expire_days = 3
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+    expect(axios.patch.mock.calls[0][1]).toEqual({ medicine_expire_days: 3 })
+    loaded.value = false
+  })
+
   it('saves the automatic rescue checkbox independently', async () => {
     pinia = createPinia()
     setActivePinia(pinia)

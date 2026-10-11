@@ -27,7 +27,6 @@ const {
   stage_plan_enable,
   stage_plan_runner,
   medicine_expire_days,
-  expiring_medicine_on_weekend,
   maa_report_to_yituliu,
   maa_yituliu_id,
   maa_report_to_penguin,
@@ -345,16 +344,7 @@ function cancelCopyDialogLongPress() {
                 天才用）。
               </div>
               <div>填 0 表示不服用（默认）。</div>
-              <div>勾选「只在周末服用过期的理智药」后，只在周末服用，平时不用。</div>
             </help-text>
-          </n-flex>
-          <n-flex>
-            <n-checkbox
-              v-model:checked="expiring_medicine_on_weekend"
-              :disabled="medicine_expire_days <= 0"
-            >
-              只在周末服用过期的理智药
-            </n-checkbox>
           </n-flex>
           <n-flex align="center" v-if="stage_plan_runner === 'maa'">
             <n-checkbox v-model:checked="maa_report_to_penguin">上报至企鹅物流</n-checkbox>

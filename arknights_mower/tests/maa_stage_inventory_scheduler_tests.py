@@ -17,7 +17,6 @@ def _conf(
     enabled=True,
     package_type=1,
     medicine_expire_days=0,
-    expiring_medicine_on_weekend=False,
     maa_report_to_yituliu=False,
     maa_yituliu_id="",
     maa_report_to_penguin=False,
@@ -42,7 +41,6 @@ def _conf(
             for name in ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
         ],
         medicine_expire_days=medicine_expire_days,
-        expiring_medicine_on_weekend=expiring_medicine_on_weekend,
         maa_eat_stone=False,
         maa_report_to_yituliu=maa_report_to_yituliu,
         maa_yituliu_id=maa_yituliu_id,
@@ -100,35 +98,23 @@ class MaaFightMedicineExpireDaysTests(unittest.TestCase):
         return solver.MAA.append_task.call_args
 
     def test_disabled_medicine_sends_zero_and_no_legacy_key(self):
-        # 默认不使用：medicine_expire_days 为 0，且不带已弃用的 expiring_medicine
-        call = self._append_fight(medicine_expire_days=0, weekday=0)
-        task_type, task_config = call.args
-        self.assertEqual(task_type, "Fight")
-        self.assertEqual(task_config["medicine_expire_days"], 0)
-        self.assertNotIn("expiring_medicine", task_config)
+        for days in (0, -1):
+            with self.subTest(days=days):
+                call = self._append_fight(medicine_expire_days=days, weekday=0)
+                task_type, task_config = call.args
+                self.assertEqual(task_type, "Fight")
+                self.assertEqual(task_config["medicine_expire_days"], 0)
+                self.assertNotIn("expiring_medicine", task_config)
 
     def test_configured_medicine_sends_days_regardless_of_weekday(self):
-        # 未勾选周末限定：任何一天都下发配置的天数
-        for weekday in (0, 6):
-            call = self._append_fight(medicine_expire_days=3, weekday=weekday)
-            task_config = call.args[1]
-            self.assertEqual(task_config["medicine_expire_days"], 3)
-
-    def test_weekend_only_weekday_sends_zero(self):
-        # 勾选周末限定：非周末传 0
-        call = self._append_fight(
-            medicine_expire_days=3, expiring_medicine_on_weekend=True, weekday=0
-        )
-        task_config = call.args[1]
-        self.assertEqual(task_config["medicine_expire_days"], 0)
-
-    def test_weekend_only_weekend_sends_configured_days(self):
-        # 勾选周末限定：周末传配置的天数
-        call = self._append_fight(
-            medicine_expire_days=3, expiring_medicine_on_weekend=True, weekday=6
-        )
-        task_config = call.args[1]
-        self.assertEqual(task_config["medicine_expire_days"], 3)
+        for days in (1, 2, 3):
+            for weekday in range(7):
+                with self.subTest(days=days, weekday=weekday):
+                    call = self._append_fight(
+                        medicine_expire_days=days, weekday=weekday
+                    )
+                    task_config = call.args[1]
+                    self.assertEqual(task_config["medicine_expire_days"], days)
 
 
 class MaaFightYituliuTests(unittest.TestCase):

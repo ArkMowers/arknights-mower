@@ -172,8 +172,7 @@ def load_conf():
         save_conf()
         return
     with conf_path.open("r", encoding="utf-8") as f:
-        # 旧键 → 新键的兼容（exipring_medicine_on_weekend）由 Conf 校验层统一处理，
-        # 读文件与 /conf POST 等所有构造路径都走同一套迁移。
+        # 读文件与配置提交均由 Conf 校验层迁移旧字段。
         raw = yaml.load(f, Loader=CoreLoader) or {}
     _legacy_dorm_order = str(raw.get("dorm_order", "") or "")
     _retired_dorm_conf = bool(

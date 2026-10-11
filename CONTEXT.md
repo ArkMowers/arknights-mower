@@ -174,3 +174,6 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 - **Code Mapping**: [`BaseSchedulerSolver.plan_fia`](arknights_mower/solvers/base_schedule.py)
 
 - During automatic rescue, when all configured Fiammetta charging targets have full mood, eligible normal primary operators without special mood caps or reservation conflicts may be selected in ascending mood order under existing charging rules.
+
+### Medicine Expiry Threshold
+- **Definition**: `medicine_expire_days` controls expiring sanity potion use independently of weekday. MAA Fight receives the configured remaining-day threshold; local operation enables its existing expiring-potion recognition when the threshold is positive. Zero disables expiring-potion use. Retired weekend-only settings have no effect.

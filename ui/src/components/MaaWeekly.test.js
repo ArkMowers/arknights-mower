@@ -113,7 +113,6 @@ describe('周计划芯片按钮排序联动', () => {
         'stage_plan_enable',
         'stage_plan_runner',
         'medicine_expire_days',
-        'expiring_medicine_on_weekend',
         'maa_report_to_yituliu',
         'maa_yituliu_id',
         'maa_penguin_id',
@@ -202,7 +201,9 @@ describe('周计划芯片按钮排序联动', () => {
       'mower-input-number',
       defineComponent(() => () => h('div'))
     )
-    await renderToString(app)
+    const html = await renderToString(app)
+    expect(html).toContain('使用还剩')
+    expect(html).not.toContain('只在周末')
     expect(state.tableProps).toBeNull()
     state.applyChips()
     expect(state.editor.setupState.tableStageOrder).toEqual([
