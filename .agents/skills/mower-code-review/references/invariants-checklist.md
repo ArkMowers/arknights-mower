@@ -88,6 +88,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.2 Base Infrastructure & Scheduling Domain
 
+- [ ] **[INV-SCHED-48] Trust Rotation Isolation**: Are protected incumbents retained, same-kind occupants excluded, cross-kind overlap permitted, ordinary work/rest state preserved, selections verified, and saturated candidates handled without clearing assignments?
 - [ ] **[INV-SCHED-47] Consecutive Mastery Halving**: Eligible same-operator skills remain adjacent in ascending unstarted mastery order and admit training only when their joint remaining costs are craftable while preparing only the current skill; final-stage reducer handoffs require a same-operator successor above basic skill level, inherited halving requires observed continuous assistant work, and confirmed Control Center staffing changes refresh countdowns with a ten-minute default handoff margin.
 - [ ] **[INV-SCHED-46] Zero-Mood Replacement Exemption**: Does replacement omission depend on configured zero-mood work for the ungrouped primary or every member of that particular binding, while mixed groups, supplied replacement validity and Fiammetta targets remain checked?
 

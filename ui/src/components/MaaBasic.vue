@@ -891,8 +891,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <n-card title="MAA设置">
-    <template #header>MAA设置<help-text>刷理智、信用相关、领奖励、肉鸽保全等</help-text></template>
+  <n-card title="日常设置">
+    <template #header>日常设置<help-text>刷理智、信用相关、领奖励、肉鸽保全等</help-text></template>
     <n-form
       :label-placement="mobile ? 'top' : 'left'"
       :show-feedback="false"

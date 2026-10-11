@@ -593,6 +593,15 @@ def simulate(saved):
                     base_scheduler.tasks[0].time - datetime.now()
                 ).total_seconds()
                 if remaining_time > 540:
+                    from arknights_mower.solvers.trust_rotation import (
+                        run_trust_rotation,
+                    )
+
+                    run_trust_rotation(
+                        base_scheduler.device,
+                        base_scheduler.recog,
+                        base_scheduler.tasks[0].time,
+                    )
                     if base_scheduler.daily_visit_friend < get_server_time().date():
                         if base_scheduler.visit_friend_plan_solver():
                             base_scheduler.daily_visit_friend = get_server_time().date()

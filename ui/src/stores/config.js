@@ -157,6 +157,10 @@ export const useConfigStore = defineStore('config', () => {
   const product_switching = ref({})
   const check_mail_enable = ref(true)
   const report_enable = ref(true)
+  const trust_rotation_enable = ref(false)
+  const trust_rotation_prefer_low = ref(false)
+  const trust_rotation_threshold = ref(100)
+  const trust_rotation_interval = ref(24)
   const recruit_gap = ref(false)
   const recruit_auto_5 = ref('hand')
   const webview = ref({ scale: 1.0 })
@@ -593,6 +597,10 @@ export const useConfigStore = defineStore('config', () => {
       }
       check_mail_enable.value = response.data.check_mail_enable
       report_enable.value = response.data.report_enable
+      trust_rotation_enable.value = response.data.trust_rotation_enable ?? false
+      trust_rotation_prefer_low.value = response.data.trust_rotation_prefer_low ?? false
+      trust_rotation_threshold.value = response.data.trust_rotation_threshold ?? 100
+      trust_rotation_interval.value = response.data.trust_rotation_interval ?? 24
       recruit_gap.value = response.data.recruit_gap
       recruit_auto_5.value = response.data.recruit_auto_5
       webview.value = response.data.webview
@@ -765,6 +773,10 @@ export const useConfigStore = defineStore('config', () => {
       product_switching: product_switching.value,
       check_mail_enable: check_mail_enable.value,
       report_enable: report_enable.value,
+      trust_rotation_enable: trust_rotation_enable.value,
+      trust_rotation_prefer_low: trust_rotation_prefer_low.value,
+      trust_rotation_threshold: trust_rotation_threshold.value,
+      trust_rotation_interval: trust_rotation_interval.value,
       recruit_gap: recruit_gap.value,
       recruit_auto_5: recruit_auto_5.value,
       webview: webview.value,
@@ -1115,6 +1127,10 @@ export const useConfigStore = defineStore('config', () => {
     product_switching,
     check_mail_enable,
     report_enable,
+    trust_rotation_enable,
+    trust_rotation_prefer_low,
+    trust_rotation_threshold,
+    trust_rotation_interval,
     recruit_gap,
     recruit_auto_5,
     webview,
