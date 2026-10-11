@@ -6,6 +6,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from arknights_mower.solvers import base_schedule, mastery_reader
+from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+from arknights_mower.tests import base_scheduler_tests
 from arknights_mower.tests.multi_group_shift_tests import A
 from arknights_mower.tests.multi_group_shift_tests import solver as solver
 from arknights_mower.utils import config, mastery_db
@@ -141,4 +143,87 @@ def test_dispatch_finishes_group_after_live_training_gate_skips_room(
     assert task not in s.tasks
     assert s.op_data.group_is_resting("甲")
     assert not task.group_shift_expected
+    assert s.op_data.get_current_room("train", True) == ["褐果", "桃金娘"]
+
+
+@pytest.mark.parametrize("follow", [False, True])
+@pytest.mark.parametrize("state", ["training", "waiting_collect", "unreadable"])
+@pytest.mark.parametrize("other_confirmed", [False, True])
+def test_mastery_off_confirms_assistant_without_requeueing_busy_trainee(
+    training_group, monkeypatch, follow, state, other_confirmed
+):
+    monkeypatch.setattr(BaseSchedulerSolver, "__init__", lambda _: None)
+    config.conf.enable_mastery = False
+    config.conf.assistant_follows_schedule = follow
+    plan = {"train": ["望", "余"], "meeting": ["陈", "Current"]}
+    s = base_scheduler_tests.TestTrainGateReadThenJudge._make_solver(plan)
+    s.op_data = training_group.op_data
+    s.find_next_task = MagicMock(return_value=None)
+    s._resume_waiting_group_shifts = MagicMock()
+    task = s.task
+    s._prepare_group_shift(task, remember_targets=True)
+    s.choose_train = MagicMock()
+
+    def select(names, **kwargs):
+        assert names == ["望", "Current"]
+        projected = s.op_data.project_arrangements([{"train": names}])
+        s.op_data.operators, s.op_data.dorm = projected.operators, projected.dorm
+
+    s.choose_train.side_effect = select
+    s.get_agent_from_room = MagicMock(
+        side_effect=lambda *a, **kw: [
+            {"agent": name} for name in s.op_data.get_current_room("train", True)
+        ]
+    )
+    monkeypatch.setattr(
+        mastery_reader,
+        "read_room_state",
+        lambda *a, **kw: (
+            None if state == "unreadable" else mastery_reader.RoomState(state)
+        ),
+    )
+    reconcile = MagicMock(side_effect=AssertionError("mastery disabled"))
+    monkeypatch.setattr(mastery_reader, "reconcile_short", reconcile)
+
+    s.agent_arrange_room({}, "train", plan)
+    s.choose_train.assert_called_once()
+    assert s.op_data.get_current_room("train", True) == ["望", "桃金娘"]
+    if other_confirmed:
+        projected = s.op_data.project_arrangements([{"meeting": plan["meeting"]}])
+        s.op_data.operators, s.op_data.dorm = projected.operators, projected.dorm
+    plan.clear()
+
+    assert s._complete_group_shift(task) is other_confirmed
+    assert s.op_data.group_is_resting("甲") is other_confirmed
+    assert ("train", 1) not in task.group_shift_expected
+    if not other_confirmed:
+        assert task.plan == {"meeting": ["陈", "Current"]}
+    reconcile.assert_not_called()
+
+
+def test_mastery_off_skipped_only_trainee_does_not_commit_group(
+    training_group, monkeypatch
+):
+    s = training_group
+    config.conf.enable_mastery = False
+    config.conf.assistant_follows_schedule = False
+    task = SchedulerTask(
+        task_type=TaskTypes.SELF_CORRECTION,
+        task_plan={"train": ["Current", "余"]},
+    )
+    s.task, s.tasks = task, [task]
+    s._prepare_group_shift(task, remember_targets=True)
+    s.enter_room, s.back = MagicMock(), MagicMock()
+    s.turn_on_room_detail = MagicMock(side_effect=AssertionError("no named target"))
+    monkeypatch.setattr(
+        mastery_reader,
+        "read_room_state",
+        lambda *a, **kw: mastery_reader.RoomState("training"),
+    )
+
+    s.agent_arrange_room({}, "train", task.plan)
+
+    assert not task.plan
+    assert s._complete_group_shift(task)
+    assert not s.op_data.group_is_resting("甲")
     assert s.op_data.get_current_room("train", True) == ["褐果", "桃金娘"]

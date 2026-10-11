@@ -14,12 +14,17 @@
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._suspend_group_shift",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._resume_waiting_group_shifts",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._complete_group_shift",
-    "arknights_mower.solvers.record.current_state"
+    "arknights_mower.solvers.record.current_state",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange_room"
   ],
   "test_suites": [
     "arknights_mower/tests/shared_shift_retry_tests.py",
     "arknights_mower/tests/group_shift_confirmation_tests.py",
     "arknights_mower/tests/multi_group_shift_tests.py",
-    "arknights_mower/tests/group_shift_training_protection_tests.py"
+    "arknights_mower/tests/group_shift_training_protection_tests.py",
+    "arknights_mower/tests/train_follow_correction_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py",
+    "arknights_mower/tests/mastery_choose_train_tests.py",
+    "arknights_mower/tests/mastery_protection_tests.py"
   ]
 }
