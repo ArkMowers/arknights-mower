@@ -211,6 +211,9 @@ class DesktopExitTests(unittest.TestCase):
                             tray=entry != "window", token="", port=58111
                         ),
                         start_automatically=False,
+                        resource_update=SimpleNamespace(
+                            enable=False, auto_update=False
+                        ),
                     ),
                     stop_mower=stopped,
                     webview_process=None,
