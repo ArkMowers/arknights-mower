@@ -117,7 +117,11 @@ whlr.setLevel(logging.INFO)
 
 log_queue = Queue()
 queue_handler = QueueHandler(log_queue)
-logger.addHandler(queue_handler)
+# The websocket path also lives on the package logger, the common ancestor of every
+# module logger. A record then reaches the listener exactly once: attaching this
+# handler to the shared logger as well would feed it twice, because the shared
+# branch queues its own record and again as it bubbles up.
+logging.getLogger("arknights_mower").addHandler(queue_handler)
 listener = QueueListener(log_queue, dhlr, whlr, respect_handler_level=True)
 listener.start()
 
@@ -145,11 +149,15 @@ def init_file_logging() -> None:
     fhlr.setFormatter(basic_formatter)
     fhlr.setLevel("DEBUG")
     fhlr.addFilter(filter)
-    # The handler lives on the shared package logger, a common ancestor of every
-    # module logger, so a record from any module bubbles up to it. Attaching it
-    # to this logger as well would write this branch's own records twice, because
-    # callHandlers() deduplicates by (handler, logger) pair.
+    # The queue path moves to the shared package logger, the common ancestor of
+    # every module logger, so a record from any module reaches the listener once.
+    # whlr stays out of the logger tree: it is the listener's own frontend sink,
+    # and a second path to it would deliver each record twice.
     package_logger = logging.getLogger("arknights_mower")
+    if queue_handler in logger.handlers:
+        logger.removeHandler(queue_handler)
+    if queue_handler not in package_logger.handlers:
+        package_logger.addHandler(queue_handler)
     package_logger.addHandler(fhlr)
     if package_logger.getEffectiveLevel() > logging.DEBUG:
         # The file handler itself is set to DEBUG; leaving the package logger at
@@ -228,15 +236,16 @@ def close_mp_logging():
 def close_logging():
     """Release only mower's listeners and file handler, after other resources."""
     global fhlr
+    package_logger = logging.getLogger("arknights_mower")
     close_mp_logging()
-    logger.removeHandler(queue_handler)
+    package_logger.removeHandler(queue_handler)
     if mp_queue_handler is not None:
         logger.removeHandler(mp_queue_handler)
     _stop_listener(listener)
     current, fhlr = fhlr, None
     if current is not None:
         logger.removeHandler(current)
-        logging.getLogger("arknights_mower").removeHandler(current)
+        package_logger.removeHandler(current)
         current.close()
 
 
