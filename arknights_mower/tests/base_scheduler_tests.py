@@ -3407,11 +3407,21 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         solver.scene = MagicMock(return_value=Scene.INFRA_DETAILS)
         solver.find = MagicMock(return_value=None)
 
-        solver.agent_arrange(task.plan)
+        with patch(
+            "arknights_mower.solvers.mastery_support_runtime.refresh_after_central_change",
+            side_effect=lambda *_: events.append("refresh"),
+        ):
+            solver.agent_arrange(task.plan)
 
         self.assertEqual(
             events,
-            ["arranged_and_verified", "countdown", "accept_order", "restore"],
+            [
+                "arranged_and_verified",
+                "countdown",
+                "accept_order",
+                "restore",
+                "refresh",
+            ],
         )
         solver.get_order_remaining_time.assert_called_once_with()
 

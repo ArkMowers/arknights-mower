@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.mastery_order import halving_successor
 from arknights_mower.utils.mastery_support import (
     SupportPlanError,
     decode_json,
@@ -99,20 +100,22 @@ def schedule_support_swap(solver, plan, end, level):
     if (
         not route
         or not route.get("swap_target")
-        or level >= plan["target_level"]
+        or not halving_successor(plan, level)
         or plan.get("swap_frozen")
     ):
         return None
     if route.get("working_operator") != route["operator"]:
         return None
-    # Scheduled central staff may be absent: preserve the legacy conservative ratio.
-    current_rate = rate(route["efficiency"])
+    from arknights_mower.utils.mastery_support_data import actual_central_bonus
+
+    current_rate = rate(
+        route["efficiency"], actual_central_bonus(solver, route["central_bonus"])
+    )
     tail_rate = rate(route["swap_efficiency"], route["central_bonus"])
     target_seconds = (300 + route["mastery_swap_buffer"]) * 60
     now = datetime.now()
     left = (end - now).total_seconds()
-    check_rate = rate(route["efficiency"], route["central_bonus"])
-    if route.get("swap_halves", True) and left * check_rate / tail_rate < 301 * 60:
+    if route.get("swap_halves", True) and left * current_rate / tail_rate < 301 * 60:
         return None
     at = now + timedelta(
         seconds=max(0, left - target_seconds * tail_rate / current_rate)
@@ -131,7 +134,11 @@ def enqueue_support_swap(solver, plan, at, name):
             and task.type == TaskTypes.SWAP_SUPPORT
             and getattr(task, "plan_key", None) == str(plan["id"])
         ):
-            task.time = at
+            task.time = (
+                min(task.time, at)
+                if getattr(task, "advance_support_swap", False)
+                else at
+            )
             return
     task = SchedulerTask(
         time=at,
@@ -160,12 +167,9 @@ def stop_support_swap(solver, plan, level, reason):
         finish_support_swap(solver, plan, level, freeze=True)
 
 
-def select_swap_support(
-    work_seconds, current_rate, stats, settings, *, schedule_rate=None
-):
-    """Validate with nominal rates, while keeping conservative handoff timing."""
+def select_swap_support(work_seconds, current_rate, stats, settings):
+    """Reserve the reducer's full central bonus against actual remaining work."""
     central, buffer = settings
-    schedule_rate = current_rate if schedule_rate is None else schedule_rate
     remaining = work_seconds / current_rate
     minimum = (300 + max(1, buffer)) * 60
     for candidate in stats:
@@ -175,8 +179,6 @@ def select_swap_support(
             candidate["halves"] and available_seconds < 301 * 60
         ):
             continue
-        # The more permissive final check must not postpone an already-due swap.
-        # A slower alternate still uses the original conservative scheduling rate.
-        delay = max(0, remaining - minimum * dest_rate / schedule_rate)
+        delay = max(0, remaining - minimum * dest_rate / current_rate)
         return candidate, delay
     return None, 0

@@ -454,6 +454,32 @@ def get_next_idle_plan(path: Optional[str] = None) -> Optional[dict]:
         return None
 
 
+def normalize_mastery_queue(levels, path=None):
+    """Persist consecutive skill priority without changing active training."""
+    from .mastery_order import consecutive_mastery_plans
+
+    with _conn(path) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        plans = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT * FROM mastery_plan WHERE status NOT IN ('completed', 'failed') "
+                "ORDER BY priority, id"
+            )
+        ]
+        ordered = consecutive_mastery_plans(plans, levels)
+        conn.executemany(
+            "UPDATE mastery_plan SET priority=? WHERE id=?",
+            [
+                (index, plan["id"])
+                for index, plan in enumerate(ordered)
+                if plan["priority"] != index
+            ],
+        )
+        conn.commit()
+    return get_all_plans(path) if path is not None else get_all_plans()
+
+
 def get_failed_plans(path: Optional[str] = None) -> list[dict]:
     """failed 状态的计划（含 failed_reason）。
 
@@ -647,22 +673,10 @@ def auto_interleave_new_plans(
         return False
 
 
-def delete_plan(
-    plan_id: int, path: Optional[str] = None, *, protect_active=False
-) -> bool:
+def delete_plan(plan_id: int, path: Optional[str] = None) -> bool:
     try:
         with _conn(path) as conn:
-            if protect_active:
-                conn.execute("BEGIN IMMEDIATE")
-                row = conn.execute(
-                    "SELECT * FROM mastery_plan WHERE id=?", (plan_id,)
-                ).fetchone()
-                plan = dict(row) if row else None
-                if plan and (
-                    plan["status"] in ("arranging", "training", "waiting_collect")
-                    or get_material_waiting_plan([plan]) is not None
-                ):
-                    raise ValueError("正在训练或等待继续的计划不能删除")
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute("DELETE FROM mastery_plan WHERE id=?", (plan_id,))
             # #97：删计划顺带清通知去重（②③⑥⑦⑧ 用 str(plan_id) 作 dedup_key）——
             # 避免孤儿 dedup 残留；重加同计划（新 id）本就会重新通知，这里是卫生清理。
@@ -671,14 +685,12 @@ def delete_plan(
             )
             prefix = f"{plan_id}:"
             conn.execute(
-                "DELETE FROM mastery_notify WHERE notify_type='support_swap' "
+                "DELETE FROM mastery_notify WHERE notify_type IN ('support_swap', 'amiya_form') "
                 "AND substr(dedup_key, 1, ?) = ?",
                 (len(prefix), prefix),
             )
             conn.commit()
             return True
-    except ValueError:
-        raise
     except Exception as e:
         logger.error(f"delete_plan failed: {e}")
         return False
@@ -801,10 +813,10 @@ _SETTINGS_DEFAULTS = {
 
 
 def get_route_settings(path: Optional[str] = None) -> dict:
-    """读取中枢加成及三档减半换人缓冲（分钟）。
+    """读取中枢加成及兼容旧键的减半换人缓冲（分钟）。
 
     存 `mastery_route` 保留行（_SETTINGS_PROFESSION 的 supports JSON）。
-    缺行使用 10/15/30 分钟；旧版单值配置一次性迁移为分档默认。
+    缺行统一使用十分钟，显式设置保持用户选择。
     """
     defaults = {
         **_SETTINGS_DEFAULTS,
@@ -823,6 +835,23 @@ def get_route_settings(path: Optional[str] = None) -> dict:
                     parsed = {}
                 if isinstance(parsed, dict):
                     defaults.update({k: parsed[k] for k in defaults if k in parsed})
+                    if parsed.get("mastery_swap_buffers") == {
+                        "no_central": 10,
+                        "central": 15,
+                        "central_unhalved_m2": 30,
+                    }:
+                        parsed["mastery_swap_buffers"] = dict(DEFAULT_SWAP_BUFFERS)
+                        cursor = conn.execute(
+                            "UPDATE mastery_route SET supports=? WHERE profession=? AND supports=?",
+                            (
+                                json.dumps(parsed, ensure_ascii=False),
+                                _SETTINGS_PROFESSION,
+                                row["supports"],
+                            ),
+                        )
+                        conn.commit()
+                        if cursor.rowcount == 0:
+                            return get_route_settings(path)
                     if isinstance(parsed.get("mastery_swap_buffers"), dict):
                         defaults["mastery_swap_buffers"] = {
                             **DEFAULT_SWAP_BUFFERS,

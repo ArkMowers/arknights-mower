@@ -3124,7 +3124,7 @@ class TestRefreshTrainingHalfOverlap(unittest.TestCase):
         sc.assert_not_called()
 
     def test_queued_swap_task_skips_collect(self):
-        # 真实队列判断：已有同计划换人任务时，既不补排换人，也不排收取。
+        # 已有换人任务按新倒计时更新，仍不重复排收取。
         solver = MagicMock()
         solver.task = None
         task = reader.SchedulerTask(
@@ -3148,7 +3148,7 @@ class TestRefreshTrainingHalfOverlap(unittest.TestCase):
             patch.object(reader, "_schedule_collect") as sc,
         ):
             reader._refresh_training_plan(solver, plan, self._room())
-        sched.assert_not_called()
+        sched.assert_called_once()
         sc.assert_not_called()
         self.assertEqual(solver.tasks, [task])
 

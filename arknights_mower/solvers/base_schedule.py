@@ -2467,6 +2467,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.train_room_state = None
             return
         train_room_state = getattr(self, "train_room_state", None)
+        if getattr(train_room_state, "amiya_form_waiting", False) is True:
+            fix_plan.pop("train")
+            return
         mastery_active = self._train_mastery_active()
         train_locked = (
             getattr(train_room_state, "state", None) in ("training", "waiting_collect")
@@ -7363,7 +7366,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if ope != "阿米娅" and ope not in ["Current", "Free"]:
             profession = agent_profession[ope]
             self.profession_filter(profession)
-        if ope == "Free":
+        if ope in ("Free", "阿米娅"):
             self.profession_filter("ALL")
         # 训练卡片延伸到屏幕右侧，职业栏会遮住末列姓名。
         self._close_profession_filter()
@@ -8997,6 +9000,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         self.train_room_state = (
                             room_state if config.conf.enable_mastery else None
                         )
+                        if getattr(room_state, "amiya_form_waiting", False) is True:
+                            del plan[room]
+                            self.back()
+                            return new_plan
                         if room_state is not None and config.conf.enable_mastery:
                             # #61 短动作排班路径内联：顺路核实/帮收/重置/更新状态，并据截图
                             # 修正 DB（空闲×DB active 冲突 → 重置 idle，以截图为准）。不
@@ -9717,6 +9724,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 int(x.split("_")[1]) if x.startswith("dormitory_") else 0,
             )
         )
+        from arknights_mower.solvers.mastery_support_runtime import (
+            central_training_occupants,
+            refresh_after_central_change,
+        )
+
+        central_before = central_training_occupants(self)
         for room in rooms:
             if (not new_plan) and defer_dorm_before_priority_task(
                 self.task, self.tasks, room, datetime.now(), self.op_data
@@ -9732,6 +9745,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 raise
             if new_plan is False or new_plan is None:
                 self._finish_idle_dorm_shift()
+                refresh_after_central_change(self, central_before)
                 if getattr(self.task, "run_order_restore_pending", False):
                     return self._retain_run_order_restoration(delay=True)
                 return False
@@ -9863,6 +9877,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
             # 急速换班
             self.skip()
+        refresh_after_central_change(self, central_before)
         logger.info("返回基建主界面")
 
     def skip(self, task_names="All"):

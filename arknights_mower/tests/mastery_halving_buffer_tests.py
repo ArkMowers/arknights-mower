@@ -55,11 +55,7 @@ def test_legacy_routes_apply_defaults_only_when_requested(central, configured):
     ):
         for level in (1, 2):
             route = mastery.get_route_config("医疗", level)
-            expected = (
-                (10 if not central else 15 if level == 1 else 30)
-                if configured is None
-                else configured
-            )
+            expected = 10 if configured is None else configured
             assert route["mastery_swap_buffer"] == expected
             assert route["configured_swap_buffer"] == settings["mastery_swap_buffers"]
 
@@ -67,7 +63,7 @@ def test_legacy_routes_apply_defaults_only_when_requested(central, configured):
 @pytest.mark.parametrize("central", [0, 5])
 @pytest.mark.parametrize("level,work", [(1, 8), (2, 8), (2, 16)])
 def test_preview_and_runtime_share_effective_buffer(central, level, work):
-    expected = 10 if not central else 30 if (level, work) == (2, 16) else 15
+    expected = 10
     first, reducer = stat("教官", 60), stat("艾丽妮", 0, True)
     route = stage_route(first, reducer, StageSpec(level, work, central))
     assert route["mastery_swap_buffer"] == expected
@@ -81,7 +77,7 @@ def test_preview_and_runtime_share_effective_buffer(central, level, work):
         solver = SimpleNamespace(tasks=[], task=None)
         at = state.schedule_support_swap(solver, plan, end, level)
     assert at == end - timedelta(
-        minutes=(300 + expected) * (1.05 + central / 100) / 1.65
+        minutes=(300 + expected) * (1.05 + central / 100) / (1.65 + central / 100)
     )
     assert abs((at - now).total_seconds() - route["switch_after"] * 3600) < 1
 
@@ -133,6 +129,7 @@ def test_preparation_recalculates_buffer_from_observed_previous_stage(
         "id": 1,
         "char_id": "target",
         "char_name": "学员",
+        "target_level": 3,
         "support_plan": {"stages": [planned]},
         "support_runtime": previous,
     }
@@ -152,7 +149,7 @@ def test_preparation_recalculates_buffer_from_observed_previous_stage(
         runtime.prepare_plan_supports(MagicMock(), plan, 2)
     saved = save.call_args.args[1]
     assert saved["half_inherited"] is actual_inherited
-    assert saved["mastery_swap_buffer"] == (15 if actual_inherited else 30)
+    assert saved["mastery_swap_buffer"] == 10
     assert saved["configured_swap_buffer"] is None
     plan["support_runtime"] = saved
     assert stage_for(plan, 2)["mastery_swap_buffer"] == saved["mastery_swap_buffer"]
@@ -199,7 +196,6 @@ def test_final_check_threshold_counts_same_central_bonus_on_both_sides(
         speed,
         [stat("减半", reducer_efficiency, True)],
         (central, 15),
-        schedule_rate=1.05 + efficiency / 100,
     )
     route = {
         "efficiency": efficiency,
@@ -217,16 +213,15 @@ def test_final_check_threshold_counts_same_central_bonus_on_both_sides(
 
 
 @pytest.mark.parametrize("central", [0, 5])
-def test_nominal_final_check_does_not_delay_the_conservative_deadline(central):
+def test_final_check_executes_at_the_actual_rate_deadline(central):
     speed = 1.65 + central / 100
     dest = 1.05 + central / 100
-    remaining = 315 * dest / 1.65
+    remaining = 315 * dest / (1.65 + central / 100)
     selected, delay = state.select_swap_support(
         remaining * 60 * speed,
         speed,
         [stat("减半", 0, True)],
         (central, 15),
-        schedule_rate=1.65,
     )
     assert selected is not None
     assert delay == pytest.approx(0, abs=1e-6)
@@ -238,16 +233,15 @@ def test_nominal_final_check_does_not_delay_the_conservative_deadline(central):
 def test_default_margin_covers_five_minute_operation_estimate(
     level, work, central, reducer_efficiency
 ):
-    # Five minutes is a verification assumption, not a scheduler timeout. Use
-    # the worst central transition: absent at the initial read, then always on.
+    # A confirmed staffing transition refreshes the countdown before scheduling.
     buffer = swap_buffer_minutes(
         level, central=central, inherited=work == 480 and level == 2
     )
     for efficiency in range(30, 96):
-        first = 1.05 + efficiency / 100
+        first = 1.05 + (efficiency + central) / 100
         dest = 1.05 + (reducer_efficiency + central) / 100
         scheduled = work / first - (300 + buffer) * dest / first
-        actual_work = work - (first + central / 100) * (scheduled + 5)
+        actual_work = work - first * (scheduled + 5)
         assert actual_work / dest > 300
 
 

@@ -229,6 +229,61 @@ class TestMasteryPlanView(unittest.TestCase):
             }
         }
 
+    @patch("arknights_mower.views.mastery._add_or_reuse_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    def test_explicit_form_ids_resolve_same_name_skills_independently(
+        self, get_skill, add
+    ):
+        forms = {
+            "char_002_amiya": "战术咏唱·γ型",
+            "char_1001_amiya2": "影霄·奔夜",
+            "char_1037_amiya3": "哀恸共情",
+        }
+        get_skill.return_value = {
+            "characters": {
+                cid: {"name": "阿米娅", "skills": [{"name": skill}]}
+                for cid, skill in forms.items()
+            },
+            "training": {"operators": dict.fromkeys(forms)},
+        }
+        add.return_value = ({"status": "existing"}, None, False)
+        response = self.client.post(
+            "/mastery-plan",
+            json={
+                "items": [
+                    {"char_id": cid, "name": "阿米娅", "skill_index": 0}
+                    for cid in forms
+                ]
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [(c.args[1], c.args[3]) for c in add.call_args_list],
+            list(forms.items()),
+        )
+
+    @patch("arknights_mower.views.mastery._add_or_reuse_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    def test_invalid_explicit_form_never_falls_back_to_same_name(self, get_skill, add):
+        get_skill.return_value = {
+            **self._char_table(),
+            "training": {"operators": {"char_001": {}}},
+        }
+        get_skill.return_value["characters"]["char_other"] = {"name": "能天使"}
+        get_skill.return_value["characters"]["char_summon"] = {"name": "阿米娅"}
+        for cid in (None, [], 1, "char_missing", "char_other", "char_summon"):
+            with self.subTest(char_id=cid):
+                response = self.client.post(
+                    "/mastery-plan",
+                    json={
+                        "items": [{"char_id": cid, "name": "阿米娅", "skill_index": 0}]
+                    },
+                )
+                result = response.get_json()["results"][0]
+                self.assertEqual(result["status"], "error")
+                self.assertIn("干员形态", result["reason"])
+        add.assert_not_called()
+
     @patch("arknights_mower.utils.mastery_db.insert_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
     def test_bulk_rejects_out_of_range_target(self, get_skill, insert):
@@ -426,7 +481,7 @@ class TestMasteryPlanView(unittest.TestCase):
         delete_mock.return_value = True
         r = self.client.delete("/mastery-plan", json={"id": 3})
         self.assertEqual(r.status_code, 200)
-        delete_mock.assert_called_once_with(3, protect_active=True)
+        delete_mock.assert_called_once_with(3)
         purge_mock.assert_called_once_with(3)
 
     @patch("arknights_mower.views.mastery.delete_plan")
@@ -520,6 +575,28 @@ class TestMasteryPlanView(unittest.TestCase):
         fake.base_scheduler = None
         with patch.dict(sys.modules, {"arknights_mower.__main__": fake}):
             _purge_plan_tasks(5)  # 不应抛异常
+
+    def test_purge_deleted_amiya_plan_releases_only_its_waiting_flag(self):
+        from arknights_mower.solvers.mastery_reader import RoomState
+        from arknights_mower.views.mastery import _purge_plan_tasks
+
+        room = RoomState("empty", protected=True, amiya_form_waiting=True)
+        sched = types.SimpleNamespace(
+            tasks=[], task=None, amiya_pending_plan_id=5, train_room_state=room
+        )
+        fake = types.ModuleType("arknights_mower.__main__")
+        fake.base_scheduler = sched
+        with (
+            patch.dict(sys.modules, {"arknights_mower.__main__": fake}),
+            patch("arknights_mower.solvers.record.current_state", return_value=None),
+        ):
+            _purge_plan_tasks(9)
+            self.assertEqual(sched.amiya_pending_plan_id, 5)
+            self.assertTrue(room.amiya_form_waiting)
+            _purge_plan_tasks(5)
+        self.assertIsNone(sched.amiya_pending_plan_id)
+        self.assertFalse(room.amiya_form_waiting)
+        self.assertTrue(room.protected)
 
     def test_purge_plan_tasks_snapshot_excludes_current_deleted_plan(self):
         # 边界：被删计划的任务当前正被派发（base_scheduler.task）→ live 队列保留

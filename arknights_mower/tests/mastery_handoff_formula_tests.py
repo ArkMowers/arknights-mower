@@ -19,7 +19,7 @@ from arknights_mower.utils.mastery_support_types import StageSpec  # noqa: E402
 
 
 @pytest.mark.parametrize("central", [0, 5])
-def test_conservative_swap_timing_matches_legacy_and_optimizer(central):
+def test_actual_swap_timing_matches_legacy_and_optimizer(central):
     now = datetime(2026, 9, 8, 17, 42)
     route = stage_route(
         stat("缄默德克萨斯", 80), stat("逻各斯", 0, True), StageSpec(2, 8, central)
@@ -32,8 +32,10 @@ def test_conservative_swap_timing_matches_legacy_and_optimizer(central):
         "support_runtime": route,
     }
     end = now + timedelta(hours=8 / (1.85 + central / 100))
-    buffer = 15 if central else 10
-    expected = end - timedelta(minutes=(300 + buffer) * (1.05 + central / 100) / 1.85)
+    buffer = 10
+    expected = end - timedelta(
+        minutes=(300 + buffer) * (1.05 + central / 100) / (1.85 + central / 100)
+    )
     with (
         patch.object(state, "datetime") as mock_now,
         patch.object(state, "enqueue_support_swap"),
@@ -42,7 +44,7 @@ def test_conservative_swap_timing_matches_legacy_and_optimizer(central):
         at = state.schedule_support_swap(MagicMock(), plan, end, 2)
     assert at == expected
     assert abs((at - now).total_seconds() - route["switch_after"] * 3600) < 1
-    # Duration uses actual nominal rates, even though the handoff is conservative.
+    # Duration and handoff share the same current central bonus.
     expected_hours = route["switch_after"] + (
         8 - route["switch_after"] * (1.85 + central / 100)
     ) / (1.05 + central / 100)
@@ -57,7 +59,6 @@ def test_conservative_swap_timing_matches_legacy_and_optimizer(central):
         speed,
         [stat("逻各斯", 0, True)],
         (central, buffer),
-        schedule_rate=1.85,
     )
     assert selected["name"] == "逻各斯"
     assert delay == pytest.approx(0, abs=1e-5)

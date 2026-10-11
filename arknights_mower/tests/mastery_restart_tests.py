@@ -100,6 +100,180 @@ class MasteryRestartTests(unittest.TestCase):
             self.plan()["expires_at"], task.time.strftime("%Y-%m-%d %H:%M:%S")
         )
 
+    def test_reset_recovers_observed_training_from_each_persisted_status(self):
+        for status in ("idle", "failed", "arranging", "training", "waiting_collect"):
+            with self.subTest(status=status):
+                mastery_db.update_plan_status(self.plan_id, status, swap_frozen=1)
+                self.solver.tasks = []
+                reader.reconcile_short(self.solver, self.room)
+                self.assertEqual(self.plan()["status"], "training")
+                task = self.assert_one_task(TaskTypes.SKILL_UPGRADE)
+                self.assertEqual(task.time, self.room.panel.countdown)
+
+    def test_reset_collects_each_finished_tier_and_requeues_unfinished_skill(self):
+        for tier in (1, 2, 3):
+            with self.subTest(tier=tier):
+                mastery_db.update_plan_status(self.plan_id, "waiting_collect")
+                self.solver.tasks = []
+                self.room.state = "waiting_collect"
+                self.room.panel.mastery_tier = tier
+                self.room.panel.countdown_state = "zero"
+                self.room.panel.countdown = None
+                with (
+                    patch.object(reader, "collect_flow") as collect,
+                    patch.object(reader, "_tap_collect_confirm"),
+                ):
+                    self.assertTrue(reader.reconcile_short(self.solver, self.room))
+                collect.assert_called_once()
+                if tier < 3:
+                    self.assertEqual(self.plan()["status"], "idle")
+                    self.assert_one_task(TaskTypes.SKILL_UPGRADE)
+                else:
+                    self.assertEqual(self.plan()["status"], "completed")
+                    self.assertEqual(self.solver.tasks, [])
+
+    def test_deleted_training_is_observed_and_collected_without_resurrecting_plan(self):
+        mastery_db.update_plan_status(self.plan_id, "training")
+        self.assertTrue(mastery_db.delete_plan(self.plan_id))
+        with patch.object(reader, "_notify_blocked"):
+            reader.reconcile_short(self.solver, self.room)
+        self.assertEqual(len(self.solver.tasks), 1)
+        self.assertIsNone(self.solver.tasks[0].plan_key)
+        self.assertIsNone(self.plan())
+        self.solver.tasks = []
+        self.room.state = "waiting_collect"
+        self.room.panel.mastery_tier = 3
+        with (
+            patch.object(reader, "collect_flow") as collect,
+            patch.object(reader, "_tap_collect_confirm"),
+        ):
+            reader.reconcile_short(self.solver, self.room)
+        self.assertIsNone(collect.call_args.args[1])
+        self.assertIsNone(self.plan())
+        self.assertEqual(self.solver.tasks, [])
+
+    def test_reset_restores_amiya_form_wait_and_later_correct_skill_releases_it(self):
+        import numpy as np
+
+        from arknights_mower.solvers import mastery
+        from arknights_mower.utils import rapidocr
+
+        pid = mastery_db.insert_plan(
+            "char_1001_amiya2", 1, 3, char_name="阿米娅", skill_name="二技能·影霄·绝影"
+        )
+        pending = mastery_db.get_plan_by_id(pid)
+        room = reader.RoomState(
+            "empty", train_slot="阿米娅", support_slot="逻各斯", slots_reliable=True
+        )
+        old = MagicMock(tasks=[], task=None)
+        with patch("arknights_mower.utils.email.send_message"):
+            mastery._defer_amiya_form(old, pending, room, False)
+        self.assertEqual(
+            mastery_db.get_plan_by_id(pid)["failed_reason"],
+            reader.AMIYA_FORM_WAIT_REASON,
+        )
+        fresh = MagicMock(tasks=[], task=None, amiya_pending_plan_id=None)
+        fresh.recog.img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        fresh.train_scene.return_value = reader.Scene.TRAIN_SKILL_SELECT
+        box = [(240, 526), (520, 526), (520, 561), (240, 561)]
+        with (
+            patch.object(
+                reader, "_settle_in_room", return_value=reader.Scene.TRAIN_MAIN
+            ),
+            patch.object(
+                reader,
+                "read_main_panel",
+                return_value=reader.RoomPanel(idle_marker=True),
+            ),
+            patch.object(
+                reader,
+                "_read_slots_checked",
+                return_value=("逻各斯", "阿米娅", [], True),
+            ),
+            patch.object(reader, "_back_to_train_main", return_value=True),
+            patch.object(reader, "_compute_protected", return_value=True),
+            patch.object(
+                rapidocr, "engine", return_value=([[box, "精神爆发", 0.99]], 0)
+            ) as ocr,
+            patch("arknights_mower.utils.email.send_message"),
+        ):
+            observed = reader.read_room_state(fresh)
+            self.assertTrue(observed.amiya_form_waiting)
+            self.assertEqual(fresh.amiya_pending_plan_id, pid)
+            fresh.choose_train.assert_not_called()
+            self.assertEqual(len(fresh.tasks), 1)
+            ocr.return_value = ([[box, "影霄·绝影", 0.99]], 0)
+            self.assertFalse(reader.read_room_state(fresh).amiya_form_waiting)
+        self.assertIsNone(fresh.amiya_pending_plan_id)
+        self.assertEqual(len(fresh.tasks), 1)
+        self.assertEqual(fresh.tasks[0].plan_key, str(pid))
+        self.assertEqual(mastery_db.get_plan_by_id(pid)["failed_reason"], "")
+
+    def test_reset_preserves_recorded_halving_without_inventing_missing_work(self):
+        from arknights_mower.solvers import mastery_support_runtime as runtime
+        from arknights_mower.tests.mastery_support_fixtures import stat
+        from arknights_mower.utils.mastery_support import StageSpec, stage_route
+
+        for recorded in (False, True):
+            with self.subTest(recorded=recorded):
+                mastery_db.update_plan_status(self.plan_id, "idle")
+                route = stage_route(stat("艾丽妮", 30, True), None, StageSpec(2, 16))
+                route.update(working_operator="艾丽妮", working_halves=True)
+                if recorded:
+                    route["working_since"] = (
+                        datetime.now() - timedelta(hours=6)
+                    ).isoformat()
+                self.assertTrue(
+                    mastery_db.save_support_plan(self.plan_id, {"stages": [route]})
+                )
+                self.assertTrue(
+                    mastery_db.save_support_plan(self.plan_id, route, runtime=True)
+                )
+                mastery_db.update_plan_status(self.plan_id, "training", swap_frozen=1)
+                self.solver = SimpleNamespace(tasks=[], task=None)
+                self.room.state = "training"
+                self.room.panel.mastery_tier = 2
+                self.room.panel.countdown_state = "active"
+                self.room.slots_reliable = True
+                self.room.support_slot = "艾丽妮"
+                reader.reconcile_short(self.solver, self.room)
+                self.assert_one_task(TaskTypes.SKILL_UPGRADE)
+                self.solver.tasks = []
+                self.room.state = "waiting_collect"
+                self.room.panel.countdown_state = "zero"
+                with (
+                    patch.object(reader, "collect_flow"),
+                    patch.object(reader, "_tap_collect_confirm"),
+                ):
+                    reader.reconcile_short(self.solver, self.room)
+                carry = runtime._carried_halving(self.plan(), 3, ("艾丽妮", "测试干员"))
+                self.assertEqual(carry, "艾丽妮" if recorded else None)
+                self.assert_one_task(TaskTypes.SKILL_UPGRADE)
+
+    def test_reset_retains_material_wait_boundary_until_selected_plan_resumes(self):
+        mastery_db.update_plan_status(
+            self.plan_id, "idle", failed_reason="材料不足", expires_at="2030-01-01"
+        )
+        other_id = mastery_db.insert_plan("other", 0, 3, char_name="其他干员")
+        self.room.state = "empty"
+        result, _ = reader._reconcile(
+            self.solver,
+            self.room,
+            None,
+            mastery_db.get_reconcile_plans(),
+            scan_plan=mastery_db.get_plan_by_id(other_id),
+        )
+        self.assertIsNone(result)
+        self.assertEqual(self.plan()["failed_reason"], "材料不足")
+        result, _ = reader._reconcile(
+            self.solver,
+            self.room,
+            None,
+            mastery_db.get_reconcile_plans(),
+            scan_plan=self.plan(),
+        )
+        self.assertEqual(result["id"], self.plan_id)
+
     def test_training_recreates_support_swap_once(self):
         mastery_db.update_plan_status(self.plan_id, "training")
         route = {

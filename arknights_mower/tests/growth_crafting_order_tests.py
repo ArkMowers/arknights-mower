@@ -976,9 +976,10 @@ def test_unified_order_preserves_actual_training_prefix(planning_api):
 @pytest.mark.parametrize(
     "status", ["arranging", "training", "waiting_collect", "idle", "failed"]
 )
-def test_plan_delete_atomically_rejects_training_and_confirmed_material_wait(
+def test_plan_delete_allows_training_and_confirmed_material_wait(
     planning_api, monkeypatch, status
 ):
+    from arknights_mower.utils import workshop_automation
     from arknights_mower.views import mastery as view
 
     api = planning_api
@@ -998,18 +999,20 @@ def test_plan_delete_atomically_rejects_training_and_confirmed_material_wait(
     )
     purge = MagicMock()
     monkeypatch.setattr(view, "_purge_plan_tasks", purge)
+    monkeypatch.setattr(workshop_automation, "restore_if_no_plans", lambda: None)
+    monkeypatch.setattr(view, "refresh_workshop_after_plan_change", api.refresh)
     response = api.client.delete("/mastery-plan", headers=api.headers, json={"id": 1})
-    assert response.status_code == 409 and "不能删除" in response.json["error"]
-    assert mastery_db.get_plan_by_id(1, api.db_path)["status"] == status
+    assert response.status_code == 200
+    assert mastery_db.get_plan_by_id(1, api.db_path) is None
     with mastery_db._conn(api.db_path) as conn:
         assert (
             conn.execute(
                 "SELECT count(*) FROM mastery_notify WHERE dedup_key='1'"
             ).fetchone()[0]
-            == 1
+            == 0
         )
-    purge.assert_not_called()
-    api.refresh.assert_not_called()
+    purge.assert_called_once_with(1)
+    api.refresh.assert_called_once()
 
 
 def test_idle_plan_delete_keeps_original_cleanup_behavior(planning_api, monkeypatch):
@@ -1033,7 +1036,9 @@ def test_idle_plan_delete_keeps_original_cleanup_behavior(planning_api, monkeypa
     api.refresh.assert_called_once()
 
 
-def test_plan_delete_locks_before_observing_training_status(planning_api, monkeypatch):
+def test_plan_delete_locks_before_removing_plan_and_notifications(
+    planning_api, monkeypatch
+):
     api = planning_api
     original_db = mastery_db._db
     statements = []
@@ -1047,7 +1052,7 @@ def test_plan_delete_locks_before_observing_training_status(planning_api, monkey
 
         def execute(self, sql, *args):
             statements.append(sql)
-            if sql.startswith("SELECT * FROM mastery_plan WHERE id="):
+            if sql.startswith("DELETE FROM mastery_plan WHERE id="):
                 with sqlite3.connect(api.db_path, timeout=0) as racing:
                     with pytest.raises(sqlite3.OperationalError, match="locked"):
                         racing.execute(
@@ -1058,7 +1063,7 @@ def test_plan_delete_locks_before_observing_training_status(planning_api, monkey
     monkeypatch.setattr(
         mastery_db, "_db", lambda path=None: ObserveConnection(original_db(path))
     )
-    assert mastery_db.delete_plan(1, api.db_path, protect_active=True)
+    assert mastery_db.delete_plan(1, api.db_path)
     assert statements.index("BEGIN IMMEDIATE") < statements.index(
-        "SELECT * FROM mastery_plan WHERE id=?"
+        "DELETE FROM mastery_plan WHERE id=?"
     )

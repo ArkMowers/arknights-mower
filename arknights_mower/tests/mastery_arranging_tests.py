@@ -1952,7 +1952,7 @@ class TestSwapCollectGating(unittest.TestCase):
         # #101：空位 + calc_swap_threshold(0,...) 的 should_swap（含 301 值得门）= True
         # → 直接放 swap_target，不先放 operator 再立刻换（不白放、不走 did_swap 绕过阈值）
         solver = self._swap_solver()
-        solver.read_time.return_value = 24300  # 405 分钟 ∈ [401, 413] 值得窗
+        solver.read_time.return_value = 23400  # 两边均计中枢时，390 分钟满足换人窗口
         solver.get_agent_from_room.return_value = self._slots("")
         plan = make_plan(status="training", swap_frozen=0, target_level=2)
         with (
