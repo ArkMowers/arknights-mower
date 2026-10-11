@@ -314,6 +314,15 @@ class RoomArrangementDeferred(RuntimeError):
         self.room = room
 
 
+class GroupShiftTargetConflict(MowerExit):
+    """执行名单与必须确认的具名目标矛盾，保留任务并停止自动化。"""
+
+    def __init__(self, room, conflicts, message):
+        super().__init__(message)
+        self.room = room
+        self.conflicts = conflicts
+
+
 # MAA 掉落统计：回调随时可能到达，模块级初值保证首次回调不会因缺名而中断。
 stage_drop = {"details": [], "summary": {}}
 
@@ -7532,6 +7541,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 )
             ):
                 agents[index] = "Free"
+                if resting_tier(self.op_data, name) != RestingTier.EXCLUDED:
+                    self._check_group_shift_targets(
+                        agents, room, reason=f"具名入住 {name} 未通过绑组宿舍额度检查"
+                    )
         moving = (
             {
                 name
@@ -7725,6 +7738,48 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             agents[:] = [name for name in agents if name] + [""] * agents.count("")
         return [name for name in mood_fallback if name not in agents]
 
+    def _check_group_shift_targets(self, agents, room, *, reason):
+        """提交前拒绝已被改写的确认目标；实际驻员未到位仍由读房重试。"""
+        # 训练室分别选择协助位和训练位，单次选人名单不代表整房安排。
+        if room == "train":
+            return
+        task = getattr(self, "task", None)
+        expected = getattr(task, "group_shift_expected", {})
+        conflicts = []
+        for (target_room, index), name in expected.items():
+            if target_room != room:
+                continue
+            selected = agents[index] if index < len(agents) else ""
+            if selected == name:
+                continue
+            if selected == "Current":
+                actual = self.op_data.get_current_operator(room, index)
+                if actual is not None and actual.name == name:
+                    continue
+            conflicts.append({"index": index, "expected": name, "selected": selected})
+        if not conflicts:
+            return
+        resolved = list(agents)
+        # 停止后保留必须确认的安排，下一次启动不能把兜底名单当作原始意图。
+        row = task.plan.setdefault(room, list(agents))
+        for conflict in conflicts:
+            index = conflict["index"]
+            row.extend(["Current"] * max(0, index + 1 - len(row)))
+            row[index] = conflict["expected"]
+        differences = "；".join(
+            f"第{item['index'] + 1}位确认 {item['expected']}，选人 {item['selected'] or '空位'}"
+            for item in conflicts
+        )
+        message = (
+            f"换班确认目标冲突：任务={task.type.display_value}@{task.time.isoformat()}，"
+            f"房间={room}，目标差异={differences}，最终名单={resolved}，原因={reason}，"
+            f"待确认换班={getattr(task, 'group_shift_transitions', {})}；"
+            "已保留任务并停止自动化，请检查排班与宿舍准入条件后重新启动"
+        )
+        config.stop_mower.set()
+        logger.error(message, extra={"archive_screenshots": False})
+        raise GroupShiftTargetConflict(room, conflicts, message)
+
     def prepare_dorm_selection(self, agents, room, *, preserve_dorm_occupants=False):
         """执行边界统一解析名单；解析结果同时交给单回排序和实际选人。"""
         # 充能和归位均使用肥鸭任务的明确名单；不养闲人、上限清退及
@@ -7742,6 +7797,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 current_list.add(n)
             elif n not in ("", "Free", "Current"):
                 agents[idx] = "Free"
+            if (
+                room.startswith("dorm")
+                and self.op_data.is_dynamic_dorm_position(room, idx, agents[idx])
+                and resting_tier(self.op_data, agents[idx]) == RestingTier.EXCLUDED
+            ):
+                expected = getattr(
+                    getattr(self, "task", None), "group_shift_expected", {}
+                )
+                if expected.get((room, idx)) == agents[idx]:
+                    expected.pop((room, idx))
             if (
                 room.startswith("dorm")
                 and agents[idx] in self.op_data.operators
@@ -7767,6 +7832,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     relocated[room, agents.index(name)] = name
                     expected.pop(slot)
             expected.update(relocated)
+            self._check_group_shift_targets(
+                agents, room, reason="执行边界准入与床位整理"
+            )
             return fallback
         return []
 
@@ -8177,6 +8245,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         return_page=True,
                     )
                     right_swipe += moved
+        if not preserve_dorm_occupants:
+            self._check_group_shift_targets(
+                agents, room, reason="选人页最终名单与 Free 解析"
+            )
         # 重排按完整已选名单的位置点击，不能保留最后一名干员的职业筛选。
         # 单回暂留名单没有 Free，也必须在重排和校验前恢复全部职业。
         if last_special_filter != "ALL":

@@ -2150,24 +2150,32 @@ class Operators:
         resident = self.operators.get(slot.agent)
         if resident is None:
             return False
-        group = resident.group
-        if resident.multi_group and active_groups:
-            matches = [
-                binding["group"]
-                for binding in resident.group_bindings
-                if binding["group"] in active_groups
-            ]
-            if matches:
-                group = group if group in matches else matches[-1]
-        if not group or "Free" not in resident.replacements_for_group(group):
-            return False
+        groups = (
+            [binding["group"] for binding in resident.group_bindings]
+            if resident.multi_group
+            else [resident.group]
+        )
+        active_groups = set(active_groups or ())
         inactive_groups = set(inactive_groups or ())
-        if group in inactive_groups:
-            return False
-        if group in set(active_groups or ()) or self.group_is_resting(group):
-            return True
+        resting = [
+            group
+            for group in groups
+            if group
+            and group not in inactive_groups
+            and (group in active_groups or self.group_is_resting(group))
+        ]
+        if resting:
+            return all(
+                "Free" in resident.replacements_for_group(group) for group in resting
+            )
         # 已经有普通休息者实际入住或被本轮预约时，在固定成员回班前仍有效。
-        return bool(dorm.name and dorm.name != resident.name)
+        return bool(
+            resident.group
+            and "Free" in resident.replacement
+            and not inactive_groups.intersection(groups)
+            and dorm.name
+            and dorm.name != resident.name
+        )
 
     def available_free(self, free_type="high", time=None):
         if not time:

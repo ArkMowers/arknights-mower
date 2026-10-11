@@ -1108,6 +1108,108 @@ def test_grouped_free_capacity_uses_secondary_binding(grouped_free_capacity):
     assert data.assign_dorm_group(["银灰"], active_groups={"附加"}) is not None
 
 
+def test_capacity_rejection_reports_confirmation_conflict(
+    grouped_free_capacity, monkeypatch
+):
+    from threading import Event
+
+    instance = grouped_free_capacity
+    data = instance.op_data
+    monkeypatch.setattr(config, "stop_mower", Event())
+    error_log = MagicMock()
+    monkeypatch.setattr(base_schedule.logger, "error", error_log)
+    data.operators["银灰"].group = "外组"
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={"dormitory_1": ["银灰", "冰酿", "泥岩", "能天使", "年"]},
+    )
+    task.group_shift_transitions = {"联动": True}
+    task.group_shift_expected = {("dormitory_1", 0): "银灰"}
+    instance.task, instance.tasks = task, [task]
+
+    with pytest.raises(
+        base_schedule.GroupShiftTargetConflict, match="未通过绑组宿舍额度检查"
+    ):
+        instance.prepare_dorm_selection(task.plan["dormitory_1"], "dormitory_1")
+
+    assert task.plan["dormitory_1"][0] == "银灰"
+    assert task.group_shift_expected == {("dormitory_1", 0): "银灰"}
+    assert data.group_is_resting("联动")
+    assert config.stop_mower.is_set()
+    assert "最终名单=['Free'" in error_log.call_args.args[0]
+
+
+@pytest.mark.parametrize("retry", [False, True])
+@pytest.mark.parametrize("consumed", [False, True])
+@pytest.mark.parametrize("returning", ["联动", "另一组"])
+def test_shared_free_capacity_survives_first_group_return(
+    solver, retry, consumed, returning
+):
+    instance = solver
+    plans = instance.global_plan["default_plan"].plan
+    plans["meeting"][1].group = "另一组"
+    plans["contact"][0].group = "第三组"
+    plans["dormitory_1"][0].replacement = ["Free"]
+    plans["dormitory_1"][0].group_bindings = [
+        {"group": "另一组", "replacement": ["Free"]}
+    ]
+    assert instance.initialize_operators() is None
+    data = instance.op_data
+    for name in ("泥岩", "年"):
+        data.add(Operator(name, "factory"))
+        data.operators[name].operator_type = "high"
+        data.operators[name].resting_priority = "low"
+    for op in data.operators.values():
+        op.current_room, op.current_index = "", -1
+        op.mood, op.time_stamp = 5, datetime.now()
+    first, remaining = ("伊内丝", "银灰") if returning == "联动" else ("银灰", "伊内丝")
+    apply_plan(
+        instance,
+        {
+            "meeting": ["陈", "初雪"],
+            "contact": ["讯使"],
+            "dormitory_1": [first, "冰酿", remaining, "泥岩", "年"],
+        },
+    )
+    data.commit_group_shifts({"联动": True, "另一组": True, "第三组": False})
+    data.select_group_binding("塑心", returning)
+    work = {
+        "meeting": [first, "Current"] if returning == "联动" else ["Current", first],
+        "contact": ["红"],
+    }
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_ON,
+        task_plan={
+            **work,
+            "dormitory_1": [remaining, "Current", "讯使", "Current", "Current"],
+        },
+    )
+    instance.task, instance.tasks = task, [task]
+    instance._prepare_group_shift(task, remember_targets=True)
+    apply_plan(instance, work)
+    if consumed:
+        for room in work:
+            task.plan.pop(room)
+    if retry:
+        assert not instance._complete_group_shift(task)
+        instance._prepare_group_shift(task, remember_targets=True)
+    row = task.plan["dormitory_1"]
+
+    instance.prepare_dorm_selection(row, "dormitory_1")
+
+    assert row[0] == remaining and row[2] == "讯使"
+    assert data.group_is_resting(returning)
+    apply_plan(instance, {"dormitory_1": row})
+    task.plan.clear()
+    assert instance._complete_group_shift(task)
+    assert not data.group_is_resting(returning)
+    other = "另一组" if returning == "联动" else "联动"
+    assert data.group_is_resting(other)
+    bed = next(bed for bed in data.dorm if bed.position == ("dormitory_1", 0))
+    assert data.is_effective_free_slot(bed)
+    assert not data.is_effective_free_slot(bed, inactive_groups={returning, other})
+
+
 @pytest.mark.parametrize("retry", [False, True])
 @pytest.mark.parametrize("occupied", [False, True])
 @pytest.mark.parametrize("secondary", [False, True])
