@@ -108,8 +108,6 @@ class TestMaaUpdateRoutes(unittest.TestCase):
             for route in (
                 "/maa-update/check",
                 "/maa-update/start",
-                "/maa-resource-update/check",
-                "/maa-resource-update/start",
                 "/maa-update/mirrorchyan-status",
             ):
                 with self.subTest(route=route):
@@ -473,12 +471,18 @@ class TestMaaUpdateRoutes(unittest.TestCase):
         self.assertFalse(data["ok"])
         self.assertIn("发现新版本后再更新", data["message"])
 
-    def test_windows_resource_info_check_and_start(self):
+    def test_resource_info_check_and_start_on_windows_and_android(self):
         current = {"version": "2026-09-03 01:00:00.000", "release_note": ""}
-        for source in ("github", "mirrorchyan"):
+        for platform, android, source in (
+            ("windows", "0", "github"),
+            ("windows", "0", "mirrorchyan"),
+            ("linux", "1", "github"),
+            ("linux", "1", "mirrorchyan"),
+        ):
             with (
-                self.subTest(source=source),
-                patch.object(server, "__system__", "windows"),
+                self.subTest(platform=platform, android=android, source=source),
+                patch.dict("os.environ", {"MOWER_ANDROID": android}),
+                patch.object(server, "__system__", platform),
                 patch.object(server, "_maa_busy_response", return_value=None),
                 patch.object(server, "active_job", return_value=False),
                 patch.dict(
@@ -511,7 +515,7 @@ class TestMaaUpdateRoutes(unittest.TestCase):
                     headers=self.headers,
                 ).get_json()
                 self.assertTrue(info["supported"])
-                self.assertEqual(info["platform"], "windows")
+                self.assertEqual(info["platform"], platform)
                 self.assertEqual(info["current"], current)
 
                 unchecked = self.client.post(
@@ -535,7 +539,7 @@ class TestMaaUpdateRoutes(unittest.TestCase):
                 self.assertEqual(server.maa_resource_update_check["id"], "")
                 launch.assert_called_once_with(
                     target=server._run_maa_resource_update,
-                    args=(self.target, source, "fixture-token", "windows"),
+                    args=(self.target, source, "fixture-token", platform),
                     daemon=True,
                 )
 

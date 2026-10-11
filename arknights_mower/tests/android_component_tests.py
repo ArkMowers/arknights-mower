@@ -101,12 +101,9 @@ class AndroidUpdateTests(unittest.TestCase):
 
 
 class AndroidMirrorPolicyTests(unittest.TestCase):
-    def test_core_resource_and_cdk_reject_mirror_before_network(self):
+    def test_core_update_and_cdk_reject_mirror_before_network(self):
         from unittest.mock import Mock, patch
 
-        from arknights_mower.utils.maa_resource_update import (
-            get_mirrorchyan_resource_release,
-        )
         from arknights_mower.utils.maa_update import (
             get_mirrorchyan_cdk_status,
             get_mirrorchyan_release,
@@ -116,7 +113,6 @@ class AndroidMirrorPolicyTests(unittest.TestCase):
         with patch.dict("os.environ", {"MOWER_ANDROID": "1"}):
             for function in (
                 get_mirrorchyan_release,
-                get_mirrorchyan_resource_release,
                 get_mirrorchyan_cdk_status,
             ):
                 with self.subTest(function=function.__name__):

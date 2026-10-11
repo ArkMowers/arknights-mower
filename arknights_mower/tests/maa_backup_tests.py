@@ -92,7 +92,9 @@ class MaaBackupTests(unittest.TestCase):
                 self.assertTrue(self.old.exists())
         instance = self.asst()
         instance._asst.accepted = False
-        self.assertFalse(instance.start())
+        with self.assertRaises(backup.MaaCallError) as raised:
+            instance.start()
+        self.assertEqual(raised.exception.operation, "start")
         self.finish(instance)
         self.assertTrue(self.old.exists())
 
@@ -104,6 +106,40 @@ class MaaBackupTests(unittest.TestCase):
         self.assertTrue(backup.maa_in_use())
         instance.stop()
         self.assertFalse(backup.maa_in_use())
+
+    def test_rejected_stage_identifies_target_and_preserves_backups(self):
+        for task_id in (0, -1, None, False, True):
+            with self.subTest(task_id=task_id):
+                instance = self.asst()
+                instance._asst.append_task = Mock(return_value=task_id)
+                with self.assertRaises(backup.MaaCallError) as raised:
+                    instance.append_task(
+                        "Fight", {"stage": "YW-8", "penguin_id": "private-id"}
+                    )
+                self.assertEqual(raised.exception.operation, "append_task")
+                self.assertEqual(raised.exception.task_type, "Fight")
+                self.assertEqual(raised.exception.stage, "YW-8")
+                self.assertIn("YW-8", str(raised.exception))
+                self.assertNotIn("private-id", str(raised.exception))
+                self.finish(instance)
+                self.assertTrue(self.old.exists())
+                self.assertTrue(self.old_resource.exists())
+
+    def test_accepted_stage_preserves_native_id_and_parameters(self):
+        instance = self.asst()
+        instance._asst.append_task = Mock(return_value=42)
+        params = {"stage": "YW-8", "series": 0, "drops": {"30012": 3}}
+        self.assertEqual(instance.append_task("Fight", params), 42)
+        instance._asst.append_task.assert_called_once_with("Fight", params)
+        self.assertIs(instance._asst.append_task.call_args.args[1], params)
+
+    def test_native_submission_exception_keeps_its_type_and_identity(self):
+        instance = self.asst()
+        failure = ConnectionError("cancelled transport")
+        instance._asst.append_task = Mock(side_effect=failure)
+        with self.assertRaises(ConnectionError) as raised:
+            instance.append_task("Fight", {"stage": "YW-8"})
+        self.assertIs(raised.exception, failure)
 
     def test_successful_connection_counts_as_maa_activity_before_start(self):
         instance = self.asst()

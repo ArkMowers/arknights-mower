@@ -206,6 +206,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.8 MAA Integration
 
+- [ ] **[INV-MAA-08] Verified MAA Admission**: Do resource loading, task submission and startup check their MAA results, identify rejection by phase and target, clear pending work without recording successful execution, and preserve rollback backups?
+
 - [ ] **[INV-MAA-07] Normal Long-Task Termination**: Do completed and scheduler-interrupted Roguelike, SSSCopilot and Reclamation tasks avoid errors inferred solely from `running()` returning false, while core errors and invocation exceptions retain their reporting?
 
 - [ ] **[INV-MAA-04] Inventory Stage Priority**: Do backend dispatch and frontend preview put selected annihilation first, defer unbound stages while selected inventory-bound stages survive their limits, admit ordinary fallback stages after all bound stages are skipped even with annihilation present, and preserve saved selections?
