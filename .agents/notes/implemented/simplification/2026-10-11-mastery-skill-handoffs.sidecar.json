@@ -15,6 +15,8 @@
     "arknights_mower.solvers.mastery_support_state.schedule_support_swap"
   ],
   "test_suites": [
-    "arknights_mower/tests/mastery_skill_handoff_tests.py"
+    "arknights_mower/tests/mastery_skill_handoff_tests.py",
+    "arknights_mower/tests/mastery_view_tests.py",
+    "ui/src/pages/MasteryRecommendation.test.js"
   ]
 }

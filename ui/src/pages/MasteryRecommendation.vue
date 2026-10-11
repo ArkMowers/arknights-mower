@@ -69,6 +69,16 @@
       >
     </div>
 
+    <n-alert
+      v-if="crossFormWarning"
+      type="warning"
+      title="阿米娅跨形态专精需手动切换"
+      :closable="false"
+      style="margin-top: 12px"
+    >
+      {{ crossFormWarning }}
+    </n-alert>
+
     <GrowthSurveyFilters
       v-model="surveyFilters"
       :survey="survey"
@@ -722,7 +732,11 @@ import {
   workshopRecommendationText,
   workshopTraineeWarning
 } from '@/utils/workshopOperators'
-import { masteryScheduleContext, masteryTraineeWarning } from '@/utils/masterySupport'
+import {
+  masteryFormWarning,
+  masteryScheduleContext,
+  masteryTraineeWarning
+} from '@/utils/masterySupport'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import MasteryMaterials from '@/components/MasteryMaterials.vue'
 import { materialStatus, materialStatusType } from '@/utils/masteryMaterials'
@@ -1057,6 +1071,16 @@ const emptyText = computed(() =>
 // 格式: { "charId_skillIndex": true, ... }
 const plan = ref({})
 const planStatus = ref({}) // { "charId_skillIndex": {id, status, target_level, priority, expires_at} }
+const crossFormWarning = computed(() =>
+  masteryFormWarning(
+    Object.keys(plan.value)
+      .filter((key) => plan.value[key])
+      .map((key) => parsePlanKey(key)[0])
+  )
+)
+watch(crossFormWarning, (warning, previous) => {
+  if (warning && warning !== previous) message.warning(warning, { duration: 10000 })
+})
 const craftingOrderRevision = computed(() =>
   JSON.stringify({
     skills: Object.entries(planStatus.value).map(([key, entry]) => [
@@ -1141,7 +1165,14 @@ async function toggleSkillPlan(op, rec) {
     try {
       const body = {
         planning: true,
-        items: [{ name: op.name, skill_index: rec.skill_index, target_level: targetFor(op, rec) }]
+        items: [
+          {
+            char_id: op.char_id,
+            name: op.name,
+            skill_index: rec.skill_index,
+            target_level: targetFor(op, rec)
+          }
+        ]
       }
       const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, body)
       const results = r.data?.results || []
@@ -1202,6 +1233,7 @@ async function addAllToPlan(op) {
     const r = await axios.post(`${import.meta.env.VITE_HTTP_URL}/mastery-plan`, {
       planning: true,
       items: toAdd.map((rec) => ({
+        char_id: op.char_id,
         name: op.name,
         skill_index: rec.skill_index,
         target_level: targetFor(op, rec)

@@ -229,6 +229,61 @@ class TestMasteryPlanView(unittest.TestCase):
             }
         }
 
+    @patch("arknights_mower.views.mastery._add_or_reuse_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    def test_explicit_form_ids_resolve_same_name_skills_independently(
+        self, get_skill, add
+    ):
+        forms = {
+            "char_002_amiya": "战术咏唱·γ型",
+            "char_1001_amiya2": "影霄·奔夜",
+            "char_1037_amiya3": "哀恸共情",
+        }
+        get_skill.return_value = {
+            "characters": {
+                cid: {"name": "阿米娅", "skills": [{"name": skill}]}
+                for cid, skill in forms.items()
+            },
+            "training": {"operators": dict.fromkeys(forms)},
+        }
+        add.return_value = ({"status": "existing"}, None, False)
+        response = self.client.post(
+            "/mastery-plan",
+            json={
+                "items": [
+                    {"char_id": cid, "name": "阿米娅", "skill_index": 0}
+                    for cid in forms
+                ]
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [(c.args[1], c.args[3]) for c in add.call_args_list],
+            list(forms.items()),
+        )
+
+    @patch("arknights_mower.views.mastery._add_or_reuse_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    def test_invalid_explicit_form_never_falls_back_to_same_name(self, get_skill, add):
+        get_skill.return_value = {
+            **self._char_table(),
+            "training": {"operators": {"char_001": {}}},
+        }
+        get_skill.return_value["characters"]["char_other"] = {"name": "能天使"}
+        get_skill.return_value["characters"]["char_summon"] = {"name": "阿米娅"}
+        for cid in (None, [], 1, "char_missing", "char_other", "char_summon"):
+            with self.subTest(char_id=cid):
+                response = self.client.post(
+                    "/mastery-plan",
+                    json={
+                        "items": [{"char_id": cid, "name": "阿米娅", "skill_index": 0}]
+                    },
+                )
+                result = response.get_json()["results"][0]
+                self.assertEqual(result["status"], "error")
+                self.assertIn("干员形态", result["reason"])
+        add.assert_not_called()
+
     @patch("arknights_mower.utils.mastery_db.insert_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
     def test_bulk_rejects_out_of_range_target(self, get_skill, insert):

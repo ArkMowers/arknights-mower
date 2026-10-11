@@ -401,7 +401,22 @@ class MasteryPlanView(MethodView):
                     )
                     continue
                 target_level = item.get("target_level")
-                char_id = name_to_id.get(name)
+                char_id = item["char_id"] if "char_id" in item else name_to_id.get(name)
+                if "char_id" in item and (
+                    not isinstance(char_id, str)
+                    or not char_id.startswith("char_")
+                    or char_table.get(char_id, {}).get("name") != name
+                    or training_operators is not None
+                    and char_id not in training_operators
+                ):
+                    results.append(
+                        {
+                            "key": name,
+                            "status": "error",
+                            "reason": "干员形态无效或与名称不匹配，请刷新后重试",
+                        }
+                    )
+                    continue
                 if char_id is None:
                     results.append(
                         {"key": name, "status": "error", "reason": "operator not found"}
