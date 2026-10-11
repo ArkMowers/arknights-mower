@@ -41,7 +41,7 @@ def run_all_checks(
     total_errors = 0
 
     # 1. Agent Notes Triplet & Format Check
-    print("\n[Gate 1/3] Verifying agent note format and triplet integrity...")
+    print("\n[Gate 1/3] Verifying bilingual decisions and legacy triplet integrity...")
     note_warnings = []
     note_errors = verify_agent_notes(
         repository / ".agents/notes",
@@ -74,7 +74,7 @@ def run_all_checks(
         total_errors += len(link_errors)
     else:
         print(
-            "  PASSED: Enforced relative document links exist; source links are excluded."
+            "  PASSED: Relative document targets and Markdown anchors resolve; source links are excluded."
         )
 
     # 3. Avoid-Term Check

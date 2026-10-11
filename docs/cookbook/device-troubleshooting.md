@@ -2,6 +2,8 @@
 
 Actionable operational guide for diagnosing device connection failures, offline states, capture decoding errors, and recovery budget timeouts.
 
+Python verification commands below run from the repository root with the project's development environment. They use offline fixtures. UI actions and the ADB probe are manual observations of the selected installation; record their actual results separately. Connection success establishes the tested frame and target, not completion of a game operation.
+
 ## Local Development Origin
 
 The backend and Vite use `MOWER_DEV_PORT` for the explicitly allowed loopback development port (default `5173`). Authentication remains required; other origins remain denied.
@@ -11,52 +13,52 @@ The backend and Vite use `MOWER_DEV_PORT` for the explicitly allowed loopback de
    $env:MOWER_DEV_PORT = '5174'
    ```
 2. Start the backend and Vite with that environment. Vite reports an error if the requested port is occupied.
-3. Verify that authenticated WebSocket requests from that loopback port succeed and requests from an unconfigured port are rejected:
+3. Verify the configured-origin policy offline from the repository root. The [frontend development guide](../../ui/README.md) explains the authenticated development URL:
    ```bash
-   pytest arknights_mower/tests/ai_security_tests.py -k configured_dev_port
+   python -m pytest arknights_mower/tests/ai_security_tests.py -k configured_dev_port -q
    ```
 
 ---
 
 ## 1. Inspect Readiness Classification
 
-When a device fails to initialize or drops offline, query the device readiness status:
+Inspect `GET /device/status` through the authenticated application. It returns the last session observation under `readiness` and the last connection test under `preflight`; either can be `null` before an observation exists. This endpoint does not perform a fresh readiness check.
 
-```python
-from arknights_mower.utils import config
-from arknights_mower.utils.device.session import DeviceSession
+For a fresh selected-target check, stop the current task and choose `测试连接（只读）`. Its authenticated request is `POST /device/preflight` with the following body when using the saved Device Profile:
 
-session = DeviceSession(config.conf.device)
-verdict = session.readiness()
-print(
-    f"Status: {verdict.status}, Code: {verdict.code}, Remedy: {verdict.remedy_action}"
-)
+```json
+{"device": {}}
 ```
 
 ### Verification Steps
-1. Execute the query above or perform a `GET /device/readiness` request.
-2. If `verdict.status == "absent"`, verify that the emulator application process is running and that the configured installation or manager path exists on the host filesystem.
-3. If `verdict.status == "offline"`, proceed to Step 2 to probe the transport layer.
-4. If `verdict.status == "booting"`, inspect whether Android boot has completed (`getprop sys.boot_completed`).
+1. Read the test response's `ok`, `status`, `serial` and, on failure, `error.code`, `error.message` and `error.action`. Session observations instead use `readiness.state` and `readiness.code`; these are distinct response objects in [DeviceControl](../../arknights_mower/utils/device/application.py).
+2. For `status: absent` or `error.code: instance_stopped`, check the selected instance and configured installation paths. A stopped instance retains its identity; use the explicit start action when it is supported.
+3. For `offline`, use the shared-server probe below. For `booting`, retain the selected instance and inspect the boot observations and stage logs in the [startup diagnosis](device-startup-stall.md).
+4. Verify the verdict and selected-target policy offline:
+   ```bash
+   python -m pytest arknights_mower/tests/device_preflight_tests.py arknights_mower/tests/device_discovery_tests.py -q
+   ```
 
 ---
 
 ## 2. Probe Shared ADB Server State
 
-In accordance with `[INV-05]`, never execute `adb kill-server`. Verify that the shared ADB daemon is responsive over its control socket:
+For a manual host observation, verify that the shared ADB daemon responds over its control socket. The [Shared ADB Guard contract](../subsystems/device-control.md#3-subsystem-invariants) governs startup and recovery:
 
 ```python
 from arknights_mower.utils.device.adb_client.server import probe_adb_server
 
-# Probe shared ADB daemon version over socket (default 127.0.0.1:5037)
 version = probe_adb_server(timeout=5.0)
 print(f"ADB daemon protocol version: {version}")
 ```
 
 ### Verification Steps
 1. Run `probe_adb_server(timeout=5.0)`.
-2. If `probe_adb_server()` returns `None` (connection refused), start the daemon using standard unprivileged CLI: `adb start-server`.
-3. Verify that existing debug tools or other emulator instances retain uninterrupted connections.
+2. `None` means connection refusal. A timeout or invalid response raises `SharedADBHandshakeTimeout` or `SharedADBError`; it does not establish absence or authorize an immediate restart. Use the selected-target connection action to enter the bounded production recovery path.
+3. Verify the handshake and recovery policy offline without restarting the host server:
+   ```bash
+   python -m pytest arknights_mower/tests/adb_server_tests.py arknights_mower/tests/adb_shared_server_tests.py -q
+   ```
 
 ---
 
@@ -69,21 +71,15 @@ print(f"ADB daemon protocol version: {version}")
 3. Run the read-only connection test. A missing DLL, unreported dimensions or changed instance produces a visible capture error. Upgrade the emulator or manually select another compatible capture backend before retrying.
 4. Verify the adapter offline without launching an emulator:
    ```bash
-   pytest arknights_mower/tests/device_ld_capture_tests.py arknights_mower/tests/device_capture_compatibility_tests.py
+   python -m pytest arknights_mower/tests/device_ld_capture_tests.py arknights_mower/tests/device_capture_compatibility_tests.py -q
    ```
 
-If capture operations return errors, verify that decoded frames strictly conform to the 1920×1080 RGB standard:
-
-```python
-frame = session.capture_frame()
-print(f"Shape: {frame.shape}, Dtype: {frame.dtype}")
-assert frame.shape == (1080, 1920, 3), f"Invalid canvas frame shape: {frame.shape}"
-```
+Connection testing validates the decoded RGB matrix and returns its dimensions as `observations.frame: [1920, 1080]` on success. This is the frame observation from [PreflightService](../../arknights_mower/utils/device/preflight.py), rather than the logical display size or a preview image.
 
 ### Verification Steps
-1. Check the captured matrix shape and datatype.
-2. Confirm that width equals 1920 and height equals 1080.
-3. If the emulator window uses non-standard aspect ratios, adjust the emulator display settings to 1920×1080 (16:9) or apply temporary preparation for physical devices.
+1. Run the read-only connection test and inspect its frame observation or capture error. `frame_size_mismatch` carries the `fix_size` action; an unavailable capture retains its own error.
+2. For an emulator, confirm landscape 1920×1080 in its settings. For a physical device, use the explicit Temporary Preparation action and inspect the resulting frame; the reported display size alone does not establish readiness.
+3. Verify decoding and wrong-frame rejection offline with `python -m pytest arknights_mower/tests/device_preflight_tests.py -q`. Successful fixture decoding does not establish current emulator output or recognition accuracy.
 
 ---
 
@@ -105,15 +101,15 @@ If device reboots exceed standard deadlines on slower host machines, adjust the 
 1. Open Advanced Device Settings in the Web UI or send a `PATCH /conf` payload.
 2. Set `recovery_timeout` to provide adequate boot headroom while maintaining a bounded deadline.
 3. Set `recovery_local_wait` to grant sufficient stabilization time post-boot before initiating game launch.
-4. Verify recovery behavior by running the targeted unit test:
+4. Verify the finite deadline and retry policy offline. These fixtures do not measure how long the selected installation takes to boot:
    ```bash
-   pytest arknights_mower/tests/device_session_tests.py -k test_recovery_budget
+   python -m pytest arknights_mower/tests/device_session_tests.py -k 'budget or deadline' -q
    ```
 
 ## Detect and Start a Selected Emulator
 
 1. Select the emulator preset and click `检测实例`. MuMu Pro detection opens its manager application if needed. Multiple candidates remain a selection list.
-2. Select the intended instance. Detection checks it, starts it only if stopped, and saves its identity after connection verification succeeds.
+2. Select the intended instance. The selection persists its identity before connection testing; failed readiness preserves that selection. Detection starts only the selected supported instance after a stopped verdict.
 3. Use the dropdown `测试连接（只读）` to inspect a stopped instance without opening or starting it. BlueStacks 5, BlueStacks Air and manual serial profiles require manual startup.
 4. Verify that a rejected target keeps its selected identity. Inspect MuMu Pro directly with its official read-only command:
 

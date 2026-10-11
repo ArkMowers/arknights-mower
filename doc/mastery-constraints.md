@@ -18,7 +18,7 @@
    - 3.1 房间视觉状态与计划持久化状态
    - 3.2 计划生命周期与合法状态迁移
    - 3.3 异常状态收敛与恢复机制
-   - 3.4 数据库表结构契约
+   - 3.4 数据库表结构规范
 4. [训练室视觉感知与判定矩阵](#4-训练室视觉感知与判定矩阵)
    - 4.1 屏幕检测区域与基准坐标
    - 4.2 三态倒计时判定机制
@@ -41,12 +41,12 @@
    - 8.1 规范化技能命名格式与懒填充
    - 8.2 屏幕文本容错解析
    - 8.3 占位符技能兼容匹配
-9. [推荐系统、材料核算与加工站联动](#9-推荐系统、材料核算与加工站联动)
+9. [推荐系统、材料核算与加工站联动](#9-推荐系统材料核算与加工站联动)
    - 9.1 专精推荐标准与链路级材料核算
    - 9.2 加工站自动备料联动
    - 9.3 专精清空时的加工站恢复
-10. [HTTP 接口契约与通知系统](#10-http-接口契约与通知系统)
-    - 10.1 HTTP API 契约
+10. [HTTP 接口规范与通知系统](#10-http-接口规范与通知系统)
+    - 10.1 HTTP API 规范
     - 10.2 统一通知矩阵
 11. [关键边界考量与测试验证](#11-关键边界考量与测试验证)
     - 11.1 关键边界与容错设计
@@ -76,7 +76,7 @@
 | `utils/mastery_support.py` | 专精协助公共层：逐计划协助规划、职业通用路线计算、参考教官表 | `plan_supports`, `profession_training_routes`, `profession_reference_trainers` |
 | `utils/mastery_support_data.py` | 协助数据层：BOX 缓存、排班冲突排除、技能解锁状态核查 | `owned_roster`, `schedule_context`, `candidates`, `trainer_stats` |
 | `utils/mastery_optimizer.py` | 协助求解器：多阶段动态规划求解最佳训练与接班路线 | `optimize_supports`, `stage_route` |
-| `utils/mastery_support_types.py` | 协助契约类型：阶段参数、执行输入、JSON 编解码工具 | `TrainingInputs`, `StageSpec`, `decode_supports`, `encode_supports` |
+| `utils/mastery_support_types.py` | 协助规范类型：阶段参数、执行输入、JSON 编解码工具 | `TrainingInputs`, `StageSpec`, `decode_supports`, `encode_supports` |
 | `utils/mastery_support_edits.py` | 协助编辑层：前端编辑方案校验与阶段约束拦截 | `edit_supports` |
 | `utils/mastery_rules.py` | 规则编译：解析游戏数据构建训练加速规则并生成静态资源 | `compile_training_data`, `compile_buff` |
 | `solvers/mastery_support_runtime.py` | 协助运行时：开训前只读预检、阶段匹配与执行态恢复 | `prepare_plan_supports`, `recover` |
@@ -181,7 +181,7 @@
 - **冷启动与掉电恢复（视觉对齐）**：系统重启后，任务队列可能丢失或落后。排班系统在轮询至训练室时调用 `reconcile_short`，根据屏幕上的干员名、技能名和倒计时精确重构内部计划状态，并在需要时为减半换人和收取补发调度任务。
 - **误报与外部干预收敛**：若用户手动在游戏内提前中止或更换了训练，系统在下次进房识别出“面板干员与活跃计划不一致”后，立即将旧计划置为 `idle`，并发送一次告警通知，随后无缝接管当前房间。
 
-### 3.4 数据库表结构契约
+### 3.4 数据库表结构规范
 
 系统在 `@app/tmp/data.db`（SQLite）中维护以下三张表：
 
@@ -401,7 +401,7 @@ Mower 不使用轮询检测空闲，开训操作由以下两条事件驱动通�
 
 中枢相关干员实际进出控制中枢后，排班读取训练倒计时并更新已有换人或收取任务。其他设施间移动不触发读取。运行时按实际中枢在岗情况折算当前剩余工作，减半干员的出勤预留按配置的全程中枢加成计算。
 
-联合材料准入和单技能备料的权威契约见[基建排班契约](../docs/subsystems/base-scheduler.md#3-subsystem-invariants)。
+联合材料准入和单技能备料的完整规则见[基建排班规范](../docs/subsystems/base-scheduler.md#consecutive-mastery-halving)。
 
 ### 6.3 换人任务派发与执行
 
@@ -502,9 +502,9 @@ Mower 不使用轮询检测空闲，开训操作由以下两条事件驱动通�
 
 ---
 
-## 10. HTTP 接口契约与通知系统
+## 10. HTTP 接口规范与通知系统
 
-### 10.1 HTTP API 契约
+### 10.1 HTTP API 规范
 
 所有 API 路由均挂载于 `mastery` 蓝图下，若服务端启用了全局 Token，所有请求头必须携带有效的 `token` 字段，否则返回 HTTP 403。
 
@@ -555,7 +555,7 @@ Mower 不使用轮询检测空闲，开训操作由以下两条事件驱动通�
 涉及本子系统的代码修改必须通过以下核心测试集的检验：
 
 ```bash
-# 1. 专精核心测试集（读取器、状态机、DB、换人公式、Web视图与调度契约）
+# 1. 专精核心测试集（读取器、状态机、DB、换人公式、Web视图与调度规范）
 pytest arknights_mower/tests/mastery_reader_tests.py \
        arknights_mower/tests/mastery_db_tests.py \
        arknights_mower/tests/mastery_arranging_tests.py \

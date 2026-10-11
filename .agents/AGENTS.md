@@ -9,7 +9,7 @@ Inspect the request and working-tree state before selecting a workflow. Preserve
 | Task | Necessary work | Output and completion |
 | :--- | :--- | :--- |
 | Read-only review | Inspect the requested scope and its relevant standards, contracts and call paths; run focused offline checks where useful. | Findings with evidence, checks actually run and remaining uncertainty. End without changing code, notes or lifecycle states. |
-| Local repair | Reuse the governing contract and existing invariants; repair the real call path and verify its observable behavior. Assess concept impact. | Working change and focused verification; update an existing same-decision triplet when its contract or evidence changes. No new record is required merely to complete this workflow. |
+| Local repair | Reuse the governing contract and existing guarantees; repair the real call path and verify its observable behavior. Assess concept impact. | Working change and focused verification in the change or PR report; update a same-decision record only when its rationale, relevant references or recorded evidence changes. |
 | Independent architecture or contract decision | Compare existing decisions and guarantees. Document an independently useful boundary, responsibility or guarantee before implementation. | One bilingual proposal when record ownership justifies it; implementation, behavior verification, review and only the necessary lifecycle transition. |
 | Documentation maintenance | Identify the authoritative home, preserve valid content and metadata, and update affected direct links. | Aligned documents and applicable structural checks. No code tests, new invariant or new record solely because documentation changed. |
 
@@ -21,8 +21,8 @@ New Python modules that emit application logs apply the [shared logger rule](ski
 
 Before changing production behavior, check relevant prior work within the affected scope:
 
-1. Locate the affected entry points, callers, governing contract and existing invariant identifiers.
-2. Follow their direct links and search `notes/proposed/`, `notes/implemented/`, relevant `docs/postmortem/` records and tests using the problem, symbols and invariant identifiers. Inspect matching decisions, known failure modes and test expectations.
+1. Locate the affected entry points, callers and governing behavior contract.
+2. Follow their direct links and search `notes/proposed/`, `notes/implemented/`, relevant `docs/postmortem/` records and tests using the problem, behavior names and symbols. Historical identifiers can help locate old records. Inspect matching decisions, known failure modes and test expectations.
 3. Use focused Git history for the affected paths when a similar repair, compatibility boundary or unexplained behavior needs context. Follow archived or replacement links when a matching record points to them.
 4. Use that evidence to select the record owner and regression checks before editing. If no prior work covers the problem, state that briefly in the work report; the search itself creates no record.
 
@@ -30,12 +30,12 @@ Scale this check to the change. It does not require reading all notes or maintai
 
 ## 2. Authority and Record Ownership
 
-- [Coding Standards](../CODING_STANDARDS.md) registers invariant identifiers and their concise guarantees. Subsystem specifications own full interface and operational contracts. Checklists ask how a change preserves them; they link rather than maintain another full definition.
+- [Coding Standards](../CODING_STANDARDS.md) owns global guarantees. Subsystem specifications own full interface and operational contracts, addressed by behavior names and stable anchors. Checklists ask how a change preserves them and link to their owners.
 - [Documentation routing](skills/mower-doc/references/doc-hierarchy.md#routing-rules) owns placement of glossary definitions, contracts, procedures and rationale. Existing historical duplication is not a template for new text.
-- [Record ownership and lifecycle](notes/AGENTS.md) owns triplet reuse, merge, cleanup and implementation-state criteria. Search `proposed/` and `implemented/` before creating a triplet.
-- [INV-06](../CODING_STANDARDS.md#1-core-invariants) owns concept-impact assessment. [Root glossary approval](../AGENTS.md#4-global-execution-constraints) applies only to an actual glossary proposal; semantic decisions are not determined by the Avoid-term scan.
+- [Agent Notes](notes/README.md) owns record ownership, lifecycle bodies, bilingual formats, legacy triplet compatibility and reference checks. Search `proposed/` and `implemented/` before creating a record; the notes subtree entry routes to the relevant section.
+- [Concept Impact Review](../CODING_STANDARDS.md#concept-impact-review) owns concept-impact assessment. [Root glossary approval](../AGENTS.md#4-global-execution-constraints) applies only to an actual glossary proposal; semantic decisions are not determined by the Avoid-term scan.
 
-Preserve existing invariant numbers. Extend the existing guarantee and its evidence when it already covers the defect; a new number requires a new independent guarantee. Repair current touchpoints without bulk rewriting historical notes.
+Extend the existing guarantee and its evidence when it covers the defect. New guarantees receive a meaningful name and direct contract link, with focused tests of observable behavior. Historical identifiers are frozen for old metadata; repair current touchpoints without bulk rewriting historical notes.
 
 ## 3. Skill Selection
 
@@ -76,4 +76,9 @@ pytest arknights_mower/tests/verify_governance_tests.py
 
 Report structural checks, behavior tests and semantic review separately. Structural success does not establish runtime correctness, record independence, contract consistency, glossary approval or implementation status. Missing evidence remains explicit rather than becoming a pass.
 
-When delivery includes merging a PR, verify that every required repository CI check for its current head has completed successfully before merging. Pending, failed or cancelled checks leave that delivery step incomplete. Recheck after the head changes; report unavailable check evidence explicitly.
+For review feedback, complete the loop within the selected task:
+
+1. Check each claim against the actual code, callers and governing contract. Explain the observed impact and the evidence for accepting a fix or retaining the behavior.
+2. Apply authorized repairs where the defect originates. For a reproducible defect, capture the triggering check before and after the repair when readily available. After delegated work, inspect the actual diff and verify the affected behavior in the resulting tree before accepting completion.
+3. When the task includes responding to PR reviews, reply in the original thread with the current commit, relevant check results and the disposition of the finding. A finding retained without a code change needs a concrete explanation and supporting evidence.
+4. After changing the PR head, recheck unresolved review threads, approval state and required CI results for that head. When delivery includes merging, every required check must have completed successfully; report pending, failed, cancelled or unavailable checks as remaining work.

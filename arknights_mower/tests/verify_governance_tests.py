@@ -104,6 +104,691 @@ class VerifyGovernanceTests(unittest.TestCase):
                 timeout=15,
             )
 
+    def make_decision_note(
+        self, root, slug="2026-10-11-named-decision", *, lifecycle="proposed"
+    ):
+        directory = Path(root) / ".agents/notes" / lifecycle / "architecture"
+        directory.mkdir(parents=True, exist_ok=True)
+        paths = []
+        for suffix in (".md", ".zh.md"):
+            path = directory / f"{slug}{suffix}"
+            path.write_text(
+                f"---\nformat: decision\ntitle: Named Decision\nstatus: {lifecycle}\n"
+                f"category: architecture\ndate: {slug[:10]}\n---\n\n"
+                + self.decision_body(lifecycle, chinese=suffix == ".zh.md"),
+                encoding="utf-8",
+            )
+            paths.append(path)
+        return paths
+
+    def decision_body(self, lifecycle, *, chinese=False):
+        if chinese:
+            sections = [
+                ("问题", "重复提交会产生重复记录。"),
+                (
+                    "决策" if lifecycle in {"implemented", "archived"} else "提案",
+                    "记录与确认凭据在同一事务中保存。",
+                ),
+                ("考虑过的替代方案", "保留 CSV 追加无法确认重试结果。"),
+            ]
+            if lifecycle == "proposed":
+                sections += [
+                    ("验收条件", "重复相同输入保留一行，并返回相同凭据。"),
+                    ("风险", "既有读取方需要兼容迁移。"),
+                ]
+            elif lifecycle == "rejected":
+                sections.append(("拒绝理由", "尚无跨进程写入方，暂时保留当前实现。"))
+            else:
+                sections.append(("后果", "接受维护凭据的成本，重试结果可确认。"))
+        else:
+            sections = [
+                ("Problem", "Repeated submissions can create duplicate rows."),
+                (
+                    "Decision"
+                    if lifecycle in {"implemented", "archived"}
+                    else "Proposal",
+                    "Store the row and its receipt in one transaction.",
+                ),
+                ("Alternatives considered", "CSV append cannot confirm retry results."),
+            ]
+            if lifecycle == "proposed":
+                sections += [
+                    (
+                        "Acceptance criteria",
+                        "Repeating input retains one row and receipt.",
+                    ),
+                    ("Risks", "Existing readers need a compatibility migration."),
+                ]
+            elif lifecycle == "rejected":
+                sections.append(
+                    ("Rejection", "No cross-process writer justifies this cost.")
+                )
+            else:
+                sections.append(
+                    ("Consequences", "Receipt maintenance enables confirmed retries.")
+                )
+        return (
+            "# Named Decision\n\n"
+            + "\n\n".join(f"## {heading}\n\n{body}" for heading, body in sections)
+            + "\n"
+        )
+
+    def test_directory_guides_are_not_classified_as_decision_records(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _, _ = self.make_reference_repo(tmpdir)
+            notes = root / ".agents/notes"
+            for directory in (
+                notes,
+                notes / "implemented",
+                notes / "implemented/bug-fix",
+            ):
+                for name in ("README.md", "README.zh.md", "AGENTS.md"):
+                    (directory / name).write_text(
+                        "# Directory responsibilities\n", encoding="utf-8"
+                    )
+            result, output = self.run_reference_gate(root)
+            self.assertEqual(result, 0, output)
+            (notes / "implemented/guide.md").write_text(
+                "Unknown entry\n", encoding="utf-8"
+            )
+            self.assertTrue(verify_agent_notes(notes))
+
+    def test_new_decision_requires_lifecycle_sections_in_both_languages(self):
+        for lifecycle in ("proposed", "implemented", "archived", "rejected"):
+            with (
+                self.subTest(lifecycle=lifecycle),
+                tempfile.TemporaryDirectory() as tmpdir,
+            ):
+                paths = self.make_decision_note(tmpdir, lifecycle=lifecycle)
+                self.assertEqual(verify_agent_notes(Path(tmpdir) / ".agents/notes"), [])
+                paths[1].write_text(
+                    paths[1]
+                    .read_text(encoding="utf-8")
+                    .replace("## 考虑过的替代方案", "## 其他说明"),
+                    encoding="utf-8",
+                )
+                errors = verify_agent_notes(Path(tmpdir) / ".agents/notes")
+                self.assertTrue(
+                    any("考虑过的替代方案" in error for error in errors), errors
+                )
+
+    def test_directory_guides_do_not_allow_an_extra_note_directory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = self.make_decision_note(tmpdir, lifecycle="implemented")
+            unexpected = paths[0].parent / "unrecognized"
+            unexpected.mkdir()
+            (unexpected / "README.md").write_text("# Guide\n", encoding="utf-8")
+            errors = verify_agent_notes(Path(tmpdir) / ".agents/notes")
+            self.assertTrue(any("directory" in error for error in errors), errors)
+
+    def test_frontmatter_sections_do_not_satisfy_an_empty_decision_body(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = self.make_decision_note(tmpdir)
+            fields = paths[0].read_text(encoding="utf-8").split("---", 2)[1]
+            paths[0].write_text(
+                "---" + fields + self.decision_body("proposed") + "---\n",
+                encoding="utf-8",
+            )
+            errors = verify_agent_notes(Path(tmpdir) / ".agents/notes")
+            self.assertTrue(any("Problem" in error for error in errors), errors)
+
+    def test_comment_and_code_fence_markers_do_not_hide_real_sections(self):
+        for example in (
+            "<!--\n```markdown\n## Problem\nSample only\n-->\n",
+            "```html\n<!-- literal comment\n```\n",
+            "The literal Markdown marker is `<!--`.\n",
+            "The escaped Markdown marker is \\<!--.\n",
+            "    <!-- indented code\n",
+            "<!-- A code span cannot hide the comment end ` -->`\n",
+        ):
+            with self.subTest(example=example), tempfile.TemporaryDirectory() as tmpdir:
+                paths = self.make_decision_note(tmpdir)
+                header, fields, body = (
+                    paths[0].read_text(encoding="utf-8").split("---", 2)
+                )
+                paths[0].write_text(
+                    "---".join((header, fields, "\n" + example + body)),
+                    encoding="utf-8",
+                )
+                self.assertEqual(verify_agent_notes(Path(tmpdir) / ".agents/notes"), [])
+
+    def test_section_examples_in_code_fences_do_not_satisfy_decision_body(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = self.make_decision_note(tmpdir)
+            content = paths[0].read_text(encoding="utf-8")
+            frontmatter = content.split("---", 2)[:2]
+            paths[0].write_text(
+                "---".join(frontmatter)
+                + "---\n\n```markdown\n"
+                + self.decision_body("proposed")
+                + "```\n",
+                encoding="utf-8",
+            )
+            errors = verify_agent_notes(Path(tmpdir) / ".agents/notes")
+            self.assertTrue(any("Problem" in error for error in errors), errors)
+
+    def test_status_change_alone_does_not_complete_a_proposal(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = self.make_decision_note(tmpdir)
+            archive_note.transition_triplet(paths[0], "implemented")
+            errors = verify_agent_notes(Path(tmpdir) / ".agents/notes")
+            self.assertTrue(any("Proposal" in error for error in errors), errors)
+            for path in (Path(tmpdir) / ".agents/notes/implemented/architecture").glob(
+                "*.md"
+            ):
+                content = path.read_text(encoding="utf-8").split("---", 2)
+                path.write_text(
+                    "---".join(content[:2])
+                    + "---\n\n"
+                    + self.decision_body(
+                        "implemented", chinese=path.name.endswith(".zh.md")
+                    ),
+                    encoding="utf-8",
+                )
+            self.assertEqual(verify_agent_notes(Path(tmpdir) / ".agents/notes"), [])
+
+    def test_empty_required_sections_do_not_establish_a_decision(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = self.make_decision_note(tmpdir)
+            paths[0].write_text(
+                paths[0]
+                .read_text(encoding="utf-8")
+                .replace(
+                    "CSV append cannot confirm retry results.", "<!-- Not recorded -->"
+                ),
+                encoding="utf-8",
+            )
+            errors = verify_agent_notes(Path(tmpdir) / ".agents/notes")
+            self.assertTrue(
+                any("Alternatives considered" in error for error in errors), errors
+            )
+
+    def test_bilingual_decision_without_sidecar_passes_actual_governance_entry(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _, _ = self.make_reference_repo(tmpdir)
+            self.make_decision_note(root)
+            result, output = self.run_reference_gate(root)
+            self.assertEqual(result, 0, output)
+
+    def test_decision_requires_both_languages_and_matching_format(self):
+        for mutation, diagnostic in (
+            ("missing_chinese", "missing 'zh' file"),
+            ("missing_format", "format"),
+            ("unknown_format", "format"),
+        ):
+            with (
+                self.subTest(mutation=mutation),
+                tempfile.TemporaryDirectory() as tmpdir,
+            ):
+                paths = self.make_decision_note(tmpdir)
+                if mutation == "missing_chinese":
+                    paths[1].unlink()
+                else:
+                    replacement = (
+                        "" if mutation == "missing_format" else "format: other\n"
+                    )
+                    paths[1].write_text(
+                        paths[1]
+                        .read_text(encoding="utf-8")
+                        .replace("format: decision\n", replacement),
+                        encoding="utf-8",
+                    )
+                errors = verify_agent_notes(Path(tmpdir) / ".agents/notes")
+                self.assertTrue(any(diagnostic in error for error in errors), errors)
+
+    def test_decision_still_validates_required_frontmatter_and_path(self):
+        for old, new, diagnostic in (
+            ("title: Named Decision\n", "", "missing required key 'title'"),
+            ("title: Named Decision", "title:", "must be nonempty"),
+            ("status: proposed", "status: implemented", "lifecycle directory"),
+            ("category: architecture", "category: feature", "category directory"),
+            ("date: 2026-10-11", "date: 2026-10-10", "filename date"),
+        ):
+            with self.subTest(old=old), tempfile.TemporaryDirectory() as tmpdir:
+                english, _ = self.make_decision_note(tmpdir)
+                english.write_text(
+                    english.read_text(encoding="utf-8").replace(old, new),
+                    encoding="utf-8",
+                )
+                errors = verify_agent_notes(Path(tmpdir) / ".agents/notes")
+                self.assertTrue(any(diagnostic in error for error in errors), errors)
+
+    def test_decision_source_links_validate_actual_files_without_importing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _, _ = self.make_reference_repo(tmpdir)
+            english, _ = self.make_decision_note(root)
+            source = root / "production.py"
+            source.write_text(
+                "raise RuntimeError('must not import')\n", encoding="utf-8"
+            )
+            english.write_text(
+                english.read_text(encoding="utf-8")
+                + "[Production](../../../../production.py)\n"
+                + "[Regression][regression]\n"
+                + "[regression]: ../../../../arknights_mower/tests/field_tests.py\n"
+                + "[External](https://example.invalid/planned.py)\n"
+                + "`[Example](missing.py)`\n```markdown\n[Example](missing.py)\n```\n",
+                encoding="utf-8",
+            )
+            result, output = self.run_reference_gate(root)
+            self.assertEqual(result, 0, output)
+            source.unlink()
+            result, output = self.run_reference_gate(root)
+            self.assertEqual(result, 1, output)
+            self.assertIn("Missing or outside-repository source link", output)
+            self.assertIn("production.py", output)
+
+    def test_decision_missing_and_outside_source_links_fail(self):
+        for target in (
+            "../../../../arknights_mower/tests/missing_tests.py",
+            "../../../../../outside.py",
+        ):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as tmpdir:
+                root, _, _ = self.make_reference_repo(tmpdir)
+                english, _ = self.make_decision_note(root)
+                english.write_text(
+                    english.read_text(encoding="utf-8") + f"[Verification]({target})\n",
+                    encoding="utf-8",
+                )
+                result, output = self.run_reference_gate(root)
+                self.assertEqual(result, 1, output)
+                self.assertIn("Missing or outside-repository source link", output)
+
+    def test_decision_rejects_absolute_local_source_links(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _, _ = self.make_reference_repo(tmpdir)
+            english, _ = self.make_decision_note(root)
+            original = english.read_text(encoding="utf-8")
+            source = root / "production.py"
+            source.write_text(
+                "raise RuntimeError('must not import')\n", encoding="utf-8"
+            )
+            for target in (
+                source.as_uri(),
+                source.with_name("missing.py").as_uri(),
+                source.as_posix(),
+                "/production.py",
+            ):
+                with self.subTest(target=target):
+                    english.write_text(
+                        original + f"[Verification]({target})\n", encoding="utf-8"
+                    )
+                    result, output = self.run_reference_gate(root)
+                    self.assertEqual(result, 1, output)
+                    self.assertIn("local source links must be relative", output)
+
+    def test_decision_marker_cannot_hide_present_legacy_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, sidecar, _ = self.make_reference_repo(tmpdir)
+            for suffix in (".md", ".zh.md"):
+                path = sidecar.with_name(sidecar.name[:-13] + suffix)
+                path.write_text(
+                    path.read_text(encoding="utf-8").replace(
+                        "---\n", "---\nformat: decision\n", 1
+                    ),
+                    encoding="utf-8",
+                )
+            sidecar.write_text("[]", encoding="utf-8")
+            result, output = self.run_reference_gate(root)
+            self.assertEqual(result, 1, output)
+            self.assertIn("JSON object", output)
+            self.assertIn("legacy triplet", output)
+
+    def test_deleted_legacy_sidecar_cannot_be_downgraded_in_git_worktree_or_branch(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, sidecar, _ = self.make_reference_repo(tmpdir)
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            self.commit_reference_fixture(root, "legacy fixture")
+            base = (
+                subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"], cwd=root, timeout=15
+                )
+                .decode()
+                .strip()
+            )
+            for suffix in (".md", ".zh.md"):
+                path = sidecar.with_name(sidecar.name[:-13] + suffix)
+                path.write_text(
+                    path.read_text(encoding="utf-8").replace(
+                        "---\n", "---\nformat: decision\n", 1
+                    ),
+                    encoding="utf-8",
+                )
+            sidecar.unlink()
+            errors = verify_agent_notes(root / ".agents/notes", repo_root=root)
+            self.assertTrue(any("legacy triplet" in error for error in errors), errors)
+            self.commit_reference_fixture(root, "attempted format conversion")
+            errors = verify_agent_notes(
+                root / ".agents/notes", repo_root=root, comparison_base=base
+            )
+            self.assertTrue(any("legacy triplet" in error for error in errors), errors)
+
+    def test_same_slug_in_another_category_can_be_a_new_decision(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, sidecar, _ = self.make_reference_repo(tmpdir)
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            self.commit_reference_fixture(root, "legacy category fixture")
+            self.make_decision_note(root, slug=sidecar.name[:-13])
+            result, output = self.run_reference_gate(root)
+            self.assertEqual(result, 0, output)
+
+    def test_legacy_same_category_cannot_downgrade_after_lifecycle_move(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, sidecar, _ = self.make_reference_repo(tmpdir)
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            self.commit_reference_fixture(root, "legacy lifecycle fixture")
+            destination = root / ".agents/notes/proposed/bug-fix"
+            destination.mkdir(parents=True)
+            for suffix in (".md", ".zh.md"):
+                path = sidecar.with_name(sidecar.name[:-13] + suffix)
+                content = (
+                    path.read_text(encoding="utf-8")
+                    .replace("---\n", "---\nformat: decision\n", 1)
+                    .replace("status: implemented", "status: proposed")
+                )
+                (destination / path.name).write_text(content, encoding="utf-8")
+                path.unlink()
+            sidecar.unlink()
+            errors = verify_agent_notes(root / ".agents/notes", repo_root=root)
+            self.assertTrue(any("legacy triplet" in error for error in errors), errors)
+
+    def test_frozen_legacy_identifiers_keep_sidecar_references_valid(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, sidecar, metadata = self.make_reference_repo(tmpdir)
+            (root / "CODING_STANDARDS.md").write_text(
+                "## Core Isolation\nExplicit selections remain persisted.\n",
+                encoding="utf-8",
+            )
+            metadata["invariants"] = ["[INV-01]", "[INV-REC-07]"]
+            sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+            frozen = root / "scripts/legacy_invariant_ids.json"
+            frozen.parent.mkdir()
+            frozen.write_text(
+                json.dumps(["[INV-01]", "[INV-REC-07]"]), encoding="utf-8"
+            )
+            result, output = self.run_reference_gate(root)
+            self.assertEqual(result, 0, output)
+
+    def run_note_cli(self, root, comparison_base=None):
+        script = (
+            Path(__file__).resolve().parents[2] / "scripts/verify_agent_note_format.py"
+        )
+        arguments = [
+            sys.executable,
+            "-X",
+            "utf8",
+            str(script),
+            "--repo-root",
+            str(root),
+            "--notes-dir",
+            str(root / ".agents/notes"),
+        ]
+        if comparison_base is not None:
+            arguments += ["--base", comparison_base]
+        return subprocess.run(
+            arguments,
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+        )
+
+    def test_new_legacy_triplets_fail_at_note_cli(self):
+        for lifecycle in ("implemented", "archived"):
+            for mode in ("untracked", "staged", "committed"):
+                with (
+                    self.subTest(lifecycle=lifecycle, mode=mode),
+                    tempfile.TemporaryDirectory() as tmpdir,
+                ):
+                    root, _, _ = self.make_reference_repo(tmpdir)
+                    subprocess.run(
+                        ["git", "init", "-q"],
+                        cwd=root,
+                        check=True,
+                        capture_output=True,
+                        timeout=15,
+                    )
+                    self.commit_reference_fixture(root, "historical fixture")
+                    base = (
+                        subprocess.check_output(
+                            ["git", "rev-parse", "HEAD"], cwd=root, timeout=15
+                        )
+                        .decode()
+                        .strip()
+                    )
+                    self.make_reference_repo(
+                        root, lifecycle, slug="2026-10-11-new-legacy"
+                    )
+                    if mode == "staged":
+                        subprocess.run(
+                            ["git", "add", "."],
+                            cwd=root,
+                            check=True,
+                            capture_output=True,
+                            timeout=15,
+                        )
+                    elif mode == "committed":
+                        self.commit_reference_fixture(root, "new legacy fixture")
+                    result = self.run_note_cli(
+                        root, base if mode == "committed" else None
+                    )
+                    self.assertEqual(
+                        result.returncode, 1, result.stdout + result.stderr
+                    )
+                    self.assertIn("New legacy triplet", result.stdout)
+
+    def test_frozen_identifiers_migrate_history_and_reject_new_ids_at_note_cli(self):
+        for frozen_exists in (False, True):
+            for committed in (False, True):
+                with (
+                    self.subTest(frozen_exists=frozen_exists, committed=committed),
+                    tempfile.TemporaryDirectory() as tmpdir,
+                ):
+                    root, sidecar, metadata = self.make_reference_repo(tmpdir)
+                    frozen = root / "scripts/legacy_invariant_ids.json"
+                    frozen.parent.mkdir()
+                    if frozen_exists:
+                        frozen.write_text(
+                            json.dumps(["[INV-REC-07]"]), encoding="utf-8"
+                        )
+                    subprocess.run(
+                        ["git", "init", "-q"],
+                        cwd=root,
+                        check=True,
+                        capture_output=True,
+                        timeout=15,
+                    )
+                    self.commit_reference_fixture(root, "historical identifiers")
+                    base = (
+                        subprocess.check_output(
+                            ["git", "rev-parse", "HEAD"], cwd=root, timeout=15
+                        )
+                        .decode()
+                        .strip()
+                    )
+                    (root / "CODING_STANDARDS.md").write_text(
+                        "## Core Isolation\nExplicit selections remain persisted.\n",
+                        encoding="utf-8",
+                    )
+                    frozen.write_text(json.dumps(["[INV-REC-07]"]), encoding="utf-8")
+                    migrated = self.run_note_cli(root)
+                    self.assertEqual(
+                        migrated.returncode, 0, migrated.stdout + migrated.stderr
+                    )
+                    frozen.write_text(
+                        json.dumps(["[INV-REC-07]", "[INV-NEW-99]"]), encoding="utf-8"
+                    )
+                    metadata["invariants"] = ["[INV-NEW-99]"]
+                    sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+                    if committed:
+                        self.commit_reference_fixture(root, "added identifier")
+                    result = self.run_note_cli(root, base if committed else None)
+                    self.assertEqual(
+                        result.returncode, 1, result.stdout + result.stderr
+                    )
+                    self.assertIn("New legacy identifier '[INV-NEW-99]'", result.stdout)
+
+    def test_frozen_identifiers_cannot_be_removed_at_note_cli(self):
+        for committed in (False, True):
+            for remove_file in (False, True):
+                with (
+                    self.subTest(committed=committed, remove_file=remove_file),
+                    tempfile.TemporaryDirectory() as tmpdir,
+                ):
+                    root, _, _ = self.make_reference_repo(tmpdir, "archived")
+                    (root / "CODING_STANDARDS.md").write_text(
+                        "## Core Isolation\nExplicit selections remain persisted.\n",
+                        encoding="utf-8",
+                    )
+                    frozen = root / "scripts/legacy_invariant_ids.json"
+                    frozen.parent.mkdir()
+                    frozen.write_text(json.dumps(["[INV-REC-07]"]), encoding="utf-8")
+                    subprocess.run(
+                        ["git", "init", "-q"],
+                        cwd=root,
+                        check=True,
+                        capture_output=True,
+                        timeout=15,
+                    )
+                    self.commit_reference_fixture(
+                        root, "archived historical identifiers"
+                    )
+                    base = (
+                        subprocess.check_output(
+                            ["git", "rev-parse", "HEAD"], cwd=root, timeout=15
+                        )
+                        .decode()
+                        .strip()
+                    )
+                    if remove_file:
+                        frozen.unlink()
+                    else:
+                        frozen.write_text("[]", encoding="utf-8")
+                    if committed:
+                        self.commit_reference_fixture(
+                            root, "removed historical identifier"
+                        )
+                    result = self.run_note_cli(root, base if committed else None)
+                    self.assertEqual(
+                        result.returncode, 1, result.stdout + result.stderr
+                    )
+                    self.assertIn(
+                        "Missing frozen legacy identifier '[INV-REC-07]'", result.stdout
+                    )
+
+    def test_historical_triplet_edit_and_archive_remain_valid_at_note_cli(self):
+        for committed in (False, True):
+            with (
+                self.subTest(committed=committed),
+                tempfile.TemporaryDirectory() as tmpdir,
+            ):
+                root, sidecar, _ = self.make_reference_repo(tmpdir)
+                subprocess.run(
+                    ["git", "init", "-q"],
+                    cwd=root,
+                    check=True,
+                    capture_output=True,
+                    timeout=15,
+                )
+                self.commit_reference_fixture(root, "historical triplet")
+                base = (
+                    subprocess.check_output(
+                        ["git", "rev-parse", "HEAD"], cwd=root, timeout=15
+                    )
+                    .decode()
+                    .strip()
+                )
+                english = sidecar.with_name(sidecar.name[:-13] + ".md")
+                english.write_text(
+                    english.read_text("utf-8") + "Updated evidence.\n", encoding="utf-8"
+                )
+                edited = self.run_note_cli(root)
+                self.assertEqual(edited.returncode, 0, edited.stdout + edited.stderr)
+                with redirect_stdout(io.StringIO()):
+                    archive_note.transition_triplet(english, "archived")
+                if committed:
+                    self.commit_reference_fixture(root, "archived historical triplet")
+                archived = self.run_note_cli(root, base if committed else None)
+                self.assertEqual(
+                    archived.returncode, 0, archived.stdout + archived.stderr
+                )
+
+    def test_unborn_git_requires_new_decisions_and_named_rules_at_note_cli(self):
+        for kind, diagnostic in (
+            ("legacy-triplet", "New legacy triplet"),
+            ("new-identifier", "New legacy identifier '[INV-NEW-99]'"),
+            ("decision", None),
+        ):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as tmpdir:
+                root, sidecar, metadata = self.make_reference_repo(tmpdir)
+                (root / "CODING_STANDARDS.md").write_text(
+                    "## Core Isolation\nExplicit selections remain persisted.\n",
+                    encoding="utf-8",
+                )
+                if kind == "legacy-triplet":
+                    metadata["invariants"] = []
+                    sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+                else:
+                    for suffix in (".md", ".zh.md", ".sidecar.json"):
+                        sidecar.with_name(sidecar.name[:-13] + suffix).unlink()
+                    self.make_decision_note(root)
+                    if kind == "new-identifier":
+                        frozen = root / "scripts/legacy_invariant_ids.json"
+                        frozen.parent.mkdir()
+                        frozen.write_text(
+                            json.dumps(["[INV-NEW-99]"]), encoding="utf-8"
+                        )
+                without_git = self.run_note_cli(root)
+                self.assertEqual(
+                    without_git.returncode, 0, without_git.stdout + without_git.stderr
+                )
+                subprocess.run(
+                    ["git", "init", "-q"],
+                    cwd=root,
+                    check=True,
+                    capture_output=True,
+                    timeout=15,
+                )
+                unborn = self.run_note_cli(root)
+                self.assertEqual(
+                    unborn.returncode,
+                    1 if diagnostic else 0,
+                    unborn.stdout + unborn.stderr,
+                )
+                if diagnostic:
+                    self.assertIn(diagnostic, unborn.stdout)
+
+    def test_malformed_frozen_identifiers_fail_governance_entry(self):
+        for content in ("{", "{}", "[null]", '["INV-REC-07"]'):
+            with self.subTest(content=content), tempfile.TemporaryDirectory() as tmpdir:
+                root, _, _ = self.make_reference_repo(tmpdir)
+                frozen = root / "scripts/legacy_invariant_ids.json"
+                frozen.parent.mkdir()
+                frozen.write_text(content, encoding="utf-8")
+                result, output = self.run_reference_gate(root)
+                self.assertEqual(result, 1, output)
+
     def test_all_existing_notes_pass_verification(self):
         errors = verify_agent_notes(".agents/notes")
         self.assertEqual(errors, [])
@@ -243,6 +928,148 @@ class VerifyGovernanceTests(unittest.TestCase):
             errors = verify_doc_links(tmpdir)
             self.assertTrue(any("non_existent_file.md" in err for err in errors))
 
+    def test_git_ignored_local_documents_do_not_block_governance(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _, _ = self.make_reference_repo(tmpdir)
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            self.commit_reference_fixture(root, "historical fixture")
+            (root / ".gitignore").write_text(
+                "debug/\nlocal-diagnostic.md\n", encoding="utf-8"
+            )
+            for relative in ("debug/nested/diagnostic.md", "local-diagnostic.md"):
+                document = root / relative
+                document.parent.mkdir(parents=True, exist_ok=True)
+                document.write_text("[Missing](retired.md)\n", encoding="utf-8")
+
+            result, output = self.run_reference_gate(root)
+            self.assertEqual(result, 0, output)
+            self.assertIn("STRUCTURAL CHECKS PASSED", output)
+
+    def test_git_tracked_ignored_document_still_blocks_governance(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _, _ = self.make_reference_repo(tmpdir)
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            self.commit_reference_fixture(root, "historical fixture")
+            (root / ".gitignore").write_text("debug/\n", encoding="utf-8")
+            document = root / "debug/tracked.md"
+            document.parent.mkdir()
+            document.write_text("[Missing](retired.md)\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "add", "-f", "--", "debug/tracked.md"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            (document.parent / "local.md").write_text(
+                "[Missing](local-retired.md)\n", encoding="utf-8"
+            )
+
+            result, output = self.run_reference_gate(root)
+            self.assertEqual(result, 1, output)
+            self.assertIn("tracked.md", output)
+            self.assertNotIn("local-retired.md", output)
+            self.assertNotIn("STRUCTURAL CHECKS PASSED", output)
+
+    def test_git_untracked_documents_include_hidden_paths_and_utf8_names(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root, _, _ = self.make_reference_repo(tmpdir)
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            self.commit_reference_fixture(root, "historical fixture")
+            for relative in ("docs/new.md", ".review/新说明.md"):
+                document = root / relative
+                document.parent.mkdir()
+                document.write_text("[Missing](retired.md)\n", encoding="utf-8")
+
+            result, output = self.run_reference_gate(root)
+            self.assertEqual(result, 1, output)
+            self.assertIn("new.md", output)
+            self.assertIn("新说明.md", output)
+            self.assertNotIn("STRUCTURAL CHECKS PASSED", output)
+
+    def test_non_git_document_root_keeps_traversal_inside_parent_repository(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            parent = Path(tmpdir)
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=parent,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            root = parent / "nested"
+            document = root / "debug/diagnostic.md"
+            document.parent.mkdir(parents=True)
+            document.write_text("[Missing](retired.md)\n", encoding="utf-8")
+            (root / ".gitignore").write_text("debug/\n", encoding="utf-8")
+
+            errors = verify_doc_links(root)
+            self.assertEqual(len(errors), 1, errors)
+            self.assertIn("diagnostic.md", errors[0])
+
+    def test_git_document_inventory_failures_are_reported(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            actual_run = subprocess.run
+
+            def fail_inventory(arguments, **kwargs):
+                if arguments[1] == "ls-files":
+                    return subprocess.CompletedProcess(
+                        arguments, 1, b"", b"fatal: cannot read index"
+                    )
+                return actual_run(arguments, **kwargs)
+
+            with patch("scripts.verify_doc_links.subprocess.run", fail_inventory):
+                errors = verify_doc_links(root)
+            self.assertEqual(len(errors), 1, errors)
+            self.assertIn("Cannot collect Markdown documents", errors[0])
+            self.assertIn("cannot read index", errors[0])
+
+            for fault in (
+                OSError("Git unavailable"),
+                subprocess.TimeoutExpired("git", 10),
+            ):
+                with self.subTest(fault=fault):
+                    with patch(
+                        "scripts.verify_doc_links.subprocess.run", side_effect=fault
+                    ):
+                        errors = verify_doc_links(root)
+                    self.assertEqual(len(errors), 1, errors)
+                    self.assertIn("Cannot collect Markdown documents", errors[0])
+
+    def test_broken_git_worktree_metadata_does_not_silently_pass(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / ".git").write_text("gitdir: missing\n", encoding="utf-8")
+            errors = verify_doc_links(root)
+            self.assertEqual(len(errors), 1, errors)
+            self.assertIn("Cannot collect Markdown documents", errors[0])
+
     def test_markdown_link_titles_angle_brackets_and_code_blocks(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -283,6 +1110,112 @@ class VerifyGovernanceTests(unittest.TestCase):
             )  # ref-broken definition, ref-broken usage, unresolved usage
             self.assertTrue(any("non_existent.md" in err for err in errors))
             self.assertTrue(any("unresolved" in err for err in errors))
+
+    def test_markdown_anchor_cli_rejects_missing_and_example_only_fragments(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "target.md").write_text(
+                "# Repeated\n\n# Repeated\n\n"
+                "````markdown\n```\n# Fenced Only\n````\n"
+                '`<a id="inline-only"></a>`\n'
+                '<!--\n```\n# Comment Heading\n<a id="comment-id"></a>\n-->\n'
+                "\n    Indented Example\n----------------\n"
+                '\n    <a id="indented-code-only"></a>\n'
+                "\n- List Example\n---------------\n",
+                encoding="utf-8",
+            )
+            (root / "doc.md").write_text(
+                "# Existing\n"
+                "[Same page](#missing-same)\n"
+                "[Other page](target.md#missing-cross)\n"
+                "[Code heading](target.md#fenced-only)\n"
+                "[Code anchor](target.md#inline-only)\n"
+                "[Absent duplicate](target.md#repeated-2)\n"
+                "[Hidden heading](target.md#comment-heading)\n"
+                "[Hidden ID](target.md#comment-id)\n"
+                "[Indented code](target.md#indented-example)\n"
+                "[Indented HTML](target.md#indented-code-only)\n"
+                "[List](target.md#list-example)\n"
+                "`[Example](#ignored-inline)`\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-X",
+                    "utf8",
+                    str(
+                        Path(__file__).resolve().parents[2]
+                        / "scripts/verify_doc_links.py"
+                    ),
+                    "--root",
+                    str(root),
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=15,
+            )
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("Found 10 broken", result.stdout)
+            for fragment in (
+                "missing-same",
+                "missing-cross",
+                "fenced-only",
+                "inline-only",
+                "repeated-2",
+                "comment-heading",
+                "comment-id",
+                "indented-example",
+                "indented-code-only",
+                "list-example",
+            ):
+                self.assertIn(fragment, result.stdout)
+            self.assertNotIn("ignored-inline", result.stdout)
+
+    def test_markdown_anchor_cli_accepts_rendered_headings_and_custom_anchors(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "target page.md").write_text(
+                "# **Recovery** & _Policy_!\n"
+                "## `__init__` API\n"
+                "## 重连恢复\n"
+                "## Repeated\n## Repeated-1\n## Repeated\n"
+                "\nSetext `code_name`\n------------------\n"
+                '<a id="Custom-ID"></a>\n<a name="custom-name"></a>\n',
+                encoding="utf-8",
+            )
+            (root / "doc.md").write_text(
+                "# Same Page\n[Same](#same-page)\n"
+                "[Styled](target%20page.md#recovery--policy)\n"
+                "[Code identifier](target%20page.md#__init__-api)\n"
+                "[Encoded][cross]\n"
+                "[Duplicate](target%20page.md#repeated-2)\n"
+                "[Setext](target%20page.md#setext-code_name)\n"
+                "[ID](target%20page.md#Custom-ID)\n"
+                "[Named](target%20page.md#custom-name)\n"
+                "[cross]: target%20page.md#%E9%87%8D%E8%BF%9E%E6%81%A2%E5%A4%8D\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-X",
+                    "utf8",
+                    str(
+                        Path(__file__).resolve().parents[2]
+                        / "scripts/verify_doc_links.py"
+                    ),
+                    "--root",
+                    str(root),
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=15,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("SUCCESS", result.stdout)
 
     def test_glossary_avoid_term_detected(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -634,6 +1567,7 @@ class VerifyGovernanceTests(unittest.TestCase):
                     capture_output=True,
                     timeout=15,
                 )
+                self.commit_reference_fixture(root, "historical reference fixture")
                 metadata["test_suites"] = ["arknights_mower/tests/missing_tests.py"]
                 sidecar.write_text(json.dumps(metadata), encoding="utf-8")
                 result, output = self.run_reference_gate(root)
@@ -654,6 +1588,9 @@ class VerifyGovernanceTests(unittest.TestCase):
             root, _, _ = self.make_reference_repo(
                 tmpdir, slug="2026-10-07-existing-decision"
             )
+            _, sidecar, metadata = self.make_reference_repo(
+                tmpdir, slug="2026-10-08-reviewed-decision"
+            )
             subprocess.run(
                 ["git", "init", "-q"],
                 cwd=root,
@@ -668,9 +1605,6 @@ class VerifyGovernanceTests(unittest.TestCase):
                 )
                 .decode()
                 .strip()
-            )
-            _, sidecar, metadata = self.make_reference_repo(
-                tmpdir, slug="2026-10-08-new-decision"
             )
             metadata["test_suites"] = ["arknights_mower/tests/missing_tests.py"]
             sidecar.write_text(json.dumps(metadata), encoding="utf-8")
@@ -748,6 +1682,9 @@ class VerifyGovernanceTests(unittest.TestCase):
             )
             old_metadata["test_suites"] = ["arknights_mower/tests/retired_tests.py"]
             old_sidecar.write_text(json.dumps(old_metadata), encoding="utf-8")
+            _, sidecar, metadata = self.make_reference_repo(
+                tmpdir, slug="2026-10-08-reviewed-decision"
+            )
             subprocess.run(
                 ["git", "init", "-q"],
                 cwd=root,
@@ -762,9 +1699,6 @@ class VerifyGovernanceTests(unittest.TestCase):
                 )
                 .decode()
                 .strip()
-            )
-            _, sidecar, metadata = self.make_reference_repo(
-                tmpdir, slug="2026-10-08-new-decision"
             )
             metadata["test_suites"] = ["arknights_mower/tests/missing_tests.py"]
             sidecar.write_text(json.dumps(metadata), encoding="utf-8")

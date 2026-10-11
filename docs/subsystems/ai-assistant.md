@@ -36,6 +36,6 @@ Feedback sends email through `submit_issue`. Instructions require an explicit se
 
 ## 3. Subsystem Invariants
 
-- **[INV-AI-01] Tool Instruction Alignment**: Published assistant instructions reference registered tools, describe actual argument formats and mutation scopes, and agree on response formatting.
+- <a id="tool-instruction-alignment"></a>**Tool Instruction Alignment**: Published assistant instructions reference registered tools, describe actual argument formats and mutation scopes, and agree on response formatting.
 
 The [assistant instruction decision](../../.agents/notes/implemented/bug-fix/2026-10-09-ai-assistant-prompts.md) records the scope and offline verification.

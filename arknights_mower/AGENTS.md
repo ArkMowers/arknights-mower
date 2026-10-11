@@ -4,7 +4,7 @@ Local contract for Python backend implementation under `arknights_mower/`.
 
 ## 1. Domain Invariants & Architecture Constraints
 
-- Apply `[INV-01]` through `[INV-06]` from [Coding Standards](../CODING_STANDARDS.md#1-core-invariants) and the affected [subsystem contract](../docs/subsystems/).
+- Apply the [core contracts](../CODING_STANDARDS.md#1-core-contracts) and the affected [subsystem contract](../docs/subsystems/).
 - Select only necessary stages through [Agent Workflow](../.agents/AGENTS.md#1-task-selection); document placement follows the [routing rules](../.agents/skills/mower-doc/references/doc-hierarchy.md#routing-rules).
 
 ## 2. Resource & Concurrency Lifecycle

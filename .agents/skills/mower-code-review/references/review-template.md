@@ -4,7 +4,7 @@
 # Code Review Report: [Working Tree / Branch / Commit Range]
 
 - **Scope**: [staged, unstaged and untracked sources, or the actual requested comparison base]
-- **Relevant Contracts**: [direct authoritative links and reused invariant identifiers]
+- **Relevant Contracts**: [behavior names and direct authoritative links; existing identifiers where needed for historical references]
 
 ## Summary
 - **Standards Axis**: [PASS / FAIL] ([X] findings)
@@ -15,9 +15,9 @@
 ---
 
 ## 1. Standards Findings
-*Review against CODING_STANDARDS.md invariants [INV-01]-[INV-06] and Fowler smells.*
+*Review against the applicable global standards, affected subsystem contracts and relevant code smells.*
 
-- **[INV-XX Violation / Baseline Smell]** (`path/to/file.py:L123`):
+- **[Affected behavior or standard]** (`path/to/file.py:L123`):
   - Description: ...
   - Remediation: ...
 

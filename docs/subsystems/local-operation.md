@@ -12,7 +12,7 @@ Active native and MAA battles hold cloud rebases until confirmed receipts are co
 
 ## 3. Subsystem Invariants
 
-- **[INV-STOCK-02] Confirmed Local Battle Drops**: Local operation adds only stable, identified settlement quantities once per completed batch, never multiplies displayed totals by repeat count, holds cloud rebases while running, and stops the current stage at its configured inventory cap without cancelling other tasks.
+- <a id="confirmed-local-battle-drops"></a>**Confirmed Local Battle Drops**: Local operation adds only stable, identified settlement quantities once per completed batch, never multiplies displayed totals by repeat count, holds cloud rebases while running, and stops the current stage at its configured inventory cap without cancelling other tasks.
 
 ## 4. Verification
 

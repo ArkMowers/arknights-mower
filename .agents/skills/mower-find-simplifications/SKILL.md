@@ -14,8 +14,8 @@ Inputs: requested audit or authorized repair, suspected complexity, relevant cal
 
 1. Inspect callers with `rg` and read their real execution paths. Check public interfaces and plugins before classifying a wrapper, option, conversion or fallback as redundant. A single caller alone is not proof of uselessness.
 2. Describe the observable behavior the replacement preserves, the complexity removed and any risk. A read-only audit ends with findings and does not write a proposal.
-3. For authorized changes, apply [record ownership](../../notes/AGENTS.md#1-record-ownership). Incidental simplification, review fixes and added tests update the original triplet when recording them is useful. Only an independent durable decision warrants a separate proposal.
-4. For that independent proposal, optional starting points are the [English template](templates/simplification-note.md), [Chinese template](templates/simplification-note.zh.md) and [sidecar template](templates/simplification-note.sidecar.json). Replace example metadata with observed authors and actual references; the templates create no requirement for a new record.
+3. For authorized changes, apply [record ownership](../../notes/AGENTS.md#1-record-ownership). Incidental simplification, review fixes and added tests update the original record when recording them is useful. Only an independent durable decision warrants a separate proposal.
+4. For that independent proposal, optional starting points are the [English template](templates/simplification-note.md) and [Chinese template](templates/simplification-note.zh.md). Replace prompts with facts and relevant direct links. New records use the two-file decision format; maintain legacy records in their existing format. Implemented and rejected records follow the [lifecycle bodies and conversion](../../notes/README.md#moving-between-lifecycles), rather than retaining a proposal's headings under a new status.
 5. Implement only authorized scope and verify the changed production path with focused offline tests. Reuse the affected invariant rather than defining one merely because a helper disappeared.
 
 ## Completion
