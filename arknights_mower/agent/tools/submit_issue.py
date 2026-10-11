@@ -24,7 +24,7 @@ def submit_issue(
             # 按软件本地时间解析。
             st = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
             et = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
-            print(
+            logger.debug(
                 f"Submitting issue: {description}, type: {issue_type}, start_time: {st}, end_time: {et}"
             )
             log_files = get_log_by_time(et)
@@ -42,7 +42,7 @@ def submit_issue(
         email.send(["354013233@qq.com", "1273725854@qq.com"])
         return "邮件发送成功！"
     except Exception as e:
-        print(e)
+        logger.exception("反馈发送失败")
         return f"反馈发送失败，请确保邮箱功能正常使用\n{e}"
 
 

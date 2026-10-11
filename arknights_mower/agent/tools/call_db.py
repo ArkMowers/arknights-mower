@@ -10,11 +10,10 @@ def call_db(query: str):
     """
     try:
         database_path = get_path("@app/tmp/data.db")
-        print(query)
+        logger.debug("执行 SQL 查询: %s", query)
         conn = sqlite3.connect(database_path)
         cursor = conn.cursor()
         cursor.execute(query)
-        logger.debug(f"执行 SQL 查询: {query}")
         # 只返回前 100 行，防止数据量过大
         rows = cursor.fetchmany(100)
         columns = [desc[0] for desc in cursor.description]
@@ -35,7 +34,7 @@ def call_db(query: str):
                 + "</tr>"
             )
         html += "</table>"
-        print(html)
+        logger.debug("SQL 查询结果: %s", html)
         return html
     except Exception as e:
         return f"SQL 执行失败: {e}"

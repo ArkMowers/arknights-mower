@@ -301,10 +301,15 @@ class RuntimeRegistration:
         ).start()
 
     def _retry_backups(self):
+        # A copied stdlib runtime has no application backup-cleanup service.
+        if not __package__:
+            return
         try:
+            from arknights_mower.utils.log import logger
+
             from .software_update_worker import retry_backup_cleanup
 
-            retry_backup_cleanup(self.directory, self.record["root"])
+            retry_backup_cleanup(self.directory, self.record["root"], logger=logger)
         except Exception:
             # This optional maintenance cannot prevent registration or startup.
             from arknights_mower.utils.log import logger
@@ -323,9 +328,20 @@ class RuntimeRegistration:
             try:
                 self.publish()
             except Exception:
-                from arknights_mower.utils.log import logger
+                if __package__:
+                    from arknights_mower.utils.log import logger
 
-                logger.exception("实例登记发布失败，下次心跳将重试：%s", self.path)
+                    logger.exception("实例登记发布失败，下次心跳将重试：%s", self.path)
+                elif sys.stderr is not None:
+                    # The copied updater runtime has only its redirected stream.
+                    import traceback
+
+                    print(
+                        f"实例登记发布失败，下次心跳将重试：{self.path}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    traceback.print_exc()
 
     def shutdown_requested(self):
         return self.request.exists()

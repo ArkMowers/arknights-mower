@@ -2160,7 +2160,7 @@ def upload_sss_copilot():
         else:
             return {"exists": False}
     else:
-        print(request.files)
+        logger.debug("上传保全派驻作业：%s", request.files)
         data = request.files["copilot"]
         data.save(copilot)
         data.seek(0)

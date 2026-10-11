@@ -82,9 +82,6 @@ dhlr.addFilter(filter)
 
 class Handler(logging.StreamHandler):
     def emit(self, record: logging.LogRecord):
-        # Config can emit while importing; resolve it after its initialization.
-        from arknights_mower.utils import config
-
         detail = record.getMessage()
         summary = detail.split("\nTraceback (most recent call last):", 1)[0]
         if record.levelno >= logging.ERROR:
@@ -110,10 +107,11 @@ class Handler(logging.StreamHandler):
         msg = f"{record.asctime} {record.levelname} {summary}"
         if record.exc_info and record.levelno < logging.ERROR:
             msg += "\n" + "".join(traceback.format_exception(*record.exc_info))
-        config.log_queue.put(msg)
+        frontend_log_queue.put(msg)
 
 
 # w(ebsocket)hlr: WebSocket
+frontend_log_queue = Queue()
 whlr = Handler()
 whlr.setLevel(logging.INFO)
 

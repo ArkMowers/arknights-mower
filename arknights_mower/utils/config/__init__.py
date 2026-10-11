@@ -4,7 +4,6 @@ import tempfile
 import threading
 import time
 from datetime import datetime, timedelta
-from queue import Queue
 from threading import Event
 from typing import Any, Optional
 
@@ -21,9 +20,12 @@ from arknights_mower.utils.config.plan import (
     migrate_legacy_dorm_order,
     retire_rescue_backups,
 )
-from arknights_mower.utils.log import logger
+from arknights_mower.utils.log import frontend_log_queue, logger
 from arknights_mower.utils.network_settings import apply_http_proxy
 from arknights_mower.utils.path import get_path
+
+# Compatibility alias; log delivery does not depend on configuration loading.
+log_queue = frontend_log_queue
 
 apply_http_proxy()
 
@@ -251,7 +253,6 @@ wake_scheduler = Event()
 maintenance_recheck = Event()
 
 # 日志
-log_queue = Queue()
 wh = None
 
 

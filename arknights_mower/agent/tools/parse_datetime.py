@@ -1,16 +1,18 @@
 from datetime import datetime
 
+from arknights_mower.utils.log import logger
+
 
 def parse_datetime(time_str: str) -> str:
     """
     将格式为 'YYYY-MM-DD HH:MM:SS' 的时间字符串转换为 Unix 时间戳字符串。
     """
     try:
-        print(f"解析时间字符串: {time_str}")
+        logger.debug("解析时间字符串: %s", time_str)
         dt = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
         return str(int(dt.timestamp()))
     except Exception as e:
-        print(e)
+        logger.debug("无法解析时间格式: %s", e)
         return f"无法解析时间格式: {e}"
 
 

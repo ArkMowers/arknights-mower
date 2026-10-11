@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import sqlite3
 from datetime import datetime, timedelta
@@ -39,6 +40,15 @@ RUNTIME_LOG_TIME_RE = re.compile(
 RUNTIME_LOG_LEVEL_RE = re.compile(r"\b(?P<level>INFO)\b")
 
 
+def _get_logger():
+    try:
+        from arknights_mower.utils.log import logger as project_logger
+
+        return project_logger
+    except Exception:
+        return logging.getLogger(__name__)
+
+
 def _get_run_order_delay_minutes() -> float:
     try:
         from arknights_mower.utils import config
@@ -61,11 +71,9 @@ def _get_run_order_delay_minutes() -> float:
 
 
 def _trace(trace: list[dict], step: str, **details):
-    from arknights_mower.utils.log import logger
-
     entry = {"step": step, **details}
     trace.append(entry)
-    logger.debug(
+    _get_logger().debug(
         "[missed_order_trace] %s",
         json.dumps(entry, ensure_ascii=False, default=str),
     )
@@ -1004,9 +1012,7 @@ def analyze_missed_order(
             )
         raise ValueError(f"未知 mode: {mode}")
     except Exception as exc:
-        from arknights_mower.utils.log import logger
-
-        logger.exception(exc)
+        _get_logger().exception(exc)
         return json.dumps({"mode": mode, "error": str(exc)}, ensure_ascii=False)
 
 

@@ -1,4 +1,5 @@
 import json
+import logging
 
 MISSED_ORDER_SUMMARY_PROMPT = (
     "你是 Mower 漏单分析助手。"
@@ -41,10 +42,17 @@ FIELD_LABELS = {
 }
 
 
-def _log_debug_report(report: str):
-    from arknights_mower.utils.log import logger
+def _get_logger():
+    try:
+        from arknights_mower.utils.log import logger as project_logger
 
-    logger.debug("[missed_order_report]\n%s", report.replace("<br/>", "\n"))
+        return project_logger
+    except Exception:
+        return logging.getLogger(__name__)
+
+
+def _log_debug_report(report: str):
+    _get_logger().debug("[missed_order_report]\n%s", report.replace("<br/>", "\n"))
 
 
 def _shorten(text, limit: int = 160) -> str:
@@ -405,8 +413,6 @@ def summarize_missed_order_result(result: dict, llm=None) -> str:
         )
         return format_missed_order_report(result, summary)
     except Exception as exc:
-        from arknights_mower.utils.log import logger
-
         if llm is not None and _is_context_length_error(exc):
             trace = result.setdefault("analysis_trace", [])
             compact_payload = _build_compact_analysis_payload(result)
@@ -454,10 +460,10 @@ def summarize_missed_order_result(result: dict, llm=None) -> str:
                 )
                 return format_missed_order_report(result, summary)
             except Exception as retry_exc:
-                logger.exception(retry_exc)
+                _get_logger().exception(retry_exc)
                 exc = retry_exc
         else:
-            logger.exception(exc)
+            _get_logger().exception(exc)
         summary = fallback_missed_order_summary(result)
         result["summary_source"] = "fallback_on_error"
         trace = result.setdefault("analysis_trace", [])

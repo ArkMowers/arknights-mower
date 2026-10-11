@@ -525,7 +525,7 @@ def get_mood_ratios():
             mood_data["datasets"].append({"label": mood_label, "data": [point]})
 
         grouped_data[group_name] = mood_data
-    print(grouped_work_rest_data)
+    logger.debug("分组作息记录：%s", grouped_work_rest_data)
     # 将数据格式整理为数组
     formatted_data = []
     for group_name, mood_data in grouped_data.items():
