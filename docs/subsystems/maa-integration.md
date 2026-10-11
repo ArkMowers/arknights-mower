@@ -72,7 +72,17 @@ Android resource updates use either GitHub or the existing MirrorChyan `MaaResou
 
 Android core updates continue to require the official Android component package. MAA-Meow's MirrorChyan application resource distributes its own APK and is not a Mower core update source. The integration follows MAA-Meow's [resource download resolver](https://github.com/Aliothmoon/MAA-Meow/blob/4e6a4d910d8b5f0b34c9cce2e5cc08a9da4f4f1b/app/src/main/java/com/aliothmoon/maameow/data/datasource/update/MirrorChyanResourceDownloadUrlResolver.kt).
 
+### 2.9 Independent Update Policies
+
+MAA core and resource updates each expose automatic-check and automatic-install switches in their own settings section. Entering the settings page or changing relevant configuration checks only enabled components. Automatic installation also enables its own check and uses the existing update endpoint after a current successful result. Disabling a policy or changing the target, source or core channel invalidates pending automatic installation. The legacy combined check initializes both check policies without enabling installation; explicit resource preferences remain independent.
+
+A missing or invalid local resource timestamp is unknown. A valid published timestamp can update unknown resources after a matching check; known versions require a strictly newer published timestamp. Check receipts remain bound to the target, source and observed local version, are consumed once, and retain the MAA idle-engine and update-job gates. Read-denied resource metadata exposes the file path and remediation guidance. Connection-preset reads and failed resource-loading diagnostics distinguish missing, malformed and read-denied `resource/config.json` files. Merging alters write permissions only on staged replacement files; failures preserve the current installation and rollback copies.
+
+The [independent update decision](../../.agents/notes/implemented/simplification/2026-10-11-maa-independent-updates.md) records the simplification audit and offline coverage.
+
 ## 3. Subsystem Invariants
+
+- **[INV-MAA-10] Independent Update Admission**: MAA core and resource automatic checks and installations use independent policies, installations consume a matching check only while MAA is idle, and an unknown local resource version accepts a valid published version without accepting mismatched or reused checks.
 
 - **[INV-MAA-08] Verified MAA Admission**: Resource loading, task submission and task startup require positive MAA results; rejected calls identify their phase and target, clear the pending run without recording successful execution, and preserve rollback backups.
 

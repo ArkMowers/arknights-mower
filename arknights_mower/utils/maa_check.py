@@ -29,7 +29,8 @@ try:
         pass
 
     callback_func = Asst.CallBackType(callback)
-    Asst.load(path=maa_path, incremental_path=maa_path / "cache")
+    if not Asst.load(path=maa_path, incremental_path=maa_path / "cache"):
+        raise RuntimeError(f"MAA 资源加载失败：{maa_path}，请检查资源文件读取权限及 MAA 目录/debug/asst.log")
     asst = Asst(callback=callback_func)
     version = asst.get_version()
     asst.set_instance_option(2, params["maa_touch_option"])
@@ -89,7 +90,10 @@ def run_maa_check(params: dict) -> dict[str, str]:
             pass
 
         callback_func = Asst.CallBackType(callback)
-        Asst.load(path=maa_path, incremental_path=maa_path / "cache")
+        if not Asst.load(path=maa_path, incremental_path=maa_path / "cache"):
+            raise RuntimeError(
+                f"MAA 资源加载失败：{maa_path}，请检查资源文件读取权限及 MAA 目录/debug/asst.log"
+            )
         asst = Asst(callback=callback_func)
         version = asst.get_version()
         asst.set_instance_option(2, params["maa_touch_option"])

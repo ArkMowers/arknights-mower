@@ -1,0 +1,19 @@
+{
+  "title": "Windows Desktop Elevation",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-11",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-UPD-08]"
+  ],
+  "code_symbols": [
+    "manager.Api.start"
+  ],
+  "test_suites": [
+    "scripts/tests/release_workflow_tests.py",
+    "arknights_mower/tests/manager_tests.py"
+  ]
+}

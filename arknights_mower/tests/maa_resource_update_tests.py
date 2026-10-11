@@ -47,6 +47,35 @@ class _JsonResponse:
 
 
 class TestMaaResourceVersion(unittest.TestCase):
+    def test_read_denied_version_exposes_path_and_guidance(self):
+        with patch.object(Path, "read_text", side_effect=PermissionError("denied")):
+            info = mru.read_maa_resource_info("/test/MAA")
+        self.assertEqual(info["version"], "")
+        self.assertIn("/test/MAA/resource/version.json", info["error"])
+        self.assertIn("访问被拒绝", info["error"])
+
+    def test_resource_merge_updates_readonly_staged_files_without_changing_original(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            original = root / "resource"
+            original.mkdir()
+            config = original / "config.json"
+            config.write_text("old", encoding="utf-8")
+            config.chmod(0o444)
+            previous_mode = config.stat().st_mode
+            archive = root / "resource.zip"
+            version = "2026-10-09 23:31:13.000"
+            _write_resource_zip(archive, version, files={"config.json": b"new"})
+            staged = root / "staged"
+            self.assertEqual(
+                mru.merge_resource_archive(archive, original, staged), version
+            )
+            self.assertEqual((staged / "config.json").read_text(), "new")
+            self.assertEqual(config.read_text(), "old")
+            self.assertEqual(config.stat().st_mode, previous_mode)
+
     def test_reads_local_resource_version(self):
         with tempfile.TemporaryDirectory() as temp:
             target = Path(temp)

@@ -1,6 +1,8 @@
+import io
 import json
 import sys
 import unittest
+from contextlib import redirect_stdout
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -16,6 +18,36 @@ from arknights_mower.utils.maa_check import (
 
 
 class TestMaaCheck(unittest.TestCase):
+    def test_resource_load_failure_prevents_connection_in_both_worker_modes(self):
+        asst = MagicMock()
+        asst.load.return_value = False
+        params = {
+            "maa_path": "/MAA",
+            "adb": "device",
+            "maa_adb_path": "adb",
+            "maa_conn_preset": "General",
+            "maa_touch_option": "maatouch",
+        }
+        with patch.dict(
+            sys.modules,
+            {"asst": SimpleNamespace(), "asst.asst": SimpleNamespace(Asst=asst)},
+        ):
+            result = run_maa_check(params)
+            self.assertEqual(result["status"], "error")
+            self.assertIn("资源加载失败", result["message"])
+            asst.assert_not_called()
+            output = io.StringIO()
+            with (
+                patch.object(sys, "argv", ["-c", json.dumps(params)]),
+                patch.object(sys, "path", list(sys.path)),
+                redirect_stdout(output),
+            ):
+                exec(MAA_CHECK_SCRIPT, {})
+            result = json.loads(output.getvalue())
+            self.assertEqual(result["status"], "error")
+            self.assertIn("资源加载失败", result["message"])
+            asst.assert_not_called()
+
     def test_check_route_keeps_the_active_application_sessions_transport(self):
         import server
         from arknights_mower.utils.device.application import DeviceControl
