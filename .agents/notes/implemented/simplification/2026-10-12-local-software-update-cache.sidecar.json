@@ -1,0 +1,20 @@
+{
+  "title": "Local Software Update Cache",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-12",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-UPD-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.update_runtime.state_dir",
+    "arknights_mower.utils.software_update_package._dmg_version"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/update_runtime_tests.py",
+    "arknights_mower/tests/software_update_tests.py"
+  ]
+}

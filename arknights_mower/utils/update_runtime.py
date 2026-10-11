@@ -1,7 +1,7 @@
 """Installation-wide update coordination, independent of config and GUI imports.
 
 Only registered Mower launchers receive shutdown requests. No process-name scan
-or global Python/ADB termination is used. State lives outside the installation.
+or global Python/ADB termination is used. State lives in the shared data tmp tree.
 """
 
 import atexit
@@ -32,15 +32,11 @@ def installation_root():
 
 
 def state_dir(root=None):
+    from .path import get_path
+
     root = Path(root or installation_root()).resolve()
     key = hashlib.sha256(os.fsencode(root)).hexdigest()[:20]
-    if sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local"))
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library/Caches"
-    else:
-        base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
-    return base / "arknights-mower/updates" / key
+    return get_path("@app/tmp/updates", space="") / key
 
 
 def read_json(path, default=None):

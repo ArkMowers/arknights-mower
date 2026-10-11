@@ -206,6 +206,8 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.7 Software Update
 
+- [ ] **[INV-UPD-09] Local Update Cache**: Do software update state, uploads, downloads, job workspaces and package-inspection temporary directories use shared `@app/tmp/updates/`, preserve installation isolation and ignore instance space?
+
 - [ ] **[INV-UPD-08] Elevated Windows Desktop Launch**: Do both Windows executable manifests require administrator elevation, and does the manager launch instances directly without per-instance elevation wrappers? See the [launch contract](../../../../docs/subsystems/software-update.md#14-windows-desktop-elevation).
 
 - [ ] **[INV-UPD-06] Cross-Channel Upgrade Selection**: Do development and beta checks offer newer public releases, retain the selected channel and bind OTA and full-package fallback to one target? See the [software update contract](../../../../docs/subsystems/software-update.md#11-cross-channel-upgrades).
