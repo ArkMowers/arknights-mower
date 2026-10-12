@@ -38,7 +38,7 @@ def schedule(monkeypatch):
 
 def test_observed_duration_moves_dorm(schedule, monkeypatch):
     now, dorm, order = schedule
-    operation_timing._dorm_durations["dormitory_1"] = deque([120])
+    operation_timing._dorm_durations[("dormitory_1", False)] = deque([120])
     tasks = [dorm, order]
     scheduling(tasks, time_now=now)
     assert tasks[0] is order
@@ -97,7 +97,7 @@ def test_successful_room_measurement_updates_estimate(monkeypatch):
     def room_action(room):
         return None
 
-    assert operation_timing.estimate_dorm_minutes("dormitory_1") == 1.5
+    assert operation_timing.estimate_dorm_minutes("dormitory_1") == 1.0
     room_action("dormitory_1")
     assert (
         operation_timing.estimate_dorm_minutes("dormitory_1") == (120 * 1.2 + 15) / 60
@@ -154,7 +154,7 @@ def test_real_room_dispatch_skips_vacancy_fill_before_imminent_order(schedule):
 
 @pytest.mark.parametrize("kind", [TaskTypes.RUN_ORDER, TaskTypes.SWAP_SUPPORT])
 @pytest.mark.parametrize(
-    "seconds,allowed", [(-30, False), (30, False), (150, False), (181, True)]
+    "seconds,allowed", [(-30, False), (30, False), (130, False), (131, True)]
 )
 def test_fill_uses_same_deadline_and_margin(
     schedule, monkeypatch, kind, seconds, allowed
@@ -193,7 +193,7 @@ def test_cumulative_fills_yield_and_do_not_move_future_fill_forward(
         task_type=TaskTypes.FILL_DORM,
     )
     deadline.type = kind
-    deadline.time = now + timedelta(minutes=4)
+    deadline.time = now + timedelta(minutes=3)
     tasks = [first, second, deadline, future]
     protect_priority_tasks(tasks, time_now=now)
     assert first.time == now
@@ -232,7 +232,7 @@ def test_dorm_duration_counts_toward_later_work_before_swap(schedule, monkeypatc
     monkeypatch.setattr(config.conf, "enable_mastery", True)
     dorm.type = TaskTypes.FILL_DORM
     swap.type = TaskTypes.SWAP_SUPPORT
-    swap.time = now + timedelta(minutes=4, seconds=30)
+    swap.time = now + timedelta(minutes=4)
     ordinary = SchedulerTask(time=now, task_type=TaskTypes.FIAMMETTA)
     tasks = [dorm, ordinary, swap]
     protect_priority_tasks(tasks, time_now=now)

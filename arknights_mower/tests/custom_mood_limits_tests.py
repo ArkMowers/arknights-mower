@@ -164,7 +164,9 @@ def test_emergency_nonreading_tick_keeps_personal_limit_deadline(emergency_solve
     assert len(releases) == 1
     deadline = ling_xi_rest_limit_tests.NOW + timedelta(minutes=10)
     assert releases[0].mood_limit_deadline == deadline
-    assert releases[0].time == deadline - timedelta(minutes=estimate_dorm_minutes(ROOM))
+    assert releases[0].time == deadline - timedelta(
+        minutes=estimate_dorm_minutes(ROOM, 1.5)
+    )
     assert releases[0].release_dorm_targets() == {"银灰": (ROOM, 3)}
     assert solver.emergency_state["phase"] == "staffing"
     assert staffing in solver.tasks
@@ -191,7 +193,7 @@ def test_emergency_reading_tick_replans_limit_after_new_observation(emergency_so
     release = next(task for task in solver.tasks if task.strict_mood_limit)
     assert release.mood_limit_deadline == ling_xi_rest_limit_tests.NOW
     assert release.time == ling_xi_rest_limit_tests.NOW - timedelta(
-        minutes=estimate_dorm_minutes(ROOM)
+        minutes=estimate_dorm_minutes(ROOM, 1.5)
     )
     assert release.release_dorm_targets() == {"银灰": (ROOM, 3)}
     assert state["phase"] == "returning"

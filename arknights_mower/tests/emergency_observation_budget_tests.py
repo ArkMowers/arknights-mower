@@ -211,7 +211,7 @@ def test_due_observation_plans_new_strict_release_before_any_room(observation_so
 def test_each_room_uses_its_recorded_operation_budget(observation_solver):
     episode = observation_solver
     solver = episode.solver
-    operation_timing._dorm_durations["room_1_1"] = [100]
+    operation_timing._dorm_durations[("room_1_1", False)] = [100]
     release = set_release_window(episode, 150)
 
     solver._emergency_tick()

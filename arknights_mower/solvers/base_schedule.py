@@ -107,6 +107,7 @@ from arknights_mower.utils.manufacture_product import (
 )
 from arknights_mower.utils.operation_timing import (
     estimate_dorm_minutes,
+    record_dorm_recovery,
     record_selection_retry,
     timed_room,
     timed_step,
@@ -1822,7 +1823,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 continue
             if getattr(
                 self, "_emergency_startup_pending", False
-            ) and not self._emergency_operation_fits(estimate_dorm_minutes(room) * 60):
+            ) and not self._emergency_operation_fits(
+                estimate_dorm_minutes(room, 1.5) * 60
+            ):
                 self.back_to_infrastructure()
                 return False
             if room == "train":
@@ -9354,6 +9357,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 # 会使后续循环完全没有重试操作。
                 self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
             try:
+                record_dorm_recovery()
                 self.choose_agent(
                     retained,
                     room,

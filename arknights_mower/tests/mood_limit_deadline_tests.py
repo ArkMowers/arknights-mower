@@ -53,7 +53,9 @@ def test_logged_two_order_windows_clear_before_first_order_without_moving_orders
     times = first.time, second.time
     tasks = [first, release, second]
     protect_priority_tasks(tasks, time_now=now)
-    duration = timedelta(minutes=operation_timing.estimate_dorm_minutes("dormitory_2"))
+    duration = timedelta(
+        minutes=operation_timing.estimate_dorm_minutes("dormitory_2", 1.5)
+    )
     assert release.time + duration < first.time
     assert release.mood_limit_deadline == deadline
     assert (first.time, second.time) == times

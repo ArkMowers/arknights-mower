@@ -20,7 +20,7 @@ def active_recovery_position(op):
     return None
 
 
-def recovery_managers(op_data, room, agents):
+def recovery_managers(op_data, room, agents, *, update_cache=True):
     """只记录完整入住名单中位置最靠前的单回宿管。"""
     slots = op_data.plan.get(room, [])
     if len(agents) != len(slots):
@@ -29,8 +29,10 @@ def recovery_managers(op_data, room, agents):
         op = op_data.operators.get(name)
         if op is None:
             continue
-        op.single_recovery_manager = dorm_skills.is_single_recovery_manager(name)
-        if op.single_recovery_manager:
+        single_recovery_manager = dorm_skills.is_single_recovery_manager(name)
+        if update_cache:
+            op.single_recovery_manager = single_recovery_manager
+        if single_recovery_manager:
             return ((name, index, getattr(op, "dorm_position_version", 0)),)
     return ()
 
@@ -70,16 +72,9 @@ def recovery_target(
     return target
 
 
-def recovery_order_plan(
-    op_data, room, agents, reserved_names=(), *, group_transitions=None
-):
-    """建立单回时就占住最终床位，补回其他人后目标仍在原位。
-
-    目标前方保留单回宿管、菲亚梅塔与已满心情的入住者；其他位置使用
-    无单回技能的满心情空闲者垫位，不能留空让游戏压缩名单。
-    没有足够合格垫位者时不执行这次单回确认。
-    """
-    managers = recovery_managers(op_data, room, agents)
+def recovery_order_target(op_data, room, agents, *, group_transitions=None):
+    """只读判断完整单回排序目标，准入和执行共用相同床位有效性检查。"""
+    managers = recovery_managers(op_data, room, agents, update_cache=False)
     if not managers:
         return None
     manager_names = {name for name, _, _ in managers}
@@ -102,6 +97,26 @@ def recovery_order_plan(
         )
     ):
         return None
+    return target
+
+
+def recovery_order_plan(
+    op_data, room, agents, reserved_names=(), *, group_transitions=None
+):
+    """建立单回时就占住最终床位，补回其他人后目标仍在原位。
+
+    目标前方保留单回宿管、菲亚梅塔与已满心情的入住者；其他位置使用
+    无单回技能的满心情空闲者垫位，不能留空让游戏压缩名单。
+    没有足够合格垫位者时不执行这次单回确认。
+    """
+    managers = recovery_managers(op_data, room, agents)
+    target = recovery_order_target(
+        op_data, room, agents, group_transitions=group_transitions
+    )
+    if target is None:
+        return None
+    manager_names = {name for name, _, _ in managers}
+    target_index = agents.index(target.name)
     retained = []
     for index, name in enumerate(agents):
         if (

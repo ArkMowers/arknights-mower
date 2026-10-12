@@ -101,16 +101,16 @@ def test_dependent_or_unobserved_rooms_remain_atomic(kind, binding):
         ({"room_1_1": ["A"]}, 69, False),
         ({"room_1_1": ["A"]}, 70, True),
         ({"room_1_1": ["A"]}, 71, True),
-        ({"dormitory_1": ["A"]}, 160, False),
-        ({"dormitory_1": ["A"]}, 161, True),
+        ({"dormitory_1": ["A"]}, 130, False),
+        ({"dormitory_1": ["A"]}, 131, True),
         (
             {"room_1_1": ["A"], "dormitory_1": ["B"], "dormitory_2": ["C"]},
-            295,
+            235,
             False,
         ),
         (
             {"room_1_1": ["A"], "dormitory_1": ["B"], "dormitory_2": ["C"]},
-            296,
+            236,
             True,
         ),
     ],
@@ -170,7 +170,7 @@ def test_workshop_batch_includes_waiting_intervening_dorm_and_keeps_work_prefix(
     first = task(TaskTypes.WORKSHOP)
     dorm = task(TaskTypes.RE_ORDER, 100, {"dormitory_1": ["B"]})
     last = task(TaskTypes.WORKSHOP, 100)
-    critical = task(kind, 270)
+    critical = task(kind, 240)
     tasks = [prefix, first, dorm, last, critical]
     scheduling(tasks, time_now=NOW)
     assert tasks == [prefix, critical, first, dorm, last]

@@ -35,6 +35,8 @@ class TimingReport(TypedDict):
     total_s: float
     other_s: float
     retries: int
+    single_recovery: bool
+    task_type: str | None
     steps: dict[str, StepTiming]
 
 
@@ -43,7 +45,9 @@ _current: ContextVar[OperationTiming | None] = ContextVar(
 )
 
 # 只保留本进程最近几次的房间操作，包含进房、选人、确认和读时间。
-_dorm_durations: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=8))
+_dorm_durations: dict[tuple[str, bool], deque[float]] = defaultdict(
+    lambda: deque(maxlen=8)
+)
 
 
 _work_durations: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=8))
@@ -55,10 +59,19 @@ def estimate_work_minutes(room: str) -> float:
     return max(45, max(samples, default=0) * 1.2 + 15) / 60
 
 
-def estimate_dorm_minutes(room: str, default_minutes: float = 0.75) -> float:
-    samples = _dorm_durations.get(room, ())
+def estimate_dorm_minutes(
+    room: str, default_minutes: float = 0.75, *, single_recovery: bool = False
+) -> float:
+    samples = _dorm_durations.get((room, single_recovery), ())
     # 冷启动也预留进房和读时间；有记录后用近期最慢一次并加重试余量。
-    return max(90, default_minutes * 60, max(samples, default=0) * 1.2 + 15) / 60
+    return (
+        max(
+            75 if single_recovery else 60,
+            default_minutes * 60,
+            max(samples, default=0) * 1.2 + 15,
+        )
+        / 60
+    )
 
 
 class OperationTiming:
@@ -67,6 +80,7 @@ class OperationTiming:
         self.stack: list[TimingFrame] = []
         self.steps: dict[str, StepTiming] = {}
         self.retries = 0
+        self.single_recovery = False
 
     def enter(self, name: str) -> TimingFrame:
         frame = TimingFrame(name, perf_counter())
@@ -92,6 +106,8 @@ class OperationTiming:
             "total_s": round(total, 3),
             "other_s": round(max(0, total - own), 3),
             "retries": self.retries,
+            "single_recovery": self.single_recovery,
+            "task_type": None,
             "steps": {
                 key: {
                     "count": value["count"],
@@ -127,6 +143,13 @@ def record_selection_retry() -> None:
         timing.retries += 1
 
 
+def record_dorm_recovery() -> None:
+    """完整单回排序与普通安排分别采样，恢复阶段不重复记录排序。"""
+    timing = _current.get()
+    if timing is not None:
+        timing.single_recovery = True
+
+
 def timed_room(function: Callable[P, R]) -> Callable[P, R]:
     parameters = signature(function)
 
@@ -134,12 +157,17 @@ def timed_room(function: Callable[P, R]) -> Callable[P, R]:
     def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
         if _current.get() is not None:
             return function(*args, **kwargs)
-        room = parameters.bind(*args, **kwargs).arguments.get("room", "")
+        bound = parameters.bind(*args, **kwargs).arguments
+        room = bound.get("room", "")
+        task = getattr(bound.get("self"), "task", None)
+        task_type = getattr(getattr(task, "type", None), "name", None)
         timing = OperationTiming()
         token = _current.set(timing)
         outcome = "returned"
+        result = None
         try:
-            return function(*args, **kwargs)
+            result = function(*args, **kwargs)
+            return result
         except BaseException as error:
             outcome = type(error).__name__
             raise
@@ -149,10 +177,24 @@ def timed_room(function: Callable[P, R]) -> Callable[P, R]:
 
             # 保留后台诊断数据，不推送到 INFO 级别的前端运行日志。
             report = timing.report(room, outcome)
-            if room.startswith("dormitory_") and outcome == "returned":
-                _dorm_durations[room].append(report["total_s"])
-            elif room and outcome == "returned":
-                _work_durations[room].append(report["total_s"])
+            report["task_type"] = task_type
+            completed = outcome == "returned" and result is not False
+            if task is not None:
+                completed = completed and result is not None
+            ordinary = task_type not in {
+                "RUN_ORDER",
+                "FIAMMETTA",
+                "WORKSHOP",
+                "SKILL_UPGRADE",
+                "SWAP_SUPPORT",
+            }
+            if completed and ordinary:
+                if room.startswith("dormitory_"):
+                    _dorm_durations[(room, timing.single_recovery)].append(
+                        report["total_s"]
+                    )
+                elif room:
+                    _work_durations[room].append(report["total_s"])
             logger.debug("换班耗时统计 " + json.dumps(report, ensure_ascii=False))
 
     return wrapped
