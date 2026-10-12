@@ -166,6 +166,76 @@ else:
 """
 
 
+FAILED_INIT_WORKER = r"""
+import gc
+import os
+import sys
+from pathlib import Path
+from unittest.mock import patch
+from arknights_mower.utils import maa_runtime as runtime, maa_update
+from arknights_mower.utils.maa_backup import MaaCallError
+
+target, replacement, mode = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+sys.path.insert(0, str(target / "Python"))
+from asst.asst import Asst
+
+original_load = Asst.load
+def failed_load(**kwargs):
+    original_load(**kwargs)
+    if mode == "failed-load-raised":
+        raise RuntimeError("SDK failed after native open")
+    return False
+
+for _ in range(2):
+    if mode in ("failed-resource", "failed-resource-retry", "failed-load-raised"):
+        fault = patch.object(Asst, "load", side_effect=failed_load)
+    elif mode == "failed-constructor":
+        fault = patch.object(runtime, "VerifiedAsst", side_effect=RuntimeError("constructor failed"))
+    else:
+        fault = patch.object(runtime, "read_installed_version", return_value="")
+    with fault:
+        try:
+            runtime.load_verified_maa(Asst, target, lambda *args: None)
+        except (runtime.MaaUpdateError, MaaCallError, RuntimeError):
+            pass
+        else:
+            raise AssertionError("initialization should fail")
+    gc.collect()
+    assert "_mower_core_generation" not in vars(Asst)
+
+assert Asst._Asst__lib.AsstBuild() == 1
+assert Asst._Asst__lib.AsstLoads() == 2
+unchanged = mode.endswith("-retry")
+if not unchanged:
+    os.replace(replacement, target / replacement.name)
+
+with patch.object(runtime, "clear_loaded_maa_cache", wraps=runtime.clear_loaded_maa_cache) as cleanup:
+    if sys.platform == "darwin" and not unchanged:
+        try:
+            runtime.load_verified_maa(Asst, target, lambda *args: None)
+        except runtime.MaaCoreRestartRequired:
+            pass
+        else:
+            raise AssertionError("macOS must require restart")
+        assert Asst._Asst__lib.AsstLoads() == 2, "new resources reached the failed old load"
+        assert "_mower_core_generation" not in vars(Asst)
+        assert cleanup.call_count == 1
+    else:
+        instance = runtime.load_verified_maa(Asst, target, lambda *args: None)
+        assert instance.get_build() == (1 if unchanged else 2), "failed initialization retained old build"
+        assert cleanup.call_count == (0 if unchanged else 1)
+        from asst.asst import Asst as CurrentAsst
+        assert CurrentAsst._mower_core_generation[1] == "v1.0.0"
+        assert (CurrentAsst is Asst) == unchanged
+        assert CurrentAsst._Asst__lib.AsstLoads() == (3 if unchanged else 1)
+        if not unchanged:
+            assert (target / "unloaded.txt").read_text().splitlines() == ["1"]
+        instance.stop()
+        del instance
+        gc.collect()
+"""
+
+
 @pytest.mark.parametrize(
     "mode",
     [
@@ -179,6 +249,12 @@ else:
         "unknown",
         "close-failed",
         "darwin",
+        "failed-resource",
+        "failed-probe",
+        "failed-load-raised",
+        "failed-constructor",
+        "failed-resource-retry",
+        "failed-probe-retry",
     ],
 )
 def test_native_core_generation_reload(tmp_path, mode):
@@ -220,7 +296,7 @@ def test_native_core_generation_reload(tmp_path, mode):
         (target / core_name).rename(target / "physical-core.so")
         (target / core_name).symlink_to("physical-core.so")
     worker = tmp_path / "worker.py"
-    worker.write_text(WORKER)
+    worker.write_text(FAILED_INIT_WORKER if mode.startswith("failed-") else WORKER)
     environment = dict(
         os.environ,
         MOWER_ANDROID="0",

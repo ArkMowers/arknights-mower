@@ -80,6 +80,14 @@ def _load_verified_maa(asst_type, target, callback):
         raise MaaCoreRestartRequired()
     old_library = vars(asst_type).get("_Asst__lib")
     old_loads = vars(asst_type).get("_mower_core_loads")
+    if old_library is not None and (
+        not isinstance(old_loads, tuple)
+        or len(old_loads) != 4
+        or old_loads[0] is not old_library
+        or not old_loads[2]
+        or old_loads[3] != generation
+    ):
+        raise MaaCoreRestartRequired()
     try:
         loaded_resources = asst_type.load(
             path=target, incremental_path=target / "cache"
@@ -93,7 +101,9 @@ def _load_verified_maa(asst_type, target, callback):
             count = 1 if old_loads is None else old_loads[1] + 1
             if old_library is not None and library._handle != old_library._handle:
                 owned = False
-            asst_type._mower_core_loads = (library, count, owned)
+            # Native opens survive failed resources, instance creation or probing.
+            # Keep their identity independently of the successfully verified cache.
+            asst_type._mower_core_loads = (library, count, owned, generation)
     if not loaded_resources:
         detail = f"目录={target}，增量目录={target / 'cache'}"
         try:

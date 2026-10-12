@@ -136,6 +136,58 @@ class MaaRuntimeTests(unittest.TestCase):
         self.instance.stop.assert_called_once()
         self.assertNotIn("_mower_core_generation", vars(self.asst_type))
 
+    def assert_failed_native_load_detects_replacement(self, stage):
+        def native_load(**kwargs):
+            self.asst_type._Asst__lib = SimpleNamespace(_handle=123)
+            if stage == "sdk":
+                raise RuntimeError("SDK failed after opening the core")
+            return stage != "resources"
+
+        self.asst_type.load.side_effect = native_load
+        if stage == "constructor":
+            self.verified.side_effect = RuntimeError("instance creation failed")
+        if stage == "probe":
+            self.probe.return_value = ""
+        failure = {
+            "sdk": RuntimeError,
+            "resources": runtime.MaaCallError,
+            "constructor": RuntimeError,
+            "probe": runtime.MaaUpdateError,
+        }[stage]
+        for _ in range(2):
+            with self.assertRaises(failure):
+                self.load()
+            self.assertNotIn("_mower_core_generation", vars(self.asst_type))
+
+        self.library.write_bytes(b"replacement with the same version")
+        verified_calls, probe_calls = self.verified.call_count, self.probe.call_count
+        with self.assertRaises(runtime.MaaCoreRestartRequired):
+            self.load()
+        self.asst_type.load.assert_called()
+        self.assertEqual(self.asst_type.load.call_count, 2)
+        self.assertEqual(self.verified.call_count, verified_calls)
+        self.assertEqual(self.probe.call_count, probe_calls)
+        self.clear.assert_called_once_with(self.target)
+
+    def test_failed_resources_detect_replacement_on_retry(self):
+        self.assert_failed_native_load_detects_replacement("resources")
+
+    def test_sdk_exception_detects_replacement_on_retry(self):
+        self.assert_failed_native_load_detects_replacement("sdk")
+
+    def test_failed_constructor_detects_replacement_on_retry(self):
+        self.assert_failed_native_load_detects_replacement("constructor")
+
+    def test_failed_probe_detects_replacement_on_retry(self):
+        self.assert_failed_native_load_detects_replacement("probe")
+
+    def test_untracked_preloaded_core_is_rejected_before_resources(self):
+        self.asst_type._Asst__lib = SimpleNamespace(_handle=123)
+        with self.assertRaises(runtime.MaaCoreRestartRequired):
+            self.load()
+        self.asst_type.load.assert_not_called()
+        self.verified.assert_not_called()
+
     def test_core_changed_during_probe_fails_closed(self):
         def probe(*args, **kwargs):
             self.library.write_bytes(b"changed while probing")

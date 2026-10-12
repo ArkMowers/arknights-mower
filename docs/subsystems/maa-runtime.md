@@ -6,6 +6,8 @@
 
 The fresh disk probe runs in the existing MAA check child process with a thirty-second timeout. Its version-only mode loads no SDK resources and acquires no device connection. Source and packaged launchers use the same version-result protocol; native images and Objective-C registrations stay outside the parent process.
 
+Every tracked native open retains its core file identity independently of the successfully verified version cache. Failed resource loading, SDK exceptions, instance construction and disk probing retain that identity. A retry checks it before loading resources: an unchanged core can retry initialization and fresh version probing, while a replaced core enters the same unload-or-restart recovery even when no initialization has succeeded. A preloaded SDK library without a matching owned load record is rejected before resource loading.
+
 ## 2. Reload and Failure Boundary
 
 A changed validated core identity triggers at most one call to `clear_loaded_maa_cache` before resource loading. Windows and Linux release the idle scheduler reference, collect unreachable instances, and reject unloading while any verified or raw SDK instance remains reachable. `stop()` alone does not release a native instance. The SDK destructor releases the instance and joins its native workers before its library is closed.

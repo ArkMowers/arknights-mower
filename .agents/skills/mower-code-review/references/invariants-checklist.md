@@ -230,7 +230,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.8 MAA Integration
 
-- [ ] **[INV-MAA-11] MAA Core Generation**: Do retained idle instances block unloading, does actual image removal follow all tracked closes before SDK reimport, and do symlink-target changes or unconfirmed unloading preserve restart guidance before replacement resource loading? See the [runtime contract](../../../../docs/subsystems/maa-runtime.md).
+- [ ] **[INV-MAA-11] MAA Core Generation**: Do failed initializations retain native-open identity for retry admission, do retained idle instances block unloading, and does actual image removal follow all tracked closes before SDK reimport? Do symlink-target changes or unconfirmed unloading preserve restart guidance before replacement resource loading? See the [runtime contract](../../../../docs/subsystems/maa-runtime.md).
 
 - [ ] **[INV-MAA-10] Independent Update Admission**: Are automatic policies independent, obsolete automatic-check results ignored, and unknown local resource versions accepted only through an unused matching check while MAA is idle?
 - [ ] **[INV-MAA-09] Weekday-Independent Medicine**: Does MAA Fight pass the configured expiry threshold on every weekday, does local potion use retain positive-threshold and expiring-potion checks, and are both retired weekend-only spellings ignored and omitted on save?
