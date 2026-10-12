@@ -171,6 +171,32 @@ def test_both_resting_covers_move_without_spare(solver):
     assert recovery(s) == before
 
 
+@pytest.mark.parametrize("path", ["cached", "projection"])
+def test_relocation_with_manager_change_invalidates_room_timing(solver, path):
+    prepare_resting_relocation(solver, both=True)
+    before = recovery(solver)
+    dorm = deepcopy(solver.op_data.plan["dormitory_1"])
+    dorm[0] = Room("白面鸮", "", [])
+    solver.op_data.backup_plans[0].plan["dormitory_1"] = dorm
+    if path == "cached":
+        generated = []
+        assert solver.backup_plan_solver(generated_tasks=generated)
+        task = next(task for task in generated if task.plan)
+        assert solver.op_data.plan_condition == [True]
+    else:
+        task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION)
+        solver._prepare_shift_backup(task)
+        assert task.backup_shift_conditions == [True]
+        assert solver.op_data.plan_condition == [False]
+    assert task.plan["dormitory_1"][0] == "白面鸮"
+    projected = solver.op_data.project_arrangements([task.plan])
+    for name, (position, deadline) in before.items():
+        bed = projected.get_dorm_by_name(name)[1]
+        assert bed.position == position
+        assert bed.time == (None if position[0] == "dormitory_1" else deadline)
+    assert recovery(solver) == before
+
+
 @pytest.mark.parametrize("blocking", ["mastery", "reservation"])
 def test_protected_relocation_shortage_preserves_state(solver, monkeypatch, blocking):
     s = solver

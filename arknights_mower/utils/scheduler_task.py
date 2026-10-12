@@ -2249,8 +2249,9 @@ def prioritize_new_dorm_recovery(
             if completed_only and (not bed.name or level != filler_tier):
                 continue
             if (
-                actual[bed.position] == bed.name
-                and (not bed.name or bed.name in names)
+                bed.name
+                and actual[bed.position] == bed.name
+                and bed.name in names
                 and quota[level]
             ):
                 allocations[bed.position] = bed.name
@@ -2258,13 +2259,16 @@ def prioritize_new_dorm_recovery(
                 if bed.name:
                     names.remove(bed.name)
 
-    def fill(group, quota):
+    def fill(group, quota, *, include_fillers=False):
         vacant = iter(bed for bed in group if bed.position not in allocations)
         for level, count in sorted(quota.items()):
+            if level == filler_tier and not include_fillers:
+                continue
             for _ in range(count):
                 bed = next(vacant)
                 name = next((name for name in names if tier(name) == level), "")
                 allocations[bed.position] = name
+                quota[level] -= 1
                 if name:
                     names.remove(name)
 
@@ -2286,6 +2290,9 @@ def prioritize_new_dorm_recovery(
         retain(groups[index], quotas[index])
     for index in ordinary:
         fill(groups[index], quotas[index])
+    # 被未恢复者挤出的满心情垫位者按完整顺序补空，不优先搬去后续单回位。
+    for group, quota in zip(groups, quotas):
+        fill(group, quota, include_fillers=True)
     result = copy.deepcopy(plan)
     for bed in beds:
         name = allocations[bed.position]

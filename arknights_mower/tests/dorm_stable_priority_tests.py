@@ -218,6 +218,27 @@ def test_cross_room_projection_invalidates_all_affected_room_deadlines(residents
     assert all(bed.time == due for bed in data.dorm)
 
 
+def test_projection_no_op_vacancies_preserve_room_deadlines(residents):
+    data = residents
+    data.get_dorm_by_name("乌尔比安")[1].reset()
+    op = data.operators["乌尔比安"]
+    op.current_room, op.current_index = "", -1
+    due = datetime.now() + timedelta(hours=3)
+    for bed in data.dorm:
+        bed.time = due if bed.name else None
+    projected = data.project_arrangements(
+        [
+            {
+                "dormitory_2": ["Current"] * 4 + ["Free"],
+                "dormitory_4": ["Current"] * 4 + ["乌有"],
+            }
+        ]
+    )
+    assert [(bed.name, bed.time) for bed in projected.dorm] == [
+        (bed.name, due if bed.name else None) for bed in data.dorm
+    ]
+
+
 def test_batched_ordinary_clearance_fills_faster_beds_without_moving_targets(residents):
     data = residents
     # 两个较快普通床一起清空，只移动令和安哲拉，已有三个单回目标保位。

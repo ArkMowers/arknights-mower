@@ -2050,7 +2050,7 @@ class Operators:
     def project_arrangements(self, plans):
         """按执行顺序推演排班后的驻员和恢复床位，不产生实际换人副作用。
 
-        位置未变保留恢复时间；换床位或换宿舍后，由正常读房重新采样。
+        阵容未变的宿舍保留恢复时间；受影响宿舍等待最终阵容实读。
         产物切换和回班规划共用这一份位置语义，不能只改工位而留下旧床位。
         """
         projected = copy.copy(self)
@@ -2067,8 +2067,13 @@ class Operators:
                 for index, name in enumerate(names)
                 if name != "Current"
                 and (
-                    (occupant := projected.get_current_operator(room, index)) is None
-                    or occupant.name != name
+                    (
+                        occupant.name
+                        if (occupant := projected.get_current_operator(room, index))
+                        is not None
+                        else ""
+                    )
+                    != ("" if name == "Free" else name)
                 )
             }
             changed_dorms = {

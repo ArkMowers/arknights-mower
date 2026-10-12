@@ -133,6 +133,13 @@ def simulate_room_io(solver, clock, failures=0, failure_kind="exception"):
             solver.task.time = clock.now() + timedelta(minutes=1)
             return False
         solver.op_data = solver.op_data.project_arrangements([{room: plan[room]}])
+        # 替代最终阵容读房：同房未换床住客也获得新计时。
+        for bed in solver.op_data.all_dorms():
+            if bed.position[0] == room and bed.name and bed.time is None:
+                solver.op_data.refresh_dorm_time(
+                    *bed.position,
+                    {"agent": bed.name, "time": clock.now() + timedelta(hours=2)},
+                )
         plan.pop(room)
         return previous | {room: original} if temporary_order else previous
 

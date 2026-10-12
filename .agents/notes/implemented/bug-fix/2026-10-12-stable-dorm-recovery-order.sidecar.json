@@ -16,6 +16,9 @@
   "test_suites": [
     "arknights_mower/tests/dorm_stable_priority_tests.py",
     "arknights_mower/tests/dorm_recovery_tests.py",
-    "arknights_mower/tests/dorm_recovery_record_tests.py"
+    "arknights_mower/tests/dorm_recovery_record_tests.py",
+    "arknights_mower/tests/backup_relocation_state_tests.py",
+    "arknights_mower/tests/backup_rest_schedule_tests.py",
+    "arknights_mower/tests/run_order_planning_wakeup_tests.py"
   ]
 }

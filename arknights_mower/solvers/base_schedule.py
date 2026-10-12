@@ -3726,7 +3726,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             reserved_slots,
         ):
             return None
-        # 替班不足时允许召回本人；其余主班仍保留原位置与恢复时间。
+        # 替班不足时允许召回本人；其余主班保留位置，阵容变化可使计时失效。
         assigned = _assigned_operator_names(transition_plan)
         preserved = {
             name: position
@@ -3779,7 +3779,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     else ()
                 ),
             )
-            self.op_data.dorm = migration_data.dorm
             _merge_shift_transition(transition_plan, dorm_migration, self.op_data)
             # 副表收回原床位时沿用宿舍迁移结果；新床的恢复时间须重新读取。
             for room, names in dorm_migration.items():
@@ -3787,9 +3786,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     if name in recovery and recovery[name][0] != (room, index):
                         preserved[name] = (room, index)
                         recovery[name] = ((room, index), None)
-                        for bed in self.op_data.all_dorms():
-                            if bed.name == name:
-                                bed.time = None
         else:
             logger.debug("副表未改变宿舍床位或房间顺序，跳过宿舍重排")
 
@@ -3815,7 +3811,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if bed.name in preserved
             }
             if any(
-                projected_recovery.get(name) != expected
+                projected_recovery.get(name) not in (expected, (expected[0], None))
                 for name, expected in recovery.items()
             ):
                 return None
