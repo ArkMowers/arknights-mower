@@ -20,9 +20,8 @@ metadata:
 
 ## 标题
 
-- 使用 `<type>(<scope>): <description>`；scope 选填，省略时同时省略括号，冒号后保留一个空格。type 限于 `feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`build`、`ci`、`chore`、`revert`，按最终 diff 的主要目的选择；scope 使用实际影响的功能、模块或维护对象名称。
+- 标题遵循 [Conventional Commits 官网最新正式版](https://www.conventionalcommits.org/)。按最终 diff 的主要目的选择 type；scope 选填，使用实际影响的功能、模块或维护对象的英文名称，优先沿用仓库已有写法。
 - 从最终 diff 提炼主要对象及最终变化，用中文单一动宾短语描述共同实现的结果。业务改动以具体功能、流程或配置为主体，工程改动写明具体维护对象及结果；条件、例外和次要变化放入正文。
-- `fix` 写明问题发生的场景与不良现象，或补足的处理逻辑；`feat` 写明新增能力；`docs` 写明具体功能或模块的文档变化。
 - 省略开发过程记录、内部局部实现细节、任务追踪单号与临时标记。描述末尾不加句号，不用 `+`、`/` 或 `、` 串联多个独立动作。
 
 ## Summary（改动与方案）
