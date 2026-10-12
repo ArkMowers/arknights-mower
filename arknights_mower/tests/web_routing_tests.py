@@ -26,6 +26,11 @@ class WebRoutingTests(unittest.TestCase):
         ):
             mock.start()
             self.addCleanup(mock.stop)
+        pages_patch = patch.object(
+            server, "frontend_pages", server._load_frontend_pages()
+        )
+        pages_patch.start()
+        self.addCleanup(pages_patch.stop)
         self.client = server.app.test_client()
 
     def get(self, path, **kwargs):
@@ -155,6 +160,11 @@ class WebRoutingTests(unittest.TestCase):
 
     def test_source_checkout_with_older_frontend_uses_source_route_manifest(self):
         (self.root / "frontend-routes.json").unlink()
+        pages = server._load_frontend_pages()
+        self.assertEqual(pages, frozenset(page.lower() for page in self.pages))
+        pages_patch = patch.object(server, "frontend_pages", pages)
+        pages_patch.start()
+        self.addCleanup(pages_patch.stop)
         self.assertEqual(self.get("/record/depot").data, self.shell)
         self.assertEqual(
             self.get(
@@ -163,6 +173,29 @@ class WebRoutingTests(unittest.TestCase):
             ).data,
             self.shell,
         )
+
+    def test_dispatch_does_not_read_manifest_during_requests(self):
+        with (
+            patch.dict(
+                server.app.view_functions,
+                {"mastery_recommendation": lambda: {"has_data": True}},
+            ),
+            patch.object(
+                Path, "open", side_effect=AssertionError("request reads disk")
+            ),
+        ):
+            for _ in range(2):
+                response = self.get(
+                    "/mastery-recommendation", headers={"Accept": "application/json"}
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.get_json(), {"has_data": True})
+            response = self.get(
+                "/mastery-recommendation",
+                headers={"Accept": "text/html", "Sec-Fetch-Dest": "document"},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data, self.shell)
 
     def test_builtin_images_remain_available_without_external_package(self):
         (self.root / "avatar").mkdir()

@@ -11,10 +11,12 @@
   ],
   "code_symbols": [
     "server.serve_frontend_page",
+    "server._load_frontend_pages",
     "server.not_found"
   ],
   "test_suites": [
     "arknights_mower/tests/web_routing_tests.py",
+    "arknights_mower/tests/screenshot_tests.py",
     "arknights_mower/tests/verify_governance_tests.py",
     "ui/src/routes.test.js"
   ]

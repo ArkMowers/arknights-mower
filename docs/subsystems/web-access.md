@@ -43,7 +43,7 @@ Update and process-operation restarts preserve their explicit policy: `MOWER_RES
 
 ## 6. Frontend Navigation
 
-For GET and HEAD requests, an explicit positive `text/html` Accept entry and a missing, `document` or `iframe` Sec-Fetch-Dest identify page navigation. Known pages use `frontend-routes.json` from the distribution, falling back to the source manifest when absent; matching ignores case and trailing slashes. Navigation to these pages returns `index.html` before API dispatch, including `/mastery-recommendation`, which shares its URL with a JSON endpoint. Both representations declare `Vary: Accept, Sec-Fetch-Dest`.
+For GET and HEAD requests, an explicit positive `text/html` Accept entry and a missing, `document` or `iframe` Sec-Fetch-Dest identify page navigation. At process startup, known pages load from the distribution's `frontend-routes.json`, falling back to the source manifest when absent. Request matching uses this immutable set without reading the manifest and ignores case and trailing slashes. Navigation to these pages returns `index.html` before API dispatch, including `/mastery-recommendation`, which shares its URL with a JSON endpoint. Both representations declare `Vary: Accept, Sec-Fetch-Dest`.
 
 JSON clients, wildcard Accept requests and non-read methods retain API dispatch and credential checks. Documentation files and directories retain their static responses. Unknown APIs and missing assets retain 404 responses; unknown extensionless page navigation outside API and resource prefixes retains Vue's missing-page display.
 

@@ -758,19 +758,25 @@ def _authorize_websocket(ws, allow_local_log=False):
     return True
 
 
-def _is_frontend_page(path):
+def _load_frontend_pages():
     # routes.test.js keeps this manifest aligned with Vue, including older dist.
     manifest = Path(app.static_folder) / "frontend-routes.json"
     if not manifest.is_file():
         manifest = get_path("@internal/ui/public/frontend-routes.json")
     try:
-        pages = {
+        return frozenset(
             p.rstrip("/").lower() or "/"
             for p in json.loads(manifest.read_text("utf-8"))
-        }
+        )
     except (OSError, ValueError):
-        pages = set()
-    return (path.rstrip("/").lower() or "/") in pages
+        return frozenset()
+
+
+frontend_pages = _load_frontend_pages()
+
+
+def _is_frontend_page(path):
+    return (path.rstrip("/").lower() or "/") in frontend_pages
 
 
 def _is_html_navigation():
