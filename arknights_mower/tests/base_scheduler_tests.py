@@ -353,6 +353,7 @@ class TestMoodInitialization(unittest.TestCase):
             "operators": {},
             "dorm": [],
             "facility_states": {},
+            "room_observations": {"room_1_1": 3},
             "party_time": None,
             "daily_visit_friend": date.min,
             "daily_report": date.min,
@@ -361,6 +362,10 @@ class TestMoodInitialization(unittest.TestCase):
             "task_count": 0,
         }
         self.main.simulate(saved)
+        self.assertEqual(scheduler.op_data.room_observations, {"room_1_1": 3})
+        self.assertIsNot(
+            scheduler.op_data.room_observations, saved["room_observations"]
+        )
         scheduler.backup_plan_solver.assert_called_once_with()
         scheduler.run.assert_called_once_with()
 

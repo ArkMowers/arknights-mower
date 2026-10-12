@@ -18,7 +18,12 @@
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._resume_failed_tasks",
     "arknights_mower.utils.scheduler_task.find_next_task",
     "arknights_mower.utils.scheduler_task.scheduling",
-    "arknights_mower.__main__.simulate"
+    "arknights_mower.__main__.simulate",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.get_agent_from_room",
+    "arknights_mower.solvers.record.current_state",
+    "arknights_mower.utils.scheduler_task.plan_metadata",
+    "arknights_mower.utils.scheduler_task.plan_mood_limit_releases",
+    "arknights_mower.utils.scheduler_task.merge_release_dorm"
   ],
   "test_suites": [
     "arknights_mower/tests/device_control_shutdown_tests.py",

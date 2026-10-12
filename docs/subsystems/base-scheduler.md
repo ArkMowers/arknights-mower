@@ -243,6 +243,10 @@ Interrupted trade-order insertion converts the same task to original-roster rest
 
 Reopening dispatch retains the original task's cleanup protection until its remaining work completes, including across persistence and repeated stale-plan cleanup. The task keeps its original timestamp; the fifteen-minute ordinary-plan expiry never consumes an uncompleted retained execution.
 
+Ordinary return planning, personal-limit release planning and rescue recovery-release planning retain those same task objects. Their targets reserve the involved operators and slots against duplicate ordinary plans without preventing independent personal-limit departures. Dormitory release merging never consumes or reschedules retained executions, including after dispatch reopens.
+
+Complete room reads advance a persisted room observation revision, including confirmed empty slots when product switching is disabled. Failed reads and unresolved name recognition do not advance it. Failure snapshots compare only the relevant rooms' revisions; unrelated reads and an unchanged restored revision do not reopen dispatch. Older saved failures without this field retain their suspension until relevant new information arrives.
+
 Failed rescue staffing does not block due recovery observations or independent release planning. The existing observation cycle reads the failed facilities, including a failed training-room target, and reopens dispatch only on relevant new information. An unchanged read preserves the same failed task without a new retry timer. Initial takeover completion persists separately from the current staffing round; incomplete initial takeover keeps its priority across restart, while later rescue rotations retain ordinary personal-limit release protection.
 
 The [task retention decision](../../.agents/notes/implemented/bug-fix/2026-10-01-recovery-release-and-task-retention.md) records the failure regressions.

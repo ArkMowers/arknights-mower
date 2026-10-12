@@ -1708,15 +1708,23 @@ def plan_metadata(op_data, tasks):
         return tasks
     op_data.refresh_idle_dorm_search()
     locked_tasks = [
-        task for task in tasks if (getattr(task, "product_shift_locked", False))
+        task
+        for task in tasks
+        if getattr(task, "product_shift_locked", False) or task.retains_execution
     ]
-    locked_names = {name for task in locked_tasks for name in task.product_lock_names}
+    locked_names, locked_slots = set(), set()
+    for task in locked_tasks:
+        if task.retains_execution:
+            names, slots = _arrangement_resources(task.plan)
+            locked_names.update(names | task.release_dorm_targets().keys())
+            locked_slots.update(slots)
+        locked_names.update(getattr(task, "product_lock_names", ()))
+        locked_slots.update(getattr(task, "product_lock_slots", ()))
     locked_groups = {
         op_data.operators[name].group
         for name in locked_names
         if name in op_data.operators and op_data.operators[name].group
     }
-    locked_slots = {slot for task in locked_tasks for slot in task.product_lock_slots}
     locked_ids = {id(task) for task in locked_tasks}
     # 仅当副表处于激活状态时，保留既有回班任务中的工位快照，避免副表临时调整工位覆盖回班目标；
     # 当所有副表均已失效（恢复纯主表）时，所有干员统一按主表规划回班，避免副表工位粘滞。
@@ -1739,7 +1747,7 @@ def plan_metadata(op_data, tasks):
                         if name not in ("Current", "Free", ""):
                             existing_targets[name] = (room, idx)
     previous_releases = [t for t in tasks if getattr(t, "strict_mood_limit", False)]
-    # 切产物延期任务保留原对象、重试时间与资源锁，只重算其他回班/释放任务。
+    # 失败保留与切产物预约保留原对象和时间，只重算无关回班／清退。
     tasks = [
         t
         for t in tasks
@@ -1765,6 +1773,7 @@ def plan_metadata(op_data, tasks):
     limited_releases = plan_mood_limit_releases(
         op_data, previous_tasks=previous_releases
     )
+    limited_releases = [task for task in limited_releases if id(task) not in locked_ids]
     # 纠偏／重排是已经确定的安排，普通回班属于其后的派生计划。
     # 从最终驻员和床位计算，避免两个规划器各自从旧床位召回同一个人。
     # 已锁定的产物任务继续由上面的资源锁管理，不能提前视为完成。
@@ -2099,7 +2108,28 @@ def plan_mood_limit_releases(op_data, *, recovery_targets=None, previous_tasks=(
         if getattr(task, "strict_mood_limit", False)
     }
     now = datetime.now()
-    result = []
+    result = [
+        task
+        for task in previous_tasks
+        if task.retains_execution
+        and (
+            getattr(task, "strict_mood_limit", False)
+            or recovery_targets is not None
+            and getattr(task, "emergency_recovery_release", False)
+        )
+    ]
+    retained_strict = {
+        name
+        for task in result
+        if getattr(task, "strict_mood_limit", False)
+        for name in task.release_dorm_targets()
+    }
+    retained_recovery = {
+        name
+        for task in result
+        if getattr(task, "emergency_recovery_release", False)
+        for name in task.release_dorm_targets()
+    }
     for bed in op_data.all_dorms():
         op = op_data.operators.get(bed.name)
         if op is None or (op.current_room, op.current_index) != bed.position:
@@ -2109,6 +2139,7 @@ def plan_mood_limit_releases(op_data, *, recovery_targets=None, previous_tasks=(
         target = (recovery_targets or {}).get(op.name)
         if (
             target is not None
+            and op.name not in retained_recovery
             and 0 <= target <= op.upper_limit
             and not (target == op.upper_limit and op_data.has_rest_mood_limit(op.name))
             and has_resting_mood(op)
@@ -2138,7 +2169,7 @@ def plan_mood_limit_releases(op_data, *, recovery_targets=None, previous_tasks=(
                 )
                 task.emergency_recovery_release = True
                 result.append(task)
-        if not op_data.has_rest_mood_limit(bed.name):
+        if not op_data.has_rest_mood_limit(bed.name) or op.name in retained_strict:
             continue
         complete = op_data.rest_mood_complete(op.name)
         if complete:
@@ -2982,6 +3013,7 @@ def merge_release_dorm(tasks, merge_interval, *, previous_tasks=None):
             task.type == TaskTypes.RELEASE_DORM
             and not getattr(task, "strict_mood_limit", False)
             and not getattr(task, "product_shift_locked", False)
+            and not task.retains_execution
             and len(task.plan) == 1
             and targets
             and all(
@@ -3040,6 +3072,14 @@ class SchedulerTask:
     type = ""
     plan = {}
     meta_data = ""
+
+    @property
+    def retains_execution(self):
+        """失败任务与重新准入的剩余执行均保留原对象、安排和时间。"""
+        return bool(
+            getattr(self, "execution_failure", None)
+            or getattr(self, "execution_retained", False)
+        )
 
     def __init__(
         self,

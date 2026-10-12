@@ -19,6 +19,8 @@ Interrupted trade-order insertion immediately converts to original-roster restor
 
 Reopened failed tasks retain their stale-cleanup exemption through persistence until the remaining execution completes. Removing the dispatch failure marker cannot consume the retained work at the next fifteen-minute cleanup boundary.
 
+Planner rebuilding and release merging preserve the same retained execution rather than replacing it with an unmarked task. Existing resource reservations exclude duplicate ordinary targets while independent personal-limit releases keep their deadlines. A persisted room observation revision supplies recovery evidence for confirmed empty rooms, which have no occupant sampling timestamp. The existing readback and state persistence paths own this evidence; no retry timer or separate observation loop is added.
+
 ## Simplification
 
 The existing shutdown gate distinguishes final release from normal idle cleanup. The existing scheduler cleanup predicate retains future explicit work; critical-appointment and ordinary-plan rules remain local to `handle_error`. Runtime task failures add one task-local failure snapshot in the original queue without a second queue or a separate recovery scheduler. Dispatch and idle budgets exclude unchanged failures. The snapshot compares requested and effective arrangements with related occupancy, successful observation timestamps and facility state; elapsed wall time and unrelated observations do not release it. Existing task persistence and listing retain the failure reason and original task.
@@ -37,9 +39,13 @@ Trade-order regressions exercise interrupted insertion through room-recovery and
 
 Reopening regressions advance the virtual clock by twenty minutes, update a related observation and exercise the real scheduler entry. The same remaining task survives repeated cleanup alongside unrelated expired tasks and survives a serialization round trip before execution.
 
+Planner regressions repeatedly run actual return and release planning for failed, reopened and serialized executions, verify original identity, targets and time, and admit unrelated returns. Specialized-release and merge cases preserve retained work without suppressing independent personal-limit deadlines. Empty-room cases execute ordinary and rescue readback with substituted page recognition, distinguish confirmed vacancies from failed reads and unresolved names, and verify legacy snapshot compatibility, database persistence and startup restoration of room revisions.
+
 The review follow-up passes 1785 targeted offline tests across 35 related files, including nine added cleanup, observation and rotation cases. The [takeover decision](../simplification/2026-10-12-immediate-rescue-takeover.md) records the rescue-specific review evidence.
 
 The worker test substitutes the active selection-card startup read and asserts that it runs once. The worker and scheduler share a virtual clock; recovery and scheduler waits advance that clock without wall-clock sleep. Retired dormitory-probe methods are absent from the fixture.
+
+The planner and empty-room review follow-up passes 2059 targeted offline tests across 41 related files, including 21 new cases. Existing group-confirmation cases also verify that successful completion releases retention reservations. Ruff, format checks, diff checks and all three governance gates pass; the focused run retains two existing Pydantic serializer warnings.
 
 No live device, remote configuration, Device Profile schema or glossary definition changes.
 

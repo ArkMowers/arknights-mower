@@ -512,6 +512,9 @@ def simulate(saved):
             base_scheduler.op_data.facility_states = copy.deepcopy(
                 saved.get("facility_states", {})
             )
+            base_scheduler.op_data.room_observations = copy.deepcopy(
+                saved.get("room_observations", {})
+            )
             base_scheduler.emergency_state = copy.deepcopy(
                 saved.get("automatic_rescue_state")
             )

@@ -316,6 +316,7 @@ class Operators:
         self.current_room_changed_callback = None
         self.party_time = None
         self.facility_states = {}
+        self.room_observations = {}
         self.reserved_product_beds = {}
         self.reserved_product_replacements = set()
         self.profession_filter = set(agent_arrange_order["职介选择开关"])

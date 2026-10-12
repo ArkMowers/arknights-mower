@@ -495,6 +495,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     room: getattr(data, "facility_states", {}).get(room)
                     for room in rooms
                 },
+                "room_observations": {
+                    room: getattr(data, "room_observations", {}).get(room)
+                    for room in rooms
+                },
             }
         )
 
@@ -510,6 +514,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     def _resume_failed_tasks(self):
         for task in self.tasks:
             failure = getattr(task, "execution_failure", None)
+            if failure:
+                failure["snapshot"].setdefault(
+                    "room_observations", {room: None for room in failure["rooms"]}
+                )
             if (
                 failure
                 and self._task_failure_snapshot(task, failure["rooms"])
@@ -5004,6 +5012,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             logger.info("绑组换班确认完成：%s", changes)
         task.group_shift_expected = {}
         task.__dict__.pop("training_skipped_slots", None)
+        # 全部目标已实测确认，完成的换班不再占用失败保留预约。
+        task.__dict__.pop("execution_failure", None)
+        task.__dict__.pop("execution_retained", None)
         self._resume_waiting_group_shifts()
         return True
 
@@ -8933,20 +8944,24 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         mood_p = [tuple(zip(mood_x, y)) for y in mood_y]
         result = []
         swiped = False
+        observation_complete = True
         for i in range(0, length):
             if i >= 3 and not swiped:
                 self.scroll_room_operators(bottom=True)
                 swiped = True
             data = {}
             _name = ""
+            slot_observed = False
             for read_try in range(3):
                 if self.find("infra_no_operator", scope=slot_p[i]):
                     _name = ""
+                    slot_observed = True
                     break
                 _name = self.read_screen(
                     cropimg(self.recog.gray, name_p[i]), type="name"
                 )
                 if _name != "":
+                    slot_observed = True
                     break
                 if read_try < 2:
                     logger.debug(
@@ -8954,6 +8969,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     )
                     self.sleep(0.25)
                     self.recog.update()
+            observation_complete = observation_complete and slot_observed
             _mood = 24
             # 如果房间不为空
             update_time = False
@@ -9189,6 +9205,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.op_data.refresh_idle_dorm_search(
                 reason="专精协助位干员已释放", names=[released_support.name]
             )
+        # 完整读房才产生新观测；空房间没有干员采样时间，同样可解除相关失败。
+        if observation_complete:
+            observations = getattr(self.op_data, "room_observations", {})
+            observations[room] = observations.get(room, 0) + 1
+            self.op_data.room_observations = observations
         return result
 
     def refresh_current_room(self, room, current_index=None):
