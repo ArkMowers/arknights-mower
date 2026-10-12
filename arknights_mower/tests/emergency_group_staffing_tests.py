@@ -83,21 +83,17 @@ def test_finished_manual_workers_keep_working_after_mood_drops(staffing):
 
 
 @pytest.mark.parametrize("mood", [None, 0, 8])
-def test_known_low_worker_can_staff_but_unknown_blocks_roster(staffing, mood):
+def test_configured_worker_staffs_with_known_or_unknown_mood(staffing, mood):
     solver = staffing.solver
     op = solver.op_data.operators[COVERS[-1]]
     op.mood = mood if mood is not None else 24
     op.time_stamp = NOW if mood is not None else None
     solver.op_data.dorm_mood_estimates.clear()
-    assert solver._emergency_schedule_staffing() is (mood is not None)
-    if mood is None:
-        assert not solver.tasks
-        assert not staffing.state.get("staffing_plan")
-    else:
-        assert staffing_task(solver).plan == staffing.state["rescue_plan"]
+    assert solver._emergency_schedule_staffing()
+    assert staffing_task(solver).plan == staffing.state["rescue_plan"]
 
 
-def test_near_strict_release_defers_whole_work_roster(staffing):
+def test_near_strict_release_does_not_defer_work_roster(staffing):
     solver = staffing.solver
     task = SchedulerTask(
         time=NOW + timedelta(seconds=50),
@@ -106,18 +102,20 @@ def test_near_strict_release_defers_whole_work_roster(staffing):
     )
     task.strict_mood_limit = True
     solver.tasks.append(task)
-    assert not solver._emergency_schedule_staffing()
-    assert solver.tasks == [task]
+    assert solver._emergency_schedule_staffing()
+    assert staffing_task(solver).plan == staffing.state["rescue_plan"]
+    assert task in solver.tasks
 
 
-def test_specialized_compensation_precedes_rescue_staffing(staffing):
+def test_rescue_staffing_replaces_specialized_compensation_roster(staffing):
     solver = staffing.solver
     room = next(iter(staffing.state["rescue_plan"]))
     task = SchedulerTask(task_plan={room: [COVERS[0]]})
     task.emergency_original_roster = {room: [PRIMARY[0]]}
     solver.tasks.append(task)
-    assert not solver._emergency_schedule_staffing()
-    assert solver.tasks == [task]
+    assert solver._emergency_schedule_staffing()
+    assert staffing_task(solver).plan == staffing.state["rescue_plan"]
+    assert task in solver.tasks
 
 
 @pytest.mark.parametrize("training_mood_known", [False, True])
@@ -148,9 +146,7 @@ def test_fixed_rooms_join_rescue_dispatch_and_reconcile(
 
 
 @pytest.mark.parametrize("follows", [False, True])
-def test_rescue_training_uses_existing_assistant_protection(
-    staffing, monkeypatch, follows
-):
+def test_rescue_training_overrides_assistant_protection(staffing, monkeypatch, follows):
     from types import SimpleNamespace
     from unittest.mock import MagicMock
 
@@ -176,14 +172,12 @@ def test_rescue_training_uses_existing_assistant_protection(
     staffing.state["rescue_plan"]["train"] = ["泡普卡", "安赛尔"]
     assert solver._emergency_schedule_staffing()
     plan = staffing_task(solver).plan
-    if follows:
-        assert plan["train"] == ["泡普卡", "Current"]
-    else:
-        assert "train" not in plan
-    # 执行期间新出现的训练保护也不把已完成普通驻员部署卡在核对阶段。
+    assert plan["train"] == ["泡普卡", "安赛尔"]
     staffing.state["staffing_plan"] = {"train": ["泡普卡", "安赛尔"]}
     monkeypatch.setattr(config.conf, "assistant_follows_schedule", False)
     solver.tasks.clear()
+    assert not solver._emergency_reconcile_staffing()
+    solver.op_data = solver.op_data.project_arrangements([plan])
     assert solver._emergency_reconcile_staffing()
 
 

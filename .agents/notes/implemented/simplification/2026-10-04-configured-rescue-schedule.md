@@ -11,7 +11,7 @@ date: 2026-10-04
 
 The [scheduler contract](../../../../docs/subsystems/base-scheduler.md) defines [INV-SCHED-09]. The rescue schedule owns ordinary working-facility assignments, separately from the frozen normal schedule. Entry evaluates rescue backups with the shared condition evaluator. Workers without replacements remain working. Overlapping normal primaries produce a startup warning and remain outside recovery targets.
 
-All working facilities form one persisted dispatch. Actual occupancy determines outstanding rooms after partial failure or restart. Dormitory filling starts after confirmation of the full work roster. Specialized compensation and strict personal-limit releases retain their existing authority under [INV-SCHED-03].
+All working facilities form one persisted dispatch. Actual occupancy determines outstanding rooms after partial failure or restart. Dormitory filling starts after confirmation of the full work roster. The [immediate takeover decision](2026-10-12-immediate-rescue-takeover.md) defines initial staffing precedence; subsequent specialized compensation and strict personal-limit releases follow [INV-SCHED-03].
 
 Same-tier recovery candidates are ordered by group before spare-bed fillers. Handoff uses the normal complete replacement matcher and bed allocator for all unfinished groups together; measured-ready groups resume work only when native rotation remains feasible. Run-order selections and Fiammetta position and targets come exclusively from the rescue schedule.
 

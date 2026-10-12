@@ -81,6 +81,7 @@ def find_next_task(
         tasks: 任务列表
         compare_time: 截止时间
     """
+    tasks = [task for task in tasks if not getattr(task, "execution_failure", None)]
     if compare_type == "=":
         return next(
             (
@@ -119,6 +120,14 @@ def find_next_task(
 def scheduling(
     tasks, run_order_delay=5, execution_time=None, time_now=None, op_data=None
 ):
+    retained = [task for task in tasks if getattr(task, "execution_failure", None)]
+    if retained:
+        active = [
+            task for task in tasks if not getattr(task, "execution_failure", None)
+        ]
+        result = scheduling(active, run_order_delay, execution_time, time_now, op_data)
+        tasks[:] = active + retained
+        return result
     time_now = time_now or datetime.now()
     merge_release_dorm(tasks, config.conf.merge_interval)
     enabled = config.conf.enable_mastery
@@ -143,7 +152,23 @@ def protect_priority_tasks(
     tasks, run_order_delay=5, execution_time=None, time_now=None, op_data=None
 ):
     """按操作耗时保护关键任务，跑单冲突时提前专精换人。"""
+    retained = [task for task in tasks if getattr(task, "execution_failure", None)]
+    if retained:
+        active = [
+            task for task in tasks if not getattr(task, "execution_failure", None)
+        ]
+        protect_priority_tasks(
+            active, run_order_delay, execution_time, time_now, op_data
+        )
+        tasks[:] = active + retained
+        return
     now = time_now or datetime.now()
+    if any(
+        getattr(task, "emergency_takeover", False) and task.time <= now
+        for task in tasks
+    ):
+        _sort_dispatch_tasks(tasks, now, op_data)
+        return
     for task in tasks:
         simplify_dorm_fill(task, tasks, now, op_data)
     swaps = sorted(
@@ -210,6 +235,8 @@ def _sort_dispatch_tasks(tasks, now, op_data=None):
     )
     tasks.sort(
         key=lambda task: (
+            bool(getattr(task, "execution_failure", None)),
+            not (getattr(task, "emergency_takeover", False) and task.time <= now),
             id(task) not in due_priority,
             not (
                 initial_fia_due

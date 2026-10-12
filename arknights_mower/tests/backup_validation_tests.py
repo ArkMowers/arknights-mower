@@ -95,6 +95,102 @@ def facility_backup():
     }
 
 
+def trade_schedule(level, primary="lmd", backup="lmd", *, declared=True):
+    conf = PlanConfig("", "", "")
+    slots = [
+        Room(agent, "", [cover], "贸易站", primary)
+        for agent, cover in [("能天使", "芬"), ("银灰", "初雪"), ("陈", "红")][:level]
+    ]
+    return {
+        "default_plan": Plan({"room_1_1": slots}, conf, products={"room_1_1": primary}),
+        "backup_plans": [
+            Plan(
+                {"room_1_1": copy.deepcopy(slots)} if declared else {},
+                conf,
+                name="订单切换",
+                products={"room_1_1": backup},
+            )
+        ],
+    }
+
+
+@pytest.mark.parametrize("level", [1, 2])
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("declared", [False, True])
+def test_non_three_level_trade_backup_fails_before_combination_analysis(
+    monkeypatch, level, enabled, declared
+):
+    config.conf.product_switching.enable = enabled
+    plan = trade_schedule(level, backup="orundum", declared=declared)
+    data = initialize(plan)
+    analyze = MagicMock(side_effect=AssertionError("invalid order reached analysis"))
+    monkeypatch.setattr(backup_validation, "possible_backup_conditions", analyze)
+    before = data.plan, data.config, data.operators, data.dorm, data.products
+    result = data.validate_backup_plans(max_seconds=0)
+    assert result["status"] == "failed"
+    assert all(
+        text in result["message"]
+        for text in ("订单切换", "room_1_1", "3级", "开采协力")
+    )
+    assert data.plan_condition == [False]
+    assert all(
+        current is original
+        for current, original in zip(
+            (data.plan, data.config, data.operators, data.dorm, data.products), before
+        )
+    )
+    analyze.assert_not_called()
+
+
+@pytest.mark.parametrize("level", [1, 2])
+@pytest.mark.parametrize("enabled", [False, True])
+def test_non_three_level_trade_primary_reports_validation_error(level, enabled):
+    config.conf.product_switching.enable = enabled
+    plan = trade_schedule(level, primary="orundum", backup="orundum")
+    plan["backup_plans"] = []
+    data = Operators(plan)
+    error = data.init_and_validate()
+    assert all(text in error for text in ("主表", "room_1_1", "3级", "开采协力"))
+    result = data.validate_backup_plans()
+    assert result["status"] == "failed"
+    assert "主表" in result["message"]
+
+
+@pytest.mark.parametrize("level", [1, 2, 3])
+@pytest.mark.parametrize("enabled", [False, True])
+def test_fixed_lmd_trade_target_remains_valid(level, enabled):
+    config.conf.product_switching.enable = enabled
+    data = initialize(trade_schedule(level))
+    assert data.validate_backup_plans()["success"]
+
+
+@pytest.mark.parametrize("primary,backup", [("lmd", "orundum"), ("orundum", "lmd")])
+def test_three_level_trade_order_switch_passes_validation(primary, backup):
+    config.conf.product_switching.enable = True
+    data = initialize(trade_schedule(3, primary=primary, backup=backup))
+    assert data.validate_backup_plans()["success"]
+    assert data.swap_plan([True], refresh=True) is None
+    assert data.products["room_1_1"] == backup
+
+
+@pytest.mark.parametrize("level", [1, 2])
+def test_non_three_level_trade_activation_preserves_live_state(level):
+    config.conf.product_switching.enable = True
+    plan = trade_schedule(level)
+    data = initialize(plan)
+    before = data.plan, data.config, data.operators, data.dorm, data.products
+    plan["backup_plans"][0].products["room_1_1"] = "orundum"
+    error = data.swap_plan([True], refresh=True)
+    assert "3级" in error
+    assert data.plan_condition == [False]
+    assert all(
+        current is original
+        for current, original in zip(
+            (data.plan, data.config, data.operators, data.dorm, data.products), before
+        )
+    )
+
+
 def test_recycle_task_without_primary_facility_passes_startup_and_activation():
     plan = two_backups()
     plan["backup_plans"] = [

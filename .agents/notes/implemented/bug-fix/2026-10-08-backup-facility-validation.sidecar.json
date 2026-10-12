@@ -10,9 +10,13 @@
     "[INV-SCHED-34]"
   ],
   "code_symbols": [
+    "arknights_mower.utils.backup_validation.validate_trade_order_targets",
     "arknights_mower.utils.backup_validation.validate_backup_facilities",
+    "arknights_mower.utils.operators.Operators.init_and_validate",
     "arknights_mower.utils.operators.Operators.validate_backup_plans",
     "arknights_mower.utils.operators.Operators.swap_plan",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._change_trade_product",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.switch_base_products",
     "arknights_mower.utils.config.conf.Conf"
   ],
   "test_suites": [

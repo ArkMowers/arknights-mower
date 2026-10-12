@@ -520,101 +520,65 @@ class EmergencyRecoveryMixin:
         return True
 
     def _emergency_schedule_staffing(self):
-        """按本轮生效救急排班部署驻员，沿用训练室换人保护。"""
+        """救急表立即接管全部已配置工作岗位，实际驻员核验完成状态。"""
         state, data = self.emergency_state, self.op_data
-        if (
-            state.get("release_plan") is not None
-            or state["phase"] == "returning"
-            or any(getattr(task, "emergency_staffing", False) for task in self.tasks)
+        if state["phase"] == "returning" or any(
+            getattr(task, "emergency_staffing", False) for task in self.tasks
         ):
             return True
-        compensation_rooms = {
-            room
-            for task in self.tasks
-            for room in getattr(task, "run_order_original_roster", {})
-        }
-        if compensation_rooms.intersection(state["rescue_plan"]):
-            state["staffing_complete"] = False
-        if state.get("staffing_complete") and not self._emergency_replace_low_workers():
-            return True
-        plan = rescue_plan_for(data, state["rescue_plan"])
-        if "train" in plan:
-            self._suppress_train_correction(plan)
-        reserved, _ = dorm_task_reservations(data, self.tasks)
-        reserved |= busy_resting_names()
-        reserved.update(
-            name
-            for rows in state.get("run_order_replacements", {}).values()
-            for row in rows
-            for name in row
+        replaced = (
+            state.get("staffing_complete") and self._emergency_replace_low_workers()
         )
+        plan = rescue_plan_for(data, state["rescue_plan"])
+        # 接管后的专项恢复使用救急驻员，不能再把已换下的正常主班拉回。
+        for queued in self.tasks:
+            for attribute in ("run_order_original_roster", "emergency_original_roster"):
+                snapshot = getattr(queued, attribute, None)
+                if not isinstance(snapshot, dict):
+                    continue
+                for room in snapshot.keys() & plan.keys():
+                    previous = snapshot[room]
+                    snapshot[room] = list(plan[room])
+                    if getattr(queued, "run_order_restore_pending", False) or (
+                        queued.plan.get(room) == previous
+                    ):
+                        queued.plan[room] = list(plan[room])
+        if state.get("staffing_complete") and not replaced:
+            self._emergency_reconcile_staffing()
+            if state.get("staffing_complete"):
+                return True
         pending = {}
-        deferred = {}
         for room, names in plan.items():
-            if room in compensation_rooms:
-                # 临时驻员符合救急目标也要等原班恢复，再核验最终驻员。
-                deferred[room] = list(names)
-                continue
             current = data.get_current_room(room, True)
             if current is not None and all(
                 name == "Current" or index < len(current) and current[index] == name
                 for index, name in enumerate(names)
             ):
                 continue
-            if any(
-                hasattr(task, "emergency_original_roster")
-                and room in set(task.plan) | set(task.emergency_original_roster)
-                for task in self.tasks
-            ):
-                logger.info("自动救急 %s：等待专项任务恢复原驻员后执行救急主表", room)
-                return False
-            for index, name in enumerate(names):
-                if name in ("", "Current"):
-                    continue
-                if (
-                    current is not None
-                    and index < len(current)
-                    and current[index] == name
-                ):
-                    continue
-                mood = dorm_candidate_mood(data, name, datetime.now())
-                reason = worker_block_reason(data, name, mood, reserved, room=room)
-                if reason:
-                    logger.warning(
-                        "自动救急 %s：救急主表干员 %s %s，暂缓换班",
-                        room,
-                        name,
-                        reason,
-                    )
-                    return False
             pending[room] = list(names)
         if not pending:
-            if deferred:
-                return False
             state["staffing_complete"] = True
             state["staffing_plan"] = {}
             state.pop("staffing_members", None)
             state["phase"] = "recovering"
             return True
-        if not self._emergency_operation_fits(45 * len(pending)):
-            return False
         for row in pending.values():
             for name in row:
                 if name not in ("", "Current") and name not in data.operators:
                     data.add(Operator(name, ""))
-        # 只派发可执行房间，但完成核验仍包含等待补偿的全部目标。
-        state["staffing_plan"] = copy.deepcopy(pending | deferred)
+        state["staffing_plan"] = copy.deepcopy(pending)
         state["staffing_members"] = list(state["targets"])
         state["temporary_roster"] = {
             room: data.get_current_room(room, True) for room in plan
         }
         state["phase"] = "staffing"
-        self._emergency_save()
         task = SchedulerTask(task_plan=copy.deepcopy(pending))
         task.emergency_staffing = True
+        task.emergency_takeover = True
         task.emergency_staffing_members = list(state["targets"])
+        self._emergency_save()
         self.tasks.append(task)
-        logger.info("自动救急：按救急主表生成全部工作站换班任务：%s", pending)
+        logger.info("自动救急：立即接管全部已配置工作岗位：%s", pending)
         return True
 
     def _open_emergency_beds(self):
@@ -955,18 +919,10 @@ class EmergencyRecoveryMixin:
         pending = state.get("staffing_plan", {})
         if not pending:
             return False
-        if "train" in pending:
-            self._suppress_train_correction(pending)
-        compensation_rooms = {
-            room
-            for task in self.tasks
-            for room in getattr(task, "run_order_original_roster", {})
-        }
         state["staffing_plan"] = {
             room: row
             for room, row in pending.items()
-            if room in compensation_rooms
-            or (actual := self.op_data.get_current_room(room, True)) is None
+            if (actual := self.op_data.get_current_room(room, True)) is None
             or any(
                 name != "Current" and (index >= len(actual) or name != actual[index])
                 for index, name in enumerate(row)
@@ -1039,9 +995,15 @@ class EmergencyRecoveryMixin:
 
     def _emergency_tick(self, *, completed_task=None):
         """只有到期观测或已完成的驻员变更推进恢复，不随空转循环重做规划。"""
+        state = self.emergency_state
+        staffing_completed = self._emergency_reconcile_staffing()
+        if state["phase"] == "staffing" and not state.get("staffing_complete"):
+            self._emergency_schedule_staffing()
+            protect_priority_tasks(self.tasks, op_data=self.op_data)
+            self._emergency_save()
+            return
         self.plan_metadata()
         protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
-        state = self.emergency_state
         pending_staffing = [
             task for task in self.tasks if getattr(task, "emergency_staffing", False)
         ]
@@ -1053,7 +1015,6 @@ class EmergencyRecoveryMixin:
             )
             self._emergency_save()
             return
-        staffing_completed = self._emergency_reconcile_staffing()
         self._emergency_sync_reservations()
         read_due = datetime.now() >= state.get("next_read", datetime.now()) or any(
             getattr(task, "emergency_recovery_release", False)

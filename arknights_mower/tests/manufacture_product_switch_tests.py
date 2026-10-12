@@ -2447,7 +2447,11 @@ def test_locked_trade_survey_only_caches_fixed_lmd_order():
     solver._tap_product_point.assert_not_called()
 
 
-def test_locked_trade_with_incompatible_target_defers_without_switching():
+@pytest.mark.parametrize("before_arrangement", [False, True])
+def test_locked_trade_with_incompatible_target_stops_without_rescheduling(
+    monkeypatch,
+    before_arrangement,
+):
     task = SchedulerTask(
         task_type=TaskTypes.SWITCH_PRODUCT,
         meta_data=product_task_meta("room_1_1", "orundum"),
@@ -2466,16 +2470,21 @@ def test_locked_trade_with_incompatible_target_defers_without_switching():
         }
     )
     solver._change_trade_product = MagicMock()
+    report = MagicMock()
+    monkeypatch.setattr(base.logger, "error", report)
 
-    started_at = datetime.now()
-    solver.switch_base_products([task])
+    original_time = task.time
+    with pytest.raises(base.ProductSwitchFailed, match="3级.*排班表"):
+        solver.switch_base_products([task], before_arrangement=before_arrangement)
 
     solver._change_trade_product.assert_not_called()
     assert solver.tasks == [task]
-    assert task.time >= started_at + timedelta(minutes=59)
+    assert task.time == original_time
+    report.assert_called_once()
+    assert "排班表" in report.call_args.args[0]
 
 
-def test_locked_trade_does_not_block_other_product_switches(monkeypatch):
+def test_locked_trade_reports_error_before_any_batch_changes(monkeypatch):
     locked_task = SchedulerTask(
         task_type=TaskTypes.SWITCH_PRODUCT,
         meta_data=product_task_meta("room_1_1", "orundum"),
@@ -2528,16 +2537,30 @@ def test_locked_trade_does_not_block_other_product_switches(monkeypatch):
     monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     config.conf.product_switching.grandet_mode = False
 
-    started_at = datetime.now()
-    solver.switch_base_products([locked_task, trade_task, manufacture_task])
+    original_times = [task.time for task in solver.tasks]
+    with pytest.raises(base.ProductSwitchFailed, match="3级.*排班表"):
+        solver.switch_base_products([locked_task, trade_task, manufacture_task])
 
-    solver._change_trade_product.assert_called_once_with(trade_observation)
-    solver._execute_manufacture_acceleration.assert_called_once_with(
-        manufacture_observation
-    )
-    solver._change_manufacture_product.assert_called_once_with(manufacture_observation)
-    assert solver.tasks == [locked_task]
-    assert locked_task.time >= started_at + timedelta(minutes=59)
+    solver._change_trade_product.assert_not_called()
+    solver._execute_manufacture_acceleration.assert_not_called()
+    solver._change_manufacture_product.assert_not_called()
+    assert solver.tasks == [locked_task, trade_task, manufacture_task]
+    assert [task.time for task in solver.tasks] == original_times
+
+
+def test_trade_lock_observed_at_execution_stops_before_selector_input(monkeypatch):
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver._open_trade_product_detail = MagicMock()
+    solver._read_trade_product_card = MagicMock(return_value=("lmd", False))
+    solver._cache_facility_state = MagicMock()
+    solver._tap_product_point = MagicMock()
+    solver.translate_room = MagicMock(return_value="B101")
+    report = MagicMock()
+    monkeypatch.setattr(base.logger, "error", report)
+    with pytest.raises(base.ProductSwitchFailed, match="3级.*排班表"):
+        solver._change_trade_product({"room": "room_1_1", "target_product": "orundum"})
+    solver._tap_product_point.assert_not_called()
+    report.assert_called_once()
 
 
 def test_trade_switch_opens_selector_only_when_needed_and_verifies_card():

@@ -22,8 +22,30 @@ class BackupValidationLimitExceeded(ValueError):
     """条件分析或组合检查超出预算；不表示已确认排班错误。"""
 
 
+def validate_trade_order_targets(layout, products, *, label):
+    """非三级贸易站仅支持固定龙门商法，等级沿用配置岗位数。"""
+    for room, target in products.items():
+        slots = layout.get(room, [])
+        if (
+            slots
+            and slots[0].facility == "贸易站"
+            and len(slots) != 3
+            and target == "orundum"
+        ):
+            return (
+                f"{label}的 {room} 为 {len(slots)} 级贸易站（{len(slots)} 个岗位），"
+                "不能配置开采协力或切换订单类型；仅3级贸易站支持切换，"
+                "请改为龙门商法或将贸易站升级至3级并更新排班表岗位数"
+            )
+    return None
+
+
 def validate_backup_facilities(default_plan, backups, *, product_switching_enabled):
     """副表不能声明未支持的设施变化，显式任务遵守设施岗位容量。"""
+    if error := validate_trade_order_targets(
+        default_plan.plan, default_plan.products, label="主表"
+    ):
+        return error
     for index, backup in enumerate(backups):
         label = backup.name or f"副表{index + 1}"
         for room, slots in backup.plan.items():
@@ -57,6 +79,10 @@ def validate_backup_facilities(default_plan, backups, *, product_switching_enabl
                     f"副表“{label}”的任务 {room} 超出主表的 {capacity} 个岗位："
                     f"{targets[capacity:]}"
                 )
+        if error := validate_trade_order_targets(
+            default_plan.plan, backup.products, label=f"副表“{label}”"
+        ):
+            return error
         if not product_switching_enabled:
             for room, target in backup.products.items():
                 if room in RIGHT_SIDE_ROOM_CAPACITY:

@@ -343,6 +343,12 @@ class ProductSwitchDeferred(Exception):
         self.minutes = minutes
 
 
+class ProductSwitchFailed(RuntimeError):
+    def __init__(self, message, rooms):
+        super().__init__(message)
+        self.rooms = tuple(rooms)
+
+
 class GroupShiftBlocked(ProductSwitchDeferred):
     def __init__(self, groups):
         self.groups = set(groups)
@@ -465,6 +471,53 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             return datetime.now()
         return datetime.now() + timedelta(seconds=remaining)
 
+    def _task_failure_snapshot(self, task, rooms):
+        """失败任务仅由新实测或相关安排变化重新准入，不使用时钟计时。"""
+        data = self.op_data
+        names = {name for row in task.plan.values() for name in row}
+        return copy.deepcopy(
+            {
+                "plan": task.plan,
+                "meta_data": task.meta_data,
+                "effective_plan": {
+                    room: [vars(slot) for slot in data.plan.get(room, [])]
+                    for room in rooms
+                },
+                "products": {
+                    room: getattr(data, "products", {}).get(room) for room in rooms
+                },
+                "observations": {
+                    name: (op.current_room, op.current_index, op.time_stamp)
+                    for name, op in data.operators.items()
+                    if name in names or op.current_room in rooms
+                },
+                "facilities": {
+                    room: getattr(data, "facility_states", {}).get(room)
+                    for room in rooms
+                },
+            }
+        )
+
+    def _retain_failed_task(self, task, reason, rooms):
+        rooms = tuple(rooms)
+        task.execution_failure = {
+            "reason": reason,
+            "rooms": rooms,
+            "snapshot": self._task_failure_snapshot(task, rooms),
+        }
+        logger.error("%s；保留原任务及时间，相关实测或安排更新后复核", reason)
+
+    def _resume_failed_tasks(self):
+        for task in self.tasks:
+            failure = getattr(task, "execution_failure", None)
+            if (
+                failure
+                and self._task_failure_snapshot(task, failure["rooms"])
+                != failure["snapshot"]
+            ):
+                del task.execution_failure
+                logger.info("相关实测或安排已更新，恢复原任务：%s", task)
+
     def run(self) -> None:
         """
         :param clue_collect: bool, 是否收取线索
@@ -473,6 +526,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if config.maintenance_recheck.is_set():
             return
         self.error = False
+        self._resume_failed_tasks()
         self._card_moods_scanned_this_run = False
         self.handle_error(True)
         self._emergency_filter_tasks()
@@ -485,7 +539,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self._resume_waiting_group_shifts()
             self._fill_empty_dorms()
             scheduling(self.tasks, op_data=getattr(self, "op_data", None))
-            self.task = self.tasks[0] if self.tasks else None
+            self.task = find_next_task(self.tasks)
             if self.task is None:
                 break
             reschedule_time = (self.task.time - datetime.now()).total_seconds()
@@ -817,6 +871,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 and not getattr(t, "run_order_restore_pending", False)
                 and not getattr(t, "group_shift_expected", {})
                 and not getattr(t, "backup_shift_active", False)
+                and not getattr(t, "execution_failure", None)
                 for t in self.tasks
             ):
                 logger.info(
@@ -831,6 +886,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     or getattr(t, "run_order_restore_pending", False)
                     or getattr(t, "group_shift_expected", {})
                     or getattr(t, "backup_shift_active", False)
+                    or getattr(t, "execution_failure", None)
                 ]
                 # #144：清队后补立即空任务——队列只剩远期专精重检时，让下一次
                 # run() 走正常 planned 分支重读心情/换班/跑单，而不是睡到远期任务开始
@@ -928,7 +984,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     for room, operators in task.plan.items():
                         if target in operators:
                             task.time = self.task.time + timedelta(seconds=1)
-                            self.tasks.sort(key=lambda task: task.time)
+                            self.tasks.sort(
+                                key=lambda task: (
+                                    bool(getattr(task, "execution_failure", None)),
+                                    task.time,
+                                )
+                            )
                             return
         else:
             logger.info("肥鸭充能干员不足，请添加更多干员！")
@@ -938,7 +999,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
             retry.fia_retry_after = retry.time
             self.tasks.append(retry)
-            self.tasks.sort(key=lambda task: task.time)
+            self.tasks.sort(
+                key=lambda task: (
+                    bool(getattr(task, "execution_failure", None)),
+                    task.time,
+                )
+            )
 
     def _refresh_fia_candidate_moods(self, names):
         """挑选充能对象前补读失效缓存，同房候选只进房一次，不触发纠错或切表。"""
@@ -1316,6 +1382,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if self.find("control_central") is None:
             self.back()
             return
+        self._resume_failed_tasks()
+        if getattr(self.task, "execution_failure", None):
+            self.task = None
         if not self._product_switching_enabled():
             self._discard_product_switches()
         if getattr(self, "_emergency_startup_pending", False):
@@ -1331,7 +1400,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if self._emergency_active() and not self._emergency_startup_pending:
                 self._emergency_tick()
         initial_fia_pending = any(
-            getattr(task, "initial_fia", False) for task in self.tasks
+            getattr(task, "initial_fia", False)
+            and not getattr(task, "execution_failure", None)
+            for task in self.tasks
+        ) and not any(
+            getattr(task, "emergency_takeover", False) and task.time <= datetime.now()
+            for task in self.tasks
         )
         blocked_orders = blocked_run_order_ids(
             self.tasks, getattr(self, "op_data", None)
@@ -1381,7 +1455,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     self.tasks
                     and self.tasks[0] is not self.task
                     and (
-                        getattr(self.tasks[0], "strict_mood_limit", False)
+                        getattr(self.tasks[0], "emergency_takeover", False)
+                        or getattr(self.tasks[0], "strict_mood_limit", False)
                         or getattr(self.tasks[0], "initial_fia", False)
                         or (
                             self.tasks[0].type == TaskTypes.RUN_ORDER
@@ -1441,10 +1516,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         for task in self.tasks
                         if task.type == TaskTypes.SWITCH_PRODUCT
                         and task.time <= batch_cutoff
+                        and not getattr(task, "execution_failure", None)
                     ]
                     self.switch_base_products(product_tasks)
-                    # switch_base_products 会自行移除已完成的任务，并保留、延期
-                    # 当前无法切换的低等级贸易站任务。
+                    # 批量切换自行移除已完成任务；失败目标保留原任务。
                     remove_current_task = False
                 elif len(self.task.plan.keys()) > 0:
                     get_time = False
@@ -1569,15 +1644,23 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     task.arrangement_retry_due_at = task.time
                 task.arrangement_retry_room = e.room
                 task.arrangement_retry_count = attempts
-                task.time = datetime.now() + timedelta(minutes=min(attempts, 5))
-                self.tasks.sort(key=lambda queued: queued.time)
+                self._retain_failed_task(task, str(e), [e.room])
                 self.skip()
-                logger.warning(
-                    "%s 连续识别或换人失败，保留剩余安排，延至 %s 重试",
-                    e.room,
-                    task.time.strftime("%H:%M:%S"),
-                )
                 self.back_to_infrastructure()
+            except ProductSwitchFailed as e:
+                pending = (
+                    [self.task]
+                    if self.task.type != TaskTypes.SWITCH_PRODUCT
+                    else [
+                        task
+                        for task in self.tasks
+                        if task.type == TaskTypes.SWITCH_PRODUCT
+                        and task.meta_data.split(",", 1)[0] in e.rooms
+                    ]
+                )
+                for task in pending:
+                    self._retain_failed_task(task, str(e), e.rooms)
+                self.skip()
             except GroupShiftBlocked as e:
                 self._suspend_group_shift(self.task, e.groups)
                 logger.warning(str(e))
@@ -1596,7 +1679,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 for task in deferred_tasks:
                     task.time = max(task.time, retry_time)
                 self._refresh_deferred_product_reservations()
-                self.tasks.sort(key=lambda task: task.time)
+                self.tasks.sort(
+                    key=lambda task: (
+                        bool(getattr(task, "execution_failure", None)),
+                        task.time,
+                    )
+                )
                 logger.warning(
                     f"{e}，未完成的切换任务推迟至 {retry_time.strftime('%H:%M:%S')}"
                 )
@@ -1613,8 +1701,20 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 ):
                     raise e
                 else:
+                    pending = product_tasks or [self.task]
+                    for task in pending:
+                        if (task.plan or task.type == TaskTypes.SWITCH_PRODUCT) and any(
+                            queued is task for queued in self.tasks
+                        ):
+                            rooms = task.plan or (
+                                [task.meta_data.split(",", 1)[0]]
+                                if task.type == TaskTypes.SWITCH_PRODUCT
+                                else []
+                            )
+                            self._retain_failed_task(task, str(e), rooms)
+                        elif not task.plan:
+                            self.error = True
                     self.skip()
-                    self.error = True
             self.task = None
             if self._emergency_active() and not getattr(
                 self, "_emergency_startup_pending", False
@@ -3971,7 +4071,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             for task in pending:
                 task.maintenance_advance_before_backup = True
             if pending:
-                self.tasks.sort(key=lambda task: task.time)
+                self.tasks.sort(
+                    key=lambda task: (
+                        bool(getattr(task, "execution_failure", None)),
+                        task.time,
+                    )
+                )
                 logger.info("提前执行停服前跑单任务，完成后再切换维护副表")
         self.maintenance_entry_pending = bool(pending)
         return self.maintenance_entry_pending
@@ -4000,7 +4105,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.tasks.append(
                 SchedulerTask(time=deadline, meta_data="maintenance_backup_check")
             )
-            self.tasks.sort(key=lambda task: task.time)
+            self.tasks.sort(
+                key=lambda task: (
+                    bool(getattr(task, "execution_failure", None)),
+                    task.time,
+                )
+            )
 
     def backup_plan_solver(
         self,
@@ -4569,7 +4679,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             ):
                 if hasattr(task, attr):
                     delattr(task, attr)
-        self.tasks.sort(key=lambda task: task.time)
+        self.tasks.sort(
+            key=lambda task: (bool(getattr(task, "execution_failure", None)), task.time)
+        )
         selected = getattr(self, "task", None)
         if selected is not None and selected.type == TaskTypes.SWITCH_PRODUCT:
             self.task = None
@@ -4864,7 +4976,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 ] = name
         if missing:
             task.plan = missing
-            task.time = datetime.now() + timedelta(minutes=1)
+            self._retain_failed_task(task, "换班实测驻员与目标不一致", missing)
             return False
         transitions = getattr(task, "group_shift_transitions", {})
         changes = {
@@ -5527,7 +5639,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if self.op_data.facility_states.get(room, {}).get("product") != target
         }
         if unfinished:
-            raise ProductSwitchDeferred(f"换班前切换未完成：{unfinished}", minutes=5)
+            raise ProductSwitchFailed(
+                f"换班前切换实测未达到目标：{unfinished}", unfinished
+            )
         task.product_switched_before_arrangement = True
 
     def _refresh_orders_after_product_switch(self):
@@ -6909,11 +7023,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if not switchable:
             if observation["target_product"] == "lmd":
                 return
-            raise ProductSwitchDeferred(
-                f"{self.translate_room(observation['room'])}等级不足，"
-                "无法切换至开采协力",
-                minutes=60,
+            message = (
+                f"{self.translate_room(observation['room'])}实际贸易站未达到3级，"
+                "无法切换至开采协力；请检查排班表设施等级与订单类型"
             )
+            logger.error(message)
+            raise ProductSwitchFailed(message, [observation["room"]])
         self._tap_product_point((1580, 955))
         self._wait_product_resource("trade_strategy_select")
         self._tap_product_point(TRADE_PRODUCTS[observation["target_product"]].option)
@@ -6954,30 +7069,19 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             and observation["needs_switch"]
             and not observation.get("switchable", True)
         ]
-        if locked_trade and before_arrangement:
-            rooms = "、".join(
-                self.translate_room(observation["room"])
-                for _, observation in locked_trade
-            )
-            raise ProductSwitchDeferred(
-                f"{rooms}等级不足，换班前无法切换订单", minutes=60
-            )
         if locked_trade:
             rooms = "、".join(
                 self.translate_room(observation["room"])
                 for _, observation in locked_trade
             )
-            retry_time = datetime.now() + timedelta(minutes=60)
-            for task, _ in locked_trade:
-                task.time = max(task.time, retry_time)
-            logger.warning(
-                f"{rooms}等级不足，无法切换至开采协力；"
-                f"对应任务推迟至 {retry_time.strftime('%H:%M:%S')}"
+            message = (
+                f"{rooms}实际贸易站未达到3级，无法切换订单类型；"
+                "请检查排班表设施等级与订单类型"
             )
-            locked_task_ids = {id(task) for task, _ in locked_trade}
-            task_observations = [
-                item for item in task_observations if id(item[0]) not in locked_task_ids
-            ]
+            logger.error(message)
+            raise ProductSwitchFailed(
+                message, [observation["room"] for _, observation in locked_trade]
+            )
 
         pending_manufacture = [
             observation
@@ -7115,11 +7219,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
         task_ids = {id(task) for task, _ in task_observations}
         self.tasks[:] = [task for task in self.tasks if id(task) not in task_ids]
-        self.tasks.sort(key=lambda task: task.time)
-        logger.info(
-            f"基建批量切换完成，共处理{len(task_observations)}个生产站，"
-            f"延期{len(locked_trade)}个低等级贸易站"
+        self.tasks.sort(
+            key=lambda task: (bool(getattr(task, "execution_failure", None)), task.time)
         )
+        logger.info("基建批量切换完成，共处理%d个生产站", len(task_observations))
 
     def drone(
         self,
@@ -9424,7 +9527,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 error_count = 0
                 if not skip_enter:
                     self.enter_room(room)
-                    if room == "train":
+                    if room == "train" and not getattr(
+                        self.task, "emergency_takeover", False
+                    ):
                         self.task.training_skipped_slots = set()
                         # 实读房态决定可换岗位；自动专精开启时顺路核对专精记录。
                         from arknights_mower.solvers.mastery_reader import (
@@ -9570,6 +9675,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             return False
                     if (
                         self.task.type == TaskTypes.RUN_ORDER
+                        and not getattr(self.task, "run_order_restore_pending", False)
                         and any(
                             any(char in item for item in plan[room])
                             for char in TRADE_ORDER_AGENTS
@@ -11343,7 +11449,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             logger.info("skip local operation follow-up insert because run_at is empty")
             return
         self.tasks.append(SchedulerTask(time=run_at, meta_data=FOLLOWUP_TASK_META))
-        self.tasks.sort(key=lambda task: task.time)
+        self.tasks.sort(
+            key=lambda task: (bool(getattr(task, "execution_failure", None)), task.time)
+        )
         self.local_operation_followup_time = run_at
         logger.info(
             "schedule local operation follow-up task | run_at=%s",
@@ -11973,7 +12081,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         ):
             # 睡眠前计算清退与专精换人的提前量，避免等到原任务时间才避让。
             protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
-        first = self.tasks[0]
+        first = find_next_task(self.tasks)
+        if first is None:
+            return
         remaining_time = (first.time - datetime.now()).total_seconds()
         self.handle_idle_action(remaining_time)
         timezone_offset = config.conf.timezone_offset

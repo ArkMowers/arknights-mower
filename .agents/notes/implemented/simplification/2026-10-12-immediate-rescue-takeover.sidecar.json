@@ -1,0 +1,21 @@
+{
+  "title": "Immediate Rescue Takeover",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-12",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]",
+    "[INV-SCHED-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_schedule_staffing",
+    "arknights_mower.utils.scheduler_task.protect_priority_tasks"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/emergency_takeover_tests.py",
+    "arknights_mower/tests/emergency_group_staffing_tests.py"
+  ]
+}

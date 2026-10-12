@@ -422,6 +422,13 @@ class Operators:
         return default_plan, ext_config.merge_config(plan.config)
 
     def init_and_validate(self, update=False):
+        from arknights_mower.utils.backup_validation import validate_trade_order_targets
+
+        primary = self.global_plan["default_plan"]
+        if error := validate_trade_order_targets(
+            primary.plan, primary.products, label="主表"
+        ):
+            return error
         for name in self.config.operator_mood_limits:
             if name not in agent_list:
                 return f"心情上下限中的干员名无效：{name}"

@@ -114,6 +114,7 @@ def test_deferred_initial_restoration_keeps_priority_without_followup(
         initial_fia=True,
     )
     solver.task, solver.tasks = restoration, [restoration]
+    original_time = restoration.time
     solver.find = MagicMock(return_value=True)
     solver.agent_arrange = MagicMock(
         side_effect=base_schedule.RoomArrangementDeferred(
@@ -128,7 +129,8 @@ def test_deferred_initial_restoration_keeps_priority_without_followup(
 
     assert solver.tasks == [restoration]
     assert restoration.initial_fia
-    assert restoration.time > datetime.now()
+    assert restoration.time == original_time
+    assert restoration.execution_failure
 
 
 def test_real_selection_keeps_full_charge_target(solver, monkeypatch):

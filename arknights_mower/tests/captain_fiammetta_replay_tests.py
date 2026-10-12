@@ -191,6 +191,7 @@ def test_failed_room_yields_without_losing_remaining_rooms_or_charge(
     )
     fia = SchedulerTask(task_type=TaskTypes.FIAMMETTA)
     captain.tasks = [old, fia]
+    original_time = old.time
     captain.task = old
     captain._prepare_shift_backup = MagicMock()
     captain.agent_arrange = MagicMock(
@@ -199,17 +200,18 @@ def test_failed_room_yields_without_losing_remaining_rooms_or_charge(
         )
     )
     captain.infra_main()
-    assert captain.tasks[0] is fia
-    assert old.time == captain.clock.now() + timedelta(minutes=1)
+    assert captain.find_next_task() is fia
+    assert old.time == original_time
     assert old.plan == {"room_2_2": ["阿罗玛", "苍苔", "砾"]}
     assert old.arrangement_retry_count == 1
     captain.back_to_infrastructure.assert_called_once()
-    for count in range(2, 8):
-        captain.clock.current = old.time
-        captain.task = old
-        captain.infra_main()
-        assert old.time == captain.clock.now() + timedelta(minutes=min(count, 5))
+    for _ in range(6):
+        captain.clock.current += timedelta(minutes=5)
+        captain._resume_failed_tasks()
+        assert old.time == original_time
+        assert old.execution_failure
         assert any(t is fia for t in captain.tasks)
+    captain.agent_arrange.assert_called_once()
 
 
 def test_overdue_correction_does_not_erase_fiammetta_reservation(captain):

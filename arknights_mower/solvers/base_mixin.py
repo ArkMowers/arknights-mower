@@ -932,7 +932,7 @@ class BaseMixin:
                 else:
                     self.op_data.dorm_mood_estimates[name] = (mood, datetime.now())
                 reason = worker_block_reason(self.op_data, name, mood, set())
-                if reason:
+                if reason and not getattr(self.task, "emergency_takeover", False):
                     raise AgentSelectionNotReady(
                         f"自动救急候选 {name} {reason}，取消本次选人"
                     )
