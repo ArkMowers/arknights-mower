@@ -41,12 +41,12 @@ CHANNELS = [
     {
         "value": "beta",
         "label": "公测版",
-        "description": "跟随预发布 Release（如 v4.1.6-alpha.3），提前体验修复和功能，可能存在不稳定行为。",
+        "description": "接收公测版和更新的正式版，提前体验修复和功能，可能存在不稳定行为。",
     },
     {
         "value": "dev",
         "label": "开发版",
-        "description": "安装版跟随 alpha 分支的 Windows x64 Nightly；源码部署仍通过 Git 跟随所选分支。开发版可能不稳定。",
+        "description": "安装版接收 Windows x64 Nightly、更新的公测版和正式版；源码部署通过 Git 跟随所选分支。开发版可能不稳定。",
     },
 ]
 VERSION_RE = re.compile(
@@ -264,8 +264,8 @@ def version_key(value):
     )
 
 
-def release_is_downgrade(channel, target, current):
-    """Order Nightly commits by publication time, not their arbitrary SHA."""
+def release_is_downgrade(channel, target, current, proxy=""):
+    """Order Nightly builds by publication time or verified commit ancestry."""
     target_version = target.get("version") or target["tag_name"]
     target_key, current_key = version_key(target_version), version_key(current)
     if target_key != current_key or channel != "dev" or not is_nightly(current):
@@ -283,18 +283,24 @@ def release_is_downgrade(channel, target, current):
         ),
         None,
     )
-    if current_release is None:
-        # The retained index cannot prove that this installed build is older.
-        return True
+    if current_release is not None:
+        try:
+            target_date = datetime.fromisoformat(target["published_at"])
+            current_date = datetime.fromisoformat(current_release["published_at"])
+            if target_date.tzinfo is not None and current_date.tzinfo is not None:
+                return target_date <= current_date
+        except (KeyError, TypeError, ValueError):
+            pass
+    # Retained history omits older builds; SHA ancestry still proves direction.
+    current_sha = VERSION_RE.fullmatch(current).group(6)
+    target_sha = VERSION_RE.fullmatch(target_version).group(6)
     try:
-        target_date = datetime.fromisoformat(target["published_at"])
-        current_date = datetime.fromisoformat(current_release["published_at"])
-        return (
-            target_date.tzinfo is None
-            or current_date.tzinfo is None
-            or target_date <= current_date
+        comparison = github(f"/compare/{current_sha}...{target_sha}", proxy)
+        return not (
+            isinstance(comparison, dict)
+            and comparison.get("status") in ("ahead", "identical")
         )
-    except (KeyError, TypeError, ValueError):
+    except (requests.RequestException, ValueError):
         return True
 
 
@@ -726,9 +732,29 @@ def release_index(channel):
         or not isinstance(data.get("full_assets"), list)
         or not isinstance(data.get("ota_assets"), list)
         or not isinstance(data.get("history"), list)
+        or any(
+            not isinstance(asset, dict)
+            for asset in data["full_assets"] + data["ota_assets"]
+        )
     ):
         raise ValueError("MowerRelease 版本索引格式错误")
     return data
+
+
+def latest_release_index(channel):
+    """Admit newer, installable releases from more stable channels."""
+    selected = release_index(channel)
+    for promoted in {"dev": ("beta", "stable"), "beta": ("stable",)}.get(channel, ()):
+        try:
+            candidate = release_index(promoted)
+            if version_key(candidate["version"]) <= version_key(selected["version"]):
+                continue
+            choose_asset(candidate, repo=OTA_REPO)
+        except ValueError:
+            # Optional channels may have no published package or index yet.
+            continue
+        selected = candidate
+    return selected
 
 
 def release_rollback_candidates(channel, proxy):
@@ -859,11 +885,17 @@ def choose_asset(release, *, repo=REPO):
             message += "；macOS 旧版 ZIP 请手动安装"
         raise ValueError(message)
     digest = asset.get("digest") or ""
-    if not re.fullmatch(r"sha256:[a-fA-F0-9]{64}", digest):
+    if not isinstance(digest, str) or not re.fullmatch(
+        r"sha256:[a-fA-F0-9]{64}", digest
+    ):
         raise ValueError("Release 缺少 SHA-256 校验值；请下载安装包后手动上传")
     url = asset.get("url") or asset.get("browser_download_url") or ""
-    if not url.startswith(f"https://github.com/{repo}/releases/download/"):
+    if not isinstance(url, str) or not url.startswith(
+        f"https://github.com/{repo}/releases/download/"
+    ):
         raise ValueError("Release 下载地址不属于官方仓库")
+    if type(asset.get("size")) is not int or asset["size"] <= 0:
+        raise ValueError("Release 安装包大小无效")
     return {
         "name": name,
         "url": url,
@@ -1107,7 +1139,7 @@ def check(channel, proxy=None):
     elif deployment == "release":
         release_repo = OTA_REPO
         try:
-            release = release_index(channel)
+            release = latest_release_index(channel)
         except ValueError:
             if channel != "stable":
                 raise
@@ -1118,7 +1150,7 @@ def check(channel, proxy=None):
         release_version = release.get("version") or release["tag_name"]
         plan.update(
             version=release_version,
-            downgrade=release_is_downgrade(channel, release, __version__),
+            downgrade=release_is_downgrade(channel, release, __version__, proxy),
             notes=release.get("notes") or release.get("body") or "暂无更新说明",
             url=release.get("source_release") or release["html_url"],
         )

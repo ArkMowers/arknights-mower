@@ -5,6 +5,7 @@ archive_note.py
 Helper script for mower-archive-agent-notes skill.
 Automates transitioning note triplets between lifecycles (proposed -> implemented -> archived / rejected)
 and synchronizes frontmatter and sidecar JSON status.
+It does not verify implementation, behavior tests or review conclusions.
 """
 
 import argparse
@@ -117,7 +118,7 @@ def transition_triplet(slug_path: str | Path, target_lifecycle: str) -> None:
             "Aborting transition to prevent accidental data overwrite."
         )
 
-    # 4. Atomic Execution: Move and update status
+    # 4. Move and update status sequentially; this is not a transactional move.
     target_dir.mkdir(parents=True, exist_ok=True)
     print(f"Transitioning '{stem}' from {source_lifecycle} to {target_lifecycle}...")
 

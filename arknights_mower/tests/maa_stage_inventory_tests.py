@@ -4,15 +4,93 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from arknights_mower.utils.maa_stage_inventory import (
     build_stage_options,
     default_materials_for_stage,
     load_inventory_snapshot,
+    maa_fight_drop_targets,
     select_stages_by_inventory,
 )
 
 
 class MaaStageInventoryTests(unittest.TestCase):
+    def test_inventory_priority_and_fallback(self):
+        rules = [
+            {"stage": "PR-A-1", "items": [{"item_id": "3231", "limit": 5}]},
+            {"stage": "PR-B-1", "items": [{"item_id": "3241", "limit": 5}]},
+        ]
+        cases = [
+            (["1-7", "PR-A-1", "Annihilation"], {}, ["Annihilation", "PR-A-1"]),
+            (
+                ["1-7", "PR-A-1", "PR-B-1", "Annihilation"],
+                {"3231": 5, "3241": 4},
+                ["Annihilation", "PR-B-1"],
+            ),
+            (
+                ["1-7", "PR-A-1", "PR-B-1", "Annihilation"],
+                {"3231": 5, "3241": 5},
+                ["Annihilation", "1-7"],
+            ),
+            (["1-7", "PR-A-1"], {"3231": 5}, ["1-7"]),
+            (["1-7", "Annihilation"], {}, ["Annihilation", "1-7"]),
+            (["", "PR-A-1"], {}, ["PR-A-1"]),
+            (["", "PR-A-1"], {"3231": 5}, [""]),
+        ]
+        for stages, inventory, expected in cases:
+            with self.subTest(stages=stages, inventory=inventory):
+                original = list(stages)
+                result = select_stages_by_inventory(stages, rules, inventory=inventory)
+                self.assertEqual(result["stages"], expected)
+                self.assertFalse(result["limit_fallback"])
+                self.assertEqual(stages, original)
+
+    def test_inactive_limits_do_not_claim_priority(self):
+        for rule in (
+            {"enabled": False, "items": [{"item_id": "3231", "limit": 5}]},
+            {"items": [{"item_id": "3231", "limit": 0}]},
+            {"items": [{"limit": 5}]},
+            {"items": []},
+        ):
+            with self.subTest(rule=rule):
+                result = select_stages_by_inventory(
+                    ["1-7", "PR-A-1"], [{"stage": "PR-A-1", **rule}]
+                )
+                self.assertEqual(result["stages"], ["1-7", "PR-A-1"])
+
+    def test_ratio_bound_stages_have_priority_without_limits(self):
+        result = select_stages_by_inventory(
+            ["1-7", "ACT-B", "ACT-A", "Annihilation"],
+            ratio_rules=[
+                {
+                    "members": [
+                        {"stage": "ACT-A", "item_id": "A", "ratio": 1},
+                        {"stage": "ACT-B", "item_id": "B", "ratio": 1},
+                    ]
+                }
+            ],
+            inventory={"A": 10, "B": 10},
+        )
+        self.assertEqual(result["stages"], ["Annihilation", "ACT-B"])
+        self.assertEqual(result["ratio_decisions"][0]["selected"], "ACT-B")
+
+    def test_inactive_ratios_and_unbound_stages_do_not_claim_priority(self):
+        for rule in (
+            {
+                "enabled": False,
+                "members": [{"stage": "ACT-A", "item_id": "A", "ratio": 1}],
+            },
+            {"members": [{"stage": "ACT-A", "item_id": "A", "ratio": 0}]},
+            {"members": [{"stage": "ACT-A", "ratio": 1}]},
+            {"members": [{"stage": "Annihilation", "item_id": "A", "ratio": 1}]},
+        ):
+            with self.subTest(rule=rule):
+                result = select_stages_by_inventory(
+                    ["1-7", "ACT-A", "Annihilation"], ratio_rules=[rule]
+                )
+                self.assertEqual(result["stages"], ["Annihilation", "1-7", "ACT-A"])
+
     def test_default_regular_drops(self):
         self.assertEqual(
             default_materials_for_stage("SK-5"),
@@ -46,7 +124,7 @@ class MaaStageInventoryTests(unittest.TestCase):
             ],
             inventory={"3114": 100, "3113": 59, "3401": 9999},
         )
-        self.assertEqual(result["stages"], ["SK-5", "1-7"])
+        self.assertEqual(result["stages"], ["SK-5"])
 
         result = select_stages_by_inventory(
             ["SK-5", "1-7"],
@@ -82,7 +160,7 @@ class MaaStageInventoryTests(unittest.TestCase):
         )
         self.assertEqual(result["stages"], ["1-7"])
 
-    def test_all_limit_skips_fall_back_to_original_plan(self):
+    def test_all_limits_reached_without_fallback_stops_fighting(self):
         result = select_stages_by_inventory(
             ["1-7", "CE-6"],
             limit_rules=[
@@ -91,8 +169,9 @@ class MaaStageInventoryTests(unittest.TestCase):
             ],
             inventory={"30012": 10, "4001": 10},
         )
-        self.assertTrue(result["limit_fallback"])
-        self.assertEqual(result["stages"], ["1-7", "CE-6"])
+        self.assertFalse(result["limit_fallback"])
+        self.assertEqual(result["stages"], [])
+        self.assertEqual(result["limit_skipped"], ["1-7", "CE-6"])
         self.assertEqual(result["ratio_decisions"], [])
 
     def test_ratio_selects_lowest_inventory_per_weight(self):
@@ -158,7 +237,7 @@ class MaaStageInventoryTests(unittest.TestCase):
             ],
             inventory={"A": 100, "B": 60, "C": 0},
         )
-        self.assertEqual(result["stages"], ["ACT-A", "ACT-C"])
+        self.assertEqual(result["stages"], ["ACT-A"])
         self.assertEqual(result["ratio_decisions"][0]["selected"], "ACT-A")
 
     def test_rules_never_add_unselected_stage_to_weekly_plan(self):
@@ -216,7 +295,7 @@ class MaaStageInventoryTests(unittest.TestCase):
             inventory={"A": 100, "B": 999},
         )
         self.assertEqual(result["limit_skipped"], ["ACT-A"])
-        self.assertEqual(result["stages"], ["ACT-B", "1-7"])
+        self.assertEqual(result["stages"], ["ACT-B"])
         self.assertEqual(result["ratio_decisions"], [])
 
     def test_load_inventory_snapshot(self):
@@ -238,6 +317,152 @@ class MaaStageInventoryTests(unittest.TestCase):
             inventory, updated_at = load_inventory_snapshot(path)
         self.assertEqual(inventory, {"30012": 123, "4001": 456})
         self.assertIsNotNone(updated_at)
+
+    def test_default_snapshot_maps_shared_inventory_names_and_aliases(self):
+        with patch(
+            "arknights_mower.solvers.record.get_inventory_counts",
+            return_value={"固源岩": 123, "4001": 456, "未知材料": 99},
+        ):
+            inventory, updated_at = load_inventory_snapshot()
+        self.assertEqual(inventory, {"30012": 123, "4001": 456})
+        self.assertIsNone(updated_at)
+
+
+@pytest.fixture
+def shared_inventory(monkeypatch, tmp_path):
+    from arknights_mower.solvers import record
+
+    monkeypatch.setattr(record, "_tables_created", False)
+    monkeypatch.setattr(
+        record,
+        "get_path",
+        lambda name: tmp_path / "data.db" if name.endswith(".db") else tmp_path,
+    )
+    return record
+
+
+def test_selection_observes_confirmed_local_inventory_changes(shared_inventory):
+    shared_inventory.save_inventory_counts({"固源岩": 10, "固源岩组": 0})
+    shared_inventory.apply_workshop_inventory({"固源岩": -5, "固源岩组": 1})
+    inventory, _ = load_inventory_snapshot()
+    assert inventory == {"30012": 5, "30013": 1}
+    rules = [{"stage": "1-7", "items": [{"item_id": "30012", "limit": 8}]}]
+    result = select_stages_by_inventory(["1-7", "CE-6"], rules, inventory=inventory)
+    assert result["stages"] == ["1-7"]
+
+
+def test_stale_cloud_does_not_replace_local_stock_for_selection(shared_inventory):
+    old = {"固源岩": 10, "固源岩组": 0}
+    shared_inventory.save_inventory_counts(old)
+    shared_inventory.apply_workshop_inventory({"固源岩": -5, "固源岩组": 1})
+    shared_inventory.save_inventory_counts(
+        old, scanned_counts={}, cloud_counts=old, cloud_at=10_000_000_000
+    )
+    with patch.object(Path, "read_text", side_effect=AssertionError("Cloud reread")):
+        inventory, _ = load_inventory_snapshot()
+    assert inventory == {"30012": 5, "30013": 1}
+
+
+def test_invalidated_counts_stay_absent_from_selection_snapshot(shared_inventory):
+    old = {"固源岩": 10, "固源岩组": 0}
+    shared_inventory.save_inventory_counts(old)
+    shared_inventory.invalidate_workshop_inventory(["固源岩"])
+    shared_inventory.save_inventory_counts(
+        old, scanned_counts={}, cloud_counts=old, cloud_at=1
+    )
+    inventory, _ = load_inventory_snapshot()
+    assert inventory == {"30013": 0}
+
+
+@pytest.mark.parametrize(
+    "operator,stock,accumulated,expected",
+    [
+        ("or", {"3212": 2, "3272": 3}, {}, {"3212": 3, "3272": 2}),
+        ("and", {"3212": 2, "3272": 3}, {}, {}),
+        ("and", {"3212": 5, "3272": 3}, {"3272": 1}, {"3272": 3}),
+        ("and", {"3212": 5}, {}, {}),
+        ("and", {"3212": 2}, {}, {}),
+        ("or", {"3212": 2}, {}, {"3212": 3}),
+        ("or", {}, {}, {}),
+    ],
+)
+def test_maa_drop_targets_preserve_any_all_and_unknown_stock(
+    operator, stock, accumulated, expected
+):
+    rules = [
+        {
+            "stage": "PR-C-2",
+            "operator": operator,
+            "items": [
+                {"item_id": "3212", "limit": 5},
+                {"item_id": "3272", "limit": 5},
+            ],
+        }
+    ]
+    assert maa_fight_drop_targets("PR-C-2", rules, stock, accumulated) == {
+        "drops": expected,
+        "reached": False,
+        "bound": True,
+    }
+
+
+def test_maa_drop_targets_use_strictest_of_multiple_rules_and_resolve_aliases():
+    rules = [
+        {"stage": "PR-C-2", "items": [{"item_name": "先锋芯片组", "limit": 6}]},
+        {"stage": "PR-C-2", "items": [{"item_id": "3212", "limit": 5}]},
+        {
+            "stage": "PR-C-2",
+            "enabled": False,
+            "items": [{"item_id": "3212", "limit": 2}],
+        },
+        {"stage": "PR-C-1", "items": [{"item_id": "3212", "limit": 2}]},
+    ]
+    assert maa_fight_drop_targets("PR-C-2", rules, {"3212": 2}, {"3212": 1}) == {
+        "drops": {"3212": 4},
+        "reached": False,
+        "bound": True,
+    }
+    assert maa_fight_drop_targets("PR-C-2", rules, {"3212": 5}) == {
+        "drops": {},
+        "reached": True,
+        "bound": True,
+    }
+
+
+def test_maa_and_targets_deduplicate_same_item_caps():
+    rule = {
+        "stage": "PR-C-2",
+        "items": [
+            {"item_id": "3212", "limit": 3},
+            {"item_name": "先锋芯片组", "limit": 5},
+        ],
+    }
+    assert maa_fight_drop_targets("PR-C-2", [rule], {"3212": 2}) == {
+        "drops": {"3212": 3},
+        "reached": False,
+        "bound": True,
+    }
+
+
+def test_maa_targets_ignore_disabled_and_nonpositive_caps():
+    rules = [
+        {"stage": "PR-C-2", "items": [{"item_id": "3212", "limit": 0}]},
+        {"stage": "PR-C-2", "items": [{"limit": 10}]},
+    ]
+    assert maa_fight_drop_targets("PR-C-2", rules, {}) == {
+        "drops": {},
+        "reached": False,
+        "bound": False,
+    }
+
+
+@pytest.mark.parametrize("stage", ["", "Annihilation"])
+def test_maa_targets_do_not_bind_last_stage_or_annihilation(stage):
+    assert maa_fight_drop_targets(
+        stage,
+        [{"stage": stage, "items": [{"item_id": "3212", "limit": 1}]}],
+        {"3212": 5},
+    ) == {"drops": {}, "reached": False, "bound": False}
 
 
 if __name__ == "__main__":

@@ -1,0 +1,31 @@
+{
+  "title": "Deferred Exhausted Shift Duplication",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-04]",
+    "[INV-SCHED-05]",
+    "[INV-SCHED-10]",
+    "[INV-SCHED-38]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._has_pending_exhausted_shift",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.run_order_solver",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.overtake_room",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.infra_main",
+    "arknights_mower.utils.scheduler_task._schedule_run_orders",
+    "arknights_mower.utils.scheduler_task._merge_deferred_dorm_schedules"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/scheduler_incident_20261008_tests.py",
+    "arknights_mower/tests/deferred_exhaust_dedup_tests.py",
+    "arknights_mower/tests/exhaust_replacement_tests.py",
+    "arknights_mower/tests/backup_rest_schedule_tests.py",
+    "arknights_mower/tests/exhausted_working_timer_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py"
+  ]
+}

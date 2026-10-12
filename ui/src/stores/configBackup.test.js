@@ -5,6 +5,22 @@ import axios from 'axios'
 import { useConfigStore } from './config'
 import { usePlanStore } from './plan'
 import { createSaveCoordinator, drainConfigurationSaves } from '@/utils/configPersistence'
+import { readFileSync } from 'node:fs'
+import { compileScript, parse } from '@vue/compiler-sfc'
+
+// Execute the page's actual handler with isolated stores and transport.
+const { descriptor } = parse(readFileSync(new URL('../pages/Plan.vue', import.meta.url), 'utf8'))
+const script = compileScript(descriptor, { id: 'restore-running-plan-test' })
+const restoreNode = script.scriptSetupAst.find((node) => node.id?.name === 'restoreRunningPlan')
+const restoreCode = descriptor.scriptSetup.content
+  .slice(restoreNode.start, restoreNode.end)
+  .replaceAll('import.meta.env.VITE_HTTP_URL', JSON.stringify('/api'))
+
+function pageRestoreHandler(dependencies) {
+  return new Function(...Object.keys(dependencies), `${restoreCode}; return restoreRunningPlan`)(
+    ...Object.values(dependencies)
+  )
+}
 
 vi.mock('axios', () => ({ default: { post: vi.fn(), patch: vi.fn(), get: vi.fn() } }))
 let stores = []
@@ -30,6 +46,117 @@ function setup() {
 }
 
 describe('configuration restore autosave coordination', () => {
+  it('restores startup advanced settings and reloads both stores before autosave resumes', async () => {
+    const { config, plan, loaded } = setup()
+    plan.set_advanced_settings_source(() => config.build_advanced_settings())
+    config.drone_count_limit = 20
+    config.drone_interval = 3
+    loaded.value = true
+    await drainConfigurationSaves(config, plan)
+    const restoredConfig = {
+      ...config.build_config(),
+      drone_count_limit: 150,
+      drone_interval: 2,
+      maa_weekly_plan_active: '默认'
+    }
+    const restoredPlan = plan.build_plan()
+    restoredPlan.advanced_settings.drone_count_limit = 150
+    restoredPlan.advanced_settings.drone_interval = 2
+    const saves = createSaveCoordinator(config, plan)
+    const busy = ref(false)
+    const message = { success: vi.fn(), error: vi.fn() }
+    axios.get.mockImplementation(async (url) => {
+      expect(saves.paused.value).toBe(true)
+      if (url.endsWith('/conf')) return { data: restoredConfig }
+      if (url.endsWith('/plan')) return { data: restoredPlan }
+      if (url.endsWith('/weekly-plans')) return { data: { plans: ['默认'] } }
+      throw new Error(`Unexpected read: ${url}`)
+    })
+    const restore = pageRestoreHandler({
+      rescue: false,
+      running: ref(true),
+      restoring_running_plan: busy,
+      edit_locked: saves.paused,
+      import_saves: saves,
+      axios,
+      sub_plan: ref('main'),
+      config_store: config,
+      load_plan: () => plan.load_plan(),
+      message
+    })
+    axios.post.mockClear()
+    axios.patch.mockClear()
+
+    await restore()
+    await drainConfigurationSaves(config, plan)
+
+    expect(config.drone_count_limit).toBe(150)
+    expect(config.drone_interval).toBe(2)
+    expect(saves.paused.value).toBe(false)
+    expect(busy.value).toBe(false)
+    expect(message.error).not.toHaveBeenCalled()
+    expect(message.success).toHaveBeenCalledWith('已还原为当前运行排班表及高级设置')
+    expect(axios.patch).not.toHaveBeenCalled()
+    expect(
+      axios.post.mock.calls.filter(([url]) => url.endsWith('/plan/restore-running'))
+    ).toHaveLength(1)
+    const savedPlans = axios.post.mock.calls.filter(([url]) => url.endsWith('/plan'))
+    expect(savedPlans).toHaveLength(1)
+    expect(savedPlans[0][1].advanced_settings.drone_count_limit).toBe(150)
+    loaded.value = false
+  })
+
+  it.each(['write', 'config read', 'plan read'])(
+    'handles %s failure without saving stale restored settings',
+    async (stage) => {
+      const paused = ref(false)
+      const busy = ref(false)
+      const configRead = vi.fn().mockResolvedValue(undefined)
+      const planRead = vi.fn().mockResolvedValue(undefined)
+      const saves = {
+        pauseAndDrain: vi.fn(async () => {
+          paused.value = true
+        }),
+        resume: vi.fn(() => {
+          paused.value = false
+        })
+      }
+      const message = { success: vi.fn(), error: vi.fn() }
+      axios.post.mockResolvedValue({ data: {} })
+      if (stage === 'write') axios.post.mockRejectedValue(new Error('write failed'))
+      if (stage === 'config read') configRead.mockRejectedValue(new Error('read failed'))
+      if (stage === 'plan read') planRead.mockRejectedValue(new Error('read failed'))
+      const restore = pageRestoreHandler({
+        rescue: false,
+        running: ref(true),
+        restoring_running_plan: busy,
+        edit_locked: paused,
+        import_saves: saves,
+        axios,
+        sub_plan: ref('backup'),
+        config_store: { load_config: configRead },
+        load_plan: planRead,
+        message
+      })
+
+      await restore()
+
+      expect(busy.value).toBe(false)
+      expect(message.success).not.toHaveBeenCalled()
+      if (stage === 'write') {
+        expect(configRead).not.toHaveBeenCalled()
+        expect(planRead).not.toHaveBeenCalled()
+        expect(saves.resume).toHaveBeenCalledOnce()
+        expect(paused.value).toBe(false)
+      } else {
+        expect(saves.resume).not.toHaveBeenCalled()
+        expect(paused.value).toBe(true)
+        expect(message.error.mock.lastCall[0]).toContain('请刷新页面；自动保存已暂停')
+        if (stage === 'config read') expect(planRead).not.toHaveBeenCalled()
+      }
+    }
+  )
+
   it('includes current advanced settings in saved plans without the drone room', async () => {
     const { config, plan } = setup()
     plan.set_advanced_settings_source(() => config.build_advanced_settings())

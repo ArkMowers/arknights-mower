@@ -2,15 +2,20 @@
 import { storeToRefs } from 'pinia'
 import { NTag, NCheckbox } from 'naive-ui'
 import axios from 'axios'
-import { computed, h, inject, onMounted, ref, watch } from 'vue'
+import { computed, h, inject, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
+import { useResourceVersionStore } from '@/stores/resourceVersion'
 import {
+  CHIP_STAGES,
   WEEKDAYS,
   buildStageOptions,
   createStageOption,
   formatStageLabel,
   getGameWeekdayIndex,
-  isStageAvailableOnWeekday
+  isStageAvailableOnWeekday,
+  promoteChipStageOrder,
+  reorderWeeklyPlanStages,
+  setStageForWeekday
 } from '@/utils/maa_weekly_plan'
 import MaaWeeklyTable from './MaaWeeklyTable.vue'
 import MaaStageInventory from './MaaStageInventory.vue'
@@ -22,9 +27,9 @@ const {
   stage_plan_enable,
   stage_plan_runner,
   medicine_expire_days,
-  expiring_medicine_on_weekend,
   maa_report_to_yituliu,
   maa_yituliu_id,
+  maa_report_to_penguin,
   maa_penguin_id,
   ap_fallback
 } = storeToRefs(store)
@@ -33,18 +38,33 @@ const mobile = inject('mobile')
 
 // 最近开启活动（后端当前资源包）：prepend 到关卡下拉最前
 const latestActivityOptions = ref([])
+const activityLoading = ref(false)
+const activityError = ref('')
+const resourceVersion = useResourceVersionStore()
+let activityRequest = 0
+onBeforeUnmount(() => {
+  activityRequest += 1
+})
 
 async function loadLatestActivityStages() {
+  const request = ++activityRequest
+  activityLoading.value = true
+  activityError.value = ''
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/stage/latest-activity`)
+    if (request !== activityRequest) return
     latestActivityOptions.value = Array.isArray(response.data) ? response.data : []
-  } catch (error) {
-    // 接口不可用时静默忽略，保住基础常驻关下拉
+  } catch {
+    if (request !== activityRequest) return
     latestActivityOptions.value = []
+    activityError.value = '活动关卡读取失败，请重新读取'
+  } finally {
+    if (request === activityRequest) activityLoading.value = false
   }
 }
 
 onMounted(loadLatestActivityStages)
+watch(() => resourceVersion.info.current_version, loadLatestActivityStages)
 
 const copyDialogVisible = ref(false)
 const copyStageValue = ref('')
@@ -58,6 +78,33 @@ const filterStageByAvailability = ref(true)
 const editorModeStorageKey = 'maa-weekly-plan-editor-mode'
 const savedEditorMode = window.localStorage.getItem(editorModeStorageKey)
 const editorMode = ref(savedEditorMode === 'table' ? 'table' : 'list')
+const stageOrderStorageKey = 'maa-weekly-plan-table-stage-order'
+const tableStageOrder = ref(loadSavedStageOrder())
+
+function loadSavedStageOrder() {
+  try {
+    const order = JSON.parse(window.localStorage.getItem(stageOrderStorageKey) || '[]')
+    return Array.isArray(order) ? order.filter((stage) => typeof stage === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+watch(tableStageOrder, (order) => {
+  window.localStorage.setItem(stageOrderStorageKey, JSON.stringify(order))
+})
+
+function applyChipStageSelection() {
+  tableStageOrder.value = promoteChipStageOrder(tableStageOrder.value)
+  for (const plan of maa_weekly_plan.value) {
+    for (const stage of CHIP_STAGES) {
+      if (!filterStageByAvailability.value || isStageAvailableOnWeekday(stage, plan.weekday)) {
+        setStageForWeekday(maa_weekly_plan.value, plan.weekday, stage, true, tableStageOrder.value)
+      }
+    }
+  }
+  reorderWeeklyPlanStages(maa_weekly_plan.value, tableStageOrder.value)
+}
 
 watch(editorMode, (mode) => {
   if (mode === 'list' || mode === 'table') {
@@ -297,22 +344,14 @@ function cancelCopyDialogLongPress() {
                 天才用）。
               </div>
               <div>填 0 表示不服用（默认）。</div>
-              <div>勾选「只在周末服用过期的理智药」后，只在周末服用，平时不用。</div>
             </help-text>
           </n-flex>
-          <n-flex>
-            <n-checkbox
-              v-model:checked="expiring_medicine_on_weekend"
-              :disabled="medicine_expire_days <= 0"
-            >
-              只在周末服用过期的理智药
-            </n-checkbox>
-          </n-flex>
           <n-flex align="center" v-if="stage_plan_runner === 'maa'">
-            <span>企鹅物流 id</span>
+            <n-checkbox v-model:checked="maa_report_to_penguin">上报至企鹅物流</n-checkbox>
             <n-input
               v-model:value="maa_penguin_id"
-              placeholder="企鹅物流 id（可选）"
+              :disabled="!maa_report_to_penguin"
+              placeholder="企鹅物流 id"
               style="width: 200px"
             />
           </n-flex>
@@ -326,17 +365,17 @@ function cancelCopyDialogLongPress() {
             />
             <help-text>
               <div>
-                默认上传关卡掉落数据至
+                勾选后上传关卡掉落数据至
                 <n-a href="https://penguin-stats.io/" target="_blank" rel="noopener noreferrer">
                   企鹅物流
                 </n-a>
-                ，勾选后额外上传至
+                或
                 <n-a href="https://ark.yituliu.cn/" target="_blank" rel="noopener noreferrer">
                   一图流
                 </n-a>
                 。
               </div>
-              <div>两个上报站点均凭 id 关联个人账号；企鹅物流 id 选填，留空仍会匿名上报。</div>
+              <div>两个上报站点均凭 id 关联个人账号，留空则匿名上报；不勾选则不上传。</div>
             </help-text>
           </n-flex>
           <n-flex align="center">
@@ -361,6 +400,18 @@ function cancelCopyDialogLongPress() {
         </n-flex>
       </n-form-item>
     </n-form>
+
+    <n-flex align="center" :size="8" class="activity-resource-status">
+      <span v-if="activityLoading">正在读取活动关卡…</span>
+      <span v-else-if="activityError" role="alert">{{ activityError }}</span>
+      <span v-else-if="!latestActivityOptions.length">
+        当前资源没有可用活动关卡；如游戏中已有活动，请在设置中更新 Mower 资源包。
+      </span>
+      <span v-else>已读取当前活动关卡</span>
+      <n-button size="small" :loading="activityLoading" @click="loadLatestActivityStages">
+        重新读取活动
+      </n-button>
+    </n-flex>
 
     <div class="weekly-plan-selector-wrap">
       <WeeklyPlanSelector compact />
@@ -421,12 +472,13 @@ function cancelCopyDialogLongPress() {
       </n-tab-pane>
       <n-tab-pane name="table" tab="表格计划">
         <MaaWeeklyTable
+          v-model:stage-order="tableStageOrder"
           :latest-activity-options="latestActivityOptions"
           :filter-stage-by-availability="filterStageByAvailability"
         />
       </n-tab-pane>
       <n-tab-pane name="inventory" tab="库存选关">
-        <MaaStageInventory />
+        <MaaStageInventory @chip-limits-applied="applyChipStageSelection" />
       </n-tab-pane>
     </n-tabs>
 

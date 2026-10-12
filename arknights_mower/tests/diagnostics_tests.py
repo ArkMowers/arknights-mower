@@ -1,6 +1,8 @@
 """验证按时间回看日志和截图。"""
 
 import json
+import logging
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta
@@ -18,6 +20,127 @@ from arknights_mower.utils.diagnostics import (
 
 
 class DiagnosticTimelineTests(unittest.TestCase):
+    def test_formatted_multiline_logs_preserve_newlines_and_exception_details(self):
+        from arknights_mower.utils import log
+
+        center = datetime(2026, 10, 9, 14, 15, 43)
+        try:
+            try:
+                raise ValueError("inner failure")
+            except ValueError as error:
+                raise RuntimeError("outer failure") from error
+        except RuntimeError:
+            exception = sys.exc_info()
+
+        messages = []
+        for level, message, exc_info in (
+            (logging.DEBUG, "sending operation\n  payload\n\n  end", None),
+            (logging.ERROR, "dispatch failed", exception),
+            (logging.INFO, "ordinary message", None),
+        ):
+            record = logging.LogRecord(
+                log.logger.name,
+                level,
+                r"C:\Program Files\Mower\arknights_mower\utils\device\device.py",
+                661,
+                message,
+                (),
+                exc_info,
+                "dispatch",
+            )
+            record.created = center.timestamp() + 0.152
+            record.msecs = 152
+            log.filter.filter(record)
+            messages.append(log.basic_formatter.format(record))
+
+        for newline in ("\n", "\r\n"):
+            with (
+                self.subTest(newline=newline),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                root = Path(temporary)
+                logs = root / "log"
+                logs.mkdir()
+                (logs / "runtime.log").write_text(
+                    ("\n".join(messages) + "\n").replace("\n", newline),
+                    encoding="utf-8",
+                    newline="",
+                )
+
+                rows = timeline(logs, root / "screenshot", center)
+
+                self.assertEqual([row["message"] for row in rows], messages)
+                self.assertEqual(
+                    [row["time"] for row in rows], ["2026-10-09 14:15:43"] * 3
+                )
+
+    def test_ordinary_window_lists_unlinked_frames_and_reports_log_truncation(self):
+        import server
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs = root / "log"
+            logs.mkdir()
+            center = datetime(2026, 9, 26, 12, 58)
+            shots = root / "screenshot" / "20260926-12"
+            shots.mkdir(parents=True)
+            image = (
+                shots
+                / f"{int((center + timedelta(seconds=60)).timestamp() * 10**9)}.jpg"
+            )
+            image.write_bytes(b"image")
+            (logs / "runtime.log").write_text(
+                "2026-09-26 12:58:00,123 task.py:1 INFO run: retained\n" * 1001,
+                encoding="utf-8",
+            )
+            with (
+                patch.object(
+                    server, "get_path", side_effect=lambda name: root / name[5:]
+                ),
+                patch.object(server.app, "token", "diagnostics-test", create=True),
+            ):
+                client = server.app.test_client()
+                response = client.get(
+                    f"/diagnostics/timeline?at={int(center.timestamp() * 1000)}",
+                    headers={"token": "diagnostics-test"},
+                )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(len(response.json["logs"]), 1000)
+            self.assertTrue(response.json["truncated"])
+            self.assertTrue(
+                all(row["screenshot"] is None for row in response.json["logs"])
+            )
+            self.assertEqual(
+                response.json["screenshots"],
+                [image.relative_to(root / "screenshot").as_posix()],
+            )
+
+    def test_multiline_records_do_not_cross_window_or_file_boundaries(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            logs = root / "log"
+            logs.mkdir()
+            center = datetime(2026, 9, 26, 12, 58)
+            (logs / "runtime.log.2026-09-26_12").write_text(
+                "2026-09-26 12:58:00,123 task.py:1 ERROR run: failure\n"
+                "Traceback\n  ValueError: retained\n"
+                "2026-09-26 13:04:00,123 task.py:1 ERROR run: outside\n"
+                "  outside detail\n",
+                encoding="utf-8",
+            )
+            (logs / "runtime.log").write_text(
+                "orphan detail\n2026-09-26 12:59:00,123 task.py:1 INFO run: next\n",
+                encoding="utf-8",
+            )
+            rows = timeline(logs, root / "screenshot", center)
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(
+                rows[0]["message"],
+                "2026-09-26 12:58:00,123 task.py:1 ERROR run: failure\n"
+                "Traceback\n  ValueError: retained",
+            )
+            self.assertNotIn("detail", rows[0]["message"])
+
     def test_merged_archive_export_uses_first_to_last_error_window(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

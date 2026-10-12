@@ -1,4 +1,5 @@
 import { swap } from '@/utils/common'
+import { planReplacements } from './plan_bindings'
 
 // 排班表里的干员名单 conf 字段（主表 conf 与副表 conf 同构；ling_xi 是枚举不是名单）
 export const OPERATOR_CONF_FIELDS = [
@@ -88,6 +89,9 @@ export function replace_plan_operators(plan, source, target) {
     for (const item of facility.plans) {
       if (item.agent === source) item.agent = target
       replace_in_list(item.replacement, source, target)
+      for (const binding of item.group_bindings || []) {
+        replace_in_list(binding.replacement, source, target)
+      }
     }
   }
 }
@@ -100,6 +104,7 @@ export function replace_conf_operators(conf, source, target) {
   }
   for (const field of OPERATOR_CONF_FIELDS) {
     replace_in_list(conf[field], source, target)
+    replace_in_list(conf.removed_operators?.[field], source, target)
   }
 }
 
@@ -137,7 +142,7 @@ export function apply_operator_replace({ main_plan, main_conf, backup_plans }, s
   }
 }
 
-// 排班里出现过的全部干员（agent / replacement / conf 名单 / 副表 task 数组），
+// 排班里出现过的全部干员（agent / replacement / group_bindings / conf 名单 / 副表 task 数组），
 // 用于「被替换侧」下拉选项与「目标干员已在排班」去重守卫
 export function collect_plan_operators({ main_plan, main_conf, backup_plans }) {
   const seen = new Set()
@@ -151,7 +156,7 @@ export function collect_plan_operators({ main_plan, main_conf, backup_plans }) {
       if (!facility || !Array.isArray(facility.plans)) continue
       for (const item of facility.plans) {
         add(item.agent)
-        for (const r of item.replacement || []) add(r)
+        for (const r of planReplacements(item)) add(r)
       }
     }
   }
@@ -160,6 +165,7 @@ export function collect_plan_operators({ main_plan, main_conf, backup_plans }) {
     for (const name of Object.keys(conf.operator_mood_limits ?? {})) add(name)
     for (const field of OPERATOR_CONF_FIELDS) {
       for (const name of conf[field] || []) add(name)
+      for (const name of conf.removed_operators?.[field] || []) add(name)
     }
   }
   const collect_task = (task) => {

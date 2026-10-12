@@ -1,6 +1,6 @@
 `.github/workflows/release-build.yml` 是正式版与 alpha 测试版共用的跨平台
 构建和 GitHub Release 流程。它使用 PyInstaller 6.22.2 构建 Windows x64、
-Linux x64、Linux ARM64、macOS x64 与 macOS ARM64 产物，另生成供现有 Android 宿主使用的 Mower 程序热更新包。
+Linux x64、Linux ARM64 与 macOS ARM64 产物，另生成供现有 Android 宿主使用的 Mower 程序热更新包。
 
 ## 发布入口
 
@@ -29,7 +29,7 @@ Linux x64、Linux ARM64、macOS x64 与 macOS ARM64 产物，另生成供现有 
 
 发布准备入口可用后，Release PR 合入的维护者可运行上述流程。`release-build.yml` 在完整包
 全部上传到主仓 Release 后请求 MowerRelease 镜像完整包并生成 OTA；因此每个版本
-不需要另开 OTA 发布 PR。即时跨仓库触发需要主仓配置仅授权 MowerRelease
+不需要另开 OTA 发布 PR。OTA 仅为 Windows x64 和 Android ARM64 生成，包含 Nightly；Linux 与 macOS ARM64 使用完整包，后续发行不构建 macOS x64。即时跨仓库触发需要主仓配置仅授权 MowerRelease
 Contents 写入的 `MOWER_RELEASE_TOKEN`；未配置时，MowerRelease 每五分钟
 自动检查最新 Release 并补发 OTA。主仓随后向 Android 仓库发送 `mower-release`
 事件，提醒其检查新版本并按需打包 APK；这需要主仓配置仅授权
@@ -76,8 +76,7 @@ Release 正文和带当前版本块的 `CHANGELOG.md`，并将后者放入打包
 | Windows x64 | `windows-latest` | `webui_zip.spec` | `.zip` | PE x64 |
 | Linux x64 | `ubuntu-24.04` | `webui_zip_for_linux.spec` | `.tar.gz` | `file` x86-64、`ldd`、GUI 冒烟 |
 | Linux ARM64 | `ubuntu-24.04-arm` | `webui_zip_for_linux.spec` | `.tar.gz` | `file` aarch64、`ldd`、GUI 冒烟 |
-| macOS x64 | `macos-15-intel` | `webui_zip_for_macos.spec` | `.dmg` | `file`、`lipo`、`otool`、`codesign --verify`、GUI 冒烟 |
-| macOS ARM64 | `macos-15` | `webui_zip_for_macos.spec` | `.dmg` | 同上 |
+| macOS ARM64 | `macos-15` | `webui_zip_for_macos.spec` | `.dmg` | `file`、`lipo`、`otool`、`codesign --verify`、GUI 冒烟 |
 
 产物统一使用以下名称：
 
@@ -86,11 +85,10 @@ arknights-mower_<version>_android_arm64.zip
 arknights-mower_<version>_windows_x64.zip
 arknights-mower_<version>_linux_x64.tar.gz
 arknights-mower_<version>_linux_arm64.tar.gz
-arknights-mower_<version>_macos_x64.dmg
 arknights-mower_<version>_macos_arm64.dmg
 ```
 
-Release 任务在全部平台构建成功后附加六个 Mower 产物，并生成统一的 SHA-256 清单
+Release 任务在全部平台构建成功后附加五个 Mower 产物，并生成统一的 SHA-256 清单
 `SHA256SUMS`。
 
 ## 构建检查

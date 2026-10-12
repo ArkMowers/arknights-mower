@@ -15,10 +15,10 @@ def screenshot_stats_response():
     return store.stats() if store is not None else {}
 
 
-def latest_screenshot_response():
+def latest_screenshot_response(*, after_ns=None):
     store = _get_store()
     frame = store.latest() if store is not None else None
-    if frame is None:
+    if frame is None or (after_ns is not None and frame.captured_ns < after_ns):
         response = current_app.response_class(status=204)
     else:
         etag = str(frame.captured_ns)

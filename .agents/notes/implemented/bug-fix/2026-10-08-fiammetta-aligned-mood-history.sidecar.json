@@ -1,0 +1,20 @@
+{
+  "title": "Aligned Fiammetta Mood History",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-35]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.get_agent_from_room",
+    "arknights_mower.solvers.record.save_agent_action"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/exhausted_working_timer_tests.py",
+    "arknights_mower/tests/fiammetta_curve_label_tests.py"
+  ]
+}

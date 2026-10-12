@@ -10,18 +10,18 @@ import {
 } from './masteryRoute.js'
 
 describe('mastery handoff buffers', () => {
-  it('uses separate defaults for the three conditions', () => {
+  it('uses ten-minute defaults for every condition', () => {
     expect(normalizeMasterySwapBuffers()).toEqual({
       no_central: 10,
-      central: 15,
-      central_unhalved_m2: 30
+      central: 10,
+      central_unhalved_m2: 10
     })
   })
   it('migrates scalar settings and preserves saved per-condition values', () => {
     expect(normalizeMasterySwapBuffers({ mastery_swap_buffer: 10 })).toEqual({
       no_central: 10,
-      central: 15,
-      central_unhalved_m2: 30
+      central: 10,
+      central_unhalved_m2: 10
     })
     const custom = { no_central: 10, central: 10, central_unhalved_m2: 10 }
     expect(
@@ -31,9 +31,20 @@ describe('mastery handoff buffers', () => {
   it.each([0, 5, 10, 45])('migrates any legacy scalar %s to the new defaults', (value) => {
     expect(normalizeMasterySwapBuffers({ mastery_swap_buffer: value })).toEqual({
       no_central: 10,
-      central: 15,
-      central_unhalved_m2: 30
+      central: 10,
+      central_unhalved_m2: 10
     })
+  })
+  it('replaces the previous unchanged central defaults with ten minutes', () => {
+    expect(
+      normalizeMasterySwapBuffers({
+        mastery_swap_buffers: {
+          no_central: 10,
+          central: 15,
+          central_unhalved_m2: 30
+        }
+      })
+    ).toEqual({ no_central: 10, central: 10, central_unhalved_m2: 10 })
   })
   it('keeps independent custom values including zero', () => {
     const values = { no_central: 0, central: 4, central_unhalved_m2: 9 }
@@ -45,7 +56,7 @@ describe('mastery handoff buffers', () => {
     expect(normalizeMasterySwapBuffers({ mastery_swap_buffers: { central: 6 } })).toEqual({
       no_central: 10,
       central: 6,
-      central_unhalved_m2: 30
+      central_unhalved_m2: 10
     })
   })
 })

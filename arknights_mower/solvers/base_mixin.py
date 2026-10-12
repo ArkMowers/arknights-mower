@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 
 from arknights_mower.data import workshop_formula
-from arknights_mower.solvers.record import save_inventory_counts
 from arknights_mower.utils import config, rapidocr, segment
 from arknights_mower.utils.character_recognize import (
     estimate_agent_mood,
@@ -23,7 +22,6 @@ from arknights_mower.utils.operation_timing import timed_step
 from arknights_mower.utils.performance import (
     PERFORMANCE_PRESETS,
     effective_performance_profile,
-    is_android_runtime,
     lower_performance_mode,
 )
 from arknights_mower.utils.resource_pkg import (
@@ -57,12 +55,16 @@ class AgentSelectionNotReady(RuntimeError):
     """当前页面不足以继续选人；交由排班原有重试恢复，不结束任务线程。"""
 
 
+class AgentSelectionPageChanged(AgentSelectionNotReady):
+    """选人已退出到入住信息页，禁止继续筛选复位或选人输入。"""
+
+
 def agent_card_selected(img, scope, *, train=False):
     """读取选人卡片四周的青蓝色选中边框。
 
     scope 是 operator_list/operator_list_train 返回的姓名框。普通列表卡片
     比训练室卡片更宽且略高；只取边缘，避开立绘和技能图标。
-    边框不完整时返回 None，让调用方停下重读而非盲点。
+    普通卡片右缘少量裁切时使用可见的三条边；证据不足时返回 None。
     """
     if not isinstance(img, np.ndarray) or img.ndim != 3 or scope is None:
         return None
@@ -77,6 +79,30 @@ def agent_card_selected(img, scope, *, train=False):
         left, right = name_left - 22, name_left + 203
         top, bottom = name_top - 375, name_bottom + 16
     if left < 0 or top < 0 or right > img.shape[1] or bottom > img.shape[0]:
+        # 普通卡片仅右缘缺失、至少 95% 宽度可见时仍可判断；其余越界保持未知。
+        if (
+            train
+            or left < 0
+            or top < 0
+            or bottom > img.shape[0]
+            or right <= img.shape[1]
+            or img.shape[1] - left < (right - left) * 0.95
+        ):
+            return None
+        frame = cv2.cvtColor(img[top:bottom, left : img.shape[1]], cv2.COLOR_RGB2HSV)
+        blue = cv2.inRange(frame, (96, 140, 140), (105, 255, 255)) > 0
+        upper = blue[:8, 8:-8].mean()
+        lower = blue[-8:, 8:-8].mean()
+        left_side = blue[8:-8, :8].mean()
+        # 屏幕右缘不是卡片竖边；必须同时看到上、下、左三条真实边框。
+        if upper > 0.45 and lower > 0.45 and left_side > 0.45:
+            return True
+        lower_inner = blue[-8:-5, 8:-8].mean()
+        if max(upper, lower) < 0.45 and lower_inner < 0.20 and left_side < 0.20:
+            return False
+        # 保留相邻蓝框仅擦到一条竖边时的未选中判定。
+        if min(upper, lower) < 0.20 and max(upper, lower) < 0.45:
+            return False
         return None
     frame = cv2.cvtColor(img[top:bottom, left:right], cv2.COLOR_RGB2HSV)
     # 卡片右侧阴影使蓝框亮度降到约 140，仍须满足色相和饱和度条件。
@@ -93,6 +119,15 @@ def agent_card_selected(img, scope, *, train=False):
     lower_inner = blue[-8:-5, 8:-8].mean()
     if lower_inner > 0.45 and min(left_side, right_side) > 0.45:
         return True
+    # 上沿的青色状态图标与下排蓝框可同时覆盖少量横边。
+    # 两条竖边及下沿前段均缺失时，普通卡片明确未选中。
+    if (
+        not train
+        and max(upper, lower) < 0.45
+        and lower_inner < 0.20
+        and max(left_side, right_side) < 0.20
+    ):
+        return False
     # 相邻卡片只隔几像素，前一张的边框可能擦到本卡一条边；
     # 另一条边仍明显缺失时判为未选中，避免整页校验一直等待。
     if min(upper, lower) < 0.20 and max(upper, lower) < 0.45:
@@ -220,6 +255,14 @@ def _resolve_operator_room_prefix(
 
 
 class BaseMixin:
+    agent_selection_positions = (
+        (0.35, 0.35),
+        (0.35, 0.75),
+        (0.45, 0.35),
+        (0.45, 0.75),
+        (0.55, 0.35),
+    )
+
     @property
     def performance_profile(self):
         snapshot = getattr(self, "_selection_profile_snapshot", None)
@@ -237,8 +280,7 @@ class BaseMixin:
         # 未设置档位的旧调用方仍可通过布尔值控制策略；明确选择档位后
         # 布尔兼容字段不再覆盖所选策略，也不改变用户的时间参数。
         if (
-            not is_android_runtime()
-            and config.conf.performance_mode in PERFORMANCE_PRESETS
+            config.conf.performance_mode in PERFORMANCE_PRESETS
             and "performance_mode" not in config.conf.model_fields_set
         ):
             legacy_enabled = config.conf.low_frame_rate_mode
@@ -315,6 +357,20 @@ class BaseMixin:
             else max(profile.stable_page_matches + 1, profile.transition_attempts)
         )
         return profile.poll_interval, attempts
+
+    def reorder_selected_agents(self, agents, actual):
+        """Reapply selection order using the current mode's production timing."""
+        click_order = [actual.index(name) for name in agents]
+        mode = self.performance_profile.mode
+        interval = {"xhigh": 0, "high": 0.1}.get(mode, 0.2)
+        logger.debug(f"选人重排清空：性能档位{mode}，页面已选{actual}，目标{agents}")
+        self.tap(
+            (self.recog.w * 0.38, self.recog.h * 0.95),
+            interval=0.3 if mode == "high" else 0.5,
+        )
+        for index in click_order:
+            x, y = self.agent_selection_positions[index]
+            self.tap((self.recog.w * x, self.recog.h * y), interval=interval)
 
     profession_labels = [
         "ALL",
@@ -512,6 +568,42 @@ class BaseMixin:
             train,
         )
 
+    def require_agent_selection_page(self):
+        """名单异常时，用同帧入住信息页签区分页面退出与卡片识别失败。"""
+        if self.find("arrange_check_in_on") or self.find("recycle/dashboard"):
+            raise AgentSelectionPageChanged(
+                "选人页面已退出到当前房间入住信息，停止选人并返回房间实读重试"
+            )
+
+    def check_agent_page(self, page, *, train=False):
+        """异常名单检查退出并返回 True；正常名单不检查页面。"""
+        if (
+            not page
+            or any(not name or scope is None for name, scope in page)
+            or (not train and page[0][1][0][0] > 650)
+        ):
+            self.require_agent_selection_page()
+            return True
+        return False
+
+    @staticmethod
+    def agent_page_has_right_gap(img, page, *, train=False):
+        """名字横带右侧全为空白时，按住画面不能作为抬手后坐标。"""
+        if not isinstance(img, np.ndarray):
+            return False
+        if not page or any(scope is None for _, scope in page):
+            return True
+        left = max(scope[1][0] for _, scope in page) + 4
+        # 两种布局均排除职业栏；半张卡片也阻止空白判定。
+        right = 1790
+        if right - left < 20:
+            return False
+        rows = ((479, 506), (895, 922)) if train else ((488, 520), (909, 941))
+        return all(
+            np.mean(np.min(img[bottom - 8 : bottom, left:right], axis=2) > 85) >= 0.9
+            for _, bottom in rows
+        )
+
     def wait_for_agent_page(
         self, *, full_scan=True, train=False, before=None, observation=None
     ):
@@ -526,7 +618,7 @@ class BaseMixin:
             full_scan=full_scan,
             train=train,
             seed_image=seed_image,
-            seed_page=previous,
+            seed_page=previous or None,
         )
         stable = False
         stable_matches = 0
@@ -537,7 +629,7 @@ class BaseMixin:
         for attempt in range(max_attempts):
             if attempt:
                 self.wait_for_next_observation(capture_time, poll_interval)
-            else:
+            elif previous != ():
                 self.recog.update()
             started = perf_counter()
             connecting = self.find("connecting")
@@ -553,13 +645,21 @@ class BaseMixin:
                 continue
             try:
                 ret = read(self.recog.img)
-            except MowerExit:
+            except (MowerExit, AgentSelectionPageChanged):
                 raise
             except Exception as e:
+                self.require_agent_selection_page()
                 logger.debug(f"翻页名单读取失败，原地复核：{e}")
                 previous = None
                 stable = False
                 stable_matches = 0
+                continue
+            self.check_agent_page(ret, train=train)
+            if previous == () and self.agent_page_has_right_gap(
+                self.recog.img, ret, train=train
+            ):
+                # 末页抬手后会回弹，按住帧不能计入两帧位置稳定证据。
+                previous = None
                 continue
             if (
                 before is not None
@@ -601,8 +701,17 @@ class BaseMixin:
             if len(page) < 2:
                 raise AgentSelectionNotReady("可识别干员不足，返回房间重试")
             start, end = page[-2][1][0], page[0][1][0]
-            self.swipe_noinertia(start, (end[0] - start[0], 0))
-            return (1, None) if return_page else 1
+            self.swipe_noinertia(
+                start,
+                (end[0] - start[0], 0),
+                interval=0.1 if self.performance_profile.mode == "high" else 0.2,
+                capture=True,
+            )
+            return (
+                (1, self.observe_agent_page((), full_scan=full_scan, train=train))
+                if return_page
+                else 1
+            )
         columns = sorted({scope[0][0] for _, scope in page})
         if len(columns) < 2:
             raise AgentSelectionNotReady("可识别干员列不足，返回房间重试")
@@ -612,11 +721,18 @@ class BaseMixin:
             # 第二次只移动一列，防止第一次延迟完成时又跨过一整页。
             distance = columns[0] - (start_x if attempt == 0 else columns[1])
             if attempt:
-                self.swipe_noinertia((start_x, y), (distance, 0), retry=True)
+                self.swipe_noinertia(
+                    (start_x, y), (distance, 0), retry=True, capture=True
+                )
             else:
-                self.swipe_noinertia((start_x, y), (distance, 0))
+                self.swipe_noinertia((start_x, y), (distance, 0), capture=True)
             actual = self.wait_for_agent_page(
-                full_scan=full_scan, train=train, before=page
+                full_scan=full_scan,
+                train=train,
+                before=page,
+                observation=self.observe_agent_page(
+                    (), full_scan=full_scan, train=train
+                ),
             )
             if not self.same_agent_page(actual, page, allow_unknown=True):
                 if return_page:
@@ -641,6 +757,7 @@ class BaseMixin:
         respect_train_selection=False,
         mood_estimates=None,
         skip_full_mood=False,
+        require_full_mood=False,
     ):
         if not self.low_frame_rate_mode:
             return self._scan_agent_fast(
@@ -652,6 +769,8 @@ class BaseMixin:
                 respect_train_selection,
                 mood_estimates,
                 skip_full_mood,
+                observation=observation,
+                require_full_mood=require_full_mood,
             )
         # 无目标时仍返回已复核的页面供调用方判断，但不进行点击。
         ret = self.wait_for_agent_page(
@@ -660,7 +779,12 @@ class BaseMixin:
         select_name = []
         while True:
             eligible = self.observe_agent_moods(
-                ret, agent, mood_estimates, skip_full_mood, train=train
+                ret,
+                agent,
+                mood_estimates,
+                skip_full_mood,
+                train=train,
+                require_full=require_full_mood,
             )
             target = next(
                 ((name, scope) for name, scope in ret if name in eligible), None
@@ -675,6 +799,11 @@ class BaseMixin:
                 else False
             )
             if selected is None:
+                logger.debug(
+                    f"选人卡片边框未确认：干员{name}，姓名范围{scope}，"
+                    f"画面尺寸{getattr(self.recog.img, 'shape', None)}，训练室{train}"
+                )
+                self.require_agent_selection_page()
                 raise AgentSelectionNotReady("干员选中边框不清晰，返回房间重试")
             if not selected:
                 self.tap(scope, interval=0.2)
@@ -699,10 +828,18 @@ class BaseMixin:
         respect_train_selection=False,
         mood_estimates=None,
         skip_full_mood=False,
+        observation=None,
+        require_full_mood=False,
     ):
         """普通设备沿用单帧批量选人及缩小扫描区域的识别重试。"""
         try:
-            self.recog.update()
+            held_page = (
+                observation.consume(self.recog, full_scan=full_scan, train=train)
+                if observation is not None
+                else None
+            )
+            if held_page is None:
+                self.recog.update()
             while self.find("connecting"):
                 self.sleep()
             ret = (
@@ -710,9 +847,11 @@ class BaseMixin:
                 if train
                 else operator_list(self.recog.img, full_scan=full_scan)
             )
-        except MowerExit:
+            page_checked = self.check_agent_page(ret, train=train)
+        except (MowerExit, AgentSelectionPageChanged):
             raise
         except Exception:
+            self.require_agent_selection_page()
             if error_count >= 2:
                 raise
             return self._scan_agent_fast(
@@ -724,9 +863,20 @@ class BaseMixin:
                 respect_train_selection,
                 mood_estimates,
                 skip_full_mood,
+                require_full_mood=require_full_mood,
             )
+        if held_page == () and self.agent_page_has_right_gap(
+            self.recog.img, ret, train=train
+        ):
+            logger.debug("选人末页右侧空白，抬手后重新确认卡片位置")
+            ret = self.wait_for_agent_page(full_scan=full_scan, train=train)
         eligible = self.observe_agent_moods(
-            ret, agent, mood_estimates, skip_full_mood, train=train
+            ret,
+            agent,
+            mood_estimates,
+            skip_full_mood,
+            train=train,
+            require_full=require_full_mood,
         )
         selected = []
         for name, scope in ret:
@@ -738,6 +888,12 @@ class BaseMixin:
                     else False
                 )
                 if is_selected is None:
+                    logger.debug(
+                        f"选人卡片边框未确认：干员{name}，姓名范围{scope}，"
+                        f"画面尺寸{getattr(self.recog.img, 'shape', None)}，训练室{train}"
+                    )
+                    if not page_checked:
+                        self.require_agent_selection_page()
                     raise AgentSelectionNotReady("干员选中边框不清晰，返回房间重试")
                 if not is_selected:
                     self.tap(scope, interval=0)
@@ -750,10 +906,12 @@ class BaseMixin:
         return selected, ret
 
     def observe_agent_moods(
-        self, page, candidates, estimates, skip_full, *, train=False
+        self, page, candidates, estimates, skip_full, *, train=False, require_full=False
     ):
         """复用识别帧记录候选预估，不刷新截图或修改干员实读数据。"""
         eligible = set(candidates)
+        if train:
+            return eligible
         if getattr(getattr(self, "task", None), "emergency_staffing", False):
             from arknights_mower.utils.emergency_staffing import worker_block_reason
 
@@ -778,8 +936,10 @@ class BaseMixin:
                     raise AgentSelectionNotReady(
                         f"自动救急候选 {name} {reason}，取消本次选人"
                     )
-        if estimates is None or train:
-            return eligible
+        if estimates is None:
+            if not require_full:
+                return eligible
+            estimates = {}
         now = datetime.now()
         for name, scope in page:
             if name not in eligible:
@@ -787,9 +947,13 @@ class BaseMixin:
             mood = estimate_agent_mood(self.recog.img, scope)
             if mood is None:
                 estimates.pop(name, None)
+                if require_full:
+                    eligible.discard(name)
                 continue
             estimates[name] = (mood, now)
             if skip_full and mood >= 24:
+                eligible.discard(name)
+            if require_full and mood != 24:
                 eligible.discard(name)
         return eligible
 
@@ -833,14 +997,16 @@ class BaseMixin:
                 continue
             try:
                 ret = read(self.recog.img)
-            except MowerExit:
+            except (MowerExit, AgentSelectionPageChanged):
                 raise
             except Exception as e:
+                self.require_agent_selection_page()
                 logger.debug(f"选人名单读取失败，等待下一帧：{e}")
                 previous = None
                 stable = False
                 stable_matches = 0
                 continue
+            page_checked = self.check_agent_page(ret, train=train)
             if not train and ret and ret[0][1] is not None and ret[0][1][0][0] > 650:
                 logger.debug(
                     "选人列表左侧仍被裁切，原地等待，不读取后续卡片作为已选名单"
@@ -860,7 +1026,13 @@ class BaseMixin:
                     )
                     for name, scope in ret
                 ]
-                if any(state is None for _, _, state in states):
+                uncertain = [
+                    (name, scope) for name, scope, state in states if state is None
+                ]
+                if uncertain:
+                    if not page_checked:
+                        self.require_agent_selection_page()
+                    logger.debug(f"选人卡片边框未确认，等待下一帧：{uncertain}")
                     previous = None
                     stable = False
                     stable_matches = 0
@@ -1059,7 +1231,8 @@ class BaseMixin:
             score.append(max_val)
         return score.index(max(score)) + 1
 
-    def detect_room(self) -> str:
+    def detect_room_type(self) -> str | None:
+        """从房间标题栏图标识别设施类型，无法识别时返回未知。"""
         color_map = {
             "制造站": 25,
             "贸易站": 99,
@@ -1071,7 +1244,6 @@ class BaseMixin:
         # 只读取标题栏左侧的设施图标。整条标题栏会透出房间背景，
         # 加工站的暖色装饰曾被当成制造站的黄色。
         hsv = cv2.cvtColor(img[2:74, 2:74], cv2.COLOR_RGB2HSV)
-        colored_room = None
         color_scores = {
             room: cv2.countNonZero(
                 cv2.inRange(hsv, (color - 1, 80, 90), (color + 2, 255, 255))
@@ -1080,7 +1252,39 @@ class BaseMixin:
         }
         best_room = max(color_scores, key=color_scores.get)
         if color_scores[best_room] > 150:
-            colored_room = best_room
+            return best_room
+        return None
+
+    def detect_room(self) -> str:
+        img = cropimg(self.recog.img, ((568, 18), (957, 95)))
+        # 标题优先于颜色；进入动画中透出的背景不能覆盖已确认的设施标题。
+        title_rooms = ["central", "dormitory", "meeting", "contact", "recycle"]
+        score = []
+        for room in title_rooms:
+            tpl = loadres(f"room/{room}")
+            result = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
+            score.append(cv2.minMaxLoc(result)[1])
+        if max(score) >= 0.78:
+            room = title_rooms[score.index(max(score))]
+            if room == "central":
+                logger.debug("控制中枢")
+            elif room == "dormitory":
+                digit = cropimg(img, ((174, 24), (195, 54)))
+                digit = self.detect_room_number(digit)
+                if digit == 4:
+                    logger.debug("宿舍B401")
+                else:
+                    logger.debug(f"宿舍B{digit}04")
+                return f"dormitory_{digit}"
+            elif room == "meeting":
+                logger.debug("会客室1F02")
+            elif room == "recycle":
+                logger.debug("回收站")
+            else:
+                logger.debug("办公室")
+            return room
+
+        colored_room = self.detect_room_type()
         if colored_room in ["制造站", "贸易站", "发电站"]:
             digit_1 = cropimg(img, ((211, 24), (232, 54)))
             digit_2 = cropimg(img, ((253, 24), (274, 54)))
@@ -1089,40 +1293,12 @@ class BaseMixin:
             logger.debug(f"{colored_room}B{digit_1}0{digit_2}")
             return f"room_{digit_1}_{digit_2}"
         elif colored_room == "训练室":
-            logger.debug(
-                "训练室B205" if config.conf.swap_contact_train else "训练室B305"
-            )
+            logger.debug("训练室")
             return "train"
         elif colored_room == "加工站":
             logger.debug("加工站B105")
             return "factory"
-        white_room = ["central", "dormitory", "meeting", "contact"]
-        score = []
-        for room in white_room:
-            tpl = loadres(f"room/{room}")
-            result = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
-            min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
-            score.append(max_val)
-        if max(score) < 0.78:
-            return ""
-        room = white_room[score.index(max(score))]
-        if room == "central":
-            logger.debug("控制中枢")
-        elif room == "dormitory":
-            digit = cropimg(img, ((174, 24), (195, 54)))
-            digit = self.detect_room_number(digit)
-            if digit == 4:
-                logger.debug("宿舍B401")
-            else:
-                logger.debug(f"宿舍B{digit}04")
-            return f"dormitory_{digit}"
-        elif room == "meeting":
-            logger.debug("会客室1F02")
-        else:
-            logger.debug(
-                "办公室B305" if config.conf.swap_contact_train else "办公室B205"
-            )
-        return room
+        return ""
 
     def adjust_room(self, _room):
         """只返回当前画面可点击的矩形；拖动后交由下一次尝试重新定位。"""
@@ -1190,7 +1366,7 @@ class BaseMixin:
                     _room = segment.base(
                         self.recog.img,
                         pos,
-                        swap_contact_train=config.conf.swap_contact_train,
+                        right_side_room_order=config.conf.right_side_room_order,
                     )[room]
                     logger.debug(
                         f"进入房间 {room}，第{enter_times + 1}轮第{retry_times + 1}次尝试"
@@ -1421,11 +1597,6 @@ class BaseMixin:
                             )
                             if not np.all((color >= 40) & (color <= 80)):
                                 valid = float("-inf ")
-                                if _idx < len(workshop_formula[name]["items"]):
-                                    logger.debug(f"更新{name}数量为0")
-                                    save_inventory_counts(
-                                        {workshop_formula[name]["items"][_idx]: 0}
-                                    )
                                 break
                     box_global = [[x + offset_x, y + offset_y] for (x, y) in box]
                     # 等于 0 则出界了

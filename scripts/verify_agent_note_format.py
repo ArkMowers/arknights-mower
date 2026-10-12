@@ -2,14 +2,16 @@
 """
 verify_agent_note_format.py
 
-Mechanically verifies the formatting, triplet completeness, and frontmatter/sidecar schemas
-of all technical decision notes under .agents/notes/.
+Mechanically verifies decision-note structure and metadata. With a repository root,
+it also checks invariant declarations and test-file references under the documented
+historical compatibility policy. It does not execute tests or production modules.
 """
 
 import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -28,6 +30,9 @@ FILENAME_DATE_SLUG_PATTERN = re.compile(
 )
 INVARIANT_PATTERN = re.compile(r"^\[INV-(?:[A-Z]+-)?\d{2}\]$")
 ISSUE_REF_PATTERN = re.compile(r"(?<![A-Za-z0-9_&#])#(\d{1,6})\b")
+INVARIANT_DECLARATION_PATTERN = re.compile(
+    r"^-\s+\*\*(\[INV-(?:[A-Z]+-)?\d{2}\])\s+[^*]+\*\*:"
+)
 
 
 def parse_yaml_frontmatter(content: str) -> dict | None:
@@ -46,12 +51,118 @@ def parse_yaml_frontmatter(content: str) -> dict | None:
     return None
 
 
-def verify_agent_notes(notes_dir: str | Path = ".agents/notes") -> list[str]:
+def changed_note_paths(
+    repo_root: Path, comparison_base: str | None = None
+) -> set[str] | None:
+    """Collect working-tree and requested committed changes; None means no baseline."""
+    worktree = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=repo_root,
+        capture_output=True,
+        timeout=10,
+    )
+    if worktree.returncode != 0 or (
+        Path(
+            worktree.stdout.decode("utf-8", errors="surrogateescape").strip()
+        ).resolve()
+        != repo_root
+    ):
+        if comparison_base is not None:
+            raise ValueError("Comparison reference root is not a Git worktree root")
+        return None
+    paths = set()
+    commands = [
+        ("diff", "--name-only", "-z"),
+        ("diff", "--cached", "--name-only", "-z"),
+        ("ls-files", "--others", "--exclude-standard", "-z"),
+    ]
+    if comparison_base is not None:
+        base = subprocess.run(
+            [
+                "git",
+                "rev-parse",
+                "--verify",
+                "--end-of-options",
+                f"{comparison_base}^{{commit}}",
+            ],
+            cwd=repo_root,
+            capture_output=True,
+            timeout=10,
+        )
+        if base.returncode != 0:
+            raise ValueError(f"Invalid comparison base: {comparison_base}")
+        commands.append(
+            ("diff", "--name-only", "-z", base.stdout.decode().strip(), "HEAD")
+        )
+    for arguments in commands:
+        result = subprocess.run(
+            ["git", *arguments, "--", ".agents/notes"],
+            cwd=repo_root,
+            capture_output=True,
+            timeout=10,
+        )
+        if result.returncode != 0:
+            if comparison_base is not None:
+                raise ValueError("Cannot inspect notes against the comparison base")
+            return None
+        paths.update(
+            path.decode("utf-8", errors="surrogateescape")
+            for path in result.stdout.split(b"\0")
+            if path
+        )
+    return paths
+
+
+def declared_invariants(registry: Path) -> set[str]:
+    """Read declarations, excluding fenced examples and incidental mentions."""
+    declarations = set()
+    fence = None
+    for line in registry.read_text(encoding="utf-8").splitlines():
+        stripped = line.lstrip()
+        marker = re.match(r"(`{3,}|~{3,})", stripped)
+        if marker:
+            delimiter = marker.group(1)
+            if fence is None:
+                fence = delimiter
+            elif delimiter[0] == fence[0] and len(delimiter) >= len(fence):
+                fence = None
+            continue
+        if fence is None:
+            match = INVARIANT_DECLARATION_PATTERN.match(line)
+            if match:
+                declarations.add(match.group(1))
+    return declarations
+
+
+def verify_agent_notes(
+    notes_dir: str | Path = ".agents/notes",
+    *,
+    repo_root: str | Path | None = None,
+    warnings: list[str] | None = None,
+    all_active: bool = False,
+    comparison_base: str | None = None,
+) -> list[str]:
+    """Validate structure; an explicit repository root also enables reference checks."""
     errors = []
     notes_path = Path(notes_dir).resolve()
 
     if not notes_path.exists():
         return [f"Notes directory not found: {notes_path}"]
+
+    repository = Path(repo_root).resolve() if repo_root is not None else None
+    if repository is not None and not notes_path.is_relative_to(repository):
+        return [
+            f"Notes directory is outside the repository reference root: {notes_path}"
+        ]
+    compatibility_warnings = warnings if warnings is not None else []
+    changed = None
+    declarations = set()
+    if repository is not None:
+        try:
+            changed = changed_note_paths(repository, comparison_base)
+            declarations = declared_invariants(repository / "CODING_STANDARDS.md")
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            return [f"Cannot establish note-reference baseline: {exc}"]
 
     # Collect all triplets by (lifecycle, category, slug_base)
     triplets: dict[tuple[str, str, str], dict[str, Path]] = {}
@@ -178,6 +289,10 @@ def verify_agent_notes(notes_dir: str | Path = ".agents/notes") -> list[str]:
                 errors.append(f"Malformed JSON in {sidecar_path}: {e}")
                 continue
 
+            if not isinstance(data, dict):
+                errors.append(f"Sidecar must be a JSON object in {sidecar_path}")
+                continue
+
             for req_key in (
                 "title",
                 "status",
@@ -211,7 +326,7 @@ def verify_agent_notes(notes_dir: str | Path = ".agents/notes") -> list[str]:
                 errors.append(f"Sidecar 'invariants' must be a list in {sidecar_path}")
             else:
                 for inv in invariants:
-                    if not INVARIANT_PATTERN.match(inv):
+                    if not isinstance(inv, str) or not INVARIANT_PATTERN.fullmatch(inv):
                         errors.append(
                             f"Invalid invariant format '{inv}' in {sidecar_path} "
                             "(must match [INV-XX] or [INV-SUBSYSTEM-XX])"
@@ -223,6 +338,41 @@ def verify_agent_notes(notes_dir: str | Path = ".agents/notes") -> list[str]:
                     errors.append(
                         f"Sidecar '{list_key}' must be a list in {sidecar_path}"
                     )
+                elif any(not isinstance(item, str) or not item.strip() for item in val):
+                    errors.append(
+                        f"Sidecar '{list_key}' entries must be nonempty strings in {sidecar_path}"
+                    )
+
+            if repository is not None:
+                relative_stem = sidecar_path.relative_to(repository).as_posix()[:-13]
+                strict = lifecycle in {"proposed", "implemented"} and (
+                    all_active
+                    or changed is None
+                    or any(path.startswith(relative_stem + ".") for path in changed)
+                )
+                reference_errors = errors if strict else compatibility_warnings
+                if isinstance(invariants, list):
+                    for invariant in invariants:
+                        if isinstance(invariant, str) and invariant not in declarations:
+                            reference_errors.append(
+                                f"Undeclared invariant '{invariant}' in {sidecar_path}"
+                            )
+                suites = data.get("test_suites")
+                if isinstance(suites, list):
+                    for suite in suites:
+                        if not isinstance(suite, str) or not suite.strip():
+                            continue
+                        normalized = suite.replace("\\", "/")
+                        target = (repository / normalized).resolve()
+                        if (
+                            re.match(r"^[A-Za-z]:", normalized)
+                            or Path(normalized).is_absolute()
+                            or not target.is_relative_to(repository)
+                            or not target.is_file()
+                        ):
+                            reference_errors.append(
+                                f"Missing or outside-repository test suite '{suite}' in {sidecar_path}"
+                            )
 
     return errors
 
@@ -236,9 +386,25 @@ def main() -> int:
         default=".agents/notes",
         help="Path to .agents/notes directory (default: .agents/notes)",
     )
+    parser.add_argument("--repo-root", default=".", help="Repository reference root")
+    parser.add_argument(
+        "--base", help="Also check active notes changed from this commit/ref to HEAD"
+    )
+    parser.add_argument(
+        "--all-active", action="store_true", help="Strictly audit all active references"
+    )
     args = parser.parse_args()
 
-    errors = verify_agent_notes(args.notes_dir)
+    warnings = []
+    errors = verify_agent_notes(
+        args.notes_dir,
+        repo_root=args.repo_root,
+        warnings=warnings,
+        all_active=args.all_active,
+        comparison_base=args.base,
+    )
+    for warning in warnings:
+        print(f"COMPATIBILITY WARNING: {warning}")
     if errors:
         print(f"FAILED: Found {len(errors)} error(s) in agent notes:")
         for err in errors:
@@ -246,7 +412,8 @@ def main() -> int:
         return 1
 
     print(
-        "SUCCESS: All agent notes strictly conform to triplet, naming, and schema standards."
+        "SUCCESS: Note structures and required active references pass; "
+        "behavior, record ownership and implementation status require separate review."
     )
     return 0
 

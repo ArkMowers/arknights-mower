@@ -2476,8 +2476,8 @@ class TestComputeProtected(unittest.TestCase):
             room = self._room("waiting_collect", "逻各斯", "", 2)
             self.assertFalse(reader._compute_protected(self.solver, room))
 
-    @patch.object(reader, "_train_slot_has_mastery")
-    def test_bypass_deep_read_when_train_slot_matches_scan_plan(self, mock_has_mastery):
+    @patch.object(reader, "_train_slot_has_mastery", return_value=True)
+    def test_deep_read_even_when_train_slot_matches_scan_plan(self, mock_has_mastery):
         # 用户实际场景：协助位逻各斯，训练位凛御银灰，计划为凛御银灰
         room = make_room(state="empty", support_slot="逻各斯", train_slot="凛御银灰")
         plan = make_plan(char_id="char_002_silverash", char_name="凛御银灰")
@@ -2485,8 +2485,8 @@ class TestComputeProtected(unittest.TestCase):
         with patch.object(reader.config.conf, "enable_mastery", True):
             is_protected = reader._compute_protected(self.solver, room, scan_plan=plan)
 
-        self.assertFalse(is_protected)
-        mock_has_mastery.assert_not_called()
+        self.assertTrue(is_protected)
+        mock_has_mastery.assert_called_once_with(self.solver)
 
     @patch.object(reader, "_train_slot_has_mastery", return_value=True)
     def test_deep_read_when_train_slot_mismatches_scan_plan(self, mock_has_mastery):
@@ -3124,7 +3124,7 @@ class TestRefreshTrainingHalfOverlap(unittest.TestCase):
         sc.assert_not_called()
 
     def test_queued_swap_task_skips_collect(self):
-        # 真实队列判断：已有同计划换人任务时，既不补排换人，也不排收取。
+        # 已有换人任务按新倒计时更新，仍不重复排收取。
         solver = MagicMock()
         solver.task = None
         task = reader.SchedulerTask(
@@ -3148,18 +3148,13 @@ class TestRefreshTrainingHalfOverlap(unittest.TestCase):
             patch.object(reader, "_schedule_collect") as sc,
         ):
             reader._refresh_training_plan(solver, plan, self._room())
-        sched.assert_not_called()
+        sched.assert_called_once()
         sc.assert_not_called()
         self.assertEqual(solver.tasks, [task])
 
 
 class TestReconcileProtectedRelease(unittest.TestCase):
-    """§4.4 保护：训练位已是计划干员时放行 mower 开始训练。
-
-    保护挡「移动协助位/训练位」；训练位 = 计划干员时开始训练不动训练位
-    （只按路线补协助位）→ 保护不适用，放行 scan_plan；训练位空/坐别人
-    或 scan_plan 非 idle 时保留保护。
-    """
+    """受保护房间仅放行实读同一训练位干员，保护始终保留。"""
 
     def _call(self, room, scan_plan):
         solver = MagicMock()
@@ -3170,13 +3165,15 @@ class TestReconcileProtectedRelease(unittest.TestCase):
             result = reader._reconcile(solver, room, None, [], scan_plan=scan_plan)
         return result, ni, np
 
-    def test_release_when_train_slot_is_plan_operator(self):
+    def test_continue_same_trainee_without_releasing_protection(self):
         room = make_room(state="empty", train_slot="Miss.Christine")
         room.protected = True
+        room.slots_reliable = True
         plan = make_plan(char_id="char_4198_christ", char_name="Miss.Christine")
         (result, _, np) = self._call(room, plan)
         self.assertIs(result[0], plan)
         self.assertTrue(result[1])
+        self.assertTrue(room.protected)
         np.assert_not_called()
 
     def test_keep_protected_when_train_slot_not_plan_operator(self):

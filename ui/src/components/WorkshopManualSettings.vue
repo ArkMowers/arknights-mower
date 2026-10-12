@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { pinyin_match } from '@/utils/common'
-import { render_op_label } from '@/utils/op_select'
+import { render_op_option, render_op_label } from '@/utils/op_select'
 
 defineProps({ operators: Array, item_list: Array, migrationWarning: String })
 const settings = defineModel({ type: Array, default: () => [] })
@@ -93,6 +93,7 @@ function createNewItem() {
         v-model:value="tempSetting.operator"
         :filter="(p, o) => pinyin_match(o.label, p)"
         :render-label="render_op_label"
+        :render-option="render_op_option"
       />
       <span style="font-size: 12px; white-space: nowrap">启用：</span>
       <n-switch v-model:value="tempSetting.enabled" />

@@ -1,7 +1,6 @@
 """Retire MAA rollback copies only after a completed, successful task run."""
 
 import functools
-import logging
 import os
 import shutil
 import threading
@@ -32,6 +31,12 @@ def maa_in_use():
     """返回是否有 Mower 管理的 MAA 实例已连接或正在执行任务。"""
     with _update_lock:
         return any(instance._active for instance in list(_verified_instances))
+
+
+def maa_instances_alive():
+    """Include idle instances whose native handles or callbacks still exist."""
+    with _update_lock:
+        return bool(_verified_instances)
 
 
 def identity(path):
@@ -88,7 +93,9 @@ class BackupCheckpoint:
                     shutil.rmtree(path)
             return True
         except OSError:
-            logging.getLogger(__name__).warning("MAA 任务已完成，旧备份暂无法清理")
+            from arknights_mower.utils.log import logger
+
+            logger.warning("MAA 任务已完成，旧备份暂无法清理")
             return False
         finally:
             _update_lock.release()
@@ -136,8 +143,29 @@ class RunOutcome:
                 self.failed = True
 
 
+class MaaCallError(RuntimeError):
+    """Identify a rejected MAA call without exposing its full task parameters."""
+
+    def __init__(self, operation, *, task_type=None, stage=None, detail=""):
+        self.operation = operation
+        self.task_type = task_type
+        self.stage = stage
+        label = {
+            "load": "资源加载失败",
+            "append_task": "任务提交失败",
+            "start": "任务启动失败",
+        }[operation]
+        target = f" | task={task_type}" if task_type else ""
+        if stage is not None:
+            target += f" | stage={stage or '上次作战'}"
+        super().__init__(
+            f"MAA {label}{target}：{detail or '核心未接受调用'}。"
+            "请检查 MAA 核心及资源版本，并查看 MAA 目录/debug/asst.log"
+        )
+
+
 class VerifiedAsst:
-    """Preserve the Asst API and callback while checking actual task completion."""
+    """Verify task admission and completion while retaining the Asst callback."""
 
     def __init__(self, asst_type, target, callback):
         self._outcome = RunOutcome()
@@ -168,7 +196,9 @@ class VerifiedAsst:
             try:
                 self._retire = BackupCheckpoint(target).retire
             except OSError:
-                logging.getLogger(__name__).warning("MAA 备份状态无法读取，保留备份")
+                from arknights_mower.utils.log import logger
+
+                logger.warning("MAA 备份状态无法读取，保留备份")
                 self._retire = lambda: False
 
     def __getattr__(self, name):
@@ -186,6 +216,20 @@ class VerifiedAsst:
         if self._consumer is not None:
             self._consumer(message, details, argument)
 
+    def append_task(self, type_name, params=None):
+        params = {} if params is None else params
+        with _update_lock:
+            task_id = self._asst.append_task(type_name, params)
+            if (
+                not isinstance(task_id, int)
+                or isinstance(task_id, bool)
+                or task_id <= 0
+            ):
+                raise MaaCallError(
+                    "append_task", task_type=type_name, stage=params.get("stage")
+                )
+            return task_id
+
     def start(self):
         with _update_lock:
             self._outcome.begin()
@@ -193,6 +237,8 @@ class VerifiedAsst:
             result = self._asst.start()
             self._active = bool(result)
             self._outcome.accept(result)
+            if not result:
+                raise MaaCallError("start")
         return result
 
     def _cleanup(self, verified=False):
@@ -207,9 +253,9 @@ class VerifiedAsst:
                 try:
                     self._retired = self._retire()
                 except Exception:
-                    logging.getLogger(__name__).warning(
-                        "MAA 任务已完成，旧备份清理暂不可用"
-                    )
+                    from arknights_mower.utils.log import logger
+
+                    logger.warning("MAA 任务已完成，旧备份清理暂不可用")
 
             self._cleanup_thread = threading.Thread(
                 target=retire, name="maa-backup-cleanup", daemon=True

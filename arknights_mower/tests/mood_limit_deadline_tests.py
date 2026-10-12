@@ -9,6 +9,7 @@ import pytest
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.utils import config, operation_timing
 from arknights_mower.utils.scheduler_task import (
+    NewsChecker,
     SchedulerTask,
     TaskTypes,
     protect_priority_tasks,
@@ -17,10 +18,11 @@ from arknights_mower.utils.scheduler_task import (
 
 
 @pytest.fixture(autouse=True)
-def settings(monkeypatch):
+def settings(monkeypatch, offline_maintenance):
     monkeypatch.setattr(config.conf, "enable_mastery", True)
     monkeypatch.setattr(config.conf, "run_order_delay", 5)
     monkeypatch.setattr(operation_timing, "_dorm_durations", {})
+    monkeypatch.setattr(NewsChecker, "get_update_time", lambda: (None, None))
 
 
 def release_at(deadline, name="令", room="dormitory_2"):
@@ -124,6 +126,7 @@ def test_dispatch_rechecks_priority_became_due_during_navigation(kind):
     limit = release_at(now - timedelta(minutes=3))
     priority = SchedulerTask(time=now - timedelta(seconds=1), task_type=kind)
     solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data = SimpleNamespace(operators={})
     solver.task, solver.tasks = limit, [limit, priority]
     solver.find = MagicMock(return_value=True)
     solver.skip = MagicMock()
@@ -182,6 +185,7 @@ def test_selected_ordinary_task_yields_to_newly_advanced_limit():
         time=now - timedelta(seconds=1), task_type=TaskTypes.CLUE_PARTY
     )
     solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data = SimpleNamespace(operators={})
     solver.task, solver.tasks = ordinary, [ordinary, limit]
     solver.find = MagicMock(return_value=True)
     solver.skip = MagicMock()

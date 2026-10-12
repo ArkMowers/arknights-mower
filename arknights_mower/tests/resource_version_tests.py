@@ -104,6 +104,18 @@ class TestCheckResourceUpdate(unittest.TestCase):
         self.assertIsNone(got["error"])
         self.assertTrue(got["current_display"].startswith("墟·复刻#"))
 
+    def test_same_day_rebuild_with_unchanged_source_snapshot_is_available(self):
+        local = _version("v2026.10.09-23806b7", "昨日海")
+        remote = _version("v2026.10.09-3c94100", "昨日海")
+        local["last_updated"] = remote["last_updated"] = "26-09-22-07-47-20_6c71fa"
+        for fetched, cached in [(remote, None), (None, remote)]:
+            with self.subTest(cached=fetched is None):
+                with self._patch(remote=fetched, local=local, cache=cached):
+                    got = rv.check_resource_update()
+                self.assertTrue(got["update_available"])
+                self.assertEqual(got["remote_version"], "v2026.10.09-3c94100")
+                self.assertIsNone(got["error"])
+
     def test_remote_newer_no_local(self):
         with self._patch(remote=_version(), local=None):
             got = rv.check_resource_update()

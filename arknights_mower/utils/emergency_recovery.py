@@ -10,8 +10,10 @@ from math import ceil, isfinite
 
 from arknights_mower.utils.resting_priority import (
     RestingTier,
+    crafting_rest_order,
     has_resting_mood,
     resting_key,
+    resting_mood,
     resting_tier,
 )
 from arknights_mower.utils.scheduler_task import TaskTypes
@@ -149,6 +151,27 @@ def primary_names(data):
     ]
 
 
+def exhaust_rest_due(data, op, tasks, now):
+    """用尽组仅在已休息、个人下限或既有用尽任务到期时参与当前轮休。"""
+    members = data.groups.get(op.group, [op.name])
+    exhausted = [
+        data.operators[name] for name in members if data.operators[name].exhaust_require
+    ]
+    if not exhausted or op.is_resting():
+        return True
+    if any(
+        has_resting_mood(member) and member.current_mood(now) <= member.lower_limit
+        for member in exhausted
+    ):
+        return True
+    return any(
+        task.type == TaskTypes.EXHAUST_OFF
+        and task.time <= now
+        and set(task.meta_data.split(",")) & set(members)
+        for task in tasks
+    )
+
+
 def native_opportunity(solver, required, now=None, *, budget=128, current_only=False):
     """在副本上搜索轮休；当前模式只检查可立即执行的安排，不预测速率。"""
     now = now or datetime.now()
@@ -226,13 +249,21 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
         groups = {}
         for name in primary_names(data):
             op = data.operators[name]
-            if op.is_resting():
+            if (
+                op.multi_group
+                or op.group
+                and not data.is_group_shift_anchor(op)
+                or op.is_resting()
+                or (current_only and not exhaust_rest_due(data, op, trial.tasks, when))
+            ):
                 continue
             if name in remaining or (
                 has_resting_mood(op)
                 and op.current_mood() <= data.resting_mood_threshold(op)
             ):
-                groups[op.group or name] = data.groups.get(op.group, [name])
+                groups[op.group or name] = (
+                    data.shift_group_members(op.group) if op.group else [name]
+                )
         for members in groups.values():
             candidate = copy.copy(trial)
             candidate.op_data = copy.deepcopy(
@@ -247,6 +278,15 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                     plan,
                     candidate.op_data.active_high_resting_count(),
                 )
+                if (
+                    not plan
+                    and current_only
+                    and any(data.operators[name].exhaust_require for name in members)
+                ):
+                    support = candidate._plan_exhaust_support(list(members))
+                    if support:
+                        coordinated = data.project_arrangements([support])
+                        queue.append((coordinated, when, used, served))
             except Exception:
                 uncertain = True
                 continue
@@ -289,13 +329,19 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                 continue
             op = data.operators.get(bed.name)
             event_id = ("bed", bed.name, bed.position)
-            if op is None or event_id in used:
+            if (
+                op is None
+                or op.multi_group
+                or op.group
+                and not data.is_group_shift_anchor(op)
+                or event_id in used
+            ):
                 continue
             if bed.time is None:
                 if op.is_high():
                     uncertain = True
                 continue
-            members = data.groups.get(op.group, [op.name])
+            members = data.shift_group_members(op.group) if op.group else [op.name]
             plan = {}
             for member in members:
                 worker = data.operators[member]
@@ -385,7 +431,9 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
     )
 
 
-def emergency_dorm_plan(data, state, tasks=(), *, members=None, reallocate=False):
+def emergency_dorm_plan(
+    data, state, tasks=(), *, members=None, reallocate=False, recovery_order=None
+):
     """救急优先连续安排同组恢复；余床沿用共享候选和预约。"""
     from arknights_mower.utils.dorm_candidates import (
         dorm_candidate_mood,
@@ -463,24 +511,72 @@ def emergency_dorm_plan(data, state, tasks=(), *, members=None, reallocate=False
             room, index = bed.position
             plan.setdefault(room, ["Current"] * len(data.plan[room]))[index] = ""
             bed.name, bed.time = "", None
-    probe = data.project_arrangements([plan]) if reallocate else copy.copy(data)
+    manager_departures = {}
+    if not reallocate:
+        for index, bed in enumerate(beds):
+            resident = data.get_current_operator(*bed.position)
+            if (
+                resident is not None
+                and resident.name in data.emergency_dorm_agents
+                and resident.name not in reserved | protected
+                and resident.room.startswith("dorm")
+                and resident.index < 2
+                and resting_tier(data, resident.name) != RestingTier.PRIORITY
+                and not data.is_free_room_excluded(resident.name)
+                and has_resting_mood(resident)
+                and not resident.mood_is_prediction
+                and resting_mood(resident) >= resident.upper_limit
+            ):
+                # 救急临时开放宿管位按既有离宿流程投影，不授权恢复床位抢占。
+                room, position = bed.position
+                manager_departures.setdefault(room, ["Current"] * len(data.plan[room]))[
+                    position
+                ] = ""
+                beds[index] = copy.copy(bed)
+                beds[index].reset()
+    probe = (
+        data.project_arrangements([plan if reallocate else manager_departures])
+        if reallocate or manager_departures
+        else copy.copy(data)
+    )
     probe.dorm = beds
     groups = {}
-    for name in sorted(need, key=lambda name: (resting_key(data, name), name)):
+    recovery_order = recovery_order or {}
+    for name in sorted(
+        need,
+        key=lambda name: (
+            resting_tier(data, name),
+            recovery_order.get(name, (2, float("inf"))),
+            resting_key(data, name),
+            name,
+        ),
+    ):
         group = (resting_tier(data, name), data.operators[name].group or name)
         groups.setdefault(group, []).append(name)
     ordered = [name for members in groups.values() for name in members]
     ordinary.discard("菲亚梅塔")
-    ordered.extend(sorted(ordinary, key=lambda name: (resting_key(data, name), name)))
+    ordered.extend(
+        crafting_rest_order(
+            data, sorted(ordinary, key=lambda name: (resting_key(data, name), name))
+        )
+    )
     for name in ordered:
         op = data.operators[name]
         if (name in residents and not reallocate) or op.is_working():
             continue
         active_groups = {op.group} if op.group else set()
-        index = probe._find_dorm_slot(name, set(), active_groups=active_groups)
+        index = probe._find_dorm_slot(
+            name,
+            set(),
+            active_groups=active_groups,
+            plan=plan,
+            isolation=not reallocate,
+        )
         if index is None:
             continue
         bed = beds.pop(index)
         room, position = bed.position
         plan.setdefault(room, ["Current"] * len(data.plan[room]))[position] = name
-    return plan
+    from arknights_mower.utils.scheduler_task import plan_dorm_isolation
+
+    return plan_dorm_isolation(data, plan, slots)

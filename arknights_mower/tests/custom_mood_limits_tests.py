@@ -330,6 +330,11 @@ def test_emergency_fixed_manager_keeps_personal_limit_and_completed_cycle_identi
 def predicted_emergency_solver(emergency_solver):
     solver = emergency_solver
     data = solver.op_data
+    choices = [*data.plan["central"][0].replacement, "夜刀"]
+    data.plan["central"][0].replacement = choices
+    data.operators[data.plan["central"][0].agent].replacement = choices.copy()
+    data.add(Operator("夜刀", "", time_stamp=ling_xi_rest_limit_tests.NOW))
+    data.config.free_blacklist.append("夜刀")
     # 无替班可接手时，离宿实测必须达到目标；可交接提前退出另有覆盖。
     for name in data.plan["central"][0].replacement:
         op = data.operators[name]

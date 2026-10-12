@@ -1,6 +1,7 @@
 """Startup helpers consume one deadline, including fragmented socket I/O."""
 
 import socket
+import subprocess
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -104,7 +105,7 @@ class DeviceIOBudgetTests(unittest.TestCase):
             self.assertGreater(kwargs["timeout"], 0)
             self.assertLessEqual(kwargs["timeout"], 1)
             clock.now = 1
-            return b"success"
+            return subprocess.CompletedProcess(args[0], 0, b"success", b"")
 
         with (
             patch(
@@ -112,9 +113,10 @@ class DeviceIOBudgetTests(unittest.TestCase):
                 return_value=None,
             ),
             patch(
-                "arknights_mower.utils.device.adb_client.utils.subprocess.check_output",
+                "arknights_mower.utils.device.adb_client.utils.run_command",
                 side_effect=late_result,
             ) as command,
+            patch("subprocess.Popen", side_effect=AssertionError("unexpected process")),
             self.assertRaisesRegex(DeviceRecoveryError, "shared deadline"),
             device_io_budget(clock.remaining),
         ):

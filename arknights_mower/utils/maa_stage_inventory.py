@@ -11,7 +11,6 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from arknights_mower.data import key_mapping, stage_data_full
-from arknights_mower.utils.path import get_path
 from arknights_mower.utils.weekly_stage import select_latest_activity_stages
 
 UNBOUND_STAGE_IDS = frozenset({"", "Annihilation"})
@@ -78,8 +77,23 @@ def default_materials_for_stage(stage_id: str, stage: dict | None = None) -> lis
 def load_inventory_snapshot(
     path: str | os.PathLike | None = None,
 ) -> tuple[dict, str | None]:
-    """读取 cultivate.json，返回物品 id -> 数量及更新时间。"""
-    inventory_path = Path(path or get_path("@app/tmp/cultivate.json"))
+    """默认读取共享库存；显式路径用于读取独立的森空岛缓存快照。"""
+    if path is None:
+        from arknights_mower.solvers.record import get_inventory_counts
+
+        inventory = {}
+        for name, count in get_inventory_counts().items():
+            entry = key_mapping.get(str(name))
+            if not isinstance(entry, list) or len(entry) < 3:
+                continue
+            try:
+                inventory[str(entry[0])] = max(0, int(count))
+            except (TypeError, ValueError, OverflowError):
+                continue
+        # Database writes also include logs; its mtime is not an inventory timestamp.
+        return inventory, None
+
+    inventory_path = Path(path)
     if not inventory_path.exists():
         return {}, None
     try:
@@ -238,7 +252,13 @@ def _rule_item_count(item, inventory: dict) -> int:
     )
 
 
-def _stage_limit_reached(stage: str, limit_rules: Iterable, inventory: dict) -> bool:
+def stage_limit_status(
+    stage: str, limit_rules: Iterable, inventory: dict
+) -> tuple[bool, bool]:
+    """Return whether a stage has active limits and whether any rule is met."""
+    if stage in UNBOUND_STAGE_IDS:
+        return False, False
+    bound = False
     for rule in limit_rules or []:
         if not _value(rule, "enabled", True):
             continue
@@ -253,10 +273,82 @@ def _stage_limit_reached(stage: str, limit_rules: Iterable, inventory: dict) -> 
                 active_items.append(_rule_item_count(item, inventory) >= limit)
         if not active_items:
             continue
+        bound = True
         operator = str(_value(rule, "operator", "and") or "and").lower()
         if any(active_items) if operator == "or" else all(active_items):
-            return True
-    return False
+            return True, True
+    return bound, False
+
+
+def maa_fight_drop_targets(
+    stage: str,
+    limit_rules: Iterable,
+    inventory: dict,
+    accumulated: dict | None = None,
+) -> dict:
+    """Translate inventory caps into cumulative MAA ANY targets for this task.
+
+    An AND rule becomes a native target only when one known item remains below
+    its cap. Recompute after each confirmed drop; unknown stock cannot establish
+    an exact remaining quantity.
+    """
+    if stage in UNBOUND_STAGE_IDS:
+        return {"drops": {}, "reached": False, "bound": False}
+    rules = list(limit_rules or [])
+    bound, reached = stage_limit_status(stage, rules, inventory)
+    if reached:
+        return {"drops": {}, "reached": True, "bound": bound}
+    accumulated = accumulated or {}
+    targets = {}
+    for rule in rules:
+        if not _value(rule, "enabled", True):
+            continue
+        if str(_value(rule, "stage", "") or "").strip() != stage:
+            continue
+        operator = str(_value(rule, "operator", "and") or "and").lower()
+        remaining = {}
+        unknown = False
+        for item in _value(rule, "items", []) or []:
+            limit = int(_value(item, "limit", 0) or 0)
+            item_id = str(_value(item, "item_id", "") or "").strip()
+            item_name = str(_value(item, "item_name", "") or "").strip()
+            if limit <= 0 or not (item_id or item_name):
+                continue
+            metadata = key_mapping.get(item_id) or key_mapping.get(item_name)
+            if isinstance(metadata, list) and metadata:
+                item_id = str(metadata[0])
+            if not item_id or item_id not in inventory:
+                unknown = True
+                continue
+            missing = limit - _rule_item_count(item, inventory)
+            if missing <= 0:
+                continue
+            target = int(accumulated.get(item_id, 0) or 0) + missing
+            if item_id in remaining:
+                target = (
+                    min(remaining[item_id], target)
+                    if operator == "or"
+                    else max(remaining[item_id], target)
+                )
+            remaining[item_id] = target
+        if operator != "or" and (unknown or len(remaining) != 1):
+            continue
+        for item_id, target in remaining.items():
+            targets[item_id] = min(targets.get(item_id, target), target)
+    return {"drops": targets, "reached": False, "bound": bound}
+
+
+def _active_ratio_members(rule):
+    if not _value(rule, "enabled", True):
+        return
+    for member in _value(rule, "members", []) or []:
+        stage = str(_value(member, "stage", "") or "").strip()
+        if (
+            stage not in UNBOUND_STAGE_IDS
+            and float(_value(member, "ratio", 0) or 0) > 0
+            and (_value(member, "item_id", "") or _value(member, "item_name", ""))
+        ):
+            yield member
 
 
 def _apply_ratio_rules(stages: list[str], ratio_rules: Iterable, inventory: dict):
@@ -266,20 +358,12 @@ def _apply_ratio_rules(stages: list[str], ratio_rules: Iterable, inventory: dict
     stage_positions = {stage: index for index, stage in enumerate(stages)}
 
     for rule in ratio_rules or []:
-        if not _value(rule, "enabled", True):
-            continue
         candidates = []
         seen = set()
-        for member in _value(rule, "members", []) or []:
+        for member in _active_ratio_members(rule):
             stage = str(_value(member, "stage", "") or "").strip()
             ratio = float(_value(member, "ratio", 0) or 0)
-            if (
-                not stage
-                or stage in seen
-                or stage in claimed_stages
-                or stage not in kept
-                or ratio <= 0
-            ):
+            if stage in seen or stage in claimed_stages or stage not in kept:
                 continue
             seen.add(stage)
             count = _rule_item_count(member, inventory)
@@ -320,28 +404,36 @@ def select_stages_by_inventory(
     ratio_rules: Iterable = (),
     inventory: dict | None = None,
 ) -> dict:
-    """先执行物品上限，再对剩余关卡执行比例选择。"""
+    """剿灭与有效库存规则关卡优先，无库存规则关卡仅作后备。"""
     original = list(stages)
+    limit_rules = list(limit_rules or [])
+    ratio_rules = list(ratio_rules or [])
     inventory = inventory or {}
-    kept = []
+    annihilation = []
+    priority = []
+    fallback = []
     limit_skipped = []
+    ratio_bound_stages = {
+        str(_value(member, "stage", "") or "").strip()
+        for rule in ratio_rules
+        for member in _active_ratio_members(rule)
+    }
     for stage in original:
-        if stage in UNBOUND_STAGE_IDS or not _stage_limit_reached(
-            stage, limit_rules, inventory
-        ):
-            kept.append(stage)
-        else:
+        if stage == "Annihilation":
+            annihilation.append(stage)
+            continue
+        if stage in UNBOUND_STAGE_IDS:
+            fallback.append(stage)
+            continue
+        bound, reached = stage_limit_status(stage, limit_rules, inventory)
+        if reached:
             limit_skipped.append(stage)
+        elif bound or stage in ratio_bound_stages:
+            priority.append(stage)
+        else:
+            fallback.append(stage)
 
-    # 所有候选都达到上限时，按用户约定忽略整次跳过设置，避免当天完全无关可刷。
-    if original and not kept and limit_skipped:
-        return {
-            "stages": original,
-            "limit_skipped": [],
-            "limit_fallback": True,
-            "ratio_decisions": [],
-        }
-
+    kept = annihilation + (priority if priority else fallback)
     selected, ratio_decisions = _apply_ratio_rules(kept, ratio_rules, inventory)
     return {
         "stages": selected,

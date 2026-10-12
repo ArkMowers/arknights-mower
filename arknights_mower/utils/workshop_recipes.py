@@ -11,6 +11,7 @@ from arknights_mower.utils.workshop_material_policy import (
 )
 
 T4_PREFERRED = ("九色鹿", "蚀清")
+SCOPED_OPERATORS = (*T4_PREFERRED, "莱伊", "旅骨")
 
 
 def recipe_category(recipe):
@@ -23,6 +24,11 @@ def recipe_category(recipe):
 
 def operator_recipe_allowed(name, recipe, *, fodder=False):
     """Apply user material scopes using original recipe cost, before reductions."""
+    if name == "旅骨":
+        return (
+            recipe_category(recipe) == "t5_operators"
+            and recipe.get("output_name") == "重相位对映体"
+        )
     t4 = recipe.get("tab") == "精英材料" and recipe.get("apCost") == 4
     if name in T4_PREFERRED:
         deer_fodder = (
@@ -40,7 +46,7 @@ def operator_recipe_allowed(name, recipe, *, fodder=False):
 def scope_workshop_items(name, items, formulas=None):
     """Filter saved tasks too; copy changed items without altering user settings."""
     protected = protected_workshop_materials()
-    if not protected and name not in (*T4_PREFERRED, "莱伊"):
+    if not protected and name not in SCOPED_OPERATORS:
         return list(items)
     if formulas is None:
         from arknights_mower.data import workshop_formula
@@ -71,7 +77,7 @@ def rule_matches(rule, name, recipe):
         and (
             "original_cost" not in rule or rule["original_cost"] == recipe.get("apCost")
         )
-        and ("item" not in rule or rule["item"] == name)
+        and ("item" not in rule or name in rule["item"].split("或"))
         and ("family" not in rule or rule["family"] in name)
     )
 

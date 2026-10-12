@@ -15,6 +15,8 @@ from arknights_mower.utils.scheduler_task import (
     try_add_release_dorm,
 )
 
+pytestmark = pytest.mark.usefixtures("offline_maintenance")
+
 solver = dorm_empty_release_tests.solver
 op_data = dorm_empty_release_tests.op_data
 ROOM = dorm_empty_release_tests.ROOM

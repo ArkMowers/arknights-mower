@@ -1,5 +1,7 @@
 """Capture incidents use one owned rebuild and verified same-target ADB degradation."""
 
+import subprocess
+
 import numpy as np
 
 from arknights_mower.utils.config.device_profile import capture_compatibility_error
@@ -34,6 +36,10 @@ SIZE_GUIDANCE = (
     "重启目标设备后重试；只读检查不会修改设备尺寸。"
 )
 RETRY_GUIDANCE = "请检查所选后端后重试，或手动选择其他兼容截图后端。"
+TIMEOUT_GUIDANCE = (
+    "设备命令未在限时内返回，请确认目标实例与管理器响应正常后重试；"
+    "也可改选其他兼容截图后端绕过该命令。"
+)
 
 
 def screenshot_alternatives(profile, host):
@@ -95,6 +101,13 @@ class ScreenshotFailure(DeviceRecoveryError):
         cause_text = str(cause).rstrip("。")
         if self.size_mismatch:
             message = f"{cause_text}。{SIZE_GUIDANCE}"
+        elif isinstance(cause, subprocess.TimeoutExpired):
+            # A command that ran out of its own deadline says nothing about the
+            # selected backend, so it names the command instead.
+            message = (
+                f"{BACKEND_LABELS[self.backend]} 截图命令超时：{cause_text}。"
+                f"{TIMEOUT_GUIDANCE}"
+            )
         else:
             message = f"{BACKEND_LABELS[self.backend]} 截图失败：{cause_text}。{RETRY_GUIDANCE}"
         if fallback is not None:

@@ -38,7 +38,7 @@ _LINUX_WEBVIEW_INSTALL_HINT = (
     "    sudo dnf install webkit2gtk4.1 gi-girepository libgtk-3\n"
     "Arch Linux：\n"
     "    sudo pacman -S webkit2gtk-4.1 gobject-introspection\n\n"
-    "安装完成后重新运行 mower。更完整的说明见 README 的 Linux 打包一节。"
+    "安装完成后重新运行 mower。更完整的说明见 docs/cookbook/packaging.md 的 Linux 一节。"
 )
 
 
@@ -732,6 +732,8 @@ def _run_desktop():
     # Local log reads can use the loopback and same-origin boundary instead.
     server.app.token = runtime_token
     server.app.config["WEBVIEW_LOCAL_ONLY_NO_TOKEN"] = not token and host == "127.0.0.1"
+    # Claim startup before serving pages, including cached frontend versions.
+    server.app.config["DESKTOP_STARTUP_HANDLED"] = True
     server.register_shutdown(shutdown)
 
     registration.running = lambda: bool(
@@ -804,28 +806,50 @@ def _run_desktop():
     request_auto_check()
 
     resume_mode = os.environ.pop("MOWER_RESUME_MODE", "")
-
-    def resume_after_update():
-        while (
-            runtime.active_job()
-            and not registration.shutdown_requested()
-            and not shutdown.closing
-        ):
-            sleep(0.5)
-        if registration.shutdown_requested() or shutdown.closing:
-            return
-        with server.app.test_request_context(headers={"token": runtime_token}):
-            if resume_mode in ("0", "1"):
-                server.start(resume_mode)
-            else:
-                server.start("2" if os.environ.get("MOWER_RESTART_JOB") else "0")
-
     resume = resume_mode in ("0", "1") or (
         os.environ.get("MOWER_RESUME_RUN") == "1"
         if os.environ.get("MOWER_RESTART_JOB")
-        else background and conf.start_automatically
+        else conf.start_automatically
     )
-    if resume:
+    auto_resource = conf.resource_update.enable and conf.resource_update.auto_update
+
+    def startup_cancelled():
+        return (
+            registration.shutdown_requested()
+            or shutdown.closing
+            or config.stop_mower.is_set()
+        )
+
+    def resume_after_update():
+        while not startup_cancelled() and runtime.active_job():
+            sleep(0.5)
+        if startup_cancelled():
+            return
+        with server.app.test_request_context(
+            method="POST", headers={"token": runtime_token}
+        ):
+            if auto_resource:
+                try:
+                    info = server.get_resource_version()
+                    if info.get("update_available") is True and not startup_cancelled():
+                        server.install_resource()
+                except Exception:
+                    from arknights_mower.utils.log import logger
+
+                    logger.exception("启动时自动更新资源失败")
+                # A cached page or manual request can already own the install.
+                if server.resource_update.running():
+                    server.resource_update.thread.join()
+        if resume and not startup_cancelled():
+            with server.app.test_request_context(
+                method="GET", headers={"token": runtime_token}
+            ):
+                if resume_mode in ("0", "1"):
+                    server.start(resume_mode)
+                else:
+                    server.start("2" if os.environ.get("MOWER_RESTART_JOB") else "0")
+
+    if resume or auto_resource:
         Thread(target=resume_after_update, daemon=True).start()
     manager_missing_since = None
     try:

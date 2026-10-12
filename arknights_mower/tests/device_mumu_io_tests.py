@@ -217,6 +217,47 @@ class MuMuDiscoveryIOTests(unittest.TestCase):
         self.assertEqual(result["candidates"][0]["manager_path"], str(selected))
         self.assertEqual(len(self.run.call_args_list), 1)
 
+    def test_runtime_sources_resolve_and_deduplicate_the_installation(self):
+        for pair in ("main", "shell"):
+            root = Path(self.enterContext(tempfile.TemporaryDirectory())).resolve()
+            manager = self.add_installation(root, f"temp/{pair}")
+            for source in (
+                root,
+                root / "uninstall.exe",
+                manager.parent,
+                manager.parent / "MuMuPlayer.exe",
+                manager,
+            ):
+                for processes in ([], [str(manager)]):
+                    with self.subTest(pair=pair, source=source, processes=processes):
+                        result = (
+                            self.control(
+                                registry=lambda: [str(source)],
+                                process=lambda: processes,
+                            )
+                            .discover()
+                            .to_dict()
+                        )
+                        self.assertEqual(len(result["candidates"]), 1)
+                        binding = result["candidates"][0]["binding"]
+                        self.assertEqual(Path(binding["installation_path"]), root)
+                        self.assertEqual(Path(binding["manager_path"]), manager)
+                        self.assertEqual(len(self.run.call_args_list), 1)
+
+    def test_explicit_runtime_manager_keeps_priority_over_other_layouts(self):
+        for layout in ("temp/main", "temp/shell", ".backup/main", ".backup/shell"):
+            with self.subTest(layout=layout):
+                manager = self.add_installation(self.root, layout).resolve()
+                self.configuration.device.manager_path = str(manager)
+                result = self.control().discover().to_dict()
+                self.assertEqual(len(result["candidates"]), 1)
+                binding = result["candidates"][0]["binding"]
+                self.assertEqual(
+                    Path(binding["installation_path"]), self.root.resolve()
+                )
+                self.assertEqual(Path(binding["manager_path"]), manager)
+                self.assertEqual(len(self.run.call_args_list), 1)
+
     def test_all_installs_share_maximum_64_instance_limit(self):
         row = json.loads(vendor_output("single"))["0"]
         output = json.dumps(

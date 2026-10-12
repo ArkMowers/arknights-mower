@@ -131,19 +131,19 @@ def test_capture_guard_precedes_both_raw_socket_requests(monkeypatch, clock_star
     decoder.assert_called_once_with(b"gzip frame", header_size=16)
 
 
-def test_check_output_runs_only_after_guard(monkeypatch):
+def test_command_output_runs_only_after_guard(monkeypatch):
     order = Mock()
     guard = Mock(return_value=3)
-    output = Mock(return_value=b"ok")
+    output = Mock(return_value=subprocess.CompletedProcess([], 0, b"ok", None))
     order.attach_mock(guard, "guard")
     order.attach_mock(output, "output")
     monkeypatch.setattr(utils, "guard_adb", guard)
-    monkeypatch.setattr(subprocess, "check_output", output)
+    monkeypatch.setattr(utils, "run_command", output)
     argv = [ADB, "-s", SERIAL, "shell", "getprop"]
     assert utils.run_cmd(argv, decode=True) == "ok"
     assert argv == [ADB, "-s", SERIAL, "shell", "getprop"]
     assert [entry[0] for entry in order.mock_calls] == ["guard", "output"]
-    guard.assert_called_once_with(ADB, timeout=10, run=subprocess.run)
+    guard.assert_called_once_with(ADB, timeout=10, run=output)
     assert output.call_args.args == (argv,)
     assert output.call_args.kwargs["timeout"] == 3
     assert_child_options(output.call_args.kwargs)
@@ -236,7 +236,7 @@ def test_droidcast_helper_process_starts_after_guard(monkeypatch):
 def test_forward_claim_survives_command_deadline_failure(monkeypatch):
     helper = droidcast.DroidCastSession(ADB, SERIAL)
     execute = Mock(return_value=subprocess.CompletedProcess([], 0, b"", b""))
-    monkeypatch.setattr(subprocess, "run", execute)
+    monkeypatch.setattr(droidcast, "run_command", execute)
 
     def expired_after_success(args, *, stage, runner):
         argv = [ADB, "-s", SERIAL, *args]
@@ -271,7 +271,7 @@ def test_droidcast_commands_keep_shared_guard(args, monkeypatch):
 )
 def test_droidcast_cleanup_preserves_argv_and_environment(args, monkeypatch):
     execute = Mock(return_value=subprocess.CompletedProcess([], 0, b"", b""))
-    monkeypatch.setattr(subprocess, "run", execute)
+    monkeypatch.setattr(droidcast, "run_command", execute)
     helper = droidcast.DroidCastSession(ADB, SERIAL)
     assert helper._adb(args, stage="cleanup", cleanup=True) == b""
     selector = [] if args == ["forward", "--list"] else ["-s", SERIAL]
@@ -290,11 +290,15 @@ def test_custom_capture_guards_only_adb_commands(adb_capture, monkeypatch):
     target.device_id = SERIAL
     frame = object()
     monkeypatch.setattr(device, "bytes2img", Mock(return_value=frame))
-    order, guard, output = Mock(), Mock(return_value=3), Mock(return_value=b"png")
+    order, guard, output = (
+        Mock(),
+        Mock(return_value=3),
+        Mock(return_value=subprocess.CompletedProcess([], 0, b"png", None)),
+    )
     order.attach_mock(guard, "guard")
     order.attach_mock(output, "output")
     monkeypatch.setattr(device, "guard_adb", guard)
-    monkeypatch.setattr(subprocess, "check_output", output)
+    monkeypatch.setattr(device, "run_command", output)
     assert target.capture_frame() is frame
     if adb_capture:
         assert [entry[0] for entry in order.mock_calls] == ["guard", "output"]
@@ -456,6 +460,12 @@ def test_maa_connect_preserves_shared_compatibility(
     assistant = Mock()
     asst = ModuleType("asst.asst")
     asst.Asst = Mock(return_value=assistant)
+    assistant.get_version.return_value = "v6.19.0-beta.1"
+    (tmp_path / "MaaCore.dll").write_bytes(b"offline core")
+    monkeypatch.setattr(
+        "arknights_mower.utils.maa_runtime.read_installed_version",
+        Mock(return_value="v6.19.0-beta.1"),
+    )
     asst_utils = ModuleType("asst.utils")
     asst_utils.InstanceOptionType = SimpleNamespace(
         touch_type="touch", adblite_enabled=4, kill_on_adb_exit=5
@@ -541,13 +551,16 @@ def test_maa_connect_preserves_shared_compatibility(
         ("connected to 127.0.0.1:5559", False),
     ],
 )
+@pytest.mark.parametrize("clock_start", [0.0, 510.2])
 def test_selected_emulator_alias_recovery_connects_only_pinned_ports(
-    response, accepted
+    response, accepted, clock_start
 ):
     runner = Mock(
         return_value=subprocess.CompletedProcess([], 0, response.encode(), b"")
     )
-    adb = ProductionSessionADB(run=runner, probe=lambda timeout: None)
+    adb = ProductionSessionADB(
+        run=runner, probe=lambda timeout: None, monotonic=lambda: clock_start
+    )
     assert adb.recover(ADB, "emulator-5558", 5) is accepted
     runner.assert_called_once()
     assert runner.call_args.args == ([ADB, "connect", "emu:5558,5559"],)

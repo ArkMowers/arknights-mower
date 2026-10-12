@@ -1,6 +1,7 @@
 """完整本地排班＋2026-09-27 00:42 日志缓存的调度回放。
 
 plan 保留本地全部八张副表；日志不含当时完整 plan，二者不是同版本快照。
+回放保留原始绑组、工作岗位、替班及零心情工作设置。
 只替代设备点击，排班加载、条件求值、纠错和副表收敛使用实际代码。
 """
 
@@ -44,8 +45,11 @@ def replay(monkeypatch):
     monkeypatch.setattr(Operators, "current_room_changed_callback", None)
     state = json.loads((FIXTURES / "backup_log_state_20260927.json").read_text())
     solver = object.__new__(base.BaseSchedulerSolver)
-    solver.op_data = Operators(build_global_plan())
+    global_plan = build_global_plan()
+    assert global_plan["default_plan"].config.is_workaholic("砾")
+    solver.op_data = Operators(global_plan)
     assert solver.op_data.init_and_validate() is None
+    assert solver.op_data.groups["永续"] == ["砾"]
     assert len(solver.op_data.backup_plans) == 8
     assert solver.op_data.swap_plan(state["conditions"], refresh=True) is None
     for name, values in state["operators"].items():

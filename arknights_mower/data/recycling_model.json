@@ -1,0 +1,483 @@
+{
+  "source": "回收站收益计算器（额外池和普通池各给1次材料ver).xlsx",
+  "sheet": "计算表",
+  "ranges": [
+    "B3:F46",
+    "M3:O29"
+  ],
+  "point_threshold": 10000,
+  "ordinary": [
+    {
+      "name": "装置",
+      "sanity": 8.159184154709665,
+      "weight": 717,
+      "points": 650,
+      "rarity": 2
+    },
+    {
+      "name": "酮凝集",
+      "sanity": 6.140930394698013,
+      "weight": 717,
+      "points": 650,
+      "rarity": 2
+    },
+    {
+      "name": "异铁",
+      "sanity": 6.144847690966082,
+      "weight": 717,
+      "points": 650,
+      "rarity": 2
+    },
+    {
+      "name": "聚酸酯",
+      "sanity": 4.950846424400593,
+      "weight": 717,
+      "points": 650,
+      "rarity": 2
+    },
+    {
+      "name": "糖",
+      "sanity": 4.951398375706085,
+      "weight": 717,
+      "points": 650,
+      "rarity": 2
+    },
+    {
+      "name": "固源岩",
+      "sanity": 3.4066809256601878,
+      "weight": 717,
+      "points": 650,
+      "rarity": 2
+    },
+    {
+      "name": "聚酸酯块",
+      "sanity": 61.014978491533064,
+      "weight": 4,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "糖聚块",
+      "sanity": 61.395063287049275,
+      "weight": 4,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "环烃聚质",
+      "sanity": 31.883777100242543,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "类凝结核",
+      "sanity": 26.458476650560012,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "液化高能气体",
+      "sanity": 38.44991021210956,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "电极单元",
+      "sanity": 34.38501512093411,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "全新装置",
+      "sanity": 31.951666960990583,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "褐素纤维",
+      "sanity": 28.67704628081314,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "转质盐组",
+      "sanity": 29.746993732037925,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "化合切削液",
+      "sanity": 26.4647789584335,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "凝胶",
+      "sanity": 3.24,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "半自然溶剂",
+      "sanity": 26.492861215309468,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "酮凝集组",
+      "sanity": 23.8786519209432,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "异铁组",
+      "sanity": 23.894321106015475,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "炽合金",
+      "sanity": 22.3065806243533,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "聚酸酯组",
+      "sanity": 19.11831603975334,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "糖组",
+      "sanity": 19.1205238449753,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "晶体元件",
+      "sanity": 21.23737728571888,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "固源岩组",
+      "sanity": 16.348335125407484,
+      "weight": 290,
+      "points": 500,
+      "rarity": 3
+    },
+    {
+      "name": "提纯源岩",
+      "sanity": 62.49303437289135,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "手性屈光体",
+      "sanity": 74.56247208686004,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "液化醚吸聚体",
+      "sanity": 85.88672352632834,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "聚能动力单元",
+      "sanity": 101.88630054596254,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "异铁块",
+      "sanity": 95.95831970385728,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "环烃预制体",
+      "sanity": 87.40751160417366,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "酮阵列",
+      "sanity": 66.13752217794472,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "改量装置",
+      "sanity": 64.26803139297681,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "RMA70-24",
+      "sanity": 56.5550163529302,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "五水研磨石",
+      "sanity": 55.465682558087934,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "固化纤维板",
+      "sanity": 80.36170782185424,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "晶体电路",
+      "sanity": 65.12102968687321,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "炽合金块",
+      "sanity": 53.87794207642584,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "精炼溶剂",
+      "sanity": 53.297334664823694,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "切削原液",
+      "sanity": 47.68185073523287,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "转质盐聚块",
+      "sanity": 72.46007328340453,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "聚合凝胶",
+      "sanity": 46.54059622145151,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "三水锰矿",
+      "sanity": 22.338010530836005,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    },
+    {
+      "name": "白马醇",
+      "sanity": 20.90021833605797,
+      "weight": 40,
+      "points": 0,
+      "rarity": 4
+    }
+  ],
+  "extra": [
+    {
+      "name": "聚酸酯块",
+      "sanity": 61.014978491533064,
+      "weight": 40,
+      "rarity": 4
+    },
+    {
+      "name": "糖聚块",
+      "sanity": 61.395063287049275,
+      "weight": 40,
+      "rarity": 4
+    },
+    {
+      "name": "提纯源岩",
+      "sanity": 62.49303437289135,
+      "weight": 488,
+      "rarity": 4
+    },
+    {
+      "name": "手性屈光体",
+      "sanity": 74.56247208686004,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "液化醚吸聚体",
+      "sanity": 85.88672352632834,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "聚能动力单元",
+      "sanity": 101.88630054596254,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "异铁块",
+      "sanity": 95.95831970385728,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "环烃预制体",
+      "sanity": 87.40751160417366,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "酮阵列",
+      "sanity": 66.13752217794472,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "改量装置",
+      "sanity": 64.26803139297681,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "RMA70-24",
+      "sanity": 56.5550163529302,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "五水研磨石",
+      "sanity": 55.465682558087934,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "固化纤维板",
+      "sanity": 80.36170782185424,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "晶体电路",
+      "sanity": 65.12102968687321,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "炽合金块",
+      "sanity": 53.87794207642584,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "精炼溶剂",
+      "sanity": 53.297334664823694,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "切削原液",
+      "sanity": 47.68185073523287,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "转质盐聚块",
+      "sanity": 72.46007328340453,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "聚合凝胶",
+      "sanity": 46.54059622145151,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "三水锰矿",
+      "sanity": 22.338010530836005,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "白马醇",
+      "sanity": 20.90021833605797,
+      "weight": 468,
+      "rarity": 4
+    },
+    {
+      "name": "晶体电子单元",
+      "sanity": 200.90586289591025,
+      "weight": 168,
+      "rarity": 5
+    },
+    {
+      "name": "烧结核凝晶",
+      "sanity": 215.56229203799293,
+      "weight": 168,
+      "rarity": 5
+    },
+    {
+      "name": "聚合剂",
+      "sanity": 213.4145749444015,
+      "weight": 168,
+      "rarity": 5
+    },
+    {
+      "name": "D32钢",
+      "sanity": 123.1844081315623,
+      "weight": 168,
+      "rarity": 5
+    },
+    {
+      "name": "双极纳米片",
+      "sanity": 94.89416675480092,
+      "weight": 168,
+      "rarity": 5
+    },
+    {
+      "name": "重相位对映体",
+      "sanity": 305.71986228945616,
+      "weight": 168,
+      "rarity": 5
+    }
+  ]
+}

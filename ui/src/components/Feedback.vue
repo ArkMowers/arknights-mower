@@ -1,5 +1,5 @@
 <script setup>
-import { inject, ref, watch, computed, h } from 'vue'
+import { inject, ref, computed } from 'vue'
 import axios from 'axios'
 const show = inject('show_feedback')
 
@@ -26,7 +26,7 @@ async function submitFeedback() {
       const req = feedbackData.value
       const msg = (await axios.post(`${import.meta.env.VITE_HTTP_URL}/submit_feedback`, req)).data
       if (msg == '邮件发送成功！') {
-        alert(msg + '，内容已经自动复制到剪切板,请前往频道发帖')
+        alert(msg + '，可在反馈表查看已有记录；邮件内容不会自动写入表格。')
         copy_descrioption()
       } else {
         alert(msg)
@@ -134,19 +134,31 @@ function copy_descrioption() {
       <template #header>
         <h3>反馈</h3>
       </template>
+      <n-space vertical :size="8" style="margin-bottom: 16px">
+        <n-a
+          href="https://docs.qq.com/sheet/DUEJ6UWN5VFVRU0dG?tab=BB08J2"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          打开 Mower 反馈表
+        </n-a>
+        <n-text depth="3"
+          >此处提交通过已配置邮箱发送给开发组；反馈表可单独查阅，填写需相应编辑权限。</n-text
+        >
+      </n-space>
       <n-form-item path="acknowledged1" class="checkbox-wrapper">
         <n-checkbox v-model:checked="feedbackData.acknowledged1">
-          我查看了更新公告/下崽器，确保软件版本是最新版本
+          我已在 Mower 设置 → 软件更新中检查当前版本，并查看相关更新说明
         </n-checkbox>
       </n-form-item>
       <n-form-item path="acknowledged2" class="checkbox-wrapper">
         <n-checkbox v-model:checked="feedbackData.acknowledged2">
-          我查看了Mower频道，确保没有人提交过类似问题在对应版块
+          我已查看反馈表和相关讨论，核对是否已有相同问题
         </n-checkbox>
       </n-form-item>
       <n-form-item path="acknowledged3" class="checkbox-wrapper">
         <n-checkbox v-model:checked="feedbackData.acknowledged3">
-          反馈成功后，我会点击复制反馈内容按钮并在频道版块发帖以供他人查看
+          我会提供版本、实际现象、期望行为和必要日志，并去除敏感信息
         </n-checkbox>
       </n-form-item>
       <n-form-item label="反馈类型" path="type">

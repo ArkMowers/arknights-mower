@@ -16,6 +16,36 @@ from arknights_mower.utils.device.endpoint_identity import emulator_connect_targ
 
 
 class SharedADBTests(unittest.TestCase):
+    def test_frozen_clock_cannot_inflate_guard_or_command_budget(self):
+        for clock_start in (0.0, 510.2):
+            with self.subTest(clock_start=clock_start):
+                runner = Mock(
+                    return_value=subprocess.CompletedProcess(
+                        [], 0, b"Android Debug Bridge version 1.0.41\n", b""
+                    )
+                )
+                probe = Mock(return_value=41)
+                run_adb(
+                    ["adb", "devices"],
+                    timeout=5,
+                    run=runner,
+                    probe=probe,
+                    monotonic=lambda: clock_start,
+                )
+                self.assertEqual(probe.call_args.args, (5,))
+                self.assertEqual(
+                    [call.kwargs["timeout"] for call in runner.call_args_list], [5, 5]
+                )
+                self.assertEqual(
+                    guard_adb(
+                        "adb",
+                        timeout=5,
+                        probe=lambda timeout: None,
+                        monotonic=lambda: clock_start,
+                    ),
+                    5,
+                )
+
     def test_unverified_client_version_never_executes_device_command(self):
         for output in (
             b"unknown executable",
@@ -175,6 +205,19 @@ class SharedADBTests(unittest.TestCase):
 
 
 class ServerProbeTests(unittest.TestCase):
+    def test_frozen_clock_cannot_inflate_socket_budgets(self):
+        for clock_start in (0.0, 510.2):
+            for operation, replies in (
+                (probe_adb_server, [b"OKAY", b"0004", b"0029"]),
+                (kill_adb_server, [b"OKAY"]),
+            ):
+                with self.subTest(clock_start=clock_start, operation=operation):
+                    factory, connection = self.connection()
+                    connection.recv.side_effect = replies
+                    operation(5, socket_factory=factory, monotonic=lambda: clock_start)
+                    for call in connection.settimeout.call_args_list:
+                        self.assertEqual(call.args, (5,))
+
     def connection(self):
         factory = MagicMock()
         connection = factory.return_value.__enter__.return_value
@@ -225,15 +268,32 @@ class ServerProbeTests(unittest.TestCase):
                 with self.assertRaises(SharedADBError):
                     probe_adb_server(5, socket_factory=factory)
 
-    def test_only_connected_handshake_timeout_is_recoverable(self):
-        factory, connection = self.connection()
-        connection.recv.side_effect = socket.timeout("stalled")
-        with self.assertRaises(SharedADBHandshakeTimeout):
-            probe_adb_server(5, socket_factory=factory)
-        connection.connect.side_effect = socket.timeout("connect stalled")
-        with self.assertRaises(SharedADBError) as raised:
-            probe_adb_server(5, socket_factory=factory)
-        self.assertNotIsInstance(raised.exception, SharedADBHandshakeTimeout)
+    def test_an_unanswered_listener_supplies_recovery_evidence_at_either_phase(self):
+        for stage in ("connect", "handshake"):
+            with self.subTest(stage=stage):
+                factory, connection = self.connection()
+                if stage == "connect":
+                    connection.connect.side_effect = socket.timeout("connect stalled")
+                else:
+                    connection.recv.side_effect = socket.timeout("stalled")
+                with self.assertRaises(SharedADBHandshakeTimeout) as raised:
+                    probe_adb_server(5, socket_factory=factory)
+                # One verdict names both phases without claiming a connection.
+                self.assertIn("未完成主机握手", str(raised.exception))
+                self.assertNotIn("已连接", str(raised.exception))
+                self.assertEqual(
+                    raised.exception.phase,
+                    "connect" if stage == "connect" else "response",
+                )
+
+    def test_connect_failure_that_is_not_a_timeout_stays_unverified(self):
+        for error in (PermissionError(), OSError("network unreachable")):
+            with self.subTest(error=error):
+                factory, connection = self.connection()
+                connection.connect.side_effect = error
+                with self.assertRaises(SharedADBError) as raised:
+                    probe_adb_server(5, socket_factory=factory)
+                self.assertNotIsInstance(raised.exception, SharedADBHandshakeTimeout)
 
     def test_protocol_errors_and_eof_are_not_recoverable_timeouts(self):
         for chunks in ([b"FAIL"], [b"OKAY", b"0004", b"oops"], [b""]):

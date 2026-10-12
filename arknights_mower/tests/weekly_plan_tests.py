@@ -1,5 +1,7 @@
 import tempfile
 import unittest
+from contextlib import contextmanager
+from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
@@ -40,6 +42,142 @@ def _inventory_config(stage: str, item_id: str, limit: int) -> dict:
 class WeeklyPlanManagerTests(unittest.TestCase):
     def setUp(self):
         self.manager = object.__new__(WeeklyPlanManager)
+
+    @contextmanager
+    def automatic_switch_fixture(self, switch_time=None):
+        from arknights_mower.utils import config
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "weekly_plans.yml"
+            plans = {
+                "活动": [
+                    {
+                        "weekday": "周一",
+                        "stage": ["ACT-1", "1-7", "NEXT-1"],
+                        "medicine": 2,
+                    },
+                    {
+                        "weekday": "周二",
+                        "stage": ["ACT-1", "Annihilation"],
+                        "sanity_threshold": 50,
+                    },
+                ],
+                "常规": [{"weekday": "周一", "stage": ["ACT-1", "CE-6"]}],
+            }
+            data = {
+                "plans": plans,
+                "activity_fallbacks": {"活动": "常规"},
+                "inventory_configs": {"活动": _inventory_config("ACT-1", "30012", 100)},
+            }
+            if switch_time:
+                data["activity_fallback_switch_times"] = {"活动": switch_time}
+            path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+            state = {"active_weekly_plan": "活动"}
+            with (
+                patch.object(WeeklyPlanManager, "WEEKLY_PLANS_FILE", path),
+                patch.object(
+                    self.manager, "_read_state", side_effect=lambda: dict(state)
+                ),
+                patch.object(self.manager, "_write_state", side_effect=state.update),
+                patch.object(config, "conf", deepcopy(config.conf)),
+            ):
+                yield path, state, deepcopy(data), config
+
+    def test_automatic_switch_cleans_only_expired_source_selections(self):
+        with self.automatic_switch_fixture() as (path, state, original, config):
+            # NEXT-1 has no time window yet and is preserved.
+            stages = [_activity_stage("ACT-1", 200)]
+            result = self.manager.maybe_switch_expired_activity_plan(
+                stages=stages, now=200
+            )
+            saved = yaml.safe_load(path.read_text())
+            self.assertEqual(state["active_weekly_plan"], "常规")
+            self.assertEqual(
+                saved["plans"]["活动"],
+                [
+                    {"weekday": "周一", "stage": ["1-7", "NEXT-1"], "medicine": 2},
+                    {
+                        "weekday": "周二",
+                        "stage": ["Annihilation"],
+                        "sanity_threshold": 50,
+                    },
+                ],
+            )
+            self.assertEqual(saved["plans"]["常规"], original["plans"]["常规"])
+            self.assertEqual(saved["inventory_configs"], original["inventory_configs"])
+            self.assertNotIn("活动", saved.get("activity_fallback_end_times", {}))
+            self.assertEqual(config.conf.maa_weekly_plan[0].stage, ["ACT-1", "CE-6"])
+            self.assertEqual(result["target"], "常规")
+            self.assertIsNone(
+                self.manager.maybe_switch_expired_activity_plan(stages=stages, now=201)
+            )
+
+    def test_remembered_stage_end_allows_cleanup_after_resource_removes_event(self):
+        with self.automatic_switch_fixture() as (path, state, original, config):
+            self.assertIsNone(
+                self.manager.maybe_switch_expired_activity_plan(
+                    stages=[_activity_stage("ACT-1", 200)], now=199
+                )
+            )
+            self.assertEqual(
+                yaml.safe_load(path.read_text())["plans"], original["plans"]
+            )
+            self.manager.maybe_switch_expired_activity_plan(stages=[], now=201)
+            saved = yaml.safe_load(path.read_text())
+            self.assertEqual(saved["plans"]["活动"][0]["stage"], ["1-7", "NEXT-1"])
+            self.assertEqual(saved["plans"]["常规"], original["plans"]["常规"])
+
+    def test_early_custom_switch_preserves_still_open_activity(self):
+        with self.automatic_switch_fixture(switch_time=150) as (
+            path,
+            state,
+            original,
+            config,
+        ):
+            self.manager.maybe_switch_expired_activity_plan(
+                stages=[_activity_stage("ACT-1", 200), _activity_stage("NEXT-1", 300)],
+                now=150,
+            )
+            self.assertEqual(state["active_weekly_plan"], "常规")
+            self.assertEqual(
+                yaml.safe_load(path.read_text())["plans"], original["plans"]
+            )
+
+    def test_custom_switch_cleans_expired_event_and_preserves_newer_event(self):
+        with self.automatic_switch_fixture(switch_time=201) as (
+            path,
+            state,
+            original,
+            config,
+        ):
+            self.manager.maybe_switch_expired_activity_plan(
+                stages=[_activity_stage("ACT-1", 200), _activity_stage("NEXT-1", 300)],
+                now=201,
+            )
+            saved = yaml.safe_load(path.read_text())
+            self.assertEqual(saved["plans"]["活动"][0]["stage"], ["1-7", "NEXT-1"])
+            self.assertEqual(saved["plans"]["常规"], original["plans"]["常规"])
+
+    def test_failed_target_switch_keeps_source_selections(self):
+        with self.automatic_switch_fixture() as (path, state, original, config):
+            with patch.object(self.manager, "set_active_plan", return_value=False):
+                self.assertIsNone(
+                    self.manager.maybe_switch_expired_activity_plan(
+                        stages=[_activity_stage("ACT-1", 200)], now=201
+                    )
+                )
+            self.assertEqual(
+                yaml.safe_load(path.read_text())["plans"], original["plans"]
+            )
+            self.assertEqual(state["active_weekly_plan"], "活动")
+
+    def test_plan_edits_drop_cached_stage_ids_that_are_no_longer_selected(self):
+        data = {"activity_stage_end_times": {"活动": {"ACT-1": 200, "REMOVED-1": 100}}}
+        ends = self.manager._remember_activity_stage_ends(
+            data, "活动", [{"stage": ["ACT-1"]}], []
+        )
+        self.assertEqual(ends, {"ACT-1": 200})
+        self.assertEqual(data["activity_stage_end_times"], {"活动": {"ACT-1": 200}})
 
     def test_switches_to_bound_plan_after_activity_ends(self):
         plan = [{"weekday": "周一", "stage": ["ACT-1"]}]

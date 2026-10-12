@@ -55,6 +55,34 @@ describe('专精排班范围', () => {
 })
 
 for (const backup of [false, true]) {
+  for (const facilityName of ['central', 'meeting', 'dormitory_1', 'factory', 'train']) {
+    it(`${backup ? '副表' : '主表'} ${facilityName} 收集所有绑组替班并保留训练室例外`, () => {
+      const table = {
+        [facilityName]: {
+          plans: [
+            {
+              agent: '芬',
+              replacement: ['红'],
+              group_bindings: [
+                { group: '乙', replacement: ['阿斯卡纶', '红', 'Free', 'Current', ''] },
+                { group: '丙', replacement: ['阿斯卡纶'] }
+              ]
+            }
+          ]
+        }
+      }
+      const before = structuredClone(table)
+      const { scheduled, blocked, centralBonus } = masteryScheduleContext(
+        backup ? {} : table,
+        backup ? [{ plan: table }] : []
+      )
+      expect([...scheduled]).toEqual(['芬', '红', '阿斯卡纶'])
+      expect([...blocked]).toEqual(facilityName === 'train' ? [] : ['芬', '红', '阿斯卡纶'])
+      expect(centralBonus).toBe(facilityName === 'central' ? 5 : 0)
+      expect(Boolean(masteryTraineeWarning('阿斯卡纶', blocked))).toBe(facilityName !== 'train')
+      expect(table).toEqual(before)
+    })
+  }
   it(`训练室${backup ? '备用' : '主'}排班的主力和替换仍属于非空闲`, () => {
     const table = { train: room('逻各斯', ['艾丽妮']) }
     const { scheduled, blocked } = masteryScheduleContext(

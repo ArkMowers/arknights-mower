@@ -1,5 +1,6 @@
 """Selected capture recovery through the device-control application boundary."""
 
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -238,6 +239,20 @@ class ScreenshotBackendTests(unittest.TestCase):
         self.assertTrue(result.ok, result.error)
         self.assertEqual(timeouts[-1], 1)
         self.assertEqual(self.handle.standard_captures, 1)
+
+    def test_command_timeout_names_the_command_not_the_selected_backend(self):
+        from arknights_mower.utils.device.screenshot_backend import ScreenshotFailure
+
+        failure = ScreenshotFailure(
+            self.conf.device,
+            "windows",
+            subprocess.TimeoutExpired(["MuMuManager.exe", "info"], 10),
+        )
+        self.assertEqual(failure.code, "screenshot_failed")
+        self.assertIn("截图命令超时", str(failure))
+        self.assertIn("未在限时内返回", str(failure))
+        self.assertNotIn("请检查所选后端后重试", str(failure))
+        self.assertEqual(failure.to_dict()["action"], "retry")
 
     def test_exhausted_rebuild_never_renews_budget_for_fallback(self):
         self.conf.device.screenshot_backend = "droidcast"

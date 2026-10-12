@@ -21,6 +21,7 @@ from arknights_mower.utils.emergency_recovery import (
     ORDINARY_SHIFTS,
     NativeProjection,
     emergency_dorm_plan,
+    exhaust_rest_due,
     history_cycle,
     history_rate,
     mood_context,
@@ -34,7 +35,12 @@ from arknights_mower.utils.operation_timing import estimate_dorm_minutes
 from arknights_mower.utils.operators import TRADE_ORDER_AGENTS, Dormitory, Operator
 from arknights_mower.utils.recognize import Scene
 from arknights_mower.utils.resting_correction import suppress_completed_dorm_returns
-from arknights_mower.utils.resting_priority import busy_resting_names, has_resting_mood
+from arknights_mower.utils.resting_priority import (
+    RestingTier,
+    busy_resting_names,
+    has_resting_mood,
+    resting_tier,
+)
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
@@ -172,7 +178,9 @@ class EmergencyRecoveryMixin:
             if yield_to_releases:
                 rooms.remove(room)
                 self._emergency_replan_releases()
-                protect_priority_tasks(self.tasks)
+                protect_priority_tasks(
+                    self.tasks, op_data=getattr(self, "op_data", None)
+                )
                 self._emergency_save()
         self.back_to_infrastructure()
         if yield_to_releases and state is not None:
@@ -194,11 +202,12 @@ class EmergencyRecoveryMixin:
             if state and state.get("phase") != "returning"
             else None
         )
+        normal_names = self.op_data.global_plan["default_plan"].scheduled_names()
         self.op_data.emergency_reserved_agents = (
             set(state.get("ready_members", ()))
             | set(state.get("staffing_members", ()))
             | set(state.get("release_members", ()))
-            | set(state.get("standby_workers", ()))
+            | (set(state.get("standby_workers", ())) - normal_names)
         )
 
     def _emergency_save(self):
@@ -222,7 +231,7 @@ class EmergencyRecoveryMixin:
             self.plan_metadata()
         else:
             self._emergency_replan_releases()
-        protect_priority_tasks(self.tasks)
+        protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         if self._emergency_active() and self.emergency_state.get("handoff_observing"):
             self._emergency_startup_pending = False
             self._emergency_defer_read()
@@ -259,6 +268,12 @@ class EmergencyRecoveryMixin:
         self._emergency_save()
         if not config.conf.automatic_rescue_enable:
             return
+        if any(
+            getattr(task, "run_order_restore_pending", False) for task in self.tasks
+        ):
+            # 普通纠错先释放原驻员；救急准入不能清除这条补偿依赖。
+            logger.info("自动救急准入等待普通跑单恢复原驻员")
+            return
         now = datetime.now()
         trial = copy.copy(self)
         data = trial.op_data = self.op_data.project_arrangements([])
@@ -283,9 +298,11 @@ class EmergencyRecoveryMixin:
         for name in names:
             op = data.operators[name]
             if (
-                not has_resting_mood(op)
+                op.multi_group
+                or not has_resting_mood(op)
                 or op.mood_is_prediction
                 or data._can_standby(op)
+                or not exhaust_rest_due(data, op, self.tasks, now)
             ):
                 continue
             if op.mood < data.rescue_mood_threshold(op):
@@ -451,7 +468,7 @@ class EmergencyRecoveryMixin:
                 and not data.config.is_workaholic(op.name)
                 and has_resting_mood(op)
                 and not op.mood_is_prediction
-                and op.current_mood() < data.resting_mood_threshold(op)
+                and op.current_mood() < data.rescue_mood_threshold(op)
                 for _, _, op, candidates in members
             ):
                 continue
@@ -511,6 +528,13 @@ class EmergencyRecoveryMixin:
             or any(getattr(task, "emergency_staffing", False) for task in self.tasks)
         ):
             return True
+        compensation_rooms = {
+            room
+            for task in self.tasks
+            for room in getattr(task, "run_order_original_roster", {})
+        }
+        if compensation_rooms.intersection(state["rescue_plan"]):
+            state["staffing_complete"] = False
         if state.get("staffing_complete") and not self._emergency_replace_low_workers():
             return True
         plan = rescue_plan_for(data, state["rescue_plan"])
@@ -525,7 +549,12 @@ class EmergencyRecoveryMixin:
             for name in row
         )
         pending = {}
+        deferred = {}
         for room, names in plan.items():
+            if room in compensation_rooms:
+                # 临时驻员符合救急目标也要等原班恢复，再核验最终驻员。
+                deferred[room] = list(names)
+                continue
             current = data.get_current_room(room, True)
             if current is not None and all(
                 name == "Current" or index < len(current) and current[index] == name
@@ -549,7 +578,7 @@ class EmergencyRecoveryMixin:
                 ):
                     continue
                 mood = dorm_candidate_mood(data, name, datetime.now())
-                reason = worker_block_reason(data, name, mood, reserved)
+                reason = worker_block_reason(data, name, mood, reserved, room=room)
                 if reason:
                     logger.warning(
                         "自动救急 %s：救急主表干员 %s %s，暂缓换班",
@@ -560,6 +589,8 @@ class EmergencyRecoveryMixin:
                     return False
             pending[room] = list(names)
         if not pending:
+            if deferred:
+                return False
             state["staffing_complete"] = True
             state["staffing_plan"] = {}
             state.pop("staffing_members", None)
@@ -571,7 +602,8 @@ class EmergencyRecoveryMixin:
             for name in row:
                 if name not in ("", "Current") and name not in data.operators:
                     data.add(Operator(name, ""))
-        state["staffing_plan"] = copy.deepcopy(pending)
+        # 只派发可执行房间，但完成核验仍包含等待补偿的全部目标。
+        state["staffing_plan"] = copy.deepcopy(pending | deferred)
         state["staffing_members"] = list(state["targets"])
         state["temporary_roster"] = {
             room: data.get_current_room(room, True) for room in plan
@@ -908,6 +940,7 @@ class EmergencyRecoveryMixin:
                 task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
                 and task.meta_data
                 and not hasattr(task, "emergency_original_roster")
+                and not getattr(task, "run_order_restore_pending", False)
                 and not self._emergency_run_order_available(task.meta_data, task.plan)
             )
         ]
@@ -924,16 +957,23 @@ class EmergencyRecoveryMixin:
             return False
         if "train" in pending:
             self._suppress_train_correction(pending)
+        compensation_rooms = {
+            room
+            for task in self.tasks
+            for room in getattr(task, "run_order_original_roster", {})
+        }
         state["staffing_plan"] = {
             room: row
             for room, row in pending.items()
-            if (actual := self.op_data.get_current_room(room, True)) is None
+            if room in compensation_rooms
+            or (actual := self.op_data.get_current_room(room, True)) is None
             or any(
                 name != "Current" and (index >= len(actual) or name != actual[index])
                 for index, name in enumerate(row)
             )
         }
         if state["staffing_plan"]:
+            state["staffing_complete"] = False
             return False
         state.pop("staffing_members", None)
         state["staffing_complete"] = True
@@ -1000,7 +1040,7 @@ class EmergencyRecoveryMixin:
     def _emergency_tick(self, *, completed_task=None):
         """只有到期观测或已完成的驻员变更推进恢复，不随空转循环重做规划。"""
         self.plan_metadata()
-        protect_priority_tasks(self.tasks)
+        protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         state = self.emergency_state
         pending_staffing = [
             task for task in self.tasks if getattr(task, "emergency_staffing", False)
@@ -1053,7 +1093,7 @@ class EmergencyRecoveryMixin:
                 self._emergency_defer_read()
                 return
             self.plan_metadata()
-            protect_priority_tasks(self.tasks)
+            protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         if plan_due:
             self.tasks[:] = [
                 task
@@ -1090,7 +1130,7 @@ class EmergencyRecoveryMixin:
         self._emergency_sync_reservations()
         if plan_due:
             self._emergency_replan_releases()
-            protect_priority_tasks(self.tasks)
+            protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         if (
             plan_due
             and state["phase"] == "recovering"
@@ -1101,6 +1141,68 @@ class EmergencyRecoveryMixin:
             try_workshop_tasks(self.op_data, self.tasks)
             self.run_order_solver()
         self._emergency_save()
+
+    def _emergency_recovery_order(self):
+        """限量比较恢复组合；预测只用于分床排序，不写回实测或批准退出。"""
+        import heapq
+
+        data, state = self.op_data, self.emergency_state
+        groups = {}
+        reserved, _ = dorm_task_reservations(data, self.tasks)
+        for name, target in state["targets"].items():
+            op = data.operators.get(name)
+            if (
+                op is None
+                or name in reserved
+                or name in state.get("ready_members", ())
+                or op.room.startswith("dorm")
+                or data.rest_mood_complete(name)
+                or resting_tier(data, name) == RestingTier.EXCLUDED
+                or op.is_working()
+                or not has_resting_mood(op)
+                or op.mood_is_prediction
+                or op.mood >= target
+                or target > op.upper_limit
+            ):
+                continue
+            groups.setdefault(op.group or name, []).append(name)
+        units = sorted(groups.values(), key=lambda names: tuple(sorted(names)))
+        if len(units) < 2:
+            return {}
+        costs = [
+            sum(state["targets"][name] - data.operators[name].mood for name in names)
+            for names in units
+        ]
+        # 每次分床最多 64 次隔离交接核验，不扫描游戏或引入周期任务。
+        queue = [(cost, (i,)) for i, cost in enumerate(costs)]
+        heapq.heapify(queue)
+        chosen = set()
+        for _ in range(64):
+            if not queue:
+                break
+            cost, indices = heapq.heappop(queue)
+            probe = copy.copy(self)
+            probe.op_data = copy.deepcopy(data, {id(data.eval_model): data.eval_model})
+            probe.tasks = copy.deepcopy(self.tasks)
+            probe.emergency_state = copy.deepcopy(state)
+            for index in indices:
+                for name in units[index]:
+                    op = probe.op_data.operators[name]
+                    op.mood, op.time_stamp, op.depletion_rate = (
+                        state["targets"][name],
+                        datetime.now(),
+                        0,
+                    )
+            if probe._emergency_ready():
+                chosen = {name for index in indices for name in units[index]}
+                break
+            for index in range(indices[-1] + 1, len(units)):
+                heapq.heappush(queue, (cost + costs[index], (*indices, index)))
+        return {
+            name: (0 if name in chosen else 1, costs[index])
+            for index, names in enumerate(units)
+            for name in names
+        }
 
     def _emergency_plan_beds(self, state):
         if any(getattr(task, "emergency_dorm", False) for task in self.tasks):
@@ -1128,7 +1230,11 @@ class EmergencyRecoveryMixin:
             copy.deepcopy(previous)
             if previous
             else emergency_dorm_plan(
-                self.op_data, state, self.tasks, reallocate=reallocate
+                self.op_data,
+                state,
+                self.tasks,
+                reallocate=reallocate,
+                recovery_order=self._emergency_recovery_order(),
             )
         )
         for room, original in state.get("dorm_layout", {}).items():
@@ -1160,6 +1266,7 @@ class EmergencyRecoveryMixin:
             or any(
                 getattr(task, "emergency_staffing", False)
                 or hasattr(task, "emergency_original_roster")
+                or getattr(task, "run_order_restore_pending", False)
                 or task.plan
                 and task.type in (TaskTypes.FIAMMETTA, TaskTypes.RUN_ORDER)
                 and task.time <= datetime.now()
@@ -1315,6 +1422,7 @@ class EmergencyRecoveryMixin:
                 or getattr(task, "strict_mood_limit", False)
                 and task.time <= datetime.now()
                 or hasattr(task, "emergency_original_roster")
+                or getattr(task, "run_order_restore_pending", False)
             )
             for task in self.tasks
         ):
@@ -1535,7 +1643,7 @@ class EmergencyRecoveryMixin:
                     or occupant.name not in data.replacement_candidates(op)
                     or not has_resting_mood(occupant)
                     or occupant.mood_is_prediction
-                    or data.replacement_exhausted(occupant.name)
+                    or data.replacement_exhausted(occupant.name, operator=op)
                 ):
                     return False
                 continue
@@ -1575,7 +1683,21 @@ class EmergencyRecoveryMixin:
             return False
         if not self._emergency_ready():
             return False
-        if not self._emergency_handoff_feasible({}):
+        # 直接交接不经过普通换班任务；在副本中按最终实读重新核验组状态。
+        observed = {
+            room: [
+                occupant.name
+                if (occupant := self.op_data.get_current_operator(room, index))
+                else "Current"
+                for index in range(len(slots))
+            ]
+            for room, slots in self.op_data.plan.items()
+        }
+        transitions = self.op_data.arrangement_group_transitions(observed)
+        probe = copy.copy(self)
+        probe.op_data = self.op_data.project_arrangements([observed])
+        probe.tasks = copy.deepcopy(self.tasks)
+        if not probe._emergency_handoff_feasible({}):
             for key in (
                 "handoff_observing",
                 "handoff_plan",
@@ -1586,11 +1708,15 @@ class EmergencyRecoveryMixin:
             self._emergency_save()
             return False
         state.pop("handoff_observing", None)
-        remaining = self.agent_get_mood(read_rooms=False, return_plan=True)
+        remaining = probe.agent_get_mood(read_rooms=False, return_plan=True)
+        if not probe.op_data.normalize_shared_arrangement(remaining, transitions):
+            self._emergency_save()
+            return False
         if remaining:
             state["handoff_plan"] = copy.deepcopy(remaining)
             self._emergency_save()
             return False
+        self.op_data.commit_group_shifts(transitions)
         self.emergency_state = None
         self.tasks[:] = [
             task

@@ -86,7 +86,7 @@ def test_rescue_metadata_keeps_only_filling_actual_vacancies(op_data, monkeypatc
     assert filling not in scheduler_task.plan_metadata(data, [filling])
 
 
-def test_full_resident_unknown_search_is_one_batch_and_stops_after_real_full_read(
+def test_unknown_candidate_waits_for_valid_reading_before_taking_occupied_bed(
     op_data, monkeypatch
 ):
     monkeypatch.setattr(resting_priority, "agent_list", list(op_data.operators))
@@ -96,13 +96,17 @@ def test_full_resident_unknown_search_is_one_batch_and_stops_after_real_full_rea
     scheduler_task.try_add_release_dorm({}, None, op_data, tasks)
     scheduler_task.try_add_release_dorm({}, None, op_data, tasks)
 
-    assert len(tasks) == 1
-    assert tasks[0].plan == {ROOM: ["Current"] * 4 + ["Free"]}
-    assert tasks[0].dorm_mood_residents == ["空爆"]
+    assert tasks == []
     op_data.stop_idle_dorm_search()
-    tasks.clear()
     scheduler_task.try_add_release_dorm({}, None, op_data, tasks)
     assert tasks == []
+    candidate = op_data.operators["红"]
+    candidate.mood, candidate.time_stamp = 10, datetime.now()
+    scheduler_task.try_add_release_dorm({}, None, op_data, tasks)
+    scheduler_task.try_add_release_dorm({}, None, op_data, tasks)
+    assert len(tasks) == 1
+    assert tasks[0].plan == {ROOM: ["Current"] * 4 + ["红"]}
+    assert op_data.dorm[0].name == "空爆"
 
 
 def test_rescue_metadata_drops_filling_when_primary_later_reserves_same_bed(

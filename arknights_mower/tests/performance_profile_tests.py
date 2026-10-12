@@ -23,7 +23,12 @@ from arknights_mower.utils.device.device import Device
 def test_platform_performance_default(monkeypatch, platform, expected):
     monkeypatch.delenv("MOWER_ANDROID", raising=False)
     monkeypatch.setattr(performance, "__system__", platform)
-    assert RIICPart().performance_mode == expected
+    conf = RIICPart()
+    assert conf.performance_mode == expected
+    assert not conf.low_frame_rate_mode
+    profile = performance.effective_performance_profile(conf)
+    assert profile.mode == "xhigh"
+    assert (profile.poll_interval, profile.run_order_delay) == (0.1, 3)
 
 
 @pytest.mark.parametrize("legacy", [False, True])
@@ -52,7 +57,7 @@ def test_existing_screenshot_interval_remains_independent():
 
 @pytest.mark.parametrize(
     ("average", "expected"),
-    [(0, "medium"), (0.34, "medium"), (0.35, "medium"), (1.19, "medium"), (1.2, "low")],
+    [(0, "xhigh"), (0.34, "xhigh"), (0.35, "medium"), (1.19, "medium"), (1.2, "low")],
 )
 def test_auto_selects_profile_from_operation_feedback(monkeypatch, average, expected):
     monkeypatch.setenv("MOWER_ANDROID", "1")
@@ -60,33 +65,70 @@ def test_auto_selects_profile_from_operation_feedback(monkeypatch, average, expe
     assert performance.effective_performance_profile(conf, average, 8).mode == expected
 
 
-def test_android_explicit_fast_modes_use_medium(monkeypatch):
+@pytest.mark.parametrize(
+    "mode,expected",
+    [("high", "high"), ("xhigh", "xhigh"), ("ultra", "xhigh"), ("custom", "high")],
+)
+@pytest.mark.parametrize("android_source", ["environment", "platform"])
+def test_android_explicit_fast_modes_survive_save_reload_and_execution(
+    monkeypatch, mode, expected, android_source
+):
+    monkeypatch.delenv("MOWER_ANDROID", raising=False)
+    monkeypatch.setattr(
+        performance,
+        "__system__",
+        "android" if android_source == "platform" else "linux",
+    )
+    if android_source == "environment":
+        monkeypatch.setenv("MOWER_ANDROID", "1")
+    conf = RIICPart(
+        performance_mode=mode,
+        low_frame_rate_mode=False,
+        selection_poll_interval=0.8,
+        run_order_delay=7.5,
+    )
+    restored = RIICPart.model_validate(conf.model_dump())
+    assert restored.performance_mode == expected
+    assert not restored.low_frame_rate_mode
+    profile = performance.effective_performance_profile(
+        restored, 10, 20, mode_cap="low"
+    )
+    assert profile.mode == expected
+    assert not profile.low_frame_rate
+    assert profile.poll_interval == 0.8
+    assert profile.run_order_delay == 7.5
+    assert (
+        performance.effective_performance_profile(
+            SimpleNamespace(performance_mode=expected)
+        ).mode
+        == expected
+    )
+
+
+def test_android_automatic_feedback_can_reach_fast_modes_and_respects_failure_cap(
+    monkeypatch,
+):
     monkeypatch.setenv("MOWER_ANDROID", "1")
-    for settings in (
-        {"performance_mode": "high"},
-        {"performance_mode": "xhigh"},
-        {"performance_mode": "ultra"},
-    ):
-        conf = RIICPart(**settings)
-        assert conf.performance_mode == "medium"
-        assert conf.low_frame_rate_mode
-        assert performance.effective_performance_profile(conf).mode == "medium"
-    direct = SimpleNamespace(performance_mode="high")
-    assert performance.effective_performance_profile(direct).mode == "medium"
+    choose = performance.auto_performance_mode
+    assert choose(0, 3) == "xhigh"
+    assert choose(0.2, 4, "medium") == "high"
+    assert choose(0.2, 5, "high") == "xhigh"
+    assert choose(0.34, 6, "xhigh") == "xhigh"
+    assert choose(0.35, 6, "xhigh") == "high"
+    assert choose(0, 6, "xhigh", "low") == "low"
     legacy = RIICPart(low_frame_rate_mode=False)
     assert legacy.performance_mode == "auto"
-    assert legacy.low_frame_rate_mode
-    assert performance.effective_performance_profile(legacy).mode == "medium"
+    assert performance.effective_performance_profile(legacy).mode == "xhigh"
 
 
-def test_desktop_auto_can_still_select_high(monkeypatch):
+def test_desktop_auto_selects_xhigh_with_immediate_feedback(monkeypatch):
     monkeypatch.delenv("MOWER_ANDROID", raising=False)
     monkeypatch.setattr(performance, "__system__", "darwin")
     conf = RIICPart(performance_mode="auto")
-    assert performance.effective_performance_profile(conf, 0, 8).mode == "high"
+    assert performance.effective_performance_profile(conf, 0, 8).mode == "xhigh"
 
 
-def test_xhigh_is_explicit_only_and_keeps_user_timing(monkeypatch):
+def test_explicit_xhigh_ignores_feedback_and_keeps_user_timing(monkeypatch):
     monkeypatch.delenv("MOWER_ANDROID", raising=False)
     monkeypatch.setattr(performance, "__system__", "darwin")
     conf = Conf(performance_mode="xhigh", selection_poll_interval=0.8)
@@ -115,17 +157,23 @@ def test_explicit_auto_ignores_legacy_boolean_override(monkeypatch):
     monkeypatch.setattr(config, "operation_feedback_avg", 0)
     monkeypatch.setattr(config, "operation_feedback_count", 8)
     monkeypatch.setattr(config, "operation_feedback_mode", None)
-    assert BaseMixin().performance_profile.mode == "high"
+    assert BaseMixin().performance_profile.mode == "xhigh"
     monkeypatch.setattr(config, "operation_feedback_avg", 2)
+    assert BaseMixin().performance_profile.mode == "high"
     assert BaseMixin().performance_profile.mode == "medium"
     assert BaseMixin().performance_profile.mode == "low"
 
 
-def test_auto_hysteresis_and_warmup(monkeypatch):
+@pytest.mark.parametrize("platform", ["windows", "darwin", "linux", "android"])
+def test_auto_hysteresis_and_warmup(monkeypatch, platform):
     monkeypatch.delenv("MOWER_ANDROID", raising=False)
-    monkeypatch.setattr(performance, "__system__", "darwin")
+    monkeypatch.setattr(performance, "__system__", platform)
     choose = performance.auto_performance_mode
-    assert choose(2, 3, "high") == "high"
+    assert choose(2, 3, "high") == "xhigh"
+    assert choose(0.34, 4, "xhigh") == "xhigh"
+    assert choose(0.35, 4, "xhigh") == "high"
+    assert choose(0.2, 4, "high") == "xhigh"
+    assert choose(0.21, 4, "high") == "high"
     assert choose(0.49, 4, "high") == "high"
     assert choose(0.5, 4, "high") == "medium"
     assert choose(1.39, 4, "medium") == "medium"
@@ -147,13 +195,13 @@ def test_selection_profile_snapshot_does_not_switch_mid_operation(monkeypatch):
 
     @fixed_selection_profile
     def selection(self):
-        assert self.performance_profile.mode == "high"
+        assert self.performance_profile.mode == "xhigh"
         self.record_operation_feedback(3)
-        assert self.performance_profile.mode == "high"
+        assert self.performance_profile.mode == "xhigh"
 
     selection(solver)
     assert not hasattr(solver, "_selection_profile_snapshot")
-    assert solver.performance_profile.mode == "medium"
+    assert solver.performance_profile.mode == "high"
 
 
 def test_feedback_ewma_counts_operations_not_screenshots(monkeypatch):
@@ -177,17 +225,17 @@ def test_repeated_selection_failures_downgrade_until_three_successes(monkeypatch
     monkeypatch.setattr(config, "operation_failure_streak", 0)
     monkeypatch.setattr(config, "operation_recovery_successes", 0)
     solver = BaseMixin()
-    assert solver.performance_profile.mode == "high"
+    assert solver.performance_profile.mode == "xhigh"
+    solver.record_selection_failure()
+    assert solver.performance_profile.mode == "xhigh"
     solver.record_selection_failure()
     assert solver.performance_profile.mode == "high"
-    solver.record_selection_failure()
-    assert solver.performance_profile.mode == "medium"
-    assert config.operation_feedback_cap == "medium"
+    assert config.operation_feedback_cap == "high"
     for _ in range(2):
         solver.record_selection_success()
-        assert solver.performance_profile.mode == "medium"
+        assert solver.performance_profile.mode == "high"
     solver.record_selection_success()
-    assert solver.performance_profile.mode == "high"
+    assert solver.performance_profile.mode == "xhigh"
 
 
 def test_manual_mode_ignores_selection_failures(monkeypatch):
@@ -201,7 +249,7 @@ def test_manual_mode_ignores_selection_failures(monkeypatch):
     assert config.operation_feedback_cap is None
 
 
-def test_success_resets_failure_streak_and_second_downgrade_reaches_low(monkeypatch):
+def test_success_resets_failure_streak_and_repeated_downgrades_reach_low(monkeypatch):
     monkeypatch.delenv("MOWER_ANDROID", raising=False)
     monkeypatch.setattr(performance, "__system__", "darwin")
     monkeypatch.setattr(config, "conf", Conf(performance_mode="auto"))
@@ -212,11 +260,14 @@ def test_success_resets_failure_streak_and_second_downgrade_reaches_low(monkeypa
     monkeypatch.setattr(config, "operation_failure_streak", 0)
     monkeypatch.setattr(config, "operation_recovery_successes", 0)
     solver = BaseMixin()
-    assert solver.performance_profile.mode == "high"
+    assert solver.performance_profile.mode == "xhigh"
     solver.record_selection_failure()
     solver.record_selection_success()
     solver.record_selection_failure()
+    assert solver.performance_profile.mode == "xhigh"
+    solver.record_selection_failure()
     assert solver.performance_profile.mode == "high"
+    solver.record_selection_failure()
     solver.record_selection_failure()
     assert solver.performance_profile.mode == "medium"
     solver.record_selection_failure()
@@ -248,15 +299,17 @@ def test_capture_metrics_do_not_change_auto_mode(monkeypatch):
     assert config.screenshot_count == 100
     device.screencap()
     assert config.screenshot_count == 101
-    assert BaseMixin().performance_profile.mode == "high"
+    assert BaseMixin().performance_profile.mode == "xhigh"
 
 
-def test_android_auto_uses_medium_during_warmup(monkeypatch):
+def test_android_auto_uses_shared_defaults_during_warmup(monkeypatch):
     monkeypatch.setenv("MOWER_ANDROID", "1")
     conf = RIICPart(performance_mode="auto")
     profile = performance.effective_performance_profile(conf, 0, 3)
-    assert profile.mode == "medium"
-    assert profile.run_order_delay == 5
+    assert profile.mode == "xhigh"
+    assert not profile.low_frame_rate
+    assert profile.poll_interval == 0.1
+    assert profile.run_order_delay == 3
 
 
 def test_low_mode_preserves_all_timing_parameters():
@@ -327,3 +380,32 @@ def test_switching_mode_does_not_change_numeric_values():
         assert (profile.screenshot_interval, profile.poll_interval) == (650, 1.25)
         assert (profile.transition_timeout, profile.run_order_delay) == (9, 12)
         assert profile.grandet_buffer_time == 40
+
+
+@pytest.mark.parametrize("platform", ["windows", "darwin", "linux", "android"])
+def test_auto_starts_at_xhigh_without_feedback_on_every_platform(monkeypatch, platform):
+    monkeypatch.delenv("MOWER_ANDROID", raising=False)
+    monkeypatch.setattr(performance, "__system__", platform)
+    conf = RIICPart(performance_mode="auto", selection_poll_interval=0.8)
+    profile = performance.effective_performance_profile(conf)
+    assert profile.mode == "xhigh"
+    assert profile.poll_interval == 0.8
+    assert conf.performance_mode == "auto"
+
+
+@pytest.mark.parametrize("cap", ["high", "medium", "low"])
+@pytest.mark.parametrize("count", [0, 8])
+def test_auto_failure_cap_limits_xhigh_during_warmup_and_feedback(
+    monkeypatch, cap, count
+):
+    monkeypatch.delenv("MOWER_ANDROID", raising=False)
+    monkeypatch.setattr(performance, "__system__", "darwin")
+    assert performance.auto_performance_mode(0, count, "xhigh", cap) == cap
+
+
+@pytest.mark.parametrize(
+    ("mode", "expected"),
+    [("xhigh", "high"), ("high", "medium"), ("medium", "low"), ("low", "low")],
+)
+def test_failure_downgrade_moves_one_level(mode, expected):
+    assert performance.lower_performance_mode(mode) == expected

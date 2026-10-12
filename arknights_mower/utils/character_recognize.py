@@ -97,21 +97,97 @@ def reload_resource_models() -> None:
     OP_TRAIN.clear()
     OP_TRAIN.update(train)
     _match_name_template.cache_clear()
+    _match_name_field_template.cache_clear()
 
 
 @lru_cache(maxsize=256)
-def _match_name_template(train, shape, pixels):
+def _match_name_template(train, shape, pixels, *, right_align=False):
     """仅复用完全相同的归一化名字像素；卡片坐标每帧重新分割。"""
     tpl = np.frombuffer(pixels, dtype=np.uint8).reshape(shape)
     max_score = 0
     best_operator = ""
     for operator, template in (OP_TRAIN if train else OP_SELECT).items():
+        if train and right_align:
+            columns = np.flatnonzero(template.any(axis=0))
+            if columns.size:
+                # 与归一化姓名相同，文字右侧保留膨胀产生的五像素边距。
+                template = np.roll(
+                    template, template.shape[1] - columns[-1] - 6, axis=1
+                )
         result = cv2.matchTemplate(tpl, template, cv2.TM_CCORR_NORMED)
         _, max_val, _, _ = cv2.minMaxLoc(result)
         if max_val > max_score:
             max_score = max_val
             best_operator = operator
     return best_operator if max_score > 0.6 else ""
+
+
+def match_operator_name(image, *, dark_text=False):
+    """Match one complete name field with the existing selection templates."""
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    return _match_name_field_template(gray.shape, gray.tobytes(), dark_text)
+
+
+@lru_cache(maxsize=256)
+def _match_name_field_template(shape, pixels, dark_text):
+    gray = np.frombuffer(pixels, dtype=np.uint8).reshape(shape)
+    mode = cv2.THRESH_BINARY_INV if dark_text else cv2.THRESH_BINARY
+    _, binary = cv2.threshold(gray, 140, 255, mode)
+    # Border text may be clipped; never infer identity from a partial glyph.
+    if binary[0].any() or binary[-1].any() or binary[:, 0].any() or binary[:, -1].any():
+        return ""
+    points = cv2.findNonZero(binary)
+    if points is None:
+        return ""
+    _, _, _, height = cv2.boundingRect(points)
+    if height < 15:
+        return ""
+    scaled = {}
+    scores = []
+    for name, template in OP_SELECT.items():
+        points = cv2.findNonZero(template)
+        if points is None:
+            continue
+        _, _, _, template_height = cv2.boundingRect(points)
+        best = 0
+        # Long names have smaller template fonts. Preserve aspect ratio and
+        # allow one pixel of antialiasing variation in the target text height.
+        for offset in (-1, -0.5, 0, 0.5, 1):
+            target_height = template_height + offset
+            if target_height not in scaled:
+                scaled[target_height] = _normalize_name_field(
+                    gray, target_height / height, mode
+                )
+            sample = scaled[target_height]
+            if sample is not None:
+                score = cv2.matchTemplate(sample, template, cv2.TM_CCORR_NORMED).max()
+                best = max(best, float(score))
+        scores.append((best, name))
+    scores.sort(reverse=True)
+    if not scores or scores[0][0] <= 0.6:
+        return ""
+    if len(scores) > 1 and scores[0][0] - scores[1][0] < 0.05:
+        return ""
+    return scores[0][1]
+
+
+def _normalize_name_field(gray, scale, mode):
+    gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    _, binary = cv2.threshold(gray, 140, 255, mode)
+    binary = cv2.copyMakeBorder(binary, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=0)
+    contours, _ = cv2.findContours(
+        cv2.dilate(binary, kernel), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    if not contours:
+        return None
+    # Preserve separated punctuation as part of the full name.
+    x, y, w, h = cv2.boundingRect(np.vstack(contours))
+    if h > 42 or w > 200:
+        return None
+    template = np.zeros((42, 200), dtype=np.uint8)
+    template[:h, :w] = binary[y : y + h, x : x + w]
+    template = cv2.copyMakeBorder(template, 2, 2, 2, 2, cv2.BORDER_CONSTANT, value=0)
+    return template
 
 
 @timed_step("names")
@@ -135,6 +211,15 @@ def operator_list(img, draw=False, full_scan=True):
         elif prev == 255 and curr == 0:
             start = i
         prev = curr
+
+    right_clipped_name_left = None
+    if full_scan and img.shape[1] == 1920 and prev == 0 and start is not None:
+        name_left = start + 600
+        # 选中边框扩宽姓名条后可能没有结束像素；只接纳右缘少量裁切。
+        # 沿用普通卡片的 225 像素宽度和 95% 可见要求，缩小扫描不补尾列。
+        if name_left + 203 > 1920 and 1920 - (name_left - 22) >= 225 * 0.95:
+            right_clipped_name_left = name_left
+            name_x.append((name_left, 1918))
 
     name_p = []
     for x in name_x:
@@ -168,6 +253,9 @@ def operator_list(img, draw=False, full_scan=True):
             return ""
         rect = map(lambda c: cv2.boundingRect(c), contours)
         x, y, w, h = sorted(rect, key=lambda c: c[0])[0]
+        if x0 == right_clipped_name_left and x + w >= im.shape[1] - 10:
+            # 姓名轮廓触及裁切边界时不能按残字猜身份。
+            return ""
         im = im[y : y + h, x : x + w]
         tpl = np.zeros((42, 200), dtype=np.uint8)
         if im.shape[0] > tpl.shape[0] or im.shape[1] > tpl.shape[1]:
@@ -197,6 +285,8 @@ def operator_list(img, draw=False, full_scan=True):
 def operator_list_train(img, draw=False, full_scan=True):
     name_y = ((479, 506), (895, 922))
     name_p_row = [[], []]
+    complete_fronts = [[], []]
+    trailing_fronts = [None, None]
     for yi in range(2):
         line1 = cropimg(img, tuple(zip((545, 1920), name_y[yi])))
         hsv = cv2.cvtColor(line1, cv2.COLOR_RGB2HSV)
@@ -246,10 +336,25 @@ def operator_list_train(img, draw=False, full_scan=True):
                         back_edge = i
                         # 记录检测到的名称区域
                         name_x.append((back_edge + 543 - 175, back_edge + 543))
+                        complete_fronts[yi].append(front_edge)
             prev = curr
 
         for x in name_x:
             name_p_row[yi].append(tuple(zip(x, name_y[yi])))
+        if front_edge is not None and (back_edge is None or front_edge > back_edge):
+            trailing_fronts[yi] = front_edge
+
+    # 右侧阴影可能遮掉一行的亮色右边界；同帧另一行的完整卡片提供宽度。
+    # 两行均须有对齐的实际左边界，缺失或裁切列不能凭固定宽度补出。
+    for yi, front in enumerate(trailing_fronts):
+        if front is None:
+            continue
+        for peer_front, peer_scope in zip(complete_fronts[1 - yi], name_p_row[1 - yi]):
+            offset = front - peer_front
+            left, right = peer_scope[0][0] + offset, peer_scope[1][0] + offset
+            if abs(offset) <= 3 and right >= 1790 and right <= img.shape[1]:
+                name_p_row[yi].append(tuple(zip((left, right), name_y[yi])))
+                break
 
     name_p = []
     max_length = max(len(row) for row in name_p_row)
@@ -266,6 +371,25 @@ def operator_list_train(img, draw=False, full_scan=True):
         im = cropimg(gray, p)
         im = thres2(im, 140)
         im = cv2.copyMakeBorder(im, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
+        leading = cv2.cvtColor(cropimg(img, p)[:, :12], cv2.COLOR_RGB2HSV)
+        yellow = cv2.inRange(leading, (15, 100, 140), (40, 255, 255))
+        special_focus = cv2.countNonZero(yellow) >= 12
+        if special_focus:
+            # 特别关注图案仅在与完整姓名分离时清除，不能沿中点或连字符截断。
+            upper = im[: 10 + (p[1][1] - p[0][1]) // 2]
+            contours, _ = cv2.findContours(
+                cv2.dilate(upper, kernel), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+            text_regions = [
+                rect
+                for contour in contours
+                if (rect := cv2.boundingRect(contour))[2] > 30
+            ]
+            if (
+                len(text_regions) == 2
+                and min(text_regions, key=lambda rect: rect[0])[2] <= 45
+            ):
+                im[:, : max(text_regions, key=lambda rect: rect[0])[0]] = 0
         dilation = cv2.dilate(im, kernel, iterations=1)
         contours, _ = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         rect = map(lambda c: cv2.boundingRect(c), contours)
@@ -281,12 +405,15 @@ def operator_list_train(img, draw=False, full_scan=True):
         w = w if w <= 200 else 200
         im = im[y : y + h, x : x + w]
         tpl = np.zeros((42, 200), dtype=np.uint8)
-        tpl[: im.shape[0], : im.shape[1]] = im
+        left = tpl.shape[1] - im.shape[1] if special_focus else 0
+        tpl[: im.shape[0], left : left + im.shape[1]] = im
         tpl = cv2.copyMakeBorder(tpl, 2, 2, 2, 2, cv2.BORDER_CONSTANT, None, (0,))
         """cv2.imshow("tpl", tpl)
         cv2.waitKey(0)
         cv2.destroyAllWindows()"""
-        return _match_name_template(True, tpl.shape, tpl.tobytes())
+        return _match_name_template(
+            True, tpl.shape, tpl.tobytes(), right_align=special_focus
+        )
 
     with ThreadPoolExecutor() as executor:
         op_name = list(executor.map(process_name_region, name_p))

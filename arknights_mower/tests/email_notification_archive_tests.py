@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from arknights_mower.utils import email, log
+from arknights_mower.utils import config, email, log
 
 
 @pytest.fixture
@@ -16,7 +16,7 @@ def notification(monkeypatch):
     store.mark_error.return_value = "notification-archive"
     live_log = MagicMock()
     monkeypatch.setattr(log, "get_screenshot_store", lambda: store)
-    monkeypatch.setattr(log.config.log_queue, "put", live_log)
+    monkeypatch.setattr(config.log_queue, "put", live_log)
     transport = MagicMock()
     thread = MagicMock()
     monkeypatch.setattr(email, "Email", transport)

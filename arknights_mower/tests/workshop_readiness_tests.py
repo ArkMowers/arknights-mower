@@ -12,23 +12,16 @@ from arknights_mower.utils.config.conf import RIICPart
 
 
 def set_stock(fixture, stock):
-    fixture.cultivate.write_text(
-        json.dumps(
-            {
-                "data": {
-                    "characters": [],
-                    "items": [
-                        {"id": key, "count": value} for key, value in stock.items()
-                    ],
-                }
-            }
-        )
-    )
+    data = json.loads(fixture.cultivate.read_text())
+    data["data"]["items"] = [
+        {"id": key, "count": value} for key, value in stock.items()
+    ]
+    fixture.cultivate.write_text(json.dumps(data))
 
 
 def test_books_short_after_crafting_wait_then_resume_without_changing_plan(next_skill):
     plans = copy.deepcopy(next_skill.plans)
-    set_stock(next_skill, {"3302": 20})  # Six books can be made; the head needs seven.
+    set_stock(next_skill, {"3302": 14})  # Neither skill's complete chain is craftable.
     assert rec.compute_workshop_config([], [], ["赫拉格"]) == []
     assert rec.auto_schedule_mastery_tasks()["scheduled"] == []
     assert next_skill.plans == plans
@@ -46,6 +39,7 @@ def test_books_short_after_crafting_wait_then_resume_without_changing_plan(next_
 def test_elite_shortage_stops_all_preparation_including_other_available_materials(
     next_skill, monkeypatch
 ):
+    next_skill.plans[:] = [next_skill.plans[1]]
     data = rec.get_mastery_recommendations()
     data["operators"][1]["recommendations"][0]["chain_needed_materials"].append(
         {"name": "糖聚块", "count": 1}
@@ -59,6 +53,7 @@ def test_elite_shortage_stops_all_preparation_including_other_available_material
 def test_protected_ingredients_do_not_unlock_automatic_preparation(
     next_skill, monkeypatch
 ):
+    next_skill.plans[:] = [next_skill.plans[1]]
     data = rec.get_mastery_recommendations()
     data["operators"][1]["recommendations"][0]["chain_needed_materials"] = [
         {"name": "提纯源岩", "count": 1}
@@ -153,3 +148,146 @@ def test_training_start_sums_repeated_materials_across_remaining_levels(
     ] == ["char_b"]
     skill["current_level"] = 2
     assert rec.auto_schedule_mastery_tasks()["scheduled"] == []
+
+
+def test_uncraftable_head_is_skipped_and_stock_refresh_restores_priority(next_skill):
+    plans = copy.deepcopy(next_skill.plans)
+    set_stock(next_skill, {"3302": 15})
+    assert book_limit(rec.compute_workshop_config([], [], ["赫拉格"])) == 5
+    set_stock(next_skill, {"3303": 5})
+    assert [
+        item["char_id"] for item in rec.auto_schedule_mastery_tasks()["scheduled"]
+    ] == ["char_a"]
+    set_stock(next_skill, {"3302": 21})
+    assert book_limit(rec.compute_workshop_config([], [], ["赫拉格"])) == 7
+    set_stock(next_skill, {"3303": 7})
+    assert any(
+        item["char_id"] == "char_b"
+        for item in rec.auto_schedule_mastery_tasks()["scheduled"]
+    )
+    assert next_skill.plans == plans
+
+
+def test_skip_during_training_reserves_current_costs_and_prepares_one_ready_skill(
+    next_skill, monkeypatch
+):
+    next_skill.plans[1].update(status="training", expires_at="2999-01-01 00:00:00")
+    data = rec.get_mastery_recommendations()
+    data["operators"][1]["recommendations"][0]["stages"] = [
+        {"to_level": 8, "needed_materials": []},
+        {"to_level": 9, "needed_materials": [{"name": "技巧概要·卷3", "count": 2}]},
+    ]
+    next_skill.plans.append(
+        {
+            "id": 3,
+            "char_id": "char_c",
+            "skill_index": 0,
+            "target_level": 3,
+            "status": "idle",
+            "priority": 3,
+        }
+    )
+    data["operators"].append(
+        {
+            "char_id": "char_c",
+            "recommendations": [
+                {
+                    "skill_index": 0,
+                    "chain_needed_materials": [{"name": "技巧概要·卷3", "count": 3}],
+                }
+            ],
+        }
+    )
+    monkeypatch.setattr(rec, "get_mastery_recommendations", lambda: data)
+    plans = copy.deepcopy(next_skill.plans)
+    set_stock(next_skill, {"3302": 15})  # B reserves two; A needs five; C needs three.
+    assert book_limit(rec.compute_workshop_config([], [], ["赫拉格"])) == 5
+    set_stock(next_skill, {"3302": 12})
+    assert rec.compute_workshop_config([], [], ["赫拉格"]) == []
+    assert next_skill.plans == plans
+
+
+def test_depot_scan_skips_shortage_then_reconsiders_after_stock_refresh(
+    next_skill, monkeypatch
+):
+    from unittest.mock import MagicMock
+
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    from arknights_mower.utils import mastery_db
+
+    monkeypatch.setattr(mastery_db, "retry_failed_plans", lambda: 0)
+    solver = object.__new__(BaseSchedulerSolver)
+    solver._dispatch_scan_start_tasks = MagicMock()
+    plans = copy.deepcopy(next_skill.plans)
+    set_stock(next_skill, {"3302": 15})
+    solver._auto_schedule_mastery_after_scan()
+    assert book_limit([s.model_dump() for s in config.conf.workshop_settings]) == 5
+    solver._dispatch_scan_start_tasks.assert_called_with([])
+    set_stock(next_skill, {"3302": 21})
+    solver._auto_schedule_mastery_after_scan()
+    assert book_limit([s.model_dump() for s in config.conf.workshop_settings]) == 7
+    solver._dispatch_scan_start_tasks.assert_called_with([])
+    set_stock(next_skill, {"3303": 5})
+    solver._auto_schedule_mastery_after_scan()
+    assert [
+        p["char_id"] for p in solver._dispatch_scan_start_tasks.call_args.args[0]
+    ] == ["char_a"]
+    set_stock(next_skill, {"3303": 7})
+    solver._auto_schedule_mastery_after_scan()
+    assert {
+        p["char_id"] for p in solver._dispatch_scan_start_tasks.call_args.args[0]
+    } == {"char_a", "char_b"}
+    assert next_skill.plans == plans
+
+
+def test_mid_chain_shortage_waits_instead_of_selecting_ready_later_skill(next_skill):
+    waiting = next_skill.plans[1]
+    waiting.update(
+        expires_at="2026-10-01 12:00:00", failed_reason="材料不足", priority=10
+    )
+    set_stock(next_skill, {"3302": 15})  # Later skill is craftable; current is not.
+    assert rec.compute_workshop_config([], [], ["赫拉格"]) == []
+    set_stock(next_skill, {"3303": 5})  # Later skill could start; current still cannot.
+    assert rec.auto_schedule_mastery_tasks()["scheduled"] == []
+    set_stock(next_skill, {"3302": 21})
+    assert book_limit(rec.compute_workshop_config([], [], ["赫拉格"])) == 7
+    set_stock(next_skill, {"3303": 7})
+    assert [p["char_id"] for p in rec.auto_schedule_mastery_tasks()["scheduled"]] == [
+        "char_b"
+    ]
+    assert waiting["failed_reason"] == "材料不足"
+
+
+def test_shortage_before_first_training_still_skips_to_ready_plan(next_skill):
+    next_skill.plans[1]["failed_reason"] = "材料不足"
+    set_stock(next_skill, {"3302": 15})
+    assert book_limit(rec.compute_workshop_config([], [], ["赫拉格"])) == 5
+    set_stock(next_skill, {"3303": 5})
+    assert [p["char_id"] for p in rec.auto_schedule_mastery_tasks()["scheduled"]] == [
+        "char_a"
+    ]
+
+
+def test_scan_dispatch_resumes_exact_waiting_row_before_higher_priority_duplicate(
+    next_skill, monkeypatch
+):
+    from unittest.mock import MagicMock
+
+    from arknights_mower.solvers import mastery_reader
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+
+    waiting = next_skill.plans[1]
+    waiting.update(
+        expires_at="2026-10-01 12:00:00", failed_reason="材料不足", priority=10
+    )
+    duplicate = dict(waiting, id=3, failed_reason=None, expires_at=None, priority=0)
+    next_skill.plans.append(duplicate)
+    scheduled = [
+        dict(waiting, current_level=1),
+        dict(next_skill.plans[0], current_level=0),
+    ]
+    enqueue = MagicMock()
+    monkeypatch.setattr(mastery_reader, "_schedule_scan_start", enqueue)
+    solver = object.__new__(BaseSchedulerSolver)
+    solver._dispatch_scan_start_tasks(scheduled)
+    enqueue.assert_called_once_with(solver, waiting, step_level=2)

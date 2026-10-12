@@ -21,3 +21,33 @@ def low_frame_rate(monkeypatch, legacy_selection_conf):
     # Time settings no longer change with the performance mode. These frame
     # fixtures provide six observations at the former medium sampling pace.
     monkeypatch.setattr(config.conf, "selection_poll_interval", 0.5)
+
+
+@pytest.fixture
+def offline_maintenance(monkeypatch):
+    """Scheduling fixtures have no maintenance window and never fetch live news."""
+    from arknights_mower.utils.news_checker import NewsChecker
+
+    monkeypatch.setattr(NewsChecker, "get_maintenance", lambda: None)
+
+
+@pytest.fixture
+def income_db(tmp_path, monkeypatch):
+    """Give valuation readers an isolated database without touching saved user data."""
+    import sqlite3
+    from contextlib import contextmanager
+
+    from arknights_mower.solvers import record
+
+    path = tmp_path / "income.db"
+    monkeypatch.setattr(record, "_tables_created", False)
+    with sqlite3.connect(path) as connection:
+        record._ensure_tables(connection)
+
+    @contextmanager
+    def connect():
+        with sqlite3.connect(path) as connection:
+            yield connection
+
+    monkeypatch.setattr(record, "_conn", connect)
+    return path

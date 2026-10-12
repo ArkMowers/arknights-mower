@@ -430,8 +430,10 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
         direct_get = requests.get
 
         def get(url, **kwargs):
-            if url == resource_pkg.RESOURCE_ZIP_URL:
+            if url in (resource_pkg.RESOURCE_UPDATE_URL, resource_pkg.RESOURCE_ZIP_URL):
                 raise requests.ConnectionError("GitHub unavailable")
+            if not url.startswith(station + "/"):
+                raise AssertionError(f"Unexpected non-fixture request: {url}")
             return direct_get(url, **kwargs)
 
         with (
@@ -439,7 +441,13 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
             patch.object(requests, "get", side_effect=get),
         ):
             self.assertEqual(resource_pkg.download_resource_pkg(), b"fixture resource")
-        self.assertEqual(seen, ["/" + resource_pkg.RESOURCE_ZIP_URL])
+        self.assertEqual(
+            seen,
+            [
+                "/" + resource_pkg.RESOURCE_UPDATE_URL,
+                "/" + resource_pkg.RESOURCE_ZIP_URL,
+            ],
+        )
 
     def test_maa_program_resource_and_range_downloads_use_github_station(self):
         def body(path):
@@ -556,6 +564,7 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
         self.assertEqual(
             seen,
             [
+                "/" + resource_pkg.RESOURCE_UPDATE_URL,
                 "/" + resource_pkg.RESOURCE_ZIP_URL,
                 "/" + resource_version.RESOURCE_VERSION_URL,
             ],
@@ -566,7 +575,11 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
         self.save(http=proxy, github_proxy="http://download.example.invalid/")
         self.assertEqual(resource_pkg.download_resource_pkg(), b"fixture resource")
         self.assertEqual(
-            seen, ["http://download.example.invalid/" + resource_pkg.RESOURCE_ZIP_URL]
+            seen,
+            [
+                "http://download.example.invalid/" + resource_pkg.RESOURCE_UPDATE_URL,
+                "http://download.example.invalid/" + resource_pkg.RESOURCE_ZIP_URL,
+            ],
         )
 
     def test_global_proxy_reaches_maa_and_urllib_on_non_github_hosts(self):

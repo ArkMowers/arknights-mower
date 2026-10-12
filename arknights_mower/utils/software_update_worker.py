@@ -28,6 +28,7 @@ if __package__:
     from .github_download import request_download
     from .update_runtime import (
         InstanceScanError,
+        LockBusyError,
         detached_options,
         hidden_console_options,
         instances,
@@ -43,6 +44,7 @@ else:
     from github_download import request_download
     from update_runtime import (
         InstanceScanError,
+        LockBusyError,
         detached_options,
         hidden_console_options,
         instances,
@@ -1821,11 +1823,17 @@ class Worker:
             write_json(self.state / "status.json", self.status)
 
 
-def retry_backup_cleanup(directory, root, manifests=None):
-    """Retry only explicitly committed update backups, including after a restart."""
+def retry_backup_cleanup(directory, root, manifests=None, *, logger=None):
+    """Retry committed backups; application callers supply their shared logger."""
     root = Path(root).absolute()
     try:
-        with submission_lock(Path(directory) / "backup-cleanup"):
+        with ExitStack() as cleanup:
+            try:
+                cleanup.enter_context(
+                    submission_lock(Path(directory) / "backup-cleanup")
+                )
+            except LockBusyError:
+                return
             for manifest in (
                 manifests
                 if manifests is not None
@@ -1873,17 +1881,21 @@ def retry_backup_cleanup(directory, root, manifests=None):
                         pass
                     except OSError as exc:
                         remaining.append(entry)
-                        print(
-                            f"新版本已验证，更新备份或临时文件暂无法清理，下次启动重试：{exc}",
-                            flush=True,
-                        )
+                        message = f"新版本已验证，更新备份或临时文件暂无法清理，下次启动重试：{exc}"
+                        if logger is not None:
+                            logger.warning(message)
+                        else:
+                            print(message, flush=True)
                 if remaining:
                     write_json(manifest, {**record, "paths": remaining})
                 else:
                     manifest.unlink(missing_ok=True)
     except (OSError, ValueError, KeyError, TypeError):
         # Invalid/inaccessible records must not affect the healthy program.
-        traceback.print_exc()
+        if logger is not None:
+            logger.exception("更新备份清理记录读取失败")
+        else:
+            traceback.print_exc()
 
 
 def main(job_path):

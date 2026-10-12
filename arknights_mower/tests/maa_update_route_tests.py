@@ -108,8 +108,6 @@ class TestMaaUpdateRoutes(unittest.TestCase):
             for route in (
                 "/maa-update/check",
                 "/maa-update/start",
-                "/maa-resource-update/check",
-                "/maa-resource-update/start",
                 "/maa-update/mirrorchyan-status",
             ):
                 with self.subTest(route=route):
@@ -472,6 +470,182 @@ class TestMaaUpdateRoutes(unittest.TestCase):
         data = response.get_json()
         self.assertFalse(data["ok"])
         self.assertIn("发现新版本后再更新", data["message"])
+
+    def test_resource_info_check_and_start_on_windows_and_android(self):
+        current = {"version": "2026-09-03 01:00:00.000", "release_note": ""}
+        for platform, android, source in (
+            ("windows", "0", "github"),
+            ("windows", "0", "mirrorchyan"),
+            ("linux", "1", "github"),
+            ("linux", "1", "mirrorchyan"),
+        ):
+            with (
+                self.subTest(platform=platform, android=android, source=source),
+                patch.dict("os.environ", {"MOWER_ANDROID": android}),
+                patch.object(server, "__system__", platform),
+                patch.object(server, "_maa_busy_response", return_value=None),
+                patch.object(server, "active_job", return_value=False),
+                patch.dict(
+                    server.maa_resource_update_job, {"thread": None, "status": "idle"}
+                ),
+                patch.object(server, "Thread", side_effect=_FakeThread) as launch,
+                patch.object(server.config, "save_conf"),
+                patch.object(
+                    server.config.conf, "maa_mirrorchyan_token", "fixture-token"
+                ),
+                patch(
+                    "arknights_mower.utils.maa_update.has_maa_installation",
+                    return_value=True,
+                ),
+                patch(
+                    "arknights_mower.utils.maa_resource_update.read_maa_resource_info",
+                    return_value=current,
+                ),
+                patch(
+                    "arknights_mower.utils.maa_resource_update.get_maa_resource_release",
+                    return_value=MaaResourceRelease(
+                        version="2026-09-04 01:07:54.000", source=source
+                    ),
+                ),
+            ):
+                payload = {"maa_path": self.target, "source": source}
+                info = self.client.get(
+                    "/maa-resource-update/info",
+                    query_string=payload,
+                    headers=self.headers,
+                ).get_json()
+                self.assertTrue(info["supported"])
+                self.assertEqual(info["platform"], platform)
+                self.assertEqual(info["current"], current)
+
+                unchecked = self.client.post(
+                    "/maa-resource-update/start", json=payload, headers=self.headers
+                ).get_json()
+                self.assertFalse(unchecked["ok"])
+                launch.assert_not_called()
+
+                checked = self.client.post(
+                    "/maa-resource-update/check", json=payload, headers=self.headers
+                ).get_json()
+                self.assertTrue(checked["ok"])
+                self.assertTrue(checked["available"])
+                self.assertTrue(checked["check_id"])
+                started = self.client.post(
+                    "/maa-resource-update/start",
+                    json={**payload, "check_id": checked["check_id"]},
+                    headers=self.headers,
+                ).get_json()
+                self.assertTrue(started["ok"])
+                self.assertEqual(server.maa_resource_update_check["id"], "")
+                launch.assert_called_once_with(
+                    target=server._run_maa_resource_update,
+                    args=(self.target, source, "fixture-token", platform),
+                    daemon=True,
+                )
+
+    def test_unknown_resource_version_accepts_only_matching_checked_update(self):
+        current = {"version": "", "release_note": ""}
+        with (
+            patch.object(server, "__system__", "windows"),
+            patch.object(server, "_maa_busy_response", return_value=None),
+            patch.object(server, "active_job", return_value=False),
+            patch.object(server, "Thread", side_effect=_FakeThread) as launch,
+            patch.object(server.config.conf, "maa_mirrorchyan_token", ""),
+            patch(
+                "arknights_mower.utils.maa_update.has_maa_installation",
+                return_value=True,
+            ),
+            patch(
+                "arknights_mower.utils.maa_resource_update.read_maa_resource_info",
+                return_value=current,
+            ),
+            patch(
+                "arknights_mower.utils.maa_resource_update.get_maa_resource_release",
+                return_value=MaaResourceRelease(
+                    version="2026-10-09 23:31:13.000", source="github"
+                ),
+            ),
+        ):
+            payload = {"maa_path": self.target, "source": "github"}
+            checked = self.client.post(
+                "/maa-resource-update/check", json=payload, headers=self.headers
+            ).get_json()
+            self.assertTrue(checked["available"])
+            for changes in (
+                {"check_id": "wrong"},
+                {"maa_path": self.target + "-other"},
+                {"source": "mirrorchyan", "mirror_token": "fixture"},
+            ):
+                with (
+                    self.subTest(changes=changes),
+                    patch.object(server.config, "save_conf"),
+                ):
+                    rejected = self.client.post(
+                        "/maa-resource-update/start",
+                        json={**payload, "check_id": checked["check_id"], **changes},
+                        headers=self.headers,
+                    ).get_json()
+                    self.assertFalse(rejected["ok"])
+            launch.assert_not_called()
+            started = self.client.post(
+                "/maa-resource-update/start",
+                json={**payload, "check_id": checked["check_id"]},
+                headers=self.headers,
+            ).get_json()
+            self.assertTrue(started["ok"])
+            launch.assert_called_once()
+            self.assertEqual(server.maa_resource_update_check["id"], "")
+
+    def test_connection_config_permission_failure_identifies_file(self):
+        resource = Path(self.target) / "resource"
+        resource.mkdir(parents=True)
+        config_path = resource / "config.json"
+        config_path.write_text('{"connection": []}', encoding="utf-8")
+        with (
+            patch.object(server.config.conf, "maa_path", self.target),
+            patch.object(
+                server, "open", side_effect=PermissionError("denied"), create=True
+            ),
+        ):
+            response = self.client.get(
+                "/maa-conn-preset", headers=self.headers
+            ).get_json()
+        self.assertFalse(response["ok"])
+        self.assertIn(str(config_path), response["message"])
+        self.assertIn("访问被拒绝", response["message"])
+
+    def test_connection_config_missing_and_invalid_files_are_distinguished(self):
+        resource = Path(self.target) / "resource"
+        resource.mkdir(parents=True)
+        config_path = resource / "config.json"
+        with patch.object(server.config.conf, "maa_path", self.target):
+            response = self.client.get(
+                "/maa-conn-preset", headers=self.headers
+            ).get_json()
+            self.assertFalse(response["ok"])
+            self.assertIn("文件不存在", response["message"])
+            for content in (b"not json", b"\xff", b"{}", b'{"connection": null}'):
+                with self.subTest(content=content):
+                    config_path.write_bytes(content)
+                    response = self.client.get(
+                        "/maa-conn-preset", headers=self.headers
+                    ).get_json()
+                    self.assertFalse(response["ok"])
+                    self.assertIn("格式无效", response["message"])
+                    self.assertIn(str(config_path), response["message"])
+                    self.assertNotIn("访问被拒绝", response["message"])
+
+    def test_connection_config_presets_keep_successful_list_response(self):
+        resource = Path(self.target) / "resource"
+        resource.mkdir(parents=True)
+        (resource / "config.json").write_text(
+            '{"connection": [{"configName": "General"}]}', encoding="utf-8"
+        )
+        with patch.object(server.config.conf, "maa_path", self.target):
+            response = self.client.get(
+                "/maa-conn-preset", headers=self.headers
+            ).get_json()
+        self.assertEqual(response, ["General"])
 
     def test_resource_check_and_start_use_separate_check_result(self):
         current = {"version": "2026-09-03 01:00:00.000", "release_note": ""}

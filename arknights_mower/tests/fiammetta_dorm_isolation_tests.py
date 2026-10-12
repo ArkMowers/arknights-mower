@@ -1,6 +1,7 @@
 """肥鸭任务的明确名单不参与普通宿舍清退；选目标前补读失效心情。"""
 
 from datetime import datetime, timedelta
+from types import MethodType
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,6 +14,121 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 ROOM = "dormitory_1"
 solver = dorm_group_tests.solver
+
+
+def test_initial_charge_restoration_reenters_normal_planning(solver, monkeypatch):
+    from arknights_mower.solvers import base_schedule
+    from arknights_mower.utils import scheduler_task
+
+    class Clock(datetime):
+        current = datetime(2026, 10, 6, 19, 51, 41, 669869)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current
+
+    monkeypatch.setattr(base_schedule, "datetime", Clock)
+    monkeypatch.setattr(scheduler_task, "datetime", Clock)
+    monkeypatch.setattr(
+        scheduler_task.NewsChecker, "get_update_time", lambda: (None, None)
+    )
+    monkeypatch.setattr(base_schedule, "save_log", MagicMock())
+    solver.find_next_task = MethodType(
+        base_schedule.BaseSchedulerSolver.find_next_task, solver
+    )
+    future = SchedulerTask(
+        time=Clock.now() + timedelta(hours=4), task_type=TaskTypes.SKILL_UPGRADE
+    )
+    solver.tasks = [future]
+    solver.task = None
+    solver.planned = solver.todo_task = solver.collect_notification = False
+    solver.error = False
+    solver.defer_backup_plan_until_mood_read = True
+    solver.find = MagicMock(return_value=True)
+    solver.scene = MagicMock(return_value=base_schedule.Scene.INFRA_MAIN)
+    solver.recog = MagicMock()
+    solver.check_current_focus = MagicMock()
+    solver.party_time = solver.free_clue = solver.credit_fight = None
+    solver._read_agent_mood = MagicMock()
+    solver._read_initial_card_mood = MagicMock()
+    solver._refresh_fia_candidate_moods = MagicMock()
+    solver._refresh_deferred_product_reservations = MagicMock()
+    solver._schedule_maintenance_backup_check = MagicMock()
+    solver._sync_run_order_tasks = MagicMock()
+    solver._fill_empty_dorms = MagicMock()
+    solver.op_data.correct_dorm = MagicMock()
+    solver.agent_get_mood = MagicMock(return_value=None)
+    solver.backup_plan_solver = MagicMock(return_value=False)
+    solver.queue_product_switches = MagicMock()
+    solver.run_order_solver = MagicMock()
+    solver.plan_solver = MagicMock(side_effect=solver.skip)
+    target = solver.op_data.operators["伊内丝"]
+    target.group, target.mood, target.time_stamp = "", 1, Clock.now()
+    solver.op_data.operators["菲亚梅塔"] = Operator(
+        "菲亚梅塔",
+        ROOM,
+        index=3,
+        current_room=ROOM,
+        current_index=3,
+        mood=24,
+        time_stamp=Clock.now(),
+    )
+    solver.check_fia = lambda: ([target.name], ROOM)
+    monkeypatch.setattr(config.conf, "fia_fool", True)
+    original = {ROOM: ["塑心", "冰酿", "泥岩", "菲亚梅塔", "年"]}
+    solver.agent_arrange_room = MagicMock(side_effect=[original, {}])
+
+    assert solver.infra_main() is True
+    solver.plan_solver.assert_not_called()
+    solver.planned = solver.todo_task = solver.collect_notification = False
+    for stage in range(3):
+        if stage == 2:
+            Clock.current = datetime(2026, 10, 6, 19, 53, 2, 589686)
+        solver.task = None
+        solver.infra_main()
+    assert solver.agent_arrange_room.call_count == 2
+    assert future in solver.tasks
+    assert not any(getattr(task, "initial_fia", False) for task in solver.tasks)
+    followup = solver.find_next_task(task_type=TaskTypes.NOT_SPECIFIC)
+    assert followup is not None, "Startup restoration must resume normal planning"
+    assert followup.time <= Clock.now()
+    solver.plan_solver.assert_not_called()
+
+    solver.run()
+
+    solver.backup_plan_solver.assert_called()
+    solver.run_order_solver.assert_called_once()
+    solver.plan_solver.assert_called_once()
+    assert future in solver.tasks
+
+
+def test_deferred_initial_restoration_keeps_priority_without_followup(
+    solver, monkeypatch
+):
+    from arknights_mower.solvers import base_schedule
+
+    restoration = SchedulerTask(
+        time=datetime.now(),
+        task_type=TaskTypes.FIAMMETTA,
+        task_plan={ROOM: ["塑心", "冰酿", "泥岩", "菲亚梅塔", "年"]},
+        initial_fia=True,
+    )
+    solver.task, solver.tasks = restoration, [restoration]
+    solver.find = MagicMock(return_value=True)
+    solver.agent_arrange = MagicMock(
+        side_effect=base_schedule.RoomArrangementDeferred(
+            ROOM, RuntimeError("room observation unavailable")
+        )
+    )
+    solver.back_to_infrastructure = MagicMock()
+    solver._refresh_deferred_product_reservations = MagicMock()
+    monkeypatch.setattr(base_schedule, "save_exception", MagicMock())
+
+    solver.infra_main()
+
+    assert solver.tasks == [restoration]
+    assert restoration.initial_fia
+    assert restoration.time > datetime.now()
 
 
 def test_real_selection_keeps_full_charge_target(solver, monkeypatch):

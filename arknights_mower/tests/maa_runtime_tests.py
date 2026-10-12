@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from arknights_mower.utils import maa_runtime as runtime
@@ -29,6 +30,14 @@ class MaaRuntimeTests(unittest.TestCase):
             )
         )
         self.enterContext(patch.object(runtime, "maa_in_use", return_value=False))
+        self.clear = self.enterContext(
+            patch.object(
+                runtime,
+                "clear_loaded_maa_cache",
+                side_effect=runtime.MaaUpdateError("unsafe reload"),
+            )
+        )
+        self.enterContext(patch.object(runtime.sys, "path", list(runtime.sys.path)))
         self.callback = Mock()
 
     def load(self):
@@ -78,7 +87,7 @@ class MaaRuntimeTests(unittest.TestCase):
 
     def test_resource_load_failure_creates_no_native_instance(self):
         self.asst_type.load.return_value = False
-        with self.assertRaisesRegex(runtime.MaaUpdateError, "资源加载失败"):
+        with self.assertRaisesRegex(runtime.MaaCallError, "资源加载失败"):
             self.load()
         self.verified.assert_not_called()
         self.probe.assert_not_called()
@@ -140,6 +149,55 @@ class MaaRuntimeTests(unittest.TestCase):
         self.instance.stop.side_effect = RuntimeError("stop failed")
         with self.assertRaises(runtime.MaaCoreRestartRequired):
             self.load()
+
+    def test_external_replacement_reimports_sdk_and_verifies_new_core(self):
+        self.load()
+        self.library.write_bytes(b"new core build")
+        self.clear.side_effect = None
+        new_type = type("NewAsst", (), {"load": Mock(return_value=True)})
+        with patch.object(
+            runtime.importlib,
+            "import_module",
+            return_value=SimpleNamespace(Asst=new_type),
+        ) as reimport:
+            self.assertIs(self.load(), self.instance)
+        self.clear.assert_called_once_with(self.target)
+        reimport.assert_called_once_with("asst.asst")
+        new_type.load.assert_called_once()
+        self.assertEqual(self.probe.call_count, 2)
+        self.assertNotEqual(
+            new_type._mower_core_generation[0], self.asst_type._mower_core_generation[0]
+        )
+
+    def test_reload_retries_only_once_and_keeps_restart_guidance(self):
+        self.load()
+        self.library.write_bytes(b"updated")
+        self.clear.side_effect = None
+        new_type = type("NewAsst", (), {"load": Mock(return_value=True)})
+        self.instance.get_version.return_value = "old core still resident"
+        with patch.object(
+            runtime.importlib,
+            "import_module",
+            return_value=SimpleNamespace(Asst=new_type),
+        ) as reimport:
+            with self.assertRaises(runtime.MaaCoreRestartRequired) as caught:
+                self.load()
+        self.assertEqual(caught.exception.code, "maa_core_restart_required")
+        self.clear.assert_called_once()
+        reimport.assert_called_once()
+        self.instance.connect.assert_not_called()
+
+    def test_failed_reimport_keeps_restart_guidance(self):
+        self.load()
+        self.library.write_bytes(b"updated")
+        self.clear.side_effect = None
+        with patch.object(
+            runtime.importlib, "import_module", side_effect=ImportError("SDK")
+        ):
+            with self.assertRaises(runtime.MaaCoreRestartRequired) as caught:
+                self.load()
+        self.assertIsInstance(caught.exception.__cause__, ImportError)
+        self.assertEqual(self.verified.call_count, 1)
 
 
 if __name__ == "__main__":

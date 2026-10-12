@@ -6,7 +6,7 @@ import sqlite3
 import traceback
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from threading import Lock
+from threading import Event, Lock
 
 import pytz
 from tzlocal import get_localzone
@@ -14,6 +14,9 @@ from tzlocal import get_localzone
 from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
+
+battle_inventory_active = Event()
+
 
 # 全部 DB 表定义（建表/迁移检查进程内只跑一次，避免每调用重跑 CREATE TABLE + PRAGMA + commit）
 _DB_TABLE_STMTS = (
@@ -36,8 +39,17 @@ _DB_TABLE_STMTS = (
     "price INTEGER"
     ")",
     "CREATE TABLE IF NOT EXISTS inventory (item_name TEXT PRIMARY KEY, count INTEGER)",
+    "CREATE TABLE IF NOT EXISTS recycling_collection ("
+    "event_id TEXT PRIMARY KEY, collected_at REAL NOT NULL,"
+    "operators TEXT, materials TEXT NOT NULL)",
+    "CREATE INDEX IF NOT EXISTS recycling_collection_time "
+    "ON recycling_collection(collected_at)",
+    "CREATE TABLE IF NOT EXISTS recycling_valuation ("
+    "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS workshop_inventory_updates ("
     "item_name TEXT PRIMARY KEY, observed_at REAL NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS workshop_inventory_pending ("
+    "item_name TEXT PRIMARY KEY, baseline INTEGER NOT NULL, directions INTEGER NOT NULL DEFAULT 3)",
     "CREATE TABLE IF NOT EXISTS log (time INTEGER,task TEXT,level TEXT,message TEXT)",
     "CREATE TABLE IF NOT EXISTS operation_history ("
     "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -66,6 +78,14 @@ def _ensure_tables(conn):
             return
         for stmt in _DB_TABLE_STMTS:
             conn.execute(stmt)
+        pending_columns = {
+            row[1]
+            for row in conn.execute("PRAGMA table_info(workshop_inventory_pending)")
+        }
+        if "directions" not in pending_columns:
+            conn.execute(
+                "ALTER TABLE workshop_inventory_pending ADD COLUMN directions INTEGER NOT NULL DEFAULT 3"
+            )
         agent_action_columns = {
             row[1] for row in conn.execute("PRAGMA table_info(agent_action)").fetchall()
         }
@@ -172,6 +192,8 @@ def save_action_to_sqlite_decorator(func):
         mood_event=None,
         recorded_at=None,
         preserve_depletion_rate=False,
+        *,
+        group_transitions=None,
     ):
         agent = self.operators[name]  # 干员
 
@@ -179,6 +201,11 @@ def save_action_to_sqlite_decorator(func):
         agent_is_high = agent.is_high()  # 是否高优先级
 
         # 调用原函数
+        recovery_context = (
+            {"group_transitions": group_transitions}
+            if group_transitions is not None
+            else {}
+        )
         result = func(
             self,
             name,
@@ -187,6 +214,7 @@ def save_action_to_sqlite_decorator(func):
             current_index,
             update_time,
             preserve_depletion_rate=preserve_depletion_rate,
+            **recovery_context,
         )
         if not update_time:
             return
@@ -221,9 +249,11 @@ def current_state():
     return {
         "dorm": data.all_dorms(),
         "tasks": tasks,
+        "waiting_group_shifts": getattr(base_scheduler, "waiting_group_shifts", []),
         "party_time": data.party_time,
         "operators": data.operators,
         "facility_states": getattr(data, "facility_states", {}),
+        "group_shift_state": dict(getattr(data, "group_shift_state", {})),
         "automatic_rescue_state": getattr(base_scheduler, "emergency_state", None),
         "backup_plan_names": [backup.name for backup in data.backup_plans],
         "idle_dorm_search_exhausted": getattr(
@@ -502,7 +532,7 @@ def get_mood_ratios():
             mood_data["datasets"].append({"label": mood_label, "data": [point]})
 
         grouped_data[group_name] = mood_data
-    print(grouped_work_rest_data)
+    logger.debug("分组作息记录：%s", grouped_work_rest_data)
     # 将数据格式整理为数组
     formatted_data = []
     for group_name, mood_data in grouped_data.items():
@@ -618,6 +648,276 @@ def get_trading_history(start_date: str, end_date: str):
     return result_list
 
 
+def save_recycling_collection(event_id, collected_at, operators, materials):
+    """Store one observed collection; retries retain the same event identity."""
+    if (
+        not isinstance(event_id, str)
+        or not event_id
+        or not isinstance(collected_at, (int, float))
+        or not 0 < collected_at < 253402300800
+        or (
+            materials is not None and (not isinstance(materials, dict) or not materials)
+        )
+        or any(
+            not isinstance(name, str)
+            or not name
+            or type(count) is not int
+            or count <= 0
+            for name, count in (materials or {}).items()
+        )
+        or (
+            operators is not None
+            and (
+                not isinstance(operators, list)
+                or any(not isinstance(name, str) or not name for name in operators)
+            )
+        )
+    ):
+        raise ValueError("回收站收取记录必须包含有效时间、材料和数量")
+    with _conn() as connection:
+        cursor = connection.execute(
+            "INSERT OR IGNORE INTO recycling_collection VALUES (?, ?, ?, ?)",
+            (
+                event_id,
+                collected_at,
+                json.dumps(operators, ensure_ascii=False),
+                json.dumps(materials or {}, ensure_ascii=False),
+            ),
+        )
+        connection.commit()
+        return cursor.rowcount == 1
+
+
+def update_recycling_operators(event_id, operators):
+    """Complete an unknown roster after reward dismissal without replacing evidence."""
+    if not isinstance(operators, list) or any(
+        not isinstance(name, str) or not name for name in operators
+    ):
+        raise ValueError("回收站进驻干员必须来自实际房间读数")
+    with _conn() as connection:
+        connection.execute(
+            "UPDATE recycling_collection SET operators = ? "
+            "WHERE event_id = ? AND operators = 'null'",
+            (json.dumps(operators, ensure_ascii=False), event_id),
+        )
+        connection.commit()
+
+
+def _recycling_date_bounds(start_date, end_date):
+    start = datetime.strptime(start_date, "%Y-%m-%d")
+    end = datetime.strptime(end_date, "%Y-%m-%d")
+    if end < start:
+        raise ValueError("日期范围无效")
+    return start.timestamp(), (end + timedelta(days=1)).timestamp()
+
+
+def _recycling_valuation(connection):
+    from arknights_mower.utils.recycling_valuation import (
+        BASE_ALGORITHMS,
+        default_valuation,
+    )
+
+    row = connection.execute(
+        "SELECT payload FROM recycling_valuation WHERE id = 1"
+    ).fetchone()
+    current = default_valuation()
+    if not row:
+        return current
+    saved = json.loads(row[0])
+    if saved.get("source") == "计算器内置价值快照":
+        saved.pop("prices", None)
+        saved.pop("item_ids", None)
+        saved.pop("source", None)
+    current["prices"].update(saved.pop("prices", {}))
+    current["item_ids"].update(saved.pop("item_ids", {}))
+    current.update(saved)
+    if "metadata" not in saved and current["source"] != default_valuation()["source"]:
+        current["metadata"] = {
+            **current["metadata"],
+            "source": current["source"],
+            "imported_at": current["imported_at"],
+            "pricing_mode": "imported",
+        }
+    if "base_algorithm" not in saved:
+        current["base_algorithm"] = next(
+            (
+                key
+                for key, values in BASE_ALGORITHMS.items()
+                if all(
+                    current["ratios"][name] == value for name, value in values.items()
+                )
+            ),
+            -1,
+        )
+        current["base_algorithm_saved"] = False
+    return current
+
+
+def get_recycling_valuation():
+    with _conn() as connection:
+        return _recycling_valuation(connection)
+
+
+def update_recycling_valuation(
+    *, ratios=None, imported=None, reset=False, base_algorithm=None
+):
+    """Atomically update assumptions while retaining independent saved inputs."""
+    from arknights_mower.utils.recycling_valuation import (
+        BASE_ALGORITHMS,
+        default_valuation,
+        validate_base_algorithm,
+        validate_ratios,
+    )
+
+    if ratios is not None:
+        ratios = validate_ratios(ratios)
+        if base_algorithm is None:
+            base_algorithm = next(
+                (
+                    key
+                    for key, values in BASE_ALGORITHMS.items()
+                    if all(ratios[name] == value for name, value in values.items())
+                ),
+                -1,
+            )
+        base_algorithm = validate_base_algorithm(base_algorithm, ratios)
+    elif base_algorithm is not None:
+        raise ValueError("请同时提供收益系数")
+    with _conn() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        current = default_valuation() if reset else _recycling_valuation(connection)
+        if reset:
+            current["base_algorithm_saved"] = True
+        if ratios is not None:
+            current["ratios"] = ratios
+            current["base_algorithm"] = base_algorithm
+            current["base_algorithm_saved"] = True
+        if imported is not None:
+            known_ids = current.get("item_ids", {})
+            for name, item_id in imported["item_ids"].items():
+                if name in known_ids and known_ids[name] != item_id:
+                    raise ValueError(f"物品名称与已保存 ID 不符：{name}")
+                if any(
+                    saved_id == item_id and saved_name != name
+                    for saved_name, saved_id in known_ids.items()
+                ):
+                    raise ValueError(f"物品 ID 与已保存名称不符：{item_id}")
+            current["last_import"] = {
+                "updated": len(imported["prices"]),
+                "added": len(imported["prices"].keys() - current["prices"].keys()),
+                "retained": len(current["prices"].keys() - imported["prices"].keys()),
+                "unpriced": imported.get("unpriced", []),
+            }
+            current["prices"].update(imported["prices"])
+            current.setdefault("item_ids", {}).update(imported["item_ids"])
+            if "lmd_sanity" in imported:
+                current["lmd_sanity"] = imported["lmd_sanity"]
+            current["source"] = "一图流导入（未提供的价值保留原值）"
+            current["imported_at"] = datetime.now().timestamp()
+            current["metadata"] = {
+                **current["metadata"],
+                "source": current["source"],
+                "imported_at": current["imported_at"],
+                "pricing_mode": "imported",
+            }
+        connection.execute(
+            "INSERT OR REPLACE INTO recycling_valuation VALUES (1, ?)",
+            (json.dumps(current, ensure_ascii=False, allow_nan=False),),
+        )
+        connection.commit()
+        return current
+
+
+def _recycling_summary(connection, bounds):
+    from arknights_mower.data import key_mapping
+    from arknights_mower.utils.mastery_recommendation import get_skill_data
+    from arknights_mower.utils.recycling import recycling_expectation
+
+    where = " WHERE collected_at >= ? AND collected_at < ?"
+    total = connection.execute(
+        "SELECT COUNT(*) FROM recycling_collection" + where, bounds
+    ).fetchone()[0]
+    unknown_collections = connection.execute(
+        "SELECT COUNT(*) FROM recycling_collection" + where + " AND materials = '{}'",
+        bounds,
+    ).fetchone()[0]
+    totals = [
+        {"name": name, "count": count}
+        for name, count in connection.execute(
+            "SELECT item.key, SUM(item.value) FROM recycling_collection, "
+            "json_each(materials) AS item"
+            + where
+            + " GROUP BY item.key ORDER BY SUM(item.value) DESC, item.key",
+            bounds,
+        )
+    ]
+    item_data = get_skill_data().get("items", {})
+    quality = collections.Counter()
+    for item in totals:
+        item_id = key_mapping.get(item["name"], [None])[0]
+        item["rarity"] = item_data.get(item_id, {}).get("rarity")
+        quality[item["rarity"]] += item["count"]
+    return {
+        "total": total,
+        "materials": totals,
+        "comparison": recycling_expectation(
+            totals, unknown_collections, _recycling_valuation(connection)
+        ),
+        "qualities": [
+            {"rarity": rarity, "count": count}
+            for rarity, count in sorted(quality.items(), key=lambda row: row[0] or 0)
+        ],
+    }
+
+
+def _recycling_snapshot(row):
+    event_id, collected_at, operators, materials = row
+    return {
+        "id": event_id,
+        "collected_at": collected_at,
+        "operators": json.loads(operators) if operators else None,
+        "materials": json.loads(materials) or None,
+    }
+
+
+def get_recycling_history(start_date, end_date, page=1, page_size=50):
+    """Return local-calendar totals and a bounded page of collection snapshots."""
+    bounds = _recycling_date_bounds(start_date, end_date)
+    if not 1 <= page or not 1 <= page_size <= 200:
+        raise ValueError("分页参数无效")
+    with _conn() as connection:
+        # One read transaction keeps counts, totals and details consistent.
+        connection.execute("BEGIN")
+        result = _recycling_summary(connection, bounds)
+        rows = connection.execute(
+            "SELECT event_id, collected_at, operators, materials "
+            "FROM recycling_collection WHERE collected_at >= ? AND collected_at < ? "
+            "ORDER BY collected_at DESC, event_id DESC LIMIT ? OFFSET ?",
+            (*bounds, page_size, (page - 1) * page_size),
+        )
+        result["records"] = [_recycling_snapshot(row) for row in rows]
+        return result
+
+
+def export_recycling_history(start_date, end_date):
+    """Export all selected records and summaries from the same read snapshot."""
+    from arknights_mower.utils.recycling_export import write_recycling_workbook
+
+    bounds = _recycling_date_bounds(start_date, end_date)
+    with _conn() as connection:
+        connection.execute("BEGIN")
+        summary = _recycling_summary(connection, bounds)
+        rows = connection.execute(
+            "SELECT event_id, collected_at, operators, materials "
+            "FROM recycling_collection WHERE collected_at >= ? AND collected_at < ? "
+            "ORDER BY collected_at DESC, event_id DESC",
+            bounds,
+        )
+        return write_recycling_workbook(
+            start_date, end_date, summary, (_recycling_snapshot(row) for row in rows)
+        )
+
+
 def save_inventory_counts(
     inventorys: dict[str, int],
     *,
@@ -634,6 +934,12 @@ def save_inventory_counts(
                 "SELECT item_name, observed_at FROM workshop_inventory_updates"
             )
         )
+        pending = {
+            name: (baseline, directions)
+            for name, baseline, directions in conn.execute(
+                "SELECT item_name, baseline, directions FROM workshop_inventory_pending"
+            )
+        }
         if scanned_counts is not None:
             current = dict(conn.execute("SELECT item_name, count FROM inventory"))
             for name in protected.keys() | (cloud_counts or {}).keys():
@@ -642,6 +948,7 @@ def save_inventory_counts(
                 # an observed zero and must not advance its freshness marker.
                 scanned = scanned_counts.get(name)
                 source_at = scanned_at
+                from_cloud = False
                 if (
                     cloud_counts is not None
                     and name in cloud_counts
@@ -649,6 +956,34 @@ def save_inventory_counts(
                 ):
                     scanned = cloud_counts[name]
                     source_at = cloud_at
+                    from_cloud = True
+                if from_cloud and battle_inventory_active.is_set():
+                    # Cloud can already include drops whose settlement receipt is pending.
+                    # Keep the run's local baseline until all drop receipts are consumed.
+                    if name in current:
+                        effective[name] = current[name]
+                    else:
+                        effective.pop(name, None)
+                    continue
+                # Request time does not prove Skland inventory freshness. Keep
+                # confirmed batch changes until the cloud reaches the predicted
+                # count in its net direction; an actual game read can reconcile.
+                # Once an item was both made and consumed, an intermediate cloud
+                # count can cross that range. Only exact convergence is sufficient.
+                if from_cloud and name in pending and name in current:
+                    (baseline, directions), expected = pending[name], current[name]
+                    caught_up = (
+                        scanned == expected
+                        if directions == 3 or not isinstance(scanned, int)
+                        else scanned >= expected
+                        if expected > baseline
+                        else scanned <= expected
+                        if expected < baseline
+                        else scanned == expected
+                    )
+                    if not caught_up:
+                        effective[name] = expected
+                        continue
                 if (
                     source_at > observed_at
                     and isinstance(scanned, int)
@@ -657,6 +992,10 @@ def save_inventory_counts(
                     # A fresh source can reconcile crafting, loot and spending.
                     # Keep its marker: reopening the page must not restore cloud cache.
                     effective[name] = scanned
+                    conn.execute(
+                        "DELETE FROM workshop_inventory_pending WHERE item_name = ?",
+                        (name,),
+                    )
                     conn.execute(
                         "INSERT INTO workshop_inventory_updates (item_name, observed_at) VALUES (?, ?) "
                         "ON CONFLICT(item_name) DO UPDATE SET observed_at = excluded.observed_at",
@@ -667,6 +1006,10 @@ def save_inventory_counts(
                 else:
                     effective.pop(name, None)  # Preserve an unconfirmed/unknown count.
         else:
+            conn.executemany(
+                "DELETE FROM workshop_inventory_pending WHERE item_name = ?",
+                [(name,) for name in effective],
+            )
             conn.executemany(
                 "UPDATE workshop_inventory_updates SET observed_at = ? WHERE item_name = ?",
                 [
@@ -682,6 +1025,25 @@ def save_inventory_counts(
             list(effective.items()),
         )
         conn.commit()
+        from arknights_mower.utils.workshop_limits import (
+            clear_workshop_recipe_rejections,
+        )
+
+        observed = {}
+        if scanned_counts is None:
+            observed = dict.fromkeys(effective, datetime.now().timestamp())
+        else:
+            for counts, timestamp in (
+                (scanned_counts, scanned_at),
+                (
+                    {} if battle_inventory_active.is_set() else cloud_counts or {},
+                    cloud_at,
+                ),
+            ):
+                for name, count in counts.items():
+                    if name in effective and effective[name] == count:
+                        observed[name] = max(timestamp, observed.get(name, 0))
+        clear_workshop_recipe_rejections(observed)
         return effective
 
 
@@ -698,9 +1060,19 @@ def get_inventory_counts(item_names: list[str] | None = None):
 
 
 def apply_workshop_inventory(delta: dict[str, int]):
-    """Apply the main output and ingredient changes of one confirmed batch."""
+    """Persist confirmed crafting or drop deltas without restoring invalidated stock."""
     with _conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        conn.executemany(
+            "INSERT INTO workshop_inventory_pending (item_name, baseline, directions) "
+            "SELECT item_name, count, ? FROM inventory WHERE item_name = ? "
+            "ON CONFLICT(item_name) DO UPDATE SET directions = directions | excluded.directions",
+            [
+                (1 if amount > 0 else 2, name)
+                for name, amount in delta.items()
+                if amount
+            ],
+        )
         conn.executemany(
             "UPDATE inventory SET count = MAX(0, count + ?) WHERE item_name = ?",
             [(amount, name) for name, amount in delta.items()],

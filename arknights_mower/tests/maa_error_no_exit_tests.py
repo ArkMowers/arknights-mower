@@ -21,6 +21,44 @@ from arknights_mower.utils.device.touch_backend import TouchFailure  # noqa: E40
 
 
 class TestSchedulerTerminalDeviceFailures(unittest.TestCase):
+    def test_recovered_idle_failure_returns_to_device_recovery_without_maa_mail(self):
+        from arknights_mower.tests import device_session_tests as device_fakes
+
+        harness = device_fakes.DeviceSessionTests()
+        harness.setUp()
+        harness.adb.rows, harness.adb.boot = [("USB-A", "device")], "1"
+        self.assertTrue(harness.control.start().ok)
+        self.addCleanup(harness.control.close)
+        failure = ConnectionError(b"device 'USB-A' not found")
+        query = MagicMock(side_effect=failure)
+        solver = self.make_solver()
+        solver.rest_until_next_task = MagicMock(
+            side_effect=lambda: harness.control.execute(query).unwrap()
+        )
+        conf = SimpleNamespace(
+            maa_gap=4,
+            RG=False,
+            SSS=False,
+            RCL=False,
+            RA=False,
+            SF=False,
+            maa_rg_sleep_min="12:00",
+            maa_rg_sleep_max="12:00",
+        )
+        with (
+            patch.object(base_schedule.config, "conf", conf),
+            patch.object(base_schedule, "send_message") as notify,
+            patch.object(base_schedule, "save_exception") as archive,
+        ):
+            with self.assertRaises(ConnectionError) as raised:
+                solver.maa_plan_solver()
+        self.assertIs(raised.exception, failure)
+        self.assertEqual(harness.control._readiness.state, "ready")
+        query.assert_called_once()
+        notify.assert_not_called()
+        archive.assert_not_called()
+        solver._idle_sleep.assert_not_called()
+
     def failures(self):
         return (
             DeviceRecoveryError("recovery exhausted"),
@@ -128,7 +166,9 @@ class MaaErrorNoExitTests(unittest.TestCase):
                 asst.return_value.get_version.return_value = "v6.19.0-beta.1"
                 Path(maa_path, "MaaCore.dll").write_bytes(b"offline core")
                 response = MagicMock()
-                response.__enter__.return_value.content = b"{}"
+                response.__enter__.return_value.content = (
+                    b'{"YW-8": {"algorithm": "JustReturn"}}'
+                )
                 conf = SimpleNamespace(
                     maa_path=maa_path,
                     maa_adb_path=configured_adb,
@@ -151,19 +191,18 @@ class MaaErrorNoExitTests(unittest.TestCase):
                         },
                     ),
                     patch.object(base_schedule.requests, "get", return_value=response),
-                    patch.object(base_schedule, "guard_adb"),
+                    patch.object(base_schedule, "guard_adb") as guard,
                     patch(
                         "arknights_mower.utils.maa_runtime.read_installed_version",
                         return_value="v6.19.0-beta.1",
                     ),
                 ):
                     solver.initialize_maa()
-                    try:
-                        asst.return_value.connect.assert_called_once_with(
-                            "sdk-adb", "USB-123", "General"
-                        )
-                    finally:
-                        solver.MAA.stop()
+                    solver.MAA.stop()
+                guard.assert_called_once_with("sdk-adb", timeout=10)
+                asst.return_value.connect.assert_called_once_with(
+                    "sdk-adb", "USB-123", "General"
+                )
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
     def test_initialize_maa_failure_does_not_exit_game(self):
@@ -248,8 +287,8 @@ class MaaErrorNoExitTests(unittest.TestCase):
         solver.device.exit.assert_not_called()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda self: None)
-    def test_long_task_crash_does_not_exit_game_or_retry(self):
-        # 肉鸽/保全/盐酸长任务 MAA 运行中断 → 不关游戏、不原地重试、本轮跳过
+    def test_long_task_completion_does_not_report_error_or_retry(self):
+        # 长任务自行结束不构成故障；调度器不追加错误日志或错误通知。
         solver = BaseSchedulerSolver()
         solver.device = MagicMock()
         solver.recog = MagicMock()
@@ -285,7 +324,7 @@ class MaaErrorNoExitTests(unittest.TestCase):
             ),
         )
         mock_maa = MagicMock()
-        # running() 立即返回 False：MAA 运行循环一次都不进，留下 maa_crash=True
+        # 核心结束任务后，running() 返回 False。
         mock_maa.running.return_value = False
 
         def _init_maa():
@@ -296,15 +335,26 @@ class MaaErrorNoExitTests(unittest.TestCase):
             patch.object(solver, "back_to_index"),
             patch.object(solver, "initialize_maa", side_effect=_init_maa) as init_maa,
             patch.object(solver, "append_maa_task"),
-            patch.object(solver, "rest_until_next_task"),
+            patch.object(solver, "rest_until_next_task") as rest,
             patch.object(base_schedule, "get_server_weekday", return_value=1),
             patch.object(base_schedule, "send_message") as send_message,
+            patch.object(base_schedule, "logger") as logger,
         ):
             solver.maa_plan_solver()
 
         solver.device.exit.assert_not_called()
         solver.device.check_current_focus.assert_not_called()
-        send_message.assert_any_call("MAA 肉鸽/保全/盐酸运行中断", level="ERROR")
+        logger.error.assert_not_called()
+        logger.exception.assert_not_called()
+        self.assertFalse(
+            any(
+                call.kwargs.get("level") == "ERROR"
+                for call in send_message.call_args_list
+            )
+        )
+        rest.assert_called_once_with()
+        self.assertIsNone(solver.MAA)
+        solver.recog.reset_after_external_control.assert_called()
         # 不原地重试：initialize_maa 只被调两次（日常一次 + 长任务一次），无第三次
         self.assertEqual(init_maa.call_count, 2)
 

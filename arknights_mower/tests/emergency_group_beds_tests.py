@@ -98,7 +98,7 @@ def test_released_completed_member_bed_is_available_to_peer(solver, capacity):
     assert resident.current_room == ""
 
 
-def test_completed_member_bed_can_be_taken_without_displacing_unready_peer(solver):
+def test_completed_primary_keeps_bed_until_normal_departure(solver):
     group = PRIMARY[:2]
     incoming = PRIMARY[2]
     data, state = prepare(solver, [group], capacity=2)
@@ -112,9 +112,9 @@ def test_completed_member_bed_can_be_taken_without_displacing_unready_peer(solve
     data.operators[incoming].mood = 0
 
     plan = emergency_dorm_plan(data, state)
-    assert incoming in admissions(plan)
+    assert plan == {}
     peer = data.operators[group[1]]
-    assert plan[peer.current_room][peer.current_index] == "Current"
+    assert peer.is_resting()
 
 
 @pytest.mark.parametrize("reservation", ["name", "bed", "strict", "product"])
@@ -325,6 +325,7 @@ def test_ordinary_bound_residents_yield_individually_to_higher_priority(
     ordinary = COVERS[:2]
     incoming = PRIMARY[:2]
     data, state = prepare(solver, [ordinary, incoming])
+    data.config.resting_priority_replacement = []
     data.dorm[:] = [bed for bed in data.dorm if bed.position[1] >= 2][:2]
     for name, bed in zip(ordinary, data.dorm):
         op = data.operators[name]

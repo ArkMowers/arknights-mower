@@ -7,11 +7,27 @@ from typing import Optional, Self
 from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.mastery_support_types import IGNORED_NAMES
 
+RIGHT_SIDE_ROOM_CAPACITY = {
+    "meeting": 2,
+    "factory": 1,
+    "contact": 1,
+    "train": 2,
+    "recycle": 2,
+}
+
 DEFAULT_DORM_ROOM_ORDER = [f"dormitory_{index}" for index in range(1, 5)]
 
 
-def effective_dorm_room_order(values: list[str]) -> list[str]:
-    """将房间或旧具体床位顺序折叠为完整的四宿舍顺序。"""
+def all_replacements(replacement, group_bindings=()):
+    """Collect every binding's replacements in declaration order without mutation."""
+    names = dict.fromkeys(replacement)
+    for binding in group_bindings:
+        names.update(dict.fromkeys(binding.get("replacement", ())))
+    return list(names)
+
+
+def effective_dorm_order(values: list[str]) -> list[str]:
+    """保留显式低优位，旧床位键折叠为宿舍，补齐缺少的高优位。"""
     result = []
     for value in values:
         parts = value.rsplit("_", 1)
@@ -22,7 +38,10 @@ def effective_dorm_room_order(values: list[str]) -> list[str]:
             and parts[1].isdigit()
             else value
         )
-        if room in DEFAULT_DORM_ROOM_ORDER and room not in result:
+        if (
+            room in DEFAULT_DORM_ROOM_ORDER
+            or room.removesuffix("_low") in DEFAULT_DORM_ROOM_ORDER
+        ) and room not in result:
             result.append(room)
     result.extend(room for room in DEFAULT_DORM_ROOM_ORDER if room not in result)
     return result
@@ -64,6 +83,7 @@ class PlanConfig:
         operator_mood_limits: Optional[dict] = None,
         resting_priority_replacement: str = "",
         free_room_exclusions: str = "",
+        removed_operators: Optional[dict[str, str]] = None,
     ):
         """排班的设置
 
@@ -86,6 +106,10 @@ class PlanConfig:
         self.free_room_exclusions = to_list(free_room_exclusions)
         self.resting_standby = to_list(resting_standby)
         self.free_blacklist = to_list(free_blacklist)
+        self.removed_operators = {
+            field: {name for name in to_list(names) if name}
+            for field, names in (removed_operators or {}).items()
+        }
         # 0 为均衡模式
         # 1 为感知信息模式
         # 2 为人间烟火模式
@@ -116,8 +140,7 @@ class PlanConfig:
             if dorm_order_override is not None
             else bool(
                 self.dorm_order
-                and effective_dorm_room_order(self.dorm_order)
-                != DEFAULT_DORM_ROOM_ORDER
+                and effective_dorm_order(self.dorm_order) != DEFAULT_DORM_ROOM_ORDER
             )
         )
 
@@ -175,9 +198,16 @@ class PlanConfig:
         ]:
             p_list = getattr(n, p)
             target_list = getattr(target, p)
+            field = "refresh_trading" if p == "refresh_trading_config" else p
+            removed = getattr(target, "removed_operators", {}).get(field, set())
             merged_list = []
             for item in p_list + target_list:
-                if item not in merged_list:
+                name = (
+                    item.split("(", 1)[0].strip()
+                    if field == "refresh_trading"
+                    else item
+                )
+                if item and name not in removed and item not in merged_list:
                     merged_list.append(item)
             setattr(n, p, merged_list)
         # 副表未显式设置宿舍顺序时继承此前结果；只有显式设置的副表覆盖。
@@ -198,6 +228,7 @@ class Room:
         replacement: list[str],
         facility: str = "",
         product: str = "",
+        group_bindings: Optional[list[dict]] = None,
     ):
         """房间
 
@@ -209,16 +240,28 @@ class Room:
         self.agent = agent
         self.group = group
         self.replacement = replacement
+        self.group_bindings = copy.deepcopy(group_bindings or [])
         self.facility = facility
         if self.facility == "发电站":
             self.product = BaseProduct.Electricity
         else:
             self.product = product
 
+    @property
+    def bindings(self):
+        return [
+            dict(group=self.group, replacement=self.replacement),
+            *self.group_bindings,
+        ]
+
+    @property
+    def all_replacements(self):
+        return all_replacements(self.replacement, self.group_bindings)
+
     def __repr__(self):
         return (
             f"Room(agent='{self.agent}', group='{self.group}', replacement={self.replacement}, "
-            f"facility='{self.facility}', product='{self.product}')"
+            f"facility='{self.facility}', product='{self.product}', group_bindings={self.group_bindings})"
         )
 
 
@@ -296,7 +339,7 @@ class Plan:
             name
             for room in self.plan.values()
             for slot in room
-            for name in (slot.agent, *slot.replacement)
+            for name in (slot.agent, *slot.all_replacements)
         }
         if include_tasks:
             names.update(name for task in (self.task or {}).values() for name in task)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import time
 from threading import Event, RLock, Thread
@@ -9,6 +10,7 @@ from arknights_mower import __system__
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
 from arknights_mower.utils.device.adb_client.server import guard_adb
 from arknights_mower.utils.device.io_budget import io_timeout
+from arknights_mower.utils.device.manager_io import run_command
 from arknights_mower.utils.log import logger
 
 
@@ -24,6 +26,7 @@ class Session:
         self._closed = False
         self._lock = RLock()
         self._closed_event = Event()
+        self._io_event = Event()
         self._io_thread = None
         self.input_started = False
         if not defer_start:
@@ -36,7 +39,7 @@ class Session:
             return
         client = self.client
         deadline = time.monotonic() + io_timeout(10)
-        guard_adb(client.adb_bin, timeout=io_timeout(10), run=subprocess.run)
+        guard_adb(client.adb_bin, timeout=io_timeout(10), run=run_command)
         with self._lock:
             if self._closed_event.is_set() or self.owner_pid != os.getpid():
                 raise ConnectionError("MaaTouch 会话已关闭")
@@ -90,6 +93,7 @@ class Session:
     def _io(self, operation, timeout=10, *, input_operation=False):
         """Bound pipe operations on Windows too; closing reaps their process."""
         done = Event()
+        wake = Event()
         result = []
         errors = []
         deadline = time.monotonic() + io_timeout(max(0, timeout))
@@ -101,6 +105,7 @@ class Session:
                 errors.append(exc)
             finally:
                 done.set()
+                wake.set()
 
         with self._lock:
             if self._closed_event.is_set() or self.owner_pid != os.getpid():
@@ -109,17 +114,21 @@ class Session:
                 raise ConnectionError("MaaTouch 进程提前退出")
             if time.monotonic() >= deadline:
                 raise TimeoutError("MaaTouch I/O 超时")
+            self._io_event = wake
             self._io_thread = Thread(target=run, daemon=True, name="maatouch-io")
             if input_operation:
                 self.input_started = True
             self._io_thread.start()
         while not done.is_set():
+            if self._closed_event.is_set():
+                raise ConnectionError("MaaTouch 会话已关闭")
             remaining = min(deadline - time.monotonic(), io_timeout(10))
             if remaining <= 0:
                 raise TimeoutError("MaaTouch I/O 超时")
-            if self._closed_event.wait(min(0.01, remaining)):
+            wake.wait(min(0.01, remaining))
+            if self._closed_event.is_set():
                 raise ConnectionError("MaaTouch 会话已关闭")
-        if self._closed:
+        if self._closed_event.is_set():
             raise ConnectionError("MaaTouch 会话已关闭")
         if time.monotonic() >= deadline:
             raise TimeoutError("MaaTouch I/O 超时")
@@ -153,39 +162,40 @@ class Session:
                 return
             self._closed = True
             self._closed_event.set()
+            self._io_event.set()
             process = self.process
             worker = self._io_thread
         if process is None:
             return
         failures = []
-        # A blocked writer owns the pipe lock; never close its stream until the
-        # process has exited and released that writer.
-        if worker is None or not worker.is_alive():
+        # MaaTouch dereferences null on stdin EOF. Stop the owned process before
+        # closing its pipes, also allowing blocked I/O to release the stream lock.
+        expected_returncodes = {0}
+        stop_returncodes = (
+            (1, 1) if __system__ == "windows" else (-signal.SIGTERM, -signal.SIGKILL)
+        )
+        for action, stopped_returncode in zip(
+            (process.terminate, process.kill), stop_returncodes
+        ):
+            if process.poll() is not None:
+                break
             try:
-                process.stdin.close()
+                action()
+                expected_returncodes.add(stopped_returncode)
             except Exception as exc:
                 failures.append(exc)
-        for action in (None, process.terminate, process.kill):
-            if action is not None:
-                if process.poll() is not None:
-                    break
-                try:
-                    action()
-                except Exception as exc:
-                    failures.append(exc)
             try:
                 process.wait(timeout=1)
-                if action is None and process.returncode not in (None, 0):
-                    failures.append(
-                        RuntimeError(f"MaaTouch 进程异常退出：{process.returncode}")
-                    )
             except subprocess.TimeoutExpired:
                 pass
             except Exception as exc:
                 failures.append(exc)
         if worker is not None:
             worker.join(timeout=1)
-        if process.poll() is None:
+        returncode = process.poll()
+        if returncode is not None and returncode not in expected_returncodes:
+            failures.append(RuntimeError(f"MaaTouch 进程异常退出：{returncode}"))
+        if returncode is None:
             failures.append(RuntimeError("MaaTouch 进程在有限等待后仍未退出"))
         elif worker is not None and worker.is_alive():
             failures.append(RuntimeError("MaaTouch I/O 在进程退出后仍未结束"))
@@ -202,6 +212,7 @@ class Session:
     def interrupt(self):
         if self.owner_pid == os.getpid():
             self._closed_event.set()
+            self._io_event.set()
 
     def send(self, content: str):
         def write():

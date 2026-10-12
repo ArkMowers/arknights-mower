@@ -2,6 +2,7 @@
 
 from arknights_mower.utils.workshop_material_policy import protected_workshop_materials
 from arknights_mower.utils.workshop_recipes import (
+    SCOPED_OPERATORS,
     T4_PREFERRED,
     exclusive_specialists,
     matches_specialty,
@@ -38,7 +39,7 @@ def setting_priority(entry, available, formulas):
 
 def scope_setting(entry, formulas):
     name = entry.operator if hasattr(entry, "model_dump") else entry["operator"]
-    if not protected_workshop_materials() and name not in (*T4_PREFERRED, "莱伊"):
+    if not protected_workshop_materials() and name not in SCOPED_OPERATORS:
         return entry
     items = scope_workshop_items(
         name, entry.items if hasattr(entry, "model_dump") else entry["items"], formulas

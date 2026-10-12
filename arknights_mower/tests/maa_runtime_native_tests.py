@@ -1,0 +1,200 @@
+"""Exercise real loader reference counts in an isolated, device-free process."""
+
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+SDK = """
+import ctypes
+from pathlib import Path
+
+class Asst:
+    @staticmethod
+    def load(path, incremental_path=None):
+        library = ctypes.CDLL(str(Path(path) / CORE_NAME))
+        Asst.__lib = library
+        library.AsstGetVersion.restype = ctypes.c_char_p
+        library.AsstCreateEx.argtypes = [ctypes.c_void_p]
+        library.AsstCreateEx.restype = ctypes.c_void_p
+        library.AsstDestroy.argtypes = [ctypes.c_void_p]
+        library.AsstSetLog.argtypes = [ctypes.c_char_p]
+        library.AsstSetLog(str(Path(path) / "unloaded.txt").encode())
+        return True
+
+    def __init__(self, callback):
+        self.__callback = callback
+        self.__ptr = Asst.__lib.AsstCreateEx(callback)
+
+    def __del__(self):
+        Asst.__lib.AsstDestroy(self.__ptr)
+
+    def get_version(self):
+        return Asst.__lib.AsstGetVersion().decode()
+
+    def get_build(self):
+        return Asst.__lib.AsstBuild()
+
+    def stop(self):
+        return True
+"""
+
+CORE = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+typedef void (*Callback)(int, const char *, void *);
+static char log_path[4096];
+const char *AsstGetVersion(void) { return "v1.0.0"; }
+int AsstBuild(void) { return BUILD_ID; }
+void AsstSetLog(const char *path) { snprintf(log_path, sizeof(log_path), "%s", path); }
+void *AsstCreateEx(Callback cb) {
+    Callback *ptr = malloc(sizeof(Callback));
+    *ptr = cb;
+    return ptr;
+}
+void AsstDestroy(void *ptr) {
+    Callback *cb = ptr;
+    (*cb)(5, "{}", NULL);
+    free(ptr);
+}
+__attribute__((destructor)) static void unloaded(void) {
+    if (!log_path[0]) return;
+    FILE *file = fopen(log_path, "a");
+    if (file) { fprintf(file, "%d\n", BUILD_ID); fclose(file); }
+}
+"""
+
+WORKER = r"""
+import gc
+import os
+import sys
+from pathlib import Path
+from arknights_mower.utils.maa_runtime import load_verified_maa, MaaCoreRestartRequired
+from arknights_mower.utils import maa_update
+
+target, replacement, mode = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
+sys.path.insert(0, str(target / "Python"))
+from asst.asst import Asst
+# This C fixture has no Objective-C classes; exercise the Windows/Linux policy.
+maa_update.platform.system = lambda: "Darwin" if mode == "darwin" else "Linux"
+
+for _ in range(3):
+    instance = load_verified_maa(Asst, target, lambda *args: None)
+    assert instance.get_build() == 1
+    instance.stop()
+    del instance
+    gc.collect()
+
+if mode == "retained":
+    retained = load_verified_maa(Asst, target, lambda *args: None)
+    retained.stop()
+elif mode in ("raw", "old-sdk"):
+    from ctypes import CFUNCTYPE, c_int, c_char_p, c_void_p
+    callback = CFUNCTYPE(None, c_int, c_char_p, c_void_p)(lambda *args: None)
+    retained = Asst(callback)
+    if mode == "old-sdk":
+        import importlib
+        sys.modules.pop("asst.asst")
+        Asst = importlib.import_module("asst.asst").Asst
+        instance = load_verified_maa(Asst, target, lambda *args: None)
+        instance.stop()
+        del instance
+        gc.collect()
+elif mode == "unknown":
+    # An out-of-band SDK load cannot contribute to a trusted reference count.
+    Asst.load(target)
+elif mode == "close-failed":
+    def fail(*args, **kwargs):
+        raise OSError("library close failed")
+    maa_update._close_dynamic_library = fail
+
+os.replace(replacement, target / replacement.name)
+if mode != "reload":
+    try:
+        load_verified_maa(Asst, target, lambda *args: None)
+    except MaaCoreRestartRequired as error:
+        assert error.code == "maa_core_restart_required"
+    else:
+        raise AssertionError("unsafe core was admitted")
+    assert not (target / "unloaded.txt").exists()
+    if mode == "close-failed":
+        # A partially invalidated SDK cannot retry into an unverified image.
+        try:
+            load_verified_maa(Asst, target, lambda *args: None)
+        except MaaCoreRestartRequired:
+            pass
+        else:
+            raise AssertionError("failed unload was reused")
+else:
+    instance = load_verified_maa(Asst, target, lambda *args: None)
+    assert instance.get_version() == "v1.0.0"
+    assert instance.get_build() == 2, "same version retained the old native image"
+    from asst.asst import Asst as NewAsst
+    assert NewAsst is not Asst
+    assert (target / "unloaded.txt").read_text().splitlines() == ["1"]
+    instance.stop()
+    del instance
+    gc.collect()
+    maa_update.clear_loaded_maa_cache(target)
+    assert (target / "unloaded.txt").read_text().splitlines() == ["1", "2"]
+"""
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["reload", "retained", "raw", "old-sdk", "unknown", "close-failed", "darwin"],
+)
+def test_native_core_generation_reload(tmp_path, mode):
+    compiler = shutil.which("cc")
+    if os.name == "nt" or compiler is None:
+        pytest.skip("native fixture requires a POSIX C compiler")
+    core_name = "libMaaCore.dylib" if sys.platform == "darwin" else "libMaaCore.so"
+    target = tmp_path / "maa"
+    sdk_dir = target / "Python" / "asst"
+    sdk_dir.mkdir(parents=True)
+    (sdk_dir / "__init__.py").write_text("")
+    (sdk_dir / "asst.py").write_text(f"CORE_NAME = {core_name!r}\n" + SDK)
+    source = tmp_path / "core.c"
+    source.write_text(CORE)
+    replacement_dir = tmp_path / "replacement"
+    replacement_dir.mkdir()
+    for build, directory in [(1, target), (2, replacement_dir)]:
+        subprocess.run(
+            [
+                compiler,
+                "-shared",
+                "-fPIC",
+                f"-DBUILD_ID={build}",
+                str(source),
+                "-o",
+                str(directory / core_name),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=30,
+        )
+    worker = tmp_path / "worker.py"
+    worker.write_text(WORKER)
+    environment = dict(
+        os.environ,
+        MOWER_ANDROID="0",
+        PYTHONPATH=str(Path(__file__).resolve().parents[2]),
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(worker),
+            str(target),
+            str(replacement_dir / core_name),
+            mode,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=environment,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

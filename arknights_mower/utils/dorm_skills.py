@@ -3,15 +3,14 @@
 import json
 import re
 from functools import lru_cache
-from pathlib import Path
 
-from arknights_mower import __rootdir__
+from arknights_mower.utils.res_version import BUILDING_SKILL_DATA
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
-    resource_ui_path,
+    resource_pkg_path,
 )
 
-_SINGLE_RECOVERY = "进驻宿舍时，使该宿舍内除自身以外心情未满的某个干员每小时恢复"
+_SINGLE_RECOVERY = "进驻宿舍时，使该宿舍内心情未满的某个干员每小时恢复"
 _GROUP_RECOVERY = (
     "所有干员的心情每小时恢复",
     "使心情未满的宿舍成员，平均分配到",
@@ -22,10 +21,7 @@ resource_generation = 0
 
 @lru_cache(maxsize=1)
 def _skill_index():
-    relative = "pages/basement_skill/skill.json"
-    path = resource_ui_path(relative, source=True)
-    if path is None:
-        path = Path(__rootdir__).parent / "ui" / "src" / relative
+    path = resource_pkg_path(BUILDING_SKILL_DATA)
     return {
         agent["name"]: agent.get("child_skill", [])
         for agent in json.loads(path.read_text("utf-8"))
@@ -34,8 +30,10 @@ def _skill_index():
 
 @lru_cache(maxsize=None)
 def is_single_recovery_manager(name):
+    # 深靛的描述省略“除自身以外”，两种文本都按指定单人恢复识别。
     return any(
-        _SINGLE_RECOVERY in _TAGS.sub("", skill.get("des", ""))
+        _SINGLE_RECOVERY
+        in _TAGS.sub("", skill.get("des", "")).replace("除自身以外", "")
         for skill in _skill_index().get(name, [])
     )
 

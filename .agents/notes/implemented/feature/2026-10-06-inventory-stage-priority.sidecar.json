@@ -1,0 +1,21 @@
+{
+  "title": "Inventory Stage Priority",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-MAA-04]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.maa_stage_inventory.select_stages_by_inventory",
+    "ui/src/utils/maa_stage_inventory.js:previewInventorySelection"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/maa_stage_inventory_tests.py",
+    "arknights_mower/tests/maa_stage_inventory_scheduler_tests.py",
+    "ui/src/utils/maa_stage_inventory.test.js"
+  ]
+}

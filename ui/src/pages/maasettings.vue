@@ -13,6 +13,7 @@ for (let i = 0.5; i <= 3.0; i += 0.25) {
     <div class="grid-left">
       <div><maa-basic /></div>
       <div><maa-reward /></div>
+      <div><trust-settings /></div>
     </div>
 
     <div class="grid-right">

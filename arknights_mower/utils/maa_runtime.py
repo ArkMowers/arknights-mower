@@ -1,8 +1,12 @@
 """Validate desktop MAA core identity before acquiring a connection."""
 
+import importlib
+import json
+import sys
 from pathlib import Path
 
 from arknights_mower.utils.maa_backup import (
+    MaaCallError,
     VerifiedAsst,
     identity,
     maa_in_use,
@@ -11,6 +15,7 @@ from arknights_mower.utils.maa_backup import (
 from arknights_mower.utils.maa_update import (
     MaaUpdateError,
     _find_maa_core_library,
+    clear_loaded_maa_cache,
     read_installed_version,
 )
 
@@ -32,19 +37,65 @@ class MaaCoreRestartRequired(MaaUpdateError):
 
 @update_transaction
 def load_verified_maa(asst_type, target, callback):
-    """Reject stale native images without unloading live callbacks or handles."""
+    """Attempt one idle SDK reload, then retain the process-restart fallback."""
+    try:
+        return _load_verified_maa(asst_type, target, callback)
+    except MaaCoreRestartRequired as mismatch:
+        try:
+            clear_loaded_maa_cache(target)
+            python_path = str(Path(target).expanduser() / "Python")
+            sys.path.insert(0, python_path)
+            new_type = importlib.import_module("asst.asst").Asst
+            if new_type is asst_type:
+                raise MaaCoreRestartRequired()
+            return _load_verified_maa(new_type, target, callback)
+        except Exception as error:
+            raise mismatch from error
+
+
+def _load_verified_maa(asst_type, target, callback):
     if maa_in_use():
         raise MaaUpdateError("MAA 正在使用中，不能重新加载核心")
     target = Path(target).expanduser()
-    library = _find_maa_core_library(target)
-    if library is None:
+    core_path = _find_maa_core_library(target)
+    if core_path is None:
         raise MaaUpdateError("MAA 安装目录缺少核心运行库")
-    generation = (str(library.absolute()), identity(library))
+    generation = (str(core_path.absolute()), identity(core_path))
+    if vars(asst_type).get("_mower_core_unusable"):
+        raise MaaCoreRestartRequired()
     previous = vars(asst_type).get("_mower_core_generation")
     if previous is not None and previous[0] != generation:
         raise MaaCoreRestartRequired()
-    if not asst_type.load(path=target, incremental_path=target / "cache"):
-        raise MaaUpdateError("MAA 资源加载失败，请检查核心与资源版本是否匹配")
+    old_library = vars(asst_type).get("_Asst__lib")
+    old_loads = vars(asst_type).get("_mower_core_loads")
+    try:
+        loaded_resources = asst_type.load(
+            path=target, incremental_path=target / "cache"
+        )
+    finally:
+        library = vars(asst_type).get("_Asst__lib")
+        if library is not None and library is not old_library:
+            owned = old_library is None or (
+                old_loads is not None and old_loads[0] is old_library and old_loads[2]
+            )
+            count = 1 if old_loads is None else old_loads[1] + 1
+            if old_library is not None and library._handle != old_library._handle:
+                owned = False
+            asst_type._mower_core_loads = (library, count, owned)
+    if not loaded_resources:
+        detail = f"目录={target}，增量目录={target / 'cache'}"
+        try:
+            with (target / "resource" / "config.json").open(encoding="utf-8") as file:
+                json.load(file)
+        except FileNotFoundError:
+            detail += "；配置文件不存在，请更新 MAA 资源或重新安装完整的 MAA"
+        except PermissionError:
+            detail += f"；配置文件访问被拒绝：{target / 'resource' / 'config.json'}，请关闭外部 MAA 并检查读取权限"
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            detail += "；配置文件格式无效，请更新 MAA 资源或重新安装完整的 MAA"
+        except OSError as error:
+            detail += f"；配置文件读取失败：{error}"
+        raise MaaCallError("load", detail=detail)
     instance = VerifiedAsst(asst_type, target, callback)
     try:
         installed = (
@@ -56,8 +107,8 @@ def load_verified_maa(asst_type, target, callback):
             raise MaaUpdateError("无法读取磁盘 MAA 核心版本，请检查安装后重启 Mower")
         loaded = instance.get_version()
         if loaded != installed or generation != (
-            str(library.absolute()),
-            identity(library),
+            str(core_path.absolute()),
+            identity(core_path),
         ):
             raise MaaCoreRestartRequired(loaded, installed)
         asst_type._mower_core_generation = (generation, installed)
@@ -68,5 +119,6 @@ def load_verified_maa(asst_type, target, callback):
         try:
             instance.stop()
         except Exception:
-            pass
+            asst_type._mower_core_unusable = True
+        del instance
         raise

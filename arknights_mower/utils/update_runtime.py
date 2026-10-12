@@ -1,10 +1,11 @@
 """Installation-wide update coordination, independent of config and GUI imports.
 
 Only registered Mower launchers receive shutdown requests. No process-name scan
-or global Python/ADB termination is used. State lives outside the installation.
+or global Python/ADB termination is used. State lives in the shared data tmp tree.
 """
 
 import atexit
+import errno
 import hashlib
 import json
 import os
@@ -32,15 +33,11 @@ def installation_root():
 
 
 def state_dir(root=None):
+    from .path import get_path
+
     root = Path(root or installation_root()).resolve()
     key = hashlib.sha256(os.fsencode(root)).hexdigest()[:20]
-    if sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local"))
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library/Caches"
-    else:
-        base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
-    return base / "arknights-mower/updates" / key
+    return get_path("@app/tmp/updates", space="") / key
 
 
 def read_json(path, default=None):
@@ -50,14 +47,23 @@ def read_json(path, default=None):
         return default
 
 
-def write_json(path, value, *, indent=None):
+def write_json(path, value, *, indent=None, sync=False):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, temporary = tempfile.mkstemp(dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(value, stream, ensure_ascii=False, indent=indent)
+            if sync:
+                stream.flush()
+                os.fsync(stream.fileno())
         replace_with_retry(temporary, path)
+        if sync and os.name != "nt":
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
     finally:
         Path(temporary).unlink(missing_ok=True)
 
@@ -128,6 +134,10 @@ def active_job(directory=None):
     return bool(owner and process_alive(owner.get("pid")))
 
 
+class LockBusyError(ValueError):
+    """Another process owns the requested nonblocking update lock."""
+
+
 @contextmanager
 def submission_lock(directory):
     """Serialize admission, including recovery of a dead updater's active lock."""
@@ -148,7 +158,16 @@ def submission_lock(directory):
 
                 fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
-            raise ValueError("其他实例正在提交更新任务") from exc
+            if sys.platform == "win32":
+                winerror = getattr(exc, "winerror", None)
+                busy = winerror == 33 or (
+                    winerror is None and exc.errno in (errno.EACCES, errno.EAGAIN)
+                )
+            else:
+                busy = exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK)
+            if busy:
+                raise LockBusyError("其他实例正在提交更新任务") from exc
+            raise
         try:
             yield
         finally:
@@ -265,6 +284,7 @@ class RuntimeRegistration:
         self.request = self.directory / "shutdown" / f"{self.id}.json"
         self.running = running or (lambda: False)
         self.closed = threading.Event()
+        self._publication_lock = threading.Lock()
         self.record = {
             "id": self.id,
             "pid": os.getpid(),
@@ -291,23 +311,47 @@ class RuntimeRegistration:
         ).start()
 
     def _retry_backups(self):
+        # A copied stdlib runtime has no application backup-cleanup service.
+        if not __package__:
+            return
         try:
+            from arknights_mower.utils.log import logger
+
             from .software_update_worker import retry_backup_cleanup
 
-            retry_backup_cleanup(self.directory, self.record["root"])
+            retry_backup_cleanup(self.directory, self.record["root"], logger=logger)
         except Exception:
             # This optional maintenance cannot prevent registration or startup.
-            import logging
+            from arknights_mower.utils.log import logger
 
-            logging.getLogger(__name__).warning("历史更新备份暂无法清理")
+            logger.warning("历史更新备份暂无法清理")
 
     def publish(self):
-        self.record.update(running=bool(self.running()), heartbeat=time.time())
-        write_json(self.path, self.record)
+        with self._publication_lock:
+            if self.closed.is_set():
+                return
+            self.record.update(running=bool(self.running()), heartbeat=time.time())
+            write_json(self.path, self.record.copy(), sync=True)
 
     def _heartbeat(self):
         while not self.closed.wait(1):
-            self.publish()
+            try:
+                self.publish()
+            except Exception:
+                if __package__:
+                    from arknights_mower.utils.log import logger
+
+                    logger.exception("实例登记发布失败，下次心跳将重试：%s", self.path)
+                elif sys.stderr is not None:
+                    # The copied updater runtime has only its redirected stream.
+                    import traceback
+
+                    print(
+                        f"实例登记发布失败，下次心跳将重试：{self.path}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    traceback.print_exc()
 
     def shutdown_requested(self):
         return self.request.exists()
@@ -325,10 +369,15 @@ class RuntimeRegistration:
         from shutil import rmtree
 
         self.closed.set()
+        if not self._publication_lock.acquire(timeout=6):
+            raise TimeoutError("实例登记仍在发布，保留登记文件，请稍后重试关闭")
+        try:
+            self.path.unlink(missing_ok=True)
+            self.request.unlink(missing_ok=True)
+            rmtree(self.directory / "commands" / self.id, ignore_errors=True)
+        finally:
+            self._publication_lock.release()
         self.thread.join(timeout=3)
-        self.path.unlink(missing_ok=True)
-        self.request.unlink(missing_ok=True)
-        rmtree(self.directory / "commands" / self.id, ignore_errors=True)
 
 
 def hide_macos_dock_icon():

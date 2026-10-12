@@ -4,6 +4,7 @@ from collections.abc import Callable
 from io import BytesIO
 from zipfile import ZipFile
 
+from arknights_mower.utils.resource_ota import OTA_MARKER
 from arknights_mower.utils.resource_pkg import (
     _RESOURCE_MARKER,
     install_resource_pkg,
@@ -20,7 +21,7 @@ def apply_manual_update(data: bytes, busy_check: BusyCheck | None = None) -> dic
     except Exception:
         return {"ok": False, "kind": "unknown", "message": "不是有效的 zip 包"}
 
-    if _RESOURCE_MARKER in names:
+    if _RESOURCE_MARKER in names or OTA_MARKER in names:
         if busy_check is not None and (busy := busy_check()):
             return {**busy, "kind": "resource"}
         if install_resource_pkg(data):

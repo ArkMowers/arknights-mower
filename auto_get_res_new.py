@@ -8,8 +8,8 @@ from datetime import datetime, timedelta, timezone
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from skimage.feature import hog
 
+from arknights_mower.utils.building_skill_data import write_building_skill_data
 from arknights_mower.utils.furniture_data import (
     FURNITURE_DATA_PATH,
     write_furniture_data,
@@ -20,6 +20,11 @@ from arknights_mower.utils.res_version import (
     package_file_paths,
     pick_latest_activity,
     pick_latest_gacha,
+)
+from build_font_subsets import (
+    ROOM_SOURCE_SHA256,
+    ensure_font_characters,
+    source_font,
 )
 from build_mastery_panel_model import build_default_model
 
@@ -36,12 +41,14 @@ def 字体路径(文件名: str) -> str:
 
 
 def 校验房间字体字符(干员列表):
-    """Fail visibly when a new name needs glyphs absent from the bundled subset."""
-    with open(ROOM_FONT_CHARSET, encoding="utf-8") as file:
-        available = set(file.read())
-    missing = sorted(set("".join(干员列表)) - available)
-    if missing:
-        raise ValueError("房间字体子集缺字：" + "".join(missing))
+    """Expand missing name glyphs from the matching original game font."""
+    ensure_font_characters(
+        "".join(干员列表),
+        ROOM_FONT_PATH,
+        ROOM_FONT_CHARSET,
+        source_font("NotoSansHans-Medium.otf"),
+        ROOM_SOURCE_SHA256,
+    )
 
 
 def 提取干员名图片(imgpath, 裁剪区域: int = 1, 模式: int = 1):
@@ -206,12 +213,11 @@ class Arknights数据处理器:
             目标路径 = f"./ui/public/avatar/{干员数据['name']}.webp"
             print(f"{干员名}: {干员代码}")
             try:
-                png_image = Image.open(干员头像路径)
-                png_image = png_image.resize((96, 96), Image.LANCZOS)
-                png_image.save(目标路径, "WEBP")
-            except Exception as ex:
-                print("头像读取失败")
-                print(ex)
+                with Image.open(干员头像路径) as png_image:
+                    png_image = png_image.resize((96, 96), Image.LANCZOS)
+                    png_image.save(目标路径, "WEBP")
+            except (OSError, ValueError) as ex:
+                raise RuntimeError(f"干员头像生成失败：{干员名} ({干员代码})") from ex
         干员_名称列表.sort(key=len)
         with open(
             "./arknights_mower/data/agent_profession.json", "w", encoding="utf-8"
@@ -624,6 +630,8 @@ class Arknights数据处理器:
         self.load_recruit_tag()
 
     def 训练仓库的knn模型(self, 模板文件夹, 模型保存路径):
+        from skimage.feature import hog
+
         def 提取特征点(模板):
             模板 = 模板[40:173, 40:173]
             hog_features = hog(
@@ -675,8 +683,6 @@ class Arknights数据处理器:
     def 训练在房间内的干员名的模型(self):
         # 房间卡片使用游戏内 NotoSansHans-Medium；本字体按 agent.json
         # 字符集精简，位于仓库内以便重新生成模型。
-        font = ImageFont.truetype(ROOM_FONT_PATH, 37)
-
         data = {}
 
         kernel = np.ones((12, 12), np.uint8)
@@ -684,6 +690,7 @@ class Arknights数据处理器:
         with open("./arknights_mower/data/agent.json", "r", encoding="utf-8") as f:
             agent_list = json.load(f)
         校验房间字体字符(agent_list)
+        font = ImageFont.truetype(ROOM_FONT_PATH, 37)
         for operator in sorted(agent_list, key=lambda x: len(x), reverse=True):
             img = Image.new(mode="L", size=(400, 100))
             draw = ImageDraw.Draw(img)
@@ -711,12 +718,6 @@ class Arknights数据处理器:
             pickle.dump(data, f)
 
     def 训练选中的干员名的模型(self):
-        font31 = ImageFont.truetype(ROOM_FONT_PATH, 31)
-        font30 = ImageFont.truetype(ROOM_FONT_PATH, 30)
-        font25 = ImageFont.truetype(ROOM_FONT_PATH, 25)
-        font23 = ImageFont.truetype(ROOM_FONT_PATH, 23)
-        font27 = ImageFont.truetype(ROOM_FONT_PATH, 27)
-
         data = {}
 
         kernel = np.ones((10, 10), np.uint8)
@@ -724,6 +725,11 @@ class Arknights数据处理器:
         with open("./arknights_mower/data/agent.json", "r", encoding="utf-8") as f:
             agent_list = json.load(f)
         校验房间字体字符(agent_list)
+        font31 = ImageFont.truetype(ROOM_FONT_PATH, 31)
+        font30 = ImageFont.truetype(ROOM_FONT_PATH, 30)
+        font25 = ImageFont.truetype(ROOM_FONT_PATH, 25)
+        font23 = ImageFont.truetype(ROOM_FONT_PATH, 23)
+        font27 = ImageFont.truetype(ROOM_FONT_PATH, 27)
         for idx, operator in enumerate(agent_list):
             font = font31
             if not operator[0].encode().isalpha():
@@ -772,11 +778,6 @@ class Arknights数据处理器:
             pickle.dump(data, f)
 
     def 训练训练室干员名的模型(self):
-        font30 = ImageFont.truetype(ROOM_FONT_PATH, 30)
-        font28 = ImageFont.truetype(ROOM_FONT_PATH, 28)
-        font25 = ImageFont.truetype(ROOM_FONT_PATH, 25)
-        font24 = ImageFont.truetype(ROOM_FONT_PATH, 24)
-
         data = {}
 
         kernel = np.ones((10, 10), np.uint8)
@@ -784,6 +785,10 @@ class Arknights数据处理器:
         with open("./arknights_mower/data/agent.json", "r", encoding="utf-8") as f:
             agent_list = json.load(f)
         校验房间字体字符(agent_list)
+        font30 = ImageFont.truetype(ROOM_FONT_PATH, 30)
+        font28 = ImageFont.truetype(ROOM_FONT_PATH, 28)
+        font25 = ImageFont.truetype(ROOM_FONT_PATH, 25)
+        font24 = ImageFont.truetype(ROOM_FONT_PATH, 24)
         for idx, operator in enumerate(agent_list):
             font = font30
             if not operator[0].encode().isalpha():
@@ -910,9 +915,8 @@ class Arknights数据处理器:
                             self.所有buff.extend(ex_string)
 
                         干员技能详情["des"] = text
-                        干员技能详情["roomType"] = roomType[
-                            buff_table[item2["buffId"]][2]
-                        ]
+                        房间类型 = buff_table[item2["buffId"]][2]
+                        干员技能详情["roomType"] = roomType.get(房间类型, 房间类型)
                         干员技能详情["buffCategory"] = buff_table[item2["buffId"]][3]
                         干员技能详情["skillIcon"] = buff_table[item2["buffId"]][4]
                         干员技能详情["buffColor"] = buff_table[item2["buffId"]][5]
@@ -926,10 +930,7 @@ class Arknights数据处理器:
             干员技能列表.append(干员技能字典.copy())
         干员技能列表 = sorted(干员技能列表, key=lambda x: -x["key"])
         # print(干员技能列表)
-        with open(
-            "./ui/src/pages/basement_skill/skill.json", "w", encoding="utf-8"
-        ) as f:
-            json.dump(干员技能列表, f, ensure_ascii=False, indent=2)
+        write_building_skill_data(干员技能列表)
 
     def 取技能名(self, skill_id: str) -> str:
         """从 skill_table.json 取技能显示真名（levels[0].name）。"""
@@ -1084,6 +1085,15 @@ class Arknights数据处理器:
             "workshop": compile_workshop_data(self.干员表, self.基建表),
         }
 
+        from arknights_mower.utils.growth_data import compile_growth_data
+
+        output["growth"] = compile_growth_data(
+            self.干员表 | self.干员形态表.get("patchChars", {}),
+            self.加载json("./ArknightsGameResource/gamedata/excel/uniequip_table.json"),
+            self.游戏变量,
+            self.干员形态表.get("infos", {}),
+        )
+
         output_path = "./arknights_mower/data/skill_data.json"
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         with open(output_path, "w", encoding="utf-8") as f:
@@ -1218,6 +1228,7 @@ roomType = {
     "HIRE": "人力办公室",
     "TRAINING": "训练室",
     "CONTROL": "中枢",
+    "RECYCLE": "回收站",
 }
 formulaType = {
     "F_SKILL": "技巧概要",
@@ -1228,48 +1239,48 @@ formulaType = {
 
 # 提取干员名图片("./clst.png",1,2)
 
-数据处理器 = Arknights数据处理器()
+if __name__ == "__main__":
+    数据处理器 = Arknights数据处理器()
 
-数据处理器.添加物品()  # 显示在仓库里的物品
+    数据处理器.添加物品()  # 显示在仓库里的物品
 
-数据处理器.添加干员()
+    数据处理器.添加干员()
 
-数据处理器.读取卡池()
+    数据处理器.读取卡池()
 
-数据处理器.读取活动关卡()
+    数据处理器.读取活动关卡()
 
-# 和 数据处理器.添加物品() 有联动 ， 添加物品提供了分类的图片位置
-数据处理器.批量训练并保存扫仓库模型()
-print("批量训练并保存扫仓库模型,完成")
+    # 和 数据处理器.添加物品() 有联动 ， 添加物品提供了分类的图片位置
+    数据处理器.批量训练并保存扫仓库模型()
+    print("批量训练并保存扫仓库模型,完成")
 
-数据处理器.训练在房间内的干员名的模型()
-print("训练在房间内的干员名的模型,完成")
+    数据处理器.训练在房间内的干员名的模型()
+    print("训练在房间内的干员名的模型,完成")
 
-数据处理器.训练选中的干员名的模型()
-print("训练选中的干员名的模型,完成")
+    数据处理器.训练选中的干员名的模型()
+    print("训练选中的干员名的模型,完成")
 
-数据处理器.训练训练室干员名的模型()
-print("训练训练室干员名的模型,完成")
+    数据处理器.训练训练室干员名的模型()
+    print("训练训练室干员名的模型,完成")
 
+    # 数据处理器.auto_fight_avatar()  # 暂时停用：CreditFight 未接线、AutoFight 识别未启用，avatar.pkl 不进打包
 
-# 数据处理器.auto_fight_avatar()  # 暂时停用：CreditFight 未接线、AutoFight 识别未启用，avatar.pkl 不进打包
+    数据处理器.获得干员基建描述()
 
-数据处理器.获得干员基建描述()
+    数据处理器.buff转换()  # 所有buff描述,包括其他buff
 
-数据处理器.buff转换()  # 所有buff描述,包括其他buff
+    数据处理器.添加基建技能图标()
 
-数据处理器.添加基建技能图标()
+    数据处理器.load_recruit_resource()
 
-数据处理器.load_recruit_resource()
+    数据处理器.获取加工站配方类别()
+    数据处理器.获取家具套装()
 
-数据处理器.获取加工站配方类别()
-数据处理器.获取家具套装()
+    数据处理器.提取专精数据()
+    print("提取专精数据,完成")
 
-数据处理器.提取专精数据()
-print("提取专精数据,完成")
+    build_default_model()
+    print("训练室面板姓名与技能模板,完成")
 
-build_default_model()
-print("训练室面板姓名与技能模板,完成")
-
-数据处理器.generate_version_info()
-print("生成 version.json,完成")
+    数据处理器.generate_version_info()
+    print("生成 version.json,完成")

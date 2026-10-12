@@ -1,4 +1,4 @@
-"""统一休息层级、距上限差值排序及严格跨级接管矩阵。"""
+"""统一休息层级、距上限差值排序及已占床保护矩阵。"""
 
 import pickle
 from datetime import datetime, timedelta
@@ -51,16 +51,27 @@ def set_tier(data, name, tier, mood=10):
 
 @pytest.mark.parametrize("incoming", list(RestingTier)[:-1])
 @pytest.mark.parametrize("occupant", list(RestingTier)[:-1])
-@pytest.mark.parametrize("mood", [22, 22.01, None])
-def test_cross_tier_takeover_matrix(op_data, incoming, occupant, mood):
+@pytest.mark.parametrize("upper", [12, 20, 24])
+@pytest.mark.parametrize("offset", [-0.01, 0, 0.01, None])
+def test_cross_tier_takeover_matrix(op_data, incoming, occupant, upper, offset):
     data = op_data
-    request = set_tier(data, "银灰", incoming, 24 if mood is None else mood)
-    if mood is None:
+    mood = 24 if offset is None else upper * 0.8 + offset
+    request = set_tier(data, "银灰", incoming, mood)
+    request.upper_limit, request.depletion_rate = upper, 0
+    if offset is None:
         request.time_stamp = None
     current = set_tier(data, "空爆", occupant, 12)
     current.current_room, current.current_index = ROOM, 4
     data.dorm[0].time = datetime.now() + timedelta(hours=4)
-    expected = incoming < occupant
+    expected = (
+        incoming < occupant
+        and occupant > RestingTier.PRIORITY_REPLACEMENT
+        and (
+            incoming <= RestingTier.PRIORITY_REPLACEMENT
+            or offset is not None
+            and offset <= 0
+        )
+    )
     assert (data._find_dorm_slot(request.name, set()) is not None) == expected
 
 
@@ -70,7 +81,7 @@ def test_unknown_cached_mood_does_not_override_identity_priority(op_data, tier, 
     op_data.dorm[0].time = datetime.now() + timedelta(hours=1)
     op_data.operators["空爆"].mood = 3
     set_tier(op_data, "红", tier, mood)
-    assert op_data.assign_dorm("红") is not None
+    assert op_data.assign_dorm("红") is None
 
 
 def test_free_selection_keeps_idle_bed_with_unknown_replacement(op_data):
@@ -106,6 +117,8 @@ def test_blacklist_and_zero_mood_work_are_excluded_but_actual_zero_mood_is_not(o
     assert op_data.assign_dorm("红") is None
     op_data.operators["红"].workaholic = False
     op_data.operators["红"].mood = 0
+    op_data.dorm[0].reset()
+    op_data.operators["空爆"].current_room = ""
     assert op_data.assign_dorm("红") is not None
 
 
@@ -165,7 +178,7 @@ def test_unknown_mood_remains_full_and_priority_still_precedes_gap(op_data):
     assert resting_key(op_data, "银灰") < resting_key(op_data, "红")
 
 
-def test_dorm_reorder_keeps_existing_beds_and_only_places_new_resters(op_data):
+def test_dorm_reorder_preserves_idle_state_and_ranks_residents_on_admission(op_data):
     set_tier(op_data, "陈", RestingTier.REPLACEMENT, 3)
     op_data.plan[ROOM][3] = Room("Free", "", [])
     op_data.dorm = [Dormitory((ROOM, 3), "红"), Dormitory((ROOM, 4), "陈")]
@@ -178,7 +191,11 @@ def test_dorm_reorder_keeps_existing_beds_and_only_places_new_resters(op_data):
     op_data.plan[ROOM][2] = Room("Free", "", [])
     op_data.dorm.insert(0, Dormitory((ROOM, 2), "空爆"))
     plan = try_reorder(op_data, {})
-    assert plan == {ROOM: ["Current", "Current", "空爆", "Current", "Current"]}
+    assert plan == {ROOM: ["Current", "Current", "陈", "Current", "空爆"]}
+    projected = op_data.project_arrangements([plan])
+    assert {bed.name for bed in projected.dorm} == {"红", "陈", "空爆"}
+    assert op_data.operators["陈"].current_index == 4
+    assert try_reorder(projected, {}) == {}
 
 
 def test_dorm_reorder_keeps_active_recovery_target_in_its_room(op_data):

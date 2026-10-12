@@ -103,8 +103,13 @@ class Recognizer:
             raise MowerExit
         self.clear()
 
+    def set_frame(self, frame) -> None:
+        """安装本次手势按住期间的截图，后续输入仍照常清空缓存。"""
+        self.update()
+        self._screencap, self._img, self._gray = frame
+
     def reset_after_external_control(self) -> None:
-        """外部任务交还控制权时，丢弃旧画面及非连续观测的场景停留计时。"""
+        """重新开始连续观测时，丢弃旧标准画面帧及场景停留计时。"""
         self.update()
         self.last_scene = None
         self.last_scene_time = datetime.now()
@@ -239,6 +244,7 @@ class Recognizer:
             or self.find("arrange_check_in_on")
             or self.find("room_detail")
             or self.find("arrange_check_in_small")
+            or self.find("recycle/dashboard")
         ):
             self.scene = Scene.INFRA_DETAILS
         elif self.find("infra_overview"):
@@ -887,6 +893,8 @@ class Recognizer:
             return None
 
         template_matching = {
+            "recycle/dashboard": ((465, 148), (682, 264)),
+            "infra_collect_recycle": ((240, 980), (1920, 1080)),
             # "arrange_check_in": ((30, 300), (175, 700)),
             "terminal_main": ((0, 0), (1920, 1080)),
             "arrange_check_in_on": ((30, 300), (175, 700)),
@@ -996,6 +1004,17 @@ class Recognizer:
             if max_val >= threshold:
                 logger.debug(f"find: {res_name} {top_left=} {max_val=}")
                 return top_left, va(top_left, (w, h))
+            if res_name == "connecting":
+                # 进驻信息面板从 x=1231 开始遮住提交提示，只复核仍可见的文字。
+                # 高分文字和面板标题同时存在才判连接中，避免读取提交前的驻员。
+                visible_width = 1231 - scope[0][0]
+                visible_scope = scope[0], va(scope[0], (visible_width, h))
+                visible = cropimg(self.gray, visible_scope)
+                partial_score = cv2.matchTemplate(
+                    visible, res[:, :visible_width], cv2.TM_CCOEFF_NORMED
+                )[0, 0]
+                if partial_score >= 0.9 and self.find("room_detail"):
+                    return visible_scope
             return None
 
         dpi_aware = res in [

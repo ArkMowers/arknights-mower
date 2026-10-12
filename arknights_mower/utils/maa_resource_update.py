@@ -1,4 +1,4 @@
-"""macOS 与 Linux 的 MaaResource 独立更新支持。"""
+"""MaaResource independent updates for desktop and Android runtimes."""
 
 from __future__ import annotations
 
@@ -86,6 +86,43 @@ def _emit(
         callback(phase, current, total, message)
 
 
+@update_transaction
+def load_android_maa_navigation(target: Path, tasks: dict) -> bool:
+    """Load navigation through the host or prepare its existing component flow."""
+    from mower_android.bridge import Bridge
+
+    from arknights_mower.utils.maa_backup import MaaCallError
+
+    bridge = Bridge()
+    try:
+        return bool(bridge.call("maa_navigation", tasks=tasks))
+    except RuntimeError as error:
+        if "Unknown MAA operation" not in str(error):
+            raise
+
+    from mower_android.managed import COMPONENT, pack_component
+
+    try:
+        with ZipFile(COMPONENT) as archive:
+            packaged = json.loads(archive.read("cache/resource/tasks.json"))
+    except (OSError, BadZipFile, KeyError, ValueError):
+        packaged = None
+    if packaged != tasks:
+        pack_component(target)
+    component_hash = COMPONENT.with_suffix(".sha256").read_text().strip()
+    status = bridge.call("maa_status")
+    if (
+        len(component_hash) == 64
+        and all(char in "0123456789abcdef" for char in component_hash)
+        and status.get("component_hash") == component_hash
+    ):
+        return True
+    raise MaaCallError(
+        "load",
+        detail="活动导航已准备，请停止并重新启动手机服务后生效；更新 APK 后可直接热加载导航",
+    )
+
+
 def parse_resource_version(value: str) -> datetime:
     """把 MaaResource ``last_updated`` 解析为 UTC 时间。"""
     try:
@@ -118,7 +155,13 @@ def read_maa_resource_info(target: Path | str) -> dict[str, str]:
     try:
         payload = json.loads(version_file.read_text(encoding="utf-8"))
         return _resource_info_from_payload(payload)
-    except (OSError, json.JSONDecodeError, MaaUpdateError):
+    except PermissionError:
+        return {
+            "version": "",
+            "release_note": "",
+            "error": f"无法读取 MAA 资源文件 {version_file}：访问被拒绝。请关闭外部 MAA 后重试，并检查当前用户的文件读取权限。",
+        }
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, MaaUpdateError):
         return {"version": "", "release_note": ""}
 
 
@@ -158,8 +201,6 @@ def get_mirrorchyan_resource_release(
     session: requests.Session | None = None,
 ) -> MaaResourceRelease:
     """通过 Mirror酱检查 MaaResource 增量更新。"""
-    if os.environ.get("MOWER_ANDROID") == "1":
-        raise MaaUpdateError("Android 暂不支持 Mirror酱，请使用 GitHub 官方源")
     token = token.strip()
     if not token:
         raise MaaUpdateError("请填写 Mirror酱 CDK")
@@ -395,6 +436,8 @@ def merge_resource_archive(
                     destination.mkdir(parents=True, exist_ok=True)
                     continue
                 destination.parent.mkdir(parents=True, exist_ok=True)
+                if destination.exists():
+                    destination.chmod(destination.stat().st_mode | stat.S_IWUSR)
                 with archive.open(info) as source, destination.open("wb") as target:
                     shutil.copyfileobj(source, target)
                 file_index += 1
@@ -430,12 +473,12 @@ def install_maa_resource_update(
     session: requests.Session | None = None,
     callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
-    """检查并原子合并 MaaResource；Windows 由 MAA 主程序负责。"""
+    """检查并原子合并 MaaResource，保留资源备份与核心文件。"""
     if maa_in_use():
         raise MaaUpdateError("MAA 正在使用中，请等待当前 MAA 任务结束后再更新")
     system = system.lower()
-    if system not in {"darwin", "linux"}:
-        raise MaaUpdateError("当前平台请在 MAA 主程序中更新 MAA 资源")
+    if system not in {"darwin", "linux", "windows"}:
+        raise MaaUpdateError("当前平台不使用 Mower 的 MAA 资源更新功能")
     target_path = Path(target).expanduser()
     if not has_maa_installation(target_path):
         raise MaaUpdateError("请先下载并设置有效的 MAA 目录")

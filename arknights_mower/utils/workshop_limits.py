@@ -3,9 +3,49 @@
 import json
 from functools import lru_cache
 from pathlib import Path
+from time import time
 
 from arknights_mower.utils.dorm_candidates import dorm_task_reservations
 from arknights_mower.utils.workshop_material_policy import workshop_recipe_allowed
+
+# Process-local observations; recipe names bound the cache to the resource catalog.
+_rejected_recipes = {}
+
+
+def _recipe_stock(name, inventory):
+    from arknights_mower.data import workshop_formula
+    from arknights_mower.utils import config
+
+    recipe = workshop_formula[name]
+    quantities = recipe_quantities(name, recipe)
+    output, _, costs = quantities if quantities else (name, 1, recipe["items"])
+    names = {output, *costs}
+    if recipe.get("goldCost"):
+        names.add("龙门币")
+    return config.conf.workshop_generation, tuple(
+        (item, inventory.get(item)) for item in sorted(names)
+    )
+
+
+def reject_workshop_recipe(name, inventory):
+    """Remember a game rejection without inventing an ingredient count."""
+    _rejected_recipes[name] = (_recipe_stock(name, inventory), time())
+
+
+def clear_workshop_recipe_rejections(observed_at):
+    """New relevant observations permit retries; rereading old snapshots does not."""
+    for name, (signature, rejected_at) in tuple(_rejected_recipes.items()):
+        if any(observed_at.get(item, 0) > rejected_at for item, _ in signature[1]):
+            _rejected_recipes.pop(name, None)
+
+
+def blocked_workshop_recipes(inventory):
+    from arknights_mower.data import workshop_formula
+
+    for name, (signature, _) in tuple(_rejected_recipes.items()):
+        if name not in workshop_formula or signature != _recipe_stock(name, inventory):
+            _rejected_recipes.pop(name, None)
+    return set(_rejected_recipes)
 
 
 @lru_cache(maxsize=1)
@@ -44,10 +84,17 @@ def batch_limit(name, metadata, setting, inventory):
     output, count, costs = quantities
     if any(name not in inventory for name in (output, *costs)):
         return 0  # Unknown stock must be read from the depot before spending it.
+    gold_cost = int(metadata.get("goldCost") or 0)
+    gold_limit = (
+        inventory["龙门币"] // gold_cost
+        if gold_cost > 0 and "龙门币" in inventory
+        else 99
+    )
     return max(
         0,
         min(
             99,
+            gold_limit,
             (setting.self_upper_limit - inventory[output]) // count,
             *(
                 (inventory[child] - setting.children_lower_limit) // required
@@ -57,9 +104,10 @@ def batch_limit(name, metadata, setting, inventory):
     )
 
 
-def workshop_material_block_reason(operator, items, inventory):
+def workshop_material_block_reason(operator, items, inventory, mood=None):
     """入队和调人前共用材料检查；可加工返回 None，否则指出阻塞原因。"""
     from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.workshop_mood import mood_cost, operator_mood_rules
     from arknights_mower.utils.workshop_recipes import scope_workshop_items
 
     if not items:
@@ -67,11 +115,23 @@ def workshop_material_block_reason(operator, items, inventory):
     scoped = scope_workshop_items(operator, items, workshop_formula)
     if not scoped:
         return "没有符合干员材料范围及材料保护规则的配方"
+    check_mood = mood is not None and mood >= 0
+    rules, known = operator_mood_rules(operator) if check_mood else ([], False)
+    rejected = blocked_workshop_recipes(inventory)
     available, blocked = [], []
     for item in scoped:
         for name in item.item_names:
+            if name in rejected:
+                blocked.append(f"{name}游戏内不可加工，等待库存或配置更新")
+                continue
             metadata = workshop_formula[name]
             if batch_limit(name, metadata, item, inventory) > 0:
+                required_mood = mood_cost(name, metadata, rules, known)
+                if check_mood and mood < required_mood:
+                    blocked.append(
+                        f"{name}心情不足（当前 {mood:.1f}，单次需 {required_mood:g}）"
+                    )
+                    continue
                 available.append(metadata)
                 continue
             quantities = recipe_quantities(name, metadata)
@@ -95,6 +155,11 @@ def workshop_material_block_reason(operator, items, inventory):
                         for mat, required in costs.items()
                         if inventory[mat] - item.children_lower_limit < required
                     ]
+                    gold_cost = int(metadata.get("goldCost") or 0)
+                    if gold_cost and inventory.get("龙门币", gold_cost) < gold_cost:
+                        shortages.append(
+                            f"龙门币库存 {inventory['龙门币']}，加工费需 {gold_cost}"
+                        )
                     blocked.append(f"{name}原料不足（{'；'.join(shortages)}）")
     if not available:
         reasons = list(dict.fromkeys(blocked))
@@ -157,4 +222,6 @@ def batch_delta(name, metadata, batches):
         raise ValueError("加工次数无效")
     delta = {child: -amount * batches for child, amount in costs.items()}
     delta[output] = delta.get(output, 0) + count * batches
+    if gold_cost := int(metadata.get("goldCost") or 0):
+        delta["龙门币"] = delta.get("龙门币", 0) - gold_cost * batches
     return delta

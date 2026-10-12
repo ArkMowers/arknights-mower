@@ -5,12 +5,10 @@ from dataclasses import dataclass
 
 BASE_HOURS = {1: 8, 2: 16, 3: 24}
 DEFAULT_SWAP_BUFFER_MINUTES = 10
-CENTRAL_SWAP_BUFFER_MINUTES = 15
-UNHALVED_M2_SWAP_BUFFER_MINUTES = 30
 DEFAULT_SWAP_BUFFERS = {
     "no_central": DEFAULT_SWAP_BUFFER_MINUTES,
-    "central": CENTRAL_SWAP_BUFFER_MINUTES,
-    "central_unhalved_m2": UNHALVED_M2_SWAP_BUFFER_MINUTES,
+    "central": DEFAULT_SWAP_BUFFER_MINUTES,
+    "central_unhalved_m2": DEFAULT_SWAP_BUFFER_MINUTES,
 }
 REDUCERS = ("逻各斯", "艾丽妮")
 CONTROL_TRAINERS = frozenset(("阿斯卡纶", "烛煌", "斩业星熊"))
@@ -18,12 +16,14 @@ IGNORED_NAMES = frozenset(("", "Free", "Current"))
 
 
 def swap_buffer_minutes(level, configured=None, *, central=0, inherited=False):
-    """A full sixteen-hour M2 needs more margin for changes in central staffing."""
+    """Retain saved buffer keys with one default for every stage."""
     if not central:
         key = "no_central"
     else:
         key = "central_unhalved_m2" if level == 2 and not inherited else "central"
     if isinstance(configured, dict):
+        if configured == {"no_central": 10, "central": 15, "central_unhalved_m2": 30}:
+            return DEFAULT_SWAP_BUFFER_MINUTES
         return configured.get(key, DEFAULT_SWAP_BUFFERS[key])
     return DEFAULT_SWAP_BUFFERS[key] if configured is None else configured
 

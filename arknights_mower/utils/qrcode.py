@@ -1,6 +1,7 @@
 import json
 from typing import Dict, List, Optional
 from zlib import compress, decompress
+from zlib import error as ZlibError
 
 from base45 import b45decode, b45encode
 from PIL import Image, ImageChops, ImageDraw
@@ -9,7 +10,7 @@ from qrcode.constants import ERROR_CORRECT_L
 from qrcode.main import QRCode
 
 QRCODE_SIZE = 215
-QRCODE_COUNT = 16
+QRCODE_COUNT = 14
 GAP_SIZE = 16
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
@@ -18,7 +19,7 @@ BOTTOM = 995
 LEFT = 40
 
 
-def encode(data: str, n: int = 16, theme: str = "light") -> List[Image.Image]:
+def encode(data: str, n: int = QRCODE_COUNT, theme: str = "light") -> List[Image.Image]:
     data = b45encode(compress(data.encode("utf-8"), level=9))
     length = len(data)
     split: List[bytes] = []
@@ -47,14 +48,17 @@ def trim(img: Image.Image) -> Image.Image:
 
 def export(plan: Dict, img: Image.Image, theme: str = "light") -> Image.Image:
     qrcode_list = encode(json.dumps(plan), theme=theme)
-    for idx, i in enumerate(qrcode_list[:7]):
-        img.paste(i, (LEFT + idx * (GAP_SIZE + QRCODE_SIZE), TOP))
-    for idx, i in enumerate(qrcode_list[7:14]):
-        img.paste(i, (LEFT + idx * (GAP_SIZE + QRCODE_SIZE), BOTTOM))
-    for idx, i in enumerate(qrcode_list[14:]):
-        img.paste(i, (2520 + idx * (GAP_SIZE + QRCODE_SIZE), BOTTOM))
-    img = img.convert("RGB")
-    return img
+    stride = QRCODE_SIZE + GAP_SIZE
+    columns = QRCODE_COUNT // 2
+    width = max(img.width, LEFT + columns * stride)
+    height = max(img.height, BOTTOM + QRCODE_SIZE + GAP_SIZE)
+    background = WHITE if theme == "light" else BLACK
+    result = Image.new("RGB", (width, height), background)
+    result.paste(img.convert("RGB"), (0, 0))
+    for idx, code in enumerate(qrcode_list):
+        row, column = divmod(idx, columns)
+        result.paste(code, (LEFT + column * stride, TOP if row == 0 else BOTTOM))
+    return result
 
 
 def _scan_and_cover(img: Image.Image) -> List:
@@ -65,7 +69,7 @@ def _scan_and_cover(img: Image.Image) -> List:
     """
     result = []
     while True:
-        data = pyzbar.decode(img)
+        data = pyzbar.decode(img, symbols=[pyzbar.ZBarSymbol.QRCODE])
         if not data:
             break
         draw = ImageDraw.Draw(img)
@@ -138,17 +142,22 @@ def decode(img: Image.Image) -> Optional[Dict]:
     best = []
     for s in scales:
         work = (
-            img
+            img.copy()
             if s == 1
             else img.resize((img.width * s, img.height * s), Image.LANCZOS)
         )
         got = _scan_and_cover(work)
         if len(got) > len(best):
             best = got
-        if len(best) >= QRCODE_COUNT:  # 已集齐全套 16 个，无需再放大
-            break
-    if not best:
-        return None
-    ordered = _order_qrcodes(best)
-    result = b45decode(b"".join([d.data for d in ordered]))
-    return json.loads(decompress(result).decode("utf-8"))
+        if len(best) < QRCODE_COUNT and s != scales[-1]:
+            continue
+        if not best:
+            return None
+        ordered = _order_qrcodes(best)
+        try:
+            result = b45decode(b"".join(d.data for d in ordered))
+            return json.loads(decompress(result).decode("utf-8"))
+        except (ValueError, TypeError, ZlibError):
+            # 旧版 16 码图片漏扫两张时，14 张不代表数据完整。
+            if s == scales[-1]:
+                raise

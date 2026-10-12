@@ -112,15 +112,23 @@ class BlueStacksAirIOTests(unittest.TestCase):
             self.enterContext(tempfile.TemporaryDirectory())
         )
         self.enterContext(patch("platform.system", return_value="Darwin"))
-        self.enterContext(patch("subprocess.run", side_effect=self.fixture.run))
+        self.enterContext(
+            patch("subprocess.Popen", side_effect=AssertionError("unexpected process"))
+        )
+        for target in (
+            "arknights_mower.utils.device.preflight_io.run_command",
+            "arknights_mower.utils.device.adb_client.server.run_command",
+            "arknights_mower.utils.device.session_io.run_command",
+        ):
+            self.enterContext(patch(target, side_effect=self.fixture.run))
         self.enterContext(
             patch(
                 "arknights_mower.utils.device.adb_client.server.probe_adb_server",
                 return_value=None,
             )
         )
-        # ADB gzip capture opens its own ADB-server socket, so subprocess.run alone
-        # cannot stand in for it. Inject the frame instead of reaching a real server.
+        # ADB gzip capture uses sockets separately from CLI command execution.
+        # Inject the frame instead of reaching a real server.
         self.enterContext(
             patch(
                 "arknights_mower.utils.device.preflight_io.capture_adb_frame",

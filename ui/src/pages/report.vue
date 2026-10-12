@@ -9,25 +9,41 @@
       </help-text>
     </h1>
   </div>
-  <n-dropdown
-    :options="algorithm_options"
-    placement="bottom-start"
-    trigger="click"
-    @select="handleSelect"
-  >
-    <n-button>{{ currentAlgorithmHint }}</n-button>
-  </n-dropdown>
-  <n-card title="自定义收益系数输入" v-show="isShow">
-    <div>
-      <span>赤金<mower-input-number v-model:value="value_coefficient_gold" /></span>
-      <span>订单<mower-input-number v-model:value="value_coefficient_lmb" /></span>
-      <span>经验<mower-input-number v-model:value="value_coefficient_exp" /></span>
-    </div>
-    <div class="button_class">
-      <n-button type="tertiary" @click="isShow = false">取消</n-button>
-      <n-button type="primary" @click="handleSave">保存为自定义</n-button>
-    </div>
+  <n-space align="center" style="margin-bottom: 16px">
+    <n-dropdown
+      :options="algorithmOptions"
+      placement="bottom-start"
+      trigger="click"
+      :disabled="!valuation || algorithmBusy"
+      @select="selectAlgorithm"
+    >
+      <n-button :disabled="!valuation" :loading="algorithmBusy">
+        选择收益算法（当前：{{ incomeAlgorithmLabel(valuation?.base_algorithm) }}）
+      </n-button>
+    </n-dropdown>
+    <router-link to="/mowersettings">管理收益设置</router-link>
+  </n-space>
+  <n-card v-if="showCustomAlgorithm" title="自定义收益系数" style="margin-bottom: 16px">
+    <n-space align="center" wrap>
+      <label v-for="field in customFields" :key="field.key">
+        {{ field.label }}
+        <n-input-number
+          v-model:value="customRatios[field.key]"
+          :min="field.key === 'experience' ? 0.000001 : 0"
+          :max="1000"
+          :disabled="algorithmBusy"
+          :show-button="false"
+        />
+      </label>
+      <n-button :disabled="algorithmBusy" @click="showCustomAlgorithm = false">取消</n-button>
+      <n-button type="primary" :loading="algorithmBusy" @click="saveAlgorithm(-1, customRatios)">
+        保存为自定义
+      </n-button>
+    </n-space>
   </n-card>
+  <n-alert v-if="algorithmError" type="error" style="margin-bottom: 16px">{{
+    algorithmError
+  }}</n-alert>
   <n-alert title="数据错误" type="error" v-if="show_alert">
     <p>若没有数据显示，请查看tmp文件夹中的report.csv文件</p>
     <p>若存在空数据删掉对应行或自行填补一个数据</p>
@@ -58,7 +74,6 @@
 import { registerTheme, use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart, LineChart } from 'echarts/charts'
-import { useMessage } from 'naive-ui'
 import {
   TitleComponent,
   ToolboxComponent,
@@ -69,7 +84,7 @@ import {
   DataZoomComponent
 } from 'echarts/components'
 import VChart, { THEME_KEY } from 'vue-echarts'
-import { ref, provide, onMounted, computed, reactive } from 'vue'
+import { ref, provide, onMounted, computed, inject, reactive } from 'vue'
 
 use([
   TitleComponent,
@@ -90,65 +105,58 @@ const { theme } = storeToRefs(store)
 
 import roma from './theme/roma.json'
 import dark from './theme/dark.json'
-// 基报显示收益
-const value_coefficient_gold = ref(0.8)
-const value_coefficient_lmb = ref(0.2)
-const value_coefficient_exp = ref(1)
-const total_earnings = ref(0)
-const isShow = ref(false)
-const algorithm_options = [
-  {
-    algorithm: { gold: 0.8, lmb: 0.2, exp: 1 },
-    label: '82算法',
-    key: '82',
-    id: 0
-  },
-  {
-    algorithm: { gold: 0.8, lmb: 733 / 2990, exp: 1 },
-    label: '0.245算法（CE6 & LS6，经验=1）',
-    key: '0.245',
-    id: 1
-  },
-  {
-    algorithm: { gold: 0.76544, lmb: 0.23456, exp: 0.9568 },
-    label: '0.23456算法（CE6 & LS6，龙门币=1）',
-    key: '0.23456',
-    id: 2
-  },
-  {
-    label: '其他算法，点击输入产物系数',
-    key: '自定义',
-    id: -1
-  }
+import {
+  loadIncomeSettings,
+  incomeAlgorithmLabel,
+  incomeAlgorithms,
+  incomeSettingsUrl
+} from '@/utils/incomeSettings'
+const axios = inject('axios')
+const valuation = ref(null)
+const algorithmBusy = ref(false)
+const algorithmError = ref('')
+const showCustomAlgorithm = ref(false)
+const customRatios = reactive({ experience: 0.9568, gold: 0.76544, order: 0.23456 })
+const customFields = [
+  { key: 'gold', label: '赤金' },
+  { key: 'order', label: '订单' },
+  { key: 'experience', label: '经验' }
 ]
-
-const earningAlgorithmConfig = reactive({
-  using: 0,
-  custom: JSON.parse(JSON.stringify(algorithm_options[0].algorithm))
-})
-const currentAlgorithmHint = computed(() => {
-  if (!isShow.value) {
-    return `选择收益算法（当前算法：${algorithm_options.find((option) => option.id === earningAlgorithmConfig.using)?.key ?? '未知'}算法）`
+const algorithmOptions = incomeAlgorithms.map((option) => ({ ...option, key: option.value }))
+function selectAlgorithm(key) {
+  if (!valuation.value || algorithmBusy.value) return
+  if (key === -1) {
+    Object.assign(customRatios, valuation.value.ratios)
+    showCustomAlgorithm.value = true
+    return
   }
-  return '选择收益算法（填入下表复用数值）'
-})
-
-function getCurrentAlgorithm() {
-  const option = algorithm_options.find((option) => option.id === earningAlgorithmConfig.using)
-  if (option?.algorithm) {
-    return option.algorithm
-  }
-  return earningAlgorithmConfig.custom
+  const option = incomeAlgorithms.find((row) => row.value === key)
+  if (option?.ratios) return saveAlgorithm(key, option.ratios)
 }
-
-const message = useMessage()
-
+async function saveAlgorithm(algorithm, ratios) {
+  if (!valuation.value || algorithmBusy.value) return
+  algorithmBusy.value = true
+  algorithmError.value = ''
+  try {
+    const response = await axios.put(incomeSettingsUrl, {
+      base_algorithm: algorithm,
+      ratios: { ...ratios, efficiency: valuation.value.ratios.efficiency }
+    })
+    valuation.value = response.data
+    updateEarning()
+    showCustomAlgorithm.value = false
+  } catch (error) {
+    algorithmError.value = error.response?.data?.error || '收益算法保存失败，请重试'
+  } finally {
+    algorithmBusy.value = false
+  }
+}
 function computeEarning(data) {
   const gold = (data.赤金 || 0) + (data.龙舌兰赤金 || 0) + (data.可露希尔赤金 || 0)
   const lmb = data.龙门币订单 || 0
   const exp = data.作战录像 || 0
-  const algorithm = getCurrentAlgorithm()
-  return gold * algorithm.gold + lmb * algorithm.lmb + exp * algorithm.exp
+  const algorithm = valuation.value.ratios
+  return gold * algorithm.gold + lmb * algorithm.order + exp * algorithm.experience
 }
 
 function updateEarning() {
@@ -176,84 +184,6 @@ function formatEarning(earning, accurate = false) {
   return earning.toString()
 }
 
-const earningAlgorithmKey = 'earning_algorithm_config'
-
-function saveEarningAlgorithmConfig() {
-  localStorage.setItem(earningAlgorithmKey, JSON.stringify(earningAlgorithmConfig))
-}
-
-function getEarningAlgorithmConfig() {
-  const value = localStorage.getItem(earningAlgorithmKey)
-  const defaultConfig = {
-    using: 0,
-    custom: algorithm_options[0].algorithm
-  }
-  if (!value) {
-    return defaultConfig
-  }
-  try {
-    const parsedConfig = JSON.parse(value) || {}
-    return {
-      using: +parsedConfig.using || 0,
-      custom: {
-        gold: +parsedConfig.custom?.gold || 0,
-        lmb: +parsedConfig.custom?.lmb || 0,
-        exp: +parsedConfig.custom?.exp || 0
-      }
-    }
-  } catch (error) {
-    console.error(`failed to parse config:`, error)
-    return defaultConfig
-  }
-}
-
-function initEarningAlgorithmConfig() {
-  const config = getEarningAlgorithmConfig()
-  earningAlgorithmConfig.using = config.using
-  const { custom } = config
-  earningAlgorithmConfig.custom.gold = custom.gold
-  earningAlgorithmConfig.custom.lmb = custom.lmb
-  earningAlgorithmConfig.custom.exp = custom.exp
-  value_coefficient_gold.value = custom.gold
-  value_coefficient_lmb.value = custom.lmb
-  value_coefficient_exp.value = custom.exp
-}
-
-function handleSelect(_key, option) {
-  const { algorithm } = option
-  if (algorithm == null) {
-    // 自定义
-    message.info('自定义收益算法')
-    isShow.value = true
-    value_coefficient_gold.value = earningAlgorithmConfig.custom.gold
-    value_coefficient_lmb.value = earningAlgorithmConfig.custom.lmb
-    value_coefficient_exp.value = earningAlgorithmConfig.custom.exp
-  } else {
-    // 预设
-    if (isShow.value) {
-      // 显示输入框时，点击任意预设算法仅将预设参数填入输入框，不修改当前算法参数
-      value_coefficient_gold.value = algorithm.gold
-      value_coefficient_lmb.value = algorithm.lmb
-      value_coefficient_exp.value = algorithm.exp
-      return
-    }
-    message.info(`收益公式：赤金*${algorithm.gold}+订单*${algorithm.lmb}+经验*${algorithm.exp}`)
-  }
-  earningAlgorithmConfig.using = option.id
-  saveEarningAlgorithmConfig()
-  updateEarning()
-}
-
-function handleSave() {
-  isShow.value = false
-  const algorithm = earningAlgorithmConfig.custom
-  algorithm.gold = value_coefficient_gold.value
-  algorithm.lmb = value_coefficient_lmb.value
-  algorithm.exp = value_coefficient_exp.value
-  saveEarningAlgorithmConfig()
-  updateEarning()
-}
-
 registerTheme('dark', dark)
 if (theme.value == 'dark') {
   provide(THEME_KEY, 'dark')
@@ -276,7 +206,7 @@ const ReportData = ref([])
 const HalfMonthData = ref([])
 onMounted(async () => {
   try {
-    initEarningAlgorithmConfig()
+    valuation.value = await loadIncomeSettings(axios)
     ReportData.value = await getReportData()
     HalfMonthData.value = await getOrundumData()
     getTradingHistory.value = await getTradingHistory()
@@ -358,7 +288,7 @@ const option_manufactor = computed(() => {
       },
 
       formatter: function (params) {
-        total_earnings.value = computeEarning(params[0].data)
+        const totalEarnings = computeEarning(params[0].data)
         const tip = `<div style="font-size:1.4rem;">
                         <span style="font-size:15px">${params[0].data['日期']}</span>  <br>
                         ${params[0].marker}    <span style="font-size:14px">${params[0].seriesName}:${params[0].data['赤金']}</span>  <br>
@@ -366,7 +296,7 @@ const option_manufactor = computed(() => {
                         ${params[1].marker}    <span style="font-size:14px">${params[1].seriesName}:${params[0].data['作战录像']}</span>  <br>
                         <span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:#8A2BE2;"></span>    <span style="font-size:14px">龙舌兰赤金:${params[0].data['龙舌兰赤金'] || 0}</span> <br>
                         <span style="display:inline-block;margin-right:4px;border-radius:10px;width:10px;height:10px;background-color:#8A2BE2;"></span>    <span style="font-size:14px">可露希尔赤金:${params[0].data['可露希尔赤金'] || 0}</span> <br>
-                                               <span style="font-size:14px">收益:${formatEarning(total_earnings.value)}</span>  <br>
+                                               <span style="font-size:14px">收益:${formatEarning(totalEarnings)}</span>  <br>
           </div>`
         return tip
       }

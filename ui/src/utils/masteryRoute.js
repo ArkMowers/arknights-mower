@@ -1,11 +1,14 @@
 export const DEFAULT_MASTERY_SWAP_BUFFERS = Object.freeze({
   no_central: 10,
-  central: 15,
-  central_unhalved_m2: 30
+  central: 10,
+  central_unhalved_m2: 10
 })
 
 export function normalizeMasterySwapBuffers(settings = {}) {
-  const configured = settings.mastery_swap_buffers
+  const saved = settings.mastery_swap_buffers
+  const oldDefaults =
+    saved?.no_central === 10 && saved?.central === 15 && saved?.central_unhalved_m2 === 30
+  const configured = oldDefaults ? DEFAULT_MASTERY_SWAP_BUFFERS : saved
   return Object.fromEntries(
     Object.entries(DEFAULT_MASTERY_SWAP_BUFFERS).map(([key, fallback]) => {
       const value = configured && typeof configured === 'object' ? configured[key] : undefined

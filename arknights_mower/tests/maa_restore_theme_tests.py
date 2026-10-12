@@ -194,7 +194,7 @@ def test_no_restore_without_completed_daily_work(solver, monkeypatch, reason):
 
 
 @pytest.mark.parametrize("ended_early", [False, True])
-def test_long_task_restores_after_scheduled_stop_but_not_error(
+def test_long_task_restores_after_scheduled_stop_but_not_core_completion(
     solver, monkeypatch, ended_early
 ):
     setup_plan(solver, monkeypatch)

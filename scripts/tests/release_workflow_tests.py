@@ -1,7 +1,13 @@
 """Static contract tests for the shared release workflows."""
 
+import ast
+import io
+import sys
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 import yaml
 
@@ -197,7 +203,6 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         self.assertEqual(
             self.jobs["build-macos"]["strategy"]["matrix"]["include"],
             [
-                {"runner": "macos-15-intel", "arch": "x64", "macho": "x86_64"},
                 {"runner": "macos-15", "arch": "arm64", "macho": "arm64"},
             ],
         )
@@ -291,6 +296,98 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         self.assertLess(build_index, pe_index)
         self.assertLess(pe_index, package_index)
         self.assertIn("--arch x64", job["steps"][pe_index]["run"])
+
+    def test_both_windows_desktop_executables_request_administrator_permissions(self):
+        spec = ast.parse((REPO_ROOT / "webui_zip.spec").read_text("utf-8"))
+        executables = {
+            assignment.targets[0].id: {
+                keyword.arg: ast.literal_eval(keyword.value)
+                for keyword in assignment.value.keywords
+                if keyword.arg in {"name", "uac_admin"}
+            }
+            for assignment in spec.body
+            if isinstance(assignment, ast.Assign)
+            and isinstance(assignment.value, ast.Call)
+            and isinstance(assignment.value.func, ast.Name)
+            and assignment.value.func.id == "EXE"
+        }
+        self.assertEqual(
+            executables,
+            {
+                "mower_exe": {"name": "mower", "uac_admin": True},
+                "manager_exe": {"name": "多开管理器", "uac_admin": True},
+            },
+        )
+
+    def test_windows_release_checks_built_administrator_manifests(self):
+        steps = self.jobs["build-windows"]["steps"]
+        check = find_step(self.jobs["build-windows"], "Verify administrator manifests")
+        self.assertLess(
+            steps.index(
+                find_step(self.jobs["build-windows"], "Build with PyInstaller")
+            ),
+            steps.index(check),
+        )
+        self.assertLess(
+            steps.index(check),
+            steps.index(find_step(self.jobs["build-windows"], "Package into zip")),
+        )
+        self.assertIn("requireAdministrator", check["run"])
+        self.assertIn("多开管理器.exe", check["run"])
+        self.assertIn("mower.exe", check["run"])
+
+    def test_manifest_gate_rejects_missing_or_nonadministrator_execution_levels(self):
+        step = find_step(self.jobs["build-windows"], "Verify administrator manifests")
+        source = step["run"].split("python - <<'PY'\n", 1)[1].rsplit("\nPY", 1)[0]
+        valid = b'<assembly xmlns="urn:schemas-microsoft-com:asm.v1"><trustInfo><requestedExecutionLevel level="requireAdministrator" uiAccess="false" /></trustInfo></assembly>'
+        invalid = valid.replace(b"requireAdministrator", b"asInvoker")
+        for manifests, accepted in (
+            ([valid, valid], True),
+            ([invalid, valid], False),
+            ([valid, invalid], False),
+            ([valid, b"<assembly />"], False),
+            ([valid, None], False),
+        ):
+            with self.subTest(manifests=manifests):
+                executables = []
+                for manifest in manifests:
+                    language = SimpleNamespace(
+                        data=SimpleNamespace(
+                            struct=SimpleNamespace(
+                                OffsetToData=0, Size=len(manifest or b"")
+                            )
+                        )
+                    )
+                    resource = SimpleNamespace(
+                        id=1, directory=SimpleNamespace(entries=[language])
+                    )
+                    entry = SimpleNamespace(
+                        id=24, directory=SimpleNamespace(entries=[resource])
+                    )
+                    executable = Mock(
+                        DIRECTORY_ENTRY_RESOURCE=SimpleNamespace(
+                            entries=[entry] if manifest else []
+                        )
+                    )
+                    executable.get_data.return_value = manifest
+                    context = Mock()
+                    context.__enter__ = Mock(return_value=executable)
+                    context.__exit__ = Mock(return_value=False)
+                    executables.append(context)
+                pe = Mock(side_effect=executables)
+                module = SimpleNamespace(
+                    PE=pe, DIRECTORY_ENTRY={"IMAGE_DIRECTORY_ENTRY_RESOURCE": 2}
+                )
+                with (
+                    patch.dict(sys.modules, {"pefile": module}),
+                    redirect_stdout(io.StringIO()),
+                ):
+                    if accepted:
+                        exec(source, {})
+                        self.assertEqual(pe.call_count, 2)
+                    else:
+                        with self.assertRaises(SystemExit):
+                            exec(source, {})
 
     def test_builds_prune_opencv_between_install_and_pyinstaller(self):
         for job_name in (

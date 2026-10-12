@@ -4,6 +4,8 @@ verify_glossary_alignment.py
 
 Parses CONTEXT.md dynamically to extract prohibited terms ('Avoid' lists), then scans
 agent notes, documentation, and source code comments/docstrings for violations.
+The glossary supplies Avoid terms; its definitions, document placement, and edit
+approval are outside this check's scope.
 """
 
 import argparse
@@ -303,6 +305,7 @@ def verify_glossary_alignment(
     context_file: str | Path = "CONTEXT.md",
     scan_roots: list[str | Path] | None = None,
 ) -> list[str]:
+    """Return Avoid-term scan errors; concept definitions require separate review."""
     context_path = Path(context_file).resolve()
     if not context_path.exists():
         return [f"CONTEXT.md not found at {context_path}"]
@@ -367,7 +370,7 @@ def verify_glossary_alignment(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Verify alignment against CONTEXT.md Avoid glossary."
+        description="Scan notes, docs and code comments for glossary Avoid terms."
     )
     parser.add_argument(
         "--context-file",
@@ -378,7 +381,7 @@ def main() -> int:
 
     errors = verify_glossary_alignment(args.context_file)
     if errors:
-        print(f"FAILED: Found {len(errors)} glossary alignment violation(s):")
+        print(f"FAILED: Found {len(errors)} Avoid-term check error(s):")
         for err in errors:
             print(f"  - {err}")
         return 1

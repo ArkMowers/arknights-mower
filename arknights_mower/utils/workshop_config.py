@@ -9,6 +9,7 @@ from arknights_mower.utils.path import get_path
 
 workshop_lock = RLock()
 _STATE_FIELDS = (
+    "growth_crafting_order",
     "workshop_settings",
     "workshop_manual_backup",
     "workshop_auto_active",

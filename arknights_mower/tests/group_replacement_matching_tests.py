@@ -191,6 +191,143 @@ def test_exhaust_support_accepts_complete_shared_free_cover_matching(solver):
     can_rest.assert_called_once()
 
 
+@pytest.mark.parametrize("with_trade_order", [False, True])
+def test_only_ordinary_cover_at_mood_floor_allows_group_shift(solver, with_trade_order):
+    data = solver.op_data
+    if with_trade_order:
+        data.operators["令"].replacement.append("但书")
+        data.add(Operator("但书", ""))
+    cover = data.operators["Mon3tr"]
+    cover.mood, cover.lower_limit = 0, 0
+    before = {
+        name: (op.current_room, op.current_index) for name, op in data.operators.items()
+    }
+    plan, replacements = {}, []
+
+    solver.get_resting_plan(MEMBERS.copy(), replacements, plan, 0)
+
+    assert plan["central"] == ["Mon3tr"]
+    assert len(replacements) == len(set(replacements)) == len(MEMBERS)
+    assert set(MEMBERS) <= {
+        name for row in try_reorder(data, plan).values() for name in row
+    }
+    assert cover.current_room == ""
+    assert {
+        name: (op.current_room, op.current_index) for name, op in data.operators.items()
+    } == before
+
+
+@pytest.mark.parametrize("runtime_flag", [False, True])
+def test_configured_zero_mood_cover_keeps_priority_and_admits_group(
+    solver, runtime_flag
+):
+    data = solver.op_data
+    primary = data.operators["令"]
+    primary.replacement.append("红")
+    data.add(Operator("红", "", mood=24, time_stamp=datetime.now()))
+    data.config.workaholic = ["Mon3tr"]
+    cover = data.operators["Mon3tr"]
+    cover.workaholic = runtime_flag
+    cover.mood, cover.lower_limit = 0, 0
+    plan = {}
+
+    solver.get_resting_plan(MEMBERS.copy(), [], plan, 0)
+
+    assert plan["central"] == ["Mon3tr"]
+    assert data.replacement_candidates(primary) == ["Mon3tr", "红"]
+
+
+def test_zero_mood_configuration_reaches_shu_as_a_replacement(solver):
+    data = solver.op_data
+    data.config.workaholic = ["黍"]
+    data.operators["令"].replacement = ["黍", "红"]
+    data.add(Operator("黍", "", mood=0, time_stamp=datetime.now()))
+    data.add(Operator("红", "", mood=24, time_stamp=datetime.now()))
+    assert data.operators["黍"].workaholic
+    plan = {}
+
+    solver.get_resting_plan(MEMBERS.copy(), [], plan, 0)
+
+    assert plan["central"] == ["黍"]
+
+
+@pytest.mark.parametrize("configuration", ["inherit", "add", "remove"])
+def test_zero_mood_cover_uses_effective_backup_configuration(solver, configuration):
+    data = solver.op_data
+    data.global_plan["default_plan"].plan["central"][0].replacement.append("红")
+    data.global_plan["default_plan"].config.workaholic = (
+        [] if configuration == "add" else ["Mon3tr"]
+    )
+    data.backup_plans.append(
+        Plan(
+            {},
+            PlanConfig(
+                "",
+                "",
+                "",
+                workaholic="Mon3tr" if configuration == "add" else "",
+                removed_operators=(
+                    {"workaholic": "Mon3tr"} if configuration == "remove" else {}
+                ),
+            ),
+        )
+    )
+    assert data.swap_plan([True], refresh=True) is None
+    data.operators["Mon3tr"].mood = 0
+    data.operators["Mon3tr"].time_stamp = datetime.now()
+    data.operators["红"].time_stamp = datetime.now()
+    plan = {}
+
+    solver.get_resting_plan(MEMBERS.copy(), [], plan, 0)
+
+    assert plan["central"] == ["红" if configuration == "remove" else "Mon3tr"]
+    assert data.operators["Mon3tr"].workaholic is (configuration != "remove")
+
+
+@pytest.mark.parametrize("other_cover_busy", [False, True])
+def test_multiple_ordinary_covers_retain_mood_filter(solver, other_cover_busy):
+    data = solver.op_data
+    data.operators["令"].replacement.append("红")
+    data.add(Operator("红", "", mood=24, time_stamp=datetime.now()))
+    data.operators["Mon3tr"].mood = 0
+    if other_cover_busy:
+        data.operators["红"].current_room = "meeting"
+        data.operators["红"].current_index = 0
+    plan = {}
+
+    solver.get_resting_plan(MEMBERS.copy(), [], plan, 0)
+
+    if other_cover_busy:
+        assert plan == {}
+    else:
+        assert plan["central"] == ["红"]
+
+
+@pytest.mark.parametrize("blocked", ["working", "reserved", "mastery"])
+def test_only_exhausted_cover_retains_other_admission_checks(
+    solver, monkeypatch, blocked
+):
+    data = solver.op_data
+    cover = data.operators["Mon3tr"]
+    cover.mood = 0
+    data.config.workaholic = [cover.name]
+    if blocked == "working":
+        cover.current_room, cover.current_index = "meeting", 0
+    elif blocked == "reserved":
+        data.reserved_product_replacements.add(cover.name)
+    else:
+        monkeypatch.setattr(
+            base_schedule, "_is_mastery_busy", lambda name: name == cover.name
+        )
+    before = [(bed.name, bed.time) for bed in data.dorm]
+    plan, replacements = {}, []
+
+    solver.get_resting_plan(MEMBERS.copy(), replacements, plan, 0)
+
+    assert plan == {} and replacements == []
+    assert [(bed.name, bed.time) for bed in data.dorm] == before
+
+
 def test_exhaust_support_coordinates_only_unmatched_member_after_group_matching(solver):
     data = solver.op_data
     for operator in (

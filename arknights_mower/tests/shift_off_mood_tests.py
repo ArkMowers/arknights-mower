@@ -73,7 +73,7 @@ def solver(monkeypatch):
     return instance
 
 
-@pytest.mark.parametrize("priority", ["high", "low", "standby"])
+@pytest.mark.parametrize("priority", ["high", "low"])
 def test_dorm_priority_does_not_take_shared_cover_from_exhausted_group(
     solver, priority
 ):
@@ -87,6 +87,19 @@ def test_dorm_priority_does_not_take_shared_cover_from_exhausted_group(
     assert "room_2_1" not in plan
     assert {bed.name for bed in data.dorm if bed.name} == {"令", "黑键"}
     assert data.config.ope_resting_priority == ["歌蕾蒂娅"]
+
+
+def test_low_mood_standby_does_not_initiate_group_or_take_shared_cover(solver):
+    data = solver.op_data
+    data.operators["令"].resting_priority = "standby"
+    data.config.resting_standby = ["令"]
+
+    plan = solver.resting()
+
+    assert plan["central"] == ["Current", "夕"]
+    assert plan["room_2_1"] == ["伺夜"]
+    assert "room_1_1" not in plan
+    assert {bed.name for bed in data.dorm if bed.name} == {"歌蕾蒂娅", "幽灵鲨"}
 
 
 def test_shift_off_keeps_original_mood_margin_against_lower_limit(solver):

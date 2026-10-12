@@ -96,7 +96,8 @@ class PreparationLifecycleTests(unittest.TestCase):
             device=device,
             initialize_operators=lambda: self.validation_message,
             op_data=SimpleNamespace(
-                validate_backup_plans=lambda: {"success": True}, config=None
+                validate_backup_plans=lambda *, max_seconds=None: {"success": True},
+                config=None,
             ),
             run=lambda: self.step(),
             recog=SimpleNamespace(update=lambda: self.refresh()),

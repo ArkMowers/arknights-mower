@@ -7,7 +7,7 @@ from time import monotonic
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from flask import Flask
+from flask import Flask, request
 
 from arknights_mower import utils
 from arknights_mower.tests.device_application_tests import ManualAdapter, ManualDevice
@@ -125,6 +125,7 @@ class TrayRecoveryTests(unittest.TestCase):
                 conf.conf.webview.tray = True
                 conf.conf.webview.token = ""
                 conf.conf.start_automatically = False
+                conf.conf.resource_update.enable = False
                 conf.stop_mower = threading.Event()
                 server = Mock(app=Flask(__name__))
                 exit_events = []
@@ -233,3 +234,203 @@ class TrayRecoveryTests(unittest.TestCase):
                     ["worker restored", "screenshots closed", "logging stopped"],
                 )
                 registration.close.assert_called_once()
+
+
+class DesktopStartupTests(unittest.TestCase):
+    def launch(
+        self,
+        *,
+        automatic=True,
+        resource=False,
+        restart=False,
+        resume_run="0",
+        resume_mode="",
+        resource_result=None,
+        existing_install=False,
+        cancel=None,
+    ):
+        import server as task_server
+        import webview_ui
+
+        with ExitStack() as stack:
+            config = Mock()
+            config.conf.webview.tray = True
+            config.conf.webview.token = ""
+            config.conf.start_automatically = automatic
+            config.conf.resource_update.enable = resource
+            config.conf.resource_update.auto_update = resource
+            config.stop_mower = threading.Event()
+            server = Mock(app=Flask(__name__))
+            server.start = Mock(wraps=task_server.start)
+            stack.enter_context(patch.object(task_server, "app", server.app))
+            server.resource_update.running.return_value = existing_install
+            server.stop.return_value = "true"
+            registration = Mock(record={})
+            registration.shutdown_requested.return_value = False
+            registration.take_commands.side_effect = [
+                ["toggle"],
+                ["toggle"],
+                ["browser"],
+                ["browser"],
+                ["exit"],
+            ]
+            shutdown = Shutdown()
+            events = []
+            server.resource_update.thread.join.side_effect = lambda: events.append(
+                "existing install finished"
+            )
+
+            def check_resource():
+                events.append("check resource")
+                if isinstance(resource_result, Exception):
+                    raise resource_result
+                return {"update_available": True}
+
+            def install_resource():
+                self.assertEqual(request.method, "POST")
+                events.append("install resource")
+                if cancel == "stop":
+                    config.stop_mower.set()
+                elif cancel == "shutdown":
+                    shutdown.request("test")
+                return resource_result or {"ok": True}
+
+            server.get_resource_version.side_effect = check_resource
+            server.install_resource.side_effect = install_resource
+
+            def start_worker(mode):
+                events.append(("start", mode))
+                return True
+
+            stack.enter_context(
+                patch.object(task_server, "_start_mower", side_effect=start_worker)
+            )
+            workers = []
+
+            def make_thread(*args, **kwargs):
+                target = kwargs["target"]
+                workers.append(target)
+                return Mock(start=target)
+
+            patches = [
+                patch.dict(
+                    os.environ,
+                    {
+                        "MOWER_BACKGROUND": "0",
+                        "MOWER_MANAGED": "1",
+                        "MOWER_RESTART_JOB": "fixture" if restart else "",
+                        "MOWER_RESTART_PORT": "58100",
+                        "MOWER_RESUME_RUN": resume_run,
+                        "MOWER_RESUME_MODE": resume_mode,
+                    },
+                ),
+                patch.dict(sys.modules, {"server": server}),
+                patch.object(sys, "argv", ["mower"]),
+                patch.object(sys, "platform", "darwin"),
+                patch.object(utils, "config", config),
+                patch.object(path, "global_space", ""),
+                patch.object(runtime, "read_json", return_value={}),
+                patch.object(runtime, "active_job", side_effect=[False, True, False]),
+                patch.object(runtime, "unified_managers", return_value=[{}]),
+                patch.object(runtime, "RuntimeRegistration", return_value=registration),
+                patch.object(network, "is_port_in_use", side_effect=[False, True]),
+                patch.object(webview_ui, "exit_if_webview_backend_missing"),
+                patch.object(webview_ui, "close_child"),
+                patch.object(webview_ui, "start_http_server"),
+                patch("arknights_mower.utils.lifecycle.shutdown", shutdown),
+                patch.object(
+                    webview_ui, "start_desktop_child", return_value=(Mock(), Mock())
+                ),
+                patch.object(software_update, "request_auto_check"),
+                patch.object(desktop_process, "log_channel", return_value=Mock()),
+                patch.multiple(
+                    log,
+                    init_file_logging=Mock(),
+                    start_mp_listener=Mock(),
+                    close_logging=Mock(),
+                    close_mp_logging=Mock(),
+                    close_screenshot_store=Mock(),
+                ),
+                patch("threading.Thread", side_effect=make_thread),
+                patch("time.sleep"),
+                patch("webbrowser.open"),
+            ]
+            mocks = [stack.enter_context(item) for item in patches]
+            webview_ui.run_desktop()
+            self.assertTrue(server.app.config["DESKTOP_STARTUP_HANDLED"])
+            if cancel != "shutdown":
+                self.assertEqual(mocks[-1].call_count, 2)
+            # Closing/reopening the window and opening browser tabs never queue
+            # another worker; shutdown also cancels a delayed worker callback.
+            self.assertLessEqual(len(workers), 1)
+            for worker in workers:
+                worker()
+            return events, server
+
+    def test_normal_autostart_admits_task_through_the_start_route(self):
+        events, server = self.launch()
+        self.assertEqual(events, [("start", "0")])
+        server.start.assert_called_once_with("0")
+
+    def test_resource_install_finishes_before_the_single_process_start(self):
+        for result in ({"ok": True}, {"ok": False}):
+            with self.subTest(result=result):
+                events, server = self.launch(resource=True, resource_result=result)
+                self.assertEqual(
+                    events, ["check resource", "install resource", ("start", "0")]
+                )
+                server.start.assert_called_once_with("0")
+
+    def test_resource_check_error_keeps_existing_resources_and_starts(self):
+        events, server = self.launch(resource=True, resource_result=OSError("offline"))
+        self.assertEqual(events, ["check resource", ("start", "0")])
+        server.install_resource.assert_not_called()
+
+    def test_cached_page_install_finishes_before_process_task_admission(self):
+        events, server = self.launch(
+            resource=True, resource_result={"ok": False}, existing_install=True
+        )
+        self.assertEqual(
+            events,
+            [
+                "check resource",
+                "install resource",
+                "existing install finished",
+                ("start", "0"),
+            ],
+        )
+        server.start.assert_called_once_with("0")
+
+    def test_stop_or_shutdown_during_resource_install_cancels_pending_start(self):
+        for cancel in ("stop", "shutdown"):
+            with self.subTest(cancel=cancel):
+                events, server = self.launch(resource=True, cancel=cancel)
+                self.assertEqual(events, ["check resource", "install resource"])
+                server.start.assert_not_called()
+
+    def test_resource_automation_is_independent_of_task_autostart(self):
+        events, server = self.launch(automatic=False, resource=True)
+        self.assertEqual(events, ["check resource", "install resource"])
+        server.start.assert_not_called()
+
+    def test_restart_policy_overrides_the_saved_autostart_option(self):
+        for automatic in (False, True):
+            for resume_run, mode, expected in (
+                ("0", "", None),
+                ("1", "", "2"),
+                ("0", "0", "0"),
+                ("0", "1", "1"),
+            ):
+                with self.subTest(
+                    automatic=automatic, resume_run=resume_run, mode=mode
+                ):
+                    events, server = self.launch(
+                        automatic=automatic,
+                        restart=True,
+                        resume_run=resume_run,
+                        resume_mode=mode,
+                    )
+                    self.assertEqual(
+                        events, [] if expected is None else [("start", expected)]
+                    )
+                    self.assertEqual(server.start.call_count, int(expected is not None))

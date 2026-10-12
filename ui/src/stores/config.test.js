@@ -14,6 +14,29 @@ afterEach(() => {
 })
 
 describe('workshop config autosave', () => {
+  it('saves the medicine expiry threshold without retired weekend settings', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    expect(store.medicine_expire_days).toBe(0)
+    expect(store).not.toHaveProperty('expiring_medicine_on_weekend')
+    expect(store.build_config()).not.toHaveProperty('expiring_medicine_on_weekend')
+    expect(store.build_config()).not.toHaveProperty('exipring_medicine_on_weekend')
+    axios.patch.mockResolvedValue({ data: {} })
+    loaded.value = true
+    await nextTick()
+    await store.flush_config_saves()
+    store.medicine_expire_days = 3
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+    expect(axios.patch.mock.calls[0][1]).toEqual({ medicine_expire_days: 3 })
+    loaded.value = false
+  })
+
   it('saves the automatic rescue checkbox independently', async () => {
     pinia = createPinia()
     setActivePinia(pinia)
@@ -279,7 +302,7 @@ describe('low frame rate adaptation', () => {
     }
   })
   it.each([
-    ['android', undefined, true],
+    ['android', undefined, false],
     ['android', false, false],
     ['android', true, true],
     ['darwin', undefined, false],
@@ -320,7 +343,7 @@ describe('low frame rate adaptation', () => {
     await nextTick()
     await store.flush_config_saves()
     expect(axios.patch).not.toHaveBeenCalled()
-    store.performance_mode = platform === 'android' ? 'low' : 'medium'
+    store.performance_mode = 'medium'
     await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
     const savedValue = performanceProfile(store.performance_mode, platform).lowFrameRateMode
     expect(store.build_config().low_frame_rate_mode).toBe(savedValue)
@@ -414,7 +437,7 @@ describe('low frame rate adaptation', () => {
 })
 
 describe('factory product switching policy', () => {
-  it('defaults drone loss tolerance to 30 seconds and serializes edits', async () => {
+  it('defaults switching on with 30-second drone loss tolerance and serializes edits', async () => {
     pinia = createPinia()
     setActivePinia(pinia)
     const app = createApp({})
@@ -436,6 +459,7 @@ describe('factory product switching policy', () => {
 
     await store.load_config()
     expect(store.product_switching).toEqual({
+      enable: false,
       max_drones_per_switch: 0,
       grandet_mode: true,
       use_drones_when_leaving_orirock: true,
@@ -444,6 +468,7 @@ describe('factory product switching policy', () => {
       waiting_seconds: 2
     })
 
+    store.product_switching.enable = false
     store.product_switching.max_drones_per_switch = 12
     store.product_switching.grandet_mode = false
     store.product_switching.use_drones_when_leaving_orirock = false
@@ -451,6 +476,7 @@ describe('factory product switching policy', () => {
     store.product_switching.drone_loss_seconds = 45
     store.product_switching.waiting_seconds = 4
     expect(store.build_config().product_switching).toEqual({
+      enable: false,
       max_drones_per_switch: 12,
       grandet_mode: false,
       use_drones_when_leaving_orirock: false,
@@ -480,5 +506,37 @@ describe('version update mood policy', () => {
       version_update_resting_threshold: 0.85,
       version_update_threshold_advance_hours: 18
     })
+  })
+})
+
+describe('资源更新后的周计划元数据', () => {
+  it('重新读取结束时间时保留本地库存规则和所选关卡', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', ref(false))
+    store = app.runWithContext(() => useConfigStore())
+    store.maa_weekly_plan_active = '活动'
+    store.maa_weekly_plan = [{ weekday: '周一', stage: ['YW-8'] }]
+    store.maa_stage_limit_rules = [{ stage: 'YW-8', items: [] }]
+    store.maa_weekly_plan_activity_switch_times = { 活动: 1234 }
+    const plans = JSON.stringify(store.maa_weekly_plan)
+    const rules = JSON.stringify(store.maa_stage_limit_rules)
+    axios.get.mockResolvedValue({
+      data: {
+        plans: ['活动', '常规'],
+        activity_plan_end_times: { 活动: 1792699199 },
+        activity_fallback_switch_times: { 活动: 1234 },
+        inventory_config: { enabled: false, limit_rules: [] }
+      }
+    })
+    await store.refresh_weekly_plan_metadata()
+    expect(store.maa_weekly_plan_activity_end_times).toEqual({ 活动: 1792699199 })
+    expect(store.maa_weekly_plan_activity_switch_times).toEqual({ 活动: 1234 })
+    expect(JSON.stringify(store.maa_weekly_plan)).toBe(plans)
+    expect(JSON.stringify(store.maa_stage_limit_rules)).toBe(rules)
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.patch).not.toHaveBeenCalled()
   })
 })

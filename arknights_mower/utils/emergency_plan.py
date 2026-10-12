@@ -1,10 +1,16 @@
 """独立救急排班的副表求值与设施校验。"""
 
 from arknights_mower.data import agent_list
+from arknights_mower.utils.plan import all_replacements
 
-RESCUE_ROOMS = {"central": 5, "meeting": 2, "contact": 1, "factory": 1, "train": 2} | {
-    f"room_{floor}_{index}": 3 for floor in range(1, 4) for index in range(1, 4)
-}
+RESCUE_ROOMS = {
+    "central": 5,
+    "meeting": 2,
+    "contact": 1,
+    "factory": 1,
+    "train": 2,
+    "recycle": 2,
+} | {f"room_{floor}_{index}": 3 for floor in range(1, 4) for index in range(1, 4)}
 
 RESCUE_DORMS = {f"dormitory_{index}" for index in range(1, 5)}
 
@@ -177,7 +183,13 @@ def effective_rescue_plan(data, schedule):
 
     run_orders = {
         room: [
-            [name for name in slot.get("replacement", []) if name in TRADE_ORDER_AGENTS]
+            [
+                name
+                for name in all_replacements(
+                    slot.get("replacement", ()), slot.get("group_bindings", ())
+                )
+                if name in TRADE_ORDER_AGENTS
+            ]
             for slot in facilities[room]["plans"]
         ]
         for room in work

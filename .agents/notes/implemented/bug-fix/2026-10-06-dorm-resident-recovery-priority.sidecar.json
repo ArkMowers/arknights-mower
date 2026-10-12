@@ -1,0 +1,19 @@
+{
+  "title": "Admission Preemption and Vacant Recovery",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-20]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.scheduler_task.prioritize_new_dorm_recovery"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/dorm_admission_priority_tests.py",
+    "arknights_mower/tests/dorm_single_free_departure_tests.py"
+  ]
+}

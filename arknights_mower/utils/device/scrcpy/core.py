@@ -12,7 +12,11 @@ import numpy as np
 from arknights_mower import __rootdir__
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
 from arknights_mower.utils.device.adb_client.socket import Socket
-from arknights_mower.utils.device.io_budget import budget_sleep, device_io_budget
+from arknights_mower.utils.device.io_budget import (
+    budget_sleep,
+    device_io_budget,
+    touch_release_budget,
+)
 from arknights_mower.utils.device.scrcpy import const
 from arknights_mower.utils.device.scrcpy.control import ControlSender
 from arknights_mower.utils.log import logger
@@ -285,6 +289,7 @@ class Client:
         hold_before_release: float = 0,
         fall: bool = True,
         lift: bool = True,
+        before_release=None,
     ):
         with self.control.input_operation():
             frame_time = 1 / 60
@@ -309,6 +314,13 @@ class Client:
                 if step_time < frame_time:
                     budget_sleep(frame_time - step_time)
             self.control.touch(x1, y1, const.ACTION_MOVE)
-            if hold_before_release > 0:
-                budget_sleep(hold_before_release)
-            lift and self.control.touch(x1, y1, const.ACTION_UP)
+            if before_release is None:
+                if hold_before_release > 0:
+                    budget_sleep(hold_before_release)
+                lift and self.control.touch(x1, y1, const.ACTION_UP)
+            elif lift:
+                try:
+                    before_release()
+                finally:
+                    with touch_release_budget():
+                        self.control.touch(x1, y1, const.ACTION_UP)

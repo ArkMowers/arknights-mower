@@ -35,6 +35,7 @@ export const useMowerStore = defineStore('mower', () => {
   )
   const scheduled_start_at = ref(null)
   const auto_start_handled = ref(false)
+  const desktop_startup_handled = ref(false)
   const plan_condition = ref([])
   const waiting = ref(false)
 
@@ -81,6 +82,7 @@ export const useMowerStore = defineStore('mower', () => {
     running.value = status.value !== 'stopped'
     scheduled_start_at.value = response.data.scheduled_start_at ?? null
     auto_start_handled.value = response.data.auto_start_handled === true
+    desktop_startup_handled.value = response.data.desktop_startup_handled === true
     plan_condition.value = response.data['plan_condition']
     if (running.value && !wasRunning) {
       clearTimeout(get_task_id.value)
@@ -112,6 +114,7 @@ export const useMowerStore = defineStore('mower', () => {
     status_label,
     scheduled_start_at,
     auto_start_handled,
+    desktop_startup_handled,
     plan_condition,
     waiting,
     listen_ws,

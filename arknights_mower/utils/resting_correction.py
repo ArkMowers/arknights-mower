@@ -39,12 +39,12 @@ def _resting_members(op_data):
         unfinished = end > now if end is not None else 0 <= op.mood < op.upper_limit
         if unfinished:
             resting.add(name)
-            if op.group:
+            if op.group and op_data.is_group_shift_anchor(op):
                 groups.add(op.group)
     for group in groups:
         members = [
             op_data.operators[name]
-            for name in op_data.groups[group]
+            for name in op_data.shift_group_members(group)
             if not op_data.operators[name].room.startswith("dorm")
             and not op_data.operators[name].workaholic
         ]
@@ -60,6 +60,7 @@ def _resting_members(op_data):
                 )
             )
             for op in members
+            if op_data.is_group_shift_anchor(op)
         ):
             # 半组在岗、或成员离岗却没有有效满心情记录，不能当作整组
             # 正常轮休。让原有整组纠错完成回班，而不是逐人保留休息。
@@ -122,17 +123,21 @@ def reconsider_low_mood_replacements(op_data, fix_plan, is_busy):
             if index >= len(actual) or _requested(fix_plan, room, index) != "Current":
                 continue
             current = actual[index]
-            if (
-                current not in getattr(slot, "replacement", ())
-                or current in TRADE_ORDER_AGENTS
-            ):
+            owner = op_data.operators.get(slot.agent)
+            replacements = (
+                owner.replacement
+                if owner is not None and owner.multi_group
+                else getattr(slot, "replacement", ())
+            )
+            if current not in replacements or current in TRADE_ORDER_AGENTS:
                 continue
             cover = op_data.operators.get(current)
-            if cover is None or not op_data.replacement_exhausted(current, now):
-                # 当前替班只要还有可工作心情，就继续使用；后面的候补即使
+            if cover is None or not op_data.replacement_exhausted(
+                current, now, operator=owner
+            ):
+                # 当前替班未被心情规则排除时继续使用；后面的候补即使
                 # 心情更高，也不能越过排班表里已经配置好的效率顺序。
                 continue
-            owner = op_data.operators.get(slot.agent)
             if owner is None:
                 continue
             for name in op_data.replacement_candidates(owner):
@@ -143,6 +148,7 @@ def reconsider_low_mood_replacements(op_data, fix_plan, is_busy):
                     or name in reserved
                     or name in TRADE_ORDER_AGENTS
                     or candidate.is_high()
+                    and not op_data.is_same_group_primary_replacement(owner, name)
                     or candidate.current_room
                     and not candidate.is_resting()
                     or candidate.time_stamp is None
@@ -152,7 +158,7 @@ def reconsider_low_mood_replacements(op_data, fix_plan, is_busy):
                     and candidate.current_mood(now) < candidate.upper_limit
                     or op_data.is_dorm_replacement(name)
                     or is_busy(name)
-                    or op_data.replacement_exhausted(name, now)
+                    or op_data.replacement_exhausted(name, now, operator=owner)
                 ):
                     continue
                 fix_plan.setdefault(room, ["Current"] * len(slots))[index] = name
@@ -193,10 +199,11 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
                 if (
                     cover is None
                     or cover.is_high()
+                    and not op_data.is_same_group_primary_replacement(op, candidate)
                     or candidate in reserved | resting
                     or candidate in TRADE_ORDER_AGENTS
                     or op_data.is_dorm_replacement(candidate)
-                    or op_data.replacement_exhausted(candidate)
+                    or op_data.replacement_exhausted(candidate, operator=op)
                     or not _can_move(cover, room, requested, resting)
                     or is_busy(candidate)
                 ):
@@ -209,7 +216,7 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
                     # 独立暖机干员继续本轮恢复；正常规划按床位时间重建回班任务。
                     slots[index] = "Current"
                     continue
-                if op.group:
+                if op.group and op_data.is_group_shift_anchor(op):
                     recalling_groups.add(op.group)
                 logger.debug(
                     f"{name}所在组正在休息，{room}暂无可用替班，保留原纠错叫回安排"
@@ -235,6 +242,7 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
 
 def correct_group_dorms(op_data, fix_plan, is_busy, *, positions=None):
     """按工作成员的轮休状态安排宿舍岗位；切表时可限定到发生变化的位置。"""
+    transitions = op_data.arrangement_group_transitions(fix_plan)
     for group, names in op_data.groups.items():
         residents = [
             op_data.operators[n]
@@ -249,19 +257,22 @@ def correct_group_dorms(op_data, fix_plan, is_busy, *, positions=None):
             continue
         # 纠错已经决定叫回工作成员时，宿舍成员也必须回班。
         recalling = any(
-            not op_data.operators[n].room.startswith("dorm")
-            and not op_data.operators[n].workaholic
+            op_data.is_group_shift_anchor(op_data.operators[n])
             and _requested(
                 fix_plan, op_data.operators[n].room, op_data.operators[n].index
             )
             == n
             for n in names
         )
-        resting = op_data.group_is_resting(group) and not recalling
+        group_resting = op_data.group_is_resting(group) and not recalling
         changes = {}
         for op in residents:
+            # 清缓存后当前绑定列不代表实际休息组；共享岗位检查全部绑定。
+            resting_groups = [group] if group_resting else []
+            if op.multi_group:
+                resting_groups = op_data.resting_binding_groups(op, transitions)
             desired = op.name
-            if resting:
+            if resting_groups:
                 actual = op_data.get_current_operator(op.room, op.index)
                 if op_data.is_auto_free_dorm_operator(op):
                     # 该位置已经转为普通动态床位；保留现有休息者，空床则
@@ -291,7 +302,15 @@ def correct_group_dorms(op_data, fix_plan, is_busy, *, positions=None):
                             name not in TRADE_ORDER_AGENTS
                             and name not in reserved
                             and not is_busy(name)
-                            and not op_data.operators[name].is_high()
+                            and (
+                                not op_data.operators[name].is_high()
+                                or any(
+                                    op_data.is_same_group_primary_replacement(
+                                        op, name, resting_group
+                                    )
+                                    for resting_group in resting_groups
+                                )
+                            )
                             and (
                                 actual is not None
                                 and actual.name == name
@@ -309,7 +328,7 @@ def correct_group_dorms(op_data, fix_plan, is_busy, *, positions=None):
                     # 部分执行失败后没有可用替班，先保留原宿舍干员；
                     # 不抢占其他岗位，也不绕过训练室保护把整组叫回。
                     logger.debug(f"{op.name}宿舍替班暂不可用，保留本人并等待后续纠错")
-                    desired = op.name
+                    desired = "Current" if op.is_working() else op.name
             changes[op.room, op.index] = desired
         for (room, index), name in changes.items():
             current = op_data.get_current_operator(room, index)
@@ -323,3 +342,130 @@ def correct_group_dorms(op_data, fix_plan, is_busy, *, positions=None):
     for room, slots in list(fix_plan.items()):
         if all(name == "Current" for name in slots):
             del fix_plan[room]
+
+
+def preserve_backup_replacements(
+    op_data,
+    plan,
+    positions,
+    previous_dorms,
+    is_busy,
+    reserved_names=(),
+    reserved_slots=(),
+):
+    """切产物或替班优先保留主班状态；替班不足时召回可用主班。"""
+    from arknights_mower.utils.exhaust_replacement import match_replacements
+
+    positions = {
+        position for position in positions if _requested(plan, *position) == "Current"
+    }
+    owners = {
+        op_data.plan[room][index].agent: (room, index)
+        for room, index in sorted(positions)
+    }
+    reserved = set(reserved_names) | set(op_data.reserved_product_replacements)
+    assigned = {
+        name for row in plan.values() for name in row if name not in PLACEHOLDERS
+    }
+    reserved.update(assigned)
+    reserved_slots = set(reserved_slots) | set(op_data.reserved_product_beds)
+    beds = {bed.position: bed.name for bed in previous_dorms if bed.name}
+    options, changes = {}, {}
+    # 明确被本轮安排替换的原岗位也释放其替班，允许跨设施迁移。
+    movable = {
+        (room, index)
+        for room, row in plan.items()
+        for index, name in enumerate(row)
+        if name != "Current"
+        and (room, index) not in reserved_slots
+        and (actual := op_data.get_current_operator(room, index)) is not None
+        and actual.name != name
+    }
+    for name, position in owners.items():
+        owner = op_data.operators[name]
+        actual = op_data.get_current_operator(*position)
+        if actual is not None and actual.name == name:
+            continue
+        if op_data.is_auto_free_dorm_operator(owner):
+            # 开放床位时保留已有入住者；不以 Free 清走休息中的干员。
+            if actual is None:
+                if position in reserved_slots:
+                    return False
+                changes[position] = "Free"
+            continue
+        if position in reserved_slots:
+            if actual is not None and actual.name in owner.replacement:
+                reserved.add(actual.name)
+                continue
+            return False
+        options[name] = []
+        movable.add(position)
+
+    for name in options:
+        owner = op_data.operators[name]
+        position = owners[name]
+        actual = op_data.get_current_operator(*position)
+        candidates = op_data.replacement_candidates(owner)
+        if actual is not None and actual.name in candidates:
+            candidates.remove(actual.name)
+            candidates.insert(0, actual.name)
+        for candidate in candidates:
+            cover = op_data.operators.get(candidate)
+            if cover is None:
+                continue
+            source = (cover.current_room, cover.current_index)
+            if source == position and candidate not in assigned:
+                options[name].append(candidate)
+                continue
+            if (
+                candidate in reserved | set(owners) | set(TRADE_ORDER_AGENTS)
+                or is_busy(candidate)
+                or cover.is_high()
+                and (
+                    not op_data.is_same_group_primary_replacement(owner, candidate)
+                    or source == (cover.room, cover.index)
+                )
+                or op_data.replacement_exhausted(candidate, operator=owner)
+                or cover.rest_in_full
+                and cover.is_resting()
+                and cover.current_mood() < cover.upper_limit
+            ):
+                continue
+            if source not in movable and (
+                op_data.is_dorm_replacement(candidate)
+                or cover.current_room
+                and not cover.is_resting()
+            ):
+                continue
+            # 原动态床或固定恢复位被占用时，不能以切替班的名义挤走住客。
+            if position in beds and beds[position] != candidate:
+                continue
+            options[name].append(candidate)
+    # 先最大匹配可用替班，再以主班补足缺口，避免过早召回仍有替班的人。
+    preferred = {
+        candidate for candidates in options.values() for candidate in candidates
+    }
+    for name, candidates in options.items():
+        owner = op_data.operators[name]
+        position = owners[name]
+        source = (owner.current_room, owner.current_index)
+        if (
+            name not in reserved
+            and not (owner.multi_group and op_data.resting_binding_groups(owner))
+            and not is_busy(name)
+            and source not in reserved_slots
+            and (not owner.current_room or owner.is_resting())
+            and position not in beds
+        ):
+            candidates.append(name)
+    matching = match_replacements(options, preferred=preferred)
+    if matching is None:
+        logger.debug("副表替班与主班均不可用，暂缓切表：%s", options)
+        return False
+    changes.update({owners[name]: candidate for name, candidate in matching.items()})
+    for (room, index), candidate in changes.items():
+        actual = op_data.get_current_operator(room, index)
+        if actual is not None and actual.name == candidate:
+            continue
+        plan.setdefault(room, ["Current"] * len(op_data.plan[room]))[index] = candidate
+    return True

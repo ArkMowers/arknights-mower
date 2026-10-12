@@ -4,10 +4,10 @@
   "category": "simplification",
   "date": "${DATE}",
   "authors": [
-    "Antigravity"
+    "${AUTHOR}"
   ],
   "invariants": [
-    "[INV-01]"
+    "${EXISTING_OR_INDEPENDENT_INVARIANT}"
   ],
   "code_symbols": [
     "arknights_mower.path.to.TargetSymbol"

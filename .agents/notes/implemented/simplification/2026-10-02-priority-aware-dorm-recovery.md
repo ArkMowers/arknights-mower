@@ -7,6 +7,8 @@ date: 2026-10-02
 
 # Priority Aware Dormitory Recovery
 
+The [protected-bed decision](../../implemented/bug-fix/2026-10-09-protected-dorm-bed-tiers.md) supersedes the occupied-bed takeover boundary: the first four recovery tiers retain their beds and may take over residents in the last three tiers. Standby primaries may take over ordinary replacement and idle beds, and ordinary replacements may take over idle beds, with valid applicant mood at or below 80% of its own upper limit. Other candidate, compensation and reservation contracts remain binding.
+
 ## Contract
 
 [INV-SCHED-09] and [INV-SCHED-13] use the same strict recovery tier for ordinary and rescue bed allocation. Explicit priority precedes main primaries, low main primaries, priority replacements, standby primaries, ordinary replacements and idle operators. Rescue maintains completion targets without flattening these tiers. Equal tiers preserve current residents. Intelligent rescue retains configured recovery tiers; only explicit configuration raises priority.

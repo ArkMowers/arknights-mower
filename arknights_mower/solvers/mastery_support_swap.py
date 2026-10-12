@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from arknights_mower.utils.mastery_order import halving_successor
 from arknights_mower.utils.mastery_support import (
     REDUCERS,
     SupportPlanError,
@@ -13,6 +14,7 @@ from arknights_mower.utils.mastery_support import (
     schedule_context,
     stage_for,
 )
+from arknights_mower.utils.mastery_support_data import actual_central_bonus
 
 from .mastery_support_state import (
     enqueue_support_swap,
@@ -145,10 +147,13 @@ def _current_rate(options, support, level, central=0):
 
 def _apply_swap(execution, support, options, central):
     route, level = execution.route, execution.level
-    speed = _current_rate(options, support, level, central)
-    schedule_speed = _current_rate(options, support, level)
+    speed = _current_rate(
+        options, support, level, actual_central_bonus(execution.solver, central)
+    )
     stats = _swap_candidates(execution, options)
-    swapping = bool(route.get("swap_target")) and level < execution.plan["target_level"]
+    swapping = bool(route.get("swap_target")) and bool(
+        halving_successor(execution.plan, level)
+    )
     correcting = support != route["operator"]
     if not swapping and not correcting:
         return execution.collect()
@@ -162,7 +167,6 @@ def _apply_swap(execution, support, options, central):
             speed,
             stats,
             (central, route["mastery_swap_buffer"]),
-            schedule_rate=schedule_speed,
         )
         if swapping
         else (None, 0)
@@ -174,11 +178,15 @@ def _apply_swap(execution, support, options, central):
         )
         is True
     ):
-        # 跑单冲突已把换人提前；候选收益与房间校验仍由现有流程确认。
+        # 跑单或维护已把换人提前；候选收益与房间校验仍由现有流程确认。
         delay = 0
     if correcting and (selected is None or delay > 5):
         # Do not remove a reducer that cannot earn five hours again.
-        if support in REDUCERS and seconds < (300 + route["mastery_swap_buffer"]) * 60:
+        if (
+            support in REDUCERS
+            and not route.get("exclude_reducer")
+            and seconds < (300 + route["mastery_swap_buffer"]) * 60
+        ):
             execution.collect()
         else:
             execution.restore_first(
@@ -223,6 +231,12 @@ def _prepare_swap_execution(solver, plan, panel):
         )
         return None
     route = stage_for(plan, level)
+    from .mastery_support_runtime import route_without_unusable_reducer
+
+    selected_route = route_without_unusable_reducer(plan, level, route)
+    if selected_route != route:
+        save_runtime(plan, selected_route)
+    route = selected_route
     if not route:
         stop_support_swap(
             solver, plan, level, "当前阶段缺少协助方案，停止换人并安排收取检查"

@@ -26,6 +26,11 @@ class WebRoutingTests(unittest.TestCase):
         ):
             mock.start()
             self.addCleanup(mock.stop)
+        pages_patch = patch.object(
+            server, "frontend_pages", server._load_frontend_pages()
+        )
+        pages_patch.start()
+        self.addCleanup(pages_patch.stop)
         self.client = server.app.test_client()
 
     def get(self, path, **kwargs):
@@ -34,18 +39,58 @@ class WebRoutingTests(unittest.TestCase):
         return response
 
     def test_frontend_pages_refresh_with_query_trailing_slash_and_case(self):
-        # /mastery-recommendation 已有同名 API，由原接口处理，不经过页面 404 兜底。
         for page in self.pages:
-            if page == "/mastery-recommendation":
-                continue
             for path in {page, page.upper(), page.rstrip("/") + "/?token=fixture"}:
                 with self.subTest(path=path):
-                    response = self.get(path)
+                    response = self.get(
+                        path,
+                        headers={"Accept": "text/html", "Sec-Fetch-Dest": "document"},
+                    )
                     self.assertEqual(response.status_code, 200)
                     self.assertEqual(response.data, self.shell)
-        with self.client.head("/record/depot") as response:
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.data, b"")
+                    self.assertEqual(response.mimetype, "text/html")
+                    with self.client.head(
+                        path,
+                        headers={"Accept": "text/html", "Sec-Fetch-Dest": "document"},
+                    ) as head:
+                        self.assertEqual(head.status_code, 200)
+                        self.assertEqual(head.data, b"")
+                        self.assertEqual(head.mimetype, "text/html")
+
+    def test_page_api_collision_preserves_api_dispatch_and_cache_variants(self):
+        def api():
+            return {"has_data": True}
+
+        with patch.dict(server.app.view_functions, {"mastery_recommendation": api}):
+            for headers in (
+                {},
+                {"Accept": "*/*"},
+                {"Accept": "application/json, text/plain, */*"},
+                {"Accept": "text/html;q=0,*/*"},
+                {"Accept": "text/html", "Sec-Fetch-Dest": "empty"},
+                {"Accept": "text/html", "Sec-Fetch-Dest": "image"},
+            ):
+                with self.subTest(headers=headers):
+                    response = self.get("/mastery-recommendation", headers=headers)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.get_json(), {"has_data": True})
+                    self.assertTrue({"Accept", "Sec-Fetch-Dest"} <= set(response.vary))
+            for destination in (None, "document", "iframe"):
+                headers = {"Accept": "text/html,application/xhtml+xml,*/*;q=0.8"}
+                if destination is not None:
+                    headers["Sec-Fetch-Dest"] = destination
+                with self.subTest(destination=destination):
+                    response = self.get("/mastery-recommendation", headers=headers)
+                    self.assertEqual(response.data, self.shell)
+                    self.assertTrue({"Accept", "Sec-Fetch-Dest"} <= set(response.vary))
+
+    def test_navigation_does_not_intercept_non_read_methods(self):
+        with self.client.post(
+            "/mastery-recommendation",
+            headers={"Accept": "text/html", "Sec-Fetch-Dest": "document"},
+        ) as response:
+            self.assertEqual(response.status_code, 405)
+            self.assertNotEqual(response.data, self.shell)
 
     def test_unknown_apis_and_missing_assets_remain_404_even_for_browser_navigation(
         self,
@@ -115,7 +160,42 @@ class WebRoutingTests(unittest.TestCase):
 
     def test_source_checkout_with_older_frontend_uses_source_route_manifest(self):
         (self.root / "frontend-routes.json").unlink()
+        pages = server._load_frontend_pages()
+        self.assertEqual(pages, frozenset(page.lower() for page in self.pages))
+        pages_patch = patch.object(server, "frontend_pages", pages)
+        pages_patch.start()
+        self.addCleanup(pages_patch.stop)
         self.assertEqual(self.get("/record/depot").data, self.shell)
+        self.assertEqual(
+            self.get(
+                "/mastery-recommendation",
+                headers={"Accept": "text/html", "Sec-Fetch-Dest": "document"},
+            ).data,
+            self.shell,
+        )
+
+    def test_dispatch_does_not_read_manifest_during_requests(self):
+        with (
+            patch.dict(
+                server.app.view_functions,
+                {"mastery_recommendation": lambda: {"has_data": True}},
+            ),
+            patch.object(
+                Path, "open", side_effect=AssertionError("request reads disk")
+            ),
+        ):
+            for _ in range(2):
+                response = self.get(
+                    "/mastery-recommendation", headers={"Accept": "application/json"}
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.get_json(), {"has_data": True})
+            response = self.get(
+                "/mastery-recommendation",
+                headers={"Accept": "text/html", "Sec-Fetch-Dest": "document"},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.data, self.shell)
 
     def test_builtin_images_remain_available_without_external_package(self):
         (self.root / "avatar").mkdir()

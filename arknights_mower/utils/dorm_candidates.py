@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from arknights_mower.utils.resting_priority import (
     RestingTier,
     busy_resting_names,
+    crafting_rest_order,
     has_resting_mood,
     resting_key,
     resting_mood,
@@ -26,16 +27,24 @@ class DormCandidates:
     filling: list[str]
 
 
-def dorm_candidate_mood(op_data, name, now=None):
+def dorm_candidate_mood(op_data, name, now=None, *, estimates=None):
     """候选筛选先用实读，缺失时用短期卡片预估；计时仍只用实读。"""
     now = now or datetime.now()
     op = op_data.operators.get(name)
     if has_resting_mood(op, now):
         return resting_mood(op, now)
-    estimate = getattr(op_data, "dorm_mood_estimates", {}).get(name)
+    estimate = (
+        getattr(op_data, "dorm_mood_estimates", {}) if estimates is None else estimates
+    ).get(name)
     if estimate is not None and timedelta() <= now - estimate[1] < timedelta(hours=1):
         return estimate[0]
     return None
+
+
+def full_dorm_candidate(op_data, name, *, estimates=None, now=None):
+    """单回满心情判断沿用实读优先，缺失时接受有效卡片观测或排序推断。"""
+    mood = dorm_candidate_mood(op_data, name, now, estimates=estimates)
+    return mood is not None and mood >= 24
 
 
 def dorm_task_reservations(op_data, tasks, excluded=()):
@@ -47,6 +56,12 @@ def dorm_task_reservations(op_data, tasks, excluded=()):
         if task is None:
             continue
         names.update(getattr(task, "emergency_staffing_members", ()))
+        names.update(
+            name
+            for row in getattr(task, "run_order_original_roster", {}).values()
+            for name in row
+            if name not in ("", "Current", "Free")
+        )
         names.update(
             name
             for row in getattr(task, "emergency_original_roster", {}).values()
@@ -108,6 +123,7 @@ def dorm_candidates(
         elif not op.is_high() and not op_data.has_rest_mood_limit(name):
             full.append(name)
     recovering.sort(key=lambda name: resting_key(op_data, name, now))
+    recovering = crafting_rest_order(op_data, recovering)
 
     unknown.extend(unregistered_idle_candidates(op_data, excluded))
 
@@ -124,6 +140,8 @@ def dorm_candidates(
         for name in unknown
         if (mood := dorm_candidate_mood(op_data, name, now)) is None or mood < 24
     ]
+    unknown = crafting_rest_order(op_data, unknown)
+    filling = crafting_rest_order(op_data, filling)
     estimated_recovering = [
         name
         for name in unknown

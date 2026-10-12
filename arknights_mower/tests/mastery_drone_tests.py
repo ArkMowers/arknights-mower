@@ -47,7 +47,13 @@ def test_adjustment_without_conflict_is_safe(clock):
     solver.tap.assert_not_called()
 
 
-def test_navigation_delay_rechecks_before_arranging(clock):
+@pytest.mark.parametrize("product_switching_enabled", [False, True])
+def test_navigation_delay_rechecks_before_arranging(
+    clock, monkeypatch, product_switching_enabled
+):
+    monkeypatch.setattr(
+        scheduler.config.conf.product_switching, "enable", product_switching_enabled
+    )
     order, swap = pair()
     solver = make_solver([order, swap])
     solver.task = order

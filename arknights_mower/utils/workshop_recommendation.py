@@ -95,15 +95,27 @@ def prioritize_workshop_settings(settings, *, available=None, formulas=None):
 
 
 def recommend_workshop_operators(
-    roster=None, metadata=None, formulas=None, *, plan=None, min_bonus=80
+    roster=None,
+    metadata=None,
+    formulas=None,
+    *,
+    plan=None,
+    min_bonus=80,
+    category_min_bonus=None,
 ):
     min_bonus = validate_min_bonus(min_bonus)
+    category_min_bonus = {
+        key: validate_min_bonus(value)
+        for key, value in (category_min_bonus or {}).items()
+    }
     available = available_operators(roster, metadata)
     blocked = scheduled_operators(plan)
     eligible = {
         name: effects for name, effects in available.items() if name not in blocked
     }
-    selection = WorkshopSelection(eligible, _formulas(formulas), min_bonus)
+    selection = WorkshopSelection(
+        eligible, _formulas(formulas), min_bonus, category_min_bonus
+    )
     return {
         "defaults": {
             key: [entry["name"] for entry in values]

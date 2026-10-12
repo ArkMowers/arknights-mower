@@ -17,9 +17,13 @@ ADB capture shares one monotonic deadline across its guard, SDK query, frame rea
 
 Floating-point addition and subtraction can produce a remaining timeout slightly above ten seconds when successive clock samples are equal. Clamping to the initial effective budget preserves the configured limit without relaxing assertions. The [Device Control contract](../../../../docs/subsystems/device-control.md) owns shared ADB guarding and finite I/O budgets.
 
+The same rounding also affects session reconnects. `_CommandWindow.remaining` caps the session's local window, and the shared ADB `_remaining` boundary carries the caller's initial budget through probe sockets, explicit stop responses, client-version checks and CLI execution. Both boundaries preserve deadline expiration and elapsed-time deductions.
+
 ## Verification
 
 A frozen monotonic clock at the rounding boundary reproduces the Windows compatibility failure. Mocked guard and both raw socket requests preserve order and use timeouts within budget.
+
+Additional fixed-clock regressions reproduce `510.2 + 5 - 510.2 > 5` before repair and verify exact five-second upper bounds for pinned emulator reconnects, version guards, commands and socket operations. Existing regressions retain decreasing timeouts, shared connect/reconnect deadlines and rejection after budget exhaustion. Device and network I/O use substitutes.
 
 ## Standards Findings
 

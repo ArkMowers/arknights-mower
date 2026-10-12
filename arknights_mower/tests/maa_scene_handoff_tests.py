@@ -77,7 +77,7 @@ def test_handoff_respects_mower_stop(recog):
 
 
 @pytest.mark.parametrize("daily", [True, False])
-@pytest.mark.parametrize("long_result", ["schedule_stop", "ended"])
+@pytest.mark.parametrize("long_result", ["schedule_stop", "stop_requested", "ended"])
 def test_blackflow_starts_without_closing_game_and_returns_fresh_state(
     recog, monkeypatch, daily, long_result
 ):
@@ -91,6 +91,8 @@ def test_blackflow_starts_without_closing_game_and_returns_fresh_state(
     solver.MAA = maa
     monkeypatch.setattr(recog, "save_screencap", MagicMock())
     monkeypatch.setattr(base_schedule, "send_message", MagicMock())
+    logger = MagicMock()
+    monkeypatch.setattr(base_schedule, "logger", logger)
     solver.append_maa_task = MagicMock()
     solver.sleep = MagicMock()
 
@@ -111,12 +113,15 @@ def test_blackflow_starts_without_closing_game_and_returns_fresh_state(
 
     solver.back_to_index = MagicMock(side_effect=home)
     daily_results = [False] if daily else []
-    if long_result == "schedule_stop":
+    if long_result in {"schedule_stop", "stop_requested"}:
         maa.running.side_effect = daily_results + [True]
 
         def tick(_):
             stale_home(recog)
-            solver.tasks[0].time = datetime.now() + timedelta(seconds=20)
+            if long_result == "schedule_stop":
+                solver.tasks[0].time = datetime.now() + timedelta(seconds=20)
+            else:
+                base_schedule.config.stop_maa.set()
 
         monkeypatch.setattr(base_schedule, "csleep", tick)
     else:
@@ -129,6 +134,12 @@ def test_blackflow_starts_without_closing_game_and_returns_fresh_state(
 
     solver.rest_until_next_task = MagicMock(side_effect=idle)
     solver.maa_plan_solver()
+    logger.error.assert_not_called()
+    logger.exception.assert_not_called()
+    assert not any(
+        call.kwargs.get("level") == "ERROR"
+        for call in base_schedule.send_message.call_args_list
+    )
     solver.device.exit.assert_not_called()
     solver.rest_until_next_task.assert_called_once()
     maa.append_task.assert_called_once()

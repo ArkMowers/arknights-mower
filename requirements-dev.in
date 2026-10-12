@@ -2,6 +2,7 @@
 -r requirements.txt
 
 # Recognition golden references and model retraining only
+fonttools==4.66.1
 scipy==1.13.0
 scikit-image==0.23.2
 scikit-learn==1.4.2

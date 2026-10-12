@@ -9,20 +9,24 @@ date: 2026-10-05
 
 ## Contract
 
-[INV-UPD-02] validates desktop core identity and version before connection. The [MAA runtime contract](../../../../docs/subsystems/maa-runtime.md) owns initialization and failure behavior. A changed process-resident core requires a Mower process restart; resource-only changes retain ordinary loading. Native handles and callbacks are not forcibly unloaded.
+[INV-MAA-11] validates desktop core identity and version before connection. The [MAA runtime contract](../../../../docs/subsystems/maa-runtime.md) owns initialization, safe idle reloading and process-restart fallback. The identifier uses the MAA namespace because the software-update namespace already assigns its second identifier to registration scans.
 
-## Simplification
+## Rationale and Simplification
 
-The scheduler's single-call nested construction wrapper delegates to one tested loader under the existing update transaction. The loader uses existing file identity, independent version probing and verified-instance APIs. It introduces no configuration flags, recovery workers or scheduling state.
+External updates replace files without replacing the running native image. The existing cache cleanup provides one recovery path for Windows and Linux once instance destruction and library ownership are verified. Tracking repeated SDK opens prevents a single close from leaving the original image resident. macOS MAA registers Objective-C classes that survive closing the library, so its recovery retains process restart. A bounded child-process version probe avoids registering duplicate native classes in the parent.
+
+The scheduler delegates construction to the tested runtime loader and retains resource diagnostics and callback initialization. No configuration flags, recovery workers or scheduling state are added. Existing domain concepts retain their names, meanings and boundaries, so glossary edits are unnecessary. This review repair updates the owning triplet in place and retains its implemented lifecycle.
 
 ## Verification
 
-Offline regressions cover stale initial images, external replacement with unchanged version strings, changes during probing, failed resource loading, failed probing, unchanged-core reuse, resource-only updates, busy instances, missing libraries and SDK reimport after managed updates. Private runtime tracking remains outside the public patch.
+Focused offline suites cover core validation, same-version replacement, retained idle and raw SDK instances, untracked loads, repeated native opens, failed unloading, SDK reimport, fresh instance options, resource diagnostics, callback routing, navigation, shared ADB transport and source/packaged version-probe dispatch. Compiler-built native fixtures exercise actual dynamic-library unloading and confirm the replacement build despite an unchanged version string; they run in isolated child processes and skip when no POSIX C compiler is available.
+
+A device-free check with the local official macOS MAA v6.17.0 core confirms repeated initialization and the restart fallback after replacing the core file. It connects no device and starts no automation. Actual Windows/Linux MAA binaries and packaged launchers are not exercised locally; cross-platform CI remains separate evidence.
 
 ## Standards Findings
 
-Pass: native ownership remains with the SDK, device transport and Scheduling Plans remain unchanged, and generation state occupies one entry per SDK class. Focused suites pass 172 tests and 25 subtests. Governance gates pass. Independent native initialization accepts the configured theme without acquiring a device connection or starting tasks.
+Pass: cleanup rejects reachable instances and unknown ownership, preserves busy admission, and keeps native version probing outside the parent. Domain concepts and Scheduling Plans retain their contracts. Governance checks provide structural evidence separately from behavior tests.
 
 ## Spec Findings
 
-Pass: actual and independently probed disk versions match before connection; external core changes fail before resource loading. Restart guidance distinguishes a process restart from an automation-task restart. No native unload or automatic application restart is added.
+Pass: Windows/Linux attempt at most one verified idle reload, obtain a new SDK class and option definitions, and compare the replacement with a fresh disk probe before connection. Unsafe or failed recovery retains explicit process-restart guidance; macOS follows that boundary without closing its native image.

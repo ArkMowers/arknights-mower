@@ -306,7 +306,12 @@ def test_vacancy_check_does_not_start_work_correction_without_rotation(solver):
     solver.agent_get_mood.assert_not_called()
 
 
-def test_vacancy_check_converges_eligible_rotation_before_idle_filling(solver):
+@pytest.mark.parametrize("free_room", [False, True])
+def test_vacancy_check_converges_eligible_rotation_before_idle_filling(
+    solver, free_room
+):
+    solver.op_data.config.free_room = free_room
+    solver._scan_card_moods = MagicMock()
     for op in solver.op_data.operators.values():
         op.mood = 24
     for name in solver.op_data.groups["红松"]:

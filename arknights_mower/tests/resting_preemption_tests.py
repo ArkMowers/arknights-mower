@@ -56,6 +56,10 @@ def test_explicit_priority_displaces_standby_without_recalling_its_group(
 
     newcomer, plan = try_admit_newcomer(solver)
 
+    if low_mood:
+        assert plan == {}
+        assert all(data.operators[name].is_resting() for name in DEEP)
+        return
     assert plan[newcomer.room][newcomer.index] == newcomer.replacement[0]
     beds = try_reorder(data, plan)
     apply_plan(solver, plan)
@@ -73,7 +77,7 @@ def test_explicit_priority_displaces_standby_without_recalling_its_group(
     )
 
 
-def test_explicit_priority_displaces_low_main_and_recalls_whole_group(solver):
+def test_explicit_priority_preserves_low_main_group_beds(solver):
     data = solver.op_data
     data.config.ope_resting_priority = []
     for name in DEEP:
@@ -81,22 +85,22 @@ def test_explicit_priority_displaces_low_main_and_recalls_whole_group(solver):
     shift_off(solver)
     fill_remaining_beds(solver, OTHERS[1:])
     before = [(bed.name, bed.time) for bed in data.dorm]
+    solver.tasks = plan_metadata(data, [])
+    returns = [(task, task.time, task.plan.copy()) for task in solver.tasks]
     data.config.ope_resting_priority = [OTHERS[0]]
 
-    newcomer, plan = try_admit_newcomer(solver)
+    _, plan = try_admit_newcomer(solver)
 
-    assert plan[newcomer.room][newcomer.index] == newcomer.replacement[0]
-    assert set(DEEP) <= {name for names in plan.values() for name in names}
-    apply_plan(solver, plan)
-    apply_plan(solver, try_reorder(data, plan))
+    assert plan == {}
+    assert all(data.operators[name].is_resting() for name in DEEP)
+    assert [(bed.name, bed.time) for bed in data.dorm] == before
     assert all(
-        data.operators[name].current_room == data.operators[name].room for name in DEEP
+        task in solver.tasks and task.time == time and task.plan == original
+        for task, time, original in returns
     )
-    assert all(bed.name not in DEEP for bed in data.dorm)
-    assert [(bed.name, bed.time) for bed in data.dorm] != before
 
 
-def test_low_main_still_preempts_ordinary_replacement_for_942(solver):
+def test_low_main_still_preempts_ordinary_replacement(solver):
     shift_off(solver)
     fill_remaining_beds(solver, OTHER_COVERS)
     data = solver.op_data
@@ -184,9 +188,7 @@ def test_unknown_priority_replacement_does_not_evict_standby(solver):
 
 
 @pytest.mark.parametrize("rescue", [False, True])
-def test_idle_explicit_priority_recalls_displaced_required_group_and_keeps_newcomer(
-    solver, rescue
-):
+def test_idle_explicit_priority_keeps_required_low_main_group_resting(solver, rescue):
     data = solver.op_data
     data.rescue_mode = rescue
     data.config.free_room = True
@@ -198,13 +200,9 @@ def test_idle_explicit_priority_recalls_displaced_required_group_and_keeps_newco
     data.config.ope_resting_priority = [newcomer]
     tasks = []
     try_add_release_dorm({}, None, data, tasks)
-    assert len(tasks) == 1
-    plan = tasks[0].plan
-    assert newcomer in {name for names in plan.values() for name in names}
-    assert set(DEEP) <= {name for names in plan.values() for name in names}
-    apply_plan(solver, plan)
-    assert all(data.operators[name].is_working() for name in DEEP)
-    assert data.operators[newcomer].is_resting()
+    assert tasks == []
+    assert all(data.operators[name].is_resting() for name in DEEP)
+    assert not data.operators[newcomer].is_resting()
 
 
 def test_uncached_required_resident_still_gets_explicit_return_compensation(solver):
@@ -218,7 +216,7 @@ def test_uncached_required_resident_still_gets_explicit_return_compensation(solv
     assert previous[position] == name
     bed.name = OTHERS[0]
     plan = {}
-    restore_displaced_resting(data, previous, plan, [])
+    restore_displaced_resting(data, previous, plan, [], admitted={position: OTHERS[0]})
     assert set(DEEP) <= {name for names in plan.values() for name in names}
     assert bed.name == OTHERS[0]
 
@@ -234,7 +232,13 @@ def test_free_opening_keeps_new_required_anchor_and_does_not_recall_standby(solv
     room, index = anchor_bed.position
     plan = {room: ["Current"] * 5}
     plan[room][index] = "Free"
-    restore_displaced_resting(data, previous, plan, [])
+    restore_displaced_resting(
+        data,
+        previous,
+        plan,
+        [],
+        admitted={anchor_bed.position: DEEP[0], standby_bed.position: OTHERS[0]},
+    )
     assert all(
         name not in {name for names in plan.values() for name in names} for name in DEEP
     )

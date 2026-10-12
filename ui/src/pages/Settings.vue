@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia'
 import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 
 import DeviceSettings from '@/components/DeviceSettings.vue'
+import PerformanceSettings from '@/components/PerformanceSettings.vue'
 import ChatBotSetting from '../components/ChatBotSetting.vue'
 import SoftwareUpdate from '../components/SoftwareUpdate.vue'
 import NetworkSettings from '../components/NetworkSettings.vue'
@@ -20,12 +21,9 @@ const mobile = inject('mobile')
 
 const {
   run_order_delay,
-  performance_mode,
-  performance_effective_mode,
   selection_poll_interval,
   selection_transition_timeout,
   drone_room,
-  swap_contact_train,
   automatic_rescue_enable,
   start_automatically,
   package_type,
@@ -58,25 +56,6 @@ const archive_limit_gib = computed({
       screenshot_archive_limit_mb.value = Math.max(0, Math.round(value * 1024))
   }
 })
-
-const performance_mode_options = computed(() => [
-  { label: '自动', value: 'auto' },
-  ...(runtime_platform.value === 'android' ? [] : [{ label: '极高', value: 'xhigh' }]),
-  ...(runtime_platform.value === 'android' ? [] : [{ label: '高', value: 'high' }]),
-  { label: '中', value: 'medium' },
-  { label: '低', value: 'low' }
-])
-const performance_effective_label = computed(
-  () =>
-    ({ xhigh: '极高性能', high: '高性能', medium: '中性能', low: '低性能' })[
-      performance_effective_mode.value
-    ] || performance_effective_mode.value
-)
-
-function apply_performance_mode(mode) {
-  if (runtime_platform.value === 'android' && ['xhigh', 'high'].includes(mode)) mode = 'medium'
-  performance_mode.value = mode
-}
 
 const hide_macos_menu_bar = computed({
   get: () => !webview.value.tray,
@@ -250,6 +229,7 @@ const idleOptions = computed(() => [
                 </n-radio-group>
               </n-form-item>
               <n-alert :show-icon="false">设备连接由 Android 应用管理。</n-alert>
+              <PerformanceSettings :label-width="120" :test-enabled="true" />
             </template>
             <n-form-item label="启动游戏" v-if="runtime_platform !== 'android'">
               <n-select v-model:value="tap_to_launch_game.mode" :options="launch_options" />
@@ -311,36 +291,16 @@ const idleOptions = computed(() => [
               "
             >
               <n-checkbox v-model:checked="fix_mumu12_adb_disconnect">
-                关闭MuMu模拟器12时结束adb进程
+                关闭MuMu模拟器12时断开该实例的adb连接
                 <help-text>
-                  <div>运行命令<code>taskkill /f /t /im adb.exe</code></div>
+                  <div>仅执行<code>adb disconnect</code>，断开当前实例的adb端点</div>
+                  <div>不结束adb进程，也不影响其他模拟器或工具共用的adb连接</div>
                   <div>使用MuMu模拟器12时，若遇到adb断连问题，可尝试开启此选项</div>
                 </help-text>
               </n-checkbox>
             </n-form-item>
             <n-form-item :show-label="false">
               <n-checkbox v-model:checked="start_automatically">启动后自动开始任务</n-checkbox>
-            </n-form-item>
-            <n-form-item label="设备性能适配">
-              <n-radio-group :value="performance_mode" @update:value="apply_performance_mode">
-                <n-flex>
-                  <n-radio
-                    v-for="option in performance_mode_options"
-                    :key="option.value"
-                    :value="option.value"
-                  >
-                    {{ option.label }}
-                  </n-radio>
-                </n-flex>
-              </n-radio-group>
-              <help-text>
-                自动档根据选人操作后的画面反馈和连续失败情况选择{{
-                  runtime_platform === 'android' ? '中、低' : '高、中、低'
-                }}档；所有平台默认自动。
-                极高性能连续点击重排；高性能逐次确认重排点击；中性能等待稳定画面；低性能多确认一帧。时间参数独立设置，切换档位不会修改。当前自动判定：{{
-                  performance_effective_label
-                }}。
-              </help-text>
             </n-form-item>
             <n-form-item label="截图最短间隔">
               <mower-input-number v-model:value="screenshot_interval" :precision="0">
@@ -515,6 +475,12 @@ const idleOptions = computed(() => [
         <SKLand />
       </div>
       <div>
+        <YituliuSyncSettings />
+      </div>
+      <div>
+        <IncomeSettings />
+      </div>
+      <div>
         <Depotswitch />
       </div>
       <div>
@@ -543,9 +509,6 @@ const idleOptions = computed(() => [
                 <router-link to="/rescue-plan-editor"><n-button>救急排班</n-button></router-link>
               </n-space>
             </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="swap_contact_train"> 训练室在办公室上方 </n-checkbox>
-            </n-form-item>
             <n-form-item>
               <n-flex>
                 <n-checkbox v-model:checked="enable_party">
@@ -560,10 +523,6 @@ const idleOptions = computed(() => [
                 </n-checkbox>
               </n-flex>
             </n-form-item>
-            <n-alert v-if="runtime_platform === 'android'" :show-icon="false">
-              Android
-              默认使用自动性能适配。自动档依据选人操作的画面反馈和连续失败情况调节；各项时间参数可独立设置。
-            </n-alert>
             <n-form-item>
               <template #label>
                 <span>跑单前置延时</span>

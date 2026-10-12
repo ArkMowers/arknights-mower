@@ -36,6 +36,7 @@ class PreflightIO(Protocol):
     def validate_adb(self, path: str) -> bool: ...
     def devices(self, adb_path: str, serial: str) -> list[tuple[str, str]]: ...
     def boot_completed(self, adb_path: str, serial: str) -> str: ...
+    def performance_info(self, adb_path: str, serial: str) -> dict[str, int]: ...
     def display_size(self, adb_path: str, serial: str) -> str: ...
     def capture_frame(
         self, adb_path: str, serial: str, profile: DeviceProfile
@@ -286,6 +287,19 @@ class PreflightService:
                 "Android 尚未启动完成，请等待设备进入桌面后重试。",
                 status="booting",
             )
+        try:
+            info = self._io.performance_info(result.adb_path, result.serial)
+            result.observations["performance"] = {
+                "status": "available",
+                **info,
+            }
+        except MowerExit:
+            raise
+        except Exception:
+            result.observations["performance"] = {
+                "status": "unavailable",
+                "message": "未能读取设备资源信息，可重试测试连接；不影响游戏内性能测试。",
+            }
         size = self._observe(
             lambda: self._io.display_size(result.adb_path, result.serial),
             "invalid_size",

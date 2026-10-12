@@ -10,6 +10,7 @@ from unittest.mock import patch
 from arknights_mower.utils import config as config_module
 from arknights_mower.utils.config import atomic_write, migrate_app_config_paths
 from arknights_mower.utils.config.conf import Conf
+from arknights_mower.utils.config.device_profile import DeviceProfile
 
 
 @contextmanager
@@ -30,6 +31,60 @@ def _patched_conf(path, conf=None):
 
 
 class TestMaaConfig(unittest.TestCase):
+    def test_device_profile_uses_bundled_adb_when_path_is_omitted(self):
+        from arknights_mower.utils import path
+
+        with (
+            tempfile.TemporaryDirectory() as root,
+            patch.object(path, "_internal_dir", Path(root)),
+        ):
+            tools = Path(root) / "platform-tools"
+            tools.mkdir()
+            for name in ("adb", "adb.exe"):
+                (tools / name).touch()
+            for platform in ("darwin", "win32", "linux"):
+                with patch("sys.platform", platform), self.subTest(platform=platform):
+                    name = "adb.exe" if platform == "win32" else "adb"
+                    expected = f"@internal/platform-tools/{name}"
+                    profile = DeviceProfile(preset_id="manual.physical")
+                    self.assertEqual(profile.adb_path, expected)
+                    self.assertNotIn("adb_path", profile.model_fields_set)
+                    for values in ({}, {"device": {"preset_id": "manual.physical"}}):
+                        conf = Conf(**values)
+                        self.assertEqual(conf.device.adb_path, expected)
+                        self.assertEqual(conf.maa_adb_path, expected)
+                        restored = Conf(**conf.model_dump())
+                        self.assertEqual(restored.device.adb_path, expected)
+                        self.assertEqual(restored.maa_adb_path, expected)
+
+    def test_explicit_device_adb_path_is_preserved(self):
+        with patch("sys.platform", "darwin"):
+            for selected in ("/custom/adb", ""):
+                with self.subTest(selected=selected):
+                    conf = Conf(device={"adb_path": selected})
+                    updated = conf.updated({"theme": "dark"})
+                    restored = Conf(**updated.model_dump())
+                    self.assertEqual(restored.device.adb_path, selected)
+                    self.assertEqual(restored.maa_adb_path, selected)
+
+    def test_bundled_device_adb_survives_save_and_reload(self):
+        with (
+            tempfile.TemporaryDirectory() as root,
+            patch("sys.platform", "darwin"),
+            patch.object(config_module, "__system__", "darwin"),
+            patch.dict(os.environ, {"MOWER_ANDROID": "0"}),
+        ):
+            conf_path = Path(root) / "conf.yml"
+            with _patched_conf(conf_path):
+                config_module.load_conf()
+                expected = "@internal/platform-tools/adb"
+                self.assertEqual(config_module.conf.device.adb_path, expected)
+                self.assertEqual(config_module.conf.device.last_serial, "")
+                config_module.save_conf()
+                config_module.load_conf()
+                self.assertEqual(config_module.conf.device.adb_path, expected)
+                self.assertEqual(config_module.conf.maa_adb_path, expected)
+
     def test_defaults_share_global_maa_directory_independently_of_instance(self):
         from arknights_mower.utils import path
 
@@ -89,11 +144,14 @@ class TestMaaConfig(unittest.TestCase):
             for platform in ("win32", "linux"):
                 with patch("sys.platform", platform):
                     self.assertEqual(Conf().maa_adb_path, "")
+                    self.assertEqual(DeviceProfile().adb_path, "")
             with patch("sys.platform", "linux"):
                 which.return_value = "/usr/bin/adb"
                 self.assertEqual(Conf().maa_adb_path, "/usr/bin/adb")
+                self.assertEqual(DeviceProfile().adb_path, "/usr/bin/adb")
                 with patch.dict(os.environ, {"MOWER_ADB_BIN": "/custom/adb"}):
                     self.assertEqual(Conf().maa_adb_path, "/custom/adb")
+                    self.assertEqual(DeviceProfile().adb_path, "/custom/adb")
             tools_dir = Path(root) / "platform-tools"
             tools_dir.mkdir()
             for name in ("adb", "adb.exe"):
@@ -510,65 +568,37 @@ class TestConfigPersistence(unittest.TestCase):
         self.assertIn("expected_collapsal_paradigms", written)
         self.assertIn("investment_with_more_score", written)
 
-    def test_legacy_key_migrates_to_new_key_when_configured(self):
-        self._write_conf("exipring_medicine_on_weekend: true\n")
-        with _patched_conf(self.conf_path):
-            config_module.load_conf()
-            self.assertTrue(config_module.conf.expiring_medicine_on_weekend)
-            self.assertIn(
-                "expiring_medicine_on_weekend",
-                config_module.conf.model_fields_set,
-            )
-            config_module.save_conf()
-        written = self.conf_path.read_text(encoding="utf-8")
-        self.assertIn("expiring_medicine_on_weekend", written)
-        self.assertNotIn("exipring_medicine_on_weekend", written)
+    def test_retired_weekend_keys_are_ignored_on_read_and_save(self):
+        for key in ("exipring_medicine_on_weekend", "expiring_medicine_on_weekend"):
+            for days in (0, 3):
+                with self.subTest(key=key, days=days):
+                    self._write_conf(f"{key}: true\nmedicine_expire_days: {days}\n")
+                    with _patched_conf(self.conf_path):
+                        config_module.load_conf()
+                        self.assertEqual(config_module.conf.medicine_expire_days, days)
+                        self.assertNotIn(key, config_module.conf.model_fields_set)
+                        self.assertNotIn(key, config_module.conf.model_dump())
+                        config_module.save_conf()
+                        config_module.load_conf()
+                        self.assertEqual(config_module.conf.medicine_expire_days, days)
+                    self.assertNotIn("medicine_on_weekend", self.conf_path.read_text())
 
-    def test_legacy_key_not_migrated_when_absent(self):
-        self._write_conf("maa_eat_stone: false\n")
-        with _patched_conf(self.conf_path):
-            config_module.load_conf()
-            # 没配过旧键：新键用运行时默认值，且不被标记为已设置（因此不落盘）
-            self.assertFalse(config_module.conf.expiring_medicine_on_weekend)
-            self.assertNotIn(
-                "expiring_medicine_on_weekend",
-                config_module.conf.model_fields_set,
-            )
-
-    def test_new_key_takes_precedence_when_legacy_and_new_both_present(self):
-        self._write_conf(
-            "exipring_medicine_on_weekend: true\nexpiring_medicine_on_weekend: false\n"
-        )
-        with _patched_conf(self.conf_path):
-            config_module.load_conf()
-            # 新旧键同时出现时以新键为准，不覆盖已配置的取反值
-            self.assertFalse(config_module.conf.expiring_medicine_on_weekend)
-
-    def test_migrated_value_survives_round_trip(self):
-        self._write_conf("exipring_medicine_on_weekend: true\n")
-        with _patched_conf(self.conf_path):
-            config_module.load_conf()
-            config_module.save_conf()
-            config_module.load_conf()
-            self.assertTrue(config_module.conf.expiring_medicine_on_weekend)
-
-    def test_conf_post_with_legacy_key_reconciles_at_validation_layer(self):
-        # 兼容：/conf POST 提交旧键名（旧前端整包）时，Conf 校验层统一迁移，不把新键重置成默认。
-        # 旧迁移只在 load_conf（读文件）执行，/conf 提交会绕过——此测锁定那条路径。
-        with _patched_conf(self.conf_path):
-            # 模拟旧前端整包提交：请求体带旧键名、不带新键名
-            config_module.conf = config_module.Conf(
-                **{"exipring_medicine_on_weekend": True}
-            )
-            self.assertTrue(config_module.conf.expiring_medicine_on_weekend)
-            self.assertIn(
-                "expiring_medicine_on_weekend",
-                config_module.conf.model_fields_set,
-            )
-            config_module.save_conf()
-        written = self.conf_path.read_text(encoding="utf-8")
-        self.assertIn("expiring_medicine_on_weekend", written)
-        self.assertNotIn("exipring_medicine_on_weekend", written)
+    def test_retired_weekend_keys_are_ignored_on_submission(self):
+        for payload in (
+            {"exipring_medicine_on_weekend": True},
+            {"expiring_medicine_on_weekend": True},
+            {
+                "exipring_medicine_on_weekend": True,
+                "expiring_medicine_on_weekend": False,
+            },
+        ):
+            with self.subTest(payload=payload):
+                conf = Conf(medicine_expire_days=3, **payload)
+                updated = conf.updated({**payload, "medicine_expire_days": 2})
+                self.assertEqual(updated.medicine_expire_days, 2)
+                for key in payload:
+                    self.assertNotIn(key, updated.model_dump())
+                    self.assertNotIn(key, updated.model_fields_set)
 
     def test_visit_friend_defaults_enable_true_and_mode_maa_when_unset(self):
         with _patched_conf(self.conf_path, Conf()):

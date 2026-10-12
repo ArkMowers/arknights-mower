@@ -348,9 +348,9 @@ def _fmt_completion_time(dt: datetime) -> str:
 
 
 def _swap_speed_totals(job_match, efficiency, central_bonus) -> tuple[float, float]:
-    """排期采用保守速率：当前协助者不计中枢，减半干员计入中枢。"""
+    """预览按全程中枢加成计算当前协助者和减半干员。"""
     swap_total = 100 + 5 + (30 if job_match else 0) + central_bonus
-    current_total = 100 + efficiency + 5
+    current_total = 100 + efficiency + 5 + central_bonus
     return swap_total, current_total
 
 
@@ -360,6 +360,8 @@ def calc_swap_threshold(
     central_bonus: int,
     remaining_minutes: float,
     buffer: int = DEFAULT_SWAP_BUFFER_MINUTES,
+    *,
+    current_central: int | None = None,
 ) -> tuple[bool, float]:
     """计算是否应该换入减半对象。
 
@@ -377,16 +379,16 @@ def calc_swap_threshold(
     """
     target_minutes = 300 + buffer  # 5小时 + 缓冲
 
-    # 排期继续保守提前；最后检查按同一中枢设置计算两边速度。
+    # 预览两边计入中枢；运行时可传入当前实际中枢加成。
     swap_total, current_total = _swap_speed_totals(
         swap_job_match, current_efficiency, central_bonus
     )
+    if current_central is not None:
+        current_total += current_central - central_bonus
 
     threshold = target_minutes * swap_total / current_total
 
-    real_time_after_swap = (
-        remaining_minutes * (current_total + central_bonus) / swap_total
-    )
+    real_time_after_swap = remaining_minutes * current_total / swap_total
     if real_time_after_swap < 301:
         return False, threshold
 
@@ -739,21 +741,31 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
 
     #16 决议：进房先读倒计时定分支，不盲点技能按钮。
     #15 决议：全程纯墙钟 5 分钟 deadline，各分支短处理、超时走统一退出路径。
-    #103：路线 operator 每次开始照常安排（2026-08-17 用户拍板）——原 #63 减半守卫在
-    「收取→下一次开始」边界传 arrange_support=False、不动协助位，把「专三不换减半对象」
-    过度实现成「完全不动协助位」（路线 operator 也没放，专三只留上一级减半干员）；
-    减半与否由路线 swap_target + _schedule_swap_if_needed 管，与 arrange_support 无关。
+    每次开始按路线安排协助位；减半继承由实读身份和出勤记录确认。
+    减半换人由路线 swap_target 与后续训练决定。
     #93：room 是 dispatch 的 reconcile_and_act 已读的房间状态（截图权威，含槽位）——
     开始流程直接复用，不再重复 enter_room、不再开进驻详情浮窗重读槽位（消除重复进房
     与重复浮窗开关）。room=None（冷启动/直接调用）保持旧行为：进房 + 现读槽位。
     """
-    from arknights_mower.solvers.mastery_reader import _read_slot_mastery_tier
+    from arknights_mower.solvers.mastery_reader import (
+        _protected_trainee_matches,
+        _read_slot_mastery_tier,
+    )
     from arknights_mower.utils.mastery_db import update_plan_status
     from arknights_mower.utils.mastery_recommendation import (
         get_mastery_requirement_error,
     )
     from arknights_mower.utils.mastery_support import SupportPlanError
     from arknights_mower.utils.mastery_support_data import trainee_schedule_conflict
+
+    if getattr(room, "amiya_form_waiting", False) is True:
+        solver.back()
+        return
+    if room is not None and getattr(room, "protected", False):
+        if not _protected_trainee_matches(plan, room):
+            logger.info("训练室受保护，当前计划不是已确认的同一训练位干员，保持待执行")
+            solver.back()
+            return
 
     _warn_training_room_group(plan)
 
@@ -784,6 +796,32 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
         logger.warning(f"[mastery] 暂不开始训练：{requirement_error}")
         update_plan_status(plan["id"], "failed", failed_reason=requirement_error)
         return
+
+    if not plan.get("expires_at") and not plan.get("support_runtime"):
+        from arknights_mower.utils.mastery_db import get_all_plans
+        from arknights_mower.utils.mastery_order import mastery_groups
+        from arknights_mower.utils.mastery_recommendation import (
+            auto_schedule_mastery_tasks,
+            get_current_mastery_level,
+        )
+
+        siblings = [p for p in get_all_plans() if p["char_id"] == plan["char_id"]]
+        levels = {
+            (p["char_id"], p["skill_index"]): get_current_mastery_level(
+                p["char_id"], p["skill_index"]
+            )
+            or 0
+            for p in siblings
+        }
+        if mastery_groups(siblings, levels):
+            admitted = auto_schedule_mastery_tasks().get("scheduled", [])
+            if not any(
+                entry["char_id"] == plan["char_id"]
+                and entry["skill_index"] == plan["skill_index"]
+                for entry in admitted
+            ):
+                logger.info("同干员联合专精尚未满足材料或顺序条件，保持待执行")
+                return
 
     _log_transition(
         plan,
@@ -955,6 +993,16 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                 _exit_occupied(solver, plan, None, trigger="技能选择页归属未确认")
                 return
             if not checked_target:
+                from arknights_mower.solvers.mastery_reader import (
+                    AMIYA_FORM_IDS,
+                    read_amiya_skill_available,
+                )
+
+                if plan["char_id"] in AMIYA_FORM_IDS:
+                    available = read_amiya_skill_available(solver, plan)
+                    if available is not True:
+                        _defer_amiya_form(solver, plan, room, available)
+                        return
                 # #63 已到target检测：读目标技能槽亮灯，≥target → 判 completed（防 false-fail）
                 checked_target = True
                 tier = _read_slot_mastery_tier(solver, plan["skill_index"])
@@ -1025,6 +1073,60 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                 solver, plan, tracker.format_stats(), tracker.stuck_scene()
             )
             return
+
+
+def _defer_amiya_form(solver, plan, room, available):
+    from arknights_mower.solvers.mastery_reader import (
+        AMIYA_FORM_WAIT_REASON,
+        _schedule_amiya_form_recheck,
+    )
+    from arknights_mower.utils.mastery_db import update_plan_status
+
+    # No assistant mutation has occurred before the skill-name check.
+    if room is not None and room.slots_reliable:
+        support, trainee, reliable = room.support_slot, room.train_slot, True
+    else:
+        _back_to_train_main(solver)
+        support, trainee, _, reliable = _read_slots_checked(solver)
+    holding = reliable and trainee == "阿米娅" and support in PROTECT_OPERATORS
+    if holding:
+        solver.amiya_pending_plan_id = plan["id"]
+        if room is not None:
+            room.amiya_form_waiting = True
+    update_plan_status(plan["id"], "idle", failed_reason=AMIYA_FORM_WAIT_REASON)
+    _schedule_amiya_form_recheck(solver, plan)
+    _notify_amiya_form_wait(plan, available, holding)
+    solver.back_to_infrastructure()
+
+
+def _notify_amiya_form_wait(plan, available, holding):
+    from arknights_mower.utils.csleep import MowerExit
+    from arknights_mower.utils.device.recovery import DeviceRecoveryError
+    from arknights_mower.utils.email import send_message
+    from arknights_mower.utils.mastery_db import should_notify
+
+    if available is False:
+        message = (
+            f"{_plan_fail_label(plan)}：训练室显示其他升变形态的技能，"
+            "请在游戏内手动切换到对应升变形态"
+        )
+    else:
+        message = f"{_plan_fail_label(plan)}：目标技能读取失败，暂不开始专精"
+    if holding:
+        message += "；保留当前减半干员，本轮跳过所有训练室操作，后续仍会进房检查"
+    logger.warning(message)
+    try:
+        reason = "mismatch" if available is False else "unreadable"
+        if should_notify("amiya_form", f"{plan['id']}:{reason}:{int(holding)}"):
+            send_message(
+                message,
+                level="ERROR" if holding and available is False else "WARNING",
+                archive_screenshots=True,
+            )
+    except (MowerExit, DeviceRecoveryError):
+        raise
+    except Exception as exc:
+        logger.warning(f"阿米娅升变提醒发送失败：{exc}")
 
 
 def _confirm_training_started(
@@ -1109,6 +1211,7 @@ def _confirm_training_started(
                 update_plan_status(
                     plan["id"],
                     "training",
+                    failed_reason="",
                     expires_at=expires_at,
                     swap_frozen=0,
                 )
@@ -1278,6 +1381,10 @@ def _arrange_support(solver, plan, step_level=None) -> Optional[str]:
     try:
         if plan.get("support_plan"):
             plan["swap_frozen"] = 0
+            if "exclude_reducer" in route:
+                from arknights_mower.solvers.mastery_support_state import save_runtime
+
+                save_runtime(plan, route)
             from arknights_mower.solvers.mastery_support_swap import place_support
 
             place_support(solver, plan, step_level, support_name)
@@ -1329,10 +1436,15 @@ def _schedule_swap_if_needed(
     §5.2：返回 SWAP 任务触发时刻（None=不排换人）——排了换人则不排收取（等
     SWAP_SUPPORT 完成后重读倒计时再排收取）。立即换人（remaining ≤ threshold）也排
     任务（修旧 silent-drop）。#90 邮件「有减半」的完成时间 = 返回时刻 + (300+缓冲) 分。
-    #76：路线按当前步目标级加载（step_level）；「专三不换人」由 level_3 路线
-    swap_target=None 保证（铁律 7，用户 08-15 定案删显式 ==3 守卫、靠路线数据）。
+    当前技能的后续阶段或同干员已达专一的下一技能需要减半时安排换人。
+    步级未知或下一技能尚未专一时，最终阶段不安排减半换人。
     """
     from arknights_mower.utils import config
+    from arknights_mower.utils.mastery_order import halving_successor
+    from arknights_mower.utils.mastery_support_data import actual_central_bonus
+
+    if not halving_successor(plan, step_level):
+        return None
 
     if config.conf.assistant_follows_schedule:
         return None
@@ -1356,6 +1468,7 @@ def _schedule_swap_if_needed(
         central_bonus,
         remaining,
         buffer,
+        current_central=actual_central_bonus(solver, central_bonus),
     )
     logger.info(
         f"[mastery] 换人公式 id={plan['id']} 效率={route['efficiency']} "
@@ -1384,26 +1497,38 @@ def _schedule_swap_if_needed(
         )
     else:
         level_text = ""
-    task = SchedulerTask(
-        time=swap_time,
-        task_type=TaskTypes.SWAP_SUPPORT,
-        meta_data=f"{_plan_label(plan)} {level_text}换入{route['swap_target']}",
+    existing = next(
+        (
+            task
+            for task in solver.tasks
+            if task is not getattr(solver, "task", None)
+            and task.type == TaskTypes.SWAP_SUPPORT
+            and getattr(task, "plan_key", None) == str(plan["id"])
+        ),
+        None,
     )
-    # #77 补排去重键（与 SKILL_UPGRADE 同形）：reconcile 恢复 / 重试都按 plan_key 去重
-    task.plan_key = str(plan["id"])
-    solver.tasks.append(task)
+    if existing is not None:
+        existing.time = (
+            min(existing.time, swap_time)
+            if getattr(existing, "advance_support_swap", False)
+            else swap_time
+        )
+    else:
+        task = SchedulerTask(
+            time=swap_time,
+            task_type=TaskTypes.SWAP_SUPPORT,
+            meta_data=f"{_plan_label(plan)} {level_text}换入{route['swap_target']}",
+        )
+        task.plan_key = str(plan["id"])
+        solver.tasks.append(task)
     logger.info(f"已安排换人任务，预计 {swap_time.strftime('%H:%M:%S')} 执行")
     return swap_time
 
 
 def run_swap_support(solver):
-    """被 SWAP_SUPPORT 任务触发：换入减半对象
+    """被 SWAP_SUPPORT 任务触发：确认房间与下一训练后换入减半干员。
 
-    #76：换人前进房读主面板专精图标 = 当前步目标级（亮 N 颗=专N），路线按当前步
-    加载——专三计划的专一/专二步也减半换人，专三步由 level_3 路线 swap_target=None
-    挡住（铁律 7，用户 08-15 定案靠路线数据）。SWAP 任务只为非专三步排（level_1/2
-    路线有 swap_target），正常路径不会为专三步进房空转；跨步残留的旧 swap 按当前步
-    判（自纠错）。读失败/不在训练主页面回退 target_level（保守不换）。
+    专三及其他最终目标级在下一技能为同干员且已达专一时仍允许换人。
     #78 整合：换人前先读全（read_main_panel 一次截图）确认训练——场景必须在训练室
     主页面（TRAIN_MAIN，219=技能选择页读不出倒计时、不再放行）且倒计时非 0 非空
     （countdown_state=="active"）才算训练确认，才读图标/算路线/换人（铁律 1）。
@@ -1423,6 +1548,7 @@ def run_swap_support(solver):
     """
     from arknights_mower.utils import config
     from arknights_mower.utils.mastery_db import get_active_plan
+    from arknights_mower.utils.mastery_support_data import actual_central_bonus
 
     logger.debug("[mastery] 训练室动作 触发源=定时任务 动作=swap")
     if not config.conf.enable_mastery:
@@ -1431,10 +1557,20 @@ def run_swap_support(solver):
     if config.conf.assistant_follows_schedule:
         return
 
+    if isinstance(getattr(solver, "amiya_pending_plan_id", None), int):
+        from arknights_mower.solvers.mastery_reader import read_room_state
+
+        room = read_room_state(solver)
+        if room.amiya_form_waiting:
+            solver.back_to_infrastructure()
+            return
+
     plan = get_active_plan()
     if not plan or plan["status"] != "training":
         return
-    if plan["swap_frozen"]:
+    from arknights_mower.utils.mastery_order import basic_mastery_successor
+
+    if plan["swap_frozen"] and not basic_mastery_successor(plan, 3):
         return
 
     # 进房读全：read_main_panel 一次截图读干员/技能/图标/倒计时。倒计时 active（读到
@@ -1453,10 +1589,17 @@ def run_swap_support(solver):
             logger.debug(f"主面板读取失败: {e}")
     countdown_active = bool(panel is not None and panel.countdown_state == "active")
     step_level = panel.mastery_tier if panel is not None else None
+    if plan["swap_frozen"] and not basic_mastery_successor(plan, step_level):
+        solver.back()
+        return
 
     _warn_training_room_group(plan)
 
     route = _get_plan_route(plan, step_level)
+    if route:
+        route["current_central"] = actual_central_bonus(
+            solver, route.get("central_bonus", 0)
+        )
     operator = route.get("operator") if route else None
     swap_target = route.get("swap_target") if route else None
 
@@ -1479,6 +1622,7 @@ def run_swap_support(solver):
         # 直接换减半对象，绕过「不换人」。
         if (
             support_slot in PROTECT_OPERATORS
+            and not route.get("exclude_reducer")
             and panel is not None
             and panel.countdown is not None
         ):
@@ -1516,6 +1660,9 @@ def run_swap_support(solver):
                         route.get("central_bonus", 0),
                         remaining,
                         route.get("mastery_swap_buffer", DEFAULT_SWAP_BUFFER_MINUTES),
+                        current_central=actual_central_bonus(
+                            solver, route.get("central_bonus", 0)
+                        ),
                     )
                     place_swap_target = should_swap
                 if place_swap_target:
@@ -1638,6 +1785,10 @@ def run_swap_support(solver):
                 )
                 step_level = panel.mastery_tier if panel is not None else None
                 route = _get_plan_route(plan, step_level)
+                if route:
+                    route["current_central"] = actual_central_bonus(
+                        solver, route.get("central_bonus", 0)
+                    )
                 swap_target = route.get("swap_target") if route else None
 
     # #80：换人前用当前倒计时判「值不值得换」（_swap_worthwhileness = calc_swap_threshold
@@ -1781,9 +1932,10 @@ def _swap_worthwhileness(remaining_minutes, route) -> bool:
         route["efficiency"],
         route.get("central_bonus", 0),
     )
-    real_time_after_swap = (
-        remaining_minutes * (current_total + route.get("central_bonus", 0)) / swap_total
-    )
+    current_total += route.get(
+        "current_central", route.get("central_bonus", 0)
+    ) - route.get("central_bonus", 0)
+    real_time_after_swap = remaining_minutes * current_total / swap_total
     return real_time_after_swap >= 301
 
 
@@ -1853,10 +2005,20 @@ def _get_plan_route(plan, step_level=None) -> dict | None:
     一个专三计划 专一→专二→专三 三步分别用 level_1/2/3 路线。step_level 缺省/读失败
     （None/0）时回退 plan["target_level"]（=旧行为，保守）。
     """
+    level = step_level or plan["target_level"]
+    from arknights_mower.solvers.mastery_support_runtime import (
+        route_without_unusable_reducer,
+    )
+    from arknights_mower.utils.mastery_order import halving_successor
+
+    successor = halving_successor(plan, step_level)
     if plan.get("support_plan"):
         from arknights_mower.utils.mastery_support import stage_for
 
-        return stage_for(plan, step_level or plan["target_level"])
+        route = stage_for(plan, level)
+        if route and not successor:
+            route["swap_target"] = None
+        return route_without_unusable_reducer(plan, step_level, route)
     try:
         from arknights_mower.utils.mastery_recommendation import get_skill_data
 
@@ -1865,13 +2027,19 @@ def _get_plan_route(plan, step_level=None) -> dict | None:
         prof_cn = PROF_MAP.get(prof_en, prof_en)
         from arknights_mower.utils.mastery_support_types import route_swap_buffer
 
-        level = step_level or plan["target_level"]
         route = get_route_config(prof_cn, level)
         if route:
-            # Legacy plans have no verified halving record; use the longer M2
-            # margin unless inheritance is explicitly known.
-            route["mastery_swap_buffer"] = route_swap_buffer(route, level)
-        return route
+            route = {**route, "mastery_swap_buffer": route_swap_buffer(route, level)}
+            if not successor:
+                route = {**route, "swap_target": None}
+            elif level >= plan["target_level"] and not route.get("swap_target"):
+                reducer = DEFAULT_ROUTES.get(prof_cn, {}).get("level_2", {})
+                route = {
+                    **route,
+                    "swap_target": reducer.get("swap_target"),
+                    "job_match": reducer.get("job_match", False),
+                }
+        return route_without_unusable_reducer(plan, step_level, route)
     except Exception as e:
         logger.error(f"获取路线配置失败: {e}")
         return None

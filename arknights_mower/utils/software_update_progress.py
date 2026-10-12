@@ -195,20 +195,31 @@ class ProgressServers:
 
             def do_POST(self):
                 origin = self.headers.get("Origin")
+                rejection = None
                 if (
                     not self.authorized()
                     or self.headers.get("X-Mower-Update") != "1"
                     or (origin and urlparse(origin).netloc != self.headers.get("Host"))
                 ):
-                    return self.reply(403, {"ok": False})
-                if self.path != "/software-update/cancel":
-                    return self.reply(404, {"ok": False})
+                    rejection = 403
+                elif self.path != "/software-update/cancel":
+                    rejection = 404
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
                     if not 0 < length <= 1024:
                         raise ValueError("无效的取消请求")
                     self.connection.settimeout(5)
-                    data = json.loads(self.rfile.read(length))
+                    # Closing with unread POST data can reset the connection on
+                    # Windows before the client receives the rejection response.
+                    body = self.rfile.read(length)
+                except (ValueError, OSError) as exc:
+                    if rejection:
+                        return self.reply(rejection, {"ok": False})
+                    return self.reply(400, {"ok": False, "message": str(exc)})
+                if rejection:
+                    return self.reply(rejection, {"ok": False})
+                try:
+                    data = json.loads(body)
                     result = cancel_update(state, data.get("id"))
                 except (ValueError, OSError, AttributeError) as exc:
                     return self.reply(400, {"ok": False, "message": str(exc)})

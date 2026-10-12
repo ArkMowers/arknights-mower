@@ -1,29 +1,23 @@
 ---
 name: mower-doc
-description: Guide document placement across the Arknights Mower documentation tier hierarchy (One Home per Fact), enforcing present-tense interface contracts and dead link prevention.
+description: Use when placing, updating or merging Arknights Mower documentation, including concept definitions and decision records. Do not create a record for every documentation edit or use glossary synchronization for unchanged concepts.
+compatibility: Requires an Arknights Mower checkout and its repository contracts; this is a repository-local skill, not a standalone distribution.
 ---
 
-# Mower Documentation Tier Governance
+# Mower Documentation
 
-Routes technical documentation to its single authoritative location within the repository.
+## Inputs and Output
 
-## 1. Documentation Tier Decision Tree
+Inputs: facts being changed, their current authoritative homes and affected links. Output: correctly placed, aligned documents with necessary structural verification. A review-only request produces findings.
 
-When adding or modifying technical information, route to the single appropriate tier:
+## Placement and Editing
 
-| Content Type | Authoritative Destination | Format & Tone Constraints |
-| :--- | :--- | :--- |
-| **Global Pointers** | `AGENTS.md` | Ultra-lean pointers (1-3 lines per item). Zero implementation details. |
-| **Subtree Rules** | `{subpath}/AGENTS.md` | Local constraints, subsystem invariants, and subtree test commands. |
-| **System Panorama** | `docs/architecture.md` | Present-tense facts only. Cross-subsystem data flows and invariant matrix. |
-| **Subsystem Contracts** | `docs/subsystems/*.md` | Public interfaces, data models, and protocols. No trade-off debates. |
-| **Developer Recipes** | `docs/cookbook/*.md` | Actionable operational guides with numbered verification steps and code examples. |
-| **Failure Retrospectives**| `docs/postmortem/*.md` | Chronological narrative permitted. Root cause analysis and invariant prevention. |
-| **Decision Records** | `.agents/notes/*/*/*.md` | Bilingual triplets with machine-readable sidecars. No centralized index. |
+1. Classify each fact with the [routing rules](references/doc-hierarchy.md#routing-rules). Keep its full definition in the authoritative home; use direct links elsewhere.
+2. For records, search and apply [ownership rules](../../notes/AGENTS.md#1-record-ownership) before deciding to create, update, merge or archive. Preserve both languages and valid metadata. A merge of same-decision documents normally retains the owner's lifecycle.
+3. For concepts, assess `[INV-06]` in [Coding Standards](../../../CODING_STANDARDS.md#1-core-invariants). Stable concepts need no glossary edit. An actual glossary edit requires the exact bilingual diff and [explicit root approval](../../../AGENTS.md#4-global-execution-constraints) before writing, including edits to existing definitions.
+4. Write for the selected document's role using [mower-prose-standard](../mower-prose-standard/SKILL.md). Update affected relative links; retain historical rationale only where the routing rules permit it.
+5. Run `python scripts/verify_governance.py` for changed documents. If scripts changed, run their focused suite as well. Pure document maintenance requires no production tests solely to finish a lifecycle.
 
-## 2. Gate Verification
-Whenever documentation is added or moved:
-```bash
-python scripts/verify_doc_links.py
-python scripts/verify_glossary_alignment.py
-```
+## Completion
+
+Each changed fact has one full authoritative definition, affected links resolve, mirrors and metadata remain aligned, and necessary structural checks pass. Record any unresolved semantic or historical question separately from the program results.

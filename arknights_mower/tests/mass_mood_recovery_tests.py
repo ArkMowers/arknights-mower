@@ -39,14 +39,20 @@ def solver(monkeypatch):
                 {
                     **{
                         f"room_{(index - 1) // 3 + 1}_{(index - 1) % 3 + 1}": [
-                            Room(name, "", [COVERS[index - 1]])
+                            Room(name, "", [COVERS[index - 1], "夜刀"])
                         ]
                         for index, name in enumerate(PRIMARY, 1)
                     },
                     "dormitory_1": [Room("冰酿", "", []), Room("闪灵", "", [])]
                     + [Room("Free", "", []) for _ in range(3)],
                 },
-                PlanConfig("", "", "", resting_priority_replacement=",".join(COVERS)),
+                PlanConfig(
+                    "",
+                    "",
+                    "",
+                    resting_priority_replacement=",".join(COVERS),
+                    free_blacklist="夜刀",
+                ),
             ),
             "backup_plans": [],
         }
@@ -55,6 +61,8 @@ def solver(monkeypatch):
     for operator in data.operators.values():
         operator.mood, operator.time_stamp, operator.depletion_rate = 24, NOW, 0
         operator._current_room, operator.current_index = operator.room, operator.index
+    # 多候选夹具保留耗尽阻塞场景；唯一替班的心情豁免另行验证。
+    data.operators["夜刀"].mood = 0
     instance = object.__new__(base_schedule.BaseSchedulerSolver)
     instance.op_data = data
     instance.tasks, instance.task = [], None
@@ -70,6 +78,20 @@ def test_native_projection_accepts_complete_rotation_without_device_io(solver):
     from arknights_mower.utils.emergency_recovery import native_opportunity
 
     result = native_opportunity(solver, PRIMARY[:3], NOW)
+    assert result.complete and result.opportunity == NOW
+    solver.enter_room.assert_not_called()
+
+
+def test_native_projection_accepts_only_zero_mood_covers(solver):
+    from arknights_mower.utils.emergency_recovery import native_opportunity
+
+    data = solver.op_data
+    for primary, cover in zip(PRIMARY, COVERS):
+        data.operators[primary].replacement = [cover]
+        data.operators[cover].mood = 0
+
+    result = native_opportunity(solver, PRIMARY[:3], NOW, current_only=True)
+
     assert result.complete and result.opportunity == NOW
     solver.enter_room.assert_not_called()
 
@@ -317,4 +339,17 @@ def test_current_rotation_honors_strict_release_operation_window(solver, case):
     assert {name: vars(op) for name, op in data.operators.items()} == before_operators
     assert [vars(bed) for bed in data.dorm] == before_beds
     assert solver.op_data is data and solver.tasks == [task]
+    solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize("at_floor", [False, True])
+def test_current_native_projection_does_not_advance_exhaustion_shift(solver, at_floor):
+    from arknights_mower.utils.emergency_recovery import native_opportunity
+
+    op = solver.op_data.operators[PRIMARY[0]]
+    op.exhaust_require = True
+    op.mood = op.lower_limit if at_floor else 3
+    result = native_opportunity(solver, [op.name], NOW, current_only=True)
+    assert result.complete
+    assert (result.opportunity == NOW) is at_floor
     solver.enter_room.assert_not_called()

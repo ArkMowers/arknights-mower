@@ -57,13 +57,29 @@ class ResourceUpdateJob:
         from arknights_mower.utils.resource_pkg import (
             download_resource_pkg,
             install_resource_pkg,
+            resource_ota_full_asset,
         )
 
         try:
             data = download_resource_pkg(callback=self.report)
             if data is None:
                 raise ValueError("资源包下载失败，请检查网络")
-            if not install_resource_pkg(data, callback=self.report):
+            installed = install_resource_pkg(data, callback=self.report)
+            if not installed and (full := resource_ota_full_asset(data)):
+                self.report(
+                    phase="downloading",
+                    message="资源 OTA 校验失败，改用完整资源包",
+                    progress=0,
+                    current=0,
+                    total=full["size"],
+                )
+                data = download_resource_pkg(
+                    callback=self.report, asset=full, prefer_ota=False
+                )
+                installed = data is not None and install_resource_pkg(
+                    data, callback=self.report
+                )
+            if not installed:
                 raise ValueError("资源包安装失败，已保留原版本")
             self.report(
                 status="success",

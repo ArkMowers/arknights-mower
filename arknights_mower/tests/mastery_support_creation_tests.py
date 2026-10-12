@@ -15,6 +15,7 @@ from arknights_mower.tests.mastery_support_fixtures import (
     game as game,
 )
 from arknights_mower.tests.mastery_support_fixtures import owned
+from arknights_mower.utils import config
 from arknights_mower.utils import mastery_db as db
 from arknights_mower.utils import mastery_support as support
 from arknights_mower.utils import mastery_support_data as support_data
@@ -57,7 +58,7 @@ def test_plan_api_allows_scheduled_trainee(database, context_game, legacy_payloa
         else {"items": [{"name": "能天使", "skill_index": 0}]}
     )
     with (
-        patch("arknights_mower.views.mastery.config.conf") as conf,
+        patch("arknights_mower.views.mastery.config.conf", config.Conf()) as conf,
         patch.object(
             support_data, "schedule_context", return_value=({"能天使": {"room_1_1"}}, 0)
         ),
@@ -98,7 +99,7 @@ def test_plan_api_resolves_operator_instead_of_same_named_summon(
         else {"items": [{"name": "Mon3tr", "skill_index": 0}]}
     )
     with (
-        patch("arknights_mower.views.mastery.config.conf") as conf,
+        patch("arknights_mower.views.mastery.config.conf", config.Conf()) as conf,
         patch("arknights_mower.views.mastery.get_skill_data", return_value=skill_data),
         patch.object(support_data, "owned_roster", return_value=roster),
         patch(
@@ -134,7 +135,7 @@ def test_no_box_plan_api_falls_back_to_route(database, legacy_payload):
         else {"items": [{"name": "能天使", "skill_index": 0}]}
     )
     with (
-        patch("arknights_mower.views.mastery.config.conf") as conf,
+        patch("arknights_mower.views.mastery.config.conf", config.Conf()) as conf,
         patch.object(
             support_data,
             "owned_roster",

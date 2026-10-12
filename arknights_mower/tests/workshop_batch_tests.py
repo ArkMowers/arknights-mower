@@ -359,3 +359,16 @@ def test_completed_workshop_refreshes_only_crafters_without_rescanning(
     assert solver._card_moods_scanned_this_run == scanned
     assert solver.tasks == ([pending] if nearby else [])
     batch.errors.assert_not_called()
+
+
+def test_growth_recipe_advance_queues_followup_after_confirmed_inventory(
+    batch, monkeypatch
+):
+    monkeypatch.setattr(config.conf, "workshop_auto_active", True)
+    batch.snapshots.return_value.is_current = lambda: False
+    enqueue = MagicMock()
+    monkeypatch.setattr(base, "try_workshop_tasks", enqueue)
+    batch.solver._craft_material({})
+    enqueue.assert_called_once_with(
+        batch.solver.op_data, batch.solver.tasks, minimum_mood=0
+    )

@@ -725,6 +725,7 @@ def test_plan_advanced_settings_round_trip_without_drone_room(
         "product_switching": {"waiting_seconds": 5},
         "experimental_dorm_logic": True,
         "group_rest_in_full_on_mood_gap": False,
+        "group_mood_gap_threshold_minutes": 75,
         "group_mood_gap_max_extra_wait_hours": 1.5,
     }
     result = post_plan_file(plan_client, value)
@@ -733,6 +734,7 @@ def test_plan_advanced_settings_round_trip_without_drone_room(
     assert config.conf.drone_count_limit == 140
     assert config.conf.product_switching.waiting_seconds == 5
     assert config.conf.group_rest_in_full_on_mood_gap is False
+    assert config.conf.group_mood_gap_threshold_minutes == 75
     assert config.conf.group_mood_gap_max_extra_wait_hours == 1.5
     assert config.conf.drone_room == "room_1_1"
 
@@ -740,9 +742,91 @@ def test_plan_advanced_settings_round_trip_without_drone_room(
     assert exported["advanced_settings"]["resting_threshold"] == 0.75
     assert exported["advanced_settings"]["product_switching"]["waiting_seconds"] == 5
     assert exported["advanced_settings"]["group_rest_in_full_on_mood_gap"] is False
+    assert exported["advanced_settings"]["group_mood_gap_threshold_minutes"] == 75
     assert exported["advanced_settings"]["group_mood_gap_max_extra_wait_hours"] == 1.5
     assert "drone_room" not in exported["advanced_settings"]
     assert "reload_room" not in exported["advanced_settings"]
+
+
+@pytest.mark.parametrize("rescue", [False, True])
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_recycling_plan_json_and_image_round_trip(
+    plan_client, populated_plan, rescue, theme
+):
+    from PIL import Image
+
+    try:
+        from arknights_mower.utils import qrcode
+    except ImportError as error:
+        pytest.skip(f"二维码依赖不可用：{error}")
+
+    value = populated_plan.model_dump(exclude_none=True)
+    value["plan1"]["recycle"] = {
+        "plans": [
+            {
+                "agent": "艾雅法拉",
+                "group": "回收",
+                "replacement": ["安洁莉娜"],
+                "group_bindings": [{"group": "备用回收", "replacement": ["阿米娅"]}],
+            },
+            {"agent": "安洁莉娜"},
+        ]
+    }
+    value["backup_plans"][0]["plan"]["recycle"] = {
+        "plans": [{"agent": "阿米娅"}, {"agent": "杜宾"}]
+    }
+    value["backup_plans"][0]["task"]["recycle"] = ["阿米娅", "杜宾"]
+    schedule = config.PlanModel.model_validate(value)
+    config.conf.theme = theme
+    config.conf.right_side_room_order = ["recycle", "train", "contact"]
+    if rescue:
+        config.conf.automatic_rescue_plan = schedule
+    else:
+        config.plan = schedule
+    json_response = plan_client.get(
+        "/rescue-plan" if rescue else "/export-json", headers={"token": "test-token"}
+    )
+    assert json_response.status_code == 200
+    exported_plan = json_response.json
+    assert "right_side_room_order" not in exported_plan
+    assert "right_side_room_order" not in exported_plan.get("advanced_settings", {})
+
+    source = Image.new("RGB", (2940, 1248), "white" if theme == "light" else "black")
+    source.paste((80, 160, 96), (2500, 960, 2940, 1248))
+    upload = BytesIO()
+    source.save(upload, format="PNG")
+    upload.seek(0)
+    response = plan_client.post(
+        "/dialog/save/img" + ("?rescue=1" if rescue else ""),
+        headers={"token": "test-token"},
+        data={"img": (upload, "plan.png", "image/png")},
+    )
+    assert response.status_code == 200
+    assert response.mimetype == "image/jpeg"
+    exported_image = Image.open(BytesIO(response.data))
+    assert exported_image.size == source.size
+    assert all(
+        abs(actual - expected) < 5
+        for actual, expected in zip(
+            exported_image.getpixel((2700, 1100)), (80, 160, 96)
+        )
+    )
+    assert qrcode.decode(exported_image.copy()) == exported_plan
+    imported = plan_client.post(
+        "/import" + ("?rescue=1" if rescue else ""),
+        headers={"token": "test-token"},
+        data={"img": (BytesIO(response.data), "plan.jpg", "image/jpeg")},
+    )
+    assert imported.get_data(as_text=True) == "排班已加载"
+    restored = config.conf.automatic_rescue_plan if rescue else config.plan
+    assert restored.plan1.recycle == schedule.plan1.recycle
+    assert (
+        restored.backup_plans[0].plan.recycle == schedule.backup_plans[0].plan.recycle
+    )
+    assert (
+        restored.backup_plans[0].task.recycle == schedule.backup_plans[0].task.recycle
+    )
+    assert config.conf.right_side_room_order == ["recycle", "train", "contact"]
 
 
 def test_plan_import_ignores_legacy_reload_room(plan_client, populated_plan):

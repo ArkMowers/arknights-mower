@@ -8,7 +8,8 @@
   ],
   "invariants": [
     "[INV-SCHED-13]",
-    "[INV-SCHED-15]"
+    "[INV-SCHED-15]",
+    "[INV-SCHED-43]"
   ],
   "code_symbols": [
     "arknights_mower.utils.scheduler_task.try_add_release_dorm",

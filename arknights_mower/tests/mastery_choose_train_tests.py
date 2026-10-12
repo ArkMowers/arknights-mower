@@ -128,6 +128,9 @@ class TestUnscheduledTrainingRoom(unittest.TestCase):
                 solver.choose_agent = types.MethodType(
                     BaseSchedulerSolver.choose_agent, solver
                 )
+                solver._check_group_shift_targets = types.MethodType(
+                    BaseSchedulerSolver._check_group_shift_targets, solver
+                )
                 solver.detect_arrange_order.return_value = ("技能", False)
                 solver.verify_agent.return_value = True
 
@@ -244,7 +247,7 @@ class TestChooseTrainCurrentReplacement(unittest.TestCase):
                     self.assertEqual(invocation.args, ("train",))
                     self.assertEqual(
                         invocation.kwargs,
-                        {"departing_plan": desired} if enabled else {},
+                        {"departing_plan": desired},
                     )
 
 

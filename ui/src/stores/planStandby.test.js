@@ -157,3 +157,36 @@ describe('宿舍休息候补配置', () => {
     loaded.value = false
   })
 })
+
+it('宿舍低优位在主副表导入和保存中保留，空副表仍继承', async () => {
+  setup()
+  axios.get.mockResolvedValue({
+    data: {
+      conf: { dorm_order: 'dormitory_1,dormitory_1_low,dormitory_2,dormitory_3,dormitory_4' },
+      plan1: {},
+      backup_plans: [
+        { plan: {}, conf: { dorm_order: 'dormitory_2,dormitory_2_low,dormitory_1' } },
+        { plan: {}, conf: {} }
+      ]
+    }
+  })
+  await store.load_plan()
+  expect(store.dorm_order).toEqual([
+    'dormitory_1',
+    'dormitory_1_low',
+    'dormitory_2',
+    'dormitory_3',
+    'dormitory_4'
+  ])
+  expect(store.backup_plans[0].conf.dorm_order_override).toBe(true)
+  expect(store.backup_plans[1].conf.dorm_order).toEqual([])
+  expect(store.backup_plans[1].conf.dorm_order_override).toBe(false)
+  const saved = store.build_plan()
+  expect(saved.conf.dorm_order).toBe(
+    'dormitory_1,dormitory_1_low,dormitory_2,dormitory_3,dormitory_4'
+  )
+  expect(saved.backup_plans[0].conf.dorm_order).toBe(
+    'dormitory_2,dormitory_2_low,dormitory_1,dormitory_3,dormitory_4'
+  )
+  expect(saved.backup_plans[1].conf.dorm_order).toBe('')
+})

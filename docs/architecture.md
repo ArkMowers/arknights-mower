@@ -76,6 +76,7 @@ Arknights Mower consists of four decoupled layers:
 ### 1.3 Core Subsystems (`arknights_mower/`)
 - **[Device Control Subsystem](subsystems/device-control.md)**: Manages emulator discovery, socket-level transport, standard canvas frame acquisition, readiness verdicts, and bounded crash recovery.
 - **[Base Infrastructure & Scheduling Subsystem](subsystems/base-scheduler.md)**: Drives automated base operations: operator mood evaluation, empirical depletion rate calculation, dormitory recovery ordering, dynamic shift transitions, clue party management, and drone acceleration.
+- **[MAA Integration Subsystem](subsystems/maa-integration.md)**: Consumes MAA core callbacks across a MAA run boundary, translating task-chain transitions and whitelisted milestones into runtime-log lines while recurring telemetry stays at DEBUG.
 - **Recognition Subsystem**: Performs template matching and neural OCR over immutable 1920×1080 canvas frames.
 
 ### 1.4 Persistence & Storage Layer
@@ -96,7 +97,7 @@ The system enforces six core architectural invariants defined in [CODING_STANDAR
 | `[INV-03]` | Failure Preserves Target Identity | Session / Driver | Failed readiness or discovery halts without drifting to host devices | `device_session_tests.py` |
 | `[INV-04]` | IPC Pair Cohesion | Capture / Touch | MuMu IPC capture and touch backends require simultaneous selection | `device_config_tests.py` |
 | `[INV-05]` | Shared ADB Guard | Transport / ADB | Socket-level handshake checks server liveness; forbids implicit `kill-server` | `device_session_io_tests.py` |
-| `[INV-06]` | Domain Glossary Synchronization | Docs / Governance | All code, tests, and documentation adhere to authoritative terms in `CONTEXT.md` | `verify_governance_tests.py` |
+| `[INV-06]` | Domain Glossary Synchronization | Docs / Governance | [Concept-impact review](../CODING_STANDARDS.md#1-core-invariants) | Manual semantic review; `verify_governance_tests.py` covers structural reporting |
 
 ---
 

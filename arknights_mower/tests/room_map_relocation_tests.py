@@ -1,6 +1,7 @@
 """拖动后只能点击重新识别的房间，不能按请求位移平移旧坐标。"""
 
 import sys
+from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -19,6 +20,89 @@ from arknights_mower.utils.image import loadres  # noqa: E402
 from arknights_mower.utils.solver import BaseSolver  # noqa: E402
 
 ROOM = "room_1_1"
+ROOM_TITLES = Path(__file__).parent / "fixtures" / "room_titles"
+
+
+@pytest.mark.parametrize("phase", ["entry", "interference", "settled"])
+def test_archive_recycling_title_confirms_actual_room(phase):
+    title = cv2.cvtColor(
+        cv2.imread(str(ROOM_TITLES / f"recycle_{phase}_20261011.png")),
+        cv2.COLOR_BGR2RGB,
+    )
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[18:95, 568:957] = title
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame)
+    if phase == "interference":
+        assert solver.detect_room_type() == "训练室"
+    assert solver.detect_room() == "recycle"
+
+
+@pytest.mark.parametrize("room", ["central", "meeting", "contact", "recycle"])
+def test_positive_facility_title_precedes_conflicting_training_color(room):
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    title = loadres(f"room/{room}")
+    height, width = title.shape[:2]
+    frame[18 : 18 + height, 568 : 568 + width] = title
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame)
+    solver.detect_room_type = MagicMock(return_value="训练室")
+    assert solver.detect_room() == room
+    solver.detect_room_type.assert_not_called()
+
+
+def test_recycling_entry_animation_does_not_trigger_home_recovery(monkeypatch):
+    monkeypatch.setattr(config, "stop_mower", Event())
+    title = cv2.cvtColor(
+        cv2.imread(str(ROOM_TITLES / "recycle_interference_20261011.png")),
+        cv2.COLOR_BGR2RGB,
+    )
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[18:95, 568:957] = title
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame)
+    solver.find = MagicMock(return_value=None)
+    solver.back_to_index = MagicMock()
+    solver.back_to_infrastructure = MagicMock()
+    solver.sleep = MagicMock()
+    solver.scene = MagicMock(return_value=None)
+    solver.enter_room("recycle")
+    solver.back_to_index.assert_not_called()
+    solver.back_to_infrastructure.assert_not_called()
+    solver.sleep.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("hue", "facility"),
+    [(25, "制造站"), (99, "贸易站"), (36, "发电站")],
+)
+def test_facility_type_uses_actual_header_icon(hue, facility):
+    hsv = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    hsv[25:84, 580:626] = (hue, 230, 220)
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB))
+    assert solver.detect_room_type() == facility
+
+
+def test_facility_type_is_unknown_without_matching_header_icon():
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=np.zeros((1080, 1920, 3), dtype=np.uint8))
+    assert solver.detect_room_type() is None
+
+
+@pytest.mark.parametrize(
+    ("hue", "room"),
+    [(25, "room_2_3"), (99, "room_2_3"), (36, "room_2_3"), (178, "train")],
+)
+def test_unmatched_title_retains_colored_facility_identity(hue, room):
+    hsv = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    hsv[25:84, 580:626] = (hue, 230, 220)
+    frame = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+    frame[42:72, 779:800] = loadres("room/2")
+    frame[42:72, 821:842] = loadres("room/3")
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame)
+    assert solver.detect_room() == room
 
 
 def test_room_name_uses_header_icon_instead_of_warm_room_background():
@@ -64,7 +148,9 @@ def test_right_side_rooms_can_swap_without_moving_other_facilities():
     image = np.zeros((1080, 1920, 3), dtype=np.uint8)
     anchor = ((400, 80), (600, 240))
     ordinary = base_mixin.segment.base(image, anchor)
-    swapped = base_mixin.segment.base(image, anchor, swap_contact_train=True)
+    swapped = base_mixin.segment.base(
+        image, anchor, right_side_room_order=("train", "contact", "recycle")
+    )
 
     np.testing.assert_array_equal(swapped["train"], ordinary["contact"])
     np.testing.assert_array_equal(swapped["contact"], ordinary["train"])
@@ -186,7 +272,9 @@ def navigation_solver(monkeypatch, frames):
             return frame["anchor"]
         return None
 
-    def segment(frame, anchor, *, swap_contact_train=False):
+    def segment(
+        frame, anchor, *, right_side_room_order=("contact", "train", "recycle")
+    ):
         assert frame["kind"] == "map" and anchor == frame["anchor"]
         return {ROOM: frame["room"]}
 
@@ -227,13 +315,17 @@ def test_drag_relocates_using_new_frame_and_new_central_anchor(
 
 
 def test_enter_room_passes_configured_right_side_layout(monkeypatch):
-    monkeypatch.setattr(config.conf, "swap_contact_train", True)
+    monkeypatch.setattr(
+        config.conf, "right_side_room_order", ["recycle", "contact", "train"]
+    )
     room = rectangle(450, 350, 750, 600)
     solver, segmentation = navigation_solver(
         monkeypatch, [map_frame(room), {"kind": "room"}]
     )
     solver.enter_room(ROOM)
-    assert segmentation.call_args.kwargs == {"swap_contact_train": True}
+    assert segmentation.call_args.kwargs == {
+        "right_side_room_order": ["recycle", "contact", "train"]
+    }
 
 
 def test_ineffective_drags_use_existing_attempt_and_home_budgets(monkeypatch):

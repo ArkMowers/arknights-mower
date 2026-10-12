@@ -18,6 +18,7 @@ from arknights_mower.utils.furniture_task import (  # noqa: E402
     FurnitureNavigationError,
     FurnitureSafetyError,
 )
+from arknights_mower.utils.operators import Operators  # noqa: E402
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
 from arknights_mower.views import task as task_view  # noqa: E402
 
@@ -25,7 +26,7 @@ REAL_FURNITURE_RUN = furniture.FurnitureDismantler.run
 
 
 @pytest.fixture
-def scheduler(monkeypatch):
+def scheduler(monkeypatch, offline_maintenance):
     class Clock(datetime):
         current = datetime(2026, 9, 9, 10)
 
@@ -52,6 +53,9 @@ def scheduler(monkeypatch):
         correct_dorm=MagicMock(),
         rescue_mode=False,
     )
+    solver.op_data.arrangement_group_transitions = (
+        Operators.arrangement_group_transitions.__get__(solver.op_data)
+    )
     solver.recog = MagicMock()
     solver._simulator_closed_for_idle = False
     solver.party_time = solver.free_clue = solver.credit_fight = None
@@ -63,6 +67,8 @@ def scheduler(monkeypatch):
     solver._sync_run_order_tasks = MagicMock()
     solver._switch_products_before_arrangement = MagicMock()
     solver._prepare_shift_cycle = MagicMock()
+    solver._prepare_group_shift = MagicMock()
+    solver._complete_group_shift = MagicMock(return_value=True)
     solver.agent_get_mood = MagicMock(return_value=True)
     solver.agent_arrange = MagicMock(side_effect=lambda *args: solver.skip())
     solver.craft_material = MagicMock(side_effect=solver.skip)
@@ -151,6 +157,7 @@ def test_http_workshop_wake_reselects_task_before_dispatch(scheduler):
     scheduler.on_sleep = scheduler.add_workshop
     scheduler.solver.run()
     scheduler.solver.agent_arrange.assert_not_called()
+    scheduler.solver._prepare_group_shift.assert_not_called()
     scheduler.solver.craft_material.assert_called_once_with()
     assert scheduler.clock.now() == scheduler.shift.time - timedelta(seconds=239)
     assert any(task is scheduler.shift for task in scheduler.solver.tasks)
@@ -159,6 +166,7 @@ def test_http_workshop_wake_reselects_task_before_dispatch(scheduler):
     assert not scheduler.solver.sleeping
     scheduler.solver.run()
     scheduler.solver.agent_arrange.assert_called_once_with(scheduler.shift.plan, False)
+    scheduler.solver._complete_group_shift.assert_called_once_with(scheduler.shift)
     assert scheduler.clock.now() == scheduler.shift.time
     assert all(task is not scheduler.shift for task in scheduler.solver.tasks)
 
@@ -168,6 +176,8 @@ def primary_with_vacancies(scheduler, monkeypatch):
     from arknights_mower.utils.plan import Plan, PlanConfig, Room
 
     solver = scheduler.solver
+    solver._scan_card_moods = MagicMock()
+    solver.task = None
     scheduler.clock.current = datetime.now()
     rooms = {
         "meeting": [Room("银灰", "", ["红"])],
@@ -203,10 +213,12 @@ def primary_with_vacancies(scheduler, monkeypatch):
 
 
 @pytest.mark.parametrize("deferred_fill", [False, True])
+@pytest.mark.parametrize("free_room", [False, True])
 def test_run_dispatches_fresh_primary_shift_before_ordinary_dorm_fill(
-    scheduler, monkeypatch, deferred_fill
+    scheduler, monkeypatch, deferred_fill, free_room
 ):
     solver = primary_with_vacancies(scheduler, monkeypatch)
+    solver.op_data.config.free_room = free_room
     if deferred_fill:
         solver.tasks.append(
             SchedulerTask(
@@ -362,26 +374,52 @@ def test_new_future_workshop_waits_for_its_own_deadline(scheduler):
     assert scheduler.clock.now() == scheduler.shift.time - timedelta(seconds=230)
 
 
-def test_workshop_wake_respects_pending_mastery_handoff(scheduler, monkeypatch):
+@pytest.mark.parametrize(
+    ("handoff_delay", "workshop_fits"), [(75, False), (76, True), (120, True)]
+)
+def test_workshop_wake_respects_pending_mastery_handoff(
+    scheduler, monkeypatch, handoff_delay, workshop_fits
+):
     from arknights_mower.solvers import mastery
 
     monkeypatch.setattr(config.conf, "enable_mastery", True)
     swap = SchedulerTask(
-        scheduler.clock.now() + timedelta(minutes=2), task_type=TaskTypes.SWAP_SUPPORT
+        scheduler.clock.now() + timedelta(seconds=handoff_delay),
+        task_type=TaskTypes.SWAP_SUPPORT,
     )
     scheduler.solver.tasks.append(swap)
     dispatch = MagicMock(side_effect=lambda solver: solver.skip())
     monkeypatch.setattr(mastery, "run_swap_support", dispatch)
+    inserted_at = scheduler.clock.now() + timedelta(seconds=1)
     scheduler.on_sleep = scheduler.add_workshop
     scheduler.solver.run()
-    dispatch.assert_called_once_with(scheduler.solver)
-    scheduler.solver.craft_material.assert_not_called()
     scheduler.solver.agent_arrange.assert_not_called()
-    assert scheduler.clock.now() == swap.time
-    workshop = next(
-        task for task in scheduler.solver.tasks if task.type == TaskTypes.WORKSHOP
-    )
-    assert workshop.time > swap.time
+    # Wake inserts at +1s; the workshop budget is 60s plus a 15s work margin.
+    if workshop_fits:
+        scheduler.solver.craft_material.assert_called_once_with()
+        dispatch.assert_not_called()
+        assert scheduler.clock.now() == inserted_at
+        assert any(task is swap for task in scheduler.solver.tasks)
+        assert all(task.type != TaskTypes.WORKSHOP for task in scheduler.solver.tasks)
+        scheduler.solver.run()
+    else:
+        dispatch.assert_called_once_with(scheduler.solver)
+        scheduler.solver.craft_material.assert_not_called()
+        assert scheduler.clock.now() == swap.time
+        workshop = next(
+            task for task in scheduler.solver.tasks if task.type == TaskTypes.WORKSHOP
+        )
+        assert workshop.time > swap.time
+        scheduler.solver.run()
+        assert scheduler.clock.now() == workshop.time
+        assert all(task.type != TaskTypes.WORKSHOP for task in scheduler.solver.tasks)
+    dispatch.assert_called_once_with(scheduler.solver)
+    scheduler.solver.craft_material.assert_called_once_with()
+    scheduler.solver.agent_arrange.assert_not_called()
+    assert all(task is not swap for task in scheduler.solver.tasks)
+    assert any(task is scheduler.shift for task in scheduler.solver.tasks)
+    if workshop_fits:
+        assert scheduler.clock.now() == swap.time
 
 
 @pytest.mark.parametrize("change", ["remove", "postpone"])

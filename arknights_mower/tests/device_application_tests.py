@@ -39,6 +39,52 @@ class ManualAdapter:
 
 
 class DeviceControlTests(unittest.TestCase):
+    def test_preflight_command_timeout_unlocks_settings_and_preserves_target(self):
+        import subprocess
+
+        from arknights_mower.tests.device_preflight_tests import PreflightIO
+        from arknights_mower.utils.config.conf import Conf
+        from arknights_mower.utils.device.preflight import PreflightService
+
+        serial = "127.0.0.1:16416"
+        configuration = Conf(
+            device={
+                "preset_id": "windows.mumu12",
+                "instance_id": "1",
+                "last_serial": serial,
+                "adb_path": "manual-adb",
+                "screenshot_backend": "mumu_ipc",
+                "touch_backend": "mumu_ipc",
+            }
+        )
+        saved_profile = configuration.device.model_dump()
+        io = PreflightIO()
+        io.host = "windows"
+        io.targets = [(serial, "device")]
+        adapter = MagicMock()
+        control = DeviceControl(
+            lambda: configuration, adapter, preflight=PreflightService(io)
+        )
+        self.addCleanup(control.close)
+
+        def capture(*args):
+            self.assertTrue(control.settings_status()["active"])
+            raise subprocess.TimeoutExpired(
+                ["MuMuManager.exe", "info", "-v", "all"], 0.5
+            )
+
+        io.capture_frame = capture
+        with patch("arknights_mower.utils.device.application.logger.info") as info:
+            result = control.start()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error.code, "frame_failed")
+        self.assertEqual(result.status, "failed")
+        self.assertFalse(control.settings_status()["active"])
+        self.assertIsNotNone(control.settings_status()["error"])
+        self.assertEqual(configuration.device.model_dump(), saved_profile)
+        adapter.open_verified.assert_not_called()
+        info.assert_called_once_with("正在检查设备 ADB、游戏安装与截图...")
+
     def test_production_adapter_retains_discovery_on_one_attempt_startup(self):
         for online_serial in ("127.0.0.1:16384", "127.0.0.1:16416"):
             with (
@@ -104,6 +150,28 @@ class DeviceControlTests(unittest.TestCase):
         self.assertTrue(control.close().ok)
         self.assertTrue(control.close().ok)
 
+    def test_run_can_defer_cancel_close_until_bounded_compensation_finishes(self):
+        control = DeviceControl(lambda: SimpleNamespace(adb="USB-123"), ManualAdapter())
+
+        def cancelled(device):
+            raise MowerExit("cancelled")
+
+        for deferred in (True, False):
+            with self.subTest(deferred=deferred):
+                with control.run(defer_cancel_close=deferred):
+                    opened = control.start().unwrap()
+                    with self.assertRaises(MowerExit):
+                        control.execute(cancelled).unwrap()
+                    self.assertEqual(control.active, deferred)
+                    if deferred:
+                        self.assertEqual(
+                            control.execute(lambda device: device.tap((1, 2))).unwrap(),
+                            (1, 2),
+                        )
+                self.assertTrue(opened.closed)
+                self.assertFalse(control.active)
+                self.assertFalse(control._defer_cancel_close)
+
     def test_start_errors_are_structured_and_preserve_legacy_exceptions(self):
         for error, code in (
             (ConnectionError("offline"), "start_failed"),
@@ -154,10 +222,11 @@ class DeviceControlTests(unittest.TestCase):
         self.assertEqual(result.error.code, "configuration_failed")
         self.assertEqual(result.serial, "")
 
-    def test_cleanup_failure_is_observable_and_does_not_repeat_cleanup(self):
+    def test_cleanup_failure_is_observable_and_retry_keeps_start_blocked(self):
         class BrokenCleanupDevice(ManualDevice):
             def close(self):
-                super().close()
+                if not self.closed:
+                    super().close()
                 raise OSError("helper did not exit")
 
         class BrokenCleanupAdapter:
@@ -172,7 +241,9 @@ class DeviceControlTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertEqual(result.error.code, "close_failed")
         self.assertEqual(result.error.message, "helper did not exit")
-        self.assertEqual(control.close(), result)
+        self.assertEqual(control.close().error.message, result.error.message)
+        self.assertEqual(control.start().error.code, "close_failed")
+        self.assertEqual(control.recover().error.message, result.error.message)
 
     def test_failed_input_is_reported_without_repeating_the_operation(self):
         control = DeviceControl(lambda: SimpleNamespace(adb="USB-123"), ManualAdapter())

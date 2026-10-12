@@ -11,7 +11,7 @@ date: 2026-10-01
 
 [INV-DEV-18] Recovery Cycle Continuation keeps transient device failures inside a finite Recovery Budget, retains the selected Instance Binding and repeats failed cycles only after cancellable cooldown; a verified ready observation supersedes an unconfirmed reconnect response.
 
-[INV-SCHED-13] Pending Task Preservation retains the scheduler and pending tasks across device recovery, refreshes the Capture Frame before dispatch resumes and never repeats uncertain input coordinates. Unverified side effects pause device dispatch without ending the automation worker.
+[INV-SCHED-39] Pending Task Preservation retains the scheduler and pending tasks across device recovery, refreshes the Capture Frame before dispatch resumes and never repeats uncertain input coordinates. Unverified side effects pause device dispatch without ending the automation worker.
 
 [INV-DEV-17] Pre-Input Helper Recovery repairs unavailable control helpers within the existing Recovery Budget after same-target validation. A healthy capture and ADB connection remain owned during input-only repair; MuMu IPC retains paired recovery. Ordinary graph navigation resumes from a newly observed scene, not from a saved command.
 
@@ -32,3 +32,5 @@ All supported presets share these contracts. No remote configuration, running in
 ## Verification
 
 Focused hermetic tests cover false reconnect responses followed by readiness, bounded helper repair, transient capture incidents, interrupt compensation, repeated finite recovery cycles, task preservation, refreshed navigation and cancellation. Tests never connect to live devices.
+
+MaaTouch regressions cover termination before pipe closure, Windows and POSIX stop return codes, bounded terminate-to-kill escalation, and a real host-process exit between the last live check and termination through `Device.tap`. That exit pauses dispatch and the next input is not sent.

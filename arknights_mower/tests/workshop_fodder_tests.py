@@ -54,9 +54,12 @@ def test_new_options_do_not_change_default_fodder_selection(next_skill):
     defaults = config.Conf().workshop_deer_fodder
     assert len(defaults) == 1
     assert defaults[0].item_names == ["碳素", "碳素组", "家具零件_碳素组"]
+    assert defaults[0].children_lower_limit == 20
+    assert WorkshopDeerFodderItem().children_lower_limit == 20
+    assert WorkshopDeerFodderItem(children_lower_limit=0).children_lower_limit == 0
 
 
-def test_custom_fodder_is_used_by_auto_config_and_survives_backup_restore(
+def test_custom_fodder_stays_manual_and_survives_backup_restore(
     next_skill, monkeypatch
 ):
     from arknights_mower.utils.config.conf import RIICPart
@@ -71,13 +74,11 @@ def test_custom_fodder_is_used_by_auto_config_and_survives_backup_restore(
     monkeypatch.setattr(rec, "get_mastery_recommendations", lambda: data)
     for _ in range(2):
         result = auto.update_workshop_config()
-        deer = next(
-            entry
-            for entry in result["workshop_settings"]
-            if entry["operator"] == "九色鹿"
+        assert all(
+            entry["operator"] != "九色鹿" for entry in result["workshop_settings"]
         )
-        assert custom_fodder().model_dump() in deer["items"]
-        assert not any("碳素组" in item["item_names"] for item in deer["items"])
+        assert config.conf.workshop_deer_fodder == [custom_fodder()]
+        assert deer_fodder_items() == [custom_fodder().model_dump()]
     config.conf.workshop_deer_fodder = [
         custom_fodder().model_copy(update={"self_upper_limit": 240})
     ]

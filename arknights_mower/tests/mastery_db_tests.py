@@ -14,6 +14,7 @@ from arknights_mower.utils.mastery_db import (
     get_all_plans,
     get_all_routes,
     get_failed_plans,
+    get_material_waiting_plan,
     get_next_idle_plan,
     get_plan_by_id,
     get_plan_by_skill,
@@ -22,6 +23,7 @@ from arknights_mower.utils.mastery_db import (
     get_route_settings,
     insert_plan,
     is_operator_busy,
+    retry_failed_plans,
     save_route,
     save_route_settings,
     should_notify,
@@ -40,6 +42,35 @@ class TestMasteryDb(unittest.TestCase):
 
     def tearDown(self):
         os.unlink(self.db_path)
+
+    def test_retry_preserves_only_material_failures_after_confirmed_start(self):
+        cases = [
+            ("材料不足", "2026-10-01 12:00:00", True),
+            ("材料不足", None, False),
+            ("材料不足", "", False),
+            ("安排超时", "2026-10-01 12:00:00", False),
+        ]
+        ids = []
+        for index, (reason, expires, _) in enumerate(cases):
+            pid = insert_plan(f"char_{index}", 0, 3, path=self.db_path)
+            update_plan_status(
+                pid,
+                "failed",
+                failed_reason=reason,
+                expires_at=expires,
+                path=self.db_path,
+            )
+            ids.append(pid)
+        self.assertEqual(retry_failed_plans(path=self.db_path), len(cases))
+        for pid, (_, _, waiting) in zip(ids, cases):
+            row = get_plan_by_id(pid, path=self.db_path)
+            self.assertEqual(row["status"], "idle")
+            self.assertEqual(row["failed_reason"], "材料不足" if waiting else None)
+        self.assertEqual(
+            get_material_waiting_plan(get_all_plans(path=self.db_path))["id"], ids[0]
+        )
+        update_plan_status(ids[0], "training", failed_reason="", path=self.db_path)
+        self.assertIsNone(get_material_waiting_plan(get_all_plans(path=self.db_path)))
 
     def test_insert_and_get(self):
         pid = insert_plan("char_001", 0, 1, skill_name="技能1", path=self.db_path)
@@ -161,6 +192,18 @@ class TestMasteryDb(unittest.TestCase):
             should_notify("fake_reset", str(pid), path=self.db_path),
             "删除后该计划通知可重发（去重行已清）",
         )
+
+    def test_delete_plan_cleans_prefixed_form_and_support_notifications(self):
+        pid = insert_plan("char_001", 0, 3, path=self.db_path)
+        for kind in ("support_swap", "amiya_form"):
+            for key in (f"{pid}:mismatch:1", f"{pid + 10}:mismatch:1"):
+                self.assertTrue(should_notify(kind, key, path=self.db_path))
+        self.assertTrue(delete_plan(pid, path=self.db_path))
+        for kind in ("support_swap", "amiya_form"):
+            self.assertTrue(should_notify(kind, f"{pid}:mismatch:1", path=self.db_path))
+            self.assertFalse(
+                should_notify(kind, f"{pid + 10}:mismatch:1", path=self.db_path)
+            )
 
     def test_ensure_tables_once_per_path(self):
         # #82：同一库路径进程内只建表一次（_tables_created 记录已建库路径）
@@ -295,8 +338,8 @@ class TestMasteryDb(unittest.TestCase):
                 "mastery_swap_buffer": 10,
                 "mastery_swap_buffers": {
                     "no_central": 10,
-                    "central": 15,
-                    "central_unhalved_m2": 30,
+                    "central": 10,
+                    "central_unhalved_m2": 10,
                 },
             },
         )

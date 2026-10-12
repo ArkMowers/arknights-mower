@@ -2,12 +2,14 @@
 
 import ast
 from itertools import product
+from time import monotonic
 
 from arknights_mower.data import base_room_list
 from arknights_mower.utils.manufacture_product import (
     MANUFACTURE_PRODUCTS,
     TRADE_PRODUCTS,
 )
+from arknights_mower.utils.plan import RIGHT_SIDE_ROOM_CAPACITY
 
 MAX_CONDITION_STATES = 262144
 BOOLEAN_METHODS = {"is_working", "is_resting"}
@@ -18,6 +20,59 @@ STRING_CONSTANTS = (
 
 class BackupValidationLimitExceeded(ValueError):
     """条件分析或组合检查超出预算；不表示已确认排班错误。"""
+
+
+def validate_backup_facilities(default_plan, backups, *, product_switching_enabled):
+    """副表不能声明未支持的设施变化，显式任务遵守设施岗位容量。"""
+    for index, backup in enumerate(backups):
+        label = backup.name or f"副表{index + 1}"
+        for room, slots in backup.plan.items():
+            if room in RIGHT_SIDE_ROOM_CAPACITY:
+                continue
+            if room not in default_plan.plan:
+                return f"副表“{label}”的 {room} 不在主表设施中"
+            original = default_plan.plan[room]
+            if room.startswith("room_") and len(slots) != len(original):
+                return (
+                    f"副表“{label}”的 {room} 改变设施等级（岗位数 "
+                    f"{len(original)} → {len(slots)}）；切设施功能尚未实现"
+                )
+            if len(slots) > len(original):
+                return f"副表“{label}”的 {room} 排班超出主表的 {len(original)} 个岗位"
+            for slot, source in zip(slots, original):
+                if slot.facility != source.facility:
+                    return (
+                        f"副表“{label}”的 {room} 改变设施类型"
+                        f"（{source.facility} → {slot.facility}）；切设施功能尚未实现"
+                    )
+        for room, targets in (backup.task or {}).items():
+            if room in RIGHT_SIDE_ROOM_CAPACITY:
+                continue
+            if room in default_plan.plan:
+                capacity = len(default_plan.plan[room])
+            else:
+                return f"副表“{label}”的任务 {room} 不在主表设施中"
+            if len(targets) > capacity:
+                return (
+                    f"副表“{label}”的任务 {room} 超出主表的 {capacity} 个岗位："
+                    f"{targets[capacity:]}"
+                )
+        if not product_switching_enabled:
+            for room, target in backup.products.items():
+                if room in RIGHT_SIDE_ROOM_CAPACITY:
+                    continue
+                original = default_plan.products.get(room)
+                if target != original:
+                    return (
+                        f"副表“{label}”的 {room} 改变产物（{original} → {target}）；"
+                        "未开启自动切换产物与订单"
+                    )
+    return None
+
+
+def check_validation_deadline(deadline):
+    if deadline is not None and monotonic() >= deadline:
+        raise BackupValidationLimitExceeded("验证未完成：副表校验超过耗时预算")
 
 
 def _string_literal(node):
@@ -65,7 +120,9 @@ def _returns_boolean(node, known_operators):
     return _state_method(node, known_operators) in BOOLEAN_METHODS
 
 
-def possible_backup_conditions(backups, combination_limit, *, known_operators=None):
+def possible_backup_conditions(
+    backups, combination_limit, *, known_operators=None, deadline=None
+):
     """仅删除条件逻辑能证明不成立的组合，不读取驻员或执行导入表达式。"""
     domains = {}
 
@@ -150,6 +207,7 @@ def possible_backup_conditions(backups, combination_limit, *, known_operators=No
 
     conditions = []
     for index, backup in enumerate(backups):
+        check_validation_deadline(deadline)
         condition_domains = {}
         try:
             source = str(backup.trigger)
@@ -168,6 +226,7 @@ def possible_backup_conditions(backups, combination_limit, *, known_operators=No
         except (SyntaxError, ValueError, RecursionError, OverflowError):
             condition_domains = {}
             conditions.append(unknown(("unparsed", index)))
+        check_validation_deadline(deadline)
         for key, literals in condition_domains.items():
             if literals is None:
                 domains[key] = None
@@ -177,6 +236,7 @@ def possible_backup_conditions(backups, combination_limit, *, known_operators=No
     values = []
     state_count = 1
     for literals in domains.values():
+        check_validation_deadline(deadline)
         if literals is None:
             domain = [False, True]
         else:
@@ -191,6 +251,7 @@ def possible_backup_conditions(backups, combination_limit, *, known_operators=No
 
     combinations = set()
     for assignment in product(*values):
+        check_validation_deadline(deadline)
         state = dict(zip(domains, assignment))
         flags = tuple(bool(condition(state)) for condition in conditions)
         combinations.add(flags)
@@ -198,4 +259,7 @@ def possible_backup_conditions(backups, combination_limit, *, known_operators=No
             raise BackupValidationLimitExceeded(
                 f"验证未完成：可能生效的副表组合数量超过校验上限 {combination_limit}"
             )
-    return sorted(combinations, key=lambda flags: (sum(flags), flags))
+    check_validation_deadline(deadline)
+    result = sorted(combinations, key=lambda flags: (sum(flags), flags))
+    check_validation_deadline(deadline)
+    return result

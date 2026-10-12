@@ -19,6 +19,8 @@ Existing release tasks hold their planning source and reserved start. The planne
 
 Offline tests cover task identity across replanning, changed deadlines and beds, absent and cached Fiammetta wakeups, measured eligibility, restoration priority, normal and rescue dispatch, and protected critical tasks.
 
+The mood-limit deadline suite uses the shared `offline_maintenance` fixture, so live announcements and cached maintenance windows cannot alter its trade order timing. Injected active maintenance reproduces three timing failures without isolation; all six priority-window cases pass with isolation.
+
 Targeted offline verification passes 372 tests and 4 subtests. Ruff and repository governance gates pass.
 
 ## Standards Findings

@@ -1,11 +1,9 @@
 import json
-import logging
 import os
 import tempfile
 import threading
 import time
 from datetime import datetime, timedelta
-from queue import Queue
 from threading import Event
 from typing import Any, Optional
 
@@ -22,12 +20,14 @@ from arknights_mower.utils.config.plan import (
     migrate_legacy_dorm_order,
     retire_rescue_backups,
 )
+from arknights_mower.utils.log import frontend_log_queue, logger
 from arknights_mower.utils.network_settings import apply_http_proxy
 from arknights_mower.utils.path import get_path
 
-apply_http_proxy()
+# Compatibility alias; log delivery does not depend on configuration loading.
+log_queue = frontend_log_queue
 
-logger = logging.getLogger(__name__)
+apply_http_proxy()
 
 # 应用配置文件统一收敛到 @app/config/。老路径（@app/xxx）由 migrate_app_config_paths
 # 在启动时搬一次——不搬会静默生成默认配置、把老配置弄丢。
@@ -172,8 +172,7 @@ def load_conf():
         save_conf()
         return
     with conf_path.open("r", encoding="utf-8") as f:
-        # 旧键 → 新键的兼容（exipring_medicine_on_weekend）由 Conf 校验层统一处理，
-        # 读文件与 /conf POST 等所有构造路径都走同一套迁移。
+        # 读文件与配置提交均由 Conf 校验层迁移旧字段。
         raw = yaml.load(f, Loader=CoreLoader) or {}
     _legacy_dorm_order = str(raw.get("dorm_order", "") or "")
     _retired_dorm_conf = bool(
@@ -254,7 +253,6 @@ wake_scheduler = Event()
 maintenance_recheck = Event()
 
 # 日志
-log_queue = Queue()
 wh = None
 
 

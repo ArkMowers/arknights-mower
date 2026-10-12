@@ -34,10 +34,13 @@ def test_agent_action_schema_adds_fiammetta_fields_to_legacy_table():
     record._tables_created = False
 
 
-def test_agent_action_schema_migration_is_serialized():
+def test_agent_action_schema_migration_is_serialized(monkeypatch):
     class Cursor:
         def fetchall(self):
             return []
+
+        def __iter__(self):
+            return iter(self.fetchall())
 
     class Connection:
         def execute(self, _statement):
@@ -51,13 +54,15 @@ def test_agent_action_schema_migration_is_serialized():
             return Cursor()
 
         def commit(self):
-            pass
+            nonlocal commits
+            commits += 1
 
     active = max_active = 0
+    commits = 0
     workers = 8
     state_lock = threading.Lock()
     barrier = threading.Barrier(workers)
-    record._tables_created = False
+    monkeypatch.setattr(record, "_tables_created", False)
 
     def migrate():
         barrier.wait()
@@ -69,7 +74,7 @@ def test_agent_action_schema_migration_is_serialized():
             future.result()
 
     assert max_active == 1
-    record._tables_created = False
+    assert commits == 1
 
 
 def test_fiammetta_curve_point_contains_charged_operator(monkeypatch):

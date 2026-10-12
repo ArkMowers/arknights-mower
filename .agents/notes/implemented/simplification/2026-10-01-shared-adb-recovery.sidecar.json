@@ -11,7 +11,7 @@
     "[INV-05]",
     "[INV-03]",
     "[INV-DEV-18]",
-    "[INV-SCHED-13]"
+    "[INV-SCHED-39]"
   ],
   "code_symbols": [
     "arknights_mower/utils/device/adb_client/shared.py",

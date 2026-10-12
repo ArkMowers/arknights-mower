@@ -35,6 +35,10 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  includeLow: {
+    type: Boolean,
+    default: false
+  },
   roomOnly: {
     type: Boolean,
     default: false
@@ -47,6 +51,9 @@ const dormitories = computed(() => {
   for (let x = 1; x <= 4; x++) {
     if (props.roomOnly) {
       options.push({ label: `宿舍 ${x}`, value: `dormitory_${x}` })
+      if (props.includeLow) {
+        options.push({ label: `宿舍 ${x} 低优位`, value: `dormitory_${x}_low` })
+      }
       continue
     }
     for (let y = 1; y <= 4; y++) {

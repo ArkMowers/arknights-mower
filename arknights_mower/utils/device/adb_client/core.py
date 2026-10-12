@@ -18,6 +18,7 @@ from arknights_mower.utils.device.adb_client.socket import Socket
 from arknights_mower.utils.device.adb_client.utils import run_cmd
 from arknights_mower.utils.device.io_budget import budget_sleep as csleep
 from arknights_mower.utils.device.io_budget import io_timeout
+from arknights_mower.utils.device.manager_io import MAX_OUTPUT, run_command
 from arknights_mower.utils.device.mumu_info import mumu_endpoint, select_mumu_instance
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import resolve_config_path
@@ -50,7 +51,7 @@ def query_mumu_adb_port(simulator) -> Optional[str]:
         logger.debug(f"MuMuManager 不存在：{manager}")
         return None
     try:
-        out = subprocess.run(
+        out = run_command(
             [manager, "info", "-v", "all"],
             # 端口发现会反复执行；仅重定向输出不会隐藏 Windows 控制台。
             creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
@@ -60,6 +61,7 @@ def query_mumu_adb_port(simulator) -> Optional[str]:
             errors="replace",
             check=True,
             timeout=io_timeout(5),
+            max_output=MAX_OUTPUT,
         ).stdout.strip()
         _, entry = select_mumu_instance(out, simulator.index)
         return mumu_endpoint(entry)
@@ -205,7 +207,7 @@ class Client:
         # unconditional global lifecycle command against an existing server.
         run_adb(
             [adb_bin, "devices" if cmd == "start-server" else cmd],
-            run=subprocess.run,
+            run=run_command,
             check=True,
             creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
             timeout=io_timeout(10),
@@ -351,7 +353,7 @@ class Client:
         self._check_open()
         logger.debug(f"run process: {path}, args: {args}")
         cmd = [self.adb_bin, "-s", self.device_id, "shell", path] + args
-        guard_adb(self.adb_bin, timeout=io_timeout(10), run=subprocess.run)
+        guard_adb(self.adb_bin, timeout=io_timeout(10), run=run_command)
         return subprocess.Popen(
             cmd,
             stdout=subprocess.DEVNULL,

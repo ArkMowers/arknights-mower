@@ -1,5 +1,138 @@
 [
   {
+    "key": 432,
+    "name": "旅骨",
+    "span": 3,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "拾荒者",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻回收站时，材料转化效率<@cc.vup>+20%</>",
+        "roomType": "回收站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_recycle_spd&cost1",
+        "buffColor": "#6ccbcb",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "捡海人",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻回收站时，材料转化效率<@cc.vup>+30%</>",
+        "roomType": "回收站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_recycle_spd&cost2",
+        "buffColor": "#6ccbcb",
+        "textColor": "#333333"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "指尖的光",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻加工站加工<@cc.kw>手性屈光体</>或<@cc.kw>重相位对映体</>时，副产物的产出概率提升<@cc.vup>90%</>",
+        "roomType": "加工站",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_ws_Refractor",
+        "buffColor": "#e3eb00",
+        "textColor": "#333333"
+      }
+    ]
+  },
+  {
+    "key": 431,
+    "name": "德·托莱多",
+    "span": 3,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "拉拢听众",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻人力办公室时，人脉资源的联络速度<@cc.vup>+20%</>，心情每小时消耗<@cc.vup>-0.25</>",
+        "roomType": "人力办公室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_hire_spd&cost4",
+        "buffColor": "#565656",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 0,
+        "skill_level": 1,
+        "phase_level": "精2 1级",
+        "skillname": "聚众宣讲",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻人力办公室时，人脉资源的联络速度<@cc.vup>+30%</>，心情每小时消耗<@cc.vup>-0.25</>",
+        "roomType": "人力办公室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_hire_spd&cost6",
+        "buffColor": "#565657",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "忠实拥趸",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻宿舍时，该宿舍内所有干员心情每小时恢复<@cc.vup>+0.1</>，同时每个招募位（不包含初始招募位）额外<@cc.vup>+0.05</>恢复效果（叠加后的最终值同种效果取最高）",
+        "roomType": "宿舍",
+        "buffCategory": "RECOVERY",
+        "skillIcon": "bskill_dorm_hireToRecAll2",
+        "buffColor": "#21cdcb",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
+    "key": 430,
+    "name": "克莱门莎",
+    "span": 2,
+    "child_skill": [
+      {
+        "skill_key": 0,
+        "skill_level": 0,
+        "phase_level": "精0 1级",
+        "skillname": "谈判技巧",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "进驻会客室时，线索搜集速度提升<@cc.vup>20%</>，心情每小时消耗<@cc.vdown>+1</>",
+        "roomType": "会客室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_meet_spd&cost_clms",
+        "buffColor": "#dd653f",
+        "textColor": "#ffffff"
+      },
+      {
+        "skill_key": 1,
+        "skill_level": 0,
+        "phase_level": "精2 1级",
+        "skillname": "合作原则",
+        "buffer": false,
+        "buffer_des": [],
+        "des": "与其他干员进驻会客室一起工作时，线索搜集速度提升<@cc.vup>15%</>，心情每小时消耗<@cc.vdown>+1</>",
+        "roomType": "会客室",
+        "buffCategory": "FUNCTION",
+        "skillIcon": "bskill_meet_spd&cost_char",
+        "buffColor": "#dd653f",
+        "textColor": "#ffffff"
+      }
+    ]
+  },
+  {
     "key": 429,
     "name": "虎狼丸",
     "span": 2,

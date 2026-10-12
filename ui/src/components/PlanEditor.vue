@@ -2,15 +2,23 @@
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
+import {
+  planBindings,
+  addPlanBinding,
+  removePlanBinding,
+  bindingColorStyle
+} from '@/utils/plan_bindings'
 import { swapPlanFacilities } from '@/utils/plan_edit'
 import { plan_facility_type_options } from '@/utils/base_facilities'
 import { ref, computed, watch, inject } from 'vue'
 const config_store = useConfigStore()
 const plan_store = inject('planStore', null) || usePlanStore()
-const { operators, groups, current_plan, plan, workaholic, sub_plan, backup_plans } =
+const { operators, groups, group_colors, current_plan, plan, workaholic, sub_plan, backup_plans } =
   storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
-const { theme } = storeToRefs(config_store)
+const { theme, right_side_room_order } = storeToRefs(config_store)
+const right_room_names = { contact: '办公室', train: '训练室', recycle: '回收站' }
+const right_room_drag_type = 'application/x-mower-right-room'
 
 const outer = ref(null)
 
@@ -108,6 +116,8 @@ const right_side_facility_name = computed(() => {
     return '加工站'
   } else if (facility.value == 'train') {
     return '训练室'
+  } else if (facility.value == 'recycle') {
+    return '回收站'
   } else if (facility.value.startsWith('gaming')) {
     return '活动室'
   } else {
@@ -126,16 +136,6 @@ const facility_empty = computed(() => {
   return empty
 })
 
-const color_map = computed(() => {
-  const count = groups.value.length
-  const result = {}
-  for (let i = 0; i < count; ++i) {
-    result[groups.value[i]] = `5px solid hsl(${(360 / count) * i}, 80%, 45%)`
-  }
-  result[''] = 'none'
-  return result
-})
-
 function drag_facility(room, event) {
   if (edit_locked.value) {
     event.preventDefault()
@@ -149,8 +149,24 @@ function drop_facility(target, event) {
   event.preventDefault()
   if (edit_locked.value) return
   const source = event.dataTransfer.getData('text/plain')
+  if (!/^room_[1-3]_[1-3]$/.test(source)) return
 
   swapPlanFacilities(plan.value, backup_plans.value, sub_plan.value, source, target)
+}
+
+function drag_right_facility(room, event) {
+  if (edit_locked.value) {
+    event.preventDefault()
+    return
+  }
+  event.dataTransfer.setData(right_room_drag_type, room)
+  event.dataTransfer.effectAllowed = 'move'
+}
+
+function drop_right_facility(target, event) {
+  event.preventDefault()
+  if (edit_locked.value) return
+  config_store.swap_right_side_facilities(event.dataTransfer.getData(right_room_drag_type), target)
 }
 
 const avatar_bg = computed(() => {
@@ -161,7 +177,7 @@ defineExpose({
   outer
 })
 
-import { render_op_label, render_op_tag } from '@/utils/op_select'
+import { render_op_option, render_op_label, render_op_tag } from '@/utils/op_select'
 import { pinyin_match } from '@/utils/common'
 import { factory_product_options } from '@/utils/base_products'
 
@@ -231,7 +247,7 @@ function set_facility(e) {
 
 <template>
   <div class="plan-container" ref="outer">
-    <div class="outer">
+    <div class="outer" data-no-update-drop>
       <!-- 左 -->
       <div class="left_box">
         <div class="left_contain" v-for="row in 3">
@@ -267,7 +283,7 @@ function set_facility(e) {
                       :src="`avatar/${i.agent}.webp`"
                       width="45"
                       height="45"
-                      :style="{ 'border-bottom': color_map[i.group] }"
+                      :style="bindingColorStyle(i, group_colors)"
                       draggable="false"
                     />
                     <div
@@ -300,7 +316,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group] }"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -320,7 +336,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group] }"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -340,7 +356,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group] }"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -360,7 +376,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group] }"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -380,7 +396,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group] }"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -403,7 +419,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group] }"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -423,50 +439,47 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group] }"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
           </n-button>
         </div>
-        <div class="right_contain">
+        <div
+          class="right_contain right-room-draggable"
+          v-for="r in right_side_room_order"
+          :key="r"
+          :draggable="!edit_locked"
+          :aria-label="`${right_room_names[r]}，拖动交换设施位置`"
+          title="拖动交换办公室、训练室与回收站位置；仅保存在本机，不随排班导出"
+          @dragstart="drag_right_facility(r, $event)"
+          @dragover.prevent="$event.dataTransfer.dropEffect = 'move'"
+          @dragenter.prevent
+          @drop="drop_right_facility(r, $event)"
+        >
           <n-button
-            :secondary="facility != 'contact'"
+            :secondary="facility != r"
+            :draggable="!edit_locked"
             class="facility-2"
-            @click="set_facility('contact')"
-          >
-            <div>
-              <div class="facility-name">办公室</div>
-              <div class="avatars">
-                <img
-                  v-for="i in current_plan.contact.plans"
-                  :src="`avatar/${i.agent}.webp`"
-                  width="45"
-                  height="45"
-                  :style="{ 'border-bottom': color_map[i.group] }"
-                />
-              </div>
-            </div>
-          </n-button>
-        </div>
-        <div class="right_contain">
-          <n-button
-            :secondary="facility != 'train'"
-            class="facility-2"
-            @click="set_facility('train')"
+            @click="set_facility(r)"
           >
             <div>
               <div class="facility-name">
-                <div>协助位</div>
-                <div>训练位</div>
+                <template v-if="r === 'train'">
+                  <div>协助位</div>
+                  <div>训练位</div>
+                </template>
+                <template v-else>{{ right_room_names[r] }}</template>
               </div>
               <div class="avatars">
                 <img
-                  v-for="i in current_plan.train.plans"
+                  v-for="(i, index) in current_plan[r].plans"
+                  :key="index"
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group] }"
+                  :style="bindingColorStyle(i, group_colors)"
+                  draggable="false"
                 />
               </div>
             </div>
@@ -488,7 +501,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group] }"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -508,7 +521,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group] }"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -528,7 +541,7 @@ function set_facility(e) {
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
-                  :style="{ 'border-bottom': color_map[i.group] }"
+                  :style="bindingColorStyle(i, group_colors)"
                 />
               </div>
             </div>
@@ -537,109 +550,210 @@ function set_facility(e) {
       </div> -->
     </div>
     <n-space justify="center" v-if="facility">
-      <table>
-        <tr>
-          <td>设施类别：</td>
-          <td>
-            <n-select
-              v-model:value="current_plan[facility].name"
-              :disabled="edit_locked"
-              :options="facility_types"
-              class="type-select"
-              v-if="facility.startsWith('room')"
-            />
-            <span v-else class="type-select">{{ right_side_facility_name }}</span>
-          </td>
-          <template v-if="['制造站', '贸易站'].includes(current_plan[facility].name)">
-            <td>
-              产物
-              <help-text v-if="current_plan[facility].name == '制造站'">
-                制造站会随排班自动核对并切换产物。
-              </help-text>
-              <help-text v-else> 贸易站会随排班自动核对并切换订单类型。 </help-text>
-            </td>
+      <table class="facility-actions">
+        <tbody>
+          <tr>
+            <td>设施类别：</td>
             <td>
               <n-select
-                v-model:value="current_plan[facility].product"
+                v-model:value="current_plan[facility].name"
                 :disabled="edit_locked"
-                :options="
-                  current_plan[facility].name == '制造站' ? factory_products : trading_products
-                "
-                class="product-select"
-                :render-label="render_product"
+                :options="facility_types"
+                class="type-select"
+                v-if="facility.startsWith('room')"
               />
+              <span v-else class="type-select">{{ right_side_facility_name }}</span>
             </td>
-          </template>
-          <td>
-            <n-button
-              ghost
-              type="primary"
-              @click="fill_with_free"
-              :disabled="edit_locked"
-              v-if="facility.startsWith('dorm')"
-            >
-              此宿舍内空位填充Free
-            </n-button>
-          </td>
-          <td>
-            <n-button ghost type="error" @click="clear" :disabled="edit_locked || facility_empty">
-              清空此设施内干员
-            </n-button>
-          </td>
-        </tr>
+            <template v-if="['制造站', '贸易站'].includes(current_plan[facility].name)">
+              <td>
+                产物
+                <help-text v-if="current_plan[facility].name == '制造站'">
+                  制造站会随排班自动核对并切换产物。
+                </help-text>
+                <help-text v-else> 贸易站会随排班自动核对并切换订单类型。 </help-text>
+              </td>
+              <td>
+                <n-select
+                  v-model:value="current_plan[facility].product"
+                  :disabled="edit_locked"
+                  :options="
+                    current_plan[facility].name == '制造站' ? factory_products : trading_products
+                  "
+                  class="product-select"
+                  :render-label="render_product"
+                />
+              </td>
+            </template>
+            <td>
+              <n-button
+                ghost
+                type="primary"
+                @click="fill_with_free"
+                :disabled="edit_locked"
+                v-if="facility.startsWith('dorm')"
+              >
+                此宿舍内空位填充Free
+              </n-button>
+            </td>
+            <td v-if="sub_plan !== 'main'">
+              <n-button
+                ghost
+                :disabled="edit_locked"
+                title="用主表此设施的配置覆盖当前副表的此设施"
+                @click="!edit_locked && plan_store.import_main_facility(facility)"
+              >
+                从主表导入此设施
+              </n-button>
+            </td>
+            <td>
+              <n-button ghost type="error" @click="clear" :disabled="edit_locked || facility_empty">
+                清空此设施内干员
+              </n-button>
+            </td>
+          </tr>
+        </tbody>
       </table>
     </n-space>
     <n-space justify="center">
       <table>
-        <tr v-for="i in operator_limit" :key="i">
-          <td class="select-label">
-            <template v-if="facility == 'train' && i == 1">协助位</template>
-            <template v-else-if="facility == 'train' && i == 2">训练位</template>
-            <template v-else>干员：</template>
-          </td>
-          <td class="table-space">
-            <n-select
-              filterable
-              :options="operator_options(facility)"
-              class="operator-select"
-              v-model:value="current_plan[facility].plans[i - 1].agent"
-              :disabled="edit_locked"
-              :filter="(p, o) => pinyin_match(o.label, p)"
-              :render-label="render_op_label"
-            />
-          </td>
-          <td class="select-label">
-            <span>组</span>
-            <help-text>
-              <p>同组一起上下班。宿舍成员随组由替班接岗，不额外占床。</p>
-              <p>宿舍替班按已知心情从低到高选择，已在岗者保留。</p>
-              <p>宿舍替换填 Free 可在下班时开放休息床位；具体替班须为非主班。</p>
-            </help-text>
-          </td>
-          <td class="table-space group">
-            <n-input
-              v-model:value="current_plan[facility].plans[i - 1].group"
-              :disabled="edit_locked || !current_plan[facility].plans[i - 1].agent"
-            />
-          </td>
-          <td class="select-label">替换：</td>
-          <td>
-            <n-form-item :show-label="false" :show-feedback="false">
-              <slick-operator-select
-                :disabled="edit_locked || !current_plan[facility].plans[i - 1].agent"
-                :include-free="facility.startsWith('dorm')"
-                v-model="current_plan[facility].plans[i - 1].replacement"
-                class="replacement-select"
+        <tbody v-for="i in operator_limit" :key="i">
+          <tr
+            v-for="(binding, bindingIndex) in planBindings(current_plan[facility].plans[i - 1])"
+            :key="bindingIndex"
+          >
+            <td
+              v-if="bindingIndex === 0"
+              class="select-label"
+              :rowspan="planBindings(current_plan[facility].plans[i - 1]).length"
+            >
+              <template v-if="facility == 'train' && i == 1">协助位</template>
+              <template v-else-if="facility == 'train' && i == 2">训练位</template>
+              <template v-else>干员：</template>
+            </td>
+            <td
+              v-if="bindingIndex === 0"
+              class="table-space"
+              :rowspan="planBindings(current_plan[facility].plans[i - 1]).length"
+            >
+              <n-select
+                filterable
+                :options="operator_options(facility)"
+                class="operator-select"
+                v-model:value="current_plan[facility].plans[i - 1].agent"
+                :disabled="edit_locked"
+                :filter="(p, o) => pinyin_match(o.label, p)"
+                :render-label="render_op_label"
+                :render-option="render_op_option"
               />
-            </n-form-item>
-          </td>
-        </tr>
+            </td>
+            <td class="select-label">
+              <span>组</span>
+              <help-text>
+                <p>同组一起上下班。宿舍成员随组由替班接岗，不额外占床。</p>
+                <p>点击加号新增绑组，每列分别设置替班；组名不能为空或重复。</p>
+                <p>
+                  未绑组的0心情工作干员、整组均为0心情工作干员时可不填普通替班；混合组仍需为每位成员填写替班。
+                </p>
+                <p>多绑组干员跟随最近触发换班的组，使用对应替班，不参与组内心情和回班时间计算。</p>
+                <p>参与轮休的多绑组至少需要一名参与心情计算的非宿舍干员。</p>
+                <p>宿舍替班按已知心情从低到高选择，已在岗者保留。</p>
+                <p>宿舍替换填 Free 可在下班时开放休息床位；具体替班可填写同组工作主班或非主班。</p>
+              </help-text>
+            </td>
+            <td class="table-space group">
+              <div class="binding-group">
+                <n-input
+                  v-model:value="binding.group"
+                  :disabled="edit_locked || !current_plan[facility].plans[i - 1].agent"
+                />
+                <div class="binding-actions">
+                  <n-button
+                    v-if="bindingIndex === 0"
+                    class="add-binding"
+                    aria-label="新增绑组"
+                    title="新增绑组"
+                    :disabled="
+                      edit_locked ||
+                      ['', 'Free', 'Current', '菲亚梅塔'].includes(
+                        current_plan[facility].plans[i - 1].agent
+                      )
+                    "
+                    @click="addPlanBinding(current_plan[facility].plans[i - 1])"
+                    >+</n-button
+                  >
+                  <n-button
+                    v-if="bindingIndex > 0"
+                    class="remove-binding"
+                    aria-label="删除此绑组"
+                    title="删除此绑组"
+                    :disabled="edit_locked"
+                    @click="removePlanBinding(current_plan[facility].plans[i - 1], bindingIndex)"
+                    >−</n-button
+                  >
+                </div>
+              </div>
+            </td>
+            <td class="select-label">替换：</td>
+            <td>
+              <n-form-item :show-label="false" :show-feedback="false">
+                <slick-operator-select
+                  :disabled="edit_locked || !current_plan[facility].plans[i - 1].agent"
+                  :include-free="facility.startsWith('dorm')"
+                  v-model="binding.replacement"
+                  class="replacement-select"
+                />
+              </n-form-item>
+            </td>
+          </tr>
+        </tbody>
       </table>
     </n-space>
   </div>
 </template>
 
 <style scoped lang="scss">
+.facility-actions {
+  border-spacing: 8px 0;
+
+  td {
+    vertical-align: middle;
+  }
+
+  :deep(.n-button) {
+    height: 36px;
+    --n-border-radius: 6px !important;
+    --n-border: 1px solid currentColor !important;
+    --n-border-hover: 1px solid currentColor !important;
+    --n-border-focus: 1px solid currentColor !important;
+    --n-border-pressed: 1px solid currentColor !important;
+    --n-border-disabled: 1px solid currentColor !important;
+  }
+
+  :deep(.n-base-selection) {
+    --n-height: 36px !important;
+  }
+}
+
+.binding-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  .n-input {
+    min-width: 90px;
+  }
+  .binding-actions {
+    width: 30px;
+    flex-shrink: 0;
+    display: flex;
+    gap: 4px;
+    justify-content: flex-end;
+  }
+  .n-button {
+    padding: 0 9px;
+  }
+}
+
 .select-label {
   width: 44px;
 }
@@ -688,6 +802,14 @@ function set_facility(e) {
   margin: 2px 3px;
 }
 
+.right-room-draggable[draggable='true'] .n-button {
+  cursor: grab;
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
 .facility-3 {
   width: 175px;
   height: 76px;
@@ -702,6 +824,7 @@ function set_facility(e) {
 
 .avatars {
   display: flex;
+  align-items: flex-start;
   gap: 6px;
   z-index: 5;
 

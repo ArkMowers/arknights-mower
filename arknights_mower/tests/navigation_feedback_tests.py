@@ -9,6 +9,7 @@ import pytest
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.recognize import RecognizeError
+from arknights_mower.utils.scheduler_task import SchedulerTask
 
 BLUE = ((1550, 40), (1800, 100))
 DETAIL = ((10, 400), (150, 480))
@@ -17,6 +18,7 @@ DETAIL = ((10, 400), (150, 480))
 def solver_for(frames):
     """一次缓存失效对应一张新帧；同一帧中的全部模板查询共享状态。"""
     solver = object.__new__(BaseSchedulerSolver)
+    solver.task = SchedulerTask()
     solver.op_data = SimpleNamespace(run_order_rooms={})
     state = {"frame": 0}
 

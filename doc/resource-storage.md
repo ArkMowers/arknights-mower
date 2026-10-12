@@ -2,12 +2,12 @@
 
 完整资源包安装到共享的 `@app/resources`。软件自带资源保留在 internal，作为内置基线。源码部署的运行期资源目录已加入 Git 忽略规则；macOS 资源写在用户数据目录，不改动已签名的 `.app`。
 
-| 部署方式 | 默认持久目录 |
-| --- | --- |
-| 源码 | 仓库根目录下的 `resources/` |
-| Windows / Linux 独立包 | 程序目录下的 `resources/` |
-| macOS 独立包 | `~/Library/Application Support/arknights_mower/resources/` |
-| 指定 `MOWER_DATA_DIR` | 该目录下的 `resources/` |
+| 部署方式               | 默认持久目录                                               |
+| ---------------------- | ---------------------------------------------------------- |
+| 源码                   | 仓库根目录下的 `resources/`                                |
+| Windows / Linux 独立包 | 程序目录下的 `resources/`                                  |
+| macOS 独立包           | `~/Library/Application Support/arknights_mower/resources/` |
+| 指定 `MOWER_DATA_DIR`  | 该目录下的 `resources/`                                    |
 
 这些路径显式使用 `space=""`，同一数据根目录的多开实例共享一份文件。首次启动会检查原共享 `tmp/resource` 和当前实例旧资源目录，将可用资源复制到持久目录，并保留旧目录供旧程序恢复使用。已有持久索引时不会重复迁移。
 
@@ -41,3 +41,7 @@
 ## macOS 签名
 
 资源安装不写入 `.app/Contents`，因此不会因更新资源而改变程序的代码签名。DMG 软件更新则完整复制新 `.app`，并在停止旧实例之前执行签名完整性检查。Developer ID 信任与 Apple 公证是另外的要求，详见[软件更新说明](software-update.md#macos-签名与系统信任)。
+
+## 资源 OTA
+
+资源更新优先下载对应当前资源版本的 OTA 增量包，重建完整目录并逐文件校验后，沿用共享目录发布和任务间歇加载。没有对应增量包、下载失败或校验失败时，在线更新自动回退到同一目标版本的完整资源包。手动拖入 OTA 包只使用本地文件，起点版本不匹配时拒绝安装。发布格式与校验边界见[资源 OTA 契约](../docs/subsystems/resource-update.md#1-resource-ota)。

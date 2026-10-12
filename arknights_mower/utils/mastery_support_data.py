@@ -11,6 +11,24 @@ from .mastery_support_types import (
     SupportPlanError,
     TrainingInputs,
 )
+from .plan import all_replacements
+
+
+def actual_central_bonus(solver, configured):
+    """Only confirmed Control Center occupants contribute to the current rate."""
+    operators = getattr(getattr(solver, "op_data", None), "operators", None)
+    if not isinstance(operators, dict):
+        return configured
+    return (
+        5
+        if any(
+            name in CONTROL_TRAINERS
+            and op.current_room == "central"
+            and op.current_mood() > 0
+            for name, op in operators.items()
+        )
+        else 0
+    )
 
 
 def schedule_context(plan=None):
@@ -28,7 +46,10 @@ def schedule_context(plan=None):
             if room == "train" or not facility:
                 continue
             for slot in facility.get("plans", []):
-                for name in [slot.get("agent", ""), *slot.get("replacement", [])]:
+                replacements = all_replacements(
+                    slot.get("replacement", ()), slot.get("group_bindings", ())
+                )
+                for name in [slot.get("agent", ""), *replacements]:
                     if name not in IGNORED_NAMES:
                         blocked.setdefault(name, set()).add(room)
                         if room == "central":

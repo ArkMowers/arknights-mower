@@ -1,6 +1,7 @@
 """宿舍候选、分床和重排共用的排班身份与心情排序。"""
 
 from enum import IntEnum
+from itertools import zip_longest
 
 from arknights_mower.data import agent_list
 
@@ -61,13 +62,28 @@ def resting_tier(op_data, name):
             return _replacement_tier(op_data, name)
     # 菲亚梅塔的名单是充能目标，不是普通替班。
     if any(
-        name in slot.replacement
+        name in slot.all_replacements
         for slots in op_data.plan.values()
         for slot in slots
         if slot.agent != "菲亚梅塔"
     ):
         return _replacement_tier(op_data, name)
     return RestingTier.IDLE
+
+
+def bed_takeover_allowed(op_data, requester, resident):
+    """前四级保床；候补与普通替班不超过个人上限八成时可接管更低级。"""
+    requester_tier = resting_tier(op_data, requester)
+    resident_tier = resting_tier(op_data, resident)
+    if not (
+        requester_tier < resident_tier < RestingTier.EXCLUDED
+        and resident_tier > RestingTier.PRIORITY_REPLACEMENT
+    ):
+        return False
+    if requester_tier <= RestingTier.PRIORITY_REPLACEMENT:
+        return True
+    op = op_data.operators.get(requester)
+    return has_resting_mood(op) and resting_mood(op) <= op.upper_limit * 0.8
 
 
 def has_resting_mood(op, now=None):
@@ -91,6 +107,44 @@ def resting_key(op_data, name, now=None):
     # 同级按尚需恢复的心情点数降序；恢复速度不按个人上下限成比例。
     mood -= op.upper_limit if op is not None else 24
     return resting_tier(op_data, name), mood
+
+
+def crafting_rest_candidates(op_data, names):
+    """按加工顺序返回本轮符合条件的普通空闲候选。"""
+    from arknights_mower.utils import config
+    from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+
+    conf = config.conf
+    if not (conf.enable_mastery and conf.workshop_auto_active):
+        return []
+    present = set(names)
+    configured = dict.fromkeys(
+        name
+        for row in zip_longest(
+            conf.fodder_operators, conf.t5_operators, conf.book_operators
+        )
+        for name in row
+        if name
+    )
+    return [
+        name
+        for name in configured
+        if name in present
+        and resting_tier(op_data, name) == RestingTier.IDLE
+        and not op_data.rest_mood_complete(name)
+        and (mood := dorm_candidate_mood(op_data, name)) is not None
+        and mood < getattr(op_data.operators.get(name), "upper_limit", 24)
+    ]
+
+
+def crafting_rest_order(op_data, names):
+    """只交换已排序名单中普通空闲加工干员的位置，不提升整个加工层。"""
+    names = list(names)
+    ordered = crafting_rest_candidates(op_data, names)
+    positions = [index for index, name in enumerate(names) if name in ordered]
+    for index, name in zip(positions, ordered):
+        names[index] = name
+    return names
 
 
 def busy_resting_names():

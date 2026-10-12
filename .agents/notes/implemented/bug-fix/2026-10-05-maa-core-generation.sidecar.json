@@ -7,14 +7,23 @@
     "Codex"
   ],
   "invariants": [
-    "[INV-UPD-02]"
+    "[INV-MAA-11]"
   ],
   "code_symbols": [
     "arknights_mower.utils.maa_runtime.load_verified_maa",
-    "arknights_mower.utils.maa_runtime.MaaCoreRestartRequired"
+    "arknights_mower.utils.maa_runtime.MaaCoreRestartRequired",
+    "arknights_mower.utils.maa_update.clear_loaded_maa_cache",
+    "arknights_mower.utils.maa_update.read_installed_version"
   ],
   "test_suites": [
     "arknights_mower/tests/maa_runtime_tests.py",
-    "arknights_mower/tests/maa_error_no_exit_tests.py"
+    "arknights_mower/tests/maa_error_no_exit_tests.py",
+    "arknights_mower/tests/maa_runtime_native_tests.py",
+    "arknights_mower/tests/maa_update_tests.py",
+    "arknights_mower/tests/maa_check_tests.py",
+    "arknights_mower/tests/adb_shared_transport_tests.py",
+    "arknights_mower/tests/maa_admission_tests.py",
+    "arknights_mower/tests/maa_callback_tests.py",
+    "arknights_mower/tests/maa_navigation_tests.py"
   ]
 }

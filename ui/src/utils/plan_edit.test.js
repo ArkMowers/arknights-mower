@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { pinyin_match } from './common.js'
 
 import {
   apply_operator_replace,
@@ -157,6 +158,55 @@ describe('collect_plan_operators', () => {
   it('source 下拉只含排班里出现过的干员', () => {
     const ops = collect_plan_operators(make_state())
     expect(ops).toEqual(['能天使', '德克萨斯'])
+  })
+
+  it.each(['main', 'backup'])('收集并筛选只在 %s 多绑组替班列出现的干员', (table) => {
+    const state = make_state()
+    const plan = table === 'main' ? state.main_plan : state.backup_plans[0].plan
+    plan.room_1_1.plans[0].group_bindings = [
+      { group: '附加组', replacement: ['夕'] },
+      { group: '第二组', replacement: ['令'] }
+    ]
+    const before = structuredClone(state)
+    const ops = collect_plan_operators(state)
+    expect(ops).toEqual(expect.arrayContaining(['夕', '令']))
+    expect(ops.filter((name) => pinyin_match(name, 'xi'))).toContain('夕')
+    expect(ops.includes('令')).toBe(true)
+    expect(state).toEqual(before)
+  })
+
+  it('多列和主副表共享的替班干员只出现一次', () => {
+    const state = make_state()
+    state.main_plan.room_1_1.plans[0].group_bindings = [
+      { group: '第一组', replacement: ['德克萨斯', '夕'] },
+      { group: '第二组', replacement: ['夕', '令'] }
+    ]
+    state.backup_plans[0].plan.room_1_1.plans[0].group_bindings = [
+      { group: '副表组', replacement: ['夕', '令'] }
+    ]
+    const ops = collect_plan_operators(state)
+    expect(ops).toEqual(['能天使', '德克萨斯', '夕', '令'])
+  })
+
+  it.each(['main', 'backup'])('选中 %s 附加列的干员后替换全部对应绑定', (table) => {
+    const state = make_state()
+    const plan = table === 'main' ? state.main_plan : state.backup_plans[0].plan
+    const slot = plan.room_1_1.plans[0]
+    slot.group_bindings = [
+      { group: '夕组', replacement: ['夕', '令'] },
+      { group: '第二组', replacement: ['夕'] }
+    ]
+    expect(collect_plan_operators(state)).toContain('夕')
+    apply_operator_replace(state, '夕', '风笛')
+    expect(slot.group_bindings).toEqual([
+      { group: '夕组', replacement: ['风笛', '令'] },
+      { group: '第二组', replacement: ['风笛'] }
+    ])
+    expect(slot.agent).toBe('能天使')
+    expect(slot.replacement).toEqual(table === 'main' ? ['德克萨斯'] : [])
+    const ops = collect_plan_operators(state)
+    expect(ops).toContain('风笛')
+    expect(ops).not.toContain('夕')
   })
 })
 

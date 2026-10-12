@@ -13,10 +13,14 @@
   "code_symbols": [
     "arknights_mower.utils.character_recognize.estimate_agent_mood",
     "arknights_mower.utils.dorm_candidates.dorm_candidate_mood",
-    "arknights_mower.solvers.base_mixin.BaseMixin.scan_agent"
+    "arknights_mower.solvers.base_mixin.BaseMixin.scan_agent",
+    "arknights_mower.utils.dorm_candidates.full_dorm_candidate",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.choose_agent"
   ],
   "test_suites": [
     "arknights_mower/tests/selection_card_mood_tests.py",
-    "arknights_mower/tests/dorm_unknown_selection_tests.py"
+    "arknights_mower/tests/dorm_unknown_selection_tests.py",
+    "arknights_mower/tests/dorm_recovery_full_padding_tests.py",
+    "arknights_mower/tests/initial_dorm_mood_tests.py"
   ]
 }

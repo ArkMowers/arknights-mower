@@ -19,6 +19,7 @@ class WeeklyPlanManager:
     ACTIVITY_FALLBACKS_KEY = "activity_fallbacks"
     ACTIVITY_FALLBACK_END_TIMES_KEY = "activity_fallback_end_times"
     ACTIVITY_FALLBACK_SWITCH_TIMES_KEY = "activity_fallback_switch_times"
+    ACTIVITY_STAGE_END_TIMES_KEY = "activity_stage_end_times"
     INVENTORY_CONFIGS_KEY = "inventory_configs"
 
     def __init__(self):
@@ -344,6 +345,7 @@ class WeeklyPlanManager:
                 return False
         if target:
             fallbacks[source] = target
+            self._remember_activity_stage_ends(data, source, plans[source])
             activity_end_ts = self._activity_end_ts_for_plan_data(plans[source])
             if activity_end_ts is not None:
                 end_times[source] = activity_end_ts
@@ -356,6 +358,9 @@ class WeeklyPlanManager:
             fallbacks.pop(source, None)
             end_times.pop(source, None)
             switch_times.pop(source, None)
+            stage_ends = data.get(self.ACTIVITY_STAGE_END_TIMES_KEY)
+            if isinstance(stage_ends, dict):
+                stage_ends.pop(source, None)
         if fallbacks:
             data[self.ACTIVITY_FALLBACKS_KEY] = fallbacks
         else:
@@ -391,6 +396,44 @@ class WeeklyPlanManager:
             self._plan_stage_ids(plan_data),
         )
 
+    def _remember_activity_stage_ends(self, data, key, plan_data, stages=None):
+        """保留所选活动关卡的结束时间，供资源移除窗口后清理原方案。"""
+        from arknights_mower.data import stage_data_full
+
+        selected = set(self._plan_stage_ids(plan_data))
+        raw = data.get(self.ACTIVITY_STAGE_END_TIMES_KEY)
+        by_plan = dict(raw) if isinstance(raw, dict) else {}
+        previous = by_plan.get(key)
+        ends = (
+            {
+                code: timestamp
+                for code, timestamp in (previous or {}).items()
+                if code in selected and type(timestamp) is int and timestamp > 0
+            }
+            if isinstance(previous, dict)
+            else {}
+        )
+        for stage in list(stage_data_full) if stages is None else stages:
+            code = stage.get("id") or stage.get("code")
+            window = stage.get("endTs")
+            if (
+                code in selected
+                and stage.get("stageType") == "ACTIVITY"
+                and isinstance(window, dict)
+            ):
+                end = window.get("endTs")
+                if type(end) is int and end > 0:
+                    ends[code] = end
+        if ends:
+            by_plan[key] = ends
+        else:
+            by_plan.pop(key, None)
+        if by_plan:
+            data[self.ACTIVITY_STAGE_END_TIMES_KEY] = by_plan
+        else:
+            data.pop(self.ACTIVITY_STAGE_END_TIMES_KEY, None)
+        return ends
+
     def maybe_switch_expired_activity_plan(
         self, stages=None, now: int | None = None
     ) -> dict | None:
@@ -413,9 +456,12 @@ class WeeklyPlanManager:
         activity_end_ts = (
             detected_end_ts if detected_end_ts is not None else stored_end_ts
         )
+        before = deepcopy(data)
+        stage_ends = self._remember_activity_stage_ends(data, source, plan_data, stages)
         if detected_end_ts is not None and detected_end_ts != stored_end_ts:
             end_times[source] = detected_end_ts
             data[self.ACTIVITY_FALLBACK_END_TIMES_KEY] = end_times
+        if data != before:
             self._write_weekly_plans(data)
         custom_switch_ts = self.get_activity_fallback_switch_times().get(source)
         switch_ts = custom_switch_ts or activity_end_ts
@@ -424,6 +470,28 @@ class WeeklyPlanManager:
             return None
         if not self.set_active_plan(target):
             return None
+
+        expired = {code for code, end in stage_ends.items() if end <= current_ts}
+        if expired and source in (data.get("plans") or {}):
+            cleaned = deepcopy(plan_data)
+            for day in cleaned:
+                if isinstance(day, dict):
+                    day["stage"] = [
+                        code for code in day.get("stage", []) if code not in expired
+                    ]
+            data["plans"][source] = cleaned
+            remaining_ends = self._remember_activity_stage_ends(
+                data, source, cleaned, stages
+            )
+            if remaining_ends:
+                end_times[source] = max(remaining_ends.values())
+            else:
+                end_times.pop(source, None)
+            if end_times:
+                data[self.ACTIVITY_FALLBACK_END_TIMES_KEY] = end_times
+            else:
+                data.pop(self.ACTIVITY_FALLBACK_END_TIMES_KEY, None)
+            self._write_weekly_plans(data)
 
         result = {
             "source": source,
@@ -492,6 +560,7 @@ class WeeklyPlanManager:
         raw_fallbacks = data.get(self.ACTIVITY_FALLBACKS_KEY)
         fallbacks = dict(raw_fallbacks) if isinstance(raw_fallbacks, dict) else {}
         if key in fallbacks:
+            self._remember_activity_stage_ends(data, key, plan_data)
             raw_end_times = data.get(self.ACTIVITY_FALLBACK_END_TIMES_KEY)
             end_times = dict(raw_end_times) if isinstance(raw_end_times, dict) else {}
             activity_end_ts = self._activity_end_ts_for_plan_data(plan_data)
@@ -512,6 +581,9 @@ class WeeklyPlanManager:
         active_before = self.get_active_plan_key()
         data = self._read_weekly_plans()
         del data["plans"][key]
+        stage_ends = data.get(self.ACTIVITY_STAGE_END_TIMES_KEY)
+        if isinstance(stage_ends, dict):
+            stage_ends.pop(key, None)
         raw_fallbacks = data.get(self.ACTIVITY_FALLBACKS_KEY)
         fallbacks = dict(raw_fallbacks) if isinstance(raw_fallbacks, dict) else {}
         raw_end_times = data.get(self.ACTIVITY_FALLBACK_END_TIMES_KEY)
@@ -541,6 +613,16 @@ class WeeklyPlanManager:
             for source, switch in switch_times.items()
             if source in fallbacks
         }
+        if isinstance(stage_ends, dict):
+            stage_ends = {
+                source: ends
+                for source, ends in stage_ends.items()
+                if source in fallbacks
+            }
+            if stage_ends:
+                data[self.ACTIVITY_STAGE_END_TIMES_KEY] = stage_ends
+            else:
+                data.pop(self.ACTIVITY_STAGE_END_TIMES_KEY, None)
         if fallbacks:
             data[self.ACTIVITY_FALLBACKS_KEY] = fallbacks
         else:

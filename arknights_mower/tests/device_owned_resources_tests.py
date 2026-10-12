@@ -55,14 +55,23 @@ class DeviceOwnershipTests(unittest.TestCase):
         self.device.interrupt_io()
         self.device.close()
 
-    def test_failed_cleanup_is_reported_once_and_every_remaining_item_is_attempted(
+    def test_failed_cleanup_is_retried_without_repeating_completed_items(
         self,
     ):
         events = self.resources(failing=True)
         for _ in range(2):
             with self.assertRaisesRegex(OSError, "capture close failed"):
                 self.device.close()
-        self.assertEqual(events, ["capture", "droidcast", "touch", "adb"])
+        self.assertEqual(events, ["capture", "droidcast", "touch", "adb", "capture"])
+
+    def test_unowned_cleanup_failure_is_not_cleared_by_resource_release(self):
+        events = self.resources(failing=True)
+        failure = OSError("unregistered helper did not exit")
+        self.device._close_error = failure
+        for _ in range(2):
+            with self.assertRaisesRegex(OSError, "unregistered helper did not exit"):
+                self.device.close()
+        self.assertEqual(events, ["capture", "droidcast", "touch", "adb", "capture"])
 
     def test_interruption_releases_once_and_rejects_all_helper_rebuilds(self):
         events = self.resources()

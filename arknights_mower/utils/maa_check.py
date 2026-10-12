@@ -20,6 +20,15 @@ import sys
 
 params = json.loads(sys.argv[1])
 try:
+    if params.get("version_only"):
+        import ctypes
+        library = ctypes.CDLL(params["core_path"])
+        get_version = library.AsstGetVersion
+        get_version.argtypes = []
+        get_version.restype = ctypes.c_char_p
+        version = get_version()
+        print(json.dumps({"status": "success", "message": version.decode("utf-8") if version else ""}))
+        raise SystemExit
     maa_path = pathlib.Path(params["maa_path"])
     sys.path.append(str(maa_path / "Python"))
 
@@ -29,7 +38,8 @@ try:
         pass
 
     callback_func = Asst.CallBackType(callback)
-    Asst.load(path=maa_path, incremental_path=maa_path / "cache")
+    if not Asst.load(path=maa_path, incremental_path=maa_path / "cache"):
+        raise RuntimeError(f"MAA 资源加载失败：{maa_path}，请检查资源文件读取权限及 MAA 目录/debug/asst.log")
     asst = Asst(callback=callback_func)
     version = asst.get_version()
     asst.set_instance_option(2, params["maa_touch_option"])
@@ -79,6 +89,13 @@ def run_maa_check(params: dict) -> dict[str, str]:
     """
     try:
         python_dir = None
+        if params.get("version_only"):
+            from arknights_mower.utils.maa_update import read_installed_version
+
+            return {
+                "status": "success",
+                "message": read_installed_version(params["maa_path"]),
+            }
         maa_path = pathlib.Path(params["maa_path"])
         python_dir = str(maa_path / "Python")
         sys.path.append(python_dir)
@@ -89,7 +106,10 @@ def run_maa_check(params: dict) -> dict[str, str]:
             pass
 
         callback_func = Asst.CallBackType(callback)
-        Asst.load(path=maa_path, incremental_path=maa_path / "cache")
+        if not Asst.load(path=maa_path, incremental_path=maa_path / "cache"):
+            raise RuntimeError(
+                f"MAA 资源加载失败：{maa_path}，请检查资源文件读取权限及 MAA 目录/debug/asst.log"
+            )
         asst = Asst(callback=callback_func)
         version = asst.get_version()
         asst.set_instance_option(2, params["maa_touch_option"])

@@ -74,6 +74,12 @@ class AndroidPackageTests(unittest.TestCase):
                 self.assertIn("python-runtime.zip.xz", z.namelist())
                 self.assertEqual(meta["version"], "4.2.0")
                 self.assertIn("mower/ui/dist/index.html", z.namelist())
+                self.assertEqual(
+                    z.read("mower/ui/dist/pages/basement_skill/buffer.json"), b"payload"
+                )
+                self.assertEqual(
+                    z.read("mower/arknights_mower/data/building_skill.json"), b"payload"
+                )
                 self.assertFalse(
                     any(name.startswith("mower/ui/src/") for name in z.namelist())
                 )
@@ -107,6 +113,35 @@ class AndroidPackageTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "missing Python runtime"):
                 package(root, root / "out", "4.2.0", "a" * 40)
             self.assertFalse((root / "out").exists())
+
+    def test_missing_skill_catalog_or_ota_buffer_prevents_packaging(self):
+        for missing in (
+            "arknights_mower/data/building_skill.json",
+            "ui/dist/pages/basement_skill/buffer.json",
+        ):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                for name in REQUIRED:
+                    target = root / name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text("payload")
+                (root / missing).unlink()
+                with self.assertRaisesRegex(ValueError, "missing build input"):
+                    package(root, root / "out", "4.2.0", "a" * 40)
+                self.assertFalse((root / "out").exists())
+
+    def test_empty_ota_buffer_prevents_packaging(self):
+        for content in ("", " \n"):
+            with self.subTest(content=content), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                for name in REQUIRED:
+                    target = root / name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text("payload")
+                (root / "ui/dist/pages/basement_skill/buffer.json").write_text(content)
+                with self.assertRaisesRegex(ValueError, "empty build input: .*buffer"):
+                    package(root, root / "out", "4.2.0", "a" * 40)
+                self.assertFalse((root / "out").exists())
 
     def test_missing_or_empty_changelog_cannot_publish_an_update(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -173,6 +208,8 @@ class AndroidArchiveValidationTests(unittest.TestCase):
     def test_bad_payload_cannot_be_published(self):
         cases = [
             {"mower/CHANGELOG.md": " "},
+            {"mower/arknights_mower/data/building_skill.json": ""},
+            {"mower/ui/dist/pages/basement_skill/buffer.json": ""},
             {"python-runtime.zip.xz": "corrupt"},
             {"mower/server.py": "def invalid("},
             {"mower/arknights_mower/utils/git_revision": "b" * 40},

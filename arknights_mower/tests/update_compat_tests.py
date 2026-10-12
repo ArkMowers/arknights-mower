@@ -4,8 +4,10 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from flask import Flask
@@ -20,6 +22,9 @@ from arknights_mower.views.software_update import software_update_bp
 
 class UpdateCompatibilityTests(unittest.TestCase):
     def setUp(self):
+        self.clock = SimpleNamespace(
+            monotonic=time.monotonic, sleep=Mock(), time=time.time
+        )
         folder = tempfile.TemporaryDirectory(prefix="mower 更新 ")
         self.addCleanup(folder.cleanup)
         self.root = Path(folder.name)
@@ -71,14 +76,14 @@ class UpdateCompatibilityTests(unittest.TestCase):
         with (
             patch.object(installer.sys, "platform", "win32"),
             patch.object(installer.shutil, "rmtree", side_effect=remove),
-            patch.object(installer.time, "sleep") as sleep,
+            patch.object(installer, "time", self.clock),
         ):
             worker.cleanup_preparation()
         self.assertEqual(attempts, 2)
         self.assertFalse(worker.source_stage.exists())
         self.assertTrue(self.root.exists())
         worker.run_command.assert_called_once()
-        sleep.assert_called_once_with(0.1)
+        self.clock.sleep.assert_called_once_with(0.1)
 
     def test_windows_worktree_cleanup_is_bounded_and_reports_permanent_lock(self):
         worker = installer.Worker(self.job_path)
@@ -87,16 +92,18 @@ class UpdateCompatibilityTests(unittest.TestCase):
         worker.run_command = Mock(side_effect=subprocess.CalledProcessError(255, "git"))
         locked = PermissionError("directory stays open")
         locked.winerror = 32
+        self.clock.monotonic = Mock(side_effect=[0, 6])
         with (
             patch.object(installer.sys, "platform", "win32"),
             patch.object(installer.shutil, "rmtree", side_effect=locked) as remove,
-            patch.object(installer.time, "monotonic", side_effect=[0, 6]),
-            patch.object(installer.time, "sleep") as sleep,
+            patch.object(installer, "time", self.clock),
             patch.object(installer.traceback, "print_exc") as report,
         ):
             worker.cleanup_preparation()
+            # Unrelated threads retain the standard-library clock.
+            time.sleep(0)
         remove.assert_called_once_with(worker.source_stage)
-        sleep.assert_not_called()
+        self.clock.sleep.assert_not_called()
         report.assert_called_once()
         self.assertTrue(worker.source_stage.exists())
 
@@ -161,7 +168,7 @@ class UpdateCompatibilityTests(unittest.TestCase):
                 "instances",
                 side_effect=[runtime.InstanceScanError("locked"), [self.record]],
             ) as scan,
-            patch.object(installer.time, "sleep"),
+            patch.object(installer, "time", self.clock),
         ):
             worker.restart([self.record])
         self.assertEqual(scan.call_count, 2)
@@ -183,7 +190,7 @@ class UpdateCompatibilityTests(unittest.TestCase):
                 "instances",
                 side_effect=[runtime.InstanceScanError("locked"), [self.record]],
             ) as scan,
-            patch.object(control.time, "sleep"),
+            patch.object(control, "time", self.clock),
         ):
             control.execute(self.job_path)
         self.assertEqual(scan.call_count, 2)

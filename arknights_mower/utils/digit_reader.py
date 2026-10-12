@@ -4,6 +4,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from arknights_mower.utils.log import logger
+
 from .image import loadres
 
 
@@ -146,7 +148,7 @@ class DigitReader:
                 if accept:
                     result[loc[1][i]] = j
         ch = [str(result[k]) for k in sorted(result)]
-        print(ch)
+        logger.debug("识别订单时间数字：%s", ch)
         if len(ch) == 6:
             return (
                 int(f"{ch[0]}{ch[1]}"),

@@ -12,6 +12,7 @@ import pytest
 from arknights_mower.utils import config, scheduler_task
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device import recovery
+from arknights_mower.utils.operators import Operators
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 CRITICAL_TYPES = {
@@ -63,6 +64,9 @@ def scheduler(monkeypatch):
         dorm=[],
         correct_dorm=Mock(),
         validate_backup_plans=Mock(return_value={"success": True}),
+    )
+    solver.op_data.arrangement_group_transitions = (
+        Operators.arrangement_group_transitions.__get__(solver.op_data)
     )
     solver.device = Mock()
     solver.recog = Mock()
@@ -141,6 +145,76 @@ def test_stale_cleanup_preserves_only_critical_or_future_explicit_tasks(
     assert pending.adjusted is True
     assert pending.workshop_generation == 7
     assert pending.workshop_recipe == {"name": "固源岩", "count": 2}
+    scheduler.io.assert_not_called()
+
+
+def test_depot_mastery_dispatch_keeps_source_release_available(
+    scheduler, monkeypatch, tmp_path
+):
+    solver, main = scheduler.solver, scheduler.main
+    now = scheduler.clock.now()
+    monkeypatch.setattr(config, "conf", config.Conf())
+    config.conf.maa_depot_enable = True
+    monkeypatch.setattr(main, "datetime", scheduler.clock)
+    monkeypatch.setattr(main, "get_server_time", scheduler.clock.now)
+    monkeypatch.setattr(main, "initialize", Mock(return_value=solver))
+    monkeypatch.setattr(main, "refresh_resource_at_boundary", Mock())
+    monkeypatch.setattr(main.NewsChecker, "get_maintenance", Mock(return_value=None))
+    monkeypatch.setattr(main, "_apply_version_update_resting_threshold", Mock())
+    depot = tmp_path / "depotresult.csv"
+    depot.touch()
+    monkeypatch.setattr(main, "get_path", lambda value: depot)
+    monkeypatch.setattr(
+        main, "_read_depot_scan_timestamp", lambda value: int(now.timestamp()) - 86400
+    )
+    for daily in ("daily_visit_friend", "daily_report", "daily_skland", "daily_mail"):
+        setattr(solver, daily, now.date())
+    solver.recruit_plan_solver = Mock()
+    solver.mower_plan_solver = Mock()
+    solver.has_maa_tasks = Mock(return_value=False)
+    solver.rest_until_next_task = Mock(side_effect=MowerExit)
+    solver.tasks = [SchedulerTask(now + timedelta(hours=1))]
+    upgrade = SchedulerTask(now, task_type=TaskTypes.SKILL_UPGRADE)
+    restore = SchedulerTask(
+        now + timedelta(minutes=1),
+        {"room_1_1": ["陈"]},
+        TaskTypes.RUN_ORDER,
+    )
+    restore.run_order_original_roster = {"room_1_1": ["陈"]}
+    restore.run_order_restore_pending = True
+    release = SchedulerTask(now, {"room_1_2": ["银灰"]}, TaskTypes.SELF_CORRECTION)
+    solver.op_data.operators = {
+        "陈": SimpleNamespace(current_room="room_1_2", is_working=lambda: True)
+    }
+
+    def scan():
+        solver.tasks.append(upgrade)
+
+    solver.仓库扫描 = Mock(side_effect=scan)
+    solver.find_next_task = lambda task_type: next(
+        (task for task in solver.tasks if task.type == task_type), None
+    )
+    dispatched = []
+
+    def run():
+        if not dispatched:
+            dispatched.append(upgrade)
+            solver.tasks.remove(upgrade)
+            solver.tasks.extend([restore, release])
+            return
+        dispatched.append(solver.tasks[0])
+        raise MowerExit
+
+    solver.run = Mock(side_effect=run)
+
+    main.simulate(None)
+
+    assert dispatched == [upgrade, release]
+    assert release.time == now
+    assert restore.time == now + timedelta(minutes=1)
+    assert restore.run_order_original_roster == {"room_1_1": ["陈"]}
+    assert restore.run_order_restore_pending
+    solver.rest_until_next_task.assert_not_called()
     scheduler.io.assert_not_called()
 
 
@@ -235,6 +309,10 @@ def test_real_worker_resumes_same_scheduler_and_replans_after_capture_refresh(
     result = SimpleNamespace(unwrap=lambda: ready_device)
 
     def recover():
+        if control.recover.call_count > 2:
+            pytest.fail(
+                "Unexpected repeated device recovery after scheduler resumption"
+            )
         if control.recover.call_count == 1:
             assert any(task is stale for task in solver.tasks)
             assert any(task is manual for task in solver.tasks)
@@ -296,4 +374,77 @@ def test_real_worker_resumes_same_scheduler_and_replans_after_capture_refresh(
     solver.run_order_solver.assert_called_once_with()
     solver.plan_solver.assert_called_once_with()
     solver._read_initial_card_mood.assert_called_once_with()
+    scheduler.io.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "save_result", [True, False, RuntimeError("snapshot unavailable")]
+)
+def test_original_target_conflict_completes_without_delaying_queue(
+    scheduler, monkeypatch, save_result
+):
+    solver, module = scheduler.solver, scheduler.module
+    now = scheduler.clock.now()
+    pending = SchedulerTask(now, {"dormitory_1": ["银灰"]}, TaskTypes.SHIFT_ON)
+    pending.group_shift_expected = {("dormitory_1", 0): "银灰"}
+    pending.group_shift_transitions = {"轮休": False}
+    other = SchedulerTask(now, task_type=TaskTypes.DEPOT)
+    solver.tasks, solver.task = [pending, other], pending
+    for method in (
+        "_prepare_group_shift",
+        "_prepare_shift_cycle",
+        "_defer_conflicting_product_shift_slots",
+        "_switch_products_before_arrangement",
+        "_activate_shift_backup",
+        "plan_metadata",
+        "back_to_infrastructure",
+    ):
+        monkeypatch.setattr(solver, method, Mock())
+    snapshots = []
+
+    def save():
+        snapshots.append((pending.time, dict(pending.plan)))
+        if isinstance(save_result, Exception):
+            raise RuntimeError(str(save_result)) from None
+        return save_result
+
+    monkeypatch.setattr(module, "save_current_state", save)
+    actual = SimpleNamespace(name="能天使")
+    solver.op_data.plan = {"dormitory_1": [SimpleNamespace(agent="")]}
+    solver.op_data.get_current_operator = lambda room, index: actual
+    solver.op_data.group_is_resting = lambda group: True
+    solver.op_data.commit_group_shifts = Mock()
+    solver.op_data.is_dynamic_dorm_position = lambda *args, **kwargs: False
+    solver._resume_waiting_group_shifts = Mock()
+    selected = []
+
+    def arrange(plan, *args):
+        agents = ["能天使"]
+        solver._check_group_shift_targets(
+            agents, "dormitory_1", reason="执行边界准入与床位整理"
+        )
+        selected.extend(agents)
+        actual.name = agents[0]
+        plan.clear()
+
+    solver.agent_arrange = Mock(side_effect=arrange)
+    solver.仓库扫描 = Mock()
+
+    solver.infra_main()
+
+    assert selected == ["银灰"]
+    assert not config.stop_mower.is_set() and not solver.error and solver.task is None
+    assert solver.tasks == [other]
+    assert pending.time == now and not hasattr(pending, "arrangement_retry_count")
+    assert not pending.plan and not pending.group_shift_expected
+    solver.op_data.commit_group_shifts.assert_called_once_with({"轮休": False})
+    assert snapshots == [(now, {"dormitory_1": ["银灰"]})]
+    solver.back_to_infrastructure.assert_not_called()
+
+    solver.task = other
+    solver.infra_main()
+
+    solver.仓库扫描.assert_called_once()
+    assert solver.tasks == []
+    assert not config.stop_mower.is_set()
     scheduler.io.assert_not_called()

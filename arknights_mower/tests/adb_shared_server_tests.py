@@ -1,21 +1,26 @@
+import ctypes
 import errno
 import json
 import multiprocessing
 import os
+import socket
+import struct
 import subprocess
 import sys
 import time
 from contextlib import ExitStack
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
 from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.device.adb_client import shared
+from arknights_mower.utils.device.adb_client import server_process, shared
 from arknights_mower.utils.device.adb_client.server import (
     SharedADBError,
     SharedADBHandshakeTimeout,
+    SharedADBStopTimeout,
+    probe_adb_server,
 )
 from arknights_mower.utils.device.adb_client.shared import SharedADBRecovery
 
@@ -38,6 +43,14 @@ class Clock:
 
 @pytest.fixture
 def service(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        shared, "adb_listener_absent", Mock(return_value=False), raising=False
+    )
+    monkeypatch.setattr(
+        shared,
+        "terminate_verified_adb",
+        Mock(side_effect=SharedADBError("无法核验所选 ADB 进程")),
+    )
     for name in (
         "ADB_SERVER_SOCKET",
         "ANDROID_ADB_SERVER_ADDRESS",
@@ -47,7 +60,10 @@ def service(tmp_path, monkeypatch):
         monkeypatch.delenv(name, raising=False)
     clock = Clock()
     host = SimpleNamespace(
-        version=41, mutations=[], clients={"selected-adb": (41, "35.0.2")}
+        version=41,
+        mutations=[],
+        clients={"selected-adb": (41, "35.0.2")},
+        listener=False,
     )
 
     def probe(timeout):
@@ -103,6 +119,301 @@ def establish_failure(service):
     with pytest.raises(SharedADBError, match="30 秒"):
         service.recovery.recover("selected-adb", timeout=5)
     service.clock.sleep(30)
+
+
+@pytest.fixture
+def delayed_refusal(service, monkeypatch):
+    """Model a refusal past the probe budget; `host.listener` owns the port."""
+    factory = MagicMock()
+    connection = factory.return_value.__enter__.return_value
+    socket_budget = [0.0]
+    connection.settimeout.side_effect = lambda timeout: socket_budget.__setitem__(
+        0, timeout
+    )
+
+    def connect(address):
+        # The refusal would arrive at 2.002 seconds, past the socket budget.
+        assert address == ("127.0.0.1", 5037)
+        service.clock.sleep(min(2.002, socket_budget[0]))
+        raise socket.timeout("local connection refusal exceeds probe budget")
+
+    connection.connect.side_effect = connect
+
+    def probe(timeout):
+        if isinstance(service.host.version, Exception):
+            raise service.host.version
+        if service.host.version is not None:
+            return service.host.version
+        return probe_adb_server(
+            timeout, socket_factory=factory, monotonic=service.clock.monotonic
+        )
+
+    service.probe.side_effect = probe
+
+    def table(buffer, pointer, ordered, family, table_class, reserved):
+        assert family in (socket.AF_INET, socket.AF_INET6)
+        assert (table_class, reserved) == (3, 0)
+        rows = []
+        if family == socket.AF_INET and service.host.listener:
+            rows.append(
+                struct.pack(
+                    "<6I",
+                    2,
+                    struct.unpack("<I", socket.inet_aton("127.0.0.1"))[0],
+                    socket.htons(5037),
+                    0,
+                    0,
+                    421,
+                )
+            )
+        data = struct.pack("<I", len(rows)) + b"".join(rows)
+        ctypes.cast(pointer, ctypes.POINTER(ctypes.c_uint32)).contents.value = len(data)
+        if buffer is None:
+            return 122
+        ctypes.memmove(buffer, data, len(data))
+        return 0
+
+    kernel = Mock()
+    query = Mock(side_effect=table)
+    monkeypatch.setattr(server_process, "_windows_api", lambda: (kernel, query))
+    absence = Mock(
+        side_effect=lambda **kwargs: server_process.adb_listener_absent(**kwargs)
+    )
+    monkeypatch.setattr(shared, "adb_listener_absent", absence)
+    yield SimpleNamespace(connection=connection, absence=absence, query=query)
+    kernel.OpenProcess.assert_not_called()
+    kernel.TerminateProcess.assert_not_called()
+
+
+def test_delayed_refusal_starts_confirmed_absent_server_without_stop(
+    service, delayed_refusal
+):
+    service.host.version = None
+    assert service.recovery.recover("selected-adb", timeout=10)
+    assert service.host.mutations == ["start-server"]
+    assert service.recovery.generation == 1
+    service.kill.assert_not_called()
+    assert delayed_refusal.absence.called
+
+
+def test_delayed_refusal_after_acknowledged_stop_completes_restart(
+    service, delayed_refusal
+):
+    establish_failure(service)
+    assert service.recovery.recover("selected-adb", timeout=10)
+    assert service.host.mutations == ["host:kill", "start-server"]
+    assert service.recovery.generation == 1
+
+
+def test_delayed_refusal_after_verified_process_stop_completes_restart(
+    service, delayed_refusal, monkeypatch
+):
+    establish_failure(service)
+    service.kill.side_effect = SharedADBStopTimeout("stop request unanswered")
+
+    def stopped(*args, **kwargs):
+        service.host.version = None
+        return True
+
+    fallback = Mock(side_effect=stopped)
+    monkeypatch.setattr(shared, "terminate_verified_adb", fallback)
+    assert service.recovery.recover("selected-adb", timeout=10)
+    fallback.assert_called_once()
+    assert service.host.mutations == ["start-server"]
+
+
+def test_changed_listener_evidence_before_start_never_launches_server(
+    service, delayed_refusal
+):
+    service.host.version = None
+    delayed_refusal.absence.side_effect = [True, True, True, False]
+    with pytest.raises(SharedADBError, match="启动前无法确认"):
+        service.recovery.recover("selected-adb", timeout=10)
+    assert service.host.mutations == []
+    assert service.recovery.generation == 1
+
+
+@pytest.mark.parametrize(
+    "query_error", [SharedADBError("invalid table"), OSError("denied")]
+)
+def test_failed_listener_query_never_confirms_absence(
+    service, delayed_refusal, query_error
+):
+    service.host.version = None
+    delayed_refusal.absence.side_effect = query_error
+    with pytest.raises(SharedADBError, match="30 秒"):
+        service.recovery.recover("selected-adb", timeout=10)
+    assert delayed_refusal.absence.called
+    assert service.host.mutations == []
+    assert service.recovery.generation == 0
+
+
+def test_existing_listener_keeps_restart_window_and_unverified_stop_protection(
+    service, delayed_refusal
+):
+    service.host.version = None
+    service.host.listener = True
+    service.kill.side_effect = SharedADBStopTimeout("stop request unanswered")
+    with pytest.raises(SharedADBError, match="30 秒"):
+        service.recovery.recover("selected-adb", timeout=10)
+    service.kill.assert_not_called()
+    # The IPv4 owner alone blocks absence; the IPv6 table is not consulted.
+    assert {call.args[3] for call in delayed_refusal.query.call_args_list} == {
+        socket.AF_INET
+    }
+    service.clock.sleep(30)
+    with pytest.raises(SharedADBError, match="无法核验"):
+        service.recovery.recover("selected-adb", timeout=10)
+    assert service.host.mutations == []
+    assert service.recovery.generation == 1
+
+
+def test_response_timeout_never_uses_missing_listener_evidence(
+    service, delayed_refusal
+):
+    service.host.version = None
+    delayed_refusal.connection.connect.side_effect = None
+    delayed_refusal.connection.recv.side_effect = socket.timeout("response stalled")
+    with pytest.raises(SharedADBError, match="30 秒"):
+        service.recovery.recover("selected-adb", timeout=10)
+    delayed_refusal.absence.assert_not_called()
+    assert service.host.mutations == []
+
+
+@pytest.mark.parametrize("cause", ["cancelled", "budget"])
+def test_listener_query_obeys_cancellation_and_enclosing_budget(
+    service, delayed_refusal, cause
+):
+    establish_failure(service)
+    service.host.version = None
+    cancelled = [False]
+
+    def interrupted(*, remaining):
+        if cause == "cancelled":
+            cancelled[0] = True
+        else:
+            service.clock.sleep(10)
+        remaining()
+        return True
+
+    delayed_refusal.absence.side_effect = interrupted
+    with pytest.raises(MowerExit if cause == "cancelled" else SharedADBError):
+        service.recovery.recover(
+            "selected-adb", timeout=10, cancelled=lambda: cancelled[0]
+        )
+    assert service.recovery._failed_probes == 0
+    assert service.recovery.generation == 0
+    assert service.host.mutations == []
+
+
+def test_delayed_absence_restores_each_bound_target_and_helpers(
+    service, delayed_refusal, shared_applications
+):
+    snapshots = [application.conf.model_dump() for application in shared_applications]
+    for application in shared_applications:
+        assert application.control.start().ok
+    service.host.version = None
+    for application in shared_applications:
+        assert application.control.recover().ok
+        application.adapter.rebind.assert_called_once()
+        assert application.control._bound_adb_generation == 1
+        assert application.control.serial == application.conf.device.last_serial
+    assert service.host.mutations == ["start-server"]
+    assert [
+        application.conf.model_dump() for application in shared_applications
+    ] == snapshots
+
+
+def test_wedged_protocol_stop_terminates_verified_listener_before_start(
+    service, monkeypatch
+):
+    from arknights_mower.utils.device.adb_client.server import kill_adb_server
+
+    establish_failure(service)
+    factory = MagicMock()
+    factory.return_value.__enter__.return_value.connect.side_effect = socket.timeout(
+        "shared listener never accepts"
+    )
+    service.recovery._kill = None
+    monkeypatch.setattr(
+        shared,
+        "kill_adb_server",
+        lambda timeout, **kwargs: kill_adb_server(
+            timeout, socket_factory=factory, **kwargs
+        ),
+    )
+
+    def terminate(adb_path, timeout, **kwargs):
+        assert adb_path == "selected-adb"
+        assert timeout > 0
+        assert service.host.mutations == []
+        service.host.mutations.append("verified process stop")
+        service.host.version = None
+        return True
+
+    fallback = Mock(side_effect=terminate)
+    monkeypatch.setattr(shared, "terminate_verified_adb", fallback, raising=False)
+
+    assert service.recovery.recover("selected-adb", timeout=5)
+
+    fallback.assert_called_once()
+    assert service.host.mutations == ["verified process stop", "start-server"]
+    assert service.recovery.generation == 1
+
+
+def test_protocol_stop_fallback_skips_restart_when_service_recovers(
+    service, monkeypatch
+):
+    establish_failure(service)
+    service.kill.side_effect = SharedADBStopTimeout("protocol stop timed out")
+
+    def recovered(*args, **kwargs):
+        service.host.version = 41
+        return False
+
+    fallback = Mock(side_effect=recovered)
+    monkeypatch.setattr(shared, "terminate_verified_adb", fallback)
+
+    assert service.recovery.recover("selected-adb", timeout=5) is False
+
+    fallback.assert_called_once()
+    assert service.host.mutations == []
+    assert service.recovery.generation == 1
+
+
+def test_unverified_protocol_stop_retains_failure_and_attempt_without_start(
+    service, monkeypatch
+):
+    establish_failure(service)
+    service.kill.side_effect = SharedADBStopTimeout("protocol stop timed out")
+    fallback = Mock(side_effect=SharedADBError("端口由其他程序占用"))
+    monkeypatch.setattr(shared, "terminate_verified_adb", fallback)
+
+    with pytest.raises(
+        SharedADBError, match="protocol stop timed out；端口由其他程序占用"
+    ):
+        service.recovery.recover("selected-adb", timeout=5)
+
+    state = json.loads(service.options["lock_path"].read_bytes()[1:])
+    assert state["generation"] == 1
+    assert state["last_attempt"] == service.clock.wall
+    assert service.host.mutations == []
+    fallback.assert_called_once()
+
+
+def test_process_stop_without_confirmed_port_release_never_starts(service, monkeypatch):
+    establish_failure(service)
+    service.kill.side_effect = SharedADBStopTimeout("protocol stop timed out")
+    fallback = Mock(return_value=True)
+    monkeypatch.setattr(shared, "terminate_verified_adb", fallback)
+    started = service.clock.now
+
+    with pytest.raises(SharedADBError, match="时间预算已耗尽"):
+        service.recovery.recover("selected-adb", timeout=5)
+
+    assert service.clock.now - started == pytest.approx(5)
+    assert service.host.mutations == []
+    fallback.assert_called_once()
 
 
 @pytest.fixture
@@ -574,6 +885,87 @@ def test_restart_requires_two_cycles_and_thirty_monotonic_seconds(service):
     assert service.recovery.generation == 1
 
 
+def test_unanswered_connect_escalates_through_the_same_restart_window(service):
+    """A connect timeout is an unanswered listener, not an unverifiable host.
+
+    The observation reaches recovery as an unanswered handshake, so it counts
+    towards the sustained-failure window and recovery reaches the restart
+    decision. Classifying it as an unverifiable host instead aborts every cycle
+    before that decision, so the stalled server is never replaced.
+    """
+
+    def wedged(timeout):
+        """A loopback connect the host never completes, seen from the probe."""
+        factory = MagicMock()
+        factory.return_value.__enter__.return_value.connect.side_effect = (
+            socket.timeout("connect stalled")
+        )
+        return probe_adb_server(timeout, socket_factory=factory)
+
+    clock = Clock()
+    # The client-version command is the only CLI call before the restart.
+    run = Mock(
+        return_value=subprocess.CompletedProcess(
+            ["selected-adb", "version"],
+            0,
+            b"Android Debug Bridge version 1.0.41\nVersion 35.0.2\n",
+            b"",
+        )
+    )
+    kill = Mock()
+    recovery = SharedADBRecovery(
+        lock_path=service.options["lock_path"],
+        run=run,
+        probe=wedged,
+        kill=kill,
+        monotonic=clock.monotonic,
+        wall_clock=clock.wall_clock,
+        sleep=clock.sleep,
+    )
+    for advance in (0, 1):
+        clock.sleep(advance)
+        with pytest.raises(SharedADBError, match="30 秒"):
+            recovery.recover("selected-adb", timeout=5)
+        assert kill.call_count == 0
+        assert recovery.generation == 0
+    clock.sleep(30)
+    with pytest.raises(SharedADBError):
+        recovery.recover("selected-adb", timeout=5)
+    assert kill.call_count == 1
+    assert recovery.generation == 1
+    assert run.call_args.args[0] == ["selected-adb", "version"]
+
+
+def test_unverified_unanswered_connect_remains_bounded_without_start(service):
+    """Unverified port ownership preserves the listener and recorded cooldown."""
+    clock = Clock()
+    run = Mock(
+        return_value=subprocess.CompletedProcess(
+            ["selected-adb", "version"],
+            0,
+            b"Android Debug Bridge version 1.0.41\nVersion 35.0.2\n",
+            b"",
+        )
+    )
+    recovery = SharedADBRecovery(
+        lock_path=service.options["lock_path"],
+        run=run,
+        probe=Mock(
+            side_effect=SharedADBHandshakeTimeout("共享 ADB server 未完成主机握手")
+        ),
+        kill=Mock(side_effect=SharedADBStopTimeout("无法显式停止共享 ADB server")),
+        monotonic=clock.monotonic,
+        wall_clock=clock.wall_clock,
+        sleep=clock.sleep,
+    )
+    for _ in range(4):
+        clock.sleep(30)
+        with pytest.raises(SharedADBError):
+            recovery.recover("selected-adb", timeout=5)
+    assert run.call_args.args[0] == ["selected-adb", "version"]
+    assert recovery.generation > 0
+
+
 def test_wall_clock_jump_never_shortens_monotonic_failure_window(service):
     service.host.version = SharedADBHandshakeTimeout("stalled")
     with pytest.raises(SharedADBError):
@@ -950,7 +1342,8 @@ def test_healthy_invalid_marker_warns_and_invalidates_helpers_once(
     assert service.host.mutations == []
     assert service.options["lock_path"].read_bytes() == b"\0partial-json"
     log.warning.assert_called_once()
-    assert "generation=%s" in log.warning.call_args.args[0]
+    assert "恢复协调记录不可读" in log.warning.call_args.args[0]
+    assert "generation=" not in log.warning.call_args.args[0]
 
 
 def test_healthy_unreadable_marker_continues_without_mutation(service, monkeypatch):
@@ -1008,10 +1401,14 @@ def test_attempt_and_verified_outcome_log_generation_and_shared_blast_radius(
     assert service.recovery.recover("selected-adb", timeout=5) is True
     log.warning.assert_called_once()
     log.info.assert_called_once()
-    assert "其他主机工具" in log.warning.call_args.args[0]
-    assert "generation=%s" in log.warning.call_args.args[0]
-    assert "generation=%s" in log.info.call_args.args[0]
-    assert log.warning.call_args.args[1] == log.info.call_args.args[1] == 1
+    assert "其他主机工具的 ADB 连接可能断开" in log.warning.call_args.args[0]
+    assert log.warning.call_args.args[1] == "重启"
+    assert "共享 ADB 服务已%s" in log.info.call_args.args[0]
+    assert log.info.call_args.args[1] == "重启"
+    # One sentence per fact: no key=value diagnostics in operator-facing lines.
+    for entry in (log.warning, log.info):
+        assert "generation=" not in entry.call_args.args[0]
+    assert service.recovery.generation == 1
 
 
 def test_failed_attempt_logs_bounded_diagnostics_and_generation(service, monkeypatch):
@@ -1022,7 +1419,8 @@ def test_failed_attempt_logs_bounded_diagnostics_and_generation(service, monkeyp
     with pytest.raises(SharedADBError):
         service.recovery.recover("selected-adb", timeout=5)
     assert log.warning.call_count == 2
-    assert log.warning.call_args.args[1] == 1
+    assert "共享 ADB 服务%s未成功" in log.warning.call_args.args[0]
+    assert log.warning.call_args.args[1] == "重启"
     assert len(log.warning.call_args.args[2]) == 1024
     log.info.assert_not_called()
 

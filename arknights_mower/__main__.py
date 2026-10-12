@@ -26,6 +26,7 @@ from arknights_mower.utils.resource_pkg import (
     refresh_resource_at_boundary,
     resource_task_session,
 )
+from arknights_mower.utils.scheduler_task import protect_priority_tasks
 
 base_scheduler = None
 device_control = create_device_control()
@@ -362,7 +363,11 @@ def _resume_device_dispatch(scheduler=None, failure=None):
         if scheduler is not None:
             scheduler.device = device
             scheduler.recog.device = device
-            scheduler.recog.update()
+            if getattr(scheduler, "_idle_observation_pending", False):
+                scheduler.recog.reset_after_external_control()
+                scheduler._idle_observation_pending = False
+            else:
+                scheduler.recog.update()
         return device
 
     csleep(30)
@@ -433,7 +438,7 @@ def simulate(saved):
     if validation_msg is not None:
         logger.error(validation_msg)
         return
-    validation_msg = base_scheduler.op_data.validate_backup_plans()
+    validation_msg = base_scheduler.op_data.validate_backup_plans(max_seconds=5)
     if validation_msg.get("status") == "incomplete":
         logger.warning(f"排班校验未完成: {validation_msg['message']}")
     elif not validation_msg["success"]:
@@ -448,6 +453,7 @@ def simulate(saved):
                 if k not in base_scheduler.op_data.operators:
                     base_scheduler.op_data.add(Operator(k, ""))
                     # 只复制心情数据
+                base_scheduler.op_data.select_group_binding(k, v.group)
                 base_scheduler.op_data.operators[k].mood = v.mood
                 base_scheduler.op_data.operators[k].time_stamp = v.time_stamp
                 base_scheduler.op_data.operators[k].depletion_rate = v.depletion_rate
@@ -481,7 +487,28 @@ def simulate(saved):
                 base_scheduler.op_data.operators[k].dorm_recovery_fixed = getattr(
                     v, "dorm_recovery_fixed", ()
                 )
-            base_scheduler.op_data.restore_dorm_state(saved["dorm"])
+            base_scheduler.op_data.restore_group_shift_state(
+                saved.get("group_shift_state")
+            )
+            base_scheduler.waiting_group_shifts = saved.get("waiting_group_shifts", [])
+            from arknights_mower.utils.config.plan import migrate_backup_tasks
+
+            base_scheduler.tasks = migrate_backup_tasks(
+                tasks,
+                saved.get("backup_plan_names", []),
+                [backup.name for backup in base_scheduler.op_data.backup_plans],
+                config.retired_backup_indices,
+                retired=bool(saved.get("rescue_state"))
+                or config.retired_backup_migrated
+                or bool(
+                    set(saved.get("backup_plan_names", []))
+                    - {backup.name for backup in base_scheduler.op_data.backup_plans}
+                ),
+            )
+            base_scheduler.op_data.restore_dorm_state(
+                saved["dorm"],
+                group_transitions=base_scheduler._pending_group_transitions(),
+            )
             base_scheduler.op_data.facility_states = copy.deepcopy(
                 saved.get("facility_states", {})
             )
@@ -515,20 +542,6 @@ def simulate(saved):
             base_scheduler.daily_skland = saved["daily_skland"]
             base_scheduler.daily_mail = saved["daily_mail"]
             base_scheduler.task_count = saved["task_count"]
-            from arknights_mower.utils.config.plan import migrate_backup_tasks
-
-            base_scheduler.tasks = migrate_backup_tasks(
-                tasks,
-                saved.get("backup_plan_names", []),
-                [backup.name for backup in base_scheduler.op_data.backup_plans],
-                config.retired_backup_indices,
-                retired=bool(saved.get("rescue_state"))
-                or config.retired_backup_migrated
-                or bool(
-                    set(saved.get("backup_plan_names", []))
-                    - {backup.name for backup in base_scheduler.op_data.backup_plans}
-                ),
-            )
             if len(base_scheduler.op_data.backup_plans) > 0:
                 # 启动的时候按照条件触发副表
                 base_scheduler.backup_plan_solver()
@@ -571,11 +584,24 @@ def simulate(saved):
                 if _handle_maintenance(maintenance, base_scheduler):
                     return
             if len(base_scheduler.tasks) > 0:
-                (base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False))
+                # 维护避让先于日常任务和等待预算，包含从存档恢复的专精换人。
+                protect_priority_tasks(
+                    base_scheduler.tasks,
+                    op_data=getattr(base_scheduler, "op_data", None),
+                )
                 remaining_time = (
                     base_scheduler.tasks[0].time - datetime.now()
                 ).total_seconds()
                 if remaining_time > 540:
+                    from arknights_mower.solvers.trust_rotation import (
+                        run_trust_rotation,
+                    )
+
+                    run_trust_rotation(
+                        base_scheduler.device,
+                        base_scheduler.recog,
+                        base_scheduler.tasks[0].time,
+                    )
                     if base_scheduler.daily_visit_friend < get_server_time().date():
                         if base_scheduler.visit_friend_plan_solver():
                             base_scheduler.daily_visit_friend = get_server_time().date()
@@ -645,7 +671,10 @@ def simulate(saved):
                         base_scheduler.run()
                         from arknights_mower.utils.scheduler_task import scheduling
 
-                        scheduling(base_scheduler.tasks)
+                        scheduling(
+                            base_scheduler.tasks,
+                            op_data=base_scheduler.op_data,
+                        )
                     if len(base_scheduler.tasks) > 0:
                         base_scheduler.tasks.sort(key=lambda x: x.time, reverse=False)
                         remaining_time = (

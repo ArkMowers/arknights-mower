@@ -36,6 +36,8 @@ IMPORT_PRESERVED_FILES = {"network.json", "gui.yml", "state.json"}
 TMP_DATA_FILES = {
     "data.db",
     "cultivate.json",
+    "growth_plan.json",
+    "growth_history.json",
     "depotresult.csv",
     "depotmerged.csv",
     "report.csv",

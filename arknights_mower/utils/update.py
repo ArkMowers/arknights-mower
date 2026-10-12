@@ -4,6 +4,8 @@ import zipfile
 
 import requests
 
+from arknights_mower.utils.log import logger
+
 from .. import __version__
 from .github_download import request_download
 from .update_runtime import hidden_console_options
@@ -97,7 +99,9 @@ def download_version(version):
             if chunk:
                 f.write(chunk)
                 index += len(chunk)
-                print(f"更新进度：{'%.2f%%' % (index * 100 / total)}({index}/{total})")
+                logger.info(
+                    "更新进度：%.2f%% (%s/%s)", index * 100 / total, index, total
+                )
     zip_file = zipfile.ZipFile("./tmp/mower.zip")
     zip_list = zip_file.namelist()
 

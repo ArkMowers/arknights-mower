@@ -9,6 +9,7 @@ from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
     _merge_deferred_dorm_schedules,
+    adjust_run_order_for_maintenance,
     find_next_task,
     plan_metadata,
     rebalance_plan_swap_dorms,
@@ -19,6 +20,151 @@ from arknights_mower.utils.scheduler_task import (
 
 with patch.dict("sys.modules", {"save_action_to_sqlite_decorator": MagicMock()}):
     pass
+
+
+class TestRunOrderRestorationScheduling(unittest.TestCase):
+    def setUp(self):
+        from arknights_mower.utils import config
+
+        self.now = datetime(2026, 10, 8, 18)
+        conf = config.Conf()
+        conf.enable_mastery = False
+        conf.run_order_grandet_mode.enable = True
+        for replacement in (
+            patch.object(config, "conf", conf),
+            patch(
+                "arknights_mower.utils.scheduler_task.NewsChecker.get_update_time",
+                return_value=(None, None),
+            ),
+            patch(
+                "arknights_mower.utils.scheduler_task.NewsChecker.get_maintenance",
+                return_value=None,
+            ),
+            patch(
+                "arknights_mower.utils.scheduler_task.estimate_dorm_minutes",
+                return_value=1,
+            ),
+        ):
+            replacement.start()
+            self.addCleanup(replacement.stop)
+
+    def make_restore(self, seconds=0):
+        task = SchedulerTask(
+            time=self.now + timedelta(seconds=seconds),
+            task_plan={"room_1_1": ["图耶"]},
+            task_type=TaskTypes.RUN_ORDER,
+        )
+        task.run_order_original_roster = copy.deepcopy(task.plan)
+        task.run_order_restore_pending = True
+        return task
+
+    def test_restoration_between_orders_does_not_become_drone_adjustment_target(self):
+        first = SchedulerTask(
+            time=self.now + timedelta(minutes=1),
+            task_plan={"room_2_1": ["但书"]},
+            task_type=TaskTypes.RUN_ORDER,
+            meta_data="room_2_1",
+        )
+        restore = self.make_restore(seconds=120)
+        second = SchedulerTask(
+            time=self.now + timedelta(minutes=3),
+            task_plan={"room_3_1": ["但书"]},
+            task_type=TaskTypes.RUN_ORDER,
+            meta_data="room_3_1",
+        )
+        tasks = [first, restore, second]
+
+        self.assertIsNone(scheduling(tasks, time_now=self.now))
+
+        self.assertIn(restore, tasks)
+        self.assertEqual(first.time, self.now + timedelta(minutes=1))
+        self.assertEqual(restore.time, self.now + timedelta(minutes=2))
+        self.assertEqual(second.time, self.now + timedelta(minutes=3))
+        self.assertFalse(first.adjusted)
+        self.assertFalse(restore.adjusted)
+        self.assertFalse(second.adjusted)
+
+    def test_restoration_retains_unified_priority_over_due_ordinary_work(
+        self,
+    ):
+        restore = self.make_restore()
+        ordinary = SchedulerTask(
+            time=self.now - timedelta(minutes=1),
+            task_plan={"central": ["阿米娅"]},
+            task_type=TaskTypes.SELF_CORRECTION,
+        )
+        tasks = [ordinary, restore]
+
+        self.assertIsNone(scheduling(tasks, time_now=self.now))
+
+        self.assertIs(tasks[0], restore)
+        self.assertEqual(restore.time, self.now)
+        self.assertEqual(ordinary.time, self.now + timedelta(seconds=1))
+
+    def test_restoration_budget_excludes_grandet_wait_before_mastery_handoff(self):
+        from arknights_mower.utils import config
+
+        config.conf.enable_mastery = True
+        restore = self.make_restore()
+        ordinary = SchedulerTask(
+            time=self.now + timedelta(minutes=1),
+            task_plan={"central": ["阿米娅"]},
+            task_type=TaskTypes.SELF_CORRECTION,
+        )
+        handoff = SchedulerTask(
+            time=self.now + timedelta(minutes=3),
+            task_plan={"train": ["逻各斯"]},
+            task_type=TaskTypes.SWAP_SUPPORT,
+        )
+        tasks = [restore, ordinary, handoff]
+
+        self.assertIsNone(scheduling(tasks, execution_time=0.75, time_now=self.now))
+
+        self.assertIs(tasks[0], restore)
+        self.assertEqual(ordinary.time, self.now + timedelta(minutes=1))
+        self.assertEqual(handoff.time, self.now + timedelta(minutes=3))
+
+    def test_restoration_still_protects_strict_release_operation_window(self):
+        restore = self.make_restore(seconds=120)
+        release = SchedulerTask(
+            time=self.now + timedelta(minutes=5),
+            task_plan={"dormitory_1": ["Free"]},
+            task_type=TaskTypes.RELEASE_DORM,
+            meta_data="红",
+            strict_mood_limit=True,
+        )
+        tasks = [restore, release]
+
+        self.assertIsNone(scheduling(tasks, time_now=self.now))
+
+        self.assertLess(release.time + timedelta(minutes=1), restore.time)
+        self.assertEqual(restore.time, self.now + timedelta(minutes=2))
+        self.assertEqual(release.mood_limit_deadline, self.now + timedelta(minutes=5))
+
+    def test_maintenance_excludes_only_marked_restoration(self):
+        restore = self.make_restore(seconds=120)
+        saved_insertion = self.make_restore(seconds=180)
+        saved_insertion.meta_data = "room_1_1"
+        legacy = SchedulerTask(
+            time=self.now + timedelta(minutes=4),
+            task_plan={"room_2_1": ["鸿雪"]},
+            task_type=TaskTypes.RUN_ORDER,
+        )
+        start = self.now + timedelta(minutes=5)
+        with patch(
+            "arknights_mower.utils.scheduler_task.NewsChecker.get_update_time",
+            return_value=(start, start + timedelta(hours=6)),
+        ):
+            adjusted = adjust_run_order_for_maintenance(
+                [restore, saved_insertion, legacy]
+            )
+
+        self.assertEqual(adjusted, [legacy])
+        self.assertEqual(restore.time, self.now + timedelta(minutes=2))
+        self.assertEqual(saved_insertion.time, self.now + timedelta(minutes=3))
+        self.assertFalse(restore.adjusted)
+        self.assertFalse(saved_insertion.adjusted)
+        self.assertTrue(legacy.adjusted)
 
 
 class TestScheduling(unittest.TestCase):
@@ -87,8 +233,9 @@ class TestScheduling(unittest.TestCase):
         scheduling(
             tasks, time_now=datetime.strptime("2023-09-19 10:00", "%Y-%m-%d %H:%M")
         )
-        # 跑单任务被提前
-        self.assertEqual(tasks[0].type, TaskTypes.RUN_ORDER)
+        # 保留可以完成的任务，仅将三分钟充能延后。
+        self.assertEqual(tasks, [task1, task4, task2, task5])
+        self.assertGreater(task2.time, task4.time)
 
     def test_adjust_time(self):
         # 测试跑单任务被挤兑
@@ -119,10 +266,10 @@ class TestScheduling(unittest.TestCase):
             tasks, time_now=datetime.strptime("2023-09-19 10:01", "%Y-%m-%d %H:%M")
         )
         # 其他任务会被移送至跑单任务以后
-        self.assertEqual(tasks[2].plan["task"], "Task 4")
+        self.assertEqual(tasks, [task1, task4, task2, task3, task5])
         self.assertEqual(res, None)
 
-    def test_unified_dorm_only_tasks_merge_and_yield_to_run_order(self):
+    def test_dorm_prefix_runs_and_deferred_suffix_merges(self):
         now = datetime(2026, 9, 23, 2, 15)
         dorm_tasks = [
             SchedulerTask(
@@ -140,11 +287,12 @@ class TestScheduling(unittest.TestCase):
         tasks = [*dorm_tasks, run_order]
         scheduling(tasks, time_now=now)
 
-        self.assertEqual(len(tasks), 2)
-        self.assertEqual(tasks[0], run_order)
+        self.assertEqual(len(tasks), 3)
+        self.assertIs(tasks[0], dorm_tasks[0])
+        self.assertIs(tasks[1], run_order)
         self.assertEqual(run_order.time, now + timedelta(minutes=3))
-        self.assertGreater(tasks[1].time, run_order.time)
-        self.assertEqual(set(tasks[1].plan), {f"dormitory_{i}" for i in range(1, 5)})
+        self.assertGreater(tasks[2].time, run_order.time)
+        self.assertEqual(set(tasks[2].plan), {f"dormitory_{i}" for i in range(2, 5)})
 
     def test_dorm_wakeup_yields_to_run_order(self):
         for work_room in (False, True):
@@ -467,7 +615,7 @@ class TestScheduling(unittest.TestCase):
         self.assertNotEqual(res, None)
 
     def test_reorder_1(self):
-        # 夕取得首个单回位，夜刀续到空单回位；凯尔希仍落实已选普通床位。
+        # 空单回位按优先级和稳定候选顺序分配，不产生置换链。
         op_data = self.init_opdata()
         op_data.dorm[0].name = "麒麟R夜刀"
         op_data.dorm[1].name = "凯尔希"
@@ -475,8 +623,15 @@ class TestScheduling(unittest.TestCase):
         op_data.operators["凯尔希"].current_index = 2
         op_data.dorm[2].name = "夕"
         plan = try_reorder(op_data, {})
-        self.assertEqual(plan["dormitory_1"][2:], ["夕", "凯尔希", "Free"])
-        self.assertEqual(plan["dormitory_2"][2], "麒麟R夜刀")
+        self.assertEqual(plan["dormitory_1"][2:], ["夕", "Free", "Free"])
+        self.assertEqual(plan["dormitory_2"][2], "凯尔希")
+        self.assertEqual(plan["dormitory_3"][3], "麒麟R夜刀")
+        projected = op_data.project_arrangements([plan])
+        self.assertEqual(
+            {bed.name for bed in projected.dorm if bed.name},
+            {"夕", "麒麟R夜刀", "凯尔希"},
+        )
+        self.assertEqual(try_reorder(projected, {}), {})
 
     def test_reorder_2(self):
         # 三个主班取得单回位，普通替班留在其余床位。
@@ -489,8 +644,8 @@ class TestScheduling(unittest.TestCase):
 
         plan = try_reorder(op_data, {})
         self.assertEqual(len(plan), 3)
-        self.assertEqual(plan["dormitory_1"][2:], ["夕", "凯尔希", "Free"])
-        self.assertEqual(plan["dormitory_2"][2:4], ["森蚺", "麒麟R夜刀"])
+        self.assertEqual(plan["dormitory_1"][2:], ["夕", "凯尔希", "麒麟R夜刀"])
+        self.assertEqual(plan["dormitory_2"][2:4], ["森蚺", "Free"])
         self.assertEqual(plan["dormitory_3"][3], "见行者")
 
     def test_reorder_3(self):
@@ -506,7 +661,7 @@ class TestScheduling(unittest.TestCase):
         first = try_reorder(op_data, {})
         second = try_reorder(op_data, {})
         self.assertEqual(first, second)
-        self.assertEqual(first["dormitory_1"][2:], ["夕", "Free", "玛恩纳"])
+        self.assertEqual(first["dormitory_1"][2:], ["夕", "玛恩纳", "Free"])
         self.assertEqual(first["dormitory_2"][2:4], ["焰尾", "见行者"])
         self.assertEqual(first["dormitory_3"][3], "森蚺")
         projected = op_data.project_arrangements([first])
@@ -707,7 +862,15 @@ class TestScheduling(unittest.TestCase):
         self.assertIsNone(op_data.swap_plan([False], refresh=True))
         restored_tasks = []
         try_add_release_dorm({}, None, op_data, restored_tasks)
-        self.assertTrue(self.task_writes_slot(restored_tasks, "dormitory_1", 2))
+        # 重新开放不抢占仍在位的单回目标，普通补位仍在其余空床进行。
+        self.assertFalse(self.task_writes_slot(restored_tasks, "dormitory_1", 2))
+        self.assertTrue(
+            op_data.is_effective_free_slot(
+                next(bed for bed in op_data.dorm if bed.position == ("dormitory_1", 2))
+            )
+        )
+        projected = op_data.project_arrangements([task.plan for task in restored_tasks])
+        self.assertIsNotNone(projected.get_dorm_by_name("陈")[0])
 
     def init_opdata(self):
         agent_base_config = PlanConfig(

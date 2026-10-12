@@ -7,12 +7,18 @@
     "Codex"
   ],
   "invariants": [
-    "[INV-05]"
+    "[INV-05]",
+    "[INV-DEV-03]"
   ],
   "code_symbols": [
-    "arknights_mower.utils.device.screenshot.capture_adb_frame"
+    "arknights_mower.utils.device.screenshot.capture_adb_frame",
+    "arknights_mower.utils.device.session_io._CommandWindow.remaining",
+    "arknights_mower.utils.device.adb_client.server._remaining"
   ],
   "test_suites": [
-    "arknights_mower/tests/adb_shared_transport_tests.py"
+    "arknights_mower/tests/adb_shared_transport_tests.py",
+    "arknights_mower/tests/adb_server_tests.py",
+    "arknights_mower/tests/device_session_io_tests.py",
+    "arknights_mower/tests/device_io_budget_tests.py"
   ]
 }

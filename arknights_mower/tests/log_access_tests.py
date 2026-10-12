@@ -13,16 +13,18 @@ from arknights_mower.utils.log_stream import LogStream
 
 
 class FakeSocket:
-    def __init__(self):
+    def __init__(self, token_frame=None):
         self.closed = False
         self.received = False
+        self.token_frame = token_frame
 
     def receive(self, timeout=None):
         self.received = True
-        return None
+        return self.token_frame
 
     def close(self, reason=None, message=None):
         self.closed = True
+        self.close_reason = reason
 
 
 class LocalLogAccessTests(unittest.TestCase):
@@ -87,6 +89,107 @@ class LocalLogAccessTests(unittest.TestCase):
             socket = FakeSocket()
             self.assertFalse(server._authorize_websocket(socket, allow_local_log=True))
             self.assertTrue(socket.closed)
+
+    def test_forwarded_log_socket_accepts_valid_token_independently_of_origin(self):
+        for local_mode in (True, False):
+            server.app.config["WEBVIEW_LOCAL_ONLY_NO_TOKEN"] = local_mode
+            for origin in (
+                "https://mower.example:8443",
+                "http://mower.example:18000",
+                "https://[2001:db8::1]:8443",
+                "https://other.example:9443",
+                "null",
+                None,
+            ):
+                with (
+                    self.subTest(local_mode=local_mode, origin=origin),
+                    self.context(origin=origin, host="127.0.0.1:58000"),
+                ):
+                    socket = FakeSocket(json.dumps({"token": "runtime-secret"}))
+                    self.assertTrue(
+                        server._authorize_websocket(socket, allow_local_log=True)
+                    )
+                    self.assertTrue(socket.received)
+                    self.assertFalse(socket.closed)
+
+    def test_forwarded_log_socket_rejects_missing_or_invalid_credentials(self):
+        for origin in ("https://mower.example:8443", "null", None):
+            for token_frame in (
+                None,
+                json.dumps({"token": "wrong"}),
+                json.dumps({}),
+                json.dumps({"token": 123}),
+                json.dumps(["runtime-secret"]),
+                "invalid-json",
+            ):
+                with (
+                    self.subTest(origin=origin, token_frame=token_frame),
+                    self.context(origin=origin, host="127.0.0.1:58000"),
+                ):
+                    socket = FakeSocket(token_frame)
+                    self.assertFalse(
+                        server._authorize_websocket(socket, allow_local_log=True)
+                    )
+                    self.assertTrue(socket.closed)
+                    self.assertEqual(socket.close_reason, 4401)
+
+    def test_log_forwarding_does_not_relax_other_origin_checks(self):
+        with self.context(origin="https://mower.example:8443", host="127.0.0.1:58000"):
+            socket = FakeSocket(json.dumps({"token": "runtime-secret"}))
+            self.assertFalse(server._authorize_websocket(socket))
+            self.assertTrue(socket.closed)
+            self.assertFalse(
+                server._diagnostic_delete_origin_allowed("https://mower.example:8443")
+            )
+
+    def test_forwarded_headers_do_not_grant_tokenless_log_access(self):
+        with server.app.test_request_context(
+            "/log",
+            headers={
+                "Host": "127.0.0.1:58000",
+                "Origin": "https://mower.example:8443",
+                "X-Forwarded-Host": "mower.example:8443",
+                "X-Forwarded-Proto": "https",
+            },
+            environ_base={"REMOTE_ADDR": "127.0.0.1"},
+        ):
+            socket = FakeSocket()
+            self.assertFalse(server._authorize_websocket(socket, allow_local_log=True))
+            self.assertTrue(socket.closed)
+            self.assertEqual(socket.close_reason, 4401)
+
+    def test_forwarded_log_route_streams_after_token_authentication(self):
+        server.app.config["WEBVIEW_LOCAL_ONLY_NO_TOKEN"] = False
+        stream = LogStream()
+        stream.publish("forwarded-log-fixture")
+        with patch.object(server.log_stream, "serve", stream.serve):
+            service = make_server("127.0.0.1", 0, server.app, threaded=True)
+            thread = Thread(target=service.serve_forever, daemon=True)
+            thread.start()
+            try:
+                connection = Client.connect(
+                    f"ws://127.0.0.1:{service.server_port}/log",
+                    headers={"Origin": "https://mower.example:8443"},
+                    receive_bytes=1,
+                )
+                try:
+                    connection.send(json.dumps({"token": "runtime-secret"}))
+                    self.assertEqual(
+                        json.loads(connection.receive(timeout=2)),
+                        {"type": "log", "data": "forwarded-log-fixture"},
+                    )
+                    stream.publish("next-forwarded-log")
+                    self.assertEqual(
+                        json.loads(connection.receive(timeout=2)),
+                        {"type": "log", "data": "next-forwarded-log"},
+                    )
+                finally:
+                    connection.close()
+            finally:
+                service.shutdown()
+                service.server_close()
+                thread.join(3)
+                self.assertFalse(thread.is_alive())
 
     def test_local_log_socket_streams_without_token_frame(self):
         stream = LogStream()

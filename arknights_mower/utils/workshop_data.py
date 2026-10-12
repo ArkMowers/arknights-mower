@@ -3,6 +3,8 @@
 import json
 from functools import lru_cache
 
+from arknights_mower.utils.plan import all_replacements
+
 
 class WorkshopRecommendationError(ValueError):
     pass
@@ -99,7 +101,10 @@ def scheduled_operators(plan=None):
             if room == "factory" or room.startswith("dormitory_") or not facility:
                 continue
             for slot in facility.get("plans", []):
-                for name in [slot.get("agent", ""), *slot.get("replacement", [])]:
+                replacements = all_replacements(
+                    slot.get("replacement", ()), slot.get("group_bindings", ())
+                )
+                for name in [slot.get("agent", ""), *replacements]:
                     if name and name not in {"Free", "Current"}:
                         blocked.setdefault(name, set()).add(room)
     return {name: sorted(rooms) for name, rooms in blocked.items()}

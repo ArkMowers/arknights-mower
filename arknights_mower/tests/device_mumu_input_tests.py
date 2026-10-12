@@ -29,7 +29,7 @@ class MuMuInputSessionTests(unittest.TestCase):
             )
         )
         self.manager = self.enterContext(
-            patch("arknights_mower.utils.device.mumu12ipc.input.subprocess.run")
+            patch("arknights_mower.utils.device.mumu12ipc.input.run_command")
         )
         self.manager.return_value.stdout = "4.1.21"
         self.context = self.enterContext(

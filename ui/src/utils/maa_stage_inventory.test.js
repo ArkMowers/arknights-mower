@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  applyChipLimitPreset,
   createLimitRule,
   createRatioMember,
   evaluateLimitRule,
@@ -9,7 +10,138 @@ import {
   selectRatioMember
 } from './maa_stage_inventory.js'
 
+const chipStageOptions = [
+  ['PR-A', ['323', '重装'], ['326', '医疗']],
+  ['PR-B', ['324', '狙击'], ['325', '术师']],
+  ['PR-C', ['321', '先锋'], ['327', '辅助']],
+  ['PR-D', ['322', '近卫'], ['328', '特种']]
+].flatMap(([stage, ...materials]) =>
+  [1, 2].map((tier) => ({
+    value: `${stage}-${tier}`,
+    materials: materials.map(([id, name]) => ({
+      id: `${id}${tier}`,
+      name: `${name}${tier === 1 ? '芯片' : '芯片组'}`
+    }))
+  }))
+)
+
+describe('一键芯片上限', () => {
+  it('绑定全部八个芯片关卡的两种掉落，小芯片 5、大芯片 8', () => {
+    const rules = applyChipLimitPreset([], chipStageOptions)
+    expect(rules.map((rule) => rule.stage)).toEqual(chipStageOptions.map((option) => option.value))
+    for (const [index, rule] of rules.entries()) {
+      const limit = rule.stage.endsWith('-1') ? 5 : 8
+      expect(rule).toEqual({
+        stage: chipStageOptions[index].value,
+        operator: 'and',
+        enabled: true,
+        items: chipStageOptions[index].materials.map((item) => ({
+          item_id: item.id,
+          item_name: item.name,
+          limit
+        }))
+      })
+      const [first, second] = rule.items
+      expect(
+        evaluateLimitRule(rule, { [first.item_id]: limit, [second.item_id]: limit - 1 }).reached
+      ).toBe(false)
+      expect(
+        evaluateLimitRule(rule, { [first.item_id]: limit, [second.item_id]: limit }).reached
+      ).toBe(true)
+    }
+  })
+
+  it('替换已有芯片规则并启用，重复点击不增加规则且保留其他关卡', () => {
+    const other = createLimitRule({ value: '1-7', materials: [{ id: '30012', name: '固源岩' }] })
+    other.items[0].limit = 100
+    const existing = { stage: 'PR-A-1', enabled: false, operator: 'or', items: [] }
+    const original = [other, existing, { ...existing }]
+    const before = structuredClone(original)
+    const rules = applyChipLimitPreset(original, chipStageOptions)
+    expect(rules).toHaveLength(9)
+    expect(rules[0]).toBe(other)
+    expect(original).toEqual(before)
+    expect(applyChipLimitPreset(rules, chipStageOptions)).toEqual(rules)
+  })
+
+  it('忽略其他关卡且只影响执行计划中的芯片关卡', () => {
+    const options = [...chipStageOptions, { value: 'PR-A-3' }, { value: '1-7' }]
+    const rules = applyChipLimitPreset([], options)
+    expect(rules).toHaveLength(8)
+    const plan = ['PR-A-1', '1-7']
+    expect(previewInventorySelection(plan, rules, [], { 3231: 5, 3261: 5 }).stages).toEqual(['1-7'])
+    expect(plan).toEqual(['PR-A-1', '1-7'])
+    expect(applyChipLimitPreset(rules, [])).toEqual(rules)
+  })
+})
+
 describe('刷理智库存选关', () => {
+  it.each([
+    [['1-7', 'PR-A-1', 'Annihilation'], {}, ['Annihilation', 'PR-A-1']],
+    [['1-7', 'PR-A-1', 'PR-B-1', 'Annihilation'], { 3231: 5, 3241: 4 }, ['Annihilation', 'PR-B-1']],
+    [['1-7', 'PR-A-1', 'PR-B-1', 'Annihilation'], { 3231: 5, 3241: 5 }, ['Annihilation', '1-7']],
+    [['1-7', 'PR-A-1'], { 3231: 5 }, ['1-7']],
+    [['1-7', 'Annihilation'], {}, ['Annihilation', '1-7']],
+    [['', 'PR-A-1'], {}, ['PR-A-1']],
+    [['', 'PR-A-1'], { 3231: 5 }, ['']]
+  ])('剿灭和库存关卡优先，无上限关卡在库存关卡达标后后备：%j', (stages, inventory, expected) => {
+    const original = [...stages]
+    const result = previewInventorySelection(
+      stages,
+      [
+        { stage: 'PR-A-1', items: [{ item_id: '3231', limit: 5 }] },
+        { stage: 'PR-B-1', items: [{ item_id: '3241', limit: 5 }] }
+      ],
+      [],
+      inventory
+    )
+    expect(result.stages).toEqual(expected)
+    expect(result.limitFallback).toBe(false)
+    expect(stages).toEqual(original)
+  })
+
+  it.each([
+    { enabled: false, items: [{ item_id: '3231', limit: 5 }] },
+    { items: [{ item_id: '3231', limit: 0 }] },
+    { items: [{ limit: 5 }] },
+    { items: [] }
+  ])('无有效上限的规则不取得优先级：%j', (rule) => {
+    expect(
+      previewInventorySelection(['1-7', 'PR-A-1'], [{ stage: 'PR-A-1', ...rule }]).stages
+    ).toEqual(['1-7', 'PR-A-1'])
+  })
+
+  it('只有比例规则的关卡也优先，比例同分仍按原计划顺序选择', () => {
+    const result = previewInventorySelection(
+      ['1-7', 'ACT-B', 'ACT-A', 'Annihilation'],
+      [],
+      [
+        {
+          members: [
+            { stage: 'ACT-A', item_id: 'A', ratio: 1 },
+            { stage: 'ACT-B', item_id: 'B', ratio: 1 }
+          ]
+        }
+      ],
+      { A: 10, B: 10 }
+    )
+    expect(result.stages).toEqual(['Annihilation', 'ACT-B'])
+    expect(result.ratioDecisions[0].selected).toBe('ACT-B')
+  })
+
+  it.each([
+    { enabled: false, members: [{ stage: 'ACT-A', item_id: 'A', ratio: 1 }] },
+    { members: [{ stage: 'ACT-A', item_id: 'A', ratio: 0 }] },
+    { members: [{ stage: 'ACT-A', ratio: 1 }] },
+    { members: [{ stage: 'Annihilation', item_id: 'A', ratio: 1 }] }
+  ])('未启用或无效比例和剿灭绑定不阻止后备关卡：%j', (rule) => {
+    expect(previewInventorySelection(['1-7', 'ACT-A', 'Annihilation'], [], [rule]).stages).toEqual([
+      'Annihilation',
+      '1-7',
+      'ACT-A'
+    ])
+  })
+
   it('新绑定的比例成员默认比例为 0', () => {
     expect(createRatioMember()).toEqual({
       stage: '',
@@ -139,12 +271,12 @@ describe('刷理智库存选关', () => {
       ],
       { A: 100, B: 999 }
     )
-    expect(result.stages).toEqual(['B-1', '1-7'])
+    expect(result.stages).toEqual(['B-1'])
     expect(result.limitSkipped).toEqual(['A-1'])
     expect(result.ratioDecisions).toEqual([])
   })
 
-  it('全部关卡达到上限时恢复原计划', () => {
+  it('全部关卡达到上限且没有后备关卡时停止刷取', () => {
     const result = previewInventorySelection(
       ['A-1', 'B-1'],
       [
@@ -154,8 +286,9 @@ describe('刷理智库存选关', () => {
       [],
       { A: 1, B: 1 }
     )
-    expect(result.limitFallback).toBe(true)
-    expect(result.stages).toEqual(['A-1', 'B-1'])
+    expect(result.limitFallback).toBe(false)
+    expect(result.stages).toEqual([])
+    expect(result.limitSkipped).toEqual(['A-1', 'B-1'])
   })
 
   it('库存规则不会把周计划未选择的关卡加入执行列表', () => {

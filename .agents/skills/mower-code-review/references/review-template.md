@@ -1,12 +1,16 @@
 # Two-Axis Review Report Template
 
 ```markdown
-# Code Review Report: [Branch / Commit Range]
+# Code Review Report: [Working Tree / Branch / Commit Range]
+
+- **Scope**: [staged, unstaged and untracked sources, or the actual requested comparison base]
+- **Relevant Contracts**: [direct authoritative links and reused invariant identifiers]
 
 ## Summary
 - **Standards Axis**: [PASS / FAIL] ([X] findings)
 - **Spec Axis**: [PASS / FAIL] ([Y] findings)
-- **Verification Gates**: [PASS / FAIL] (harness gates & targeted unit tests)
+- **Structural Checks**: [passed / failed / not run; scope stated]
+- **Behavior Tests**: [passed / failed / not run; actual commands and observable guarantee]
 
 ---
 
@@ -29,6 +33,8 @@
 ---
 
 ## 3. Automated Verification Evidence
-- `python scripts/verify_governance.py`: [0 errors]
-- Targeted unit tests (`pytest arknights_mower/tests/...`): [All passed]
+- Structural commands: [actual results, compatibility warnings and unverified reference types]
+- Focused behavior commands: [actual results; file existence alone does not imply execution]
+- Semantic review: [record ownership, contract consistency and concept-impact conclusion]
+- Remaining uncertainty: [not established by the automated checks]
 ```

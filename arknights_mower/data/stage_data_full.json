@@ -12,6 +12,380 @@
     "endTs": -1
   },
   {
+    "id": "YW-1",
+    "name": "互助会",
+    "drop": [
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act52side_token_scope",
+        "dropType": "COMPLETE"
+      },
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act52side_token_scope",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30031",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30061",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30041",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30051",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30021",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30011",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act52side_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1791500400,
+      "endTs": 1792699199
+    }
+  },
+  {
+    "id": "YW-2",
+    "name": "浮浮沉沉",
+    "drop": [
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act52side_token_scope",
+        "dropType": "COMPLETE"
+      },
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act52side_token_scope",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30031",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30061",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30041",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30051",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30021",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30011",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act52side_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1791500400,
+      "endTs": 1792699199
+    }
+  },
+  {
+    "id": "YW-3",
+    "name": "破手铐",
+    "drop": [
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act52side_token_scope",
+        "dropType": "COMPLETE"
+      },
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act52side_token_scope",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30022",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30062",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act52side_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1791500400,
+      "endTs": 1792699199
+    }
+  },
+  {
+    "id": "YW-4",
+    "name": "走上街道",
+    "drop": [
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act52side_token_scope",
+        "dropType": "COMPLETE"
+      },
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act52side_token_scope",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30012",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30052",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act52side_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1791500400,
+      "endTs": 1792699199
+    }
+  },
+  {
+    "id": "YW-5",
+    "name": "三岔路口",
+    "drop": [
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act52side_token_scope",
+        "dropType": "COMPLETE"
+      },
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act52side_token_scope",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30052",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30022",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act52side_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1791500400,
+      "endTs": 1792699199
+    }
+  },
+  {
+    "id": "YW-6",
+    "name": "大人物",
+    "drop": [
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act52side_token_scope",
+        "dropType": "COMPLETE"
+      },
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act52side_token_scope",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "30063",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act52side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1791500400,
+      "endTs": 1792699199
+    }
+  },
+  {
+    "id": "YW-7",
+    "name": "殉葬品",
+    "drop": [
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act52side_token_scope",
+        "dropType": "COMPLETE"
+      },
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act52side_token_scope",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "31063",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act52side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1791500400,
+      "endTs": 1792699199
+    }
+  },
+  {
+    "id": "YW-8",
+    "name": "鳞的记忆",
+    "drop": [
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act52side_token_scope",
+        "dropType": "COMPLETE"
+      },
+      {
+        "type": "ACTIVITY_ITEM",
+        "id": "act52side_token_scope",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "MATERIAL",
+        "id": "31103",
+        "dropType": "NORMAL"
+      },
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act52side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1791500400,
+      "endTs": 1792699199
+    }
+  },
+  {
+    "id": "YW-TR-1",
+    "name": "炼金术遗产考察",
+    "drop": [
+      {
+        "type": "DIAMOND",
+        "id": "4002",
+        "dropType": "COMPLETE"
+      }
+    ],
+    "zoneId": "act52side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY",
+    "endTs": {
+      "startTs": 1791500400,
+      "endTs": 1792699199
+    }
+  },
+  {
     "id": "0-1",
     "name": "坍塌",
     "drop": null,
@@ -6360,6 +6734,490 @@
     "difficulty": "NORMAL",
     "zoneNameSecond": "身先士卒",
     "stageType": "DAILY"
+  },
+  {
+    "id": "YW-ST-1",
+    "name": "羽兽盘旋",
+    "drop": null,
+    "zoneId": "act52side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "YW-1",
+    "name": "互助会",
+    "drop": null,
+    "zoneId": "act52side_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "YW-TR-1",
+    "name": "炼金术遗产考察",
+    "drop": null,
+    "zoneId": "act52side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "YW-2",
+    "name": "浮浮沉沉",
+    "drop": null,
+    "zoneId": "act52side_zone1",
+    "apCost": 9,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "YW-3",
+    "name": "破手铐",
+    "drop": null,
+    "zoneId": "act52side_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "YW-4",
+    "name": "走上街道",
+    "drop": null,
+    "zoneId": "act52side_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "YW-ST-2",
+    "name": "海声嘈杂",
+    "drop": null,
+    "zoneId": "act52side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "YW-5",
+    "name": "三岔路口",
+    "drop": null,
+    "zoneId": "act52side_zone1",
+    "apCost": 12,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "YW-6",
+    "name": "大人物",
+    "drop": null,
+    "zoneId": "act52side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "YW-7",
+    "name": "殉葬品",
+    "drop": null,
+    "zoneId": "act52side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "YW-8",
+    "name": "鳞的记忆",
+    "drop": null,
+    "zoneId": "act52side_zone1",
+    "apCost": 21,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "YW-ST-3",
+    "name": "留给明天",
+    "drop": null,
+    "zoneId": "act52side_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "昨日海",
+    "subTitle": "雷亚-伊比利亚",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-01",
+    "name": "寂静螺旋",
+    "drop": null,
+    "zoneId": "act3break_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "核心突破",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-02",
+    "name": "波形扭曲",
+    "drop": null,
+    "zoneId": "act3break_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "核心突破",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-03",
+    "name": "极速赛道",
+    "drop": null,
+    "zoneId": "act3break_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "核心突破",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-04",
+    "name": "离子通道扰乱",
+    "drop": null,
+    "zoneId": "act3break_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "核心突破",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-05",
+    "name": "液压颂歌",
+    "drop": null,
+    "zoneId": "act3break_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "核心突破",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-06",
+    "name": "医源性感染",
+    "drop": null,
+    "zoneId": "act3break_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "核心突破",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-07",
+    "name": "萌芽之时",
+    "drop": null,
+    "zoneId": "act3break_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "核心突破",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-08",
+    "name": "磷脂层破坏",
+    "drop": null,
+    "zoneId": "act3break_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "核心突破",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-09",
+    "name": "浸漫花圃",
+    "drop": null,
+    "zoneId": "act3break_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "核心突破",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-10",
+    "name": "动捕影棚",
+    "drop": null,
+    "zoneId": "act3break_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "核心突破",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-11",
+    "name": "漂白剂",
+    "drop": null,
+    "zoneId": "act3break_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "核心突破",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-12",
+    "name": "实质组织萎缩",
+    "drop": null,
+    "zoneId": "act3break_zone1",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "核心突破",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-A",
+    "name": "卓绝之巅",
+    "drop": null,
+    "zoneId": "act3break_zone2",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "全力以赴",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-B",
+    "name": "高优先通道",
+    "drop": null,
+    "zoneId": "act3break_zone2",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "全力以赴",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-C",
+    "name": "惊吓幕后",
+    "drop": null,
+    "zoneId": "act3break_zone2",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "全力以赴",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-D",
+    "name": "挽救治疗",
+    "drop": null,
+    "zoneId": "act3break_zone2",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "全力以赴",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-SP01",
+    "name": "重力危机",
+    "drop": null,
+    "zoneId": "act3break_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-SP02",
+    "name": "心中热火",
+    "drop": null,
+    "zoneId": "act3break_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-SP03",
+    "name": "馆藏珍品",
+    "drop": null,
+    "zoneId": "act3break_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-SP09",
+    "name": "人气巡演",
+    "drop": null,
+    "zoneId": "act3break_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-SP10",
+    "name": "后院死局",
+    "drop": null,
+    "zoneId": "act3break_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-SP04",
+    "name": "明星靶场",
+    "drop": null,
+    "zoneId": "act3break_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-SP11",
+    "name": "影院出口",
+    "drop": null,
+    "zoneId": "act3break_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-SP12",
+    "name": "四号站台",
+    "drop": null,
+    "zoneId": "act3break_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-SP05",
+    "name": "难以相交",
+    "drop": null,
+    "zoneId": "act3break_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-SP06",
+    "name": "林间小憩",
+    "drop": null,
+    "zoneId": "act3break_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-SP07",
+    "name": "荒废矿道",
+    "drop": null,
+    "zoneId": "act3break_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-SP13",
+    "name": "紧急夺还",
+    "drop": null,
+    "zoneId": "act3break_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-SP14",
+    "name": "乙醇暴动",
+    "drop": null,
+    "zoneId": "act3break_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-SP08",
+    "name": "一意孤行",
+    "drop": null,
+    "zoneId": "act3break_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-SP15",
+    "name": "刺耳机床",
+    "drop": null,
+    "zoneId": "act3break_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
+  },
+  {
+    "id": "VEC-SP16",
+    "name": "最终愿望",
+    "drop": null,
+    "zoneId": "act3break_zone3",
+    "apCost": 0,
+    "difficulty": "NORMAL",
+    "zoneNameSecond": "矢量突破#3 拟生态",
+    "subTitle": "特别战线",
+    "stageType": "ACTIVITY"
   },
   {
     "id": "DP-TR-1",
