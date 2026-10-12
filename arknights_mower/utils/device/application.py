@@ -20,6 +20,7 @@ from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.discovery import DiscoveryResult, DiscoveryService
 from arknights_mower.utils.device.endpoint_identity import (
     AVD_PRESETS,
+    CONFIRMED_START_PRESETS,
     InstanceBindingError,
 )
 from arknights_mower.utils.device.genymotion import genymotion_repair
@@ -817,6 +818,8 @@ class DeviceControl(Generic[D]):
 
     def stop_bound_simulator(self) -> bool:
         """Apply idle shutdown through the selected simulator's verified adapter."""
+        from arknights_mower.utils.device.session_io import MANAGED_INSTANCE_PRESETS
+
         if self._shutdown.is_set() or self._pending_close.is_set():
             return False
         with self._configuration():
@@ -824,20 +827,40 @@ class DeviceControl(Generic[D]):
             if (
                 not conf.close_simulator_when_idle
                 or is_android_runtime()
-                or conf.device.preset_id == "manual.physical"
+                or conf.device.preset_id
+                not in MANAGED_INSTANCE_PRESETS | CONFIRMED_START_PRESETS
                 or self._shutdown.is_set()
                 or self._pending_close.is_set()
             ):
                 return False
             try:
-                if conf.device.preset_id in AVD_PRESETS:
-                    return self.stop_owned_avd()
-                if self._session is None or (
+                is_avd = conf.device.preset_id in AVD_PRESETS
+                if is_avd:
+                    if self._avd is None:
+                        return False
+                elif self._session is None or (
                     conf.device.preset_id == "macos.mumu_pro"
                     and not conf.device.topology_fingerprint
                 ):
                     return False
-                return self._session.simulator.stop(conf.device, 10)
+                had_device = self._device is not None
+                dispatch_pause = self._dispatch_pause
+                try:
+                    # Remote helper identity checks require the live transport.
+                    self._close_resources().unwrap()
+                finally:
+                    self._dispatch_pause = dispatch_pause
+                if self._shutdown.is_set() or self._pending_close.is_set():
+                    return False
+                stopped = (
+                    self.stop_owned_avd()
+                    if is_avd
+                    else self._session.simulator.stop(conf.device, 10)
+                )
+                if not stopped and had_device:
+                    # A failed stop leaves scheduling active after its wait.
+                    self.recover().unwrap()
+                return stopped
             except InstanceBindingError as exc:
                 raise PreflightRejected(str(exc), exc.code) from exc
 
@@ -906,6 +929,7 @@ class DeviceControl(Generic[D]):
         connection_retries: int,
         preparation_serial: str | None = None,
         recovering: bool = False,
+        deadline: float | None = None,
     ) -> DeviceResult[D]:
         if (
             self._shutdown.is_set()
@@ -951,7 +975,8 @@ class DeviceControl(Generic[D]):
                         getattr(configuration, "simulator", None), "wait_time", 30
                     ),
                 )
-                deadline = self._session.begin_budget()
+                if deadline is None:
+                    deadline = self._session.begin_budget()
                 if self._adb_recovery is not None:
                     self._recover_adb_server(deadline)
             if self._preparation is not None:
@@ -1326,17 +1351,53 @@ class DeviceControl(Generic[D]):
                 or self._closing_count
             ):
                 return self._closing_failure()
+            deadline = None
             if self._helper_cleanup_error is not None:
                 if self._cleanup_device is None:
                     return self._failure("close_failed", self._helper_cleanup_error)
                 dispatch_pause = self._dispatch_pause
-                closed = self._close_resources()
-                self._dispatch_pause = dispatch_pause
+                if self._session is not None:
+                    deadline = self._session.begin_budget()
+                try:
+                    with self._io_budget():
+                        closed = self._close_resources()
+                finally:
+                    self._dispatch_pause = dispatch_pause
+                if not closed.ok and self._session is not None:
+                    try:
+                        # Recover the original binding without opening helpers.
+                        # Cleanup must succeed before any replacement is built.
+                        if self._adb_recovery is not None:
+                            self._recover_adb_server(deadline)
+                        self._session.ensure_ready(
+                            deadline=deadline,
+                            frame_probe=getattr(
+                                self._session.adb, "standard_frame_size", None
+                            ),
+                        )
+                        if self._shutdown.is_set() or self._pending_close.is_set():
+                            raise MowerExit("设备会话正在关闭")
+                        with self._io_budget():
+                            closed = self._close_resources()
+                    except Exception as exc:
+                        self._state = (
+                            "cancelled"
+                            if isinstance(exc, MowerExit)
+                            and not isinstance(
+                                exc, (PreflightRejected, PreparationError)
+                            )
+                            else "failed"
+                        )
+                        return self._failure("recovery_failed", exc)
+                    finally:
+                        self._dispatch_pause = dispatch_pause
                 if not closed.ok:
                     return closed
             previous_error, self._session_error = self._session_error, None
             if self._device is None:
-                return self._start(connection_retries=1, recovering=True)
+                return self._start(
+                    connection_retries=1, recovering=True, deadline=deadline
+                )
             if self._session is None:
                 try:
                     reconnect = getattr(self._device, "reconnect", None)
