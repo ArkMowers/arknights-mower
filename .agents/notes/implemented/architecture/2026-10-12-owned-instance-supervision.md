@@ -47,6 +47,8 @@ After rebase and startup-mode repairs, the combined focused screenshot, recovery
 
 The 2026-10-13 review rebases the work onto alpha commit `52dba896f`. In the existing isolated Windows environment with OpenCV 4.11.0.86, NumPy 1.26.4 and Pillow 10.3.0, the focused screenshot, recovery, desktop, process-control, status, scheduled-start and update suites pass 408 tests and 326 subtests in 86.74 seconds. Three POSIX or macOS cases are skipped; the three frontend suites pass 22 tests. Review repairs explicitly write two generated Python scripts as UTF-8 for Chinese temporary paths and update the existing desktop update-start assertions to require automatic admission. The initial script encoding failure and stale assertions are reproduced before repair. Python lint and format checks pass separately.
 
+The startup-resource review adds six focused Windows cases for intent-mapping and Job allocation failures, Job assignment failure and native resume failure. All six reproduce supervisor termination before the repair and pass afterward, verifying bounded retry, closure of acquired mappings and Jobs, and termination of an already-created owned child before another launch. This extends the existing startup-failure boundary without changing later process-identity validation.
+
 Source and frozen argument construction and early worker dispatch are checked. Full frozen-package installation and live-device endurance remain outside this verification. No live device or existing instance participates in these checks.
 
 ## Resource Measurement

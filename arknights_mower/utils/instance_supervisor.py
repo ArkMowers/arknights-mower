@@ -163,7 +163,7 @@ class WindowsInstanceJob:
         if not self.kernel.AssignProcessToJobObject(self.handle, process._handle):
             raise self.ctypes.WinError(self.ctypes.get_last_error())
         if self.resume(process._handle):
-            raise RuntimeError("无法启动自有实例进程")
+            raise OSError("无法启动自有实例进程")
 
     def contains(self, handle):
         from ctypes import wintypes
@@ -366,32 +366,44 @@ def supervise(
         )
         intent = None
         desired = None
-        if sys.platform == "win32":
-            control_name = f"Local\\MowerRecoveryIntent_{generation}"
-            intent = mmap.mmap(-1, 1, tagname=control_name, access=mmap.ACCESS_WRITE)
-            intent[0] = 255
-            child_environment["MOWER_SUPERVISOR_INTENT"] = control_name
+        windows_job = None
+        process = None
         report = {}
         runtime.write_json(
             directory / "supervisor.json",
             {"pid": os.getpid(), "generation": generation, "phase": "starting"},
         )
         options = runtime.hidden_console_options()
-        windows_job = WindowsInstanceJob() if sys.platform == "win32" else None
-        if windows_job is not None:
-            options["creationflags"] = options.get("creationflags", 0) | 0x00000004
         try:
+            if sys.platform == "win32":
+                control_name = f"Local\\MowerRecoveryIntent_{generation}"
+                intent = mmap.mmap(
+                    -1, 1, tagname=control_name, access=mmap.ACCESS_WRITE
+                )
+                intent[0] = 255
+                child_environment["MOWER_SUPERVISOR_INTENT"] = control_name
+                windows_job = WindowsInstanceJob()
+                options["creationflags"] = options.get("creationflags", 0) | 0x00000004
             process = subprocess.Popen(
                 command,
                 env=child_environment,
                 stdin=subprocess.DEVNULL,
                 **options,
             )
-        except (OSError, MemoryError) as error:
-            if intent is not None:
-                intent.close()
             if windows_job is not None:
-                windows_job.close()
+                windows_job.start(process)
+        except BaseException as error:
+            try:
+                if process is not None and process.poll() is None:
+                    process.terminate()
+                    process.wait(timeout=5)
+            finally:
+                if intent is not None:
+                    intent.close()
+                if windows_job is not None:
+                    windows_job.close()
+            if not isinstance(error, (OSError, MemoryError)):
+                raise
             if not retry(
                 {"failure_reason": "process_creation", "creation_error": str(error)},
                 1,
@@ -399,19 +411,11 @@ def supervise(
             ):
                 return 1
             continue
-        except BaseException:
-            if intent is not None:
-                intent.close()
-            if windows_job is not None:
-                windows_job.close()
-            raise
         owned_leaf = None
         deadline = time.monotonic() + startup_timeout
         probe_at = 0.0
         unavailable_since = None
         try:
-            if windows_job is not None:
-                windows_job.start(process)
             while True:
                 observed = runtime.read_json(report_path)
                 if (

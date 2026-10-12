@@ -114,6 +114,97 @@ def test_process_creation_failure_cools_down_and_retries(
     )
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows startup ownership")
+@pytest.mark.parametrize(
+    "stage, failure",
+    [
+        ("intent", OSError),
+        ("intent", MemoryError),
+        ("job", OSError),
+        ("job", MemoryError),
+        ("assign", OSError),
+        ("resume", OSError),
+    ],
+)
+def test_windows_startup_resource_failure_retries_and_closes_intent(
+    isolated_runtime, monkeypatch, stage, failure
+):
+    command = child_script(isolated_runtime, "child_exit('window')\n")
+    original_mapping = supervisor.mmap.mmap
+    original_job = supervisor.WindowsInstanceJob
+    attempts, mappings, jobs, processes = [], [], [], []
+
+    class TrackedMapping:
+        def __init__(self, shared):
+            self.shared = shared
+            self.closed = False
+
+        def __getitem__(self, key):
+            return self.shared[key]
+
+        def __setitem__(self, key, value):
+            self.shared[key] = value
+
+        def close(self):
+            self.shared.close()
+            self.closed = True
+
+    def mapping(*args, **kwargs):
+        if stage == "intent":
+            attempts.append(time.monotonic())
+            if len(attempts) == 1:
+                raise failure("startup allocation refused")
+        shared = TrackedMapping(original_mapping(*args, **kwargs))
+        mappings.append(shared)
+        return shared
+
+    def job():
+        if stage != "intent":
+            attempts.append(time.monotonic())
+            if len(attempts) == 1 and stage == "job":
+                raise failure("startup allocation refused")
+            if len(attempts) > 1:
+                assert mappings[0].closed, "failed startup retained its intent mapping"
+                assert all(child.poll() is not None for child in processes)
+                assert all(owned.closed for owned in jobs)
+        owned = original_job()
+        owned.closed = False
+        jobs.append(owned)
+        original_close, original_start = owned.close, owned.start
+
+        def close():
+            original_close()
+            owned.closed = True
+
+        def start(process):
+            processes.append(process)
+            original_start(process)
+
+        owned.close, owned.start = close, start
+        if len(attempts) == 1 and stage == "assign":
+            owned.kernel.AssignProcessToJobObject = lambda *args: False
+        if len(attempts) == 1 and stage == "resume":
+            owned.resume = lambda handle: 1
+        return owned
+
+    monkeypatch.setattr(supervisor.mmap, "mmap", mapping)
+    monkeypatch.setattr(supervisor, "WindowsInstanceJob", job)
+    assert (
+        supervisor.supervise(
+            command, isolated_runtime, delays=(0.04,), poll_interval=0.01
+        )
+        == 0
+    )
+    assert len(attempts) == 2 and attempts[1] - attempts[0] >= 0.04
+    assert len(runtime.read_json(isolated_runtime / "trace.json")) == 1
+    assert runtime.read_json(isolated_runtime / "recovery.json")["reason"] == (
+        "process_creation"
+    )
+    assert all(shared.closed for shared in mappings)
+    assert all(owned.closed for owned in jobs)
+    assert all(child.poll() is not None for child in processes)
+
+
 @pytest.mark.parametrize("desired_running", [False, True])
 @pytest.mark.parametrize("creation_failure", [False, True])
 def test_unknown_initial_intent_is_resolved_from_actual_startup_policy(
