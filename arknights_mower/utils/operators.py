@@ -1119,6 +1119,44 @@ class Operators:
         }
         self.commit_group_shifts({})
 
+    def working_replacement_blockers(self, names, plan=None):
+        """其他组仍占用成员的工作替班岗位时，整组等待岗位释放。"""
+        names = set(names)
+        plan = plan or {}
+        sources = {}
+        for name in names:
+            op = self.operators[name]
+            if not op.is_working():
+                continue
+            target = plan.get(op.current_room, [])[
+                op.current_index : op.current_index + 1
+            ]
+            if not target or target[0] in ("Current", name):
+                sources[op.current_room, op.current_index] = name
+        sources.update(
+            {
+                (room, index): name
+                for room, row in plan.items()
+                if not room.startswith("dorm")
+                for index, name in enumerate(row)
+                if name in names
+            }
+        )
+        groups = set()
+        for (room, index), name in sources.items():
+            op = self.operators[name]
+            slots = self.plan.get(room, [])
+            if (room, index) == (op.room, op.index) or not 0 <= index < len(slots):
+                continue
+            owner = self.operators.get(slots[index].agent)
+            if (
+                owner is not None
+                and owner.name not in names
+                and self.is_same_group_primary_replacement(owner, name)
+            ):
+                groups.add(owner.group)
+        return groups
+
     def normalize_shared_arrangement(
         self, plan, transitions=None, *, reserved_replacements=None, explicit_slots=()
     ):
@@ -1133,6 +1171,14 @@ class Operators:
             if transitions is None
             else transitions
         )
+        shifting = {
+            name
+            for group, resting in transitions.items()
+            if resting
+            for name in self.shift_group_members(group)
+        }
+        if self.working_replacement_blockers(shifting, plan):
+            return False
         followers = [
             op
             for op in self.operators.values()
