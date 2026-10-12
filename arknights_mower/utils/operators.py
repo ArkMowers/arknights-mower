@@ -550,7 +550,7 @@ class Operators:
                         if cover is not None and cover.is_high():
                             if any(
                                 _replacement in binding["replacement"]
-                                and not self.is_same_group_dorm_replacement(
+                                and not self.is_same_group_primary_replacement(
                                     self.operators[data.agent],
                                     _replacement,
                                     binding["group"],
@@ -693,17 +693,7 @@ class Operators:
                 )
                 if assignments is None:
                     return f"{key} 分组无法排班,替换组数量不够"
-                fixed_replacements = {
-                    replacement
-                    for name, replacement in assignments.items()
-                    if self.operators[name].room.startswith("dorm")
-                    and self.is_same_group_dorm_replacement(
-                        self.operators[name], replacement, key
-                    )
-                    and not self.operators[replacement].room.startswith("dorm")
-                    and not self.operators[replacement].workaholic
-                }
-                required_beds = len(required - fixed_replacements)
+                required_beds = len(required - set(assignments.values()))
                 if required_beds <= effective_dorm_count:
                     break
             else:
@@ -715,7 +705,7 @@ class Operators:
             for index, slot in enumerate(slots)
             if any(
                 name != "Free"
-                and self.is_same_group_dorm_replacement(
+                and self.is_same_group_primary_replacement(
                     self.operators[slot.agent], name, binding["group"]
                 )
                 and not self.operators[name].room.startswith("dorm")
@@ -1237,7 +1227,7 @@ class Operators:
                         or any(name in names for names in plan.values())
                     )
                     and any(
-                        self.is_same_group_dorm_replacement(op, name, group)
+                        self.is_same_group_primary_replacement(op, name, group)
                         for group in groups
                     )
                 )
@@ -1899,8 +1889,8 @@ class Operators:
             for name in self.groups.get(group, [])
         )
 
-    def is_same_group_dorm_replacement(self, operator, name, group=None):
-        """同一非空组内，宿舍绑组主班可与工作或宿舍主班互填替班。"""
+    def is_same_group_primary_replacement(self, operator, name, group=None):
+        """同一非空组内，不同主班可按对应绑组的配置互填替班。"""
         cover = self.operators.get(name)
         group = operator.group if group is None else group
         return bool(
@@ -1915,7 +1905,6 @@ class Operators:
             )
             and name in operator.replacements_for_group(group)
             and operator.name != name
-            and (operator.room.startswith("dorm") or cover.room.startswith("dorm"))
         )
 
     def is_auto_free_dorm_operator(self, operator, *, group_transitions=None):
@@ -1998,7 +1987,7 @@ class Operators:
                 continue
             replacements = operator.replacements_for_group(group)
             if "Free" in replacements or any(
-                self.is_same_group_dorm_replacement(operator, cover, group)
+                self.is_same_group_primary_replacement(operator, cover, group)
                 and not self.operators[cover].room.startswith("dorm")
                 and not self.operators[cover].workaholic
                 for cover in replacements
@@ -2112,7 +2101,7 @@ class Operators:
                 else [resident.group]
             )
             return any(
-                self.is_same_group_dorm_replacement(resident, name, group)
+                self.is_same_group_primary_replacement(resident, name, group)
                 for group in groups
             )
         return False

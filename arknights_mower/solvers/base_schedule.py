@@ -4376,7 +4376,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     x.room,
                     x.index,
                 )
-                same_group_cover = self.op_data.is_same_group_dorm_replacement(x, obj)
+                same_group_cover = self.op_data.is_same_group_primary_replacement(
+                    x, obj
+                )
                 if (
                     replacement.current_room
                     and not replacement.is_resting()
@@ -4404,6 +4406,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     and (
                         x.room.startswith("dorm")
                         or replacement.current_room != x.room
+                        or same_group_cover
+                        and obj in agents
                         or x.multi_group
                         and in_slot
                     )
@@ -4464,20 +4468,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     )
                     if assignments is None:
                         return
-                fixed_resting = {
-                    cover
-                    for owner, cover in assignments.items()
-                    if self.op_data.operators[owner].room.startswith("dorm")
-                    and self.op_data.is_same_group_dorm_replacement(
-                        self.op_data.operators[owner], cover
-                    )
-                }
+                assigned_covers = set(assignments.values())
                 resting_agents = [
                     x
                     for x in agents
                     if not self.op_data.operators[x].workaholic
                     and not self.op_data.operators[x].room.startswith("dorm")
-                    and x not in fixed_resting
+                    and x not in assigned_covers
                     and self.op_data.get_dorm_by_name(x)[0] is None
                     and not (
                         self.op_data.operators[x].multi_group

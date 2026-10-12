@@ -148,7 +148,7 @@ def reconsider_low_mood_replacements(op_data, fix_plan, is_busy):
                     or name in reserved
                     or name in TRADE_ORDER_AGENTS
                     or candidate.is_high()
-                    and not op_data.is_same_group_dorm_replacement(owner, name)
+                    and not op_data.is_same_group_primary_replacement(owner, name)
                     or candidate.current_room
                     and not candidate.is_resting()
                     or candidate.time_stamp is None
@@ -199,7 +199,7 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
                 if (
                     cover is None
                     or cover.is_high()
-                    and not op_data.is_same_group_dorm_replacement(op, candidate)
+                    and not op_data.is_same_group_primary_replacement(op, candidate)
                     or candidate in reserved | resting
                     or candidate in TRADE_ORDER_AGENTS
                     or op_data.is_dorm_replacement(candidate)
@@ -305,7 +305,7 @@ def correct_group_dorms(op_data, fix_plan, is_busy, *, positions=None):
                             and (
                                 not op_data.operators[name].is_high()
                                 or any(
-                                    op_data.is_same_group_dorm_replacement(
+                                    op_data.is_same_group_primary_replacement(
                                         op, name, resting_group
                                     )
                                     for resting_group in resting_groups
@@ -422,7 +422,7 @@ def preserve_backup_replacements(
                 or is_busy(candidate)
                 or cover.is_high()
                 and (
-                    not op_data.is_same_group_dorm_replacement(owner, candidate)
+                    not op_data.is_same_group_primary_replacement(owner, candidate)
                     or source == (cover.room, cover.index)
                 )
                 or op_data.replacement_exhausted(candidate, operator=owner)
