@@ -62,11 +62,14 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
         op = state.operators.get(name)
         return (
             op is not None
-            and (not op.is_high() or state.is_same_group_dorm_replacement(target, name))
+            and (
+                not op.is_high()
+                or state.is_same_group_primary_replacement(target, name)
+            )
             and name not in protected | selected | set(TRADE_ORDER_AGENTS)
             and (
                 name not in required
-                or state.is_same_group_dorm_replacement(target, name)
+                or state.is_same_group_primary_replacement(target, name)
             )
             and not state.is_dorm_replacement(name)
             and not state.replacement_exhausted(name, operator=target)
@@ -78,7 +81,7 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
         return eligible(state, name, target) and (
             not op.current_room
             or op.is_resting()
-            or state.is_same_group_dorm_replacement(target, name)
+            or state.is_same_group_primary_replacement(target, name)
             and name in required
             and (op.current_room, op.current_index) == (op.room, op.index)
         )
@@ -112,7 +115,7 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
                 if (
                     covered is None
                     or covered.name not in members
-                    or not state.is_same_group_dorm_replacement(covered, member)
+                    or not state.is_same_group_primary_replacement(covered, member)
                 ):
                     return None
             if (worker.current_room, worker.current_index) != (

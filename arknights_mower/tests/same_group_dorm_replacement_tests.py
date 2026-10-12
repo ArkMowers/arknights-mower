@@ -1,4 +1,4 @@
-"""同组工作主班与宿舍主班双向替班保留完整轮休和单回确认。"""
+"""同组主班互填不限设施，宿舍替班保留完整轮休和单回确认。"""
 
 import sys
 from datetime import datetime, timedelta
@@ -74,27 +74,165 @@ def test_cross_role_replacements_preserve_primary_identity(monkeypatch, reciproc
     for name, room in [(WORKER, "contact"), (RESIDENT, ROOM)]:
         assert data.operators[name].is_high()
         assert (data.operators[name].room, data.operators[name].group) == (room, "公招")
-    assert data.is_same_group_dorm_replacement(data.operators[WORKER], RESIDENT)
+    assert data.is_same_group_primary_replacement(data.operators[WORKER], RESIDENT)
     assert (
-        data.is_same_group_dorm_replacement(data.operators[RESIDENT], WORKER)
+        data.is_same_group_primary_replacement(data.operators[RESIDENT], WORKER)
         is reciprocal
     )
 
 
-@pytest.mark.parametrize("invalid", ["empty", "different", "work_work", "self"])
-def test_primary_replacements_reject_invalid_relationships(monkeypatch, invalid):
+@pytest.mark.parametrize("invalid", ["empty", "different", "self"])
+@pytest.mark.parametrize("working_pair", [False, True])
+def test_primary_replacements_reject_invalid_relationships(
+    monkeypatch, invalid, working_pair
+):
     solver = make_solver(monkeypatch, reciprocal=True)
     plan = solver.global_plan["default_plan"].plan
-    if invalid == "empty":
-        plan["contact"][0].group = plan[ROOM][0].group = ""
-    elif invalid == "different":
-        plan[ROOM][0].group = "其他"
-    elif invalid == "work_work":
+    if working_pair:
         plan["meeting"] = [plan[ROOM][0]]
         plan[ROOM][0] = Room("杜林", "", [])
+    cover_room = "meeting" if working_pair else ROOM
+    if invalid == "empty":
+        plan["contact"][0].group = plan[cover_room][0].group = ""
+    elif invalid == "different":
+        plan[cover_room][0].group = "其他"
     else:
         plan["contact"][0].replacement = [WORKER]
     assert "替换组不可用高效组干员" in solver.initialize_operators()
+
+
+@pytest.mark.parametrize("reciprocal", [False, True])
+@pytest.mark.parametrize("same_room", [False, True])
+def test_working_primary_replacements_preserve_identity(
+    monkeypatch, reciprocal, same_room
+):
+    solver = make_solver(monkeypatch, reciprocal)
+    plan = solver.global_plan["default_plan"].plan
+    room = "contact" if same_room else "meeting"
+    plan.setdefault(room, []).append(plan[ROOM][0])
+    plan[ROOM][0] = Room("杜林", "", [])
+    initialize(solver)
+    data = solver.op_data
+    assert not data.has_dorm_groups()
+    assert data.group_dorm == []
+    assert data.group_dorm_bed_count("公招") == 0
+    for name, native in [(WORKER, "contact"), (RESIDENT, room)]:
+        op = data.operators[name]
+        assert op.is_high()
+        assert (op.room, op.group) == (native, "公招")
+    assert data.is_same_group_primary_replacement(data.operators[WORKER], RESIDENT)
+    assert (
+        data.is_same_group_primary_replacement(data.operators[RESIDENT], WORKER)
+        is reciprocal
+    )
+
+
+@pytest.mark.parametrize("same_room", [False, True])
+def test_working_primary_exchange_uses_complete_matching_without_duplicate_beds(
+    monkeypatch, same_room
+):
+    solver = make_solver(monkeypatch, reciprocal=True)
+    slots = solver.global_plan["default_plan"].plan
+    room = "contact" if same_room else "meeting"
+    slots.setdefault(room, []).append(slots[ROOM][0])
+    slots[ROOM][0] = Room("杜林", "", [])
+    initialize(solver)
+    data = solver.op_data
+    plan, covers = {}, []
+    assert solver.get_resting_plan(data.groups["公招"].copy(), covers, plan, 0)
+    base_schedule._merge_dorm_arrangement(plan, try_reorder(data, plan) or {})
+    expected = (
+        {"contact": [RESIDENT, WORKER]}
+        if same_room
+        else {"contact": [RESIDENT], "meeting": [WORKER]}
+    )
+    assert plan == expected
+    assert set(covers) == {WORKER, RESIDENT}
+    assert all(not bed.name for bed in data.all_dorms())
+    projected = data.project_arrangements([plan])
+    assert projected.operators[WORKER].current_room == room
+    assert projected.operators[WORKER].current_index == (1 if same_room else 0)
+    assert projected.operators[RESIDENT].current_room == "contact"
+    assert data.operators[WORKER].current_room == "contact"
+    assert data.operators[RESIDENT].current_room == room
+
+
+def make_working_exchange(monkeypatch, extra=(), *, prefer_idle=False):
+    solver = make_solver(monkeypatch, reciprocal=True)
+    slots = solver.global_plan["default_plan"].plan
+    slots["meeting"] = [slots[ROOM][0]]
+    if prefer_idle:
+        slots["contact"][0].replacement.insert(0, "夜莺")
+        slots["meeting"][0].replacement.insert(0, "白面鸮")
+    slots[ROOM] = [
+        Room(name, "", []) for name in ("杜林", "蜜莓", "芙蓉", "安赛尔", "Free")
+    ]
+    if extra:
+        slots["central"] = [
+            Room(name, "公招", [cover]) for name, cover in zip(extra, ("黑角", "初雪"))
+        ]
+    return solver
+
+
+@pytest.mark.parametrize("prefer_idle", [False, True])
+def test_working_exchange_counts_only_unassigned_recovering_primaries(
+    monkeypatch, prefer_idle
+):
+    solver = make_working_exchange(monkeypatch, ("陈",), prefer_idle=prefer_idle)
+    initialize(solver)
+    data = solver.op_data
+    for name in data.groups["公招"]:
+        data.operators[name].mood = 10
+    assert len(data.dorm) == 1
+    plan, covers = {}, []
+    assert solver.get_resting_plan(data.groups["公招"].copy(), covers, plan, 0)
+    assert {bed.name for bed in data.all_dorms() if bed.name} == {"陈"}
+    base_schedule._merge_dorm_arrangement(plan, try_reorder(data, plan) or {})
+    assert plan["contact"] == [RESIDENT]
+    assert plan["meeting"] == [WORKER]
+    assert plan["central"] == ["黑角"]
+    assert plan[ROOM][4] == "陈"
+    names = [name for row in plan.values() for name in row if name != "Current"]
+    assert len(names) == len(set(names))
+    projected = data.project_arrangements([plan])
+    assert projected.get_dorm_by_name("陈")[1].position == (ROOM, 4)
+    assert projected.get_dorm_by_name(WORKER) == (None, None)
+    assert projected.get_dorm_by_name(RESIDENT) == (None, None)
+
+
+def test_working_exchange_does_not_hide_remaining_bed_shortage(monkeypatch):
+    solver = make_working_exchange(monkeypatch, ("陈", "银灰"))
+    assert "所需宿舍数2大于当前有效宿舍数1" in solver.initialize_operators()
+
+
+def test_working_exchange_needs_no_available_dynamic_bed(monkeypatch):
+    solver = make_working_exchange(monkeypatch)
+    initialize(solver)
+    data = solver.op_data
+    data.reserved_product_beds[(ROOM, 4)] = "夜莺"
+    plan, covers = {}, []
+    assert solver.get_resting_plan(data.groups["公招"].copy(), covers, plan, 0)
+    assert plan == {"contact": [RESIDENT], "meeting": [WORKER]}
+    assert all(not bed.name for bed in data.all_dorms())
+    assert data.reserved_product_beds == {(ROOM, 4): "夜莺"}
+
+
+def test_working_exchange_preserves_group_when_remaining_beds_are_reserved(
+    monkeypatch,
+):
+    solver = make_working_exchange(monkeypatch, ("陈", "银灰"))
+    solver.global_plan["default_plan"].plan[ROOM][3] = Room("Free", "", [])
+    initialize(solver)
+    data = solver.op_data
+    for name in data.groups["公招"]:
+        data.operators[name].mood = 10
+    data.reserved_product_beds[(ROOM, 3)] = "夜莺"
+    before = {name: op.current_room for name, op in data.operators.items()}
+    plan, covers = {}, []
+    assert not solver.get_resting_plan(data.groups["公招"].copy(), covers, plan, 0)
+    assert plan == {} and covers == []
+    assert all(not bed.name for bed in data.all_dorms())
+    assert {name: op.current_room for name, op in data.operators.items()} == before
 
 
 @pytest.mark.parametrize("reciprocal", [False, True])

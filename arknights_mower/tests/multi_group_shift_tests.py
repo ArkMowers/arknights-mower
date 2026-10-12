@@ -224,7 +224,7 @@ def test_follower_recovery_time_does_not_delay_group_return(solver):
         ([{"group": "", "replacement": ["黑角"]}], "不能为空"),
         ([{"group": "乙", "replacement": []}], "需要替班"),
         ([{"group": "无主组", "replacement": ["黑角"]}], "缺少决定上下班的工作主班"),
-        ([{"group": "乙", "replacement": [B]}], "不可用高效组"),
+        ([{"group": "乙", "replacement": [A]}], "不可用高效组"),
     ],
 )
 def test_invalid_binding_reports_actionable_error(solver, bindings, error):
@@ -519,7 +519,7 @@ def test_dorm_accepts_working_primary_secondary_binding(solver, reciprocal):
     assert solver.initialize_operators() is None
     data = solver.op_data
     assert data.operators[SHARED].group == "甲"
-    assert data.is_same_group_dorm_replacement(data.operators["塑心"], SHARED)
+    assert data.is_same_group_primary_replacement(data.operators["塑心"], SHARED)
     apply(solver, {room: [op.agent for op in row] for room, row in plan.items()})
     admitted, off = shift_off(solver, "乙")
     assert admitted
@@ -551,15 +551,25 @@ def test_worker_accepts_dorm_primary_secondary_binding(solver):
     assert solver.op_data.get_dorm_by_name(B)[1].position == ("dormitory_1", 0)
 
 
-@pytest.mark.parametrize("relationship", ["cross_group", "work_work"])
-def test_secondary_binding_retains_primary_replacement_restrictions(
-    solver, relationship
-):
+@pytest.mark.parametrize("reciprocal", [False, True])
+def test_working_primaries_accept_secondary_binding_replacements(solver, reciprocal):
     plan = solver.global_plan["default_plan"].plan
-    if relationship == "cross_group":
-        plan["dormitory_1"][0] = Room("塑心", "丙", [SHARED])
-    else:
-        plan["meeting"][1].replacement = [SHARED]
+    plan["meeting"][1].replacement = [SHARED]
+    if reciprocal:
+        plan["contact"][0].group_bindings[0]["replacement"] = [B]
+    assert solver.initialize_operators() is None
+    data = solver.op_data
+    assert data.operators[SHARED].group == "甲"
+    assert data.is_same_group_primary_replacement(data.operators[B], SHARED)
+    assert (
+        data.is_same_group_primary_replacement(data.operators[SHARED], B, "乙")
+        is reciprocal
+    )
+
+
+def test_secondary_binding_rejects_cross_group_primary_replacement(solver):
+    plan = solver.global_plan["default_plan"].plan
+    plan["dormitory_1"][0] = Room("塑心", "丙", [SHARED])
     assert "替换组不可用高效组干员" in solver.initialize_operators()
 
 
