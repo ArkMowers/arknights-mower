@@ -220,6 +220,12 @@ def test_mixed_pending_bed_records_observed_recovery_before_confirmation(
     if confirmation_retry:
         assert not solver._complete_group_shift(task)
         solver._prepare_group_shift(task, remember_targets=True)
+    # 联动下班时，完整任务还必须让讯使入宿，不能只确认固定替班。
+    observed = [incoming, "冰酿", "泥岩", "能天使", "年"]
+    if not free_resting:
+        assert task.plan["dormitory_1"][2] == "讯使"
+        assert task.group_shift_expected["dormitory_1", 2] == "讯使"
+        observed[2] = "讯使"
     due = datetime.now() + timedelta(hours=6)
     monkeypatch.setattr(
         "arknights_mower.solvers.record.save_agent_action", lambda *args, **kwargs: None
@@ -231,9 +237,7 @@ def test_mixed_pending_bed_records_observed_recovery_before_confirmation(
     solver.turn_on_room_detail = MagicMock()
     solver.wait_product_complete = MagicMock()
     solver.scroll_room_operators = MagicMock()
-    solver.read_screen = MagicMock(
-        side_effect=[incoming, "冰酿", "泥岩", "能天使", "年"]
-    )
+    solver.read_screen = MagicMock(side_effect=observed)
     solver.read_accurate_mood = MagicMock(return_value=5)
     solver.read_operator_time = MagicMock(return_value=due)
     if entry == "room_retry":
@@ -267,9 +271,7 @@ def test_mixed_pending_bed_records_observed_recovery_before_confirmation(
     assert data.group_is_resting("另一组") is (not free_resting)
     data.correct_dorm(group_transitions=solver._execution_group_transitions())
     assert bed.name == incoming and bed.time == due
-    solver.read_screen = MagicMock(
-        side_effect=[incoming, "冰酿", "泥岩", "能天使", "年"]
-    )
+    solver.read_screen = MagicMock(side_effect=observed)
     solver.read_operator_time.reset_mock()
     solver.get_agent_from_room("dormitory_1")
     solver.read_operator_time.assert_not_called()
