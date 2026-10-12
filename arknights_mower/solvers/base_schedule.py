@@ -10467,7 +10467,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         """Download navigation atomically, falling back to an intact local cache."""
         from arknights_mower.utils.update_runtime import read_json, write_json
 
-        ota_tasks_path = path / "cache" / "resource" / "tasks.json"
+        tasks_dir = path / "cache" / "resource"
+        if os.environ.get("MOWER_ANDROID") != "1":
+            tasks_dir = tasks_dir / "tasks"
+        ota_tasks_path = tasks_dir / "tasks.json"
         try:
             logger.debug("开始更新MAA活动关卡导航……")
             ota_tasks_url = (
@@ -10481,8 +10484,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 response.raise_for_status()
                 res = response.content.decode("utf-8")
             tasks = json.loads(res)
-            if not isinstance(tasks, dict) or not tasks:
-                raise ValueError("MAA 活动导航必须是非空 JSON 对象")
+            if (
+                not isinstance(tasks, dict)
+                or not tasks
+                or not all(isinstance(task, dict) for task in tasks.values())
+            ):
+                raise ValueError("MAA 活动导航必须是非空任务定义对象")
             write_json(ota_tasks_path, tasks)
             logger.info("MAA 活动关卡导航下载完成，等待资源加载确认")
             return tasks

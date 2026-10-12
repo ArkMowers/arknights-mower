@@ -232,7 +232,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 - [ ] **[INV-MAA-10] Independent Update Admission**: Are automatic policies independent, obsolete automatic-check results ignored, and unknown local resource versions accepted only through an unused matching check while MAA is idle?
 - [ ] **[INV-MAA-09] Weekday-Independent Medicine**: Does MAA Fight pass the configured expiry threshold on every weekday, does local potion use retain positive-threshold and expiring-potion checks, and are both retired weekend-only spellings ignored and omitted on save?
 
-- [ ] **[INV-MAA-08] Verified MAA Admission**: Do resource loading, task submission and startup check their MAA results, identify rejection by phase and target, clear pending work without recording successful execution, and preserve rollback backups?
+- [ ] **[INV-MAA-08] Verified MAA Admission**: Does desktop activity navigation atomically replace validated task definitions in `cache/resource/tasks/tasks.json` while preserving other cached resources and the previous navigation on update failure? Do resource loading, task submission and startup check their MAA results, identify rejection by phase and target, clear pending work without recording successful execution, and preserve rollback backups?
 
 - [ ] **[INV-MAA-07] Normal Long-Task Termination**: Do completed and scheduler-interrupted Roguelike, SSSCopilot and Reclamation tasks avoid errors inferred solely from `running()` returning false, while core errors and invocation exceptions retain their reporting?
 
