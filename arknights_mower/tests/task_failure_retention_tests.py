@@ -189,6 +189,52 @@ def test_failure_survives_serialization_and_stale_cleanup(
     assert find_next_task([restored]) is None
 
 
+@pytest.mark.parametrize("persisted", [False, True])
+def test_rearmed_old_task_survives_repeated_cleanup(
+    scheduler, failed_arrangement, persisted
+):
+    solver, task, _ = failed_arrangement
+    original_time = task.time
+    scheduler.clock.current += timedelta(minutes=20)
+    solver.op_data.operators["陈"].time_stamp = scheduler.clock.now()
+    solver._resume_failed_tasks()
+    assert not hasattr(task, "execution_failure")
+    if persisted:
+        task = jsonpickle.decode(jsonpickle.encode(task))
+        solver.tasks = [task]
+    for _ in range(3):
+        stale = SchedulerTask(
+            original_time, {"meeting": ["Current"]}, TaskTypes.SHIFT_OFF
+        )
+        solver.tasks.append(stale)
+        solver.handle_error(True)
+        assert any(queued is task for queued in solver.tasks)
+        assert all(queued is not stale for queued in solver.tasks)
+        assert task.time == original_time
+        assert task.plan == {ROOM: ["陈"]}
+        assert find_next_task(solver.tasks) is task
+    solver.agent_arrange.side_effect = None
+    solver.run()
+    assert solver.agent_arrange.call_count == 2
+    assert all(queued is not task for queued in solver.tasks)
+    scheduler.io.assert_not_called()
+
+
+def test_run_dispatches_rearmed_old_task_before_expiry_cleanup(
+    scheduler, failed_arrangement
+):
+    solver, task, _ = failed_arrangement
+    original_time = task.time
+    scheduler.clock.current += timedelta(minutes=20)
+    solver.op_data.operators["陈"].time_stamp = scheduler.clock.now()
+    solver.agent_arrange.side_effect = None
+    solver.run()
+    assert solver.agent_arrange.call_count == 2
+    assert task.time == original_time
+    assert all(queued is not task for queued in solver.tasks)
+    scheduler.io.assert_not_called()
+
+
 def test_only_failed_task_keeps_normal_planning_without_replaying(
     scheduler, failed_arrangement
 ):

@@ -515,6 +515,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 and self._task_failure_snapshot(task, failure["rooms"])
                 != failure["snapshot"]
             ):
+                # 解除派发暂停后，剩余执行仍免于普通过期清理。
+                task.execution_retained = True
                 del task.execution_failure
                 logger.info("相关实测或安排已更新，恢复原任务：%s", task)
 
@@ -872,6 +874,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 and not getattr(t, "group_shift_expected", {})
                 and not getattr(t, "backup_shift_active", False)
                 and not getattr(t, "execution_failure", None)
+                and not getattr(t, "execution_retained", False)
                 for t in self.tasks
             ):
                 logger.info(
@@ -887,6 +890,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     or getattr(t, "group_shift_expected", {})
                     or getattr(t, "backup_shift_active", False)
                     or getattr(t, "execution_failure", None)
+                    or getattr(t, "execution_retained", False)
                 ]
                 # #144：清队后补立即空任务——队列只剩远期专精重检时，让下一次
                 # run() 走正常 planned 分支重读心情/换班/跑单，而不是睡到远期任务开始

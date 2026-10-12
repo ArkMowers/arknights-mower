@@ -241,6 +241,10 @@ Task selection, priority admission and worker idle budgets exclude retained fail
 
 Interrupted trade-order insertion converts the same task to original-roster restoration without moving its timestamp or suspending that compensation behind the insertion failure. Restoration is different remaining work and may dispatch immediately when its existing occupancy dependencies permit it. A failure during restoration itself follows the retained-failure rule and requires relevant new information before retrying; it never repeats insertion or Drone Acceleration.
 
+Reopening dispatch retains the original task's cleanup protection until its remaining work completes, including across persistence and repeated stale-plan cleanup. The task keeps its original timestamp; the fifteen-minute ordinary-plan expiry never consumes an uncompleted retained execution.
+
+Failed rescue staffing does not block due recovery observations or independent release planning. The existing observation cycle reads the failed facilities, including a failed training-room target, and reopens dispatch only on relevant new information. An unchanged read preserves the same failed task without a new retry timer. Initial takeover completion persists separately from the current staffing round; incomplete initial takeover keeps its priority across restart, while later rescue rotations retain ordinary personal-limit release protection.
+
 The [task retention decision](../../.agents/notes/implemented/bug-fix/2026-10-01-recovery-release-and-task-retention.md) records the failure regressions.
 
 ### Configurable dormitory bed order

@@ -12,6 +12,8 @@
   ],
   "code_symbols": [
     "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_schedule_staffing",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_tick",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_observe_recovery",
     "arknights_mower.utils.scheduler_task.protect_priority_tasks"
   ],
   "test_suites": [

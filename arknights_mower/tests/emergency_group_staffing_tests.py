@@ -67,6 +67,7 @@ def test_restart_only_requeues_outstanding_rooms(staffing):
     assert solver._emergency_schedule_staffing()
     assert room not in staffing_task(solver).plan
     assert len(staffing_task(solver).plan) == 3
+    assert staffing_task(solver).emergency_takeover
 
 
 def test_finished_manual_workers_keep_working_after_mood_drops(staffing):

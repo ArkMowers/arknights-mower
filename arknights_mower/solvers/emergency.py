@@ -108,7 +108,9 @@ class EmergencyRecoveryMixin:
             (
                 task.time
                 for task in self.tasks
-                if getattr(task, "strict_mood_limit", False) and task.plan
+                if getattr(task, "strict_mood_limit", False)
+                and task.plan
+                and not getattr(task, "execution_failure", None)
             ),
             default=datetime.max,
         )
@@ -151,7 +153,18 @@ class EmergencyRecoveryMixin:
                 op.rest_mood_release_limit = None
         state = self.emergency_state if self._emergency_active() else None
         rooms = sorted(
-            room for room in set(rooms) if room in self.op_data.plan and room != "train"
+            room
+            for room in set(rooms)
+            if room in self.op_data.plan
+            and (
+                room != "train"
+                or any(
+                    getattr(task, "emergency_staffing", False)
+                    and room
+                    in (getattr(task, "execution_failure", None) or {}).get("rooms", ())
+                    for task in self.tasks
+                )
+            )
         )
         if yield_to_releases:
             if state is not None:
@@ -522,6 +535,10 @@ class EmergencyRecoveryMixin:
     def _emergency_schedule_staffing(self):
         """救急表立即接管全部已配置工作岗位，实际驻员核验完成状态。"""
         state, data = self.emergency_state, self.op_data
+        state.setdefault(
+            "takeover_complete",
+            bool(state.get("staffing_complete")),
+        )
         if state["phase"] == "returning" or any(
             getattr(task, "emergency_staffing", False) for task in self.tasks
         ):
@@ -558,6 +575,7 @@ class EmergencyRecoveryMixin:
             pending[room] = list(names)
         if not pending:
             state["staffing_complete"] = True
+            state["takeover_complete"] = True
             state["staffing_plan"] = {}
             state.pop("staffing_members", None)
             state["phase"] = "recovering"
@@ -574,11 +592,15 @@ class EmergencyRecoveryMixin:
         state["phase"] = "staffing"
         task = SchedulerTask(task_plan=copy.deepcopy(pending))
         task.emergency_staffing = True
-        task.emergency_takeover = True
+        task.emergency_takeover = not state["takeover_complete"]
         task.emergency_staffing_members = list(state["targets"])
         self._emergency_save()
         self.tasks.append(task)
-        logger.info("自动救急：立即接管全部已配置工作岗位：%s", pending)
+        logger.info(
+            "自动救急：%s工作岗位：%s",
+            "立即接管" if task.emergency_takeover else "轮换",
+            pending,
+        )
         return True
 
     def _open_emergency_beds(self):
@@ -933,6 +955,7 @@ class EmergencyRecoveryMixin:
             return False
         state.pop("staffing_members", None)
         state["staffing_complete"] = True
+        state["takeover_complete"] = True
         state["phase"] = "recovering"
         state["temporary_roster"] = {
             room: self.op_data.get_current_room(room, True)
@@ -945,7 +968,15 @@ class EmergencyRecoveryMixin:
         """正常查询或预计换人时读取相关宿舍；初始化读数直接复用。"""
         state = self.emergency_state
 
-        if state.pop("observed_at", None) is not None:
+        failed_rooms = {
+            room
+            for task in self.tasks
+            if getattr(task, "emergency_staffing", False)
+            for room in (getattr(task, "execution_failure", None) or {}).get(
+                "rooms", ()
+            )
+        }
+        if state.pop("observed_at", None) is not None and not failed_rooms:
             return True
         rotation_rooms = {
             room
@@ -977,6 +1008,7 @@ class EmergencyRecoveryMixin:
                 for index, candidates in enumerate(rows)
             )
         )
+        rooms.update(failed_rooms)
         if "pending_read_rooms" not in state:
             state["read_collection_pending"] = True
             state["pending_read_rooms"] = sorted(rooms)
@@ -1001,11 +1033,22 @@ class EmergencyRecoveryMixin:
             self._emergency_schedule_staffing()
             protect_priority_tasks(self.tasks, op_data=self.op_data)
             self._emergency_save()
-            return
+            pending = [
+                task
+                for task in self.tasks
+                if getattr(task, "emergency_staffing", False)
+            ]
+            if not pending or any(
+                not getattr(task, "execution_failure", None) for task in pending
+            ):
+                return
         self.plan_metadata()
         protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         pending_staffing = [
-            task for task in self.tasks if getattr(task, "emergency_staffing", False)
+            task
+            for task in self.tasks
+            if getattr(task, "emergency_staffing", False)
+            and not getattr(task, "execution_failure", None)
         ]
         if pending_staffing:
             state["next_read"] = max(
@@ -1053,6 +1096,7 @@ class EmergencyRecoveryMixin:
             if not self._emergency_observe_recovery():
                 self._emergency_defer_read()
                 return
+            self._resume_failed_tasks()
             self.plan_metadata()
             protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         if plan_due:

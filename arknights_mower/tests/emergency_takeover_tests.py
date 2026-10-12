@@ -1,6 +1,7 @@
 """救急接管直接执行完整驻员，不消费普通调度的暂缓条件。"""
 
 import copy
+import pickle
 from datetime import timedelta
 from unittest.mock import MagicMock
 
@@ -14,7 +15,14 @@ from arknights_mower.tests.mass_mood_recovery_tests import COVERS, NOW, PRIMARY
 from arknights_mower.tests.mass_mood_recovery_tests import (
     solver as legacy_solver,  # noqa: F401
 )
-from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes, scheduling
+from arknights_mower.utils.operators import Operator
+from arknights_mower.utils.plan import Room
+from arknights_mower.utils.scheduler_task import (
+    SchedulerTask,
+    TaskTypes,
+    find_next_task,
+    scheduling,
+)
 
 
 def takeover(solver):
@@ -148,6 +156,104 @@ def test_unsaved_takeover_is_not_dispatched(staffing):
     with pytest.raises(RuntimeError, match="save failed"):
         solver._emergency_schedule_staffing()
     assert not any(getattr(task, "emergency_takeover", False) for task in solver.tasks)
+
+
+@pytest.mark.parametrize("fresh_observation", [False, True])
+@pytest.mark.parametrize("training", [False, True])
+def test_failed_takeover_observes_due_rooms_without_recreating_task(
+    staffing, fresh_observation, training
+):
+    solver, state = staffing.solver, staffing.state
+    if training:
+        solver.op_data.plan["train"] = [Room("褐果", "", []), Room("桃金娘", "", [])]
+        for name in ("褐果", "桃金娘"):
+            solver.op_data.add(Operator(name, ""))
+        state["rescue_plan"]["train"] = ["褐果", "桃金娘"]
+    solver._emergency_schedule_staffing()
+    task = takeover(solver)
+    original = copy.deepcopy(task.plan)
+    original_time = task.time
+    solver._retain_failed_task(task, "读房失败", task.plan)
+    paused_release = SchedulerTask(
+        time=NOW - timedelta(seconds=10),
+        task_type=TaskTypes.RELEASE_DORM,
+        task_plan={"dormitory_1": ["Current", "Current", "Free", "Current", "Current"]},
+        strict_mood_limit=True,
+    )
+    solver.tasks.append(paused_release)
+    assert not solver._emergency_operation_fits(90)
+    solver._retain_failed_task(paused_release, "读房失败", paused_release.plan)
+    state["next_read"] = NOW - timedelta(minutes=1)
+    state["observed_at"] = NOW
+    solver.last_execution = {}
+    solver.plan_metadata = MagicMock()
+    solver._emergency_collect = MagicMock()
+    solver._emergency_replan_releases = MagicMock()
+    solver._emergency_update_targets = MagicMock()
+    solver._open_emergency_beds = MagicMock()
+    solver.enter_room = MagicMock()
+    solver.back = MagicMock()
+    solver.back_to_infrastructure = MagicMock()
+
+    def read(room, *args, **kwargs):
+        names = solver.op_data.get_current_room(room, True)
+        for name in names:
+            if name and fresh_observation:
+                solver.op_data.operators[name].time_stamp = NOW + timedelta(seconds=1)
+        return [{"agent": name} for name in names]
+
+    solver.get_agent_from_room = MagicMock(side_effect=read)
+    solver._emergency_tick()
+    assert {call.args[0] for call in solver.get_agent_from_room.call_args_list} == set(
+        original
+    )
+    solver._emergency_replan_releases.assert_called()
+    assert any(queued is task for queued in solver.tasks)
+    assert task.plan == original
+    assert task.time == original_time
+    assert bool(getattr(task, "execution_failure", None)) != fresh_observation
+    assert (find_next_task(solver.tasks) is task) == fresh_observation
+    solver._retain_failed_task(task, "读房失败", task.plan)
+    for _ in range(3):
+        solver._emergency_tick()
+        assert find_next_task(solver.tasks) is None
+    assert solver.get_agent_from_room.call_count == len(original)
+    assert solver.tasks == [task, paused_release]
+    assert task.time == original_time
+
+
+@pytest.mark.parametrize("restart", [False, True])
+def test_later_rotation_retains_release_priority_after_partial_restart(
+    staffing, restart
+):
+    solver, state = staffing.solver, staffing.state
+    solver._emergency_schedule_staffing()
+    initial = takeover(solver)
+    solver.op_data = solver.op_data.project_arrangements([initial.plan])
+    solver.tasks.clear()
+    assert solver._emergency_reconcile_staffing()
+    room = next(iter(state["rescue_plan"]))
+    worker = state["rescue_plan"][room][0]
+    solver.op_data.operators[worker].mood = 0
+    solver.op_data.add(Operator("夜刀", "", mood=24, time_stamp=NOW))
+    state["worker_replacements"] = {room: [["夜刀"]]}
+    solver._emergency_schedule_staffing()
+    if restart:
+        solver.emergency_state = pickle.loads(pickle.dumps(state))
+        solver.tasks.clear()
+        solver._emergency_schedule_staffing()
+    rotation = next(task for task in solver.tasks if task.emergency_staffing)
+    assert rotation.plan == {room: ["夜刀"]}
+    assert not rotation.emergency_takeover
+    release = SchedulerTask(
+        time=NOW - timedelta(seconds=10),
+        task_type=TaskTypes.RELEASE_DORM,
+        task_plan={"dormitory_1": ["Current", "Current", "Free", "Current", "Current"]},
+        strict_mood_limit=True,
+    )
+    solver.tasks.append(release)
+    scheduling(solver.tasks, time_now=NOW, op_data=solver.op_data)
+    assert find_next_task(solver.tasks) is release
 
 
 @pytest.mark.parametrize("enabled", [False, True])

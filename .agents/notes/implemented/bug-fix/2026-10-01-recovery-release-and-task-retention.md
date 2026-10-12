@@ -17,6 +17,8 @@ The [runtime task failure contract](../../../../docs/subsystems/base-scheduler.m
 
 Interrupted trade-order insertion immediately converts to original-roster restoration in the same task at its original time. The insertion failure does not suspend this different compensation work. Restoration failure itself requires relevant new information before retrying, under the same failure-preservation rule.
 
+Reopened failed tasks retain their stale-cleanup exemption through persistence until the remaining execution completes. Removing the dispatch failure marker cannot consume the retained work at the next fifteen-minute cleanup boundary.
+
 ## Simplification
 
 The existing shutdown gate distinguishes final release from normal idle cleanup. The existing scheduler cleanup predicate retains future explicit work; critical-appointment and ordinary-plan rules remain local to `handle_error`. Runtime task failures add one task-local failure snapshot in the original queue without a second queue or a separate recovery scheduler. Dispatch and idle budgets exclude unchanged failures. The snapshot compares requested and effective arrangements with related occupancy, successful observation timestamps and facility state; elapsed wall time and unrelated observations do not release it. Existing task persistence and listing retain the failure reason and original task.
@@ -32,6 +34,10 @@ The desktop OS matrix runs shared ADB application recovery, helper shutdown and 
 `task_failure_retention_tests.py` covers unchanged-state repetitions, related and unrelated observations, changed targets and layouts, unchanged task times, serialization and stale cleanup, continued dispatch of independent work, ordinary planning with only a failed task, mixed product targets and preserved production waits. Room-retry and group-confirmation regressions preserve bounded local recovery and actual readback. Review follows the real worker idle selection and scheduler dispatch paths; configuration errors remain in validation and cancellation, device recovery and destructive-operation safeguards retain their existing boundaries.
 
 Trade-order regressions exercise interrupted insertion through room-recovery and recognition failures, immediate restoration dispatch, unchanged-state suppression after restoration failure and release by a related observation. `base_scheduler_tests.py` verifies actual insertion, failed Drone Acceleration and successful original-roster restoration without replaying acceleration. The product-switch fixture in `backup_replacement_state_tests.py` uses a three-slot trading post so its state-preservation checks pass through the real trade-order validation.
+
+Reopening regressions advance the virtual clock by twenty minutes, update a related observation and exercise the real scheduler entry. The same remaining task survives repeated cleanup alongside unrelated expired tasks and survives a serialization round trip before execution.
+
+The review follow-up passes 1785 targeted offline tests across 35 related files, including nine added cleanup, observation and rotation cases. The [takeover decision](../simplification/2026-10-12-immediate-rescue-takeover.md) records the rescue-specific review evidence.
 
 The worker test substitutes the active selection-card startup read and asserts that it runs once. The worker and scheduler share a virtual clock; recovery and scheduler waits advance that clock without wall-clock sleep. Retired dormitory-probe methods are absent from the fixture.
 
