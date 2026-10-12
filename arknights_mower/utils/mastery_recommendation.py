@@ -134,7 +134,7 @@ def get_mastery_requirement_error(char_id):
     return _mastery_requirement_error(char) if char is not None else None
 
 
-def get_mastery_recommendations():
+def get_mastery_recommendations(*, include_materials=True, char_id=None):
     from arknights_mower.data import workshop_formula
     from arknights_mower.utils.growth import (
         available_modules,
@@ -158,6 +158,7 @@ def get_mastery_recommendations():
         protected_workshop_materials,
     )
 
+    summarize = calculate_growth_materials if include_materials else lambda *_: None
     result = {"operators": [], "has_data": False, "error": None}
     try:
         with open(get_path("@app/tmp/cultivate.json"), encoding="utf-8") as stream:
@@ -185,6 +186,8 @@ def get_mastery_recommendations():
 
     for char in box["characters"]:
         cid = char["id"]
+        if char_id is not None and cid != char_id:
+            continue
         definition = skills.get("characters", {}).get(cid, {})
         growth_def = growth.get("characters", {}).get(cid, {})
         modules = available_modules(cid, char, growth)
@@ -204,7 +207,7 @@ def get_mastery_recommendations():
                 basic = basic_skill_materials(char, growth_def)
                 prerequisite += basic
                 if basic:
-                    basic_summary = calculate_growth_materials(budget, basic)
+                    basic_summary = summarize(budget, basic)
             except ValueError as exc:
                 material_error = str(exc)
         if definition:
@@ -246,7 +249,7 @@ def get_mastery_recommendations():
                 summary = (
                     None
                     if material_error
-                    else calculate_growth_materials(budget, prerequisite + materials)
+                    else summarize(budget, prerequisite + materials)
                 )
                 targets[str(target)] = {
                     "target_level": target,
@@ -254,9 +257,7 @@ def get_mastery_recommendations():
                     "total_time": sum(s["lvl_up_time"] for s in selected),
                     "chain_needed_materials": materials,
                     "material_summary": summary,
-                    "skill_material_summary": calculate_growth_materials(
-                        budget, materials
-                    ),
+                    "skill_material_summary": summarize(budget, materials),
                     "full_chain_achievable": bool(summary and summary["available"]),
                 }
             recommendations.append(
@@ -286,10 +287,8 @@ def get_mastery_recommendations():
                         else []
                     )
                     module["targets"][str(target_level)] = {
-                        "opening_summary": calculate_growth_materials(budget, costs),
-                        "material_summary": calculate_growth_materials(
-                            budget, materials
-                        ),
+                        "opening_summary": summarize(budget, costs),
+                        "material_summary": summarize(budget, materials),
                     }
                 module.update(module["targets"][str(module["max_level"])])
             except ValueError as exc:
@@ -310,7 +309,7 @@ def get_mastery_recommendations():
                     "elite": elite,
                     "level": level,
                     "label": f"{phase_label} {level} 级",
-                    "summary": calculate_growth_materials(
+                    "summary": summarize(
                         budget, promotion_materials(char, growth_def, growth, target)
                     )
                     if (char.get("evolvePhase", 0), char.get("level", 1)) < target
@@ -325,19 +324,19 @@ def get_mastery_recommendations():
             and module_level
             and (char.get("evolvePhase", 0), char.get("level", 1)) < (2, module_level)
         ):
-            module_level_summary = calculate_growth_materials(
+            module_level_summary = summarize(
                 budget, promotion_materials(char, growth_def, growth, (2, module_level))
             )
         if max_level and (char.get("evolvePhase", 0), char.get("level", 1)) < (
             max_phase,
             max_level,
         ):
-            max_level_summary = calculate_growth_materials(
+            max_level_summary = summarize(
                 budget,
                 promotion_materials(char, growth_def, growth, (max_phase, max_level)),
             )
         if char.get("evolvePhase", 0) < max_phase:
-            promotion = calculate_growth_materials(
+            promotion = summarize(
                 budget, promotion_materials(char, growth_def, growth, (max_phase, 1))
             )
         result["operators"].append(
@@ -373,6 +372,36 @@ def get_mastery_recommendations():
                 "basic_skill_prerequisite": basic_prerequisite,
             }
         )
+    if not include_materials:
+        for operator in result["operators"]:
+            operator["recommendations"] = [
+                {
+                    key: rec[key]
+                    for key in (
+                        "skill_index",
+                        "skill_name",
+                        "skill_icon_id",
+                        "current_level",
+                    )
+                }
+                for rec in operator["recommendations"]
+            ]
+            operator["modules"] = [
+                {
+                    key: module[key]
+                    for key in (
+                        "id",
+                        "name",
+                        "type",
+                        "current_level",
+                        "max_level",
+                        "elite",
+                        "level",
+                    )
+                    if key in module
+                }
+                for module in operator["modules"]
+            ]
     result["operators"].sort(key=lambda op: (-op["rarity"], op["name"]))
     result["has_data"] = True
     return result

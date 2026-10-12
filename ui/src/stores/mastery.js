@@ -1,10 +1,10 @@
 import axios from 'axios'
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import { defineStore } from 'pinia'
 
 export const useMasteryStore = defineStore('mastery', () => {
   const loading = ref(false)
-  const recommendations = ref([])
+  const recommendations = shallowRef([])
   const statistics = ref(null)
   const personalStatistics = ref(null)
   const history = ref([])
@@ -52,7 +52,10 @@ export const useMasteryStore = defineStore('mastery', () => {
     loading.value = true
     error.value = ''
     try {
-      const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-recommendation`)
+      const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-recommendation`, {
+        params: { materials: 0 },
+        timeout: 30000
+      })
       const data = response.data
       if (data.error) {
         error.value = data.error

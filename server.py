@@ -3468,7 +3468,10 @@ def mastery_recommendation_debug():
 def mastery_recommendation():
     from arknights_mower.utils.mastery_recommendation import get_mastery_recommendations
 
-    return get_mastery_recommendations()
+    return get_mastery_recommendations(
+        include_materials=request.args.get("materials") != "0",
+        char_id=request.args.get("char_id"),
+    )
 
 
 @app.route("/growth-survey", methods=["GET"])

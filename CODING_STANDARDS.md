@@ -35,6 +35,8 @@ Business rules are defined once in their owning [subsystem contracts](docs/subsy
 
 New guarantees use behavior names and direct contract links. Historical identifiers are frozen in `scripts/legacy_invariant_ids.json` solely for existing decision metadata; historical records retain their original format and references.
 
+The growth UI follows [Bounded Page Loading](docs/subsystems/growth-planning.md#bounded-page-loading): overview loading omits material graphs, rendered card count and retained details have explicit bounds, and stale requests cannot replace the current selection. Existing material accounting and transient-state isolation remain binding.
+
 ## 3. Concurrency & Resource Lifecycle
 
 - **Monotonic Deadline Budgets**: All external process invocations, socket I/O, and manager commands must operate within a bounded deadline (e.g., `COMMAND_TIMEOUT`, `DISCOVERY_TIMEOUT`, `RecoveryPolicy.timeout`).
