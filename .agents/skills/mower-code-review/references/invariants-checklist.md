@@ -211,6 +211,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.7 Software Update
 
+- [ ] **[INV-UPD-10] Cleanup Contention Isolation**: Does a competing cleanup process return quietly with pending records intact, retain real lock failure diagnostics and clean the same records after lock release? See the [cleanup contract](../../../../docs/subsystems/software-update.md#16-backup-cleanup-contention).
 - [ ] **[INV-UPD-09] Local Update Cache**: Do software update state, uploads, downloads, job workspaces and package-inspection temporary directories use shared `@app/tmp/updates/`, preserve installation isolation and ignore instance space?
 
 - [ ] **[INV-UPD-08] Elevated Windows Desktop Launch**: Do both Windows executable manifests require administrator elevation, and does the manager launch instances directly without per-instance elevation wrappers? See the [launch contract](../../../../docs/subsystems/software-update.md#14-windows-desktop-elevation).

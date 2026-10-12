@@ -1,5 +1,6 @@
 """Cross-platform update coordination; all processes and files are test-owned."""
 
+import errno
 import io
 import json
 import logging
@@ -13,11 +14,67 @@ import unittest
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.request import getproxies_environment
 
 from arknights_mower.utils import path as mower_path
 from arknights_mower.utils import update_runtime as runtime
+
+
+class SubmissionLockTests(unittest.TestCase):
+    def test_only_native_lock_contention_becomes_a_busy_verdict(self):
+        windows_lock = OSError(errno.EACCES, "locked")
+        windows_lock.winerror = 33
+        windows_permission = OSError(errno.EACCES, "access denied")
+        windows_permission.winerror = 5
+        cases = (
+            ("linux", OSError(errno.EAGAIN, "locked"), True),
+            ("darwin", OSError(errno.EWOULDBLOCK, "locked"), True),
+            ("linux", PermissionError(errno.EACCES, "access denied"), False),
+            ("linux", OSError(errno.EBADF, "bad descriptor"), False),
+            ("win32", OSError(errno.EACCES, "CRT locking violation"), True),
+            ("win32", windows_lock, True),
+            ("win32", windows_permission, False),
+            ("win32", OSError(errno.EBADF, "bad descriptor"), False),
+        )
+        for platform, error, busy in cases:
+            with (
+                self.subTest(platform=platform, error=error),
+                tempfile.TemporaryDirectory() as folder,
+            ):
+                acquire = Mock(side_effect=error)
+                backend = (
+                    SimpleNamespace(locking=acquire, LK_NBLCK=1, LK_UNLCK=0)
+                    if platform == "win32"
+                    else SimpleNamespace(flock=acquire, LOCK_EX=2, LOCK_NB=4, LOCK_UN=8)
+                )
+                module = "msvcrt" if platform == "win32" else "fcntl"
+                with (
+                    patch.object(runtime.sys, "platform", platform),
+                    patch.dict(sys.modules, {module: backend}),
+                ):
+                    if busy:
+                        with self.assertRaisesRegex(
+                            runtime.LockBusyError, "其他实例正在提交更新任务"
+                        ) as caught:
+                            with runtime.submission_lock(folder):
+                                self.fail("contended lock entered its body")
+                        self.assertIsInstance(caught.exception, ValueError)
+                        self.assertIs(caught.exception.__cause__, error)
+                    else:
+                        with self.assertRaises(OSError) as caught:
+                            with runtime.submission_lock(folder):
+                                self.fail("failed lock entered its body")
+                        self.assertIs(caught.exception, error)
+                acquire.assert_called_once()
+
+    def test_body_failure_releases_the_native_lock(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with self.assertRaisesRegex(RuntimeError, "body failed"):
+                with runtime.submission_lock(folder):
+                    raise RuntimeError("body failed")
+            with runtime.submission_lock(folder):
+                self.assertTrue((Path(folder) / "submission.lock").is_file())
 
 
 class UpdateStorageTests(unittest.TestCase):

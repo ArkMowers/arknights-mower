@@ -1,13 +1,126 @@
+import errno
 import json
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+from arknights_mower.utils import update_runtime as runtime
 from arknights_mower.utils.software_update_worker import Worker, retry_backup_cleanup
 
 
 class UpdateBackupTests(unittest.TestCase):
+    def test_competing_process_skips_cleanup_and_retries_after_lock_release(self):
+        child = (
+            "import sys\n"
+            "from types import SimpleNamespace\n"
+            "if sys.argv[3] == 'worker':\n"
+            "    sys.path.insert(0, sys.argv[4])\n"
+            "    from software_update_worker import retry_backup_cleanup\n"
+            "else:\n"
+            "    from arknights_mower.utils.software_update_worker import retry_backup_cleanup\n"
+            "logger = SimpleNamespace(warning=print, exception=print) if sys.argv[3] == 'app' else None\n"
+            "retry_backup_cleanup(sys.argv[1], sys.argv[2], logger=logger)\n"
+        )
+        for caller in ("app", "worker"):
+            with self.subTest(caller=caller), tempfile.TemporaryDirectory() as folder:
+                state = Path(folder)
+                root = state / "app"
+                runner = state / "runner"
+                runner.mkdir()
+                for name in (
+                    "software_update_worker.py",
+                    "update_runtime.py",
+                    "github_download.py",
+                ):
+                    shutil.copy2(Path(runtime.__file__).parent / name, runner / name)
+                command = [
+                    sys.executable,
+                    "-c",
+                    child,
+                    str(state),
+                    str(root),
+                    caller,
+                    str(runner),
+                ]
+                backup = state / "jobs/one/runtime-0.backup"
+                backup.mkdir(parents=True)
+                (backup / "keep.txt").write_text("rollback data")
+                identity = backup.stat()
+                manifest = backup.parent / "cleanup.json"
+                runtime.write_json(
+                    manifest,
+                    {
+                        "verified": True,
+                        "root": str(root),
+                        "id": "one",
+                        "paths": [
+                            {
+                                "path": str(backup),
+                                "identity": [identity.st_dev, identity.st_ino],
+                            }
+                        ],
+                    },
+                )
+                before = manifest.read_bytes()
+                with runtime.submission_lock(state / "backup-cleanup"):
+                    result = subprocess.run(
+                        command,
+                        cwd=Path(__file__).resolve().parents[2],
+                        env=runtime.launch_environment({}),
+                        capture_output=True,
+                        text=True,
+                        timeout=15,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, "")
+                    self.assertEqual(result.stderr, "")
+                    self.assertEqual(manifest.read_bytes(), before)
+                    self.assertEqual((backup / "keep.txt").read_text(), "rollback data")
+                result = subprocess.run(
+                    command,
+                    cwd=Path(__file__).resolve().parents[2],
+                    env=runtime.launch_environment({}),
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, "")
+                self.assertEqual(result.stderr, "")
+                self.assertFalse(backup.exists())
+                self.assertFalse(manifest.exists())
+                self.assertTrue((state / "backup-cleanup/submission.lock").exists())
+
+    def test_real_lock_failure_remains_diagnostic_and_preserves_records(self):
+        with tempfile.TemporaryDirectory() as folder:
+            state = Path(folder)
+            manifest = state / "jobs/one/cleanup.json"
+            runtime.write_json(manifest, {"verified": True})
+            before = manifest.read_bytes()
+            for caller in ("app", "worker"):
+                logger = Mock() if caller == "app" else None
+                with (
+                    self.subTest(caller=caller),
+                    patch(
+                        "arknights_mower.utils.software_update_worker.submission_lock",
+                        side_effect=PermissionError(errno.EACCES, "access denied"),
+                    ),
+                    patch(
+                        "arknights_mower.utils.software_update_worker.traceback.print_exc"
+                    ) as diagnostic,
+                ):
+                    retry_backup_cleanup(state, state / "app", logger=logger)
+                    if logger is not None:
+                        logger.exception.assert_called_once()
+                        diagnostic.assert_not_called()
+                    else:
+                        diagnostic.assert_called_once()
+                    self.assertEqual(manifest.read_bytes(), before)
+
     def test_verified_release_removes_downloads_and_runner_but_keeps_logs(self):
         with tempfile.TemporaryDirectory() as temporary:
             state = Path(temporary)

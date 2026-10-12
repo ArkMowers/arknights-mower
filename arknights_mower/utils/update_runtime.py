@@ -5,6 +5,7 @@ or global Python/ADB termination is used. State lives in the shared data tmp tre
 """
 
 import atexit
+import errno
 import hashlib
 import json
 import os
@@ -133,6 +134,10 @@ def active_job(directory=None):
     return bool(owner and process_alive(owner.get("pid")))
 
 
+class LockBusyError(ValueError):
+    """Another process owns the requested nonblocking update lock."""
+
+
 @contextmanager
 def submission_lock(directory):
     """Serialize admission, including recovery of a dead updater's active lock."""
@@ -153,7 +158,16 @@ def submission_lock(directory):
 
                 fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as exc:
-            raise ValueError("其他实例正在提交更新任务") from exc
+            if sys.platform == "win32":
+                winerror = getattr(exc, "winerror", None)
+                busy = winerror == 33 or (
+                    winerror is None and exc.errno in (errno.EACCES, errno.EAGAIN)
+                )
+            else:
+                busy = exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK)
+            if busy:
+                raise LockBusyError("其他实例正在提交更新任务") from exc
+            raise
         try:
             yield
         finally:
