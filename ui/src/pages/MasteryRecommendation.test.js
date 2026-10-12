@@ -7,6 +7,7 @@ import { useMasteryStore } from '@/stores/mastery'
 
 const state = vi.hoisted(() => ({
   unmount: [],
+  mount: [],
   config: null,
   plan: null,
   feedback: { warning: vi.fn(), info: vi.fn(), error: vi.fn(), success: vi.fn() }
@@ -21,7 +22,7 @@ vi.mock('naive-ui', async (original) => ({
 }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
-  onMounted: vi.fn(),
+  onMounted: (fn) => state.mount.push(fn),
   onUnmounted: (fn) => state.unmount.push(fn),
   useSSRContext: () => ({ modules: new Set() })
 }))
@@ -36,6 +37,7 @@ const savedPlan = (id, char_id, skill_index = 0) => ({ id, char_id, skill_index,
 beforeEach(() => {
   vi.clearAllMocks()
   state.unmount = []
+  state.mount = []
   vi.useFakeTimers()
   setActivePinia(createPinia())
   state.config = defineStore('form-test-config', {
@@ -207,5 +209,38 @@ describe('养成规划按需详情', () => {
     const signal = axios.get.mock.calls.at(-1)[1].signal
     state.unmount.forEach((fn) => fn())
     expect(signal.aborted).toBe(true)
+  })
+})
+
+describe('公开统计加载隔离', () => {
+  it('远端统计等待不阻塞本地推荐和路线初始化', async () => {
+    const page = setup()
+    const store = useMasteryStore()
+    const local = [{ char_id: 'local', name: '本地干员', recommendations: [], modules: [] }]
+    axios.get.mockImplementation(async (url) => {
+      if (url.endsWith('/growth-survey')) return new Promise(() => {})
+      if (url.endsWith('/mastery-recommendation')) return { data: { operators: local } }
+      if (url.endsWith('/operator')) return { data: [] }
+      if (url.endsWith('/mastery-route')) return { data: { routes: [], defaults: {} } }
+      return { data: { plans: [] } }
+    })
+    await state.mount.at(-1)()
+    expect(store.recommendations).toBe(local)
+    expect(page.surveyLoading.value).toBe(true)
+    expect(axios.get).toHaveBeenCalledWith(expect.stringContaining('/mastery-route'))
+  })
+
+  it('公开统计请求失败保留已有样本和干员列表', async () => {
+    const page = setup()
+    const store = useMasteryStore()
+    const local = operators()
+    store.recommendations = local
+    page.survey.value = { operators: [{ charId: 'old', own: 1 }], fetched_at: 123 }
+    axios.get.mockRejectedValueOnce(new Error('network'))
+    await page.loadSurvey()
+    expect(page.survey.value.operators).toEqual([{ charId: 'old', own: 1 }])
+    expect(page.survey.value.stale).toBe(true)
+    expect(page.surveyLoading.value).toBe(false)
+    expect(store.recommendations).toBe(local)
   })
 })

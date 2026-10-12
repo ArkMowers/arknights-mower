@@ -1718,7 +1718,7 @@ async function loadSurvey() {
   surveyLoading.value = true
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/growth-survey`, {
-      timeout: 20000
+      timeout: 30000
     })
     survey.value = response.data
   } catch (error) {
@@ -1939,7 +1939,8 @@ async function insertMasteryTask(op, rec) {
 // ─── 初始化 ───
 onMounted(async () => {
   await refreshPlanFromServer()
-  await Promise.all([loadOperators(), store.fetchRecommendations(), loadSurvey()])
+  void loadSurvey()
+  await Promise.all([loadOperators(), store.fetchRecommendations()])
   // 载入专精路线；打开设置时刷新拥有情况和解锁技能。
   if (!defaultsCache.value) {
     try {

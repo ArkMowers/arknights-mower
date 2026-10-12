@@ -5,6 +5,9 @@
     </template>
     <n-alert v-if="survey.error" type="warning" :bordered="false" style="margin-bottom: 12px">
       {{ survey.error }}
+      <template v-if="survey.retry_after">
+        下次可重试时间：{{ new Date(survey.retry_after * 1000).toLocaleTimeString() }}。
+      </template>
     </n-alert>
     <div class="threshold-rows">
       <div v-for="dimension in surveyDimensions" :key="dimension.key" class="threshold-row">
@@ -65,8 +68,8 @@
     <n-divider style="margin: 14px 0" />
     <slot />
     <n-text depth="3" class="survey-source">
-      统计最多每 24
-      小时重新获取。比例用于发现养成方向，不代表强度排名。模组按已开启统计，精一率包含精二干员。
+      统计最多每 24 小时重新获取；请求失败后等待 5
+      分钟再试。缺少完整、可识别样本的指标显示“暂无样本”。比例用于发现养成方向，不代表强度排名。模组按已开启统计，精一率包含精二干员。
       <template v-if="survey.fetched_at"
         >统计获取于 {{ new Date(survey.fetched_at * 1000).toLocaleString() }}。</template
       >
