@@ -4311,6 +4311,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             for name in [*agents, *dorm_agents]
             if self.op_data.operators[name].group
         }
+        if blockers := self.op_data.working_replacement_blockers(
+            [*agents, *dorm_agents], plan
+        ):
+            logger.debug("整组成员仍在为其他组替班，暂缓下班：%s", sorted(blockers))
+            return
         required = 0
         for x in agents:
             op = self.op_data.operators[x]
@@ -4738,7 +4743,15 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
     def _shared_shift_blockers(self, task, transitions):
         """Identify confirmed resting dependencies without guessing return times."""
-        groups = set()
+        groups = self.op_data.working_replacement_blockers(
+            {
+                name
+                for group, resting in transitions.items()
+                if resting
+                for name in self.op_data.shift_group_members(group)
+            },
+            task.plan,
+        )
         explicit = getattr(task, "backup_explicit_slots", ())
         for op in self.op_data.operators.values():
             if (

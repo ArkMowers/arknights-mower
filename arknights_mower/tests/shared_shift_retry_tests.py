@@ -10,12 +10,66 @@ from arknights_mower.solvers.base_schedule import (
     GroupShiftBlocked,
     ProductSwitchDeferred,
 )
-from arknights_mower.tests.multi_group_shift_tests import SHARED, A, B
+from arknights_mower.tests.multi_group_shift_tests import SHARED, A, B, apply, shift_off
 from arknights_mower.tests.multi_group_shift_tests import solver as solver
+from arknights_mower.tests.multi_group_shift_tests import (
+    working_shared_covers as working_shared_covers,
+)
 from arknights_mower.utils.plan import Room
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 pytestmark = pytest.mark.usefixtures("offline_maintenance")
+
+
+def test_queued_shift_waits_for_working_primary_covers(working_shared_covers):
+    s = working_shared_covers
+    live = s.op_data
+    s.op_data = deepcopy(live)
+    admitted, queued_plan = shift_off(s, "乙")
+    assert admitted
+    s.op_data = live
+    assert shift_off(s, "甲")[0]
+    blocked = SchedulerTask(task_type=TaskTypes.SHIFT_OFF, task_plan=queued_plan)
+    s.task, s.tasks = blocked, [blocked]
+    before_plan, before_time = deepcopy(blocked.plan), blocked.time
+    with pytest.raises(GroupShiftBlocked) as error:
+        s._prepare_group_shift(blocked, remember_targets=True)
+    assert error.value.groups == {"甲"}
+    assert blocked.plan == before_plan
+    assert not getattr(blocked, "group_shift_expected", {})
+    s._suspend_group_shift(blocked, error.value.groups)
+    s._resume_waiting_group_shifts()
+    assert blocked not in s.tasks
+    assert (blocked.plan, blocked.time) == (before_plan, before_time)
+    assert s.op_data.operators[SHARED].current_room == "central"
+    assert s.op_data.operators["清道夫"].current_room == "central"
+    release = {"central": [A, "陈", *["Current"] * (len(live.plan["central"]) - 2)]}
+    apply(s, release)
+    s._resume_waiting_group_shifts()
+    assert s.tasks == [blocked] and not s.waiting_group_shifts
+    s._prepare_group_shift(blocked, remember_targets=True)
+    assert blocked.group_shift_transitions["乙"]
+
+
+def test_same_arrangement_must_release_every_working_cover(working_shared_covers):
+    s = working_shared_covers
+    assert shift_off(s, "甲")[0]
+    data = s.op_data
+    release = {
+        "central": [A, "Current", *["Current"] * (len(data.plan["central"]) - 2)]
+    }
+    before = deepcopy(release)
+    assert not s.get_resting_plan(data.groups["乙"].copy(), [], release, 0)
+    assert release == before
+    release["central"][1] = "陈"
+    assert s.get_resting_plan(data.groups["乙"].copy(), [], release, 0)
+    task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF, task_plan=release)
+    s.task, s.tasks = task, [task]
+    s._prepare_group_shift(task, remember_targets=True)
+    assert task.group_shift_transitions == {"甲": False, "乙": True}
+    projected = data.project_arrangements([task.plan])
+    assert projected.operators[A].current_room == "central"
+    assert projected.operators["陈"].current_room == "central"
 
 
 @pytest.mark.parametrize("dorm_first", [False, True])
