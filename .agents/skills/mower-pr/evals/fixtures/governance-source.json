@@ -1,0 +1,15 @@
+{
+  "source": "https://github.com/ArkMowers/arknights-mower/pull/1366",
+  "base": "97f4fba5da551030d0c0a839c81383a830a44178",
+  "head": "d46c95f6b3b59b9964a9fba78d9e03bbb23f8c1c",
+  "instruction_revision": "97f4fba5da551030d0c0a839c81383a830a44178",
+  "provided_paths": [
+    ".agents/AGENTS.md",
+    ".agents/notes/README.md",
+    "arknights_mower/README.md"
+  ],
+  "scope": "Provided paths only; the source PR contains other changes.",
+  "diff_sha256": "42b46e3b596950b6ae23f0e7022cea5b353366f7944e8a260d22ef84d22de137",
+  "ci_source": "gh pr checks 1366 --repo ArkMowers/arknights-mower --json name,state,bucket,workflow,link,startedAt,completedAt",
+  "task_exercise": "No task-execution or writing-comparison record is supplied."
+}
