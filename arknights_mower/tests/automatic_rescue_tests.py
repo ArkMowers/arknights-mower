@@ -378,13 +378,14 @@ def test_card_estimates_do_not_establish_entry_or_ready(solver):
 
 
 @pytest.mark.parametrize("empty_slot", [True, False])
-def test_real_room_absence_invalidates_only_departed_resident_reading(
+def test_only_confirmed_room_absence_invalidates_departed_resident_reading(
     solver, empty_slot
 ):
     missing = solver.op_data.operators[PRIMARY[0]]
     untouched = solver.op_data.operators[COVERS[0]]
     room = missing.current_room
     original_stamp = untouched.time_stamp
+    missing_stamp = missing.time_stamp
     solver.recog = SimpleNamespace(
         gray=np.zeros((1080, 1920), dtype=np.uint8), update=MagicMock()
     )
@@ -398,11 +399,14 @@ def test_real_room_absence_invalidates_only_departed_resident_reading(
     solver.back = MagicMock()
     solver.back_to_infrastructure = MagicMock()
     solver._emergency_read_rooms([room])
-    assert missing.current_room == "" and missing.time_stamp is None
+    if empty_slot:
+        assert missing.current_room == "" and missing.time_stamp is None
+    else:
+        assert missing.current_room == room and missing.time_stamp == missing_stamp
     assert untouched.time_stamp == original_stamp
     assert untouched.mood == 24
     make_episode(solver)
-    assert not solver._emergency_ready()
+    assert solver._emergency_ready() == (not empty_slot)
 
 
 def test_actual_targets_are_required_and_no_majority_exit(solver):

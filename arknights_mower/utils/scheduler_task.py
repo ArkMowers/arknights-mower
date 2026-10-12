@@ -74,14 +74,21 @@ def find_next_task(
     task_type="",
     compare_type: Literal["<", "=", ">"] = "<",
     meta_data="",
+    *,
+    include_failed=False,
 ):
     """找符合条件的下一个任务
 
     Args:
         tasks: 任务列表
         compare_time: 截止时间
+        include_failed: 存在性／去重查询包含失败任务，派发默认排除失败任务
     """
-    tasks = [task for task in tasks if not getattr(task, "execution_failure", None)]
+    tasks = [
+        task
+        for task in tasks
+        if include_failed or not getattr(task, "execution_failure", None)
+    ]
     if compare_type == "=":
         return next(
             (
@@ -2946,7 +2953,12 @@ def add_release_dorm(tasks, op_data, name):
     _idx, __dorm = op_data.get_dorm_by_name(name)
     if (
         __dorm.time > datetime.now()
-        and find_next_task(tasks, task_type=TaskTypes.RELEASE_DORM, meta_data=name)
+        and find_next_task(
+            tasks,
+            task_type=TaskTypes.RELEASE_DORM,
+            meta_data=name,
+            include_failed=True,
+        )
         is None
     ):
         _free = op_data.operators[name]

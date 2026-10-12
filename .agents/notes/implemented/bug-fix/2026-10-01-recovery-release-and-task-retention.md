@@ -21,6 +21,8 @@ Reopened failed tasks retain their stale-cleanup exemption through persistence u
 
 Planner rebuilding and release merging preserve the same retained execution rather than replacing it with an unmarked task. Existing resource reservations exclude duplicate ordinary targets while independent personal-limit releases keep their deadlines. A persisted room observation revision supplies recovery evidence for confirmed empty rooms, which have no occupant sampling timestamp. The existing readback and state persistence paths own this evidence; no retry timer or separate observation loop is added.
 
+Name-recognition failure preserves unconfirmed occupancy and bed state in both ordinary and rescue readback; it never supplies synthetic absence evidence to a failure snapshot. Existence queries explicitly include failed tasks while dispatch excludes them. Deduplication covers trade insertion before roster capture and the other existing generation callers, retaining the original task without suppressing unrelated work.
+
 ## Simplification
 
 The existing shutdown gate distinguishes final release from normal idle cleanup. The existing scheduler cleanup predicate retains future explicit work; critical-appointment and ordinary-plan rules remain local to `handle_error`. Runtime task failures add one task-local failure snapshot in the original queue without a second queue or a separate recovery scheduler. Dispatch and idle budgets exclude unchanged failures. The snapshot compares requested and effective arrangements with related occupancy, successful observation timestamps and facility state; elapsed wall time and unrelated observations do not release it. Existing task persistence and listing retain the failure reason and original task.
@@ -45,7 +47,9 @@ The review follow-up passes 1785 targeted offline tests across 35 related files,
 
 The worker test substitutes the active selection-card startup read and asserts that it runs once. The worker and scheduler share a virtual clock; recovery and scheduler waits advance that clock without wall-clock sleep. Retired dormitory-probe methods are absent from the fixture.
 
-The planner and empty-room review follow-up passes 2059 targeted offline tests across 41 related files, including 21 new cases. Existing group-confirmation cases also verify that successful completion releases retention reservations. Ruff, format checks, diff checks and all three governance gates pass; the focused run retains two existing Pydantic serializer warnings.
+The planner and readback review regressions cover failed and reopened tasks through the actual generation paths. Occupied-room and dormitory cases distinguish unresolved names from confirmed vacancies, preserve bed and release state, and exclude prediction invalidation from successful observation evidence, including legacy snapshots. Trade-order cases fail before roster capture through both room and recognition errors, repeat planning after persistence, dispatch another room, resume the same task on relevant evidence and admit a subsequent order only after completion. Charging, exhausted-shift and idle-release cases verify the same existence-query boundary.
+
+The latest review repair passes 2080 targeted offline tests across 41 related files, including 21 added cases, and both supplied review reproductions pass. Ruff, formatting, diff checks and all three governance gates pass; the focused run retains two existing Pydantic serializer warnings.
 
 No live device, remote configuration, Device Profile schema or glossary definition changes.
 

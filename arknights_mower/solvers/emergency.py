@@ -183,10 +183,11 @@ class EmergencyRecoveryMixin:
             }
             observed = self.get_agent_from_room(room, None, force_mood=True)
             actual = {item["agent"] for item in observed if item.get("agent")}
-            for name in previous - actual:
-                op = self.op_data.operators[name]
-                op.current_room, op.current_index = "", -1
-                op.time_stamp = None
+            if all(item.get("observed", True) for item in observed):
+                for name in previous - actual:
+                    op = self.op_data.operators[name]
+                    op.current_room, op.current_index = "", -1
+                    op.time_stamp = None
             self.back()
             if yield_to_releases:
                 rooms.remove(room)

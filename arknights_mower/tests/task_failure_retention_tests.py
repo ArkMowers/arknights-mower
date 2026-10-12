@@ -14,6 +14,7 @@ from arknights_mower.utils.plan import Room
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
+    add_release_dorm,
     find_next_task,
     merge_release_dorm,
     plan_metadata,
@@ -590,22 +591,48 @@ def test_room_observation_and_failure_survive_saved_state(
     assert find_next_task(solver.tasks) is task
 
 
-def test_unrecognized_slot_is_not_a_successful_empty_observation(empty_room_solver):
+@pytest.mark.parametrize("cached_resident", [False, True])
+@pytest.mark.parametrize("reader", ["ordinary", "emergency"])
+def test_unrecognized_slot_is_not_a_successful_empty_observation(
+    empty_room_solver, cached_resident, reader
+):
     import numpy as np
 
     solver, task = empty_room_solver
+    resident = solver.op_data.operators[native.PRIMARY[0]]
+    if cached_resident:
+        resident._current_room, resident.current_index = ROOM, 0
+        solver._retain_failed_task(task, "读房失败", [ROOM])
+    original = (resident.current_room, resident.current_index, resident.time_stamp)
     solver.find.return_value = False
     solver.read_screen = Mock(return_value="")
     solver.sleep = Mock()
     solver.recog = SimpleNamespace(
         gray=np.zeros((1080, 1920), dtype=np.uint8), update=Mock()
     )
-    solver.get_agent_from_room(ROOM, force_mood=True)
+    if reader == "ordinary":
+        observed = solver.get_agent_from_room(ROOM, force_mood=True)
+        assert observed[0]["observed"] is False
+    else:
+        assert solver._emergency_read_rooms([ROOM])
     assert solver.read_screen.call_count == 3
     assert ROOM not in solver.op_data.room_observations
+    assert (
+        resident.current_room,
+        resident.current_index,
+        resident.time_stamp,
+    ) == original
     solver._resume_failed_tasks()
     assert task.execution_failure
     assert find_next_task(solver.tasks) is None
+    solver.find.return_value = True
+    if reader == "ordinary":
+        solver.get_agent_from_room(ROOM, force_mood=True)
+    else:
+        assert solver._emergency_read_rooms([ROOM])
+    solver._resume_failed_tasks()
+    assert not getattr(task, "execution_failure", None)
+    assert find_next_task(solver.tasks) is task
 
 
 @pytest.mark.parametrize("failed_kind", ["return", "recovery_release"])
@@ -646,3 +673,222 @@ def test_retained_work_keeps_independent_personal_limit_release(
         assert releases[0].time == deadline
         assert not getattr(releases[0], "execution_failure", None)
         assert find_next_task(releases) is releases[0]
+
+
+@pytest.mark.parametrize("failure_kind", ["room", "recognition"])
+@pytest.mark.parametrize("persisted", [False, True])
+def test_failed_order_before_roster_capture_is_not_regenerated(
+    scheduler, failure_kind, persisted
+):
+    solver = scheduler.solver
+    now = scheduler.clock.now()
+    solver.op_data.run_order_rooms = {ROOM, "room_1_2"}
+    solver.op_data.run_order_replacements = Mock(return_value=[["但书"]])
+    solver._emergency_run_order_available = Mock(return_value=True)
+    solver.get_run_order_time = Mock(return_value=now + timedelta(minutes=10))
+    task = SchedulerTask(now, {ROOM: ["但书"]}, TaskTypes.RUN_ORDER, meta_data=ROOM)
+    solver.tasks, solver.task = [task], task
+    solver.refresh_connecting = True
+    solver.back_to_infrastructure = Mock()
+    failure = (
+        scheduler.module.RoomArrangementDeferred(ROOM, RuntimeError("插拔前读房失败"))
+        if failure_kind == "room"
+        else scheduler.module.RecognizeError("插拔前读房失败")
+    )
+    solver.agent_arrange = Mock(side_effect=failure)
+    solver.infra_main()
+    assert task.execution_failure
+    assert not getattr(task, "run_order_original_roster", None)
+    if persisted:
+        solver.tasks = jsonpickle.decode(jsonpickle.encode(solver.tasks))
+        task = solver.tasks[0]
+    original = copy.deepcopy((task.time, task.plan, task.meta_data))
+    for _ in range(4):
+        solver.plan_run_order(ROOM)
+        solver._resume_failed_tasks()
+        scheduling(solver.tasks, time_now=now, op_data=solver.op_data)
+        assert solver.tasks == [task]
+        assert (task.time, task.plan, task.meta_data) == original
+        assert find_next_task(solver.tasks) is None
+    solver.get_run_order_time.assert_not_called()
+    solver.plan_run_order("room_1_2")
+    other = next(t for t in solver.tasks if t is not task)
+    assert find_next_task(solver.tasks) is other
+    solver.get_run_order_time.assert_called_once_with("room_1_2")
+    solver.op_data.room_observations = {ROOM: 1}
+    solver._resume_failed_tasks()
+    assert not getattr(task, "execution_failure", None)
+    solver.plan_run_order(ROOM)
+    assert sum(t is task for t in solver.tasks) == 1
+    assert len(solver.tasks) == 2
+    solver.agent_arrange.side_effect = None
+    solver.task = task
+    solver.infra_main()
+    assert task not in solver.tasks
+    assert other in solver.tasks
+    assert solver.agent_arrange.call_count == 2
+    solver.plan_run_order(ROOM)
+    assert len(solver.tasks) == 2
+    assert sum(t.meta_data == ROOM for t in solver.tasks) == 1
+    assert solver.get_run_order_time.call_count == 2
+
+
+@pytest.mark.parametrize("compare_type", ["<", "=", ">"])
+def test_existing_task_query_and_dispatch_use_distinct_failure_filters(
+    scheduler, failed_arrangement, compare_type
+):
+    solver, task, later = failed_arrangement
+    compare_time = (
+        task.time
+        + {"<": timedelta(seconds=1), "=": timedelta(), ">": -timedelta(seconds=1)}[
+            compare_type
+        ]
+    )
+    kwargs = {
+        "compare_time": compare_time,
+        "compare_type": compare_type,
+        "task_type": task.type,
+        "meta_data": task.meta_data,
+    }
+    assert solver.find_next_task(**kwargs) is None
+    assert solver.find_next_task(**kwargs, include_failed=True) is task
+    assert find_next_task(solver.tasks, **kwargs, include_failed=True) is task
+    assert find_next_task(solver.tasks) is later
+
+
+@pytest.mark.parametrize("reopened", [False, True])
+def test_idle_release_generation_reuses_retained_task(native_solver, reopened):
+    solver = native_solver
+    name = native.COVERS[0]
+    solver.op_data = solver.op_data.project_arrangements(
+        [{"dormitory_1": ["冰酿", "闪灵", name, "", ""]}]
+    )
+    data = solver.op_data
+    data.config.free_room = True
+    _, bed = data.get_dorm_by_name(name)
+    bed.time = native.NOW + timedelta(hours=1)
+    add_release_dorm(solver.tasks, data, name)
+    task = solver.tasks[0]
+    solver._retain_failed_task(task, "清退读房失败", task.plan)
+    if reopened:
+        data.operators[name].time_stamp += timedelta(seconds=1)
+        solver._resume_failed_tasks()
+    original = copy.deepcopy((task.time, task.plan, task.meta_data))
+    for _ in range(4):
+        add_release_dorm(solver.tasks, data, name)
+        assert solver.tasks == [task]
+        assert (task.time, task.plan, task.meta_data) == original
+
+
+@pytest.mark.parametrize("reopened", [False, True])
+def test_charging_planner_reuses_retained_task(scheduler, reopened):
+    solver = scheduler.solver
+    task = SchedulerTask(scheduler.clock.now(), task_type=TaskTypes.FIAMMETTA)
+    if reopened:
+        task.execution_retained = True
+    else:
+        task.execution_failure = {"reason": "充能读房失败"}
+    solver.tasks = [task]
+    solver.op_data.run_order_rooms = {}
+    solver.op_data.operators = {
+        "菲亚梅塔": SimpleNamespace(current_room="dormitory_1", current_index=2)
+    }
+    solver.check_fia = Mock(return_value=({"dormitory_1": ["菲亚梅塔"]}, "dormitory_1"))
+    solver._emergency_frozen = Mock(return_value=True)
+    solver._emergency_filter_tasks = Mock()
+    solver.enter_room = Mock(side_effect=AssertionError("重复充能读房"))
+    for _ in range(4):
+        solver.run_order_solver()
+        assert solver.tasks == [task]
+    solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize("reading", ["empty", "unresolved", "unrelated"])
+def test_prediction_invalidation_is_not_successful_failure_evidence(
+    empty_room_solver, reading
+):
+    import numpy as np
+
+    solver, task = empty_room_solver
+    target = solver.op_data.operators[native.PRIMARY[0]]
+    target.mood_is_prediction = True
+    target.rest_mood_release_limit = target.upper_limit
+    solver.emergency_state = {"phase": "staffing", "targets": {target.name: 16}}
+    task.plan[ROOM] = [target.name]
+    solver._retain_failed_task(task, "读取失败", [ROOM])
+    # 兼容旧快照中误存的预测时间。
+    task.execution_failure["snapshot"]["observations"][target.name] = (
+        "",
+        -1,
+        target.time_stamp,
+    )
+    if reading == "unresolved":
+        solver.find.return_value = False
+        solver.read_screen = Mock(return_value="")
+        solver.sleep = Mock()
+        solver.recog = SimpleNamespace(
+            gray=np.zeros((1080, 1920), dtype=np.uint8), update=Mock()
+        )
+        room = ROOM
+    else:
+        room = "room_1_2"
+    assert solver._emergency_read_rooms([] if reading == "empty" else [room])
+    assert target.time_stamp is None
+    assert target.rest_mood_release_limit is None
+    solver._resume_failed_tasks()
+    assert task.execution_failure
+    assert find_next_task(solver.tasks) is None
+
+
+@pytest.mark.parametrize("reader", ["ordinary", "emergency"])
+def test_unresolved_dorm_roster_preserves_beds_and_release_task(native_solver, reader):
+    import numpy as np
+
+    solver = native_solver
+    room, name = "dormitory_1", native.COVERS[0]
+    solver.op_data = solver.op_data.project_arrangements(
+        [{room: ["冰酿", "闪灵", name, "", ""]}]
+    )
+    data = solver.op_data
+    data.config.free_room = True
+    _, bed = data.get_dorm_by_name(name)
+    bed.time = native.NOW + timedelta(hours=1)
+    add_release_dorm(solver.tasks, data, name)
+    task = solver.tasks[0]
+    solver._retain_failed_task(task, "清退读房失败", [room])
+    positions = {
+        op.name: (op.current_room, op.current_index, op.time_stamp)
+        for op in data.operators.values()
+    }
+    beds = [(b.name, b.time, b.position) for b in data.all_dorms()]
+    for method in (
+        "refresh_facility_state",
+        "turn_on_room_detail",
+        "wait_product_complete",
+        "enter_room",
+        "back",
+        "back_to_infrastructure",
+        "scroll_room_operators",
+        "sleep",
+    ):
+        setattr(solver, method, Mock())
+    solver.emergency_state = None
+    solver.find = Mock(return_value=False)
+    solver.read_screen = Mock(return_value="")
+    solver.recog = SimpleNamespace(
+        gray=np.zeros((1080, 1920), dtype=np.uint8), update=Mock()
+    )
+    if reader == "ordinary":
+        solver.get_agent_from_room(room, force_mood=True)
+    else:
+        assert solver._emergency_read_rooms([room])
+    assert positions == {
+        op.name: (op.current_room, op.current_index, op.time_stamp)
+        for op in data.operators.values()
+    }
+    assert beds == [(b.name, b.time, b.position) for b in data.all_dorms()]
+    assert task.release_dorm_targets() == {name: bed.position}
+    solver._resume_failed_tasks()
+    assert task.execution_failure
+    assert find_next_task(solver.tasks) is None
+    assert solver.tasks == [task]

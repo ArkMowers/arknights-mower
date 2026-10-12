@@ -416,6 +416,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         task_type="",
         compare_type: Literal["<", "=", ">"] = "<",
         meta_data="",
+        *,
+        include_failed=False,
     ):
         """找符合条件的下一个任务
 
@@ -424,7 +426,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             compare_time: 截止时间
         """
         return find_next_task(
-            self.tasks, compare_time, task_type, compare_type, meta_data
+            self.tasks,
+            compare_time,
+            task_type,
+            compare_type,
+            meta_data,
+            include_failed=include_failed,
         )
 
     @property
@@ -487,7 +494,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     room: getattr(data, "products", {}).get(room) for room in rooms
                 },
                 "observations": {
-                    name: (op.current_room, op.current_index, op.time_stamp)
+                    name: (
+                        op.current_room,
+                        op.current_index,
+                        None
+                        if getattr(op, "mood_is_prediction", False)
+                        else op.time_stamp,
+                    )
                     for name, op in data.operators.items()
                     if name in names or op.current_room in rooms
                 },
@@ -518,6 +531,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 failure["snapshot"].setdefault(
                     "room_observations", {room: None for room in failure["rooms"]}
                 )
+                # 旧快照中的预测时间也不构成实测证据；预测失效不解除失败。
+                for name, observation in failure["snapshot"]["observations"].items():
+                    op = self.op_data.operators.get(name)
+                    if op is not None and getattr(op, "mood_is_prediction", False):
+                        failure["snapshot"]["observations"][name] = (
+                            *observation[:2],
+                            None,
+                        )
             if (
                 failure
                 and self._task_failure_snapshot(task, failure["rooms"])
@@ -3116,7 +3137,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if room not in self.op_data.run_order_rooms:
             return
         replacements = self.op_data.run_order_replacements(room)
-        if self.find_next_task(meta_data=room, task_type=TaskTypes.RUN_ORDER):
+        if self.find_next_task(
+            meta_data=room, task_type=TaskTypes.RUN_ORDER, include_failed=True
+        ):
             return
         in_out_plan = {room: ["Current"] * len(replacements)}
         for idx, choices in enumerate(replacements):
@@ -3210,7 +3233,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if fia_room is None:
                 self._refresh_fiammetta_task(None)
         if fia_room is not None and fia_plan is not None:
-            if self.find_next_task(task_type=TaskTypes.FIAMMETTA) is None:
+            if (
+                self.find_next_task(task_type=TaskTypes.FIAMMETTA, include_failed=True)
+                is None
+            ):
                 fia_data = self.op_data.operators["菲亚梅塔"]
                 fia_idx = (
                     fia_data.current_index
@@ -3251,7 +3277,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     continue
                 if (
                     self.find_next_task(
-                        task_type=TaskTypes.EXHAUST_OFF, meta_data=op.name
+                        task_type=TaskTypes.EXHAUST_OFF,
+                        meta_data=op.name,
+                        include_failed=True,
                     )
                     is None
                 ):
@@ -3297,13 +3325,18 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             if item not in self.op_data.exhaust_agent:
                                 continue
                             elif self.find_next_task(
-                                task_type=TaskTypes.EXHAUST_OFF, meta_data=item
+                                task_type=TaskTypes.EXHAUST_OFF,
+                                meta_data=item,
+                                include_failed=True,
                             ):
                                 update_time = True
                                 exh_task = self.find_next_task(
                                     task_type=TaskTypes.EXHAUST_OFF,
                                     meta_data=item,
+                                    include_failed=True,
                                 )
+                                if exh_task.retains_execution:
+                                    continue
                                 if _time < exh_task.time:
                                     logger.info(
                                         f"检测到用尽同组{op.name}比{item}提前下班，更新任务时间为{_time}"
@@ -6161,6 +6194,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             if not find_next_task(
                                 self.tasks,
                                 task_type=TaskTypes.CLUE_PARTY,
+                                include_failed=True,
                             ):
                                 self.tasks.append(
                                     SchedulerTask(
@@ -8861,6 +8895,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         departing_plan=None,
         force_mood=False,
     ):
+        """读取实际驻员；姓名未决槽位标记 observed=False，不据此确认离岗。"""
         # 只观察真实读房；初始化试住和肥鸭临时换位不产生新的休息周期。
         released_support = None
         if self._can_refresh_idle_dorm_search():
@@ -8970,6 +9005,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     self.sleep(0.25)
                     self.recog.update()
             observation_complete = observation_complete and slot_observed
+            if not slot_observed:
+                data["observed"] = False
             _mood = 24
             # 如果房间不为空
             update_time = False
@@ -9134,6 +9171,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     self._refresh_fiammetta_task(data["time"])
                 logger.debug(f"停止记录时间:{str(data)}")
             result.append(data)
+        if not observation_complete:
+            logger.warning("%s 名单识别未决，保留未确认驻员与床位缓存", room)
+            return result
         if (
             swap_target_snapshot is not None
             and "before" in swap_moods
@@ -9206,10 +9246,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 reason="专精协助位干员已释放", names=[released_support.name]
             )
         # 完整读房才产生新观测；空房间没有干员采样时间，同样可解除相关失败。
-        if observation_complete:
-            observations = getattr(self.op_data, "room_observations", {})
-            observations[room] = observations.get(room, 0) + 1
-            self.op_data.room_observations = observations
+        observations = getattr(self.op_data, "room_observations", {})
+        observations[room] = observations.get(room, 0) + 1
+        self.op_data.room_observations = observations
         return result
 
     def refresh_current_room(self, room, current_index=None):
@@ -10353,10 +10392,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 and room not in plan
                 and room in self.op_data.run_order_rooms
                 and not self.find_next_task(
-                    meta_data=room, task_type=TaskTypes.RUN_ORDER
+                    meta_data=room, task_type=TaskTypes.RUN_ORDER, include_failed=True
                 )
                 and not self.find_next_task(
-                    meta_data=room, task_type=TaskTypes.REFRESH_TIME
+                    meta_data=room,
+                    task_type=TaskTypes.REFRESH_TIME,
+                    include_failed=True,
                 )
             ):
                 # 原先暂停的房间没有跑单预约；排班确认后主动重读订单时间。
