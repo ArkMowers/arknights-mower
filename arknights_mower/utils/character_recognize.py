@@ -97,6 +97,7 @@ def reload_resource_models() -> None:
     OP_TRAIN.clear()
     OP_TRAIN.update(train)
     _match_name_template.cache_clear()
+    _match_name_field_template.cache_clear()
 
 
 @lru_cache(maxsize=256)
@@ -119,6 +120,74 @@ def _match_name_template(train, shape, pixels, *, right_align=False):
             max_score = max_val
             best_operator = operator
     return best_operator if max_score > 0.6 else ""
+
+
+def match_operator_name(image, *, dark_text=False):
+    """Match one complete name field with the existing selection templates."""
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    return _match_name_field_template(gray.shape, gray.tobytes(), dark_text)
+
+
+@lru_cache(maxsize=256)
+def _match_name_field_template(shape, pixels, dark_text):
+    gray = np.frombuffer(pixels, dtype=np.uint8).reshape(shape)
+    mode = cv2.THRESH_BINARY_INV if dark_text else cv2.THRESH_BINARY
+    _, binary = cv2.threshold(gray, 140, 255, mode)
+    # Border text may be clipped; never infer identity from a partial glyph.
+    if binary[0].any() or binary[-1].any() or binary[:, 0].any() or binary[:, -1].any():
+        return ""
+    points = cv2.findNonZero(binary)
+    if points is None:
+        return ""
+    _, _, _, height = cv2.boundingRect(points)
+    if height < 15:
+        return ""
+    scaled = {}
+    scores = []
+    for name, template in OP_SELECT.items():
+        points = cv2.findNonZero(template)
+        if points is None:
+            continue
+        _, _, _, template_height = cv2.boundingRect(points)
+        best = 0
+        # Long names have smaller template fonts. Preserve aspect ratio and
+        # allow one pixel of antialiasing variation in the target text height.
+        for offset in (-1, -0.5, 0, 0.5, 1):
+            target_height = template_height + offset
+            if target_height not in scaled:
+                scaled[target_height] = _normalize_name_field(
+                    gray, target_height / height, mode
+                )
+            sample = scaled[target_height]
+            if sample is not None:
+                score = cv2.matchTemplate(sample, template, cv2.TM_CCORR_NORMED).max()
+                best = max(best, float(score))
+        scores.append((best, name))
+    scores.sort(reverse=True)
+    if not scores or scores[0][0] <= 0.6:
+        return ""
+    if len(scores) > 1 and scores[0][0] - scores[1][0] < 0.05:
+        return ""
+    return scores[0][1]
+
+
+def _normalize_name_field(gray, scale, mode):
+    gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    _, binary = cv2.threshold(gray, 140, 255, mode)
+    binary = cv2.copyMakeBorder(binary, 10, 10, 10, 10, cv2.BORDER_CONSTANT, value=0)
+    contours, _ = cv2.findContours(
+        cv2.dilate(binary, kernel), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    if not contours:
+        return None
+    # Preserve separated punctuation as part of the full name.
+    x, y, w, h = cv2.boundingRect(np.vstack(contours))
+    if h > 42 or w > 200:
+        return None
+    template = np.zeros((42, 200), dtype=np.uint8)
+    template[:h, :w] = binary[y : y + h, x : x + w]
+    template = cv2.copyMakeBorder(template, 2, 2, 2, 2, cv2.BORDER_CONSTANT, value=0)
+    return template
 
 
 @timed_step("names")

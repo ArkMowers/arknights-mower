@@ -97,6 +97,184 @@ def solver():
     return result
 
 
+@pytest.fixture
+def name_frame(request):
+    sample, name, value = request.param
+    crop = cv2.imread(
+        str(Path(__file__).parent / "fixtures" / f"trust_name_{sample}.png")
+    )
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[155:215, 20:350] = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+    return frame, name, value
+
+
+@pytest.mark.parametrize(
+    "name_frame",
+    [("recon", "罗德岛隐秘队", 100), ("clemensa", "克莱门莎", 62)],
+    indirect=True,
+)
+def test_logged_assistant_name_is_read_as_a_complete_line(name_frame):
+    obj = solver()
+    obj.recog.img, expected, _ = name_frame
+    assert obj._name(obj.SELECTOR_NAME) == expected
+    obj.tap.assert_not_called()
+
+
+def test_activity_name_readback_uses_the_verified_text_region():
+    obj = solver()
+    crop = cv2.imread(
+        str(Path(__file__).parent / "fixtures" / "trust_name_activity.png")
+    )
+    obj.recog.img[640:710, 1420:1750] = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+    assert obj._name(obj.ACTIVITY_NAME, activity=True) == "旅骨"
+    obj.tap.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "filename,expected",
+    [
+        ("00-selector.png", "结城理"),
+        ("01-selector.png", "矩"),
+        ("02-selector.png", "响石"),
+        ("03-selector.png", "风絮"),
+        ("04-selector.png", "罗德岛隐秘队"),
+        ("05-activity.png", "克莱门莎"),
+        ("06-activity.png", "旅骨"),
+        ("07-activity.png", "德·托莱多"),
+        ("08-activity.png", "时隙"),
+        ("09-activity.png", "岳羽由加莉"),
+        ("10-activity.png", "机械师"),
+        ("11-activity.png", "虎狼丸"),
+        ("12-activity.png", "埃癸斯"),
+        ("selector_amiya.png", "阿米娅"),
+        ("selector_stainless.png", "白铁"),
+        ("selector_zheya.png", "折桠"),
+        ("selector_confess.png", "CONFESS-47"),
+        ("selector_terra.png", "泰拉大陆调查团"),
+        ("selector_uofficial.png", "U-Official"),
+        ("selector_kaltsit.png", "凯尔希·思衡托"),
+        ("selector_christine.png", "Miss.Christine"),
+        ("selector_vina.png", "维娜·维多利亚"),
+        ("activity_terra.png", "泰拉大陆调查团"),
+    ],
+)
+def test_existing_templates_read_real_name_fields_without_ocr(
+    filename, expected, monkeypatch
+):
+    obj = solver()
+    crop = cv2.imread(str(Path(__file__).parent / "fixtures/trust_names" / filename))
+    activity = "activity" in filename
+    y, x = (640, 1420) if activity else (155, 20)
+    obj.recog.img[y : y + crop.shape[0], x : x + crop.shape[1]] = cv2.cvtColor(
+        crop, cv2.COLOR_BGR2RGB
+    )
+    monkeypatch.setattr(trust.rapidocr, "engine", Mock(side_effect=AssertionError))
+    scope = obj.ACTIVITY_NAME if activity else obj.SELECTOR_NAME
+    before = obj.recog.img.copy()
+    assert obj._name(scope, activity=activity) == expected
+    np.testing.assert_array_equal(obj.recog.img, before)
+    obj.tap.assert_not_called()
+
+
+@pytest.mark.parametrize("damage", ["blank", "clipped", "oversized", "weak"])
+def test_incomplete_name_fields_cannot_authorize_selection(damage):
+    obj = solver()
+    image = np.full((45, 330, 3), 255, dtype=np.uint8)
+    if damage == "clipped":
+        image[0:30, 10:30] = 0
+    elif damage == "oversized":
+        image[5:35, 5:325] = 0
+    elif damage == "weak":
+        image[20:23, 20:23] = 0
+    obj.recog.img[160:205, 20:350] = image
+    with pytest.raises(trust.TrustReadingError):
+        obj._name(obj.SELECTOR_NAME)
+    obj.tap.assert_not_called()
+
+
+def test_activity_replacement_verifies_real_selector_and_room_name_crops(monkeypatch):
+    obj = solver()
+    fixtures = Path(__file__).parent / "fixtures"
+    selector = cv2.imread(str(fixtures / "trust_name_clemensa.png"))
+    activity = cv2.imread(str(fixtures / "trust_names/05-activity.png"))
+    obj.recog.img[155:215, 20:350] = cv2.cvtColor(selector, cv2.COLOR_BGR2RGB)
+    obj._cards = Mock(
+        side_effect=[
+            [card(200, selected=True)],
+            [card(0)],
+            [card(0, selected=True)],
+        ]
+    )
+    obj._trust = Mock(return_value=0)
+
+    def tap(point):
+        if point == (1575, 1025):
+            obj.recog.img.fill(0)
+            obj.recog.img[640:710, 1420:1750] = cv2.cvtColor(
+                activity, cv2.COLOR_BGR2RGB
+            )
+
+    obj.tap.side_effect = tap
+    monkeypatch.setattr(trust.rapidocr, "engine", Mock(side_effect=AssertionError))
+    assert obj._replace("activity", 200) == "replaced"
+    assert obj.tap.call_args_list[-1].args == ((1575, 1025),)
+
+
+@pytest.mark.parametrize(
+    "name_frame",
+    [("recon", "罗德岛隐秘队", 100), ("clemensa", "克莱门莎", 62)],
+    indirect=True,
+)
+def test_logged_incumbent_does_not_block_activity_inspection(name_frame, monkeypatch):
+    obj = solver()
+    obj.recog.img, expected, value = name_frame
+    monkeypatch.setattr(config, "conf", Conf())
+    for name in (
+        "discard_pending_selection",
+        "back_to_infrastructure",
+        "_enter_control_center",
+        "_leave_selection",
+        "_return_from_assistants",
+        "_activity_rooms",
+    ):
+        setattr(obj, name, Mock())
+    obj._assistant_trust = Mock(
+        side_effect=[value, None, None, None, None, value, None]
+    )
+    obj._replace = Mock(return_value="full")
+    obj.run()
+    assert obj.assistant_names == {0: expected}
+    obj._replace.assert_called_once_with("assistant", None, index=1)
+    obj._activity_rooms.assert_called_once()
+
+
+@pytest.mark.parametrize("result", ["", "未收录姓名"])
+def test_unverified_name_never_authorizes_selection(result, monkeypatch):
+    obj = solver()
+    monkeypatch.setattr(trust, "match_operator_name", Mock(return_value=result))
+    with pytest.raises(trust.TrustReadingError):
+        obj._name(obj.SELECTOR_NAME)
+    obj.tap.assert_not_called()
+
+
+@pytest.mark.parametrize("expired_before", [False, True])
+def test_name_templates_obey_inspection_deadline(monkeypatch, expired_before):
+    obj = solver()
+
+    def recognize(*args, **kwargs):
+        obj.deadline = 0
+        return "芬"
+
+    matcher = Mock(side_effect=recognize)
+    monkeypatch.setattr(trust, "match_operator_name", matcher)
+    if expired_before:
+        obj.deadline = 0
+    with pytest.raises(trust.TrustReadingError, match="时间预算"):
+        obj._name(obj.SELECTOR_NAME)
+    assert matcher.call_count == (0 if expired_before else 1)
+    obj.tap.assert_not_called()
+
+
 @pytest.mark.parametrize("kind", ["assistant", "activity"])
 def test_full_roster_stops_before_selection_or_confirmation(kind):
     obj = solver()
