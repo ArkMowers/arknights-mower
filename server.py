@@ -2153,32 +2153,33 @@ def import_from_image():
     if request.args.get("rescue") == "1":
         _save_rescue_plan(imported_plan)
         return "排班已加载"
-    try:
-        imported_conf = apply_advanced_settings(
-            config.conf, imported_plan.advanced_settings
-        )
-    except (ValueError, TypeError):
-        return "排班表导入失败：高级设置无效"
-    previous_plan = config.plan
-    previous_conf = config.conf
-    plan_saved = False
-    try:
-        config.plan = imported_plan
-        config.save_plan()
-        plan_saved = True
-        if imported_plan.advanced_settings is not None:
-            config.conf = imported_conf
-            config.save_conf()
-    except OSError:
-        config.plan = previous_plan
-        config.conf = previous_conf
-        if plan_saved:
-            try:
-                config.save_plan()
-            except OSError:
-                logger.exception("排班表回滚失败")
-        logger.exception("排班表写入失败")
-        return "排班表导入失败：文件写入失败，原排班已保留"
+    with config.conf_lock:
+        try:
+            imported_conf = apply_advanced_settings(
+                config.conf, imported_plan.advanced_settings
+            )
+        except (ValueError, TypeError):
+            return "排班表导入失败：高级设置无效"
+        previous_plan = config.plan
+        previous_conf = config.conf
+        plan_saved = False
+        try:
+            config.plan = imported_plan
+            config.save_plan()
+            plan_saved = True
+            if imported_plan.advanced_settings is not None:
+                config.conf = imported_conf
+                config.save_conf()
+        except OSError:
+            config.plan = previous_plan
+            config.conf = previous_conf
+            if plan_saved:
+                try:
+                    config.save_plan()
+                except OSError:
+                    logger.exception("排班表回滚失败")
+            logger.exception("排班表写入失败")
+            return "排班表导入失败：文件写入失败，原排班已保留"
     return "排班已加载"
 
 

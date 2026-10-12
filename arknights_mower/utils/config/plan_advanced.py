@@ -48,4 +48,7 @@ def apply_advanced_settings(conf: Conf, settings: dict | None) -> Conf:
     unknown = settings.keys() - ADVANCED_SETTING_KEYS
     if unknown:
         raise ValueError(f"未知的高级设置：{', '.join(sorted(unknown))}")
-    return Conf.model_validate({**conf.model_dump(), **settings})
+    validated = Conf.model_validate({**conf.model_dump(), **settings})
+    return conf.model_copy(
+        update={key: getattr(validated, key) for key in settings}, deep=True
+    )

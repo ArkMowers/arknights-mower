@@ -4,6 +4,7 @@ import copy
 import json
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from io import BytesIO
 from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -88,6 +89,143 @@ def saved_settings():
 
 def saved_conf_file():
     return yaml.load(sync.config.conf_path.read_text("utf-8"), Loader=CoreLoader)
+
+
+@pytest.fixture
+def plan_change(sync_case, tmp_path, monkeypatch, request):
+    sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
+    import server
+
+    monkeypatch.setattr(sync.config, "plan_path", tmp_path / "plan.json")
+    monkeypatch.setattr(sync.config, "plan", sync.config.PlanModel())
+    monkeypatch.setattr(server.app, "token", "local-token", raising=False)
+    plan = sync.config.PlanModel(
+        plan1={"central": {"plans": [{"agent": "阿米娅"}]}},
+        advanced_settings={"drone_count_limit": 140},
+    )
+    if request.param == "restore":
+        import arknights_mower.__main__ as mower_main
+
+        monkeypatch.setattr(
+            server, "mower_thread", SimpleNamespace(is_alive=lambda: True)
+        )
+        monkeypatch.setattr(
+            mower_main,
+            "base_scheduler",
+            SimpleNamespace(source_plan=plan.model_dump(exclude_none=True)),
+        )
+
+    def apply():
+        with server.app.test_client() as client:
+            if request.param == "restore":
+                response = client.post(
+                    "/plan/restore-running", headers={"token": "local-token"}
+                )
+                assert response.status_code == 200
+            else:
+                response = client.post(
+                    "/import",
+                    headers={"token": "local-token"},
+                    data={
+                        "img": (BytesIO(plan.model_dump_json().encode()), "plan.json")
+                    },
+                )
+                assert response.get_data(as_text=True) == "排班已加载"
+        assert sync.config.conf.drone_count_limit == 140
+
+    return apply
+
+
+@pytest.mark.parametrize("plan_change", ["import", "restore"], indirect=True)
+def test_plan_changes_preserve_pending_token_migration(sync_case, plan_change):
+    paths, session, _, _, _ = sync_case
+    path = paths["@app/config/yituliu_sync.json"]
+    legacy = {"token": TOKEN, "last_synced_at": 123, "last_synced_count": 1}
+    path.write_text(json.dumps(legacy))
+    plan_change()
+    assert sync.token_status()["configured"]
+    sync.config.load_conf()
+    assert saved_settings() == legacy
+    assert not path.exists()
+    session.post.assert_not_called()
+
+
+@pytest.mark.parametrize("private", [None, {}, {"token": TOKEN}])
+def test_advanced_settings_preserve_unrelated_values_and_explicit_state(private):
+    from arknights_mower.utils.config.plan_advanced import apply_advanced_settings
+
+    original = Conf(account="local-account", webview={"token": "local-auth"})
+    if private is not None:
+        original.yituliu_sync = type(original.yituliu_sync)(**private)
+    # Nested runtime edits remain intact even when the parent is unset.
+    original.product_switching.waiting_seconds = 5
+    original_fields = original.model_fields_set.copy()
+    updated = apply_advanced_settings(original, {"drone_count_limit": 140})
+    assert updated.model_dump() == {**original.model_dump(), "drone_count_limit": 140}
+    assert updated.model_fields_set == original_fields | {"drone_count_limit"}
+    assert (
+        updated.yituliu_sync.model_fields_set == original.yituliu_sync.model_fields_set
+    )
+    updated.webview.token = "changed-auth"
+    assert original.webview.token == "local-auth"
+    assert original.model_fields_set == original_fields
+
+
+@pytest.mark.parametrize("plan_change", ["import", "restore"], indirect=True)
+@pytest.mark.parametrize("change", ["clear", "replace"])
+def test_plan_changes_serialize_token_routes(
+    sync_case, plan_change, monkeypatch, change
+):
+    import server
+
+    sync.save_token(TOKEN)
+    attempted = Event()
+    acquired = []
+    original_lock = sync._lock
+    apply_settings = server.apply_advanced_settings
+
+    class ObservedLock:
+        def __enter__(self):
+            immediate = original_lock.acquire(blocking=False)
+            acquired.append(immediate)
+            attempted.set()
+            if not immediate:
+                original_lock.acquire()
+
+        def __exit__(self, *_):
+            original_lock.release()
+
+    def change_token():
+        with server.app.test_client() as client:
+            response = client.open(
+                "/growth-sync-token",
+                method="DELETE" if change == "clear" else "PUT",
+                headers={"token": "local-token"},
+                json={"token": "replacement-access-token"},
+            )
+            assert response.status_code == 200
+            assert response.json["configured"] == (change == "replace")
+
+    monkeypatch.setattr(sync, "_lock", ObservedLock())
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = None
+
+        def pause_after_copy(conf, settings):
+            nonlocal future
+            candidate = apply_settings(conf, settings)
+            future = pool.submit(change_token)
+            assert attempted.wait(5)
+            assert acquired[0] is False
+            return candidate
+
+        monkeypatch.setattr(server, "apply_advanced_settings", pause_after_copy)
+        plan_change()
+        future.result(timeout=5)
+    sync.config.load_conf()
+    assert saved_settings().get("token", "") == (
+        "replacement-access-token" if change == "replace" else ""
+    )
+    assert sync.config.conf.drone_count_limit == 140
 
 
 def test_save_status_and_clear_are_local_and_never_echo_token(sync_case):
