@@ -48,9 +48,11 @@ CORE = r"""
 #include <string.h>
 typedef void (*Callback)(int, const char *, void *);
 static char log_path[4096];
+static int loads;
 const char *AsstGetVersion(void) { return "v1.0.0"; }
 int AsstBuild(void) { return BUILD_ID; }
-void AsstSetLog(const char *path) { snprintf(log_path, sizeof(log_path), "%s", path); }
+int AsstLoads(void) { return loads; }
+void AsstSetLog(const char *path) { ++loads; snprintf(log_path, sizeof(log_path), "%s", path); }
 void *AsstCreateEx(Callback cb) {
     Callback *ptr = malloc(sizeof(Callback));
     *ptr = cb;
@@ -108,12 +110,26 @@ elif mode == "unknown":
     # An out-of-band SDK load cannot contribute to a trusted reference count.
     Asst.load(target)
 elif mode == "close-failed":
+    failed_close = []
     def fail(*args, **kwargs):
+        failed_close.append(True)
         raise OSError("library close failed")
     maa_update._close_dynamic_library = fail
+    # Reach the injected close failure even on hosts without Linux process maps.
+    maa_update._maa_core_image_mapped = lambda address: True
+elif mode == "extra-open":
+    import ctypes
+    untracked_open = ctypes.CDLL(str(target / replacement.name))
 
-os.replace(replacement, target / replacement.name)
-if mode != "reload":
+if mode in ("nodelete", "extra-open"):
+    resource_loads = Asst._Asst__lib.AsstLoads
+
+if mode == "symlink":
+    physical = target / "physical-core.so"
+    os.replace(replacement, physical)
+else:
+    os.replace(replacement, target / replacement.name)
+if mode not in ("reload", "symlink"):
     try:
         load_verified_maa(Asst, target, lambda *args: None)
     except MaaCoreRestartRequired as error:
@@ -122,6 +138,10 @@ if mode != "reload":
         raise AssertionError("unsafe core was admitted")
     assert not (target / "unloaded.txt").exists()
     if mode == "close-failed":
+        assert failed_close == [True]
+    if mode in ("nodelete", "extra-open"):
+        assert resource_loads() == 3, "replacement resources reached the old image"
+    if mode in ("close-failed", "nodelete", "extra-open"):
         # A partially invalidated SDK cannot retry into an unverified image.
         try:
             load_verified_maa(Asst, target, lambda *args: None)
@@ -129,6 +149,8 @@ if mode != "reload":
             pass
         else:
             raise AssertionError("failed unload was reused")
+        if mode in ("nodelete", "extra-open"):
+            assert resource_loads() == 3
 else:
     instance = load_verified_maa(Asst, target, lambda *args: None)
     assert instance.get_version() == "v1.0.0"
@@ -146,12 +168,28 @@ else:
 
 @pytest.mark.parametrize(
     "mode",
-    ["reload", "retained", "raw", "old-sdk", "unknown", "close-failed", "darwin"],
+    [
+        "reload",
+        "symlink",
+        "nodelete",
+        "extra-open",
+        "retained",
+        "raw",
+        "old-sdk",
+        "unknown",
+        "close-failed",
+        "darwin",
+    ],
 )
 def test_native_core_generation_reload(tmp_path, mode):
     compiler = shutil.which("cc")
     if os.name == "nt" or compiler is None:
         pytest.skip("native fixture requires a POSIX C compiler")
+    if (
+        mode in ("reload", "symlink", "nodelete", "extra-open")
+        and sys.platform != "linux"
+    ):
+        pytest.skip("native unload verification requires Linux process maps")
     core_name = "libMaaCore.dylib" if sys.platform == "darwin" else "libMaaCore.so"
     target = tmp_path / "maa"
     sdk_dir = target / "Python" / "asst"
@@ -169,6 +207,7 @@ def test_native_core_generation_reload(tmp_path, mode):
                 "-shared",
                 "-fPIC",
                 f"-DBUILD_ID={build}",
+                *(["-Wl,-z,nodelete"] if mode == "nodelete" else []),
                 str(source),
                 "-o",
                 str(directory / core_name),
@@ -177,6 +216,9 @@ def test_native_core_generation_reload(tmp_path, mode):
             capture_output=True,
             timeout=30,
         )
+    if mode == "symlink":
+        (target / core_name).rename(target / "physical-core.so")
+        (target / core_name).symlink_to("physical-core.so")
     worker = tmp_path / "worker.py"
     worker.write_text(WORKER)
     environment = dict(

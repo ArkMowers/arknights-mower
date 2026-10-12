@@ -13,15 +13,17 @@ date: 2026-10-05
 
 ## Rationale and Simplification
 
-External updates replace files without replacing the running native image. The existing cache cleanup provides one recovery path for Windows and Linux once instance destruction and library ownership are verified. Tracking repeated SDK opens prevents a single close from leaving the original image resident. macOS MAA registers Objective-C classes that survive closing the library, so its recovery retains process restart. A bounded child-process version probe avoids registering duplicate native classes in the parent.
+External updates replace files without replacing the running native image. The existing cache cleanup provides one recovery path for Windows and Linux once instance destruction, library ownership and actual image unloading are verified. Tracking repeated SDK opens alone is insufficient: GNU_UNIQUE symbols, NODELETE libraries and external opens can keep an image resident after every tracked close succeeds. Recovery confirms removal of the loaded function's mapping before reimporting the SDK. macOS MAA registers Objective-C classes that survive closing the library, so its recovery retains process restart. A bounded child-process version probe avoids registering duplicate native classes in the parent.
+
+Core generation records the resolved target file rather than the symlink entry, so replacing a target invalidates the cached version and its identity is checked again after probing and loading. Backup ownership retains the existing `lstat` helper; its semantics serve a different lifecycle and remain unchanged. Both review defects extend the existing [INV-MAA-11] guarantee rather than introduce a new identifier.
 
 The scheduler delegates construction to the tested runtime loader and retains resource diagnostics and callback initialization. No configuration flags, recovery workers or scheduling state are added. Existing domain concepts retain their names, meanings and boundaries, so glossary edits are unnecessary. This review repair updates the owning triplet in place and retains its implemented lifecycle.
 
 ## Verification
 
-Focused offline suites cover core validation, same-version replacement, retained idle and raw SDK instances, untracked loads, repeated native opens, failed unloading, SDK reimport, fresh instance options, resource diagnostics, callback routing, navigation, shared ADB transport and source/packaged version-probe dispatch. Compiler-built native fixtures exercise actual dynamic-library unloading and confirm the replacement build despite an unchanged version string; they run in isolated child processes and skip when no POSIX C compiler is available.
+Focused offline suites cover core validation, same-version and symlink-target replacement, target changes during probing, retained idle and raw SDK instances, untracked loads, repeated native opens, failed or unconfirmed unloading, SDK reimport, fresh instance options, resource diagnostics, callback routing, navigation, shared ADB transport and source/packaged version-probe dispatch. Compiler-built native fixtures exercise actual dynamic-library unloading and confirm the replacement build despite an unchanged version string. Linux NODELETE and extra-open fixtures require restart without loading replacement resources into the resident image, including a later retry. They run in isolated child processes; mapping-sensitive cases require Linux and native fixtures require a POSIX C compiler.
 
-A device-free check with the local official macOS MAA v6.17.0 core confirms repeated initialization and the restart fallback after replacing the core file. It connects no device and starts no automation. Actual Windows/Linux MAA binaries and packaged launchers are not exercised locally; cross-platform CI remains separate evidence.
+A device-free check with the local official macOS MAA v6.17.0 core confirms repeated initialization and the restart fallback after replacing the core file. An offline Linux container with official MAA v5.24.2 confirms restart after same-version replacement and replacement of a symlink target whose fresh disk version is v5.24.3; neither case reloads resources into the resident core or reuses the invalidated SDK. These checks connect no device and start no automation. Actual Windows MAA binaries and packaged launchers remain untested locally; cross-platform CI remains separate evidence.
 
 ## Standards Findings
 
@@ -29,4 +31,4 @@ Pass: cleanup rejects reachable instances and unknown ownership, preserves busy 
 
 ## Spec Findings
 
-Pass: Windows/Linux attempt at most one verified idle reload, obtain a new SDK class and option definitions, and compare the replacement with a fresh disk probe before connection. Unsafe or failed recovery retains explicit process-restart guidance; macOS follows that boundary without closing its native image.
+Pass: Windows/Linux attempt at most one idle reload after actual image unloading is confirmed, obtain a new SDK class and option definitions, and compare the replacement with a fresh disk probe and resolved target identity before connection. Unsafe or failed recovery retains explicit process-restart guidance; macOS follows that boundary without closing its native image.

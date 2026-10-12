@@ -1632,6 +1632,38 @@ def _maa_sdk_referenced(asst_class) -> bool:
     return False
 
 
+def _maa_core_image_mapped(address: int) -> bool:
+    """Query mapping state without opening or dereferencing the native image."""
+    if platform.system() == "Linux":
+        regions = Path("/proc/self/maps").read_text().splitlines()
+        if not regions:
+            raise OSError("无法读取进程映像映射")
+        for line in regions:
+            region = line.split()[0]
+            start, end = (int(value, 16) for value in region.split("-"))
+            if start <= address < end:
+                return True
+        return False
+    if platform.system() == "Windows":
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        query = kernel.GetModuleHandleExW
+        query.argtypes = [
+            ctypes.c_uint32,
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_void_p),
+        ]
+        query.restype = ctypes.c_int
+        module = ctypes.c_void_p()
+        # FROM_ADDRESS | UNCHANGED_REFCOUNT: observe without acquiring an open.
+        if query(0x00000004 | 0x00000002, address, ctypes.byref(module)):
+            return True
+        error = ctypes.get_last_error()
+        if error == 126:  # ERROR_MOD_NOT_FOUND
+            return False
+        raise OSError(error, "无法查询 MAA 核心映像")
+    raise OSError("当前平台无法验证 MAA 核心卸载")
+
+
 @update_transaction
 def clear_loaded_maa_cache(target: Path | str) -> None:
     """释放 Mower 进程内已经读取的 MAA 实例、模块和导入路径。"""
@@ -1644,8 +1676,8 @@ def clear_loaded_maa_cache(target: Path | str) -> None:
     if scheduler is not None:
         scheduler.MAA = None
 
-    # Asst.load 把 MaaCore 保存在 Asst 的类属性中；仅移除 sys.modules 不会释放
-    # 已加载的旧动态库。先销毁实例，再显式关闭句柄，后续版本读取才会加载新文件。
+    # Asst.load 把 MaaCore 保存在类属性中。关闭所有已知打开后仍需验证映像
+    # 已卸载；GNU_UNIQUE、NODELETE 或额外打开均可使成功关闭后的映像继续驻留。
     gc.collect()
     asst_module = sys.modules.get("asst.asst")
     asst_class = getattr(asst_module, "Asst", None)
@@ -1662,6 +1694,14 @@ def clear_loaded_maa_cache(target: Path | str) -> None:
         raise MaaUpdateError("MAA 核心句柄来源无法确认，请重启 Mower")
     if library is not None and platform.system() == "Darwin":
         raise MaaUpdateError("macOS MAA 核心包含不能安全重载的原生类，请重启 Mower")
+    address = None
+    if library is not None:
+        try:
+            address = ctypes.cast(library.AsstGetVersion, ctypes.c_void_p).value
+            if not address or not _maa_core_image_mapped(address):
+                raise OSError("未找到已加载的 MAA 核心映像")
+        except (AttributeError, OSError, TypeError, ValueError) as error:
+            raise MaaUpdateError("无法验证 MAA 核心卸载，请重启 Mower") from error
     if asst_class is not None and library is not None:
         asst_class._mower_core_unusable = True
         setattr(asst_class, "_Asst__lib", None)
@@ -1669,6 +1709,12 @@ def clear_loaded_maa_cache(target: Path | str) -> None:
     if isinstance(handle, int) and handle:
         for _ in range(loads[1]):
             _close_dynamic_library(handle, strict=True)
+    if address is not None:
+        try:
+            if _maa_core_image_mapped(address):
+                raise OSError("MAA 核心映像仍驻留")
+        except (OSError, ValueError) as error:
+            raise MaaUpdateError("MAA 核心卸载未确认，请重启 Mower") from error
 
     for module_name in list(sys.modules):
         if module_name == "asst" or module_name.startswith("asst."):

@@ -1,3 +1,4 @@
+import ctypes
 import io
 import os
 import stat
@@ -1120,6 +1121,46 @@ class TestInstallAndBackup(unittest.TestCase):
 
 
 class TestLoadedMaaCache(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "requires Windows module queries")
+    def test_windows_image_query_distinguishes_mapped_and_unmapped_addresses(self):
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        address = ctypes.cast(kernel.GetModuleHandleExW, ctypes.c_void_p).value
+        self.assertTrue(mu._maa_core_image_mapped(address))
+        self.assertFalse(mu._maa_core_image_mapped(1))
+
+    def test_unconfirmed_unload_keeps_sdk_and_prevents_retry_after_close(self):
+        for states, closed in (
+            ([True, True], True),
+            ([True, OSError("mapping unavailable")], True),
+            ([OSError("mapping unavailable")], False),
+            ([False], False),
+        ):
+            with self.subTest(states=states):
+
+                class Asst:
+                    _Asst__lib = types.SimpleNamespace(
+                        _handle=123, AsstGetVersion=ctypes.c_void_p(456)
+                    )
+
+                Asst._mower_core_loads = (Asst._Asst__lib, 1, True)
+                module = types.ModuleType("asst.asst")
+                module.Asst = Asst
+                with (
+                    patch.dict(sys.modules, {"asst.asst": module}),
+                    patch.object(mu.platform, "system", return_value="Linux"),
+                    patch.object(mu, "_maa_core_image_mapped", side_effect=states),
+                    patch.object(mu, "_close_dynamic_library") as close,
+                ):
+                    with self.assertRaisesRegex(mu.MaaUpdateError, "重启 Mower"):
+                        mu.clear_loaded_maa_cache(Path("/tmp/test-maa-cache"))
+                    self.assertIs(sys.modules["asst.asst"], module)
+                    self.assertEqual(close.call_count, int(closed))
+                    if closed:
+                        self.assertTrue(Asst._mower_core_unusable)
+                        with self.assertRaisesRegex(mu.MaaUpdateError, "重启 Mower"):
+                            mu.clear_loaded_maa_cache(Path("/tmp/test-maa-cache"))
+                        close.assert_called_once_with(123, strict=True)
+
     def test_loaded_maa_cache_is_released(self):
         target = Path("/tmp/test-maa-cache")
         python_path = str(target / "Python")
@@ -1130,7 +1171,9 @@ class TestLoadedMaaCache(unittest.TestCase):
         asst_child = types.ModuleType("asst.asst")
 
         class Asst:
-            _Asst__lib = types.SimpleNamespace(_handle=123)
+            _Asst__lib = types.SimpleNamespace(
+                _handle=123, AsstGetVersion=ctypes.c_void_p(456)
+            )
 
         Asst._mower_core_loads = (Asst._Asst__lib, 1, True)
         asst_child.Asst = Asst
@@ -1148,6 +1191,7 @@ class TestLoadedMaaCache(unittest.TestCase):
                     },
                 ),
                 patch.object(mu, "_close_dynamic_library") as close,
+                patch.object(mu, "_maa_core_image_mapped", side_effect=[True, False]),
                 patch.object(mu.platform, "system", return_value="Windows"),
             ):
                 mu.clear_loaded_maa_cache(target)

@@ -76,6 +76,43 @@ class MaaRuntimeTests(unittest.TestCase):
         self.assertEqual(self.asst_type.load.call_count, 1)
         self.assertEqual(self.verified.call_count, 1)
 
+    def test_symlink_target_replacement_fails_before_resource_loading(self):
+        physical = self.target / "physical-core"
+        self.library.rename(physical)
+        try:
+            self.library.symlink_to(physical.name)
+        except OSError:
+            self.skipTest("symlinks unavailable")
+        self.load()
+        replacement = self.target / "replacement"
+        replacement.write_bytes(b"different target build")
+        replacement.replace(physical)
+        with self.assertRaises(runtime.MaaCoreRestartRequired):
+            self.load()
+        self.assertEqual(self.asst_type.load.call_count, 1)
+        self.assertEqual(self.probe.call_count, 1)
+        self.assertEqual(self.verified.call_count, 1)
+
+    def test_symlink_target_change_during_probe_is_rejected(self):
+        physical = self.target / "physical-core"
+        self.library.rename(physical)
+        try:
+            self.library.symlink_to(physical.name)
+        except OSError:
+            self.skipTest("symlinks unavailable")
+
+        def probe(*args, **kwargs):
+            replacement = self.target / "replacement"
+            replacement.write_bytes(b"changed during probe")
+            replacement.replace(physical)
+            return "v6.19.0-beta.1"
+
+        self.probe.side_effect = probe
+        with self.assertRaises(runtime.MaaCoreRestartRequired):
+            self.load()
+        self.assertNotIn("_mower_core_generation", vars(self.asst_type))
+        self.instance.stop.assert_called_once()
+
     def test_resource_and_cache_updates_do_not_require_restart(self):
         self.load()
         (self.target / "resource").mkdir()

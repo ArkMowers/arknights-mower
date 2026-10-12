@@ -8,7 +8,6 @@ from pathlib import Path
 from arknights_mower.utils.maa_backup import (
     MaaCallError,
     VerifiedAsst,
-    identity,
     maa_in_use,
     update_transaction,
 )
@@ -33,6 +32,19 @@ class MaaCoreRestartRequired(MaaUpdateError):
             f"MAA 核心已更新或安装目录已改变{versions}，请重启 Mower 后再运行 MAA；"
             "停止后重新启动任务不能替代重启 Mower 进程"
         )
+
+
+def _core_generation(core_path):
+    try:
+        resolved = core_path.resolve(strict=True)
+        value = resolved.stat()
+    except (OSError, RuntimeError) as error:
+        raise MaaCoreRestartRequired() from error
+    return (
+        str(core_path.absolute()),
+        str(resolved),
+        (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns),
+    )
 
 
 @update_transaction
@@ -60,7 +72,7 @@ def _load_verified_maa(asst_type, target, callback):
     core_path = _find_maa_core_library(target)
     if core_path is None:
         raise MaaUpdateError("MAA 安装目录缺少核心运行库")
-    generation = (str(core_path.absolute()), identity(core_path))
+    generation = _core_generation(core_path)
     if vars(asst_type).get("_mower_core_unusable"):
         raise MaaCoreRestartRequired()
     previous = vars(asst_type).get("_mower_core_generation")
@@ -106,10 +118,7 @@ def _load_verified_maa(asst_type, target, callback):
         if not installed:
             raise MaaUpdateError("无法读取磁盘 MAA 核心版本，请检查安装后重启 Mower")
         loaded = instance.get_version()
-        if loaded != installed or generation != (
-            str(core_path.absolute()),
-            identity(core_path),
-        ):
+        if loaded != installed or generation != _core_generation(core_path):
             raise MaaCoreRestartRequired(loaded, installed)
         asst_type._mower_core_generation = (generation, installed)
         return instance
