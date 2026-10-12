@@ -206,7 +206,7 @@
     <div v-else class="mastery-list">
       <n-collapse v-model:expanded-names="expandedOperator" accordion class="operator-cards">
         <n-collapse-item
-          v-for="op in displayList"
+          v-for="op in pagedOperators"
           :key="op.char_id"
           :name="op.char_id"
           @click="toggleOperatorHeaderSpace(op, $event)"
@@ -260,190 +260,209 @@
             </n-space>
           </template>
 
-          <n-alert
-            v-if="op.mastery_error && op.recommendations.length"
-            type="info"
-            :bordered="false"
-            class="prerequisite-notice"
-          >
-            {{ op.mastery_error }}
-          </n-alert>
-          <n-alert v-if="op.material_error" type="warning">{{ op.material_error }}</n-alert>
-          <GrowthLevelPlan
-            :operator="op"
-            :selected-key="levelGoalFor(op)"
-            :required-key="prerequisiteLevelGoal(op, hasPlannedSkill(op), store.goals)"
-            :saving="goalSaving"
-            :apply-target="(key) => applyLevelTarget(op, key)"
+          <n-spin
+            v-if="detailLoading && expandedOperator.includes(op.char_id)"
+            description="正在读取材料详情..."
           />
-          <n-card
-            v-if="op.basic_skill_summary || (op.supports_basic_skill7 && op.max_phase < 2)"
-            size="small"
-            class="level-card"
-            :title="`基础技能 ${op.main_skill_level} → 7 级`"
-          >
-            <n-checkbox
-              v-if="op.supports_basic_skill7"
-              :checked="isGoalPlanned(op.char_id, 'skill7') || hasPlannedSkill(op)"
-              :disabled="
-                goalSaving ||
-                hasPlannedSkill(op) ||
-                (!op.basic_skill_summary && !isGoalPlanned(op.char_id, 'skill7'))
-              "
-              @update:checked="(value) => toggleGoal(op, 'skill7', value)"
+          <n-alert v-else-if="detailError && expandedOperator.includes(op.char_id)" type="warning">
+            {{ detailError }}
+            <n-button size="small" @click="loadOperatorDetail(op.char_id)">重试</n-button>
+          </n-alert>
+          <template v-else-if="operatorDetail?.char_id === op.char_id">
+            <n-alert
+              v-if="op.mastery_error && op.recommendations.length"
+              type="info"
+              :bordered="false"
+              class="prerequisite-notice"
             >
-              {{ op.basic_skill_summary ? '规划至基础技能 7 级' : '基础技能已达 7 级' }}
-            </n-checkbox>
-            <n-text depth="3" class="overview-note">
-              基础技能材料按干员只计算一次，需在游戏中手动升级。
-              <template
-                v-if="op.basic_skill_prerequisite && op.elite < op.basic_skill_prerequisite.elite"
-                >最低前置为{{ eliteLabel(op.basic_skill_prerequisite.elite) }}
-                {{ op.basic_skill_prerequisite.level }} 级，材料自动计入。</template
-              >
-              <template v-if="op.max_phase >= 2"
-                >专精计划自动包含此项，升级并同步后才执行专精。</template
-              >
-            </n-text>
-            <MasteryMaterials
-              v-if="op.basic_skill_summary"
-              :summary="op.basic_skill_summary"
-              title="基础技能升级材料"
+              {{ op.mastery_error }}
+            </n-alert>
+            <n-alert v-if="op.material_error" type="warning">{{ op.material_error }}</n-alert>
+            <GrowthLevelPlan
+              :operator="op"
+              :selected-key="levelGoalFor(op)"
+              :required-key="prerequisiteLevelGoal(op, hasPlannedSkill(op), store.goals)"
+              :saving="goalSaving"
+              :apply-target="(key) => applyLevelTarget(op, key)"
             />
-          </n-card>
-          <div v-for="rec in visibleRecs(op)" :key="rec.skill_index" class="rec-item">
-            <n-card size="small">
-              <template #header>
-                <n-space align="center" justify="space-between" style="width: 100%">
-                  <n-space align="center" :size="8">
-                    <n-text strong>{{ rec.skill_name }}</n-text>
-                    <n-tag
-                      size="small"
-                      :bordered="false"
-                      :type="
-                        surveyFor(op).skillHighlights.includes(rec.skill_index)
-                          ? 'warning'
-                          : 'default'
-                      "
-                      >专三
-                      {{
-                        formatSurveyRate(
-                          surveyFor(op).skills.find((skill) => skill.index === rec.skill_index)
-                            ?.rate
-                        )
-                      }}</n-tag
-                    >
-                    <n-text depth="3" style="font-size: 12px"
-                      >{{ masteryLevelLabel(op.main_skill_level, rec.current_level) }} → 专{{
-                        rec.target_level
-                      }}</n-text
-                    >
-                  </n-space>
-                  <n-space :size="8" align="center" class="rec-controls">
-                    <n-select
-                      :value="rec.target_level"
-                      :options="targetOptions(rec)"
-                      :disabled="isTargetLocked(op, rec) || targetSaving"
-                      @update:value="(value) => changeTarget(op, rec, value)"
-                      size="small"
-                      style="width: 104px"
-                      aria-label="目标专精等级"
-                    />
-                    <n-button
-                      size="small"
-                      :type="isSkillPlanned(op.char_id, rec.skill_index) ? 'success' : 'default'"
-                      @click.stop="toggleSkillPlan(op, rec)"
-                      :disabled="
-                        !!op.material_error && !isSkillPlanned(op.char_id, rec.skill_index)
-                      "
-                    >
-                      {{ isSkillPlanned(op.char_id, rec.skill_index) ? '移出计划' : '加入计划' }}
-                    </n-button>
-                    <n-button
-                      type="primary"
-                      size="small"
-                      :disabled="!!op.mastery_error || startingMastery"
-                      @click.stop="insertMasteryTask(op, rec)"
-                      >一键插入专精任务</n-button
-                    >
-                    <n-button
-                      v-if="planStatus[planKey(op.char_id, rec.skill_index)]?.id"
-                      size="small"
-                      @click.stop="openSupports(op, rec)"
-                      >协助方案</n-button
-                    >
-                  </n-space>
-                </n-space>
-              </template>
-              <n-space vertical :size="4">
-                <n-text depth="2"
-                  >总训练时间: {{ formatTime(rec.total_time) }} |
-                  {{ rec.remaining_levels }}级专精</n-text
-                >
-                <MasteryMaterials :summary="rec.skill_material_summary" title="技能专精材料" />
-              </n-space>
-            </n-card>
-          </div>
-          <section v-if="op.modules?.length" class="module-section">
-            <h3>模组养成 · {{ op.modules.length }}</h3>
-            <n-text depth="3"
-              >默认规划至满级，可选择目标等级；信赖与解锁任务仍需在游戏中完成。</n-text
+            <n-card
+              v-if="op.basic_skill_summary || (op.supports_basic_skill7 && op.max_phase < 2)"
+              size="small"
+              class="level-card"
+              :title="`基础技能 ${op.main_skill_level} → 7 级`"
             >
-            <div v-for="module in visibleModules(op)" :key="module.id" class="module-row">
-              <div class="module-heading">
-                <n-checkbox
-                  :checked="isGoalPlanned(op.char_id, module.id)"
-                  :disabled="
-                    goalSaving ||
-                    (module.current_level >= module.max_level &&
-                      !isGoalPlanned(op.char_id, module.id))
-                  "
-                  @update:checked="(value) => toggleGoal(op, module.id, value)"
+              <n-checkbox
+                v-if="op.supports_basic_skill7"
+                :checked="isGoalPlanned(op.char_id, 'skill7') || hasPlannedSkill(op)"
+                :disabled="
+                  goalSaving ||
+                  hasPlannedSkill(op) ||
+                  (!op.basic_skill_summary && !isGoalPlanned(op.char_id, 'skill7'))
+                "
+                @update:checked="(value) => toggleGoal(op, 'skill7', value)"
+              >
+                {{ op.basic_skill_summary ? '规划至基础技能 7 级' : '基础技能已达 7 级' }}
+              </n-checkbox>
+              <n-text depth="3" class="overview-note">
+                基础技能材料按干员只计算一次，需在游戏中手动升级。
+                <template
+                  v-if="op.basic_skill_prerequisite && op.elite < op.basic_skill_prerequisite.elite"
+                  >最低前置为{{ eliteLabel(op.basic_skill_prerequisite.elite) }}
+                  {{ op.basic_skill_prerequisite.level }} 级，材料自动计入。</template
                 >
-                  <n-text strong>{{ module.type }} · {{ module.name }}</n-text>
-                </n-checkbox>
-                <n-tag
-                  size="small"
-                  :bordered="false"
-                  :type="surveyFor(op).moduleHighlights.includes(module.id) ? 'warning' : 'default'"
-                  >解锁
-                  {{
-                    formatSurveyRate(
-                      surveyFor(op).modules.find((item) => item.id === module.id)?.rate
-                    )
-                  }}</n-tag
+                <template v-if="op.max_phase >= 2"
+                  >专精计划自动包含此项，升级并同步后才执行专精。</template
                 >
-                <n-select
-                  v-if="module.current_level < module.max_level"
-                  :value="moduleTarget(op, module)"
-                  :options="moduleTargetOptions(module)"
-                  :disabled="goalSaving"
-                  style="width: 135px"
-                  @update:value="(value) => changeModuleTarget(op, module, value)"
-                />
-                <n-tag size="small" :type="module.current_level ? 'success' : 'default'">{{
-                  module.current_level
-                    ? `已开启 · ${module.current_level} 级`
-                    : `精${module.elite} ${module.level} 级开启`
-                }}</n-tag>
-              </div>
-              <n-alert v-if="module.material_error" type="warning">{{
-                module.material_error
-              }}</n-alert>
+              </n-text>
               <MasteryMaterials
-                v-else-if="module.current_level < module.max_level"
-                :summary="moduleSummary(op, module).opening_summary"
-                title="模组升级材料"
+                v-if="op.basic_skill_summary"
+                :summary="op.basic_skill_summary"
+                title="基础技能升级材料"
               />
+            </n-card>
+            <div v-for="rec in visibleRecs(op)" :key="rec.skill_index" class="rec-item">
+              <n-card size="small">
+                <template #header>
+                  <n-space align="center" justify="space-between" style="width: 100%">
+                    <n-space align="center" :size="8">
+                      <n-text strong>{{ rec.skill_name }}</n-text>
+                      <n-tag
+                        size="small"
+                        :bordered="false"
+                        :type="
+                          surveyFor(op).skillHighlights.includes(rec.skill_index)
+                            ? 'warning'
+                            : 'default'
+                        "
+                        >专三
+                        {{
+                          formatSurveyRate(
+                            surveyFor(op).skills.find((skill) => skill.index === rec.skill_index)
+                              ?.rate
+                          )
+                        }}</n-tag
+                      >
+                      <n-text depth="3" style="font-size: 12px"
+                        >{{ masteryLevelLabel(op.main_skill_level, rec.current_level) }} → 专{{
+                          rec.target_level
+                        }}</n-text
+                      >
+                    </n-space>
+                    <n-space :size="8" align="center" class="rec-controls">
+                      <n-select
+                        :value="rec.target_level"
+                        :options="targetOptions(rec)"
+                        :disabled="isTargetLocked(op, rec) || targetSaving"
+                        @update:value="(value) => changeTarget(op, rec, value)"
+                        size="small"
+                        style="width: 104px"
+                        aria-label="目标专精等级"
+                      />
+                      <n-button
+                        size="small"
+                        :type="isSkillPlanned(op.char_id, rec.skill_index) ? 'success' : 'default'"
+                        @click.stop="toggleSkillPlan(op, rec)"
+                        :disabled="
+                          !!op.material_error && !isSkillPlanned(op.char_id, rec.skill_index)
+                        "
+                      >
+                        {{ isSkillPlanned(op.char_id, rec.skill_index) ? '移出计划' : '加入计划' }}
+                      </n-button>
+                      <n-button
+                        type="primary"
+                        size="small"
+                        :disabled="!!op.mastery_error || startingMastery"
+                        @click.stop="insertMasteryTask(op, rec)"
+                        >一键插入专精任务</n-button
+                      >
+                      <n-button
+                        v-if="planStatus[planKey(op.char_id, rec.skill_index)]?.id"
+                        size="small"
+                        @click.stop="openSupports(op, rec)"
+                        >协助方案</n-button
+                      >
+                    </n-space>
+                  </n-space>
+                </template>
+                <n-space vertical :size="4">
+                  <n-text depth="2"
+                    >总训练时间: {{ formatTime(rec.total_time) }} |
+                    {{ rec.remaining_levels }}级专精</n-text
+                  >
+                  <MasteryMaterials :summary="rec.skill_material_summary" title="技能专精材料" />
+                </n-space>
+              </n-card>
             </div>
-          </section>
-          <n-text
-            v-if="op.rarity >= 4 && !op.recommendations.length && !op.modules?.length"
-            depth="3"
-            >该干员的技能已全部专三</n-text
-          >
+            <section v-if="op.modules?.length" class="module-section">
+              <h3>模组养成 · {{ op.modules.length }}</h3>
+              <n-text depth="3"
+                >默认规划至满级，可选择目标等级；信赖与解锁任务仍需在游戏中完成。</n-text
+              >
+              <div v-for="module in visibleModules(op)" :key="module.id" class="module-row">
+                <div class="module-heading">
+                  <n-checkbox
+                    :checked="isGoalPlanned(op.char_id, module.id)"
+                    :disabled="
+                      goalSaving ||
+                      (module.current_level >= module.max_level &&
+                        !isGoalPlanned(op.char_id, module.id))
+                    "
+                    @update:checked="(value) => toggleGoal(op, module.id, value)"
+                  >
+                    <n-text strong>{{ module.type }} · {{ module.name }}</n-text>
+                  </n-checkbox>
+                  <n-tag
+                    size="small"
+                    :bordered="false"
+                    :type="
+                      surveyFor(op).moduleHighlights.includes(module.id) ? 'warning' : 'default'
+                    "
+                    >解锁
+                    {{
+                      formatSurveyRate(
+                        surveyFor(op).modules.find((item) => item.id === module.id)?.rate
+                      )
+                    }}</n-tag
+                  >
+                  <n-select
+                    v-if="module.current_level < module.max_level"
+                    :value="moduleTarget(op, module)"
+                    :options="moduleTargetOptions(module)"
+                    :disabled="goalSaving"
+                    style="width: 135px"
+                    @update:value="(value) => changeModuleTarget(op, module, value)"
+                  />
+                  <n-tag size="small" :type="module.current_level ? 'success' : 'default'">{{
+                    module.current_level
+                      ? `已开启 · ${module.current_level} 级`
+                      : `精${module.elite} ${module.level} 级开启`
+                  }}</n-tag>
+                </div>
+                <n-alert v-if="module.material_error" type="warning">{{
+                  module.material_error
+                }}</n-alert>
+                <MasteryMaterials
+                  v-else-if="module.current_level < module.max_level"
+                  :summary="moduleSummary(op, module).opening_summary"
+                  title="模组升级材料"
+                />
+              </div>
+            </section>
+            <n-text
+              v-if="op.rarity >= 4 && !op.recommendations.length && !op.modules?.length"
+              depth="3"
+              >该干员的技能已全部专三</n-text
+            >
+          </template>
         </n-collapse-item>
       </n-collapse>
+      <n-pagination
+        v-model:page="operatorPage"
+        :page-size="operatorPageSize"
+        :item-count="displayList.length"
+        simple
+        style="margin-top: 16px"
+      />
     </div>
 
     <MasterySupports
@@ -737,7 +756,7 @@ import {
   masteryScheduleContext,
   masteryTraineeWarning
 } from '@/utils/masterySupport'
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
 import MasteryMaterials from '@/components/MasteryMaterials.vue'
 import { materialStatus, materialStatusType } from '@/utils/masteryMaterials'
 import GrowthLevelPlan from '@/components/GrowthLevelPlan.vue'
@@ -756,6 +775,7 @@ import {
   NInput,
   NModal,
   NScrollbar,
+  NPagination,
   NSelect,
   NSpace,
   NSpin,
@@ -1698,7 +1718,7 @@ async function loadSurvey() {
   surveyLoading.value = true
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/growth-survey`, {
-      timeout: 20000
+      timeout: 30000
     })
     survey.value = response.data
   } catch (error) {
@@ -1745,6 +1765,52 @@ const displayList = computed(() => {
     list.sort((a, b) => b.elite - a.elite || b.level - a.level)
   return list
 })
+
+const operatorPageSize = 30
+const operatorPage = ref(1)
+const operatorDetail = shallowRef(null)
+const detailLoading = ref(false)
+const detailError = ref('')
+let detailController = null
+const pagedOperators = computed(() =>
+  displayList.value
+    .slice((operatorPage.value - 1) * operatorPageSize, operatorPage.value * operatorPageSize)
+    .map((op) => (operatorDetail.value?.char_id === op.char_id ? operatorDetail.value : op))
+)
+watch(displayList, () => {
+  operatorPage.value = 1
+  expandedOperator.value = []
+})
+watch(operatorPage, () => {
+  expandedOperator.value = []
+})
+async function loadOperatorDetail(charId) {
+  detailController?.abort()
+  operatorDetail.value = null
+  detailError.value = ''
+  detailLoading.value = Boolean(charId)
+  if (!charId) return
+  const controller = new AbortController()
+  detailController = controller
+  try {
+    const { data } = await axios.get(`${import.meta.env.VITE_HTTP_URL}/mastery-recommendation`, {
+      params: { char_id: charId },
+      signal: controller.signal,
+      timeout: 30000
+    })
+    if (controller.signal.aborted) return
+    if (data.error) throw new Error(data.error)
+    const detail = data.operators?.find((op) => op.char_id === charId)
+    if (!detail) throw new Error('未找到干员详情，请刷新列表')
+    operatorDetail.value = detail
+  } catch (error) {
+    if (!controller.signal.aborted) detailError.value = error.message || '材料详情读取失败'
+  } finally {
+    if (!controller.signal.aborted) detailLoading.value = false
+  }
+}
+watch(expandedOperator, (names) => loadOperatorDetail(names[0]))
+onUnmounted(() => detailController?.abort())
 
 const planMaterials = ref(null)
 const chipFarmingLoading = ref(false)
@@ -1809,16 +1875,14 @@ async function refreshT3Summary() {
   }
 }
 
-watch(
-  [plan, planStatus, targets, () => store.goals, () => store.recommendations],
-  () => {
-    ++materialRequest
-    clearTimeout(materialTimer)
-    materialsLoading.value = totalGoalCount.value > 0
-    materialTimer = setTimeout(refreshT3Summary, 200)
-  },
-  { deep: true }
-)
+function queueMaterialSummary() {
+  ++materialRequest
+  clearTimeout(materialTimer)
+  materialsLoading.value = totalGoalCount.value > 0
+  materialTimer = setTimeout(refreshT3Summary, 200)
+}
+watch([plan, planStatus, targets, () => store.goals], queueMaterialSummary, { deep: true })
+watch(() => store.recommendations, queueMaterialSummary)
 onUnmounted(() => {
   ++materialRequest
   clearTimeout(materialTimer)
@@ -1875,7 +1939,8 @@ async function insertMasteryTask(op, rec) {
 // ─── 初始化 ───
 onMounted(async () => {
   await refreshPlanFromServer()
-  await Promise.all([loadOperators(), store.fetchRecommendations(), loadSurvey()])
+  void loadSurvey()
+  await Promise.all([loadOperators(), store.fetchRecommendations()])
   // 载入专精路线；打开设置时刷新拥有情况和解锁技能。
   if (!defaultsCache.value) {
     try {

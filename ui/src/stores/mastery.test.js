@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import { isReactive } from 'vue'
 import axios from 'axios'
 
 import { useMasteryStore } from './mastery'
@@ -62,5 +63,37 @@ describe('专精计划摘要', () => {
     expect(store.yituliuSyncResult).toBeNull()
     expect(store.cultivateOk).toBe(false)
     expect(store.loading).toBe(false)
+  })
+})
+
+describe('养成概览快照', () => {
+  it('初始化只读取轻量概览，服务端数据保持浅层快照', async () => {
+    setActivePinia(createPinia())
+    axios.get.mockReset()
+    const operators = [{ char_id: 'char_test', recommendations: [{ skill_index: 0 }] }]
+    axios.get.mockResolvedValue({ data: { operators, has_data: true } })
+    const store = useMasteryStore()
+    await store.fetchRecommendations()
+    expect(axios.get).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining('/mastery-recommendation'),
+      { params: { materials: 0 }, timeout: 30000 }
+    )
+    expect(store.recommendations).toBe(operators)
+    expect(isReactive(store.recommendations[0])).toBe(false)
+    expect(store.hasData).toBe(true)
+  })
+
+  it('不同前端实例的概览与错误互不覆盖', async () => {
+    axios.get.mockReset()
+    const first = useMasteryStore(createPinia())
+    const second = useMasteryStore(createPinia())
+    axios.get.mockResolvedValueOnce({ data: { operators: [{ char_id: 'first' }], has_data: true } })
+    await first.fetchRecommendations()
+    axios.get.mockRejectedValueOnce(new Error('second offline'))
+    await second.fetchRecommendations()
+    expect(first.recommendations[0].char_id).toBe('first')
+    expect(first.error).toBe('')
+    expect(second.recommendations).toEqual([])
+    expect(second.error).toContain('second offline')
   })
 })

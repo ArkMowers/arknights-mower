@@ -67,6 +67,19 @@ describe('公开大数据推荐', () => {
     expect(operatorSurvey({ ...op, skill_levels: [undefined] }, row, filters).visible).toBe(true)
     expect(operatorSurvey(op, { ...row, skill1: { 3: 50 } }, filters).visible).toBe(true)
   })
+  it('技能统计不可用时保留其他指标，并避免隐藏未知专精进度', () => {
+    const partial = { own: 100, elite: row.elite, modX: row.modX }
+    const result = operatorSurvey(op, partial, {
+      ...defaultSurveyFilters(),
+      mastery: 70,
+      module: 80,
+      hideCompleted: true
+    })
+    expect(result.skills.every((skill) => skill.rate === null)).toBe(true)
+    expect(result.elite2).toBe(80)
+    expect(result.modules[0].rate).toBe(90)
+    expect(result.visible).toBe(true)
+  })
   it('未启用门槛时隐藏完成开关不清空列表', () => {
     expect(
       operatorSurvey(op, row, { ...defaultSurveyFilters(), hideCompleted: true }).visible
