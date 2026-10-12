@@ -364,6 +364,7 @@ onMounted(() => {
         </div>
       </div>
       <section v-if="comparison" class="model-note">
+        <h3>普通池和额外池各产一次（默认假设）</h3>
         <div v-if="comparison.calculator" class="calculator-results">
           <div>
             <span>100%效率理论日产</span
@@ -390,8 +391,40 @@ onMounted(() => {
             >
           </div>
         </div>
+        <template v-if="comparison.calculator?.replacement">
+          <h3>额外池顶替普通池（对照假设）</h3>
+          <div class="calculator-results">
+            <div>
+              <span>100%效率理论日产</span>
+              <strong
+                >{{ number(comparison.calculator.replacement.daily_sanity, 3)
+                }}<small> 理智/天</small></strong
+              >
+            </div>
+            <div>
+              <span>设定效率理论日产</span>
+              <strong
+                >{{ number(comparison.calculator.replacement.configured_daily_sanity, 3)
+                }}<small> 理智/天</small></strong
+              >
+            </div>
+            <div>
+              <span>等效制造站效率</span>
+              <strong>{{
+                percent(comparison.calculator.replacement.manufacturing_equivalent)
+              }}</strong>
+            </div>
+            <div>
+              <span>旅骨精零 / 精二等效制造站</span>
+              <strong
+                >{{ percent(comparison.calculator.replacement.elite0_equivalent) }} /
+                {{ percent(comparison.calculator.replacement.elite2_equivalent) }}</strong
+              >
+            </div>
+          </div>
+        </template>
         <p>
-          理论换算沿用计算器：100%回收站效率每两天一次普通抽取，100%制造站每日产出8000经验。旅骨精零/精二分别按20%/30%回收站效率换算；这些数值不是实测日产量。
+          回收站实际机制尚未确认，以上展示两种假设。100%回收站效率每两天完成一次生产周期，100%制造站每日产出8000经验。旅骨精零/精二分别按20%/30%回收站效率换算。
         </p>
         <n-collapse
           ><n-collapse-item title="计算口径与概率来源" name="model"
@@ -402,7 +435,9 @@ onMounted(() => {
             <p>
               普通池与额外池分别按权重计算，长期平均每次普通抽取产生
               {{ number(comparison.extra_rate, 6) }}
-              次额外抽取；双池收益除以双池材料总数，得到同材料量的理论基准。进驻干员供回溯分析；此比较不推算干员生产效率、收取次数对应的抽数或每日产能，也不保证短期结果。
+              次额外抽取；双池收益除以双池材料总数，得到同材料量的理论基准。顶替假设下，额外池占生产周期的比例为
+              r / (1 + r)，r
+              为上述额外抽取率。两种假设的单件期望与品质比例相同，理论日产量不同。进驻干员供回溯分析；此比较不推算干员生产效率、收取次数对应的抽数或每日产能，也不保证短期结果。
             </p>
             <p>
               来源：{{ comparison.source.source }} · {{ comparison.source.sheet }}

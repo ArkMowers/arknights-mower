@@ -1,6 +1,7 @@
 """Offline import, persistence and valuation consistency through report APIs."""
 
 from io import BytesIO
+from pathlib import Path
 from xml.sax.saxutils import escape
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -177,11 +178,18 @@ def test_saved_import_revalues_history_and_export_using_same_snapshot(db):
     assert result["calculator"]["manufacturing_equivalent"] == pytest.approx(
         0.049341234375
     )
+    replacement = result["calculator"]["replacement"]
+    assert replacement["daily_sanity"] == pytest.approx(5)
+    assert replacement["configured_daily_sanity"] == pytest.approx(7.5)
+    assert replacement["manufacturing_equivalent"] == pytest.approx(0.046875)
     with record.export_recycling_history("2026-10-10", "2026-10-10") as workbook:
         _, _, overview = workbook_rows(workbook, 1)
         values = {row[0]: row[1] for row in overview[1:]}
         assert float(values["总理智收益"]) == 20
         assert float(values["理论期望收益"]) == 20
+        assert float(values["顶替机制：100%回收站理论日产理智"]) == pytest.approx(5)
+        assert float(values["顶替机制：设定效率下理论日产理智"]) == pytest.approx(7.5)
+        assert float(values["顶替机制：等效制造站效率"]) == pytest.approx(0.046875)
         _, _, inputs = workbook_rows(workbook, 5)
         values = {row[0]: row[1] for row in inputs[1:]}
         assert values["装置"] == "10.0"
@@ -367,9 +375,7 @@ def test_legacy_builtin_prices_upgrade_but_custom_imports_survive(db):
                 ),
             ),
         )
-    assert record.get_recycling_valuation()["prices"]["装置"] == pytest.approx(
-        8.16879195924877
-    )
+    assert record.get_recycling_valuation()["prices"]["装置"] == pytest.approx(8.142283)
     with record._conn() as connection:
         connection.execute(
             "UPDATE recycling_valuation SET payload = ?",
@@ -428,3 +434,93 @@ def test_default_assumptions_use_ce6_ls6_and_lmd_normalized_algorithm(db):
     }
     assert saved["metadata"]["pricing_config"]["expCoefficient"] == 0.9568
     assert price_catalog()["items"]["2003"]["value"] == pytest.approx(3.44448)
+
+
+def test_default_prices_and_both_mechanisms_match_supplied_calculator(db):
+    import xml.etree.ElementTree as ET
+
+    from arknights_mower.utils.growth_value import price_catalog
+
+    path = Path(__file__).parent / "fixtures/recycling/default_valuation_20261012.xlsx"
+    ns = {"s": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    with ZipFile(path) as archive:
+        strings = [
+            "".join(row.itertext())
+            for row in ET.fromstring(archive.read("xl/sharedStrings.xml"))
+        ]
+        root = ET.fromstring(archive.read("xl/worksheets/sheet1.xml"))
+        cells = {}
+        for cell in root.findall("s:sheetData/s:row/s:c", ns):
+            value = cell.findtext("s:v", namespaces=ns)
+            if value is not None:
+                cells[cell.attrib["r"]] = (
+                    strings[int(value)] if cell.attrib.get("t") == "s" else value
+                )
+    source = {
+        cells[f"A{index}"]: {
+            "name": cells[f"B{index}"],
+            "value": float(cells[f"C{index}"]),
+        }
+        for index in range(3, 150)
+    }
+    assert price_catalog()["items"] == source
+    record.save_recycling_collection("new-default", at(10), ["旅骨"], {"装置": 2})
+    report = record.get_recycling_history("2026-10-10", "2026-10-10")
+    result = report["comparison"]
+    assert result["actual_sanity"] == pytest.approx(16.284566)
+    assert result["ordinary_sanity"] == pytest.approx(19.822108878663865)
+    assert result["extra_sanity"] == pytest.approx(78.38008491701859)
+    assert result["per_material"] == pytest.approx(22.749025792388053)
+    for key, daily, elite0, elite2 in [
+        (None, 11.972960143201481, 0.08689962014006092, 0.13034943021009138),
+        ("replacement", 11.374512896194027, 0.08255609624815666, 0.123834144372235),
+    ]:
+        calculator = result["calculator"][key] if key else result["calculator"]
+        assert calculator["daily_sanity"] == pytest.approx(daily)
+        assert calculator["elite0_equivalent"] == pytest.approx(elite0)
+        assert calculator["elite2_equivalent"] == pytest.approx(elite2)
+    with record.export_recycling_history("2026-10-10", "2026-10-10") as workbook:
+        _, _, rows = workbook_rows(workbook, 1)
+        values = {row[0]: row[1] for row in rows[1:]}
+        assert float(values["100%回收站理论日产理智"]) == pytest.approx(
+            11.972960143201481
+        )
+        assert float(values["顶替机制：100%回收站理论日产理智"]) == pytest.approx(
+            11.374512896194027
+        )
+
+
+@pytest.mark.parametrize("imported", [False, True])
+def test_previous_ss_snapshot_upgrades_defaults_and_preserves_saved_choices(
+    db, imported
+):
+    import json
+
+    ratios = {"experience": 2, "gold": 0.4, "order": 0.6, "efficiency": 1.5}
+    old = {
+        **default_valuation(),
+        "source": "明日方舟一图流 · SS 活动（代币折币）",
+        "prices": {**default_valuation()["prices"], "装置": 8.16879195924877},
+        "metadata": {"source": "old-default", "pricing_mode": "ss_activity"},
+        "ratios": ratios,
+        "base_algorithm": -1,
+        "base_algorithm_saved": True,
+    }
+    if imported:
+        old.update(source="一图流导入（未提供的价值保留原值）", imported_at=1)
+        old["metadata"]["pricing_mode"] = "imported"
+    with record._conn() as connection:
+        connection.execute(
+            "INSERT INTO recycling_valuation VALUES (1, ?)",
+            (json.dumps(old, ensure_ascii=False),),
+        )
+    saved = record.get_recycling_valuation()
+    assert saved["ratios"] == ratios
+    assert saved["base_algorithm"] == -1
+    assert saved["base_algorithm_saved"] is True
+    if imported:
+        assert saved == old
+    else:
+        assert saved["prices"] == default_valuation()["prices"]
+        assert saved["source"] == default_valuation()["source"]
+        assert saved["metadata"] == default_valuation()["metadata"]

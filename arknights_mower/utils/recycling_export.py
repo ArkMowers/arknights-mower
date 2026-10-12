@@ -141,7 +141,7 @@ def write_recycling_workbook(start_date, end_date, summary, records):
             (
                 "100%回收站理论日产理智",
                 calculator["daily_sanity"],
-                "计算器假设：100%效率每两天一次普通抽取；不是实测日产量",
+                "双池各产一次：100%效率每两天一次普通抽取；不是实测日产量",
             ),
             (
                 "设定效率下理论日产理智",
@@ -161,6 +161,36 @@ def write_recycling_workbook(start_date, end_date, summary, records):
             (
                 "精二旅骨等效制造站效率",
                 calculator["elite2_equivalent"],
+                "计算器30%回收站效率假设",
+            ),
+        ]
+    )
+    replacement = calculator["replacement"]
+    overview.extend(
+        [
+            (
+                "顶替机制：100%回收站理论日产理智",
+                replacement["daily_sanity"],
+                "假设额外池顶替普通池，作为对照；实际机制尚未确认",
+            ),
+            (
+                "顶替机制：设定效率下理论日产理智",
+                replacement["configured_daily_sanity"],
+                "按价值参数中的回收站效率计算",
+            ),
+            (
+                "顶替机制：等效制造站效率",
+                replacement["manufacturing_equivalent"],
+                "以每日8000经验为100%制造站效率",
+            ),
+            (
+                "顶替机制：精零旅骨等效制造站效率",
+                replacement["elite0_equivalent"],
+                "计算器20%回收站效率假设",
+            ),
+            (
+                "顶替机制：精二旅骨等效制造站效率",
+                replacement["elite2_equivalent"],
                 "计算器30%回收站效率假设",
             ),
         ]

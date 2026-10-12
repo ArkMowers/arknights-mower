@@ -162,6 +162,13 @@ def recycling_expectation(materials, unknown_collections=0, valuation=None):
         / ratios["experience"]
         / 8000
     )
+    calculator = {
+        "daily_sanity": daily,
+        "configured_daily_sanity": daily * ratios["efficiency"],
+        "manufacturing_equivalent": manufacture * ratios["efficiency"],
+        "elite0_equivalent": manufacture * 0.2,
+        "elite2_equivalent": manufacture * 0.3,
+    }
     return {
         "actual_sanity": actual if complete else None,
         "known_sanity": actual,
@@ -185,10 +192,9 @@ def recycling_expectation(materials, unknown_collections=0, valuation=None):
         "source": {key: model[key] for key in ("source", "sheet", "ranges")},
         "valuation": valuation,
         "calculator": {
-            "daily_sanity": daily,
-            "configured_daily_sanity": daily * ratios["efficiency"],
-            "manufacturing_equivalent": manufacture * ratios["efficiency"],
-            "elite0_equivalent": manufacture * 0.2,
-            "elite2_equivalent": manufacture * 0.3,
+            **calculator,
+            "replacement": {
+                key: value / (1 + extra_rate) for key, value in calculator.items()
+            },
         },
     }

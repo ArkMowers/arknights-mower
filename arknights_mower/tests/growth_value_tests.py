@@ -158,22 +158,21 @@ def test_offline_snapshot_has_ss_pricing_and_documented_currency_values(income_d
         catalog["_meta"]["pricing_config"]["useActivityAverageStageAndUnlimitedItem"]
         is True
     )
-    assert catalog["items"]["30062"]["value"] == pytest.approx(8.16879195924877)
+    assert catalog["items"]["30062"]["value"] == pytest.approx(8.142283)
     values = {iid: row["value"] for iid, row in catalog["items"].items()}
     assert values["4001"] == pytest.approx(36 / 10000)
     assert values["2003"] == pytest.approx(3.44448)
     for iid, lmd in [("30073", 500), ("30083", 600), ("30093", 700), ("30103", 800)]:
         assert values[iid] == pytest.approx(lmd * values["4001"])
-    assert values["30024"] == pytest.approx(61.213545117368554)
-    assert values["30034"] == pytest.approx(60.83346032185234)
+    assert values["30024"] == pytest.approx(61.04984546327338)
+    assert values["30034"] == pytest.approx(60.68984546327338)
     strategy = catalog["_meta"]["pricing_config"]["workshopStrategy"]
-    for key in ["eliteMaterialT1toT2", "eliteMaterialT2toT3"]:
-        assert strategy[key]["strategy"] == "WORKSHOP_STRATEGY_NINE_COLORED_DEER_OBTAIN"
-    for key in ["eliteMaterialT3toT4", "eliteMaterialT4toT5"]:
-        assert strategy[key] == {
-            "strategy": "WORKSHOP_STRATEGY_COMMON",
-            "byproductRateIncrease": 1,
-        }
+    assert strategy["eliteMaterialT2toT3"]["causalityValue"] == pytest.approx(
+        0.4920881261849738
+    )
+    assert strategy["eliteMaterialT3toT4"]["byproductItemId"] == "30043"
+    assert strategy["eliteMaterialT3toT4"]["byproductRate"] == 0.18
+    assert strategy["eliteMaterialT4toT5"]["byproductRate"] == 0.2
     assert values["4006"] == pytest.approx(30 * (1 - 12 * values["4001"]) / 21)
     assert values["32001"] == pytest.approx(values["4006"] * 90)
     assert values["mod_unlock_token"] == pytest.approx(values["4006"] * 120)

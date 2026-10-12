@@ -724,10 +724,12 @@ def _recycling_valuation(connection):
     if not row:
         return current
     saved = json.loads(row[0])
-    if saved.get("source") == "计算器内置价值快照":
-        saved.pop("prices", None)
-        saved.pop("item_ids", None)
-        saved.pop("source", None)
+    if saved.get("source") == "计算器内置价值快照" or (
+        saved.get("source") == "明日方舟一图流 · SS 活动（代币折币）"
+        and saved.get("imported_at") is None
+    ):
+        for key in ("prices", "item_ids", "lmd_sanity", "source", "metadata"):
+            saved.pop(key, None)
     current["prices"].update(saved.pop("prices", {}))
     current["item_ids"].update(saved.pop("item_ids", {}))
     current.update(saved)

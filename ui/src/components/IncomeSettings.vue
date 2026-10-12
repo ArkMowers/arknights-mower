@@ -85,7 +85,8 @@ onMounted(loadSettings)
   <n-card id="income-settings" title="材料价值与基报算法">
     <n-spin :show="settingsLoading || settingsBusy">
       <p class="settings-description">
-        默认采用 CE6 / 0.23456 算法与 SS 活动计价（含代币折币）。导入“物品价值表”Excel
+        默认采用所提供计算表的材料价值、CE6 / 0.23456 算法与 SS
+        活动计价（含代币折币）。导入“物品价值表”Excel
         可更新价值或添加新材料，未提供的项目保留原值。回收站与养成统计共用此设置。
       </p>
       <div v-if="valuation" class="valuation-source">
@@ -128,7 +129,8 @@ onMounted(loadSettings)
           <n-text depth="3" style="font-size: 13px; line-height: 1.8">
             龙门币按 CE6、钱书按 0.23456 算法；蓝材料按 SS 活动计价，包含代币和龙门币价值。
             扭转醇、轻锰矿、研磨石、RMA70-12 按代币等价龙门币计价。
-            紫糖、紫酯按加工价值计价。白→绿、绿→蓝用九色鹿，蓝→紫、紫→金用年。
+            绿→蓝按九色鹿因果价值联立计算，蓝→紫用蚀清（18%固定异铁组副产物），紫→金用年／芳汀（20%副产物）。
+            紫糖、紫酯保留加工价值。电极单元按 SS 掉率 0.7 预估，白材料等其他价值沿用所提供计算表。
           </n-text>
         </n-collapse-item>
       </n-collapse>
