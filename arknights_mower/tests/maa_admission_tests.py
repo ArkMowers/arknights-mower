@@ -20,6 +20,11 @@ def desktop(monkeypatch, tmp_path):
     monkeypatch.syspath_prepend(str(tmp_path))
     native = Mock()
     native.get_version.return_value = "v6.test"
+    (tmp_path / "MaaCore.dll").write_bytes(b"offline core")
+    monkeypatch.setattr(
+        "arknights_mower.utils.maa_runtime.read_installed_version",
+        Mock(return_value="v6.test"),
+    )
     native.connect.return_value = True
     asst = Mock(return_value=native)
     asst.load.return_value = True
@@ -137,6 +142,34 @@ def test_download_is_loaded_before_success_is_reported(desktop):
         and "2026-10-10 01:00:00.000" in str(call)
         for call in desktop.log.info.call_args_list
     )
+
+
+def test_external_core_reload_uses_new_sdk_and_instance_options(desktop, monkeypatch):
+    desktop.scheduler.initialize_maa()
+    desktop.scheduler.MAA.stop()
+    desktop.scheduler.MAA = None
+    (desktop.root / "MaaCore.dll").write_bytes(b"updated offline core")
+    native = Mock()
+    native.get_version.return_value = "v6.test"
+    new_asst = Mock(return_value=native)
+    new_asst.load.return_value = True
+
+    def clear(target):
+        monkeypatch.setitem(sys.modules, "asst.asst", SimpleNamespace(Asst=new_asst))
+        monkeypatch.setitem(
+            sys.modules,
+            "asst.utils",
+            SimpleNamespace(InstanceOptionType=SimpleNamespace(touch_type=99)),
+        )
+
+    monkeypatch.setattr(
+        "arknights_mower.utils.maa_runtime.clear_loaded_maa_cache", clear
+    )
+    desktop.scheduler.initialize_maa()
+    desktop.asst.load.assert_called_once()
+    new_asst.load.assert_called_once()
+    native.set_instance_option.assert_called_once_with(99, "maatouch")
+    native.connect.assert_called_once_with("adb", "127.0.0.1:5555", "General")
 
 
 @pytest.mark.parametrize(

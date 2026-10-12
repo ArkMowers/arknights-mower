@@ -58,6 +58,12 @@ def runtime(tmp_path, monkeypatch):
         maa_stage_inventory, "load_inventory_snapshot", lambda: ({}, None)
     )
     asst = MagicMock()
+    asst.return_value.get_version.return_value = "v6.test"
+    (tmp_path / "MaaCore.dll").write_bytes(b"offline core")
+    monkeypatch.setattr(
+        "arknights_mower.utils.maa_runtime.read_installed_version",
+        MagicMock(return_value="v6.test"),
+    )
     loaded = {}
 
     def load(*, path, incremental_path):

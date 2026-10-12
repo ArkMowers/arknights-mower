@@ -35,7 +35,11 @@ import requests
 from packaging.version import InvalidVersion, Version
 
 from arknights_mower.utils.github_download import request_download
-from arknights_mower.utils.maa_backup import maa_in_use, update_transaction
+from arknights_mower.utils.maa_backup import (
+    maa_in_use,
+    maa_instances_alive,
+    update_transaction,
+)
 from arknights_mower.utils.zip_safe import is_unsafe_zip_member
 
 MAA_REPOSITORY = "MaaAssistantArknights/MaaAssistantArknights"
@@ -1515,7 +1519,7 @@ def has_maa_installation(target: Path | str) -> bool:
     )
 
 
-def _close_dynamic_library(handle: int) -> None:
+def _close_dynamic_library(handle: int, *, strict: bool = False) -> None:
     try:
         import _ctypes
 
@@ -1524,17 +1528,18 @@ def _close_dynamic_library(handle: int) -> None:
             "FreeLibrary" if os.name == "nt" else "dlclose",
             None,
         )
-        if close is not None:
-            close(handle)
+        if close is None:
+            raise OSError("当前平台不支持释放 MAA 核心")
+        close(handle)
     except (ImportError, OSError):
-        pass
+        if strict:
+            raise
 
 
 def read_installed_version(target: Path | str, *, fresh: bool = False) -> str:
     """直接调用安装目录中 MaaCore 的版本接口，不依赖更新记录文件。
 
-    ``fresh`` 会把 MaaCore 临时复制到同目录的唯一文件名后再加载，避开
-    macOS 等平台按动态库路径复用旧映像的缓存。
+    ``fresh`` 在独立子进程中读取核心，避免复用旧映像或注册重复的原生类。
     """
     if os.environ.get("MOWER_ANDROID") == "1":
         from mower_android.managed import installed_version
@@ -1544,19 +1549,53 @@ def read_installed_version(target: Path | str, *, fresh: bool = False) -> str:
     if library_path is None:
         return ""
 
-    load_path = library_path
-    probe_path = None
+    if fresh:
+        from arknights_mower.utils.maa_check import (
+            MAA_CHECK_TIMEOUT,
+            maa_check_command,
+            parse_maa_check_output,
+        )
+
+        try:
+            result = subprocess.run(
+                maa_check_command(
+                    {
+                        "version_only": True,
+                        "core_path": str(library_path.absolute()),
+                        "maa_path": str(Path(target).expanduser().absolute()),
+                    }
+                ),
+                capture_output=True,
+                text=True,
+                timeout=MAA_CHECK_TIMEOUT,
+            )
+            parsed = parse_maa_check_output(
+                result.stdout, result.stderr, result.returncode
+            )
+            if not isinstance(parsed["message"], str):
+                return ""
+            version = parsed["message"].strip()
+            if (
+                result.returncode != 0
+                or parsed["status"] != "success"
+                or len(version) > 128
+                or any(ord(char) < 32 for char in version)
+            ):
+                return ""
+            return version
+        except (
+            OSError,
+            subprocess.TimeoutExpired,
+            UnicodeError,
+            AttributeError,
+            TypeError,
+        ):
+            return ""
+
     library = None
     get_version = None
     try:
-        if fresh:
-            probe_path = library_path.with_name(
-                f".{library_path.stem}.version-probe-{uuid.uuid4().hex}"
-                f"{library_path.suffix}"
-            )
-            shutil.copy2(library_path, probe_path)
-            load_path = probe_path
-        library = ctypes.CDLL(str(load_path))
+        library = ctypes.CDLL(str(library_path))
         get_version = library.AsstGetVersion
         get_version.argtypes = []
         get_version.restype = ctypes.c_char_p
@@ -1575,40 +1614,117 @@ def read_installed_version(target: Path | str, *, fresh: bool = False) -> str:
             handle = library._handle
             library = None
             _close_dynamic_library(handle)
-        if probe_path is not None:
-            try:
-                probe_path.unlink(missing_ok=True)
-            except OSError:
-                pass
 
 
+def _maa_sdk_referenced(asst_class) -> bool:
+    for obj in gc.get_objects():
+        if isinstance(asst_class, type) and isinstance(obj, asst_class):
+            return True
+        sdk_class = obj if isinstance(obj, type) else type(obj)
+        if sdk_class.__module__ != "asst.asst" or sdk_class.__name__ != "Asst":
+            continue
+        # A previously imported SDK can retain raw instances or its own opens.
+        if obj is not sdk_class or (
+            sdk_class is not asst_class
+            and vars(sdk_class).get("_Asst__lib") is not None
+        ):
+            return True
+    return False
+
+
+def _maa_core_image_mapped(address: int) -> bool:
+    """Query mapping state without opening or dereferencing the native image."""
+    if platform.system() == "Linux":
+        regions = Path("/proc/self/maps").read_text().splitlines()
+        if not regions:
+            raise OSError("无法读取进程映像映射")
+        for line in regions:
+            region = line.split()[0]
+            start, end = (int(value, 16) for value in region.split("-"))
+            if start <= address < end:
+                return True
+        return False
+    if platform.system() == "Windows":
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        query = kernel.GetModuleHandleExW
+        query.argtypes = [
+            ctypes.c_uint32,
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_void_p),
+        ]
+        query.restype = ctypes.c_int
+        module = ctypes.c_void_p()
+        # FROM_ADDRESS | UNCHANGED_REFCOUNT: observe without acquiring an open.
+        if query(0x00000004 | 0x00000002, address, ctypes.byref(module)):
+            return True
+        error = ctypes.get_last_error()
+        if error == 126:  # ERROR_MOD_NOT_FOUND
+            return False
+        raise OSError(error, "无法查询 MAA 核心映像")
+    raise OSError("当前平台无法验证 MAA 核心卸载")
+
+
+@update_transaction
 def clear_loaded_maa_cache(target: Path | str) -> None:
     """释放 Mower 进程内已经读取的 MAA 实例、模块和导入路径。"""
     if os.environ.get("MOWER_ANDROID") == "1":
         return  # Native core is isolated in the Android service; restart activates updates.
+    if maa_in_use():
+        raise MaaUpdateError("MAA 正在使用中，不能释放核心")
     main_module = sys.modules.get("arknights_mower.__main__")
     scheduler = getattr(main_module, "base_scheduler", None)
     if scheduler is not None:
         scheduler.MAA = None
 
-    # Asst.load 把 MaaCore 保存在 Asst 的类属性中；仅移除 sys.modules 不会释放
-    # 已加载的旧动态库。先销毁实例，再显式关闭句柄，后续版本读取才会加载新文件。
+    # Asst.load 把 MaaCore 保存在类属性中。关闭所有已知打开后仍需验证映像
+    # 已卸载；GNU_UNIQUE、NODELETE 或额外打开均可使成功关闭后的映像继续驻留。
     gc.collect()
     asst_module = sys.modules.get("asst.asst")
     asst_class = getattr(asst_module, "Asst", None)
+    if maa_instances_alive() or _maa_sdk_referenced(asst_class):
+        raise MaaUpdateError("MAA 旧实例仍有引用，不能释放核心，请重启 Mower")
+    if asst_class is not None and vars(asst_class).get("_mower_core_unusable"):
+        raise MaaUpdateError("MAA 核心释放未完成，请重启 Mower")
     library = getattr(asst_class, "_Asst__lib", None)
     handle = getattr(library, "_handle", None)
+    loads = getattr(asst_class, "_mower_core_loads", None)
+    if library is not None and (
+        not isinstance(loads, tuple) or loads[0] is not library or not loads[2]
+    ):
+        raise MaaUpdateError("MAA 核心句柄来源无法确认，请重启 Mower")
+    if library is not None and platform.system() == "Darwin":
+        raise MaaUpdateError("macOS MAA 核心包含不能安全重载的原生类，请重启 Mower")
+    address = None
+    if library is not None:
+        try:
+            address = ctypes.cast(library.AsstGetVersion, ctypes.c_void_p).value
+            if not address or not _maa_core_image_mapped(address):
+                raise OSError("未找到已加载的 MAA 核心映像")
+        except (AttributeError, OSError, TypeError, ValueError) as error:
+            raise MaaUpdateError("无法验证 MAA 核心卸载，请重启 Mower") from error
     if asst_class is not None and library is not None:
+        asst_class._mower_core_unusable = True
         setattr(asst_class, "_Asst__lib", None)
+        delattr(asst_class, "_mower_core_loads")
     if isinstance(handle, int) and handle:
-        _close_dynamic_library(handle)
+        for _ in range(loads[1]):
+            _close_dynamic_library(handle, strict=True)
+    if address is not None:
+        try:
+            if _maa_core_image_mapped(address):
+                raise OSError("MAA 核心映像仍驻留")
+        except (OSError, ValueError) as error:
+            raise MaaUpdateError("MAA 核心卸载未确认，请重启 Mower") from error
 
     for module_name in list(sys.modules):
         if module_name == "asst" or module_name.startswith("asst."):
             sys.modules.pop(module_name, None)
 
-    python_path = str(Path(target).expanduser() / "Python")
-    sys.path[:] = [entry for entry in sys.path if entry != python_path]
+    python_paths = {str(Path(target).expanduser() / "Python")}
+    loaded_path = getattr(library, "_name", None)
+    if isinstance(loaded_path, str):
+        python_paths.add(str(Path(loaded_path).parent / "Python"))
+    sys.path[:] = [entry for entry in sys.path if entry not in python_paths]
     importlib.invalidate_caches()
     gc.collect()
 

@@ -10517,7 +10517,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         from arknights_mower.utils.maa_backup import (
             MaaCallError,
             VerifiedAsst,
-            update_transaction,
         )
         from arknights_mower.utils.maa_inventory import MaaDropInventory
         from arknights_mower.utils.update_runtime import read_json
@@ -10549,6 +10548,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if not self.MAA.connect():
                 raise RuntimeError("安卓 MAA 引擎未连接")
             return
+        from arknights_mower.utils.maa_runtime import load_verified_maa
+
         config.stop_maa.clear()
         conf = config.conf
         path = pathlib.Path(resolve_config_path(conf.maa_path))
@@ -10571,43 +10572,24 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
         self.update_maa_navigation(path)
 
-        @update_transaction
-        def create_verified_asst():
-            if not Asst.load(path=path, incremental_path=path / "cache"):
-                detail = f"目录={path}，增量目录={path / 'cache'}"
-                try:
-                    with (path / "resource" / "config.json").open(
-                        encoding="utf-8"
-                    ) as config_file:
-                        json.load(config_file)
-                except FileNotFoundError:
-                    detail += f"；配置文件不存在：{path / 'resource' / 'config.json'}，请更新 MAA 资源或重新安装完整的 MAA"
-                except PermissionError:
-                    detail += f"；无法读取 {path / 'resource' / 'config.json'}：访问被拒绝，请关闭外部 MAA 后重试，并检查当前用户的读取权限"
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    detail += f"；配置文件格式无效：{path / 'resource' / 'config.json'}，请更新 MAA 资源或重新安装完整的 MAA"
-                except OSError as error:
-                    detail += f"；配置文件读取失败：{error}"
-                raise MaaCallError("load", detail=detail)
-            instance = VerifiedAsst(Asst, path, self.on_maa_callback)
-            resource = read_json(path / "resource" / "version.json", {})
-            resource_version = (
-                resource.get("last_updated", "未知")
-                if isinstance(resource, dict)
-                else "未知"
-            )
-            logger.info(
-                "MAA 资源加载成功 | core=%s | resource=%s | path=%s | incremental_path=%s",
-                instance.get_version(),
-                resource_version,
-                path,
-                path / "cache",
-            )
-            return instance
-
-        # 覆盖 Asst.load 与连接阶段：连接信息回调在 connect 期间就会到达。
         self.maa_callback = MaaCallbackLog()
-        self.MAA = create_verified_asst()
+        self.MAA = load_verified_maa(Asst, path, self.on_maa_callback)
+        # A core reload replaces the SDK modules as well as the native image.
+        from asst.utils import InstanceOptionType
+
+        resource = read_json(path / "resource" / "version.json", {})
+        resource_version = (
+            resource.get("last_updated", "未知")
+            if isinstance(resource, dict)
+            else "未知"
+        )
+        logger.info(
+            "MAA 资源加载成功 | core=%s | resource=%s | path=%s | incremental_path=%s",
+            self.MAA.get_version(),
+            resource_version,
+            path,
+            path / "cache",
+        )
         self.stages = []
         self.MAA.set_instance_option(
             InstanceOptionType.touch_type, conf.maa_touch_option

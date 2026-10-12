@@ -181,6 +181,8 @@
 
 
 ### 2.8 MAA Integration
+
+- **[INV-MAA-11] MAA Core Generation**: Desktop initialization verifies the loaded core against an independent disk version and resolved target identity before connection; changed cores reload at most once after native instances are released and actual image unloading is confirmed. Unverified ownership, unconfirmed unloading or failed reload requires a process restart. See the [runtime contract](docs/subsystems/maa-runtime.md).
 - **[INV-MAA-10] Independent Update Admission**: MAA core and resource automatic checks and installations use independent policies, installations consume a matching check only while MAA is idle, and an unknown local resource version accepts a valid published version without accepting mismatched or reused checks.
 
 - **[INV-MAA-08] Verified MAA Admission**: Desktop activity navigation atomically replaces validated task definitions in `cache/resource/tasks/tasks.json`, preserving other cached resources and the previous navigation on update failure. Resource loading, task submission and task startup require positive MAA results; rejected calls identify their phase and target, clear the pending run without recording successful execution, and preserve rollback backups.
