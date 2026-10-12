@@ -1,4 +1,4 @@
-"""协助位跟随排班与专精保护共存，开关关闭时保持原行为。"""
+"""受保护训练室交由自动专精，普通排班跳过整房。"""
 
 import sys
 from datetime import datetime
@@ -68,7 +68,7 @@ def test_active_plan_correction_respects_follow_switch(
         solver.tasks = [SchedulerTask(task_type=TaskTypes.SWAP_SUPPORT)]
     plan = solver.agent_get_mood(read_rooms=False, return_plan=True)
     if enabled and source != "none":
-        assert plan == ({"train": ["褐果", "Current"]} if follow else {})
+        assert plan == {}
     else:
         assert plan == {"train": ["褐果", "桃金娘"]}
     solver._notify_train_correction_skipped.assert_not_called()
@@ -81,12 +81,14 @@ def test_no_database_plan_uses_observed_training_state(solver, state, follow):
     config.conf.assistant_follows_schedule = follow
     solver.train_room_state = mastery_reader.RoomState(state)
     plan = solver.agent_get_mood(read_rooms=False, return_plan=True)
-    assert plan == ({"train": ["褐果", "Current"]} if follow else {})
+    assert plan == {}
 
 
 @pytest.mark.parametrize("protected_by", ["occupant", "snapshot"])
 @pytest.mark.parametrize("follow", [False, True])
-def test_protected_assistant_can_follow_schedule(solver, protected_by, follow):
+def test_protected_assistant_is_skipped_regardless_of_follow(
+    solver, protected_by, follow
+):
     config.conf.enable_mastery = True
     config.conf.assistant_follows_schedule = follow
     solver.train_room_state = mastery_reader.RoomState(
@@ -98,8 +100,8 @@ def test_protected_assistant_can_follow_schedule(solver, protected_by, follow):
             "逻各斯", "", current_room="train", current_index=0
         )
     plan = solver.agent_get_mood(read_rooms=False, return_plan=True)
-    assert plan == ({"train": ["褐果", "Current"]} if follow else {})
-    assert solver._notify_train_correction_skipped.called is (not follow)
+    assert plan == {}
+    assert solver._notify_train_correction_skipped.called
 
 
 def test_only_trainee_mismatch_does_not_leave_empty_correction(solver, monkeypatch):
@@ -120,7 +122,7 @@ def test_mastery_off_ignores_stale_locked_snapshot(solver, enabled, follow):
     solver.train_room_state = mastery_reader.RoomState("training")
     plan = solver.agent_get_mood(read_rooms=False, return_plan=True)
     if enabled:
-        assert plan == ({"train": ["褐果", "Current"]} if follow else {})
+        assert plan == {}
     else:
         assert plan == {"train": ["褐果", "桃金娘"]}
         assert solver.train_room_state is None
@@ -152,8 +154,8 @@ def test_execution_keeps_live_trainee_and_off_does_not_run_mastery(
     reconcile = MagicMock(return_value=False)
     monkeypatch.setattr(mastery_reader, "reconcile_short", reconcile)
     solver.agent_arrange_room({}, "train", plan)
-    assert reconcile.called is enabled
-    if state != "empty" and enabled and not follow:
+    assert reconcile.called is (enabled and state == "empty")
+    if state != "empty" and enabled:
         solver.turn_on_room_detail.assert_not_called()
     else:
         solver.turn_on_room_detail.assert_called_once_with("train")
@@ -367,7 +369,7 @@ def test_training_retry_accepts_observed_targets_and_placeholders(
 @pytest.mark.parametrize(
     "state", ["training", "waiting_collect", "protected", "unknown"]
 )
-def test_training_retry_keeps_protected_current_trainee(
+def test_training_retry_skips_entire_protected_room(
     arrangement_solver, monkeypatch, state
 ):
     solver, plan = arrangement_solver
@@ -387,7 +389,8 @@ def test_training_retry_keeps_protected_current_trainee(
 
     solver.agent_arrange_room({}, "train", plan)
 
-    assert targets == ["褐果", "Current"]
+    assert targets == ["褐果", "桃金娘"]
+    solver.turn_on_room_detail.assert_not_called()
     solver.choose_train.assert_not_called()
     solver.record_selection_failure.assert_not_called()
     assert plan == {}

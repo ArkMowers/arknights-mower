@@ -123,6 +123,10 @@ def test_actual_workshop_arrangement_confirms_staff_without_plan_entry(
     solver.get_agent_from_room.side_effect = MethodType(
         BaseSchedulerSolver.get_agent_from_room, solver
     )
+    solver._reconcile_room_observation.side_effect = MethodType(
+        BaseSchedulerSolver._reconcile_room_observation, solver
+    )
+    solver.find_next_task.return_value = None
     solver.find.side_effect = lambda name, **kwargs: name != "infra_no_operator"
     solver.read_screen.return_value = "九色鹿"
     solver.read_accurate_mood.return_value = 20

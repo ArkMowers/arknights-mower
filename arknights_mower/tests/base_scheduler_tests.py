@@ -353,6 +353,7 @@ class TestMoodInitialization(unittest.TestCase):
             "operators": {},
             "dorm": [],
             "facility_states": {},
+            "room_observations": {"room_1_1": 3},
             "party_time": None,
             "daily_visit_friend": date.min,
             "daily_report": date.min,
@@ -361,6 +362,10 @@ class TestMoodInitialization(unittest.TestCase):
             "task_count": 0,
         }
         self.main.simulate(saved)
+        self.assertEqual(scheduler.op_data.room_observations, {"room_1_1": 3})
+        self.assertIsNot(
+            scheduler.op_data.room_observations, saved["room_observations"]
+        )
         scheduler.backup_plan_solver.assert_called_once_with()
         scheduler.run.assert_called_once_with()
 
@@ -1755,7 +1760,7 @@ class TestBaseScheduler(unittest.TestCase):
     def test_agent_get_mood_freezes_trainee_slot_when_locked_and_following_schedule(
         self,
     ):
-        # 训练室锁定但开启协助位跟随：训练位保持 Current，仅协助位纠错
+        # 保护生效后整房跳过，协助位跟随不保留纠错目标。
         solver = self._train_mismatch_solver(["褐果", "桃金娘"])
         locked_room = mastery_reader.RoomState(
             "training", mastery_reader.RoomPanel(countdown_state="active")
@@ -1777,10 +1782,7 @@ class TestBaseScheduler(unittest.TestCase):
         task = next(
             (t for t in solver.tasks if t.type == TaskTypes.SELF_CORRECTION), None
         )
-        self.assertIsNotNone(task)
-        self.assertIn("train", task.plan)
-        self.assertEqual(task.plan["train"][1], "Current")
-        self.assertEqual(task.plan["train"][0], "褐果")
+        self.assertIsNone(task)
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_train_mastery_active_signals(self):
@@ -2057,9 +2059,8 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
         )
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_stale_active_empty_room_resets_db_and_proceeds(self):
-        """死锁修复核心：DB active 不再整房跳过——照常进房读屏幕，截图权威把过期
-        active 重置 idle，空闲×未保护 → 正常安排。"""
+    def test_active_mastery_defers_room_reconciliation_to_mastery(self):
+        """活跃专精的状态校正交由专精流程，排班不进入受保护房间。"""
         plan = {"train": ["干员A", "干员B"]}
         solver = self._make_solver(plan)
         stale = {"id": 7, "status": "training"}
@@ -2082,9 +2083,9 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
             ),
         ):
             result = solver.agent_arrange_room({}, "train", plan)
-        solver.enter_room.assert_called_with("train")
-        upd.assert_called_once_with(7, "idle")  # 截图权威：过期 active → idle
-        solver.turn_on_room_detail.assert_called_with("train")  # 未早退跳过
+        solver.enter_room.assert_not_called()
+        upd.assert_not_called()
+        solver.turn_on_room_detail.assert_not_called()
         self.assertEqual(result, {})
         self.assertNotIn("train", plan)  # 排班正常完成
 
@@ -2110,7 +2111,7 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
         self.assertEqual(result, {})
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_locked_room_freezes_train_slot_when_following_schedule(self):
+    def test_locked_room_skips_when_following_schedule(self):
         plan = {"train": ["干员A", "干员B"]}
         solver = self._make_solver(plan)
         with (
@@ -2123,12 +2124,10 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
             patch("arknights_mower.solvers.mastery_reader.reconcile_short"),
         ):
             result = solver.agent_arrange_room({}, "train", plan)
-        solver.back.assert_called_once_with(0.5)  # 冻结不早退；仅排班收尾 back
+        solver.back.assert_called_once_with()
         solver.refresh_current_room.assert_not_called()
-        solver.choose_train.assert_called_once_with(
-            ["干员A", "Current"], fast_mode=True, choose_error=0
-        )
-        solver.turn_on_room_detail.assert_called_with("train")
+        solver.choose_train.assert_not_called()
+        solver.turn_on_room_detail.assert_not_called()
         self.assertEqual(result, {})
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
@@ -2219,8 +2218,8 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
         self.assertNotIn("train", plan)  # 锁定 → 跳过
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_gate_waiting_collect_collected_no_reread(self):
-        """#210：reconcile 收集后 gate 复用 ① 槽位 + 状态设空闲 + 重算保护，不再重读。"""
+    def test_gate_waiting_collect_skips_without_collecting(self):
+        """待收取状态交由专精处理，排班跳过整房。"""
         plan = {"train": ["干员A", "干员B"]}
         solver = self._make_solver(plan)
         wc = mastery_reader.RoomState("waiting_collect", mastery_reader.RoomPanel())
@@ -2241,7 +2240,7 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
         ):
             result = solver.agent_arrange_room({}, "train", plan)
         self.assertEqual(mock_read.call_count, 1)  # 收集后不再重读
-        solver.turn_on_room_detail.assert_called_with("train")  # 状态设空闲 → 正常安排
+        solver.turn_on_room_detail.assert_not_called()
         self.assertEqual(result, {})
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
@@ -2299,8 +2298,8 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
         self.assertEqual(result, {})
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_gate_collected_no_slots_read_rereads(self):
-        """#210 review：TRAIN_FINISH 横幅页首次进房未读槽位，收集后重读拿进驻数据+保护。"""
+    def test_gate_waiting_collect_without_slots_skips(self):
+        """待收取页面未读槽位时也不由排班收取训练。"""
         plan = {"train": ["干员A", "干员B"]}
         solver = self._make_solver(plan)
         wc = mastery_reader.RoomState("waiting_collect", mastery_reader.RoomPanel())
@@ -2320,13 +2319,13 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
             ),
         ):
             result = solver.agent_arrange_room({}, "train", plan)
-        self.assertEqual(mock_read.call_count, 2)  # ① + 收集后重读
-        solver.turn_on_room_detail.assert_called_with("train")  # 重读后空闲 → 正常安排
+        self.assertEqual(mock_read.call_count, 1)
+        solver.turn_on_room_detail.assert_not_called()
         self.assertEqual(result, {})
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_gate_read_failure_freezes_train_slot_when_following(self):
-        """#211：读失败（room_state=None）保守冻结训练位，替代已删的 train_slot_locked。"""
+    def test_gate_read_failure_skips_room_when_following(self):
+        """训练室读取失败时跳过整房。"""
         plan = {"train": ["干员A", "干员B"]}
         solver = self._make_solver(plan)
         with (
@@ -2339,9 +2338,7 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
         ):
             result = solver.agent_arrange_room({}, "train", plan)
         solver.refresh_current_room.assert_not_called()
-        solver.choose_train.assert_called_once_with(
-            ["干员A", "Current"], fast_mode=True, choose_error=0
-        )
+        solver.choose_train.assert_not_called()
         self.assertEqual(result, {})
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
@@ -2847,6 +2844,7 @@ class TestDroneAccelerate(unittest.TestCase):
             Operators.arrangement_group_transitions.__get__(solver.op_data)
         )
         arrangements = []
+        original_time = task.time
 
         def fake_arrange_room(new_plan, room, plan, get_time=False):
             arrangements.append(plan[room].copy())
@@ -2874,10 +2872,11 @@ class TestDroneAccelerate(unittest.TestCase):
             self.assertEqual(task.plan, {room: original})
             self.assertEqual(task.meta_data, "")
             self.assertTrue(task.run_order_restore_pending)
-            self.assertTrue(solver.error)
+            self.assertFalse(solver.error)
+            self.assertFalse(hasattr(task, "execution_failure"))
+            self.assertEqual(task.time, original_time)
+            self.assertIs(find_next_task(solver.tasks), task)
 
-            task.time = datetime.now()
-            solver.error = False
             solver.task = task
             solver.infra_main()
 

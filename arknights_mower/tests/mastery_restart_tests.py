@@ -531,7 +531,7 @@ class MasteryRestartTests(unittest.TestCase):
         solver.get_agent_from_room.assert_called_once_with("meeting", None)
         self.assertNotIn("train", plan)
 
-    def test_mood_scan_stops_when_manual_trainee_is_in_nontraining_schedule(self):
+    def test_mood_scan_leaves_protected_trainee_to_automatic_mastery(self):
         mastery_db.update_plan_status(self.plan_id, "completed")
         room = reader.RoomState(
             state="training",
@@ -554,15 +554,13 @@ class MasteryRestartTests(unittest.TestCase):
         ):
             solver = self.mood_solver()
             solver.back.side_effect = lambda: self.assertFalse(stop.is_set())
-            with self.assertRaises(MowerExit):
-                self.read_mood(solver)
-        self.assertTrue(stop.is_set())
-        conflict.assert_called_once_with("测试干员")
-        notify.assert_called_once()
-        self.assertIn("已停止 Mower", notify.call_args.args[0])
+            self.read_mood(solver)
+        self.assertFalse(stop.is_set())
+        conflict.assert_not_called()
+        notify.assert_not_called()
         solver.back.assert_called_once_with()
-        save.assert_called_once_with()
-        reconcile.assert_not_called()
+        save.assert_not_called()
+        reconcile.assert_called_once_with(solver, room, defer_collect=False)
 
     def test_mood_scan_does_not_stop_on_failed_room_read(self):
         solver = self.mood_solver()

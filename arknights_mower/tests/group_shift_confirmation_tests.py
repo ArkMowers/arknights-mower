@@ -499,6 +499,7 @@ def test_replan_keeps_unconfirmed_shared_return(solver, backup_active, entry):
     assert solver._complete_group_shift(task)
     assert not data.group_is_resting("甲")
     assert task.group_shift_expected == {}
+    assert not task.retains_execution
     task.backup_shift_active = False
     solver.plan_metadata()
     assert task not in solver.tasks

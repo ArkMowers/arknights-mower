@@ -105,12 +105,11 @@ def test_excluded_dorm_target_cannot_requeue_after_replacement(
     if other_confirmed:
         observe_arrangement(
             dorm_solver,
-            {
-                room: names
-                for room, names in task.plan.items()
-                if not room.startswith("dorm")
-            },
+            {room: names for room, names in task.plan.items() if room != "dormitory_1"},
         )
+        row = list(task.plan["dormitory_1"])
+        row[2] = "诗怀雅"
+        observe_arrangement(dorm_solver, {"dormitory_1": row})
     if selection_prepared:
         dorm_solver.prepare_dorm_selection(task.plan["dormitory_1"], "dormitory_1")
         assert task.plan["dormitory_1"][2] == "诗怀雅"
@@ -119,7 +118,11 @@ def test_excluded_dorm_target_cannot_requeue_after_replacement(
     assert dorm_solver._complete_group_shift(task) is other_confirmed
     assert "但书" not in task.group_shift_expected.values()
     if not other_confirmed:
-        assert task.plan == {"meeting": ["Current", "初雪"], "contact": ["黑角"]}
+        assert task.plan["meeting"] == ["Current", "初雪"]
+        assert task.plan["contact"] == ["黑角"]
+        assert any(
+            "银灰" in row for room, row in task.plan.items() if room.startswith("dorm")
+        )
         observe_arrangement(dorm_solver, task.plan)
         task.plan.clear()
         assert dorm_solver._complete_group_shift(task)

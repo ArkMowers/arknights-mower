@@ -1221,12 +1221,17 @@ def test_mixed_shared_binding_checks_capacity_at_arrangement_entry(
         op.mood, op.time_stamp = 5, datetime.now()
     data.commit_group_shifts({"联动": False, "另一组": False, "第三组": False})
     incoming = "讯使" if applicant in ("outside", "outside_cap") else "银灰"
+    # The other departing member already has a confirmed recovery destination.
+    other = "银灰" if incoming == "讯使" else "讯使"
+    apply_plan(
+        instance, {"dormitory_1": ["Current", "Current", other, "Current", "Current"]}
+    )
     task = SchedulerTask(
         task_type=TaskTypes.SHIFT_OFF,
         task_plan={
             "meeting": ["Current", "初雪"],
             "contact": ["红"],
-            "dormitory_1": [incoming, "冰酿", "泥岩", "能天使", "年"],
+            "dormitory_1": [incoming, "冰酿", other, "能天使", "年"],
         },
     )
     instance.task, instance.tasks = task, [task]
@@ -1438,6 +1443,10 @@ def test_pending_shift_keeps_capacity_after_work_rooms_finish(
         slot = data.plan["dormitory_1"][0]
         slot.group, slot.replacement = "主组", ["黑角"]
         slot.group_bindings = [{"group": "联动", "replacement": ["Free"]}]
+    # Keep the fixed-bed admission under test; the other members already rest.
+    apply_plan(
+        instance, {"dormitory_1": ["Current", "Current", "伊内丝", "讯使", "Current"]}
+    )
     task = SchedulerTask(
         task_type=TaskTypes.SHIFT_OFF,
         task_plan={

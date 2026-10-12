@@ -316,6 +316,7 @@ class Operators:
         self.current_room_changed_callback = None
         self.party_time = None
         self.facility_states = {}
+        self.room_observations = {}
         self.reserved_product_beds = {}
         self.reserved_product_replacements = set()
         self.profession_filter = set(agent_arrange_order["职介选择开关"])
@@ -422,6 +423,13 @@ class Operators:
         return default_plan, ext_config.merge_config(plan.config)
 
     def init_and_validate(self, update=False):
+        from arknights_mower.utils.backup_validation import validate_trade_order_targets
+
+        primary = self.global_plan["default_plan"]
+        if error := validate_trade_order_targets(
+            primary.plan, primary.products, label="主表"
+        ):
+            return error
         for name in self.config.operator_mood_limits:
             if name not in agent_list:
                 return f"心情上下限中的干员名无效：{name}"
@@ -1158,7 +1166,13 @@ class Operators:
         return groups
 
     def normalize_shared_arrangement(
-        self, plan, transitions=None, *, reserved_replacements=None, explicit_slots=()
+        self,
+        plan,
+        transitions=None,
+        *,
+        reserved_replacements=None,
+        explicit_slots=(),
+        excluded_names=(),
     ):
         """Keep shared covers until all dependent groups return; reject conflicts.
 
@@ -1166,6 +1180,7 @@ class Operators:
         """
         from arknights_mower.utils.exhaust_replacement import match_replacements
 
+        excluded_names = set(excluded_names)
         transitions = (
             self.arrangement_group_transitions(plan)
             if transitions is None
@@ -1176,6 +1191,7 @@ class Operators:
             for group, resting in transitions.items()
             if resting
             for name in self.shift_group_members(group)
+            if name not in excluded_names
         }
         if self.working_replacement_blockers(shifting, plan):
             return False
@@ -1183,6 +1199,11 @@ class Operators:
             op
             for op in self.operators.values()
             if op.multi_group
+            and op.name not in excluded_names
+            and not (
+                (actual := self.get_current_operator(op.room, op.index)) is not None
+                and actual.name in excluded_names
+            )
             and (op.room, op.index) not in explicit_slots
             and (
                 op.index < len(plan.get(op.room, []))
@@ -1199,15 +1220,19 @@ class Operators:
         }
         changes, options = {}, {}
         managed = {(op.room, op.index) for op in followers}
-        reserved = {
-            name
-            for room, names in plan.items()
-            for index, name in enumerate(names)
-            if (room, index) not in managed and name not in ("Free", "Current", "")
-        } | set(
-            self.reserved_product_replacements
-            if reserved_replacements is None
-            else reserved_replacements
+        reserved = (
+            {
+                name
+                for room, names in plan.items()
+                for index, name in enumerate(names)
+                if (room, index) not in managed and name not in ("Free", "Current", "")
+            }
+            | set(
+                self.reserved_product_replacements
+                if reserved_replacements is None
+                else reserved_replacements
+            )
+            | excluded_names
         )
         for op in followers:
             target = plan.get(op.room, [])[op.index : op.index + 1]
@@ -2684,11 +2709,17 @@ class Operators:
             )
         }
 
-    def assign_dorm_group(self, names, active_groups=None, plan=None):
+    def assign_dorm_group(
+        self, names, active_groups=None, plan=None, *, reserved_slots=()
+    ):
         """先保障必需床位；候补有床则休息，无床则随组离岗待命。"""
         # 达到个人上限后随组离岗即可，不再占床恢复。
         names = [name for name in names if not self.rest_mood_complete(name)]
-        used = set()
+        used = {
+            index
+            for index, bed in enumerate(self.dorm)
+            if bed.position in reserved_slots
+        }
         assignments = []
         optional = self.standby_candidates(names)
         ordered_names = sorted(

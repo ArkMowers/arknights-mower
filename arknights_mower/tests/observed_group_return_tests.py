@@ -256,9 +256,7 @@ def test_training_only_observed_return_respects_actual_protection(
     elif protection == "scan":
         monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", True)
     worker = s.op_data.operators["森蚺"]
-    allowed = protection != "scan" and (
-        not enabled or protection == "none" or follow and worker.index == 0
-    )
+    allowed = protection != "scan" and (not enabled or protection == "none")
     pending = list(s.tasks)
     result = s.agent_get_mood()
     assert s.op_data.group_is_resting("自动化")

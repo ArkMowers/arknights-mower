@@ -49,6 +49,7 @@ The growth UI follows [Bounded Page Loading](docs/subsystems/growth-planning.md#
 - **No Issue References**: Commit messages, code comments, and technical documentation must not contain issue tracker numbers (`#xxx`).
 - **Bounded Collections**: In-memory logs, frame queues, and discovery results must have explicit capacity limits and eviction policies.
 - **Explicit Imports**: Avoid wildcard imports (`from module import *`). Use explicit symbol imports.
+- **Evidence for Scheduling Waits**: A runtime mismatch alone does not justify a new timer, repeated polling or stopping automation. Apply the [runtime task failure contract](docs/subsystems/base-scheduler.md#211-runtime-task-failure), retain unfinished work and verify progress with unchanged-state and dependency-release cases.
 
 ## 5. Verification Discipline
 

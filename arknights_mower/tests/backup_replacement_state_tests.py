@@ -705,6 +705,8 @@ def product_solver(solver, request, monkeypatch):
     plan = solver.global_plan["default_plan"]
     slots = plan.plan.pop("contact")
     slots[0].facility, slots[0].product = facility, default
+    if facility == "贸易站":
+        slots.extend([Room("芬", "", ["夜刀"]), Room("克洛丝", "", ["安德切尔"])])
     plan.plan["room_1_2"] = slots
     plan.products = {"room_1_2": default}
     assert solver.initialize_operators() is None
@@ -744,7 +746,12 @@ def test_product_entry_exit_preserve_primary_state(
         assert s.op_data.plan_condition == [active]
         assert s.op_data.products["room_1_2"] == product
         assert plan == (
-            {"room_1_2": ["砾" if active else "红"]}
+            {
+                "room_1_2": [
+                    "砾" if active else "红",
+                    *["Current"] * (len(s.op_data.plan["room_1_2"]) - 1),
+                ]
+            }
             if not working and change_replacements
             else {}
         )

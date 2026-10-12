@@ -1424,18 +1424,22 @@ def _save_rescue_plan(plan):
 @app.route("/rescue-plan/validate", methods=["POST"])
 @require_token
 def validate_rescue_plan_route():
-    from arknights_mower.utils.emergency_plan import effective_rescue_plan
+    from arknights_mower.utils.emergency_plan import (
+        effective_rescue_plan,
+        validate_rescue_schedule,
+    )
 
     try:
         data = Operators(build_global_plan())
         error = data.init_and_validate()
         if error:
             return {"success": False, "message": str(error)}
+        validate_rescue_schedule(data, config.conf.automatic_rescue_plan)
         if data.backup_plans or config.conf.automatic_rescue_plan.backup_plans:
             return {
                 "success": True,
                 "status": "incomplete",
-                "message": "排班含副表条件，设施类型、等级及产物需在初始化实测后，按双方生效排班核验；当前静态验证不能确认是否可进入救急。",
+                "message": "救急表自身校验通过；排班含副表条件，设施类型、等级及产物仍需在初始化实测后按双方生效排班核验。",
             }
         effective_rescue_plan(data, config.conf.automatic_rescue_plan)
     except (ValueError, TypeError) as exc:

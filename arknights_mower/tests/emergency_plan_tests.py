@@ -548,3 +548,66 @@ def test_rescue_recovery_settings_append_and_dorm_order_overrides(solver):
     assert combined.dorm_order[0] == "dormitory_3"
     assert normal.workaholic == ["清流"]
     assert normal.free_blacklist == ["初雪"]
+
+
+def test_rescue_missing_right_room_prevents_startup(solver, monkeypatch):
+    omitted = solver.op_data.operators[PRIMARY[-1]]
+    for plan in (solver.op_data.plan, solver.op_data.global_plan["default_plan"].plan):
+        plan["contact"] = plan.pop(omitted.room)
+    omitted.room = omitted._current_room = "contact"
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    config.conf.automatic_rescue_plan.plan1.contact = None
+    monkeypatch.setattr(
+        emergency, "native_opportunity", lambda *a, **k: NativeProjection(None, True)
+    )
+    monkeypatch.setattr(emergency, "save_current_state", lambda: True)
+    solver._emergency_startup()
+    assert not solver._emergency_active()
+    assert solver.tasks == []
+    assert omitted.current_room == "contact"
+    solver._emergency_schedule_staffing.assert_not_called()
+
+
+def test_rescue_omitted_recycle_is_rejected():
+    data = SimpleNamespace(
+        plan={"central": [object()], "recycle": [object(), object()]}
+    )
+    with pytest.raises(ValueError, match="recycle"):
+        effective_rescue_plan(
+            data, PlanModel(plan1={"central": {"plans": [{"agent": "杜林"}]}})
+        )
+
+
+def test_saved_partial_rescue_is_rejected_before_dispatch(solver):
+    import copy
+    import pickle
+
+    from arknights_mower.tests.automatic_rescue_tests import make_episode
+    from arknights_mower.utils.csleep import MowerExit
+
+    state = make_episode(solver)
+    missing = next(iter(state["rescue_plan"]))
+    del state["rescue_plan"][missing]
+    state["skipped_rooms"] = [missing]
+    solver.emergency_state = pickle.loads(pickle.dumps(state))
+    original = copy.deepcopy(solver.emergency_state)
+    solver._read_agent_mood = MagicMock()
+    solver.plan_metadata = MagicMock()
+    with pytest.raises(MowerExit, match="救急.*设施不一致"):
+        solver._emergency_startup()
+    solver._read_agent_mood.assert_not_called()
+    solver.plan_metadata.assert_not_called()
+    assert solver.emergency_state == original
+    assert solver.tasks == []
+
+
+def test_complete_saved_rescue_ignores_retired_room_exclusions(solver):
+    from arknights_mower.tests.automatic_rescue_tests import make_episode
+
+    state = make_episode(solver)
+    state["skipped_rooms"] = [next(iter(state["rescue_plan"]))]
+    solver._emergency_validate_state()
+    solver._emergency_sync_reservations()
+    assert solver.op_data.emergency_reserved_agents == set()
+    assert set(state["targets"]) == set(PRIMARY)

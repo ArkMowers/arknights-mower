@@ -229,7 +229,7 @@ def test_startup_finishes_pending_order_before_rescue(
 
 @pytest.mark.parametrize("saved_plan", ["restoration", "insertion", "empty"])
 @pytest.mark.parametrize("rescue_worker", ["original", "different", "current"])
-def test_saved_rescue_releases_order_original_before_remaining_staffing(
+def test_saved_rescue_takes_over_before_order_restoration(
     solver, pending_normal_order, saved_plan, rescue_worker
 ):
     restore, release, source = pending_normal_order
@@ -253,61 +253,37 @@ def test_saved_rescue_releases_order_original_before_remaining_staffing(
     solver._emergency_filter_tasks()
     assert release not in solver.tasks
 
+    original_roster = copy.deepcopy(restore.run_order_original_roster)
     assert emergency.EmergencyRecoveryMixin._emergency_schedule_staffing(solver)
 
     staffing = next(t for t in solver.tasks if getattr(t, "emergency_staffing", False))
     assert source in staffing.plan
-    assert "room_1_1" not in staffing.plan
-    assert state["staffing_plan"]["room_1_1"] == [target]
+    assert staffing.plan.get("room_1_1", [target]) == [target]
+    if rescue_worker == "current":
+        original_roster["room_1_1"] = [target]
+    assert restore.run_order_original_roster == original_roster
     solver._emergency_tick = MagicMock()
     solver.task = staffing
     solver.infra_main()
 
     assert staffing not in solver.tasks
     assert solver.op_data.get_current_room(source, True) == [COVERS[1]]
-    assert restore in solver.tasks and restore.run_order_restore_pending
-    assert not solver._emergency_reconcile_staffing()
-    assert not state["staffing_complete"]
-    assert state["staffing_plan"] == {"room_1_1": [target]}
-    assert not emergency.EmergencyRecoveryMixin._emergency_schedule_staffing(solver)
-    assert not state["staffing_complete"]
-
-    solver.task = restore
-    solver.infra_main()
-
-    assert restore not in solver.tasks
-    assert solver.op_data.get_current_room("room_1_1", True) == [COVERS[0]]
-    assert all(
-        "但书" not in call.args[0] for call in solver.choose_agent.call_args_list
-    )
-    solver.drone.assert_not_called()
-    if rescue_worker != "original":
-        assert not solver._emergency_reconcile_staffing()
-        assert not state["staffing_complete"]
-        assert emergency.EmergencyRecoveryMixin._emergency_schedule_staffing(solver)
-        staffing = next(
-            t for t in solver.tasks if getattr(t, "emergency_staffing", False)
-        )
-        assert staffing.plan == {"room_1_1": [target]}
-        solver.task = staffing
-        solver.infra_main()
-        assert staffing not in solver.tasks
-        assert solver.op_data.get_current_room("room_1_1", True) == [target]
+    assert solver.op_data.get_current_room("room_1_1", True) == [target]
     assert solver._emergency_reconcile_staffing()
     assert state["staffing_complete"] and state["staffing_plan"] == {}
+    assert restore.run_order_original_roster["room_1_1"] == [target]
+    assert restore in solver.tasks and restore.run_order_restore_pending
+    solver.task = restore
+    solver.infra_main()
+    assert restore not in solver.tasks
+    assert solver.op_data.get_current_room("room_1_1", True) == [target]
     assert state["phase"] == "recovering"
-    proviso_selections = [
-        call.args[0]
-        for call in solver.choose_agent.call_args_list
-        if "但书" in call.args[0]
-    ]
-    assert proviso_selections == ([[target]] if rescue_worker == "current" else [])
     solver.drone.assert_not_called()
 
 
 @pytest.mark.parametrize("entry", ["schedule", "reconcile"])
 @pytest.mark.parametrize("staffing_complete", [False, True])
-def test_saved_rescue_keeps_matching_temporary_worker_pending_until_restoration(
+def test_saved_rescue_confirms_matching_worker_without_waiting_for_restoration(
     solver, pending_normal_order, entry, staffing_complete
 ):
     restore, _, _ = pending_normal_order
@@ -334,10 +310,10 @@ def test_saved_rescue_keeps_matching_temporary_worker_pending_until_restoration(
     else:
         completed = solver._emergency_reconcile_staffing()
 
-    assert not completed
-    assert not state["staffing_complete"]
-    assert state["staffing_plan"] == {"room_1_1": ["但书"]}
-    assert state["phase"] == phase
+    assert completed
+    assert state["staffing_complete"]
+    assert state["staffing_plan"] == {}
+    assert state["phase"] == "recovering"
     assert restore in solver.tasks and restore.run_order_restore_pending
     assert solver.op_data.get_current_room("room_1_1", True) == ["但书"]
     assert not any(getattr(task, "emergency_staffing", False) for task in solver.tasks)
@@ -406,13 +382,14 @@ def test_card_estimates_do_not_establish_entry_or_ready(solver):
 
 
 @pytest.mark.parametrize("empty_slot", [True, False])
-def test_real_room_absence_invalidates_only_departed_resident_reading(
+def test_only_confirmed_room_absence_invalidates_departed_resident_reading(
     solver, empty_slot
 ):
     missing = solver.op_data.operators[PRIMARY[0]]
     untouched = solver.op_data.operators[COVERS[0]]
     room = missing.current_room
     original_stamp = untouched.time_stamp
+    missing_stamp = missing.time_stamp
     solver.recog = SimpleNamespace(
         gray=np.zeros((1080, 1920), dtype=np.uint8), update=MagicMock()
     )
@@ -426,11 +403,14 @@ def test_real_room_absence_invalidates_only_departed_resident_reading(
     solver.back = MagicMock()
     solver.back_to_infrastructure = MagicMock()
     solver._emergency_read_rooms([room])
-    assert missing.current_room == "" and missing.time_stamp is None
+    if empty_slot:
+        assert missing.current_room == "" and missing.time_stamp is None
+    else:
+        assert missing.current_room == room and missing.time_stamp == missing_stamp
     assert untouched.time_stamp == original_stamp
     assert untouched.mood == 24
     make_episode(solver)
-    assert not solver._emergency_ready()
+    assert solver._emergency_ready() == (not empty_slot)
 
 
 def test_actual_targets_are_required_and_no_majority_exit(solver):
@@ -1320,16 +1300,12 @@ def test_selection_rechecks_card_mood_and_preserves_actual_readings(
     solver.op_data.config.resting_threshold = 0.65
     solver.op_data.dorm_mood_estimates[name] = (24, NOW)
     solver.task = SchedulerTask(task_plan={"room_1_1": [name]})
-    solver.task.emergency_staffing = True
+    solver.task.emergency_staffing = solver.task.emergency_takeover = True
     solver.recog = SimpleNamespace(img=object())
     monkeypatch.setattr(base_mixin, "estimate_agent_mood", lambda *a: mood)
-    if mood is None:
-        with pytest.raises(
-            base_mixin.AgentSelectionNotReady, match="心情读数未知或无效"
-        ):
-            solver.observe_agent_moods([(name, ((0, 0), (1, 1)))], [name], None, False)
-    else:
-        solver.observe_agent_moods([(name, ((0, 0), (1, 1)))], [name], None, False)
+    assert solver.observe_agent_moods(
+        [(name, ((0, 0), (1, 1)))], [name], None, False
+    ) == {name}
     assert (op.mood, op.time_stamp) == (24, NOW)
     if mood is None:
         assert name not in solver.op_data.dorm_mood_estimates
@@ -2007,11 +1983,9 @@ def test_startup_observation_is_consumed_by_single_dispatch_path(solver, monkeyp
     solver._emergency_plan_beds = MagicMock()
     solver._emergency_tick()
     solver._emergency_schedule_staffing.assert_called_once()
-    solver._emergency_update_targets.assert_called_once()
-    solver._open_emergency_beds.assert_called_once()
+    solver._emergency_update_targets.assert_not_called()
+    solver._open_emergency_beds.assert_not_called()
     solver._emergency_read_rooms.assert_not_called()
-    solver._emergency_tick()
-    solver._emergency_schedule_staffing.assert_called_once()
 
 
 def test_normal_planner_hands_rescue_all_planning_ownership(solver, monkeypatch):

@@ -67,7 +67,7 @@ def solver(monkeypatch):
             {"central": ["陈"], "dormitory_1": ["歌蕾蒂娅"]}
         )
     )
-    monkeypatch.setattr(base, "try_reorder", lambda data, plan: {})
+    monkeypatch.setattr(base, "try_reorder", lambda data, plan, **kwargs: {})
     return instance
 
 
@@ -263,3 +263,24 @@ def test_existing_dynamic_deadline_does_not_duplicate_pending_arrangement(solver
 
     assert solver.tasks == [solver.task, pending]
     solver.get_resting_plan.assert_not_called()
+
+
+@pytest.mark.parametrize("reopened", [False, True])
+def test_retained_exhausted_task_prevents_regeneration_and_read(solver, reopened):
+    task = SchedulerTask(
+        time=datetime(2026, 10, 8, 10, 30),
+        task_type=TaskTypes.EXHAUST_OFF,
+        meta_data="歌蕾蒂娅",
+    )
+    if reopened:
+        task.execution_retained = True
+    else:
+        task.execution_failure = {"reason": "用尽换班读房失败"}
+    solver.tasks = [task]
+    original_time = task.time
+    for _ in range(4):
+        assert generated_deadlines(solver) == [task]
+        assert solver.tasks == [task]
+        assert task.time == original_time
+        assert task.meta_data == "歌蕾蒂娅"
+    solver.enter_room.assert_not_called()

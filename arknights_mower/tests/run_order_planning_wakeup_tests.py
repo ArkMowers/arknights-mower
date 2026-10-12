@@ -147,9 +147,15 @@ def simulate_room_io(solver, clock, failures=0, failure_kind="exception"):
     return solver.agent_arrange_room
 
 
-def dispatch(solver, clock):
+def dispatch(solver, clock, *, observe_failures=True):
     # Real time advances between entries; handle_error's due query uses '<'.
     clock.current += timedelta(seconds=1)
+    if observe_failures:
+        for task in solver.tasks:
+            if failure := getattr(task, "execution_failure", None):
+                # 模拟下一次成功实测；时钟流逝本身不释放失败任务。
+                for name in failure["snapshot"]["observations"]:
+                    solver.op_data.operators[name].time_stamp = clock.now()
     solver.run()
     assert not solver.error
 
@@ -168,16 +174,33 @@ def planning_tasks(solver, clock):
 def start_deferred_shift(solver, clock, failures, failure_kind="exception"):
     assert solver.backup_plan_solver()
     shift = next(task for task in solver.tasks if task.type == TaskTypes.RE_ORDER)
+    original_time = shift.time
     simulate_room_io(solver, clock, failures, failure_kind)
     dispatch(solver, clock)
     if failures:
-        assert shift in solver.tasks and shift.time > clock.now()
-        clock.current = shift.time + timedelta(seconds=1)
-        dispatch(solver, clock)
+        assert shift in solver.tasks
+        if failure_kind == "exception":
+            assert shift.time == original_time and shift.execution_failure
+            return shift
+        else:
+            assert shift.time > clock.now()
+        clock.current = max(clock.current, shift.time) + timedelta(seconds=1)
+        dispatch(solver, clock, observe_failures=False)
         assert shift in solver.tasks
         assert not planning_tasks(solver, clock)
         assert not any(task.type == TaskTypes.RUN_ORDER for task in solver.tasks)
     return shift
+
+
+def finish_pending_shift(solver, clock, shift, failures):
+    for _ in range(failures + 3):
+        if all(task is not shift for task in solver.tasks):
+            return
+        clock.current = max(clock.current, shift.time) + timedelta(seconds=1)
+        dispatch(solver, clock)
+    pytest.fail(
+        "fresh observations did not finish the pending shift within its attempts"
+    )
 
 
 @pytest.mark.parametrize("failures", [0, 1, 3])
@@ -187,9 +210,7 @@ def test_backup_completion_plans_orders_before_future_return(
 ):
     solver, clock = replay
     shift = start_deferred_shift(solver, clock, failures, failure_kind)
-    for _ in range(failures):
-        clock.current = shift.time + timedelta(seconds=1)
-        dispatch(solver, clock)
+    finish_pending_shift(solver, clock, shift, failures)
     assert shift not in solver.tasks
     assert any(task.type == TaskTypes.SHIFT_ON for task in solver.tasks)
     assert len(planning_tasks(solver, clock)) == 1, (
@@ -240,9 +261,7 @@ def test_saved_shift_continues_planning_in_a_new_scheduler(
     assert resumed_shift is not shift
     assert resumed_shift.time == shift.time
     simulate_room_io(resumed, clock, failures - 1)
-    for _ in range(failures):
-        clock.current = resumed_shift.time + timedelta(seconds=1)
-        dispatch(resumed, clock)
+    finish_pending_shift(resumed, clock, resumed_shift, failures)
     assert resumed_shift not in resumed.tasks
     assert len(planning_tasks(resumed, clock)) == 1
     dispatch(resumed, clock)
@@ -283,7 +302,7 @@ def test_planning_preserves_existing_order_and_original_roster_task(replay):
     )
     restoration.emergency_original_roster = copy.deepcopy(restoration.plan)
     solver.tasks.extend([order, restoration])
-    dispatch(solver, clock)
+    finish_pending_shift(solver, clock, shift, 1)
     assert shift not in solver.tasks
     dispatch(solver, clock)
     assert [t for t in solver.tasks if t.type == TaskTypes.RUN_ORDER] == [

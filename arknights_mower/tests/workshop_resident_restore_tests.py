@@ -43,6 +43,7 @@ def test_batch_reads_actual_resident_before_selection_and_restores_positions(
     solver.op_data.all_dorms = lambda: []
     for name, operator in solver.op_data.operators.items():
         operator.name = name
+        operator.room = operator.current_room
         operator.need_to_refresh = lambda **kwargs: True
         operator.depletion_rate = 0
     solver.op_data.get_current_room = MethodType(
