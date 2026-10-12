@@ -71,30 +71,6 @@ class EmergencyRecoveryMixin:
             self, "_emergency_handoff", False
         )
 
-    def _emergency_skipped_names(self):
-        """省略房间的正常主班和当前驻员不参与本次救急恢复与交接。"""
-        rooms = set(
-            (getattr(self, "emergency_state", None) or {}).get("skipped_rooms", ())
-        )
-        return {
-            name
-            for name, op in self.op_data.operators.items()
-            if op.room in rooms or op.current_room in rooms
-        }
-
-    def _emergency_scope_plan(self, plan):
-        """交接只调整本次接管范围，保留省略房间及其驻员。"""
-        skipped = set(self.emergency_state.get("skipped_rooms", ()))
-        names = self._emergency_skipped_names()
-        for room in list(plan):
-            if room in skipped:
-                del plan[room]
-                continue
-            plan[room] = ["Current" if name in names else name for name in plan[room]]
-            if all(name == "Current" for name in plan[room]):
-                del plan[room]
-        return plan
-
     def _emergency_replan_releases(self):
         """恢复目标与个人上限共用清退规划；交接期间只保留个人上限。"""
         state = getattr(self, "emergency_state", None) or {}
@@ -237,7 +213,6 @@ class EmergencyRecoveryMixin:
             | set(state.get("staffing_members", ()))
             | set(state.get("release_members", ()))
             | (set(state.get("standby_workers", ())) - normal_names)
-            | self._emergency_skipped_names()
         )
 
     def _emergency_save(self):
@@ -402,11 +377,7 @@ class EmergencyRecoveryMixin:
                 "自动救急驻员与正常主班重名，仍按救急排班持续工作：%s",
                 "、".join(sorted(shared)),
             )
-        names = [
-            name
-            for name in names
-            if name not in shared and data.operators[name].room in rescue_plan
-        ]
+        names = [name for name in names if name not in shared]
         logger.info(
             "多组主班心情低于救急线且当前原生轮休无法安排，启动自动救急：%s", required
         )
@@ -458,6 +429,15 @@ class EmergencyRecoveryMixin:
             )
         ):
             raise MowerExit("自动救急缓存结构不完整，保留缓存并停止")
+        if missing := (
+            set(state.get("skipped_rooms", ()))
+            - {"factory", "train"}
+            - state["rescue_plan"].keys()
+        ):
+            raise MowerExit(
+                f"已保存救急排班与当前设施不一致：缺少 {sorted(missing)}；"
+                "保留缓存，请补齐救急表并核对未完成交接"
+            )
 
     def _emergency_replace_low_workers(self):
         """救急替班接管工作位；离岗正常主班纳入恢复，其他驻员待命。"""
@@ -929,8 +909,7 @@ class EmergencyRecoveryMixin:
         candidates = [
             name
             for name in primary_names(data)
-            if name not in self._emergency_skipped_names()
-            and not data.has_rest_mood_limit(name)
+            if not data.has_rest_mood_limit(name)
             and name not in reserved
             and (op := data.operators[name]).upper_limit == 24
             and op.current_room not in ("train", "factory")
@@ -1563,11 +1542,9 @@ class EmergencyRecoveryMixin:
         """复用正常整组替班规划，为交接后仍需休息的组同时预留岗位和床位。"""
         data = self.op_data
         groups = {}
-        skipped_names = self._emergency_skipped_names()
-        self._emergency_scope_plan(plan)
         for name in primary_names(data):
             op = data.operators[name]
-            if name in skipped_names or data._can_standby(op):
+            if data._can_standby(op):
                 continue
             if not has_resting_mood(op) or op.mood_is_prediction:
                 return None
@@ -1589,10 +1566,9 @@ class EmergencyRecoveryMixin:
             for room, row in data.plan.items()
             if room in RESCUE_ROOMS or room.startswith("dorm")
         }
-        self._emergency_scope_plan(baseline)
         probe = copy.copy(self)
         probe.op_data = data.project_arrangements([baseline])
-        probe.op_data.emergency_reserved_agents = skipped_names
+        probe.op_data.emergency_reserved_agents = set()
         probe.op_data.emergency_dorm_agents = set()
         probe.tasks = copy.deepcopy(self.tasks)
         probe.task = None
@@ -1600,19 +1576,10 @@ class EmergencyRecoveryMixin:
         resting = {}
         replacements = []
         members = list(
-            dict.fromkeys(
-                name
-                for group in groups.values()
-                for name in group
-                if name not in skipped_names
-            )
+            dict.fromkeys(name for group in groups.values() for name in group)
         )
         probe.get_resting_plan(
-            members,
-            replacements,
-            resting,
-            probe.op_data.active_high_resting_count(),
-            excluded_names=skipped_names,
+            members, replacements, resting, probe.op_data.active_high_resting_count()
         )
         if not replacements:
             return None
@@ -1629,7 +1596,7 @@ class EmergencyRecoveryMixin:
             for index, name in enumerate(row):
                 if name != "Current":
                     target[index] = name
-        return self._emergency_scope_plan(result)
+        return result
 
     def _emergency_restore(self):
         """重新求值副表，交接成功后清除批次；失败按实际驻员继续交接。"""
@@ -1723,17 +1690,15 @@ class EmergencyRecoveryMixin:
         data = self.op_data.project_arrangements([plan])
         # 当前正常岗位覆盖即可交接，后续轮休由正常调度处理。
         feasible = True
-        skipped_names = self._emergency_skipped_names()
         for name in primary_names(data):
             op = data.operators[name]
-            if name in skipped_names or data._can_standby(op):
+            if data._can_standby(op):
                 continue
             if op.is_resting():
                 if not has_resting_mood(op) or op.mood_is_prediction:
                     return False
                 if any(
-                    other not in skipped_names
-                    and not (member := data.operators[other]).room.startswith("dorm")
+                    not (member := data.operators[other]).room.startswith("dorm")
                     and member.is_working()
                     and not member.workaholic
                     for other in data.groups.get(op.group, [name])

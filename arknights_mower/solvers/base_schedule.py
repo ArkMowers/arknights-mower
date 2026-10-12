@@ -4408,9 +4408,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         current_resting,
         *,
         dorm_admissions=None,
-        excluded_names=(),
     ):
-        excluded = self._protected_training_names() | set(excluded_names)
+        excluded = self._protected_training_names()
         if excluded:
             agents = [name for name in agents if name not in excluded]
         groups = list(

@@ -140,7 +140,7 @@ def test_rescue_validation_checks_own_roster_before_conditional_deferral(
         "plan1": {
             "room_1_1": {"name": "制造站", "plans": [{"agent": "香草"}]},
             "central": {"plans": [{"agent": "杜林"}]},
-            "recycle": {"plans": [{"agent": ""}, {"agent": ""}]},
+            "recycle": {"plans": [{"agent": "黑角"}, {"agent": "夜刀"}]},
         }
     }
     if invalid == "missing_left":
@@ -176,10 +176,11 @@ def test_rescue_validation_checks_own_roster_before_conditional_deferral(
     config.save_conf.assert_not_called()
 
 
-@pytest.mark.parametrize("room", ["meeting", "factory", "contact", "train", "recycle"])
+@pytest.mark.parametrize("room", ["meeting", "contact", "recycle", "factory", "train"])
 @pytest.mark.parametrize("blank", [False, True])
-def test_rescue_validation_allows_optional_right_rooms(
-    client, monkeypatch, room, blank
+@pytest.mark.parametrize("conditional", [False, True])
+def test_rescue_validation_preserves_working_and_specialized_room_rules(
+    client, monkeypatch, room, blank, conditional
 ):
     from types import SimpleNamespace
 
@@ -192,7 +193,7 @@ def test_rescue_validation_allows_optional_right_rooms(
             room: [Room("砾", "", [])],
         },
         products={},
-        backup_plans=[],
+        backup_plans=[object()] if conditional else [],
         init_and_validate=lambda: None,
     )
     monkeypatch.setattr(server, "build_global_plan", lambda: {})
@@ -207,5 +208,11 @@ def test_rescue_validation_allows_optional_right_rooms(
     response = client.post(
         "/rescue-plan/validate", headers={"token": "rescue-route"}
     ).get_json()
-    assert response["success"] is True
-    assert response.get("status") != "incomplete"
+    if room in {"factory", "train"}:
+        assert response["success"] is True
+        assert (response.get("status") == "incomplete") is conditional
+    else:
+        assert response["success"] is False
+        assert room in response["message"]
+    config.save_conf.assert_not_called()
+    config.save_plan.assert_not_called()
