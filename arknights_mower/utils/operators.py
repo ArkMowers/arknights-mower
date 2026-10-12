@@ -1651,6 +1651,12 @@ class Operators:
         ):
             return current_index
 
+    def invalidate_dorm_time(self, room):
+        """实际宿舍阵容变化后，整房恢复时间等待最终阵容实读。"""
+        for bed in self.all_dorms():
+            if bed.position[0] == room:
+                bed.time = None
+
     def refresh_dorm_time(self, room, index, agent, *, group_transitions=None):
         _name = agent["agent"]
         # 此方法也会作为无界函数绑定到轻量读房测试对象，避免依赖对象上存在
@@ -2044,7 +2050,7 @@ class Operators:
     def project_arrangements(self, plans):
         """按执行顺序推演排班后的驻员和恢复床位，不产生实际换人副作用。
 
-        位置未变保留恢复时间；换床位或换宿舍后，由正常读房重新采样。
+        阵容未变的宿舍保留恢复时间；受影响宿舍等待最终阵容实读。
         产物切换和回班规划共用这一份位置语义，不能只改工位而留下旧床位。
         """
         projected = copy.copy(self)
@@ -2061,10 +2067,26 @@ class Operators:
                 for index, name in enumerate(names)
                 if name != "Current"
                 and (
-                    (occupant := projected.get_current_operator(room, index)) is None
-                    or occupant.name != name
+                    (
+                        occupant.name
+                        if (occupant := projected.get_current_operator(room, index))
+                        is not None
+                        else ""
+                    )
+                    != ("" if name == "Free" else name)
                 )
             }
+            changed_dorms = {
+                room for room, _ in changed_slots if room.startswith("dorm")
+            }
+            changed_dorms.update(
+                op.current_room
+                for room, names in plan.items()
+                for index, name in enumerate(names)
+                if (op := projected.operators.get(name)) is not None
+                and op.current_room.startswith("dorm")
+                and (op.current_room, op.current_index) != (room, index)
+            )
             recovery_times = {
                 bed.name: (bed.position, bed.time)
                 for bed in projected.all_dorms()
@@ -2098,7 +2120,12 @@ class Operators:
                     old_position, old_time = recovery_times.get(
                         occupant.name, (None, None)
                     )
-                    bed.time = old_time if (old_position == bed.position) else None
+                    bed.time = (
+                        old_time
+                        if old_position == bed.position
+                        and bed.position[0] not in changed_dorms
+                        else None
+                    )
                 else:
                     bed.reset()
         return projected

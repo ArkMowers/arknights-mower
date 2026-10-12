@@ -406,20 +406,38 @@ def test_backup_deactivation_uses_pending_final_arrangement(meeting_transition):
         solver.plan_metadata()
         meeting_tasks = [t for t in solver.tasks if "meeting" in t.plan]
         assert meeting_tasks == [correction]
-        assert correction.plan == {"meeting": ["信仰搅拌机", "跃跃"]}
-        assert return_task(solver).plan == {"central": ["歌蕾蒂娅"]}
-        assert return_task(solver).time == base.datetime.now() + timedelta(
-            hours=2, minutes=-8
-        )
+        assert correction.plan == {
+            "meeting": ["信仰搅拌机", "跃跃"],
+            "dormitory_1": ["Current", "Current", "歌蕾蒂娅", "Free", "Current"],
+        }
+        # 原单回目标回班后重新分配，受影响室友等待最终阵容实读。
+        assert not any(t.type == TaskTypes.SHIFT_ON for t in solver.tasks)
     # 计划中的回班不应提前清空真实床位，也不能触发真实位置变更回调。
     assert solver.op_data.dorm[0].name == "信仰搅拌机"
     assert solver.op_data.operators["信仰搅拌机"].current_room == "dormitory_1"
+    solver.op_data = solver.op_data.project_arrangements([correction.plan])
+    solver.tasks.remove(correction)
+    bed = solver.op_data.get_dorm_by_name("歌蕾蒂娅")[1]
+    assert bed.time is None
+    solver.op_data.refresh_dorm_time(
+        *bed.position,
+        {"agent": bed.name, "time": base.datetime.now() + timedelta(hours=4)},
+    )
+    solver.plan_metadata()
+    assert return_task(solver).plan == {"central": ["歌蕾蒂娅"]}
+    assert return_task(solver).time == base.datetime.now() + timedelta(
+        hours=4, minutes=-8
+    )
 
 
 def test_cancelled_arrangement_restores_return_planning(meeting_transition):
     solver = meeting_transition
     assert solver.backup_plan_solver()
-    solver.tasks = [t for t in solver.tasks if t.type != TaskTypes.SELF_CORRECTION]
+    solver.tasks = [
+        t
+        for t in solver.tasks
+        if t.type not in (TaskTypes.SELF_CORRECTION, TaskTypes.RE_ORDER)
+    ]
     solver.plan_metadata()
     assert any(
         t.type == TaskTypes.SHIFT_ON
@@ -461,6 +479,7 @@ def test_arrangement_projection_invalidates_moved_timer_without_touching_live_st
 def test_pending_migration_precedes_dependent_return(meeting_transition, task_type):
     solver = meeting_transition
     assert solver.op_data.swap_plan([True, False], refresh=True) is None
+    move_to_independent_dorm(solver.op_data, "信仰搅拌机")
     migration = SchedulerTask(
         time=base.datetime.now() + timedelta(hours=3),
         task_type=task_type,
@@ -490,12 +509,33 @@ def test_pending_migration_precedes_dependent_return(meeting_transition, task_ty
     assert dependent.time > migration.time
 
 
+def move_to_independent_dorm(data, name):
+    """真正独立的回班来自未改变阵容的另一间宿舍。"""
+    room = "dormitory_2"
+    data.plan[room] = [
+        Room("杜林", "", []),
+        Room("桃金娘", "", []),
+        *[Room("Free", "", []) for _ in range(3)],
+    ]
+    for index, manager in enumerate(("杜林", "桃金娘")):
+        data.add(operators.Operator(manager, room, index=index))
+        data.operators[manager].current_room = room
+        data.operators[manager].current_index = index
+    bed = data.get_dorm_by_name(name)[1]
+    deadline = bed.time
+    bed.reset()
+    data.operators[name].current_room = room
+    data.operators[name].current_index = 2
+    data.dorm.append(operators.Dormitory((room, 2), name, deadline))
+
+
 def test_pending_migration_release_uses_destination_and_preserves_other_returns(
     meeting_transition,
 ):
     solver = meeting_transition
     data = solver.op_data
     assert data.swap_plan([True, False], refresh=True) is None
+    move_to_independent_dorm(data, "歌蕾蒂娅")
     data.config.free_room = True
     data.add(operators.Operator("九色鹿", ""))
     deer = data.operators["九色鹿"]
@@ -898,6 +938,7 @@ def test_backup_priority_change_moves_existing_sleeper_once(
     reset_default_plan(solver)
     room, index = destination
     original_room = solver.op_data.operators["黑键"].current_room
+    original_time = solver.op_data.get_dorm_by_name("黑键")[1].time
     if path == "projection":
         task = SchedulerTask(
             task_type=TaskTypes.SHIFT_OFF, task_plan={"contact": ["红"]}
@@ -911,7 +952,9 @@ def test_backup_priority_change_moves_existing_sleeper_once(
         task = next(t for t in solver.tasks if t.type == TaskTypes.RE_ORDER)
         assert task.plan[room][index] == "黑键"
         assert task.plan["dormitory_1"][2] == "Free"
-        assert solver.op_data.get_dorm_by_name("黑键")[1].time is None
+        assert solver.op_data.get_dorm_by_name("黑键")[1].time == original_time
+        projected = solver.op_data.project_arrangements([task.plan])
+        assert projected.get_dorm_by_name("黑键")[1].time is None
         assert not solver.backup_plan_solver()
         assert sum(t.type == TaskTypes.RE_ORDER for t in solver.tasks) == 1
     assert solver.op_data.operators["黑键"].current_room == original_room

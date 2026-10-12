@@ -215,7 +215,7 @@ def test_fill_task_preserves_crafting_order_after_candidate_merge(crafting):
 
 
 @pytest.mark.parametrize("occupied", [False, True])
-def test_crafting_order_preserves_existing_targets_and_locality(crafting, occupied):
+def test_crafting_order_preserves_existing_targets_and_global_order(crafting, occupied):
     from arknights_mower.utils.operators import Dormitory
     from arknights_mower.utils.plan import Room
     from arknights_mower.utils.scheduler_task import prioritize_new_dorm_recovery
@@ -242,7 +242,11 @@ def test_crafting_order_preserves_existing_targets_and_locality(crafting, occupi
     }
     result = prioritize_new_dorm_recovery(crafting, plan)
     projected = crafting.project_arrangements([result])
-    assert projected.get_current_operator(room, 3).name == "年"
+    assert projected.get_current_operator(room, 3).name == (
+        "年" if occupied else "九色鹿"
+    )
     assert projected.get_current_operator(other, 0).name == "芬"
-    assert projected.get_current_operator(other, 1).name == "九色鹿"
-    assert set(result) == {room}
+    assert projected.get_current_operator(other, 1).name == (
+        "九色鹿" if occupied else "赫拉格"
+    )
+    assert set(result) == ({room} if occupied else {room, other})

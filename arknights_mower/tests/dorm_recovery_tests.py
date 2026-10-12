@@ -3,7 +3,7 @@
 import copy
 import pickle
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -238,6 +238,54 @@ def test_only_once_while_target_stays_in_room(solver):
     target = solver.op_data.operators["银灰"]
     target.current_index = 4
     assert recovery_order_plan(solver.op_data, ROOM, FINAL) is not None
+
+
+def test_ordinary_replacement_refreshes_room_timing_without_repeating_single_target(
+    solver,
+):
+    arrange(solver)
+    confirmations = len(solver.confirms)
+    due = datetime.now() + timedelta(hours=3)
+    for bed in solver.op_data.all_dorms():
+        bed.time = due
+    target = solver.op_data.operators["银灰"]
+    marker = (
+        target.dorm_recovery_room,
+        target.dorm_recovery_index,
+        target.dorm_recovery_fixed,
+    )
+    read = solver.get_agent_from_room.side_effect
+    observed = []
+
+    def observe(room, read_time_index=None, *, departing_plan=None):
+        if departing_plan is None:
+            observed.append(
+                ([bed.time for bed in solver.op_data.all_dorms()], read_time_index)
+            )
+        return read(room, read_time_index)
+
+    solver.get_agent_from_room.side_effect = observe
+    arrange(solver, ["杜林", "琴柳", "红", "银灰", "黑角"])
+    assert len(solver.confirms) == confirmations + 1
+    assert observed[-1] == ([None, None], [3, 4])
+    assert (
+        target.dorm_recovery_room,
+        target.dorm_recovery_index,
+        target.dorm_recovery_fixed,
+    ) == marker
+
+
+def test_already_matching_roster_refreshes_timing_after_cross_room_arrangement(solver):
+    arrange(solver)
+    due = datetime.now() + timedelta(hours=3)
+    for bed in solver.op_data.all_dorms():
+        bed.time = due
+    confirmations = len(solver.confirms)
+    solver.task.plan = {ROOM: FINAL.copy()}
+    solver.agent_arrange_room({}, ROOM, solver.task.plan, get_time=True)
+    assert len(solver.confirms) == confirmations
+    assert all(bed.time is None for bed in solver.op_data.all_dorms())
+    assert solver.reads[-1] == [3, 4]
 
 
 def test_backup_plan_ordinary_manager_change_keeps_same_target(solver):

@@ -3690,6 +3690,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         )
 
         explicit_names = _assigned_operator_names(transition_plan)
+        explicit_dorm_slots = {
+            (room, index)
+            for room, names in transition_plan.items()
+            if room.startswith("dorm")
+            for index, name in enumerate(names)
+            if name != "Current"
+        }
         preserved = {
             op.name: (op.current_room, op.current_index)
             for room, index in replacement_positions
@@ -3719,7 +3726,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             reserved_slots,
         ):
             return None
-        # 替班不足时允许召回本人；其余主班仍保留原位置与恢复时间。
+        # 替班不足时允许召回本人；其余主班保留位置，阵容变化可使计时失效。
         assigned = _assigned_operator_names(transition_plan)
         preserved = {
             name: position
@@ -3758,7 +3765,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 previous_dorms,
                 reserved_names=_assigned_operator_names(transition_plan)
                 | (reserved_names if priority_changed else set()),
-                reorder=priority_changed,
+                # 先只迁移失效床位，最终由统一分配入口纠正层级并保留同级原位。
+                reorder=False,
                 reserved_slots=(
                     reserved_slots
                     | {
@@ -3771,7 +3779,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     else ()
                 ),
             )
-            self.op_data.dorm = migration_data.dorm
             _merge_shift_transition(transition_plan, dorm_migration, self.op_data)
             # 副表收回原床位时沿用宿舍迁移结果；新床的恢复时间须重新读取。
             for room, names in dorm_migration.items():
@@ -3779,9 +3786,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     if name in recovery and recovery[name][0] != (room, index):
                         preserved[name] = (room, index)
                         recovery[name] = ((room, index), None)
-                        for bed in self.op_data.all_dorms():
-                            if bed.name == name:
-                                bed.time = None
         else:
             logger.debug("副表未改变宿舍床位或房间顺序，跳过宿舍重排")
 
@@ -3807,7 +3811,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if bed.name in preserved
             }
             if any(
-                projected_recovery.get(name) != expected
+                projected_recovery.get(name) not in (expected, (expected[0], None))
                 for name, expected in recovery.items()
             ):
                 return None
@@ -3816,7 +3820,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             for room, names in transition_plan.items()
             if any(name != "Current" for name in names)
         }
-        return transition_plan
+        return prioritize_new_dorm_recovery(
+            self.op_data,
+            transition_plan,
+            reserved_slots | explicit_dorm_slots,
+            reserved_names=reserved_names,
+            configuration_changed=previous_dorm_layout != current_dorm_layout,
+        )
 
     def _coalesce_backup_transition(self, transition):
         """切表的新意图替换同轮旧安排，保留同批其他成员；返回被合并的任务。"""
@@ -4927,7 +4937,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             task.plan = prioritize_new_dorm_recovery(
                 self.op_data,
                 task.plan,
-                reserved_slots,
+                reserved_slots | set(getattr(task, "backup_explicit_slots", ())),
                 reserved_names=reserved_names,
             )
             task.plan = plan_dorm_isolation(self.op_data, task.plan, reserved_slots)
@@ -5006,6 +5016,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         for _ in range(64):
             simulation.tasks = copy.deepcopy(pending)
             simulation.task = step
+            previous_dorm_layout = dorm_rebalance_signature(simulation.op_data)
             simulation._prepare_shift_backup(step)
             explicit_slots = set(getattr(step, "backup_explicit_slots", ()))
             conditions = getattr(
@@ -5024,8 +5035,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             step.plan = prioritize_new_dorm_recovery(
                 simulation.op_data,
                 step.plan,
-                reserved_slots,
+                reserved_slots | explicit_slots,
                 reserved_names=reserved_names,
+                configuration_changed=previous_dorm_layout
+                != dorm_rebalance_signature(simulation.op_data),
             )
             step.plan = plan_dorm_isolation(
                 simulation.op_data, step.plan, reserved_slots
@@ -9509,7 +9522,21 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                                 return new_plan
                 self.turn_on_room_detail(room)
                 if reconcile_after_confirmation:
-                    actual = [item["agent"] for item in self.get_agent_from_room(room)]
+                    refresh_indexes = []
+                    if (
+                        room.startswith("dorm")
+                        and self.task.type != TaskTypes.FIAMMETTA
+                    ):
+                        self.op_data.invalidate_dorm_time(room)
+                        refresh_indexes = self.op_data.get_refresh_index(
+                            room,
+                            plan[room],
+                            group_transitions=self._execution_group_transitions(plan),
+                        )
+                    actual = [
+                        item["agent"]
+                        for item in self.get_agent_from_room(room, refresh_indexes)
+                    ]
                     reconcile_after_confirmation = False
                     selection_was_attempted = reconcile_after_selection
                     reconcile_after_selection = False
@@ -9690,6 +9717,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     )
 
                 if choose_error > 0:
+                    if room.startswith("dorm") and not fia_arrangement:
+                        self.op_data.invalidate_dorm_time(room)
+                        read_time_index = self.op_data.get_refresh_index(
+                            room,
+                            plan[room],
+                            group_transitions=self._execution_group_transitions(plan),
+                        )
                     if len(new_plan) > 1:
                         self.op_data.operators["菲亚梅塔"].time_stamp = None
                         self.op_data.operators[plan[room][0]].time_stamp = None
@@ -9793,6 +9827,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             )
                         confirmation_pending = True
                         self.tap_confirm(room, new_plan)
+                    if room.startswith("dorm") and not fia_arrangement:
+                        # 换人也会改变未移动住客的同住加成，最终阵容全部重新计时。
+                        self.op_data.invalidate_dorm_time(room)
+                        read_time_index = self.op_data.get_refresh_index(
+                            room,
+                            plan[room],
+                            group_transitions=self._execution_group_transitions(plan),
+                        )
                     if len(new_plan) > 1:
                         self.op_data.operators["菲亚梅塔"].time_stamp = None
                         self.op_data.operators[plan[room][0]].time_stamp = None
@@ -9815,6 +9857,19 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     if fia_arrangement:
                         # 失败重试或回岗名单恰好一致，也必须刷新充能后的计时。
                         self.get_agent_from_room(room, read_time_index)
+                    elif room.startswith("dorm") and get_time:
+                        # 跨房换人可能已从本房拉走住客，即使剩余名单相同也须复读。
+                        self.op_data.invalidate_dorm_time(room)
+                        self.get_agent_from_room(
+                            room,
+                            self.op_data.get_refresh_index(
+                                room,
+                                plan[room],
+                                group_transitions=self._execution_group_transitions(
+                                    plan
+                                ),
+                            ),
+                        )
                     logger.info(f"任务与当前房间相同，跳过安排{room}人员")
                 if selection_attempted or choose_error > 0:
                     self.record_selection_success()

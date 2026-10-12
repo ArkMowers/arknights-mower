@@ -1,11 +1,13 @@
 ---
 title: Admission Preemption and Vacant Recovery
-status: implemented
+status: archived
 category: bug-fix
 date: 2026-10-06
 ---
 
 # Admission Preemption and Vacant Recovery
+
+The [stable dormitory recovery order](../../implemented/bug-fix/2026-10-12-stable-dorm-recovery-order.md) supersedes this allocation policy; the remainder records the historical implementation.
 
 ## Contract
 

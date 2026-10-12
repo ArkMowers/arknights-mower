@@ -157,6 +157,12 @@ def test_departed_operator_waits_without_recalling_group_or_refilling(
         solver.op_data.operators[name].rest_mood_release_limit = 12
     assert solver.op_data.operators[name].current_room == ""
     assert solver.op_data.operators["絮雨"].is_resting()
+    # 同住者离宿后，等待最终阵容的新计时，不能沿用原四小时的恢复记录。
+    _, remaining_bed = solver.op_data.get_dorm_by_name("絮雨")
+    assert remaining_bed.time is None
+    solver.op_data.refresh_dorm_time(
+        "dormitory_1", 2, {"agent": "絮雨", "time": NOW + timedelta(hours=5)}
+    )
     solver.task, solver.tasks = None, []
     correction = solver.agent_get_mood(read_rooms=False, return_plan=True)
     assert all(room.startswith("dorm") for room in correction)
@@ -165,6 +171,7 @@ def test_departed_operator_waits_without_recalling_group_or_refilling(
     assert not any(t.strict_mood_limit for t in solver.tasks)
     group_return = next(t for t in solver.tasks if t.type == TaskTypes.SHIFT_ON)
     assert group_return.plan["central"] == [name]
+    assert group_return.time > NOW + timedelta(hours=4)
     solver.enter_room.assert_not_called()
 
 
