@@ -27,13 +27,7 @@ description: 为 Arknights Mower 编写或更新中文 PR 标题和正文，用 
 
 ## 2. 合成标题
 
-从提纲选出核心变化、具体对象和前后结果，先确定标题的完整宾语，再选择动作并合成单一动宾短语。一个主要动作支配一个完整对象；对象中可以包含辨认变化所需的条件、场景和结果。次要变化进入正文，不将多条完整规则压入标题。
-
-标题必须遵循 [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/)。以下规则补充项目类型选择和中文表达要求。
-
-格式为 `<type>(<scope>): <description>`。type 从 `feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`build`、`ci`、`chore`、`revert` 中按主要目的选择。scope 选填，省略时一并省略括号，采用项目已有英文范围名称；冒号后一个空格，中文描述末尾不加句号。
-
-标题的宾语采用需求与最终 diff 共同指向的对象，保留材料给出的名称与种类；描述写出该对象在修改前后的差异，修改目的放在正文。type 表示改动性质。描述不含开发过程编号或临时标记，不用 `+`、`/`、`、` 串联不同动作。
+读取 mower-commit 维护的[共享标题规则](../mower-commit/references/title.md)，根据整个 PR 的最终 diff 和本节之前整理的事实项生成标题。
 
 ## 3. 按审阅顺序组织段落
 
