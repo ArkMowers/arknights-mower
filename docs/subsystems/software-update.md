@@ -12,23 +12,23 @@
 
 ## 3. Subsystem Invariants
 
-- **[INV-UPD-10] Cleanup Contention Isolation**: The [backup cleanup boundary](#16-backup-cleanup-contention) distinguishes routine lock contention from failed maintenance and preserves pending records.
-- **[INV-UPD-09] Local Update Cache**: Software update coordination, uploads, downloaded packages and job workspaces reside under shared `@app/tmp/updates/`, with installation identity isolation; package-inspection temporary directories use the same tree instead of system cache or temporary directories.
+- <a id="cleanup-contention-isolation"></a>**Cleanup Contention Isolation**: The [backup cleanup boundary](#16-backup-cleanup-contention) distinguishes routine lock contention from failed maintenance and preserves pending records.
+- <a id="local-update-cache"></a>**Local Update Cache**: Software update coordination, uploads, downloaded packages and job workspaces reside under shared `@app/tmp/updates/`, with installation identity isolation; package-inspection temporary directories use the same tree instead of system cache or temporary directories.
 
-- **[INV-UPD-08] Elevated Windows Desktop Launch**: Both packaged Windows desktop executables require administrator elevation before application startup; manager-launched instances inherit the manager's elevated token through ordinary process creation.
+- <a id="elevated-windows-desktop-launch"></a>**Elevated Windows Desktop Launch**: Both packaged Windows desktop executables require administrator elevation before application startup; manager-launched instances inherit the manager's elevated token through ordinary process creation.
 
-- **[INV-UPD-06] Cross-Channel Upgrade Selection**: Installed development and beta channels admit newer installable releases from more stable channels, preserve the selected channel and use only a verified OTA from the exact installed version to the selected target.
+- <a id="cross-channel-upgrade-selection"></a>**Cross-Channel Upgrade Selection**: Installed development and beta channels admit newer installable releases from more stable channels, preserve the selected channel and use only a verified OTA from the exact installed version to the selected target.
 
-- **[INV-RES-01] Template Glyph Coverage**: Resource generation requires a real glyph for each rendered character and preserves the calibrated glyphs already present in its subsets. Missing source coverage stops generation before either subset file changes.
+- <a id="template-glyph-coverage"></a>**Template Glyph Coverage**: Resource generation requires a real glyph for each rendered character and preserves the calibrated glyphs already present in its subsets. Missing source coverage stops generation before either subset file changes. Expansion verifies actual character maps, uses only the matching game font, and preserves existing glyphs and metrics.
 
-- **[INV-UPD-04] MAA Resource Platform Parity**: Installed MAA on Windows, macOS and Linux exposes independent resource checks and updates; installation preserves core and Python files, rejects active MAA use, and retains resource rollback copies.
-- **[INV-UPD-05] Release Artifact Scope**: Future release builds exclude macOS x64; OTA publication targets only Windows x64 and Android ARM64, including Nightly, and rejects unsafe Android runtime paths without publishing a new channel index.
+- <a id="maa-resource-platform-parity"></a>**MAA Resource Platform Parity**: Installed MAA on Windows, macOS and Linux exposes independent resource checks and updates; installation preserves core and Python files, rejects active MAA use, and retains resource rollback copies.
+- <a id="release-artifact-scope"></a>**Release Artifact Scope**: Future release builds exclude macOS x64; OTA publication targets only Windows x64 and Android ARM64, including Nightly, and rejects unsafe Android runtime paths without publishing a new channel index.
 
-- **[INV-UPD-07] Shared Skill Data Packaging**: Application archives contain the backend-owned building-skill catalog independently of frontend sources or build output; both backend consumers and the frontend share that catalog, while resource packages retain their historical entry path for existing clients.
-- **[INV-UPD-03] Nightly Direction Evidence**: Same-alpha Nightly updates use valid publication times or verified upstream commit ancestry to determine direction; missing index history alone never establishes a downgrade, and unverified direction retains manual confirmation.
-- **[INV-UPD-01] Owned Command Completion**: Windows update commands own their descendants before execution and verify tree completion within a finite budget before releasing the temporary checkout; cancellation preserves other application instances.
-- **[INV-UPD-02] Complete Registration Scan**: Strict registration scans retry unreadable files within one shared monotonic budget, preserve unverified registrations and raise `InstanceScanError` when that budget expires instead of returning an incomplete snapshot.
-- **[INV-UI-07] Facility Update Drop Isolation**: The Scheduling Plan facility layout, including every card, background and gap, suppresses and clears global update drag hints without intercepting facility sorting; other page regions retain update-package drops.
+- <a id="shared-skill-data-packaging"></a>**Shared Skill Data Packaging**: Application archives contain the backend-owned building-skill catalog independently of frontend sources or build output; both backend consumers and the frontend share that catalog, while resource packages retain their historical entry path for existing clients.
+- <a id="nightly-direction-evidence"></a>**Nightly Direction Evidence**: Same-alpha Nightly updates use valid publication times or verified upstream commit ancestry to determine direction; missing index history alone never establishes a downgrade, and unverified direction retains manual confirmation.
+- <a id="owned-command-completion"></a>**Owned Command Completion**: Windows update commands own their descendants before execution and verify tree completion within a finite budget before releasing the temporary checkout; cancellation preserves other application instances.
+- <a id="complete-registration-scan"></a>**Complete Registration Scan**: Strict registration scans retry unreadable files within one shared monotonic budget, preserve unverified registrations and raise `InstanceScanError` when that budget expires instead of returning an incomplete snapshot.
+- <a id="facility-update-drop-isolation"></a>**Facility Update Drop Isolation**: The Scheduling Plan facility layout, including every card, background and gap, suppresses and clears global update drag hints without intercepting facility sorting; other page regions retain update-package drops.
 
 ## 4. Registration Scan Boundary
 

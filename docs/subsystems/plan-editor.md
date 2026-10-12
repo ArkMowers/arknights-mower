@@ -12,12 +12,12 @@ Image export splits the complete compressed Scheduling Plan into fourteen QR cod
 
 ## 3. Subsystem Invariants
 
-- **[INV-UI-10] Operator Replacement Coverage**: One-click replacement candidates and existing-target warnings include primary operators and replacements from every main and backup plan binding, without duplicate names or mutations during collection.
+- <a id="operator-replacement-coverage"></a>**Operator Replacement Coverage**: One-click replacement candidates and existing-target warnings include primary operators and replacements from every main and backup plan binding, without duplicate names or mutations during collection.
 
-- **[INV-SCHED-26] Backup Operator List Removal**: Active backups apply operator additions followed by per-field removals in backup order; deactivation rebuilds effective lists from the main Scheduling Plan and remaining active backups without mutating source lists, and legacy backups retain additive behavior.
+- <a id="backup-operator-list-removal"></a>**Backup Operator List Removal**: Active backups apply operator additions followed by per-field removals in backup order; deactivation rebuilds effective lists from the main Scheduling Plan and remaining active backups without mutating source lists, and legacy backups retain additive behavior.
 
-- **[INV-UI-09] Backup Facility Import Isolation**: Importing a main-plan facility replaces only the selected backup facility with a deep copy of its type, product and operator bindings; subsequent edits preserve the source main plan, other facilities, backup conditions and explicit staffing tasks, and the edit lock prevents import.
-- **[INV-UI-08] Facility Display Order Isolation**: The local `right_side_room_order` permutes office, training and recycling positions for display and map navigation; dragging preserves every Scheduling Plan facility identity, assignment, condition and task, and the order remains absent from plan exports.
+- <a id="backup-facility-import-isolation"></a>**Backup Facility Import Isolation**: Importing a main-plan facility replaces only the selected backup facility with a deep copy of its type, product and operator bindings; subsequent edits preserve the source main plan, other facilities, backup conditions and explicit staffing tasks, and the edit lock prevents import.
+- <a id="facility-display-order-isolation"></a>**Facility Display Order Isolation**: The local `right_side_room_order` permutes office, training and recycling positions for display and map navigation; dragging preserves every Scheduling Plan facility identity, assignment, condition and task, and the order remains absent from plan exports.
 
 The [recycling and local layout decision](../../.agents/notes/implemented/feature/2026-10-08-recycle-station-selection.md) records shared rendering, legacy migration and verification.
 

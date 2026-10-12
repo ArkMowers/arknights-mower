@@ -10,9 +10,9 @@ The list and table editors share `maa_weekly_plan`. The weekly editor owns the r
 
 ## 3. Subsystem Invariants
 
-- **[INV-UI-06] Chip Priority Selection**: The chip-limit button selects every chip stage on the weekdays permitted by the availability filter, promotes all eight chip rows below annihilation and synchronizes daily execution priority while preserving existing selections, other row order and daily settings; every row remains freely sortable afterward.
-- **[INV-UI-05] Chip Limit Preset Isolation**: The chip preset replaces each PR-A/B/C/D-1/2 limit rule with enabled AND conditions for its endpoint-provided drops at 5 small chips or 8 chip packs, without duplicating rules or changing other stage rules or inventory enablement.
-- **[INV-UI-04] Weekly Availability Display**: Weekly table cells show unavailable placeholders and styling only while the availability filter is enabled; disabling it permits every weekday without changing saved selections.
+- <a id="chip-priority-selection"></a>**Chip Priority Selection**: The chip-limit button selects every chip stage on the weekdays permitted by the availability filter, promotes all eight chip rows below annihilation and synchronizes daily execution priority while preserving existing selections, other row order and daily settings; every row remains freely sortable afterward.
+- <a id="chip-limit-preset-isolation"></a>**Chip Limit Preset Isolation**: The chip preset replaces each PR-A/B/C/D-1/2 limit rule with enabled AND conditions for its endpoint-provided drops at 5 small chips or 8 chip packs, without duplicating rules or changing other stage rules or inventory enablement.
+- <a id="weekly-availability-display"></a>**Weekly Availability Display**: Weekly table cells show unavailable placeholders and styling only while the availability filter is enabled; disabling it permits every weekday without changing saved selections.
 
 The [availability display decision](../../.agents/notes/implemented/bug-fix/2026-10-04-weekly-availability-placeholder.md) records implementation and focused verification.
 

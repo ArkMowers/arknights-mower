@@ -86,18 +86,19 @@ Arknights Mower consists of four decoupled layers:
 
 ---
 
-## 2. Invariant Traceability Matrix
+## 2. Find the implementation and verification
 
-The system enforces six core architectural invariants defined in [CODING_STANDARDS.md](../CODING_STANDARDS.md):
+Start with the affected user operation. The linked contracts provide current behavior and focused test choices; [Coding Standards](../CODING_STANDARDS.md) owns global guarantees.
 
-| Invariant | Name | Scope | Enforcement Mechanism | Verification Suite |
-| :--- | :--- | :--- | :--- | :--- |
-| `[INV-01]` | Transient vs Persisted Isolation | Config / Device | `DeviceProfile` serializes explicit fields only; discovery candidates stay in-memory | `device_config_tests.py` |
-| `[INV-02]` | Target Rebinding Clears Endpoints | Session / Device | Switching presets or instances invalidates `last_serial` immediately | `device_session_tests.py` |
-| `[INV-03]` | Failure Preserves Target Identity | Session / Driver | Failed readiness or discovery halts without drifting to host devices | `device_session_tests.py` |
-| `[INV-04]` | IPC Pair Cohesion | Capture / Touch | MuMu IPC capture and touch backends require simultaneous selection | `device_config_tests.py` |
-| `[INV-05]` | Shared ADB Guard | Transport / ADB | Socket-level handshake checks server liveness; forbids implicit `kill-server` | `device_session_io_tests.py` |
-| `[INV-06]` | Domain Glossary Synchronization | Docs / Governance | [Concept-impact review](../CODING_STANDARDS.md#1-core-invariants) | Manual semantic review; `verify_governance_tests.py` covers structural reporting |
+| Task | Source entry | Contract or procedure |
+| :--- | :--- | :--- |
+| Change device settings, discover an instance or recover a connection | [`server.py`](../server.py), [`DeviceControl`](../arknights_mower/utils/device/application.py) | [Device Control task entry](subsystems/device-control.md#start-with-the-affected-operation), [connection diagnosis](cookbook/device-troubleshooting.md) |
+| Change plan validation, shift projection or confirmed staffing | [`BaseSchedulerSolver`](../arknights_mower/solvers/base_schedule.py), [`Operators`](../arknights_mower/utils/operators.py) | [Base Scheduling task entry](subsystems/base-scheduler.md#start-with-the-affected-operation) |
+| Change the settings or plan editor UI | [`ui/src/components/`](../ui/src/components/), [`ui/src/stores/`](../ui/src/stores/) | [Frontend development and focused tests](../ui/README.md), [UI contract](../ui/AGENTS.md) |
+| Change shipped files or software/resource updates | [`scripts/`](../scripts/), [`software_update.py`](../arknights_mower/utils/software_update.py), [`resource_update_job.py`](../arknights_mower/utils/resource_update_job.py) | [Packaging](cookbook/packaging.md), [software update](subsystems/software-update.md), [resource update](subsystems/resource-update.md) |
+| Change documentation or agent instructions | [`scripts/verify_governance.py`](../scripts/verify_governance.py) | [Task selection and verification](../.agents/AGENTS.md), [documentation routing](../.agents/skills/mower-doc/references/doc-hierarchy.md#routing-rules) |
+
+Run focused Python checks from the repository root and frontend checks from `ui/`, as specified by the linked procedure. Offline tests verify the behavior exercised by their fixtures; document checks verify structure and links. Neither establishes a successful game operation. Report observed device results and remaining uncertainty separately.
 
 ---
 
@@ -111,3 +112,8 @@ Every acquired runtime resource (temporary screen geometry overrides, child proc
 
 ### 3.3 Structured Verdicts
 External device interactions produce structured status verdicts ([`ReadinessResult`](../arknights_mower/utils/device/session.py)) containing concrete classifications (`absent`, `offline`, `booting`, `ready`) and remediation guidance rather than unhandled tracebacks.
+
+<a id="standard-canvas-frame-contract"></a>
+### 3.4 Standard Canvas Frame Contract
+
+Recognition models operate exclusively on standard 1920×1080 pure RGB matrices. Recognition failures return structured verdicts without blocking the scheduler dispatch loop. The capture boundary is defined in [Device Control](subsystems/device-control.md#4-capture-frame-contract--storage); [`recognize.py`](../arknights_mower/utils/recognize.py) and [`BaseSchedulerSolver`](../arknights_mower/solvers/base_schedule.py) implement recognition and scheduling dispatch.

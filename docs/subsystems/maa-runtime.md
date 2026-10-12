@@ -28,4 +28,6 @@ Android retains its host-managed core lifecycle. Configuration schemas, Scheduli
 
 ## 4. Subsystem Invariants
 
-[INV-MAA-11] is registered in [Coding Standards](../../CODING_STANDARDS.md#28-maa-integration). [Core generation validation](../../.agents/notes/implemented/bug-fix/2026-10-05-maa-core-generation.md) records the decision and focused verification.
+- <a id="maa-core-generation"></a>**MAA Core Generation**: Desktop initialization verifies the loaded core against an independent disk version and resolved target identity before connection; changed cores reload at most once after native instances are released and actual image unloading is confirmed. Unverified ownership, unconfirmed unloading or failed reload requires a process restart.
+
+[Core generation validation](../../.agents/notes/implemented/bug-fix/2026-10-05-maa-core-generation.md) records the decision and focused verification.

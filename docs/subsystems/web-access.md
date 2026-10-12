@@ -20,12 +20,12 @@ The log schedule page opens in time browsing with adjacent ten-minute windows an
 
 ## 4. Subsystem Invariants
 
-- **[INV-WEB-04] Frontend Navigation Dispatch**: Known frontend page navigation resolves before API dispatch according to the [frontend navigation contract](#6-frontend-navigation).
+- <a id="frontend-navigation-dispatch"></a>**Frontend Navigation Dispatch**: Known frontend page navigation resolves before API dispatch according to the [frontend navigation contract](#6-frontend-navigation).
 
-- **[INV-UI-12] Log Window Cohesion**: Displayed logs, screenshot navigation and export share one loaded time window or error archive; date drafts and superseded requests never replace that source, and failed source changes expose no stale evidence.
+- <a id="log-window-cohesion"></a>**Log Window Cohesion**: Displayed logs, screenshot navigation and export share one loaded time window or error archive; date drafts and superseded requests never replace that source, and failed source changes expose no stale evidence.
 
-- **[INV-WEB-01] Local Log Read Boundary**: A WebView session without a configured token permits read-only log requests from loopback with valid browser origin metadata; remote and cross-origin requests are rejected, and AI chat and mutating endpoints retain their credential checks.
-- **[INV-WEB-02] Credentialed Log Forwarding**: Log WebSockets with a valid first-frame token are authorized independently of Origin, Host and forwarded headers; tokenless access remains restricted to the local log-read boundary.
+- <a id="local-log-read-boundary"></a>**Local Log Read Boundary**: A WebView session without a configured token permits read-only log requests from loopback with valid browser origin metadata; remote and cross-origin requests are rejected, and AI chat and mutating endpoints retain their credential checks.
+- <a id="credentialed-log-forwarding"></a>**Credentialed Log Forwarding**: Log WebSockets with a valid first-frame token are authorized independently of Origin, Host and forwarded headers; tokenless access remains restricted to the local log-read boundary.
 
 The [local log access decision](../../.agents/notes/implemented/bug-fix/2026-09-29-local-log-access.md) records the regression and verification.
 
@@ -39,7 +39,7 @@ The startup worker waits for the active software update operation to finish. Whe
 
 Update and process-operation restarts preserve their explicit policy: `MOWER_RESUME_MODE` values `0` and `1` select that task mode; otherwise `MOWER_RESTART_JOB` requires `MOWER_RESUME_RUN=1` and resumes mode `2`. The persisted autostart option does not override an explicit stopped restart. Other hosts that do not claim desktop startup ownership retain their existing frontend fallback; this change does not alter the separate Android launcher.
 
-[INV-WEB-03] governs this boundary. The [desktop startup decision](../../.agents/notes/implemented/bug-fix/2026-10-11-desktop-process-autostart.md) records the cause and verification.
+The [desktop startup decision](../../.agents/notes/implemented/bug-fix/2026-10-11-desktop-process-autostart.md) records the cause and verification.
 
 ## 6. Frontend Navigation
 

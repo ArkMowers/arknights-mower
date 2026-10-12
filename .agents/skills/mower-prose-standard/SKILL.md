@@ -12,7 +12,7 @@ Inputs: requested text and its authoritative role. Output: precise prose or read
 
 ## Prose Review
 
-1. Apply the [placement rules](../mower-doc/references/doc-hierarchy.md#routing-rules) before phrasing. Definitions describe concept identity; contracts describe guarantees; procedures describe actions. Existing invariants can be referenced without registering a new one.
+1. Apply the [placement rules](../mower-doc/references/doc-hierarchy.md#routing-rules) before phrasing. Definitions describe concept identity; contracts describe guarantees; procedures describe actions. Refer to business rules by behavior names and direct contract links.
 2. State the subject and its observable behavior directly. Describe current contracts in present tense. Decision rationale and postmortem context retain their own role rather than becoming scratchpad reasoning or duplicate specifications.
 3. Consult the [terminology guide](references/mower-terminology-guide.md) to reach the authoritative glossary and approval rules. Use canonical terms, keep valid factual constraints and remove filler.
 4. Verify affected relative links and apply structural checks appropriate to the change. Prose editing alone creates no record or lifecycle transition.

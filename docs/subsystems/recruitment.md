@@ -10,7 +10,7 @@
 
 ## 3. Subsystem Invariants
 
-- **[INV-RECRUIT-01] Manual Selection Authority**: Manual five-star recruitment never queues automatic selection unless the unique-choice exception is enabled and exactly one calculated choice remains.
+- <a id="manual-selection-authority"></a>**Manual Selection Authority**: Manual five-star recruitment never queues automatic selection unless the unique-choice exception is enabled and exactly one calculated choice remains.
 
 ## 4. Verification
 

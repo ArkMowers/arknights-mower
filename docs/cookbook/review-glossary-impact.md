@@ -1,6 +1,6 @@
 # Reviewing Glossary Impact
 
-Developer recipe for verifying the concept-impact branches of [INV-06](../../CODING_STANDARDS.md#1-core-invariants). The [documentation routing rules](../../.agents/skills/mower-doc/references/doc-hierarchy.md#routing-rules) define content placement; [root directives](../../AGENTS.md#4-global-execution-constraints) define glossary approval.
+Developer recipe for verifying the branches of [Concept Impact Review](../../CODING_STANDARDS.md#concept-impact-review). The [documentation routing rules](../../.agents/skills/mower-doc/references/doc-hierarchy.md#routing-rules) define content placement; [root directives](../../AGENTS.md#4-global-execution-constraints) define glossary approval.
 
 ## 1. Compare Concepts Before and After
 

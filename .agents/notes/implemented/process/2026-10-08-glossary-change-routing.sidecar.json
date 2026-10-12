@@ -14,9 +14,15 @@
     "scripts.verify_governance.github_comparison_scope",
     "scripts.verify_agent_note_format.verify_agent_notes",
     "scripts.verify_agent_note_format.changed_note_paths",
-    "scripts.verify_agent_note_format.declared_invariants"
+    "scripts.verify_agent_note_format.declared_invariants",
+    "scripts.verify_doc_links.verify_doc_links",
+    "scripts.verify_doc_links._markdown_files",
+    "scripts.verify_agent_note_format.legacy_note_keys",
+    "scripts.verify_agent_note_format.verify_decision_source_links",
+    "scripts.verify_agent_note_format.verify_decision_body"
   ],
   "test_suites": [
-    "arknights_mower/tests/verify_governance_tests.py"
+    "arknights_mower/tests/verify_governance_tests.py",
+    "arknights_mower/tests/archive_agent_note_tests.py"
   ]
 }

@@ -9,7 +9,7 @@ date: 2026-10-11
 
 [中文](2026-10-11-maa-independent-updates.zh.md)
 
-Both automatic update policies follow the [registered MAA admission guarantee](../../../../CODING_STANDARDS.md#28-maa-integration), [INV-MAA-10].
+Both automatic update policies follow the [independent update admission contract](../../../../docs/subsystems/maa-integration.md#independent-update-admission), historically referenced as [INV-MAA-10].
 
 The simplification audit finds one combined automatic-check entry point in `MaaBasic.vue` and two existing update endpoints. The policy separates eligibility inside that entry point and reuses the endpoints, mutual exclusion and rollback copies. It introduces no additional update worker or independent installer.
 
