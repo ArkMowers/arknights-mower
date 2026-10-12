@@ -20,6 +20,12 @@ macOS retains the restart fallback because MAA registers Objective-C classes tha
 
 Android retains its host-managed core lifecycle. Configuration schemas, Scheduling Plans and device transport retain their existing contracts.
 
-## 3. Subsystem Invariants
+## 3. Explicit Update Completion
+
+`server._run_maa_resource_update` retains the loaded core after a resource-only installation. The next initialization reloads resources under the unchanged core identity. Android still packs the managed component and reports its service-restart requirement.
+
+`server._run_maa_update` separates committed installation from runtime activation. A post-install cleanup failure retains a successful job, its installed files and backup, and sets `result.restart_required` with process-restart guidance. A failed post-install disk-version probe retains the installation result, reports an unknown `installed_version` and asks the user to check the installation. Initialization still enforces core validation before connection. Installation failures remain errors; Windows pre-install cleanup must succeed before directory replacement to release native file locks.
+
+## 4. Subsystem Invariants
 
 [INV-MAA-11] is registered in [Coding Standards](../../CODING_STANDARDS.md#28-maa-integration). [Core generation validation](../../.agents/notes/implemented/bug-fix/2026-10-05-maa-core-generation.md) records the decision and focused verification.

@@ -1,11 +1,12 @@
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 import server
 from arknights_mower.utils.maa_resource_update import MaaResourceRelease
-from arknights_mower.utils.maa_update import MaaRelease, ReleaseAsset
+from arknights_mower.utils.maa_update import MaaRelease, MaaUpdateError, ReleaseAsset
 
 
 def _maa_release(version: str) -> MaaRelease:
@@ -768,6 +769,192 @@ class TestMaaUpdateRoutes(unittest.TestCase):
         data = response.get_json()
         self.assertFalse(data["ok"])
         self.assertIn("发现新版本后再更新", data["message"])
+
+
+class TestMaaUpdateWorkers(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.target = str(Path(self.temp.name) / "MAA")
+        self.client = server.app.test_client()
+        self.headers = (
+            {"token": server.app.token} if hasattr(server.app, "token") else {}
+        )
+        self.enterContext(patch.dict("os.environ", {"MOWER_ANDROID": "0"}))
+        for job in (server.maa_update_job, server.maa_resource_update_job):
+            self.enterContext(
+                patch.dict(job, {"status": "running", "result": None}, clear=True)
+            )
+
+    def core_result(self, system):
+        return {
+            "target": self.target,
+            "backup": self.target + ".old",
+            "version": "v6.20.0",
+            "source": "github",
+            "channel": "stable",
+            "operation": "update",
+            "platform": system,
+            "arch": "x64",
+            "python_downloaded": 10,
+            "python_full_size": 100,
+        }
+
+    def resource_result(self):
+        return {
+            "updated": True,
+            "target": self.target,
+            "backup": str(Path(self.target) / "resource.old"),
+            "version": "2026-10-12 00:00:00.000",
+            "source": "github",
+        }
+
+    def snapshot(self, kind):
+        return self.client.get(
+            f"/maa{kind}-update/status", headers=self.headers
+        ).get_json()["job"]
+
+    def test_resource_update_preserves_core_when_unloading_is_unsafe(self):
+        for system in ("darwin", "linux", "windows"):
+            with self.subTest(system=system):
+                result = self.resource_result()
+                with (
+                    patch(
+                        "arknights_mower.utils.maa_resource_update.install_maa_resource_update",
+                        return_value=result,
+                    ),
+                    patch(
+                        "arknights_mower.utils.maa_resource_update.read_maa_resource_info",
+                        return_value={"version": result["version"]},
+                    ),
+                    patch(
+                        "arknights_mower.utils.maa_update.clear_loaded_maa_cache",
+                        side_effect=MaaUpdateError("核心无法卸载，请重启 Mower"),
+                    ) as clear,
+                ):
+                    server._run_maa_resource_update(self.target, "github", "", system)
+                job = self.snapshot("-resource")
+                self.assertEqual(job["status"], "success")
+                self.assertEqual(job["result"]["backup"], result["backup"])
+                self.assertEqual(
+                    job["result"]["installed"]["version"], result["version"]
+                )
+                self.assertFalse(job["result"].get("restart_required"))
+                clear.assert_not_called()
+
+    def test_installed_core_update_preserves_result_when_restart_is_required(self):
+        for system in ("darwin", "linux", "windows"):
+            with self.subTest(system=system):
+                result = self.core_result(system)
+                with (
+                    patch(
+                        "arknights_mower.utils.maa_update.has_maa_installation",
+                        return_value=True,
+                    ),
+                    patch(
+                        "arknights_mower.utils.maa_update.install_latest_maa",
+                        return_value=result,
+                    ),
+                    patch(
+                        "arknights_mower.utils.maa_update.clear_loaded_maa_cache",
+                        side_effect=MaaUpdateError("核心无法卸载，请重启 Mower"),
+                    ),
+                    patch(
+                        "arknights_mower.utils.maa_update.read_installed_version",
+                        return_value=result["version"],
+                    ) as probe,
+                ):
+                    server._run_maa_update(self.target, "github", "", system, "stable")
+                job = self.snapshot("")
+                self.assertEqual(job["status"], "success")
+                self.assertEqual(job["progress"], 100)
+                self.assertEqual(job["result"]["backup"], result["backup"])
+                self.assertEqual(job["result"]["installed_version"], result["version"])
+                self.assertTrue(job["result"]["restart_required"])
+                self.assertIn("重启 Mower", job["message"])
+                probe.assert_called_once_with(self.target, fresh=True)
+
+    def test_completed_installation_with_successful_cleanup_and_probe_failure(self):
+        for probe_error in (None, MaaUpdateError("版本探测失败")):
+            with self.subTest(probe_error=probe_error):
+                result = self.core_result("linux")
+                with (
+                    patch(
+                        "arknights_mower.utils.maa_update.has_maa_installation",
+                        return_value=True,
+                    ),
+                    patch(
+                        "arknights_mower.utils.maa_update.install_latest_maa",
+                        return_value=result,
+                    ),
+                    patch(
+                        "arknights_mower.utils.maa_update.clear_loaded_maa_cache",
+                    ) as clear,
+                    patch(
+                        "arknights_mower.utils.maa_update.read_installed_version",
+                        return_value=result["version"],
+                        side_effect=probe_error,
+                    ),
+                ):
+                    server._run_maa_update(self.target, "github", "", "linux", "stable")
+                job = self.snapshot("")
+                self.assertEqual(job["status"], "success")
+                self.assertEqual(job["result"]["backup"], result["backup"])
+                self.assertFalse(job["result"]["restart_required"])
+                self.assertNotIn("重启 Mower", job["message"])
+                clear.assert_called_once_with(self.target)
+                if probe_error:
+                    self.assertEqual(job["result"]["installed_version"], "")
+                    self.assertIn("无法读取已安装核心版本", job["message"])
+                else:
+                    self.assertEqual(
+                        job["result"]["installed_version"], result["version"]
+                    )
+                    self.assertNotIn("无法读取已安装核心版本", job["message"])
+
+    def test_installation_failure_remains_an_error(self):
+        with (
+            patch(
+                "arknights_mower.utils.maa_update.has_maa_installation",
+                return_value=True,
+            ),
+            patch(
+                "arknights_mower.utils.maa_update.install_latest_maa",
+                side_effect=MaaUpdateError("目录替换失败"),
+            ),
+            patch("arknights_mower.utils.maa_update.clear_loaded_maa_cache") as clear,
+        ):
+            server._run_maa_update(self.target, "github", "", "windows", "stable")
+        job = self.snapshot("")
+        self.assertEqual(job["status"], "error")
+        self.assertIsNone(job["result"])
+        self.assertIn("目录替换失败", job["message"])
+        clear.assert_not_called()
+
+    def test_android_resource_update_still_packs_and_requires_service_restart(self):
+        result = self.resource_result()
+        pack = Mock()
+        with (
+            patch.dict("os.environ", {"MOWER_ANDROID": "1"}),
+            patch.dict(
+                "sys.modules",
+                {"mower_android.managed": SimpleNamespace(pack_component=pack)},
+            ),
+            patch(
+                "arknights_mower.utils.maa_resource_update.install_maa_resource_update",
+                return_value=result,
+            ),
+            patch(
+                "arknights_mower.utils.maa_resource_update.read_maa_resource_info",
+                return_value={"version": result["version"]},
+            ),
+        ):
+            server._run_maa_resource_update(self.target, "github", "", "linux")
+        job = self.snapshot("-resource")
+        self.assertEqual(job["status"], "success")
+        self.assertTrue(job["result"]["restart_required"])
+        self.assertIn("重启安卓服务", job["message"])
+        pack.assert_called_once_with(self.target)
 
 
 if __name__ == "__main__":

@@ -56,6 +56,8 @@ Cancellation and timeout terminate only the owned command tree. Successful root-
 
 `install_maa_resource_update` stages an incremental resource merge, preserves core and Python files, and replaces only `resource`. The previous resource tree remains in `resource.old`; failed replacement or version verification restores the original tree and previous backup.
 
+The update worker follows the [MAA runtime activation boundary](maa-runtime.md#3-explicit-update-completion) after installation.
+
 [Windows MAA resource updates](../../.agents/notes/implemented/bug-fix/2026-10-08-windows-maa-resource-update.md) records the platform correction and focused verification.
 
 ## 7. Resource Template Fonts

@@ -294,7 +294,8 @@ jobs:
           python -m pytest -q -o faulthandler_timeout=60 \
             arknights_mower/tests/maa_runtime_tests.py \
             arknights_mower/tests/maa_runtime_native_tests.py \
-            arknights_mower/tests/maa_update_tests.py::TestLoadedMaaCache
+            arknights_mower/tests/maa_update_tests.py::TestLoadedMaaCache \
+            arknights_mower/tests/maa_update_route_tests.py::TestMaaUpdateWorkers
 
   android-compatibility:
     name: Update compatibility (android-arm64)
