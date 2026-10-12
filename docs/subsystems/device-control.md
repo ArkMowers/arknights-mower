@@ -246,8 +246,11 @@ The session classifies device health into deterministic verdicts via [`Readiness
 ### 5.2 Bounded Recovery Execution
 The default `manager_query_timeout` is ten seconds in new Device Profiles, legacy
 migration and the settings form. Explicit saved values survive unrelated edits
-and configuration round trips. Bound-instance connection tests allow the selected
-query limit; recovery and idle shutdown clamp commands to their remaining budgets.
+and configuration round trips. The production MuMu 12 `info` query uses this
+per-command limit, and bound-instance MuMu 12 connection tests allow the selected
+limit. LDPlayer and Nox endpoint validation retains its existing three-second
+per-command bound. Recovery and idle shutdown clamp commands to their remaining
+budgets.
 
 Read-only manager query timeouts produce the retryable `manager_timeout` verdict.
 Initial readiness and local observation after reconnect continue polling the same
