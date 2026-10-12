@@ -7,10 +7,13 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from scripts.check_android_package import check
 from scripts.package_android import REQUIRED, package
 from scripts.sync_android_release import REPO, append_download_link
+from scripts.tests.requirements_sync_tests import parse_lock
 
 
 def runtime_fixture(root):
@@ -176,6 +179,55 @@ class AndroidDownloadLinkTests(unittest.TestCase):
             self.assertEqual(list(root.iterdir()), [body])
             append_download_link(body)
             self.assertEqual(body.read_text(encoding="utf-8"), text)
+
+
+class AndroidRuntimeBuildTests(unittest.TestCase):
+    def test_image_smoke_check_accepts_locked_opencv_and_rejects_other_versions(self):
+        import sys
+
+        from scripts import build_android_runtime as builder
+
+        with (
+            patch.object(sys, "argv", ["build_android_runtime.py"]),
+            patch.object(
+                builder.subprocess,
+                "run",
+                side_effect=[None, RuntimeError("captured image smoke check")],
+            ) as run,
+            self.assertRaisesRegex(RuntimeError, "captured image smoke check"),
+        ):
+            builder.main()
+        command = run.call_args.args[0]
+        self.assertEqual(
+            command[:5], ["docker", "run", "--rm", "--platform", "linux/arm64"]
+        )
+        self.assertEqual(command[-3:-1], ["python", "-c"])
+        pinned = parse_lock(builder.ROOT / "requirements.txt")["opencv-python"]
+        opencv = SimpleNamespace(__version__=".".join(pinned.split(".")[:3]))
+        modules = {
+            name: Mock()
+            for name in (
+                "ssl",
+                "numpy",
+                "onnxruntime",
+                "rjieba",
+                "yamlcore",
+                "flask",
+                "pyzbar",
+                "pyzbar.pyzbar",
+            )
+        }
+        modules.update(
+            platform=SimpleNamespace(
+                machine=lambda: "aarch64", python_version=lambda: "3.12"
+            ),
+            cv2=opencv,
+        )
+        with patch.dict(sys.modules, modules):
+            exec(command[-1], {})
+            opencv.__version__ = "0.0.0"
+            with self.assertRaises(AssertionError):
+                exec(command[-1], {})
 
 
 if __name__ == "__main__":

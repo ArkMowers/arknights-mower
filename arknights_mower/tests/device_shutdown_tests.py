@@ -6,7 +6,7 @@ from threading import Event
 from unittest.mock import patch
 
 from arknights_mower.solvers import record
-from arknights_mower.utils import config
+from arknights_mower.utils import config, crash_recovery
 from arknights_mower.utils.lifecycle import Shutdown
 
 
@@ -14,6 +14,8 @@ class DeviceShutdownTests(unittest.TestCase):
     def setUp(self):
         self.server = importlib.import_module("server")
         self.enterContext(patch.object(config, "stop_mower", Event()))
+        self.enterContext(patch.object(crash_recovery, "_cancelled", False))
+        self.enterContext(patch.object(crash_recovery, "_progress", {}))
         self.enterContext(patch.object(record, "current_state", return_value={}))
         self.enterContext(patch.object(record, "save_state_to_db"))
         self.enterContext(patch.object(self.server, "set_mower_thread"))
@@ -107,7 +109,7 @@ class DeviceShutdownTests(unittest.TestCase):
         # ended the run without a reason the user could act on.
         self.assertEqual(unhandled, [])
 
-    def test_worker_boundary_reports_only_classified_device_verdicts(self):
+    def test_worker_boundary_reports_device_and_software_faults_for_recovery(self):
         from unittest.mock import patch
 
         from arknights_mower import __main__ as mower
@@ -128,19 +130,29 @@ class DeviceShutdownTests(unittest.TestCase):
 
         with (
             patch.object(mower, "main", side_effect=run),
+            patch.object(self.server, "shutdown", Shutdown()),
+            patch.object(crash_recovery, "activate") as activate,
             self.assertLogs(self.server.logger, level="ERROR") as logs,
         ):
             self.server._run_mower_worker({"tasks": []}, "USB-123")
+        activate.assert_called_once()
+        self.assertIn("启动命令被拒绝（退出码 -506）", activate.call_args.args[0])
         self.assertEqual(forwarded, [({"tasks": []}, "USB-123")])
         self.assertTrue(
             any("启动命令被拒绝（退出码 -506）" in line for line in logs.output)
         )
-        # A software fault keeps its traceback for the developer.
+        # Ordinary software faults retain diagnostics and enter automatic recovery.
+        fault = RuntimeError("unrelated")
         with (
-            patch.object(mower, "main", side_effect=RuntimeError("unrelated")),
-            self.assertRaises(RuntimeError),
+            patch.object(mower, "main", side_effect=fault),
+            patch.object(self.server, "shutdown", Shutdown()),
+            patch.object(crash_recovery, "activate") as activate,
+            self.assertLogs(self.server.logger, level="ERROR") as logs,
         ):
             self.server._run_mower_worker({})
+        self.assertIs(logs.records[0].exc_info[1], fault)
+        activate.assert_called_once()
+        self.assertIn("unrelated", activate.call_args.args[0])
 
 
 if __name__ == "__main__":
