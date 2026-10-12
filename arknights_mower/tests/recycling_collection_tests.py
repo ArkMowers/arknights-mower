@@ -236,10 +236,10 @@ def test_archived_borderline_quantity_is_recorded_after_two_matching_frames(
 @pytest.mark.parametrize(
     "name_score,count_score,icon_score,expected",
     [
-        (0.90, 0.90, 0.95, {"装置": 1}),
+        (0.90, 0.90, 0.90, {"装置": 1}),
         (0.89, 1.0, 1.0, None),
         (1.0, 0.89, 1.0, None),
-        (1.0, 1.0, 0.94, None),
+        (1.0, 1.0, 0.89, None),
     ],
 )
 def test_relaxed_confidence_requires_name_icon_and_quantity(

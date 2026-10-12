@@ -90,7 +90,7 @@ def read_recycling_materials(image):
         )
         scores = cv2.matchTemplate(region, template, cv2.TM_CCORR_NORMED, mask=mask)
         score = cv2.minMaxLoc(scores)[1]
-        if not np.isfinite(score) or score < 0.95:
+        if not np.isfinite(score) or score < 0.90:
             return None
         counts = _ocr(image[570:625, center + 10 : center + 90])
         if len(counts) != 1:
