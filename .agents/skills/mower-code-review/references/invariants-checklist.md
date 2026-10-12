@@ -99,6 +99,8 @@ Use the entries relevant to changed call paths. Follow each owning contract for 
 
 ### 2.2 Base Infrastructure & Scheduling Domain
 
+- [ ] **Phase-Matched Room Budgets**: Do ordinary room estimates exclude specialized and unfinished operations, keep ordinary dormitory and complete recovery histories separate, and predict the required phase without changing Actual Occupancy? See the [complete contract](../../../../docs/subsystems/base-scheduler.md#phase-matched-room-budgets).
+
 - [ ] **Trust Rotation Isolation**: Do real rotation and selection tests retain protected incumbents, preserve ordinary assignments and apply same-kind exclusions while allowing cross-kind overlap? Do unreadable and saturated-candidate cases retain verified assignments? See the [complete contract](../../../../docs/subsystems/base-scheduler.md#trust-rotation-isolation).
 
 - [ ] **Consecutive Mastery Halving**: Do candidate ordering, joint-cost admission and reducer-handoff tests reach actual dispatch across consecutive same-operator skills? Do countdown observations reflect confirmed assistant continuity and Control Center staffing changes? See the [complete contract](../../../../docs/subsystems/base-scheduler.md#consecutive-mastery-halving).

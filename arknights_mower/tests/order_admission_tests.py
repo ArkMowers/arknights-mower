@@ -81,14 +81,14 @@ class TestSchedulingRoomPlans(unittest.TestCase):
             {"room_1_1": ["D"], "dormitory_1": ["E"], "dormitory_2": ["C"]}
         )
         self.assertEqual(
-            estimate_task_duration(task, op_data=data), timedelta(seconds=235)
+            estimate_task_duration(task, op_data=data), timedelta(seconds=175)
         )
         self.assertEqual(
-            estimate_task_duration(task, execution_time=0.75), timedelta(seconds=225)
+            estimate_task_duration(task, execution_time=0.75), timedelta(seconds=165)
         )
         self.assertEqual(
             estimate_task_duration(self.make_task({"dormitory_1": ["Current"]})),
-            timedelta(seconds=100),
+            timedelta(seconds=70),
         )
 
     def test_independent_rooms_are_split_without_losing_plan(self, _get_update_time):

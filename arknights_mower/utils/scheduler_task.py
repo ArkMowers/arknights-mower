@@ -13,6 +13,7 @@ from arknights_mower.utils.dorm_candidates import (
     dorm_task_reservations,
     vacant_dorm_slots,
 )
+from arknights_mower.utils.dorm_recovery import recovery_order_target
 from arknights_mower.utils.furniture_task import (
     FURNITURE_EXIT_SECONDS,
     FURNITURE_RUN_SECONDS,
@@ -269,7 +270,7 @@ def _advance_mood_limit_releases(
         if not hasattr(release, "mood_limit_deadline"):
             release.mood_limit_deadline = release.time
         duration = timedelta(
-            minutes=sum(estimate_dorm_minutes(room) for room in release.plan)
+            minutes=sum(estimate_dorm_minutes(room, 1.5) for room in release.plan)
         )
         start = min(
             release.time, min(release.mood_limit_deadline, next_start) - duration
@@ -290,7 +291,7 @@ def _advance_mood_limit_releases(
             elif task.type == TaskTypes.SWAP_SUPPORT:
                 minutes = _ordinary_task_minutes(task, execution_time)
             elif _is_dorm_only_task(task):
-                minutes = sum(estimate_dorm_minutes(room) for room in task.plan)
+                minutes = sum(estimate_dorm_minutes(room, 1.5) for room in task.plan)
             else:
                 minutes = _ordinary_task_minutes(task, execution_time)
             end = max(now, task.time) + timedelta(minutes=minutes)
@@ -475,7 +476,7 @@ def defer_dorm_before_priority_task(task, tasks, room, time_now=None, op_data=No
         return False
     now = time_now or datetime.now()
     deadline = _dorm_deadline(
-        task, tasks, now, estimate_dorm_minutes(room), now, op_data
+        task, tasks, now, estimate_dorm_task_minutes(task, room, op_data), now, op_data
     )
     if deadline is None:
         return False
@@ -606,6 +607,36 @@ def _static_room_task(task):
     )
 
 
+def estimate_dorm_task_minutes(task, room, op_data=None, execution_time=0.75):
+    single_recovery = False
+    if (
+        isinstance(op_data, Operators)
+        and task.type != TaskTypes.FIAMMETTA
+        and not getattr(task, "simple_dorm_fill", False)
+        and room not in getattr(task, "dorm_recovery_restore", [])
+    ):
+        names = task.plan[room]
+        if "Current" in names:
+            current = op_data.get_current_room(room, True)
+            names = [
+                current[index] if name == "Current" and index < len(current) else name
+                for index, name in enumerate(names)
+            ]
+        single_recovery = (
+            recovery_order_target(
+                op_data,
+                room,
+                names,
+                group_transitions=op_data.arrangement_group_transitions(
+                    task.plan,
+                    group_transitions=getattr(task, "group_shift_transitions", None),
+                ),
+            )
+            is not None
+        )
+    return estimate_dorm_minutes(room, execution_time, single_recovery=single_recovery)
+
+
 def estimate_task_duration(task, execution_time=None, op_data=None):
     """Estimate queued work from room occupancy and bounded measurements."""
     if task.type == TaskTypes.FURNITURE:
@@ -617,7 +648,7 @@ def estimate_task_duration(task, execution_time=None, op_data=None):
     if execution_time is not None:
         return timedelta(
             minutes=sum(
-                estimate_dorm_minutes(room, execution_time)
+                estimate_dorm_task_minutes(task, room, op_data, execution_time)
                 if room.startswith("dormitory_")
                 else execution_time
                 for room in task.plan
@@ -626,7 +657,7 @@ def estimate_task_duration(task, execution_time=None, op_data=None):
     seconds = 10
     for room, names in task.plan.items():
         if room.startswith("dormitory_"):
-            seconds += estimate_dorm_minutes(room) * 60
+            seconds += estimate_dorm_task_minutes(task, room, op_data) * 60
             continue
         unchanged = all(name == "Current" for name in names)
         if not unchanged and op_data is not None and room in op_data.plan:

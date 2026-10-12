@@ -158,7 +158,7 @@ class EmergencyRecoveryMixin:
                 rooms = state.setdefault("pending_read_rooms", rooms)
         for room in list(rooms):
             if yield_to_releases and not self._emergency_operation_fits(
-                estimate_dorm_minutes(room) * 60
+                estimate_dorm_minutes(room, 1.5) * 60
             ):
                 self.back_to_infrastructure()
                 return False
