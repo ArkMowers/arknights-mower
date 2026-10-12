@@ -11,11 +11,18 @@
     "[INV-GROWTH-04]"
   ],
   "code_symbols": [
+    "arknights_mower.utils.config.save_conf",
+    "arknights_mower.utils.workshop_config.save_user_config",
     "arknights_mower.utils.yituliu_sync.build_upload_payload",
     "arknights_mower.utils.yituliu_sync.sync_cached_operators"
   ],
   "test_suites": [
     "arknights_mower/tests/yituliu_sync_tests.py",
-    "arknights_mower/tests/cultivate_depot_tests.py"
+    "arknights_mower/tests/cultivate_depot_tests.py",
+    "arknights_mower/tests/config_tests.py",
+    "arknights_mower/tests/workshop_automation_tests.py",
+    "arknights_mower/tests/workshop_manual_config_tests.py",
+    "arknights_mower/tests/workshop_preset_recovery_tests.py",
+    "arknights_mower/tests/growth_crafting_order_tests.py"
   ]
 }

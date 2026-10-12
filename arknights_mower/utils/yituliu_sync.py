@@ -3,7 +3,6 @@
 import json
 import re
 from hashlib import sha256
-from threading import RLock
 from time import time
 
 import requests
@@ -12,7 +11,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils.path import get_path
 
 UPLOAD_URL = "https://auth.yituliu.cn/oauth2/ak-accounts/operators/save"
-_lock = RLock()
+_lock = config.conf_lock
 _LEGACY_SETTINGS_PATH = "@app/config/yituliu_sync.json"
 
 
@@ -24,14 +23,32 @@ def _settings_dict():
     return _settings_model().model_dump(exclude_none=True, exclude_defaults=True)
 
 
+def _save_settings(saved):
+    previous = config.conf
+    candidate = previous.model_copy(deep=True)
+    candidate.yituliu_sync = type(_settings_model())(**saved)
+    config.conf = candidate
+    try:
+        config.save_conf()
+    except Exception:
+        config.conf = previous
+        raise
+    _remove_legacy_settings()
+
+
+def _remove_legacy_settings():
+    try:
+        get_path(_LEGACY_SETTINGS_PATH).unlink(missing_ok=True)
+    except OSError:
+        # The explicit conf block remains authoritative if cleanup must wait.
+        pass
+
+
 def _settings():
     saved = _settings_dict()
     path = get_path(_LEGACY_SETTINGS_PATH)
-    if saved.get("token"):
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            pass
+    if "yituliu_sync" in config.conf.model_fields_set:
+        _remove_legacy_settings()
         return saved
     if not path.exists():
         return saved
@@ -39,13 +56,11 @@ def _settings():
         legacy = json.loads(path.read_text("utf-8"))
         if not isinstance(legacy, dict) or not isinstance(legacy.get("token", ""), str):
             raise ValueError()
-        config.conf.yituliu_sync = type(_settings_model())(**legacy)
-        config.conf.model_fields_set.add("yituliu_sync")
-        config.save_conf()
-        path.unlink(missing_ok=True)
-        return _settings_dict()
+        legacy = type(_settings_model())(**legacy).model_dump(exclude_unset=True)
     except (ValueError, OSError):
         raise ValueError("一图流本地设置无法读取，请重新保存 Token") from None
+    _save_settings(legacy)
+    return _settings_dict()
 
 
 def _snapshot():
@@ -79,19 +94,13 @@ def save_token(token):
             saved = {}
         if saved.get("token") == token.strip():
             return token_status()
-        config.conf.yituliu_sync = type(_settings_model())(token=token.strip())
-        config.conf.model_fields_set.add("yituliu_sync")
-        config.save_conf()
-        get_path(_LEGACY_SETTINGS_PATH).unlink(missing_ok=True)
+        _save_settings({"token": token.strip()})
         return token_status()
 
 
 def clear_token():
     with _lock:
-        config.conf.yituliu_sync = type(_settings_model())()
-        config.conf.model_fields_set.discard("yituliu_sync")
-        config.save_conf()
-        get_path(_LEGACY_SETTINGS_PATH).unlink(missing_ok=True)
+        _save_settings({})
         return token_status()
 
 
@@ -284,10 +293,7 @@ def sync_cached_operators(snapshot=None):
                 last_synced_fingerprint=fingerprint,
             )
         try:
-            config.conf.yituliu_sync = type(_settings_model())(**saved)
-            config.conf.model_fields_set.add("yituliu_sync")
-            config.save_conf()
-            get_path(_LEGACY_SETTINGS_PATH).unlink(missing_ok=True)
+            _save_settings(saved)
         except OSError:
             if result["success"]:
                 result["message"] += "；本地同步记录未能保存"

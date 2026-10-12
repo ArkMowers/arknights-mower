@@ -3,6 +3,8 @@
 import copy
 import json
 import sys
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -98,9 +100,207 @@ def test_save_status_and_clear_are_local_and_never_echo_token(sync_case):
     assert sync.token_status() == result
     session.post.assert_not_called()
     assert sync.clear_token()["configured"] is False
-    assert "yituliu_sync" not in (saved_conf_file() or {})
+    assert saved_conf_file()["yituliu_sync"] == {}
     assert not paths["@app/config/yituliu_sync.json"].exists()
     session.post.assert_not_called()
+
+
+@pytest.mark.parametrize("action", ["status", "save"])
+def test_failed_legacy_migration_preserves_source_until_durable_retry(
+    sync_case, monkeypatch, action
+):
+    paths, _, _, _, _ = sync_case
+    path = paths["@app/config/yituliu_sync.json"]
+    legacy = {"token": TOKEN, "last_synced_at": 123, "last_synced_count": 1}
+    path.write_text(json.dumps(legacy))
+    previous = sync.config.conf
+    previous_fields = previous.model_fields_set.copy()
+    read = sync.token_status if action == "status" else lambda: sync.save_token(TOKEN)
+    with monkeypatch.context() as patch:
+        patch.setattr(sync.config, "atomic_write", MagicMock(side_effect=OSError()))
+        for _ in range(2):
+            with pytest.raises(OSError):
+                read()
+            assert sync.config.conf is previous
+            assert previous.model_fields_set == previous_fields
+            assert json.loads(path.read_text()) == legacy
+            assert not sync.config.conf_path.exists()
+    assert read()["last_synced_at"] == 123
+    assert not path.exists()
+    sync.config.load_conf()
+    assert saved_settings() == legacy
+
+
+@pytest.mark.parametrize("existing_token", [False, True])
+@pytest.mark.parametrize("failure", [OSError, RuntimeError])
+def test_failed_token_save_restores_model_and_same_token_retry_writes(
+    sync_case, monkeypatch, existing_token, failure
+):
+    if existing_token:
+        sync.save_token("previous-access-token")
+    previous = sync.config.conf
+    previous_fields = previous.model_fields_set.copy()
+    previous_file = (
+        sync.config.conf_path.read_bytes() if sync.config.conf_path.exists() else None
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(sync.config, "atomic_write", MagicMock(side_effect=failure()))
+        with pytest.raises(failure):
+            sync.save_token(TOKEN)
+        assert sync.config.conf is previous
+        assert previous.model_fields_set == previous_fields
+        if previous_file is None:
+            assert not sync.config.conf_path.exists()
+        else:
+            assert sync.config.conf_path.read_bytes() == previous_file
+    assert sync.save_token(TOKEN)["configured"]
+    sync.config.load_conf()
+    assert saved_settings()["token"] == TOKEN
+
+
+def test_failed_clear_retains_token_and_baseline(sync_case, monkeypatch):
+    _, _, _, snapshot, _ = sync_case
+    sync.save_token(TOKEN)
+    sync.sync_cached_operators(snapshot)
+    previous = sync.config.conf
+    previous_fields = previous.model_fields_set.copy()
+    previous_file = sync.config.conf_path.read_bytes()
+    with monkeypatch.context() as patch:
+        patch.setattr(sync.config, "atomic_write", MagicMock(side_effect=OSError()))
+        with pytest.raises(OSError):
+            sync.clear_token()
+    assert sync.config.conf is previous
+    assert previous.model_fields_set == previous_fields
+    assert sync.config.conf_path.read_bytes() == previous_file
+    assert sync.token_status()["configured"]
+    assert sync.clear_token()["configured"] is False
+
+
+@pytest.mark.parametrize("action", ["migrate", "save", "clear"])
+def test_legacy_cleanup_failure_cannot_override_durable_settings(
+    sync_case, monkeypatch, action
+):
+    paths, session, _, snapshot, _ = sync_case
+    path = paths["@app/config/yituliu_sync.json"]
+    path.write_text(json.dumps({"token": "old-access-token"}))
+    unlink = type(path).unlink
+
+    def fail_legacy_cleanup(target, *args, **kwargs):
+        if target == path:
+            raise PermissionError()
+        return unlink(target, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(type(path), "unlink", fail_legacy_cleanup)
+        if action == "migrate":
+            assert sync.token_status()["configured"]
+            expected = "old-access-token"
+        elif action == "save":
+            assert sync.save_token(TOKEN)["configured"]
+            expected = TOKEN
+        else:
+            assert sync.clear_token()["configured"] is False
+            expected = ""
+        assert path.exists()
+        sync.config.load_conf()
+        assert saved_settings().get("token", "") == expected
+        assert sync.token_status()["configured"] == bool(expected)
+        if action == "clear":
+            assert sync.sync_after_cultivate(snapshot) is None
+    sync.token_status()
+    assert not path.exists()
+    session.post.assert_not_called()
+
+
+def test_general_config_save_before_migration_preserves_legacy_import(
+    sync_case,
+):
+    from arknights_mower.utils import workshop_config
+
+    paths, _, _, _, _ = sync_case
+    path = paths["@app/config/yituliu_sync.json"]
+    path.write_text(json.dumps({"token": TOKEN, "last_synced_at": 123}))
+    workshop_config.save_user_config({"theme": "dark"})
+    assert "yituliu_sync" not in saved_conf_file()
+    sync.config.load_conf()
+    assert sync.token_status()["last_synced_at"] == 123
+    assert saved_conf_file()["yituliu_sync"]["token"] == TOKEN
+    assert not path.exists()
+
+
+def test_failed_sync_record_save_does_not_skip_next_upload(sync_case, monkeypatch):
+    _, session, _, snapshot, _ = sync_case
+    sync.save_token(TOKEN)
+    previous = sync.config.conf
+    previous_file = sync.config.conf_path.read_bytes()
+    with monkeypatch.context() as patch:
+        patch.setattr(sync.config, "atomic_write", MagicMock(side_effect=OSError()))
+        result = sync.sync_cached_operators(snapshot)
+    assert result["success"] and "本地同步记录未能保存" in result["message"]
+    assert sync.config.conf is previous
+    assert "last_synced_fingerprint" not in saved_settings()
+    assert sync.config.conf_path.read_bytes() == previous_file
+    assert not sync.sync_cached_operators(snapshot).get("skipped")
+    assert session.post.call_count == 2
+    sync.config.load_conf()
+    assert sync.sync_cached_operators(snapshot)["skipped"]
+    assert session.post.call_count == 2
+
+
+@pytest.mark.parametrize("change", ["clear", "replace", "upload"])
+def test_general_config_save_serializes_token_and_baseline_changes(
+    sync_case, monkeypatch, change
+):
+    from arknights_mower.utils import workshop_config
+
+    _, _, _, snapshot, _ = sync_case
+    sync.save_token(TOKEN)
+    attempted = Event()
+    acquired = []
+    original_lock = sync._lock
+
+    class ObservedLock:
+        def __enter__(self):
+            immediate = original_lock.acquire(blocking=False)
+            acquired.append(immediate)
+            attempted.set()
+            if not immediate:
+                original_lock.acquire()
+
+        def __exit__(self, *_):
+            original_lock.release()
+
+    monkeypatch.setattr(sync, "_lock", ObservedLock())
+    initialize = workshop_config.initialize_manual_settings
+    actions = {
+        "clear": sync.clear_token,
+        "replace": lambda: sync.save_token("replacement-access-token"),
+        "upload": lambda: sync.sync_cached_operators(snapshot),
+    }
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = None
+
+        def pause_after_copy(conf):
+            nonlocal future
+            future = pool.submit(actions[change])
+            assert attempted.wait(5)
+            assert acquired[0] is False
+            return initialize(conf)
+
+        monkeypatch.setattr(
+            workshop_config, "initialize_manual_settings", pause_after_copy
+        )
+        workshop_config.save_user_config({"theme": "dark"})
+        assert future.result(timeout=5)
+    sync.config.load_conf()
+    assert sync.config.conf.theme == "dark"
+    if change == "clear":
+        assert sync.token_status()["configured"] is False
+        assert sync.sync_after_cultivate(snapshot) is None
+    elif change == "replace":
+        assert saved_settings()["token"] == "replacement-access-token"
+    else:
+        assert sync.sync_cached_operators(snapshot)["skipped"]
 
 
 @pytest.mark.parametrize(

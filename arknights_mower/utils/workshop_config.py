@@ -1,13 +1,12 @@
 """Editable manual workshop settings, separate from the active runtime recipes."""
 
 import json
-from threading import RLock
 
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import RIICPart
 from arknights_mower.utils.path import get_path
 
-workshop_lock = RLock()
+workshop_lock = config.conf_lock
 _STATE_FIELDS = (
     "growth_crafting_order",
     "workshop_settings",
@@ -169,6 +168,10 @@ def save_user_config(req):
         # Web forms only submit fields they expose. Keep all other settings,
         # including values restored from a full configuration backup.
         conf = state.updated(editable)
+        for key in _PRIVATE_CONF_FIELDS:
+            setattr(conf, key, getattr(state, key).model_copy(deep=True))
+            if key not in state.model_fields_set:
+                conf.model_fields_set.discard(key)
         if not conf.enable_mastery:
             restore_manual_settings(conf)
         save_conf(conf)

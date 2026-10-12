@@ -54,6 +54,7 @@ _CONFIG_PATH_PAIRS = (
 
 _ATOMIC_WRITE_LOCKS = {}
 _ATOMIC_WRITE_LOCKS_GUARD = threading.Lock()
+conf_lock = threading.RLock()
 
 
 def _path_write_lock(path):
@@ -120,19 +121,20 @@ migrate_app_config_paths()
 
 
 def save_conf():
-    conf.sync_legacy_device_fields()
+    with conf_lock:
+        conf.sync_legacy_device_fields()
 
-    def dump(f):
-        yaml.dump(
-            conf.model_dump(exclude_unset=True),
-            f,
-            Dumper=CoreDumper,
-            encoding="utf-8",
-            default_flow_style=False,
-            allow_unicode=True,
-        )
+        def dump(f):
+            yaml.dump(
+                conf.model_dump(exclude_unset=True),
+                f,
+                Dumper=CoreDumper,
+                encoding="utf-8",
+                default_flow_style=False,
+                allow_unicode=True,
+            )
 
-    atomic_write(conf_path, dump)
+        atomic_write(conf_path, dump)
 
 
 _legacy_dorm_order = ""
