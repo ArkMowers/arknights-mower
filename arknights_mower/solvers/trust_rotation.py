@@ -11,6 +11,7 @@ import numpy as np
 
 from arknights_mower.data import agent_list
 from arknights_mower.utils import config, rapidocr
+from arknights_mower.utils.character_recognize import match_operator_name
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.application import RECOVERABLE_DEVICE_ERRORS
 from arknights_mower.utils.graph import SceneGraphSolver
@@ -140,6 +141,9 @@ def run_trust_rotation(device, recog, next_task_time):
 
 
 class TrustRotationSolver(SceneGraphSolver):
+    SELECTOR_NAME = ((20, 160), (350, 205))
+    ACTIVITY_NAME = ((1440, 650), (1690, 695))
+
     ASSISTANT_POINTS = ((635, 350), (275, 800), (515, 800), (755, 800), (995, 800))
     ASSISTANT_TRUST = (
         ((590, 495), (720, 540)),
@@ -215,7 +219,7 @@ class TrustRotationSolver(SceneGraphSolver):
                 continue
             self.tap(point)
             self._require("确认", ((1350, 970), (1770, 1075)))
-            self.assistant_names[index] = self._name(((20, 155), (350, 215)))
+            self.assistant_names[index] = self._name(self.SELECTOR_NAME)
             self._leave_selection()
         if len(set(self.assistant_names.values())) != len(self.assistant_names):
             raise TrustReadingError("无法确认副手名单唯一性")
@@ -362,7 +366,7 @@ class TrustRotationSolver(SceneGraphSolver):
                     self.tap(candidate.scope)
                     self._require("确认", ((1350, 970), (1770, 1075)))
                     try:
-                        name = self._name(((20, 155), (350, 215)))
+                        name = self._name(self.SELECTOR_NAME)
                     except TrustReadingError:
                         logger.warning("候选姓名无法确认，跳过且不提交该候选")
                         continue
@@ -379,10 +383,15 @@ class TrustRotationSolver(SceneGraphSolver):
             self.swipe((1680, 520), (-870, 0), duration=400)
         raise TrustReadingError("信赖名单超过本轮扫描上限")
 
-    def _name(self, scope):
-        name = re.sub(r"\s+", "", self._text(scope))
+    def _name(self, scope, *, activity=False):
+        self._check_budget()
+        name = match_operator_name(
+            cropimg(self.recog.img, scope),
+            dark_text=not activity,
+        )
+        self._check_budget()
         if name not in agent_list:
-            raise TrustReadingError("无法确认所选干员姓名")
+            raise TrustReadingError(f"无法确认所选干员姓名：{name!r}")
         return name
 
     def _replace(self, kind, trust, *, index=0):
@@ -409,20 +418,20 @@ class TrustRotationSolver(SceneGraphSolver):
             or selected[0].scope[0][1] != card.scope[0][1]
         ):
             raise TrustReadingError("无法确认唯一选中干员，保留原安排")
-        if self._name(((20, 155), (350, 215))) != name:
+        if self._name(self.SELECTOR_NAME) != name:
             raise TrustReadingError("确认前所选干员姓名变化")
         logger.info("信赖切换：%s → %s（%s%%）", kind, name, card.trust)
         self.tap((1575, 1025))
         if kind == "activity":
             self._require("当前使用者信息", ((1260, 15), (1860, 110)))
-            actual = self._name(((1420, 640), (1750, 710)))
+            actual = self._name(self.ACTIVITY_NAME, activity=True)
             actual_trust = self._trust(((1480, 705), (1660, 775)))
         else:
             self._require("罗德岛基建副手", ((750, 170), (1220, 300)))
             actual_trust = self._trust(self.ASSISTANT_TRUST[index])
             self.tap(self.ASSISTANT_POINTS[index])
             self._require("确认", ((1350, 970), (1770, 1075)))
-            actual = self._name(((20, 155), (350, 215)))
+            actual = self._name(self.SELECTOR_NAME)
             self._leave_selection()
         if actual != name or actual_trust != card.trust:
             raise TrustReadingError("信赖更换后的实际干员未确认")
