@@ -12,6 +12,7 @@
 
 ## 2. Subsystem Invariants
 
+- **[INV-REC-13] Shadowed Training Column**: A shadowed trailing training name field uses complete same-column geometry only when both rows have aligned observed leading edges; missing peer geometry or clipped columns never establish a name, and template matching retains its unknown-name threshold.
 - **[INV-REC-12] Recycling Collection Evidence**: Recycling statistics record only confirmed recycling rewards once per collection, preserve the collection time and observed facility occupants, and keep unknown occupants distinct from an empty facility without deriving them from the Scheduling Plan.
 
 - **[INV-RECRUIT-01] Manual Selection Authority**: Manual five-star recruitment never queues automatic selection unless the unique-choice exception is enabled and exactly one calculated choice remains.

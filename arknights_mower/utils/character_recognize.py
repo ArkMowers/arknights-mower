@@ -285,6 +285,8 @@ def operator_list(img, draw=False, full_scan=True):
 def operator_list_train(img, draw=False, full_scan=True):
     name_y = ((479, 506), (895, 922))
     name_p_row = [[], []]
+    complete_fronts = [[], []]
+    trailing_fronts = [None, None]
     for yi in range(2):
         line1 = cropimg(img, tuple(zip((545, 1920), name_y[yi])))
         hsv = cv2.cvtColor(line1, cv2.COLOR_RGB2HSV)
@@ -334,10 +336,25 @@ def operator_list_train(img, draw=False, full_scan=True):
                         back_edge = i
                         # 记录检测到的名称区域
                         name_x.append((back_edge + 543 - 175, back_edge + 543))
+                        complete_fronts[yi].append(front_edge)
             prev = curr
 
         for x in name_x:
             name_p_row[yi].append(tuple(zip(x, name_y[yi])))
+        if front_edge is not None and (back_edge is None or front_edge > back_edge):
+            trailing_fronts[yi] = front_edge
+
+    # 右侧阴影可能遮掉一行的亮色右边界；同帧另一行的完整卡片提供宽度。
+    # 两行均须有对齐的实际左边界，缺失或裁切列不能凭固定宽度补出。
+    for yi, front in enumerate(trailing_fronts):
+        if front is None:
+            continue
+        for peer_front, peer_scope in zip(complete_fronts[1 - yi], name_p_row[1 - yi]):
+            offset = front - peer_front
+            left, right = peer_scope[0][0] + offset, peer_scope[1][0] + offset
+            if abs(offset) <= 3 and right >= 1790 and right <= img.shape[1]:
+                name_p_row[yi].append(tuple(zip((left, right), name_y[yi])))
+                break
 
     name_p = []
     max_length = max(len(row) for row in name_p_row)

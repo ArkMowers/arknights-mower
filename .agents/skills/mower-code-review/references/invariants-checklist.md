@@ -165,6 +165,7 @@ Checklist for evaluating pull requests and git diffs under the Standards axis of
 
 ### 2.4 Vision & Recognition Domain
 
+- [ ] **[INV-REC-13] Shadowed Training Column**: Does a shadowed training tail require a complete peer field and aligned observed leading edges on the same Capture Frame, preserve unknown names and reject missing, misaligned or clipped columns without another capture or changed matching threshold?
 - [ ] **[INV-REC-12] Recycling Collection Evidence**: Recycling statistics record only confirmed recycling rewards once per collection, preserve the collection time and observed facility occupants, and keep unknown occupants distinct from an empty facility without deriving them from the Scheduling Plan.
 
 - [ ] **[INV-REC-11] Facility Title Priority**: Does a positively matched facility title override conflicting icon color on the same Capture Frame, including entry animation, while unknown titles retain icon recognition and bounded entry recovery? See the [facility title contract](../../../../docs/subsystems/base-scheduler.md#3-subsystem-invariants).
