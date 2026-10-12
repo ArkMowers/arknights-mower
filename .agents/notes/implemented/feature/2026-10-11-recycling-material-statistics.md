@@ -60,3 +60,9 @@ Focused tests cover algorithm persistence and mismatched presets, authenticated 
 The preset uses CE6 for LMD and CE6/LS6 for EXP (0.23456 base-report algorithm), includes activity-token LMD value, retains four retired materials at token-equivalent LMD prices, and values purple sugar/polyester through crafting. White-to-green and green-to-blue crafting use Nine-Colored Deer; blue-to-purple and purple-to-gold use Nian.
 
 Focused verification of the shared settings and defaults passes 316 backend tests and 38 frontend tests. Report tests exercise preset and custom saves, immediate earnings recalculation including special gold, tooltip rendering and failed-save preservation. Backend tests cover exact bundled pricing parameters and values, shared future-material imports, legacy migration and saved-choice precedence. The frontend production build and governance checks pass; live-device collection remains pending.
+
+## Borderline quantity recognition
+
+The 2026-10-12 archived reward frame shows 装置 × 1, but quantity OCR replays at approximately 0.94976 and fails the former 0.95 gate. The reader uses the relaxed confidence limits in the subsystem contract while preserving name/icon agreement, complete geometry, exact integer quantities and two matching observations. The same [INV-REC-12] governs this repair. The unchanged JPEG fixture exercises the actual reader through collection persistence; focused cases retain rejection for low-confidence names, counts and icons. Archived JPEG replay identifies the rejection point but does not reconstruct all original uncompressed readings.
+
+Focused recycling collection, valuation, infrastructure collection and recycling staffing suites pass 134 tests. Remote offline replay with the changed reader recognizes 装置 × 1 in all three archived observation frames; no live collection is triggered.
