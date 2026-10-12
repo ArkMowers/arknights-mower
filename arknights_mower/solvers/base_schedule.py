@@ -4470,7 +4470,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             [
                 task
                 for task in self.tasks
-                if task is not self.task and task.retains_execution
+                if task is not getattr(self, "task", None) and task.retains_execution
             ],
         )
         reserved_names = self.op_data.reserved_product_replacements | retained_names
@@ -5077,7 +5077,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         retained = [
             task
             for task in self.tasks
-            if task is not self.task and task.retains_execution
+            if task is not getattr(self, "task", None) and task.retains_execution
         ]
         names = {
             name

@@ -19,7 +19,7 @@ The scheduler removes mood, reservation and compensation deferrals from rescue d
 
 ## Verification
 
-The latest review repair passes 2127 targeted offline tests across 41 related files, including 47 added regressions across task preservation, ordinary patrol and training protection. Training cases cover automatic mastery and assistant-follow settings, busy and unreadable rooms, empty-room deployment, continued independent staffing, skipped-target reconciliation, source-training protection and unchanged-state suppression. The four supplied task-retention reproductions pass after first confirming their failures.
+The latest review repair passes 2397 targeted offline tests across 45 related files, including 47 added regressions across task preservation, ordinary patrol and training protection. Training cases cover automatic mastery and assistant-follow settings, busy and unreadable rooms, empty-room deployment, continued independent staffing, skipped-target reconciliation, source-training protection and unchanged-state suppression. The four supplied task-retention reproductions pass after first confirming their failures.
 
 Ruff checks, format checks, `git diff --check` and all three governance gates pass. Governance retains two historical reference warnings; the focused tests retain two existing Pydantic serializer warnings. Live-device execution remains unverified.
 

@@ -41,6 +41,10 @@
     "arknights_mower/tests/group_shift_confirmation_tests.py",
     "arknights_mower/tests/manufacture_product_switch_tests.py",
     "arknights_mower/tests/deferred_exhaust_dedup_tests.py",
-    "arknights_mower/tests/automatic_rescue_tests.py"
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/dorm_group_restart_tests.py",
+    "arknights_mower/tests/dorm_group_tests.py",
+    "arknights_mower/tests/fixed_dorm_cover_admission_tests.py",
+    "arknights_mower/tests/resting_preemption_tests.py"
   ]
 }
