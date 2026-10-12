@@ -50,9 +50,11 @@ Use one primary workflow for each responsibility. Repository skills own reposito
 | Prose | [mower-prose-standard](skills/mower-prose-standard/SKILL.md) | General prose skills refine wording after placement, without adding records or invariants. |
 | Record transition | [mower-archive-agent-notes](skills/mower-archive-agent-notes/SKILL.md) | Use only for an actual lifecycle change; documentation merges can retain state. |
 | Commit writing | [mower-commit](skills/mower-commit/SKILL.md) | mower-commit owns the commit workflow and shared Chinese title rules; mower-pr reads those rules for PR titles. |
-| PR writing | [mower-pr](skills/mower-pr/SKILL.md) | Generic pr supplies presentation ideas; mower-pr owns PR fact selection, the body template and instruction records. |
+| PR writing | [mower-pr](skills/mower-pr/SKILL.md) | Generic pr supplies presentation ideas; mower-pr owns PR fact selection, the body template and review. |
 
 Each selected skill declares inputs, outputs and a completion condition. Read only references relevant to the task. Do not execute the catalog as a pipeline.
+
+Formal text uses the shared [prose rules](skills/mower-prose-standard/SKILL.md) and their bilingual terminology sources. Apply them to drafts, reviews, skills, templates, reports and publication metadata; ordinary expressions do not automatically become domain concepts or glossary proposals.
 
 ## 4. Verification and Reporting
 

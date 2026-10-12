@@ -20,11 +20,14 @@ from pathlib import Path
 try:
     from verify_agent_note_format import verify_agent_notes
     from verify_doc_links import verify_doc_links
-    from verify_glossary_alignment import verify_glossary_alignment
+    from verify_glossary_alignment import verify_glossary_alignment, verify_pr_text
 except ImportError:
     from scripts.verify_agent_note_format import verify_agent_notes
     from scripts.verify_doc_links import verify_doc_links
-    from scripts.verify_glossary_alignment import verify_glossary_alignment
+    from scripts.verify_glossary_alignment import (
+        verify_glossary_alignment,
+        verify_pr_text,
+    )
 
 
 def run_all_checks(
@@ -32,6 +35,7 @@ def run_all_checks(
     *,
     comparison_base: str | None = None,
     all_active: bool = False,
+    pr_text: object | None = None,
 ) -> int:
     repository = Path(repo_root).resolve()
     print("=" * 60)
@@ -79,13 +83,21 @@ def run_all_checks(
 
     # 3. Avoid-Term Check
     print("\n[Gate 3/3] Verifying glossary Avoid terms in scanned text...")
+    prose_warnings: list[str] = []
     glossary_errors = verify_glossary_alignment(
         repository / "CONTEXT.md",
-        scan_roots=[
-            repository / path
-            for path in (".agents/notes", "docs", "arknights_mower", "ui/src")
-        ],
+        comparison_base=comparison_base,
+        warnings=prose_warnings,
     )
+    if prose_warnings:
+        print(
+            f"  UNCHANGED DEVELOPMENT PROSE: {len(prose_warnings)} listed-term occurrence(s)."
+        )
+        print(
+            "  Existing wording is reported separately, not treated as a historical quotation; new lines are checked."
+        )
+    if pr_text is not None:
+        glossary_errors.extend(verify_pr_text(pr_text, repository / "CONTEXT.md"))
     if glossary_errors:
         print(f"  FAILED: {len(glossary_errors)} glossary violation(s)")
         for err in glossary_errors:
@@ -93,7 +105,7 @@ def run_all_checks(
         total_errors += len(glossary_errors)
     else:
         print(
-            "  PASSED: Zero Avoid terms detected across notes, docs, and code comments."
+            "  PASSED: Listed terms and preserved-source markers checked in formal text scope, including supplied PR metadata."
         )
 
     print("\n" + "=" * 60)
@@ -113,6 +125,9 @@ def run_all_checks(
     if comparison_base is not None:
         print(f"Committed note changes are also checked against: {comparison_base}")
     print("Code-symbol resolution is not checked; review those references statically.")
+    print(
+        "Text scope includes skills and templates; source hashes/labels do not establish historical meaning or title completeness."
+    )
     if total_errors > 0:
         print(f"FAILED: Found {total_errors} structural error(s).")
         return 1
@@ -159,6 +174,9 @@ def main() -> int:
         description="Run scoped structural governance checks"
     )
     parser.add_argument("--repo-root", default=".", help="Repository reference root")
+    parser.add_argument(
+        "--pr-json", help="Title/body JSON file; CI uses pull_request event text"
+    )
     scope = parser.add_mutually_exclusive_group()
     scope.add_argument(
         "--base", help="Also check active notes changed from this commit/ref to HEAD"
@@ -171,13 +189,29 @@ def main() -> int:
     )
     args = parser.parse_args()
     base, all_active = args.base, args.all_active
+    pr_text = None
     if args.ci:
         try:
             base, all_active = github_comparison_scope()
+            if os.environ["GITHUB_EVENT_NAME"] == "pull_request":
+                event = json.loads(
+                    Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8")
+                )
+                pr_text = {
+                    key: event["pull_request"].get(key) for key in ("title", "body")
+                }
         except (KeyError, TypeError, OSError, ValueError) as error:
             print(f"FAILED: Cannot determine CI comparison scope: {error}")
             return 1
-    return run_all_checks(args.repo_root, comparison_base=base, all_active=all_active)
+    if args.pr_json:
+        try:
+            pr_text = json.loads(Path(args.pr_json).read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError) as error:
+            print(f"FAILED: Cannot read PR text: {error}")
+            return 1
+    return run_all_checks(
+        args.repo_root, comparison_base=base, all_active=all_active, pr_text=pr_text
+    )
 
 
 if __name__ == "__main__":

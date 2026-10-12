@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import io
 import json
@@ -1705,7 +1706,16 @@ class VerifyGovernanceTests(unittest.TestCase):
             self.commit_reference_fixture(root, "new fixture")
 
             events = (
-                ("pull_request", {"pull_request": {"base": {"sha": base}}}),
+                (
+                    "pull_request",
+                    {
+                        "pull_request": {
+                            "base": {"sha": base},
+                            "title": "docs: 更新文档",
+                            "body": "已核实的变化。",
+                        }
+                    },
+                ),
                 ("push", {"before": base}),
                 ("workflow_dispatch", {"inputs": {"comparison_base": base}}),
             )
@@ -1852,6 +1862,303 @@ class VerifyGovernanceTests(unittest.TestCase):
             )
             self.assertEqual(scoped.returncode, 1, scoped.stdout + scoped.stderr)
             self.assertIn("not a Git worktree root", scoped.stdout)
+
+
+class VerifyFormalTextTests(unittest.TestCase):
+    make_reference_repo = VerifyGovernanceTests.make_reference_repo
+    commit_reference_fixture = VerifyGovernanceTests.commit_reference_fixture
+    run_governance_workflow = VerifyGovernanceTests.run_governance_workflow
+
+    def run_text_cli(self, root, *arguments):
+        script = (
+            Path(__file__).resolve().parents[2] / "scripts/verify_glossary_alignment.py"
+        )
+        return subprocess.run(
+            [sys.executable, "-B", "-X", "utf8", str(script), *arguments],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+        )
+
+    def test_skill_template_evaluation_and_fenced_prose_reach_default_cli(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_reference_repo(directory)
+            for name, content in (
+                (".agents/skills/example/SKILL.md", "# ForbiddenTerm\n"),
+                (
+                    ".agents/skills/example/assets/body.md",
+                    "```text\n`ForbiddenTerm`\n```\n",
+                ),
+                (
+                    ".agents/skills/example/evals/evals.json",
+                    '{"expected_output":"ForbiddenTerm"}',
+                ),
+            ):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(content, encoding="utf-8")
+            result = self.run_text_cli(root)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            for name in ("SKILL.md", "body.md", "evals.json"):
+                self.assertIn(name, result.stdout)
+
+    def test_development_new_lines_and_business_rules_have_separate_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_reference_repo(directory)
+            glossary = root / "CONTEXT.md"
+            glossary.write_text(
+                glossary.read_text(encoding="utf-8")
+                + "\n## 3. Development & Documentation Language\n- **_Avoid_**: `OldWording`\n",
+                encoding="utf-8",
+            )
+            document = root / "docs/guide.md"
+            document.parent.mkdir()
+            document.write_text("OldWording\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            self.commit_reference_fixture(root, "initial prose")
+            baseline = (
+                subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"], cwd=root, timeout=15
+                )
+                .decode()
+                .strip()
+            )
+            inherited = self.run_text_cli(root, "--base", baseline)
+            self.assertEqual(
+                inherited.returncode, 0, inherited.stdout + inherited.stderr
+            )
+            self.assertIn("UNCHANGED DEVELOPMENT PROSE", inherited.stdout)
+            document.write_text("OldWording\nNew OldWording\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "add", "docs/guide.md"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            (root / "docs/new.md").write_text("OldWording\n", encoding="utf-8")
+            staged = self.run_text_cli(root, "--base", baseline)
+            self.assertEqual(staged.returncode, 1, staged.stdout + staged.stderr)
+            self.assertIn("guide.md:2", staged.stdout)
+            self.assertIn("new.md:1", staged.stdout)
+            self.commit_reference_fixture(root, "new prose")
+            committed = self.run_text_cli(root, "--base", baseline)
+            self.assertEqual(
+                committed.returncode, 1, committed.stdout + committed.stderr
+            )
+            document.write_text("ForbiddenTerm\n", encoding="utf-8")
+            self.commit_reference_fixture(root, "existing business violation")
+            business = self.run_text_cli(root, "--base", "HEAD")
+            self.assertEqual(business.returncode, 1, business.stdout + business.stderr)
+            self.assertIn("ForbiddenTerm", business.stdout)
+
+    def test_preserved_span_checks_hash_source_and_surrounding_current_prose(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_reference_repo(directory)
+            path = root / ".agents/skills/example/evals/input.md"
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                "Historical quotation follows.\nForbiddenTerm\nCurrent rule: ForbiddenTerm\n",
+                encoding="utf-8",
+            )
+            record = {
+                "path": path.relative_to(root).as_posix(),
+                "kind": "historical-quotation",
+                "label": "Original input for comparison, not a recommendation.",
+                "source": "https://github.com/example/project/blob/"
+                + "a" * 40
+                + "/input.md",
+                "start_line": 2,
+                "end_line": 2,
+                "sha256": hashlib.sha256(b"ForbiddenTerm\n").hexdigest(),
+            }
+            manifest = root / "scripts/prose_sources.json"
+            manifest.parent.mkdir()
+            manifest.write_text(json.dumps([record]), encoding="utf-8")
+            result = self.run_text_cli(root)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertNotIn("input.md:2:", result.stdout)
+            self.assertIn("input.md:3:", result.stdout)
+            for field, value in (
+                ("sha256", "0" * 64),
+                ("source", "https://example.invalid/input"),
+                ("path", "../outside.md"),
+                ("label", ""),
+            ):
+                with self.subTest(field=field):
+                    manifest.write_text(
+                        json.dumps([{**record, field: value}]), encoding="utf-8"
+                    )
+                    invalid = self.run_text_cli(root)
+                    self.assertEqual(
+                        invalid.returncode, 1, invalid.stdout + invalid.stderr
+                    )
+                    self.assertIn("Invalid preserved prose source", invalid.stdout)
+
+    def test_real_identifier_is_kept_but_surrounding_formal_prose_is_checked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_reference_repo(directory)
+            source = root / "source.py"
+            source.write_text("class ForbiddenTerm:\n    pass\n", encoding="utf-8")
+            document = root / "docs/api.md"
+            document.parent.mkdir()
+            text = "Use `ForbiddenTerm`; ForbiddenTerm is the recommended prose.\n"
+            document.write_text(text, encoding="utf-8")
+            record = {
+                "path": "docs/api.md",
+                "kind": "code-identifier",
+                "label": "Existing Python class reference.",
+                "source": "https://github.com/example/project/blob/"
+                + "a" * 40
+                + "/source.py",
+                "source_path": "source.py",
+                "identifier": "ForbiddenTerm",
+                "start_line": 1,
+                "end_line": 1,
+                "sha256": hashlib.sha256(text.encode()).hexdigest(),
+            }
+            manifest = root / "scripts/prose_sources.json"
+            manifest.parent.mkdir()
+            manifest.write_text(json.dumps([record]), encoding="utf-8")
+            result = self.run_text_cli(root)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("docs/api.md:1", result.stdout)
+            document.write_text("Use `ForbiddenTerm`.\n", encoding="utf-8")
+            record["sha256"] = hashlib.sha256(
+                document.read_text(encoding="utf-8").encode("utf-8")
+            ).hexdigest()
+            manifest.write_text(json.dumps([record]), encoding="utf-8")
+            clean = self.run_text_cli(root)
+            self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
+            source.write_text("class OtherName:\n    pass\n", encoding="utf-8")
+            result = self.run_text_cli(root)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("not declared", result.stdout)
+
+    def test_complete_pr_metadata_reaches_local_and_ci_edited_entry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_reference_repo(directory)
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            self.commit_reference_fixture(root, "fixture")
+            base = (
+                subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"], cwd=root, timeout=15
+                )
+                .decode()
+                .strip()
+            )
+            payload = {
+                "title": "docs: ForbiddenTerm",
+                "body": "```text\n`ForbiddenTerm`\n```\n",
+            }
+            draft = root / "draft.json"
+            draft.write_text(json.dumps(payload), encoding="utf-8")
+            local = self.run_text_cli(root, "--pr-json", str(draft))
+            self.assertEqual(local.returncode, 1, local.stdout + local.stderr)
+            self.assertIn("PR title:1", local.stdout)
+            self.assertIn("PR body:2", local.stdout)
+            event = {
+                "action": "edited",
+                "pull_request": {"base": {"sha": base}, **payload},
+            }
+            ci = self.run_governance_workflow(root, "pull_request", event)
+            self.assertEqual(ci.returncode, 1, ci.stdout + ci.stderr)
+            self.assertIn("PR title:1", ci.stdout)
+            self.assertIn("PR body:2", ci.stdout)
+            event["pull_request"].update(title="docs: 更新文档", body="核实后的事实。")
+            clean = self.run_governance_workflow(root, "pull_request", event)
+            self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
+            workflow = yaml.safe_load(
+                (
+                    Path(__file__).resolve().parents[2]
+                    / ".github/workflows/docs-consistency.yml"
+                ).read_text(encoding="utf-8")
+            )
+            triggers = workflow.get("on", workflow.get(True))
+            self.assertIn("edited", triggers["pull_request"]["types"])
+
+    def test_pr_schema_errors_fail_with_specific_diagnostics(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_reference_repo(directory)
+            path = root / "draft.json"
+            for payload in (
+                [],
+                {"title": "title"},
+                {"title": 1, "body": "body"},
+                {"title": "title", "body": None},
+            ):
+                with self.subTest(payload=payload):
+                    path.write_text(json.dumps(payload), encoding="utf-8")
+                    result = self.run_text_cli(root, "--pr-json", str(path))
+                    self.assertEqual(
+                        result.returncode, 1, result.stdout + result.stderr
+                    )
+                    self.assertIn("string title and body", result.stdout)
+
+    def test_pr_preserved_quote_markers_do_not_exempt_current_body_or_title(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_reference_repo(directory)
+            metadata = {
+                "kind": "test-counterexample",
+                "label": "Preserved counterexample for review.",
+                "source": "https://github.com/example/project/blob/"
+                + "a" * 40
+                + "/input.md",
+                "sha256": hashlib.sha256(b"ForbiddenTerm\n").hexdigest(),
+            }
+            quote = (
+                "<!-- mower-prose-source "
+                + json.dumps(metadata)
+                + " -->\nForbiddenTerm\n<!-- /mower-prose-source -->\n"
+            )
+            draft = root / "draft.json"
+            draft.write_text(
+                json.dumps({"title": "docs: 更新文档", "body": quote}), encoding="utf-8"
+            )
+            valid = self.run_text_cli(root, "--pr-json", str(draft))
+            self.assertEqual(valid.returncode, 0, valid.stdout + valid.stderr)
+            draft.write_text(
+                json.dumps(
+                    {
+                        "title": "docs: ForbiddenTerm",
+                        "body": quote + "Current rule: ForbiddenTerm\n",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            current = self.run_text_cli(root, "--pr-json", str(draft))
+            self.assertEqual(current.returncode, 1, current.stdout + current.stderr)
+            self.assertIn("PR title:1", current.stdout)
+            self.assertIn("PR body:4", current.stdout)
+            self.assertNotIn("PR body:2", current.stdout)
+            for body in (
+                quote.replace("ForbiddenTerm\n", "Changed ForbiddenTerm\n"),
+                quote.replace("<!-- /mower-prose-source -->", ""),
+            ):
+                with self.subTest(body=body):
+                    draft.write_text(
+                        json.dumps({"title": "docs: 更新文档", "body": body}),
+                        encoding="utf-8",
+                    )
+                    invalid = self.run_text_cli(root, "--pr-json", str(draft))
+                    self.assertEqual(
+                        invalid.returncode, 1, invalid.stdout + invalid.stderr
+                    )
+                    self.assertIn("Invalid PR preserved source", invalid.stdout)
 
 
 if __name__ == "__main__":

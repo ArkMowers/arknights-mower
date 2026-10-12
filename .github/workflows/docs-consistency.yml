@@ -4,6 +4,7 @@ on:
   push:
     branches: [alpha, main]
   pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
   workflow_dispatch:
     inputs:
       comparison_base:

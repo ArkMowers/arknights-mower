@@ -1,0 +1,29 @@
+[
+  {
+    "path": ".agents/skills/mower-pr/evals/fixtures/governance-source.diff",
+    "kind": "historical-quotation",
+    "label": "Preserved evaluation input from committed writing rules or original diff; not current recommendations.",
+    "source": "https://github.com/ArkMowers/arknights-mower/blob/fa0ad4014a5226fc30c9adffb0e0369164e3a664/.agents/skills/mower-pr/evals/fixtures/governance-source.diff",
+    "start_line": 1,
+    "end_line": 270,
+    "sha256": "42b46e3b596950b6ae23f0e7022cea5b353366f7944e8a260d22ef84d22de137"
+  },
+  {
+    "path": ".agents/skills/mower-pr/evals/fixtures/pr-update-original-rules.md",
+    "kind": "historical-quotation",
+    "label": "Preserved evaluation input from committed writing rules or original diff; not current recommendations.",
+    "source": "https://github.com/ArkMowers/arknights-mower/blob/fa0ad4014a5226fc30c9adffb0e0369164e3a664/.agents/skills/mower-pr/evals/fixtures/pr-update-original-rules.md",
+    "start_line": 8,
+    "end_line": 41,
+    "sha256": "392096b5b94ac201962ec7b04e31b6dfa6811a3eb2c2265f06f165a05df07a29"
+  },
+  {
+    "path": ".agents/skills/mower-pr/evals/fixtures/pr-update-original-rules.md",
+    "kind": "historical-quotation",
+    "label": "Preserved evaluation input from committed writing rules or original diff; not current recommendations.",
+    "source": "https://github.com/ArkMowers/arknights-mower/blob/fa0ad4014a5226fc30c9adffb0e0369164e3a664/.agents/skills/mower-pr/evals/fixtures/pr-update-original-rules.md",
+    "start_line": 47,
+    "end_line": 63,
+    "sha256": "2afd2ba38a7274c074b516719fbc85dcb4481735bd17c06454d039197db553ac"
+  }
+]
