@@ -621,7 +621,9 @@ def pr_source_spans(
                 spans.update({index: identifier for index in numbers})
                 start = None
                 record = None
-            elif "mower-prose-source" in line:
+            elif line.strip().startswith(
+                ("<!-- mower-prose-source", "<!-- /mower-prose-source")
+            ):
                 raise ValueError("malformed source marker")
         if start is not None:
             raise ValueError("source marker has no closing")

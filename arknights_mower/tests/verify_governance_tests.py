@@ -2160,6 +2160,22 @@ class VerifyFormalTextTests(unittest.TestCase):
                     )
                     self.assertIn("Invalid PR preserved source", invalid.stdout)
 
+    def test_pr_source_marker_name_can_be_described_as_formal_prose(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_reference_repo(directory)
+            draft = root / "draft.json"
+            draft.write_text(
+                json.dumps(
+                    {
+                        "title": "docs: 说明来源标记",
+                        "body": "来源标记的名称为 `mower-prose-source`。\n",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = self.run_text_cli(root, "--pr-json", str(draft))
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
