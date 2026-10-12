@@ -1,11 +1,13 @@
 ---
 title: 新入住抢占与空单回补位
-status: implemented
+status: archived
 category: bug-fix
 date: 2026-10-06
 ---
 
 # 新入住抢占与空单回补位
+
+本记录的分配规则由[稳定宿舍恢复顺序](../../implemented/bug-fix/2026-10-12-stable-dorm-recovery-order.zh.md)取代；下文保留历史实现。
 
 ## 契约
 

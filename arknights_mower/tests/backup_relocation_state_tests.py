@@ -128,9 +128,10 @@ def test_exit_does_not_recall_another_resting_group(solver, explicit, full):
     assert s.op_data.plan_condition == [False]
     for name in ("歌蕾蒂娅", "乌尔比安"):
         assert s.op_data.operators[name].is_resting()
-        # 完整轮休可将住客转到另一组腾出的单回位；切表自身不重排床位。
+        # 同级保留原床；同宿舍其他成员离开后，留下者也重新读取恢复时间。
         if not full:
-            assert recovery(s)[name] == before[name]
+            assert recovery(s)[name][0] == before[name][0]
+            assert recovery(s)[name][1] >= before[name][1]
     assert s.op_data.operators["槐琥"].current_room == "room_1_2"
 
 

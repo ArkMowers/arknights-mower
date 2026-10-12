@@ -1651,6 +1651,12 @@ class Operators:
         ):
             return current_index
 
+    def invalidate_dorm_time(self, room):
+        """实际宿舍阵容变化后，整房恢复时间等待最终阵容实读。"""
+        for bed in self.all_dorms():
+            if bed.position[0] == room:
+                bed.time = None
+
     def refresh_dorm_time(self, room, index, agent, *, group_transitions=None):
         _name = agent["agent"]
         # 此方法也会作为无界函数绑定到轻量读房测试对象，避免依赖对象上存在
@@ -2065,6 +2071,17 @@ class Operators:
                     or occupant.name != name
                 )
             }
+            changed_dorms = {
+                room for room, _ in changed_slots if room.startswith("dorm")
+            }
+            changed_dorms.update(
+                op.current_room
+                for room, names in plan.items()
+                for index, name in enumerate(names)
+                if (op := projected.operators.get(name)) is not None
+                and op.current_room.startswith("dorm")
+                and (op.current_room, op.current_index) != (room, index)
+            )
             recovery_times = {
                 bed.name: (bed.position, bed.time)
                 for bed in projected.all_dorms()
@@ -2098,7 +2115,12 @@ class Operators:
                     old_position, old_time = recovery_times.get(
                         occupant.name, (None, None)
                     )
-                    bed.time = old_time if (old_position == bed.position) else None
+                    bed.time = (
+                        old_time
+                        if old_position == bed.position
+                        and bed.position[0] not in changed_dorms
+                        else None
+                    )
                 else:
                     bed.reset()
         return projected

@@ -624,8 +624,8 @@ class TestScheduling(unittest.TestCase):
         op_data.dorm[2].name = "夕"
         plan = try_reorder(op_data, {})
         self.assertEqual(plan["dormitory_1"][2:], ["夕", "Free", "Free"])
-        self.assertEqual(plan["dormitory_2"][2], "凯尔希")
-        self.assertEqual(plan["dormitory_3"][3], "麒麟R夜刀")
+        self.assertEqual(plan["dormitory_2"][2], "麒麟R夜刀")
+        self.assertEqual(plan["dormitory_3"][3], "凯尔希")
         projected = op_data.project_arrangements([plan])
         self.assertEqual(
             {bed.name for bed in projected.dorm if bed.name},
@@ -644,7 +644,7 @@ class TestScheduling(unittest.TestCase):
 
         plan = try_reorder(op_data, {})
         self.assertEqual(len(plan), 3)
-        self.assertEqual(plan["dormitory_1"][2:], ["夕", "凯尔希", "麒麟R夜刀"])
+        self.assertEqual(plan["dormitory_1"][2:], ["夕", "麒麟R夜刀", "凯尔希"])
         self.assertEqual(plan["dormitory_2"][2:4], ["森蚺", "Free"])
         self.assertEqual(plan["dormitory_3"][3], "见行者")
 
@@ -661,8 +661,8 @@ class TestScheduling(unittest.TestCase):
         first = try_reorder(op_data, {})
         second = try_reorder(op_data, {})
         self.assertEqual(first, second)
-        self.assertEqual(first["dormitory_1"][2:], ["夕", "玛恩纳", "Free"])
-        self.assertEqual(first["dormitory_2"][2:4], ["焰尾", "见行者"])
+        self.assertEqual(first["dormitory_1"][2:], ["夕", "见行者", "玛恩纳"])
+        self.assertEqual(first["dormitory_2"][2:4], ["焰尾", "Free"])
         self.assertEqual(first["dormitory_3"][3], "森蚺")
         projected = op_data.project_arrangements([first])
         self.assertCountEqual(
@@ -862,8 +862,8 @@ class TestScheduling(unittest.TestCase):
         self.assertIsNone(op_data.swap_plan([False], refresh=True))
         restored_tasks = []
         try_add_release_dorm({}, None, op_data, restored_tasks)
-        # 重新开放不抢占仍在位的单回目标，普通补位仍在其余空床进行。
-        self.assertFalse(self.task_writes_slot(restored_tasks, "dormitory_1", 2))
+        # 恢复为 Free 后，满心情占位者让出靠前恢复位给未恢复候选。
+        self.assertTrue(self.task_writes_slot(restored_tasks, "dormitory_1", 2))
         self.assertTrue(
             op_data.is_effective_free_slot(
                 next(bed for bed in op_data.dorm if bed.position == ("dormitory_1", 2))

@@ -385,7 +385,8 @@ def test_priority_vacancy_plan_does_not_include_ordinary_full_resident_release(
     instance.tasks, instance.task = [], None
     assert instance._fill_empty_dorms(primary_planned=True)
     assert instance.tasks[0].type == TaskTypes.FILL_DORM
-    assert instance.tasks[0].plan == {ROOM: ["Current"] * 4 + ["红"]}
+    # 未恢复者取得单回，满心情原住者保留为普通位垫位者，未被清退。
+    assert instance.tasks[0].plan == {ROOM: ["Current"] * 3 + ["红", "桃金娘"]}
 
 
 @pytest.mark.parametrize(

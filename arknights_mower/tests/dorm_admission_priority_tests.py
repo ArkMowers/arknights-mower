@@ -137,8 +137,8 @@ def test_high_priority_newcomer_starts_cross_room_preemption(residents, reverse_
         {second: ["红", "陈"]}
         if reverse_rooms
         else {
-            ROOM: ["Current"] * 3 + ["红", "Current"],
-            second: ["银灰", "陈"],
+            ROOM: ["Current"] * 3 + ["红", "陈"],
+            second: ["银灰", "Free"],
         }
     )
     assert plan == {second: ["Current", "红"]}
@@ -224,8 +224,8 @@ def test_multiple_arrivals_fill_empty_vips_in_priority_and_room_order(
         data.plan[room] = [Room("Free", "", []), Room("Free", "", [])]
         data.dorm += [Dormitory((room, 0)), Dormitory((room, 1))]
     if reverse_rooms:
-        data.config.dorm_order = [second, ROOM, "dormitory_3", "dormitory_4"]
         data.dorm = data.dorm[2:4] + data.dorm[:2] + data.dorm[4:]
+        data.config.dorm_order = [second, ROOM, third, "dormitory_4"]
     set_tier(data, "红", RestingTier.PRIORITY, 20)
     set_tier(data, "陈", RestingTier.MAIN, 1)
 
@@ -370,11 +370,10 @@ def test_existing_resident_filling_empty_target_triggers_cross_room_matching(res
 
 
 @pytest.mark.parametrize(
-    "remote_tier", [RestingTier.REPLACEMENT, RestingTier.PRIORITY_REPLACEMENT]
+    "remote_tier",
+    [RestingTier.REPLACEMENT, RestingTier.PRIORITY_REPLACEMENT, RestingTier.IDLE],
 )
-def test_vacancy_prefers_local_within_tier_but_respects_higher_remote_priority(
-    residents, remote_tier
-):
+def test_vacancy_compares_tier_and_deficit_before_locality(residents, remote_tier):
     data = residents
     local = set_tier(data, "红", RestingTier.REPLACEMENT, 20)
     local.current_room, local.current_index = ROOM, 4
@@ -390,14 +389,13 @@ def test_vacancy_prefers_local_within_tier_but_respects_higher_remote_priority(
         data.dorm.append(Dormitory((other_room, index), name))
     result = prioritize_new_dorm_recovery(data, {"meeting": ["银灰"]})
     projected = data.project_arrangements([result])
-    remote_wins = remote_tier == RestingTier.PRIORITY_REPLACEMENT
-    assert projected.get_current_operator(ROOM, 3).name == (
+    remote_wins = remote_tier <= RestingTier.REPLACEMENT
+    # 后方的更高层级单回也参与向前补位，随后空位仍按层级和缺口分配。
+    assert projected.get_current_operator(ROOM, 3).name == "陈"
+    assert projected.get_current_operator(other_room, 0).name == (
         "空爆" if remote_wins else "红"
     )
-    assert projected.get_current_operator(other_room, 0).name == "陈"
-    assert {room for room in result if room.startswith("dorm")} == (
-        {ROOM, other_room} if remote_wins else {ROOM}
-    )
+    assert {room for room in result if room.startswith("dorm")} == {ROOM, other_room}
 
 
 def test_new_arrival_preemption_chain_can_span_three_dormitories(residents):
@@ -418,7 +416,8 @@ def test_new_arrival_preemption_chain_can_span_three_dormitories(residents):
     assert projected.get_current_operator(ROOM, 3).name == "红"
     assert projected.get_current_operator("dormitory_2", 0).name == "银灰"
     assert projected.get_current_operator("dormitory_3", 0).name == "陈"
-    assert projected.get_current_operator("dormitory_3", 1).name == "空爆"
+    assert projected.get_current_operator(ROOM, 4).name == "空爆"
+    assert projected.get_current_operator("dormitory_3", 1) is None
     assert [(bed.name, bed.position) for bed in data.dorm] == original
     assert try_reorder(projected, {}) == {}
 
@@ -459,7 +458,7 @@ def test_displaced_target_skips_equal_tiers_even_with_larger_mood_deficit(
     assert projected.get_current_operator("dormitory_3", 0).name == (
         "空爆" if last_tier == RestingTier.MAIN else "银灰"
     )
-    assert projected.get_current_operator("dormitory_3", 1).name == (
+    assert projected.get_current_operator(ROOM, 4).name == (
         "银灰" if last_tier == RestingTier.MAIN else "空爆"
     )
 
