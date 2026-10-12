@@ -239,6 +239,8 @@ Admission reuses `Operators.project_arrangements` without changing Actual Occupa
 
 Task selection, priority admission and worker idle budgets exclude retained failures while exposing the original tasks through existing persistence and task listing. Elapsed time alone never reopens dispatch. A new related successful observation or relevant arrangement change releases the original task for another bounded attempt; unchanged cached information does not. Unrelated tasks continue executing, and stale-plan cleanup preserves the failed task. Recognized production countdowns, mood recovery, training completion, resource recovery and actual task dependencies retain their existing waits, deadlines and bounds. Cancellation, device recovery and destructive-operation safeguards retain their existing ownership.
 
+Interrupted trade-order insertion converts the same task to original-roster restoration without moving its timestamp or suspending that compensation behind the insertion failure. Restoration is different remaining work and may dispatch immediately when its existing occupancy dependencies permit it. A failure during restoration itself follows the retained-failure rule and requires relevant new information before retrying; it never repeats insertion or Drone Acceleration.
+
 The [task retention decision](../../.agents/notes/implemented/bug-fix/2026-10-01-recovery-release-and-task-retention.md) records the failure regressions.
 
 ### Configurable dormitory bed order

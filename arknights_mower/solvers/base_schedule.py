@@ -1475,6 +1475,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             remove_current_task = True
             arrangement_deferred = False
             completed_task = None
+            inserting_order = self.task.type == TaskTypes.RUN_ORDER and bool(
+                self.task.meta_data
+            )
             try:
                 if self.task.meta_data == RESUME_META or getattr(
                     self.task, "emergency_recovery_release", False
@@ -1644,7 +1647,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     task.arrangement_retry_due_at = task.time
                 task.arrangement_retry_room = e.room
                 task.arrangement_retry_count = attempts
-                self._retain_failed_task(task, str(e), [e.room])
+                if not (
+                    inserting_order
+                    and getattr(task, "run_order_restore_pending", False)
+                ):
+                    self._retain_failed_task(task, str(e), [e.room])
                 self.skip()
                 self.back_to_infrastructure()
             except ProductSwitchFailed as e:
@@ -1703,9 +1710,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 else:
                     pending = product_tasks or [self.task]
                     for task in pending:
-                        if (task.plan or task.type == TaskTypes.SWITCH_PRODUCT) and any(
-                            queued is task for queued in self.tasks
+                        if inserting_order and getattr(
+                            task, "run_order_restore_pending", False
                         ):
+                            logger.warning("跑单插拔中断，原任务立即转为恢复原驻员")
+                        elif (
+                            task.plan or task.type == TaskTypes.SWITCH_PRODUCT
+                        ) and any(queued is task for queued in self.tasks):
                             rooms = task.plan or (
                                 [task.meta_data.split(",", 1)[0]]
                                 if task.type == TaskTypes.SWITCH_PRODUCT
@@ -10126,7 +10137,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     def _retain_run_order_restoration(self, *, delay=False):
         """保留实测原班，后续调度仅恢复驻员，不重复插拔。"""
         self.task.prepare_run_order_restoration()
-        self.task.time = datetime.now() + timedelta(minutes=int(delay))
+        if delay:
+            self.task.time = datetime.now() + timedelta(minutes=1)
         if not any(task is self.task for task in self.tasks):
             self.tasks.append(self.task)
         return False
@@ -10303,7 +10315,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 )
             except BaseException:
                 if getattr(self.task, "run_order_restore_pending", False):
-                    self._retain_run_order_restoration(delay=True)
+                    self._retain_run_order_restoration()
                 raise
             if new_plan is False or new_plan is None:
                 self._finish_idle_dorm_shift()
@@ -10426,7 +10438,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     self.skip()
             except BaseException:
                 if getattr(self.task, "run_order_restore_pending", False):
-                    self._retain_run_order_restoration(delay=True)
+                    self._retain_run_order_restoration()
                 raise
         elif new_plan and self.task.type == TaskTypes.FIAMMETTA:
             self.tasks.append(

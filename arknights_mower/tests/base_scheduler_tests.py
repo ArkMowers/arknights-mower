@@ -2847,6 +2847,7 @@ class TestDroneAccelerate(unittest.TestCase):
             Operators.arrangement_group_transitions.__get__(solver.op_data)
         )
         arrangements = []
+        original_time = task.time
 
         def fake_arrange_room(new_plan, room, plan, get_time=False):
             arrangements.append(plan[room].copy())
@@ -2874,10 +2875,11 @@ class TestDroneAccelerate(unittest.TestCase):
             self.assertEqual(task.plan, {room: original})
             self.assertEqual(task.meta_data, "")
             self.assertTrue(task.run_order_restore_pending)
-            self.assertTrue(solver.error)
+            self.assertFalse(solver.error)
+            self.assertFalse(hasattr(task, "execution_failure"))
+            self.assertEqual(task.time, original_time)
+            self.assertIs(find_next_task(solver.tasks), task)
 
-            task.time = datetime.now()
-            solver.error = False
             solver.task = task
             solver.infra_main()
 

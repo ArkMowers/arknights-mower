@@ -75,6 +75,65 @@ def test_elapsed_time_does_not_rearm_failed_work(scheduler, failed_arrangement):
     solver.agent_arrange.assert_called_once()
 
 
+@pytest.mark.parametrize("failure_type", ["recognition", "room"])
+def test_interrupted_insertion_dispatches_restoration_once(
+    scheduler, monkeypatch, failure_type
+):
+    solver = scheduler.solver
+    now = scheduler.clock.now()
+    solver.op_data.all_dorms = lambda: []
+    solver.op_data.operators = {
+        "陈": SimpleNamespace(
+            current_room=ROOM, current_index=0, time_stamp=now, is_working=lambda: True
+        )
+    }
+    solver.back_to_infrastructure = Mock()
+    monkeypatch.setattr(scheduler.module, "save_exception", Mock())
+    task = SchedulerTask(now, {ROOM: ["但书"]}, TaskTypes.RUN_ORDER, meta_data=ROOM)
+    solver.tasks = [task]
+    solver._complete_group_shift = Mock(return_value=True)
+    failure = (
+        scheduler.module.RecognizeError("读房失败")
+        if failure_type == "recognition"
+        else scheduler.module.RoomArrangementDeferred(ROOM, RuntimeError("读房失败"))
+    )
+
+    def interrupted_insertion(*args):
+        task.run_order_original_roster = {ROOM: ["陈"]}
+        task.run_order_restore_pending = True
+        solver._retain_run_order_restoration()
+        raise failure
+
+    solver.agent_arrange = Mock(side_effect=interrupted_insertion)
+    solver.task = task
+    solver.refresh_connecting = True
+    solver.infra_main()
+    assert task.time == now
+    assert task.plan == {ROOM: ["陈"]}
+    assert task.meta_data == ""
+    assert find_next_task(solver.tasks) is task
+    assert not hasattr(task, "execution_failure")
+    assert not solver.error
+
+    solver.agent_arrange.side_effect = failure
+    solver.task = task
+    solver.infra_main()
+    assert task.execution_failure
+    assert task.time == now
+    for _ in range(8):
+        scheduler.clock.current += timedelta(hours=1)
+        solver._resume_failed_tasks()
+        scheduling(solver.tasks, time_now=scheduler.clock.now(), op_data=solver.op_data)
+        assert find_next_task(solver.tasks) is None
+    assert solver.agent_arrange.call_count == 2
+
+    solver.op_data.operators["陈"].time_stamp = scheduler.clock.now()
+    solver._resume_failed_tasks()
+    assert find_next_task(solver.tasks) is task
+    assert task.time == now
+    scheduler.io.assert_not_called()
+
+
 @pytest.mark.parametrize("change", ["observation", "occupancy", "target", "layout"])
 def test_related_update_rearms_original_task_once(
     scheduler, failed_arrangement, change
