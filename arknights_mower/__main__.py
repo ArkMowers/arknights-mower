@@ -285,6 +285,19 @@ def main(saved_state, *, preparation_serial=None):
             resource_task_session(),
         ):
             return _main(saved_state)
+    except Exception:
+        if (
+            base_scheduler is not None
+            and getattr(base_scheduler, "_state_restore_complete", False)
+            and not (saved_state or {}).get("_process_crash_recovery")
+        ):
+            try:
+                from arknights_mower.solvers.record import save_current_state
+
+                save_current_state()
+            except Exception:
+                logger.exception("工作线程退出前保存运行缓存失败，保留原缓存")
+        raise
     finally:
         _close_device_session()
         _cancel_maintenance_timer()
@@ -356,14 +369,25 @@ def _initialize_scheduler(tasks, device):
 
 
 def _resume_device_dispatch(scheduler=None, failure=None):
+    uncertain = isinstance(failure, TouchFailure) and failure.delivery_unknown
+    abandon_old_session = uncertain
+    if uncertain and scheduler is not None:
+        scheduler._process_recovery_occurred_at = datetime.now().isoformat()
+
     def resume():
+        nonlocal abandon_old_session
         if device_control.shutdown_requested or config.stop_mower.is_set():
             raise MowerExit
+        if abandon_old_session:
+            # Keep the existing owner if cleanup is temporarily unsuccessful.
+            # A new session never reuses the interrupted touch callback.
+            device_control.close().unwrap()
+            abandon_old_session = False
         device = device_control.recover().unwrap()
         if scheduler is not None:
             scheduler.device = device
             scheduler.recog.device = device
-            if getattr(scheduler, "_idle_observation_pending", False):
+            if uncertain or getattr(scheduler, "_idle_observation_pending", False):
                 scheduler.recog.reset_after_external_control()
                 scheduler._idle_observation_pending = False
             else:
@@ -372,15 +396,22 @@ def _resume_device_dispatch(scheduler=None, failure=None):
 
     csleep(30)
     device = wait_for_recovery(resume, retry_errors=RECOVERABLE_DEVICE_ERRORS)
-    if isinstance(failure, TouchFailure) and failure.delivery_unknown:
-        logger.warning("输入结果待核实：保留当前任务，暂停设备调度，不重复提交副作用")
+    if uncertain and scheduler is not None:
+        from arknights_mower.utils.crash_recovery import observe_scheduler
+
+        logger.warning("输入结果不确定：保留任务与补偿，重新观察后由原任务流程接续")
         while not config.stop_mower.is_set():
-            device_control.pause_dispatch(failure)
-            csleep(30)
-            if device_control.shutdown_requested:
-                raise MowerExit
-            if scheduler is not None:
-                wait_for_recovery(resume, retry_errors=RECOVERABLE_DEVICE_ERRORS)
+            try:
+                observe_scheduler(scheduler)
+                return device
+            except MowerExit:
+                raise
+            except Exception:
+                logger.exception("输入中断后的观察暂未完成，稍后自动重试")
+                csleep(30)
+                device = wait_for_recovery(
+                    resume, retry_errors=RECOVERABLE_DEVICE_ERRORS
+                )
         raise MowerExit
     return device
 
@@ -390,7 +421,7 @@ def simulate(saved):
     具体调用方法可见各个函数的参数说明
     """
     logger.info(f"正在使用全局配置空间: {path.global_space}")
-    tasks = saved["tasks"] if saved else []
+    tasks = saved.get("tasks", []) if saved else []
     connection_retries = 1
     global base_scheduler
     if config.stop_mower.is_set():
@@ -401,10 +432,14 @@ def simulate(saved):
             if config.stop_mower.is_set():
                 raise MowerExit
             base_scheduler = initialize([], connection_retries=connection_retries)
+            base_scheduler._process_recovery_occurred_at = (
+                saved.get("_process_crash_occurred_at") if saved else None
+            )
             # saved 为空表示没有可载入的运行缓存。此时干员 current_room 尚未读取，
             # 首轮任务开始前必须暂缓副表判断，避免把“未知”误判成“不在工作”。
             base_scheduler.defer_backup_plan_until_mood_read = (
                 not saved
+                or bool(saved.get("_process_crash_recovery"))
                 or bool(saved.get("initial_mood_pending", False))
                 or config.conf.automatic_rescue_enable
                 or bool(saved and saved.get("automatic_rescue_state"))
@@ -447,7 +482,7 @@ def simulate(saved):
     _apply_version_update_resting_threshold(
         NewsChecker.get_maintenance(), base_scheduler
     )
-    if saved:
+    if saved and not saved.get("_process_crash_no_snapshot"):
         try:
             for k, v in saved["operators"].items():
                 if k not in base_scheduler.op_data.operators:
@@ -548,10 +583,14 @@ def simulate(saved):
             base_scheduler.daily_skland = saved["daily_skland"]
             base_scheduler.daily_mail = saved["daily_mail"]
             base_scheduler.task_count = saved["task_count"]
-            if len(base_scheduler.op_data.backup_plans) > 0:
+            if len(base_scheduler.op_data.backup_plans) > 0 and not saved.get(
+                "_process_crash_recovery"
+            ):
                 # 启动的时候按照条件触发副表
                 base_scheduler.backup_plan_solver()
         except Exception as ex:
+            if saved.get("_process_crash_recovery"):
+                raise
             logger.exception(ex)
     from arknights_mower.solvers.emergency import RESUME_META
     from arknights_mower.utils.emergency_recovery import ORDINARY_SHIFTS
@@ -579,6 +618,11 @@ def simulate(saved):
                 room for room in base_scheduler.op_data.plan if room in base_room_list
             }
         base_scheduler.tasks.insert(0, SchedulerTask(time=datetime.now()))
+    if saved and saved.get("_process_crash_recovery"):
+        from arknights_mower.utils.crash_recovery import reconcile_scheduler
+
+        reconcile_scheduler(base_scheduler)
+    base_scheduler._state_restore_complete = True
     while True:
         try:
             config.maintenance_recheck.clear()

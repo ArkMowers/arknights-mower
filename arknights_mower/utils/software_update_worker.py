@@ -38,6 +38,7 @@ if __package__:
         registration_key,
         submission_lock,
         utf8_output,
+        wait_for_supervisor_release,
         write_json,
     )
 else:
@@ -54,6 +55,7 @@ else:
         registration_key,
         submission_lock,
         utf8_output,
+        wait_for_supervisor_release,
         write_json,
     )
 
@@ -1395,6 +1397,8 @@ class Worker:
         while time.monotonic() < deadline:
             self.stopped = [r for r in self.original if not process_alive(r["pid"])]
             if len(self.stopped) == len(self.original):
+                for record in self.original:
+                    wait_for_supervisor_release(record, deadline)
                 return
             time.sleep(0.5)
         raise RuntimeError(

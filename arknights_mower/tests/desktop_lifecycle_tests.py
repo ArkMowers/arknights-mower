@@ -303,7 +303,8 @@ class DesktopStartupTests(unittest.TestCase):
             server.get_resource_version.side_effect = check_resource
             server.install_resource.side_effect = install_resource
 
-            def start_worker(mode):
+            def start_worker(mode, *, automatic=False):
+                self.assertTrue(automatic)
                 events.append(("start", mode))
                 return True
 
@@ -376,7 +377,7 @@ class DesktopStartupTests(unittest.TestCase):
     def test_normal_autostart_admits_task_through_the_start_route(self):
         events, server = self.launch()
         self.assertEqual(events, [("start", "0")])
-        server.start.assert_called_once_with("0")
+        server.start.assert_called_once_with("0", automatic=True)
 
     def test_managed_desktop_honors_explicit_and_random_ports_with_or_without_token(
         self,
@@ -402,7 +403,7 @@ class DesktopStartupTests(unittest.TestCase):
                 self.assertEqual(
                     events, ["check resource", "install resource", ("start", "0")]
                 )
-                server.start.assert_called_once_with("0")
+                server.start.assert_called_once_with("0", automatic=True)
 
     def test_resource_check_error_keeps_existing_resources_and_starts(self):
         events, server = self.launch(resource=True, resource_result=OSError("offline"))
@@ -422,7 +423,7 @@ class DesktopStartupTests(unittest.TestCase):
                 ("start", "0"),
             ],
         )
-        server.start.assert_called_once_with("0")
+        server.start.assert_called_once_with("0", automatic=True)
 
     def test_stop_or_shutdown_during_resource_install_cancels_pending_start(self):
         for cancel in ("stop", "shutdown"):

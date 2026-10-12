@@ -115,6 +115,7 @@
                   >
                 </template>
               </n-alert>
+              <CrashRecoveryNotice v-if="loaded" />
               <router-view v-if="loaded" />
               <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
               <Feedback />
@@ -331,6 +332,7 @@ import {
 } from 'vue'
 import Feedback from '@/components/Feedback.vue'
 import GlobalUpdateDrop from '@/components/GlobalUpdateDrop.vue'
+import CrashRecoveryNotice from '@/components/CrashRecoveryNotice.vue'
 import WindowTitlebar from '@/components/WindowTitlebar.vue'
 import {
   mowerDarkCssVariables,

@@ -1788,11 +1788,15 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                 self.assertTrue(server.app.config["DESKTOP_STARTUP_HANDLED"])
                 self.assertEqual(len(resumes), int(restart or automatic))
                 if resumes:
-                    server.start.assert_called_once_with("2" if restart else "0")
+                    server.start.assert_called_once_with(
+                        "2" if restart else "0", automatic=True
+                    )
                     registration.shutdown_requested.return_value = False
                     resumes[0]()
                     # A late worker cannot restart automation after shutdown.
-                    server.start.assert_called_once_with("2" if restart else "0")
+                    server.start.assert_called_once_with(
+                        "2" if restart else "0", automatic=True
+                    )
 
     def test_tray_always_hides_its_dock_icon(self):
         from webview_ui import start_tray
