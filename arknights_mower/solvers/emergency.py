@@ -533,6 +533,28 @@ class EmergencyRecoveryMixin:
         self._emergency_save()
         return True
 
+    def _emergency_protect_training(self, plan, room_state):
+        """救急跳过受保护训练室及其驻员，其他岗位继续接管。"""
+        if not (
+            room_state is None
+            or getattr(room_state, "locked", False) is True
+            or getattr(room_state, "read_failed", False) is True
+            or getattr(room_state, "amiya_form_waiting", False) is True
+            or config.conf.enable_mastery
+            and getattr(room_state, "protected", False) is True
+        ):
+            return False
+        protected = {
+            op.name
+            for op in self.op_data.operators.values()
+            if op.current_room == "train"
+        }
+        for room, row in plan.items():
+            for index, name in enumerate(row):
+                if room == "train" or name in protected:
+                    row[index] = "Current"
+        return True
+
     def _emergency_schedule_staffing(self):
         """救急表立即接管全部已配置工作岗位，实际驻员核验完成状态。"""
         state, data = self.emergency_state, self.op_data
@@ -548,6 +570,14 @@ class EmergencyRecoveryMixin:
             state.get("staffing_complete") and self._emergency_replace_low_workers()
         )
         plan = rescue_plan_for(data, state["rescue_plan"])
+        self._suppress_train_arrangement(plan)
+        if (room_state := getattr(self, "train_room_state", None)) is not None:
+            self._emergency_protect_training(plan, room_state)
+        plan = {
+            room: names
+            for room, names in plan.items()
+            if any(name != "Current" for name in names)
+        }
         # 接管后的专项恢复使用救急驻员，不能再把已换下的正常主班拉回。
         for queued in self.tasks:
             for attribute in ("run_order_original_roster", "emergency_original_roster"):
@@ -567,6 +597,8 @@ class EmergencyRecoveryMixin:
                 return True
         pending = {}
         for room, names in plan.items():
+            if all(name == "Current" for name in names):
+                continue
             current = data.get_current_room(room, True)
             if current is not None and all(
                 name == "Current" or index < len(current) and current[index] == name
@@ -942,13 +974,20 @@ class EmergencyRecoveryMixin:
         pending = state.get("staffing_plan", {})
         if not pending:
             return False
+        self._suppress_train_arrangement(pending)
+        if (room_state := getattr(self, "train_room_state", None)) is not None:
+            self._emergency_protect_training(pending, room_state)
         state["staffing_plan"] = {
             room: row
             for room, row in pending.items()
-            if (actual := self.op_data.get_current_room(room, True)) is None
-            or any(
-                name != "Current" and (index >= len(actual) or name != actual[index])
-                for index, name in enumerate(row)
+            if any(name != "Current" for name in row)
+            and (
+                (actual := self.op_data.get_current_room(room, True)) is None
+                or any(
+                    name != "Current"
+                    and (index >= len(actual) or name != actual[index])
+                    for index, name in enumerate(row)
+                )
             )
         }
         if state["staffing_plan"]:

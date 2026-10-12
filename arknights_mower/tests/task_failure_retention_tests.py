@@ -451,12 +451,14 @@ def empty_room_solver(native_solver):
     return solver, task
 
 
-@pytest.mark.parametrize("reader", ["ordinary", "emergency"])
+@pytest.mark.parametrize("reader", ["ordinary", "patrol", "emergency"])
 def test_complete_empty_room_read_reopens_failure_once(empty_room_solver, reader):
     solver, task = empty_room_solver
     if reader == "ordinary":
         observed = solver.get_agent_from_room(ROOM, force_mood=True)
         assert observed == [{"agent": "", "mood": -1}]
+    elif reader == "patrol":
+        solver._read_room_mood(ROOM, force_mood=True)
     else:
         assert solver._emergency_read_rooms([ROOM])
     assert solver.op_data.room_observations[ROOM] == 1
@@ -592,7 +594,7 @@ def test_room_observation_and_failure_survive_saved_state(
 
 
 @pytest.mark.parametrize("cached_resident", [False, True])
-@pytest.mark.parametrize("reader", ["ordinary", "emergency"])
+@pytest.mark.parametrize("reader", ["ordinary", "patrol", "emergency"])
 def test_unrecognized_slot_is_not_a_successful_empty_observation(
     empty_room_solver, cached_resident, reader
 ):
@@ -613,6 +615,8 @@ def test_unrecognized_slot_is_not_a_successful_empty_observation(
     if reader == "ordinary":
         observed = solver.get_agent_from_room(ROOM, force_mood=True)
         assert observed[0]["observed"] is False
+    elif reader == "patrol":
+        solver._read_room_mood(ROOM, force_mood=True)
     else:
         assert solver._emergency_read_rooms([ROOM])
     assert solver.read_screen.call_count == 3
@@ -628,6 +632,8 @@ def test_unrecognized_slot_is_not_a_successful_empty_observation(
     solver.find.return_value = True
     if reader == "ordinary":
         solver.get_agent_from_room(ROOM, force_mood=True)
+    elif reader == "patrol":
+        solver._read_room_mood(ROOM, force_mood=True)
     else:
         assert solver._emergency_read_rooms([ROOM])
     solver._resume_failed_tasks()
@@ -840,7 +846,7 @@ def test_prediction_invalidation_is_not_successful_failure_evidence(
     assert find_next_task(solver.tasks) is None
 
 
-@pytest.mark.parametrize("reader", ["ordinary", "emergency"])
+@pytest.mark.parametrize("reader", ["ordinary", "patrol", "emergency"])
 def test_unresolved_dorm_roster_preserves_beds_and_release_task(native_solver, reader):
     import numpy as np
 
@@ -880,6 +886,8 @@ def test_unresolved_dorm_roster_preserves_beds_and_release_task(native_solver, r
     )
     if reader == "ordinary":
         solver.get_agent_from_room(room, force_mood=True)
+    elif reader == "patrol":
+        solver._read_room_mood(room, force_mood=True)
     else:
         assert solver._emergency_read_rooms([room])
     assert positions == {
@@ -892,3 +900,92 @@ def test_unresolved_dorm_roster_preserves_beds_and_release_task(native_solver, r
     assert task.execution_failure
     assert find_next_task(solver.tasks) is None
     assert solver.tasks == [task]
+
+
+@pytest.mark.parametrize("reopened", [False, True])
+@pytest.mark.parametrize("serialized", [False, True])
+@pytest.mark.parametrize("low_mood", [False, True])
+@pytest.mark.parametrize(
+    "kind",
+    [TaskTypes.SELF_CORRECTION, TaskTypes.SHIFT_ON, TaskTypes.FILL_DORM],
+)
+def test_unrelated_shift_cycle_preserves_retained_execution(
+    native_solver, kind, reopened, serialized, low_mood
+):
+    solver = native_solver
+    solver.op_data.first_init = False
+    if low_mood:
+        solver.op_data.operators[native.PRIMARY[0]].mood = 1
+    failed = SchedulerTask(
+        native.NOW - timedelta(minutes=5), {ROOM: [native.PRIMARY[0]]}, kind
+    )
+    if kind == TaskTypes.FILL_DORM:
+        failed.plan = {
+            "dormitory_1": [
+                "Current",
+                "Current",
+                "Current",
+                "Current",
+                native.COVERS[0],
+            ]
+        }
+    else:
+        solver.op_data.operators[native.PRIMARY[0]]._current_room = ""
+        solver.op_data.operators[native.PRIMARY[0]].current_index = -1
+    independent = native.PRIMARY[1]
+    other_room = solver.op_data.operators[independent].room
+    solver.op_data.operators[independent]._current_room = ""
+    solver.op_data.operators[independent].current_index = -1
+    solver.tasks = [failed]
+    solver._retain_failed_task(failed, "换人失败", failed.plan)
+    if reopened:
+        failed.execution_failure = None
+        failed.execution_retained = True
+    if serialized:
+        failed = jsonpickle.decode(jsonpickle.encode(failed))
+        solver.tasks = [failed]
+    original = copy.deepcopy((failed.time, failed.plan, failed.meta_data))
+    for _ in range(3):
+        active = SchedulerTask(
+            native.NOW, {other_room: [independent]}, TaskTypes.SELF_CORRECTION
+        )
+        solver.tasks.append(active)
+        solver.task = active
+        solver._prepare_shift_cycle(active)
+        assert sum(t is failed for t in solver.tasks) == 1
+        assert (failed.time, failed.plan, failed.meta_data) == original
+        assert active.plan[other_room] == [independent]
+        if kind == TaskTypes.FILL_DORM:
+            assert active.plan.get("dormitory_1", ["Current"] * 5)[4] == "Current"
+            assert native.PRIMARY[0] not in {
+                name for row in active.plan.values() for name in row
+            }
+        else:
+            assert ROOM not in active.plan
+        solver.tasks.remove(active)
+    if not reopened:
+        solver._resume_failed_tasks()
+        assert find_next_task(solver.tasks) is None
+        relevant_room = next(iter(failed.plan))
+        solver.op_data.room_observations[relevant_room] = 1
+        solver._resume_failed_tasks()
+    assert find_next_task(solver.tasks) is failed
+
+
+def test_shift_cycle_retention_keeps_ordinary_due_coalescing(native_solver):
+    solver = native_solver
+    solver.op_data.first_init = False
+    for name in native.PRIMARY[:2]:
+        solver.op_data.operators[name]._current_room = ""
+        solver.op_data.operators[name].current_index = -1
+    first = SchedulerTask(
+        native.NOW, {ROOM: [native.PRIMARY[0]]}, TaskTypes.SELF_CORRECTION
+    )
+    other = SchedulerTask(
+        native.NOW, {"room_1_2": [native.PRIMARY[1]]}, TaskTypes.SHIFT_ON
+    )
+    solver.tasks, solver.task = [first, other], first
+    solver._prepare_shift_cycle(first)
+    assert solver.tasks == [first]
+    assert first.plan[ROOM] == [native.PRIMARY[0]]
+    assert first.plan["room_1_2"] == [native.PRIMARY[1]]

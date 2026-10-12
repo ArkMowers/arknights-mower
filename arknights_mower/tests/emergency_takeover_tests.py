@@ -258,8 +258,11 @@ def test_later_rotation_retains_release_priority_after_partial_restart(
 
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize("follow", [False, True])
-def test_live_training_protection_does_not_filter_takeover(
-    monkeypatch, enabled, follow
+@pytest.mark.parametrize(
+    "room_status", ["training", "waiting_collect", "unreadable", "empty"]
+)
+def test_live_training_protection_skips_entire_room_during_takeover(
+    monkeypatch, enabled, follow, room_status
 ):
     from arknights_mower.solvers import mastery_reader
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
@@ -273,6 +276,7 @@ def test_live_training_protection_does_not_filter_takeover(
     solver = base_scheduler_tests.TestTrainGateReadThenJudge._make_solver(plan)
     solver.task = SchedulerTask(task_plan=plan)
     solver.task.emergency_staffing = solver.task.emergency_takeover = True
+    solver.emergency_state = {"phase": "staffing", "staffing_plan": copy.deepcopy(plan)}
     solver._can_refresh_idle_dorm_search = lambda: False
     solver.op_data.get_current_room = MagicMock(return_value=["夜莺", "号角"])
     solver.choose_train = MagicMock()
@@ -280,11 +284,81 @@ def test_live_training_protection_does_not_filter_takeover(
     solver.get_agent_from_room = MagicMock(
         return_value=[{"agent": "褐果"}, {"agent": "桃金娘"}]
     )
-    read = MagicMock(return_value=mastery_reader.RoomState("training", protected=True))
-    monkeypatch.setattr(mastery_reader, "read_room_state", read)
-    solver.agent_arrange_room({}, "train", plan)
-    solver.choose_train.assert_called_once_with(
-        ["褐果", "桃金娘"], fast_mode=True, choose_error=0
+    room_state = (
+        None if room_status == "unreadable" else mastery_reader.RoomState(room_status)
     )
-    assert not getattr(solver.task, "training_skipped_slots", set())
+    read = MagicMock(return_value=room_state)
+    monkeypatch.setattr(mastery_reader, "read_room_state", read)
+    reconcile = MagicMock(return_value=False)
+    monkeypatch.setattr(mastery_reader, "reconcile_short", reconcile)
+    solver.agent_arrange_room({}, "train", plan)
+    read.assert_called_once_with(solver, enter=False)
+    if room_status == "empty":
+        solver.choose_train.assert_called_once_with(
+            ["褐果", "桃金娘"], fast_mode=True, choose_error=0
+        )
+        assert solver.task.training_skipped_slots == set()
+    else:
+        solver.choose_train.assert_not_called()
+        reconcile.assert_not_called()
+        assert solver.task.training_skipped_slots == {0, 1}
+        assert solver.emergency_state["staffing_plan"] == {
+            "train": ["Current", "Current"]
+        }
+        assert solver._emergency_reconcile_staffing()
+        assert solver.emergency_state["staffing_complete"]
+        assert solver.emergency_state["takeover_complete"]
     assert not plan
+
+
+@pytest.mark.parametrize(
+    "room_status", ["training", "waiting_collect", "unreadable", "empty"]
+)
+def test_live_source_training_check_keeps_residents_and_dispatches_other_work(
+    staffing, monkeypatch, room_status
+):
+    from arknights_mower.solvers import mastery_reader
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+
+    solver, state = staffing.solver, staffing.state
+    worker = solver.op_data.operators[COVERS[0]]
+    worker._current_room, worker.current_index = "train", 0
+    solver._emergency_schedule_staffing()
+    task = takeover(solver)
+    original_time = task.time
+    original = copy.deepcopy(task.plan)
+    solver.task = task
+    solver.back_to_infrastructure = MagicMock()
+    solver._track_idle_dorm_shift = MagicMock()
+    solver._finish_idle_dorm_shift = MagicMock()
+    read = MagicMock(
+        return_value=None
+        if room_status == "unreadable"
+        else mastery_reader.RoomState(room_status)
+    )
+    monkeypatch.setattr(mastery_reader, "read_room_state", read)
+
+    def arrange(new_plan, room, plan, **kwargs):
+        staffing.place({room: plan[room]})
+        del plan[room]
+        return new_plan
+
+    solver.agent_arrange_room = MagicMock(side_effect=arrange)
+    BaseSchedulerSolver.agent_arrange(solver, task.plan)
+    read.assert_called_once_with(solver)
+    protected_room = next(room for room, row in original.items() if worker.name in row)
+    expected = set(original) - ({protected_room} if room_status != "empty" else set())
+    assert {
+        call.args[1] for call in solver.agent_arrange_room.call_args_list
+    } == expected
+    assert not task.plan
+    assert task.time == original_time
+    solver.tasks.clear()
+    assert solver._emergency_reconcile_staffing()
+    assert state["staffing_complete"]
+    assert (solver.op_data.operators[worker.name].current_room == "train") == (
+        room_status != "empty"
+    )
+    for _ in range(3):
+        solver._emergency_schedule_staffing()
+        assert not solver.tasks

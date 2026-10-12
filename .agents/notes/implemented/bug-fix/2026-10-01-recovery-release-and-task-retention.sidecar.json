@@ -25,7 +25,10 @@
     "arknights_mower.utils.scheduler_task.plan_mood_limit_releases",
     "arknights_mower.utils.scheduler_task.merge_release_dorm",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.run_order_solver",
-    "arknights_mower.utils.scheduler_task.add_release_dorm"
+    "arknights_mower.utils.scheduler_task.add_release_dorm",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._read_room_mood",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._prepare_shift_cycle",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._suppress_retained_arrangements"
   ],
   "test_suites": [
     "arknights_mower/tests/device_control_shutdown_tests.py",

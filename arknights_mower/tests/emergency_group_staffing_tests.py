@@ -147,39 +147,68 @@ def test_fixed_rooms_join_rescue_dispatch_and_reconcile(
 
 
 @pytest.mark.parametrize("follows", [False, True])
-def test_rescue_training_overrides_assistant_protection(staffing, monkeypatch, follows):
+def test_rescue_training_protection_skips_without_delaying_other_rooms(
+    staffing, monkeypatch, follows
+):
     from types import SimpleNamespace
     from unittest.mock import MagicMock
 
-    from arknights_mower.solvers import base_schedule, emergency
-    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    from arknights_mower.solvers import base_schedule
     from arknights_mower.utils import config
     from arknights_mower.utils.operators import Operator
 
     monkeypatch.setattr(config.conf, "enable_mastery", True)
     monkeypatch.setattr(config.conf, "assistant_follows_schedule", follows)
     monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", False)
-    monkeypatch.setattr(emergency, "busy_resting_names", lambda: set())
-    solver = staffing.solver
-    solver._suppress_train_correction = (
-        BaseSchedulerSolver._suppress_train_correction.__get__(solver)
-    )
+    solver, state = staffing.solver, staffing.state
     solver._train_mastery_active = MagicMock(return_value=True)
     solver._train_protected = MagicMock(return_value=False)
     solver.train_room_state = SimpleNamespace(
         state="training", locked=True, protected=False
     )
     solver.op_data.add(Operator("泡普卡", "", mood=24, time_stamp=NOW))
-    staffing.state["rescue_plan"]["train"] = ["泡普卡", "安赛尔"]
+    state["rescue_plan"]["train"] = ["泡普卡", "安赛尔"]
     assert solver._emergency_schedule_staffing()
-    plan = staffing_task(solver).plan
-    assert plan["train"] == ["泡普卡", "安赛尔"]
-    staffing.state["staffing_plan"] = {"train": ["泡普卡", "安赛尔"]}
-    monkeypatch.setattr(config.conf, "assistant_follows_schedule", False)
+    task = staffing_task(solver)
+    assert "train" not in task.plan
+    expected = {
+        room: names for room, names in state["rescue_plan"].items() if room != "train"
+    }
+    assert task.plan == expected
+    assert task.emergency_takeover
+    solver.op_data = solver.op_data.project_arrangements([task.plan])
     solver.tasks.clear()
-    assert not solver._emergency_reconcile_staffing()
-    solver.op_data = solver.op_data.project_arrangements([plan])
     assert solver._emergency_reconcile_staffing()
+    assert state["staffing_complete"] and state["takeover_complete"]
+    for _ in range(3):
+        solver._emergency_schedule_staffing()
+        assert not solver.tasks
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_rescue_training_protection_does_not_pull_residents_into_workrooms(
+    staffing, monkeypatch, enabled
+):
+    from arknights_mower.solvers.mastery_reader import RoomState
+    from arknights_mower.utils import config
+
+    monkeypatch.setattr(config.conf, "enable_mastery", enabled)
+    solver, state = staffing.solver, staffing.state
+    worker = solver.op_data.operators[COVERS[0]]
+    worker._current_room, worker.current_index = "train", 0
+    solver.train_room_state = RoomState("training")
+    assert solver._emergency_schedule_staffing()
+    task = staffing_task(solver)
+    protected_room = next(
+        room for room, row in state["rescue_plan"].items() if worker.name in row
+    )
+    assert protected_room not in task.plan
+    assert len(task.plan) == len(state["rescue_plan"]) - 1
+    solver.op_data = solver.op_data.project_arrangements([task.plan])
+    solver.tasks.clear()
+    assert solver._emergency_reconcile_staffing()
+    assert solver.op_data.operators[worker.name].current_room == "train"
+    assert state["staffing_complete"]
 
 
 @pytest.mark.parametrize("complete", [False, True])

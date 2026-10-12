@@ -1388,7 +1388,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 [
                     pending
                     for pending in self.tasks
-                    if pending is not task and pending.type != TaskTypes.SHIFT_ON
+                    if pending is not task
+                    and (
+                        pending.type != TaskTypes.SHIFT_ON or pending.retains_execution
+                    )
                 ],
             )
             if not completed:
@@ -2110,10 +2113,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             **({"force_mood": True} if force_mood else {}),
         )
         actual = {item["agent"] for item in mood_data if item.get("agent")}
-        for name in previous - actual:
-            op = self.op_data.operators[name]
-            op.current_room, op.current_index = "", -1
-            op.time_stamp = None
+        if all(item.get("observed", True) for item in mood_data):
+            for name in previous - actual:
+                op = self.op_data.operators[name]
+                op.current_room, op.current_index = "", -1
+                op.time_stamp = None
         mood_info = [
             f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
             for item in mood_data
@@ -2536,6 +2540,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             logger.debug("多绑组纠错替班暂不可用，保留当前安排")
             return {} if return_plan else None
         self._suppress_train_correction(fix_plan)
+        self._suppress_retained_arrangements(fix_plan)
         if return_plan:
             return fix_plan
         if len(fix_plan.keys()) > 0:
@@ -2649,6 +2654,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             or getattr(train_room_state, "protected", None) is True
         )
         if not (mastery_active or train_locked or train_protected):
+            return False
+        if self._emergency_active():
+            fix_plan.pop("train")
             return False
         if config.conf.assistant_follows_schedule:
             # 与实际换人闸门一致：跟随开启时允许协助位纠错，训练位不动。
@@ -4457,9 +4465,19 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         from arknights_mower.utils.exhaust_replacement import match_replacements
 
         self._refresh_deferred_product_reservations()
-        reserved_names = self.op_data.reserved_product_replacements
+        retained_names, retained_slots = dorm_task_reservations(
+            self.op_data,
+            [
+                task
+                for task in self.tasks
+                if task is not self.task and task.retains_execution
+            ],
+        )
+        reserved_names = self.op_data.reserved_product_replacements | retained_names
         if any(name in reserved_names for name in agents):
-            logger.debug("整组含延期切产物换班预留干员，暂缓规划：%s", agents)
+            logger.debug(
+                "整组含保留任务或延期切产物换班预约干员，保留当前安排：%s", agents
+            )
             return
         # 宿舍成员只跟随换班，不以自身心情抢占组内替班或休息优先级。
         dorm_agents = [
@@ -4513,7 +4531,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if not success:
                 break
             x = self.op_data.operators[agent]
-            if (x.room, x.index) in self.op_data.reserved_product_beds:
+            if (x.room, x.index) in self.op_data.reserved_product_beds or (
+                x.room,
+                x.index,
+            ) in retained_slots:
                 success = False
                 break
             if x.room not in base_room_list:
@@ -4614,7 +4635,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             allocation_plan = copy.deepcopy({**plan, **__plan})
             admissions = {}
             for task in sorted(self.tasks, key=lambda task: task.time):
-                if task.type != TaskTypes.SHIFT_OFF:
+                if task.type != TaskTypes.SHIFT_OFF and not task.retains_execution:
                     continue
                 for room, names in task.plan.items():
                     if not room.startswith("dorm"):
@@ -5051,6 +5072,57 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self._resume_waiting_group_shifts()
         return True
 
+    def _suppress_retained_arrangements(self, plan):
+        """派生安排不重做保留任务，也不挪用其目标和当前驻员。"""
+        retained = [
+            task
+            for task in self.tasks
+            if task is not self.task and task.retains_execution
+        ]
+        names = {
+            name
+            for task in retained
+            for row in task.plan.values()
+            for name in row
+            if name not in ("", "Current", "Free")
+        }
+        slots = {
+            (room, index)
+            for task in retained
+            for room, row in task.plan.items()
+            for index, name in enumerate(row)
+            if name != "Current"
+        }
+        names.update(
+            op.name
+            for slot in slots
+            if (op := self.op_data.get_current_operator(*slot)) is not None
+        )
+        groups = {
+            group
+            for name in names
+            if (op := self.op_data.operators.get(name)) is not None
+            for group in (
+                [op.group]
+                if not op.multi_group
+                else [binding["group"] for binding in op.group_bindings]
+            )
+            if group
+        }
+        names.update(name for group in groups for name in self.op_data.groups[group])
+        for room, row in list(plan.items()):
+            for index, name in enumerate(row):
+                current = self.op_data.get_current_operator(room, index)
+                if (
+                    (room, index) in slots
+                    or name in names
+                    or current is not None
+                    and current.name in names
+                ):
+                    row[index] = "Current"
+            if all(name == "Current" for name in row):
+                del plan[room]
+
     def _prepare_shift_cycle(self, task):
         """在副本中收敛换班、副表、后续轮休和补床，成功后一次提交最终安排。"""
         if getattr(self, "maintenance_entry_pending", False):
@@ -5092,7 +5164,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 [
                     pending
                     for pending in self.tasks
-                    if pending is not task and pending.type != TaskTypes.SHIFT_ON
+                    if pending is not task
+                    and (
+                        pending.type != TaskTypes.SHIFT_ON or pending.retains_execution
+                    )
                 ],
             )
             task.plan = prioritize_new_dorm_recovery(
@@ -5122,6 +5197,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             and t.time <= datetime.now()
             and not getattr(t, "strict_mood_limit", False)
             and not getattr(t, "dorm_recovery_restore", [])
+            and not t.retains_execution
         ]
         consumed = set()
         for queued in sorted(coalesced, key=lambda t: t.time):
@@ -5189,7 +5265,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 [
                     pending
                     for pending in simulation.tasks
-                    if pending.type != TaskTypes.SHIFT_ON
+                    if pending.type != TaskTypes.SHIFT_ON or pending.retains_execution
                 ],
             )
             step.plan = prioritize_new_dorm_recovery(
@@ -5202,6 +5278,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 simulation.op_data, step.plan, reserved_slots
             )
             simulation._suppress_train_arrangement(step.plan)
+            simulation._suppress_retained_arrangements(step.plan)
             returning.update(
                 name
                 for name in _assigned_operator_names(step.plan)
@@ -5290,6 +5367,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 for room, names in rest.items()
                 if any(name != "Current" for name in names)
             }
+            simulation._suppress_retained_arrangements(rest)
             if rest:
                 step = SchedulerTask(task_type=TaskTypes.SHIFT_OFF, task_plan=rest)
                 step.backup_explicit_slots = explicit_slots
@@ -9602,9 +9680,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 error_count = 0
                 if not skip_enter:
                     self.enter_room(room)
-                    if room == "train" and not getattr(
-                        self.task, "emergency_takeover", False
-                    ):
+                    if room == "train":
                         self.task.training_skipped_slots = set()
                         # 实读房态决定可换岗位；自动专精开启时顺路核对专精记录。
                         from arknights_mower.solvers.mastery_reader import (
@@ -9621,6 +9697,19 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         self.train_room_state = (
                             room_state if config.conf.enable_mastery else None
                         )
+                        if getattr(self.task, "emergency_staffing", False) and (
+                            self._emergency_protect_training(plan, room_state)
+                        ):
+                            self.task.training_skipped_slots.update(
+                                range(len(plan[room]))
+                            )
+                            self._emergency_protect_training(
+                                self.emergency_state.setdefault("staffing_plan", {}),
+                                room_state,
+                            )
+                            del plan[room]
+                            self.back()
+                            return new_plan
                         if getattr(room_state, "amiya_form_waiting", False) is True:
                             del plan[room]
                             self.back()
@@ -10249,6 +10338,30 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 )
             ):
                 raise RuntimeError("救急期间暂停普通工作站换班")
+        if getattr(self.task, "emergency_staffing", False) and any(
+            name in self.op_data.operators
+            and self.op_data.operators[name].current_room == "train"
+            for row in plan.values()
+            for name in row
+        ):
+            # 先核实源岗位，不能通过其他房间的换人间接打断训练。
+            from arknights_mower.solvers.mastery_reader import read_room_state
+
+            try:
+                room_state = read_room_state(self)
+            except (MowerExit, DeviceRecoveryError):
+                raise
+            except Exception as e:
+                logger.warning(f"救急换人前训练室状态读取失败: {e}")
+                room_state = None
+            self._emergency_protect_training(plan, room_state)
+            self._emergency_protect_training(
+                self.emergency_state.setdefault("staffing_plan", {}), room_state
+            )
+            for room in list(plan):
+                if all(name == "Current" for name in plan[room]):
+                    del plan[room]
+            self.back_to_infrastructure()
         logger.info("基建：排班")
         if (
             self.task.type in (TaskTypes.NOT_SPECIFIC, TaskTypes.FILL_DORM)
