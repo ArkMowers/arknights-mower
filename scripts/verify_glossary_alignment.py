@@ -423,7 +423,7 @@ def development_terms(context: Path) -> set[str]:
 def added_line_scope(
     repository: Path, base: str | None
 ) -> tuple[dict[str, set[int]] | None, list[str]]:
-    """Compare committed, staged, unstaged and untracked prose through the real Git root."""
+    """Compare branch and working-tree prose from the shared comparison ancestor."""
     try:
         top = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
@@ -449,6 +449,16 @@ def added_line_scope(
         if resolved.returncode:
             return None, [f"Cannot determine prose comparison commit: {revision}"]
         revision = resolved.stdout.strip()
+        ancestor = subprocess.run(
+            ["git", "merge-base", revision, "HEAD"],
+            cwd=repository,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=15,
+            check=True,
+        )
+        revision = ancestor.stdout.strip()
         diff = subprocess.run(
             [
                 "git",
@@ -470,8 +480,11 @@ def added_line_scope(
         changed: dict[str, set[int]] = {}
         path = None
         for line in diff.stdout.splitlines():
-            if line.startswith("+++ b/"):
-                path = line[6:]
+            if line.startswith("+++ "):
+                name = line[4:].rstrip("\t")
+                if name.startswith('"'):
+                    name = ast.literal_eval(name)
+                path = name[2:] if name.startswith("b/") else None
             elif path is not None and line.startswith("@@"):
                 match = re.match(r"@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", line)
                 if match:
@@ -498,7 +511,7 @@ def added_line_scope(
                     )
                 )
         return changed, []
-    except (OSError, UnicodeError, subprocess.SubprocessError) as error:
+    except (OSError, ValueError, SyntaxError, subprocess.SubprocessError) as error:
         return None, [f"Cannot determine prose comparison scope: {error}"]
 
 

@@ -200,12 +200,16 @@ def main() -> int:
                 pr_text = {
                     key: event["pull_request"].get(key) for key in ("title", "body")
                 }
+                if "body" in event["pull_request"] and pr_text["body"] is None:
+                    pr_text["body"] = ""
         except (KeyError, TypeError, OSError, ValueError) as error:
             print(f"FAILED: Cannot determine CI comparison scope: {error}")
             return 1
     if args.pr_json:
         try:
             pr_text = json.loads(Path(args.pr_json).read_text(encoding="utf-8-sig"))
+            if pr_text is None:
+                raise ValueError("PR text must be an object with string title and body")
         except (OSError, ValueError) as error:
             print(f"FAILED: Cannot read PR text: {error}")
             return 1

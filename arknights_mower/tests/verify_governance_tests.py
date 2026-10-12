@@ -1960,6 +1960,87 @@ class VerifyFormalTextTests(unittest.TestCase):
             self.assertEqual(business.returncode, 1, business.stdout + business.stderr)
             self.assertIn("ForbiddenTerm", business.stdout)
 
+    def test_development_prose_in_tracked_space_paths_is_checked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_reference_repo(directory)
+            glossary = root / "CONTEXT.md"
+            glossary.write_text(
+                glossary.read_text(encoding="utf-8")
+                + "\n## 3. Development & Documentation Language\n- **_Avoid_**: `OldWording`\n",
+                encoding="utf-8",
+            )
+            document = root / "docs/中文 guide with spaces.md"
+            document.parent.mkdir()
+            document.write_text("Current wording.\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            self.commit_reference_fixture(root, "initial prose")
+            document.write_text("New OldWording\n", encoding="utf-8")
+            self.commit_reference_fixture(root, "new prose")
+            result = self.run_text_cli(root, "--base", "HEAD~1")
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("docs/中文 guide with spaces.md:1", result.stdout)
+            self.assertNotIn("UNCHANGED DEVELOPMENT PROSE", result.stdout)
+
+    def test_branch_scope_does_not_include_unmerged_base_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_reference_repo(directory)
+            glossary = root / "CONTEXT.md"
+            glossary.write_text(
+                glossary.read_text(encoding="utf-8")
+                + "\n## 3. Development & Documentation Language\n- **_Avoid_**: `OldWording`\n",
+                encoding="utf-8",
+            )
+            document = root / "docs/guide.md"
+            document.parent.mkdir()
+            document.write_text("Existing OldWording\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            self.commit_reference_fixture(root, "initial prose")
+            common = (
+                subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"], cwd=root, timeout=15
+                )
+                .decode()
+                .strip()
+            )
+            document.write_text("Current wording.\n", encoding="utf-8")
+            self.commit_reference_fixture(root, "upstream prose cleanup")
+            base = (
+                subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"], cwd=root, timeout=15
+                )
+                .decode()
+                .strip()
+            )
+            subprocess.run(
+                ["git", "checkout", "--detach", common],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            (root / "docs/new.md").write_text("Current rule.\n", encoding="utf-8")
+            self.commit_reference_fixture(root, "branch change")
+            result = self.run_text_cli(root, "--base", base)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("UNCHANGED DEVELOPMENT PROSE: 1", result.stdout)
+            (root / "docs/new.md").write_text("New OldWording\n", encoding="utf-8")
+            invalid = self.run_text_cli(root, "--base", base)
+            self.assertEqual(invalid.returncode, 1, invalid.stdout + invalid.stderr)
+            self.assertIn("docs/new.md:1", invalid.stdout)
+            self.assertNotIn("docs/guide.md:1", invalid.stdout)
+
     def test_preserved_span_checks_hash_source_and_surrounding_current_prose(self):
         with tempfile.TemporaryDirectory() as directory:
             root, _, _ = self.make_reference_repo(directory)
@@ -2108,6 +2189,58 @@ class VerifyFormalTextTests(unittest.TestCase):
                         result.returncode, 1, result.stdout + result.stderr
                     )
                     self.assertIn("string title and body", result.stdout)
+
+    def test_ci_accepts_github_null_body_as_empty_prose(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_reference_repo(directory)
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            self.commit_reference_fixture(root, "fixture")
+            base = (
+                subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"], cwd=root, timeout=15
+                )
+                .decode()
+                .strip()
+            )
+            event = {
+                "action": "edited",
+                "pull_request": {
+                    "base": {"sha": base},
+                    "title": "docs: 更新文档",
+                    "body": None,
+                },
+            }
+            result = self.run_governance_workflow(root, "pull_request", event)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            event["pull_request"]["title"] = "docs: ForbiddenTerm"
+            invalid = self.run_governance_workflow(root, "pull_request", event)
+            self.assertEqual(invalid.returncode, 1, invalid.stdout + invalid.stderr)
+            self.assertIn("PR title:1", invalid.stdout)
+
+    def test_governance_cli_rejects_null_pr_payload(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_reference_repo(directory)
+            draft = root / "draft.json"
+            draft.write_text("null", encoding="utf-8")
+            script = (
+                Path(__file__).resolve().parents[2] / "scripts/verify_governance.py"
+            )
+            result = subprocess.run(
+                [sys.executable, "-X", "utf8", str(script), "--pr-json", str(draft)],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=30,
+            )
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("string title and body", result.stdout)
 
     def test_pr_preserved_quote_markers_do_not_exempt_current_body_or_title(self):
         with tempfile.TemporaryDirectory() as directory:
