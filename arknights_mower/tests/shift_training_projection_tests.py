@@ -76,7 +76,7 @@ def test_backup_training_actions_match_protection_before_dorm_filling(
     assert s.train_room_state is room_state
     final = s.op_data.project_arrangements([task.plan])
     assert "dormitory_1" in task.plan
-    if enabled and not follow:
+    if enabled:
         assert final.get_train_support() == "艾丽妮"
         assert final.operators["克莱门莎"].current_room == "train"
         assert "艾丽妮" not in task.plan.get("dormitory_1", [])
@@ -123,7 +123,7 @@ def test_initial_intent_is_filtered_before_backup_condition_evaluation(
     assert task.backup_shift_conditions == [True]
     assert backup.positions(s.op_data) == before
     assert getattr(s, "train_room_state", None) is room_state
-    assert task.plan.get("train") == (["望", "Current"] if follow else None)
+    assert "train" not in task.plan
     s._notify_train_correction_skipped.assert_not_called()
 
 

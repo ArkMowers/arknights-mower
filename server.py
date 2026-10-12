@@ -471,10 +471,6 @@ def _run_maa_update(
             system=system,
             channel=channel,
         )
-        clear_loaded_maa_cache(result["target"])
-        result["installed_version"] = read_installed_version(
-            result["target"], fresh=True
-        )
     except Exception as e:
         logger.exception(f"MAA {operation}失败：{e}")
         with maa_update_lock:
@@ -490,6 +486,23 @@ def _run_maa_update(
                 }
             )
         return
+
+    # Installation has committed. Runtime activation cannot undo that result.
+    result.setdefault("restart_required", False)
+    try:
+        clear_loaded_maa_cache(result["target"])
+    except Exception as error:
+        result["restart_required"] = True
+        logger.warning(
+            "MAA 已安装，核心清理未完成，请重启 Mower：%s", error, exc_info=True
+        )
+    try:
+        result["installed_version"] = read_installed_version(
+            result["target"], fresh=True
+        )
+    except Exception as error:
+        result["installed_version"] = ""
+        logger.warning("MAA 已安装，读取新核心版本失败：%s", error, exc_info=True)
 
     operation = "更新" if result["operation"] == "update" else "下载"
     channel_label = "公测版" if result["channel"] == "beta" else "正式版"
@@ -520,6 +533,11 @@ def _run_maa_update(
             f"{result['python_downloaded']} 字节（完整 Windows 包 "
             f"{result['python_full_size']} 字节）"
         )
+    if result["platform"] != "android":
+        if result["restart_required"]:
+            success_message += "；请重启 Mower 后再运行 MAA"
+        if not result["installed_version"]:
+            success_message += "；无法读取已安装核心版本，请检查 MAA 安装"
     with maa_update_lock:
         maa_update_job.update(
             {
@@ -549,7 +567,6 @@ def _run_maa_resource_update(
         install_maa_resource_update,
         read_maa_resource_info,
     )
-    from arknights_mower.utils.maa_update import clear_loaded_maa_cache
 
     try:
         result = install_maa_resource_update(
@@ -559,13 +576,11 @@ def _run_maa_resource_update(
             system=system,
             callback=_set_maa_resource_update_progress,
         )
-        if result["updated"]:
-            if os.environ.get("MOWER_ANDROID") == "1":
-                from mower_android.managed import pack_component
+        if result["updated"] and os.environ.get("MOWER_ANDROID") == "1":
+            from mower_android.managed import pack_component
 
-                pack_component(result["target"])
-                result["restart_required"] = True
-            clear_loaded_maa_cache(result["target"])
+            pack_component(result["target"])
+            result["restart_required"] = True
         result["installed"] = read_maa_resource_info(result["target"])
     except Exception as e:
         logger.exception(f"MAA 资源更新失败：{e}")

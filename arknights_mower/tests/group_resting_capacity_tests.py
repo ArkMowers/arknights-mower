@@ -652,7 +652,12 @@ def test_grouped_candidate_fills_vacancy_without_changing_return_time(solver):
     ]
     assert fill_tasks
     room, index = bed.position
-    assert fill_tasks[0].plan[room][index] == candidate
+    projected = data.project_arrangements([fill_tasks[0].plan])
+    assert projected.operators[candidate].is_resting()
+    # 先将已有更高层级住客补到快床，候补使用后续床位。
+    preferred = projected.get_current_operator(room, index).name
+    assert resting_tier(projected, preferred) < resting_tier(projected, candidate)
+    assert data.operators[candidate].current_room == ""
     assert abs(
         min(task.time for task in return_tasks) - baseline_return_time
     ) < timedelta(seconds=1)

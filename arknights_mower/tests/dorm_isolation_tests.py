@@ -176,6 +176,14 @@ def test_projection_never_changes_single_target_to_satisfy_isolation(data):
     assert plan_dorm_isolation(data, plan) == plan
 
 
+def test_default_order_isolation_cannot_move_priority_guest_to_later_empty_bed(data):
+    config.conf.dorm_isolation = [["空爆", "黑角"]]
+    data.config.ope_resting_priority = ["黑角"]
+    put(data, "空爆", "dormitory_1", 2)
+    plan = {"dormitory_1": ["Current"] * 3 + ["黑角", "Current"]}
+    assert plan_dorm_isolation(data, plan) == plan
+
+
 def test_reserved_secondary_beds_remain_unavailable(data):
     config.conf.dorm_isolation = [["空爆", "黑角"]]
     put(data, "空爆", "dormitory_1", 2)
@@ -289,7 +297,9 @@ def test_explicit_low_priority_precedes_isolation(data, entry):
         tasks = []
         try_add_release_dorm({}, None, data, tasks)
         assert tasks
-        assert tasks[0].plan["dormitory_1"][3] == "黑角"
+        # 满心情原目标给未恢复者让出更快床，显式普通位仍排在宿舍二前。
+        assert tasks[0].plan["dormitory_1"][2] == "黑角"
+        assert tasks[0].plan["dormitory_1"][3] == "空爆"
     else:
         plan = {"dormitory_1": ["Current"] * 3 + ["黑角", "Current"]}
         assert plan_dorm_isolation(data, plan) == plan

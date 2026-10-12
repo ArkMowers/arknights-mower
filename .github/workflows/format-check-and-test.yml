@@ -286,6 +286,16 @@ jobs:
             arknights_mower/tests/server_status_tests.py \
             arknights_mower/tests/screenshot_tests.py \
             arknights_mower/tests/workshop_inflight_tests.py
+      - name: Verify MAA core identity and native unload policy on each OS
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python -m pytest -q -o faulthandler_timeout=60 \
+            arknights_mower/tests/maa_runtime_tests.py \
+            arknights_mower/tests/maa_runtime_native_tests.py \
+            arknights_mower/tests/maa_update_tests.py::TestLoadedMaaCache \
+            arknights_mower/tests/maa_update_route_tests.py::TestMaaUpdateWorkers
 
   android-compatibility:
     name: Update compatibility (android-arm64)

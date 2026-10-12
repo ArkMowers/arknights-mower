@@ -22,7 +22,7 @@ limits cover configuration and tmp data together.
 
 ## 3. Subsystem Invariants
 
-- **[INV-CFG-01] Configuration Data Cohesion**: Configuration imports validate all archive members before writing, restore included persistent tmp data with configuration, preserve local access settings, clear saved scheduling state, and roll back file changes if any write or database restore fails.
+- <a id="configuration-data-cohesion"></a>**Configuration Data Cohesion**: Configuration imports validate all archive members before writing, restore included persistent tmp data with configuration, preserve local access settings, clear saved scheduling state, and roll back file changes if any write or database restore fails.
 
 Malformed data produces a validation error without a recovery ZIP or file writes.
 Local path failures retain the existing files. Write failures retain the recovery

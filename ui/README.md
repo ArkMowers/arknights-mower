@@ -1,86 +1,64 @@
 # Mower Web UI
 
-Mower 的新界面。短期目标是 Mower 继续保持桌面应用的形态，界面运行在 WebView 中，取代原来的界面。未来考虑支持在浏览器中运行界面。代码也为在其它网站上展示、编辑 Mower 的排班表提供了可能。
-
-本仓库仅包含前端代码，运行需要后端代码支持。
+Mower 的 Vue 3 前端与 Python 后端同在本仓库。界面可运行在桌面 WebView 或浏览器中；开发时由 Vite 提供前端，连接正在运行的 Mower 后端。
 
 ## 开发
 
-开发时需要分别运行后端和前端。
+先按[根目录部署说明](../README.md#源码部署)准备 Python、Node.js、依赖和前端初始构建。以下以 Windows PowerShell 为例；其他系统使用根目录说明中的虚拟环境解释器。
 
 ### 后端
 
-需要 Python 3.12。
+在仓库根目录启动后端和桌面窗口，并允许指定的 Vite 回环端口：
 
-后端代码在 [ArkMowers/arknights-mower](https://github.com/ArkMowers/arknights-mower) 仓库的 `202x.x.1` 分支中。
-
-安装依赖：
-
-```bash
-python -m venv venv
-.\venv\Scripts\activate.bat
-pip install -r requirements.txt
-pip install Flask flask-cors flask-sock pywebview
+```powershell
+$env:MOWER_DEV_PORT = '5173'
+.\.venv\Scripts\python.exe webview_ui.py
 ```
 
-运行后端：
-
-```bash
-flask --app server run --port=8000 --reload
-```
+在托盘菜单中选择「在浏览器中打开网页面板」。该地址包含后端实际端口及当前会话的 `token`。后端端口和 Vite 端口是两个不同的端口。
 
 ### 前端
 
-需要 Node.js 16。
+在 `ui/` 下创建 `.env.development.local`，将 `VITE_HTTP_URL` 设为刚才地址的来源部分，不含查询参数。例如实际后端地址为 `http://127.0.0.1:18080/?token=…` 时：
 
-安装依赖：
-
-```bash
-npm install
+```dotenv
+VITE_HTTP_URL="http://127.0.0.1:18080"
 ```
 
-运行前端的开发服务器：
+在另一个 PowerShell 终端进入 `ui/`，使用与后端相同的 Vite 端口：
 
-```bash
+```powershell
+$env:MOWER_DEV_PORT = '5173'
+npm ci
 npm run dev
 ```
 
-根据输出提示，在浏览器中打开窗口即可。
+在 Vite 输出的地址后追加后端地址中的 `?token=…`，保留原值。HTTP 请求及 WebSocket 都需要该凭证；只更改 `VITE_HTTP_URL` 无法通过认证。后端重启后，重新核对实际端口和会话凭证；更改 `.env.development.local` 后重启 Vite。
 
-在开发时，前端默认会访问本地 `8000` 端口以连接后端。可以建立 `.env.development.local` 文件，通过 `VITE_HTTP_URL` 指定连接其它地址。例如连接本地的 5000 端口：
+端口占用时，Vite 会报错。更换 Vite 端口需在后端和前端终端设置相同的 `MOWER_DEV_PORT` 并重启它们。认证与来源限制见[开发来源诊断](../docs/cookbook/device-troubleshooting.md#local-development-origin)。
 
-```plaintext
-VITE_HTTP_URL="http://localhost:5000"
+## 修改入口与定向验证
+
+| 任务 | 源码入口 | 离线验证入口 |
+| :--- | :--- | :--- |
+| 设备选择、检测与设置保存 | [DeviceSettings.vue](src/components/DeviceSettings.vue)、[deviceSettings.js](src/utils/deviceSettings.js) | [deviceSettings.test.js](src/utils/deviceSettings.test.js)、[DeviceSettings.test.js](src/components/DeviceSettings.test.js) |
+| 配置差量保存 | [config.js](src/stores/config.js) | [configPartial.test.js](src/stores/configPartial.test.js) |
+| 排班验证 | [plan.js](src/stores/plan.js) | [planValidation.test.js](src/stores/planValidation.test.js) |
+
+从 `ui/` 执行与改动有关的测试，例如：
+
+```bash
+npm test -- src/utils/deviceSettings.test.js src/components/DeviceSettings.test.js
 ```
 
-## 构建与测试
+这些测试使用离线输入与替代的请求或组件依赖，验证界面状态和请求行为；通过不代表后端或真实设备完成操作。跨越配置、设备或调度边界时，沿[设备规范](../docs/subsystems/device-control.md#start-with-the-affected-operation)或[调度规范](../docs/subsystems/base-scheduler.md#start-with-the-affected-operation)选择对应后端测试。[UI 规范](AGENTS.md)规定配置与状态边界。
 
-此时无需运行前端的开发服务器，前端构建生产版本的静态文件：
+## 构建与打包
+
+需要生产静态文件时，在 `ui/` 执行：
 
 ```bash
 npm run build
 ```
 
-此时运行后端：
-
-```运行
-flask --app server run --port=8000
-```
-
-直接在浏览器中打开 [http://localhost:8000](http://localhost:8000)，就能看到前端了；运行 `./webview_ui.py`，也能在 WebView 窗口中看到前端。
-
-## 打包
-
-安装依赖：
-
-```bash
-pip install pyinstaller
-```
-
-使用 `pyinstaller` 打包：
-
-```bash
-pyinstaller webui_zip.spec
-```
-
-生成的 `mower.exe` 在 `dist` 文件夹中，已经可使用。
+构建产物供后端与桌面启动器使用。平台打包与发布检查由[本地打包说明](../docs/cookbook/packaging.md)维护。

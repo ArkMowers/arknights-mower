@@ -59,6 +59,6 @@
 
 事故执行路径先保存当前名单，再进行暂时换人。空房被表示为 `Free` 后，恢复阶段把它交给普通选人，实际选择任意空闲干员。保存名单含跑单干员时改用静态主排班的另一个分支，也不能保证恢复事故前实际工作的替补。前序选人失败进一步表明：尚未确认恢复的责任不能随着任务转场或计划清空而消失。
 
-修复延伸既有 [INV-SCHED-04](../../CODING_STANDARDS.md#2-subsystem-invariants)，将纠错、换入前保存实际原班和仅恢复重试纳入同一个任务的恢复责任。完整操作规则由[基建调度契约](../subsystems/base-scheduler.md#251-shift-compensation-and-run-order-restoration)定义，[跑单原班恢复决策](../../.agents/notes/implemented/bug-fix/2026-10-08-run-order-roster-compensation.md)保存选择实际原班而非静态排班的依据，以及队列保留、共享但书等待和自动救急空位的验证范围。
+修复延伸既有 [Shift Transition Compensation](../subsystems/base-scheduler.md#shift-transition-compensation)，将纠错、换入前保存实际原班和仅恢复重试纳入同一个任务的恢复责任。完整操作规则由[基建调度规范](../subsystems/base-scheduler.md#251-shift-compensation-and-run-order-restoration)定义，[跑单原班恢复决策](../../.agents/notes/implemented/bug-fix/2026-10-08-run-order-roster-compensation.md)保存选择实际原班而非静态排班的依据，以及队列保留、共享但书等待和自动救急空位的验证范围。
 
 决策记录中的保存任务回放与恢复验证来自后续离线检查，不构成 10 月 1 日事故新增的历史证据，也不能确定历史房间错位的具体来源。

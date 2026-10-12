@@ -460,6 +460,12 @@ def test_maa_connect_preserves_shared_compatibility(
     assistant = Mock()
     asst = ModuleType("asst.asst")
     asst.Asst = Mock(return_value=assistant)
+    assistant.get_version.return_value = "v6.19.0-beta.1"
+    (tmp_path / "MaaCore.dll").write_bytes(b"offline core")
+    monkeypatch.setattr(
+        "arknights_mower.utils.maa_runtime.read_installed_version",
+        Mock(return_value="v6.19.0-beta.1"),
+    )
     asst_utils = ModuleType("asst.utils")
     asst_utils.InstanceOptionType = SimpleNamespace(
         touch_type="touch", adblite_enabled=4, kill_on_adb_exit=5

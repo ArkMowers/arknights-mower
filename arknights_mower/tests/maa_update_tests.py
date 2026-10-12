@@ -1,3 +1,4 @@
+import ctypes
 import io
 import os
 import stat
@@ -726,33 +727,58 @@ class TestInstalledVersion(unittest.TestCase):
         self.assertEqual(version, "v6.17.0")
         close.assert_called_once_with(123)
 
-    def test_fresh_read_uses_and_removes_unique_library_copy(self):
-        loaded_paths = []
-
-        def load_library(path):
-            loaded_path = Path(path)
-            self.assertTrue(loaded_path.is_file())
-            loaded_paths.append(loaded_path)
-            return self._library(b"v6.18.0")
-
+    def test_fresh_read_uses_isolated_process_without_loading_parent_library(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            library_path = root / "libMaaCore.dylib"
-            library_path.write_bytes(b"fixture")
+            (root / "libMaaCore.dylib").write_bytes(b"fixture")
             with (
-                patch.object(mu.ctypes, "CDLL", side_effect=load_library),
-                patch.object(mu, "_close_dynamic_library") as close,
+                patch.object(mu.ctypes, "CDLL") as parent_load,
+                patch.object(
+                    mu.subprocess,
+                    "run",
+                    return_value=types.SimpleNamespace(
+                        stdout='{"status": "success", "message": "v6.18.0"}',
+                        stderr="",
+                        returncode=0,
+                    ),
+                ) as probe,
             ):
-                version = mu.read_installed_version(root, fresh=True)
+                self.assertEqual(mu.read_installed_version(root, fresh=True), "v6.18.0")
+            parent_load.assert_not_called()
+            self.assertEqual(probe.call_args.kwargs["timeout"], 30)
+            self.assertIn(str(root), str(probe.call_args.args[0]))
+            self.assertEqual(list(root.iterdir()), [root / "libMaaCore.dylib"])
 
-            self.assertEqual(len(loaded_paths), 1)
-            self.assertNotEqual(loaded_paths[0], library_path)
-            self.assertEqual(loaded_paths[0].parent, root)
-            self.assertIn(".version-probe-", loaded_paths[0].name)
-            self.assertFalse(loaded_paths[0].exists())
-
-        self.assertEqual(version, "v6.18.0")
-        close.assert_called_once_with(123)
+    def test_fresh_probe_failures_do_not_load_parent_library(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "libMaaCore.dylib").write_bytes(b"fixture")
+            for output, status in [
+                ("", 1),
+                ("[]", 0),
+                ('{"status":"success","message":null}', 0),
+                ('{"status":"error","message":"failed"}', 0),
+                ('{"status":"success","message":"bad\\nversion"}', 0),
+            ]:
+                with (
+                    self.subTest(output=output),
+                    patch.object(mu.ctypes, "CDLL") as parent_load,
+                    patch.object(
+                        mu.subprocess,
+                        "run",
+                        return_value=types.SimpleNamespace(
+                            stdout=output, stderr="", returncode=status
+                        ),
+                    ),
+                ):
+                    self.assertEqual(mu.read_installed_version(root, fresh=True), "")
+                parent_load.assert_not_called()
+            with patch.object(
+                mu.subprocess,
+                "run",
+                side_effect=mu.subprocess.TimeoutExpired("probe", 30),
+            ):
+                self.assertEqual(mu.read_installed_version(root, fresh=True), "")
 
     def test_missing_maa_core_has_no_installed_version(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -1095,6 +1121,46 @@ class TestInstallAndBackup(unittest.TestCase):
 
 
 class TestLoadedMaaCache(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "requires Windows module queries")
+    def test_windows_image_query_distinguishes_mapped_and_unmapped_addresses(self):
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        address = ctypes.cast(kernel.GetModuleHandleExW, ctypes.c_void_p).value
+        self.assertTrue(mu._maa_core_image_mapped(address))
+        self.assertFalse(mu._maa_core_image_mapped(1))
+
+    def test_unconfirmed_unload_keeps_sdk_and_prevents_retry_after_close(self):
+        for states, closed in (
+            ([True, True], True),
+            ([True, OSError("mapping unavailable")], True),
+            ([OSError("mapping unavailable")], False),
+            ([False], False),
+        ):
+            with self.subTest(states=states):
+
+                class Asst:
+                    _Asst__lib = types.SimpleNamespace(
+                        _handle=123, AsstGetVersion=ctypes.c_void_p(456)
+                    )
+
+                Asst._mower_core_loads = (Asst._Asst__lib, 1, True)
+                module = types.ModuleType("asst.asst")
+                module.Asst = Asst
+                with (
+                    patch.dict(sys.modules, {"asst.asst": module}),
+                    patch.object(mu.platform, "system", return_value="Linux"),
+                    patch.object(mu, "_maa_core_image_mapped", side_effect=states),
+                    patch.object(mu, "_close_dynamic_library") as close,
+                ):
+                    with self.assertRaisesRegex(mu.MaaUpdateError, "重启 Mower"):
+                        mu.clear_loaded_maa_cache(Path("/tmp/test-maa-cache"))
+                    self.assertIs(sys.modules["asst.asst"], module)
+                    self.assertEqual(close.call_count, int(closed))
+                    if closed:
+                        self.assertTrue(Asst._mower_core_unusable)
+                        with self.assertRaisesRegex(mu.MaaUpdateError, "重启 Mower"):
+                            mu.clear_loaded_maa_cache(Path("/tmp/test-maa-cache"))
+                        close.assert_called_once_with(123, strict=True)
+
     def test_loaded_maa_cache_is_released(self):
         target = Path("/tmp/test-maa-cache")
         python_path = str(target / "Python")
@@ -1105,8 +1171,11 @@ class TestLoadedMaaCache(unittest.TestCase):
         asst_child = types.ModuleType("asst.asst")
 
         class Asst:
-            _Asst__lib = types.SimpleNamespace(_handle=123)
+            _Asst__lib = types.SimpleNamespace(
+                _handle=123, AsstGetVersion=ctypes.c_void_p(456)
+            )
 
+        Asst._mower_core_loads = (Asst._Asst__lib, 1, True)
         asst_child.Asst = Asst
         old_path = list(sys.path)
         sys.path.append(python_path)
@@ -1122,11 +1191,13 @@ class TestLoadedMaaCache(unittest.TestCase):
                     },
                 ),
                 patch.object(mu, "_close_dynamic_library") as close,
+                patch.object(mu, "_maa_core_image_mapped", side_effect=[True, False]),
+                patch.object(mu.platform, "system", return_value="Windows"),
             ):
                 mu.clear_loaded_maa_cache(target)
                 self.assertNotIn("asst", sys.modules)
                 self.assertNotIn("asst.asst", sys.modules)
-                close.assert_called_once_with(123)
+                close.assert_called_once_with(123, strict=True)
             self.assertIsNone(main_module.base_scheduler.MAA)
             self.assertIsNone(Asst._Asst__lib)
             self.assertNotIn(python_path, sys.path)

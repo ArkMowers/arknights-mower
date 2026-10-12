@@ -427,9 +427,13 @@ def test_dorm_to_free_retains_resting_group(dorm_solver):
     plan = transition(s)
     assert s.op_data.plan_condition == [True]
     apply(s, plan)
-    assert s.op_data.get_current_operator("dormitory_1", 0).name == "红"
+    # 固定位开放后参与层级分配，未恢复主班优先于满心情替班垫位者。
+    assert s.op_data.get_current_operator("dormitory_1", 0).name == A
+    assert s.op_data.get_current_operator("dormitory_1", 2).name == "红"
     assert s.op_data.operators[A].is_resting()
-    assert all(recovery(s)[name] == state for name, state in before.items())
+    assert set(before) <= set(recovery(s))
+    assert all(state[1] is None for state in recovery(s).values())
+    assert s.op_data.group_is_resting("甲")
 
 
 def test_independent_standby_without_bed_remains_off_shift(solver):

@@ -128,9 +128,10 @@ def test_exit_does_not_recall_another_resting_group(solver, explicit, full):
     assert s.op_data.plan_condition == [False]
     for name in ("歌蕾蒂娅", "乌尔比安"):
         assert s.op_data.operators[name].is_resting()
-        # 完整轮休可将住客转到另一组腾出的单回位；切表自身不重排床位。
+        # 同级保留原床；同宿舍其他成员离开后，留下者也重新读取恢复时间。
         if not full:
-            assert recovery(s)[name] == before[name]
+            assert recovery(s)[name][0] == before[name][0]
+            assert recovery(s)[name][1] >= before[name][1]
     assert s.op_data.operators["槐琥"].current_room == "room_1_2"
 
 
@@ -168,6 +169,32 @@ def test_both_resting_covers_move_without_spare(solver):
     task = finish(s, SchedulerTask(task_type=TaskTypes.SELF_CORRECTION), full=False)
     assert task.plan == {"room_1_1": ["槐琥"], "room_1_2": ["结城理"]}
     assert recovery(s) == before
+
+
+@pytest.mark.parametrize("path", ["cached", "projection"])
+def test_relocation_with_manager_change_invalidates_room_timing(solver, path):
+    prepare_resting_relocation(solver, both=True)
+    before = recovery(solver)
+    dorm = deepcopy(solver.op_data.plan["dormitory_1"])
+    dorm[0] = Room("白面鸮", "", [])
+    solver.op_data.backup_plans[0].plan["dormitory_1"] = dorm
+    if path == "cached":
+        generated = []
+        assert solver.backup_plan_solver(generated_tasks=generated)
+        task = next(task for task in generated if task.plan)
+        assert solver.op_data.plan_condition == [True]
+    else:
+        task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION)
+        solver._prepare_shift_backup(task)
+        assert task.backup_shift_conditions == [True]
+        assert solver.op_data.plan_condition == [False]
+    assert task.plan["dormitory_1"][0] == "白面鸮"
+    projected = solver.op_data.project_arrangements([task.plan])
+    for name, (position, deadline) in before.items():
+        bed = projected.get_dorm_by_name(name)[1]
+        assert bed.position == position
+        assert bed.time == (None if position[0] == "dormitory_1" else deadline)
+    assert recovery(solver) == before
 
 
 @pytest.mark.parametrize("blocking", ["mastery", "reservation"])

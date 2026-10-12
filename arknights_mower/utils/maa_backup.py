@@ -33,6 +33,12 @@ def maa_in_use():
         return any(instance._active for instance in list(_verified_instances))
 
 
+def maa_instances_alive():
+    """Include idle instances whose native handles or callbacks still exist."""
+    with _update_lock:
+        return bool(_verified_instances)
+
+
 def identity(path):
     try:
         value = path.lstat()

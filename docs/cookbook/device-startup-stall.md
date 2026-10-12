@@ -1,6 +1,6 @@
 # Device Startup Stall Diagnosis
 
-The connection message confirms only that the instance and its endpoint are ready. The task reaches the game check after preflight and after capture and touch initialization complete. The [device contract](../subsystems/device-control.md) defines the stage records and the [INV-DEV-20] command output ownership.
+The connection message confirms only that the instance and its endpoint are ready. The task reaches the game check after preflight and after capture and touch initialization complete. The [device contract](../subsystems/device-control.md) defines the stage records and the [Command Output Ownership](../subsystems/device-control.md#command-output-ownership) command output ownership.
 
 1. Save the `log/runtime.log.<date>_<hour>` files covering at least five minutes before and after startup. The UI `/log` WebSocket shows INFO and above only; the files carry DEBUG. Save the neighbouring file too when the window crosses an hour boundary. Remove tokens and account details before sharing, and keep timestamps, function names, command arguments, error codes and tracebacks.
 

@@ -1,5 +1,5 @@
 import copy
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Literal
@@ -1367,6 +1367,7 @@ def dorm_rebalance_signature(op_data):
                 slot_type,
                 op_data.is_effective_free_slot(bed),
                 bed.name,
+                resting_tier(op_data, bed.name) if bed.name else None,
             )
         )
     return tuple(op_data.config.dorm_order), tuple(beds)
@@ -2243,14 +2244,20 @@ def plan_mood_limit_releases(op_data, *, recovery_targets=None, previous_tasks=(
 
 
 def prioritize_new_dorm_recovery(
-    op_data, plan, reserved_slots=(), preceding_plan=None, *, reserved_names=()
+    op_data,
+    plan,
+    reserved_slots=(),
+    preceding_plan=None,
+    *,
+    reserved_names=(),
+    configuration_changed=False,
 ):
-    """新入住者可跨级抢占单回；已有目标之间不主动竞争。
+    """宿舍事件按恢复层级分配单回位及普通位，同级优先保留实际原位。
 
-    空位由非单回住客与新入住者补位，同级优先本宿舍。
+    配置的宿舍顺序表达各类位置的恢复速度偏好；仅心情变化不搬床。
     只修改投影计划，保留住客集合、预约和真实恢复标记。
     """
-    if not plan and not preceding_plan:
+    if not plan and not preceding_plan and not configuration_changed:
         return plan
     projected = op_data.project_arrangements([preceding_plan or {}, plan])
     beds = [
@@ -2258,11 +2265,16 @@ def prioritize_new_dorm_recovery(
         for bed in projected.ordered_dorms()
         if projected.is_effective_free_slot(bed)
     ]
-    explicit_names = {name for names in plan.values() for name in names}
+    explicit_names = {
+        name
+        for arrangement in (preceding_plan or {}, plan)
+        for names in arrangement.values()
+        for name in names
+    }
     locked_rooms = {
         room for room, _ in set(reserved_slots) | set(op_data.reserved_product_beds)
     }
-    # 其他任务已选好但尚未实际入住的床位，不参与本轮交换。
+    # 其他任务尚未执行的床位预约不能作为本轮可移动的住客。
     for bed in op_data.dorm:
         op = op_data.operators.get(bed.name)
         if op is not None and (
@@ -2270,9 +2282,7 @@ def prioritize_new_dorm_recovery(
             and (op.current_room, op.current_index) != bed.position
         ):
             locked_rooms.add(bed.position[0])
-    room_beds = defaultdict(list)
     for bed in beds:
-        room_beds[bed.position[0]].append(bed)
         if bed.name and (
             bed.name not in op_data.operators
             or bed.name in reserved_names
@@ -2282,114 +2292,113 @@ def prioritize_new_dorm_recovery(
         ):
             locked_rooms.add(bed.position[0])
     beds = [bed for bed in beds if bed.position[0] not in locked_rooms]
-    if any(item.endswith("_low") for item in projected.config.dorm_order):
-        # 显式低优位参加同一排名，不能被固定“单回位优先”反向覆盖。
-        targets = {bed.position: bed for bed in beds}
-    else:
-        targets = {
-            room: min(items, key=lambda bed: bed.position[1])
-            for room, items in room_beds.items()
-            if room not in locked_rooms
-        }
-    available = []
-    protected = set()
-    for target in targets.values():
-        old = op_data.get_current_operator(*target.position)
-        if old is not None and old.name == target.name:
-            protected.add(target.position)
-        else:
-            available.append(target)
-    has_event = any(
-        op_data.get_current_operator(*target.position) is not None or target.name
-        for target in available
-    ) or any(
-        (op := op_data.operators.get(bed.name)) is not None
-        and bed.name in explicit_names
-        and not op_data.is_dynamic_dorm_position(
-            op.current_room, op.current_index, op.name
-        )
+    actual = {
+        bed.position: old.name
+        if (old := op_data.get_current_operator(*bed.position))
+        else ""
         for bed in beds
-    )
-    if not has_event:
+    }
+    if not configuration_changed and all(actual[b.position] == b.name for b in beds):
         return plan
+
+    # 保留 alpha 显式高优位/低优位的完整顺序；同房普通床为一个同速组。
+    first = {}
+    for bed in sorted(beds, key=lambda bed: bed.position):
+        first.setdefault(bed.position[0], bed.position)
+    groups = []
+    for bed in beds:
+        if (
+            groups
+            and bed.position != first[bed.position[0]]
+            and groups[-1][0].position[0] == bed.position[0]
+            and groups[-1][0].position != first[bed.position[0]]
+        ):
+            groups[-1].append(bed)
+        else:
+            groups.append([bed])
     now = datetime.now()
-    result = copy.deepcopy(plan)
-    arrivals = sorted(
-        (
-            bed.name
-            for bed in beds
-            if (op := op_data.operators.get(bed.name)) is not None
-            and bed.name in explicit_names
-            and not op_data.is_dynamic_dorm_position(
-                op.current_room, op.current_index, op.name
-            )
-            and not (
-                has_resting_mood(op, now) and resting_mood(op, now) >= op.upper_limit
-            )
-        ),
-        key=lambda name: resting_key(op_data, name, now),
-    )
-    for name in arrivals:
-        source = next(bed for bed in beds if bed.name == name)
-        displaced = False
-        for target in targets.values():
-            if target is source:
-                break
-            if not displaced and target.position not in protected:
+    # 满心情垫位者与空床同级，不能仅为填满前方空床而搬动满心情住客。
+    filler_tier = int(RestingTier.EXCLUDED) + 1
+
+    def tier(name):
+        if not name:
+            return filler_tier
+        op = projected.operators[name]
+        if has_resting_mood(op, now) and resting_mood(op, now) >= op.upper_limit:
+            return filler_tier
+        return resting_tier(projected, name)
+
+    names = [bed.name for bed in beds if bed.name]
+    names.sort(key=lambda name: resting_key(projected, name, now))
+    names = crafting_rest_order(projected, names)
+    desired = sorted(tier(bed.name) for group in groups for bed in group)
+    allocations = {}
+    quotas = []
+    offset = 0
+    for group in groups:
+        quotas.append(Counter(desired[offset : offset + len(group)]))
+        offset += len(group)
+
+    def retain(group, quota, *, completed_only=False):
+        for bed in group:
+            if bed.position in allocations:
                 continue
-            if target.name and resting_tier(op_data, source.name) >= resting_tier(
-                op_data, target.name
+            level = tier(bed.name)
+            if completed_only and (not bed.name or level != filler_tier):
+                continue
+            if (
+                bed.name
+                and actual[bed.position] == bed.name
+                and bed.name in names
+                and quota[level]
             ):
+                allocations[bed.position] = bed.name
+                quota[level] -= 1
+                if bed.name:
+                    names.remove(bed.name)
+
+    def fill(group, quota, *, include_fillers=False):
+        vacant = iter(bed for bed in group if bed.position not in allocations)
+        for level, count in sorted(quota.items()):
+            if level == filler_tier and not include_fillers:
                 continue
-            source.name, target.name = target.name, source.name
-            for bed in (source, target):
-                room, index = bed.position
-                result.setdefault(room, ["Current"] * len(op_data.plan[room]))[
-                    index
-                ] = bed.name or "Free"
-            protected.add(target.position)
-            displaced = True
-            if not source.name:
-                break
-    for target in available:
-        if target.position in protected:
-            continue
-        candidates = [
-            bed
-            for bed in beds
-            if bed.position not in protected
-            and (op := op_data.operators.get(bed.name)) is not None
-            and not (
-                has_resting_mood(op, now) and resting_mood(op, now) >= op.upper_limit
+            for _ in range(count):
+                bed = next(vacant)
+                name = next((name for name in names if tier(name) == level), "")
+                allocations[bed.position] = name
+                quota[level] -= 1
+                if name:
+                    names.remove(name)
+
+    targets = [
+        i
+        for i, group in enumerate(groups)
+        if group[0].position == first[group[0].position[0]]
+    ]
+    ordinary = [i for i in range(len(groups)) if i not in targets]
+    # 满心情住客先保留可用原位，不参与快床补位；更高层级仍可让其让床。
+    for group, quota in zip(groups, quotas):
+        retain(group, quota, completed_only=True)
+    # 配额已经遵循完整配置顺序；同级单回保位，余下目标先于普通床保位补齐。
+    for index in targets:
+        retain(groups[index], quotas[index])
+    for index in targets:
+        fill(groups[index], quotas[index])
+    for index in ordinary:
+        retain(groups[index], quotas[index])
+    for index in ordinary:
+        fill(groups[index], quotas[index])
+    # 被未恢复者挤出的满心情垫位者按完整顺序补空，不优先搬去后续单回位。
+    for group, quota in zip(groups, quotas):
+        fill(group, quota, include_fillers=True)
+    result = copy.deepcopy(plan)
+    for bed in beds:
+        name = allocations[bed.position]
+        if name != bed.name:
+            room, index = bed.position
+            result.setdefault(room, ["Current"] * len(projected.plan[room]))[index] = (
+                name or "Free"
             )
-        ]
-        if not candidates:
-            break
-        candidates.sort(
-            key=lambda bed: (
-                resting_tier(op_data, bed.name),
-                bed.position[0] != target.position[0],
-                resting_key(op_data, bed.name, now)[1],
-            )
-        )
-        first = candidates[0]
-        preferred = [
-            bed.name
-            for bed in candidates
-            if resting_tier(op_data, bed.name) == resting_tier(op_data, first.name)
-            and (bed.position[0] == target.position[0])
-            == (first.position[0] == target.position[0])
-        ]
-        name = crafting_rest_order(op_data, preferred)[0]
-        source = next(bed for bed in candidates if bed.name == name)
-        if source is not target:
-            source.name, target.name = target.name, source.name
-            for bed in (source, target):
-                room, index = bed.position
-                result.setdefault(room, ["Current"] * len(op_data.plan[room]))[
-                    index
-                ] = bed.name or "Free"
-        protected.add(target.position)
     return result
 
 
@@ -2449,6 +2458,16 @@ def plan_dorm_isolation(op_data, plan, reserved_slots=()):
                 rooms = {first.position[0], second.position[0]}
                 if len(rooms) < 2 or first.name == second.name:
                     continue
+                if (
+                    resting_tier(op_data, first.name)
+                    if first.name
+                    else RestingTier.IDLE
+                ) != (
+                    resting_tier(op_data, second.name)
+                    if second.name
+                    else RestingTier.IDLE
+                ):
+                    continue
                 if explicit_order and resting_key(
                     op_data, first.name, now
                 ) != resting_key(op_data, second.name, now):
@@ -2490,17 +2509,6 @@ def try_reorder(op_data, new_plan, *, tasks=()):
     logger.debug(f"当前vip个数{vip}")
     if vip == 0:
         return
-
-    def get_ranking(name):
-        if name in op_data.operators:
-            op = op_data.operators[name]
-            if op.operator_type == "high" and op.resting_priority == "high":
-                return "high"
-            if op.operator_type == "high" and op.resting_priority == "standby":
-                return "standby"
-            if op.operator_type == "high":
-                return "normal"
-        return "low"
 
     # self.dorm 是默认排班中的潜在床位池；副表可能把其中一部分 Free
     # 临时覆盖成固定干员。重排只能操作当前有效排班里仍为 Free 的位置。

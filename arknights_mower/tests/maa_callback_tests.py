@@ -3,6 +3,7 @@ import logging
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -754,6 +755,8 @@ class MaaInitializeCallbackTests(unittest.TestCase):
             )
             asst = MagicMock()
             asst.return_value.connect.return_value = True
+            asst.return_value.get_version.return_value = "v6.test"
+            Path(maa_path, "MaaCore.dll").write_bytes(b"offline core")
             response = MagicMock()
             response.__enter__.return_value.content = b"{}"
             conf = SimpleNamespace(
@@ -779,6 +782,10 @@ class MaaInitializeCallbackTests(unittest.TestCase):
                 patch.object(base_schedule.requests, "get", return_value=response),
                 # initialize_maa 在连接前会确认共享 ADB 服务；本用例只验证回调装配。
                 patch.object(base_schedule, "guard_adb"),
+                patch(
+                    "arknights_mower.utils.maa_runtime.read_installed_version",
+                    return_value="v6.test",
+                ),
             ):
                 solver.initialize_maa()
                 self.addCleanup(solver.MAA.stop)

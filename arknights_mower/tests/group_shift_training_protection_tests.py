@@ -72,7 +72,7 @@ def test_protected_training_does_not_requeue_but_other_targets_still_confirm(
             assert ("train", 0) not in task.group_shift_expected
 
 
-def test_assistant_follow_still_requires_actual_assistant(training_group):
+def test_assistant_follow_does_not_retain_protected_targets(training_group):
     s = training_group
     config.conf.assistant_follows_schedule = True
     s.train_room_state = mastery_reader.RoomState("training")
@@ -82,8 +82,8 @@ def test_assistant_follow_still_requires_actual_assistant(training_group):
     s.task, s.tasks = task, [task]
     s._prepare_group_shift(task, remember_targets=True)
     task.plan.clear()
-    assert not s._complete_group_shift(task)
-    assert task.plan == {"train": ["望", "Current"]}
+    assert s._complete_group_shift(task)
+    assert not task.plan
     assert not s.op_data.group_is_resting("甲")
 
 
@@ -120,7 +120,7 @@ def test_partial_group_targets_skip_protected_training_without_waiting(
     s._prepare_group_shift(task, remember_targets=True)
     assert task.time == before
     assert ("train", 1) not in task.group_shift_expected
-    assert (("train", 0) in task.group_shift_expected) is follow
+    assert ("train", 0) not in task.group_shift_expected
     projected = s.op_data.project_arrangements([task.plan])
     projected.group_shift_state = dict(s.op_data.group_shift_state)
     s.op_data = projected
@@ -254,3 +254,108 @@ def test_mastery_off_skipped_only_trainee_does_not_commit_group(
     assert s._complete_group_shift(task)
     assert not s.op_data.group_is_resting("甲")
     assert s.op_data.get_current_room("train", True) == ["褐果", "桃金娘"]
+
+
+@pytest.mark.parametrize("follow", [False, True])
+def test_protected_training_does_not_require_replacements_or_beds(
+    training_group, follow
+):
+    s = training_group
+    config.conf.assistant_follows_schedule = follow
+    s.train_room_state = mastery_reader.RoomState("training")
+    for name in ("褐果", "桃金娘"):
+        s.op_data.operators[name].replacement = []
+    result = {}
+    s.get_resting_plan(s.op_data.shift_group_members("甲"), [], result, 0)
+    assert result["meeting"][0] == "陈"
+    assert "train" not in result
+    assert all(
+        name not in ("褐果", "桃金娘") for row in result.values() for name in row
+    )
+    assert s.op_data.get_current_room("train", True) == ["褐果", "桃金娘"]
+
+
+@pytest.mark.parametrize("restart", [False, True])
+def test_protected_source_occupant_is_skipped_in_other_room_and_confirmation(
+    training_group, restart
+):
+    import pickle
+
+    s = training_group
+    config.conf.assistant_follows_schedule = True
+    s.train_room_state = mastery_reader.RoomState("training")
+    trainee = s.op_data.operators[A]
+    trainee._current_room, trainee.current_index = "train", 1
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_ON,
+        task_plan={"meeting": [A, "Current"], "train": ["褐果", "桃金娘"]},
+    )
+    task.group_shift_transitions = {"甲": False}
+    task.group_shift_expected = {("meeting", 0): A, ("train", 1): "桃金娘"}
+    if restart:
+        task = pickle.loads(pickle.dumps(task))
+    s.task, s.tasks = task, [task]
+    before = task.time
+    s._prepare_group_shift(task, remember_targets=True)
+    assert not task.plan
+    assert s._complete_group_shift(task)
+    assert not task.group_shift_expected
+    assert task.time == before
+    assert trainee.current_room == "train"
+
+
+@pytest.mark.parametrize("observed", ["training", "unreliable", "unreadable"])
+def test_live_source_training_is_skipped_before_other_room_selection(
+    training_group, monkeypatch, observed
+):
+    s = training_group
+    trainee = s.op_data.operators[A]
+    trainee._current_room, trainee.current_index = "train", 1
+    s.train_room_state = None
+    plan = {"meeting": [A, "Current"], "contact": ["银灰"]}
+    task = SchedulerTask(task_plan=plan, task_type=TaskTypes.SHIFT_ON)
+    s.task, s.tasks = task, [task]
+    s._track_idle_dorm_shift = MagicMock()
+    s._finish_idle_dorm_shift = MagicMock()
+    s.back_to_infrastructure = MagicMock()
+    read = MagicMock(
+        return_value=None
+        if observed == "unreadable"
+        else mastery_reader.RoomState("empty", slots_read=True, slots_reliable=False)
+        if observed == "unreliable"
+        else mastery_reader.RoomState(observed)
+    )
+    monkeypatch.setattr(mastery_reader, "read_room_state", read)
+    executed = []
+
+    def arrange(new_plan, room, plan, **kwargs):
+        executed.append(room)
+        del plan[room]
+        return new_plan
+
+    s.agent_arrange_room = MagicMock(side_effect=arrange)
+    before = task.time
+    s.agent_arrange(plan)
+    read.assert_called_once_with(s)
+    assert executed == ["contact"]
+    assert not plan
+    assert task.time == before
+    assert trainee.current_room == "train"
+
+
+def test_protected_only_predecessor_does_not_block_other_group_work(training_group):
+    s = training_group
+    s.train_room_state = mastery_reader.RoomState("training")
+    predecessor = SchedulerTask(task_plan={}, task_type=TaskTypes.SHIFT_OFF)
+    predecessor.group_shift_transitions = {"甲": True}
+    predecessor.group_shift_expected = {("train", 0): "望"}
+    task = SchedulerTask(
+        task_plan={"meeting": ["陈", "Current"]}, task_type=TaskTypes.SHIFT_OFF
+    )
+    s.task, s.tasks = task, [predecessor, task]
+    before = task.time
+    s._prepare_group_shift(task, remember_targets=True)
+    assert task.plan["meeting"][0] == "陈"
+    assert "train" not in task.plan
+    assert task.time == before
+    assert not getattr(task, "group_shift_predecessors", ())
