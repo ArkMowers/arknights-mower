@@ -23,7 +23,7 @@ Offline tests cover one-way and reciprocal working-primary configuration within 
 
 ## Standards Findings
 
-PASS: Shared matching and projection boundaries remain unchanged. Glossary synchronization awaits the explicit approval required by the root directives.
+PASS: Shared matching and projection boundaries remain unchanged. The user explicitly approves the exact bilingual glossary wording before it is written. Governance structural checks pass against the alpha comparison base.
 
 ## Spec Findings
 
