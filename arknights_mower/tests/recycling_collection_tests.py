@@ -215,6 +215,48 @@ def test_popup_retry_records_once_before_dismissal_and_reads_actual_staff(
     assert result["materials"][0]["count"] == 1
 
 
+def test_archived_borderline_quantity_is_recorded_after_two_matching_frames(
+    db, real_ocr, monkeypatch
+):
+    monkeypatch.setattr(recycling.rapidocr, "engine", real_ocr)
+    solver = collection_solver()
+    path = Path(__file__).parent / "fixtures/recycling/reward_quantity_20261012.jpg"
+    solver.recog.img = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+    solver._recycling_pending = {"id": "borderline-quantity"}
+    solver.scene = Mock(return_value=Scene.INFRA_MAIN)
+    solver._finish_recycling_collection()
+    result = record.get_recycling_history("2000-01-01", "2100-01-01")
+    assert result["materials"] == [{"name": "装置", "count": 1, "rarity": 2}]
+    assert result["comparison"]["unknown_collections"] == 0
+    assert result["records"][0]["materials"] == {"装置": 1}
+    solver.sleep.assert_called_once_with(0.3)
+    solver.recog.save_screencap.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "name_score,count_score,icon_score,expected",
+    [
+        (0.90, 0.90, 0.90, {"装置": 1}),
+        (0.89, 1.0, 1.0, None),
+        (1.0, 0.89, 1.0, None),
+        (1.0, 1.0, 0.89, None),
+    ],
+)
+def test_relaxed_confidence_requires_name_icon_and_quantity(
+    monkeypatch, name_score, count_score, icon_score, expected
+):
+    box = [[925, 12], [997, 12], [997, 48], [925, 48]]
+    monkeypatch.setattr(
+        recycling,
+        "_ocr",
+        Mock(side_effect=[[(box, "装置", name_score)], [(box, "1", count_score)]]),
+    )
+    monkeypatch.setattr(
+        recycling.cv2, "minMaxLoc", Mock(return_value=(0.0, icon_score, (0, 0), (0, 0)))
+    )
+    assert recycling.read_recycling_materials(reward_frame()) == expected
+
+
 def test_other_material_sources_are_not_recorded():
     solver = collection_solver()
     solver.scene = Mock(return_value=Scene.MATERIEL)

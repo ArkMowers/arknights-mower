@@ -67,7 +67,7 @@ def read_recycling_materials(image):
         entry = key_mapping.get(name)
         if (
             not np.isfinite(confidence)
-            or confidence < 0.95
+            or confidence < 0.90
             or entry is None
             or entry[3] != "MATERIAL"
         ):
@@ -90,7 +90,7 @@ def read_recycling_materials(image):
         )
         scores = cv2.matchTemplate(region, template, cv2.TM_CCORR_NORMED, mask=mask)
         score = cv2.minMaxLoc(scores)[1]
-        if not np.isfinite(score) or score < 0.97:
+        if not np.isfinite(score) or score < 0.90:
             return None
         counts = _ocr(image[570:625, center + 10 : center + 90])
         if len(counts) != 1:
@@ -98,7 +98,7 @@ def read_recycling_materials(image):
         _, count, confidence = counts[0]
         if (
             not np.isfinite(confidence)
-            or confidence < 0.95
+            or confidence < 0.90
             or re.fullmatch(r"[1-9][0-9]{0,4}", count.strip()) is None
         ):
             return None
