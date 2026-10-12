@@ -50,6 +50,7 @@
     "arknights_mower/tests/dorm_group_tests.py",
     "arknights_mower/tests/fixed_dorm_cover_admission_tests.py",
     "arknights_mower/tests/resting_preemption_tests.py",
-    "arknights_mower/tests/task_lifecycle_scope_tests.py"
+    "arknights_mower/tests/task_lifecycle_scope_tests.py",
+    "arknights_mower/tests/emergency_group_beds_tests.py"
   ]
 }

@@ -51,7 +51,11 @@ def retained_task_reservations(op_data, tasks, *, current_task=None):
     """保留执行预约目标、当前驻员和整组成员，规划与纠错共用。"""
     names, slots = set(), set()
     for task in tasks:
-        if task is None or task is current_task or not task.retains_execution:
+        if (
+            task is None
+            or task is current_task
+            or not getattr(task, "retains_execution", False)
+        ):
             continue
         for room, row in task.plan.items():
             for index, name in enumerate(row):
