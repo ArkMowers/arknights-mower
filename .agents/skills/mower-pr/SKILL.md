@@ -1,18 +1,13 @@
 ---
 name: mower-pr
 description: 为 Arknights Mower 编写或更新中文 PR 标题和正文，用 Summary、Evidence、Merge Danger 结合项目方案、验证评审、影响回退，并记录相关要求的实际落实。仅在准备或更新 PR 说明时使用。
-metadata:
-  compatibility: 依赖 Arknights Mower 仓库及其项目规范，是项目本地 skill；文档链接相对仓库布局解析。
-  credits:
-    skill: show-me
-    author: Dex Horthy
-    organisation: Humanlayer
-    url: https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md
 ---
 
 # Mower PR
 
-输入是需求、最终 diff、已有 PR 和验证记录，输出是中文标题与正文。执行范围和发布授权沿用[项目工作流](../../AGENTS.md#1-task-selection)。正文采用 show-me 的 Summary、Evidence、Merge Danger 三个栏目，按下面的流程组织事实。
+本 skill 在 Arknights Mower 仓库内使用，文档链接按仓库布局解析。
+
+输入是需求、最终 diff、已有 PR 和验证记录，输出是中文标题与正文。执行范围和发布授权沿用[项目工作流](../../AGENTS.md#1-task-selection)。正文使用 Summary、Evidence、Merge Danger 三个栏目，按下面的流程组织事实。
 
 ## 1. 提取最终事实
 
@@ -57,6 +52,8 @@ metadata:
 **Summary** 首段交代原问题和最终变化，后续段落解释方案及必要取舍。小改动可用一段完成。
 
 方案包含同一输入到多项输出的对应、组件职责分工或步骤依赖时，用关系图说明，并紧邻整体方案放置。纯文本关系图使用标记为 `text` 的 Markdown 代码块，节点分行，以缩进、分支线和箭头区分并列对应与先后依赖。节点写明实际对象，连线表达已核实的关系；已有图仍符合最终方案时，保留必要节点和呈现结构，按最终事实校正文字。局部代码差异适合用短 diff 展示。
+
+关系图的展示方式参考 HumanLayer 的 [show-me](https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md)。
 
 **Evidence** 逐项对应 Summary 中的变化，每项说明验证对象、输入条件、观察结果、来源和未验证范围。比较不同版本或方法时，先说明各自角色及共用输入，再保留 **修改前 / 修改后** 的对应结果；分项或表格保留影响结论的条件与例外。没有执行记录时注明文档或源码依据及缺少的运行结果。一次检查支持多项变化时，集中交代覆盖范围；未覆盖的变化明确列出。
 
