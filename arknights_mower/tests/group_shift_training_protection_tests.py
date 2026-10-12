@@ -102,6 +102,33 @@ def test_training_only_skipped_transition_does_not_commit_group(training_group):
     assert s.op_data.operators[A].current_room == "meeting"
 
 
+@pytest.mark.parametrize("follow", [False, True])
+@pytest.mark.parametrize("resting", [False, True])
+def test_partial_group_targets_skip_protected_training_without_waiting(
+    training_group, follow, resting
+):
+    s = training_group
+    config.conf.assistant_follows_schedule = follow
+    s.train_room_state = mastery_reader.RoomState("training")
+    s.op_data.commit_group_shifts({"甲": not resting})
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF if resting else TaskTypes.SHIFT_ON,
+        task_plan={"meeting": ["陈" if resting else A, "Current"]},
+    )
+    s.task, s.tasks = task, [task]
+    before = task.time
+    s._prepare_group_shift(task, remember_targets=True)
+    assert task.time == before
+    assert ("train", 1) not in task.group_shift_expected
+    assert (("train", 0) in task.group_shift_expected) is follow
+    projected = s.op_data.project_arrangements([task.plan])
+    projected.group_shift_state = dict(s.op_data.group_shift_state)
+    s.op_data = projected
+    task.plan.clear()
+    assert s._complete_group_shift(task)
+    assert s.op_data.group_is_resting("甲") is resting
+
+
 def test_dispatch_finishes_group_after_live_training_gate_skips_room(
     training_group, monkeypatch
 ):

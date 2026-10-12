@@ -353,10 +353,17 @@ class ProductSwitchFailed(RuntimeError):
 
 
 class GroupShiftBlocked(ProductSwitchDeferred):
-    def __init__(self, groups):
+    def __init__(self, groups=(), *, predecessors=()):
         self.groups = set(groups)
-        waiting = "、".join(sorted(groups)) + "回班" if groups else "替班可用"
-        super().__init__(f"多绑组替班冲突，挂起换班，等待{waiting}")
+        self.predecessors = tuple(predecessors)
+        waiting = (
+            "前置换班确认"
+            if self.predecessors
+            else "、".join(sorted(groups)) + "回班"
+            if groups
+            else "替班可用"
+        )
+        super().__init__(f"绑组依赖未解除，挂起换班，等待{waiting}")
 
 
 class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
@@ -1722,7 +1729,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     self._retain_failed_task(task, str(e), e.rooms)
                 self.skip()
             except GroupShiftBlocked as e:
-                self._suspend_group_shift(self.task, e.groups)
+                self._suspend_group_shift(
+                    self.task, e.groups, predecessors=e.predecessors
+                )
                 logger.warning(str(e))
                 # Suspended arrangements must not occupy the dispatch queue or
                 # prevent the returning groups from receiving their tasks.
@@ -3522,7 +3531,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         if self.agent_get_mood() is None:
             self.backup_plan_solver()
 
-    def resting(self, *, returning=()):
+    def resting(self, *, returning=(), returning_groups=()):
         self._refresh_deferred_product_reservations()
         reserved_names = self.op_data.reserved_product_replacements
         now = datetime.now()
@@ -3584,14 +3593,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             mood = moods[op.name]
             if mood is None:
                 continue
-            if op.name in returning or (
-                op.group
-                and any(
-                    name in returning
-                    and self.op_data.is_group_shift_anchor(self.op_data.operators[name])
-                    for name in self.op_data.groups[op.group]
-                )
-            ):
+            if op.group in returning_groups or not op.group and op.name in returning:
                 continue
             if op.name in _replacement:
                 # 本轮已接工作替班的人不能又预约休息床位。
@@ -4590,7 +4592,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if (
                     replacement.current_room
                     and not replacement.is_resting()
-                    and not (x.multi_group and in_slot)
+                    and not in_slot
                     and not (
                         same_group_cover
                         and obj in agents
@@ -4606,8 +4608,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     and not _is_mastery_busy(obj)
                     and (
                         obj not in exist_replacement
-                        or x.multi_group
-                        and plan.get(x.room, [])[x.index : x.index + 1] == [obj]
+                        or plan.get(x.room, [])[x.index : x.index + 1] == [obj]
                     )
                     and obj not in reserved_names
                     and (not self.op_data.is_dorm_replacement(obj) or in_slot)
@@ -4616,8 +4617,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         or replacement.current_room != x.room
                         or same_group_cover
                         and obj in agents
-                        or x.multi_group
-                        and in_slot
+                        or in_slot
                     )
                 )
 
@@ -4907,16 +4907,15 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         }
 
     def _prepare_group_shift(self, task, *, remember_targets=False):
-        """Revalidate queued shared slots without committing the pending shift."""
-        for pending in task_view(self.tasks, TaskScope.DISPATCH):
-            if pending is not task and getattr(pending, "group_shift_expected", {}):
-                raise ProductSwitchDeferred(
-                    "等待未完成的绑组换班确认后再安排", minutes=1
-                )
+        """Complete group targets and admit only independent unconfirmed shifts."""
         self.op_data.commit_group_shifts({})
         transitions = dict(getattr(task, "group_shift_transitions", {}))
         transitions.update(self.op_data.arrangement_group_transitions(task.plan))
         proposed = copy.deepcopy(task.plan)
+        predecessors = self._group_shift_predecessors(task, proposed, transitions)
+        if predecessors:
+            raise GroupShiftBlocked(predecessors=predecessors)
+        self._complete_ordinary_group_targets(task, proposed, transitions)
         reserved = {
             name
             for pending in self._deferred_product_locks(exclude=task)
@@ -4929,6 +4928,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             explicit_slots=getattr(task, "backup_explicit_slots", ()),
         ):
             raise GroupShiftBlocked(self._shared_shift_blockers(task, transitions))
+        predecessors = self._group_shift_predecessors(task, proposed, transitions)
+        if predecessors:
+            raise GroupShiftBlocked(predecessors=predecessors)
         task.plan = proposed
         task.group_shift_transitions = transitions
         if remember_targets and transitions:
@@ -4946,6 +4948,126 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         }
                         expected[room, index] = name
             task.group_shift_expected = expected
+
+    def _complete_ordinary_group_targets(self, task, plan, transitions):
+        """Use the existing bed/matching planner for missing ordinary departures."""
+        explicit = set(getattr(task, "backup_explicit_slots", ()))
+        explicit_names = {
+            row[index]
+            for room, index in explicit
+            if index < len(row := plan.get(room, []))
+        }
+        training_targets = {
+            "train": [slot.agent for slot in self.op_data.plan.get("train", [])]
+        }
+        self._suppress_train_arrangement(training_targets)
+        skipped_training = set(getattr(task, "training_skipped_slots", ()))
+        missing = []
+        returns = {}
+        ordinary_intent = self.op_data.arrangement_group_transitions(
+            {room: row for room, row in plan.items() if room != "train"}
+        )
+        for group, resting in transitions.items():
+            if (
+                self.op_data.group_is_resting(group) == resting
+                or group not in ordinary_intent
+            ):
+                continue
+            for name in self.op_data.shift_group_members(group):
+                op = self.op_data.operators[name]
+                if op.multi_group or self.op_data._can_standby(op):
+                    continue
+                if (op.room, op.index) in explicit or name in explicit_names:
+                    continue
+                if op.room == "train" and (
+                    op.index in skipped_training
+                    or op.index >= len(training_targets.get("train", []))
+                    or training_targets["train"][op.index] == "Current"
+                ):
+                    continue
+                target = plan.get(op.room, [])[op.index : op.index + 1]
+                if not resting:
+                    returns.setdefault(
+                        op.room, ["Current"] * len(self.op_data.plan[op.room])
+                    )[op.index] = name
+                elif not target or target == ["Current"]:
+                    actual = self.op_data.get_current_operator(op.room, op.index)
+                    if actual is not None and actual.name in op.replacement:
+                        plan.setdefault(
+                            op.room, ["Current"] * len(self.op_data.plan[op.room])
+                        )[op.index] = actual.name
+                    else:
+                        missing.append(name)
+        _merge_shift_transition(plan, returns, self.op_data)
+        if missing:
+            simulation = copy.copy(self)
+            simulation.op_data = self.op_data.project_arrangements([plan])
+            simulation.tasks = [
+                pending for pending in self.tasks if pending is not task
+            ]
+            replacements = list(_assigned_operator_names(plan))
+            admissions = {}
+            if not simulation._get_resting_plan(
+                missing,
+                replacements,
+                plan,
+                self.op_data.active_high_resting_count(),
+                dorm_admissions=admissions,
+            ):
+                raise GroupShiftBlocked(self._shared_shift_blockers(task, transitions))
+            for (room, index), name in admissions.items():
+                plan.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
+                    index
+                ] = name
+        before_training = self.op_data.arrangement_group_transitions(plan)
+        self._suppress_train_arrangement(plan)
+        after_training = self.op_data.arrangement_group_transitions(plan)
+        for group in before_training.keys() - after_training.keys():
+            transitions.pop(group, None)
+
+    def _group_shift_predecessors(self, task, plan, transitions):
+        """Started shifts own their group, shared bindings, named slots and occupants."""
+
+        def footprint(arrangement, shifts):
+            groups = set(shifts)
+            slots = {
+                (room, index)
+                for room, row in arrangement.items()
+                for index, name in enumerate(row)
+                if name != "Current"
+            }
+            names = set(_assigned_operator_names(arrangement))
+            for op in self.op_data.operators.values():
+                if op.multi_group and any(
+                    binding["group"] in groups for binding in op.group_bindings
+                ):
+                    names.add(op.name)
+                    slots.add((op.room, op.index))
+            names.update(
+                actual.name
+                for room, index in slots
+                if (actual := self.op_data.get_current_operator(room, index))
+                is not None
+            )
+            return groups, slots, names
+
+        desired = footprint(plan, transitions)
+        predecessors = []
+        for pending in self.tasks:
+            expected = getattr(pending, "group_shift_expected", {})
+            if pending is task or not expected:
+                continue
+            arrangement = copy.deepcopy(pending.plan)
+            for (room, index), name in expected.items():
+                arrangement.setdefault(
+                    room, ["Current"] * len(self.op_data.plan[room])
+                )[index] = name
+            owned = footprint(
+                arrangement, getattr(pending, "group_shift_transitions", {})
+            )
+            if any(left & right for left, right in zip(desired, owned)):
+                predecessors.append(pending)
+        return predecessors
 
     def _shared_shift_blockers(self, task, transitions):
         """Identify confirmed resting dependencies without guessing return times."""
@@ -4976,8 +5098,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
         return groups
 
-    def _suspend_group_shift(self, task, groups):
+    def _suspend_group_shift(self, task, groups, *, predecessors=()):
         task.group_shift_waiting = set(groups)
+        task.group_shift_predecessors = tuple(predecessors)
         waiting = getattr(self, "waiting_group_shifts", [])
         if all(pending is not task for pending in waiting):
             waiting.append(task)
@@ -4994,22 +5117,24 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             return
         for task in list(getattr(self, "waiting_group_shifts", ())):
             if any(
+                getattr(pending, "group_shift_expected", {})
+                and any(queued is pending for queued in self.tasks)
+                for pending in getattr(task, "group_shift_predecessors", ())
+            ):
+                continue
+            if any(
                 self.op_data.group_is_resting(group)
                 for group in task.group_shift_waiting
             ):
                 continue
-            transitions = dict(getattr(task, "group_shift_transitions", {}))
-            transitions.update(self.op_data.arrangement_group_transitions(task.plan))
-            proposed = copy.deepcopy(task.plan)
-            if not self.op_data.normalize_shared_arrangement(
-                proposed,
-                transitions,
-                explicit_slots=getattr(task, "backup_explicit_slots", ()),
-            ):
+            try:
+                self._prepare_group_shift(task)
+            except GroupShiftBlocked as error:
+                task.group_shift_waiting = error.groups
+                task.group_shift_predecessors = error.predecessors
                 continue
-            task.plan = proposed
-            task.time = datetime.now()
             del task.group_shift_waiting
+            task.__dict__.pop("group_shift_predecessors", None)
             self.waiting_group_shifts[:] = [
                 pending for pending in self.waiting_group_shifts if pending is not task
             ]
@@ -5225,12 +5350,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         step = SchedulerTask(task_type=task.type, task_plan=copy.deepcopy(intent))
         step.backup_explicit_slots = explicit_slots
         step.dorm_fill_plan = copy.deepcopy(getattr(task, "dorm_fill_plan", {}))
-        returning = {
-            name
+        returning_groups = {
+            group
             for group, resting in getattr(task, "group_shift_transitions", {}).items()
-            if not resting
-            for name in simulation.op_data.shift_group_members(group)
+            if not resting and self.op_data.group_is_resting(group)
         }
+        returning = set()
         seen = set()
         # Free 是执行时按游戏列表选人的占位符，预演不能把它当作已知干员。
         unresolved = set()
@@ -5274,6 +5399,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 name: (op.current_room, op.current_index)
                 for name, op in simulation.op_data.operators.items()
             }
+            returning_groups.update(
+                group
+                for group, resting in simulation.op_data.arrangement_group_transitions(
+                    step.plan
+                ).items()
+                if not resting and simulation.op_data.group_is_resting(group)
+            )
             simulation.op_data = simulation.op_data.project_arrangements([step.plan])
             for room, names in step.plan.items():
                 for index, name in enumerate(names):
@@ -5309,7 +5441,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 for op in simulation.op_data.operators.values()
                 if op.is_high() and not op.room.startswith("dorm")
             ]
-            rest = simulation.resting(returning=returning)
+            rest = simulation.resting(
+                returning=returning, returning_groups=returning_groups
+            )
             _merge_dorm_arrangement(
                 rest,
                 try_reorder(simulation.op_data, rest, tasks=simulation.tasks) or {},
@@ -7892,18 +8026,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
     def _pending_group_transitions(self):
         """队列中已开始且仍待确认的换班保留已观测恢复上下文。"""
-        pending = next(
-            (
-                task
-                for task in getattr(self, "tasks", ())
-                if getattr(task, "group_shift_expected", {})
-            ),
-            None,
-        )
-        return self.op_data.arrangement_group_transitions(
-            getattr(pending, "plan", {}) or {},
-            group_transitions=getattr(pending, "group_shift_transitions", {}),
-        )
+        transitions = {}
+        for task in getattr(self, "tasks", ()):
+            if getattr(task, "group_shift_expected", {}):
+                transitions.update(
+                    self.op_data.arrangement_group_transitions(
+                        task.plan,
+                        group_transitions=getattr(task, "group_shift_transitions", {}),
+                    )
+                )
+        return transitions
 
     def _execution_group_transitions(self, plan=None):
         """执行与读房共用待确认状态，剩余明确安排优先覆盖。"""
