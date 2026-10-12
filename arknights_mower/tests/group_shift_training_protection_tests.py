@@ -359,3 +359,97 @@ def test_protected_only_predecessor_does_not_block_other_group_work(training_gro
     assert "train" not in task.plan
     assert task.time == before
     assert not getattr(task, "group_shift_predecessors", ())
+
+
+@pytest.fixture
+def shared_training_group(solver, monkeypatch):
+    s = solver
+    plan = s.global_plan["default_plan"].plan
+    plan["train"] = [plan.pop("contact")[0], Room("桃金娘", "", ["余"])]
+    assert s.initialize_operators() is None
+    for op in s.op_data.operators.values():
+        op._current_room, op.current_index = op.room, op.index
+        op.time_stamp = datetime.now()
+    config.conf.enable_mastery = True
+    monkeypatch.setattr(base_schedule, "_training_room_scan_disabled", False)
+    monkeypatch.setattr(mastery_db, "get_active_plan", lambda: None)
+    s.train_room_state = mastery_reader.RoomState("training")
+    return s
+
+
+@pytest.mark.parametrize("resting", [False, True])
+@pytest.mark.parametrize("available", [False, True])
+def test_shared_training_skips_matching_and_confirmation(
+    shared_training_group, resting, available
+):
+    s = shared_training_group
+    if not available:
+        for name in ("红", "黑角"):
+            s.op_data.operators[name]._current_room = "factory"
+    s.op_data.commit_group_shifts({"甲": not resting})
+    if not resting:
+        cover = s.op_data.operators["红"]
+        cover._current_room, cover.current_index = "train", 0
+        s.op_data.operators["讯使"]._current_room = ""
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF if resting else TaskTypes.SHIFT_ON,
+        task_plan={"meeting": ["陈" if resting else A, "Current"]},
+    )
+    s.task, s.tasks = task, [task]
+    before = task.time
+    s._prepare_group_shift(task, remember_targets=True)
+    assert "train" not in task.plan
+    assert not any(room == "train" for room, _ in task.group_shift_expected)
+    s.op_data = s.op_data.project_arrangements([task.plan])
+    task.plan.clear()
+    assert s._complete_group_shift(task)
+    assert s.op_data.group_is_resting("甲") is resting
+    assert task.time == before
+    assert s.op_data.get_current_operator("train", 0).name == (
+        "讯使" if resting else "红"
+    )
+
+
+def test_protected_shared_slot_creates_no_cross_group_predecessor(
+    shared_training_group,
+):
+    s = shared_training_group
+    first = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF, task_plan={"meeting": ["陈", "Current"]}
+    )
+    s.task, s.tasks = first, [first]
+    s._prepare_group_shift(first, remember_targets=True)
+    second = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF, task_plan={"meeting": ["Current", "初雪"]}
+    )
+    s.task, s.tasks = second, [first, second]
+    before = second.time
+    s._prepare_group_shift(second, remember_targets=True)
+    assert second.plan == {"meeting": ["Current", "初雪"]}
+    assert second.time == before
+    assert not getattr(second, "group_shift_predecessors", ())
+
+
+def test_protected_shared_slot_does_not_suppress_generated_return(
+    shared_training_group,
+):
+    from datetime import timedelta
+
+    from arknights_mower.tests.multi_group_shift_tests import shift_off
+
+    s = shared_training_group
+    assert shift_off(s, "甲")[0]
+    data = s.op_data
+    data.commit_group_shifts({"甲": True, "乙": True})
+    data.get_dorm_by_name(A)[1].time = datetime.now() + timedelta(hours=1)
+    data.operators[A].mood = 10
+    data.operators["银灰"].depletion_rate = 0
+    # The remaining binding has no available cover, but mastery owns this slot.
+    data.operators["黑角"]._current_room = "factory"
+    s.plan_metadata()
+    returns = [t for t in s.tasks if t.type == TaskTypes.SHIFT_ON]
+    assert returns
+    assert any(t.plan.get("meeting", [None])[0] == A for t in returns)
+    assert all("train" not in t.plan for t in returns)
+    assert data.get_current_operator("train", 0).name == "讯使"
+    assert data.group_is_resting("甲")

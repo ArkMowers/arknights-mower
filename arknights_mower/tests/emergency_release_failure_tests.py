@@ -77,12 +77,9 @@ def test_uncertain_departure_retains_reachable_recovery_obligation(group_return)
     actual[solver.op_data.operators[name].current_index] = ""
 
     def read_actual(target_room, *args, **kwargs):
-        _, bed = solver.op_data.get_dorm_by_name(name)
-        if bed is not None:
-            bed.reset()
-        solver.op_data.operators[name].current_room = ""
-        solver.op_data.operators[name].current_index = -1
-        return [{"agent": member} for member in actual]
+        observed = [{"agent": member} for member in actual]
+        solver._reconcile_room_observation(target_room, observed)
+        return observed
 
     solver.enter_room = MagicMock()
     solver.back = MagicMock()

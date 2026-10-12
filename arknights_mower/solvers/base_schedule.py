@@ -1287,7 +1287,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self._emergency_filter_tasks()
             self._emergency_replan_releases()
             return
-        self.tasks = plan_metadata(self.op_data, self.tasks)
+        self.tasks = plan_metadata(
+            self.op_data, self.tasks, excluded_names=self._protected_training_names()
+        )
         self._resume_waiting_group_shifts()
 
     def prepare_release_dorm(self, task):
@@ -2531,7 +2533,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 )
         _merge_shift_transition(fix_plan, explicit, self.op_data)
         if not self.op_data.normalize_shared_arrangement(
-            fix_plan, explicit_slots=explicit_slots
+            fix_plan,
+            explicit_slots=explicit_slots,
+            excluded_names=self._protected_training_names(),
         ):
             logger.debug("多绑组纠错替班暂不可用，保留当前安排")
             return {} if return_plan else None
@@ -4936,6 +4940,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             transitions,
             reserved_replacements=reserved,
             explicit_slots=getattr(task, "backup_explicit_slots", ()),
+            excluded_names=self._protected_training_names(),
         ):
             raise GroupShiftBlocked(self._shared_shift_blockers(task, transitions))
         predecessors = self._group_shift_predecessors(task, proposed, transitions)
@@ -5042,6 +5047,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
     def _group_shift_predecessors(self, task, plan, transitions):
         """Started shifts own their group, shared bindings, named slots and occupants."""
+        protected_training = self._protected_training_names()
 
         def footprint(arrangement, shifts):
             arrangement = copy.deepcopy(arrangement)
@@ -5064,8 +5070,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             }
             names = set(_assigned_operator_names(arrangement))
             for op in self.op_data.operators.values():
-                if op.multi_group and any(
-                    binding["group"] in groups for binding in op.group_bindings
+                if (
+                    op.multi_group
+                    and op.name not in protected_training
+                    and any(binding["group"] in groups for binding in op.group_bindings)
                 ):
                     names.add(op.name)
                     slots.add((op.room, op.index))
@@ -5097,12 +5105,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
     def _shared_shift_blockers(self, task, transitions):
         """Identify confirmed resting dependencies without guessing return times."""
+        protected_training = self._protected_training_names()
         groups = self.op_data.working_replacement_blockers(
             {
                 name
                 for group, resting in transitions.items()
                 if resting
                 for name in self.op_data.shift_group_members(group)
+                if name not in protected_training
             },
             task.plan,
         )
@@ -5110,6 +5120,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         for op in self.op_data.operators.values():
             if (
                 not op.multi_group
+                or op.name in protected_training
                 or (op.room, op.index) in explicit
                 or not (
                     op.index < len(task.plan.get(op.room, []))
@@ -5358,7 +5369,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     getattr(queued, "backup_explicit_slots", ())
                 )
                 if not self.op_data.normalize_shared_arrangement(
-                    combined, explicit_slots=combined_explicit
+                    combined,
+                    explicit_slots=combined_explicit,
+                    excluded_names=self._protected_training_names(),
                 ):
                     continue
                 intent = combined

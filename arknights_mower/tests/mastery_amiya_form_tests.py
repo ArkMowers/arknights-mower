@@ -203,6 +203,15 @@ def test_arrangement_gate_blocks_both_slots_only_for_current_observation(
 ):
     solver, _, _, _, _, _ = case
     monkeypatch.setattr(config.conf, "assistant_follows_schedule", follow)
+    solver.train_room_state = None
+    solver._train_mastery_active.return_value = False
+    solver._train_protected.return_value = False
+    for method in (
+        "_train_scheduling_protected",
+        "_protected_training_names",
+        "_suppress_train_arrangement",
+    ):
+        setattr(solver, method, getattr(BaseSchedulerSolver, method).__get__(solver))
     room = reader.RoomState("empty", amiya_form_waiting=True)
     monkeypatch.setattr(reader, "read_room_state", lambda *a, **kw: room)
     new_plan = {"train": ["褐果", "阿米娅"]}

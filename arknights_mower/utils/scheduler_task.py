@@ -1123,16 +1123,18 @@ def adjust_run_order_for_maintenance(tasks, run_order_delay=5, advance_time=None
     return run_order_tasks
 
 
-def _native_return(op_data, plan, names):
+def _native_return(op_data, plan, names, *, excluded_names=()):
     """把需要结束休息的干员按当前排班写回原岗位。"""
     for name in names:
+        if name in excluded_names:
+            continue
         op = op_data.operators[name]
         if not op.room or op.room not in op_data.plan:
             continue
         slots = plan.setdefault(op.room, ["Current"] * len(op_data.plan[op.room]))
         if slots[op.index] in ("Current", name):
             slots[op.index] = name
-    op_data.normalize_shared_arrangement(plan)
+    op_data.normalize_shared_arrangement(plan, excluded_names=excluded_names)
 
 
 def _active_recovery_room(op_data, name):
@@ -1533,7 +1535,13 @@ def _after_pending_arrangements(plan, pending_resources):
 
 
 def generate_plan_by_drom(
-    tasks, op_data, existing_targets=None, release_tasks=None, pending_arrangements=()
+    tasks,
+    op_data,
+    existing_targets=None,
+    release_tasks=None,
+    pending_arrangements=(),
+    *,
+    excluded_names=(),
 ):
     # 同时刻的回班与释放床位必须分别保留类型，并共用一次未来状态演算。
     batches = list(tasks.items()) + list((release_tasks or {}).items())
@@ -1563,7 +1571,7 @@ def generate_plan_by_drom(
             if not room.name or room.name not in op_data.operators:
                 logger.debug(f"跳过已失效的宿舍回班项：{room}")
                 continue
-            if room.name in planned:
+            if room.name in planned or room.name in excluded_names:
                 continue
             op = op_data.operators[room.name]
             if op.multi_group and rest_in_full is not None:
@@ -1629,6 +1637,8 @@ def generate_plan_by_drom(
                     else [op.name]
                 )
                 for agent in agents:
+                    if agent in excluded_names:
+                        continue
                     o = op_data.operators[agent]
                     target_room, target_index = o.room, o.index
                     if existing_targets and agent in existing_targets:
@@ -1660,7 +1670,9 @@ def generate_plan_by_drom(
             continue
         if rest_in_full is not None:
             transitions = op_data.arrangement_group_transitions(plan)
-            if not op_data.normalize_shared_arrangement(plan, transitions):
+            if not op_data.normalize_shared_arrangement(
+                plan, transitions, excluded_names=excluded_names
+            ):
                 continue
             # Shared primaries kept off shift still participate in later returns.
             planned.difference_update(
@@ -1732,7 +1744,7 @@ def generate_plan_by_drom(
     return result
 
 
-def plan_metadata(op_data, tasks):
+def plan_metadata(op_data, tasks, *, excluded_names=()):
     # 部分换班的剩余目标必须先确认，不能从中间驻员状态重建回班队列。
     if any(
         getattr(task, "backup_shift_active", False)
@@ -1836,6 +1848,7 @@ def plan_metadata(op_data, tasks):
             v
             for v in op_data.operators.values()
             if v.is_high()
+            and v.name not in excluded_names
             and not v.multi_group
             and (not v.group or op_data.is_group_shift_anchor(v))
             and not v.room.startswith("dorm")
@@ -1899,6 +1912,7 @@ def plan_metadata(op_data, tasks):
             operator = op_data.operators[dorm.name]
             if (
                 dorm.name in locked_names
+                or dorm.name in excluded_names
                 or operator.group in locked_groups
                 or dorm.position in locked_slots
             ):
@@ -2034,6 +2048,7 @@ def plan_metadata(op_data, tasks):
         existing_targets=existing_targets,
         release_tasks=release_tasks,
         pending_arrangements=pending_arrangements,
+        excluded_names=excluded_names,
     )
     for task in generated:
         if task.type == TaskTypes.SHIFT_ON:
@@ -2056,6 +2071,7 @@ def plan_metadata(op_data, tasks):
     for op in op_data.operators.values():
         if (
             not op.is_high()
+            or op.name in excluded_names
             or op.multi_group
             or op.group
             and not op_data.is_group_shift_anchor(op)
@@ -2064,7 +2080,9 @@ def plan_metadata(op_data, tasks):
             or not op_data.rest_mood_complete(op.name)
         ):
             continue
-        members = set(op_data.shift_group_members(op.group)) if op.group else {op.name}
+        members = (
+            set(op_data.shift_group_members(op.group)) if op.group else {op.name}
+        ) - set(excluded_names)
         anchors = {name for name in members if not op_data.operators[name].multi_group}
         if (
             anchors & returning
@@ -2090,7 +2108,7 @@ def plan_metadata(op_data, tasks):
         ):
             continue
         plan = {}
-        _native_return(op_data, plan, members)
+        _native_return(op_data, plan, members, excluded_names=excluded_names)
         recalled = rebalance_closing_dorm_slots(
             op_data.project_arrangements([]), plan, members
         )
@@ -2123,18 +2141,19 @@ def plan_metadata(op_data, tasks):
         if (
             op.group
             or op.name in returning | locked_names | busy
+            or op.name in excluded_names
             or (op.room, op.index) in locked_slots
             or not op_data.is_standby(op.name)
         ):
             continue
         return_plan = {}
-        _native_return(op_data, return_plan, [op.name])
+        _native_return(op_data, return_plan, [op.name], excluded_names=excluded_names)
         earliest = _after_pending_arrangements(return_plan, pending_resources)
         for task in return_tasks:
             slots = task.plan.get(op.room, ["Current"] * len(op_data.plan[op.room]))
             if task.time < earliest or slots[op.index] != "Current":
                 continue
-            _native_return(op_data, task.plan, [op.name])
+            _native_return(op_data, task.plan, [op.name], excluded_names=excluded_names)
             returning.add(op.name)
             break
     tasks.extend(limited_releases)

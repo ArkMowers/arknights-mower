@@ -157,7 +157,7 @@ def test_fiammetta_keeps_countdown_even_when_in_central(room_reader):
 def test_fiammetta_read_refreshes_reservation_from_actual_slot(room_reader, phase):
     room = "dormitory_1"
     solver, fia, deadline = room_reader(room=room, name="菲亚梅塔", mood=7.5)
-    solver.op_data.get_dorm_by_name = lambda name: (None, None)
+    solver.op_data.get_dorm_by_name = lambda name, **kwargs: (None, None)
     solver.op_data.plan[room][0].agent = "杜林"
     fia.current_room, fia.current_index = "dormitory_2", 2
     fia.need_to_refresh.return_value = False
@@ -206,7 +206,7 @@ def test_fiammetta_refresh_preserves_retry_and_initialization_guards(
 
 def test_fiammetta_removed_from_dorm_invalidates_only_idle_reservation(room_reader):
     solver, _, deadline = room_reader(room="dormitory_1", name="菲亚梅塔", mood=8)
-    solver.op_data.get_dorm_by_name = lambda name: (None, None)
+    solver.op_data.get_dorm_by_name = lambda name, **kwargs: (None, None)
     solver.find.return_value = True
     solver.find.side_effect = None  # 实际房间已空，肥鸭离宿。
     timer = SchedulerTask(task_type=TaskTypes.FIAMMETTA, time=deadline)
@@ -226,7 +226,7 @@ def test_early_limit_release_is_recorded_only_after_actual_departure(
 ):
     solver, target, deadline = room_reader(room="dormitory_1", name="令", mood=11)
     target.upper_limit = 12
-    solver.op_data.get_dorm_by_name = lambda name: (None, None)
+    solver.op_data.get_dorm_by_name = lambda name, **kwargs: (None, None)
     solver.task = SchedulerTask(
         task_type=TaskTypes.RELEASE_DORM,
         meta_data="令",
@@ -516,8 +516,14 @@ def test_fiammetta_arrangement_requests_both_mood_indexes(already_arranged):
         meta_data="伊内丝",
     )
     solver.tasks = [solver.task]
-    target = SimpleNamespace(room="meeting", time_stamp=datetime.now())
-    fia = SimpleNamespace(room="dormitory_1", time_stamp=datetime.now())
+    target = SimpleNamespace(
+        room="meeting",
+        current_room="dormitory_1" if already_arranged else "meeting",
+        time_stamp=datetime.now(),
+    )
+    fia = SimpleNamespace(
+        room="dormitory_1", current_room="dormitory_1", time_stamp=datetime.now()
+    )
 
     def current_room(room, _refresh=True):
         if room == "dormitory_1":

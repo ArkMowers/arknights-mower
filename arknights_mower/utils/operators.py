@@ -1166,7 +1166,13 @@ class Operators:
         return groups
 
     def normalize_shared_arrangement(
-        self, plan, transitions=None, *, reserved_replacements=None, explicit_slots=()
+        self,
+        plan,
+        transitions=None,
+        *,
+        reserved_replacements=None,
+        explicit_slots=(),
+        excluded_names=(),
     ):
         """Keep shared covers until all dependent groups return; reject conflicts.
 
@@ -1174,6 +1180,7 @@ class Operators:
         """
         from arknights_mower.utils.exhaust_replacement import match_replacements
 
+        excluded_names = set(excluded_names)
         transitions = (
             self.arrangement_group_transitions(plan)
             if transitions is None
@@ -1184,6 +1191,7 @@ class Operators:
             for group, resting in transitions.items()
             if resting
             for name in self.shift_group_members(group)
+            if name not in excluded_names
         }
         if self.working_replacement_blockers(shifting, plan):
             return False
@@ -1191,6 +1199,11 @@ class Operators:
             op
             for op in self.operators.values()
             if op.multi_group
+            and op.name not in excluded_names
+            and not (
+                (actual := self.get_current_operator(op.room, op.index)) is not None
+                and actual.name in excluded_names
+            )
             and (op.room, op.index) not in explicit_slots
             and (
                 op.index < len(plan.get(op.room, []))
@@ -1207,15 +1220,19 @@ class Operators:
         }
         changes, options = {}, {}
         managed = {(op.room, op.index) for op in followers}
-        reserved = {
-            name
-            for room, names in plan.items()
-            for index, name in enumerate(names)
-            if (room, index) not in managed and name not in ("Free", "Current", "")
-        } | set(
-            self.reserved_product_replacements
-            if reserved_replacements is None
-            else reserved_replacements
+        reserved = (
+            {
+                name
+                for room, names in plan.items()
+                for index, name in enumerate(names)
+                if (room, index) not in managed and name not in ("Free", "Current", "")
+            }
+            | set(
+                self.reserved_product_replacements
+                if reserved_replacements is None
+                else reserved_replacements
+            )
+            | excluded_names
         )
         for op in followers:
             target = plan.get(op.room, [])[op.index : op.index + 1]

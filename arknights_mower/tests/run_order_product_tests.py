@@ -270,6 +270,7 @@ def use_mood_pages(solver, monkeypatch, occupants):
                 operator.current_room, operator.current_index = room, index
                 operator.mood, operator.time_stamp = 24, datetime.now()
             result.append({"agent": name, "mood": 24 if name else -1})
+        solver._reconcile_room_observation(room, result)
         return result
 
     solver.get_agent_from_room = MagicMock(side_effect=read_room)
