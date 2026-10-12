@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import cv2
+import numpy as np
 import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
@@ -92,6 +93,43 @@ def test_disabled_product_switching_skips_facility_reads(
     solver._read_trade_product_card.assert_not_called()
     solver._cache_facility_state.assert_not_called()
     assert config.conf.run_order_grandet_mode.enable is True
+
+
+@pytest.mark.parametrize("facility", ["manufacture", "trade", "power", "factory"])
+def test_facility_state_refresh_uses_title_over_conflicting_icon(facility):
+    titles = Path(__file__).parent / "fixtures/room_titles"
+    filename = (
+        "factory_entry_20261013.png"
+        if facility == "factory"
+        else f"{facility}_20261013.png"
+    )
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[18:95, 568:957] = cv2.cvtColor(
+        cv2.imread(str(titles / filename)), cv2.COLOR_BGR2RGB
+    )
+    frame[20:92, 570:642] = cv2.cvtColor(
+        np.full((72, 72, 3), (25, 230, 220), dtype=np.uint8), cv2.COLOR_HSV2RGB
+    )
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(img=frame)
+    solver.op_data = MagicMock()
+    solver._wait_drone_interface = MagicMock()
+    solver._cache_facility_state_from_current_page = MagicMock()
+    solver.scene_graph_navigation = MagicMock()
+    solver.refresh_facility_state("room_1_3")
+    if facility == "factory":
+        solver.op_data.update_facility_state.assert_not_called()
+        solver._wait_drone_interface.assert_not_called()
+    else:
+        solver.op_data.update_facility_state.assert_called_once_with(
+            "room_1_3", facility
+        )
+        if facility == "power":
+            solver._wait_drone_interface.assert_not_called()
+        else:
+            solver._cache_facility_state_from_current_page.assert_called_once_with(
+                "room_1_3", facility
+            )
 
 
 def test_product_switching_defaults_off_and_preserves_explicit_configuration():

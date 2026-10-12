@@ -49,6 +49,18 @@ PREFIX_NAME_SCORE_RATIO = 0.9
 PREFIX_NAME_WIDTH_RATIO = 0.75
 PREFIX_NAME_WIDTH_MARGIN = 30
 OPERATOR_ROOM_MIN_SCORE = 0.70
+ROOM_TITLE_TYPES = {
+    "central": "控制中枢",
+    "dormitory": "宿舍",
+    "meeting": "会客室",
+    "contact": "办公室",
+    "recycle": "回收站",
+    "factory": "加工站",
+    "train": "训练室",
+    "manufacture": "制造站",
+    "trade": "贸易站",
+    "power": "发电站",
+}
 
 
 class AgentSelectionNotReady(RuntimeError):
@@ -1232,7 +1244,12 @@ class BaseMixin:
         return score.index(max(score)) + 1
 
     def detect_room_type(self) -> str | None:
-        """从房间标题栏图标识别设施类型，无法识别时返回未知。"""
+        """标题优先确认设施类型；未知标题保留图标识别。"""
+        if room := self._detect_room_title():
+            return ROOM_TITLE_TYPES[room]
+        return self._detect_room_type_by_color()
+
+    def _detect_room_type_by_color(self) -> str | None:
         color_map = {
             "制造站": 25,
             "贸易站": 99,
@@ -1255,24 +1272,23 @@ class BaseMixin:
             return best_room
         return None
 
-    def detect_room(self) -> str:
+    def _detect_room_title(self) -> str | None:
         img = cropimg(self.recog.img, ((568, 18), (957, 95)))
         # 标题优先于颜色；进入动画中透出的背景不能覆盖已确认的设施标题。
-        title_rooms = [
-            "central",
-            "dormitory",
-            "meeting",
-            "contact",
-            "recycle",
-            "factory",
-        ]
-        score = []
-        for room in title_rooms:
+        best_room = None
+        best_score = -1
+        for room in ROOM_TITLE_TYPES:
             tpl = loadres(f"room/{room}")
             result = cv2.matchTemplate(img, tpl, cv2.TM_CCOEFF_NORMED)
-            score.append(cv2.minMaxLoc(result)[1])
-        if max(score) >= 0.78:
-            room = title_rooms[score.index(max(score))]
+            score = cv2.minMaxLoc(result)[1]
+            if score > best_score:
+                best_room, best_score = room, score
+        return best_room if best_score >= 0.78 else None
+
+    def detect_room(self) -> str:
+        room = self._detect_room_title()
+        img = cropimg(self.recog.img, ((568, 18), (957, 95)))
+        if room and room not in ("manufacture", "trade", "power"):
             if room == "central":
                 logger.debug("控制中枢")
             elif room == "dormitory":
@@ -1289,11 +1305,15 @@ class BaseMixin:
                 logger.debug("回收站")
             elif room == "factory":
                 logger.debug("加工站B105")
+            elif room == "train":
+                logger.debug("训练室")
             else:
                 logger.debug("办公室")
             return room
 
-        colored_room = self.detect_room_type()
+        colored_room = (
+            ROOM_TITLE_TYPES[room] if room else self._detect_room_type_by_color()
+        )
         if colored_room in ["制造站", "贸易站", "发电站"]:
             digit_1 = cropimg(img, ((211, 24), (232, 54)))
             digit_2 = cropimg(img, ((253, 24), (274, 54)))

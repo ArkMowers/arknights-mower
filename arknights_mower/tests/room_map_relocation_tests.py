@@ -34,8 +34,7 @@ def test_archive_recycling_title_confirms_actual_room(phase):
     frame[18:95, 568:957] = title
     solver = BaseMixin()
     solver.recog = SimpleNamespace(img=frame)
-    if phase == "interference":
-        assert solver.detect_room_type() == "训练室"
+    assert solver.detect_room_type() == "回收站"
     assert solver.detect_room() == "recycle"
 
 
@@ -53,7 +52,33 @@ def test_archive_workshop_title_confirms_actual_room(phase):
 
 
 @pytest.mark.parametrize(
-    "room", ["central", "meeting", "contact", "recycle", "factory"]
+    ("facility", "name", "room"),
+    [
+        ("manufacture", "制造站", "room_2_2"),
+        ("trade", "贸易站", "room_1_1"),
+        ("power", "发电站", "room_1_3"),
+        ("train", "训练室", "train"),
+    ],
+)
+@pytest.mark.parametrize("hue", [25, 99, 36, 178, 32])
+def test_facility_title_controls_room_identity_and_type(facility, name, room, hue):
+    title = cv2.cvtColor(
+        cv2.imread(str(ROOM_TITLES / f"{facility}_20261013.png")),
+        cv2.COLOR_BGR2RGB,
+    )
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[18:95, 568:957] = title
+    frame[20:92, 570:642] = cv2.cvtColor(
+        np.full((72, 72, 3), (hue, 230, 220), dtype=np.uint8), cv2.COLOR_HSV2RGB
+    )
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame)
+    assert solver.detect_room_type() == name
+    assert solver.detect_room() == room
+
+
+@pytest.mark.parametrize(
+    "room", ["central", "meeting", "contact", "recycle", "factory", "train"]
 )
 def test_positive_facility_title_precedes_conflicting_training_color(room):
     frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
@@ -62,9 +87,33 @@ def test_positive_facility_title_precedes_conflicting_training_color(room):
     frame[18 : 18 + height, 568 : 568 + width] = title
     solver = BaseMixin()
     solver.recog = SimpleNamespace(img=frame)
-    solver.detect_room_type = MagicMock(return_value="训练室")
+    solver._detect_room_type_by_color = MagicMock(return_value="训练室")
     assert solver.detect_room() == room
-    solver.detect_room_type.assert_not_called()
+    solver._detect_room_type_by_color.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("room", "name"),
+    [
+        ("central", "控制中枢"),
+        ("dormitory", "宿舍"),
+        ("meeting", "会客室"),
+        ("contact", "办公室"),
+        ("recycle", "回收站"),
+        ("factory", "加工站"),
+        ("train", "训练室"),
+    ],
+)
+def test_known_facility_type_does_not_fall_back_to_manufacturing_color(room, name):
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    title = loadres(f"room/{room}")
+    height, width = title.shape[:2]
+    frame[18 : 18 + height, 568 : 568 + width] = title
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame)
+    solver._detect_room_type_by_color = MagicMock(return_value="制造站")
+    assert solver.detect_room_type() == name
+    solver._detect_room_type_by_color.assert_not_called()
 
 
 @pytest.mark.parametrize(

@@ -8,6 +8,69 @@ from arknights_mower.utils.scene import Scene
 
 
 class TestNavigationBarRecognition(unittest.TestCase):
+    def test_training_pages_take_priority_over_infra_overview(self):
+        pages = {
+            "room_detail": Scene.INFRA_DETAILS,
+            "arrange_check_in_on": Scene.INFRA_DETAILS,
+            "train_main": Scene.TRAIN_MAIN,
+            "skill_collect_confirm": Scene.TRAIN_FINISH,
+            "training_support": Scene.TRAIN_SKILL_SELECT,
+            "upgrade_failure": Scene.TRAIN_SKILL_UPGRADE_ERROR,
+            "skill_confirm": Scene.TRAIN_SKILL_UPGRADE,
+        }
+        for resource, expected in pages.items():
+            with self.subTest(resource=resource):
+                recognizer = Recognizer.__new__(Recognizer)
+                recognizer.scene = Scene.UNDEFINED
+                recognizer.find = MagicMock(
+                    side_effect=lambda name: name in {"infra_overview", resource}
+                )
+                recognizer.check_loading_time = MagicMock()
+                self.assertEqual(recognizer.get_train_scene(), expected)
+
+    def test_specialized_scenes_preserve_overview_connecting_and_unknown(self):
+        cases = [
+            ({"infra_overview"}, Scene.INFRA_MAIN),
+            (
+                {"connecting", "infra_overview", "train_main", "factory_dashboard"},
+                Scene.CONNECTING,
+            ),
+            (set(), Scene.UNKNOWN),
+        ]
+        for method in ("get_train_scene", "get_factory_scene"):
+            for resources, expected in cases:
+                with self.subTest(method=method, resources=resources):
+                    recognizer = Recognizer.__new__(Recognizer)
+                    recognizer.scene = Scene.UNDEFINED
+                    recognizer.find = MagicMock(
+                        side_effect=lambda name: name in resources
+                    )
+                    recognizer.check_loading_time = MagicMock()
+                    recognizer.check_current_focus = MagicMock()
+                    self.assertEqual(getattr(recognizer, method)(), expected)
+                    self.assertEqual(
+                        recognizer.check_current_focus.call_count,
+                        int(expected == Scene.UNKNOWN),
+                    )
+
+    def test_factory_pages_take_priority_over_infra_overview(self):
+        pages = {
+            "factory_dashboard": Scene.FACTORY_DASHBOARD,
+            "factory_formula": Scene.FACTORY_FORMULA,
+            "factory_furniture": Scene.FACTORY_FORMULA,
+            "factory_product_collect": Scene.FACTORY_PRODUCT_COLLECT,
+            "factory_tag": Scene.FACTORY_ROOM,
+        }
+        for resource, expected in pages.items():
+            with self.subTest(resource=resource):
+                recognizer = Recognizer.__new__(Recognizer)
+                recognizer.scene = Scene.UNDEFINED
+                recognizer.find = MagicMock(
+                    side_effect=lambda name: name in {"infra_overview", resource}
+                )
+                recognizer.check_loading_time = MagicMock()
+                self.assertEqual(recognizer.get_factory_scene(), expected)
+
     def test_room_button_takes_priority_over_infra_overview(self):
         recognizer = Recognizer.__new__(Recognizer)
         recognizer.scene = Scene.UNDEFINED

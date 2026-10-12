@@ -671,8 +671,6 @@ class Recognizer:
         # 连接中，优先级最高
         if self.find("connecting"):
             self.scene = Scene.CONNECTING
-        elif self.find("infra_overview"):
-            self.scene = Scene.INFRA_MAIN
         elif self.find("room_detail") or self.find("arrange_check_in_on"):
             # 进驻详情浮窗（浮窗头 room_detail 或浮窗上的关闭按钮 arrange_check_in_on）：
             # 浮窗开着时优先识别为详情浮层，须在 train_main/training_support 之前（否则
@@ -690,6 +688,8 @@ class Recognizer:
             self.scene = Scene.TRAIN_SKILL_UPGRADE_ERROR
         elif self.find("skill_confirm"):
             self.scene = Scene.TRAIN_SKILL_UPGRADE
+        elif self.find("infra_overview"):
+            self.scene = Scene.INFRA_MAIN
         else:
             self.scene = Scene.UNKNOWN
             self.check_current_focus()
@@ -709,8 +709,6 @@ class Recognizer:
         # 连接中，优先级最高
         if self.find("connecting"):
             self.scene = Scene.CONNECTING
-        elif self.find("infra_overview"):
-            self.scene = Scene.INFRA_MAIN
         elif self.find("factory_dashboard"):
             self.scene = Scene.FACTORY_DASHBOARD
         elif self.find("factory_formula") or self.find("factory_furniture"):
@@ -720,6 +718,8 @@ class Recognizer:
             self.scene = Scene.FACTORY_PRODUCT_COLLECT
         elif self.find("factory_tag"):
             self.scene = Scene.FACTORY_ROOM
+        elif self.find("infra_overview"):
+            self.scene = Scene.INFRA_MAIN
         else:
             self.scene = Scene.UNKNOWN
             self.check_current_focus()
