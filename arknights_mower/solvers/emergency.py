@@ -10,6 +10,7 @@ from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.dorm_candidates import (
     dorm_candidate_mood,
     dorm_task_reservations,
+    retained_task_reservations,
 )
 from arknights_mower.utils.dorm_recovery import compact_dorm_vacancies
 from arknights_mower.utils.dorm_skills import (
@@ -43,10 +44,12 @@ from arknights_mower.utils.resting_priority import (
 )
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
+    TaskScope,
     TaskTypes,
     merge_release_dorm,
     plan_mood_limit_releases,
     protect_priority_tasks,
+    task_view,
     try_workshop_tasks,
 )
 
@@ -107,10 +110,8 @@ class EmergencyRecoveryMixin:
         start = min(
             (
                 task.time
-                for task in self.tasks
-                if getattr(task, "strict_mood_limit", False)
-                and task.plan
-                and not getattr(task, "execution_failure", None)
+                for task in task_view(self.tasks, TaskScope.DISPATCH)
+                if getattr(task, "strict_mood_limit", False) and task.plan
             ),
             default=datetime.max,
         )
@@ -124,7 +125,8 @@ class EmergencyRecoveryMixin:
             self.tasks[:] = [
                 task
                 for task in self.tasks
-                if not getattr(task, "emergency_recovery_release", False)
+                if task.retains_execution
+                or not getattr(task, "emergency_recovery_release", False)
             ]
         meta = "" if getattr(self, "_emergency_startup_pending", False) else RESUME_META
         task = next(
@@ -1078,17 +1080,14 @@ class EmergencyRecoveryMixin:
                 for task in self.tasks
                 if getattr(task, "emergency_staffing", False)
             ]
-            if not pending or any(
-                not getattr(task, "execution_failure", None) for task in pending
-            ):
+            if not pending or task_view(pending, TaskScope.DISPATCH):
                 return
         self.plan_metadata()
         protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         pending_staffing = [
             task
-            for task in self.tasks
+            for task in task_view(self.tasks, TaskScope.DISPATCH)
             if getattr(task, "emergency_staffing", False)
-            and not getattr(task, "execution_failure", None)
         ]
         if pending_staffing:
             state["next_read"] = max(
@@ -1102,7 +1101,7 @@ class EmergencyRecoveryMixin:
         read_due = datetime.now() >= state.get("next_read", datetime.now()) or any(
             getattr(task, "emergency_recovery_release", False)
             and task.time <= datetime.now()
-            for task in self.tasks
+            for task in task_view(self.tasks, TaskScope.DISPATCH)
         )
         read_due = read_due or (
             not any(
@@ -1143,7 +1142,8 @@ class EmergencyRecoveryMixin:
             self.tasks[:] = [
                 task
                 for task in self.tasks
-                if not getattr(task, "emergency_recovery_release", False)
+                if task.retains_execution
+                or not getattr(task, "emergency_recovery_release", False)
             ]
             state["ready_members"] = [
                 name
@@ -1315,10 +1315,11 @@ class EmergencyRecoveryMixin:
                 or task.plan
                 and task.type in (TaskTypes.FIAMMETTA, TaskTypes.RUN_ORDER)
                 and task.time <= datetime.now()
-                for task in self.tasks
+                for task in task_view(self.tasks, TaskScope.DISPATCH)
             )
         ):
             return False
+        reserved_names, reserved_slots = retained_task_reservations(data, self.tasks)
         ready = set(state.get("ready_members", ()))
         members = set(state.get("release_members", ()))
         plan = {}
@@ -1326,6 +1327,8 @@ class EmergencyRecoveryMixin:
             op = data.operators.get(name)
             if (
                 op is None
+                or name in reserved_names
+                or (op.current_room, op.current_index) in reserved_slots
                 or op.is_working()
                 or not has_resting_mood(op)
                 or op.mood_is_prediction
@@ -1353,7 +1356,7 @@ class EmergencyRecoveryMixin:
         state["ready_members"] = sorted(ready)
         state["release_members"] = sorted(members)
         self._emergency_sync_reservations()
-        for task in self.tasks:
+        for task in task_view(self.tasks, TaskScope.REPLAN):
             if not getattr(task, "emergency_dorm", False):
                 continue
             for room, row in list(task.plan.items()):
@@ -1365,7 +1368,9 @@ class EmergencyRecoveryMixin:
         self.tasks[:] = [
             task
             for task in self.tasks
-            if task.plan or not getattr(task, "emergency_dorm", False)
+            if task.retains_execution
+            or task.plan
+            or not getattr(task, "emergency_dorm", False)
         ]
         if not members:
             state.pop("release_plan", None)

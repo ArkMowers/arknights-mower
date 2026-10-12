@@ -2665,11 +2665,17 @@ class Operators:
             )
         }
 
-    def assign_dorm_group(self, names, active_groups=None, plan=None):
+    def assign_dorm_group(
+        self, names, active_groups=None, plan=None, *, reserved_slots=()
+    ):
         """先保障必需床位；候补有床则休息，无床则随组离岗待命。"""
         # 达到个人上限后随组离岗即可，不再占床恢复。
         names = [name for name in names if not self.rest_mood_complete(name)]
-        used = set()
+        used = {
+            index
+            for index, bed in enumerate(self.dorm)
+            if bed.position in reserved_slots
+        }
         assignments = []
         optional = self.standby_candidates(names)
         ordered_names = sorted(

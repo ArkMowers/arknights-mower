@@ -131,7 +131,7 @@ def test_normal_planning_rebuilds_only_one_return_at_effective_limit(
     solver._scan_card_moods = MagicMock()
     solver._fill_empty_dorms = MagicMock()
     solver.backup_plan_solver = MagicMock()
-    monkeypatch.setattr(base, "try_reorder", lambda *args: None)
+    monkeypatch.setattr(base, "try_reorder", lambda *args, **kwargs: None)
     monkeypatch.setattr(base, "try_workshop_tasks", lambda *args: None)
     monkeypatch.setattr(base, "try_add_release_dorm", lambda *args: None)
     for _ in range(3):

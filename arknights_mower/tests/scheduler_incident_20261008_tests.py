@@ -96,7 +96,7 @@ def repeated_exhaust(clock, monkeypatch, *, retain_deadline=False):
     solver.get_resting_plan = lambda candidates, replacements, plan, count: plan.update(
         deepcopy(arrangement)
     )
-    monkeypatch.setattr(base, "try_reorder", lambda data, plan: {})
+    monkeypatch.setattr(base, "try_reorder", lambda data, plan, **kwargs: {})
     order = SchedulerTask(
         time=clock.now() + timedelta(minutes=2),
         task_type=TaskTypes.RUN_ORDER,

@@ -13,6 +13,7 @@ from arknights_mower.tests import scheduler_recovery_preservation_tests as recov
 from arknights_mower.utils.plan import Room
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
+    TaskScope,
     TaskTypes,
     add_release_dorm,
     find_next_task,
@@ -757,8 +758,8 @@ def test_existing_task_query_and_dispatch_use_distinct_failure_filters(
         "meta_data": task.meta_data,
     }
     assert solver.find_next_task(**kwargs) is None
-    assert solver.find_next_task(**kwargs, include_failed=True) is task
-    assert find_next_task(solver.tasks, **kwargs, include_failed=True) is task
+    assert solver.find_next_task(**kwargs, scope=TaskScope.PENDING) is task
+    assert find_next_task(solver.tasks, **kwargs, scope=TaskScope.PENDING) is task
     assert find_next_task(solver.tasks) is later
 
 

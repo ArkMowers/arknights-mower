@@ -67,7 +67,7 @@ def solver(monkeypatch):
             {"central": ["陈"], "dormitory_1": ["歌蕾蒂娅"]}
         )
     )
-    monkeypatch.setattr(base, "try_reorder", lambda data, plan: {})
+    monkeypatch.setattr(base, "try_reorder", lambda data, plan, **kwargs: {})
     return instance
 
 

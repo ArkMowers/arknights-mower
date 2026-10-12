@@ -369,7 +369,7 @@ def test_real_primary_planning_observes_cards_before_candidate_selection(
     events = []
     solver._scan_card_moods = MagicMock(side_effect=lambda: events.append("scan"))
     solver.resting = MagicMock(side_effect=lambda: events.append("primary") or {})
-    monkeypatch.setattr(base_schedule, "try_reorder", lambda *args: {})
+    monkeypatch.setattr(base_schedule, "try_reorder", lambda *args, **kwargs: {})
     assert solver._plan_primary_recovery(scan_moods=scan_moods)
     assert events == (["scan", "primary"] if scan_moods else ["primary"])
 
@@ -391,7 +391,7 @@ def test_cached_recovery_candidate_avoids_physical_scan(solver, monkeypatch, cac
     solver.defer_backup_plan_until_mood_read = False
     solver.find_next_task = MagicMock(return_value=None)
     solver.resting = MagicMock(return_value={})
-    monkeypatch.setattr(base_schedule, "try_reorder", lambda *args: {})
+    monkeypatch.setattr(base_schedule, "try_reorder", lambda *args, **kwargs: {})
     now = datetime.now()
     op = data.operators["红"]
     if cache == "measured":
@@ -430,7 +430,7 @@ def test_ineligible_low_cache_does_not_suppress_scan(solver, monkeypatch, unavai
     solver.defer_backup_plan_until_mood_read = False
     solver.find_next_task = MagicMock(return_value=None)
     solver.resting = MagicMock(return_value={})
-    monkeypatch.setattr(base_schedule, "try_reorder", lambda *args: {})
+    monkeypatch.setattr(base_schedule, "try_reorder", lambda *args, **kwargs: {})
     data.dorm_mood_estimates["红"] = (6, datetime.now())
     op = data.operators["红"]
     if unavailable == "working":
@@ -462,7 +462,7 @@ def test_scan_opens_when_last_cached_candidate_becomes_reserved(solver, monkeypa
     solver.defer_backup_plan_until_mood_read = False
     solver.find_next_task = MagicMock(return_value=None)
     solver.resting = MagicMock(return_value={})
-    monkeypatch.setattr(base_schedule, "try_reorder", lambda *args: {})
+    monkeypatch.setattr(base_schedule, "try_reorder", lambda *args, **kwargs: {})
     data.dorm_mood_estimates["红"] = (6, datetime.now())
     assert solver._plan_primary_recovery()
     solver.enter_room.assert_not_called()

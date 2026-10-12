@@ -47,11 +47,59 @@ def full_dorm_candidate(op_data, name, *, estimates=None, now=None):
     return mood is not None and mood >= 24
 
 
+def retained_task_reservations(op_data, tasks, *, current_task=None):
+    """保留执行预约目标、当前驻员和整组成员，规划与纠错共用。"""
+    names, slots = set(), set()
+    for task in tasks:
+        if task is None or task is current_task or not task.retains_execution:
+            continue
+        for room, row in task.plan.items():
+            for index, name in enumerate(row):
+                if name != "Current":
+                    slots.add((room, index))
+                if name not in ("", "Current", "Free"):
+                    names.add(name)
+        names.update(task.release_dorm_targets())
+    if not names and not slots:
+        return names, slots
+    names.update(
+        name
+        for name, op in op_data.operators.items()
+        if (op.current_room, op.current_index) in slots
+    )
+    groups = {
+        group
+        for name in names
+        if (op := op_data.operators.get(name)) is not None
+        for group in (
+            [getattr(op, "group", "")]
+            if not getattr(op, "multi_group", False)
+            else [binding["group"] for binding in op.group_bindings]
+        )
+        if group
+    }
+    names.update(
+        name
+        for group in groups
+        for name in getattr(op_data, "groups", {}).get(group, ())
+    )
+    slots.update(
+        (op.current_room, op.current_index)
+        for name in names
+        if (op := op_data.operators.get(name)) is not None
+        and op.current_room
+        and op.current_index >= 0
+    )
+    return names, slots
+
+
 def dorm_task_reservations(op_data, tasks, excluded=()):
     """规划与执行采用相同预约；待命候补的回班任务不阻止其临时恢复。"""
-    names = set(excluded) - {"", "Current", "Free"}
+    tasks = list(tasks)
+    names, retained_slots = retained_task_reservations(op_data, tasks)
+    names.update(set(excluded) - {"", "Current", "Free"})
     names.update(getattr(op_data, "emergency_reserved_agents", ()))
-    slots = set()
+    slots = {slot for slot in retained_slots if slot[0].startswith("dorm")}
     for task in tasks:
         if task is None:
             continue

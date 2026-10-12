@@ -83,6 +83,7 @@ from arknights_mower.utils.dorm_candidates import (
     dorm_candidate_mood,
     dorm_candidates,
     dorm_task_reservations,
+    retained_task_reservations,
     vacant_dorm_slots,
 )
 from arknights_mower.utils.dorm_recovery import DormRecoveryPaddingUnavailable
@@ -131,6 +132,7 @@ from arknights_mower.utils.resting_priority import (
 )
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
+    TaskScope,
     TaskTypes,
     adjust_run_order_for_maintenance,
     blocked_run_order_ids,
@@ -146,6 +148,7 @@ from arknights_mower.utils.scheduler_task import (
     restore_displaced_resting,
     scheduling,
     simplify_dorm_fill,
+    task_view,
     try_add_release_dorm,
     try_reorder,
     try_workshop_tasks,
@@ -417,7 +420,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         compare_type: Literal["<", "=", ">"] = "<",
         meta_data="",
         *,
-        include_failed=False,
+        scope=TaskScope.DISPATCH,
     ):
         """找符合条件的下一个任务
 
@@ -431,7 +434,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             task_type,
             compare_type,
             meta_data,
-            include_failed=include_failed,
+            scope=scope,
         )
 
     @property
@@ -621,7 +624,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             return False
         due_fills = [
             task
-            for task in self.tasks
+            for task in task_view(self.tasks, TaskScope.REPLAN)
             if task.type == TaskTypes.FILL_DORM
             and task.time <= datetime.now()
             and not getattr(task, "arrangement_retry_room", None)
@@ -631,6 +634,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             and not getattr(task, "strict_mood_limit", False)
             and set(task.plan) == set(getattr(task, "dorm_fill_plan", task.plan))
         ]
+        due_fill_ids = {id(task) for task in due_fills}
         if not due_fills and not vacant_dorm_slots(op_data):
             return False
         if not primary_planned:
@@ -641,7 +645,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     TaskTypes.EXHAUST_OFF,
                 )
                 or task.type == TaskTypes.FILL_DORM
-                and task not in due_fills
+                and id(task) not in due_fill_ids
                 or task.time <= datetime.now()
                 and task.type
                 in (
@@ -652,11 +656,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 )
                 or task.type == TaskTypes.NOT_SPECIFIC
                 and any(room.startswith("dorm") for room in task.plan)
-                for task in self.tasks
+                for task in task_view(self.tasks, TaskScope.DISPATCH)
             ):
                 return False
             # 延期补位到期后先释放其预约，给新出现的主班轮休需求让床。
-            self.tasks[:] = [task for task in self.tasks if task not in due_fills]
+            self.tasks[:] = [
+                task for task in self.tasks if id(task) not in due_fill_ids
+            ]
             _, reserved_slots = dorm_task_reservations(op_data, self.tasks)
             if not due_fills and not vacant_dorm_slots(op_data, reserved_slots):
                 return False
@@ -670,14 +676,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         task.type in (TaskTypes.SHIFT_ON, TaskTypes.SHIFT_OFF)
                         or any(room.startswith("dorm") for room in task.plan)
                     )
-                    for task in self.tasks
+                    for task in task_view(self.tasks, TaskScope.DISPATCH)
                 ):
                     superseded = True
                     return False
             finally:
                 if not superseded:
                     self.tasks.extend(
-                        task for task in due_fills if task not in self.tasks
+                        task
+                        for task in due_fills
+                        if not any(queued is task for queued in self.tasks)
                     )
             if due_fills:
                 return False
@@ -736,7 +744,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         plan = {}
         self.get_resting_plan(candidates, [], plan, current_resting)
         if len(plan.items()) > 0:
-            re_order_dorm_plan = try_reorder(self.op_data, plan)
+            re_order_dorm_plan = try_reorder(self.op_data, plan, tasks=self.tasks)
             if re_order_dorm_plan:
                 logger.debug(f"合并宿舍任务{re_order_dorm_plan}")
                 _merge_dorm_arrangement(plan, re_order_dorm_plan)
@@ -1012,7 +1020,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
             self.tasks[-1].emergency_fia_fallback = fallback is not None
             # 充能结束后整组立即上班
-            for task in self.tasks:
+            for task in task_view(self.tasks, TaskScope.REPLAN):
                 if task.type == TaskTypes.SHIFT_ON:
                     for room, operators in task.plan.items():
                         if target in operators:
@@ -1079,6 +1087,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         ):
             return False
         existing = [task for task in self.tasks if task.type == TaskTypes.FIAMMETTA]
+        if any(task.retains_execution for task in existing):
+            return False
         # 未完成的充能或回岗沿用原任务；防呆延期不在初始化时强行重试。
         if any(
             getattr(task, "fia_retry_after", datetime.min) > datetime.now()
@@ -1108,10 +1118,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             self.tasks[:] = [
                 task
                 for task in self.tasks
-                if task.type != TaskTypes.FIAMMETTA or task.plan or task is self.task
+                if task.retains_execution
+                or task.type != TaskTypes.FIAMMETTA
+                or task.plan
+                or task is self.task
             ]
             return
-        for task in self.tasks:
+        for task in task_view(self.tasks, TaskScope.REPLAN):
             if (
                 task.type == TaskTypes.FIAMMETTA
                 and not task.plan
@@ -1183,7 +1196,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         tasks = getattr(self, "tasks", [])
         protect_priority_tasks(tasks, op_data=getattr(self, "op_data", None))
         pending = sorted(
-            (task for task in tasks if task is not first_task),
+            (
+                task
+                for task in task_view(tasks, TaskScope.DISPATCH)
+                if task is not first_task
+            ),
             key=lambda task: task.time,
         )
         if not pending:
@@ -3116,7 +3133,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         # 无房间标记的 RUN_ORDER 可能是插拔后的原班恢复，不得一并删除。
         invalid = [
             task
-            for task in self.tasks
+            for task in task_view(self.tasks, TaskScope.REPLAN)
             if task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
             and task.meta_data
             and task.meta_data not in op_data.run_order_rooms
@@ -3146,7 +3163,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             return
         replacements = self.op_data.run_order_replacements(room)
         if self.find_next_task(
-            meta_data=room, task_type=TaskTypes.RUN_ORDER, include_failed=True
+            meta_data=room, task_type=TaskTypes.RUN_ORDER, scope=TaskScope.PENDING
         ):
             return
         in_out_plan = {room: ["Current"] * len(replacements)}
@@ -3242,7 +3259,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self._refresh_fiammetta_task(None)
         if fia_room is not None and fia_plan is not None:
             if (
-                self.find_next_task(task_type=TaskTypes.FIAMMETTA, include_failed=True)
+                self.find_next_task(
+                    task_type=TaskTypes.FIAMMETTA, scope=TaskScope.PENDING
+                )
                 is None
             ):
                 fia_data = self.op_data.operators["菲亚梅塔"]
@@ -3287,7 +3306,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     self.find_next_task(
                         task_type=TaskTypes.EXHAUST_OFF,
                         meta_data=op.name,
-                        include_failed=True,
+                        scope=TaskScope.PENDING,
                     )
                     is None
                 ):
@@ -3335,13 +3354,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             elif self.find_next_task(
                                 task_type=TaskTypes.EXHAUST_OFF,
                                 meta_data=item,
-                                include_failed=True,
+                                scope=TaskScope.PENDING,
                             ):
                                 update_time = True
                                 exh_task = self.find_next_task(
                                     task_type=TaskTypes.EXHAUST_OFF,
                                     meta_data=item,
-                                    include_failed=True,
+                                    scope=TaskScope.PENDING,
                                 )
                                 if exh_task.retains_execution:
                                     continue
@@ -3417,7 +3436,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         """共用主班轮休规划；普通补位和加工随后安排。"""
         if any(
             task.type == TaskTypes.FIAMMETTA and task.time <= datetime.now()
-            for task in self.tasks
+            for task in task_view(self.tasks, TaskScope.DISPATCH)
         ):
             logger.info("肥鸭任务已到期，充能回岗后再规划下班")
             return
@@ -3458,7 +3477,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             save_exception(e)
             logger.exception(e)
         # 更新宿舍任务
-        re_order_dorm_plan = try_reorder(self.op_data, new_plan)
+        re_order_dorm_plan = try_reorder(self.op_data, new_plan, tasks=self.tasks)
         if re_order_dorm_plan:
             if new_plan:
                 # resting() 已把 new_plan 原对象放入 SHIFT_OFF；直接合并可确保
@@ -4004,11 +4023,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         names.add(name)
             return names, slots
 
+        transition = copy.deepcopy(transition)
+        self._suppress_retained_arrangements(transition)
         names, slots = footprint(transition)
         merged_tasks = []
         remaining = [
             task
-            for task in self.tasks
+            for task in task_view(self.tasks, TaskScope.REPLAN)
             if task.type in ordinary
             and task.plan
             and min(task.time, getattr(task, "arrangement_retry_due_at", task.time))
@@ -4052,7 +4073,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     def _exhaust_task_signatures(self):
         """动态用尽预约依赖生效岗位和组配置，不依赖临时驻员或心情读数。"""
         signatures = {}
-        for task in self.tasks:
+        for task in task_view(self.tasks, TaskScope.REPLAN):
             if task.type != TaskTypes.EXHAUST_OFF or task.plan:
                 continue
             names = set(task.meta_data.split(","))
@@ -4124,7 +4145,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         blocked_orders = blocked_run_order_ids(self.tasks, self.op_data)
         pending = [
             task
-            for task in self.tasks
+            for task in task_view(self.tasks, TaskScope.DISPATCH)
             if getattr(task, "maintenance_advance_before_backup", False)
             and id(task) not in blocked_orders
         ]
@@ -4465,13 +4486,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         from arknights_mower.utils.exhaust_replacement import match_replacements
 
         self._refresh_deferred_product_reservations()
-        retained_names, retained_slots = dorm_task_reservations(
-            self.op_data,
-            [
-                task
-                for task in self.tasks
-                if task is not getattr(self, "task", None) and task.retains_execution
-            ],
+        retained_names, retained_slots = retained_task_reservations(
+            self.op_data, self.tasks, current_task=getattr(self, "task", None)
         )
         reserved_names = self.op_data.reserved_product_replacements | retained_names
         if any(name in reserved_names for name in agents):
@@ -4686,6 +4702,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     resting_agents,
                     active_groups=active_groups,
                     plan=allocation_plan,
+                    reserved_slots=retained_slots,
                 )
                 if dorms is not None:
                     break
@@ -4891,7 +4908,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
     def _prepare_group_shift(self, task, *, remember_targets=False):
         """Revalidate queued shared slots without committing the pending shift."""
-        for pending in self.tasks:
+        for pending in task_view(self.tasks, TaskScope.DISPATCH):
             if pending is not task and getattr(pending, "group_shift_expected", {}):
                 raise ProductSwitchDeferred(
                     "等待未完成的绑组换班确认后再安排", minutes=1
@@ -5074,42 +5091,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
     def _suppress_retained_arrangements(self, plan):
         """派生安排不重做保留任务，也不挪用其目标和当前驻员。"""
-        retained = [
-            task
-            for task in self.tasks
-            if task is not getattr(self, "task", None) and task.retains_execution
-        ]
-        names = {
-            name
-            for task in retained
-            for row in task.plan.values()
-            for name in row
-            if name not in ("", "Current", "Free")
-        }
-        slots = {
-            (room, index)
-            for task in retained
-            for room, row in task.plan.items()
-            for index, name in enumerate(row)
-            if name != "Current"
-        }
-        names.update(
-            op.name
-            for slot in slots
-            if (op := self.op_data.get_current_operator(*slot)) is not None
+        names, slots = retained_task_reservations(
+            self.op_data, self.tasks, current_task=getattr(self, "task", None)
         )
-        groups = {
-            group
-            for name in names
-            if (op := self.op_data.operators.get(name)) is not None
-            for group in (
-                [op.group]
-                if not op.multi_group
-                else [binding["group"] for binding in op.group_bindings]
-            )
-            if group
-        }
-        names.update(name for group in groups for name in self.op_data.groups[group])
         for room, row in list(plan.items()):
             for index, name in enumerate(row):
                 current = self.op_data.get_current_operator(room, index)
@@ -5139,6 +5123,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     "等待停服前提前跑单及原班恢复完成后再换班", minutes=1
                 )
             self.maintenance_entry_pending = False
+        if task.retains_execution:
+            return
         if (self._initial_mood_read_pending()) or getattr(
             task, "backup_shift_active", False
         ):
@@ -5153,7 +5139,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 and t.time <= datetime.now()
                 or getattr(t, "backup_shift_active", False)
                 or getattr(t, "product_shift_locked", False)
-                for t in self.tasks
+                for t in task_view(self.tasks, TaskScope.DISPATCH)
                 if t is not task
             )
             or getattr(task, "product_shift_locked", False)
@@ -5190,14 +5176,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         }
         coalesced = [
             t
-            for t in self.tasks
+            for t in task_view(self.tasks, TaskScope.REPLAN)
             if t is not task
             and t.type in ordinary
             and t.plan
             and t.time <= datetime.now()
             and not getattr(t, "strict_mood_limit", False)
             and not getattr(t, "dorm_recovery_restore", [])
-            and not t.retains_execution
         ]
         consumed = set()
         for queued in sorted(coalesced, key=lambda t: t.time):
@@ -5325,7 +5310,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if op.is_high() and not op.room.startswith("dorm")
             ]
             rest = simulation.resting(returning=returning)
-            _merge_dorm_arrangement(rest, try_reorder(simulation.op_data, rest) or {})
+            _merge_dorm_arrangement(
+                rest,
+                try_reorder(simulation.op_data, rest, tasks=simulation.tasks) or {},
+            )
             ordinary_fill = {}
             if not rest:
                 # 副表可能改变刚选中的替班合法性；缓存纠错也在预演中完成。
@@ -6272,7 +6260,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             if not find_next_task(
                                 self.tasks,
                                 task_type=TaskTypes.CLUE_PARTY,
-                                include_failed=True,
+                                scope=TaskScope.PENDING,
                             ):
                                 self.tasks.append(
                                     SchedulerTask(
@@ -9348,7 +9336,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     def _cancel_pending_shift_on(self, name):
         """实际重新上岗后，撤销本人的旧回班预约，保留同批其他人的动作。"""
         locks_changed = False
-        for task in self.tasks[:]:
+        for task in task_view(self.tasks, TaskScope.REPLAN):
             if (
                 task is getattr(self, "task", None)
                 or task.type != TaskTypes.SHIFT_ON
@@ -9463,6 +9451,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 task_type=TaskTypes.EXHAUST_OFF,
                 meta_data=agent,
                 compare_type=">",
+                scope=TaskScope.REPLAN,
             )
             if shift_off:
                 logger.info(f"移除 {shift_off.meta_data} 用尽下班任务以刷新时间")
@@ -9493,6 +9482,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             task_type=TaskTypes.RUN_ORDER,
             meta_data=room,
             compare_type=">",
+            scope=TaskScope.REPLAN,
         ):
             if getattr(run_order_task, "run_order_restore_pending", False):
                 return
@@ -9503,6 +9493,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             task_type=TaskTypes.RUN_ORDER,
             meta_data=room,
             compare_type="<",
+            scope=TaskScope.REPLAN,
         )
         if run_order_task and getattr(
             run_order_task, "run_order_restore_pending", False
@@ -10505,12 +10496,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 and room not in plan
                 and room in self.op_data.run_order_rooms
                 and not self.find_next_task(
-                    meta_data=room, task_type=TaskTypes.RUN_ORDER, include_failed=True
+                    meta_data=room,
+                    task_type=TaskTypes.RUN_ORDER,
+                    scope=TaskScope.PENDING,
                 )
                 and not self.find_next_task(
                     meta_data=room,
                     task_type=TaskTypes.REFRESH_TIME,
-                    include_failed=True,
+                    scope=TaskScope.PENDING,
                 )
             ):
                 # 原先暂停的房间没有跑单预约；排班确认后主动重读订单时间。
