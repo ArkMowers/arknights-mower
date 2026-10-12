@@ -118,7 +118,12 @@ def test_takeover_rebases_queued_run_order_restoration(staffing):
     restore.run_order_restore_pending = True
     solver.tasks.append(restore)
     assert solver._emergency_schedule_staffing()
-    assert takeover(solver).plan[room] == state["rescue_plan"][room]
+    task = takeover(solver)
+    assert task.plan[room] == state["rescue_plan"][room]
+    assert restore.run_order_original_roster == {room: [PRIMARY[0]]}
+    staffing.place(task.plan)
+    solver.tasks.remove(task)
+    assert solver._emergency_reconcile_staffing()
     restore.prepare_run_order_restoration()
     assert restore.plan == {room: state["rescue_plan"][room]}
 
@@ -311,19 +316,35 @@ def test_live_training_protection_skips_entire_room_during_takeover(
     assert not plan
 
 
+@pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize(
-    "room_status", ["training", "waiting_collect", "unreadable", "empty"]
+    "room_status",
+    ["training", "waiting_collect", "unreadable", "unreliable_slots", "empty"],
 )
 def test_live_source_training_check_keeps_residents_and_dispatches_other_work(
-    staffing, monkeypatch, room_status
+    staffing, monkeypatch, room_status, enabled
 ):
     from arknights_mower.solvers import mastery_reader
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    from arknights_mower.utils import config
 
+    monkeypatch.setattr(config.conf, "enable_mastery", enabled)
     solver, state = staffing.solver, staffing.state
     worker = solver.op_data.operators[COVERS[0]]
     worker._current_room, worker.current_index = "train", 0
+    original_roster = {
+        room: solver.op_data.get_current_room(room, True)
+        for room in state["rescue_plan"]
+    }
+    restore = SchedulerTask(
+        task_type=TaskTypes.RUN_ORDER, task_plan=copy.deepcopy(original_roster)
+    )
+    restore.run_order_original_roster = copy.deepcopy(original_roster)
+    restore.emergency_original_roster = copy.deepcopy(original_roster)
+    restore.run_order_restore_pending = True
+    solver.tasks.append(restore)
     solver._emergency_schedule_staffing()
+    assert restore.plan == original_roster
     task = takeover(solver)
     original_time = task.time
     original = copy.deepcopy(task.plan)
@@ -334,6 +355,8 @@ def test_live_source_training_check_keeps_residents_and_dispatches_other_work(
     read = MagicMock(
         return_value=None
         if room_status == "unreadable"
+        else mastery_reader.RoomState("empty", slots_read=True, slots_reliable=False)
+        if room_status == "unreliable_slots"
         else mastery_reader.RoomState(room_status)
     )
     monkeypatch.setattr(mastery_reader, "read_room_state", read)
@@ -353,12 +376,21 @@ def test_live_source_training_check_keeps_residents_and_dispatches_other_work(
     } == expected
     assert not task.plan
     assert task.time == original_time
-    solver.tasks.clear()
+    solver.tasks.remove(task)
     assert solver._emergency_reconcile_staffing()
     assert state["staffing_complete"]
     assert (solver.op_data.operators[worker.name].current_room == "train") == (
         room_status != "empty"
     )
+    expected_roster = {
+        room: original[room] if room in expected else original_roster[room]
+        for room in original
+    }
+    assert restore.plan == expected_roster
+    assert restore.run_order_original_roster == expected_roster
+    assert restore.emergency_original_roster == expected_roster
+    assert solver._emergency_compensation_available(restore.plan)
+    solver.tasks.remove(restore)
     for _ in range(3):
         solver._emergency_schedule_staffing()
         assert not solver.tasks

@@ -163,7 +163,6 @@ def scheduling(
             for t in tasks
         ):
             return None
-    _sort_dispatch_tasks(tasks, time_now, op_data)
     return conflict
 
 
@@ -186,6 +185,16 @@ def protect_priority_tasks(
     ):
         _sort_dispatch_tasks(tasks, now, op_data)
         return
+    # 保留任务只在临时副本上计算避让时间，派发队列仍使用原任务和原时间。
+    dispatch_queue = tasks
+    originals = {}
+    tasks = list(tasks)
+    for index, task in enumerate(tasks):
+        if task.retains_execution:
+            projected = copy.copy(task)
+            projected.plan = copy.deepcopy(task.plan)
+            originals[id(projected)] = task
+            tasks[index] = projected
     for task in tasks:
         simplify_dorm_fill(task, tasks, now, op_data)
     swaps = sorted(
@@ -210,6 +219,7 @@ def protect_priority_tasks(
         op_data,
     )
     _sort_dispatch_tasks(tasks, now, op_data)
+    dispatch_queue[:] = [originals.get(id(task), task) for task in tasks]
 
 
 def _advance_support_swaps_for_maintenance(
@@ -524,8 +534,14 @@ def defer_dorm_before_priority_task(task, tasks, room, time_now=None, op_data=No
     )
     if deadline is None:
         return False
-    task.time = max(now, deadline.time) + timedelta(seconds=1)
-    tasks.sort(key=lambda t: t.time)
+    if task.retains_execution:
+        tasks[:] = [queued for queued in tasks if queued is not task]
+        tasks.insert(
+            next(i for i, queued in enumerate(tasks) if queued is deadline) + 1, task
+        )
+    else:
+        task.time = max(now, deadline.time) + timedelta(seconds=1)
+        tasks.sort(key=lambda t: t.time)
     logger.info(
         f"{room} 操作可能挤占{deadline.type.display_value}时间，剩余宿舍安排延后"
     )

@@ -16,10 +16,13 @@
     "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_observe_recovery",
     "arknights_mower.utils.scheduler_task.protect_priority_tasks",
     "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_protect_training",
-    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange_room"
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange_room",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_sync_compensation",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._reconcile_room_observation"
   ],
   "test_suites": [
     "arknights_mower/tests/emergency_takeover_tests.py",
-    "arknights_mower/tests/emergency_group_staffing_tests.py"
+    "arknights_mower/tests/emergency_group_staffing_tests.py",
+    "arknights_mower/tests/task_failure_retention_tests.py"
   ]
 }

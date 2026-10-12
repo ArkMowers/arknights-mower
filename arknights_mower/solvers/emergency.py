@@ -178,18 +178,7 @@ class EmergencyRecoveryMixin:
                 self.back_to_infrastructure()
                 return False
             self.enter_room(room)
-            previous = {
-                op.name
-                for op in self.op_data.operators.values()
-                if op.current_room == room
-            }
-            observed = self.get_agent_from_room(room, None, force_mood=True)
-            actual = {item["agent"] for item in observed if item.get("agent")}
-            if all(item.get("observed", True) for item in observed):
-                for name in previous - actual:
-                    op = self.op_data.operators[name]
-                    op.current_room, op.current_index = "", -1
-                    op.time_stamp = None
+            self.get_agent_from_room(room, None, force_mood=True)
             self.back()
             if yield_to_releases:
                 rooms.remove(room)
@@ -542,6 +531,8 @@ class EmergencyRecoveryMixin:
             or getattr(room_state, "locked", False) is True
             or getattr(room_state, "read_failed", False) is True
             or getattr(room_state, "amiya_form_waiting", False) is True
+            or getattr(room_state, "slots_read", False) is True
+            and getattr(room_state, "slots_reliable", False) is not True
             or config.conf.enable_mastery
             and getattr(room_state, "protected", False) is True
         ):
@@ -556,6 +547,33 @@ class EmergencyRecoveryMixin:
                 if room == "train" or name in protected:
                     row[index] = "Current"
         return True
+
+    def _emergency_sync_compensation(self, plan):
+        """专项恢复只采用已确认接管的实际驻员，跳过目标保留原恢复责任。"""
+        for queued in self.tasks:
+            for attribute in ("run_order_original_roster", "emergency_original_roster"):
+                snapshot = getattr(queued, attribute, None)
+                if not isinstance(snapshot, dict):
+                    continue
+                for room in snapshot.keys() & plan.keys():
+                    actual = self.op_data.get_current_room(room, True)
+                    if actual is None:
+                        continue
+                    previous = snapshot[room]
+                    updated = list(previous)
+                    for index, name in enumerate(plan[room]):
+                        if (
+                            name not in ("Current", "Free")
+                            and index < len(actual)
+                            and index < len(updated)
+                            and actual[index] == name
+                        ):
+                            updated[index] = name
+                    snapshot[room] = updated
+                    if getattr(queued, "run_order_restore_pending", False) or (
+                        queued.plan.get(room) == previous
+                    ):
+                        queued.plan[room] = list(updated)
 
     def _emergency_schedule_staffing(self):
         """救急表立即接管全部已配置工作岗位，实际驻员核验完成状态。"""
@@ -580,19 +598,6 @@ class EmergencyRecoveryMixin:
             for room, names in plan.items()
             if any(name != "Current" for name in names)
         }
-        # 接管后的专项恢复使用救急驻员，不能再把已换下的正常主班拉回。
-        for queued in self.tasks:
-            for attribute in ("run_order_original_roster", "emergency_original_roster"):
-                snapshot = getattr(queued, attribute, None)
-                if not isinstance(snapshot, dict):
-                    continue
-                for room in snapshot.keys() & plan.keys():
-                    previous = snapshot[room]
-                    snapshot[room] = list(plan[room])
-                    if getattr(queued, "run_order_restore_pending", False) or (
-                        queued.plan.get(room) == previous
-                    ):
-                        queued.plan[room] = list(plan[room])
         if state.get("staffing_complete") and not replaced:
             self._emergency_reconcile_staffing()
             if state.get("staffing_complete"):
@@ -609,6 +614,7 @@ class EmergencyRecoveryMixin:
                 continue
             pending[room] = list(names)
         if not pending:
+            self._emergency_sync_compensation(plan)
             state["staffing_complete"] = True
             state["takeover_complete"] = True
             state["staffing_plan"] = {}
@@ -979,6 +985,7 @@ class EmergencyRecoveryMixin:
         self._suppress_train_arrangement(pending)
         if (room_state := getattr(self, "train_room_state", None)) is not None:
             self._emergency_protect_training(pending, room_state)
+        self._emergency_sync_compensation(pending)
         state["staffing_plan"] = {
             room: row
             for room, row in pending.items()

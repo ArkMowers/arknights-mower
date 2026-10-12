@@ -707,3 +707,39 @@ def test_room_dispatch_dorm_guard_uses_executable_restoration(
         assert dorm.time == restore.time + timedelta(seconds=1)
     assert restore.plan == restore.run_order_original_roster == {"room_1_1": ["图耶"]}
     assert insertion.plan == {"room_2_1": ["但书"]}
+
+
+@pytest.mark.parametrize("kind", CRITICAL_TYPES)
+@pytest.mark.parametrize("dispatch", [scheduling, protect_priority_tasks])
+@pytest.mark.parametrize("room", ["room_1_1", "dormitory_1"])
+def test_reopened_execution_yields_by_order_without_rewriting(kind, dispatch, room):
+    work = task(TaskTypes.SHIFT_ON, -600, {room: ["A"]})
+    work.execution_retained = True
+    critical = task(kind, 30)
+    tasks = [work, critical]
+    original = copy.deepcopy(vars(work))
+    for _ in range(3):
+        dispatch(tasks, time_now=NOW)
+        assert len(tasks) == 2
+        assert tasks[0] is critical and tasks[1] is work
+        assert vars(work) == original
+    tasks.remove(critical)
+    dispatch(tasks, time_now=NOW)
+    assert tasks == [work]
+    assert tasks[0] is work
+    assert vars(work) == original
+
+
+@pytest.mark.parametrize("kind", CRITICAL_TYPES)
+def test_reopened_dorm_runtime_guard_preserves_time_and_releases_dependency(kind):
+    work = task(TaskTypes.SHIFT_ON, -600, {"dormitory_1": ["A"]})
+    work.execution_retained = True
+    critical = task(kind, 30)
+    tasks = [work, critical]
+    original = copy.deepcopy(vars(work))
+    assert defer_dorm_before_priority_task(work, tasks, "dormitory_1", NOW)
+    assert tasks[0] is critical and tasks[1] is work
+    assert vars(work) == original
+    tasks.remove(critical)
+    assert not defer_dorm_before_priority_task(work, tasks, "dormitory_1", NOW)
+    assert vars(work) == original

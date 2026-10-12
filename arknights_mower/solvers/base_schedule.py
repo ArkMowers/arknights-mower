@@ -2128,9 +2128,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
     def _read_room_mood(self, room, *, force_mood=False):
         """实读普通房间的驻员与心情，清除已离开房间的缓存驻员。"""
-        previous = {
-            op.name for op in self.op_data.operators.values() if op.current_room == room
-        }
         mood_data = self.get_agent_from_room(
             room,
             list(range(len(self.op_data.plan[room])))
@@ -2138,12 +2135,6 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             else None,
             **({"force_mood": True} if force_mood else {}),
         )
-        actual = {item["agent"] for item in mood_data if item.get("agent")}
-        if all(item.get("observed", True) for item in mood_data):
-            for name in previous - actual:
-                op = self.op_data.operators[name]
-                op.current_room, op.current_index = "", -1
-                op.time_stamp = None
         mood_info = [
             f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
             for item in mood_data
@@ -3139,23 +3130,43 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         op_data.refresh_run_order_rooms()
         if self._emergency_frozen():
             self._emergency_filter_tasks()
-        # 无房间标记的 RUN_ORDER 可能是插拔后的原班恢复，不得一并删除。
-        invalid = [
-            task
+        invalid_rooms = {
+            task.meta_data
             for task in task_view(self.tasks, TaskScope.REPLAN)
             if task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
             and task.meta_data
             and task.meta_data not in op_data.run_order_rooms
+        }
+        self._invalidate_order_estimates(invalid_rooms)
+
+    def _invalidate_order_estimates(self, rooms):
+        """仅作废可重规划的订单估计，保留未完成执行与原班恢复。"""
+        invalid_ids = {
+            id(task)
+            for task in task_view(self.tasks, TaskScope.REPLAN)
+            if task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
+            and task.meta_data in rooms
             and not hasattr(task, "emergency_original_roster")
             and not getattr(task, "run_order_restore_pending", False)
-        ]
-        if invalid:
-            logger.info(
-                "移除不再参与跑单的房间任务：%s",
-                sorted({task.meta_data for task in invalid}),
+        }
+        self.tasks[:] = [task for task in self.tasks if id(task) not in invalid_ids]
+
+    def _queue_order_refresh(self, room):
+        """每个跑单房间只保留一份未完成的订单读取或执行责任。"""
+        if room not in self.op_data.run_order_rooms or any(
+            task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
+            and (
+                task.meta_data == room
+                or room in task.plan
+                or room in getattr(task, "run_order_original_roster", {})
+                or room in getattr(task, "emergency_original_roster", {})
             )
-            invalid_ids = {id(task) for task in invalid}
-            self.tasks[:] = [task for task in self.tasks if id(task) not in invalid_ids]
+            for task in task_view(self.tasks, TaskScope.PENDING)
+        ):
+            return
+        self.tasks.append(
+            SchedulerTask(task_type=TaskTypes.REFRESH_TIME, meta_data=room)
+        )
 
     def plan_run_order(self, room):
         if any(
@@ -5908,19 +5919,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         rooms = set(self.op_data.run_order_rooms)
         if not rooms:
             return
-        self.tasks[:] = [
-            task
-            for task in self.tasks
-            if not (
-                task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
-                and task.meta_data in rooms
-                and not getattr(task, "run_order_restore_pending", False)
-            )
-        ]
+        self._invalidate_order_estimates(rooms)
         for room in rooms:
-            self.tasks.append(
-                SchedulerTask(task_type=TaskTypes.REFRESH_TIME, meta_data=room)
-            )
+            self._queue_order_refresh(room)
         logger.info("切产物并换班后重新读取订单倒计时：%s", sorted(rooms))
 
     def check_fia(self):
@@ -9369,11 +9370,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     self._refresh_fiammetta_task(data["time"])
                 logger.debug(f"停止记录时间:{str(data)}")
             result.append(data)
-        if not observation_complete:
-            logger.warning("%s 名单识别未决，保留未确认驻员与床位缓存", room)
-            return result
         if (
-            swap_target_snapshot is not None
+            observation_complete
+            and swap_target_snapshot is not None
             and "before" in swap_moods
             and "after" in swap_moods
         ):
@@ -9401,53 +9400,71 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 mood_event="fiammetta_charge",
                 current_time=swap_recorded_at,
             )
-        for _operator in self.op_data.operators.keys():
-            if self.op_data.operators[
-                _operator
-            ].current_room == room and _operator not in [
-                res["agent"] for res in result
-            ]:
-                if room.startswith("dorm"):
-                    _idx, dorm = self.op_data.get_dorm_by_name(
-                        _operator, **recovery_context
-                    )
-                    # 该床可能已在本次读取中写入新入住者。旧入住者仍保留
-                    # 旧坐标时只能清理自己的缓存，不能把新入住者一并抹掉。
-                    if dorm is not None and dorm.name == _operator:
-                        dorm.reset()
-                self.op_data.operators[_operator].current_room = ""
-                self.op_data.operators[_operator].current_index = -1
-                if (
-                    (room.startswith("dorm"))
-                    and getattr(self.task, "strict_mood_limit", False)
-                    and self.task.meta_data == _operator
-                ):
-                    # 实际离宿后才记账，不改写真实心情；等待原回班任务，
-                    # 防止提前清退者被重新塞回宿舍或触发整组纠错。
-                    op = self.op_data.operators[_operator]
-                    op.rest_mood_release_limit = op.upper_limit
-                if _operator == "菲亚梅塔":
-                    self._refresh_fiammetta_task(None)
-                if self.task is not None and self.task.type != TaskTypes.SHIFT_OFF:
-                    release_task = self.find_next_task(
-                        task_type=TaskTypes.RELEASE_DORM, meta_data=_operator
-                    )
-                    if release_task and self.task is not release_task:
-                        release_task.remove_release_dorm_operator(_operator)
-                        if not release_task.plan:
-                            self.tasks.remove(release_task)
-                logger.info(f"重设 {_operator} 至空闲")
+        self._reconcile_room_observation(room, result, **recovery_context)
         if released_support is not None and (
             not released_support.current_room or released_support.is_resting()
         ):
             self.op_data.refresh_idle_dorm_search(
                 reason="专精协助位干员已释放", names=[released_support.name]
             )
-        # 完整读房才产生新观测；空房间没有干员采样时间，同样可解除相关失败。
+        return result
+
+    def _reconcile_room_observation(self, room, observed, *, group_transitions=None):
+        """提交已确认岗位的驻员归属、离宿结果及救急恢复责任。"""
+        slots = {
+            index: item["agent"]
+            for index, item in enumerate(observed)
+            if item.get("observed", True)
+        }
+        complete = len(slots) == len(observed)
+        for name, operator in self.op_data.operators.items():
+            if (
+                operator.current_room != room
+                or not complete
+                and operator.current_index not in slots
+                or slots.get(operator.current_index) == name
+            ):
+                continue
+            if room.startswith("dorm"):
+                _, bed = self.op_data.get_dorm_by_name(
+                    name, group_transitions=group_transitions
+                )
+                if bed is not None and bed.name == name:
+                    bed.reset()
+                if (
+                    getattr(self.task, "strict_mood_limit", False)
+                    and self.task.meta_data == name
+                ):
+                    operator.rest_mood_release_limit = operator.upper_limit
+            operator.current_room, operator.current_index = "", -1
+            operator.time_stamp = None
+            if name == "菲亚梅塔":
+                self._refresh_fiammetta_task(None)
+            if self.task is not None and self.task.type != TaskTypes.SHIFT_OFF:
+                release_task = self.find_next_task(
+                    task_type=TaskTypes.RELEASE_DORM, meta_data=name
+                )
+                if release_task and self.task is not release_task:
+                    release_task.remove_release_dorm_operator(name)
+                    if not release_task.plan:
+                        self.tasks.remove(release_task)
+            logger.info(f"重设 {name} 至空闲")
+        if getattr(self.task, "emergency_staffing", False) and isinstance(
+            self.emergency_state, dict
+        ):
+            targets = self.emergency_state.get("staffing_plan", {}).get(room, [])
+            confirmed = [
+                name if slots.get(index) == name else "Current"
+                for index, name in enumerate(targets)
+            ]
+            self._emergency_sync_compensation({room: confirmed})
+        if not complete:
+            logger.warning("%s 名单识别未决，保留未确认驻员与床位缓存", room)
+            return
+        # 完整空房间同样产生成功观测；部分名单只更新已确认岗位。
         observations = getattr(self.op_data, "room_observations", {})
         observations[room] = observations.get(room, 0) + 1
         self.op_data.room_observations = observations
-        return result
 
     def refresh_current_room(self, room, current_index=None):
         _current_room = self.op_data.get_current_room(room, current_index=current_index)
@@ -10623,25 +10640,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if getattr(self.task, "run_order_restore_pending", False):
                     return self._retain_run_order_restoration(delay=True)
                 return False
-            if (
-                self.task.type != TaskTypes.RUN_ORDER
-                and room not in plan
-                and room in self.op_data.run_order_rooms
-                and not self.find_next_task(
-                    meta_data=room,
-                    task_type=TaskTypes.RUN_ORDER,
-                    scope=TaskScope.PENDING,
-                )
-                and not self.find_next_task(
-                    meta_data=room,
-                    task_type=TaskTypes.REFRESH_TIME,
-                    scope=TaskScope.PENDING,
-                )
-            ):
-                # 原先暂停的房间没有跑单预约；排班确认后主动重读订单时间。
-                self.tasks.append(
-                    SchedulerTask(task_type=TaskTypes.REFRESH_TIME, meta_data=room)
-                )
+            if self.task.type != TaskTypes.RUN_ORDER and room not in plan:
+                self._queue_order_refresh(room)
         self._finish_idle_dorm_shift()
         if restoring_order:
             del self.task.run_order_original_roster

@@ -990,3 +990,155 @@ def test_shift_cycle_retention_keeps_ordinary_due_coalescing(native_solver):
     assert solver.tasks == [first]
     assert first.plan[ROOM] == [native.PRIMARY[0]]
     assert first.plan["room_1_2"] == [native.PRIMARY[1]]
+
+
+@pytest.mark.parametrize("reader", ["ordinary", "patrol", "emergency"])
+@pytest.mark.parametrize("room", [ROOM, "dormitory_1"])
+@pytest.mark.parametrize("observed_name", ["陈", ""])
+def test_partial_roster_clears_confirmed_slot_and_preserves_unknown_slot(
+    empty_room_solver, room, observed_name, reader
+):
+    import numpy as np
+
+    solver, task = empty_room_solver
+    data = solver.op_data
+    known_index, unknown_index = (0, 1) if room == ROOM else (2, 3)
+    if room == ROOM:
+        data.plan[room].append(Room("银灰", "", []))
+    old, unknown, incoming = (data.operators[name] for name in ("伊内丝", "银灰", "陈"))
+    old._current_room, old.current_index = room, known_index
+    unknown._current_room, unknown.current_index = room, unknown_index
+    incoming._current_room, incoming.current_index = "", -1
+    unknown_state = (unknown.current_room, unknown.current_index, unknown.time_stamp)
+    if room.startswith("dorm"):
+        old_bed = next(bed for bed in data.dorm if bed.position == (room, known_index))
+        unknown_bed = next(
+            bed for bed in data.dorm if bed.position == (room, unknown_index)
+        )
+        old_bed.name, unknown_bed.name = old.name, unknown.name
+        unknown_bed.time = native.NOW + timedelta(hours=1)
+    task.plan = {room: ["Current"] * len(data.plan[room])}
+    task.strict_mood_limit = True
+    task.meta_data = old.name
+    solver.task = task
+    solver._retain_failed_task(task, "名单识别未决", [room])
+    solver.find = Mock(return_value=False)
+    reads = [
+        name
+        for index in range(len(data.plan[room]))
+        for name in (
+            [observed_name] if index == known_index and observed_name else ["", "", ""]
+        )
+    ]
+    solver.read_screen = Mock(side_effect=reads)
+    # A positively identified empty slot needs no name reads.
+    if not observed_name:
+        slot_calls = 0
+
+        def find_empty(*args, **kwargs):
+            nonlocal slot_calls
+            if args[0] != "infra_no_operator":
+                return False
+            slot_calls += 1
+            return slot_calls == known_index * 3 + 1
+
+        solver.find.side_effect = find_empty
+        reads = [
+            ""
+            for index in range(len(data.plan[room]))
+            if index != known_index
+            for _ in range(3)
+        ]
+        solver.read_screen.side_effect = reads
+    solver.read_accurate_mood = Mock(return_value=12)
+    solver.read_operator_time = Mock(return_value=native.NOW + timedelta(hours=2))
+    solver.sleep = Mock()
+    solver.scroll_room_operators = Mock()
+    solver.recog = SimpleNamespace(
+        gray=np.zeros((1080, 1920), dtype=np.uint8), update=Mock()
+    )
+    if reader == "ordinary":
+        result = solver.get_agent_from_room(room, force_mood=True)
+        assert result[known_index]["agent"] == observed_name
+        assert result[unknown_index]["observed"] is False
+    elif reader == "patrol":
+        solver._read_room_mood(room, force_mood=True)
+    else:
+        assert solver._emergency_read_rooms([room])
+    assert [
+        op.name
+        for op in data.operators.values()
+        if (op.current_room, op.current_index) == (room, known_index)
+    ] == ([observed_name] if observed_name else [])
+    assert (old.current_room, old.current_index) == ("", -1)
+    assert (
+        unknown.current_room,
+        unknown.current_index,
+        unknown.time_stamp,
+    ) == unknown_state
+    assert room not in data.room_observations
+    if room.startswith("dorm"):
+        assert old_bed.name == observed_name
+        assert unknown_bed.name == unknown.name
+        assert unknown_bed.time == native.NOW + timedelta(hours=1)
+        assert old.rest_mood_release_limit == old.upper_limit
+
+
+@pytest.mark.parametrize("reopened", [False, True])
+@pytest.mark.parametrize("kind", [TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME])
+def test_product_switch_refresh_keeps_retained_orders_and_deduplicates(
+    native_solver, reopened, kind
+):
+    solver = native_solver
+    other = "room_1_2"
+    solver.op_data.run_order_rooms = {ROOM: {}, other: {}}
+    task = SchedulerTask(native.NOW, {ROOM: ["但书"]}, kind, meta_data=ROOM)
+    solver.tasks = [task]
+    solver._retain_failed_task(task, "倒计时读取失败", task.plan)
+    if reopened:
+        solver.op_data.room_observations[ROOM] = 1
+        solver._resume_failed_tasks()
+    original = copy.deepcopy(vars(task))
+    for _ in range(3):
+        solver._refresh_orders_after_product_switch()
+        assert any(queued is task for queued in solver.tasks)
+        assert vars(task) == original
+        assert [
+            (queued.type, queued.meta_data)
+            for queued in solver.tasks
+            if queued is not task
+        ] == [(TaskTypes.REFRESH_TIME, other)]
+
+
+@pytest.mark.parametrize("reading", ["陈", "伊内丝", ""])
+def test_rescue_readback_updates_compensation_only_after_confirmed_takeover(
+    empty_room_solver, reading
+):
+    import numpy as np
+
+    solver, takeover_task = empty_room_solver
+    old = solver.op_data.operators["伊内丝"]
+    old._current_room, old.current_index = ROOM, 0
+    solver.task = takeover_task
+    solver.emergency_state = {"phase": "staffing", "staffing_plan": {ROOM: ["陈"]}}
+    restore = SchedulerTask(native.NOW, {ROOM: [old.name]}, TaskTypes.RUN_ORDER)
+    restore.run_order_original_roster = copy.deepcopy(restore.plan)
+    restore.emergency_original_roster = copy.deepcopy(restore.plan)
+    restore.run_order_restore_pending = True
+    solver.tasks.append(restore)
+    original_time = restore.time
+    solver.find = Mock(return_value=False)
+    solver.read_screen = Mock(return_value=reading)
+    solver.read_accurate_mood = Mock(return_value=12)
+    solver.sleep = Mock()
+    solver.recog = SimpleNamespace(
+        gray=np.zeros((1080, 1920), dtype=np.uint8), update=Mock()
+    )
+    solver.get_agent_from_room(ROOM, force_mood=True)
+    expected = {ROOM: ["陈" if reading == "陈" else old.name]}
+    assert restore.plan == expected
+    assert restore.run_order_original_roster == expected
+    assert restore.emergency_original_roster == expected
+    assert restore.time == original_time
+    restored = jsonpickle.decode(jsonpickle.encode(solver.tasks))
+    assert restored[1].run_order_original_roster == expected

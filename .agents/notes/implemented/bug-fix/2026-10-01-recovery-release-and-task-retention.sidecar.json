@@ -32,7 +32,11 @@
     "arknights_mower.utils.scheduler_task.TaskScope",
     "arknights_mower.utils.scheduler_task.task_view",
     "arknights_mower.utils.dorm_candidates.retained_task_reservations",
-    "arknights_mower.utils.scheduler_task.try_reorder"
+    "arknights_mower.utils.scheduler_task.try_reorder",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._reconcile_room_observation",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._invalidate_order_estimates",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._queue_order_refresh",
+    "arknights_mower.utils.scheduler_task.protect_priority_tasks"
   ],
   "test_suites": [
     "arknights_mower/tests/device_control_shutdown_tests.py",
@@ -51,6 +55,7 @@
     "arknights_mower/tests/fixed_dorm_cover_admission_tests.py",
     "arknights_mower/tests/resting_preemption_tests.py",
     "arknights_mower/tests/task_lifecycle_scope_tests.py",
-    "arknights_mower/tests/emergency_group_beds_tests.py"
+    "arknights_mower/tests/emergency_group_beds_tests.py",
+    "arknights_mower/tests/priority_admission_tests.py"
   ]
 }
