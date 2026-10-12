@@ -375,3 +375,76 @@ def test_real_worker_resumes_same_scheduler_and_replans_after_capture_refresh(
     solver.plan_solver.assert_called_once_with()
     solver._read_initial_card_mood.assert_called_once_with()
     scheduler.io.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "save_result", [True, False, RuntimeError("snapshot unavailable")]
+)
+def test_original_target_conflict_completes_without_delaying_queue(
+    scheduler, monkeypatch, save_result
+):
+    solver, module = scheduler.solver, scheduler.module
+    now = scheduler.clock.now()
+    pending = SchedulerTask(now, {"dormitory_1": ["银灰"]}, TaskTypes.SHIFT_ON)
+    pending.group_shift_expected = {("dormitory_1", 0): "银灰"}
+    pending.group_shift_transitions = {"轮休": False}
+    other = SchedulerTask(now, task_type=TaskTypes.DEPOT)
+    solver.tasks, solver.task = [pending, other], pending
+    for method in (
+        "_prepare_group_shift",
+        "_prepare_shift_cycle",
+        "_defer_conflicting_product_shift_slots",
+        "_switch_products_before_arrangement",
+        "_activate_shift_backup",
+        "plan_metadata",
+        "back_to_infrastructure",
+    ):
+        monkeypatch.setattr(solver, method, Mock())
+    snapshots = []
+
+    def save():
+        snapshots.append((pending.time, dict(pending.plan)))
+        if isinstance(save_result, Exception):
+            raise RuntimeError(str(save_result)) from None
+        return save_result
+
+    monkeypatch.setattr(module, "save_current_state", save)
+    actual = SimpleNamespace(name="能天使")
+    solver.op_data.plan = {"dormitory_1": [SimpleNamespace(agent="")]}
+    solver.op_data.get_current_operator = lambda room, index: actual
+    solver.op_data.group_is_resting = lambda group: True
+    solver.op_data.commit_group_shifts = Mock()
+    solver.op_data.is_dynamic_dorm_position = lambda *args, **kwargs: False
+    solver._resume_waiting_group_shifts = Mock()
+    selected = []
+
+    def arrange(plan, *args):
+        agents = ["能天使"]
+        solver._check_group_shift_targets(
+            agents, "dormitory_1", reason="执行边界准入与床位整理"
+        )
+        selected.extend(agents)
+        actual.name = agents[0]
+        plan.clear()
+
+    solver.agent_arrange = Mock(side_effect=arrange)
+    solver.仓库扫描 = Mock()
+
+    solver.infra_main()
+
+    assert selected == ["银灰"]
+    assert not config.stop_mower.is_set() and not solver.error and solver.task is None
+    assert solver.tasks == [other]
+    assert pending.time == now and not hasattr(pending, "arrangement_retry_count")
+    assert not pending.plan and not pending.group_shift_expected
+    solver.op_data.commit_group_shifts.assert_called_once_with({"轮休": False})
+    assert snapshots == [(now, {"dormitory_1": ["银灰"]})]
+    solver.back_to_infrastructure.assert_not_called()
+
+    solver.task = other
+    solver.infra_main()
+
+    solver.仓库扫描.assert_called_once()
+    assert solver.tasks == []
+    assert not config.stop_mower.is_set()
+    scheduler.io.assert_not_called()

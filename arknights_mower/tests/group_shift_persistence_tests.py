@@ -1,4 +1,4 @@
-"""确认冲突停止后，真实运行快照保留尚未完成的换班并可重新载入。"""
+"""确认冲突恢复原任务后，真实运行快照保留尚未完成的换班并可重新载入。"""
 
 import copy
 from contextlib import nullcontext
@@ -59,16 +59,14 @@ def test_conflict_restart_retains_completed_room_recovery(
     monkeypatch.setattr(record, "_tables_created", False)
 
     def stopped_loop(saved):
-        try:
-            solver._check_group_shift_targets(
-                task.plan["dormitory_2"], "dormitory_2", reason="最终选人"
-            )
-        except base_schedule.MowerExit:
-            return
+        assert solver._check_group_shift_targets(
+            task.plan["dormitory_2"], "dormitory_2", reason="最终选人"
+        )
+        assert not config.stop_mower.is_set()
 
     monkeypatch.setattr(mower, "_main", stopped_loop)
     mower.main({})
-    assert config.stop_mower.is_set() and mower.base_scheduler is None
+    assert not config.stop_mower.is_set() and mower.base_scheduler is None
     saved = record.load_state()
     assert any(bed.name == incoming and bed.time == due for bed in saved["dorm"])
     resumed = object.__new__(base_schedule.BaseSchedulerSolver)
@@ -157,16 +155,14 @@ def test_conflict_saves_remaining_task_before_worker_cleanup_and_resumes(
     assert record.save_current_state()
 
     def stopped_loop(saved):
-        try:
-            solver._check_group_shift_targets(
-                task.plan["dormitory_1"], "dormitory_1", reason="执行边界准入与床位整理"
-            )
-        except base_schedule.MowerExit:
-            return
+        assert solver._check_group_shift_targets(
+            task.plan["dormitory_1"], "dormitory_1", reason="执行边界准入与床位整理"
+        )
+        assert not config.stop_mower.is_set()
 
     monkeypatch.setattr(mower, "_main", stopped_loop)
     mower.main({})
-    assert config.stop_mower.is_set() and mower.base_scheduler is None
+    assert not config.stop_mower.is_set() and mower.base_scheduler is None
     mower._close_device_session.assert_called_once()
     saved = record.load_state()
     restored, restored_follow = saved["tasks"]
@@ -249,7 +245,7 @@ def test_restart_does_not_open_beds_from_ineligible_or_overridden_shifts(
 
 
 @pytest.mark.parametrize("failure", [False, RuntimeError("snapshot unavailable")])
-def test_save_failure_still_stops_and_reports_non_durable_task(
+def test_save_failure_keeps_running_and_reports_non_durable_task(
     solver, monkeypatch, failure
 ):
     task = SchedulerTask(task_plan={"dormitory_1": ["Free"]})
@@ -261,13 +257,15 @@ def test_save_failure_still_stops_and_reports_non_durable_task(
         save.side_effect = failure
     monkeypatch.setattr(base_schedule, "save_current_state", save)
     error = MagicMock()
-    monkeypatch.setattr(base_schedule.logger, "error", error)
-    with pytest.raises(base_schedule.GroupShiftTargetConflict) as caught:
-        solver._check_group_shift_targets(["Free"], "dormitory_1", reason="最终选人")
-    assert config.stop_mower.is_set()
+    monkeypatch.setattr(base_schedule.logger, "warning", error)
+    agents = ["Free"]
+    before = task.time
+    assert solver._check_group_shift_targets(agents, "dormitory_1", reason="最终选人")
+    assert agents == ["银灰"] and task.time == before
+    assert not config.stop_mower.is_set()
     assert task.plan == {"dormitory_1": ["银灰"]}
-    assert "保存失败" in str(caught.value)
-    assert "仅保留在内存" in str(caught.value)
-    assert "已保存" not in str(caught.value)
+    assert "保存失败" in error.call_args.args[0]
+    assert "仅保留在内存" in error.call_args.args[0]
+    assert "已保存" not in error.call_args.args[0]
     save.assert_called_once()
     error.assert_called_once()

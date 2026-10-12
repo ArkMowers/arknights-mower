@@ -1108,7 +1108,7 @@ def test_grouped_free_capacity_uses_secondary_binding(grouped_free_capacity):
     assert data.assign_dorm_group(["银灰"], active_groups={"附加"}) is not None
 
 
-def test_capacity_rejection_reports_confirmation_conflict(
+def test_capacity_rejection_preserves_original_confirmation_target(
     grouped_free_capacity, monkeypatch
 ):
     from threading import Event
@@ -1117,7 +1117,7 @@ def test_capacity_rejection_reports_confirmation_conflict(
     data = instance.op_data
     monkeypatch.setattr(config, "stop_mower", Event())
     error_log = MagicMock()
-    monkeypatch.setattr(base_schedule.logger, "error", error_log)
+    monkeypatch.setattr(base_schedule.logger, "warning", error_log)
     data.operators["银灰"].group = "外组"
     task = SchedulerTask(
         task_type=TaskTypes.SHIFT_OFF,
@@ -1127,16 +1127,15 @@ def test_capacity_rejection_reports_confirmation_conflict(
     task.group_shift_expected = {("dormitory_1", 0): "银灰"}
     instance.task, instance.tasks = task, [task]
 
-    with pytest.raises(
-        base_schedule.GroupShiftTargetConflict, match="未通过绑组宿舍额度检查"
-    ):
-        instance.prepare_dorm_selection(task.plan["dormitory_1"], "dormitory_1")
+    before_time = task.time
+    instance.prepare_dorm_selection(task.plan["dormitory_1"], "dormitory_1")
+    assert task.time == before_time and not hasattr(task, "arrangement_retry_count")
 
     assert task.plan["dormitory_1"][0] == "银灰"
     assert task.group_shift_expected == {("dormitory_1", 0): "银灰"}
     assert data.group_is_resting("联动")
-    assert config.stop_mower.is_set()
-    assert "最终名单=['Free'" in error_log.call_args.args[0]
+    assert not config.stop_mower.is_set()
+    assert "保留原任务目标，继续本次安排" in error_log.call_args.args[0]
 
 
 @pytest.mark.parametrize("entry", ["prepare", "arrange"])
@@ -1150,7 +1149,7 @@ def test_excluded_target_cancels_confirmation_before_roster_rewrite(
     data = instance.op_data
     monkeypatch.setattr(config, "stop_mower", Event())
     error_log = MagicMock()
-    monkeypatch.setattr(base_schedule.logger, "error", error_log)
+    monkeypatch.setattr(base_schedule.logger, "warning", error_log)
     if exclusion == "blacklist":
         data.config.free_blacklist.append("银灰")
     else:
@@ -1273,15 +1272,12 @@ def test_mixed_shared_binding_checks_capacity_at_arrangement_entry(
         assert instance._complete_group_shift(task)
         assert data.group_is_resting("另一组")
     else:
-        with pytest.raises(
-            base_schedule.GroupShiftTargetConflict, match="未通过绑组宿舍额度检查"
-        ):
-            instance.agent_arrange(task.plan)
-        room_selection.assert_not_called()
+        instance.agent_arrange(task.plan)
+        room_selection.assert_any_call("dormitory_1")
         assert task.plan["dormitory_1"][0] == incoming
         assert task.group_shift_expected == before_expected
         assert task.time == before_time
-        assert config.stop_mower.is_set()
+        assert not config.stop_mower.is_set()
         assert not data.group_is_resting("另一组")
         assert not data.group_is_resting("第三组")
 
