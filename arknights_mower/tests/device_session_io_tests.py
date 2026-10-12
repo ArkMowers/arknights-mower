@@ -469,6 +469,7 @@ class SimulatorStopBindingTests(unittest.TestCase):
         for preset in self.presets:
             with self.subTest(preset=preset):
                 profile = self.profile(preset)
+                profile.manager_query_timeout = 3
                 clock = Clock()
                 calls = []
 

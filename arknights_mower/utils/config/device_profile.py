@@ -162,7 +162,7 @@ class DeviceProfile(BaseModel):
     recovery_attempts: int = 3
     recovery_local_wait: float = 10.0
     recovery_shutdown_wait: float = 30.0
-    manager_query_timeout: float = 3.0
+    manager_query_timeout: float = 10.0
     simulator_hotkey: str = ""
     simulator_hotkey_delay: float = 3.0
 
@@ -215,7 +215,7 @@ def profile_from_legacy(data: dict) -> DeviceProfile:
         screenshot_backend=screenshot,
         touch_backend=touch,
         recovery_shutdown_wait=float(data.get("recovery_shutdown_wait", 30.0)),
-        manager_query_timeout=float(data.get("manager_query_timeout", 3.0)),
+        manager_query_timeout=float(data.get("manager_query_timeout", 10.0)),
         simulator_hotkey=simulator.get("hotkey", ""),
         simulator_hotkey_delay=float(
             simulator.get("hotkey_delay", data.get("simulator_hotkey_delay", 3.0))

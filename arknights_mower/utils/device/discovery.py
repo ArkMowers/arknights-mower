@@ -173,7 +173,9 @@ class DiscoveryService:
         try:
             if self._simulator is None:
                 raise ValueError("未配置模拟器管理器")
-            instance = self._simulator.inspect(profile, 10 if resolved_adb else 3)
+            instance = self._simulator.inspect(
+                profile, max(10, profile.manager_query_timeout)
+            )
         except MowerExit:
             raise
         except SharedADBError as exc:

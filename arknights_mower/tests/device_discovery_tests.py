@@ -233,6 +233,40 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(result.error.fields, [])
         self.assertEqual(self.simulator.actions, [])
 
+    def test_bound_mumu_query_respects_the_selected_timeout(self):
+        with tempfile.TemporaryDirectory() as folder:
+            manager = Path(folder) / "MuMuManager.exe"
+            manager.touch()
+            for timeout in (3, 10, 20):
+                with self.subTest(timeout=timeout):
+                    self.configuration = Conf(
+                        device={
+                            "preset_id": "windows.mumu12",
+                            "instance_id": "3",
+                            "manager_path": str(manager),
+                            "manager_query_timeout": timeout,
+                            "last_serial": "old-online",
+                        }
+                    )
+                    before = self.configuration.model_dump()
+                    granted = []
+
+                    def run(argv, **options):
+                        granted.append(options["timeout"])
+                        self.assertEqual(argv[1:], ["info", "-v", "3"])
+                        return subprocess.CompletedProcess(
+                            argv, 0, b'{"index":3,"is_process_started":false}', b""
+                        )
+
+                    self.control._discovery = DiscoveryService(
+                        self.io, ProductionSimulator(run=run)
+                    )
+                    result = self.control.preflight()
+                    self.assertEqual(result.error.code, "instance_stopped")
+                    self.assertEqual(len(granted), 1)
+                    self.assertAlmostEqual(granted[0], timeout, delta=0.1)
+                    self.assertEqual(self.configuration.model_dump(), before)
+
 
 class BoundMuMuSessionTests(unittest.TestCase):
     def setUp(self):
