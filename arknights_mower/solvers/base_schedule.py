@@ -2470,21 +2470,31 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
     def _suppress_train_correction(self, fix_plan: dict) -> None:
         """专精管理时保护训练位；协助位是否纠错由跟随排班开关决定。"""
+        if (
+            "train" in fix_plan
+            and not _training_room_scan_disabled
+            and not config.conf.enable_mastery
+        ):
+            self.train_room_state = None
+        if self._suppress_train_arrangement(fix_plan):
+            self._notify_train_correction_skipped()
+
+    def _suppress_train_arrangement(self, fix_plan: dict) -> bool:
+        """过滤不可执行的训练室安排；返回纠错是否需要发送保护提醒。"""
         if "train" not in fix_plan:
-            return
+            return False
         if _training_room_scan_disabled:
             fix_plan.pop("train")
             logger.debug("本次进程已停用训练室巡检，跳过训练室纠错")
-            return
+            return False
         if not config.conf.enable_mastery:
             # 关闭自动专精后不消费旧计划／旧房态保护；执行前仍会实读训练室，
             # 正在训练、待收取或读取失败时只跳过训练位。
-            self.train_room_state = None
-            return
+            return False
         train_room_state = getattr(self, "train_room_state", None)
         if getattr(train_room_state, "amiya_form_waiting", False) is True:
             fix_plan.pop("train")
-            return
+            return False
         mastery_active = self._train_mastery_active()
         train_locked = (
             getattr(train_room_state, "state", None) in ("training", "waiting_collect")
@@ -2495,7 +2505,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             or getattr(train_room_state, "protected", None) is True
         )
         if not (mastery_active or train_locked or train_protected):
-            return
+            return False
         if config.conf.assistant_follows_schedule:
             # 与实际换人闸门一致：跟随开启时允许协助位纠错，训练位不动。
             # 必须先于整房抑制，否则活跃专精计划会吞掉协助位纠错。
@@ -2503,15 +2513,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 fix_plan["train"][1] = "Current"
             if all(slot == "Current" for slot in fix_plan["train"]):
                 fix_plan.pop("train")
-            return
+            return False
         fix_plan.pop("train")
         if mastery_active:
             logger.debug("训练室受专精管理，跳过训练室纠错")
         elif train_protected:
             logger.debug("训练室受保护，跳过训练室纠错")
-            self._notify_train_correction_skipped()
+            return True
         else:
             logger.debug("训练室处于锁定状态且未开启协助位跟随，跳过训练室纠错")
+        return False
 
     def _notify_train_correction_skipped(self) -> None:
         """训练室受保护导致纠错跳过 → 发节流提醒邮件（⑤ protected，key=协助位:训练位）。
@@ -3671,6 +3682,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     for index, name in enumerate(names)
                     if name != "Current"
                 )
+
+        self._suppress_train_arrangement(transition_plan)
 
         from arknights_mower.utils.resting_correction import (
             preserve_backup_replacements,
@@ -5007,6 +5020,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             step.plan = plan_dorm_isolation(
                 simulation.op_data, step.plan, reserved_slots
             )
+            simulation._suppress_train_arrangement(step.plan)
             returning.update(
                 name
                 for name in _assigned_operator_names(step.plan)
@@ -5185,6 +5199,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             )
         intent = copy.deepcopy(getattr(task, "backup_shift_intent", task.plan))
         original = list(self.op_data.plan_condition)
+        self._suppress_train_arrangement(intent)
         seed = self.op_data.project_arrangements([intent])
         seed.commit_group_shifts(getattr(task, "group_shift_transitions", {}))
         conditions = [
@@ -5213,6 +5228,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 )
             merged = copy.deepcopy(intent)
             _merge_shift_transition(merged, transition, simulation.op_data)
+            self._suppress_train_arrangement(merged)
             # 从真实驻员重新投影，不能把上一轮的中间换人累积到下一轮。
             projected = self.op_data.project_arrangements([])
             if error := projected.swap_plan(conditions, refresh=True):
