@@ -280,10 +280,7 @@ def test_shared_confirmation_dependency_resumes_without_clock_delay(
         assert second not in s.tasks
         assert first.execution_failure
     confirmed = dict(s.op_data.group_shift_state)
-    observed = {
-        "meeting": ["陈", "Current"],
-        "contact": ["红"],
-    }
+    observed = dict(first.plan)
     s.op_data = s.op_data.project_arrangements([observed])
     s.op_data.group_shift_state = confirmed
     assert s._complete_group_shift(first)
@@ -332,6 +329,11 @@ def test_dispatch_suspends_confirmation_dependency_without_changing_time(
 def test_distinct_shared_slots_do_not_make_transitive_dependencies(shared_solver):
     s = shared_solver
     slots = s.global_plan["default_plan"].plan
+    slots["dormitory_2"] = [
+        Room("杜林", "", []),
+        Room("夜莺", "", []),
+        *[Room("Free", "", []) for _ in range(3)],
+    ]
     slots["central"] = [Room("能天使", "丙", ["夜刀"])]
     slots["factory"] = [
         Room(

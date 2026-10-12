@@ -813,7 +813,11 @@ def test_partial_arrangement_keeps_state_until_all_targets_are_confirmed(solver)
     observed = data.project_arrangements([{"meeting": ["Current", "初雪"]}])
     data.operators = observed.operators
     assert not solver._complete_group_shift(task)
-    assert task.plan == {"contact": ["黑角"]}
+    assert task.plan["contact"] == ["黑角"]
+    assert "meeting" not in task.plan
+    assert any(
+        SHARED in row for room, row in task.plan.items() if room.startswith("dorm")
+    )
     assert not data.group_is_resting("乙")
     observed = data.project_arrangements([task.plan])
     data.operators = observed.operators

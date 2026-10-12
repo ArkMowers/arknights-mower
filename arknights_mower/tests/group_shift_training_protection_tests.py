@@ -57,7 +57,9 @@ def test_protected_training_does_not_requeue_but_other_targets_still_confirm(
         s.train_room_state = mastery_reader.RoomState("training")
     observed = {}
     if other_confirmed:
-        observed["meeting"] = ["陈", "Current"]
+        observed.update(
+            {room: row for room, row in task.plan.items() if room != "train"}
+        )
     if follow:
         observed["train"] = ["望", "Current"]
     projected = s.op_data.project_arrangements([observed])
@@ -66,7 +68,11 @@ def test_protected_training_does_not_requeue_but_other_targets_still_confirm(
     assert s._complete_group_shift(task) is other_confirmed
     assert s.op_data.group_is_resting("甲") is other_confirmed
     if not other_confirmed:
-        assert task.plan == {"meeting": ["陈", "Current"]}
+        assert task.plan["meeting"] == ["陈", "Current"]
+        assert "train" not in task.plan
+        assert any(
+            A in row for room, row in task.plan.items() if room.startswith("dorm")
+        )
         assert ("train", 1) not in task.group_shift_expected
         if not follow:
             assert ("train", 0) not in task.group_shift_expected
@@ -158,9 +164,11 @@ def test_dispatch_finishes_group_after_live_training_gate_skips_room(
     monkeypatch.setattr(mastery_reader, "reconcile_short", lambda *a, **kw: False)
 
     def arrange(plan, get_time):
-        projected = s.op_data.project_arrangements([{"meeting": plan.pop("meeting")}])
-        s.op_data.operators, s.op_data.dorm = projected.operators, projected.dorm
         s.agent_arrange_room({}, "train", plan)
+        s._suppress_train_arrangement(plan)
+        completed = {room: plan.pop(room) for room in list(plan) if room != "train"}
+        projected = s.op_data.project_arrangements([completed])
+        s.op_data.operators, s.op_data.dorm = projected.operators, projected.dorm
         assert not plan
 
     s.agent_arrange = MagicMock(side_effect=arrange)
@@ -216,7 +224,7 @@ def test_mastery_off_confirms_assistant_without_requeueing_busy_trainee(
     s.choose_train.assert_called_once()
     assert s.op_data.get_current_room("train", True) == ["望", "桃金娘"]
     if other_confirmed:
-        projected = s.op_data.project_arrangements([{"meeting": plan["meeting"]}])
+        projected = s.op_data.project_arrangements([task.plan])
         s.op_data.operators, s.op_data.dorm = projected.operators, projected.dorm
     plan.clear()
 
@@ -224,7 +232,11 @@ def test_mastery_off_confirms_assistant_without_requeueing_busy_trainee(
     assert s.op_data.group_is_resting("甲") is other_confirmed
     assert ("train", 1) not in task.group_shift_expected
     if not other_confirmed:
-        assert task.plan == {"meeting": ["陈", "Current"]}
+        assert task.plan["meeting"] == ["陈", "Current"]
+        assert "train" not in task.plan
+        assert any(
+            A in row for room, row in task.plan.items() if room.startswith("dorm")
+        )
     reconcile.assert_not_called()
 
 
@@ -425,7 +437,15 @@ def test_protected_shared_slot_creates_no_cross_group_predecessor(
     s.task, s.tasks = second, [first, second]
     before = second.time
     s._prepare_group_shift(second, remember_targets=True)
-    assert second.plan == {"meeting": ["Current", "初雪"]}
+    assert second.plan["meeting"] == ["Current", "初雪"]
+    assert "train" not in second.plan
+    first_beds = {
+        slot for slot in first.group_shift_expected if slot[0].startswith("dorm")
+    }
+    second_beds = {
+        slot for slot in second.group_shift_expected if slot[0].startswith("dorm")
+    }
+    assert first_beds.isdisjoint(second_beds)
     assert second.time == before
     assert not getattr(second, "group_shift_predecessors", ())
 

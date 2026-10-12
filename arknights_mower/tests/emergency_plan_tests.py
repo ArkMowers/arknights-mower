@@ -149,7 +149,7 @@ def test_recycle_rescue_roster_and_initial_sampling(backup):
         (["芬", "芬"], "重复"),
         (["芬", "不存在"], "无效"),
         (["芬"], "等级/岗位数"),
-        (None, "缺少"),
+        (None, "未配置"),
     ],
 )
 def test_recycle_rescue_roster_rejects_invalid_staffing(names, error):
@@ -548,3 +548,68 @@ def test_rescue_recovery_settings_append_and_dorm_order_overrides(solver):
     assert combined.dorm_order[0] == "dormitory_3"
     assert normal.workaholic == ["清流"]
     assert normal.free_blacklist == ["初雪"]
+
+
+@pytest.mark.parametrize("restart", [False, True])
+def test_partial_rescue_skips_missing_room_through_takeover_and_handoff(
+    solver, monkeypatch, restart
+):
+    import pickle
+
+    from arknights_mower.utils.emergency_recovery import emergency_dorm_plan
+
+    omitted = solver.op_data.operators[PRIMARY[-1]]
+    for plan in (solver.op_data.plan, solver.op_data.global_plan["default_plan"].plan):
+        plan["contact"] = plan.pop(omitted.room)
+    omitted.room = omitted._current_room = "contact"
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    setattr(config.conf.automatic_rescue_plan.plan1, omitted.room, None)
+    monkeypatch.setattr(
+        emergency, "native_opportunity", lambda *a, **k: NativeProjection(None, True)
+    )
+    monkeypatch.setattr(emergency, "save_current_state", lambda: True)
+    solver._emergency_startup()
+    state = solver.emergency_state
+    assert solver._emergency_active()
+    assert state["skipped_rooms"] == [omitted.room]
+    assert omitted.name not in state["targets"]
+    assert omitted.name in solver.op_data.emergency_reserved_agents
+    if restart:
+        solver.emergency_state = pickle.loads(pickle.dumps(state))
+        state = solver.emergency_state
+        solver._emergency_startup()
+    del solver._emergency_schedule_staffing
+    assert solver._emergency_schedule_staffing()
+    takeover = next(
+        task for task in solver.tasks if getattr(task, "emergency_takeover", False)
+    )
+    assert omitted.room not in takeover.plan
+    assert not any(omitted.name in row for row in takeover.plan.values())
+    solver.op_data = solver.op_data.project_arrangements([takeover.plan])
+    assert solver.op_data.operators[omitted.name].current_room == omitted.room
+    beds = emergency_dorm_plan(solver.op_data, state, solver.tasks)
+    assert not any(omitted.name in row for row in beds.values())
+    # Missing or low mood in an untouched room cannot prevent managed rooms returning.
+    solver.op_data.operators[omitted.name].mood = -1
+    for name in state["targets"]:
+        solver.op_data.operators[name].mood = 24
+    normal = {
+        room: [slot.agent for slot in row] for room, row in solver.op_data.plan.items()
+    }
+    handoff = solver._emergency_resting_handoff(normal)
+    assert handoff is not None and omitted.room not in handoff
+    assert solver._emergency_handoff_feasible(handoff)
+    solver.op_data = solver.op_data.project_arrangements([handoff])
+    assert solver.op_data.operators[omitted.name].current_room == omitted.room
+
+
+def test_rescue_omitted_recycle_is_valid():
+    data = SimpleNamespace(
+        plan={"central": [object()], "recycle": [object(), object()]}
+    )
+    resolved = effective_rescue_plan(
+        data, PlanModel(plan1={"central": {"plans": [{"agent": "杜林"}]}})
+    )
+    assert resolved["rescue_plan"] == {"central": ["杜林"]}
+    assert resolved["skipped_rooms"] == ["recycle"]

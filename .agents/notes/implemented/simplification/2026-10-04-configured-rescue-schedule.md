@@ -34,3 +34,5 @@ No outstanding findings. Shared plan parsing and condition evaluation preserve n
 ## Spec Findings
 
 No outstanding findings. Targeted rescue suites pass 484 tests. Governance and route suites pass 17 tests and 4 subtests; six focused frontend suites pass 30 tests. Five changed Vue components compile successfully. Dormitory manager and Fiammetta position tests verify independent configuration, vacant slot identity and measured charging-room handoff. No real-device integration tests run.
+
+The optional-right-room refinement narrows rescue authority to configured facilities. Requiring the missing recycling facility previously rejected an otherwise usable rescue schedule. Left-side built workstations and the control center remain required; omitted right-side facilities are excluded throughout recovery and handoff so their mood cannot permanently prevent exit. The same rescue-specific structural checks run through validation and runtime resolution; conditional backups defer only the compatibility comparison that needs observations. Autosave continues to accept an unfinished draft.

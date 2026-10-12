@@ -12,6 +12,8 @@ RESCUE_ROOMS = {
     "recycle": 2,
 } | {f"room_{floor}_{index}": 3 for floor in range(1, 4) for index in range(1, 4)}
 
+OPTIONAL_RESCUE_ROOMS = {"meeting", "contact", "factory", "train", "recycle"}
+
 RESCUE_DORMS = {f"dormitory_{index}" for index in range(1, 5)}
 
 
@@ -37,15 +39,17 @@ def validate_rescue_roster(plan):
 
 
 def rescue_plan_for(data, plan):
-    """检查普通设施完整性及已配置岗位容量。"""
+    """只校验已配置设施及岗位容量；省略的房间不参与救急。"""
     validate_rescue_roster(plan)
     rooms = {room for room, row in data.plan.items() if room in RESCUE_ROOMS and row}
     rooms -= {"factory", "train"}
     configured = set(plan) - {"factory", "train"}
-    if not rooms or configured != rooms:
-        missing = sorted(rooms - configured)
-        extra = sorted(configured - rooms)
-        raise ValueError(f"救急排班与当前设施不一致：缺少 {missing}，多余 {extra}")
+    if missing := sorted(rooms - configured - OPTIONAL_RESCUE_ROOMS):
+        raise ValueError(f"救急排班缺少必填工作设施：{missing}")
+    if not configured:
+        raise ValueError("救急排班未配置可接管的工作设施")
+    if extra := sorted(configured - rooms):
+        raise ValueError(f"救急排班配置了不存在的工作设施：{extra}")
     for room, names in plan.items():
         if room in ("factory", "train"):
             continue
@@ -55,6 +59,113 @@ def rescue_plan_for(data, plan):
                 f"救急排班 {len(names)} 位"
             )
     return {room: list(names) for room, names in plan.items()}
+
+
+def validate_rescue_schedule(data, schedule):
+    """静态校验救急主副表自身；条件生效后的设施对照交给初始化。"""
+    from arknights_mower.utils.operators import TRADE_ORDER_AGENTS
+
+    primary = schedule.plan1.model_dump(exclude_none=True)
+    roster = {
+        room: [slot["agent"] for slot in facility["plans"]]
+        for room, facility in primary.items()
+        if room in RESCUE_ROOMS
+        and facility["plans"]
+        and (
+            room not in OPTIONAL_RESCUE_ROOMS
+            or any(slot["agent"] for slot in facility["plans"])
+        )
+    }
+    validate_rescue_roster(roster)
+    available = set(roster) | {
+        room
+        for entry in schedule.backup_plans
+        for room, facility in entry.plan.model_dump(exclude_none=True).items()
+        if any(slot["agent"] for slot in facility["plans"])
+    }
+    required = {
+        room
+        for room, row in data.plan.items()
+        if row and room in RESCUE_ROOMS and room not in OPTIONAL_RESCUE_ROOMS
+    }
+    if missing := sorted(required - available):
+        raise ValueError(f"救急排班缺少必填工作设施：{missing}")
+    for label, plan, backup in [
+        ("主表", schedule.plan1, False),
+        *((f"副表 {entry.name}", entry.plan, True) for entry in schedule.backup_plans),
+    ]:
+        seen = set()
+        for room, facility in plan.model_dump(exclude_none=True).items():
+            rows = facility["plans"]
+            if not rows or (
+                room in OPTIONAL_RESCUE_ROOMS
+                and not any(slot["agent"] for slot in rows)
+            ):
+                continue
+            capacity = RESCUE_ROOMS.get(room, 5 if room in RESCUE_DORMS else 0)
+            if not capacity or len(rows) > capacity:
+                raise ValueError(f"救急{label} {room} 岗位数量不正确")
+            for index, slot in enumerate(rows):
+                name = slot["agent"]
+                if name == "Current" and backup:
+                    continue
+                if name == "" and (
+                    room in ("factory", "train") or room in RESCUE_DORMS
+                ):
+                    continue
+                if name == "Free" and room in RESCUE_DORMS:
+                    if slot.get("group") or slot.get("group_bindings"):
+                        raise ValueError(f"救急{label} {room} Free 不能参与绑组")
+                    continue
+                if name not in agent_list:
+                    raise ValueError(
+                        f"救急{label} {room} 的干员 {name or '（空）'} 无效"
+                    )
+                if name in seen:
+                    raise ValueError(f"救急{label}重复安排干员：{name}")
+                seen.add(name)
+                if name == "菲亚梅塔" and (room not in RESCUE_DORMS or index == 1):
+                    raise ValueError(
+                        f"救急{label}的菲亚梅塔需安排在宿舍且不能在 2 号位"
+                    )
+                if name == "菲亚梅塔" and (
+                    slot.get("group") or slot.get("group_bindings")
+                ):
+                    raise ValueError(f"救急{label}的菲亚梅塔不能参与绑组")
+                bindings = [
+                    {
+                        "group": slot.get("group", ""),
+                        "replacement": slot.get("replacement", []),
+                    },
+                    *slot.get("group_bindings", []),
+                ]
+                if slot.get("group_bindings"):
+                    groups = [
+                        binding["group"].strip() for binding in slot["group_bindings"]
+                    ]
+                    if slot.get("group"):
+                        groups.insert(0, slot["group"].strip())
+                    if not all(groups) or len(groups) != len(set(groups)):
+                        raise ValueError(
+                            f"救急{label} {name}的多绑组名称不能为空或重复"
+                        )
+                for binding in bindings:
+                    replacements = binding["replacement"]
+                    if sum(n in TRADE_ORDER_AGENTS for n in replacements) > 1:
+                        raise ValueError(
+                            f"救急{label} {name}的替换名单不能含多个跑单干员"
+                        )
+                    for replacement in replacements:
+                        if (
+                            replacement == "Free"
+                            and room in RESCUE_DORMS
+                            and binding["group"]
+                        ):
+                            continue
+                        if replacement not in agent_list or replacement == "菲亚梅塔":
+                            raise ValueError(
+                                f"救急{label} {name}的替换干员 {replacement} 无效"
+                            )
 
 
 def configured_rescue_names(schedule):
@@ -87,6 +198,7 @@ def effective_rescue_plan(data, schedule):
             ),
         )
 
+    validate_rescue_schedule(data, schedule)
     worker_config = recovery_config(schedule.conf)
     facilities = schedule.plan1.model_dump(exclude_none=True)
     for backup in schedule.backup_plans:
@@ -118,7 +230,12 @@ def effective_rescue_plan(data, schedule):
     roster = {
         room: [slot["agent"] for slot in facility["plans"]]
         for room, facility in facilities.items()
-        if room in RESCUE_ROOMS and facility["plans"]
+        if room in RESCUE_ROOMS
+        and facility["plans"]
+        and (
+            room not in OPTIONAL_RESCUE_ROOMS
+            or any(slot["agent"] for slot in facility["plans"])
+        )
     }
     work = rescue_plan_for(data, roster)
     for room in work:
@@ -206,6 +323,7 @@ def effective_rescue_plan(data, schedule):
             raise ValueError(f"救急排班的菲亚梅塔充能对象 {name} 无效")
     return {
         "rescue_plan": work,
+        "skipped_rooms": sorted((data.plan.keys() & RESCUE_ROOMS.keys()) - work.keys()),
         "worker_config": {
             key: ",".join(getattr(worker_config, key))
             for key in ("workaholic", "free_blacklist", "dorm_order")
