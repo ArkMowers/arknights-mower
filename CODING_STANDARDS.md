@@ -182,7 +182,7 @@
 ### 2.8 MAA Integration
 - **[INV-MAA-10] Independent Update Admission**: MAA core and resource automatic checks and installations use independent policies, installations consume a matching check only while MAA is idle, and an unknown local resource version accepts a valid published version without accepting mismatched or reused checks.
 
-- **[INV-MAA-08] Verified MAA Admission**: Resource loading, task submission and task startup require positive MAA results; rejected calls identify their phase and target, clear the pending run without recording successful execution, and preserve rollback backups.
+- **[INV-MAA-08] Verified MAA Admission**: Desktop activity navigation atomically replaces validated task definitions in `cache/resource/tasks/tasks.json`, preserving other cached resources and the previous navigation on update failure. Resource loading, task submission and task startup require positive MAA results; rejected calls identify their phase and target, clear the pending run without recording successful execution, and preserve rollback backups.
 
 - **[INV-MAA-06] Expired Source Plan Cleanup**: Successful automatic activity fallback removes only expired activity selections from the source weekly plan, preserving the destination, ordinary and still-open stages, daily settings and inventory rules.
 - **[INV-MAA-07] Normal Long-Task Termination**: Roguelike, SSSCopilot and Reclamation completion or scheduler interruption never creates an error solely because `running()` returns false; core error callbacks and invocation exceptions retain their error reporting.

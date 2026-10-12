@@ -84,7 +84,7 @@ The [independent update decision](../../.agents/notes/implemented/simplification
 
 - **[INV-MAA-10] Independent Update Admission**: MAA core and resource automatic checks and installations use independent policies, installations consume a matching check only while MAA is idle, and an unknown local resource version accepts a valid published version without accepting mismatched or reused checks.
 
-- **[INV-MAA-08] Verified MAA Admission**: Resource loading, task submission and task startup require positive MAA results; rejected calls identify their phase and target, clear the pending run without recording successful execution, and preserve rollback backups.
+- **[INV-MAA-08] Verified MAA Admission**: Desktop activity navigation atomically replaces validated task definitions in `cache/resource/tasks/tasks.json`, preserving other cached resources and the previous navigation on update failure. Resource loading, task submission and task startup require positive MAA results; rejected calls identify their phase and target, clear the pending run without recording successful execution, and preserve rollback backups.
 
 - **[INV-MAA-07] Normal Long-Task Termination**: Roguelike, SSSCopilot and Reclamation completion or scheduler interruption never creates an error solely because `running()` returns false; core error callbacks and invocation exceptions retain their error reporting.
 - Long-task polling returns to the existing idle path after completion or scheduler interruption. Callback lines describe completion and stop; polling adds no generic interruption error or ERROR notification. The [normal termination decision](../../.agents/notes/implemented/simplification/2026-10-09-maa-normal-termination.md) records the removed crash inference.
@@ -126,3 +126,12 @@ Selected activity end times are cached per plan and stage, retained across resou
 Frontend activity options, inventory suggestions and plan-end metadata reload on installed resource-version changes. Refreshing plan metadata does not overwrite inventory drafts or selected stages; custom switch times keep precedence.
 
 [Expired source plan cleanup](../../.agents/notes/implemented/bug-fix/2026-10-09-expired-activity-plan-cleanup.md) records the decision and focused verification.
+
+
+## 6. Desktop Activity Navigation
+
+`update_maa_navigation` validates a nonempty task map whose definitions are objects and atomically replaces `cache/resource/tasks/tasks.json` through the existing JSON writer. Download, validation and write failures retain the previous navigation file. Other cached task files, including `tasks/hotfix/ocr_replace.json`, remain intact.
+
+MAA recursively loads JSON files in `resource/tasks/`, which takes precedence over the legacy sibling `resource/tasks.json`. Desktop activity navigation therefore belongs inside the incremental task directory. Task names may override the installed resource layer; duplicate names within one directory load fail. Android retains `cache/resource/tasks.json` for its component packaging and bridge contract.
+
+The existing verified admission boundary checks resource loading, task IDs and startup before recording execution. The [navigation dispatch decision](../../.agents/notes/implemented/bug-fix/2026-10-12-maa-navigation-dispatch.md) records this path correction. Offline coverage resides in `arknights_mower/tests/maa_navigation_tests.py` and `arknights_mower/tests/maa_admission_tests.py`.
