@@ -8,22 +8,42 @@ from time import time
 
 import requests
 
-from arknights_mower.utils.config import atomic_write
+from arknights_mower.utils import config
 from arknights_mower.utils.path import get_path
 
 UPLOAD_URL = "https://auth.yituliu.cn/oauth2/ak-accounts/operators/save"
 _lock = RLock()
+_LEGACY_SETTINGS_PATH = "@app/config/yituliu_sync.json"
+
+
+def _settings_model():
+    return config.conf.yituliu_sync
+
+
+def _settings_dict():
+    return _settings_model().model_dump(exclude_none=True, exclude_defaults=True)
 
 
 def _settings():
-    path = get_path("@app/config/yituliu_sync.json")
-    if not path.exists():
-        return {}
-    try:
-        saved = json.loads(path.read_text("utf-8"))
-        if not isinstance(saved, dict) or not isinstance(saved.get("token", ""), str):
-            raise ValueError()
+    saved = _settings_dict()
+    path = get_path(_LEGACY_SETTINGS_PATH)
+    if saved.get("token"):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
         return saved
+    if not path.exists():
+        return saved
+    try:
+        legacy = json.loads(path.read_text("utf-8"))
+        if not isinstance(legacy, dict) or not isinstance(legacy.get("token", ""), str):
+            raise ValueError()
+        config.conf.yituliu_sync = type(_settings_model())(**legacy)
+        config.conf.model_fields_set.add("yituliu_sync")
+        config.save_conf()
+        path.unlink(missing_ok=True)
+        return _settings_dict()
     except (ValueError, OSError):
         raise ValueError("一图流本地设置无法读取，请重新保存 Token") from None
 
@@ -59,15 +79,19 @@ def save_token(token):
             saved = {}
         if saved.get("token") == token.strip():
             return token_status()
-        path = get_path("@app/config/yituliu_sync.json")
-        atomic_write(path, lambda stream: json.dump({"token": token.strip()}, stream))
-        path.chmod(0o600)
+        config.conf.yituliu_sync = type(_settings_model())(token=token.strip())
+        config.conf.model_fields_set.add("yituliu_sync")
+        config.save_conf()
+        get_path(_LEGACY_SETTINGS_PATH).unlink(missing_ok=True)
         return token_status()
 
 
 def clear_token():
     with _lock:
-        get_path("@app/config/yituliu_sync.json").unlink(missing_ok=True)
+        config.conf.yituliu_sync = type(_settings_model())()
+        config.conf.model_fields_set.discard("yituliu_sync")
+        config.save_conf()
+        get_path(_LEGACY_SETTINGS_PATH).unlink(missing_ok=True)
         return token_status()
 
 
@@ -260,9 +284,10 @@ def sync_cached_operators(snapshot=None):
                 last_synced_fingerprint=fingerprint,
             )
         try:
-            path = get_path("@app/config/yituliu_sync.json")
-            atomic_write(path, lambda stream: json.dump(saved, stream))
-            path.chmod(0o600)
+            config.conf.yituliu_sync = type(_settings_model())(**saved)
+            config.conf.model_fields_set.add("yituliu_sync")
+            config.save_conf()
+            get_path(_LEGACY_SETTINGS_PATH).unlink(missing_ok=True)
         except OSError:
             if result["success"]:
                 result["message"] += "；本地同步记录未能保存"

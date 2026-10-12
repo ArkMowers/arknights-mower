@@ -17,6 +17,7 @@ _STATE_FIELDS = (
     "workshop_preset_migrated",
     "workshop_generation",
 )
+_PRIVATE_CONF_FIELDS = {"yituliu_sync"}
 
 
 def settings(entries, source=None):
@@ -104,7 +105,8 @@ def read_user_config():
         warning = initialize_manual_settings(conf)
         # Loading a settings page must not persist migrations. The save path
         # initializes the same manual state before applying an explicit edit.
-        return {**conf.model_dump(), **workshop_state(conf, warning)}
+        visible = conf.model_dump(exclude=_PRIVATE_CONF_FIELDS)
+        return {**visible, **workshop_state(conf, warning)}
 
 
 def _edit_manual(conf, req):
@@ -159,6 +161,8 @@ def save_user_config(req):
         if "workshop_manual_settings" not in req:
             _edit_legacy(state, req)
         editable = dict(req)
+        for key in _PRIVATE_CONF_FIELDS:
+            editable.pop(key, None)
         for key in _STATE_FIELDS:
             editable[key] = getattr(state, key)
         editable.setdefault("workshop_deer_fodder", state.workshop_deer_fodder)

@@ -2,15 +2,17 @@
 
 import copy
 import json
-import stat
 import sys
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 import requests
+import yaml
+from yamlcore import CoreLoader
 
 from arknights_mower.utils import yituliu_sync as sync
+from arknights_mower.utils.config.conf import Conf
 
 TOKEN = "0123456789abcdef0123456789abcdef"
 
@@ -22,6 +24,8 @@ def sync_case(tmp_path, monkeypatch):
         "@app/tmp/cultivate.json": tmp_path / "cultivate.json",
     }
     monkeypatch.setattr(sync, "get_path", lambda name: paths[name])
+    monkeypatch.setattr(sync.config, "conf", Conf())
+    monkeypatch.setattr(sync.config, "conf_path", tmp_path / "conf.yml")
     session = MagicMock()
     session.__enter__.return_value = session
     response = MagicMock(status_code=200)
@@ -74,15 +78,27 @@ def sync_case(tmp_path, monkeypatch):
     return paths, session, response, snapshot, definitions
 
 
+def saved_settings():
+    return sync.config.conf.yituliu_sync.model_dump(
+        exclude_none=True, exclude_defaults=True
+    )
+
+
+def saved_conf_file():
+    return yaml.load(sync.config.conf_path.read_text("utf-8"), Loader=CoreLoader)
+
+
 def test_save_status_and_clear_are_local_and_never_echo_token(sync_case):
     paths, session, _, _, _ = sync_case
     assert sync.token_status()["configured"] is False
     result = sync.save_token(TOKEN)
     assert result["configured"] is True and TOKEN not in json.dumps(result)
-    assert stat.S_IMODE(paths["@app/config/yituliu_sync.json"].stat().st_mode) == 0o600
+    assert saved_conf_file()["yituliu_sync"]["token"] == TOKEN
+    assert not paths["@app/config/yituliu_sync.json"].exists()
     assert sync.token_status() == result
     session.post.assert_not_called()
     assert sync.clear_token()["configured"] is False
+    assert "yituliu_sync" not in (saved_conf_file() or {})
     assert not paths["@app/config/yituliu_sync.json"].exists()
     session.post.assert_not_called()
 
@@ -94,6 +110,7 @@ def test_invalid_tokens_cannot_be_stored_or_sent(sync_case, token):
     paths, session, _, _, _ = sync_case
     with pytest.raises(ValueError):
         sync.save_token(token)
+    assert not sync.config.conf_path.exists()
     assert not paths["@app/config/yituliu_sync.json"].exists()
     session.post.assert_not_called()
 
@@ -154,7 +171,8 @@ def test_explicit_sync_sends_only_fixed_target_header_and_whitelisted_snapshot(
     assert TOKEN not in json.dumps(result)
     assert sync.token_status()["last_sync_error"] is None
     assert sync.token_status()["last_synced_count"] == 1
-    assert stat.S_IMODE(paths["@app/config/yituliu_sync.json"].stat().st_mode) == 0o600
+    assert saved_conf_file()["yituliu_sync"]["last_synced_count"] == 1
+    assert not paths["@app/config/yituliu_sync.json"].exists()
     assert paths["@app/tmp/cultivate.json"].read_text() == original
 
 
@@ -247,6 +265,19 @@ def test_token_and_sync_routes_require_local_auth_and_explicit_manual_action(
     )
 
 
+def test_general_configuration_route_boundary_does_not_expose_or_edit_token(sync_case):
+    from arknights_mower.utils import workshop_config
+
+    sync.save_token(TOKEN)
+    visible = workshop_config.read_user_config()
+    assert "yituliu_sync" not in visible
+    workshop_config.save_user_config(
+        {"theme": "dark", "yituliu_sync": {"token": "replacement-token"}}
+    )
+    assert sync.token_status()["configured"] is True
+    assert saved_settings()["token"] == TOKEN
+
+
 @pytest.mark.parametrize("automatic", [False, True])
 def test_identical_confirmed_payload_skips_manual_and_automatic_network(
     sync_case, automatic
@@ -255,7 +286,7 @@ def test_identical_confirmed_payload_skips_manual_and_automatic_network(
     sync.save_token(TOKEN)
     first = sync.sync_cached_operators()
     # Re-reading persisted settings exercises the baseline used after a restart.
-    saved = json.loads(paths["@app/config/yituliu_sync.json"].read_text())
+    saved = saved_settings()
     assert len(saved["last_synced_fingerprint"]) == 64
     result = (
         sync.sync_after_cultivate(snapshot)
@@ -332,11 +363,11 @@ def test_failed_changed_upload_preserves_baseline_and_can_retry(sync_case):
     paths, session, _, snapshot, _ = sync_case
     sync.save_token(TOKEN)
     sync.sync_cached_operators(snapshot)
-    first = json.loads(paths["@app/config/yituliu_sync.json"].read_text())
+    first = saved_settings()
     snapshot["data"]["characters"][0]["level"] = 89
     session.post.side_effect = requests.Timeout()
     assert not sync.sync_after_cultivate(snapshot)["success"]
-    failed = json.loads(paths["@app/config/yituliu_sync.json"].read_text())
+    failed = saved_settings()
     assert failed["last_synced_fingerprint"] == first["last_synced_fingerprint"]
     session.post.side_effect = None
     assert not sync.sync_cached_operators(snapshot).get("skipped")
@@ -390,6 +421,8 @@ def test_saving_token_repairs_unreadable_settings(sync_case):
     paths, session, _, _, _ = sync_case
     paths["@app/config/yituliu_sync.json"].write_text("invalid-json")
     assert sync.save_token(TOKEN)["configured"]
+    assert saved_conf_file()["yituliu_sync"]["token"] == TOKEN
+    assert not paths["@app/config/yituliu_sync.json"].exists()
     session.post.assert_not_called()
 
 
@@ -398,7 +431,7 @@ def test_first_failed_upload_cannot_establish_deduplication_baseline(sync_case):
     sync.save_token(TOKEN)
     response.json.return_value = {"code": 403}
     assert not sync.sync_after_cultivate(snapshot)["success"]
-    saved = json.loads(paths["@app/config/yituliu_sync.json"].read_text())
+    saved = saved_settings()
     assert "last_synced_fingerprint" not in saved
     response.json.return_value = {
         "code": 200,
@@ -436,15 +469,15 @@ def test_first_failed_upload_cannot_establish_deduplication_baseline(sync_case):
     ],
 )
 def test_invalid_confirmation_never_advances_success_baseline(sync_case, confirmation):
-    paths, session, response, snapshot, _ = sync_case
+    _, session, response, snapshot, _ = sync_case
     sync.save_token(TOKEN)
     sync.sync_cached_operators(snapshot)
-    first = json.loads(paths["@app/config/yituliu_sync.json"].read_text())
+    first = saved_settings()
     snapshot["data"]["characters"][0]["level"] -= 1
     response.json.return_value = confirmation
     result = sync.sync_after_cultivate(snapshot)
     assert not result["success"]
-    saved = json.loads(paths["@app/config/yituliu_sync.json"].read_text())
+    saved = saved_settings()
     assert saved["last_synced_fingerprint"] == first["last_synced_fingerprint"]
     assert saved["last_synced_at"] == first["last_synced_at"]
     assert session.post.call_count == 2
@@ -475,9 +508,7 @@ def test_oauth_business_errors_are_actionable_without_retry_or_remote_echo(
     result = sync.sync_after_cultivate(snapshot)
     assert not result["success"] and expected in result["message"]
     assert TOKEN not in json.dumps(result) + caplog.text
-    assert "last_synced_fingerprint" not in json.loads(
-        paths["@app/config/yituliu_sync.json"].read_text()
-    )
+    assert "last_synced_fingerprint" not in saved_settings()
     session.post.assert_called_once()
 
 
@@ -496,6 +527,8 @@ def test_oauth_target_and_legacy_baseline_migration(sync_case):
         )
     )
     assert not sync.sync_cached_operators(snapshot).get("skipped")
+    assert not paths["@app/config/yituliu_sync.json"].exists()
+    assert saved_conf_file()["yituliu_sync"]["token"] == TOKEN
     assert sync.sync_cached_operators(snapshot)["skipped"]
     session.post.assert_called_once()
 

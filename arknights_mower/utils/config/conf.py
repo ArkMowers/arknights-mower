@@ -827,6 +827,25 @@ class AIAgentPart(ConfModel):
         return ""
 
 
+class YituliuSyncPart(ConfModel):
+    class YituliuSyncConf(ConfModel):
+        token: str = ""
+        "一图流 OAuth access_token"
+        last_synced_at: float | None = None
+        "最近确认同步时间"
+        last_synced_count: int = 0
+        "最近确认同步干员数"
+        last_attempt_at: float | None = None
+        "最近尝试同步时间"
+        last_sync_error: str | None = None
+        "最近同步错误"
+        last_synced_fingerprint: str = ""
+        "最近确认同步的本地摘要"
+
+    yituliu_sync: YituliuSyncConf = Field(default_factory=YituliuSyncConf)
+    "一图流练度同步设置"
+
+
 class MaaRewardPart(ConfModel):
     maa_mail: bool = False
     "领取所有邮件奖励"
@@ -859,6 +878,7 @@ class Conf(
     SKLandPart,
     MaaRewardPart,
     AIAgentPart,
+    YituliuSyncPart,
 ):
     @model_validator(mode="after")
     def migrate_device_profile(self):
