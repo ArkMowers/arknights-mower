@@ -22,6 +22,8 @@ The episode persists initial takeover completion independently of later staffing
 
 The scheduler removes mood, reservation and compensation deferrals from rescue deployment. One persisted task owns the executable roster and dispatches before other queued tasks. Work-room restoration snapshots adopt only confirmed takeover occupants through the shared room-observation boundary or confirmed staffing reconciliation; planned but skipped occupants never replace the original restoration responsibility. The shared training filter and live arrangement gate retain training protection. A source-training check prevents indirect removal through another room's staffing. Skipped targets use the existing Current placeholder for reconciliation instead of another queue or retry timer. The existing arrangement executor owns confirmed input and bounded recovery.
 
+Mixed takeover batches synchronize specialized restoration for each already-matching room even while other rooms remain pending. The shared confirmed-occupancy boundary handles this case before creating the remaining arrangement; it does not adopt unconfirmed targets.
+
 ## Verification
 
 The latest review repair passes 2397 targeted offline tests across 45 related files, including 47 added regressions across task preservation, ordinary patrol and training protection. Training cases cover automatic mastery and assistant-follow settings, busy and unreadable rooms, empty-room deployment, continued independent staffing, skipped-target reconciliation, source-training protection and unchanged-state suppression. The four supplied task-retention reproductions pass after first confirming their failures.
@@ -41,3 +43,5 @@ Adding waits for each conflict retains repeated dispatch. Removing training prot
 Initial rescue staffing precedes other queued arrangements. Partial execution retains unconfirmed positions, and persisted tasks can continue after restart. Deleting runtime records cannot recover historical times or specialized restoration snapshots. Live-device timing remains unverified.
 
 This record belongs to the unmerged scheduling change and adopts alpha's bilingual decision format during synchronization. Its earlier text and metadata remain in the [pre-format-change commit](https://github.com/ArkMowers/arknights-mower/blob/7823c24d0bffcc37b1197d80006eed19248e6771/.agents/notes/implemented/simplification/2026-10-12-immediate-rescue-takeover.sidecar.json).
+
+Final verification after alpha synchronization and training ownership changes passes 2413 offline cases across 47 repository files plus the six supplied review reproductions, retaining eight existing Pydantic warnings. The expanded checks cover automatic mastery enabled and disabled, partially matching takeover batches and completed restoration snapshots. Ruff, formatting, diff whitespace and governance checks pass; no live-device execution was performed.

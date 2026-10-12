@@ -611,6 +611,7 @@ class EmergencyRecoveryMixin:
                 name == "Current" or index < len(current) and current[index] == name
                 for index, name in enumerate(names)
             ):
+                self._emergency_sync_compensation({room: names})
                 continue
             pending[room] = list(names)
         if not pending:

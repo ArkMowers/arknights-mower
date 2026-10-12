@@ -253,12 +253,15 @@ def test_saved_rescue_takes_over_before_order_restoration(
     solver._emergency_filter_tasks()
     assert release not in solver.tasks
 
+    original_roster = copy.deepcopy(restore.run_order_original_roster)
     assert emergency.EmergencyRecoveryMixin._emergency_schedule_staffing(solver)
 
     staffing = next(t for t in solver.tasks if getattr(t, "emergency_staffing", False))
     assert source in staffing.plan
     assert staffing.plan.get("room_1_1", [target]) == [target]
-    assert restore.run_order_original_roster["room_1_1"] == [target]
+    if rescue_worker == "current":
+        original_roster["room_1_1"] = [target]
+    assert restore.run_order_original_roster == original_roster
     solver._emergency_tick = MagicMock()
     solver.task = staffing
     solver.infra_main()
@@ -268,6 +271,7 @@ def test_saved_rescue_takes_over_before_order_restoration(
     assert solver.op_data.get_current_room("room_1_1", True) == [target]
     assert solver._emergency_reconcile_staffing()
     assert state["staffing_complete"] and state["staffing_plan"] == {}
+    assert restore.run_order_original_roster["room_1_1"] == [target]
     assert restore in solver.tasks and restore.run_order_restore_pending
     solver.task = restore
     solver.infra_main()
