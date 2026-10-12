@@ -2611,6 +2611,28 @@ def restore_displaced_resting(
         if not (op := op_data.operators[name]).multi_group
         or not op_data.resting_binding_groups(op, transitions)
     }
+    targets = {
+        (room, index): name
+        for room, names in plan.items()
+        for index, name in enumerate(names)
+        if name not in ("Current", "Free", "")
+    }
+    # 原任务的具名目标优先，失床补偿只补充没有冲突的回班位置。
+    for name in sorted(recalled):
+        op = op_data.operators[name]
+        destination = (op.room, op.index)
+        occupant = targets.get(destination)
+        other_targets = [
+            slot
+            for slot, target in targets.items()
+            if target == name and slot != destination
+        ]
+        if (occupant is not None and occupant != name) or other_targets:
+            recalled.remove(name)
+            logger.warning(
+                f"失床回班目标冲突：{name} 返回 {op.room} 第{op.index + 1}位，"
+                f"原任务目标={occupant or 'Current'}，其他具名目标={other_targets}；保留原任务，跳过该成员补偿回班",
+            )
     for name in recalled:
         op = op_data.operators[name]
         plan.setdefault(op.room, ["Current"] * len(op_data.plan[op.room]))[op.index] = (
@@ -2622,9 +2644,10 @@ def restore_displaced_resting(
             if bed.name in recalled or current.get(bed.position) in recalled:
                 room, index = bed.position
                 if current.get(bed.position) in recalled:
-                    plan.setdefault(room, ["Current"] * len(op_data.plan[room]))[
-                        index
-                    ] = "Free"
+                    names = plan.setdefault(room, ["Current"] * len(op_data.plan[room]))
+                    # 只释放旧休息位；明确回班岗位和已安排的新住员保留。
+                    if names[index] == "Current":
+                        names[index] = "Free"
                 bed.reset()
     changed_slots = {
         bed.position

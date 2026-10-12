@@ -75,3 +75,110 @@ def test_expired_timer_or_unknown_mood_does_not_establish_completed_departure(
 
     assert all(data.operators[name].room in plan for name in names)
     assert return_task not in tasks
+
+
+@pytest.mark.parametrize("index", [0, 2])
+@pytest.mark.parametrize("stale_record", [False, True])
+def test_fixed_dorm_return_survives_old_recovery_cleanup(
+    monkeypatch, index, stale_record
+):
+    from arknights_mower.tests.same_group_dorm_replacement_tests import (
+        RESIDENT,
+        ROOM,
+        WORKER,
+        initialize,
+        make_solver,
+    )
+
+    instance = make_solver(monkeypatch, reciprocal=True, index=index)
+    initialize(instance)
+    instance.op_data = instance.op_data.project_arrangements(
+        [
+            {
+                "contact": [RESIDENT],
+                ROOM: [WORKER if i == index else "Current" for i in range(5)],
+            }
+        ]
+    )
+    data = instance.op_data
+    before = dorm_residents(data)
+    bed = data.get_dorm_by_name(WORKER)[1]
+    assert bed is not None and before[ROOM, index] == WORKER
+    if stale_record:
+        bed.name = ""
+    row = ["Current"] * 5
+    row[index] = RESIDENT
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_ON, task_plan={"contact": [WORKER], ROOM: row}
+    )
+    task.group_shift_transitions = {"公招": False}
+    task.group_shift_expected = {("contact", 0): WORKER, (ROOM, index): RESIDENT}
+    instance.task, instance.tasks = task, [task]
+
+    restore_displaced_resting(
+        data,
+        before,
+        task.plan,
+        instance.tasks,
+        group_transitions=task.group_shift_transitions,
+    )
+
+    assert task.plan["contact"] == [WORKER]
+    assert task.plan[ROOM][index] == RESIDENT
+    instance.prepare_dorm_selection(task.plan[ROOM], ROOM)
+    assert task.plan[ROOM][index] == RESIDENT
+    assert task.group_shift_expected[ROOM, index] == RESIDENT
+    assert not bed.name
+
+
+def test_displaced_group_releases_old_bed_but_keeps_new_arrival(solver):
+    data, names, return_task = prepare_group(solver, full_mood=12)
+    before = dorm_residents(data)
+    incoming = "陈"
+    plan = {"dormitory_1": ["Current", "Current", incoming, "Current", "Current"]}
+    tasks = [return_task]
+
+    restore_displaced_resting(data, before, plan, tasks)
+
+    assert plan["dormitory_1"][2] == incoming
+    assert plan["dormitory_1"][3] == "Free"
+    for name in names:
+        op = data.operators[name]
+        assert plan[op.room][op.index] == name
+    assert return_task not in tasks
+
+
+@pytest.mark.parametrize("conflict", ["return_slot", "other_destination"])
+def test_recall_conflict_keeps_original_and_fills_only_available_returns(
+    solver, conflict
+):
+    data, names, return_task = prepare_group(solver, full_mood=12)
+    previous = dorm_residents(data)
+    plan = {"dormitory_1": ["Current", "Current", "陈", "Current", "Current"]}
+    blocked = data.operators[names[1]]
+    if conflict == "return_slot":
+        plan[blocked.room] = ["夜刀"]
+    else:
+        plan["dormitory_1"][3] = names[1]
+    original_targets = {
+        (room, index): name
+        for room, row in plan.items()
+        for index, name in enumerate(row)
+        if name not in ("Current", "Free", "")
+    }
+    _, retained_bed = data.get_dorm_by_name(names[1])
+    retained_state = retained_bed.name, retained_bed.time
+    tasks = [return_task]
+    original_time = return_task.time
+
+    restore_displaced_resting(data, previous, plan, tasks)
+
+    for (room, index), name in original_targets.items():
+        assert plan[room][index] == name
+    first = data.operators[names[0]]
+    assert plan[first.room][first.index] == names[0]
+    assert (retained_bed.name, retained_bed.time) == retained_state
+    assert tasks == [return_task]
+    assert return_task.time == original_time
+    assert return_task.plan == {blocked.room: [names[1]]}
+    assert plan.get(blocked.room, ["Current"])[blocked.index] != names[1]

@@ -320,15 +320,6 @@ class RoomArrangementDeferred(RuntimeError):
         self.room = room
 
 
-class GroupShiftTargetConflict(MowerExit):
-    """执行名单与必须确认的具名目标矛盾，保留任务并停止自动化。"""
-
-    def __init__(self, room, conflicts, message):
-        super().__init__(message)
-        self.room = room
-        self.conflicts = conflicts
-
-
 # MAA 掉落统计：回调随时可能到达，模块级初值保证首次回调不会因缺名而中断。
 stage_drop = {"details": [], "summary": {}}
 
@@ -7941,22 +7932,26 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 else:
                     # 未知心情统一交给游戏页面，不能直接按默认24指定姓名。
                     agents[index] = "Free" if candidates.unknown else ""
+        self._check_group_shift_targets(agents, room, reason="补位后恢复原任务目标")
         # 游戏确认后会把空位挤到末尾，后续读房和恢复计时使用同一位置。
         if "Current" not in agents:
             agents[:] = [name for name in agents if name] + [""] * agents.count("")
         return [name for name in mood_fallback if name not in agents]
 
     def _check_group_shift_targets(self, agents, room, *, reason):
-        """提交前拒绝已被改写的确认目标；实际驻员未到位仍由读房重试。"""
+        """原任务确认目标优先于执行期补位，返回是否需要重新选人。"""
         # 训练室分别选择协助位和训练位，单次选人名单不代表整房安排。
         if room == "train":
-            return
+            return False
         task = getattr(self, "task", None)
         expected = getattr(task, "group_shift_expected", {})
+        required = {
+            index: name
+            for (target_room, index), name in expected.items()
+            if target_room == room
+        }
         conflicts = []
-        for (target_room, index), name in expected.items():
-            if target_room != room:
-                continue
+        for index, name in required.items():
             selected = agents[index] if index < len(agents) else ""
             if selected == name:
                 continue
@@ -7965,38 +7960,44 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if actual is not None and actual.name == name:
                     continue
             conflicts.append({"index": index, "expected": name, "selected": selected})
-        if not conflicts:
-            return
-        resolved = list(agents)
-        # 停止后保留必须确认的安排，下一次启动不能把兜底名单当作原始意图。
+        duplicate_slots = [
+            index
+            for index, name in enumerate(agents)
+            if name in required.values() and required.get(index) != name
+        ]
+        if not conflicts and not duplicate_slots:
+            return False
         row = task.plan.setdefault(room, list(agents))
-        for conflict in conflicts:
-            index = conflict["index"]
-            row.extend(["Current"] * max(0, index + 1 - len(row)))
-            row[index] = conflict["expected"]
+        for names in (agents, row):
+            for index, name in enumerate(names):
+                if name in required.values() and required.get(index) != name:
+                    names[index] = "Free"
+            for index, name in required.items():
+                names.extend(["Current"] * max(0, index + 1 - len(names)))
+                names[index] = name
         differences = "；".join(
             f"第{item['index'] + 1}位确认 {item['expected']}，选人 {item['selected'] or '空位'}"
             for item in conflicts
         )
-        config.stop_mower.set()
         try:
             saved = save_current_state()
             save_error = ""
         except Exception as exc:
             saved, save_error = False, f"（{exc}）"
         preservation = (
-            "任务已保存并停止自动化，请检查排班与宿舍准入条件后重新启动"
+            "恢复后的任务已保存"
             if saved
-            else f"运行状态保存失败{save_error}，任务仅保留在内存，重启可能无法恢复本次目标；自动化已停止"
+            else f"运行状态保存失败{save_error}，任务仅保留在内存，重启可能无法恢复本次目标"
         )
-        message = (
+        logger.warning(
             f"换班确认目标冲突：任务={task.type.display_value}@{task.time.isoformat()}，"
-            f"房间={room}，目标差异={differences}，最终名单={resolved}，原因={reason}，"
+            f"房间={room}，目标差异={differences}，重复位置={duplicate_slots}，"
+            f"恢复名单={agents}，原因={reason}，"
             f"待确认换班={getattr(task, 'group_shift_transitions', {})}；"
-            f"{preservation}"
+            f"保留原任务目标，继续本次安排；{preservation}",
+            extra={"archive_screenshots": False},
         )
-        logger.error(message, extra={"archive_screenshots": False})
-        raise GroupShiftTargetConflict(room, conflicts, message)
+        return True
 
     def prepare_dorm_selection(self, agents, room, *, preserve_dorm_occupants=False):
         """执行边界统一解析名单；解析结果同时交给单回排序和实际选人。"""
@@ -8084,6 +8085,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if dorm_mood_candidates is None
             else dorm_mood_candidates
         )
+        if not preserve_dorm_occupants:
+            self._check_group_shift_targets(agents, room, reason="选人前恢复原任务目标")
         fallback_selected = []
         padding_selected = []
         # Free 已尝试满心情和未登记空闲者兜底，明确留空的位置不参与选人。
@@ -8522,9 +8525,18 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         return_page=True,
                     )
                     right_swipe += moved
-        if not preserve_dorm_occupants:
-            self._check_group_shift_targets(
-                agents, room, reason="选人页最终名单与 Free 解析"
+        if not preserve_dorm_occupants and self._check_group_shift_targets(
+            agents, room, reason="选人页最终名单与 Free 解析"
+        ):
+            # 页面已经选择过兜底人员，恢复名单后必须实际清空重选再校验。
+            return self.choose_agent(
+                agents,
+                room,
+                fast_mode=False,
+                train_index=train_index,
+                choose_error=choose_error,
+                dorm_mood_candidates=mood_fallback,
+                recovery_padding=recovery_padding,
             )
         # 重排按完整已选名单的位置点击，不能保留最后一名干员的职业筛选。
         # 单回暂留名单没有 Free，也必须在重排和校验前恢复全部职业。
