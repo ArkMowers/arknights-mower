@@ -12,6 +12,7 @@
 
 ## 3. Subsystem Invariants
 
+- **[INV-UPD-10] Cleanup Contention Isolation**: The [backup cleanup boundary](#16-backup-cleanup-contention) distinguishes routine lock contention from failed maintenance and preserves pending records.
 - **[INV-UPD-09] Local Update Cache**: Software update coordination, uploads, downloaded packages and job workspaces reside under shared `@app/tmp/updates/`, with installation identity isolation; package-inspection temporary directories use the same tree instead of system cache or temporary directories.
 
 - **[INV-UPD-08] Elevated Windows Desktop Launch**: Both packaged Windows desktop executables require administrator elevation before application startup; manager-launched instances inherit the manager's elevated token through ordinary process creation.
@@ -118,3 +119,11 @@ The first upgrade from an older non-elevated package requires restarting that ol
 `tmp/` sits beside `config/` and `logs/` in the Mower data root. `MOWER_DATA_DIR` redirects this root; macOS frozen applications use their writable application data root rather than the signed `.app` bundle. Resource packages and MAA storage retain their existing contracts. Update rollback backups retain their existing locations and verification lifecycle.
 
 [Local software update cache](../../.agents/notes/implemented/simplification/2026-10-12-local-software-update-cache.md) records the simplification and focused verification.
+
+## 16. Backup Cleanup Contention
+
+Startup instances and verified update workers share the existing nonblocking `backup-cleanup/submission.lock`. `submission_lock` raises `LockBusyError`, a `ValueError` subtype, only for native lock-contention errors. Other acquisition failures retain their original `OSError`; update submission preserves its existing busy message and exception compatibility.
+
+`retry_backup_cleanup` treats a busy lock during acquisition as a completed skipped attempt, without warnings, tracebacks, waiting or record mutation. The lock owner continues cleanup; pending `cleanup.json` records remain available for subsequent startup attempts. Other acquisition failures and cleanup failures retain application logger or detached updater diagnostics. Successful acquisition retains verified-restart, permitted-path and recorded-file-identity checks, with lock release on completion or error. The lock file remains in place.
+
+[Backup cleanup contention](../../.agents/notes/implemented/bug-fix/2026-10-12-backup-cleanup-contention.md) records the decision and focused verification.

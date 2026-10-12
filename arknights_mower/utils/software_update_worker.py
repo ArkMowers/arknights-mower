@@ -28,6 +28,7 @@ if __package__:
     from .github_download import request_download
     from .update_runtime import (
         InstanceScanError,
+        LockBusyError,
         detached_options,
         hidden_console_options,
         instances,
@@ -43,6 +44,7 @@ else:
     from github_download import request_download
     from update_runtime import (
         InstanceScanError,
+        LockBusyError,
         detached_options,
         hidden_console_options,
         instances,
@@ -1825,7 +1827,13 @@ def retry_backup_cleanup(directory, root, manifests=None, *, logger=None):
     """Retry committed backups; application callers supply their shared logger."""
     root = Path(root).absolute()
     try:
-        with submission_lock(Path(directory) / "backup-cleanup"):
+        with ExitStack() as cleanup:
+            try:
+                cleanup.enter_context(
+                    submission_lock(Path(directory) / "backup-cleanup")
+                )
+            except LockBusyError:
+                return
             for manifest in (
                 manifests
                 if manifests is not None

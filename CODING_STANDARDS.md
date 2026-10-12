@@ -166,6 +166,7 @@
 
 ### 2.7 Software Update
 
+- **[INV-UPD-10] Cleanup Contention Isolation**: Backup cleanup skips a busy cross-process lock without waiting, reporting an error or changing pending records; other lock failures retain diagnostics and update submission retains its busy verdict.
 - **[INV-UPD-09] Local Update Cache**: Software update coordination, uploads, downloaded packages and job workspaces reside under shared `@app/tmp/updates/`, with installation identity isolation; package-inspection temporary directories use the same tree instead of system cache or temporary directories.
 - **[INV-UPD-08] Elevated Windows Desktop Launch**: Both packaged Windows desktop executables require administrator elevation before application startup; manager-launched instances inherit the manager's elevated token through ordinary process creation.
 - **[INV-UPD-06] Cross-Channel Upgrade Selection**: Installed development and beta channels admit newer installable releases from more stable channels, preserve the selected channel and use only a verified OTA from the exact installed version to the selected target.
