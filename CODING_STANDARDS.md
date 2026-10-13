@@ -31,6 +31,8 @@ Changes affecting scheduling, device control or configuration assess domain-conc
 <a id="2-subsystem-invariants"></a>
 ## 2. Subsystem Contracts
 
+- **[INV-REC-07] Complete LMD Amount**: Depot LMD quantities retain the complete recognized amount and its 万 or 亿 multiplier; malformed or low-confidence OCR returns an unconfirmed count without digit-template fallback. See the [depot recognition description](docs/subsystems/depot-recognition.md).
+
 Business rules are defined once in their owning [subsystem contracts](docs/subsystems/), with behavior names, stable links and focused tests. Use the [task entry points](docs/architecture.md#2-find-the-implementation-and-verification) to locate the relevant source and verification boundary.
 
 The workshop follows [committed inventory refresh and read-only crafting status](docs/subsystems/growth-planning.md#crafting-refresh-and-status). Automatic admission uses known mood sufficient for one batch while preserving reservations and manual thresholds.

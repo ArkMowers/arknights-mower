@@ -26,6 +26,8 @@ Use the entries relevant to changed call paths. Follow each owning contract for 
 
 ## 2. Subsystem Invariants
 
+- [ ] **[INV-REC-07] Complete LMD Amount**: Does depot LMD recognition preserve 万 or 亿 multipliers, reject malformed or low-confidence OCR without template fallback, and preserve other item readers? See the [depot recognition description](../../../../docs/subsystems/depot-recognition.md).
+
 - [ ] **Process-Owned Desktop Autostart**: Does foreground and background startup admit tasks once without a page, preserve resource ordering and explicit restart policy, and keep stopped tasks stopped through refresh and tray actions? See the [complete contract](../../../../docs/subsystems/web-access.md#5-desktop-startup).
 - [ ] **Manual Selection Authority**: Does manual five-star recruitment leave selection unqueued when the unique-choice exception is disabled or multiple calculated choices remain, while automatic mode and existing equivalent-result collapsing retain their behavior? See the [complete contract](../../../../docs/subsystems/recruitment.md#manual-selection-authority).
 

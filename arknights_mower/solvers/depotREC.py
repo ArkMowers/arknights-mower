@@ -4,12 +4,14 @@ import os
 import pickle
 import re
 import time
+import unicodedata
 from datetime import datetime
+from decimal import Decimal
 
 import cv2
 import numpy as np
 
-from arknights_mower.utils import depot, vision_np
+from arknights_mower.utils import depot, rapidocr, vision_np
 from arknights_mower.utils.graph import SceneGraphSolver
 
 from .. import __rootdir__
@@ -137,6 +139,33 @@ class depotREC(SceneGraphSolver):
         格式化数字 = int(float("".join(matches)) * (10000 if "万" in 物品个数 else 1))
         return 格式化数字
 
+    def 读取龙门币数字(self, 数字图片):
+        """Read a complete LMD amount, including its displayed unit."""
+        try:
+            if rapidocr.engine is None:
+                rapidocr.initialize_ocr()
+            result, _ = rapidocr.engine(
+                cv2.resize(数字图片, None, fx=2, fy=2),
+                use_det=False,
+                use_cls=False,
+                use_rec=True,
+            )
+        except Exception:
+            logger.exception("仓库扫描: 龙门币数量 OCR 失败")
+            return None
+        if not result or len(result) != 1:
+            return None
+        text, confidence = result[0]
+        if not 0.90 <= confidence <= 1:
+            return None
+        text = re.sub(r"\s+", "", unicodedata.normalize("NFKC", text))
+        match = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)([万亿]?)", text)
+        if match is None:
+            return None
+        number, unit = match.groups()
+        amount = Decimal(number) * {"": 1, "万": 10000, "亿": 100000000}[unit]
+        return int(amount) if amount == amount.to_integral_value() else None
+
     def 匹配物品一次(self, 物品, 物品灰, knn模型: vision_np.Knn1Model):
         物品特征 = 提取特征点(物品)
         predicted_label = vision_np.knn1_predict(
@@ -147,9 +176,11 @@ class depotREC(SceneGraphSolver):
         )
 
         数字区域 = 物品灰[160:210, 30:210]  # 多加了一次裁切，把数字区域单独裁出来
-        物品数字 = self.读取物品数字(数字区域)  # 解决了合成玉只能识别3位数的问题
-
-        # 物品数字 = self.读取物品数字(物品灰)  # 这里是原来的逻辑
+        物品数字 = (
+            self.读取龙门币数字(数字区域)
+            if predicted_label == "龙门币"
+            else self.读取物品数字(数字区域)
+        )
         return [predicted_label, 物品数字]
 
     def run(self) -> None:
