@@ -58,12 +58,23 @@ def test_clean_checkout_skill_hash_matches_generated_resource_package(
     assert content_hash(tmp_path, package_file_paths(tmp_path)) != generated_hash
 
 
-def test_both_backend_consumers_work_without_any_frontend_files(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "supplement",
+    [[], [{"name": "旅骨", "child_skill": [{"roomType": "回收站"}]}]],
+)
+def test_both_backend_consumers_work_without_any_frontend_files(
+    tmp_path, monkeypatch, supplement
+):
     source = tmp_path / BUILDING_SKILL_DATA
     source.parent.mkdir(parents=True)
     skills = [{"des": dorm_skills._SINGLE_RECOVERY}]
     source.write_text(json.dumps([{"name": "琴柳", "child_skill": skills}]))
+    supplement_path = source.parent / "riic" / "supplement.json"
+    supplement_path.parent.mkdir()
+    supplement_path.write_text(json.dumps(supplement), encoding="utf-8")
+    supplemental_skills = {a["name"]: a["child_skill"] for a in supplement}
     monkeypatch.setattr(resource_pkg, "__rootdir__", source.parent.parent)
+    monkeypatch.setattr(building_skills, "__rootdir__", source.parent.parent)
     monkeypatch.setattr(resource_pkg, "_selection", lambda: SimpleNamespace(root=None))
     monkeypatch.setattr(
         resource_pkg,
@@ -77,10 +88,13 @@ def test_both_backend_consumers_work_without_any_frontend_files(tmp_path, monkey
     try:
         assert not (tmp_path / "ui").exists()
         assert dorm_skills.is_single_recovery_manager("琴柳")
-        assert building_skills.skill_index() == {"琴柳": skills}
+        assert building_skills.skill_index() == {"琴柳": skills, **supplemental_skills}
         source.write_text("[]")
         resource_pkg.reload_resource_caches()
         assert not dorm_skills.is_single_recovery_manager("琴柳")
+        assert building_skills.skill_index() == supplemental_skills
+        supplement_path.write_text("[]", encoding="utf-8")
+        resource_pkg.reload_resource_caches()
         assert building_skills.skill_index() == {}
     finally:
         resource_pkg.reload_resource_caches()
