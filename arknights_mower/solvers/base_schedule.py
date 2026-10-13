@@ -10314,6 +10314,9 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                                 raise Exception("未成功进入干员选择界面")
                             self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
                             error_count += 1
+                        # 已确认进入选人页，将页面转换纳入场景停留计时。
+                        if self.scene() == Scene.UNDEFINED:
+                            raise RecognizeError("选人页场景观测已失效，返回房间重试")
                         if normal_order and not getattr(
                             self.task, "run_order_restore_pending", False
                         ):
