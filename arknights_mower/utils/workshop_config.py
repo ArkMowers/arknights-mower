@@ -149,6 +149,7 @@ def _wake_scheduler_if_running():
 
 def save_user_config(req):
     with workshop_lock:
+        previous = config.conf
         previous_maintenance_policy = (
             config.conf.version_update_resting_threshold,
             config.conf.version_update_threshold_advance_hours,
@@ -168,6 +169,21 @@ def save_user_config(req):
         if not conf.enable_mastery:
             restore_manual_settings(conf)
         save_conf(conf)
+        if any(
+            getattr(previous, key) != getattr(conf, key)
+            for key in (
+                "enable_mastery",
+                "fodder_operators",
+                "t5_operators",
+                "book_operators",
+                "workshop_min_bonus",
+                "workshop_protect_t2_device_rock",
+            )
+        ):
+            from arknights_mower.solvers.record import workshop_inventory_changed
+
+            workshop_inventory_changed.set()
+            _wake_scheduler_if_running()
         if previous_maintenance_policy != (
             conf.version_update_resting_threshold,
             conf.version_update_threshold_advance_hours,

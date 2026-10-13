@@ -98,6 +98,7 @@ def prepare_project_materials(box, skills, projects, inventory, formulas, blocke
             "status": "ready",
             "reason": "",
             "materials_prepared": eligible and summary["available"],
+            "shortages": summary["missing"],
         }
         if project["locked"]:
             state["status"] = "active"

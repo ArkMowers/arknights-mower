@@ -3585,6 +3585,20 @@ def growth_crafting_order():
         return {"error": str(exc)}, 400
 
 
+def current_workshop_status():
+    from arknights_mower.__main__ import base_scheduler
+    from arknights_mower.utils.workshop_status import workshop_status
+
+    running = bool(mower_thread and mower_thread.is_alive())
+    return workshop_status(base_scheduler if running else None, running=running)
+
+
+@app.route("/workshop-status", methods=["GET"])
+@require_token
+def get_workshop_status():
+    return current_workshop_status()
+
+
 @app.route("/workshop-auto-config", methods=["POST"])
 def workshop_auto_config():
     import traceback
@@ -3596,12 +3610,13 @@ def workshop_auto_config():
         fodder_ops = req.get("fodder_operators", config.conf.fodder_operators)
         t5_ops = req.get("t5_operators", config.conf.t5_operators)
         book_ops = req.get("book_operators", config.conf.book_operators)
-        return update_workshop_config(
+        result = update_workshop_config(
             explicit=True,
             fodder_operators=fodder_ops,
             t5_operators=t5_ops,
             book_operators=book_ops,
         )
+        return {**result, "crafting_status": current_workshop_status()}
     except Exception as e:
         return {"error": str(e), "traceback": traceback.format_exc()}, 500
 

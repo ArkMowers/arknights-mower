@@ -65,6 +65,7 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 
 ### 干员心情 (`Operator Mood`)
 - **定义**：衡量干员在基建中工作与休息状态的数值（上限为 24 点）。进驻工作设施持续消耗，进驻宿舍恢复。降至 0 点注意力涣散后技能失效。
+- 自动养成合成要求已知正心情足够加工一批；普通手动配置入队保留大于 22 的门槛。干员预约约束继续生效。
 - **代码映射**：[`Operator.mood`](arknights_mower/utils/operators.py), [`Operator.current_mood()`](arknights_mower/utils/operators.py)
 - **_Avoid_**: `Physical energy`, `Fatigue level`
 

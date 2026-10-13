@@ -135,7 +135,7 @@ def test_api_rejects_low_level_and_does_not_dispatch(roster, monkeypatch, legacy
     dispatch.assert_not_called()
 
 
-def test_legacy_low_level_plan_is_not_scheduled_or_prepared(roster, monkeypatch):
+def test_legacy_low_level_plan_is_not_scheduled(roster, monkeypatch):
     plan = {
         "id": 1,
         "char_id": CHAR_ID,
@@ -145,7 +145,6 @@ def test_legacy_low_level_plan_is_not_scheduled_or_prepared(roster, monkeypatch)
     }
     monkeypatch.setattr(db, "get_all_plans", lambda: [plan])
     assert rec.auto_schedule_mastery_tasks()["scheduled"] == []
-    assert rec.compute_workshop_config([], [], []) == []
     roster(7)
     assert rec.auto_schedule_mastery_tasks()["scheduled"][0]["char_id"] == CHAR_ID
 

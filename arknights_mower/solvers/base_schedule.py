@@ -57,6 +57,7 @@ from arknights_mower.solvers.record import (
     save_log,
     save_recycling_collection,
     update_recycling_operators,
+    workshop_inventory_changed,
 )
 from arknights_mower.solvers.recruit import RecruitSolver
 from arknights_mower.solvers.report import ReportSolver
@@ -422,6 +423,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self.train_room_state = None
         self.emergency_state = None
         self._emergency_startup_pending = False
+        workshop_inventory_changed.set()
 
     def find_next_task(
         self,
@@ -1246,6 +1248,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             task.meta_data,
             getattr(self, "tasks", []),
             current_task=task,
+            require_known_mood=config.conf.workshop_auto_active
+            and setting.source == "mastery",
         ) or workshop_material_block_reason(
             task.meta_data, setting.items, get_inventory_counts(), mood
         )
@@ -12393,6 +12397,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 else:
                     logger.info("local operation finished without executing any stage")
 
+            self._refresh_workshop_inventory()
             scheduling(self.tasks, op_data=getattr(self, "op_data", None))
         except (MowerExit, DeviceRecoveryError):
             raise
@@ -12569,6 +12574,31 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         finally:
             self.sleeping = False
 
+    def _refresh_workshop_inventory(self):
+        """Reconcile committed drops after external control and before idle sleep."""
+        from arknights_mower.utils.workshop_automation import (
+            refresh_workshop_after_inventory_change,
+        )
+
+        if (
+            not workshop_inventory_changed.is_set()
+            or battle_inventory_active.is_set()
+            or config.stop_mower.is_set()
+            or getattr(self, "MAA", None) is not None
+            or getattr(self, "op_data", None) is None
+            or any(
+                getattr(task, "emergency_staffing", False)
+                or (task.type == TaskTypes.WORKSHOP and task.plan)
+                for task in self.tasks
+            )
+        ):
+            return
+        if not refresh_workshop_after_inventory_change():
+            return
+        if not self.find_next_task(datetime.now() + timedelta(minutes=5)):
+            try_workshop_tasks(self.op_data, self.tasks)
+            scheduling(self.tasks, op_data=self.op_data)
+
     def rest_until_next_task(self):
         """完成本轮任务后休息到 `tasks[0].time`，是调度器唯一的「任务间空闲」收尾。
 
@@ -12577,6 +12607,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         一份几乎相同的实现，其中两份漏掉了 `sleeping`，正是 /status 卡在
         working 的根因。现在全部收口到这里，只有 `_idle_sleep` 一个状态写入点。
         """
+        self._refresh_workshop_inventory()
         self._schedule_maintenance_backup_check()
         if any(
             getattr(task, "strict_mood_limit", False)

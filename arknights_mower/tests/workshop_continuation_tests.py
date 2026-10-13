@@ -48,7 +48,7 @@ def test_continuation_uses_only_unlocked_recipe_mood_reduction(
     reason = workshop_limits.workshop_material_block_reason(
         "赫拉格", [item], {"技巧概要·卷3": 0, "技巧概要·卷2": 6}, 1
     )
-    assert reason is None if expected is None else expected in reason
+    assert reason is None if expected is None else expected in reason.message
 
 
 def test_unaffordable_recipe_does_not_hide_an_affordable_recipe(monkeypatch):

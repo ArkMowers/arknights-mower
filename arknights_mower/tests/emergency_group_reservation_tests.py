@@ -52,8 +52,11 @@ def test_complete_group_remains_reserved_as_individual_room_plans_finish(
 
     assert members <= reserved
     for name in members:
-        assert "自动救急换班任务预约" in workshop_operator_block_reason(
-            solver.op_data, name, [task], minimum_mood=0
+        assert (
+            "自动救急换班任务预约"
+            in workshop_operator_block_reason(
+                solver.op_data, name, [task], minimum_mood=0
+            ).message
         )
 
 
@@ -101,4 +104,6 @@ def test_workshop_keeps_explicit_standby_return_reservation(standby_solver):  # 
     # Dormitory filling may offer a spare bed until the scheduled return;
     # crafting must retain the explicit working-facility reservation.
     assert name not in dorm_task_reservations(data, [task])[0]
-    assert workshop_operator_block_reason(data, name, [task]) == "已被上班任务预约"
+    assert (
+        workshop_operator_block_reason(data, name, [task]).message == "已被上班任务预约"
+    )

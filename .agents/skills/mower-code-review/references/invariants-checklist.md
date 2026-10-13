@@ -29,6 +29,12 @@ Use the entries relevant to changed call paths. Follow each owning contract for 
 - [ ] **Process-Owned Desktop Autostart**: Does foreground and background startup admit tasks once without a page, preserve resource ordering and explicit restart policy, and keep stopped tasks stopped through refresh and tray actions? See the [complete contract](../../../../docs/subsystems/web-access.md#5-desktop-startup).
 - [ ] **Manual Selection Authority**: Does manual five-star recruitment leave selection unqueued when the unique-choice exception is disabled or multiple calculated choices remain, while automatic mode and existing equivalent-result collapsing retain their behavior? See the [complete contract](../../../../docs/subsystems/recruitment.md#manual-selection-authority).
 
+- [ ] **Committed Inventory Refresh**: Do failed transactions publish no refresh, concurrent commits remain pending and failed recalculation block old automatic quotas even if pause persistence fails? See the [crafting refresh contract](../../../../docs/subsystems/growth-planning.md#crafting-refresh-and-status).
+
+- [ ] **Affordable Automatic Admission**: Do automatic tasks require known mood sufficient for one batch while preserving reservations and manual thresholds? See the [crafting contract](../../../../docs/subsystems/growth-planning.md#crafting-refresh-and-status).
+
+- [ ] **Read-Only Crafting Verdict**: Does status share checks and one inventory snapshot without configuration, inventory, rejection-cache or task mutation? See the [status contract](../../../../docs/subsystems/growth-planning.md#crafting-refresh-and-status).
+
 - [ ] **Building Skill Facility Preservation**: Does the generator retain skills for known and unknown facility codes, including RECYCLE, without changing their phase, description or icon? See [resource generation contract](../../../../docs/subsystems/resource-update.md#4-resource-generation).
 
 - [ ] **Template Glyph Coverage**: Does resource generation validate actual character maps and expand before loading fonts, preserving existing glyphs and metrics and rejecting missing source characters before changing files? See [Software Update Contract](../../../../docs/subsystems/software-update.md#7-resource-template-fonts).

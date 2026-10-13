@@ -2629,17 +2629,19 @@ def next_workshop_task_time(tasks, earliest=None):
 def try_workshop_tasks(op_data, tasks, *, minimum_mood=22):
     # 如果没有其他任务则进行加工站干员检查
     from arknights_mower.utils.workshop_automation import (
+        refresh_workshop_after_inventory_change,
         restore_if_no_plans,
         workshop_task_current,
     )
     from arknights_mower.utils.workshop_limits import (
-        workshop_material_block_reason,
-        workshop_operator_block_reason,
+        workshop_admission_block,
     )
     from arknights_mower.utils.workshop_recommendation import (
         prioritize_workshop_settings,
     )
 
+    if not refresh_workshop_after_inventory_change():
+        return
     restore_if_no_plans()
     # 跑单/专精换人可能将加工推迟到五分钟之后，不能把它当作没有待办。
     pending_operators = {
@@ -2655,16 +2657,8 @@ def try_workshop_tasks(op_data, tasks, *, minimum_mood=22):
             if not item.enabled:
                 logger.info(f"{item.operator}加工站任务被禁用，跳过")
                 continue
-            operator = op_data.operators.get(item.operator)
-            mood = (
-                operator.current_mood()
-                if operator is not None and hasattr(operator, "current_mood")
-                else getattr(operator, "mood", None)
-            )
-            reason = workshop_operator_block_reason(
-                op_data, item.operator, tasks, minimum_mood=minimum_mood
-            ) or workshop_material_block_reason(
-                item.operator, item.items, inventory_data, mood
+            reason = workshop_admission_block(
+                op_data, item, inventory_data, tasks, minimum_mood=minimum_mood
             )
             if reason:
                 logger.info(f"{item.operator}加工跳过：{reason}")

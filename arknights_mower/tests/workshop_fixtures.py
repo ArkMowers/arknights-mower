@@ -55,3 +55,44 @@ SPECIALISTS = [
     ("休谟斯", 1, "糖组", 2, 90),
     ("缇缇", 2, "双极纳米片", 8, 80),
 ]
+
+
+def allocate_sample_recipes(fodder_operators=(), t5_operators=(), book_operators=()):
+    from arknights_mower.utils.workshop_fodder import deer_fodder_items
+    from arknights_mower.utils.workshop_recommendation import allocate_workshop_items
+
+    return allocate_workshop_items(
+        [
+            (
+                "fodder_operators",
+                fodder_operators,
+                [
+                    item(n)
+                    for n in (
+                        "炽合金块",
+                        "聚酸酯块",
+                        "酮阵列",
+                        "晶体电路",
+                        "糖聚块",
+                        "异铁块",
+                        "提纯源岩",
+                    )
+                ],
+            ),
+            ("t5_operators", t5_operators, [item("双极纳米片"), item("晶体电子单元")]),
+            ("book_operators", book_operators, [item("技巧概要·卷3")]),
+        ],
+        fodder_items=deer_fodder_items(),
+        specialist_items=[
+            item(n)
+            for n in (
+                "全新装置",
+                "酮凝集",
+                "酮凝集组",
+                "异铁组",
+                "聚酸酯组",
+                "糖组",
+                "固源岩组",
+            )
+        ],
+    )

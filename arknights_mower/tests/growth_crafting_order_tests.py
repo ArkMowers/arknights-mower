@@ -104,7 +104,7 @@ def prepared(case, order=()):
 
 
 def generated(case, order=()):
-    return growth_workshop_config(
+    result = growth_workshop_config(
         case.box,
         case.skills,
         case.plans,
@@ -114,6 +114,7 @@ def generated(case, order=()):
         case.operators,
         order=order,
     )
+    return result.settings, result.focus["char_id"] if result.focus else None
 
 
 def recipe(settings):

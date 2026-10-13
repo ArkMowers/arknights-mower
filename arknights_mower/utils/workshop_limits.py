@@ -1,6 +1,7 @@
 """Batch budgets and inventory accounting shared by all workshop operators."""
 
 import json
+from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
 from time import time
@@ -10,6 +11,23 @@ from arknights_mower.utils.workshop_material_policy import workshop_recipe_allow
 
 # Process-local observations; recipe names bound the cache to the resource catalog.
 _rejected_recipes = {}
+
+
+@dataclass(frozen=True)
+class WorkshopBlock:
+    code: str
+    message: str
+    operator: str | None = None
+    material: str | None = None
+    available: float | None = None
+    required: float | None = None
+    reserved: float | None = None
+
+    def __str__(self):
+        return self.message
+
+    def as_dict(self):
+        return asdict(self)
 
 
 def _recipe_stock(name, inventory):
@@ -39,13 +57,17 @@ def clear_workshop_recipe_rejections(observed_at):
             _rejected_recipes.pop(name, None)
 
 
-def blocked_workshop_recipes(inventory):
+def blocked_workshop_recipes(inventory, *, readonly=False):
     from arknights_mower.data import workshop_formula
 
+    blocked = set()
     for name, (signature, _) in tuple(_rejected_recipes.items()):
         if name not in workshop_formula or signature != _recipe_stock(name, inventory):
-            _rejected_recipes.pop(name, None)
-    return set(_rejected_recipes)
+            if not readonly:
+                _rejected_recipes.pop(name, None)
+        else:
+            blocked.add(name)
+    return blocked
 
 
 @lru_cache(maxsize=1)
@@ -104,50 +126,97 @@ def batch_limit(name, metadata, setting, inventory):
     )
 
 
-def workshop_material_block_reason(operator, items, inventory, mood=None):
+def workshop_material_block_reason(
+    operator, items, inventory, mood=None, *, readonly=False
+):
     """入队和调人前共用材料检查；可加工返回 None，否则指出阻塞原因。"""
     from arknights_mower.data import workshop_formula
     from arknights_mower.utils.workshop_mood import mood_cost, operator_mood_rules
     from arknights_mower.utils.workshop_recipes import scope_workshop_items
 
     if not items:
-        return "未配置加工配方"
+        return WorkshopBlock("no_recipe", "未配置加工配方", operator)
     scoped = scope_workshop_items(operator, items, workshop_formula)
     if not scoped:
-        return "没有符合干员材料范围及材料保护规则的配方"
+        protected = any(
+            not workshop_recipe_allowed(workshop_formula.get(name, {}))
+            for item in items
+            for name in item.item_names
+        )
+        return WorkshopBlock(
+            "protected_material" if protected else "no_operator",
+            "没有符合干员材料范围及材料保护规则的配方",
+            operator,
+        )
     check_mood = mood is not None and mood >= 0
     rules, known = operator_mood_rules(operator) if check_mood else ([], False)
-    rejected = blocked_workshop_recipes(inventory)
+    rejected = blocked_workshop_recipes(inventory, readonly=readonly)
     available, blocked = [], []
     for item in scoped:
         for name in item.item_names:
             if name in rejected:
-                blocked.append(f"{name}游戏内不可加工，等待库存或配置更新")
+                blocked.append(
+                    WorkshopBlock(
+                        "recipe_rejected",
+                        f"{name}游戏内不可加工，等待库存或配置更新",
+                        operator,
+                        name,
+                    )
+                )
                 continue
             metadata = workshop_formula[name]
             if batch_limit(name, metadata, item, inventory) > 0:
                 required_mood = mood_cost(name, metadata, rules, known)
                 if check_mood and mood < required_mood:
                     blocked.append(
-                        f"{name}心情不足（当前 {mood:.1f}，单次需 {required_mood:g}）"
+                        WorkshopBlock(
+                            "mood_insufficient",
+                            f"{name}心情不足（当前 {mood:.1f}，单次需 {required_mood:g}）",
+                            operator,
+                            name,
+                            mood,
+                            required_mood,
+                        )
                     )
                     continue
                 available.append(metadata)
                 continue
             quantities = recipe_quantities(name, metadata)
             if not workshop_recipe_allowed(metadata):
-                blocked.append(f"{name}使用受保护材料")
+                blocked.append(
+                    WorkshopBlock(
+                        "protected_material", f"{name}使用受保护材料", operator, name
+                    )
+                )
             elif quantities is None:
-                blocked.append(f"{name}缺少有效配方数量")
+                blocked.append(
+                    WorkshopBlock(
+                        "data_unavailable", f"{name}缺少有效配方数量", operator, name
+                    )
+                )
             else:
                 output, count, costs = quantities
                 missing = [mat for mat in (output, *costs) if mat not in inventory]
                 if missing:
-                    blocked.append(f"{name}缺少仓库读数：{'、'.join(missing)}")
+                    blocked.append(
+                        WorkshopBlock(
+                            "inventory_unknown",
+                            f"{name}缺少仓库读数：{'、'.join(missing)}",
+                            operator,
+                            missing[0],
+                        )
+                    )
                 elif inventory[output] + count > item.self_upper_limit:
                     blocked.append(
-                        f"{output}成品达到合成上限或剩余额度不足一批"
-                        f"（库存 {inventory[output]}，上限 {item.self_upper_limit}）"
+                        WorkshopBlock(
+                            "output_limit",
+                            f"{output}成品达到合成上限或剩余额度不足一批"
+                            f"（库存 {inventory[output]}，上限 {item.self_upper_limit}）",
+                            operator,
+                            output,
+                            inventory[output],
+                            item.self_upper_limit,
+                        )
                     )
                 else:
                     shortages = [
@@ -160,28 +229,55 @@ def workshop_material_block_reason(operator, items, inventory, mood=None):
                         shortages.append(
                             f"龙门币库存 {inventory['龙门币']}，加工费需 {gold_cost}"
                         )
-                    blocked.append(f"{name}原料不足（{'；'.join(shortages)}）")
+                    child = next(
+                        (
+                            mat
+                            for mat, required in costs.items()
+                            if inventory[mat] - item.children_lower_limit < required
+                        ),
+                        None,
+                    )
+                    blocked.append(
+                        WorkshopBlock(
+                            "material_shortage" if child else "lmd_shortage",
+                            f"{name}原料不足（{'；'.join(shortages)}）",
+                            operator,
+                            child or "龙门币",
+                            inventory.get(child or "龙门币"),
+                            costs[child] if child else gold_cost,
+                            item.children_lower_limit if child else 0,
+                        )
+                    )
     if not available:
-        reasons = list(dict.fromkeys(blocked))
-        return "；".join(reasons[:3]) or "未配置加工配方"
+        return next(
+            iter(blocked), WorkshopBlock("no_recipe", "未配置加工配方", operator)
+        )
     if operator == "九色鹿":
         if not any(
             entry["apCost"] < 4 or entry["tab"] == "基建材料" for entry in available
         ):
-            return "缺少可加工的垫刀材料（小于 4 心情或基建材料）"
+            return WorkshopBlock(
+                "deer_fodder", "缺少可加工的垫刀材料（小于 4 心情或基建材料）", operator
+            )
         if not any(
             entry["apCost"] == 4 and entry["tab"] != "基建材料" for entry in available
         ):
-            return "缺少可加工的 4 心情精英材料"
+            return WorkshopBlock("deer_elite", "缺少可加工的 4 心情精英材料", operator)
     return None
 
 
 def workshop_operator_block_reason(
-    op_data, operator, tasks=(), *, current_task=None, minimum_mood=0
+    op_data,
+    operator,
+    tasks=(),
+    *,
+    current_task=None,
+    minimum_mood=0,
+    require_known_mood=False,
 ):
     """返回加工受阻原因；自动入队和调人前共享心情及预约规则。"""
     if operator in getattr(op_data, "emergency_reserved_agents", ()):
-        return "已被自动救急恢复安排预约"
+        return WorkshopBlock("operator_reserved", "已被自动救急恢复安排预约", operator)
     for task in tasks:
         if (
             task is not current_task
@@ -192,20 +288,62 @@ def workshop_operator_block_reason(
             )
         ):
             if operator in getattr(task, "emergency_staffing_members", ()):
-                return "已被自动救急换班任务预约"
-            return f"已被{task.type.display_value}任务预约"
+                return WorkshopBlock(
+                    "operator_reserved", "已被自动救急换班任务预约", operator
+                )
+            return WorkshopBlock(
+                "operator_reserved", f"已被{task.type.display_value}任务预约", operator
+            )
     op = op_data.operators.get(operator)
-    if op is None:
+    if op is None and not require_known_mood:
         return None
-    mood = op.current_mood() if hasattr(op, "current_mood") else op.mood
+    mood = (
+        op.current_mood() if hasattr(op, "current_mood") else getattr(op, "mood", None)
+    )
     # 未知心情的手动加工沿用入站读取；自动入队仍需已知心情超过门槛。
-    if mood < 0 and minimum_mood == 0:
+    if (mood is None or mood < 0) and minimum_mood == 0 and not require_known_mood:
         return None
-    if mood < 0:
-        return "心情尚未读取，无法确认自动加工门槛"
+    if mood is None or mood < 0:
+        return WorkshopBlock(
+            "mood_unknown", "心情尚未读取，无法确认自动加工门槛", operator
+        )
     if mood <= minimum_mood:
-        return f"心情不足（当前 {mood:.1f}，需大于 {minimum_mood}）"
+        return WorkshopBlock(
+            "mood_insufficient",
+            f"心情不足（当前 {mood:.1f}，需大于 {minimum_mood}）",
+            operator,
+            available=mood,
+            required=minimum_mood,
+        )
     return None
+
+
+def workshop_admission_block(
+    op_data, setting, inventory, tasks=(), *, minimum_mood=22, readonly=False
+):
+    """Use the same first-task eligibility for dispatch and status."""
+    from arknights_mower.utils import config
+
+    automatic = config.conf.workshop_auto_active and setting.source == "mastery"
+    operator = op_data.operators.get(setting.operator)
+    mood = (
+        operator.current_mood()
+        if hasattr(operator, "current_mood")
+        else getattr(operator, "mood", None)
+    )
+    return workshop_operator_block_reason(
+        op_data,
+        setting.operator,
+        tasks,
+        minimum_mood=0 if automatic else minimum_mood,
+        require_known_mood=automatic,
+    ) or workshop_material_block_reason(
+        setting.operator,
+        setting.items,
+        inventory,
+        mood,
+        readonly=readonly,
+    )
 
 
 def deer_batch_limit(gap, ap_cost):

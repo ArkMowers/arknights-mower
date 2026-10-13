@@ -1,6 +1,7 @@
 """Generate the next missing recipe for one operator using shared live stock."""
 
 from collections import Counter
+from dataclasses import dataclass, field
 from math import ceil
 
 from arknights_mower.utils.mastery_materials import MaterialBudget
@@ -114,11 +115,19 @@ def next_recipe(entries, skills, inventory, formulas, blocked=()):
     return None, []
 
 
+@dataclass
+class GrowthWorkshopPlan:
+    settings: list = field(default_factory=list)
+    focus: dict | None = None
+    recipe: str | None = None
+
+
 def growth_workshop_config(
     box, skills, plans, goals, inventory, formulas, operators, blocked=(), order=()
 ):
     from arknights_mower.utils.growth_order import (
         crafting_projects,
+        describe_projects,
         prepare_project_materials,
     )
     from arknights_mower.utils.workshop_recipes import recipe_category
@@ -129,7 +138,7 @@ def growth_workshop_config(
         box, skills, projects, inventory, formulas, blocked
     )
     key, items = next_recipe(entries, skills, inventory, formulas, blocked)
-    focus = next((p for p in projects if p["key"] == key), None)
+    focus = next((p for p in states if p["key"] == key), None)
     if focus is None:
         focus = next(
             (
@@ -139,11 +148,18 @@ def growth_workshop_config(
             ),
             None,
         )
-    cid = focus["char_id"] if focus else None
+    if focus:
+        focus = {
+            **focus,
+            "char_name": describe_projects([focus], skills)[0]["char_name"],
+        }
+    result = GrowthWorkshopPlan(focus=focus)
     if not items:
-        return [], cid
+        return result
     category = recipe_category(formulas[items[0]["item_names"][0]])
     # Missing-only preparation cannot add unrelated fodder to build causality.
     names = [name for name in operators[category] if name != "九色鹿"]
     groups = [(category, names, items)]
-    return allocate_workshop_items(groups, formulas=formulas), cid
+    result.settings = allocate_workshop_items(groups, formulas=formulas)
+    result.recipe = items[0]["item_names"][0]
+    return result

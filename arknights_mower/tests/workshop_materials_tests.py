@@ -22,9 +22,7 @@ from arknights_mower.utils import workshop_recommendation as workshop
 def test_defaults_generate_low_tier_specialties_without_giving_them_to_generalists(
     game,
 ):
-    from arknights_mower.utils.mastery_recommendation import (
-        compute_default_workshop_config,
-    )
+    from arknights_mower.tests.workshop_fixtures import allocate_sample_recipes
 
     meta, ids = game
     names = [row[0] for row in SPECIALISTS]
@@ -39,7 +37,7 @@ def test_defaults_generate_low_tier_specialties_without_giving_them_to_generalis
         "available_operators",
         return_value=workshop.available_operators(roster, meta),
     ):
-        result = compute_default_workshop_config(**defaults)
+        result = allocate_sample_recipes(**defaults)
     materials = {
         entry["operator"]: {n for task in entry["items"] for n in task["item_names"]}
         for entry in result
@@ -62,9 +60,7 @@ def test_defaults_generate_low_tier_specialties_without_giving_them_to_generalis
 def test_supplemental_low_tier_tasks_require_an_available_unlocked_specialist(
     game, reason
 ):
-    from arknights_mower.utils.mastery_recommendation import (
-        compute_default_workshop_config,
-    )
+    from arknights_mower.tests.workshop_fixtures import allocate_sample_recipes
 
     meta, ids = game
     roster = (
@@ -87,81 +83,50 @@ def test_supplemental_low_tier_tasks_require_an_available_unlocked_specialist(
             return_value={"休谟斯": ["train"]} if reason == "scheduled" else {},
         ),
     ):
-        result = compute_default_workshop_config(["休谟斯"], [], [])
+        result = allocate_sample_recipes(["休谟斯"], [], [])
     assert any(entry["items"] for entry in result) is (reason == "scheduled")
 
 
 @pytest.mark.parametrize("recipe_source", ["game", "legacy_composite"])
 def test_plan_specialties_include_direct_and_indirect_t3_with_counts_and_stock(
-    game, tmp_path, recipe_source
+    game, recipe_source
 ):
-    from arknights_mower.utils import mastery_recommendation as rec
+    from collections import Counter
 
-    meta, ids = game
+    from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.growth_workshop import next_recipe
+    from arknights_mower.utils.workshop_limits import batch_delta
+
     data = json.loads((Path(__file__).parents[1] / "data/skill_data.json").read_text())
     if recipe_source == "game":
         data["composite"] = {}
-    else:
-        data["workshop"].pop("recipe_ingredients")
-        data["composite"] = {
-            "30044": {
-                "pathway": [
-                    {"id": "30043", "count": 2},
-                    {"id": "30063", "count": 1},
-                    {"id": "30033", "count": 1},
-                ]
-            }
-        }
-    skill_path = tmp_path / "skill_data.json"
-    skill_path.write_text(json.dumps(data))
-    iron_id = next(i for i, v in data["items"].items() if v["name"] == "异铁块")
-    path = tmp_path / "cultivate.json"
-    stock = [{"id": iron_id, "count": 1}] + [
-        {"id": key, "count": 300}
-        for key, item in data["items"].items()
-        if item.get("rarity") == 2
+    ids = {v["name"]: key for key, v in data["items"].items()}
+    stock = Counter(
+        {key: 300 for key, item in data["items"].items() if item.get("rarity") == 2}
+    )
+    stock[ids["异铁块"]] = 1
+    entries = [
+        (
+            "project",
+            [{"id": ids["异铁块"], "count": 4}, {"id": ids["异铁组"], "count": 3}],
+        )
     ]
-    path.write_text(json.dumps({"data": {"items": stock}}))
-    recommendations = {
-        "operators": [
-            {
-                "char_id": "char_test",
-                "recommendations": [
-                    {
-                        "skill_index": 0,
-                        "chain_needed_materials": [
-                            {"name": "异铁块", "count": 4},
-                            {"name": "异铁组", "count": 3},
-                        ],
-                    }
-                ],
-            }
-        ]
-    }
-    with (
-        patch(
-            "arknights_mower.utils.mastery_db.get_all_plans",
-            return_value=[{"char_id": "char_test", "skill_index": 0}],
-        ),
-        patch.object(rec, "get_path", return_value=path),
-        patch.object(
-            rec,
-            "_find_skill_data",
-            return_value=skill_path,
-        ),
-        patch.object(rec, "get_mastery_recommendations", return_value=recommendations),
-        patch.object(
-            workshop,
-            "available_operators",
-            return_value=workshop.available_operators(
-                owned(ids, "折桠", "休谟斯"), meta
-            ),
-        ),
-    ):
-        result = rec.compute_workshop_config(["折桠", "休谟斯"], [], [])
-    assert result[0]["items"] == [
-        {"item_names": ["异铁组"], "children_lower_limit": 0, "self_upper_limit": 9}
-    ]
-    assert {
-        task["item_names"][0]: task["self_upper_limit"] for task in result[1]["items"]
-    } == {"异铁组": 9, "全新装置": 3, "聚酸酯组": 3}
+    crafted = Counter()
+    for _ in range(12):
+        focus, settings = next_recipe(entries, data, stock, workshop_formula)
+        if focus is None:
+            break
+        assert settings
+        setting = settings[0]
+        name = setting["item_names"][0]
+        output = workshop_formula[name]["output_count"]
+        batches = (setting["self_upper_limit"] - stock[ids[name]]) // output
+        for material, count in batch_delta(
+            name, workshop_formula[name], batches
+        ).items():
+            if material in ids:
+                stock[ids[material]] += count
+        crafted[name] += batches
+    assert focus is None
+    assert crafted == {"异铁组": 9, "全新装置": 3, "聚酸酯组": 3, "异铁块": 3}
+    assert stock[ids["异铁块"]] == 4 and stock[ids["异铁组"]] == 3

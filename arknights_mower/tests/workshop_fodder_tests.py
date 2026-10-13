@@ -88,9 +88,11 @@ def test_custom_fodder_stays_manual_and_survives_backup_restore(
     assert config.conf.workshop_deer_fodder[0].self_upper_limit == 240
 
 
-def test_default_config_generator_uses_the_same_independent_fodder(next_skill):
+def test_allocation_uses_the_same_independent_fodder(next_skill):
     config.conf.workshop_deer_fodder = [custom_fodder()]
-    settings = rec.compute_default_workshop_config(["九色鹿"], [], [])
+    from arknights_mower.tests.workshop_fixtures import allocate_sample_recipes
+
+    settings = allocate_sample_recipes(["九色鹿"], [], [])
     assert custom_fodder().model_dump() in settings[0]["items"]
 
 

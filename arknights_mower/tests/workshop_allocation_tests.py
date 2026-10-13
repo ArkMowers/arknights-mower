@@ -61,9 +61,7 @@ def test_fodder_is_only_added_to_deer_and_other_best_operators_remain(game):
 @pytest.mark.parametrize("missing_rules", [False, True])
 def test_old_lists_reserve_nian_for_t5_in_generated_config(game, missing_rules):
     from arknights_mower.data import workshop_formula
-    from arknights_mower.utils.mastery_recommendation import (
-        compute_default_workshop_config,
-    )
+    from arknights_mower.tests.workshop_fixtures import allocate_sample_recipes
 
     meta, ids = game
     available = workshop.available_operators(owned(ids, "年", "空爆", "赫拉格"), meta)
@@ -75,9 +73,7 @@ def test_old_lists_reserve_nian_for_t5_in_generated_config(game, missing_rules):
         if missing_rules
         else None,
     ):
-        config = compute_default_workshop_config(
-            ["年", "空爆"], ["年"], ["年", "赫拉格"]
-        )
+        config = allocate_sample_recipes(["年", "空爆"], ["年"], ["年", "赫拉格"])
     materials = {
         entry["operator"]: {
             name for item in entry["items"] for name in item["item_names"]
@@ -91,16 +87,14 @@ def test_old_lists_reserve_nian_for_t5_in_generated_config(game, missing_rules):
 
 
 def test_default_config_merges_duplicate_operator_even_without_new_resources():
-    from arknights_mower.utils.mastery_recommendation import (
-        compute_default_workshop_config,
-    )
+    from arknights_mower.tests.workshop_fixtures import allocate_sample_recipes
 
     with patch.object(
         workshop,
         "available_operators",
         side_effect=workshop.WorkshopRecommendationError("旧资源"),
     ):
-        result = compute_default_workshop_config(["凯尔希"], ["凯尔希"], ["凯尔希"])
+        result = allocate_sample_recipes(["凯尔希"], ["凯尔希"], ["凯尔希"])
     assert len(result) == 1
     materials = {name for entry in result[0]["items"] for name in entry["item_names"]}
     assert {"炽合金块", "双极纳米片", "技巧概要·卷3"} <= materials
@@ -111,9 +105,7 @@ def test_full_roster_config_orders_every_shared_recipe_by_bonus(game, minimum):
     from collections import defaultdict
 
     from arknights_mower.data import workshop_formula
-    from arknights_mower.utils.mastery_recommendation import (
-        compute_default_workshop_config,
-    )
+    from arknights_mower.tests.workshop_fixtures import allocate_sample_recipes
 
     meta, ids = game
     roster = owned(ids, *ids)
@@ -125,7 +117,7 @@ def test_full_roster_config_orders_every_shared_recipe_by_bonus(game, minimum):
         patch.object(workshop, "available_operators", return_value=available),
         patch.object(config.conf, "workshop_min_bonus", minimum),
     ):
-        result = compute_default_workshop_config(**defaults)
+        result = allocate_sample_recipes(**defaults)
     recipe_bonuses = defaultdict(list)
     for entry in result:
         if entry["operator"] in {"九色鹿", "蚀清"}:

@@ -41,12 +41,12 @@ def growth_resources(skills):
     }
 
 
-def inventory_counts(box, skills, *, local=False):
+def inventory_counts(box, skills, *, local=False, local_counts=None):
     stock = {item["id"]: int(item.get("count", 0)) for item in box.get("items", [])}
     if local:
         from arknights_mower.solvers.record import get_inventory_counts
 
-        counts = get_inventory_counts()
+        counts = get_inventory_counts() if local_counts is None else local_counts
         for iid, info in skills.get("items", {}).items():
             if info["name"] in counts:
                 stock[iid] = counts[info["name"]]
