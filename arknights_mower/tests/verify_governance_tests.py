@@ -1360,7 +1360,9 @@ class VerifyGovernanceTests(unittest.TestCase):
                 )
 
     def test_run_all_checks_passes(self):
-        self.assertEqual(run_all_checks(), 0)
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_reference_repo(directory)
+            self.assertEqual(run_all_checks(root), 0)
 
     def test_success_reports_automated_scope_and_remaining_manual_review(self):
         output = io.StringIO()
@@ -2079,6 +2081,171 @@ class VerifyPolicyBaselineTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                 self.assertIn("policy", result.stdout.lower())
                 self.assertNotIn("STRUCTURAL CHECKS PASSED", result.stdout)
+
+    def test_shallow_history_fails_actual_entry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            source.mkdir()
+            self.make_policy_repo(source)
+            shallow = Path(directory) / "shallow"
+            subprocess.run(
+                [
+                    "git",
+                    "clone",
+                    "--quiet",
+                    "--depth",
+                    "1",
+                    source.as_uri(),
+                    str(shallow),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=30,
+            )
+            result = self.run_policy_gate(shallow, self.revision(shallow))
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn(
+                "Unavailable legacy_format policy comparison commit", result.stdout
+            )
+            self.assertNotIn("STRUCTURAL CHECKS PASSED", result.stdout)
+
+    def test_unavailable_policy_fails_without_explicit_comparison(self):
+        for policy in ("legacy_format", "development_prose"):
+            with (
+                self.subTest(policy=policy),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root, _, _, _ = self.make_policy_repo(directory)
+                configuration = root / "scripts/governance_baselines.json"
+                values = json.loads(configuration.read_text(encoding="utf-8"))
+                values[policy] = "f" * 40
+                configuration.write_text(json.dumps(values), encoding="utf-8")
+                script = (
+                    Path(__file__).resolve().parents[2] / "scripts/verify_governance.py"
+                )
+                local = subprocess.run(
+                    [sys.executable, "-X", "utf8", str(script)],
+                    cwd=root,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    timeout=30,
+                )
+                manual = self.run_governance_workflow(
+                    root, "workflow_dispatch", {"inputs": {}}
+                )
+                for entry, result in (("local", local), ("manual", manual)):
+                    with self.subTest(entry=entry):
+                        self.assertEqual(
+                            result.returncode, 1, result.stdout + result.stderr
+                        )
+                        self.assertIn(
+                            f"Unavailable {policy} policy comparison commit",
+                            result.stdout,
+                        )
+                        self.assertNotIn("STRUCTURAL CHECKS PASSED", result.stdout)
+
+    def test_workflow_checks_pr_head_and_keeps_other_event_revisions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, old_base, _, _ = self.make_policy_repo(directory)
+            source_head = self.revision(root)
+            subprocess.run(
+                ["git", "checkout", "-qb", "integration", old_base],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            (root / "README.md").write_text("# Integration branch\n", encoding="utf-8")
+            self.commit_reference_fixture(root, "diverged integration branch")
+            target_head = self.revision(root)
+            subprocess.run(
+                ["git", "checkout", "--quiet", "--detach", source_head],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.invalid",
+                    "-c",
+                    "core.hooksPath=",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "merge",
+                    "--quiet",
+                    "--no-edit",
+                    "integration",
+                ],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            merge_head = self.revision(root)
+            repository = Path(__file__).resolve().parents[2]
+            workflow = yaml.safe_load(
+                (repository / ".github/workflows/docs-consistency.yml").read_text(
+                    "utf-8"
+                )
+            )
+            checkout = next(
+                step
+                for step in workflow["jobs"]["verify"]["steps"]
+                if step.get("uses", "").startswith("actions/checkout@")
+            )
+            self.assertEqual(checkout["with"]["fetch-depth"], 0)
+            for event_name, event in (
+                (
+                    "pull_request",
+                    {
+                        "pull_request": {
+                            "base": {"sha": target_head},
+                            "head": {"sha": source_head},
+                            "title": "Check history",
+                            "body": "",
+                        }
+                    },
+                ),
+                ("push", {"before": source_head}),
+                ("workflow_dispatch", {"inputs": {"comparison_base": source_head}}),
+            ):
+                with self.subTest(event=event_name):
+                    context = {"github": {"event": event, "sha": merge_head}}
+                    expression = checkout["with"].get("ref", "${{ github.sha }}")
+                    terms = (
+                        expression.removeprefix("${{").removesuffix("}}").split("||")
+                    )
+                    for term in terms:
+                        revision = context
+                        for key in term.strip().split("."):
+                            revision = (
+                                revision.get(key)
+                                if isinstance(revision, dict)
+                                else None
+                            )
+                        if revision:
+                            break
+                    subprocess.run(
+                        ["git", "checkout", "--quiet", "--detach", revision],
+                        cwd=root,
+                        check=True,
+                        capture_output=True,
+                        timeout=15,
+                    )
+                    self.assertEqual(
+                        self.revision(root),
+                        source_head if event_name == "pull_request" else merge_head,
+                    )
+                    result = self.run_governance_workflow(root, event_name, event)
+                    self.assertEqual(
+                        result.returncode, 0, result.stdout + result.stderr
+                    )
 
 
 class VerifyFormalTextTests(unittest.TestCase):
