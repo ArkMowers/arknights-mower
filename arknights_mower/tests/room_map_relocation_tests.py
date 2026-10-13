@@ -377,6 +377,7 @@ def navigation_solver(monkeypatch, frames):
     segmentation = MagicMock(side_effect=segment)
     monkeypatch.setattr(base_mixin.segment, "base", segmentation)
     solver.find = MagicMock(side_effect=find)
+    solver.scene = MagicMock(return_value=Scene.INFRA_MAIN)
     solver.detect_room = MagicMock(
         side_effect=lambda: ROOM if solver.recog.img["kind"] == "room" else "other"
     )

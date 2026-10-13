@@ -12,6 +12,7 @@ from arknights_mower.tests.dorm_unregistered_idle_tests import (
     screen_only,
 )
 from arknights_mower.utils import scheduler_task
+from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
@@ -172,7 +173,7 @@ def test_dorm_three_execution_does_not_skip_low_card_replacement(
     instance.find = MagicMock(
         side_effect=lambda name, *args, **kwargs: name == "confirm_blue"
     )
-    instance.scene = MagicMock(return_value=0)
+    instance.scene = MagicMock(return_value=Scene.INFRA_ARRANGE_ORDER)
     instance.ensure_dorm_recovery_order = MagicMock(return_value=False)
     instance.tap_confirm = MagicMock()
     instance.get_agent_from_room = MagicMock(

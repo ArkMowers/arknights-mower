@@ -21,6 +21,7 @@ from arknights_mower.utils.logic_expression import LogicExpression
 from arknights_mower.utils.operation_timing import estimate_dorm_minutes
 from arknights_mower.utils.operators import Operator, build_global_plan
 from arknights_mower.utils.plan import Plan, PlanConfig
+from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
@@ -478,6 +479,7 @@ def test_real_strict_release_arrangement_reads_departure_before_selection(
             True if resource == "confirm_blue" else find(resource, scope)
         )
     )
+    solver.scene = MagicMock(return_value=Scene.INFRA_ARRANGE_ORDER)
 
     at_selection = []
 

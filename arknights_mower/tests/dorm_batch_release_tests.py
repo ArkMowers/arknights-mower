@@ -11,6 +11,7 @@ from arknights_mower.tests import dorm_empty_release_tests
 from arknights_mower.utils import config
 from arknights_mower.utils.operators import Dormitory
 from arknights_mower.utils.plan import Room
+from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
@@ -260,7 +261,7 @@ def test_arrange_room_resolves_selection_once_before_recovery_order(solver):
     instance.find = MagicMock(
         side_effect=lambda name, *args, **kwargs: name == "confirm_blue"
     )
-    instance.scene = MagicMock(return_value=0)
+    instance.scene = MagicMock(return_value=Scene.INFRA_ARRANGE_ORDER)
     instance.tap_confirm = MagicMock()
     instance.get_agent_from_room = MagicMock(
         side_effect=lambda *args, **kwargs: [{"agent": name} for name in selected]

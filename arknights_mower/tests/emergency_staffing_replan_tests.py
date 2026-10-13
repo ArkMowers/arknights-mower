@@ -19,6 +19,7 @@ from arknights_mower.tests.emergency_group_staffing_tests import (
 )
 from arknights_mower.tests.emergency_group_staffing_tests import staffing_task
 from arknights_mower.tests.mass_mood_recovery_tests import NOW, PRIMARY
+from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
@@ -29,6 +30,7 @@ def reject_room(solver, task, room, monkeypatch):
     solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
     solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
     solver.find = MagicMock(return_value=True)
+    solver.scene = MagicMock(return_value=Scene.INFRA_ARRANGE_ORDER)
     solver.choose_agent = MagicMock(
         side_effect=AgentSelectionNotReady("心情不足或无法读取")
     )

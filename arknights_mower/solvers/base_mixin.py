@@ -1384,6 +1384,10 @@ class BaseMixin:
                 if self.find("connecting"):
                     self.sleep()
                 elif pos := self.find("control_central"):
+                    # 地图观测参与场景计时，避免跨房换班只累计房间结束页。
+                    if self.scene() != Scene.INFRA_MAIN:
+                        self.sleep(0.2)
+                        continue
                     if pending:
                         # 地图可能仍是点击前的旧画面，先等一帧反馈再重发点击。
                         pending = False
