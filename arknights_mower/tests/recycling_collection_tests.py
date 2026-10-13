@@ -1,5 +1,6 @@
 """Offline recycling evidence, probability model and collection boundaries."""
 
+import shutil
 import sqlite3
 import xml.etree.ElementTree as ET
 from contextlib import contextmanager
@@ -231,6 +232,65 @@ def test_archived_borderline_quantity_is_recorded_after_two_matching_frames(
     assert result["records"][0]["materials"] == {"装置": 1}
     solver.sleep.assert_called_once_with(0.3)
     solver.recog.save_screencap.assert_not_called()
+
+
+@pytest.mark.parametrize("icon_folder", ["depot", "材料图标"])
+def test_windows_unicode_icon_failure_still_records_archived_reward(
+    db, real_ocr, monkeypatch, tmp_path, icon_folder
+):
+    monkeypatch.setattr(recycling.rapidocr, "engine", real_ocr)
+    directory = tmp_path / icon_folder
+    directory.mkdir()
+    shutil.copyfile(
+        recycling._icon_directory() / "固源岩组.webp", directory / "固源岩组.webp"
+    )
+    monkeypatch.setattr(recycling, "_icon_directory", lambda: directory)
+    path = Path(__file__).parent / "fixtures/recycling/reward_orirock_20261013.jpg"
+    solver = collection_solver()
+    solver.recog.img = cv2.cvtColor(
+        cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR),
+        cv2.COLOR_BGR2RGB,
+    )
+    # Simulate OpenCV's narrow-path file loading on Windows, including Chinese
+    # filenames beneath an otherwise ASCII installation directory.
+    monkeypatch.setattr(recycling.cv2, "imread", Mock(return_value=None))
+    recycling._material_icon.cache_clear()
+    solver._recycling_pending = {"id": "windows-unicode-icon"}
+    solver.scene = Mock(return_value=Scene.INFRA_MAIN)
+    solver._finish_recycling_collection()
+    result = record.get_recycling_history("2000-01-01", "2100-01-01")
+    assert result["total"] == 1
+    assert result["records"][0]["materials"] == {"固源岩组": 1}
+    assert result["comparison"]["unknown_collections"] == 0
+    solver.sleep.assert_called_once_with(0.3)
+    solver.recog.save_screencap.assert_not_called()
+
+
+@pytest.mark.parametrize("content", [None, b"", b"invalid image", "rgb"])
+def test_unavailable_material_icon_preserves_unknown_collection(
+    db, monkeypatch, tmp_path, content
+):
+    image = reward_frame()
+    if content == "rgb":
+        cv2.imencode(".webp", np.zeros((220, 220, 3), dtype=np.uint8))[1].tofile(
+            tmp_path / "装置.webp"
+        )
+    elif content is not None:
+        (tmp_path / "装置.webp").write_bytes(content)
+    box = [[925, 12], [997, 12], [997, 48], [925, 48]]
+    monkeypatch.setattr(recycling, "_ocr", Mock(return_value=[(box, "装置", 1)]))
+    monkeypatch.setattr(recycling, "_icon_directory", lambda: tmp_path)
+    recycling._material_icon.cache_clear()
+    solver = collection_solver()
+    solver.recog.img = image
+    solver._recycling_pending = {"id": "unavailable-icon"}
+    solver.scene = Mock(return_value=Scene.INFRA_MAIN)
+    solver._finish_recycling_collection()
+    result = record.get_recycling_history("2000-01-01", "2100-01-01")
+    assert result["total"] == 1
+    assert result["records"][0]["materials"] is None
+    assert result["comparison"]["unknown_collections"] == 1
+    solver.recog.save_screencap.assert_called_once_with("recycling")
 
 
 @pytest.mark.parametrize(

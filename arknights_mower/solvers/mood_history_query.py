@@ -14,6 +14,18 @@ MAX_OPERATORS = 16
 MAX_NAME_LENGTH = 40
 MAX_SAMPLES_PER_OPERATOR = 600
 
+# Both curve queries use alias a; raw observations remain available to scheduling.
+FIAMMETTA_CURVE_FILTER = """
+    (a.name <> '菲亚梅塔' OR COALESCE(a.mood_event, '') <> '' OR NOT EXISTS (
+        SELECT 1 FROM agent_action charge
+        WHERE charge.name = '菲亚梅塔'
+          AND charge.mood_event = 'fiammetta_charge'
+          AND charge.current_time BETWEEN datetime(a.current_time, '-10 minutes')
+                                      AND a.current_time
+          AND julianday(charge.current_time) > julianday(a.current_time, '-10 minutes')
+    ))
+"""
+
 
 def _open_history(database: str | Path):
     file = Path(database)
@@ -115,14 +127,16 @@ def selected_mood_series(database: str | Path, names: list[str]) -> list[dict]:
         }
         related_column = "related_operator" if "related_operator" in columns else "NULL"
         event_column = "mood_event" if "mood_event" in columns else "NULL"
+        curve_filter = FIAMMETTA_CURVE_FILTER if "mood_event" in columns else "1"
         result = []
         for name in names:
             rows = connection.execute(
                 f"""
                 SELECT "current_time", mood, {related_column} AS related,
                        {event_column} AS event
-                FROM agent_action
+                FROM agent_action a
                 WHERE name = ? AND "current_time" IS NOT NULL AND mood IS NOT NULL
+                  AND {curve_filter}
                 ORDER BY "current_time" DESC, rowid DESC LIMIT ?
                 """,
                 (name, MAX_SAMPLES_PER_OPERATOR),
