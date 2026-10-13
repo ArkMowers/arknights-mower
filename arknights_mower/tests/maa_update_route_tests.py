@@ -32,6 +32,73 @@ class _FakeThread:
 
 
 class TestMaaUpdateRoutes(unittest.TestCase):
+    def test_mirrorchyan_no_update_response_has_no_check_id(self):
+        with (
+            patch.object(server, "__system__", "windows"),
+            patch(
+                "arknights_mower.utils.maa_update.has_maa_installation",
+                return_value=True,
+            ),
+            patch(
+                "arknights_mower.utils.maa_update.read_installed_version",
+                return_value="v6.19.0",
+            ),
+            patch(
+                "arknights_mower.utils.maa_update.normalize_windows_arch",
+                return_value="x64",
+            ),
+            patch(
+                "arknights_mower.utils.maa_update._request_mirrorchyan",
+                return_value=(0, {"version_name": "v6.19.0"}),
+            ),
+        ):
+            result = self.client.post(
+                "/maa-update/check",
+                json={
+                    "maa_path": self.target,
+                    "source": "mirrorchyan",
+                    "channel": "stable",
+                    "mirror_token": "fixture-token",
+                },
+                headers=self.headers,
+            ).get_json()
+        self.assertTrue(result["ok"], result)
+        self.assertFalse(result["available"])
+        self.assertEqual(result["check_id"], "")
+        self.assertIsNone(result["latest"]["runtime"])
+        self.assertIn("已是最新", result["message"])
+
+    def test_no_update_worker_keeps_loaded_core_and_reports_no_update(self):
+        result = {
+            "updated": False,
+            "version": "v6.19.0",
+            "installed_version": "v6.19.0",
+            "source": "mirrorchyan",
+            "channel": "stable",
+            "operation": "update",
+            "platform": "windows",
+            "target": self.target,
+        }
+        with (
+            patch(
+                "arknights_mower.utils.maa_update.has_maa_installation",
+                return_value=True,
+            ),
+            patch(
+                "arknights_mower.utils.maa_update.install_latest_maa",
+                return_value=result,
+            ),
+            patch("arknights_mower.utils.maa_update.clear_loaded_maa_cache") as clear,
+            patch("arknights_mower.utils.maa_update.read_installed_version") as read,
+        ):
+            server._run_maa_update(
+                self.target, "mirrorchyan", "fixture-token", "windows", "stable"
+            )
+        self.assertEqual(server.maa_update_job["status"], "success")
+        self.assertIn("无需更新", server.maa_update_job["message"])
+        clear.assert_not_called()
+        read.assert_not_called()
+
     def setUp(self):
         self.client = server.app.test_client()
         self.headers = {}

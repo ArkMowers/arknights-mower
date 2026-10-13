@@ -86,7 +86,7 @@ class ReleaseAsset:
 @dataclass(frozen=True)
 class MaaRelease:
     tag: str
-    runtime: ReleaseAsset
+    runtime: ReleaseAsset | None
     python_source: ReleaseAsset | None = None
     source: str = "github"
     channel: str = "stable"
@@ -98,10 +98,11 @@ class MaaRelease:
             "source": self.source,
             "channel": self.channel,
             "package_type": self.package_type,
-            "runtime": {
-                "name": self.runtime.name,
-                "size": self.runtime.size,
-            },
+            "runtime": (
+                {"name": self.runtime.name, "size": self.runtime.size}
+                if self.runtime is not None
+                else None
+            ),
             "python_source": (
                 {
                     "name": self.python_source.name,
@@ -512,7 +513,7 @@ def _get_mirrorchyan_asset(
     session: requests.Session,
     sp_id: str,
     current_version: str = "",
-) -> tuple[str, ReleaseAsset, str]:
+) -> tuple[str, ReleaseAsset | None, str]:
     code, data = _request_mirrorchyan(
         token,
         os_name,
@@ -531,10 +532,15 @@ def _get_mirrorchyan_asset(
         raise MaaUpdateError("Mirror酱返回的 MAA 资源信息不完整")
 
     version = data.get("version_name")
+    if not isinstance(version, str) or not version.strip():
+        raise MaaUpdateError("Mirror酱返回的 MAA 下载信息不完整")
+    if current_version.strip() and not is_maa_version_newer(version, current_version):
+        # MirrorChyan omits the URL when the submitted version needs no update.
+        return version, None, "full"
     url = data.get("url")
     size = data.get("filesize")
     checksum = data.get("sha256")
-    if not isinstance(version, str) or not isinstance(url, str):
+    if not isinstance(url, str):
         raise MaaUpdateError("Mirror酱返回的 MAA 下载信息不完整")
     update_type = "full" if data.get("update_type") == "full" else "ota"
     if update_type == "ota" and not current_version.strip():
@@ -1809,6 +1815,29 @@ def install_latest_maa(
             installed_version=installed_version,
         )
 
+    if release.runtime is None:
+        if not installed_version or is_maa_version_newer(
+            release.tag, installed_version
+        ):
+            raise MaaUpdateError("MAA 更新缺少下载资源")
+        return {
+            "updated": False,
+            "version": installed_version,
+            "installed_version": installed_version,
+            "source": release.source,
+            "channel": release.channel,
+            "package_type": release.package_type,
+            "operation": "update",
+            "platform": system,
+            "arch": arch,
+            "target": str(target_path),
+            "backup": "",
+            "runtime_downloaded": 0,
+            "python_downloaded": 0,
+            "python_full_size": 0,
+            "preserved": [],
+        }
+
     prefix = f".{target_path.name}.maa-update-"
     with tempfile.TemporaryDirectory(prefix=prefix, dir=target_path.parent) as temp:
         work_dir = Path(temp)
@@ -1958,6 +1987,7 @@ def install_latest_maa(
             raise MaaUpdateError(f"完成 MAA {operation}时替换目录失败：{e}") from e
 
     return {
+        "updated": True,
         "version": release.tag,
         "source": release.source,
         "channel": release.channel,

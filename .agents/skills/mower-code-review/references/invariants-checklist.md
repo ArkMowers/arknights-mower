@@ -248,6 +248,8 @@ Use the entries relevant to changed call paths. Follow each owning contract for 
 
 ### 2.8 MAA Integration
 
+- [ ] **MirrorChyan No Update**: Does a successful response at or below the submitted installed version return no update without requiring a URL, downloading files, replacing directories or unloading the core? Do newer releases still require an asset? See the [MAA integration description](../../../../docs/subsystems/maa-integration.md#mirrorchyan-no-update).
+
 - [ ] **Independent Update Admission**: Are automatic policies independent, obsolete automatic-check results ignored, and unknown local resource versions accepted only through an unused matching check while MAA is idle? See the [complete contract](../../../../docs/subsystems/maa-integration.md#independent-update-admission).
 - [ ] **MAA Core Generation**: Do failed initializations retain native-open identity for retry admission, do retained idle instances block unloading, and does actual image removal follow all tracked closes before SDK reimport? Do symlink-target changes or unconfirmed unloading preserve restart guidance before replacement resource loading? See the [complete contract](../../../../docs/subsystems/maa-runtime.md#maa-core-generation).
 - [ ] **Weekday-Independent Medicine**: Do MAA and local potion callers apply the configured expiry threshold across weekdays? Do load/save and execution tests preserve the applicable expiry checks when retired settings are present? See the [complete contract](../../../../docs/subsystems/maa-integration.md#weekday-independent-medicine).

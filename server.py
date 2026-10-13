@@ -489,24 +489,28 @@ def _run_maa_update(
 
     # Installation has committed. Runtime activation cannot undo that result.
     result.setdefault("restart_required", False)
-    try:
-        clear_loaded_maa_cache(result["target"])
-    except Exception as error:
-        result["restart_required"] = True
-        logger.warning(
-            "MAA 已安装，核心清理未完成，请重启 Mower：%s", error, exc_info=True
-        )
-    try:
-        result["installed_version"] = read_installed_version(
-            result["target"], fresh=True
-        )
-    except Exception as error:
-        result["installed_version"] = ""
-        logger.warning("MAA 已安装，读取新核心版本失败：%s", error, exc_info=True)
-
+    if result.get("updated") is not False:
+        try:
+            clear_loaded_maa_cache(result["target"])
+        except Exception as error:
+            result["restart_required"] = True
+            logger.warning(
+                "MAA 已安装，核心清理未完成，请重启 Mower：%s", error, exc_info=True
+            )
+        try:
+            result["installed_version"] = read_installed_version(
+                result["target"], fresh=True
+            )
+        except Exception as error:
+            result["installed_version"] = ""
+            logger.warning("MAA 已安装，读取新核心版本失败：%s", error, exc_info=True)
     operation = "更新" if result["operation"] == "update" else "下载"
     channel_label = "公测版" if result["channel"] == "beta" else "正式版"
-    if result["platform"] == "android":
+    if result.get("updated") is False:
+        success_message = (
+            f"当前 MAA {result['installed_version']} 无需更新（{channel_label}）"
+        )
+    elif result["platform"] == "android":
         success_message = result.get(
             "message", "Android MAA 组件已更新，重启服务后生效"
         )
