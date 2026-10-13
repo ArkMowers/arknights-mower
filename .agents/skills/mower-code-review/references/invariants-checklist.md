@@ -26,6 +26,8 @@ Use the entries relevant to changed call paths. Follow each owning contract for 
 
 ## 2. Subsystem Invariants
 
+- [ ] **Backup Refresh Continuity**: Do confirmed moves during backup transitions apply previous and effective exhaustion and trade refresh rules, preserve room targets and deferred task state, and discard previous rules on completion without refreshing projections or unchanged positions? See the [complete contract](../../../../docs/subsystems/base-scheduler.md#backup-refresh-continuity).
+
 - [ ] **[INV-REC-07] Complete LMD Amount**: Does depot LMD recognition preserve 万 or 亿 multipliers, reject malformed or low-confidence OCR without template fallback, and preserve other item readers? See the [depot recognition description](../../../../docs/subsystems/depot-recognition.md).
 
 - [ ] **Process-Owned Desktop Autostart**: Does foreground and background startup admit tasks once without a page, preserve resource ordering and explicit restart policy, and keep stopped tasks stopped through refresh and tray actions? See the [complete contract](../../../../docs/subsystems/web-access.md#5-desktop-startup).

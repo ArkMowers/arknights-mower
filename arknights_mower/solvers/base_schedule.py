@@ -1633,7 +1633,8 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                         arrangement_deferred = result is False
                     else:
                         arrangement_deferred = (
-                            self.agent_arrange(self.task.plan, get_time) is False
+                            self._arrange_with_shift_refresh_rules(self.task, get_time)
+                            is False
                         )
                     if not arrangement_deferred:
                         arrangement_deferred = not self._complete_group_shift(self.task)
@@ -4082,6 +4083,55 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     def _initial_mood_read_pending(self):
         return getattr(self, "defer_backup_plan_until_mood_read", False)
 
+    @staticmethod
+    def _merge_refresh_rules(left, right):
+        drained = left[0] or right[0]
+        active = [rule[1] for rule in (left, right) if rule[1][0]]
+        rooms = (
+            list(dict.fromkeys(room for _, targets in active for room in targets))
+            if all(targets for _, targets in active)
+            else []
+        )
+        return drained, [bool(active), rooms]
+
+    def _capture_shift_refresh_rules(self, task, previous):
+        """仅任务保留旧刷新规则，实际换人前不触发回调。"""
+        rules = getattr(task, "backup_refresh_rules", {})
+        for name, old in previous.items():
+            current = (
+                self.op_data.config.is_refresh_drained(name),
+                self.op_data.config.is_refresh_trading(name),
+            )
+            if old != current or name in rules:
+                rules[name] = self._merge_refresh_rules(
+                    rules.get(name, (False, [False, []])), old
+                )
+        if rules:
+            task.backup_refresh_rules = rules
+
+    def _arrange_with_shift_refresh_rules(self, task, get_time):
+        """旧规则只在本任务的实际换人期间生效，延期和失败均恢复配置值。"""
+        rules = getattr(task, "backup_refresh_rules", {})
+        try:
+            for name, old in rules.items():
+                op = self.op_data.operators.get(name)
+                if op is None:
+                    continue
+                current = (
+                    self.op_data.config.is_refresh_drained(name),
+                    self.op_data.config.is_refresh_trading(name),
+                )
+                op.refresh_drained, op.refresh_order_room = self._merge_refresh_rules(
+                    old, current
+                )
+            return self.agent_arrange(task.plan, get_time)
+        finally:
+            for name in rules:
+                op = self.op_data.operators.get(name)
+                if op is not None:
+                    op.refresh_drained = self.op_data.config.is_refresh_drained(name)
+                    op.refresh_order_room = self.op_data.config.is_refresh_trading(name)
+
     def _exhaust_task_signatures(self):
         """动态用尽预约依赖生效岗位和组配置，不依赖临时驻员或心情读数。"""
         signatures = {}
@@ -4331,7 +4381,17 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 generated.backup_explicit_slots = self._backup_explicit_slots(
                     original, current
                 )
+                self._capture_shift_refresh_rules(
+                    generated,
+                    {
+                        name: (op.refresh_drained, op.refresh_order_room)
+                        for name, op in previous_data.operators.items()
+                    },
+                )
                 for pending in superseded:
+                    self._capture_shift_refresh_rules(
+                        generated, getattr(pending, "backup_refresh_rules", {})
+                    )
                     generated.backup_explicit_slots.update(
                         (room, index)
                         for room, index in getattr(pending, "backup_explicit_slots", ())
@@ -5254,6 +5314,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
     def _complete_group_shift(self, task):
         """Confirm required targets; mastery-owned slots retain their protection."""
         if not hasattr(task, "group_shift_transitions"):
+            task.__dict__.pop("backup_refresh_rules", None)
             return True
         expected_plan = {}
         for (room, index), name in getattr(task, "group_shift_expected", {}).items():
@@ -5320,6 +5381,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         # 全部目标已实测确认，完成的换班不再占用失败保留预约。
         task.__dict__.pop("execution_failure", None)
         task.__dict__.pop("execution_retained", None)
+        task.__dict__.pop("backup_refresh_rules", None)
         self._resume_waiting_group_shifts()
         return True
 
@@ -5641,6 +5703,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 for room, names in final.items()
                 if room.startswith("dorm")
             }
+            for pending in self.tasks:
+                if id(pending) in consumed:
+                    self._capture_shift_refresh_rules(
+                        task, getattr(pending, "backup_refresh_rules", {})
+                    )
             self.tasks[:] = [t for t in self.tasks if id(t) not in consumed]
             # 满心情兜底入住标记跟随最终名单，不提交预演中的其他状态。
             for room, names in final.items():
@@ -5787,11 +5854,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 "等待停服前提前跑单及原班恢复完成后再换班", minutes=1
             )
         previous = list(self.op_data.plan_condition)
+        previous_refresh = {
+            name: (op.refresh_drained, op.refresh_order_room)
+            for name, op in self.op_data.operators.items()
+        }
         previous_exhaust = self._exhaust_task_signatures()
         if error := self.op_data.swap_plan(conditions, refresh=True):
             self.op_data.swap_plan(previous, refresh=True)
             raise ValueError(f"上下班最终排班生效失败：{error}")
         task.backup_shift_active = True
+        self._capture_shift_refresh_rules(task, previous_refresh)
         if previous != conditions and self._invalidate_changed_exhaust_tasks(
             previous_exhaust
         ):
