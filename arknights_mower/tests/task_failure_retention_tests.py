@@ -1142,3 +1142,50 @@ def test_rescue_readback_updates_compensation_only_after_confirmed_takeover(
     assert restore.time == original_time
     restored = jsonpickle.decode(jsonpickle.encode(solver.tasks))
     assert restored[1].run_order_original_roster == expected
+
+
+def test_unverified_manufacture_max_retains_task_until_new_observation(
+    scheduler, monkeypatch
+):
+    monkeypatch.setattr(recovery.config.conf.product_switching, "enable", True)
+    monkeypatch.setattr(scheduler.module, "save_exception", Mock())
+    solver = scheduler.solver
+    solver.op_data.products = {}
+    solver.op_data.facility_states = {}
+    solver.op_data.room_observations = {}
+    original_time = scheduler.clock.now()
+    task = SchedulerTask(
+        original_time, task_type=TaskTypes.SWITCH_PRODUCT, meta_data=f"{ROOM},gold"
+    )
+    solver.tasks, solver.task = [task], task
+    solver.back_to_infrastructure = Mock()
+    solver._open_manufacture_product_detail = Mock()
+    solver.read_manufacture_product = Mock(return_value="gold")
+    solver._cache_facility_state = Mock()
+    solver._read_manufacture_queue_count = Mock(return_value=1)
+    solver._tap_product_point = Mock()
+    solver.sleep = Mock()
+    solver.find = Mock(return_value=False)
+
+    solver.infra_main()
+
+    assert task.execution_failure
+    assert solver.tasks == [task]
+    assert task.time == original_time
+    reads = solver._read_manufacture_queue_count.call_count
+    for _ in range(3):
+        solver._resume_failed_tasks()
+        scheduling(solver.tasks, time_now=scheduler.clock.now(), op_data=solver.op_data)
+        assert find_next_task(solver.tasks) is None
+    assert solver._read_manufacture_queue_count.call_count == reads
+    assert find_next_task(solver.tasks) is None
+
+    solver.op_data.room_observations[ROOM] = original_time + timedelta(seconds=1)
+    solver._read_manufacture_queue_count.return_value = 99
+    solver._resume_failed_tasks()
+    assert find_next_task(solver.tasks) is task
+    solver.task = task
+    solver.infra_main()
+    assert solver.tasks == []
+    assert task.time == original_time
+    scheduler.io.assert_not_called()

@@ -763,6 +763,8 @@ def test_manufacture_product_change_handles_both_confirms_and_fills_queue():
         side_effect=lambda resource: resource == "manufacture_product_change_confirm"
     )
 
+    solver._read_manufacture_queue_count = MagicMock(return_value=99)
+    solver.recog = SimpleNamespace(update=MagicMock())
     solver._select_manufacture_product("exp3")
 
     assert [item.args for item in solver._tap_product_point.call_args_list] == [
@@ -792,6 +794,8 @@ def test_unified_product_change_waits_on_second_confirmation():
     sequence.attach_mock(solver.sleep, "sleep")
     sequence.attach_mock(solver._tap_product_point, "tap")
 
+    solver._read_manufacture_queue_count = MagicMock(return_value=99)
+    solver.recog = SimpleNamespace(update=MagicMock())
     solver._select_manufacture_product("exp3", datetime.now() + timedelta(seconds=3))
 
     names = [call[0] for call in sequence.mock_calls]
@@ -1115,6 +1119,8 @@ def test_manufacture_product_change_accepts_return_to_factory_list():
     solver._wait_product_resource = MagicMock()
     solver.find = MagicMock(side_effect=lambda resource: resource == "factory_collect")
 
+    solver._read_manufacture_queue_count = MagicMock(return_value=99)
+    solver.recog = SimpleNamespace(update=MagicMock())
     solver._select_manufacture_product("exp3")
 
     taps = [item.args[0] for item in solver._tap_product_point.call_args_list]
@@ -1136,7 +1142,11 @@ def test_manufacture_product_change_fails_when_neither_result_appears():
     solver.find = MagicMock(return_value=None)
     solver.sleep = MagicMock()
 
-    with pytest.raises(base.RecognizeError, match="补满队列确认或返回设施列表超时"):
+    solver._read_manufacture_queue_count = MagicMock(
+        side_effect=base.RecognizeError("无法识别制造站生产份数")
+    )
+    solver.recog = SimpleNamespace(update=MagicMock())
+    with pytest.raises(base.RecognizeError, match="制造站生产份数验证失败"):
         solver._select_manufacture_product("exp3")
 
 
@@ -1150,6 +1160,8 @@ def test_manufacture_product_change_selects_each_orundum_recipe(product_id, reci
     solver._wait_product_resource = MagicMock()
     solver.find = MagicMock(return_value="confirmed")
 
+    solver._read_manufacture_queue_count = MagicMock(return_value=99)
+    solver.recog = SimpleNamespace(update=MagicMock())
     solver._select_manufacture_product(product_id)
 
     taps = [item.args[0] for item in solver._tap_product_point.call_args_list]
@@ -2657,3 +2669,117 @@ def test_stable_shift_never_projects_or_switches_products():
 
     solver._products_after_arrangement.assert_not_called()
     solver.switch_base_products.assert_not_called()
+
+
+@pytest.mark.parametrize("text, expected", [("01", 1), ("99", 99), ("54", 54)])
+def test_read_manufacture_queue_count(text, expected):
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(w=1920, h=1080)
+    solver._product_ocr_text = MagicMock(return_value=text)
+    assert solver._read_manufacture_queue_count() == expected
+    solver._product_ocr_text.assert_called_once_with(((1280, 450), (1415, 530)))
+
+
+@pytest.mark.parametrize("text", ["", "00", "100", "9x", "生产份数99"])
+def test_read_manufacture_queue_count_rejects_unknown(text):
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(w=1920, h=1080)
+    solver._product_ocr_text = MagicMock(return_value=text)
+    with pytest.raises(base.RecognizeError, match="生产份数"):
+        solver._read_manufacture_queue_count()
+
+
+@pytest.mark.parametrize("failure", ["missed_max", "unreadable", "uncommitted"])
+def test_manufacture_product_change_retries_unverified_queue(failure):
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(update=MagicMock())
+    solver.sleep = MagicMock()
+    solver._tap_product_point = MagicMock()
+    solver._wait_product_resource = MagicMock()
+    solver.find = MagicMock(return_value=True)
+    readings = {
+        "missed_max": [1, 1, 1, 99, 99],
+        "unreadable": [base.RecognizeError("未知份数"), 1, 99, 99],
+        "uncommitted": [1, 99, 1, 1, 99, 99],
+    }
+    solver._read_manufacture_queue_count = MagicMock(side_effect=readings[failure])
+
+    solver._select_manufacture_product("gold")
+
+    max_clicks = [
+        c for c in solver._tap_product_point.call_args_list if c.args == ((1450, 305),)
+    ]
+    assert len(max_clicks) == (1 if failure == "unreadable" else 2)
+    assert solver._read_manufacture_queue_count.call_count == len(readings[failure])
+
+
+def test_manufacture_product_change_never_accepts_one_unit_on_factory_page():
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(update=MagicMock())
+    solver.sleep = MagicMock()
+    solver._tap_product_point = MagicMock()
+    solver._wait_product_resource = MagicMock()
+    solver.find = MagicMock(side_effect=lambda resource: resource == "factory_collect")
+    solver._read_manufacture_queue_count = MagicMock(return_value=1)
+
+    with pytest.raises(base.RecognizeError, match="制造站生产份数验证失败"):
+        solver._select_manufacture_product("exp3")
+
+    taps = [c.args[0] for c in solver._tap_product_point.call_args_list]
+    assert taps.count((1450, 305)) == 3
+    # Only the recipe confirmation is submitted; a one-unit quantity is never accepted.
+    assert taps.count((1425, 895)) == 1
+
+
+@pytest.mark.parametrize("verified", [False, True])
+def test_product_switch_retry_verifies_queue_when_recipe_already_matches(verified):
+    solver = object.__new__(base.BaseSchedulerSolver)
+    task = SchedulerTask(
+        task_type=TaskTypes.SWITCH_PRODUCT,
+        meta_data=product_task_meta("room_3_1", "gold"),
+    )
+    solver.tasks = [task]
+    solver.op_data = SimpleNamespace()
+    solver.recog = SimpleNamespace(update=MagicMock())
+    solver._open_manufacture_product_detail = MagicMock()
+    solver.read_manufacture_product = MagicMock(return_value="gold")
+    solver._cache_facility_state = MagicMock()
+    solver._select_manufacture_product = MagicMock()
+    solver.sleep = MagicMock()
+    solver.find = MagicMock(return_value=False)
+    solver._tap_product_point = MagicMock()
+    solver._read_manufacture_queue_count = MagicMock(return_value=99 if verified else 1)
+
+    if verified:
+        solver.switch_base_products([task])
+        assert solver.tasks == []
+    else:
+        with pytest.raises(base.RecognizeError, match="制造站生产份数验证失败"):
+            solver.switch_base_products([task])
+        assert solver.tasks == [task]
+    solver._select_manufacture_product.assert_not_called()
+    assert solver._read_manufacture_queue_count.called
+
+
+@pytest.fixture(scope="module")
+def queue_ocr_engine():
+    from rapidocr_onnxruntime import RapidOCR
+
+    return RapidOCR(text_score=0.3)
+
+
+@pytest.mark.parametrize("name, expected", [("queue_one", 1), ("queue_max", 99)])
+def test_read_manufacture_queue_count_from_capture(
+    monkeypatch, queue_ocr_engine, name, expected
+):
+    # yunxi B301, 2026-10-13 10:19:11 / 10:19:13; only quantity pixels are retained.
+    crop = cv2.imread(
+        str(Path(__file__).parent / "fixtures" / "manufacture" / f"{name}.png")
+    )
+    assert crop is not None
+    frame = cv2.copyMakeBorder(crop, 450, 550, 1280, 505, cv2.BORDER_CONSTANT)
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(w=1920, h=1080, img=frame)
+    monkeypatch.setattr(base.rapidocr, "engine", queue_ocr_engine)
+
+    assert solver._read_manufacture_queue_count() == expected
