@@ -73,7 +73,7 @@ export function estimateFields(group) {
       return [number('reception', '会客室等级', 3, 3, 1)]
     case 'builtin-karlan':
       return [
-        choice('jayeStage', '孑的精英阶段（备用）', '未精英化', ['未精英化', '精一及以上']),
+        choice('jayeStage', '孑的精英阶段', '跟随森空岛', ['跟随森空岛', '未精英化', '精一及以上']),
         number('orderCap', '设施基础订单上限', 10, 10, 6)
       ]
     case 'builtin-gold':
@@ -140,12 +140,14 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
     jayeRoster.childSkill.every((entry) => ['active', 'locked', 'replaced'].includes(entry.status))
       ? jayeRoster.childSkill
       : null
+  const followJayeProgression = options.jayeStage === '跟随森空岛'
   const skillsFor = (name) =>
     name === '孑'
-      ? (syncedJayeSkills ??
-        maxSkills
-          .get(name)
-          .filter((entry) => entry.skill_key === 0 || options.jayeStage === '精一及以上'))
+      ? followJayeProgression
+        ? syncedJayeSkills
+        : maxSkills
+            .get(name)
+            .filter((entry) => entry.skill_key === 0 || options.jayeStage === '精一及以上')
       : maxLevel
         ? maxSkills.get(name)
         : roster.get(name)?.childSkill
@@ -165,7 +167,11 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
       !skillsFor(name)?.length ||
       skillsFor(name).some((skill) => skill.status === 'unknown')
     ) {
-      result.warnings.push(`${name}缺少森空岛练度，请同步后计算`)
+      result.warnings.push(
+        name === '孑'
+          ? '孑缺少森空岛练度，请同步或手选精英阶段'
+          : `${name}缺少森空岛练度，请同步后计算`
+      )
     }
   }
   if (result.warnings.length) return { ...result, valid: false }
@@ -496,7 +502,7 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
       tradeMetric(peers + jaye)
       if (has('孑'))
         detail(
-          `孑${has('孑', 1) ? '精一及以上' : '未精英化'}，使用${syncedJayeSkills ? '森空岛练度' : '备用计算条件'}`
+          `孑${has('孑', 1) ? '精一及以上' : '未精英化'}，使用${followJayeProgression ? '森空岛练度' : '手动选择'}`
         )
       detail(`其他干员 ${peers}% + 孑 ${jaye}%，按空单状态估算`)
       detail(`订单上限增加${positiveCap}，锏减少${negativeCap}，孑减少${reduction}，上限至少1`)

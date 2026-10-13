@@ -53,6 +53,7 @@ describe('基建组合效率估算', () => {
     expect(defaultEstimateOptions(group('smoke')).dorm).toBe(20)
     expect(defaultEstimateOptions(group('perception')).dorm).toBe(20)
     expect(defaultEstimateOptions(group('perception')).dormLevel).toBe(1)
+    expect(defaultEstimateOptions(group('karlan')).jayeStage).toBe('跟随森空岛')
     expect(estimate('run-order', group('run-order').core).hasSelection).toBe(false)
     expect(JSON.stringify(builtinGroups)).toBe(previous)
   })
@@ -98,7 +99,7 @@ describe('基建组合效率估算', () => {
     expect(missing.metrics).toEqual([])
     expect(missing.warnings[0]).toContain('森空岛')
   })
-  it('满练度开关可演算未知干员，缺少孑练度时使用备用条件', () => {
+  it('满练度开关可演算未知干员，孑无同步练度时必须手选阶段', () => {
     expect(
       value(estimateGroup(group('exusiai'), ['能天使', '蕾缪安'], {}, [], true), '贸易订单效率')
     ).toBe(80)
@@ -110,8 +111,9 @@ describe('基建组合效率估算', () => {
     const promoted = estimateGroup(group('karlan'), selected, { jayeStage: '精一及以上' }, [], true)
     expect(value(promoted, '订单上限')).toBe(18)
     expect(value(promoted, '贸易订单效率')).toBe(129)
-    expect(estimateGroup(group('karlan'), ['孑']).valid).toBe(true)
-    expect(value(estimateGroup(group('karlan'), ['孑']), '贸易订单效率')).toBe(40)
+    const manual = estimateGroup(group('karlan'), ['孑'], { jayeStage: '未精英化' })
+    expect(manual.valid).toBe(true)
+    expect(value(manual, '贸易订单效率')).toBe(40)
   })
   it('设施数据只填充有效数字，部分快照保留其余手工条件', () => {
     const item = group('smoke')
@@ -165,38 +167,46 @@ describe('基建组合效率估算', () => {
     expect(value(elite, '经验制造生产力')).toBe(36)
     expect(elite.metrics.some((metric) => metric.label === '感知信息')).toBe(false)
   })
-  it('阵营增益不把维娜当格拉斯哥成员，孑优先使用同步练度', () => {
+  it('阵营增益不把维娜当格拉斯哥成员', () => {
     expect(
       value(estimate('glasgow', ['摩根', '推进之王', '戴菲恩', '维娜·维多利亚']), '贸易订单效率')
     ).toBe(135)
-    const names = ['孑', '银灰', '琳琅诗怀雅', '灵知']
-    const empty = estimate('karlan', names, { jayeStage: '精一及以上' })
-    const occupied = estimate('karlan', names, { jayeStage: '精一及以上' }, { 孑: 0 })
-    expect(value(empty, '贸易订单效率')).toBe(129)
-    expect(value(occupied, '贸易订单效率')).toBe(145)
   })
-  it.each([false, true])('孑的森空岛精零和精一优先于备用条件，满练度模式%s', (maxLevel) => {
+  it.each([false, true])('孑默认跟随森空岛精零或精一，满练度模式%s', (maxLevel) => {
     const names = ['孑', '银灰', '琳琅诗怀雅', '灵知']
-    const zero = estimateGroup(
+    const zero = estimateGroup(group('karlan'), names, {}, roster(names, { 孑: 0 }), maxLevel)
+    const promoted = estimateGroup(group('karlan'), names, {}, roster(names, { 孑: 1 }), maxLevel)
+    expect(value(zero, '贸易订单效率')).toBe(145)
+    expect(value(promoted, '贸易订单效率')).toBe(129)
+    expect(zero.details).toContain('孑未精英化，使用森空岛练度')
+    expect(promoted.details).toContain('孑精一及以上，使用森空岛练度')
+  })
+  it.each([false, true])('孑手选阶段优先于森空岛练度，满练度模式%s', (maxLevel) => {
+    const names = ['孑', '银灰', '琳琅诗怀雅', '灵知']
+    const promoted = estimateGroup(
       group('karlan'),
       names,
       { jayeStage: '精一及以上' },
       roster(names, { 孑: 0 }),
       maxLevel
     )
-    const promoted = estimateGroup(
+    const zero = estimateGroup(
       group('karlan'),
       names,
       { jayeStage: '未精英化' },
       roster(names, { 孑: 1 }),
       maxLevel
     )
-    expect(value(zero, '贸易订单效率')).toBe(145)
     expect(value(promoted, '贸易订单效率')).toBe(129)
-    expect(zero.details).toContain('孑未精英化，使用森空岛练度')
-    expect(promoted.details).toContain('孑精一及以上，使用森空岛练度')
+    expect(value(zero, '贸易订单效率')).toBe(145)
+    expect(promoted.details).toContain('孑精一及以上，使用手动选择')
+    expect(zero.details).toContain('孑未精英化，使用手动选择')
   })
-  it.each(['missing', 'unknown', 'unowned', 'incomplete'])('孑练度%s时使用备用条件', (state) => {
+  it.each(
+    ['missing', 'unknown', 'unowned', 'incomplete'].flatMap((state) =>
+      [false, true].map((maxLevel) => [state, maxLevel])
+    )
+  )('孑练度%s时提示手选阶段，满练度模式%s', (state, maxLevel) => {
     const names = ['孑', '银灰', '琳琅诗怀雅', '灵知']
     const items = roster(names)
     const jaye = items[0]
@@ -209,13 +219,23 @@ describe('基建组合效率估算', () => {
       })
     }
     const before = JSON.stringify(items)
-    const zero = estimateGroup(group('karlan'), names, { jayeStage: '未精英化' }, items)
-    const promoted = estimateGroup(group('karlan'), names, { jayeStage: '精一及以上' }, items)
+    const automatic = estimateGroup(group('karlan'), names, {}, items, maxLevel)
+    expect(automatic.valid).toBe(false)
+    expect(automatic.metrics).toEqual([])
+    expect(automatic.warnings).toContain('孑缺少森空岛练度，请同步或手选精英阶段')
+    const zero = estimateGroup(group('karlan'), names, { jayeStage: '未精英化' }, items, maxLevel)
+    const promoted = estimateGroup(
+      group('karlan'),
+      names,
+      { jayeStage: '精一及以上' },
+      items,
+      maxLevel
+    )
     expect(zero.valid).toBe(true)
     expect(promoted.valid).toBe(true)
     expect(value(zero, '贸易订单效率')).toBe(145)
     expect(value(promoted, '贸易订单效率')).toBe(129)
-    expect(promoted.details).toContain('孑精一及以上，使用备用计算条件')
+    expect(promoted.details).toContain('孑精一及以上，使用手动选择')
     expect(JSON.stringify(items)).toBe(before)
   })
   it('森蚺只能选一处设施，制造站模式不同时提供中枢的虚拟发电站', () => {
