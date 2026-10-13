@@ -467,28 +467,32 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
       const positiveCap =
         (has('银灰') ? (tier('银灰') === 1 ? 4 : 2) : 0) + (has('崖心', 1) ? 4 : 0) + gnosis
       const negativeCap = has('锏') ? (tier('锏') === 1 ? 6 : 2) : 0
-      const swireBonus = has('琳琅诗怀雅', 1) ? positiveCap * 4 : 0
-      const degenBonus = has('锏', 1) ? Math.min(100, Math.floor(positiveCap / 5) * 25) : 0
-      const convert = swireBonus + degenBonus
-      const peers =
+      const addedCap = positiveCap - negativeCap
+      const degenBonus = has('锏', 1)
+        ? Math.min(100, Math.floor(Math.max(0, addedCap) / 5) * 25)
+        : 0
+      const beforeSwire =
         silver +
         cliff +
         degen +
         (has('琳琅诗怀雅') ? 20 : 0) +
-        convert -
+        degenBonus -
         (has('灵知', 1) ? karlan * 15 : 0)
-      const reduction = has('孑', 1) ? Math.floor(Math.max(0, peers) / 10) : 0
-      const cap = Math.max(1, options.orderCap + positiveCap - negativeCap - reduction)
+      // Champion's Bearing resolves before Basic Needs; Investment Solicitations resolves after it.
+      const reduction = has('孑', 1) ? Math.floor(Math.max(0, beforeSwire) / 10) : 0
+      const cap = Math.max(1, options.orderCap + addedCap - reduction)
+      const swireBonus = has('琳琅诗怀雅', 1) ? Math.max(0, addedCap - reduction) * 4 : 0
+      const peers = beforeSwire + swireBonus
       const jaye = has('孑') ? cap * 4 : 0
       metric('订单上限', cap, '笔')
       tradeMetric(peers + jaye)
       detail(`其他干员 ${peers}% + 孑 ${jaye}%，按空单状态估算`)
-      detail(`正向订单上限加成${positiveCap}，锏减少${negativeCap}，孑减少${reduction}，上限至少1`)
+      detail(`订单上限增加${positiveCap}，锏减少${negativeCap}，孑减少${reduction}，上限至少1`)
       if (has('琳琅诗怀雅', 1) || has('锏', 1))
         detail(
-          `琳琅诗怀雅 ${swireBonus}% + 锏 ${degenBonus}%，仅计干员增加的订单上限，不含设施基础值，不抵扣减少值`
+          `琳琅诗怀雅 ${swireBonus}% + 锏 ${degenBonus}%，仅转换干员净增加的订单上限，不含设施基础值`
         )
-      detail('灵知在中枢；订单上限转效率先按正向提升计算，再计孑的扣减')
+      detail('灵知在中枢；先结算锏的订单转效率，再计孑的扣减，最后结算琳琅诗怀雅的订单转效率')
       break
     }
     case 'builtin-gold': {

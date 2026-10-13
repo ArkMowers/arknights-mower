@@ -108,8 +108,8 @@ describe('基建组合效率估算', () => {
     expect(value(max, '订单上限')).toBe(20)
     expect(value(max, '贸易订单效率')).toBe(145)
     const promoted = estimateGroup(group('karlan'), selected, { jayeStage: '精一及以上' }, [], true)
-    expect(value(promoted, '订单上限')).toBe(14)
-    expect(value(promoted, '贸易订单效率')).toBe(121)
+    expect(value(promoted, '订单上限')).toBe(18)
+    expect(value(promoted, '贸易订单效率')).toBe(129)
     expect(estimateGroup(group('karlan'), ['孑']).valid).toBe(true)
     expect(value(estimateGroup(group('karlan'), ['孑']), '贸易订单效率')).toBe(40)
   })
@@ -172,8 +172,8 @@ describe('基建组合效率估算', () => {
     const names = ['孑', '银灰', '琳琅诗怀雅', '灵知']
     const empty = estimate('karlan', names, { jayeStage: '精一及以上' })
     const occupied = estimate('karlan', names, { jayeStage: '精一及以上' }, { 孑: 0 })
-    expect(value(empty, '贸易订单效率')).toBe(121)
-    expect(value(occupied, '贸易订单效率')).toBe(121)
+    expect(value(empty, '贸易订单效率')).toBe(129)
+    expect(value(occupied, '贸易订单效率')).toBe(129)
   })
   it('森蚺只能选一处设施，制造站模式不同时提供中枢的虚拟发电站', () => {
     const names = ['森蚺', '温蒂', '清流', '承曦格雷伊', 'Lancet-2']
@@ -256,20 +256,51 @@ describe('基建组合效率估算', () => {
     const low = estimate('pozy', names, { goldLines: 3 }, { 绮良: 0 })
     expect(value(low, '赤金生产线')).toBe(7)
   })
-  it('订单转效率只用干员正向添加值，不含基础订单，不抵扣锏与孑减少值', () => {
+  it.each([
+    [['孑', '银灰', '琳琅诗怀雅', '灵知'], '精一及以上', 18, 129],
+    [['锏', '银灰', '琳琅诗怀雅', '灵知'], '未精英化', 20, 125],
+    [['孑', '银灰', '锏', '灵知'], '精一及以上', 14, 121],
+    [['孑', '银灰', '琳琅诗怀雅', '灵知'], '未精英化', 20, 145],
+    [['孑', '银灰', '锏', '灵知'], '未精英化', 20, 145]
+  ])('喀兰组合按技能结算顺序计算：%j，孑%s', (names, jayeStage, cap, efficiency) => {
+    const result = estimate('karlan', names, { jayeStage })
+    expect(result.valid).toBe(true)
+    expect(value(result, '订单上限')).toBe(cap)
+    expect(value(result, '贸易订单效率')).toBe(efficiency)
+  })
+  it('订单转效率不含设施基础上限，锏先结算，孑扣减后再结算琳琅', () => {
     const names = ['银灰', '琳琅诗怀雅', '锏', '灵知']
     const low = estimate('karlan', names, { orderCap: 6 })
     const high = estimate('karlan', names, { orderCap: 10 })
-    expect(value(low, '贸易订单效率')).toBe(174)
-    expect(value(high, '贸易订单效率')).toBe(174)
+    expect(value(low, '贸易订单效率')).toBe(125)
+    expect(value(high, '贸易订单效率')).toBe(125)
     expect(value(low, '订单上限')).toBe(16)
     expect(value(high, '订单上限')).toBe(20)
     const promoted = estimate('karlan', ['孑', '琳琅诗怀雅', '锏', '灵知'], {
       jayeStage: '精一及以上'
     })
     expect(promoted.details).toContain(
-      '琳琅诗怀雅 24% + 锏 25%，仅计干员增加的订单上限，不含设施基础值，不抵扣减少值'
+      '琳琅诗怀雅 0% + 锏 0%，仅转换干员净增加的订单上限，不含设施基础值'
     )
+    expect(value(promoted, '订单上限')).toBe(7)
+    expect(value(promoted, '贸易订单效率')).toBe(58)
+    const reduced = estimate('karlan', ['孑', '银灰', '琳琅诗怀雅', '灵知'], {
+      jayeStage: '精一及以上'
+    })
+    expect(reduced.details).toContain(
+      '琳琅诗怀雅 32% + 锏 0%，仅转换干员净增加的订单上限，不含设施基础值'
+    )
+    expect(value(estimate('karlan', ['锏']), '贸易订单效率')).toBe(25)
+    expect(value(estimate('karlan', ['银灰', '锏']), '贸易订单效率')).toBe(45)
+    expect(
+      value(estimate('karlan', ['孑', '银灰', '崖心'], { jayeStage: '精一及以上' }), '贸易订单效率')
+    ).toBe(95)
+    expect(
+      value(
+        estimate('karlan', ['孑', '银灰', '崖心', '灵知'], { jayeStage: '精一及以上' }),
+        '贸易订单效率'
+      )
+    ).toBe(125)
   })
   it('制造按产品分别给出含通用加成的结果，源石技能只作用于源石配方', () => {
     const brown = estimate('pozy', ['褐果'])
