@@ -74,6 +74,24 @@ class NewsChecker:
     last_check_ts = None
 
     @classmethod
+    def get_daily_reset(cls, now=None):
+        """Represent the next 04:00 server refresh as an instantaneous flash update."""
+        now = now or datetime.now()
+        now_server = now.astimezone(NEWS_TZ)
+        reset = now_server.replace(hour=4, minute=0, second=0, microsecond=0)
+        if reset <= now_server:
+            reset += timedelta(days=1)
+        local_reset = reset.astimezone(now.tzinfo).replace(tzinfo=None)
+        return MaintenanceInfo(
+            start=local_reset,
+            end=local_reset,
+            update_type="hot",
+            title="每日服务器刷新（即时闪断更新）",
+            url="",
+            announcement_id=f"daily-reset-{reset:%Y-%m-%d}",
+        )
+
+    @classmethod
     def _cached_result(cls, now_server, now_local):
         if cls.last_check_date != now_server.strftime("%Y-%m-%d"):
             return None, False

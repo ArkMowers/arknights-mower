@@ -228,29 +228,43 @@ def _advance_support_swaps_for_maintenance(
 ):
     if not swaps:
         return
-    maintenance = NewsChecker.get_maintenance()
-    if maintenance is None or now >= maintenance.start:
-        return
-    deadline = maintenance.start - timedelta(minutes=max(10, run_order_delay * 2))
-    # 协助换人按公告的完整维护区间避让，包含停机维护的最后半小时。
-    affected = [swap for swap in swaps if deadline < swap.time < maintenance.end]
-    # 从后往前预留操作窗口；提前标记复用执行器的训练与候选校验。
-    for swap in reversed(affected):
-        original = swap.time
-        swap.time = min(
-            original,
-            max(
-                now,
-                deadline
-                - _support_swap_duration(swap, execution_time, op_data)
-                - timedelta(seconds=1),
-            ),
-        )
-        swap.advance_support_swap = True
-        deadline = swap.time
-        logger.info(
-            f"专精换人避让维护，从 {original:%H:%M:%S} 提前至 {swap.time:%H:%M:%S}"
-        )
+    windows = [NewsChecker.get_daily_reset(now), NewsChecker.get_maintenance()]
+    # 先处理较晚边界，提前换人产生的新冲突在同轮继续向前处理。
+    for maintenance in sorted(
+        (info for info in windows if info is not None),
+        key=lambda info: info.start,
+        reverse=True,
+    ):
+        if now >= maintenance.start:
+            continue
+        deadline = maintenance.start - timedelta(minutes=max(10, run_order_delay * 2))
+        # 公告维护使用完整区间；即时刷新也保护恰好位于刷新时刻的换人。
+        affected = [
+            swap
+            for swap in swaps
+            if deadline < swap.time
+            and (
+                swap.time < maintenance.end
+                or swap.time == maintenance.start == maintenance.end
+            )
+        ]
+        # 从后往前预留操作窗口；提前标记复用执行器的训练与候选校验。
+        for swap in reversed(affected):
+            original = swap.time
+            swap.time = min(
+                original,
+                max(
+                    now,
+                    deadline
+                    - _support_swap_duration(swap, execution_time, op_data)
+                    - timedelta(seconds=1),
+                ),
+            )
+            swap.advance_support_swap = True
+            deadline = swap.time
+            logger.info(
+                f"专精换人避让维护，从 {original:%H:%M:%S} 提前至 {swap.time:%H:%M:%S}"
+            )
 
 
 def _sort_dispatch_tasks(tasks, now, op_data=None):
@@ -814,7 +828,9 @@ def _find_run_order_conflict(tasks, run_order_delay=5, time_now=None, op_data=No
         return None
     blocked_orders = blocked_run_order_ids(tasks, op_data)
     adjust_run_order_for_maintenance(
-        [task for task in tasks if id(task) not in blocked_orders], run_order_delay
+        [task for task in tasks if id(task) not in blocked_orders],
+        run_order_delay,
+        now=now,
     )
     tasks.sort(key=lambda task: task.time)
     previous_order = None
@@ -1110,48 +1126,50 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
     tasks[:] = sorted(ordered + waiting, key=lambda task: task.time)
 
 
-def adjust_run_order_for_maintenance(tasks, run_order_delay=5, advance_time=None):
+def adjust_run_order_for_maintenance(
+    tasks, run_order_delay=5, advance_time=None, now=None
+):
     """
     将维护期附近的 RUN_ORDER 任务提前到维护前，避免维护期冲突。
     :param tasks: 任务列表
-    :param st: 维护开始时间（本地时间，datetime）
-    :param ed: 维护结束时间（本地时间，datetime）
     :param run_order_delay: 跑单间隔（分钟）
     :param advance_time: 维护副表要求更早执行时使用的截止时间
+    :param now: 本轮调度时间，未提供时使用本地当前时间
     """
     time_gap = max(run_order_delay * 2, 10)  # 确保最小间隔为10分钟操作时间
-    st, ed = NewsChecker.get_update_time()
-    if not st or not ed:
-        logger.debug("无法获取维护时间，跳过调整 RUN_ORDER 任务")
-        return []
-    window_start = st - timedelta(minutes=time_gap)
-    window_end = ed + timedelta(minutes=time_gap)
+    reset = NewsChecker.get_daily_reset(now or datetime.now())
+    windows = [NewsChecker.get_update_time(), (reset.start, reset.end)]
     blocked_orders = blocked_run_order_ids(tasks)
-    # 找出需要调整的任务
-    run_order_tasks = [
-        t
-        for t in task_view(tasks, TaskScope.REPLAN)
-        if t.type == TaskTypes.RUN_ORDER
-        and not getattr(t, "run_order_restore_pending", False)
-        and id(t) not in blocked_orders
-        and (
-            window_start < t.time < window_end
-            or advance_time is not None
-            and getattr(t, "maintenance_start", None) == st
-        )
-    ]
-    # 按原 time 排序
-    run_order_tasks.sort(key=lambda t: t.time)
-    # 依次调整时间
-    for i, t in enumerate(run_order_tasks, 1):
-        new_time = min(window_start, advance_time or window_start) - timedelta(
-            seconds=i
-        )
-        logger.info(f"维护期附近的跑单任务已提前到 {new_time}（原定 {t.time}）")
-        t.time = new_time
-        t.adjusted = True  # 标记为已调整
-        t.maintenance_start = st
-    return run_order_tasks
+    adjusted = {}
+    for st, ed in sorted(
+        ((st, ed) for st, ed in windows if st is not None and ed is not None),
+        reverse=True,
+    ):
+        window_start = st - timedelta(minutes=time_gap)
+        window_end = ed + timedelta(minutes=time_gap)
+        run_order_tasks = [
+            t
+            for t in task_view(tasks, TaskScope.REPLAN)
+            if t.type == TaskTypes.RUN_ORDER
+            and not getattr(t, "run_order_restore_pending", False)
+            and id(t) not in blocked_orders
+            and (
+                window_start < t.time < window_end
+                or advance_time is not None
+                and getattr(t, "maintenance_start", None) == st
+            )
+        ]
+        run_order_tasks.sort(key=lambda t: t.time)
+        for i, t in enumerate(run_order_tasks, 1):
+            new_time = min(window_start, advance_time or window_start) - timedelta(
+                seconds=i
+            )
+            logger.info(f"维护期附近的跑单任务已提前到 {new_time}（原定 {t.time}）")
+            t.time = new_time
+            t.adjusted = True
+            t.maintenance_start = st
+            adjusted[id(t)] = t
+    return list(adjusted.values())
 
 
 def _native_return(op_data, plan, names, *, excluded_names=()):
