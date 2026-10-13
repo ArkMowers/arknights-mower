@@ -22,7 +22,11 @@ def _ocr(image):
 
 @lru_cache(maxsize=128)
 def _material_icon(directory, name):
-    icon = cv2.imread(str(Path(directory) / f"{name}.webp"), cv2.IMREAD_UNCHANGED)
+    path = Path(directory) / f"{name}.webp"
+    try:
+        icon = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_UNCHANGED)
+    except (OSError, cv2.error):
+        return None
     if icon is None or icon.ndim != 3 or icon.shape[2] != 4:
         return None
     icon = cv2.resize(icon, (220, 220))[:132]
