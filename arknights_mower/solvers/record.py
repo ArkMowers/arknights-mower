@@ -11,6 +11,7 @@ from threading import Event, Lock
 import pytz
 from tzlocal import get_localzone
 
+from arknights_mower.solvers.mood_history_query import FIAMMETTA_CURVE_FILTER
 from arknights_mower.utils import config
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
@@ -508,6 +509,10 @@ def get_mood_ratios():
             + """
                         ) AS subquery ON a.name = subquery.name
                         WHERE DATE(a.current_time) >= DATE('now', '-7 day', 'localtime')
+                        AND
+            """
+            + FIAMMETTA_CURVE_FILTER
+            + """
                         ORDER BY a.agent_group DESC, a.current_time;
 
         """,

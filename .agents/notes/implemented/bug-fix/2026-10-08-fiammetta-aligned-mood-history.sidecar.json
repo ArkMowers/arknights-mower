@@ -11,10 +11,13 @@
   ],
   "code_symbols": [
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.get_agent_from_room",
-    "arknights_mower.solvers.record.save_agent_action"
+    "arknights_mower.solvers.record.save_agent_action",
+    "arknights_mower.solvers.record.get_mood_ratios",
+    "arknights_mower.solvers.mood_history_query.selected_mood_series"
   ],
   "test_suites": [
     "arknights_mower/tests/exhausted_working_timer_tests.py",
-    "arknights_mower/tests/fiammetta_curve_label_tests.py"
+    "arknights_mower/tests/fiammetta_curve_label_tests.py",
+    "arknights_mower/tests/mood_history_query_tests.py"
   ]
 }

@@ -15,9 +15,15 @@ date: 2026-10-08
 
 The existing exchange timestamp, participant readings and `save_agent_action` writer provide all required state. The change adds Fiammetta's missing before history point and aligns her after history time with the target. It introduces no extra screen read, persistent configuration, event type or scheduler state. Both Fiammetta points retain the charged operator annotation and the `fiammetta_charge` marker, excluding the exchange from ordinary rate calculations. Synthetic history never updates measured mood, depletion rate or recovery deadlines.
 
+## Curve Spacing
+
+The [Arknights Mower Base Scheduling Subsystem Description](../../../../docs/subsystems/base-scheduler.md#charging-curve-spacing) defines the ten-minute filtering window for ordinary Fiammetta curve points. Both curve readers reuse one SQL predicate and existing charging markers, preserving annotated exchange points and all raw observations. Filtering at query time also applies to previously recorded history without changing scheduling inputs, work/rest ratios or database schemas. Filtering precedes the selected curve's sample limit and includes relevant exchanges outside the displayed date range; histories without event columns retain their existing behavior.
+
 ## Verification
 
 Offline regression covers zero, fractional and full target mood, both participant reading orders, stale Fiammetta mood cache, incomplete target observation and roster restoration. A temporary SQLite database exercises the real history writer and curve query, verifying four points, aligned timestamps and a one-second interval.
+
+Temporary SQLite tests also cover ordinary points at the exchange, just before and exactly at ten minutes, repeated exchanges, both curve readers, preserved charged-operator annotations, unaffected target curves, unchanged database bytes, filtering before the sample limit, exchanges outside the displayed date range and legacy seven-column histories.
 
 ## Standards Findings
 
