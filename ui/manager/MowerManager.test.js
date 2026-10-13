@@ -49,6 +49,7 @@ describe('manager instance controls', () => {
       start_all: vi.fn(async () => ({ ok: true })),
       stop_all: vi.fn(async () => ({ ok: true })),
       rename: vi.fn(async () => {}),
+      select_path: vi.fn(async () => null),
       remove: vi.fn(async () => {}),
       update_settings: vi.fn(async () => {})
     }
@@ -218,6 +219,70 @@ describe('manager instance controls', () => {
     const calls = api.get_instances.mock.calls.length
     await vi.advanceTimersByTimeAsync(3000)
     expect(api.get_instances).toHaveBeenCalledTimes(calls)
+  })
+
+  it.each(['confirm', 'cancel'])(
+    'keeps folder selection busy past the API deadline until %s',
+    async (outcome) => {
+      await mount()
+      let finish
+      api.select_path.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = () => {
+              if (outcome === 'confirm') rows[0].path = '/selected'
+              resolve(outcome === 'confirm' ? '/selected' : null)
+            }
+          })
+      )
+      const reads = api.get_instances.mock.calls.length
+      const pending = component.selectPath(0)
+      await vi.advanceTimersByTimeAsync(16000)
+      expect(component.busy.value).toBe(true)
+      expect(component.unavailable.value).toBe(true)
+      expect(component.error.value).toBe('')
+      expect(api.get_instances).toHaveBeenCalledTimes(reads)
+      component.lifecycle(0)
+      expect(api.start).not.toHaveBeenCalled()
+      finish()
+      await pending
+      expect(component.busy.value).toBe(false)
+      expect(component.unavailable.value).toBe(false)
+      expect(component.error.value).toBe('')
+      expect(component.instances.value[0].path).toBe(outcome === 'confirm' ? '/selected' : '/first')
+      expect(api.select_path).toHaveBeenCalledExactlyOnceWith(0)
+    }
+  )
+
+  it('reports folder selection errors only when the native dialog returns', async () => {
+    await mount()
+    let reject
+    api.select_path.mockImplementationOnce(
+      () =>
+        new Promise((resolve, failure) => {
+          reject = failure
+        })
+    )
+    const pending = component.selectPath(0)
+    await vi.advanceTimersByTimeAsync(16000)
+    expect(component.busy.value).toBe(true)
+    expect(component.error.value).toBe('')
+    reject(new Error('selection failed'))
+    await pending
+    expect(component.error.value).toBe('selection failed')
+    expect(component.busy.value).toBe(false)
+    expect(component.instances.value[0].path).toBe('/first')
+  })
+
+  it('still bounds ordinary API calls without retrying the action', async () => {
+    await mount()
+    api.start.mockImplementationOnce(() => new Promise(() => {}))
+    const pending = component.execute(() => api.start(0))
+    await vi.advanceTimersByTimeAsync(16000)
+    await pending
+    expect(component.error.value).toContain('操作超时')
+    expect(component.busy.value).toBe(false)
+    expect(api.start).toHaveBeenCalledExactlyOnceWith(0)
   })
 
   it('bounds an unresponsive manager call', async () => {

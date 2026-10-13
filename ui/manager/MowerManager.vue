@@ -86,13 +86,14 @@ onUnmounted(() => {
   clearTimeout(timer)
 })
 
-async function execute(action) {
+async function execute(action, { waitForUser = false } = {}) {
   if (unavailable.value) return false
   busy.value = true
   error.value = ''
   let succeeded = false
   try {
-    const result = await managerCall(action)
+    // A native dialog waits for the user; a frontend timeout cannot cancel it.
+    const result = await (waitForUser ? action() : managerCall(action))
     if (result?.ok === false) throw new Error(result.message)
     succeeded = true
   } catch (failure) {
@@ -113,6 +114,10 @@ function edit(idx, kind) {
   if (unavailable.value || !instances.value[idx].editable) return
   draft.value = { ...instances.value[idx] }
   editing.value = { idx, kind }
+}
+
+function selectPath(idx) {
+  return execute(() => api().select_path(idx), { waitForUser: true })
 }
 
 async function save() {
@@ -227,7 +232,7 @@ async function applyDelete() {
           title="选择保存目录"
           aria-label="选择保存目录"
           :disabled="unavailable || !instance.editable"
-          @click="execute(() => api().select_path(idx))"
+          @click="selectPath(idx)"
           ><template #icon
             ><n-icon><folder-icon /></n-icon></template
         ></n-button>
