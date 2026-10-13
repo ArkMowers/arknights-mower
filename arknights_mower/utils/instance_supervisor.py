@@ -261,16 +261,18 @@ def supervise(
     state = runtime.state_dir()
     recovery_path = directory / "recovery.json"
 
-    def retry(report, code, desired):
-        nonlocal exits
-        intentional = report.get("intentional") is True
+    def recovery_suppressed(report):
         request = report.get("shutdown_request")
-        if (
-            intentional
-            or code == INTENTIONAL_EXIT_CODE
+        return (
+            report.get("intentional") is True
             or (request and Path(request).exists())
             or runtime.active_job(state)
-        ):
+        )
+
+    def retry(report, code, desired):
+        nonlocal exits
+        request = report.get("shutdown_request")
+        if code == INTENTIONAL_EXIT_CODE or recovery_suppressed(report):
             return False
         if not report.get("ready"):
             runtime.write_json(
@@ -436,7 +438,11 @@ def supervise(
                     owned_leaf is None or owned_leaf.poll() is not None
                 ):
                     break
-                if not report.get("ready") and time.monotonic() >= deadline:
+                if (
+                    not report.get("ready")
+                    and time.monotonic() >= deadline
+                    and not recovery_suppressed(report)
+                ):
                     if owned_leaf is not None:
                         owned_leaf.stop()
                     process.terminate()
@@ -455,12 +461,7 @@ def supervise(
                     report.get("ready")
                     and report.get("port")
                     and now >= probe_at
-                    and not report.get("intentional")
-                    and not runtime.active_job(state)
-                    and not (
-                        report.get("shutdown_request")
-                        and Path(report["shutdown_request"]).exists()
-                    )
+                    and not recovery_suppressed(report)
                 ):
                     probe_at = now + health_interval
                     if health_probe(report["port"], health_timeout):
@@ -468,6 +469,16 @@ def supervise(
                     elif unavailable_since is None:
                         unavailable_since = now
                     elif now - unavailable_since >= health_failure_window:
+                        # A shutdown or replacement can begin during the probe.
+                        observed = runtime.read_json(report_path)
+                        if (
+                            isinstance(observed, dict)
+                            and observed.get("generation") == generation
+                        ):
+                            report.update(observed)
+                        if recovery_suppressed(report):
+                            unavailable_since = None
+                            continue
                         if owned_leaf is not None:
                             owned_leaf.stop()
                         if process.poll() is None:

@@ -371,6 +371,64 @@ def test_long_scheduler_wait_is_kept_while_http_is_healthy(isolated_runtime):
     assert probe.call_count > 2 and not (isolated_runtime / "recovery.json").exists()
 
 
+@pytest.mark.parametrize("signal", ["intentional", "request", "replacement"])
+@pytest.mark.parametrize("boundary", ["probe", "startup"])
+def test_shutdown_signals_finish_owned_cleanup(
+    isolated_runtime, monkeypatch, signal, boundary
+):
+    directory = isolated_runtime
+    requested = directory / "begin-shutdown"
+    acknowledged = directory / "shutdown-acknowledged"
+    completed = directory / "cleanup-completed"
+    request = directory / "shutdown.json"
+    replacement = directory / "active-replacement"
+    operation = {
+        "intentional": "child_exit('window')\n",
+        "request": f"Path({str(request)!r}).touch()\n",
+        "replacement": f"Path({str(replacement)!r}).touch()\n",
+    }[signal]
+    if boundary == "startup":
+        requested.touch()
+    command = child_script(
+        directory,
+        f"child_report(ready={boundary == 'probe'!r},port=58991,"
+        f"shutdown_request={str(request)!r})\n"
+        "deadline=time.monotonic()+5\n"
+        f"while not Path({str(requested)!r}).exists():\n"
+        " if time.monotonic()>=deadline: raise TimeoutError('probe did not finish')\n"
+        " time.sleep(.005)\n" + operation + f"Path({str(acknowledged)!r}).touch()\n"
+        f"time.sleep({2.2 if boundary == 'startup' else 0.15})\n"
+        f"Path({str(completed)!r}).touch()\n",
+    )
+    monkeypatch.setattr(runtime, "active_job", lambda state: replacement.exists())
+    probes = 0
+
+    def probe(port, timeout):
+        nonlocal probes
+        probes += 1
+        if probes == 2:
+            requested.touch()
+            deadline = time.monotonic() + 3
+            while not acknowledged.exists():
+                assert time.monotonic() < deadline
+                time.sleep(0.005)
+        return False
+
+    code = supervisor.supervise(
+        command,
+        directory,
+        startup_timeout=2,
+        poll_interval=0.01,
+        health_interval=0.01,
+        health_failure_window=0,
+        health_probe=probe,
+    )
+    assert completed.exists(), "supervisor interrupted intentional resource cleanup"
+    assert code == 0
+    assert len(runtime.read_json(directory / "trace.json")) == 1
+    assert not (directory / "recovery.json").exists()
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows named shared intent")
 def test_stop_intent_survives_json_write_failure_followed_by_native_exit(
     isolated_runtime,
