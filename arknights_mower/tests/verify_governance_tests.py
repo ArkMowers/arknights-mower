@@ -19,6 +19,13 @@ from scripts.verify_doc_links import verify_doc_links
 from scripts.verify_glossary_alignment import verify_glossary_alignment
 from scripts.verify_governance import run_all_checks
 
+VALID_PR_METADATA = {
+    "title": "docs(checks): 更新文档检查说明",
+    "body": "## Summary\n\n更新检查说明。\n\n"
+    "## Evidence\n\n依据给定检查结果，运行行为尚未验证。\n\n"
+    "## Merge Danger\n\n回退文档可恢复原说明。\n",
+}
+
 # Load archive_note module dynamically due to hyphenated path
 ARCHIVE_NOTE_PATH = (
     Path(__file__).resolve().parent.parent.parent
@@ -1713,8 +1720,7 @@ class VerifyGovernanceTests(unittest.TestCase):
                     {
                         "pull_request": {
                             "base": {"sha": base},
-                            "title": "docs: 更新文档",
-                            "body": "已核实的变化。",
+                            **VALID_PR_METADATA,
                         }
                     },
                 ),
@@ -1923,8 +1929,7 @@ class VerifyPolicyBaselineTests(unittest.TestCase):
             {
                 "pull_request": {
                     "base": {"sha": base},
-                    "title": "Check history",
-                    "body": "",
+                    **VALID_PR_METADATA,
                 }
             },
         )
@@ -1938,8 +1943,7 @@ class VerifyPolicyBaselineTests(unittest.TestCase):
                     {
                         "pull_request": {
                             "base": {"sha": old_base},
-                            "title": "Check history",
-                            "body": "",
+                            **VALID_PR_METADATA,
                         }
                     },
                 ),
@@ -2207,8 +2211,7 @@ class VerifyPolicyBaselineTests(unittest.TestCase):
                         "pull_request": {
                             "base": {"sha": target_head},
                             "head": {"sha": source_head},
-                            "title": "Check history",
-                            "body": "",
+                            **VALID_PR_METADATA,
                         }
                     },
                 ),
@@ -2544,7 +2547,7 @@ class VerifyFormalTextTests(unittest.TestCase):
             self.assertEqual(ci.returncode, 1, ci.stdout + ci.stderr)
             self.assertIn("PR title:1", ci.stdout)
             self.assertIn("PR body:2", ci.stdout)
-            event["pull_request"].update(title="docs: 更新文档", body="核实后的事实。")
+            event["pull_request"].update(VALID_PR_METADATA)
             clean = self.run_governance_workflow(root, "pull_request", event)
             self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
             workflow = yaml.safe_load(
@@ -2574,7 +2577,7 @@ class VerifyFormalTextTests(unittest.TestCase):
                     )
                     self.assertIn("string title and body", result.stdout)
 
-    def test_ci_accepts_github_null_body_as_empty_prose(self):
+    def test_ci_reports_github_null_body_as_missing_pr_sections(self):
         with tempfile.TemporaryDirectory() as directory:
             root, _, _ = self.make_reference_repo(directory)
             subprocess.run(
@@ -2601,7 +2604,8 @@ class VerifyFormalTextTests(unittest.TestCase):
                 },
             }
             result = self.run_governance_workflow(root, "pull_request", event)
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("Summary, Evidence", result.stdout)
             event["pull_request"]["title"] = "docs: ForbiddenTerm"
             invalid = self.run_governance_workflow(root, "pull_request", event)
             self.assertEqual(invalid.returncode, 1, invalid.stdout + invalid.stderr)

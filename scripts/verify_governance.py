@@ -6,6 +6,7 @@ Unified execution gate for Arknights Mower repository governance checks:
 1. Note structures and required references (verify_agent_note_format.py)
 2. Relative Markdown documentation links validity (verify_doc_links.py)
 3. Avoid terms in scanned text (verify_glossary_alignment.py)
+   Supplied PR metadata also checks publication format (verify_pr_metadata.py).
 
 These checks do not establish behavior, semantic consistency or glossary approval.
 """
@@ -21,6 +22,7 @@ try:
     from verify_agent_note_format import verify_agent_notes
     from verify_doc_links import verify_doc_links
     from verify_glossary_alignment import verify_glossary_alignment, verify_pr_text
+    from verify_pr_metadata import verify_pr_format
 except ImportError:
     from scripts.verify_agent_note_format import verify_agent_notes
     from scripts.verify_doc_links import verify_doc_links
@@ -28,6 +30,7 @@ except ImportError:
         verify_glossary_alignment,
         verify_pr_text,
     )
+    from scripts.verify_pr_metadata import verify_pr_format
 
 
 def run_all_checks(
@@ -97,19 +100,26 @@ def run_all_checks(
             "  Existing wording is reported separately, not treated as a historical quotation; new lines are checked."
         )
     if pr_text is not None:
+        glossary_errors.extend(verify_pr_format(pr_text))
         glossary_errors.extend(verify_pr_text(pr_text, repository / "CONTEXT.md"))
     if glossary_errors:
-        print(f"  FAILED: {len(glossary_errors)} glossary violation(s)")
+        print(f"  FAILED: {len(glossary_errors)} formal-text error(s)")
         for err in glossary_errors:
             print(f"    - {err}")
         total_errors += len(glossary_errors)
     else:
         print(
-            "  PASSED: Listed terms and preserved-source markers checked in formal text scope, including supplied PR metadata."
+            "  PASSED: Listed terms and preserved-source markers checked in formal text scope."
         )
+        if pr_text is not None:
+            print(
+                "  PASSED: Supplied PR title and body passed publication format checks."
+            )
 
     print("\n" + "=" * 60)
     print("Scope: note structures/references, relative Markdown links and Avoid terms.")
+    if pr_text is not None:
+        print("PR scope: supplied title/body publication format and terminology.")
     print(
         "Not evaluated: behavior tests, record independence, contract consistency, "
         "concept meaning, glossary approval or implementation status."

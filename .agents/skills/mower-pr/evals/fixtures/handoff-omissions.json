@@ -1,0 +1,15 @@
+{
+  "label": "给定遗漏反例，仅供最终复核阶段使用，不是推荐成稿或本轮业务执行记录。",
+  "cases": [
+    {
+      "name": "handoff-data-repair",
+      "title": "fix(report): 修复基报灰色订单数漏读",
+      "body": "## Summary\n\n**灰字识别：** 色相上限从 100 改为 179，补充离线测试。\n\n## Evidence\n\n**灰字识别：** 原生 PNG 从未读取变为 37，说明本次修复有效。67 项测试通过。\n\n## Merge Danger\n\n**恢复：** 回退代码即可恢复本次所有变化。\n"
+    },
+    {
+      "name": "handoff-scene-timing",
+      "title": "fix(schedule): 修复连续换班的场景超时误判",
+      "body": "## Summary\n\n**场景观测：** 地图与选人页补充观测，计时更新，超时仍退出。\n\n## Evidence\n\n**场景观测：** 同截图对照证明旧版与新版完整生产路径的退出次数从 1 降为 0，242 项测试通过。\n\n## Merge Danger\n\n**恢复：** 回退代码恢复原流程。\n"
+    }
+  ]
+}

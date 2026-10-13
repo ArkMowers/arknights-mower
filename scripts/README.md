@@ -37,10 +37,12 @@ python scripts/verify_governance.py --base <comparison-commit>
 PR 标题或正文每次编辑前，将完整成稿存为含 `title`、`body` 字符串的 JSON 并执行：
 
 ```bash
-python scripts/verify_glossary_alignment.py --pr-json <draft.json>
+python scripts/verify_pr_metadata.py --pr-json <draft.json>
 ```
 
-发布后用 `gh pr view <PR> --json title,body,headRefOid` 回读，再扫描保存的 JSON。`verify_governance.py --pr-json <draft.json>` 可同时检查仓库与成稿。CI 从事件载荷读取完整标题正文，`edited` 事件也触发检查；GitHub 事件中正文为 null 时按空正文扫描，其他非字符串正文仍报错。正文直接作为数据读取，不插入 shell 命令。PR 成稿检查全部文本，包括代码块及反引号中的文字。
+该入口检查中文标题的类型、可选英文 scope、冒号及结尾格式，要求 Summary、Evidence、Merge Danger 三个栏目各出现一次且依次排列，拒绝空栏目与正文模板残留。代码块和 HTML 注释中的示例标题不计为正文栏目；术语扫描仍覆盖代码块与反引号内容。scope 是否适合实际改动、事实覆盖及展示关系由 Agent 按写作规则复核。
+
+发布后用 `gh pr view <PR> --json title,body,headRefOid` 回读，再对保存的 JSON 执行同一入口。`verify_governance.py --pr-json <draft.json>` 可同时检查仓库与成稿。CI 从事件载荷读取完整标题正文，`edited` 事件也执行同一格式和术语检查；GitHub 正文为 null 时按空正文检查并报告缺少栏目，其他非字符串正文仍报错。正文直接作为数据读取，不插入 shell 命令。单独调用 `verify_glossary_alignment.py --pr-json` 仅检查术语与原文标记，适用于非 PR 的正式文本扫描。
 
 保留的历史原文和测试反例通过 [prose_sources.json](prose_sources.json) 标注种类、用途、文件行范围、不可变来源文件链接及规范化换行后的 SHA-256。只有摘要匹配的范围保留原词，周围正文继续检查；新增来源先核实原文，不能借标记保留当前推荐中的避免用语。程序核对标记、范围和内容摘要，来源是否相关、是否确为历史引用或反例仍需审阅。真实代码标识保持原名；程序扫描代码注释和 docstrings，代码字符串和标识本身不作为正文。
 
