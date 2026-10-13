@@ -79,20 +79,31 @@ def get_skill_real_name(char_id: str, skill_index: int):
 
 
 @lru_cache(maxsize=2)
-def _read_cultivate_characters(path, mtime_ns, size):
+def _read_cultivate_data(path, mtime_ns, size):
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    return {char["id"]: char for char in parse_roster(data)}
+    return {char["id"]: char for char in parse_roster(data)}, data
 
 
-def get_cultivate_characters():
+def _get_cultivate_data():
     """专精和基建技能共用 BOX 缓存，同步文件变化后自动失效。"""
     path = get_path("@app/tmp/cultivate.json")
     try:
         stat = os.stat(path)
-        return _read_cultivate_characters(str(path), stat.st_mtime_ns, stat.st_size)
+        return _read_cultivate_data(str(path), stat.st_mtime_ns, stat.st_size)
     except Exception:
         return None
+
+
+def get_cultivate_characters():
+    data = _get_cultivate_data()
+    return data[0] if data else None
+
+
+def get_cultivate_snapshot():
+    """Return the validated shared payload without a second file read."""
+    data = _get_cultivate_data()
+    return data[1] if data else None
 
 
 def _get_cultivate_character(char_id):

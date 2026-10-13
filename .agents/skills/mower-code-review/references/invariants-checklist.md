@@ -162,6 +162,9 @@ Use the entries relevant to changed call paths. Follow each owning contract for 
 
 ### 2.3 Presentation Layer (UI)
 
+- [ ] **Read Only Base Groups**: Do immutable preset browsing and filters preserve browser storage, Scheduling Plans and unknown ownership? See the [group boundary](../../../../docs/subsystems/base-scheduler.md#read-only-base-groups).
+- [ ] **Isolated Group Estimates**: Do selected skill mode, average-output choice, manual Jaye stage and accessory conditions remain page-local, with facility outputs separated and invalid staffing withheld? Do roster and normalized facility conditions come from one cached snapshot? See the [estimate boundary](../../../../docs/subsystems/base-scheduler.md#isolated-group-estimates).
+
 - [ ] **Complete Shared Mood Curves**: Does every configured binding show the same complete chronological history once, including former ungrouped samples, while ordinary operator membership and stored observations remain unchanged? See the [complete contract](../../../../docs/subsystems/base-scheduler.md#complete-shared-mood-curves).
 - [ ] **Bounded Growth Page Loading**: Do overview requests suppress material calculation, do detail results preserve existing costs, and do page limits, snapshot observation, cancellation and retry follow the [loading rule](../../../../docs/subsystems/growth-planning.md#bounded-page-loading)?
 - [ ] **Workshop Threshold Fallback**: Do one-click setup tests count BOX synchronization, observe category fallback stopping at a usable selection and verify failed reads apply no lists or configured-threshold changes? See the [complete contract](../../../../docs/subsystems/base-scheduler.md#workshop-threshold-fallback).

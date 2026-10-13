@@ -203,3 +203,74 @@ def test_shared_forms_use_valid_progress_without_losing_unlocks(
     )
     entry = operator(module.load_skill_snapshot(), "阿米娅")
     assert (entry["phase"], entry["level"]) == (2, 80)
+
+
+def test_base_conditions_use_facility_counts_office_and_highest_dorm_level():
+    building = {
+        "tradings": [{"level": 3}, {"level": 3}],
+        "manufactures": [{"level": 3}] * 5,
+        "powers": [{"level": 3}] * 2,
+        "hire": {"level": 2},
+        "meeting": {"level": 3},
+        "dormitories": [{"level": 1}, {"level": 3}, {"level": 2}, {"level": 1}],
+    }
+    assert module.parse_base_conditions(building) == {
+        "trade": 2,
+        "factories": 5,
+        "power": 2,
+        "recruits": 1,
+        "reception": 3,
+        "dormLevel": 3,
+    }
+
+
+@pytest.mark.parametrize("level,slots", [(1, 0), (2, 1), (3, 2)])
+def test_extra_recruitment_slots_exclude_initial_slots(level, slots):
+    assert module.parse_base_conditions({"hire": {"level": level}}) == {
+        "recruits": slots
+    }
+
+
+def test_partial_facility_data_never_invents_zero_counts():
+    assert module.parse_base_conditions(None) == {}
+    assert (
+        module.parse_base_conditions(
+            {"powers": None, "hire": {"level": "3"}, "dormitories": []}
+        )
+        == {}
+    )
+    assert module.parse_base_conditions(
+        {"tradings": [], "powers": [{"level": 0}], "manufactures": [None]}
+    ) == {"trade": 0, "power": 0}
+    assert module.parse_base_conditions({"hire": {"level": True}}) == {}
+
+
+def test_conditions_share_the_roster_file_cache(snapshot_path, monkeypatch):
+    payload = {
+        "code": 0,
+        "data": {
+            "characters": [{"id": "char_108_silent", "evolvePhase": 2, "level": 1}]
+        },
+        "_mower_base_conditions": {
+            "power": 3,
+            "factories": 4,
+            "recruits": 0,
+            "dormLevel": 2,
+        },
+    }
+    snapshot_path.write_text(json.dumps(payload), encoding="utf-8")
+    loads = []
+    original_load = mastery.json.load
+
+    def observe(file, *args, **kwargs):
+        if str(file.name) == str(snapshot_path):
+            loads.append(file.name)
+        return original_load(file, *args, **kwargs)
+
+    monkeypatch.setattr(mastery.json, "load", observe)
+    assert (
+        module.load_skill_snapshot()["base_conditions"]
+        == payload["_mower_base_conditions"]
+    )
+    assert mastery.get_cultivate_characters()["char_108_silent"]["level"] == 1
+    assert len(loads) == 1
