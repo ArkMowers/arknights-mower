@@ -44,6 +44,7 @@ Use one primary workflow for each responsibility. Repository skills own reposito
 | Responsibility | Primary repository skill | General-skill relationship |
 | :--- | :--- | :--- |
 | Code review | [mower-code-review](skills/mower-code-review/SKILL.md) | Generic code-review may supply review technique; keep one comparison scope and one report. |
+| Session retrospective | [mower-retro](skills/mower-retro/SKILL.md) | Generic retro supplies retrospective technique; mower-retro owns session evidence, project check reuse and read-only recommendations. |
 | Complexity assessment | [mower-find-simplifications](skills/mower-find-simplifications/SKILL.md) | Use diagnosis/design techniques as needed; findings do not automatically create a proposal. |
 | Guarantee and test design | [mower-define-invariant](skills/mower-define-invariant/SKILL.md) | Generic testing skills support observable behavior verification; reuse existing guarantees first. |
 | Document placement | [mower-doc](skills/mower-doc/SKILL.md) | Domain modeling supplies concept analysis; repository routing and approval remain authoritative. |
