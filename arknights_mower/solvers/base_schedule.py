@@ -6973,22 +6973,46 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self._tap_product_point((1440, 742))
         self._wait_product_resource("manufacture_product_cancel_confirm", present=False)
 
-        # 新配方默认只排一份；补到当前仓库容量允许的最大值。
-        self._tap_product_point((1450, 305))
-        for _ in range(8):
-            if self.find("manufacture_product_change_confirm"):
-                self._tap_product_point((1425, 895))
-                self._wait_product_resource(
-                    "manufacture_product_change_confirm", present=False
-                )
-                break
-            # 配方切换后可能直接返回设施列表，不再弹出补满队列的确认框。
-            if self.find("factory_collect"):
-                logger.info("制造站已返回设施列表，跳过补满队列确认")
-                break
-            self.sleep(0.5)
-        else:
-            raise RecognizeError("等待制造站补满队列确认或返回设施列表超时")
+        self._fill_manufacture_queue()
+
+    def _fill_manufacture_queue(self):
+        # 新配方默认只排一份；MAX 和数量确认都需要画面读数验证。
+        for attempt in range(3):
+            try:
+                previous_count = self._read_manufacture_queue_count()
+                self._tap_product_point((1450, 305), interval=1)
+                selected_count = self._read_manufacture_queue_count()
+                if selected_count != 99:
+                    raise RecognizeError(f"MAX 后生产份数为{selected_count}，期望99")
+                if previous_count != selected_count or self.find(
+                    "manufacture_product_change_confirm"
+                ):
+                    self._wait_product_resource("manufacture_product_change_confirm")
+                    self._tap_product_point((1425, 895))
+                    self._wait_product_resource(
+                        "manufacture_product_change_confirm", present=False
+                    )
+                self.recog.update()
+                actual_count = self._read_manufacture_queue_count()
+                if actual_count != 99:
+                    raise RecognizeError(f"确认后生产份数为{actual_count}，期望99")
+                logger.info("制造站 MAX 补货验证通过：生产份数=%d", actual_count)
+                return
+            except RecognizeError as error:
+                logger.warning("制造站生产份数验证第%d次失败：%s", attempt + 1, error)
+                if attempt < 2:
+                    self.sleep(0.5)
+        raise RecognizeError("制造站生产份数验证失败，未确认 MAX 补货生效")
+
+    def _read_manufacture_queue_count(self) -> int:
+        scope = (
+            (self.recog.w * 1280 // 1920, self.recog.h * 450 // 1080),
+            (self.recog.w * 1415 // 1920, self.recog.h * 530 // 1080),
+        )
+        text = self._product_ocr_text(scope)
+        if re.fullmatch(r"[0-9]{1,2}", text) and 1 <= int(text) <= 99:
+            return int(text)
+        raise RecognizeError(f"无法识别制造站生产份数：{text or 'OCR 无结果'}")
 
     def _open_manufacture_product_detail(self, room: str):
         self.scene_graph_navigation(Scene.INFRA_MAIN)
@@ -7248,6 +7272,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         current_product = self.read_manufacture_product()
         self._cache_facility_state(observation["room"], "manufacture", current_product)
         if current_product == observation["target_product"]:
+            self._fill_manufacture_queue()
             return
         confirm_after = None
         if (not direct) and not self._manufacture_is_idle():
@@ -7421,6 +7446,14 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             else:
                 observation = self._survey_trade_switch(room, target_product)
             task_observations.append((task, observation))
+
+        # 配方已生效的重试仍需完成数量确认，再移除切换任务。
+        for _, observation in task_observations:
+            if (
+                observation["facility"] == "manufacture"
+                and not observation["needs_switch"]
+            ):
+                self._change_manufacture_product(observation)
 
         locked_trade = [
             (task, observation)
