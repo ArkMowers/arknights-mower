@@ -40,6 +40,8 @@
       </n-space>
     </div>
 
+    <WorkshopStatus :revision="workshopStatusRevision" />
+
     <n-card size="small" class="statistics-panel" title="干员数据统计">
       <template #header-extra
         ><n-button
@@ -751,6 +753,7 @@ import {
   workshopRecommendationText,
   workshopTraineeWarning
 } from '@/utils/workshopOperators'
+import WorkshopStatus from '@/components/WorkshopStatus.vue'
 import {
   masteryFormWarning,
   masteryScheduleContext,
@@ -1019,6 +1022,12 @@ async function setWorkshopMaterialPolicy(value) {
     workshopPolicySaving.value = false
   }
 }
+const workshopStatusRevision = ref(0)
+watch(
+  [() => configStore.workshop_settings_generation, workshopProtectT2, fodderOps, t5Ops, bookOps],
+  () => ++workshopStatusRevision.value,
+  { deep: true }
+)
 const workshopLoading = ref(false)
 const showWorkshopSettings = ref(false)
 const workshopRecommendations = ref(null)
@@ -1322,6 +1331,7 @@ async function refreshPlanFromServer() {
     }
     plan.value = p
     planStatus.value = ps
+    ++workshopStatusRevision.value
   } catch (e) {
     console.error('refreshPlanFromServer failed', e)
   }
@@ -1395,7 +1405,8 @@ async function autoWorkshop() {
       message.info(
         resp.data.restored
           ? '当前可合成材料已备齐，已恢复手动合成配置'
-          : '当前缺口没有可执行的合成配方，请查看材料总览与加工干员设置'
+          : resp.data.crafting_status?.blockers?.[0]?.message ||
+              '当前缺口没有可执行的合成配方，请查看材料总览与加工干员设置'
       )
       return
     }
@@ -1449,6 +1460,7 @@ async function autoWorkshop() {
     message.error(`生成失败: ${e.response?.data?.error || e.message}`)
   } finally {
     workshopLoading.value = false
+    ++workshopStatusRevision.value
   }
 }
 

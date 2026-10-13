@@ -65,6 +65,7 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 
 ### Operator Mood
 - **Definition**: The numerical stamina metric (0 to 24) tracking operator working and resting states. Consumed in facilities and restored in dormitories. Active skills deactivate upon reaching morale depletion at 0 mood.
+- Automatic growth crafting requires known positive Operator Mood sufficient for one batch; ordinary manual-configured admission retains its greater-than-22 threshold. Operator reservations remain binding.
 - **Code Mapping**: [`Operator.mood`](arknights_mower/utils/operators.py), [`Operator.current_mood()`](arknights_mower/utils/operators.py)
 - **_Avoid_**: `Physical energy`, `Fatigue level`
 

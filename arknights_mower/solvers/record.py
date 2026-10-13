@@ -16,6 +16,7 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
 battle_inventory_active = Event()
+workshop_inventory_changed = Event()
 
 
 # 全部 DB 表定义（建表/迁移检查进程内只跑一次，避免每调用重跑 CREATE TABLE + PRAGMA + commit）
@@ -954,6 +955,7 @@ def save_inventory_counts(
     with _conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
         effective = dict(inventorys)
+        current = dict(conn.execute("SELECT item_name, count FROM inventory"))
         protected = dict(
             conn.execute(
                 "SELECT item_name, observed_at FROM workshop_inventory_updates"
@@ -966,7 +968,6 @@ def save_inventory_counts(
             )
         }
         if scanned_counts is not None:
-            current = dict(conn.execute("SELECT item_name, count FROM inventory"))
             for name in protected.keys() | (cloud_counts or {}).keys():
                 observed_at = protected.get(name, 0)
                 # Depot scans cover only some categories. An absent item is not
@@ -1069,6 +1070,10 @@ def save_inventory_counts(
                     if name in effective and effective[name] == count:
                         observed[name] = max(timestamp, observed.get(name, 0))
         clear_workshop_recipe_rejections(observed)
+        if any(current.get(name) != count for name, count in effective.items()) or any(
+            timestamp > protected.get(name, 0) for name, timestamp in observed.items()
+        ):
+            workshop_inventory_changed.set()
         return effective
 
 
@@ -1088,6 +1093,7 @@ def apply_workshop_inventory(delta: dict[str, int]):
     """Persist confirmed crafting or drop deltas without restoring invalidated stock."""
     with _conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        before = dict(conn.execute("SELECT item_name, count FROM inventory"))
         conn.executemany(
             "INSERT INTO workshop_inventory_pending (item_name, baseline, directions) "
             "SELECT item_name, count, ? FROM inventory WHERE item_name = ? "
@@ -1104,6 +1110,11 @@ def apply_workshop_inventory(delta: dict[str, int]):
         )
         _mark_workshop_inventory(conn, delta)
         conn.commit()
+        if any(
+            name in before and max(0, before[name] + amount) != before[name]
+            for name, amount in delta.items()
+        ):
+            workshop_inventory_changed.set()
 
 
 def invalidate_workshop_inventory(names):
@@ -1115,6 +1126,7 @@ def invalidate_workshop_inventory(names):
         )
         _mark_workshop_inventory(conn, names)
         conn.commit()
+        workshop_inventory_changed.set()
 
 
 def _mark_workshop_inventory(conn, names):

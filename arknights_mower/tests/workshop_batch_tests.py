@@ -26,7 +26,7 @@ def batch(monkeypatch):
     monkeypatch.setattr(config.conf, "enable_mastery", False)
     snapshot = SimpleNamespace(
         settings=[
-            SimpleNamespace(operator=name, enabled=True, items=[])
+            SimpleNamespace(operator=name, enabled=True, items=[], source="manual")
             for name in ("蜜莓", "年", "空爆", "特克诺")
         ]
     )
@@ -35,7 +35,7 @@ def batch(monkeypatch):
     # 此套件隔离连续加工的恢复边界；材料真实性由调人前检查套件覆盖。
     monkeypatch.setattr(
         "arknights_mower.utils.workshop_limits.workshop_material_block_reason",
-        lambda *args: None,
+        lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(base, "get_inventory_counts", lambda: {})
     errors = MagicMock()

@@ -240,9 +240,7 @@ def test_threshold_is_saved_with_config_and_validated_by_endpoint(game):
     "name,minimum", [("羽毛笔", 75), ("凯尔希", 70), ("巡林者", 60)]
 )
 def test_book_fallback_does_not_lower_material_thresholds(game, name, minimum):
-    from arknights_mower.utils.mastery_recommendation import (
-        compute_default_workshop_config,
-    )
+    from arknights_mower.tests.workshop_fixtures import allocate_sample_recipes
 
     meta, ids = game
     roster = owned(ids, "空爆", "年", name)
@@ -263,7 +261,7 @@ def test_book_fallback_does_not_lower_material_thresholds(game, name, minimum):
         ),
         patch.object(config.conf, "workshop_min_bonus", 80),
     ):
-        settings = compute_default_workshop_config(**fallback["defaults"])
+        settings = allocate_sample_recipes(**fallback["defaults"])
     assert "技巧概要·卷3" in {
         material
         for entry in settings

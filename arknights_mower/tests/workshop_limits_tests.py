@@ -97,9 +97,9 @@ def test_deer_diagnostics_distinguish_missing_material_combination(ready):
     if ready == "both":
         assert reason is None
     elif ready == "fodder":
-        assert reason == "缺少可加工的 4 心情精英材料"
+        assert reason.message == "缺少可加工的 4 心情精英材料"
     else:
-        assert reason == "缺少可加工的垫刀材料（小于 4 心情或基建材料）"
+        assert reason.message == "缺少可加工的垫刀材料（小于 4 心情或基建材料）"
 
 
 @pytest.mark.parametrize("gold,batches", [(None, 3), (0, 0), (1000, 2)])
