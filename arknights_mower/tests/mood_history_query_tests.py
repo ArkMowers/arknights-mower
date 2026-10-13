@@ -76,6 +76,15 @@ class MoodHistoryQueryTests(unittest.TestCase):
         self.assertEqual(result[0]["data"][0]["moodEvent"], "fiammetta_before")
         self.assertEqual(result[0]["data"][0]["relatedOperator"], "阿米娅")
 
+    def test_legacy_fiammetta_history_without_events_keeps_ordinary_points(self):
+        self.create_data()
+        with sqlite3.connect(self.database) as connection:
+            connection.execute("UPDATE agent_action SET name = '菲亚梅塔'")
+
+        result = selected_mood_series(self.database, ["菲亚梅塔"])
+
+        self.assertEqual([point["y"] for point in result[0]["data"]], [11, 24, 23])
+
     def test_input_limits_and_unchanged_database(self):
         self.create_data()
         before = self.database.read_bytes()
