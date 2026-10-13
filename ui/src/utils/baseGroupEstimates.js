@@ -73,7 +73,7 @@ export function estimateFields(group) {
       return [number('reception', '会客室等级', 3, 3, 1)]
     case 'builtin-karlan':
       return [
-        choice('jayeStage', '孑的精英阶段', '未精英化', ['未精英化', '精一及以上']),
+        choice('jayeStage', '孑的精英阶段（备用）', '未精英化', ['未精英化', '精一及以上']),
         number('orderCap', '设施基础订单上限', 10, 10, 6)
       ]
     case 'builtin-gold':
@@ -133,11 +133,19 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
   const selected = new Set(selection.filter((name) => members.includes(name)))
   const active = new Set([...selected].filter((name) => !group.accessory.includes(name)))
   const roster = new Map(items.map((item) => [item.avatar, item]))
+  const jayeRoster = roster.get('孑')
+  const syncedJayeSkills =
+    jayeRoster?.ownership === 'owned' &&
+    jayeRoster.childSkill?.some((entry) => entry.skill_key === 0 && entry.status === 'active') &&
+    jayeRoster.childSkill.every((entry) => ['active', 'locked', 'replaced'].includes(entry.status))
+      ? jayeRoster.childSkill
+      : null
   const skillsFor = (name) =>
     name === '孑'
-      ? maxSkills
+      ? (syncedJayeSkills ??
+        maxSkills
           .get(name)
-          .filter((entry) => entry.skill_key === 0 || options.jayeStage === '精一及以上')
+          .filter((entry) => entry.skill_key === 0 || options.jayeStage === '精一及以上'))
       : maxLevel
         ? maxSkills.get(name)
         : roster.get(name)?.childSkill
@@ -486,6 +494,10 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
       const jaye = has('孑') ? cap * 4 : 0
       metric('订单上限', cap, '笔')
       tradeMetric(peers + jaye)
+      if (has('孑'))
+        detail(
+          `孑${has('孑', 1) ? '精一及以上' : '未精英化'}，使用${syncedJayeSkills ? '森空岛练度' : '备用计算条件'}`
+        )
       detail(`其他干员 ${peers}% + 孑 ${jaye}%，按空单状态估算`)
       detail(`订单上限增加${positiveCap}，锏减少${negativeCap}，孑减少${reduction}，上限至少1`)
       if (has('琳琅诗怀雅', 1) || has('锏', 1))
