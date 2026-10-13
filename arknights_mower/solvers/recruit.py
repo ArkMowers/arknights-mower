@@ -16,7 +16,7 @@ from arknights_mower.utils.email import recruit_rarity, recruit_template, send_m
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cmatch, cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.recognize import Recognizer, Scene
+from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
     resource_pkg_path,
@@ -325,34 +325,30 @@ class RecruitSolver(SceneGraphSolver):
             self.scene_graph_navigation(Scene.RECRUIT_MAIN)
 
     def recruit_result(self):
-        try:
-            # 存在读完一次没退完再读一次
-            if str(self.recruit_index) in self.result_agent.keys():
-                self.tap((950, 150))
-                return
+        if self.recruit_index in self.result_agent:
+            self.tap((950, 150))
+            return
 
-            job_pt = None
-            for i in job_list:
-                if job_pt := self.find(i):
-                    break
+        job_pt = None
+        for i in job_list:
+            if job_pt := self.find(i):
+                break
+        if job_pt is None:
+            raise RecognizeError("公招干员职业图标尚未识别")
 
-            img = cropimg(self.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
-            img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
+        img = cropimg(self.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
+        img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
 
-            score = {}
-            for id in recruit_res_template:
-                res = recruit_res_template[id]
-                result = cv2.matchTemplate(img, res, cv2.TM_CCORR_NORMED, res)
-                _, max_val, _, _ = cv2.minMaxLoc(result)
-                score[id] = max_val
-            self.result_agent[self.recruit_index] = recruit_agent[
-                max(score, key=score.get)
-            ]["name"]
-
-        except Exception as e:
-            logger.exception(f"公招开包异常:{e}")
-        finally:
-            self.tap((500, 500))
+        score = {}
+        for id in recruit_res_template:
+            res = recruit_res_template[id]
+            result = cv2.matchTemplate(img, res, cv2.TM_CCORR_NORMED, res)
+            _, max_val, _, _ = cv2.minMaxLoc(result)
+            score[id] = max_val
+        self.result_agent[self.recruit_index] = recruit_agent[
+            max(score, key=score.get)
+        ]["name"]
+        self.tap((500, 500))
 
     def recruit_tags(self, tags):
         tem_res = self.recruit_cal(sorted(tags))
