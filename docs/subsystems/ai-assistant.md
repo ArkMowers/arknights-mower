@@ -36,6 +36,29 @@ Feedback sends email through `submit_issue`. Instructions require an explicit se
 
 ## 3. Subsystem Invariants
 
+- <a id="owned-read-only-staffing"></a>**Owned Read-Only Staffing**: AI staffing trials require confirmed ownership and growth, select only the current unlocked skill version per slot, reject duplicate primary occupancy and excess configured slots, and never mutate saved BOX, configuration or Scheduling Plans.
+
 - <a id="tool-instruction-alignment"></a>**Tool Instruction Alignment**: Published assistant instructions reference registered tools, describe actual argument formats and mutation scopes, and agree on response formatting.
 
 The [assistant instruction decision](../../.agents/notes/implemented/bug-fix/2026-10-09-ai-assistant-prompts.md) records the scope and offline verification.
+
+<a id="riic-tools"></a>
+
+## 4. RIIC Tools
+
+`get_riic_context` reads the saved BOX and primary Scheduling Plan, returns owned operator names and growth, configured facility capacity and current assignments, and joins the curated base combinations with owned, missing and unknown members. Combination membership alone does not establish skill eligibility or simultaneous placement. Full credentials, configuration and backup trigger expressions are excluded.
+
+`get_riic_knowledge` queries at most twelve formal operator names and one fixed mechanics topic. It reads the shared catalog and term resource, expands nested term references, and selects the highest unlocked version of each independent skill slot. All catalog skill stages remain visible with their status, including when BOX data is absent. Missing or unowned operators never receive assumed maximum skills. External mechanics provenance and resource coverage remain separate.
+
+`try_riic_plan` accepts at most twenty-four room assignments, overlays a detached primary-plan copy, and validates all primary occupants including preserved rooms. Capacity follows the configured number of positions within the facility's physical maximum; no facility or position is created. Modified rooms clear their old group and replacement bindings. Missing occupants and occupants without a matching facility skill produce warnings; facility skills that exist but remain locked produce errors. The response contains the draft, structured errors, warnings and unchecked conditions. `valid` means primary staffing checks passed; it does not assert a complete, executable or optimal Scheduling Plan. Nothing is saved.
+
+All three tools accept at most sixty-four explicit `roster_overrides` containing a formal name, ownership and optional elite phase and level. Overrides take precedence in that call, report `source=user`, and never update BOX. The AI uses them only for roster facts explicitly stated by the user. An ownership override without complete growth keeps growth unknown.
+
+## 5. Mechanics Boundary
+
+The compact guide adapts the fixed external mechanics skill and retains its version and freshness result. Duplicate full skill catalogs, term exports, HTML browser assets and Node query scripts are omitted. The shared catalog adds only the three absent operators from the fixed snapshot; installed resource records take precedence as soon as they contain those operators. Supplemental character IDs resolve BOX ownership when the general operator map predates them. The frontend and AI read the same twenty curated combination definitions. Runtime skills and nested terms use Mower resources; their coverage can differ from the external guide. Unknown operators and missing terms are explicit. Trials do not calculate global interactions, power, current Operator Mood, Dormitory Recovery, replacement matching, backup activation, Drone Acceleration or long-term yield. Primary staffing success never establishes those properties.
+
+The existing `/ws/chat` credential and model configuration boundaries apply. Both model workflows register the same tools. Tool output is reference data, not instructions.
+
+
+The [RIIC planning decision](../../.agents/notes/implemented/feature/2026-10-13-riic-ai-planning.md) records source reuse and offline verification.

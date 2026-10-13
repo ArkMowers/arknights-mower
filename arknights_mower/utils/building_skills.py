@@ -3,27 +3,52 @@
 import json
 import re
 from functools import lru_cache
+from pathlib import Path
 
+from arknights_mower import __rootdir__
 from arknights_mower.utils.mastery_recommendation import get_cultivate_snapshot
 from arknights_mower.utils.res_version import BUILDING_SKILL_DATA
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
     resource_pkg_path,
+    resource_ui_path,
 )
 from arknights_mower.utils.schedule_roster import _operator_ids_by_name
 
 
 @lru_cache(maxsize=1)
+def skill_supplement():
+    path = Path(__rootdir__) / "data" / "riic" / "supplement.json"
+    return json.loads(path.read_text("utf-8"))
+
+
+@lru_cache(maxsize=1)
 def skill_index():
     path = resource_pkg_path(BUILDING_SKILL_DATA)
-    return {
+    catalog = {
         a["name"]: a.get("child_skill", []) for a in json.loads(path.read_text("utf-8"))
+    }
+    for operator in skill_supplement():
+        catalog.setdefault(operator["name"], operator["child_skill"])
+    return catalog
+
+
+@lru_cache(maxsize=1)
+def term_index():
+    relative = "pages/basement_skill/buffer.json"
+    path = resource_ui_path(relative, source=True)
+    if path is None:
+        path = Path(__rootdir__).parent / "ui" / "src" / relative
+    return {
+        term["termId"]: term for term in json.loads(path.read_text("utf-8")).values()
     }
 
 
 @register_resource_reload
 def clear_building_skills():
     skill_index.cache_clear()
+    skill_supplement.cache_clear()
+    term_index.cache_clear()
 
 
 def _requirement(skill):
@@ -123,8 +148,9 @@ def load_skill_snapshot():
     except (OSError, ValueError, TypeError):
         return unavailable
     operators = []
+    supplemental_ids = {a["name"]: [a["id"]] for a in skill_supplement()}
     for name in skill_index():
-        ids = name_to_ids.get(name)
+        ids = name_to_ids.get(name) or supplemental_ids.get(name)
         owned = [roster[cid] for cid in ids or () if cid in roster]
         progress = None
         # 同名形态共用基建技能目录，任一有效形态的练度均可证明解锁。

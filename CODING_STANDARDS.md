@@ -45,6 +45,8 @@ The building-skill page follows [Read Only Base Groups](docs/subsystems/base-sch
 
 Fiammetta mood curves follow [Aligned Charging History](docs/subsystems/base-scheduler.md#aligned-charging-history), with both query paths covered by focused offline tests.
 
+AI primary staffing follows [Owned Read-Only Staffing](docs/subsystems/ai-assistant.md#owned-read-only-staffing), preserving actual ownership, unlocked skill stages and saved state.
+
 ## 3. Concurrency & Resource Lifecycle
 
 - **Monotonic Deadline Budgets**: All external process invocations, socket I/O, and manager commands must operate within a bounded deadline (e.g., `COMMAND_TIMEOUT`, `DISCOVERY_TIMEOUT`, `RecoveryPolicy.timeout`).

@@ -274,3 +274,36 @@ def test_conditions_share_the_roster_file_cache(snapshot_path, monkeypatch):
     )
     assert mastery.get_cultivate_characters()["char_108_silent"]["level"] == 1
     assert len(loads) == 1
+
+
+@pytest.mark.parametrize(
+    "name,char_id",
+    [
+        ("德·托莱多", "char_393_toledo"),
+        ("克莱门莎", "char_4231_clemnt"),
+        ("旅骨", "char_4232_hbound"),
+    ],
+)
+def test_v078_supplement_resolves_box_without_general_map(
+    snapshot_path, monkeypatch, name, char_id
+):
+    write_snapshot(snapshot_path, {"id": char_id, "evolvePhase": 2, "level": 1})
+    monkeypatch.setattr(module, "_operator_ids_by_name", lambda: {})
+    entry = operator(module.load_skill_snapshot(), name)
+    assert entry["owned"] is True
+    assert entry["phase"] == 2
+    assert entry["active_skills"]
+
+
+def test_installed_operator_record_precedes_supplement(tmp_path, monkeypatch):
+    path = tmp_path / "skills.json"
+    path.write_text(
+        json.dumps([{"name": "旅骨", "child_skill": [{"skillname": "updated"}]}])
+    )
+    monkeypatch.setattr(module, "resource_pkg_path", lambda _: path)
+    module.skill_index.cache_clear()
+    try:
+        assert module.skill_index()["旅骨"] == [{"skillname": "updated"}]
+        assert "克莱门莎" in module.skill_index()
+    finally:
+        module.skill_index.cache_clear()

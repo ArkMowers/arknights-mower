@@ -279,6 +279,8 @@ Use the entries relevant to changed call paths. Follow each owning contract for 
 
 ### 2.10 AI Assistant
 
+- [ ] **Owned Read-Only Staffing**: Do AI trials retain unknown ownership and growth, select current skill versions, reject duplicate primaries and excess configured slots, and preserve BOX and saved plans? See the [AI staffing contract](../../../../docs/subsystems/ai-assistant.md#owned-read-only-staffing).
+
 - [ ] **Tool Instruction Alignment**: Do assistant instructions reference registered tools, describe actual argument formats and mutation scopes, and agree on response formatting? Do published SQL and datetime examples execute against the current interfaces and mastery filters select actual stored statuses? See the [complete contract](../../../../docs/subsystems/ai-assistant.md#tool-instruction-alignment).
 
 ## 3. Guarantee Changes
