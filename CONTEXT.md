@@ -182,3 +182,29 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 ### MAA Update Policy
 - **Definition**: MAA core and resource updates have independent automatic-check and automatic-install switches. Automatic installation requires a matching update check and an idle MAA engine.
 - **Code Mapping**: [`MaaPart`](arknights_mower/utils/config/conf.py)
+
+---
+
+## 3. Development & Documentation Language
+
+### Project Document Names
+- **Definition**: Names identify a project's own documents and their purpose. At the first reference in a standalone text, use the name below, explain why the document matters to the current change, and link to the relevant file or section. Repository prose uses relative links; published PRs use links to the reviewed commit. Later references may use an unambiguous short name.
+
+| Document | English name | Purpose |
+| :--- | :--- | :--- |
+| [CONTEXT.md](CONTEXT.md), [CONTEXT.zh.md](CONTEXT.zh.md) | Arknights Mower Domain Glossary | Defines domain concepts and development/documentation language in both languages. |
+| [CODING_STANDARDS.md](CODING_STANDARDS.md) | Arknights Mower Coding Standards | Defines shared behavior rules, concurrency and resource requirements, and verification requirements. |
+| [AGENTS.md](AGENTS.md) | Arknights Mower Agent Directives | Routes agent tasks and states global execution constraints. |
+| [.agents/AGENTS.md](.agents/AGENTS.md) | Arknights Mower Agent Workflow | Selects the task workflow, skills and verification/reporting responsibilities. |
+| [docs/architecture.md](docs/architecture.md) | Arknights Mower System Architecture | Explains subsystem boundaries and points to implementation and verification owners. |
+| [docs/subsystems/](docs/subsystems/) | Arknights Mower Subsystem Descriptions | Defines each subsystem's behavior rules and interface requirements; name the specific subsystem when referencing a file. |
+| [docs/cookbook/](docs/cookbook/) | Arknights Mower Development and Troubleshooting Guide | Provides implementation, build, troubleshooting and focused verification procedures for developers and maintainers. |
+| [.agents/notes/README.md](.agents/notes/README.md) | Arknights Mower Decision Record Guide | Defines record ownership, formats and lifecycle content. |
+
+### Meaning-specific Technical Expressions
+- **Definition**: Choose wording by the fact being described. A behavior rule states an observable result under stated conditions; an interface requirement states what callers and implementations must provide; a subsystem description is the document containing those details. Describe a change to workflow, documents or checks by naming what changed. These expressions do not rename code identifiers or weaken existing domain rules.
+- **Recommended**: `behavior rule`, `interface requirement`, `subsystem description`, `workflow change`, `documentation change`, `check change`.
+- **_Avoid_**: `governance commit`
+
+### Formal Prose and Preserved Source Text
+- **Definition**: Recommended names and Avoid lists apply to newly written formal prose, including skills, templates and PR titles/bodies. Historical quotations and test counterexamples preserve their source wording only when explicitly labelled and separated from current instructions or recommendations. Keep real code identifiers unchanged. Labels do not exempt surrounding formal prose or current domain rules from checking.

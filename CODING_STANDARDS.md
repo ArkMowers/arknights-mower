@@ -5,7 +5,7 @@
 
 ### Transient vs Persisted Isolation
 
-Configuration models (`DeviceProfile`, `Conf`) persist only explicit user selections. Discovery candidate lists and active connection states remain transient in memory.
+Configuration models (`DeviceProfile`, `Conf`) persist only explicit user selections. Discovery results and the current Device Session state remain transient in memory.
 
 ### Target Rebinding Clears Endpoints
 

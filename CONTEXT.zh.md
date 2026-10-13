@@ -182,3 +182,29 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 ### MAA 更新策略 (`MAA Update Policy`)
 - **定义**: MAA 本体与资源分别配置自动检查和自动更新开关。自动更新要求匹配的更新检查结果，且 MAA 引擎处于空闲状态。
 - **代码映射**: [`MaaPart`](arknights_mower/utils/config/conf.py)
+
+---
+
+## 3. 开发与文档用语 (Development & Documentation Language)
+
+### 项目文档名称 (Project Document Names)
+- **定义**: 文档名称说明项目自有文档的身份和用途。独立文本首次引用时，使用下表名称，说明该文档与当前改动有关的用途，并链接到相关文件或章节。仓库正文使用相对链接；已发布 PR 使用指向审阅提交的链接。后续引用可以使用指向明确的简称。
+
+| 文档 | 中文名称 | 用途 |
+| :--- | :--- | :--- |
+| [CONTEXT.md](CONTEXT.md)、[CONTEXT.zh.md](CONTEXT.zh.md) | Arknights Mower 项目术语表 | 定义中英文领域概念和开发、文档用语。 |
+| [CODING_STANDARDS.md](CODING_STANDARDS.md) | Arknights Mower 项目编码规范 | 规定共享行为规则、并发与资源要求，以及验证要求。 |
+| [AGENTS.md](AGENTS.md) | Arknights Mower Agent 指令 | 提供任务入口和全局执行限制。 |
+| [.agents/AGENTS.md](.agents/AGENTS.md) | Arknights Mower Agent 工作流程 | 规定任务流程、skill 选择及验证、报告责任。 |
+| [docs/architecture.md](docs/architecture.md) | Arknights Mower 系统架构说明 | 说明子系统边界，并提供实现和验证的责任模块入口。 |
+| [docs/subsystems/](docs/subsystems/) | Arknights Mower 子系统说明 | 说明各子系统的行为规则和接口要求；引用具体文件时写明子系统名称。 |
+| [docs/cookbook/](docs/cookbook/) | Arknights Mower 开发与排查指南 | 为开发者和维护者提供实现、构建、故障排查及定向验证步骤。 |
+| [.agents/notes/README.md](.agents/notes/README.md) | Arknights Mower 决策记录说明 | 规定记录归属、格式和生命周期正文。 |
+
+### 按含义选择技术表述 (Meaning-specific Technical Expressions)
+- **定义**: 根据所述事实选择用词。行为规则说明在特定条件下可以观察到的结果；接口要求说明调用者和实现方必须提供什么；子系统说明是承载这些内容的文档。工作流程、文档或检查发生变化时，直接写明具体改动。这些表达不改名代码标识，也不削弱既有业务规则。
+- **推荐表达**: `行为规则`、`接口要求`、`子系统说明`、`工作流程调整`、`文档调整`、`检查调整`。
+- **_禁止使用_**: `契约`, `治理提交`
+
+### 正式表述与保留原文 (Formal Prose and Preserved Source Text)
+- **定义**: 推荐名称和避免用语适用于新增正式表述，包括 skill、模板和 PR 标题正文。历史引用和测试反例只有明确标注并与当前指令、推荐表达分开时，才保留原词。真实代码标识保持不变。标注不豁免周围正式正文或现行业务规则的检查。

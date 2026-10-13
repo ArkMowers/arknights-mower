@@ -4,11 +4,11 @@ Root entry point for agent operations. Read the linked contract relevant to the 
 
 ## 1. Authoritative Context Pointers
 
-- **[Domain Glossary](CONTEXT.md)** ([中文](CONTEXT.zh.md)): Authoritative terminology for device control, base infrastructure, and scheduling.
-- **[Coding Standards](CODING_STANDARDS.md)**: Core behavior contracts, concurrency limits, and code smells.
-- **[System Architecture](docs/architecture.md)**: Panoramic system architecture and subsystem boundary specifications.
-- **[Subsystem Contracts](docs/subsystems/)**: Detailed interface contracts for device control and base scheduling.
-- **[Operational Cookbook](docs/cookbook/)**: Actionable recipes with numbered verification steps and code examples.
+- **[Arknights Mower Domain Glossary](CONTEXT.md)** ([中文](CONTEXT.zh.md)): Domain definitions, project document names and development/documentation language.
+- **[Arknights Mower Coding Standards](CODING_STANDARDS.md)**: Shared behavior rules, concurrency and resource requirements, and verification requirements.
+- **[Arknights Mower System Architecture](docs/architecture.md)**: Subsystem boundaries and implementation/verification owners.
+- **[Arknights Mower Subsystem Descriptions](docs/subsystems/)**: Detailed behavior rules and interface requirements for each subsystem.
+- **[Arknights Mower Development and Troubleshooting Guide](docs/cookbook/)**: Implementation, build, troubleshooting and focused verification procedures for developers and maintainers.
 - **[Incident Postmortems](docs/postmortem/)**: Root-cause analysis and narrative retrospective records.
 
 ## 2. Subtree Local Contracts
@@ -24,12 +24,14 @@ Select the necessary workflow in [Agent Workflow](.agents/AGENTS.md#1-task-selec
 
 When creating or updating a PR title or body, you must use [mower-pr](.agents/skills/mower-pr/SKILL.md).
 
+Before writing or reviewing formal project text, read [mower-prose-standard](.agents/skills/mower-prose-standard/SKILL.md) and the affected bilingual glossary entries. Reuse them within the task; reload after a source-version or writing-scope change.
+
 Before adding a decision record, apply [record ownership](.agents/notes/AGENTS.md#1-record-ownership). Complete [concept-impact review](CODING_STANDARDS.md#concept-impact-review); stable domain concepts require no glossary edit.
 
 ## 4. Global Execution Constraints
 
 1. **Targeted Testing Only**: Execute only focused unit tests (e.g., `pytest arknights_mower/tests/device_session_tests.py`). Never run full integration suites against live devices.
-2. **Controlled Language**: Use exact terminology from [CONTEXT.md](CONTEXT.md). Prohibit all terms from the avoid list. In Chinese communication, PR titles and bodies, commit messages, and newly written prose, do not use `契约`; name the specific rule, standard, interface, or subsystem description.
+2. **Controlled Language**: Use the [Arknights Mower Domain Glossary](CONTEXT.md) ([中文](CONTEXT.zh.md)) for domain definitions, document names and development/documentation language. Apply its formal-prose and preserved-source rules through the shared prose skill.
 3. **Zero Issue Numbers**: Never introduce `#xxx` issue tracker references in commits, code, docstrings, or markdown.
 4. **No Central Index**: Decentralize decision records via direct relative links; never maintain centralized note index tables.
 5. **User Approval for Glossary Changes**: Before creating or editing `CONTEXT.md` or `CONTEXT.zh.md`, show the user the exact proposed wording or diff and explain its meaning and purpose in plain language. Write only after the user explicitly approves those changes; an existing explicit approval for the same changes remains valid. General implementation requests, sub-agent reviews, and automated checks do not constitute glossary approval. This requirement also applies to concept-impact review and glossary synchronization instructions in subtree contracts and skills.

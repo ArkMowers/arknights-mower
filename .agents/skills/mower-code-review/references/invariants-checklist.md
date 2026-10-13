@@ -90,7 +90,7 @@ Use the entries relevant to changed call paths. Follow each owning contract for 
 
 - [ ] **Lifecycle Command Isolation**: Are lifecycle arguments passed without a shell and restricted to an explicitly identified instance, with unavailable control failing before any host-wide action? See the [complete contract](../../../../docs/subsystems/device-control.md#lifecycle-command-isolation).
 
-- [ ] **[Transient vs Persisted Isolation](../../../../CODING_STANDARDS.md#transient-vs-persisted-isolation)**: Does `DeviceProfile` or `Conf` only persist explicit user selections? Are discovery candidates, socket handles, and active connection state transient?
+- [ ] **[Transient vs Persisted Isolation](../../../../CODING_STANDARDS.md#transient-vs-persisted-isolation)**: Does `DeviceProfile` or `Conf` only persist explicit user selections? Are discovery results, socket handles, and current device session state transient?
 - [ ] **[Target Rebinding Clears Endpoints](../../../../CODING_STANDARDS.md#target-rebinding-clears-endpoints)**: Does any modification to emulator preset, path, or instance identity reset `last_serial` to null?
 - [ ] **[Failure Preserves Target Identity](../../../../CODING_STANDARDS.md#failure-preserves-target-identity)**: In case of device failure, timeout, or discovery error, does the session halt cleanly without drifting to other online devices on the host?
 - [ ] **[IPC Pair Cohesion](../../../../CODING_STANDARDS.md#ipc-pair-cohesion)**: If MuMu IPC screenshot backend is used, is IPC touch backend selected as well?
