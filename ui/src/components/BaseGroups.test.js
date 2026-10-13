@@ -98,7 +98,7 @@ describe('基建组合只读浏览', () => {
     expect(page.conditions.value['builtin-cloud'].average).toBe(true)
     scope.stop()
   })
-  it('同步孑的技能状态后立即更新估算，失去有效练度时恢复备用条件', async () => {
+  it('孑默认跟随同步练度，手选阶段保持优先并可切回自动', async () => {
     const { page, scope, props } = setup([
       {
         avatar: '孑',
@@ -112,20 +112,32 @@ describe('基建组合只读浏览', () => {
     const group = page.groups.find((group) => group.id === 'builtin-karlan')
     page.maxLevel.value = true
     for (const name of group.core) page.toggleMember(group, name)
-    page.conditions.value[group.id].jayeStage = '精一及以上'
+    expect(page.conditions.value[group.id].jayeStage).toBe('跟随森空岛')
     const efficiency = () =>
       page.estimates.value[group.id].metrics.find((metric) => metric.label === '贸易订单效率').value
     await nextTick()
     expect(efficiency()).toBe(145)
-    props.items[0].childSkill[1].status = 'active'
+    page.conditions.value[group.id].jayeStage = '精一及以上'
     await nextTick()
     expect(efficiency()).toBe(129)
     page.conditions.value[group.id].jayeStage = '未精英化'
+    props.items[0].childSkill[1].status = 'active'
+    props.baseConditions = { jayeStage: '跟随森空岛' }
+    await nextTick()
+    expect(page.conditions.value[group.id].jayeStage).toBe('未精英化')
+    expect(efficiency()).toBe(145)
+    page.conditions.value[group.id].jayeStage = '跟随森空岛'
     await nextTick()
     expect(efficiency()).toBe(129)
-    props.items = []
+    props.items[0].childSkill[1].status = 'locked'
     await nextTick()
     expect(efficiency()).toBe(145)
+    props.items = []
+    await nextTick()
+    expect(page.estimates.value[group.id].valid).toBe(false)
+    expect(page.estimates.value[group.id].warnings).toContain(
+      '孑缺少森空岛练度，请同步或手选精英阶段'
+    )
     page.conditions.value[group.id].jayeStage = '精一及以上'
     await nextTick()
     expect(efficiency()).toBe(129)
