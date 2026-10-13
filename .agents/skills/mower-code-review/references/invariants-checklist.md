@@ -155,6 +155,8 @@ Use the entries relevant to changed call paths. Follow each owning contract for 
 - [ ] **Selection Estimate Isolation**: Do card-estimate updates leave measured mood, timestamps and deadlines unchanged, refresh only affected candidates and avoid scans while valid candidate mood exists? See the [complete contract](../../../../docs/subsystems/base-scheduler.md#selection-estimate-isolation).
 
 ### 2.3 Presentation Layer (UI)
+
+- [ ] **Complete Shared Mood Curves**: Does every configured binding show the same complete chronological history once, including former ungrouped samples, while ordinary operator membership and stored observations remain unchanged? See the [complete contract](../../../../docs/subsystems/base-scheduler.md#complete-shared-mood-curves).
 - [ ] **Bounded Growth Page Loading**: Do overview requests suppress material calculation, do detail results preserve existing costs, and do page limits, snapshot observation, cancellation and retry follow the [loading rule](../../../../docs/subsystems/growth-planning.md#bounded-page-loading)?
 - [ ] **Workshop Threshold Fallback**: Do one-click setup tests count BOX synchronization, observe category fallback stopping at a usable selection and verify failed reads apply no lists or configured-threshold changes? See the [complete contract](../../../../docs/subsystems/base-scheduler.md#workshop-threshold-fallback).
 - [ ] **Operator Replacement Coverage**: Do replacement candidates and existing-target warnings include primary operators and replacements from every main and backup plan binding, without duplicate names or mutations during collection? See the [complete contract](../../../../docs/subsystems/plan-editor.md#operator-replacement-coverage).
