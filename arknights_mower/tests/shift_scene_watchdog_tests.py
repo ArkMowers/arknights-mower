@@ -186,3 +186,35 @@ def test_repeated_map_entry_attempts_preserve_timeout(shift_observation):
         solver.enter_room(ROOM, max_attempts=1)
     solver.device.exit.assert_called_once_with()
     solver.tap.assert_not_called()
+
+
+@pytest.mark.parametrize("delay,limit", [(0.5, 45), (1, 90), (3, 270), (5, 450)])
+@pytest.mark.parametrize("refresh", [False, True])
+def test_expired_selection_preserves_staffing_and_pending_task(
+    shift_observation, delay, limit, refresh
+):
+    solver, clock, change_page = shift_observation
+    config.conf.run_order_delay = delay
+    change_page("selection")
+    assert solver.scene() == Scene.INFRA_ARRANGE_ORDER
+    started = solver.recog.last_scene_time
+    clock.current += timedelta(seconds=limit)
+    if refresh:
+        solver.recog.update()
+    assert solver.scene() == Scene.INFRA_ARRANGE_ORDER
+    assert solver.recog.last_scene_time == started
+    solver.device.exit.assert_not_called()
+
+    clock.current += timedelta(milliseconds=10)
+    if refresh:
+        solver.recog.update()
+    physical = solver.physical.copy()
+    target = dorm_recovery_tests.FINAL.copy()
+    solver.task.plan = {ROOM: target.copy()}
+    with pytest.raises(base_schedule.RoomArrangementDeferred):
+        solver.agent_arrange_room({}, ROOM, solver.task.plan, skip_enter=True)
+    solver.device.exit.assert_called_once_with()
+    solver.choose_agent.assert_not_called()
+    solver.tap_confirm.assert_not_called()
+    assert solver.physical == physical
+    assert solver.task.plan == {ROOM: target}

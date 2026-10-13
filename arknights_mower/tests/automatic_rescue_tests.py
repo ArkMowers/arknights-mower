@@ -1329,6 +1329,7 @@ def test_rejected_staffing_candidate_cancels_only_failed_room_and_requests_repai
     solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
     solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
     solver.find = MagicMock(return_value=True)
+    solver.scene = MagicMock(return_value=Scene.INFRA_ARRANGE_ORDER)
     solver.choose_agent = MagicMock(side_effect=AgentSelectionNotReady("心情不足"))
     solver.back_to_infrastructure = MagicMock()
     solver._emergency_read_rooms = MagicMock()
