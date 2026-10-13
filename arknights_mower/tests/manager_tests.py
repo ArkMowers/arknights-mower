@@ -11,6 +11,7 @@ from wsgiref.util import setup_testing_defaults
 
 from webview import FOLDER_DIALOG
 
+from arknights_mower.utils import manager_instances as controls
 from arknights_mower.utils import update_runtime as runtime
 from manager import (
     Api,
@@ -28,12 +29,22 @@ class ManagerApiTests(unittest.TestCase):
             api = Api(Path(directory) / "instances.json")
             api.add("一号 实例", "C:\\Mower Data\\一号")
             api.add("二号", "C:\\Mower Data\\二号")
+            # Simulate launcher details without changing the host's native locks.
             with (
-                patch("manager.sys.platform", "win32"),
-                patch("manager.sys.frozen", True, create=True),
-                patch("manager.sys._MEIPASS", directory, create=True),
-                patch(
-                    "manager.sys.executable", str(Path(directory) / "多开管理器.exe")
+                patch.object(
+                    controls,
+                    "sys",
+                    SimpleNamespace(
+                        platform="win32",
+                        frozen=True,
+                        _MEIPASS=directory,
+                        executable=str(Path(directory) / "多开管理器.exe"),
+                    ),
+                ),
+                patch.object(
+                    runtime,
+                    "hidden_console_options",
+                    return_value={"creationflags": 0x08000000},
                 ),
                 patch.object(
                     runtime, "installation_root", return_value=Path(directory)
