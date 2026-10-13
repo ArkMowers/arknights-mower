@@ -9,7 +9,13 @@ from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.news_checker import MaintenanceInfo, NewsChecker
-from arknights_mower.utils.scheduler_task import SchedulerTask
+from arknights_mower.utils.scheduler_task import (
+    SchedulerTask,
+    TaskTypes,
+    adjust_run_order_for_maintenance,
+    protect_priority_tasks,
+    scheduling,
+)
 
 
 class NewsCheckerTests(unittest.TestCase):
@@ -494,6 +500,142 @@ class NewsCheckerTests(unittest.TestCase):
 
         self.assertTrue(retried)
         sleep.assert_called_once_with(300)
+
+
+class DailyResetSchedulingTests(unittest.TestCase):
+    def setUp(self):
+        conf = Conf(enable_mastery=True)
+        conf.run_order_grandet_mode.enable = False
+        for replacement in (
+            patch.object(config, "conf", conf),
+            patch.object(NewsChecker, "get_maintenance", return_value=None),
+            patch(
+                "requests.sessions.Session.request",
+                side_effect=AssertionError("offline test requested network"),
+            ),
+        ):
+            replacement.start()
+            self.addCleanup(replacement.stop)
+
+    def local_time(self, hour, minute=0, second=0, day=14):
+        return (
+            datetime(
+                2026, 10, day, hour, minute, second, tzinfo=ZoneInfo("Asia/Shanghai")
+            )
+            .astimezone()
+            .replace(tzinfo=None)
+        )
+
+    def test_daily_reset_is_instantaneous_and_rolls_at_four(self):
+        for hour, minute, second, expected_day in (
+            (0, 0, 0, 14),
+            (3, 59, 59, 14),
+            (4, 0, 0, 15),
+            (4, 0, 1, 15),
+            (23, 59, 59, 15),
+        ):
+            with self.subTest(hour=hour, minute=minute, second=second):
+                now = self.local_time(hour, minute, second)
+                reset = NewsChecker.get_daily_reset(now)
+                self.assertEqual(reset.start, self.local_time(4, day=expected_day))
+                self.assertEqual(reset.end, reset.start)
+                self.assertEqual(reset.resume_at, reset.start)
+                self.assertEqual(reset.update_type, "hot")
+                self.assertTrue(reset.is_flash_update)
+                self.assertFalse(reset.active_at(reset.start))
+                self.assertFalse(reset.allows_early_login)
+
+    def test_reset_uses_server_time_with_a_utc_clock(self):
+        now = datetime(2026, 10, 13, 19, 59, tzinfo=ZoneInfo("UTC"))
+        reset = NewsChecker.get_daily_reset(now)
+        self.assertEqual(reset.start, datetime(2026, 10, 13, 20))
+        self.assertEqual(reset.announcement_id, "daily-reset-2026-10-14")
+
+    def test_scheduling_advances_orders_and_preserves_restoration(self):
+        now = self.local_time(3)
+        before = SchedulerTask(self.local_time(3, 55), task_type=TaskTypes.RUN_ORDER)
+        after = SchedulerTask(self.local_time(4, 5), task_type=TaskTypes.RUN_ORDER)
+        outside = SchedulerTask(self.local_time(4, 10), task_type=TaskTypes.RUN_ORDER)
+        restore = SchedulerTask(self.local_time(4), task_type=TaskTypes.RUN_ORDER)
+        restore.run_order_restore_pending = True
+        ordinary = SchedulerTask(self.local_time(5))
+        tasks = [before, after, outside, restore, ordinary]
+
+        scheduling(tasks, time_now=now)
+
+        self.assertEqual(before.time, self.local_time(3, 49, 59))
+        self.assertEqual(after.time, self.local_time(3, 49, 58))
+        self.assertTrue(before.adjusted)
+        self.assertTrue(after.adjusted)
+        self.assertEqual(restore.time, self.local_time(4))
+        self.assertFalse(restore.adjusted)
+        self.assertEqual(outside.time, self.local_time(4, 10))
+        self.assertEqual(ordinary.time, self.local_time(5))
+        times = [task.time for task in tasks]
+        scheduling(tasks, time_now=now)
+        self.assertEqual([task.time for task in tasks], times)
+
+    def test_configured_order_buffer_is_reused(self):
+        task = SchedulerTask(self.local_time(4, 15), task_type=TaskTypes.RUN_ORDER)
+        adjust_run_order_for_maintenance(
+            [task], run_order_delay=8, now=self.local_time(3)
+        )
+        self.assertEqual(task.time, self.local_time(3, 43, 59))
+
+    def test_announced_maintenance_and_daily_reset_both_advance_orders(self):
+        announcement = MaintenanceInfo(
+            start=self.local_time(6),
+            end=self.local_time(12),
+            update_type="major",
+            title="版本更新停机维护公告",
+            url="https://example.test/news/major",
+            announcement_id="major",
+        )
+        reset_order = SchedulerTask(self.local_time(4), task_type=TaskTypes.RUN_ORDER)
+        maintenance_order = SchedulerTask(
+            self.local_time(8), task_type=TaskTypes.RUN_ORDER
+        )
+        with patch.object(NewsChecker, "get_maintenance", return_value=announcement):
+            adjusted = adjust_run_order_for_maintenance(
+                [reset_order, maintenance_order], now=self.local_time(3)
+            )
+            self.assertIs(NewsChecker.get_maintenance(), announcement)
+        self.assertCountEqual(adjusted, [reset_order, maintenance_order])
+        self.assertEqual(reset_order.time, self.local_time(3, 49, 59))
+        self.assertEqual(maintenance_order.time, self.local_time(5, 49, 59))
+
+    def test_overlapping_windows_converge_in_one_pass(self):
+        start, end = self.local_time(4, 5), self.local_time(4, 15)
+        task = SchedulerTask(self.local_time(4, 10), task_type=TaskTypes.RUN_ORDER)
+        with patch.object(NewsChecker, "get_update_time", return_value=(start, end)):
+            adjusted = adjust_run_order_for_maintenance([task], now=self.local_time(3))
+            self.assertEqual(adjusted, [task])
+            self.assertEqual(task.time, self.local_time(3, 49, 59))
+            adjust_run_order_for_maintenance([task], now=self.local_time(3))
+            self.assertEqual(task.time, self.local_time(3, 49, 59))
+
+    def test_daily_reset_advances_handoffs_through_both_dispatch_entries(self):
+        for entry in (scheduling, protect_priority_tasks):
+            for hour, minute in ((3, 55), (4, 0)):
+                with self.subTest(entry=entry.__name__, hour=hour, minute=minute):
+                    task = SchedulerTask(
+                        self.local_time(hour, minute), task_type=TaskTypes.SWAP_SUPPORT
+                    )
+                    entry([task], time_now=self.local_time(3))
+                    self.assertEqual(task.time, self.local_time(3, 48, 59))
+                    self.assertTrue(task.advance_support_swap)
+                    entry([task], time_now=self.local_time(3))
+                    self.assertEqual(task.time, self.local_time(3, 48, 59))
+
+    def test_refresh_does_not_pause_or_stop_automation(self):
+        reset = NewsChecker.get_daily_reset(self.local_time(3))
+        with (
+            patch.object(mower_main, "_stop_for_major_update") as stop,
+            patch.object(mower_main, "csleep") as sleep,
+        ):
+            self.assertFalse(mower_main._handle_maintenance(reset, None, reset.start))
+        stop.assert_not_called()
+        sleep.assert_not_called()
 
 
 if __name__ == "__main__":
