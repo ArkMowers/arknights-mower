@@ -41,3 +41,13 @@ export async function initializeManager(renderInstances, target = window, timeou
   await renderInstances(instances)
   await target.pywebview.api.mark_ready()
 }
+
+export function managerCall(action, timeout = 15000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('管理器操作超时，请刷新状态后重试')), timeout)
+    Promise.resolve()
+      .then(action)
+      .then(resolve, reject)
+      .finally(() => clearTimeout(timer))
+  })
+}

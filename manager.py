@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import json
 import multiprocessing as mp
 import os
 import sys
@@ -8,6 +7,7 @@ from pathlib import Path
 
 import webview
 
+from arknights_mower.utils.manager_instances import InstanceController
 from arknights_mower.utils.path import get_path
 
 
@@ -53,92 +53,22 @@ def choose_instance_directory(window, directory=""):
     return result.result()
 
 
-class Api:
-    def __init__(self, storage_path=None, ready=None):
-        self._ready = ready
-        self.storage_path = (
-            Path(storage_path)
-            if storage_path is not None
-            else get_path("@app/instances.json", space="")
-        )
-        try:
-            with self.storage_path.open("r", encoding="utf-8") as f:
-                self.instances = json.load(f)
-        except Exception:
-            self.instances = []
-            self.save()
-
-    def save(self):
-        self.storage_path.parent.mkdir(parents=True, exist_ok=True)
-        with self.storage_path.open("w", encoding="utf-8") as f:
-            json.dump(self.instances, f, ensure_ascii=False)
-
-    def get_instances(self):
-        return self.instances
-
-    def mark_ready(self):
-        if self._ready is not None:
-            self._ready.set()
-
-    def add(self, name, path):
-        self.instances.append({"name": name, "path": path})
-        self.save()
-
-    def remove(self, idx):
-        del self.instances[idx]
-        self.save()
-
-    def rename(self, idx, name):
-        self.instances[idx]["name"] = name
-        self.save()
-
+class Api(InstanceController):
     def select_path(self, idx):
+        with self._operation():
+            original = self.instances[idx].copy()
+            self._editable(original, self._records())
         window = webview.active_window()
-        folder = choose_instance_directory(window, self.instances[idx]["path"])
+        folder = choose_instance_directory(window, original["path"])
         if not folder:
             return None
         if not isinstance(folder, str):
             folder = folder[0]
-        self.instances[idx]["path"] = folder
-        self.save()
+        with self._operation():
+            if self.instances[idx] != original:
+                raise ValueError("实例已发生变化，请重新选择保存目录")
+            self._update(idx, {"path": folder})
         return folder
-
-    def start(self, idx):
-        from subprocess import Popen
-        from threading import Thread
-
-        from arknights_mower.utils.update_runtime import (
-            active_job,
-            hidden_console_options,
-            installation_root,
-            launch_environment,
-        )
-
-        if active_job():
-            return {"ok": False, "message": "软件更新或进程操作期间无法启动新实例"}
-        frozen = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
-        instance = self.instances[idx]
-        if frozen:
-            mower = Path(sys.executable).resolve().parent / (
-                "mower.exe" if sys.platform == "win32" else "mower"
-            )
-            command = [str(mower), instance["path"], instance["name"]]
-        else:
-            command = [
-                sys.executable,
-                str(installation_root() / "webview_ui.py"),
-                instance["path"],
-                instance["name"],
-            ]
-        env = launch_environment(
-            {"data_dir": os.environ.get("MOWER_DATA_DIR", ""), "managed": True}
-        )
-        process = Popen(
-            command, cwd=installation_root(), env=env, **hidden_console_options()
-        )
-        # Reap instances even while the manager window stays open.
-        Thread(target=process.wait, daemon=True).start()
-        return {"ok": True}
 
 
 def manager_app():

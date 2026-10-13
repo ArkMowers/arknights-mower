@@ -248,6 +248,9 @@ class DesktopStartupTests(unittest.TestCase):
         resource_result=None,
         existing_install=False,
         cancel=None,
+        token="",
+        manager_port="0",
+        restart_port="58100",
     ):
         import server as task_server
         import webview_ui
@@ -255,12 +258,13 @@ class DesktopStartupTests(unittest.TestCase):
         with ExitStack() as stack:
             config = Mock()
             config.conf.webview.tray = True
-            config.conf.webview.token = ""
+            config.conf.webview.token = token
             config.conf.start_automatically = automatic
             config.conf.resource_update.enable = resource
             config.conf.resource_update.auto_update = resource
             config.stop_mower = threading.Event()
             server = Mock(app=Flask(__name__))
+            server.http_start = Mock()
             server.start = Mock(wraps=task_server.start)
             stack.enter_context(patch.object(task_server, "app", server.app))
             server.resource_update.running.return_value = existing_install
@@ -319,7 +323,8 @@ class DesktopStartupTests(unittest.TestCase):
                         "MOWER_BACKGROUND": "0",
                         "MOWER_MANAGED": "1",
                         "MOWER_RESTART_JOB": "fixture" if restart else "",
-                        "MOWER_RESTART_PORT": "58100",
+                        "MOWER_RESTART_PORT": restart_port,
+                        "MOWER_MANAGER_PORT": manager_port,
                         "MOWER_RESUME_RUN": resume_run,
                         "MOWER_RESUME_MODE": resume_mode,
                     },
@@ -336,7 +341,7 @@ class DesktopStartupTests(unittest.TestCase):
                 patch.object(network, "is_port_in_use", side_effect=[False, True]),
                 patch.object(webview_ui, "exit_if_webview_backend_missing"),
                 patch.object(webview_ui, "close_child"),
-                patch.object(webview_ui, "start_http_server"),
+                patch.object(webview_ui, "start_http_server", server.http_start),
                 patch("arknights_mower.utils.lifecycle.shutdown", shutdown),
                 patch.object(
                     webview_ui, "start_desktop_child", return_value=(Mock(), Mock())
@@ -371,6 +376,23 @@ class DesktopStartupTests(unittest.TestCase):
         events, server = self.launch()
         self.assertEqual(events, [("start", "0")])
         server.start.assert_called_once_with("0")
+
+    def test_managed_desktop_honors_explicit_and_random_ports_with_or_without_token(
+        self,
+    ):
+        for token in ("", "remote-secret"):
+            for manager_port, expected_port in (("58001", 58001), ("0", 32100)):
+                with self.subTest(token=token, manager_port=manager_port):
+                    with patch.object(network, "get_new_port", return_value=32100):
+                        _, server = self.launch(
+                            automatic=False,
+                            token=token,
+                            manager_port=manager_port,
+                            restart_port="",
+                        )
+                    server.http_start.assert_called_once_with(
+                        server.app, "0.0.0.0" if token else "127.0.0.1", expected_port
+                    )
 
     def test_resource_install_finishes_before_the_single_process_start(self):
         for result in ({"ok": True}, {"ok": False}):

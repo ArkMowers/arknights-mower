@@ -593,6 +593,21 @@ def background_requested():
     return os.environ.get("MOWER_BACKGROUND") == "1"
 
 
+def desktop_port(webview_conf, managed, restart_port="", manager_port=None):
+    from arknights_mower.utils.network import get_new_port
+
+    if restart_port:
+        return int(restart_port)
+    if managed:
+        port = int(manager_port) if manager_port is not None else webview_conf.port
+        return port or get_new_port()
+    return (
+        webview_conf.port
+        if webview_conf.token and webview_conf.port
+        else get_new_port()
+    )
+
+
 def run_desktop():
     from arknights_mower.utils.lifecycle import shutdown
 
@@ -685,7 +700,7 @@ def _run_desktop():
         splash_process, splash_queue = start_desktop_child("splash")
         splash_queue.put({"type": "text", "data": "加载配置文件"})
     from arknights_mower.utils import config
-    from arknights_mower.utils.network import get_new_port, is_port_in_use
+    from arknights_mower.utils.network import is_port_in_use
 
     conf = config.conf
     tray = conf.webview.tray or background or managed
@@ -709,10 +724,8 @@ def _run_desktop():
     runtime_token = token or secrets.token_urlsafe(32)
     host = "0.0.0.0" if token else "127.0.0.1"
     restart_port = os.environ.get("MOWER_RESTART_PORT", "")
-    port = (
-        int(restart_port)
-        if restart_port
-        else (conf.webview.port if token else get_new_port())
+    port = desktop_port(
+        conf.webview, managed, restart_port, os.environ.pop("MOWER_MANAGER_PORT", None)
     )
     if is_port_in_use(port):
         raise RuntimeError(f"端口{port}已被占用，无法启动！")

@@ -279,7 +279,16 @@ def send_instance_command(record, action, directory=None):
 class RuntimeRegistration:
     def __init__(self, kind, *, space="", name="", port=None, running=None):
         self.directory = state_dir()
-        self.id = uuid4().hex
+        launch_id = (
+            os.environ.pop("MOWER_LAUNCH_ID", "")
+            if kind == "instance" and os.environ.get("MOWER_MANAGED") == "1"
+            else ""
+        )
+        self.id = (
+            launch_id
+            if len(launch_id) == 32 and all(c in "0123456789abcdef" for c in launch_id)
+            else uuid4().hex
+        )
         self.path = self.directory / "instances" / f"{self.id}.json"
         self.request = self.directory / "shutdown" / f"{self.id}.json"
         self.running = running or (lambda: False)
