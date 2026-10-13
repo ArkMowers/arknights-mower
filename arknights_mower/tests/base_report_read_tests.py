@@ -180,6 +180,65 @@ def test_shipped_digits_keep_their_value(number):
     assert solver.get_number(template, ((0, 0), (width, height)), height=None) == number
 
 
+def test_split_gold_digit_does_not_add_a_digit():
+    image = np.zeros((35, 120), np.uint8)
+    for position, number in enumerate((8, 0, 5, 0, 0)):
+        template = noto_sans[number].copy()
+        if position == 1:
+            # Two small cuts detach the zero's left stroke into another contour.
+            template[7, :7] = 0
+            template[25, :7] = 0
+        height, width = template.shape
+        x = 2 + position * 24
+        image[2 : 2 + height, x : x + width] = template
+
+    solver = _detached_solver()
+    assert solver.get_number(image, ((0, 0), (120, 35)), height=None) == 80500
+
+
+@pytest.mark.parametrize("damaged", [False, True])
+def test_gold_reading_through_report_crop(damaged):
+    image = _report_frame()
+    for position, number in enumerate((8, 0, 5, 0, 0)):
+        ink = cv2.resize(noto_sans[number], (12, 19)) > 100
+        if damaged and position == 1:
+            ink[3, :4] = False
+            ink[10, :4] = False
+        x = 1632 + position * 16
+        image[302:321, x : x + 12][ink] = (0, 170, 255)
+
+    solver = _solver_for(image)
+    solver.crop_report()
+
+    assert solver.report_res == {
+        "作战录像": 0,
+        "赤金": 80500,
+        "龙门币订单": 0,
+        "龙门币订单数": 0,
+        "合成玉": 0,
+        "合成玉订单数量": 0,
+    }
+
+
+@pytest.mark.parametrize("number", [11, 35, 76, 101, 80500])
+@pytest.mark.parametrize("gap", [0, 1])
+def test_adjacent_digits_remain_separate(number, gap):
+    templates = [noto_sans[int(digit)] for digit in str(number)]
+    image = np.zeros(
+        (35, sum(template.shape[1] + gap for template in templates)), np.uint8
+    )
+    x = 0
+    for template in templates:
+        height, width = template.shape
+        image[2 : 2 + height, x : x + width] = template
+        x += width + gap
+
+    solver = _detached_solver()
+    assert (
+        solver.get_number(image, ((0, 0), (image.shape[1], 35)), height=None) == number
+    )
+
+
 @pytest.mark.parametrize("unusable_digit", [0, 4])
 def test_incompatible_template_does_not_discard_usable_scores(
     monkeypatch, unusable_digit
@@ -205,6 +264,14 @@ def test_unscorable_digit_does_not_truncate_a_number():
     solver = _detached_solver()
 
     assert solver.get_number(image, ((0, 0), (80, 50)), height=None) is None
+
+
+def test_unmatched_stroke_is_not_a_zero():
+    image = np.zeros((40, 30), np.uint8)
+    image[2:15, 2:8] = 255
+    solver = _detached_solver()
+
+    assert solver.get_number(image, ((0, 0), (30, 40)), height=None) is None
 
 
 @pytest.mark.parametrize("scope", [((0, 0), (0, 41)), ((50, 0), (50, 41))])
