@@ -82,6 +82,8 @@ The [independent update decision](../../.agents/notes/implemented/simplification
 
 ## 3. Subsystem Invariants
 
+- <a id="mirrorchyan-no-update"></a>**MirrorChyan No Update**: A successful MirrorChyan response whose version is not newer than the submitted installed version requires no download URL and leaves the installation, backup and loaded core untouched.
+
 - <a id="independent-update-admission"></a>**Independent Update Admission**: MAA core and resource automatic checks and installations use independent policies, installations consume a matching check only while MAA is idle, and an unknown local resource version accepts a valid published version without accepting mismatched or reused checks.
 
 - <a id="verified-maa-admission"></a>**Verified MAA Admission**: Desktop activity navigation atomically replaces validated task definitions in `cache/resource/tasks/tasks.json`, preserving other cached resources and the previous navigation on update failure. Resource loading, task submission and task startup require positive MAA results; rejected calls identify their phase and target, clear the pending run without recording successful execution, and preserve rollback backups.
@@ -135,3 +137,11 @@ Frontend activity options, inventory suggestions and plan-end metadata reload on
 MAA recursively loads JSON files in `resource/tasks/`, which takes precedence over the legacy sibling `resource/tasks.json`. Desktop activity navigation therefore belongs inside the incremental task directory. Task names may override the installed resource layer; duplicate names within one directory load fail. Android retains `cache/resource/tasks.json` for its component packaging and bridge contract.
 
 The existing verified admission boundary checks resource loading, task IDs and startup before recording execution. The [navigation dispatch decision](../../.agents/notes/implemented/bug-fix/2026-10-12-maa-navigation-dispatch.md) records this path correction. Offline coverage resides in `arknights_mower/tests/maa_navigation_tests.py` and `arknights_mower/tests/maa_admission_tests.py`.
+
+## 7. MirrorChyan Update Results
+
+Windows x64 update requests submit the installed core version to MirrorChyan. `_get_mirrorchyan_asset` checks service errors and CDK expiration, then compares the returned version with the submitted version before requiring a URL. A version at or below the installed version produces release metadata with `runtime=None`. The check route returns `available=false`, no check identifier and a null runtime asset. The installer returns `updated=false` before staging or downloading; the worker reports no update and preserves the loaded core. Newer releases and first installations still require an HTTPS asset. Existing full-package requests on other platforms retain their download behavior.
+
+Failure mode: requiring a URL before comparing versions misclassifies a valid no-update response as incomplete download information.
+
+The [MirrorChyan no-update decision](../../.agents/notes/implemented/bug-fix/2026-10-13-mirrorchyan-no-update.md) records the protocol and offline coverage.

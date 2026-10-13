@@ -23,6 +23,61 @@ def _asset(name: str, size: int = 100) -> dict:
 
 
 class TestReleaseParsing(unittest.TestCase):
+    def test_mirrorchyan_current_version_needs_no_download_url(self):
+        for version in ("v6.19.0", "v6.18.0"):
+            with (
+                self.subTest(version=version),
+                patch.object(
+                    mu,
+                    "_request_mirrorchyan",
+                    return_value=(0, {"version_name": version}),
+                ),
+            ):
+                release = mu.get_mirrorchyan_release(
+                    "fixture-token",
+                    system="windows",
+                    machine="AMD64",
+                    installed_version="v6.19.0",
+                )
+            self.assertEqual(release.tag, version)
+            self.assertIsNone(release.runtime)
+            self.assertIsNone(release.as_dict()["runtime"])
+
+    def test_mirrorchyan_missing_url_for_new_or_first_install_still_fails(self):
+        for installed in ("", "v6.18.0"):
+            with (
+                self.subTest(installed=installed),
+                patch.object(
+                    mu,
+                    "_request_mirrorchyan",
+                    return_value=(0, {"version_name": "v6.19.0"}),
+                ),
+                self.assertRaisesRegex(mu.MaaUpdateError, "下载信息不完整"),
+            ):
+                mu.get_mirrorchyan_release(
+                    "fixture-token",
+                    system="windows",
+                    machine="AMD64",
+                    installed_version=installed,
+                )
+
+    def test_mirrorchyan_no_update_does_not_bypass_cdk_errors(self):
+        for code, data in (
+            (7002, {"version_name": "v6.19.0"}),
+            (0, {"version_name": "v6.19.0", "cdk_expired_time": 1}),
+        ):
+            with (
+                self.subTest(code=code),
+                patch.object(mu, "_request_mirrorchyan", return_value=(code, data)),
+                self.assertRaises(mu.MaaUpdateError),
+            ):
+                mu.get_mirrorchyan_release(
+                    "fixture-token",
+                    system="windows",
+                    machine="AMD64",
+                    installed_version="v6.19.0",
+                )
+
     def test_compares_stable_and_beta_versions(self):
         self.assertTrue(mu.is_maa_version_newer("v6.18.0", "v6.17.0"))
         self.assertTrue(mu.is_maa_version_newer("v6.18.0-beta.2", "v6.18.0-beta.1"))
@@ -822,6 +877,38 @@ class TestInstallAndBackup(unittest.TestCase):
             patch.object(mu, "extract_python_folder", side_effect=fake_python),
         ):
             return mu.install_latest_maa(self.target, callback=callback)
+
+    def test_mirrorchyan_no_update_preserves_installation_and_backup(self):
+        self.target.mkdir()
+        (self.target / "MaaCore.dll").write_bytes(b"installed")
+        self.backup.mkdir()
+        (self.backup / "original.txt").write_text("backup")
+        with (
+            patch.object(mu, "read_installed_version", return_value="v6.19.0"),
+            patch.object(
+                mu,
+                "_request_mirrorchyan",
+                return_value=(0, {"version_name": "v6.19.0"}),
+            ),
+            patch.object(mu, "download_asset") as download,
+            patch.object(mu, "replace_with_backup") as replace,
+            patch.object(mu, "clear_loaded_maa_cache") as clear,
+            patch.object(mu.tempfile, "TemporaryDirectory") as staging,
+        ):
+            result = mu.install_latest_maa(
+                self.target,
+                source="mirrorchyan",
+                mirror_token="fixture-token",
+                system="windows",
+                machine="AMD64",
+            )
+        self.assertFalse(result["updated"])
+        self.assertEqual(result["installed_version"], "v6.19.0")
+        self.assertEqual(result["runtime_downloaded"], 0)
+        self.assertEqual((self.target / "MaaCore.dll").read_bytes(), b"installed")
+        self.assertEqual((self.backup / "original.txt").read_text(), "backup")
+        for action in (download, replace, clear, staging):
+            action.assert_not_called()
 
     def test_progress_descriptions_distinguish_download_and_update(self):
         download_messages = []
