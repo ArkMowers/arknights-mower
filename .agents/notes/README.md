@@ -179,6 +179,8 @@ For changed active records, legacy identifiers and test paths remain strict. New
 
 For a branch or commit review, pass `--base <actual-comparison-commit>` to include committed note changes alongside staged, unstaged and untracked changes. GitHub checks use the PR base or prior push SHA. A manual run without a comparison base audits all active references; missing event data or an unavailable supplied base fails the check. A link's existence proves neither that a test ran nor that the evidence establishes the decision.
 
+Legacy identifiers and triplet identities use the [fixed policy comparison history](../../scripts/README.md#policy-comparison-history) when the shared comparison ancestor predates the old-format policy. Pre-policy identities retain their existing format. New legacy identifiers or triplets are rejected, and frozen identifiers cannot be removed. Changed active references retain the original requested comparison scope.
+
 ## Discovery and Links
 
 Discover records by lifecycle/category folders, repository search and direct links from the affected subsystem, postmortem or related note. Preserve links during moves and consolidation. A centralized note index or hand-maintained inventory repeats path metadata and is prohibited.

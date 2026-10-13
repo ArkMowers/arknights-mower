@@ -20,6 +20,11 @@ import sys
 import tokenize
 from pathlib import Path
 
+try:
+    from governance_baseline import policy_comparison_base
+except ImportError:
+    from scripts.governance_baseline import policy_comparison_base
+
 IGNORED_DIRS = {
     ".git",
     "node_modules",
@@ -459,6 +464,7 @@ def added_line_scope(
             check=True,
         )
         revision = ancestor.stdout.strip()
+        revision = policy_comparison_base(repository, revision, "development_prose")
         diff = subprocess.run(
             [
                 "git",

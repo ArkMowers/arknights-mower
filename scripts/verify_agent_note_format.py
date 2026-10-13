@@ -17,6 +17,11 @@ from pathlib import Path
 from urllib.parse import unquote
 
 try:
+    from governance_baseline import policy_comparison_base
+except ImportError:
+    from scripts.governance_baseline import policy_comparison_base
+
+try:
     from verify_doc_links import (
         CODE_FENCE_PATTERN,
         INLINE_CODE_PATTERN,
@@ -454,13 +459,16 @@ def verify_agent_notes(
             changed = changed_note_paths(repository, comparison_base)
             declarations = declared_invariants(repository / "CODING_STANDARDS.md")
             if changed is not None:
-                legacy_keys = legacy_note_keys(repository, comparison_base) or set()
+                legacy_base = policy_comparison_base(
+                    repository, comparison_base, "legacy_format"
+                )
+                legacy_keys = legacy_note_keys(repository, legacy_base) or set()
                 baseline_legacy_keys = legacy_note_keys(
-                    repository, comparison_base, include_head=False
+                    repository, legacy_base, include_head=False
                 )
                 if baseline_legacy_keys is not None:
                     historical_ids = historical_invariants(
-                        repository, comparison_base or "HEAD"
+                        repository, legacy_base or "HEAD"
                     )
                     for identifier in sorted(declarations - historical_ids):
                         errors.append(

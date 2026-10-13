@@ -1864,6 +1864,223 @@ class VerifyGovernanceTests(unittest.TestCase):
             self.assertIn("not a Git worktree root", scoped.stdout)
 
 
+class VerifyPolicyBaselineTests(unittest.TestCase):
+    make_reference_repo = VerifyGovernanceTests.make_reference_repo
+    commit_reference_fixture = VerifyGovernanceTests.commit_reference_fixture
+    run_governance_workflow = VerifyGovernanceTests.run_governance_workflow
+
+    def make_policy_repo(self, directory):
+        root = Path(directory)
+        (root / "README.md").write_text("# Initial repository\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "init", "-q"], cwd=root, check=True, capture_output=True, timeout=15
+        )
+        self.commit_reference_fixture(root, "old integration base")
+        old_base = self.revision(root)
+        _, sidecar, metadata = self.make_reference_repo(root)
+        document = root / "docs/guide.md"
+        document.parent.mkdir()
+        document.write_text("Existing OldWording\n", encoding="utf-8")
+        self.commit_reference_fixture(root, "historical records")
+        legacy_base = self.revision(root)
+        frozen = root / "scripts/legacy_invariant_ids.json"
+        frozen.parent.mkdir()
+        frozen.write_text(json.dumps(["[INV-REC-07]"]), encoding="utf-8")
+        (root / "CODING_STANDARDS.md").write_text(
+            "## Field Integrity\nUnread fields remain absent.\n", encoding="utf-8"
+        )
+        document.write_text(
+            "Existing OldWording\nLater existing OldWording\n", encoding="utf-8"
+        )
+        self.commit_reference_fixture(root, "freeze legacy format")
+        prose_base = self.revision(root)
+        glossary = root / "CONTEXT.md"
+        glossary.write_text(
+            glossary.read_text(encoding="utf-8")
+            + "\n## 3. Development & Documentation Language\n- **_Avoid_**: `OldWording`\n",
+            encoding="utf-8",
+        )
+        (root / "scripts/governance_baselines.json").write_text(
+            json.dumps({"legacy_format": legacy_base, "development_prose": prose_base}),
+            encoding="utf-8",
+        )
+        self.commit_reference_fixture(root, "activate prose policy")
+        return root, old_base, sidecar, metadata
+
+    def revision(self, root):
+        return (
+            subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, timeout=15)
+            .decode()
+            .strip()
+        )
+
+    def run_policy_gate(self, root, base):
+        return self.run_governance_workflow(
+            root,
+            "pull_request",
+            {
+                "pull_request": {
+                    "base": {"sha": base},
+                    "title": "Check history",
+                    "body": "",
+                }
+            },
+        )
+
+    def test_old_integration_base_preserves_each_policy_history_at_actual_entry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, old_base, _, _ = self.make_policy_repo(directory)
+            for event_name, event in (
+                (
+                    "pull_request",
+                    {
+                        "pull_request": {
+                            "base": {"sha": old_base},
+                            "title": "Check history",
+                            "body": "",
+                        }
+                    },
+                ),
+                ("push", {"before": old_base}),
+                ("workflow_dispatch", {"inputs": {"comparison_base": old_base}}),
+            ):
+                with self.subTest(event=event_name):
+                    result = self.run_governance_workflow(root, event_name, event)
+                    self.assertEqual(
+                        result.returncode, 0, result.stdout + result.stderr
+                    )
+                    self.assertIn("UNCHANGED DEVELOPMENT PROSE: 2", result.stdout)
+
+    def test_old_integration_base_rejects_post_policy_additions(self):
+        for kind, diagnostic in (
+            ("identifier", "New legacy identifier '[INV-NEW-99]'"),
+            ("record", "New legacy triplet '2026-10-08-added-record'"),
+            ("prose", "docs/guide.md:3"),
+        ):
+            for mode in ("unstaged", "staged", "committed"):
+                with (
+                    self.subTest(kind=kind, mode=mode),
+                    tempfile.TemporaryDirectory() as directory,
+                ):
+                    root, old_base, sidecar, _ = self.make_policy_repo(directory)
+                    if kind == "identifier":
+                        (root / "scripts/legacy_invariant_ids.json").write_text(
+                            json.dumps(["[INV-REC-07]", "[INV-NEW-99]"]),
+                            encoding="utf-8",
+                        )
+                    elif kind == "record":
+                        stem = sidecar.name[:-13]
+                        for suffix in (".md", ".zh.md", ".sidecar.json"):
+                            source = sidecar.with_name(stem + suffix)
+                            source.with_name(
+                                "2026-10-08-added-record" + suffix
+                            ).write_bytes(source.read_bytes())
+                    else:
+                        document = root / "docs/guide.md"
+                        document.write_text(
+                            document.read_text(encoding="utf-8") + "New OldWording\n",
+                            encoding="utf-8",
+                        )
+                    if mode == "staged":
+                        subprocess.run(
+                            ["git", "add", "."],
+                            cwd=root,
+                            check=True,
+                            capture_output=True,
+                            timeout=15,
+                        )
+                    elif mode == "committed":
+                        self.commit_reference_fixture(root, "post policy addition")
+                    result = self.run_policy_gate(root, old_base)
+                    self.assertEqual(
+                        result.returncode, 1, result.stdout + result.stderr
+                    )
+                    self.assertIn(diagnostic, result.stdout)
+
+    def test_policy_floor_keeps_original_reference_scope_and_business_terms(self):
+        for kind, diagnostic in (
+            ("reference", "missing_tests.py"),
+            ("link", "missing.md"),
+            ("business", "ForbiddenTerm"),
+        ):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
+                root, old_base, sidecar, metadata = self.make_policy_repo(directory)
+                if kind == "reference":
+                    metadata["test_suites"] = ["arknights_mower/tests/missing_tests.py"]
+                    sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+                elif kind == "link":
+                    (root / "docs/guide.md").write_text(
+                        "[Missing document](missing.md)\n", encoding="utf-8"
+                    )
+                else:
+                    (root / "docs/guide.md").write_text(
+                        "ForbiddenTerm\n", encoding="utf-8"
+                    )
+                    self.commit_reference_fixture(root, "existing business violation")
+                    old_base = self.revision(root)
+                result = self.run_policy_gate(root, old_base)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn(diagnostic, result.stdout)
+
+    def test_newer_comparison_base_retains_its_prose_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, old_base, _, _ = self.make_policy_repo(directory)
+            document = root / "docs/guide.md"
+            document.write_text("New OldWording\n", encoding="utf-8")
+            self.commit_reference_fixture(root, "existing post policy prose")
+            current = self.run_policy_gate(root, self.revision(root))
+            self.assertEqual(current.returncode, 0, current.stdout + current.stderr)
+            older = self.run_policy_gate(root, old_base)
+            self.assertEqual(older.returncode, 1, older.stdout + older.stderr)
+            self.assertIn("docs/guide.md:1", older.stdout)
+
+    def test_invalid_policy_baseline_fails_actual_entry(self):
+        for kind in ("malformed", "missing", "unrelated"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
+                root, old_base, _, _ = self.make_policy_repo(directory)
+                configuration = root / "scripts/governance_baselines.json"
+                if kind == "malformed":
+                    configuration.write_text("{}", encoding="utf-8")
+                else:
+                    values = json.loads(configuration.read_text(encoding="utf-8"))
+                    revision = "f" * 40
+                    if kind == "unrelated":
+                        tree = (
+                            subprocess.check_output(
+                                ["git", "rev-parse", old_base + "^{tree}"],
+                                cwd=root,
+                                timeout=15,
+                            )
+                            .decode()
+                            .strip()
+                        )
+                        revision = (
+                            subprocess.check_output(
+                                [
+                                    "git",
+                                    "-c",
+                                    "user.name=Test",
+                                    "-c",
+                                    "user.email=test@example.invalid",
+                                    "commit-tree",
+                                    tree,
+                                ],
+                                input=b"unrelated policy\n",
+                                cwd=root,
+                                timeout=15,
+                            )
+                            .decode()
+                            .strip()
+                        )
+                    values["legacy_format"] = revision
+                    values["development_prose"] = revision
+                    configuration.write_text(json.dumps(values), encoding="utf-8")
+                result = self.run_policy_gate(root, old_base)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("policy", result.stdout.lower())
+                self.assertNotIn("STRUCTURAL CHECKS PASSED", result.stdout)
+
+
 class VerifyFormalTextTests(unittest.TestCase):
     make_reference_repo = VerifyGovernanceTests.make_reference_repo
     commit_reference_fixture = VerifyGovernanceTests.commit_reference_fixture
