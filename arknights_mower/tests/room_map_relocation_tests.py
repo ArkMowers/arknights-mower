@@ -17,6 +17,7 @@ from arknights_mower.solvers.base_mixin import BaseMixin  # noqa: E402
 from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
 from arknights_mower.utils.image import loadres  # noqa: E402
+from arknights_mower.utils.scene import Scene  # noqa: E402
 from arknights_mower.utils.solver import BaseSolver  # noqa: E402
 
 ROOM = "room_1_1"
@@ -33,12 +34,52 @@ def test_archive_recycling_title_confirms_actual_room(phase):
     frame[18:95, 568:957] = title
     solver = BaseMixin()
     solver.recog = SimpleNamespace(img=frame)
-    if phase == "interference":
-        assert solver.detect_room_type() == "训练室"
+    assert solver.detect_room_type() == "回收站"
     assert solver.detect_room() == "recycle"
 
 
-@pytest.mark.parametrize("room", ["central", "meeting", "contact", "recycle"])
+@pytest.mark.parametrize("phase", ["entry", "interference", "repeated", "settled"])
+def test_archive_workshop_title_confirms_actual_room(phase):
+    title = cv2.cvtColor(
+        cv2.imread(str(ROOM_TITLES / f"factory_{phase}_20261013.png")),
+        cv2.COLOR_BGR2RGB,
+    )
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[18:95, 568:957] = title
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame)
+    assert solver.detect_room() == "factory"
+
+
+@pytest.mark.parametrize(
+    ("facility", "name", "room"),
+    [
+        ("manufacture", "制造站", "room_2_2"),
+        ("trade", "贸易站", "room_1_1"),
+        ("power", "发电站", "room_1_3"),
+        ("train", "训练室", "train"),
+    ],
+)
+@pytest.mark.parametrize("hue", [25, 99, 36, 178, 32])
+def test_facility_title_controls_room_identity_and_type(facility, name, room, hue):
+    title = cv2.cvtColor(
+        cv2.imread(str(ROOM_TITLES / f"{facility}_20261013.png")),
+        cv2.COLOR_BGR2RGB,
+    )
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[18:95, 568:957] = title
+    frame[20:92, 570:642] = cv2.cvtColor(
+        np.full((72, 72, 3), (hue, 230, 220), dtype=np.uint8), cv2.COLOR_HSV2RGB
+    )
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame)
+    assert solver.detect_room_type() == name
+    assert solver.detect_room() == room
+
+
+@pytest.mark.parametrize(
+    "room", ["central", "meeting", "contact", "recycle", "factory", "train"]
+)
 def test_positive_facility_title_precedes_conflicting_training_color(room):
     frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
     title = loadres(f"room/{room}")
@@ -46,15 +87,50 @@ def test_positive_facility_title_precedes_conflicting_training_color(room):
     frame[18 : 18 + height, 568 : 568 + width] = title
     solver = BaseMixin()
     solver.recog = SimpleNamespace(img=frame)
-    solver.detect_room_type = MagicMock(return_value="训练室")
+    solver._detect_room_type_by_color = MagicMock(return_value="训练室")
     assert solver.detect_room() == room
-    solver.detect_room_type.assert_not_called()
+    solver._detect_room_type_by_color.assert_not_called()
 
 
-def test_recycling_entry_animation_does_not_trigger_home_recovery(monkeypatch):
+@pytest.mark.parametrize(
+    ("room", "name"),
+    [
+        ("central", "控制中枢"),
+        ("dormitory", "宿舍"),
+        ("meeting", "会客室"),
+        ("contact", "办公室"),
+        ("recycle", "回收站"),
+        ("factory", "加工站"),
+        ("train", "训练室"),
+    ],
+)
+def test_known_facility_type_does_not_fall_back_to_manufacturing_color(room, name):
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    title = loadres(f"room/{room}")
+    height, width = title.shape[:2]
+    frame[18 : 18 + height, 568 : 568 + width] = title
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame)
+    solver._detect_room_type_by_color = MagicMock(return_value="制造站")
+    assert solver.detect_room_type() == name
+    solver._detect_room_type_by_color.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("room", "filename"),
+    [
+        ("recycle", "recycle_interference_20261011.png"),
+        ("factory", "factory_entry_20261013.png"),
+        ("factory", "factory_interference_20261013.png"),
+        ("factory", "factory_repeated_20261013.png"),
+    ],
+)
+def test_confirmed_entry_animation_does_not_trigger_home_recovery(
+    monkeypatch, room, filename
+):
     monkeypatch.setattr(config, "stop_mower", Event())
     title = cv2.cvtColor(
-        cv2.imread(str(ROOM_TITLES / "recycle_interference_20261011.png")),
+        cv2.imread(str(ROOM_TITLES / filename)),
         cv2.COLOR_BGR2RGB,
     )
     frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
@@ -66,10 +142,30 @@ def test_recycling_entry_animation_does_not_trigger_home_recovery(monkeypatch):
     solver.back_to_infrastructure = MagicMock()
     solver.sleep = MagicMock()
     solver.scene = MagicMock(return_value=None)
-    solver.enter_room("recycle")
+    solver.enter_room(room)
     solver.back_to_index.assert_not_called()
     solver.back_to_infrastructure.assert_not_called()
     solver.sleep.assert_not_called()
+
+
+def test_workshop_title_does_not_confirm_numbered_manufacturing_room(monkeypatch):
+    monkeypatch.setattr(config, "stop_mower", Event())
+    title = cv2.cvtColor(
+        cv2.imread(str(ROOM_TITLES / "factory_entry_20261013.png")),
+        cv2.COLOR_BGR2RGB,
+    )
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[18:95, 568:957] = title
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(img=frame)
+    solver.find = MagicMock(return_value=None)
+    solver.back_to_index = MagicMock()
+    solver.back_to_infrastructure = MagicMock()
+    solver.scene = MagicMock(return_value=Scene.INFRA_DETAILS)
+    with pytest.raises(RuntimeError, match="未成功进入房间 room_1_3"):
+        solver.enter_room("room_1_3", max_attempts=1)
+    solver.back_to_infrastructure.assert_called()
+    solver.back_to_index.assert_not_called()
 
 
 @pytest.mark.parametrize(
