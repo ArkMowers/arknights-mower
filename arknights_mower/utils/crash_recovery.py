@@ -209,6 +209,7 @@ def observe_scheduler(scheduler):
             raise MowerExit
 
     check_cancel()
+    scheduler._state_restore_complete = False
     scheduler.task = None
     scheduler.defer_backup_plan_until_mood_read = True
     for operator in scheduler.op_data.operators.values():
@@ -253,8 +254,13 @@ def observe_scheduler(scheduler):
     replan_dynamic_tasks(scheduler)
     refresh_workshop_inventory(scheduler)
     check_cancel()
-    if not save_current_state():
-        raise RuntimeError("新的设备观察暂未保存，等待重新检查")
+    scheduler._state_restore_complete = True
+    try:
+        if not save_current_state():
+            raise RuntimeError("新的设备观察暂未保存，等待重新检查")
+    except BaseException:
+        scheduler._state_restore_complete = False
+        raise
     check_cancel()
 
 

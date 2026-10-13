@@ -5,8 +5,9 @@ import pickle
 import socket
 import subprocess
 import sys
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
-from threading import Event
+from threading import Event, RLock, Thread
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -393,6 +394,7 @@ def test_actual_sqlite_no_row_allows_only_explicit_observation_path(
 
 
 def configure_simulate(offline, monkeypatch, solver):
+    solver._state_restore_complete = False
     monkeypatch.setattr(offline.main, "initialize", Mock(return_value=solver))
     monkeypatch.setattr(offline.main.NewsChecker, "get_maintenance", lambda: None)
     monkeypatch.setattr(
@@ -542,4 +544,216 @@ def test_strict_actual_room_reader_rejects_ambiguous_slot_or_invalid_mood(
         solver.get_agent_from_room("central", force_mood=True, strict_observation=True)
     if name == "":
         assert solver.read_screen.call_count == 3
+    offline.io.assert_not_called()
+
+
+def test_stop_during_restore_preserves_the_only_saved_queue(
+    offline, notice, observed_scheduler, monkeypatch
+):
+    solver = observed_scheduler
+    solver.tasks = list(pending_tasks())
+    assert offline.record.save_current_state()
+    with offline.record._conn() as connection:
+        original = connection.execute("SELECT state FROM saved_state").fetchone()[0]
+    prepared = crash_recovery.prepare_resume(offline.record.load_state(strict=True))
+    solver.tasks = []
+    configure_simulate(offline, monkeypatch, solver)
+
+    def stop_before_restore():
+        client = offline.server.app.test_client()
+        response = client.get("/stop", headers={"token": "crash-test"})
+        assert response.status_code == 200 and response.data == b"true"
+        raise MowerExit
+
+    solver.initialize_operators.side_effect = stop_before_restore
+    with pytest.raises(MowerExit):
+        offline.main.simulate(prepared)
+    with offline.record._conn() as connection:
+        assert (
+            connection.execute("SELECT state FROM saved_state").fetchone()[0]
+            == original
+        )
+    assert not crash_recovery.status()["automatic"]
+    offline.io.assert_not_called()
+
+
+def isolate_main_run(offline, monkeypatch):
+    monkeypatch.setattr(
+        offline.main,
+        "device_control",
+        SimpleNamespace(run=lambda **kwargs: nullcontext()),
+    )
+    monkeypatch.setattr(offline.main, "resource_task_session", nullcontext)
+    monkeypatch.setattr(offline.main, "_close_device_session", Mock())
+    monkeypatch.setattr(offline.main, "_cancel_maintenance_timer", Mock())
+
+
+def test_later_worker_failure_saves_compensation_after_successful_recovery(
+    offline, notice, observed_scheduler, monkeypatch
+):
+    solver = observed_scheduler
+    prepared = crash_recovery.prepare_resume(offline.record.current_state())
+    configure_simulate(offline, monkeypatch, solver)
+    isolate_main_run(offline, monkeypatch)
+    monkeypatch.setattr(offline.main, "_main", offline.main.simulate)
+    solver._read_room_mood = Mock()
+    compensation, future = pending_tasks()
+
+    def later_failure():
+        assert not crash_recovery.status()["active"]
+        solver.tasks.extend([compensation, future])
+        raise RuntimeError("later task failure")
+
+    monkeypatch.setattr(offline.main, "refresh_resource_at_boundary", later_failure)
+    monkeypatch.setattr(
+        offline.main,
+        "_resume_device_dispatch",
+        Mock(side_effect=RuntimeError("later task failure")),
+    )
+    crash_recovery.begin()
+    with pytest.raises(RuntimeError, match="later task failure"):
+        offline.main.main(prepared)
+    loaded = offline.record.load_state(strict=True)
+    assert len(loaded["tasks"]) == 2
+    assert (
+        loaded["tasks"][0].run_order_original_roster
+        == compensation.run_order_original_roster
+    )
+    assert loaded["tasks"][1].time == future.time
+    offline.io.assert_not_called()
+
+
+def test_failed_in_process_observation_does_not_save_unverified_positions(
+    offline, observed_scheduler, monkeypatch
+):
+    solver = observed_scheduler
+    solver._state_restore_complete = True
+    operator = solver.op_data.operators["夕"]
+    operator.current_room, operator.current_index = "central", 0
+    assert offline.record.save_current_state()
+    with offline.record._conn() as connection:
+        original = connection.execute("SELECT state FROM saved_state").fetchone()[0]
+    isolate_main_run(offline, monkeypatch)
+    solver._read_room_mood = Mock(side_effect=RuntimeError("observation failed"))
+    monkeypatch.setattr(
+        offline.main, "_main", lambda saved: crash_recovery.observe_scheduler(solver)
+    )
+    with pytest.raises(RuntimeError, match="observation failed"):
+        offline.main.main({})
+    with offline.record._conn() as connection:
+        assert (
+            connection.execute("SELECT state FROM saved_state").fetchone()[0]
+            == original
+        )
+    offline.io.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "rejection", ["worker_still_running", "resource_update_running"]
+)
+def test_rejected_recovery_start_preserves_stop_and_selected_mode(
+    offline, notice, monkeypatch, rejection
+):
+    crash_recovery.cancel()
+    original = notice.read_bytes()
+    intent = Mock()
+    monkeypatch.setattr(supervisor, "task_intent", intent)
+    worker = Mock()
+    worker.is_alive.return_value = rejection == "worker_still_running"
+    monkeypatch.setattr(offline.server, "mower_thread", worker)
+    monkeypatch.setattr(
+        offline.server.resource_update,
+        "running",
+        lambda: rejection == "resource_update_running",
+    )
+    client = offline.server.app.test_client()
+    response = client.get("/start/2", headers={"token": "crash-test"})
+    assert response.status_code == 200 and response.data == b"false"
+    assert crash_recovery.cancelled()
+    assert notice.read_bytes() == original
+    intent.assert_not_called()
+    worker.start.assert_not_called()
+    offline.io.assert_not_called()
+
+
+def test_update_started_while_start_waits_for_lock_preserves_stop_and_mode(
+    offline, notice, monkeypatch
+):
+    crash_recovery.cancel()
+    original = notice.read_bytes()
+    intent = Mock()
+    monkeypatch.setattr(supervisor, "task_intent", intent)
+    monkeypatch.setattr(offline.server.resource_update, "running", lambda: False)
+    maintenance_lock = RLock()
+    monkeypatch.setattr(offline.server, "maa_maintenance_lock", maintenance_lock)
+    initial_check, update_started = Event(), Event()
+    responses, errors = [], []
+
+    def active_job():
+        if not update_started.is_set():
+            initial_check.set()
+            return None
+        return {"id": "active-replacement"}
+
+    monkeypatch.setattr(offline.server, "active_job", active_job)
+
+    def start():
+        try:
+            responses.append(
+                offline.server.app.test_client().get(
+                    "/start/2", headers={"token": "crash-test"}
+                )
+            )
+        except BaseException as error:
+            errors.append(error)
+
+    starter = Thread(target=start)
+    with maintenance_lock:
+        starter.start()
+        assert initial_check.wait(2)
+        update_started.set()
+    starter.join(2)
+    assert not starter.is_alive() and not errors
+    assert len(responses) == 1
+    assert responses[0].status_code == 200 and responses[0].data == b"false"
+    assert crash_recovery.cancelled()
+    assert notice.read_bytes() == original
+    intent.assert_not_called()
+    assert offline.server.mower_thread is None
+    offline.io.assert_not_called()
+
+
+def test_stop_snapshot_captured_before_observation_cannot_save_partial_mutations(
+    offline, observed_scheduler, monkeypatch
+):
+    solver = observed_scheduler
+    solver._state_restore_complete = True
+    operator = solver.op_data.operators["夕"]
+    operator.current_room, operator.current_index = "central", 0
+    assert offline.record.save_current_state()
+    with offline.record._conn() as connection:
+        original = connection.execute("SELECT state FROM saved_state").fetchone()[0]
+    stop = offline.server._stop_mower
+
+    def cancel_observation(*args, **kwargs):
+        assert stop()
+        raise MowerExit
+
+    solver._read_room_mood = cancel_observation
+
+    def interleaved_stop():
+        with pytest.raises(MowerExit):
+            crash_recovery.observe_scheduler(solver)
+        return True
+
+    monkeypatch.setattr(offline.server, "_stop_mower", interleaved_stop)
+    response = offline.server.app.test_client().get(
+        "/stop", headers={"token": "crash-test"}
+    )
+    assert response.status_code == 200 and response.data == b"true"
+    with offline.record._conn() as connection:
+        assert (
+            connection.execute("SELECT state FROM saved_state").fetchone()[0]
+            == original
+        )
     offline.io.assert_not_called()

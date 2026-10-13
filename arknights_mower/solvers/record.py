@@ -248,7 +248,11 @@ def save_action_to_sqlite_decorator(func):
 def current_state():
     from arknights_mower.__main__ import base_scheduler
 
-    if base_scheduler is None or base_scheduler.op_data is None:
+    if (
+        base_scheduler is None
+        or base_scheduler.op_data is None
+        or not getattr(base_scheduler, "_state_restore_complete", True)
+    ):
         return None
     data, tasks = base_scheduler.op_data, base_scheduler.tasks
     return {
@@ -334,9 +338,12 @@ def save_current_state():
 
 def save_state(func):
     def save_wrapper(*args, **kwargs):
+        from arknights_mower.__main__ import base_scheduler
+
         saved_state = current_state()
         result = func(*args, **kwargs)
-        save_state_to_db(saved_state)
+        if getattr(base_scheduler, "_state_restore_complete", True):
+            save_state_to_db(saved_state)
         return result
 
     return save_wrapper

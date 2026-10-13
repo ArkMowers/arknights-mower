@@ -286,10 +286,8 @@ def main(saved_state, *, preparation_serial=None):
         ):
             return _main(saved_state)
     except Exception:
-        if (
-            base_scheduler is not None
-            and getattr(base_scheduler, "_state_restore_complete", False)
-            and not (saved_state or {}).get("_process_crash_recovery")
+        if base_scheduler is not None and getattr(
+            base_scheduler, "_state_restore_complete", False
         ):
             try:
                 from arknights_mower.solvers.record import save_current_state
@@ -342,6 +340,7 @@ def initialize(
 
 def _initialize_scheduler(tasks, device):
     base_scheduler = BaseSchedulerSolver(device=device)
+    base_scheduler._state_restore_complete = False
     from arknights_mower.utils.operators import build_global_plan
 
     plan, source_plan = build_global_plan(include_source=True)

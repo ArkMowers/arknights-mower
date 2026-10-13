@@ -1779,16 +1779,6 @@ def _start_mower(
     if automatic and crash_recovery.cancelled():
         return False
 
-    if crash_recovery.status()["active"] and recovery_state is None:
-        if shutdown.closing or active_job():
-            return False
-        if automatic:
-            if not crash_recovery.status().get("automatic"):
-                return False
-        else:
-            crash_recovery.request_resume(start_type)
-            task_intent(True)
-        return _retry_after_process_crash(preparation_serial=preparation_serial)
     if recovery_state is not None and not crash_recovery.status().get("automatic"):
         return False
 
@@ -1796,7 +1786,7 @@ def _start_mower(
         return False
 
     with maa_maintenance_lock:
-        if shutdown.closing:
+        if shutdown.closing or active_job():
             return False
         if automatic and crash_recovery.cancelled():
             return False
@@ -1814,6 +1804,14 @@ def _start_mower(
             or resource_update.running()
         ):
             return False
+        if crash_recovery.status()["active"] and recovery_state is None:
+            if automatic:
+                if not crash_recovery.status().get("automatic"):
+                    return False
+            else:
+                crash_recovery.request_resume(start_type)
+                task_intent(True)
+            return _retry_after_process_crash(preparation_serial=preparation_serial)
         # 创建 tmp 文件夹
         tmp_dir = get_path("@app/tmp")
         tmp_dir.mkdir(exist_ok=True)
