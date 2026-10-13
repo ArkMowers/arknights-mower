@@ -41,6 +41,8 @@ New guarantees use behavior names and direct contract links. Historical identifi
 
 The growth UI follows [Bounded Page Loading](docs/subsystems/growth-planning.md#bounded-page-loading): overview loading omits material graphs, rendered card count and retained details have explicit bounds, and stale requests cannot replace the current selection. Existing material accounting and transient-state isolation remain binding.
 
+The building-skill page follows [Read Only Base Groups](docs/subsystems/base-scheduler.md#read-only-base-groups) and [Isolated Group Estimates](docs/subsystems/base-scheduler.md#isolated-group-estimates), keeping bundled definitions, temporary estimates and synchronized conditions separate from Scheduling Plans and browser storage.
+
 Fiammetta mood curves follow [Aligned Charging History](docs/subsystems/base-scheduler.md#aligned-charging-history), with both query paths covered by focused offline tests.
 
 ## 3. Concurrency & Resource Lifecycle

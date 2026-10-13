@@ -171,9 +171,10 @@ def test_craft_during_sync_is_not_overwritten(syncer, stock_db, monkeypatch):
     monkeypatch.setattr(module, "time", lambda: 100)
 
     def respond(*args, **kwargs):
-        with patch.object(stock_db, "datetime") as clock:
-            clock.now.return_value.timestamp.return_value = 101
-            stock_db.apply_workshop_inventory({"固源岩组": -4})
+        if "/cultivate/player" in str(args[1]):
+            with patch.object(stock_db, "datetime") as clock:
+                clock.now.return_value.timestamp.return_value = 101
+                stock_db.apply_workshop_inventory({"固源岩组": -4})
         return SimpleNamespace(
             json=lambda: {
                 "code": 0,
@@ -429,15 +430,21 @@ def test_concurrent_refreshes_keep_fetch_cache_and_upload_in_order(syncer, monke
     monkeypatch.setattr(yituliu_sync, "sync_after_cultivate", upload)
     with patch.object(module, "request_with_retry") as get:
         get.side_effect = [
-            SimpleNamespace(
-                json=lambda phase=phase: {
-                    "code": 0,
-                    "data": {
-                        "characters": [{"id": "char_2027_wang", "evolvePhase": phase}]
-                    },
-                }
-            )
+            response
             for phase in (1, 2)
+            for response in (
+                SimpleNamespace(
+                    json=lambda phase=phase: {
+                        "code": 0,
+                        "data": {
+                            "characters": [
+                                {"id": "char_2027_wang", "evolvePhase": phase}
+                            ]
+                        },
+                    }
+                ),
+                SimpleNamespace(json=lambda: {"code": 0, "data": {}}),
+            )
         ]
         with ThreadPoolExecutor(max_workers=2) as workers:
             first = workers.submit(syncer.start)
@@ -445,7 +452,7 @@ def test_concurrent_refreshes_keep_fetch_cache_and_upload_in_order(syncer, monke
                 assert uploading.wait(5)
                 second = workers.submit(module.cultivate().start)
                 assert waiting.wait(5)
-                assert get.call_count == 1
+                assert get.call_count == 2
                 assert phases == [1]
             finally:
                 release.set()
@@ -458,3 +465,71 @@ def test_concurrent_refreshes_keep_fetch_cache_and_upload_in_order(syncer, monke
         ]
         == 2
     )
+
+
+def test_refresh_fetches_facilities_for_the_same_role_and_keeps_only_conditions(syncer):
+    roster = {
+        "code": 0,
+        "data": {"characters": [{"id": "char_2027_wang", "evolvePhase": 2}]},
+    }
+    info = {
+        "code": 0,
+        "data": {
+            "building": {
+                "hire": {"level": 1},
+                "powers": [{"level": 3}] * 2,
+                "manufactures": [{"level": 3}] * 5,
+                "dormitories": [{"level": 1}, {"level": 2}],
+            },
+            "status": {"name": "private"},
+        },
+    }
+    with patch.object(module, "request_with_retry") as get:
+        get.side_effect = [
+            SimpleNamespace(json=lambda: roster),
+            SimpleNamespace(json=lambda: info),
+        ]
+        assert syncer.start() is True
+    saved = json.loads(syncer.record_path.read_text())
+    assert saved["_mower_base_conditions"] == {
+        "recruits": 0,
+        "power": 2,
+        "factories": 5,
+        "dormLevel": 2,
+    }
+    assert "private" not in json.dumps(saved)
+    assert get.call_args.kwargs["timeout"] == 10
+    assert get.call_args.args[1].endswith("?uid=test")
+
+
+def test_facility_fetch_failure_keeps_successful_roster_sync(syncer):
+    roster = {
+        "code": 0,
+        "data": {"characters": [{"id": "char_2027_wang", "evolvePhase": 2}]},
+    }
+    with patch.object(module, "request_with_retry") as get:
+        get.side_effect = [
+            SimpleNamespace(json=lambda: roster),
+            RuntimeError("private response"),
+        ]
+        with patch.object(module.logger, "warning") as logged:
+            assert syncer.start() is True
+    assert json.loads(syncer.record_path.read_text()) == roster
+    assert "private response" not in str(logged.call_args)
+
+
+def test_combined_roster_and_facilities_need_no_second_request(syncer):
+    data = {
+        "code": 0,
+        "data": {
+            "characters": [{"id": "char_2027_wang", "evolvePhase": 2}],
+            "building": {"hire": {"level": 3}},
+        },
+    }
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.return_value = data
+        assert syncer.start() is True
+    assert get.call_count == 1
+    assert json.loads(syncer.record_path.read_text())["_mower_base_conditions"] == {
+        "recruits": 2
+    }

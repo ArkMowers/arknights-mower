@@ -67,3 +67,14 @@ export function filterBasementSkills(items, filters) {
     return childSkill.length ? [{ ...item, childSkill, span: childSkill.length }] : []
   })
 }
+
+export function basementSkillTerms(ids = [], terms = {}) {
+  const result = new Set()
+  const visit = (id) => {
+    if (!terms[id] || result.has(id)) return
+    result.add(id)
+    for (const child of terms[id].buffer || []) visit(child)
+  }
+  ids.forEach(visit)
+  return [...result]
+}

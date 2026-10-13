@@ -119,3 +119,14 @@ describe('基建技能持有与解锁筛选', () => {
     expect(filterBasementSkills(items, { ownership: 'unowned' })[0].avatar).toBe('泡泡')
   })
 })
+
+it('特殊效果展开收集所有分支，忽略缺失项并截断环', async () => {
+  const { basementSkillTerms } = await import('./basementSkills')
+  const terms = {
+    a: { buffer: ['b', 'missing'] },
+    b: { buffer: ['a'] },
+    c: { buffer: ['d'] },
+    d: {}
+  }
+  expect(basementSkillTerms(['a', 'c'], terms)).toEqual(['a', 'b', 'c', 'd'])
+})

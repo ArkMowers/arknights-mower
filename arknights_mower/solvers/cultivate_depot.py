@@ -1,9 +1,11 @@
 import json
 from threading import Lock
 from time import time
+from urllib.parse import urlencode
 
 from arknights_mower.utils import config
 from arknights_mower.utils.config import atomic_write
+from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.skland import (
     get_binding_list,
@@ -11,6 +13,7 @@ from arknights_mower.utils.skland import (
     get_sign_header,
     header,
     log,
+    player_info_url,
     request_with_retry,
 )
 from arknights_mower.utils.workshop_data import parse_roster
@@ -51,6 +54,31 @@ class cultivate:
                 if isinstance(resp, dict) and resp.get("code") != 0:
                     raise ValueError(resp.get("message") or "森空岛返回的干员数据无效")
                 parse_roster(resp)
+                from arknights_mower.utils.building_skills import parse_base_conditions
+
+                conditions = parse_base_conditions(resp.get("data", {}).get("building"))
+                if not conditions:
+                    info_url = f"{player_info_url}?{urlencode({'uid': i['uid']})}"
+                    try:
+                        info = request_with_retry(
+                            "get",
+                            info_url,
+                            headers=get_sign_header(
+                                info_url, "get", None, self.sign_token
+                            ),
+                            timeout=10,
+                        ).json()
+                        if isinstance(info, dict) and info.get("code") == 0:
+                            conditions = parse_base_conditions(
+                                info.get("data", {}).get("building")
+                            )
+                    except Exception as exc:
+                        logger.warning(
+                            "森空岛基建设施读取失败，保留干员同步结果：%s",
+                            type(exc).__name__,
+                        )
+                if conditions:
+                    resp = {**resp, "_mower_base_conditions": conditions}
                 player_fields = ("uid", "nickName", "channelName", "channelMasterId")
                 if all(key in i for key in player_fields):
                     resp = {
@@ -75,7 +103,6 @@ class cultivate:
                 # web 线程（views/mastery.py 刷新）与调度线程共用本写点，原子写防撕裂
                 atomic_write(self.record_path, dump)
                 from arknights_mower.utils.growth import save_statistics
-                from arknights_mower.utils.log import logger
                 from arknights_mower.utils.mastery_recommendation import get_skill_data
 
                 try:

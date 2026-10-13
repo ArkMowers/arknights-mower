@@ -4,7 +4,7 @@ import json
 import re
 from functools import lru_cache
 
-from arknights_mower.utils.mastery_recommendation import get_cultivate_characters
+from arknights_mower.utils.mastery_recommendation import get_cultivate_snapshot
 from arknights_mower.utils.res_version import BUILDING_SKILL_DATA
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
@@ -63,16 +63,61 @@ def _operator_skills(name, progress):
     return result
 
 
+def parse_base_conditions(building):
+    """Extract available facility conditions; absent or invalid fields stay absent."""
+    if not isinstance(building, dict):
+        return {}
+    result = {}
+    for field, aliases, maximum in (
+        ("trade", ("tradings", "trading"), 5),
+        ("factories", ("manufactures", "manufacture"), 5),
+        ("power", ("powers", "power"), 3),
+    ):
+        entries = next((building[key] for key in aliases if key in building), None)
+        if (
+            isinstance(entries, list)
+            and len(entries) <= 9
+            and all(
+                isinstance(entry, dict)
+                and type(entry.get("level")) is int
+                and 0 <= entry["level"] <= 3
+                for entry in entries
+            )
+        ):
+            count = sum(entry["level"] > 0 for entry in entries)
+            if count <= maximum:
+                result[field] = count
+    for key, field in (("hire", "recruits"), ("meeting", "reception")):
+        facility = building.get(key)
+        level = facility.get("level") if isinstance(facility, dict) else None
+        if type(level) is int and 1 <= level <= 3:
+            result[field] = level - 1 if field == "recruits" else level
+    dormitories = building.get("dormitories")
+    if isinstance(dormitories, list):
+        levels = [
+            room["level"]
+            for room in dormitories
+            if isinstance(room, dict)
+            and type(room.get("level")) is int
+            and 1 <= room["level"] <= 5
+        ]
+        if levels:
+            result["dormLevel"] = max(levels)
+    return result
+
+
 def load_skill_snapshot():
     """Reuse the mastery snapshot without fetching data or assuming missing growth."""
     unavailable = {
         "has_data": False,
         "operators": [],
+        "base_conditions": {},
         "message": "请同步森空岛干员数据",
     }
-    roster = get_cultivate_characters()
-    if not roster:
+    payload = get_cultivate_snapshot()
+    if not payload:
         return unavailable
+    roster = {entry["id"]: entry for entry in payload["data"]["characters"]}
     try:
         name_to_ids = _operator_ids_by_name()
     except (OSError, ValueError, TypeError):
@@ -107,9 +152,13 @@ def load_skill_snapshot():
                 "skills": skills,
             }
         )
+    conditions = payload.get("_mower_base_conditions")
+    if not isinstance(conditions, dict):
+        conditions = parse_base_conditions(payload.get("data", {}).get("building"))
     return {
         "has_data": True,
         "operators": operators,
+        "base_conditions": conditions,
         "message": "使用已同步的森空岛练度",
     }
 
