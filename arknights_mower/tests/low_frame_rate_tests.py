@@ -50,6 +50,8 @@ def test_android_selection_uses_auto_without_platform_cap(monkeypatch):
     monkeypatch.setenv("MOWER_ANDROID", "1")
     monkeypatch.setattr(config, "screenshot_avg", 100)
     monkeypatch.setattr(config, "screenshot_count", 8)
+    monkeypatch.setattr(config, "operation_feedback_avg", None)
+    monkeypatch.setattr(config, "operation_feedback_count", 0)
     config.conf.low_frame_rate_mode = False
     solver = BaseMixin()
     assert solver.performance_profile.mode == "xhigh"

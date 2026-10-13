@@ -1186,9 +1186,6 @@ class BaseMixin:
         普通位筛选关	1724			1732 0.7
         普通位筛选开	1609			not
         """
-        retry = 0
-        open_threshold = 1650
-        poll_interval, max_attempts = self.selection_transition_timing()
         if profession:
             if config.stop_mower.is_set():
                 raise MowerExit
@@ -1201,20 +1198,7 @@ class BaseMixin:
         x = 1918
         label_pos = [(x, 135 + i * 110) for i in range(9)]
         label_pos_map = dict(zip(self.profession_labels, label_pos))
-        while (
-            (confirm_btn := self.find("confirm_blue")) is not None
-            and confirm_btn[0][0] > open_threshold
-        ) or (
-            (confirm_btn := self.find("confirm_train")) is not None
-            and confirm_btn[0][0] > open_threshold
-        ):
-            if retry >= max_attempts:
-                raise AgentSelectionNotReady("打开职业筛选失败")
-            if retry:
-                self.sleep(poll_interval)
-            else:
-                self.tap((1860, 60), interval=0.1)
-            retry += 1
+        self._set_profession_filter_open(True)
         # ALL 已高亮时无需重复点击；真正切换到 ALL 后仍须确认生效，
         # 不能用切换前的目标职业高亮提前返回。
         if self.get_color(label_pos_map["ALL"])[2] < 240:
@@ -1237,23 +1221,47 @@ class BaseMixin:
 
     def _close_profession_filter(self):
         """仅收起筛选侧栏，保留当前职业。"""
-        retry = 0
-        open_threshold = 1650
+        self._set_profession_filter_open(False)
+
+    def _set_profession_filter_open(self, opened):
+        """按确认按钮位置开关侧栏，原位置持续不变时有限补点。"""
         poll_interval, max_attempts = self.selection_transition_timing()
-        while (
-            (confirm_btn := self.find("confirm_blue")) is not None
-            and confirm_btn[0][0] < open_threshold
-        ) or (
-            (confirm_btn := self.find("confirm_train")) is not None
-            and confirm_btn[0][0] < open_threshold
-        ):
-            if retry >= max_attempts:
-                raise AgentSelectionNotReady("关闭职业筛选失败")
-            if retry:
-                self.sleep(poll_interval)
-            else:
+        retry_interval = max(1.0, 3 * poll_interval)
+        previous = None
+        stable_since = perf_counter()
+        taps = 0
+        for attempt in range(max_attempts + 1):
+            if config.stop_mower.is_set():
+                raise MowerExit
+            buttons = tuple(
+                (resource, button[0][0], button[0][1])
+                for resource in ("confirm_blue", "confirm_train")
+                if (button := self.find(resource)) is not None
+            )
+            state = None
+            if buttons and all(x < 1650 for _, x, _ in buttons):
+                state = True
+            elif buttons and all(x > 1650 for _, x, _ in buttons):
+                state = False
+            if state is opened:
+                return
+            if attempt == max_attempts:
+                break
+            now = perf_counter()
+            # 缺失、冲突或移动中的按钮不能证明上一次点击未生效。
+            if state is None or buttons != previous:
+                stable_since = now
+            previous = buttons
+            if state is not None and (
+                taps == 0 or (taps < 3 and now - stable_since >= retry_interval)
+            ):
                 self.tap((1860, 60), interval=0.1)
-            retry += 1
+                taps += 1
+                stable_since = perf_counter()
+            else:
+                self.sleep(poll_interval)
+        action = "打开" if opened else "关闭"
+        raise AgentSelectionNotReady(f"{action}职业筛选失败")
 
     def detect_room_number(self, img) -> int:
         score = []
