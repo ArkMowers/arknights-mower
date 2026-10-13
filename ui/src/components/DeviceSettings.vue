@@ -780,7 +780,7 @@ onUnmounted(() => {
               </help-text>
             </template>
             <n-input-number
-              :value="draft.manager_query_timeout ?? 3"
+              :value="draft.manager_query_timeout ?? 10"
               :min="1"
               :max="30"
               :step="0.5"

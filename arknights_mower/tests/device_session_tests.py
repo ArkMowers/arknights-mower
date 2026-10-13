@@ -1,5 +1,6 @@
 """Session policy at the application seam, with no host or device I/O."""
 
+import subprocess
 import unittest
 from unittest.mock import Mock
 
@@ -12,6 +13,7 @@ from arknights_mower.utils.device.preflight import PreflightError, PreflightResu
 from arknights_mower.utils.device.preparation import PreparationSession
 from arknights_mower.utils.device.session import (
     DeviceSession,
+    InstanceObservation,
     RecoveryPolicy,
     SessionFailure,
 )
@@ -357,6 +359,117 @@ class DeviceSessionTests(unittest.TestCase):
         self.assertTrue(result.ok, result.error)
         self.assertEqual(result.serial, "USB-A")
         # Waiting for the canvas must not restart the instance.
+        self.assertEqual(self.simulator.actions, [])
+
+    def test_manager_timeout_is_waited_for_and_retried_within_deadline(self):
+        self.simulator.state, self.simulator.serial = "running", "USB-A"
+        self.adb.rows, self.adb.boot = [("USB-A", "device")], "1"
+
+        attempts = 0
+
+        def inspect_with_timeout(profile, timeout):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise subprocess.TimeoutExpired("MuMuManager", 3.0)
+            return InstanceObservation(self.simulator.state, self.simulator.serial)
+
+        self.simulator.inspect = inspect_with_timeout
+        result = self.control.start()
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual(result.serial, "USB-A")
+        self.assertEqual(self.simulator.actions, [])
+        self.assertEqual(self.adb.actions, [])
+        self.assertGreaterEqual(attempts, 2)
+
+    def test_repeated_manager_timeouts_preserve_actions_until_ready(self):
+        for attempts in (0, 3):
+            with self.subTest(attempts=attempts):
+                self.setUp()
+                self.addCleanup(self.control.close)
+                self.session.policy = RecoveryPolicy(
+                    attempts=attempts, timeout=12, local_wait=2, poll_interval=1
+                )
+                self.simulator.state, self.simulator.serial = "running", "USB-A"
+                self.adb.rows, self.adb.boot = [("USB-A", "device")], "1"
+                before = self.conf.model_dump()
+
+                def inspect(profile, timeout):
+                    if self.clock.now < 8:
+                        self.clock.now += min(1, timeout)
+                        raise subprocess.TimeoutExpired("manager info", 1)
+                    return InstanceObservation("running", "USB-A")
+
+                self.simulator.inspect = inspect
+                result = self.control.start()
+                self.assertTrue(result.ok, result.error)
+                self.assertEqual(self.clock.now, 8)
+                self.assertEqual(self.session.actions, 0)
+                self.assertEqual(self.simulator.actions, [])
+                self.assertEqual(self.adb.actions, [])
+                self.assertEqual(self.conf.model_dump(), before)
+
+    def test_manager_timeout_then_stopped_instance_still_starts_once(self):
+        self.simulator.state = "stopped"
+        self.simulator.serial = "USB-A"
+        inspect = self.simulator.inspect
+
+        def inspect_after_timeout(profile, timeout):
+            if self.clock.now < 8:
+                self.clock.now += min(1, timeout)
+                raise TimeoutError("manager info timed out")
+            return inspect(profile, timeout)
+
+        def boot():
+            self.simulator.state = "running"
+            self.adb.rows, self.adb.boot = [("USB-A", "device")], "1"
+
+        self.simulator.inspect = inspect_after_timeout
+        self.simulator.on_start = boot
+        result = self.control.start()
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual(self.simulator.actions, ["start"])
+        self.assertEqual(self.session.actions, 1)
+
+    def test_persistent_manager_timeout_exhausts_only_the_time_budget(self):
+        before = self.conf.model_dump()
+        timeouts = []
+
+        def inspect(profile, timeout):
+            timeouts.append(timeout)
+            self.clock.now += min(1, timeout)
+            raise subprocess.TimeoutExpired("manager info", min(1, timeout))
+
+        self.simulator.inspect = inspect
+        result = self.control.start()
+        self.assertFalse(result.ok)
+        self.assertEqual(result.error.code, "manager_timeout")
+        self.assertEqual(self.clock.now, 12)
+        self.assertEqual(self.session.actions, 0)
+        self.assertEqual(self.simulator.actions, [])
+        self.assertEqual(self.adb.actions, [])
+        self.assertTrue(all(0 < value <= 12 for value in timeouts))
+        self.assertEqual(self.conf.model_dump(), before)
+
+    def test_manager_timeouts_after_reconnect_keep_readiness_polling(self):
+        self.simulator.state, self.simulator.serial = "running", "USB-A"
+        self.adb.rows = [("USB-A", "offline")]
+        inspect = self.simulator.inspect
+
+        def inspect_after_reconnect(profile, timeout):
+            if self.adb.actions and self.clock.now < 8:
+                self.clock.now += min(1, timeout)
+                raise subprocess.TimeoutExpired("manager info", 1)
+            if self.adb.actions:
+                self.adb.rows, self.adb.boot = [("USB-A", "device")], "1"
+            return inspect(profile, timeout)
+
+        self.simulator.inspect = inspect_after_reconnect
+        result = self.control.start()
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual(self.clock.now, 8)
+        self.assertEqual(self.session.actions, 1)
+        self.assertEqual(self.adb.actions, ["USB-A"])
         self.assertEqual(self.simulator.actions, [])
 
     def test_local_failure_allows_one_restart_and_verifies_new_endpoint(self):

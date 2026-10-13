@@ -863,6 +863,9 @@ class DeviceControl(Generic[D]):
                 return stopped
             except InstanceBindingError as exc:
                 raise PreflightRejected(str(exc), exc.code) from exc
+            except (TimeoutError, subprocess.TimeoutExpired) as exc:
+                logger.warning(f"关闭已绑定模拟器超时，未确认关闭：{exc}")
+                return False
 
     def stop_owned_avd(self) -> bool:
         """Explicit task-end policy, separate from ordinary application close."""

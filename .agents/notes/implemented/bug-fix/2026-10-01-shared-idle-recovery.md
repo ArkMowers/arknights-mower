@@ -36,3 +36,11 @@ Hermetic tests cover delayed ADB availability after runtime launch, persistent r
 Additional tests cover control EOF, preserved buffered data, pre-input rebuild, refused or exhausted recovery, healthy-helper reuse, uncertain delivery without replay and scheduling error propagation. The startup and runtime launch matrix covers each supported lifecycle preset without granting unsupported adapters new capabilities.
 
 Remote diagnosis reads logs, device status and the selected manager instance without changing configuration or starting tasks.
+
+## Manager Query Timeout Repair
+
+The [readiness and recovery contract](../../../../docs/subsystems/device-control.md#52-bounded-recovery-execution) distinguishes an unconfirmed read-only manager query from a recovery action. The previous retry path spent action attempts on waiting, could fail before the deadline and could leave no attempt for a later confirmed stopped instance. Initial readiness now waits for a verified manager observation before deciding which action is permitted; local observation after reconnect retains the same deadline through query timeouts. MuMu 12 connection testing also honors an explicitly enlarged query limit instead of truncating it to ten seconds.
+
+Focused offline regressions cover repeated timeouts with zero and three action attempts, later readiness, one launch after a stopped verdict, query timeouts after reconnect, full deadline exhaustion, unconfirmed idle shutdown and persisted timeout round trips. The query-limit check exercises Device Control with the production MuMu 12 adapter and injected command execution. Existing terminal binding, shared ADB and cancellation tests remain effective; no live-device behavior is claimed.
+
+Device Profile, Instance Binding, Readiness Verdict and Recovery Budget retain their names, meanings and boundaries. This repair reuses the existing decision and invariant identifiers, preserves the implemented lifecycle and requires no glossary change.

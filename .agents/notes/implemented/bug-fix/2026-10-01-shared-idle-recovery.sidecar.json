@@ -19,7 +19,10 @@
     "arknights_mower/utils/device/device.py",
     "arknights_mower/utils/device/scrcpy/core.py",
     "arknights_mower/utils/simulator.py",
-    "arknights_mower/solvers/base_schedule.py"
+    "arknights_mower/solvers/base_schedule.py",
+    "arknights_mower/utils/config/device_profile.py",
+    "arknights_mower/utils/device/discovery.py",
+    "ui/src/components/DeviceSettings.vue"
   ],
   "test_suites": [
     "arknights_mower/tests/device_session_tests.py",
@@ -32,6 +35,10 @@
     "arknights_mower/tests/device_screenshot_runtime_tests.py",
     "arknights_mower/tests/device_session_caller_tests.py",
     "arknights_mower/tests/base_scheduler_tests.py",
-    "arknights_mower/tests/maa_error_no_exit_tests.py"
+    "arknights_mower/tests/maa_error_no_exit_tests.py",
+    "arknights_mower/tests/device_discovery_tests.py",
+    "arknights_mower/tests/device_config_tests.py",
+    "ui/src/components/DeviceSettings.test.js",
+    "ui/src/utils/deviceSettings.test.js"
   ]
 }

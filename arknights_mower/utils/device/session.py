@@ -1,5 +1,6 @@
 """Bounded readiness and recovery for one immutable instance binding."""
 
+import subprocess
 import time
 from dataclasses import dataclass
 from threading import Event
@@ -21,10 +22,9 @@ from arknights_mower.utils.log import logger
 
 # The decoded frame the 1920x1080 templates require.
 REQUIRED_DISPLAY_SIZE = [1920, 1080]
-# A frame that is not the required canvas yet is a wait, not a failure: a game
-# that has not rotated, or one still loading, resolves inside the same deadline.
-# An unreadable size output stays terminal, because waiting cannot repair it.
-RETRYABLE_WAIT_CODES = frozenset({"frame_failed"})
+# A missing canvas or a timed-out read-only manager query can resolve inside
+# the same deadline. Invalid instance identity remains terminal.
+RETRYABLE_WAIT_CODES = frozenset({"frame_failed", "manager_timeout"})
 # The one failure that only says the transaction ran out of time; a verdict with
 # an observed reason is more useful and replaces it wherever one exists.
 BUDGET_EXHAUSTED = "设备恢复时间预算已耗尽"
@@ -353,6 +353,8 @@ class DeviceSession:
                 return "设备已连接，正在等待有效画面..."
             return "模拟器正在启动中，等待系统就绪..."
         if state == "offline":
+            if code == "manager_timeout":
+                return "模拟器管理程序响应超时，正在等待重试..."
             return "设备离线，正在连接设备 ADB 端口..."
         if state == "absent":
             if instance_state == "stopped":
@@ -445,6 +447,15 @@ class DeviceSession:
         except InstanceBindingError as exc:
             self.last = ReadinessResult(
                 "offline", "", self.adb_path, code=exc.code, message=str(exc)
+            )
+            return self.last
+        except (TimeoutError, subprocess.TimeoutExpired) as exc:
+            self.last = ReadinessResult(
+                "offline",
+                "",
+                self.adb_path,
+                code="manager_timeout",
+                message=str(exc),
             )
             return self.last
         except Exception as exc:
@@ -617,6 +628,12 @@ class DeviceSession:
                     raise SessionFailure(self.last, str(exc)) from exc
         observation = self.observe(deadline, frame_probe=frame_probe)
         self._check_observation(observation)
+        # No verified manager state means no lifecycle or reconnect authority.
+        # Read-only retries use time without spending the recovery action count.
+        while observation.code == "manager_timeout":
+            self.clock.sleep(min(self.policy.poll_interval, self._remaining(deadline)))
+            observation = self.observe(deadline, frame_probe=frame_probe)
+            self._check_observation(observation)
         if observation.state == "ready":
             return observation
         if (
@@ -688,7 +705,7 @@ class DeviceSession:
                     self.profile.preset_id == "windows.nox"
                     and observation.instance_state == "starting"
                 )
-            ) and observation.code != "transport_probe_failed":
+            ) and observation.code not in {"transport_probe_failed", "manager_timeout"}:
                 self._action(
                     lambda timeout: self.adb.recover(
                         self.adb_path, observation.serial, timeout
@@ -805,10 +822,16 @@ class DeviceSession:
         while True:
             observation = self.observe(deadline, frame_probe=frame_probe)
             self._check_observation(observation)
-            if observation.state == "ready" or self.clock.monotonic() >= until:
+            if observation.state == "ready" or (
+                observation.code != "manager_timeout"
+                and self.clock.monotonic() >= until
+            ):
                 return observation
+            # A query timeout does not confirm that the reconnect failed.
+            # Keep observing within the transaction before another action.
+            wait_until = deadline if observation.code == "manager_timeout" else until
             self.clock.sleep(
-                min(self.policy.poll_interval, until - self.clock.monotonic())
+                min(self.policy.poll_interval, self._remaining(wait_until))
             )
 
     def _check_observation(self, observation):

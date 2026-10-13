@@ -281,6 +281,23 @@ The session classifies device health into deterministic verdicts via [`Readiness
 - `ready`: Device fully booted and canvas frame matches `(1080, 1920, 3)`.
 
 ### 5.2 Bounded Recovery Execution
+The default `manager_query_timeout` is ten seconds in new Device Profiles, legacy
+migration and the settings form. Explicit saved values survive unrelated edits
+and configuration round trips. The production MuMu 12 `info` query uses this
+per-command limit, and bound-instance MuMu 12 connection tests allow the selected
+limit. LDPlayer and Nox endpoint validation retains its existing three-second
+per-command bound. Recovery and idle shutdown clamp commands to their remaining
+budgets.
+
+Read-only manager query timeouts produce the retryable `manager_timeout` verdict.
+Initial readiness and local observation after reconnect continue polling the same
+Instance Binding within the Recovery Budget without spending additional action
+attempts. A later stopped verdict follows the existing startup policy. Binding
+changes, Shared ADB Guard failures and cancellation remain terminal. Idle shutdown
+timeouts return an unconfirmed stop and never record successful shutdown. The
+[shared idle recovery decision](../../.agents/notes/implemented/bug-fix/2026-10-01-shared-idle-recovery.md)
+records the rationale and focused verification.
+
 When a device becomes unresponsive or disconnected:
 1. `DeviceSession` evaluates the configurable [`RecoveryPolicy`](../../arknights_mower/utils/device/session.py).
 2. Attempts reconnection up to `recovery_attempts` within the monotonic budget `recovery_timeout`.

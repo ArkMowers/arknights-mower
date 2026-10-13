@@ -45,6 +45,17 @@ FIXTURES = json.loads(
 
 
 class DeviceConfigurationTests(unittest.TestCase):
+    def test_manager_query_default_and_explicit_values_survive_round_trips(self):
+        for device in (None, {}, {"manager_query_timeout": 3.0}):
+            with self.subTest(device=device):
+                conf = config.Conf() if device is None else config.Conf(device=device)
+                expected = 3.0 if device else 10.0
+                self.assertEqual(conf.device.manager_query_timeout, expected)
+                updated = conf.updated({"device": {"recovery_local_wait": 7.0}})
+                self.assertEqual(updated.device.manager_query_timeout, expected)
+                restored = config.Conf.model_validate_json(updated.model_dump_json())
+                self.assertEqual(restored.device.manager_query_timeout, expected)
+
     def test_retired_mumu_profile_requires_manual_rebinding(self):
         original = {
             "preset_id": "windows.mumu6",
