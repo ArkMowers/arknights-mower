@@ -378,9 +378,32 @@ def clear_data(date_time):
         logger.error(f"SQLite error: {e}")
 
 
+def _mood_report_bindings():
+    """Collect shared report memberships from saved main and backup plans."""
+    memberships = {}
+    plans = [config.plan.plan1, *(backup.plan for backup in config.plan.backup_plans)]
+    for plan in plans:
+        for _, facility in plan:
+            if facility is None:
+                continue
+            for operator in facility.plans:
+                groups = list(
+                    dict.fromkeys(
+                        binding.group
+                        for binding in [operator, *operator.group_bindings]
+                        if binding.group
+                    )
+                )
+                if len(groups) > 1:
+                    bound = memberships.setdefault(operator.agent, [])
+                    bound.extend(group for group in groups if group not in bound)
+    return memberships
+
+
 def get_work_rest_ratios():
     # TODO 整理数据计算工休比
     favorite = [] if config.conf.favorite == "" else config.conf.favorite.split(",")
+    favorite = list(dict.fromkeys([*favorite, *_mood_report_bindings()]))
     sel = "".join(
         """
             UNION
@@ -456,7 +479,9 @@ def get_work_rest_ratios():
 
 # 整理心情曲线
 def get_mood_ratios():
+    bindings = _mood_report_bindings()
     favorite = [] if config.conf.favorite == "" else config.conf.favorite.split(",")
+    favorite = list(dict.fromkeys([*favorite, *bindings]))
     sel = "".join(
         """
             UNION
@@ -494,15 +519,6 @@ def get_mood_ratios():
     grouped_data = {}
     grouped_work_rest_data = {}
     for row in data:
-        group_name = row[4]  # Assuming 'agent_group' is at index 4
-        if not group_name:
-            group_name = row[0]
-        mood_data = grouped_data.get(group_name, {"labels": [], "datasets": []})
-        work_rest_data = grouped_work_rest_data.get(
-            group_name, work_rest_data_ratios[row[0]]
-        )
-        grouped_work_rest_data[group_name] = work_rest_data
-
         timestamp_datetime = datetime.strptime(
             row[6], "%Y-%m-%d %H:%M:%S.%f"
         )  # Assuming 'current_time' is at index 6
@@ -519,24 +535,30 @@ def get_mood_ratios():
         if mood_event:
             point["moodEvent"] = mood_event
 
-        if mood_label in [dataset["label"] for dataset in mood_data["datasets"]]:
-            # if mood_label == mood_data['datasets'][0]['label']:
+        for group_name in bindings.get(mood_label, [row[4] or mood_label]):
+            mood_data = grouped_data.setdefault(
+                group_name, {"labels": [], "datasets": []}
+            )
+            grouped_work_rest_data.setdefault(
+                group_name, work_rest_data_ratios[mood_label]
+            )
             mood_data["labels"].append(current_time)
-            # If mood label already exists, find the corresponding dataset
             for dataset in mood_data["datasets"]:
                 if dataset["label"] == mood_label:
-                    dataset["data"].append(point)
+                    dataset["data"].append(point.copy())
                     break
-        else:
-            # If mood label doesn't exist, create a new dataset
-            mood_data["labels"].append(current_time)
-            mood_data["datasets"].append({"label": mood_label, "data": [point]})
+            else:
+                mood_data["datasets"].append(
+                    {"label": mood_label, "data": [point.copy()]}
+                )
 
-        grouped_data[group_name] = mood_data
     logger.debug("分组作息记录：%s", grouped_work_rest_data)
     # 将数据格式整理为数组
     formatted_data = []
     for group_name, mood_data in grouped_data.items():
+        mood_data["labels"].sort()
+        for dataset in mood_data["datasets"]:
+            dataset["data"].sort(key=lambda point: point["x"])
         formatted_data.append(
             {
                 "groupName": group_name,
