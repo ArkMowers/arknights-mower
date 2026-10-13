@@ -23,7 +23,16 @@ python scripts/verify_governance.py --base <comparison-commit>
 
 术语来源为 [Arknights Mower 项目术语表](../CONTEXT.zh.md)及其[英文版](../CONTEXT.md)，它们定义业务概念、项目文档名称和开发、文档用语。共享写作方法见 [mower-prose-standard](../.agents/skills/mower-prose-standard/SKILL.md)。
 
-`verify_governance.py` 检查 notes、docs、后端与前端注释，以及 skills、模板和根指令。既有业务避免用语始终检查；开发与文档用语从比较提交与 HEAD 的共同祖先到当前工作区检查新增行，包含暂存、未暂存和未跟踪文件，避免把尚未合入的上游变化视为当前分支的新增文字。未指定比较提交时使用 HEAD；非 Git 目录检查全部文本。既有开发表述单独报告，不能据此声称全文没有避免用语。
+`verify_governance.py` 检查 notes、docs、后端与前端注释，以及 skills、模板和根指令。既有业务避免用语始终检查；开发与文档用语从比较提交与 HEAD 的共同祖先到当前工作区检查新增行，包含暂存、未暂存和未跟踪文件。共同祖先早于对应规范的历史兼容起点时，从该起点检查新增行；尚未合入的上游变化不计为当前分支的新增文字。未指定比较提交时使用 HEAD；非 Git 目录检查全部文本。既有开发表述单独报告，不能据此声称全文没有避免用语。
+
+<a id="policy-comparison-history"></a>
+### 规范生效前的历史兼容
+
+[governance_baselines.json](governance_baselines.json) 保存旧格式规范和开发、文档用语规范上线前的固定提交，分别供 [Note 检查](verify_agent_note_format.py)和[术语检查](verify_glossary_alignment.py)使用。长期分支的比较提交可能早于规范上线；检查器先取比较提交与 HEAD 的共同祖先，再在共同祖先早于相应起点时使用该起点判断新增内容。较新的共同祖先继续作为比较起点。两个固定提交分别保留各自规范上线前的历史，不能随着本次 HEAD 移动。
+
+原始比较提交继续决定[决策记录引用检查](../.agents/notes/README.md#references-and-verification)的变化范围。文档结构、链接、既有业务避免用语及完整 PR 标题正文仍执行原有检查。检查器验证配置中的两个起点，即使未指定比较提交也会拒绝格式无效、提交不可用或起点不属于 HEAD 历史的配置；比较历史无法确定时同样失败。未带起点配置的隔离测试仓库沿用其指定比较提交。
+
+[文档 CI](../.github/workflows/docs-consistency.yml) 保留完整 Git 历史，并在 PR 事件中检出源分支的 head 提交，使共同祖先与本地三点比较一致。GitHub 默认合并预览提交包含目标分支 tip，会将目标分支自身误用为共同祖先，导致长期分支的规范起点无法比较。push 和手动事件继续检查该事件的提交。治理单元测试使用隔离仓库验证成功场景，并单独验证浅克隆缺少规范起点时实际 CLI 明确失败。
 
 PR 标题或正文每次编辑前，将完整成稿存为含 `title`、`body` 字符串的 JSON 并执行：
 

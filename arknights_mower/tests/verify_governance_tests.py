@@ -1360,7 +1360,9 @@ class VerifyGovernanceTests(unittest.TestCase):
                 )
 
     def test_run_all_checks_passes(self):
-        self.assertEqual(run_all_checks(), 0)
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_reference_repo(directory)
+            self.assertEqual(run_all_checks(root), 0)
 
     def test_success_reports_automated_scope_and_remaining_manual_review(self):
         output = io.StringIO()
@@ -1862,6 +1864,388 @@ class VerifyGovernanceTests(unittest.TestCase):
             )
             self.assertEqual(scoped.returncode, 1, scoped.stdout + scoped.stderr)
             self.assertIn("not a Git worktree root", scoped.stdout)
+
+
+class VerifyPolicyBaselineTests(unittest.TestCase):
+    make_reference_repo = VerifyGovernanceTests.make_reference_repo
+    commit_reference_fixture = VerifyGovernanceTests.commit_reference_fixture
+    run_governance_workflow = VerifyGovernanceTests.run_governance_workflow
+
+    def make_policy_repo(self, directory):
+        root = Path(directory)
+        (root / "README.md").write_text("# Initial repository\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "init", "-q"], cwd=root, check=True, capture_output=True, timeout=15
+        )
+        self.commit_reference_fixture(root, "old integration base")
+        old_base = self.revision(root)
+        _, sidecar, metadata = self.make_reference_repo(root)
+        document = root / "docs/guide.md"
+        document.parent.mkdir()
+        document.write_text("Existing OldWording\n", encoding="utf-8")
+        self.commit_reference_fixture(root, "historical records")
+        legacy_base = self.revision(root)
+        frozen = root / "scripts/legacy_invariant_ids.json"
+        frozen.parent.mkdir()
+        frozen.write_text(json.dumps(["[INV-REC-07]"]), encoding="utf-8")
+        (root / "CODING_STANDARDS.md").write_text(
+            "## Field Integrity\nUnread fields remain absent.\n", encoding="utf-8"
+        )
+        document.write_text(
+            "Existing OldWording\nLater existing OldWording\n", encoding="utf-8"
+        )
+        self.commit_reference_fixture(root, "freeze legacy format")
+        prose_base = self.revision(root)
+        glossary = root / "CONTEXT.md"
+        glossary.write_text(
+            glossary.read_text(encoding="utf-8")
+            + "\n## 3. Development & Documentation Language\n- **_Avoid_**: `OldWording`\n",
+            encoding="utf-8",
+        )
+        (root / "scripts/governance_baselines.json").write_text(
+            json.dumps({"legacy_format": legacy_base, "development_prose": prose_base}),
+            encoding="utf-8",
+        )
+        self.commit_reference_fixture(root, "activate prose policy")
+        return root, old_base, sidecar, metadata
+
+    def revision(self, root):
+        return (
+            subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, timeout=15)
+            .decode()
+            .strip()
+        )
+
+    def run_policy_gate(self, root, base):
+        return self.run_governance_workflow(
+            root,
+            "pull_request",
+            {
+                "pull_request": {
+                    "base": {"sha": base},
+                    "title": "Check history",
+                    "body": "",
+                }
+            },
+        )
+
+    def test_old_integration_base_preserves_each_policy_history_at_actual_entry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, old_base, _, _ = self.make_policy_repo(directory)
+            for event_name, event in (
+                (
+                    "pull_request",
+                    {
+                        "pull_request": {
+                            "base": {"sha": old_base},
+                            "title": "Check history",
+                            "body": "",
+                        }
+                    },
+                ),
+                ("push", {"before": old_base}),
+                ("workflow_dispatch", {"inputs": {"comparison_base": old_base}}),
+            ):
+                with self.subTest(event=event_name):
+                    result = self.run_governance_workflow(root, event_name, event)
+                    self.assertEqual(
+                        result.returncode, 0, result.stdout + result.stderr
+                    )
+                    self.assertIn("UNCHANGED DEVELOPMENT PROSE: 2", result.stdout)
+
+    def test_old_integration_base_rejects_post_policy_additions(self):
+        for kind, diagnostic in (
+            ("identifier", "New legacy identifier '[INV-NEW-99]'"),
+            ("record", "New legacy triplet '2026-10-08-added-record'"),
+            ("prose", "docs/guide.md:3"),
+        ):
+            for mode in ("unstaged", "staged", "committed"):
+                with (
+                    self.subTest(kind=kind, mode=mode),
+                    tempfile.TemporaryDirectory() as directory,
+                ):
+                    root, old_base, sidecar, _ = self.make_policy_repo(directory)
+                    if kind == "identifier":
+                        (root / "scripts/legacy_invariant_ids.json").write_text(
+                            json.dumps(["[INV-REC-07]", "[INV-NEW-99]"]),
+                            encoding="utf-8",
+                        )
+                    elif kind == "record":
+                        stem = sidecar.name[:-13]
+                        for suffix in (".md", ".zh.md", ".sidecar.json"):
+                            source = sidecar.with_name(stem + suffix)
+                            source.with_name(
+                                "2026-10-08-added-record" + suffix
+                            ).write_bytes(source.read_bytes())
+                    else:
+                        document = root / "docs/guide.md"
+                        document.write_text(
+                            document.read_text(encoding="utf-8") + "New OldWording\n",
+                            encoding="utf-8",
+                        )
+                    if mode == "staged":
+                        subprocess.run(
+                            ["git", "add", "."],
+                            cwd=root,
+                            check=True,
+                            capture_output=True,
+                            timeout=15,
+                        )
+                    elif mode == "committed":
+                        self.commit_reference_fixture(root, "post policy addition")
+                    result = self.run_policy_gate(root, old_base)
+                    self.assertEqual(
+                        result.returncode, 1, result.stdout + result.stderr
+                    )
+                    self.assertIn(diagnostic, result.stdout)
+
+    def test_policy_floor_keeps_original_reference_scope_and_business_terms(self):
+        for kind, diagnostic in (
+            ("reference", "missing_tests.py"),
+            ("link", "missing.md"),
+            ("business", "ForbiddenTerm"),
+        ):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
+                root, old_base, sidecar, metadata = self.make_policy_repo(directory)
+                if kind == "reference":
+                    metadata["test_suites"] = ["arknights_mower/tests/missing_tests.py"]
+                    sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+                elif kind == "link":
+                    (root / "docs/guide.md").write_text(
+                        "[Missing document](missing.md)\n", encoding="utf-8"
+                    )
+                else:
+                    (root / "docs/guide.md").write_text(
+                        "ForbiddenTerm\n", encoding="utf-8"
+                    )
+                    self.commit_reference_fixture(root, "existing business violation")
+                    old_base = self.revision(root)
+                result = self.run_policy_gate(root, old_base)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn(diagnostic, result.stdout)
+
+    def test_newer_comparison_base_retains_its_prose_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, old_base, _, _ = self.make_policy_repo(directory)
+            document = root / "docs/guide.md"
+            document.write_text("New OldWording\n", encoding="utf-8")
+            self.commit_reference_fixture(root, "existing post policy prose")
+            current = self.run_policy_gate(root, self.revision(root))
+            self.assertEqual(current.returncode, 0, current.stdout + current.stderr)
+            older = self.run_policy_gate(root, old_base)
+            self.assertEqual(older.returncode, 1, older.stdout + older.stderr)
+            self.assertIn("docs/guide.md:1", older.stdout)
+
+    def test_invalid_policy_baseline_fails_actual_entry(self):
+        for kind in ("malformed", "missing", "unrelated"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
+                root, old_base, _, _ = self.make_policy_repo(directory)
+                configuration = root / "scripts/governance_baselines.json"
+                if kind == "malformed":
+                    configuration.write_text("{}", encoding="utf-8")
+                else:
+                    values = json.loads(configuration.read_text(encoding="utf-8"))
+                    revision = "f" * 40
+                    if kind == "unrelated":
+                        tree = (
+                            subprocess.check_output(
+                                ["git", "rev-parse", old_base + "^{tree}"],
+                                cwd=root,
+                                timeout=15,
+                            )
+                            .decode()
+                            .strip()
+                        )
+                        revision = (
+                            subprocess.check_output(
+                                [
+                                    "git",
+                                    "-c",
+                                    "user.name=Test",
+                                    "-c",
+                                    "user.email=test@example.invalid",
+                                    "commit-tree",
+                                    tree,
+                                ],
+                                input=b"unrelated policy\n",
+                                cwd=root,
+                                timeout=15,
+                            )
+                            .decode()
+                            .strip()
+                        )
+                    values["legacy_format"] = revision
+                    values["development_prose"] = revision
+                    configuration.write_text(json.dumps(values), encoding="utf-8")
+                result = self.run_policy_gate(root, old_base)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("policy", result.stdout.lower())
+                self.assertNotIn("STRUCTURAL CHECKS PASSED", result.stdout)
+
+    def test_shallow_history_fails_actual_entry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            source.mkdir()
+            self.make_policy_repo(source)
+            shallow = Path(directory) / "shallow"
+            subprocess.run(
+                [
+                    "git",
+                    "clone",
+                    "--quiet",
+                    "--depth",
+                    "1",
+                    source.as_uri(),
+                    str(shallow),
+                ],
+                check=True,
+                capture_output=True,
+                timeout=30,
+            )
+            result = self.run_policy_gate(shallow, self.revision(shallow))
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn(
+                "Unavailable legacy_format policy comparison commit", result.stdout
+            )
+            self.assertNotIn("STRUCTURAL CHECKS PASSED", result.stdout)
+
+    def test_unavailable_policy_fails_without_explicit_comparison(self):
+        for policy in ("legacy_format", "development_prose"):
+            with (
+                self.subTest(policy=policy),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                root, _, _, _ = self.make_policy_repo(directory)
+                configuration = root / "scripts/governance_baselines.json"
+                values = json.loads(configuration.read_text(encoding="utf-8"))
+                values[policy] = "f" * 40
+                configuration.write_text(json.dumps(values), encoding="utf-8")
+                script = (
+                    Path(__file__).resolve().parents[2] / "scripts/verify_governance.py"
+                )
+                local = subprocess.run(
+                    [sys.executable, "-X", "utf8", str(script)],
+                    cwd=root,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    timeout=30,
+                )
+                manual = self.run_governance_workflow(
+                    root, "workflow_dispatch", {"inputs": {}}
+                )
+                for entry, result in (("local", local), ("manual", manual)):
+                    with self.subTest(entry=entry):
+                        self.assertEqual(
+                            result.returncode, 1, result.stdout + result.stderr
+                        )
+                        self.assertIn(
+                            f"Unavailable {policy} policy comparison commit",
+                            result.stdout,
+                        )
+                        self.assertNotIn("STRUCTURAL CHECKS PASSED", result.stdout)
+
+    def test_workflow_checks_pr_head_and_keeps_other_event_revisions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, old_base, _, _ = self.make_policy_repo(directory)
+            source_head = self.revision(root)
+            subprocess.run(
+                ["git", "checkout", "-qb", "integration", old_base],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            (root / "README.md").write_text("# Integration branch\n", encoding="utf-8")
+            self.commit_reference_fixture(root, "diverged integration branch")
+            target_head = self.revision(root)
+            subprocess.run(
+                ["git", "checkout", "--quiet", "--detach", source_head],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=Test",
+                    "-c",
+                    "user.email=test@example.invalid",
+                    "-c",
+                    "core.hooksPath=",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "merge",
+                    "--quiet",
+                    "--no-edit",
+                    "integration",
+                ],
+                cwd=root,
+                check=True,
+                capture_output=True,
+                timeout=15,
+            )
+            merge_head = self.revision(root)
+            repository = Path(__file__).resolve().parents[2]
+            workflow = yaml.safe_load(
+                (repository / ".github/workflows/docs-consistency.yml").read_text(
+                    "utf-8"
+                )
+            )
+            checkout = next(
+                step
+                for step in workflow["jobs"]["verify"]["steps"]
+                if step.get("uses", "").startswith("actions/checkout@")
+            )
+            self.assertEqual(checkout["with"]["fetch-depth"], 0)
+            for event_name, event in (
+                (
+                    "pull_request",
+                    {
+                        "pull_request": {
+                            "base": {"sha": target_head},
+                            "head": {"sha": source_head},
+                            "title": "Check history",
+                            "body": "",
+                        }
+                    },
+                ),
+                ("push", {"before": source_head}),
+                ("workflow_dispatch", {"inputs": {"comparison_base": source_head}}),
+            ):
+                with self.subTest(event=event_name):
+                    context = {"github": {"event": event, "sha": merge_head}}
+                    expression = checkout["with"].get("ref", "${{ github.sha }}")
+                    terms = (
+                        expression.removeprefix("${{").removesuffix("}}").split("||")
+                    )
+                    for term in terms:
+                        revision = context
+                        for key in term.strip().split("."):
+                            revision = (
+                                revision.get(key)
+                                if isinstance(revision, dict)
+                                else None
+                            )
+                        if revision:
+                            break
+                    subprocess.run(
+                        ["git", "checkout", "--quiet", "--detach", revision],
+                        cwd=root,
+                        check=True,
+                        capture_output=True,
+                        timeout=15,
+                    )
+                    self.assertEqual(
+                        self.revision(root),
+                        source_head if event_name == "pull_request" else merge_head,
+                    )
+                    result = self.run_governance_workflow(root, event_name, event)
+                    self.assertEqual(
+                        result.returncode, 0, result.stdout + result.stderr
+                    )
 
 
 class VerifyFormalTextTests(unittest.TestCase):
