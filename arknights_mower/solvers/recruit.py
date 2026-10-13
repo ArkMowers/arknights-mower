@@ -16,7 +16,7 @@ from arknights_mower.utils.email import recruit_rarity, recruit_template, send_m
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cmatch, cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
+from arknights_mower.utils.recognize import Recognizer, Scene
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
     resource_pkg_path,
@@ -329,12 +329,19 @@ class RecruitSolver(SceneGraphSolver):
             self.tap((950, 150))
             return
 
-        job_pt = None
-        for i in job_list:
-            if job_pt := self.find(i):
+        for attempt in range(5):
+            job_pt = None
+            for i in job_list:
+                if job_pt := self.find(i):
+                    break
+            if job_pt is not None:
                 break
-        if job_pt is None:
-            raise RecognizeError("公招干员职业图标尚未识别")
+            if attempt < 4:
+                self.sleep(1)
+        else:
+            logger.warning("公招干员职业图标连续5次未识别，结束本次公招")
+            self.recog.update()
+            return True
 
         img = cropimg(self.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
         img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
