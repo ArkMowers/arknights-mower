@@ -245,7 +245,8 @@ class ReportSolver(SceneGraphSolver):
         logger.info("蓝字读取完成")
 
         img = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
-        img = cv2.inRange(img, (0, 0, 50), (100, 100, 170))
+        # Grey text can have any hue when capture introduces a slight color tint.
+        img = cv2.inRange(img, (0, 0, 50), (179, 100, 170))
         self.report_res["龙门币订单数"] = self.get_number(
             img, area["iron_order_number"], height=19, thres=200
         )
