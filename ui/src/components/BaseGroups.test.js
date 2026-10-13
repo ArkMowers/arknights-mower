@@ -98,6 +98,39 @@ describe('基建组合只读浏览', () => {
     expect(page.conditions.value['builtin-cloud'].average).toBe(true)
     scope.stop()
   })
+  it('同步孑的技能状态后立即更新估算，失去有效练度时恢复备用条件', async () => {
+    const { page, scope, props } = setup([
+      {
+        avatar: '孑',
+        ownership: 'owned',
+        childSkill: [
+          { skill_key: 0, skill_level: 0, status: 'active' },
+          { skill_key: 1, skill_level: 0, status: 'locked' }
+        ]
+      }
+    ])
+    const group = page.groups.find((group) => group.id === 'builtin-karlan')
+    page.maxLevel.value = true
+    for (const name of group.core) page.toggleMember(group, name)
+    page.conditions.value[group.id].jayeStage = '精一及以上'
+    const efficiency = () =>
+      page.estimates.value[group.id].metrics.find((metric) => metric.label === '贸易订单效率').value
+    await nextTick()
+    expect(efficiency()).toBe(145)
+    props.items[0].childSkill[1].status = 'active'
+    await nextTick()
+    expect(efficiency()).toBe(129)
+    page.conditions.value[group.id].jayeStage = '未精英化'
+    await nextTick()
+    expect(efficiency()).toBe(129)
+    props.items = []
+    await nextTick()
+    expect(efficiency()).toBe(145)
+    page.conditions.value[group.id].jayeStage = '精一及以上'
+    await nextTick()
+    expect(efficiency()).toBe(129)
+    scope.stop()
+  })
   it('筛选直接展示全部匹配组合，角色与条件保留', async () => {
     const { page, scope } = setup()
     expect(page.ownershipSummary(page.groups[0])).toBe('持有状态未知')

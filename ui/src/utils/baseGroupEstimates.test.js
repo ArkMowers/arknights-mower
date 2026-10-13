@@ -98,7 +98,7 @@ describe('基建组合效率估算', () => {
     expect(missing.metrics).toEqual([])
     expect(missing.warnings[0]).toContain('森空岛')
   })
-  it('满练度开关可演算未知干员，孑的精英阶段由计算条件控制', () => {
+  it('满练度开关可演算未知干员，缺少孑练度时使用备用条件', () => {
     expect(
       value(estimateGroup(group('exusiai'), ['能天使', '蕾缪安'], {}, [], true), '贸易订单效率')
     ).toBe(80)
@@ -165,7 +165,7 @@ describe('基建组合效率估算', () => {
     expect(value(elite, '经验制造生产力')).toBe(36)
     expect(elite.metrics.some((metric) => metric.label === '感知信息')).toBe(false)
   })
-  it('阵营增益不把维娜当格拉斯哥成员，孑手选精一时不受同步练度影响', () => {
+  it('阵营增益不把维娜当格拉斯哥成员，孑优先使用同步练度', () => {
     expect(
       value(estimate('glasgow', ['摩根', '推进之王', '戴菲恩', '维娜·维多利亚']), '贸易订单效率')
     ).toBe(135)
@@ -173,7 +173,50 @@ describe('基建组合效率估算', () => {
     const empty = estimate('karlan', names, { jayeStage: '精一及以上' })
     const occupied = estimate('karlan', names, { jayeStage: '精一及以上' }, { 孑: 0 })
     expect(value(empty, '贸易订单效率')).toBe(129)
-    expect(value(occupied, '贸易订单效率')).toBe(129)
+    expect(value(occupied, '贸易订单效率')).toBe(145)
+  })
+  it.each([false, true])('孑的森空岛精零和精一优先于备用条件，满练度模式%s', (maxLevel) => {
+    const names = ['孑', '银灰', '琳琅诗怀雅', '灵知']
+    const zero = estimateGroup(
+      group('karlan'),
+      names,
+      { jayeStage: '精一及以上' },
+      roster(names, { 孑: 0 }),
+      maxLevel
+    )
+    const promoted = estimateGroup(
+      group('karlan'),
+      names,
+      { jayeStage: '未精英化' },
+      roster(names, { 孑: 1 }),
+      maxLevel
+    )
+    expect(value(zero, '贸易订单效率')).toBe(145)
+    expect(value(promoted, '贸易订单效率')).toBe(129)
+    expect(zero.details).toContain('孑未精英化，使用森空岛练度')
+    expect(promoted.details).toContain('孑精一及以上，使用森空岛练度')
+  })
+  it.each(['missing', 'unknown', 'unowned', 'incomplete'])('孑练度%s时使用备用条件', (state) => {
+    const names = ['孑', '银灰', '琳琅诗怀雅', '灵知']
+    const items = roster(names)
+    const jaye = items[0]
+    if (state === 'missing') items.shift()
+    else if (state === 'incomplete') jaye.childSkill[1].status = 'unknown'
+    else {
+      jaye.ownership = state
+      jaye.childSkill.forEach((skill) => {
+        skill.status = state
+      })
+    }
+    const before = JSON.stringify(items)
+    const zero = estimateGroup(group('karlan'), names, { jayeStage: '未精英化' }, items)
+    const promoted = estimateGroup(group('karlan'), names, { jayeStage: '精一及以上' }, items)
+    expect(zero.valid).toBe(true)
+    expect(promoted.valid).toBe(true)
+    expect(value(zero, '贸易订单效率')).toBe(145)
+    expect(value(promoted, '贸易订单效率')).toBe(129)
+    expect(promoted.details).toContain('孑精一及以上，使用备用计算条件')
+    expect(JSON.stringify(items)).toBe(before)
   })
   it('森蚺只能选一处设施，制造站模式不同时提供中枢的虚拟发电站', () => {
     const names = ['森蚺', '温蒂', '清流', '承曦格雷伊', 'Lancet-2']
@@ -263,7 +306,12 @@ describe('基建组合效率估算', () => {
     [['孑', '银灰', '琳琅诗怀雅', '灵知'], '未精英化', 20, 145],
     [['孑', '银灰', '锏', '灵知'], '未精英化', 20, 145]
   ])('喀兰组合按技能结算顺序计算：%j，孑%s', (names, jayeStage, cap, efficiency) => {
-    const result = estimate('karlan', names, { jayeStage })
+    const result = estimate(
+      'karlan',
+      names,
+      { jayeStage },
+      { 孑: jayeStage === '未精英化' ? 0 : 1 }
+    )
     expect(result.valid).toBe(true)
     expect(value(result, '订单上限')).toBe(cap)
     expect(value(result, '贸易订单效率')).toBe(efficiency)
