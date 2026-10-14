@@ -77,6 +77,8 @@ class CluePart(ConfModel):
     "信用商店购物开关"
     maa_mall_mode: Literal["maa", "mower"] = "maa"
     "信用商店购物处理方式：maa / mower"
+    clue_credit_on_demand: bool = False
+    "仅在 Mower 访友及购物均启用时按需领取信息板信用"
     maa_mall_blacklist: str = "加急许可,碳,碳素,家具零件"
     "黑名单"
     maa_mall_buy: str = "招聘许可,技巧概要·卷2"
@@ -1082,6 +1084,15 @@ class Conf(
     @property
     def should_run_mower_mall(self) -> bool:
         return bool(self.maa_mall_enable and self.maa_mall_mode == "mower")
+
+    @property
+    def should_defer_clue_credit(self) -> bool:
+        return bool(
+            self.clue_credit_on_demand
+            and self.should_run_mower_mall
+            and self.visit_friend_enable
+            and self.visit_friend_mode == "mower"
+        )
 
     @property
     def should_run_maa_visit_friend(self) -> bool:

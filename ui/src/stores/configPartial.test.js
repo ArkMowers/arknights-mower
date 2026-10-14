@@ -60,6 +60,29 @@ async function setup(overrides = {}) {
 }
 
 describe('partial configuration saves', () => {
+  it('defaults deferred clue credit off and saves only its explicit selection', async () => {
+    await setup()
+    expect(store.clue_credit_on_demand).toBe(false)
+    store.clue_credit_on_demand = true
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+      clue_credit_on_demand: true
+    })
+  })
+
+  it('retains the clue credit selection when changing the friend runner', async () => {
+    await setup({ clue_credit_on_demand: true, visit_friend_mode: 'mower' })
+    expect(store.clue_credit_on_demand).toBe(true)
+    store.visit_friend_mode = 'maa'
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+      visit_friend_mode: 'maa'
+    })
+    expect(store.clue_credit_on_demand).toBe(true)
+  })
+
   it.each(['deepseek-flash', 'deepseek-v4-pro', 'deepseek-future-model'])(
     'loads and saves DeepSeek model %s independently of custom interfaces',
     async (model) => {

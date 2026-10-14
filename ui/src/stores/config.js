@@ -38,6 +38,7 @@ export const useConfigStore = defineStore('config', () => {
   const stage_plan_runner = ref('maa')
   const maa_mall_enable = ref(true)
   const maa_mall_mode = ref('maa')
+  const clue_credit_on_demand = ref(false)
   const maa_path = ref('')
   const maa_mirrorchyan_token = ref('')
   const maa_update_channel = ref('stable')
@@ -497,6 +498,7 @@ export const useConfigStore = defineStore('config', () => {
           ? Boolean(response.data.maa_mall_enable)
           : response.data.maa_enable != 0
       maa_mall_mode.value = response.data.maa_mall_mode === 'mower' ? 'mower' : 'maa'
+      clue_credit_on_demand.value = response.data.clue_credit_on_demand ?? false
       maa_path.value = response.data.maa_path
       maa_mirrorchyan_token.value = response.data.maa_mirrorchyan_token || ''
       maa_update_channel.value = response.data.maa_update_channel === 'beta' ? 'beta' : 'stable'
@@ -684,6 +686,7 @@ export const useConfigStore = defineStore('config', () => {
       stage_plan_runner: stage_plan_runner.value,
       maa_mall_enable: maa_mall_enable.value,
       maa_mall_mode: maa_mall_mode.value,
+      clue_credit_on_demand: clue_credit_on_demand.value,
       maa_path: maa_path.value,
       maa_mirrorchyan_token: maa_mirrorchyan_token.value,
       maa_update_channel: maa_update_channel.value,
@@ -1026,6 +1029,7 @@ export const useConfigStore = defineStore('config', () => {
     stage_plan_runner,
     maa_mall_enable,
     maa_mall_mode,
+    clue_credit_on_demand,
     maa_path,
     maa_mirrorchyan_token,
     maa_update_channel,
