@@ -3166,6 +3166,7 @@ class BaseSchedulerSolver(
             and task.meta_data in rooms
             and not hasattr(task, "emergency_original_roster")
             and not getattr(task, "run_order_restore_pending", False)
+            and not getattr(task, "maintenance_replacement_run", False)
         }
         self.tasks[:] = [task for task in self.tasks if id(task) not in invalid_ids]
 
@@ -3194,7 +3195,9 @@ class BaseSchedulerSolver(
             return
         if not self._emergency_run_order_available(room):
             return
-        if getattr(self, "maintenance_entry_pending", False):
+        if getattr(self, "maintenance_entry_pending", False) or any(
+            getattr(task, "maintenance_replacement_run", False) for task in self.tasks
+        ):
             return
         self._sync_run_order_tasks()
         if room not in self.op_data.run_order_rooms:
@@ -4202,7 +4205,7 @@ class BaseSchedulerSolver(
         return bool(invalid)
 
     def _advance_orders_before_maintenance(self, conditions):
-        """维护主班含跑单干员时直接切表，否则先完成停服前跑单。"""
+        """先完成维护主班的跑单替班任务，或原有停服前跑单批次。"""
         entering = any(
             active and not previous and backup.uses_major_maintenance_condition
             for active, previous, backup in zip(
@@ -4218,8 +4221,59 @@ class BaseSchedulerSolver(
         if error := projected.swap_plan(conditions):
             raise ValueError(f"维护副表预演失败：{error}")
         if projected.run_order_paused:
-            self.maintenance_entry_pending = False
-            return False
+            pending = [
+                task
+                for task in self.tasks
+                if getattr(task, "maintenance_replacement_run", False)
+            ]
+            if not pending and not getattr(self, "maintenance_entry_pending", False):
+                plans = {}
+                for room, index in sorted(projected.maintenance_primary_slots):
+                    if (
+                        not room.startswith("room")
+                        or projected.products.get(room) == "orundum"
+                        or projected.facility_states.get(room, {}).get("product")
+                        == "orundum"
+                    ):
+                        continue
+                    slot = projected.plan[room][index]
+                    replacement = next(
+                        (
+                            name
+                            for name in slot.all_replacements
+                            if name in TRADE_ORDER_AGENTS and name != slot.agent
+                        ),
+                        None,
+                    )
+                    if replacement is None:
+                        continue
+                    plans.setdefault(room, ["Current"] * len(projected.plan[room]))[
+                        index
+                    ] = replacement
+                    if replacement not in self.op_data.operators:
+                        self.op_data.add(Operator(replacement, ""))
+                self._invalidate_order_estimates(plans)
+                for room, names in plans.items():
+                    task = SchedulerTask(
+                        task_plan={room: names},
+                        task_type=TaskTypes.RUN_ORDER,
+                        meta_data=room,
+                        adjusted=True,
+                    )
+                    task.maintenance_advance_before_backup = True
+                    task.maintenance_replacement_run = True
+                    pending.append(task)
+                    self.tasks.append(task)
+                if pending:
+                    self.tasks.sort(
+                        key=lambda task: (
+                            bool(getattr(task, "execution_failure", None)),
+                            task.time,
+                        )
+                    )
+                    logger.info("先用维护主班的跑单替班加速订单，恢复原班后再切表")
+            self.maintenance_entry_pending = bool(pending)
+            return self.maintenance_entry_pending
         blocked_orders = blocked_run_order_ids(self.tasks, self.op_data)
         pending = [
             task
@@ -5429,7 +5483,9 @@ class BaseSchedulerSolver(
                 if getattr(queued, "maintenance_advance_before_backup", False)
             ]
             if not pending or any(
-                id(queued) not in blocked_orders for queued in pending
+                not getattr(queued, "execution_failure", None)
+                and id(queued) not in blocked_orders
+                for queued in pending
             ):
                 raise ProductSwitchDeferred(
                     "等待停服前提前跑单及原班恢复完成后再换班", minutes=1
@@ -5762,6 +5818,20 @@ class BaseSchedulerSolver(
             or not getattr(self.op_data, "backup_plans", [])
             or getattr(task, "backup_shift_active", False)
         ):
+            return
+        replacements = [
+            queued
+            for queued in self.tasks
+            if getattr(queued, "maintenance_replacement_run", False)
+        ]
+        blocked_orders = blocked_run_order_ids(self.tasks, self.op_data)
+        if replacements and all(
+            getattr(queued, "execution_failure", None) or id(queued) in blocked_orders
+            for queued in replacements
+        ):
+            # 跑单等待原班释放或新实测时，先按原表完成纠错，不能提前切入维护主班。
+            task.plan = copy.deepcopy(getattr(task, "backup_shift_intent", task.plan))
+            task.backup_shift_conditions = list(self.op_data.plan_condition)
             return
         if any(
             t.type == TaskTypes.FIAMMETTA and t.time <= datetime.now()
@@ -11003,6 +11073,8 @@ class BaseSchedulerSolver(
         if restoring_order:
             del self.task.run_order_original_roster
             del self.task.run_order_restore_pending
+            if getattr(self.task, "maintenance_replacement_run", False):
+                self.maintenance_entry_pending = True
         if (
             len(new_plan) == 1
             and room != "train"
@@ -11083,6 +11155,8 @@ class BaseSchedulerSolver(
                             return self._retain_run_order_restoration(delay=True)
                         del self.task.run_order_original_roster
                         del self.task.run_order_restore_pending
+                        if getattr(self.task, "maintenance_replacement_run", False):
+                            self.maintenance_entry_pending = True
                 else:
                     restore_task = SchedulerTask(
                         time=self.tasks[0].time,
@@ -11095,6 +11169,8 @@ class BaseSchedulerSolver(
                         )
                     if getattr(self.task, "maintenance_advance_before_backup", False):
                         restore_task.maintenance_advance_before_backup = True
+                    if getattr(self.task, "maintenance_replacement_run", False):
+                        restore_task.maintenance_replacement_run = True
                     self.tasks.append(restore_task)
                     self.skip()
             except BaseException:
