@@ -193,7 +193,7 @@ export function importMowerJson(text: string): RosterWorkspace {
     if (!importedPresentRooms.includes(roomId) ||
       (!Object.prototype.hasOwnProperty.call(parsed.facility_levels ?? {}, roomId) && facility.type === 'dormitory' && !hasDormKeeper(facility) &&
         !facility.slots.some(slot => slot.occupant.kind === 'free'))) {
-      facility.level = 0
+      facility.level = ['meeting', 'factory', 'contact', 'train', 'recycle'].includes(roomId) ? 3 : 0
       facility.slots = []
     }
   }

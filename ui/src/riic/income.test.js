@@ -113,6 +113,8 @@ describe('income export calculation', () => {
     (...occupants) => {
       const source = plan()
       source.plan1.room_1_1.plans = [{ agent: '芬', group: '', replacement: ['香草'] }]
+      source.plan1.room_2_3 = { name: '发电站', plans: [] }
+      source.facility_levels = { dormitory_1: 5 }
       source.plan1.dormitory_1 = {
         name: '',
         plans: occupants.map((agent) => ({
@@ -306,6 +308,8 @@ it('reports actual sample LMD balance changes and drone rooms with event logs', 
 it('records warmup and sampled morale without changing production or staffing', () => {
   const source = plan()
   source.plan1.room_1_1.plans = [{ agent: '芬', group: '', replacement: ['香草'] }]
+  source.plan1.room_2_3 = { name: '发电站', plans: [] }
+  source.facility_levels = { dormitory_1: 5 }
   source.plan1.dormitory_1 = {
     name: '',
     plans: Array.from({ length: 5 }, () => ({ agent: 'Free', group: '', replacement: [] }))

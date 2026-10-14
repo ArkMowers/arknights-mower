@@ -556,6 +556,9 @@ function set_facility(e) {
       <table class="facility-actions">
         <tbody>
           <tr>
+            <td v-if="!facility.startsWith('gaming_')">
+              <PlanFacilityLevels mode="level" :facility="facility" :locked="edit_locked" />
+            </td>
             <td>设施类别：</td>
             <td>
               <n-select

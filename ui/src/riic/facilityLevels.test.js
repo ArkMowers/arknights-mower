@@ -33,6 +33,8 @@ describe('saved facility levels', () => {
       room_1_3: 2,
       dormitory_1: 2,
       contact: 1,
+      meeting: 0,
+      train: 0,
       factory: 3,
       recycle: 3
     }
@@ -52,6 +54,26 @@ describe('saved facility levels', () => {
     ).toBe(2)
     expect(plan).toEqual(original)
     expect(incomeReportLines({}, settings(), original, '').join('\n')).toContain('dormitory_1=2')
+  })
+
+  it('defaults all unstaffed right-side buildings to level three and counts their power', () => {
+    const plan = fixture()
+    delete plan.plan1.dormitory_1
+    const workspace = incomeWorkspace(plan)
+    for (const room of ['meeting', 'factory', 'contact', 'train', 'recycle']) {
+      expect(workspace.mainPlan.facilities[room]).toMatchObject({ level: 3, slots: [] })
+    }
+    expect(validateRosterWorkspace(workspace).power).toEqual({
+      generation: 270,
+      consumption: 250,
+      margin: 20,
+      sufficient: true
+    })
+    plan.facility_levels = { train: 1, contact: 0 }
+    const changed = incomeWorkspace(plan)
+    expect(changed.mainPlan.facilities.train.level).toBe(1)
+    expect(changed.mainPlan.facilities.contact.level).toBe(0)
+    expect(validateRosterWorkspace(changed).power.consumption).toBe(140)
   })
 
   it('uses explicit construction state when inferring remaining levels', () => {
@@ -81,7 +103,15 @@ describe('saved facility levels', () => {
 
   it('accepts equal power and reports deficits without erasing staffed rooms', () => {
     const plan = fixture()
-    plan.facility_levels = { room_1_3: 1, room_1_1: 2, dormitory_1: 3 }
+    plan.facility_levels = {
+      room_1_3: 1,
+      room_1_1: 2,
+      dormitory_1: 3,
+      meeting: 0,
+      contact: 0,
+      train: 0,
+      factory: 0
+    }
     expect(validateRosterWorkspace(incomeWorkspace(plan)).power).toEqual({
       generation: 60,
       consumption: 60,
@@ -120,6 +150,7 @@ describe('saved facility levels', () => {
     [5, 4]
   ])('uses level %s full ambience for actual recovery curve', (level, recovery) => {
     const plan = fixture()
+    plan.plan1.room_2_3 = { name: '发电站', plans: [] }
     plan.facility_levels = { dormitory_1: level }
     const result = calculateIncome(plan, settings())
     expect(result.success, JSON.stringify(result)).toBe(true)

@@ -154,8 +154,8 @@
       "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances."
     },
     "workbench/compat/mowerJson.ts": {
-      "reason": "Preserve explicit Free dormitory positions without keepers. Apply saved shared facility levels while retaining legacy inference for unset rooms, including unstaffed buildings, and reject invalid level values.",
-      "sha256": "65352721e6011ad8bc8419f9cb25d817087f36b177b64eb076e5fc1630d41750"
+      "reason": "Preserve explicit Free dormitory positions without keepers. Apply saved shared facility levels while retaining legacy inference for unset rooms, including unstaffed buildings, and reject invalid level values. Default unset right-side buildings to level three even when unstaffed.",
+      "sha256": "5b80d31438e69316853e400911363f5aff41d6b6a76db6a246dd18289eeff841"
     },
     "simulator/scheduleSimulation.ts": {
       "sha256": "5ad8a0b5a837c4c5a60b01faa299f8d093cd7619e8b094281ab79eae526171a1",
