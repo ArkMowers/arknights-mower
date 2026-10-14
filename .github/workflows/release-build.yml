@@ -19,7 +19,7 @@
 # macOS 与 Linux 一样依赖宿主机系统库（libzbar 等）；macOS 的 .app 仅有
 # PyInstaller ad-hoc 签名，没有 Developer ID 签名或 notarization。
 #
-# 权限说明：GITHUB_TOKEN 只保留 contents 作用域即可——artifact 上传/下载用的是
+# 权限说明：元数据准备读取 PR 时使用 pull-requests: read；artifact 上传/下载用的是
 # runner 注入的 ACTIONS_RUNTIME_TOKEN，不受 permissions 限制；只有创建 Release
 # 才需要 contents: write，所以只给 release 任务放开。
 
@@ -64,6 +64,9 @@ jobs:
   prepare:
     name: Prepare release metadata
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       version: ${{ steps.meta.outputs.version }}
       tag_name: ${{ steps.meta.outputs.tag_name }}
@@ -130,6 +133,7 @@ jobs:
       - name: Generate release body and changelog
         env:
           RELEASE_TAG_NAME: ${{ steps.meta.outputs.tag_name }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           python scripts/changelog_generator.py \
             --tag "${RELEASE_TAG_NAME}" \

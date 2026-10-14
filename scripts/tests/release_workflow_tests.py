@@ -87,9 +87,18 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
 
     def test_permissions_are_minimal(self):
         self.assertEqual(self.workflow["permissions"], {"contents": "read"})
+        self.assertEqual(
+            self.jobs["prepare"]["permissions"],
+            {"contents": "read", "pull-requests": "read"},
+        )
         self.assertEqual(self.jobs["release"]["permissions"], {"contents": "write"})
         self.assertNotIn("actions", self.workflow["permissions"])
         self.assertNotIn("actions", self.jobs["release"]["permissions"])
+
+    def test_metadata_generation_receives_the_pr_read_token(self):
+        step = find_step(self.jobs["prepare"], "Generate release body and changelog")
+        self.assertEqual(step["env"]["GITHUB_TOKEN"], "${{ github.token }}")
+        self.assertIn('--repo "${GITHUB_REPOSITORY}"', step["run"])
 
     def test_all_build_jobs_exist_once(self):
         self.assertEqual(
@@ -545,9 +554,13 @@ class PrepareReleaseWorkflowTests(unittest.TestCase):
 
     def test_prepare_and_reusable_jobs_have_explicit_permissions(self):
         self.assertEqual(self.workflow["permissions"], {})
-        self.assertEqual(self.jobs["prepare"]["permissions"], {"contents": "write"})
         self.assertEqual(
-            self.jobs["build-release"]["permissions"], {"contents": "write"}
+            self.jobs["prepare"]["permissions"],
+            {"contents": "write", "pull-requests": "read"},
+        )
+        self.assertEqual(
+            self.jobs["build-release"]["permissions"],
+            {"contents": "write", "pull-requests": "read"},
         )
 
     def test_selected_dispatch_branch_is_the_only_branch_target(self):
