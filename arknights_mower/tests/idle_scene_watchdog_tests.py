@@ -1,8 +1,9 @@
 """Scheduler idle intervals do not count toward active scene timeouts."""
 
+import os
 import sys
 from datetime import datetime, timedelta
-from threading import Event
+from threading import Event, RLock
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -13,10 +14,19 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower import __main__ as main  # noqa: E402
 from arknights_mower.solvers import base_schedule as base  # noqa: E402
+from arknights_mower.tests.device_session_tests import (  # noqa: E402
+    ADB,
+    Clock,
+    Preflight,
+    Simulator,
+)
 from arknights_mower.utils import config, recognize, scheduler_task  # noqa: E402
 from arknights_mower.utils import solver as solver_module  # noqa: E402
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
 from arknights_mower.utils.device import recovery  # noqa: E402
+from arknights_mower.utils.device.application import DeviceControl  # noqa: E402
+from arknights_mower.utils.device.device import Device  # noqa: E402
+from arknights_mower.utils.device.session import DeviceSession  # noqa: E402
 from arknights_mower.utils.news_checker import MaintenanceInfo  # noqa: E402
 from arknights_mower.utils.operators import Operators  # noqa: E402
 from arknights_mower.utils.recognize import Recognizer, Scene  # noqa: E402
@@ -44,6 +54,7 @@ def idle_scheduler(monkeypatch):
     solver._simulator_closed_for_idle = False
     solver._idle_observation_pending = False
     solver.device = MagicMock()
+    solver.device.session_control = None
     solver.device.check_current_focus.return_value = False
     solver.recog = Recognizer(solver.device)
     solver.recog.scene = solver.recog.last_scene = Scene.INFRA_MAIN
@@ -136,6 +147,98 @@ def production_idle_scheduler(idle_scheduler, monkeypatch):
     monkeypatch.setattr(main, "device_control", control)
     idle_scheduler.control = control
     return idle_scheduler
+
+
+@pytest.mark.parametrize("stop_succeeds", [True, False])
+def test_idle_lifecycle_uses_replacement_device_for_next_focus_check(
+    production_idle_scheduler, monkeypatch, stop_succeeds
+):
+    solver, clock = production_idle_scheduler.solver, production_idle_scheduler.clock
+    config.conf.close_simulator_when_idle = True
+    config.conf.device.preset_id = "windows.mumu12"
+    config.conf.device.instance_id = "1"
+    config.conf.device.last_serial = "USB-A"
+    adb, simulator = ADB(), Simulator()
+    adb.rows, adb.boot = [("USB-A", "device")], "1"
+    simulator.state, simulator.serial = "running", "USB-A"
+    handles, clients, events = [], [], []
+
+    def open_verified(configuration, result):
+        device = object.__new__(Device)
+        device.owner_pid = os.getpid()
+        device._resource_lock = RLock()
+        device._interrupted = Event()
+        device._close_error = None
+        device._profile = configuration.device
+        device.device_id = result.serial
+        device.control = SimpleNamespace(
+            input_alive=lambda: True,
+            close=lambda: events.append("close_input"),
+        )
+        device.client = SimpleNamespace(
+            run=MagicMock(
+                return_value=f"mCurrentFocus=Window{{id u0 {device.game_package}/Main}}".encode()
+            ),
+            close=lambda: events.append("close_client"),
+        )
+        handles.append(device)
+        clients.append(device.client)
+        events.append("open")
+        return device
+
+    def stop(profile, timeout):
+        assert events[-2:] == ["close_input", "close_client"]
+        events.append("stop")
+        if stop_succeeds:
+            simulator.state = "stopped"
+            adb.rows = []
+        return stop_succeeds
+
+    def started():
+        simulator.state = "running"
+        adb.rows = [("USB-A", "device")]
+
+    simulator.stop = stop
+    simulator.on_start = started
+    control = DeviceControl(
+        lambda: config.conf,
+        SimpleNamespace(open_verified=open_verified),
+        preflight=Preflight(),
+        session=DeviceSession(adb, simulator, clock=Clock()),
+    )
+    monkeypatch.setattr(main, "device_control", control)
+    monkeypatch.setattr(
+        "arknights_mower.utils.device.application.is_android_runtime", lambda: False
+    )
+    solver.device = solver.recog.device = control.start().unwrap()
+    pending = [(task, task.time) for task in solver.tasks]
+    before = config.conf.model_dump()
+    try:
+        for cycle in range(2):
+            solver.tasks[0].time = clock.now() + timedelta(seconds=600)
+            expected_time = solver.tasks[0].time
+            solver.rest_until_next_task()
+
+            assert solver.device is solver.recog.device is handles[-1]
+            assert len(handles) == cycle + 2
+            assert handles[-2].client is None
+            clients[-2].run.assert_not_called()
+            clients[-1].run.assert_called_once_with(
+                "dumpsys window | grep mCurrentFocus"
+            )
+            assert not solver.sleeping
+            assert not solver._simulator_closed_for_idle
+            assert not solver._idle_observation_pending
+            assert solver.recog.last_scene is None
+            assert solver.recog._img is None
+            assert solver.tasks[0] is pending[0][0]
+            assert solver.tasks[0].time == expected_time
+            assert solver.tasks[1] is pending[1][0]
+            assert solver.tasks[1].time == pending[1][1]
+            assert config.conf.model_dump() == before
+            clients[-1].run.reset_mock()
+    finally:
+        control.close().unwrap()
 
 
 def assert_active_watchdog(solver, clock):
