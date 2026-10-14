@@ -11,6 +11,7 @@ from wsgiref.util import setup_testing_defaults
 
 from webview import FOLDER_DIALOG
 
+from arknights_mower.utils import manager_instances as controls
 from arknights_mower.utils import update_runtime as runtime
 from manager import (
     Api,
@@ -28,12 +29,22 @@ class ManagerApiTests(unittest.TestCase):
             api = Api(Path(directory) / "instances.json")
             api.add("一号 实例", "C:\\Mower Data\\一号")
             api.add("二号", "C:\\Mower Data\\二号")
+            # Simulate launcher details without changing the host's native locks.
             with (
-                patch("manager.sys.platform", "win32"),
-                patch("manager.sys.frozen", True, create=True),
-                patch("manager.sys._MEIPASS", directory, create=True),
-                patch(
-                    "manager.sys.executable", str(Path(directory) / "多开管理器.exe")
+                patch.object(
+                    controls,
+                    "sys",
+                    SimpleNamespace(
+                        platform="win32",
+                        frozen=True,
+                        _MEIPASS=directory,
+                        executable=str(Path(directory) / "多开管理器.exe"),
+                    ),
+                ),
+                patch.object(
+                    runtime,
+                    "hidden_console_options",
+                    return_value={"creationflags": 0x08000000},
                 ),
                 patch.object(
                     runtime, "installation_root", return_value=Path(directory)
@@ -42,6 +53,7 @@ class ManagerApiTests(unittest.TestCase):
                 patch("subprocess.Popen") as process,
                 patch("threading.Thread"),
             ):
+                process.return_value.pid = 2147483647
                 self.assertTrue(api.start(0)["ok"])
                 self.assertTrue(api.start(1)["ok"])
             self.assertEqual(process.call_count, 2)
@@ -67,7 +79,7 @@ class ManagerApiTests(unittest.TestCase):
 
             reloaded = Api(storage_path)
             self.assertEqual(
-                reloaded.get_instances(),
+                reloaded.instances,
                 [{"name": "default", "path": "/tmp/mower-data"}],
             )
 
@@ -86,7 +98,7 @@ class ManagerApiTests(unittest.TestCase):
                 choose.return_value = (str(Path(temporary_dir) / "新建目录"),)
                 selected = api.select_path(0)
                 choose.assert_called_with(window.return_value, temporary_dir)
-                self.assertEqual(Api(api.storage_path).instances[0]["path"], selected)
+                self.assertEqual(Api(api._storage_path).instances[0]["path"], selected)
 
     def test_launched_instance_uses_manager_tray_even_if_parent_was_background(self):
         from arknights_mower.utils import update_runtime as runtime
@@ -99,6 +111,7 @@ class ManagerApiTests(unittest.TestCase):
                 mock.patch.dict("os.environ", {"MOWER_BACKGROUND": "1"}),
                 mock.patch("subprocess.Popen") as process,
             ):
+                process.return_value.pid = 2147483647
                 self.assertTrue(api.start(0)["ok"])
             env = process.call_args.kwargs["env"]
             self.assertEqual(env["MOWER_MANAGED"], "1")
@@ -136,6 +149,71 @@ class ManagerApiTests(unittest.TestCase):
             finally:
                 for child in children:
                     child.wait(timeout=5)
+
+
+class ManagerProcessStopTests(unittest.TestCase):
+    def test_stop_exits_registered_child_and_releases_configuration(self):
+        from arknights_mower.utils import path as mower_path
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source_root = Path(__file__).resolve().parents[2]
+            (root / "webview_ui.py").write_text(
+                "import sys, time\n"
+                "from pathlib import Path\n"
+                f"sys.path.insert(0, {str(source_root)!r})\n"
+                "from arknights_mower.utils import update_runtime as runtime\n"
+                "runtime.installation_root = lambda: Path(__file__).parent\n"
+                "runtime.RuntimeRegistration._retry_backups = lambda self: None\n"
+                "r = runtime.RuntimeRegistration('instance', space=sys.argv[1])\n"
+                "r.record['ready'] = True\n"
+                "r.publish()\n"
+                "deadline = time.monotonic() + 10\n"
+                "while not r.shutdown_requested() and time.monotonic() < deadline:\n"
+                "    time.sleep(0.02)\n"
+                "r.close()\n",
+                encoding="utf-8",
+            )
+            children = []
+            real_popen = subprocess.Popen
+
+            def launch(*args, **kwargs):
+                child = real_popen(*args, **kwargs)
+                children.append(child)
+                return child
+
+            with (
+                patch.object(mower_path, "_data_dir", root / "data"),
+                patch.dict("os.environ", {"MOWER_DATA_DIR": str(root / "data")}),
+                patch.object(runtime, "installation_root", return_value=root),
+                patch.object(runtime, "active_job", return_value=False),
+                patch.object(subprocess, "Popen", side_effect=launch),
+            ):
+                api = Api(root / "instances.json")
+                api.add("stop-fixture", str(root / "instance"))
+                try:
+                    self.assertTrue(api.start(0)["ok"])
+                    deadline = time.monotonic() + 5
+                    while api.get_instances()[0]["state"] != "running":
+                        self.assertLess(time.monotonic(), deadline)
+                        time.sleep(0.02)
+                    with self.assertRaisesRegex(ValueError, "进程运行"):
+                        api.rename(0, "not-yet")
+                    self.assertTrue(api.stop(0)["ok"])
+                    child = children[0]
+                    deadline = time.monotonic() + 5
+                    while child.returncode is None:
+                        self.assertLess(time.monotonic(), deadline)
+                        time.sleep(0.02)
+                    self.assertEqual(child.returncode, 0)
+                    self.assertEqual(api.get_instances()[0]["state"], "stopped")
+                    api.rename(0, "after-exit")
+                    self.assertEqual(api.instances[0]["name"], "after-exit")
+                finally:
+                    for child in children:
+                        if child.poll() is None:
+                            child.kill()
+                        child.wait(timeout=5)
 
 
 class ManagerAppTests(unittest.TestCase):

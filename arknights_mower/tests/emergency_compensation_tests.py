@@ -22,10 +22,11 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 ROOM = "room_1_1"
 
 
-def selection_harness(solver, monkeypatch):
+def selection_harness(solver, monkeypatch, *, primary=PRIMARY[0], add_slot=True):
     """替换屏幕操作，保留房间安排及选人对空岗位的实际处理。"""
-    solver.op_data.plan[ROOM].append(Room("Free", "", []))
-    solver.op_data.operators[PRIMARY[0]]._current_room = ""
+    if add_slot:
+        solver.op_data.plan[ROOM].append(Room("Free", "", []))
+    solver.op_data.operators[primary]._current_room = ""
     solver.op_data.add(Operator("但书", ""))
     solver._selection_profile_snapshot = SimpleNamespace(
         mode="xhigh", low_frame_rate=False

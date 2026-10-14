@@ -2576,7 +2576,7 @@ class Operators:
         return names
 
     def dorm_isolation_cost(self, name, room, index=None, *, plan=None):
-        """同等分床条件下优先减少同组同住人数，不改变恢复层级。"""
+        """统计入住后的同组室友人数，供分床和入住前交换使用。"""
         if not config.conf.dorm_isolation:
             return 0
         roommates = set(self.dorm_roommates(room, index, plan=plan))
@@ -2631,9 +2631,6 @@ class Operators:
             for bed in self.ordered_dorms(active_groups=active_groups)
         ]
         explicit_order = any(item.endswith("_low") for item in self.config.dorm_order)
-        if explicit_order:
-            # 先按显式顺序选床，再在选定床位内协调同排名新入住者的隔离。
-            isolation = False
         if not is_high and not explicit_order:
             order = order[max_count:] + order[:max_count]
         candidates = [
@@ -2661,14 +2658,14 @@ class Operators:
                     else 0,
                 )
             tier, recovery_order = resting_key(self, bed.name, now)
-            # 先使用空位，再接管层级最低、同级距回满最近的占位者。
+            # 先使用空位，再接管最低层级；同层级先比较隔离，再比较恢复缺口。
             return (
                 1,
                 -tier,
-                -recovery_order,
                 self.dorm_isolation_cost(name, *bed.position, plan=plan)
                 if isolation
                 else 0,
+                -recovery_order,
             )
 
         return min(candidates, key=takeover_cost, default=None)

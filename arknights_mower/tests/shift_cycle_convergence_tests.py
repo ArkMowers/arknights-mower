@@ -273,6 +273,19 @@ def test_empty_exhaust_trigger_and_planning_wakeup_are_not_consumed(solver):
     assert all(any(t is trigger for t in solver.tasks) for trigger in triggers)
 
 
+def test_consumed_arrangement_transfers_pending_refresh_rules(solver):
+    task = backup.resting(solver)
+    pending = SchedulerTask(
+        task_type=TaskTypes.SELF_CORRECTION, task_plan=copy.deepcopy(task.plan)
+    )
+    pending.backup_refresh_rules = {"陈": (True, [True, ["room_3_1"]])}
+    solver.tasks.append(pending)
+    solver._prepare_shift_cycle(task)
+    assert all(item is not pending for item in solver.tasks)
+    assert task.backup_refresh_rules == pending.backup_refresh_rules
+    assert not solver.op_data.operators["陈"].refresh_drained
+
+
 def test_projection_reuses_eval_rules_without_copying_runtime_builtins(solver):
     class RuntimeBuiltin:
         def __deepcopy__(self, memo):

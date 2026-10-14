@@ -8,6 +8,7 @@
 | 基建页面上的干员选择与房间操作 | [BaseMixin](base_mixin.py) 及其实际 solver 调用者 | [调度回归](../tests/base_scheduler_tests.py)；按修改方法选择测试 |
 | 专精状态读取与支持干员操作 | [mastery.py](mastery.py)、[mastery_reader.py](mastery_reader.py)、[mastery_support_runtime.py](mastery_support_runtime.py) | [基建调度规范](../../docs/subsystems/base-scheduler.md)、[测试导航](../tests/README.md) |
 | 自动作战 | [OperationSolver](operation.py) | [本地作战规范](../../docs/subsystems/local-operation.md) |
+| 双 Mower 模式的信息板信用领取 | [ClueCreditMixin](clue_credit.py)、[CreditShop](shop.py) | [领取规则](../../docs/subsystems/base-scheduler.md#information-board-credit-collection)、[信用回归](../tests/clue_credit_tests.py) |
 | 场景转换与页面识别 | [navigation.py](navigation.py)、[公共场景图](../utils/graph.py) | [系统架构](../../docs/architecture.md)、[测试导航](../tests/README.md) |
 
 排班问题还需要跟到 [Operators](../utils/operators.py)、[计划模型](../utils/plan.py) 和[调度任务](../utils/scheduler_task.py)。通过所属子系统说明确认 Actual Occupancy 与 Projected Occupancy 的边界，再检查实际调用链中的状态变化。

@@ -579,4 +579,4 @@ def emergency_dorm_plan(
         plan.setdefault(room, ["Current"] * len(data.plan[room]))[position] = name
     from arknights_mower.utils.scheduler_task import plan_dorm_isolation
 
-    return plan_dorm_isolation(data, plan, slots)
+    return plan_dorm_isolation(data, plan, slots, reserved_names=reserved)

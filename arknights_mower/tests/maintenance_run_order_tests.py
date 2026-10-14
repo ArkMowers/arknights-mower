@@ -1,6 +1,7 @@
 """停服大更新副表允许跑单干员主班，并在生效期间暂停全部跑单。"""
 
 import copy
+import pickle
 import sys
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
@@ -13,6 +14,9 @@ from arknights_mower.solvers.base_schedule import (  # noqa: E402
     BaseSchedulerSolver,
     ProductSwitchDeferred,
 )
+from arknights_mower.tests.emergency_compensation_tests import (  # noqa: E402
+    selection_harness,
+)
 from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils import operators as operators_module  # noqa: E402
 from arknights_mower.utils.logic_expression import LogicExpression  # noqa: E402
@@ -24,8 +28,11 @@ from arknights_mower.utils.operators import TRADE_ORDER_AGENTS, Operators  # noq
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
     SchedulerTask,
+    TaskScope,
     TaskTypes,
     adjust_run_order_for_maintenance,
+    blocked_run_order_ids,
+    task_view,
 )
 
 
@@ -534,6 +541,245 @@ def test_projected_trade_primary_activation_skips_acceleration(solver, monkeypat
     assert shift.backup_shift_active
     assert order not in solver.tasks
     assert not order.adjusted
+
+
+@pytest.mark.parametrize("activation", ["normal", "shift"])
+def test_trade_primary_runs_projected_replacement_before_activation(
+    solver, monkeypatch, activation
+):
+    solver.op_data.backup_plans[0].plan["room_1_1"][0].replacement = ["龙舌兰", "孑"]
+    monkeypatch.setattr(
+        solver.op_data, "major_maintenance_remaining_hours", lambda: 0.25
+    )
+    stale = SchedulerTask(
+        time=datetime.now() + timedelta(hours=8),
+        task_type=TaskTypes.RUN_ORDER,
+        task_plan={"room_1_1": ["但书"]},
+        meta_data="room_1_1",
+    )
+    solver.tasks = [stale]
+    shift = SchedulerTask(task_type=TaskTypes.SHIFT_OFF)
+    shift.backup_shift_conditions = [True]
+
+    def activate():
+        if activation == "normal":
+            solver.backup_plan_solver()
+        else:
+            with pytest.raises(ProductSwitchDeferred, match="提前跑单"):
+                solver._activate_shift_backup(shift)
+
+    activate()
+    assert solver.op_data.plan_condition == [False]
+    orders = [task for task in solver.tasks if task.type == TaskTypes.RUN_ORDER]
+    assert len(orders) == 1
+    order = orders[0]
+    assert order is not stale
+    assert order.plan == {"room_1_1": ["龙舌兰"]}
+    assert order.meta_data == "room_1_1"
+    assert order.adjusted
+    assert order.time <= datetime.now()
+
+    original_time = order.time
+    for _ in range(3):
+        activate()
+        solver.run_order_solver()
+        assert [task for task in solver.tasks if task.type == TaskTypes.RUN_ORDER] == [
+            order
+        ]
+        assert order.time == original_time
+    solver.get_run_order_time.assert_not_called()
+
+    order.run_order_original_roster = {"room_1_1": ["鸿雪"]}
+    order.run_order_restore_pending = True
+    order.prepare_run_order_restoration()
+    activate()
+    assert solver.op_data.plan_condition == [False]
+    solver.tasks.remove(order)
+    if activation == "normal":
+        solver.backup_plan_solver()
+    else:
+        solver._activate_shift_backup(shift)
+    assert solver.op_data.plan_condition == [True]
+    assert solver.op_data.run_order_paused
+
+
+@pytest.mark.parametrize("buffer", [0, 1])
+@pytest.mark.parametrize("drone_fails", [False, True])
+def test_maintenance_replacement_accelerates_and_restores_before_primary(
+    solver, monkeypatch, buffer, drone_fails
+):
+    place = selection_harness(solver, monkeypatch, primary="鸿雪", add_slot=False)
+    place(["鸿雪"])
+    config.conf.run_order_grandet_mode.enable = bool(buffer)
+    config.conf.run_order_grandet_mode.buffer_time = buffer
+    solver.op_data.backup_plans[0].plan["room_1_1"][0].replacement = ["佩佩", "孑"]
+    monkeypatch.setattr(
+        solver.op_data, "major_maintenance_remaining_hours", lambda: 0.25
+    )
+    events = []
+    confirm = solver.tap_confirm.side_effect
+
+    def confirmed(room, new_plan):
+        confirm(room, new_plan)
+        events.append(("staff", solver.op_data.get_current_room(room, True)))
+
+    def accelerate(room, **kwargs):
+        events.append(("drone", solver.op_data.get_current_room(room, True)))
+        if drone_fails:
+            raise RuntimeError("无人机加速失败")
+
+    solver.tap_confirm.side_effect = confirmed
+    solver.drone.side_effect = accelerate
+    solver.backup_plan_solver()
+    order = solver.tasks[0]
+    assert order.plan == {"room_1_1": ["佩佩"]}
+    solver.task = order
+    if drone_fails:
+        with pytest.raises(RuntimeError, match="无人机加速失败"):
+            solver.agent_arrange(order.plan)
+    else:
+        solver.agent_arrange(order.plan)
+    if drone_fails or not buffer:
+        solver.backup_plan_solver()
+        assert solver.op_data.plan_condition == [False]
+        solver.agent_arrange(order.plan)
+    assert solver.op_data.get_current_room("room_1_1", True) == ["鸿雪"]
+    solver.tasks.remove(order)
+    solver.task = None
+    solver.backup_plan_solver()
+    assert solver.op_data.plan_condition == [True]
+    shift = next(task for task in solver.tasks if task.plan)
+    solver.task = shift
+    solver.agent_arrange(shift.plan)
+
+    assert events == [
+        ("staff", ["佩佩"]),
+        ("drone", ["佩佩"]),
+        ("staff", ["鸿雪"]),
+        ("staff", ["但书"]),
+    ]
+    solver.get_order_remaining_time.assert_not_called()
+    solver.drone.assert_called_once_with("room_1_1", not_customize=True)
+    assert solver.op_data.run_order_paused
+
+
+def test_replacement_batch_survives_queue_recovery_without_old_order_room(
+    solver, monkeypatch
+):
+    data = solver.op_data
+    data.global_plan["default_plan"].plan["room_1_1"][0].replacement = ["孑"]
+    assert data.swap_plan([False], refresh=True) is None
+    assert "room_1_1" not in data.run_order_rooms
+    data.backup_plans[0].plan["room_1_1"][0].replacement = ["佩佩", "孑"]
+    monkeypatch.setattr(data, "major_maintenance_remaining_hours", lambda: 0.25)
+    solver.backup_plan_solver()
+    assert solver.tasks[0].plan == {"room_1_1": ["佩佩"]}
+    assert "佩佩" in data.operators
+    solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
+    solver.maintenance_entry_pending = False
+    order = solver.tasks[0]
+    original = copy.deepcopy(vars(order))
+    for _ in range(3):
+        solver.backup_plan_solver()
+        solver.run_order_solver()
+        assert solver.tasks == [order]
+        assert vars(order) == original
+        assert data.plan_condition == [False]
+    solver.get_run_order_time.assert_not_called()
+
+
+@pytest.mark.parametrize("override", ["Current", "但书"])
+def test_replacement_batch_uses_final_merged_replacements(solver, override):
+    data = solver.op_data
+    data.backup_plans[0].plan["room_1_1"][0].replacement = ["龙舌兰", "孑"]
+    data.backup_plans.append(
+        Plan(
+            {"room_1_1": [Room(override, "", ["孑"])]},
+            PlanConfig("", "", ""),
+            trigger=maintenance_trigger(),
+        )
+    )
+    data.plan_condition = [False, False]
+    pending = solver._advance_orders_before_maintenance([True, True])
+    assert pending == (override == "Current")
+    assert [task.plan for task in solver.tasks] == (
+        [{"room_1_1": ["龙舌兰"]}] if override == "Current" else []
+    )
+
+
+@pytest.mark.parametrize("source", ["configured", "observed"])
+def test_replacement_batch_excludes_orundum(solver, source):
+    data = solver.op_data
+    data.backup_plans[0].plan["room_1_1"][0].replacement = ["龙舌兰", "孑"]
+    if source == "configured":
+        config.conf.product_switching.enable = True
+        data.backup_plans[0].products["room_1_1"] = "orundum"
+    else:
+        data.update_facility_state("room_1_1", "trade", "orundum")
+    assert not solver._advance_orders_before_maintenance([True])
+    assert solver.tasks == []
+
+
+def test_replacement_batch_retains_failed_task_and_releases_other_work(solver):
+    data = solver.op_data
+    data.backup_plans[0].plan["room_1_1"][0].replacement = ["龙舌兰", "孑"]
+    assert solver._advance_orders_before_maintenance([True])
+    order = solver.tasks[0]
+    order.execution_failure = {"reason": "替班暂不可选", "rooms": ["room_1_1"]}
+    other = SchedulerTask(task_type=TaskTypes.SKILL_UPGRADE)
+    solver.tasks.append(other)
+    original = copy.deepcopy(vars(order))
+    for _ in range(3):
+        assert solver._advance_orders_before_maintenance([True])
+        assert solver.tasks == [order, other]
+        assert vars(order) == original
+        assert data.plan_condition == [False]
+    assert task_view(solver.tasks, TaskScope.DISPATCH) == [other]
+    del order.execution_failure
+    assert order in task_view(solver.tasks, TaskScope.DISPATCH)
+
+
+def test_replacement_restoration_releases_source_correction_before_activation(
+    solver, monkeypatch
+):
+    place = selection_harness(solver, monkeypatch, primary="鸿雪", add_slot=False)
+    place(["鸿雪"])
+    data = solver.op_data
+    data.backup_plans[0].plan["room_1_1"][0].replacement = ["龙舌兰", "孑"]
+    assert solver._advance_orders_before_maintenance([True])
+    order = solver.tasks[0]
+    order.run_order_original_roster = {"room_1_1": ["鸿雪"]}
+    order.run_order_restore_pending = True
+    order.prepare_run_order_restoration()
+    for name, room in (("鸿雪", "room_2_2"), ("图耶", ""), ("龙舌兰", "room_1_1")):
+        data.operators[name].current_room = room
+        data.operators[name].current_index = 0 if room else -1
+    correction = SchedulerTask(
+        task_type=TaskTypes.SELF_CORRECTION, task_plan={"room_2_2": ["图耶"]}
+    )
+    solver.tasks.append(correction)
+    original = copy.deepcopy(vars(order))
+    assert id(order) in blocked_run_order_ids(solver.tasks, data)
+    for _ in range(3):
+        assert solver._advance_orders_before_maintenance([True])
+        solver._prepare_shift_cycle(correction)
+        solver._activate_shift_backup(correction)
+        assert data.plan_condition == [False]
+        assert correction.plan["room_2_2"] == ["图耶"]
+        assert vars(order) == original
+    data.operators["鸿雪"].current_room = ""
+    data.operators["鸿雪"].current_index = -1
+    data.operators["图耶"].current_room = "room_2_2"
+    data.operators["图耶"].current_index = 0
+    assert id(order) not in blocked_run_order_ids(solver.tasks, data)
+    assert not solver.maintenance_entry_pending
+    solver.task = order
+    solver.agent_arrange(order.plan)
+    assert data.get_current_room("room_1_1", True) == ["鸿雪"]
+    solver.tasks.remove(order)
+    assert not solver._advance_orders_before_maintenance([True])
+    assert solver.tasks == [correction]
+    solver.drone.assert_not_called()
 
 
 @pytest.mark.parametrize("override", ["Current", "鸿雪"])

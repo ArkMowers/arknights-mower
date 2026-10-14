@@ -272,6 +272,9 @@ def current_state():
             getattr(base_scheduler, "_initial_mood_refresh_rooms", ())
         ),
         "daily_visit_friend": base_scheduler.daily_visit_friend,
+        "daily_visit_friend_attempt": getattr(
+            base_scheduler, "daily_visit_friend_attempt", None
+        ),
         "daily_report": base_scheduler.daily_report,
         "daily_skland": base_scheduler.daily_skland,
         "daily_mail": base_scheduler.daily_mail,
