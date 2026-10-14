@@ -469,7 +469,7 @@ const effectiveChartOptions = computed(() => {
 
 <style scoped>
 .simulation :deep(.mood-card-grid) {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .mood-page {
