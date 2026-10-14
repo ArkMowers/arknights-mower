@@ -2470,11 +2470,19 @@ def prioritize_new_dorm_recovery(
     return result
 
 
-def plan_dorm_isolation(op_data, plan, reserved_slots=()):
-    """入住前演算分散新入住者；保留单回位、原入住者和其他任务预约。"""
+def plan_dorm_isolation(op_data, plan, reserved_slots=(), *, reserved_names=()):
+    """入住前交换动态床位以减少同宿，保护固定驻员和任务预约。"""
     if not config.conf.dorm_isolation or not plan:
         return plan
-    explicit_order = any(item.endswith("_low") for item in op_data.config.dorm_order)
+    newcomers = {
+        name
+        for room, row in plan.items()
+        if room.startswith("dorm")
+        for name in row
+        if name in op_data.operators and not op_data.operators[name].is_resting()
+    }
+    if not newcomers:
+        return plan
     projected = op_data.project_arrangements([plan])
     beds = [
         bed
@@ -2487,18 +2495,29 @@ def plan_dorm_isolation(op_data, plan, reserved_slots=()):
             first_positions.get(bed.position[0], bed.position), bed.position
         )
     reserved = set(reserved_slots) | set(op_data.reserved_product_beds)
-    newcomers = {
-        name
-        for row in plan.values()
-        for name in row
-        if name in op_data.operators and not op_data.operators[name].is_resting()
-    }
+    protected_names = set(reserved_names)
+    explicit_names = {name for row in plan.values() for name in row}
+    for bed in op_data.dorm:
+        op = op_data.operators.get(bed.name)
+        if (
+            op is not None
+            and bed.name not in explicit_names
+            and (op.current_room, op.current_index) != bed.position
+        ):
+            reserved.add(bed.position)
+            protected_names.add(bed.name)
     movable = [
         bed
         for bed in beds
         if bed.position not in reserved
-        and bed.position != first_positions[bed.position[0]]
-        and (bed.name in newcomers or not explicit_order and not bed.name)
+        and bed.name not in protected_names
+        and (
+            not bed.name
+            or bed.name in projected.operators
+            and not projected.is_free_room_excluded(bed.name)
+            and resting_tier(projected, bed.name) != RestingTier.EXCLUDED
+        )
+        and (bed.position != first_positions[bed.position[0]] or bed.name in newcomers)
     ]
     if len(movable) < 2:
         return plan
@@ -2515,37 +2534,68 @@ def plan_dorm_isolation(op_data, plan, reserved_slots=()):
             for group in config.conf.dorm_isolation
         )
 
+    allocation_groups = []
+    for bed in beds:
+        if (
+            allocation_groups
+            and bed.position != first_positions[bed.position[0]]
+            and allocation_groups[-1][0].position[0] == bed.position[0]
+            and allocation_groups[-1][0].position != first_positions[bed.position[0]]
+        ):
+            allocation_groups[-1].append(bed)
+        else:
+            allocation_groups.append([bed])
     now = datetime.now()
-    # 显式顺序保留所选床位，只交换恢复排名相同的新入住者。
-    # 只接受减少同住对数的交换，有限床位内不出现来回搬动。
+
+    def recovery_rank(bed):
+        op = projected.operators.get(bed.name)
+        if (
+            op is None
+            or has_resting_mood(op, now)
+            and resting_mood(op, now) >= op.upper_limit
+        ):
+            return int(RestingTier.EXCLUDED) + 1
+        return resting_tier(projected, bed.name)
+
+    def recovery_score():
+        return tuple(
+            rank
+            for group in allocation_groups
+            for rank in sorted(recovery_rank(bed) for bed in group)
+        )
+
+    # 先减少同宿，再按恢复层级选择可行的单回对象；同速普通位不因心情换床。
+    # 隔离及层级评分严格下降，单回让位后仍可继续补回更高层级的对象。
     for _ in range(len(movable) ** 2):
         best = None
-        improvement = 0
+        best_key = (0, recovery_score(), 0, 0)
         for offset, first in enumerate(movable):
             for second in movable[offset + 1 :]:
                 rooms = {first.position[0], second.position[0]}
-                if len(rooms) < 2 or first.name == second.name:
-                    continue
-                if (
-                    resting_tier(op_data, first.name)
-                    if first.name
-                    else RestingTier.IDLE
-                ) != (
-                    resting_tier(op_data, second.name)
-                    if second.name
-                    else RestingTier.IDLE
-                ):
-                    continue
-                if explicit_order and resting_key(
-                    op_data, first.name, now
-                ) != resting_key(op_data, second.name, now):
+                target_moves = sum(
+                    bed.position == first_positions[bed.position[0]]
+                    for bed in (first, second)
+                )
+                if first.name == second.name or len(rooms) < 2 and not target_moves:
                     continue
                 before = sum(room_cost(room) for room in rooms)
                 first.name, second.name = second.name, first.name
                 gain = before - sum(room_cost(room) for room in rooms)
+                rank = recovery_score()
                 first.name, second.name = second.name, first.name
-                if gain > improvement:
-                    best, improvement = (first, second), gain
+                if gain < 0 or gain == 0 and not target_moves:
+                    continue
+                key = (
+                    -gain,
+                    rank,
+                    target_moves,
+                    sum(
+                        bool(bed.name) and bed.name not in newcomers
+                        for bed in (first, second)
+                    ),
+                )
+                if key < best_key:
+                    best, best_key = (first, second), key
         if best is None:
             break
         first, second = best
@@ -2986,12 +3036,7 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
                 else:
                     # 未登记卡片不能成为换班预演的明确姓名；实际选人再登记。
                     incoming = "Free"
-            if (
-                filling_vacancies
-                and config.conf.dorm_isolation
-                and incoming != "Free"
-                and not any(item.endswith("_low") for item in op_data.config.dorm_order)
-            ):
+            if filling_vacancies and config.conf.dorm_isolation and incoming != "Free":
                 available = [
                     candidate
                     for candidate in op_data.dorm
@@ -3037,7 +3082,9 @@ def try_add_release_dorm(plan, time, op_data, tasks, *, empty_only=False):
             simplify_dorm_fill(task, tasks, now, op_data)
         if not getattr(task, "simple_dorm_fill", False):
             task.plan = prioritize_new_dorm_recovery(op_data, task.plan, reserved_slots)
-        isolated = plan_dorm_isolation(op_data, task.plan, reserved_slots)
+        isolated = plan_dorm_isolation(
+            op_data, task.plan, reserved_slots, reserved_names=reserved_names
+        )
         if isolated != task.plan:
             fill_names = {
                 name for row in task.dorm_fill_plan.values() for name in row

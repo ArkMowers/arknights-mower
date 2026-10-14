@@ -5458,7 +5458,12 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 reserved_slots | set(getattr(task, "backup_explicit_slots", ())),
                 reserved_names=reserved_names,
             )
-            task.plan = plan_dorm_isolation(self.op_data, task.plan, reserved_slots)
+            task.plan = plan_dorm_isolation(
+                self.op_data,
+                task.plan,
+                reserved_slots | set(getattr(task, "backup_explicit_slots", ())),
+                reserved_names=reserved_names,
+            )
             return
         intent = copy.deepcopy(getattr(task, "backup_shift_intent", task.plan))
         explicit_slots = set(getattr(task, "backup_explicit_slots", ()))
@@ -5561,7 +5566,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 != dorm_rebalance_signature(simulation.op_data),
             )
             step.plan = plan_dorm_isolation(
-                simulation.op_data, step.plan, reserved_slots
+                simulation.op_data,
+                step.plan,
+                reserved_slots | explicit_slots,
+                reserved_names=reserved_names,
             )
             simulation._suppress_train_arrangement(step.plan)
             simulation._suppress_retained_arrangements(step.plan)
