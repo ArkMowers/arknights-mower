@@ -131,7 +131,7 @@ def parse_base_conditions(building):
     return result
 
 
-def load_skill_snapshot():
+def load_skill_snapshot(payload=None):
     """Reuse the mastery snapshot without fetching data or assuming missing growth."""
     unavailable = {
         "has_data": False,
@@ -139,7 +139,8 @@ def load_skill_snapshot():
         "base_conditions": {},
         "message": "请同步森空岛干员数据",
     }
-    payload = get_cultivate_snapshot()
+    if payload is None:
+        payload = get_cultivate_snapshot()
     if not payload:
         return unavailable
     roster = {entry["id"]: entry for entry in payload["data"]["characters"]}
@@ -212,3 +213,57 @@ def unlocked_skills(name, facility, snapshot):
         for s in skill_index().get(name, ())
         if s["roomType"] == facility and (s["skill_key"], s["skill_level"]) in active
     )
+
+
+def load_income_cache():
+    """Expose only cached growth and simulation resources, without syncing or writing."""
+    from arknights_mower.data import key_mapping
+
+    payload = get_cultivate_snapshot() or {}
+    snapshot = load_skill_snapshot(payload)
+    resources = {
+        "gold": "赤金",
+        "fragment": "源石碎片",
+        "orirock": "固源岩",
+        "device": "装置",
+        "lmd": "龙门币",
+    }
+    items = payload.get("data", {}).get("items")
+    valid = isinstance(items, list) and all(
+        isinstance(item, dict)
+        and isinstance(item.get("id"), str)
+        and str(item.get("count", "")).isdigit()
+        and int(item["count"]) <= 9007199254740991
+        for item in items
+    )
+    counts = {}
+    if valid:
+        by_id = {item["id"]: int(item["count"]) for item in items}
+        for resource, name in resources.items():
+            entry = key_mapping[name]
+            # Skland reports material stock; absent basic currencies remain unknown.
+            counts[resource] = by_id.get(
+                entry[0], 0 if entry[3] == "MATERIAL" else None
+            )
+        counts["exp"] = sum(
+            by_id.get(key_mapping[name][0], 0) * weight
+            for name, weight in (
+                ("基础作战记录", 200),
+                ("初级作战记录", 400),
+                ("中级作战记录", 1000),
+                ("高级作战记录", 2000),
+            )
+        )
+    observed_at = payload.get("_mower_inventory_observed_at")
+    if type(observed_at) not in (int, float) or not 0 < observed_at < 1e12:
+        observed_at = None
+    return {
+        "has_roster": snapshot["has_data"],
+        "operators": [
+            {key: entry[key] for key in ("name", "owned", "phase", "level")}
+            for entry in snapshot["operators"]
+        ],
+        "has_inventory": valid,
+        "inventory": counts,
+        "observed_at": observed_at,
+    }

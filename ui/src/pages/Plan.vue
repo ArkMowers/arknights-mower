@@ -55,12 +55,14 @@ const { load_plan, fill_empty } = plan_store
 
 import {
   computed,
+  defineAsyncComponent,
   inject,
   nextTick,
   onMounted,
   onUnmounted,
   provide,
   ref,
+  shallowRef,
   watch,
   watchEffect
 } from 'vue'
@@ -68,7 +70,8 @@ const axios = inject('axios')
 
 const facility = ref('')
 provide('facility', facility)
-const edit_locked = import_saves.paused
+const preparing_income = ref(false)
+const edit_locked = computed(() => import_saves.paused.value || preparing_income.value)
 provide('planEditLocked', edit_locked)
 
 import { useDialog, useMessage, NAlert } from 'naive-ui'
@@ -571,6 +574,72 @@ const import_url = `${import.meta.env.VITE_HTTP_URL}/import${rescue ? '?rescue=1
 
 const token = inject('token')
 
+const PlanIncomeDialog = defineAsyncComponent(() => import('@/components/PlanIncomeDialog.vue'))
+const income_open = ref(false)
+const income_snapshot = shallowRef(null)
+const income_error = ref('')
+let income_preparation = 0
+let income_original_facility = null
+
+function closeIncome() {
+  if (income_original_facility !== null) facility.value = income_original_facility
+  income_original_facility = null
+  income_preparation++
+  income_open.value = false
+  income_snapshot.value = null
+  preparing_income.value = false
+}
+onUnmounted(closeIncome)
+
+async function prepareIncome() {
+  if (!requireEditing() || rescue || income_open.value) return
+  const generation = ++income_preparation
+  income_open.value = true
+  preparing_income.value = true
+  income_error.value = ''
+  income_snapshot.value = null
+  income_original_facility = facility.value
+  try {
+    const plan = JSON.parse(JSON.stringify(plan_store.build_plan()))
+    plan.advanced_settings = JSON.parse(JSON.stringify(config_store.build_advanced_settings()))
+    const { incomeWorkspace } = await import('@/riic/income')
+    incomeWorkspace(plan)
+    if (generation !== income_preparation) return
+    const imageTheme = theme.value
+    const label = sub_plan.value === 'main' ? '主表' : backup_plans.value[sub_plan.value].name
+    facility.value = ''
+    await nextTick()
+    if (Bowser.getParser(window.navigator.userAgent).getEngine().name === 'WebKit') {
+      await toBlob(plan_editor.value.outer)
+    }
+    const capture = await toBlob(plan_editor.value.outer, {
+      pixelRatio: 3,
+      backgroundColor: imageTheme === 'light' ? '#ffffff' : '#000000',
+      style: { margin: 0, padding: '8px 0' }
+    })
+    if (generation !== income_preparation) return
+    if (!capture) throw new Error('原排班图片生成失败')
+    const form = new FormData()
+    form.append('img', capture)
+    form.append('plan', JSON.stringify(plan))
+    form.append('theme', imageTheme)
+    const { data } = await axios.post(`${import.meta.env.VITE_HTTP_URL}/dialog/save/img`, form, {
+      responseType: 'blob',
+      timeout: 60000
+    })
+    if (generation === income_preparation)
+      income_snapshot.value = { plan, image: data, theme: imageTheme, label }
+  } catch (error) {
+    if (generation === income_preparation) income_error.value = error.message || '排班快照准备失败'
+  } finally {
+    if (generation === income_preparation) {
+      preparing_income.value = false
+      if (income_original_facility !== null) facility.value = income_original_facility
+      income_original_facility = null
+    }
+  }
+}
+
 const export_options = [
   {
     label: '导出JSON文件',
@@ -790,10 +859,25 @@ function movePlanForward() {
         </drop-down>
       </div>
     </div>
+    <PlanIncomeDialog
+      v-if="income_open"
+      :snapshot="income_snapshot"
+      :preparing="preparing_income"
+      :prepare-error="income_error"
+      @close="closeIncome"
+    />
     <plan-editor ref="plan_editor" class="w-980 mx-auto mw-980 px-12" />
     <div v-if="!rescue" class="plan-advanced-actions w-980 mx-auto px-12 mw-980">
       <n-button @click="show_advanced_settings_dialog = true">高级设置</n-button>
       <n-button @click="show_mood_limits_dialog = true"> 设置心情上下限 </n-button>
+      <n-button
+        type="success"
+        :disabled="edit_locked"
+        :loading="preparing_income"
+        @click="prepareIncome"
+      >
+        计算收益
+      </n-button>
     </div>
     <n-form
       class="w-980 mx-auto mb-12 px-12 mw-980"

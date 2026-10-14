@@ -62,3 +62,9 @@ The existing `/ws/chat` credential and model configuration boundaries apply. Bot
 
 
 The [RIIC planning decision](../../.agents/notes/implemented/feature/2026-10-13-riic-ai-planning.md) records source reuse and offline verification.
+
+### RIIC Topic Routing and Income Estimates
+
+`get_riic_knowledge` additionally exposes `taxonomy`, `mower_plan`, `new_operators`, `income_export` and `freshness`. These topics explain identity and skill-category matching, fixed Mower format compatibility, the supplemental operators' conditions, the income-export user flow and separate source-version checks. They reuse the shared current skill and term lookup; each query still returns only one topic with bounded operator detail. Tool declarations enumerate every supported topic.
+
+For numeric income requests, the AI reads `income_export` and directs the user to the [income export dialog](plan-editor.md#income-export). Existing AI tools do not execute that browser Worker, and the assistant must not claim to have run it or invent results. Full-development estimates cannot be represented as actual BOX observations. Interpreting a supplied result requires its warmup/sample windows, inventory mode, development assumptions and fixed engine version. The general mechanics guide's freshness, Mower resources, calculator source and native scheduler reference remain separately identified; none implies that the others are current.

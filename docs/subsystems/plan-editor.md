@@ -50,3 +50,20 @@ The [shared color decision](../../.agents/notes/implemented/simplification/2026-
 ## 6. Backup Facility Import
 
 The backup facility toolbar copies the selected main-plan facility, including its type, product, primary operators and all group/replacement bindings. The copy replaces only that facility in the selected backup and shares no mutable rows or replacement lists with the main plan. Backup conditions, explicit staffing tasks, other facilities and other backups remain unchanged. The button is hidden on the main plan and disabled by the edit lock.
+
+<a id="income-export"></a>
+## 7. Income Image Export
+
+The normal editor's green income button, alongside advanced settings below the schedule image, opens `PlanIncomeDialog` for a detached copy of the current complete plan and advanced settings. The original export menu retains its existing actions. Default simulation duration is three warmup days and twenty-eight measured days, totaling thirty-one days. Both windows are independently editable; warmup output and initial stock are excluded from measured income.
+
+The dialog reads owned operators, elite phases and levels from Mower's shared Skland cache through the authenticated read-only `/riic/income-cache` endpoint. Manual roster input and an explicit maximum-development assumption remain available. Inventory can use cached quantities, with editable additions, or manual quantities. Missing cached basic resources remain unknown and must be filled; unavailable growth never becomes maximum development. Only simulation fields are returned, without account identities or credentials; opening the dialog performs no remote sync or cache write.
+
+Finite inventory runs continuously through warmup and measurement, without outside income. Inventory-conditioned backups always use this ledger. Gold debt is enabled by default: order delivery can make gold negative, representing a modeled shortfall. Disabling debt blocks unfunded deliveries; all other materials remain constrained. Reports separate gold production, consumption, net change and initial, sample-opening and closing balances. Recycling contributes only daily and sample-total production counts, without random material identities, inventory inflows or material value.
+
+Weights default to the shared Mower income algorithm, read again before each run. Choosing a named algorithm in the dialog saves its coefficients through `/report/recycling_settings`, preserving the current recycling efficiency; opening and calculating only read settings. Saved custom coefficients are supported. An independent per-run custom weight option is temporary. Reports identify the actual algorithm used, even after later parameter edits.
+
+The Worker runs the fixed calculator dependency closure under `ui/src/riic/vendor/`, with source hashes and local patches recorded in `source.json`. The model assumes ideal order runs, inferred facility levels, initial mood 24 subject to personal limits and maximum dormitory ambience for the inferred level. The fixed model is not automatically synchronized with native scheduler changes. Historical slow observations remain visible after completion, cancellation or failure; activity correlation does not establish a cause. Workers and pending reads are released on close; stale results cannot publish into another run.
+
+The existing image-export endpoint accepts an explicit validated plan snapshot and theme without saving it. The frontend preserves that original schedule and QR layout, then appends metrics, weights, cache/source assumptions, versions and diagnostics as a PNG. Only complete successful simulations are exported, and failed image rendering retains results for retry. Existing image import restores the complete main/backup plan and advanced settings; it does not restore transient calculation parameters, cached roster/inventory or shared income settings.
+
+The [income-export decision](../../.agents/notes/implemented/feature/2026-10-14-plan-income-export.md) records the Worker and QR-format choices. The [RIIC maintenance skill](../../.agents/skills/mower-riic/SKILL.md) supplies source synchronization and focused verification procedures.

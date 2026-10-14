@@ -1,0 +1,122 @@
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { effectScope } from 'vue'
+import Dialog from './PlanIncomeDialog.vue'
+const io = vi.hoisted(() => ({ client: null, cleanup: null }))
+vi.mock('vue', async (original) => ({
+  ...(await original()),
+  useSSRContext: () => ({ modules: new Set() }),
+  inject: () => io.client,
+  onMounted: vi.fn(),
+  onBeforeUnmount: (fn) => {
+    io.cleanup = fn
+  }
+}))
+const valuation = (algorithm = 2) => ({
+  base_algorithm: algorithm,
+  ratios: { experience: 0.9568, gold: 0.76544, order: 0.23456, efficiency: 1.7 }
+})
+const cache = () => ({
+  has_roster: true,
+  operators: [{ name: '阿米娅', owned: true, phase: 2, level: 80 }],
+  has_inventory: true,
+  inventory: { gold: 10, fragment: 0, orirock: 1, device: 0, lmd: 42, exp: 1000 },
+  observed_at: 1234
+})
+let page, scope, workers
+beforeEach(() => {
+  io.client = {
+    get: vi.fn(async (url) => ({ data: url.includes('income-cache') ? cache() : valuation() })),
+    put: vi.fn()
+  }
+  workers = []
+  vi.stubGlobal(
+    'Worker',
+    class {
+      constructor() {
+        this.postMessage = vi.fn()
+        this.terminate = vi.fn()
+        workers.push(this)
+      }
+    }
+  )
+  scope = effectScope()
+  page = scope.run(() =>
+    Dialog.setup(
+      {
+        snapshot: {
+          plan: {
+            default: 'plan1',
+            conf: {},
+            backup_plans: [],
+            plan1: { room_1_1: { name: '制造站', product: 'gold', plans: [] } }
+          }
+        }
+      },
+      { expose: vi.fn(), emit: vi.fn() }
+    )
+  )
+})
+afterEach(() => {
+  io.cleanup()
+  scope.stop()
+  vi.unstubAllGlobals()
+})
+it('reads cached ownership and stock without writing configuration', async () => {
+  await page.readCache()
+  await page.readWeights()
+  expect(page.settings.cachedOperators).toEqual([{ operator: '阿米娅', elitePhase: 2, level: 80 }])
+  expect(page.settings.cachedInventory.gold).toBe(10)
+  expect(page.settings.mowerWeights).toMatchObject({ exp: 0.9568, gold: 0.76544, orders: 0.23456 })
+  expect(io.client.put).not.toHaveBeenCalled()
+})
+it('saves the selected shared algorithm and preserves recycling efficiency', async () => {
+  await page.readWeights()
+  io.client.put.mockImplementation(async (_, value) => ({ data: value }))
+  await page.selectAlgorithm(0)
+  expect(io.client.put.mock.calls[0][1]).toEqual({
+    base_algorithm: 0,
+    ratios: { experience: 1, gold: 0.8, order: 0.2, efficiency: 1.7 }
+  })
+  expect(page.settings.mowerWeights.exp).toBe(1)
+})
+it('rereads Mower settings before starting and freezes the worker input', async () => {
+  await page.readCache()
+  await page.readWeights()
+  io.client.get.mockResolvedValueOnce({
+    data: { base_algorithm: -1, ratios: { experience: 2, gold: 0.5, order: 0.3, efficiency: 1 } }
+  })
+  await page.start()
+  expect(workers).toHaveLength(1)
+  const sent = workers[0].postMessage.mock.calls[0][0]
+  expect(sent.settings.mowerWeights).toMatchObject({ exp: 2, gold: 0.5, orders: 0.3 })
+  page.settings.cachedInventory.gold = 999
+  expect(sent.settings.cachedInventory.gold).toBe(10)
+})
+it('missing cache values require explicit input instead of falling back to maximum or zero', async () => {
+  const missing = cache()
+  missing.inventory.gold = null
+  io.client.get.mockResolvedValueOnce({ data: missing })
+  await page.readCache()
+  await page.start()
+  expect(workers).toHaveLength(0)
+  expect(page.state.error).toContain('赤金')
+  expect(page.settings.operatorMode).toBe('cache')
+  page.settings.inventorySource = 'manual'
+  await page.start()
+  expect(workers).toHaveLength(1)
+})
+it('closing during settings fetch does not create a worker from a late response', async () => {
+  await page.readCache()
+  let resolve
+  io.client.get.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done
+      })
+  )
+  const start = page.start()
+  page.close()
+  resolve({ data: valuation() })
+  await start
+  expect(workers).toHaveLength(0)
+})

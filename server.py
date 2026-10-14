@@ -2255,12 +2255,24 @@ def save_file_dialog():
 
     upper = Image.open(img)
 
-    if request.args.get("rescue") == "1":
+    if "plan" in request.form:
+        from arknights_mower.utils.config.plan import parse_plan_document
+
+        try:
+            plan_data = parse_plan_document(
+                json.loads(request.form["plan"])
+            ).model_dump(exclude_none=True)
+        except (ValueError, TypeError):
+            return {"error": "导出排班快照格式无效"}, 400
+    elif request.args.get("rescue") == "1":
         plan_data = config.conf.automatic_rescue_plan.model_dump(exclude_none=True)
     else:
         plan_data = config.plan.model_dump(exclude_none=True)
         plan_data["advanced_settings"] = export_advanced_settings(config.conf)
-    img = qrcode.export(plan_data, upper, config.conf.theme)
+    theme = request.form.get("theme", config.conf.theme)
+    if theme not in ("light", "dark"):
+        return {"error": "导出主题无效"}, 400
+    img = qrcode.export(plan_data, upper, theme)
     buffer = BytesIO()
     img.save(buffer, format="JPEG")
     buffer.seek(0)
@@ -3725,6 +3737,14 @@ def basement_skill_operators():
     from arknights_mower.utils.building_skills import load_skill_snapshot
 
     return load_skill_snapshot()
+
+
+@app.route("/riic/income-cache", methods=["GET"])
+@require_token
+def riic_income_cache():
+    from arknights_mower.utils.building_skills import load_income_cache
+
+    return load_income_cache()
 
 
 @app.route("/cultivate-fetch")

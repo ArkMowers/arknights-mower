@@ -35,3 +35,5 @@ Mower AI 缺少将已保存的干员练度、已有基建组合和设施驻员�
 [定向离线测试](../../../../arknights_mower/tests/riic_assistant_tests.py) 覆盖同槽升级、用户覆盖、缺失 BOX、拥有与练度错误、保留设施冲突、容量及两种模型分发流程。[共享资源测试](../../../../arknights_mower/tests/building_skills_tests.py) 覆盖补充角色的 BOX 身份和资源包同名记录优先。前端测试覆盖共享组合及聊天建议。真实模型推理与设备操作尚未测试。
 
 外部 skill 格式检查通过。GameData、工具箱与 PRTS 检查为 current；Mower 回收站源码检查超时，总体时效状态保留 unknown。固定指南单独记录此限制，不将其等同于运行时目录覆盖。
+
+机制查询另补分类、排班兼容、新干员、收益导出及来源时效主题；数值请求指引[前端收益窗口](../../../../docs/subsystems/plan-editor.md#income-export)，AI 不声称已代用户运行演算。[开发者 skill](../../../skills/mower-riic/SKILL.md)规定共享资源维护、固定源码摘要及定向验证入口。六项新增查询与枚举测试通过，保持当前解锁技能、原排班和敏感配置隔离。

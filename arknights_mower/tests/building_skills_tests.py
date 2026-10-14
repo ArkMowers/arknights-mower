@@ -307,3 +307,64 @@ def test_installed_operator_record_precedes_supplement(tmp_path, monkeypatch):
         assert "克莱门莎" in module.skill_index()
     finally:
         module.skill_index.cache_clear()
+
+
+def test_income_cache_preserves_actual_growth_and_only_exposes_simulation_fields(
+    snapshot_path,
+):
+    payload = {
+        "code": 0,
+        "_mower_player": {"uid": "private-user"},
+        "_mower_inventory_observed_at": 123456,
+        "data": {
+            "characters": [{"id": "char_108_silent", "evolvePhase": 0, "level": 25}],
+            "items": [
+                {"id": "3003", "count": "12"},
+                {"id": "4001", "count": 1234567},
+                {"id": "2001", "count": 2},
+                {"id": "2004", "count": 3},
+            ],
+        },
+    }
+    snapshot_path.write_text(json.dumps(payload), encoding="utf-8")
+    before = snapshot_path.read_bytes()
+    cache = module.load_income_cache()
+    assert cache["has_roster"] and cache["has_inventory"]
+    assert next(op for op in cache["operators"] if op["name"] == "赫默") == {
+        "name": "赫默",
+        "owned": True,
+        "phase": 0,
+        "level": 25,
+    }
+    assert cache["inventory"] == {
+        "gold": 12,
+        "fragment": None,
+        "orirock": 0,
+        "device": 0,
+        "lmd": 1234567,
+        "exp": 6400,
+    }
+    assert cache["observed_at"] == 123456
+    assert "private-user" not in json.dumps(cache)
+    assert snapshot_path.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "items", [None, [{"id": "3003", "count": -1}], [{"id": "3003", "count": True}]]
+)
+def test_income_cache_does_not_replace_unavailable_inventory_with_zero(
+    snapshot_path, items
+):
+    snapshot_path.write_text(
+        json.dumps({"code": 0, "data": {"characters": [], "items": items}})
+    )
+    cache = module.load_income_cache()
+    assert not cache["has_inventory"]
+    assert cache["inventory"] == {}
+
+
+def test_income_cache_missing_file_preserves_unknown(snapshot_path):
+    cache = module.load_income_cache()
+    assert not cache["has_roster"]
+    assert not cache["has_inventory"]
+    assert cache["operators"] == []

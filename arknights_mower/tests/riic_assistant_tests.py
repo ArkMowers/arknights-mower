@@ -280,3 +280,28 @@ def test_tools_are_available_to_both_model_workflows():
         assert name in agent.tool_func_map
         assert name in agent.tool_message_map
     assert "try_riic_plan" in agent._build_ai_intro()
+
+
+@pytest.mark.parametrize(
+    "topic", ["taxonomy", "mower_plan", "new_operators", "income_export", "freshness"]
+)
+def test_extended_knowledge_topics_are_queryable_and_read_only(state, topic):
+    snapshot, plan = state
+    before = plan.model_dump()
+    response = result(riic.get_riic_knowledge, topic=topic, operators=["赫默"])
+    assert response["topic"] == topic
+    assert response["guide"]
+    assert response["operators"][0]["active_skills"][0]["skillname"] == "制造α"
+    assert plan.model_dump() == before
+    assert "api_key" not in json.dumps(response)
+    declared = riic.get_riic_knowledge_tool_def["function"]["parameters"]["properties"][
+        "topic"
+    ]["enum"]
+    assert topic in declared
+
+
+def test_knowledge_schema_covers_every_supported_topic():
+    declared = riic.get_riic_knowledge_tool_def["function"]["parameters"]["properties"][
+        "topic"
+    ]["enum"]
+    assert set(declared) == set(riic._read_data("knowledge")["topics"])

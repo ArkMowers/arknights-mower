@@ -962,3 +962,90 @@ def test_imported_plan_encoding_survives_reload_without_rewriting_original(
         config.load_plan()
         assert config.plan == populated_plan
         assert config.plan_path.read_bytes() == original
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_income_image_keeps_snapshot_after_live_plan_changes(
+    plan_client, populated_plan, theme
+):
+    from PIL import Image, ImageDraw
+
+    from arknights_mower.utils import qrcode
+    from arknights_mower.utils.config.plan import parse_plan_document
+
+    snapshot = populated_plan.model_dump(exclude_none=True)
+    snapshot["advanced_settings"] = {"resting_threshold": 0.7, "fia_fool": False}
+    expected = parse_plan_document(snapshot).model_dump(exclude_none=True)
+    live_before = config.plan.model_dump()
+    conf_before = config.conf.model_dump()
+    source = Image.new("RGB", (2940, 1248), "black" if theme == "dark" else "white")
+    upload = BytesIO()
+    source.save(upload, "PNG")
+    upload.seek(0)
+    response = plan_client.post(
+        "/dialog/save/img",
+        headers={"token": "test-token"},
+        data={
+            "img": (upload, "plan.png", "image/png"),
+            "plan": json.dumps(snapshot),
+            "theme": theme,
+        },
+    )
+    assert response.status_code == 200
+    assert config.plan.model_dump() == live_before
+    assert config.conf.model_dump() == conf_before
+    original = Image.open(BytesIO(response.data))
+    image = Image.new("RGB", (2940, 4200), "black" if theme == "dark" else "white")
+    image.paste(original, (0, 0))
+    ImageDraw.Draw(image).text(
+        (80, 1400), "Income: 28 days after 3 days warmup", fill="gray"
+    )
+    output = BytesIO()
+    image.save(output, "PNG")
+    assert qrcode.decode(image.copy()) == expected
+    result = plan_client.post(
+        "/import",
+        headers={"token": "test-token"},
+        data={"img": (BytesIO(output.getvalue()), "mower-income.png", "image/png")},
+    )
+    assert result.get_data(as_text=True) == "排班已加载"
+    assert config.plan.plan1 == populated_plan.plan1
+    assert config.plan.backup_plans == populated_plan.backup_plans
+    assert config.conf.resting_threshold == 0.7
+    assert config.conf.fia_fool is False
+
+
+def test_income_export_rejects_invalid_snapshot_without_mutation(plan_client):
+    from PIL import Image
+
+    before = config.plan.model_dump()
+    upload = BytesIO()
+    Image.new("RGB", (20, 20), "white").save(upload, "PNG")
+    upload.seek(0)
+    response = plan_client.post(
+        "/dialog/save/img",
+        headers={"token": "test-token"},
+        data={"img": (upload, "plan.png", "image/png"), "plan": "null"},
+    )
+    assert response.status_code == 400
+    assert config.plan.model_dump() == before
+
+
+def test_income_cache_endpoint_requires_token_and_does_not_save(
+    plan_client, monkeypatch
+):
+    from arknights_mower.utils import building_skills
+
+    monkeypatch.setattr(building_skills, "get_cultivate_snapshot", lambda: None)
+    before = config.conf.model_dump()
+    assert plan_client.get("/riic/income-cache").status_code in (401, 403)
+    response = plan_client.get("/riic/income-cache", headers={"token": "test-token"})
+    assert response.status_code == 200
+    assert response.json == {
+        "has_roster": False,
+        "operators": [],
+        "has_inventory": False,
+        "inventory": {},
+        "observed_at": None,
+    }
+    assert config.conf.model_dump() == before
