@@ -9,7 +9,7 @@ import {
   TrashOutline as TrashIcon,
   WarningOutline as WarningIcon
 } from '@vicons/ionicons5'
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { initializeManager, managerCall } from './bridge.js'
 
 const instances = ref([])
@@ -22,7 +22,34 @@ const initializationError = ref('')
 const confirmation = ref(null)
 const deleting = ref(null)
 const editing = ref(null)
+const displayedEditing = ref(null)
+// Keep the closing dialog's content and dimensions until its leave transition finishes.
+watch(
+  editing,
+  (editor) => {
+    if (editor) displayedEditing.value = editor
+  },
+  { flush: 'sync' }
+)
 const draft = ref({ name: '', token: '', port: null })
+const batchDraft = ref([])
+const batchAiRead = ref(false)
+const batchResult = ref(null)
+const batchChanges = computed(() => {
+  if (displayedEditing.value?.kind !== 'batch') return []
+  return batchDraft.value.flatMap((row, idx) => {
+    const original = displayedEditing.value.originals[idx]
+    const settings = Object.fromEntries(
+      Object.entries(row).filter(([key, value]) => value !== original[key])
+    )
+    return Object.keys(settings).length ? [{ idx, settings }] : []
+  })
+})
+const batchSummary = computed(() => {
+  const results = batchResult.value?.results || []
+  const count = (status) => results.filter((item) => item.status === status).length
+  return `已更新 ${count('updated')} 个，跳过 ${count('skipped')} 个，失败 ${count('failed')} 个`
+})
 const assistantConfirmation = ref(null)
 const riskAcknowledged = ref(false)
 const riskSeconds = ref(5)
@@ -49,17 +76,34 @@ async function refresh() {
   if (disposed || version !== refreshVersion) return
   instances.value = loaded
   connected.value = true
-  if (editing.value && !loaded[editing.value.idx]?.editable) editing.value = null
+  if (editing.value?.kind === 'batch') {
+    if (
+      loaded.length !== editing.value.targets.length ||
+      loaded.some(
+        (item, idx) =>
+          item.name !== editing.value.targets[idx].name ||
+          item.path !== editing.value.targets[idx].path
+      )
+    ) {
+      editing.value = null
+      cancelAssistantConfirmation()
+      error.value = '实例列表已变化，请重新打开批量配置'
+    }
+  } else if (editing.value && !loaded[editing.value.idx]?.editable) editing.value = null
   if (assistantConfirmation.value) {
     const target = assistantConfirmation.value
-    const current = loaded[target.idx]
-    if (
-      !current?.editable ||
-      current.name !== target.name ||
-      current.path !== target.path ||
-      (current.ai_assistant_enabled === true) !== target.original
-    )
-      cancelAssistantConfirmation()
+    if (target.kind === 'batch') {
+      if (editing.value !== target.editor) cancelAssistantConfirmation()
+    } else {
+      const current = loaded[target.idx]
+      if (
+        !current?.editable ||
+        current.name !== target.name ||
+        current.path !== target.path ||
+        (current.ai_assistant_enabled === true) !== target.original
+      )
+        cancelAssistantConfirmation()
+    }
   }
   if (deleting.value) {
     const current = loaded[deleting.value.idx]
@@ -144,6 +188,26 @@ function edit(idx, kind) {
   editing.value = { idx, kind }
 }
 
+function clearClosedEditor() {
+  if (!editing.value) displayedEditing.value = null
+}
+
+function editBatch() {
+  if (unavailable.value || !instances.value.some((item) => item.editable && item.path)) return
+  const originals = instances.value.map((item) => ({
+    token: item.token,
+    port: item.port,
+    ai_assistant_enabled: item.ai_assistant_enabled === true
+  }))
+  batchDraft.value = originals.map((row) => ({ ...row }))
+  batchAiRead.value = false
+  editing.value = {
+    kind: 'batch',
+    originals,
+    targets: instances.value.map(({ name, path }) => ({ name, path }))
+  }
+}
+
 function selectPath(idx) {
   return execute(() => api().select_path(idx), { waitForUser: true })
 }
@@ -151,6 +215,22 @@ function selectPath(idx) {
 async function save() {
   if (!editing.value || unavailable.value || assistantConfirmation.value) return
   const { idx, kind } = editing.value
+  if (kind === 'batch') {
+    if (!batchChanges.value.length) return
+    const changes = batchChanges.value
+    const targets = editing.value.targets
+    const succeeded = await execute(async () => {
+      const result = await api().update_all_settings(changes, targets)
+      if (result?.ok !== false) {
+        if (!Array.isArray(result?.results))
+          throw new Error('批量配置结果格式不正确，请刷新后检查各实例')
+        batchResult.value = result
+      }
+      return result
+    })
+    if (succeeded) editing.value = null
+    return
+  }
   if (kind === 'name') {
     const succeeded = await execute(() => api().rename(idx, draft.value.name))
     if (succeeded) editing.value = null
@@ -179,12 +259,38 @@ async function changeAssistant(enabled) {
   const { idx } = editing.value
   const current = instances.value[idx]
   if (!current?.editable) return
-  assistantConfirmation.value = {
+  await readAssistantRisk({
     idx,
     name: current.name,
     path: current.path,
     original: current.ai_assistant_enabled === true
+  })
+}
+
+function batchEditable(idx) {
+  return Boolean(instances.value[idx]?.editable && instances.value[idx]?.path)
+}
+
+async function changeBatchAssistant(enabled, idx = null) {
+  if (editing.value?.kind !== 'batch' || unavailable.value || assistantConfirmation.value) return
+  const rows = (idx === null ? batchDraft.value.map((_, index) => index) : [idx]).filter(
+    (index) => batchEditable(index) && batchDraft.value[index].ai_assistant_enabled !== enabled
+  )
+  if (!rows.length) return
+  if (!enabled || batchAiRead.value) {
+    for (const index of rows) batchDraft.value[index].ai_assistant_enabled = enabled
+    return
   }
+  await readAssistantRisk({
+    kind: 'batch',
+    rows,
+    name: `全部 ${editing.value.targets.length} 个实例（运行中的实例跳过）`,
+    editor: editing.value
+  })
+}
+
+async function readAssistantRisk(target) {
+  assistantConfirmation.value = target
   const pending = assistantConfirmation.value
   riskAcknowledged.value = false
   riskSeconds.value = 5
@@ -207,7 +313,12 @@ function cancelAssistantConfirmation() {
 function confirmAssistantChange() {
   if (!riskReady.value || performance.now() - riskStartedAt < 5000) return false
   const target = assistantConfirmation.value
-  if (editing.value?.kind === 'settings' && editing.value.idx === target.idx)
+  if (target.kind === 'batch' && editing.value === target.editor) {
+    batchAiRead.value = true
+    for (const idx of target.rows) {
+      if (batchEditable(idx)) batchDraft.value[idx].ai_assistant_enabled = true
+    }
+  } else if (editing.value?.kind === 'settings' && editing.value.idx === target.idx)
     draft.value.ai_assistant_enabled = true
   cancelAssistantConfirmation()
   return false
@@ -251,6 +362,31 @@ async function applyDelete() {
       <template #action><n-button @click="initialize">重新加载</n-button></template>
     </n-alert>
     <n-alert v-if="error" type="warning" closable @close="error = ''">{{ error }}</n-alert>
+    <n-alert
+      v-if="batchResult"
+      :title="batchSummary"
+      :type="
+        batchResult.results.some((item) => item.status === 'failed')
+          ? 'error'
+          : batchResult.results.some((item) => item.status === 'skipped')
+            ? 'warning'
+            : 'success'
+      "
+      closable
+      @close="batchResult = null"
+    >
+      <ul
+        v-if="batchResult.results.some((item) => item.status !== 'updated')"
+        class="batch-results"
+      >
+        <li
+          v-for="item in batchResult.results.filter((item) => item.status !== 'updated')"
+          :key="item.idx"
+        >
+          {{ item.name }}：{{ item.message }}
+        </li>
+      </ul>
+    </n-alert>
     <div class="bulk-actions">
       <n-button
         :disabled="unavailable || !instances.some((i) => i.can_start)"
@@ -267,6 +403,14 @@ async function applyDelete() {
         <template #icon
           ><n-icon><stop-icon /></n-icon></template
         >全部关闭
+      </n-button>
+      <n-button
+        :disabled="unavailable || !instances.some((item) => item.editable && item.path)"
+        @click="editBatch"
+      >
+        <template #icon
+          ><n-icon><settings-icon /></n-icon></template
+        >批量配置
       </n-button>
     </div>
     <n-skeleton v-if="loading" :height="140" />
@@ -391,20 +535,112 @@ async function applyDelete() {
     <n-modal
       :show="!!editing"
       preset="card"
-      :title="editing?.kind === 'name' ? '实例名称' : '实例配置'"
+      :title="
+        displayedEditing?.kind === 'name'
+          ? '实例名称'
+          : displayedEditing?.kind === 'batch'
+            ? '批量实例配置'
+            : '实例配置'
+      "
       class="settings-dialog"
+      :style="{
+        width:
+          displayedEditing?.kind === 'batch'
+            ? 'min(920px, calc(100vw - 24px))'
+            : 'min(420px, calc(100vw - 24px))',
+        borderRadius: '6px'
+      }"
       :mask-closable="!busy && !assistantConfirmation"
       :closable="!busy && !assistantConfirmation"
+      @after-leave="clearClosedEditor"
       @update:show="
         (show) => {
           if (!show) editing = null
         }
       "
     >
-      <n-form v-if="editing" label-placement="top">
-        <n-form-item v-if="editing.kind === 'name'" label="实例名称"
+      <n-form v-if="displayedEditing" label-placement="top">
+        <n-form-item v-if="displayedEditing.kind === 'name'" label="实例名称"
           ><n-input v-model:value="draft.name" :disabled="unavailable"
         /></n-form-item>
+        <template v-else-if="displayedEditing.kind === 'batch'">
+          <div class="batch-actions">
+            <span>{{ displayedEditing.targets.length }} 个实例</span>
+            <n-button
+              size="small"
+              :disabled="unavailable || !!assistantConfirmation"
+              @click="changeBatchAssistant(true)"
+              >AI 全部开启</n-button
+            >
+            <n-button
+              size="small"
+              :disabled="unavailable || !!assistantConfirmation"
+              @click="changeBatchAssistant(false)"
+              >AI 全部关闭</n-button
+            >
+          </div>
+          <div class="batch-table-scroll">
+            <table class="batch-table">
+              <colgroup>
+                <col class="batch-name-col" />
+                <col class="batch-token-col" />
+                <col class="batch-port-col" />
+                <col class="batch-ai-col" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col">实例名称</th>
+                  <th scope="col">Token</th>
+                  <th scope="col">端口</th>
+                  <th scope="col">Mower AI 助手</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, idx) in batchDraft" :key="idx">
+                  <th scope="row">
+                    <span class="batch-instance-name">{{
+                      displayedEditing.targets[idx].name
+                    }}</span>
+                    <n-tag size="small" :type="batchEditable(idx) ? 'default' : 'warning'">{{
+                      statuses[instances[idx]?.state] || '不可编辑'
+                    }}</n-tag>
+                  </th>
+                  <td>
+                    <n-input
+                      v-model:value="row.token"
+                      type="password"
+                      show-password-on="click"
+                      placeholder="未设置"
+                      :disabled="unavailable || !batchEditable(idx)"
+                      :aria-label="`${displayedEditing.targets[idx].name} Token`"
+                    />
+                  </td>
+                  <td>
+                    <n-input-number
+                      v-model:value="row.port"
+                      :min="1"
+                      :max="65535"
+                      :precision="0"
+                      placeholder="随机"
+                      clearable
+                      :disabled="unavailable || !batchEditable(idx)"
+                      :aria-label="`${displayedEditing.targets[idx].name} 端口`"
+                    />
+                  </td>
+                  <td>
+                    <n-switch
+                      :value="row.ai_assistant_enabled"
+                      :disabled="unavailable || !batchEditable(idx) || !!assistantConfirmation"
+                      :aria-disabled="unavailable || !batchEditable(idx) || !!assistantConfirmation"
+                      :aria-label="`${displayedEditing.targets[idx].name} AI 助手`"
+                      @update:value="(enabled) => changeBatchAssistant(enabled, idx)"
+                    />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
         <template v-else>
           <n-form-item label="Token"
             ><n-input
@@ -439,9 +675,20 @@ async function applyDelete() {
       </n-form>
       <template #footer
         ><div class="dialog-actions">
+          <span v-if="displayedEditing?.kind === 'batch'" class="batch-change-count"
+            >已修改 {{ batchChanges.length }} 个实例</span
+          >
           <n-button :disabled="busy" @click="editing = null">取消</n-button
-          ><n-button type="primary" :disabled="unavailable" :loading="busy" @click="save"
-            >保存</n-button
+          ><n-button
+            type="primary"
+            :disabled="
+              unavailable ||
+              !!assistantConfirmation ||
+              (displayedEditing?.kind === 'batch' && !batchChanges.length)
+            "
+            :loading="busy"
+            @click="save"
+            >{{ displayedEditing?.kind === 'batch' ? '保存修改' : '保存' }}</n-button
           >
         </div></template
       >
@@ -450,7 +697,11 @@ async function applyDelete() {
       :show="!!assistantConfirmation"
       preset="dialog"
       type="warning"
-      title="开启 Mower AI 助手前请阅读"
+      :title="
+        assistantConfirmation?.kind === 'batch'
+          ? '批量开启 Mower AI 助手前请阅读'
+          : '开启 Mower AI 助手前请阅读'
+      "
       :positive-text="riskSeconds > 0 ? `同意开启（${riskSeconds} 秒）` : '同意开启'"
       negative-text="取消"
       :positive-button-props="{ disabled: !riskReady }"
@@ -464,7 +715,11 @@ async function applyDelete() {
       "
     >
       <div class="ai-risk-content">
-        <p>实例：{{ assistantConfirmation?.name }}</p>
+        <p>
+          {{ assistantConfirmation?.kind === 'batch' ? '范围' : '实例' }}：{{
+            assistantConfirmation?.name
+          }}
+        </p>
         <n-alert type="error" title="数据与隐私风险" class="ai-risk-notice">
           <template #icon
             ><n-icon><warning-icon /></n-icon
@@ -536,10 +791,6 @@ async function applyDelete() {
   font-size: 12px;
   overflow-wrap: anywhere;
 }
-.settings-dialog {
-  width: min(420px, calc(100vw - 24px));
-  border-radius: 6px;
-}
 .delete-notice {
   overflow-wrap: anywhere;
 }
@@ -553,6 +804,79 @@ async function applyDelete() {
 }
 .ai-risk-notice p:last-child {
   margin-bottom: 0;
+}
+.batch-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.batch-actions > span,
+.batch-change-count {
+  margin-right: auto;
+  font-size: 13px;
+  color: #666;
+}
+.batch-table-scroll {
+  max-height: min(440px, calc(100dvh - 260px));
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+}
+.batch-table {
+  width: 100%;
+  min-width: 700px;
+  table-layout: fixed;
+  border-spacing: 0;
+  font-size: 13px;
+}
+.batch-name-col {
+  width: 160px;
+}
+.batch-token-col {
+  width: 220px;
+}
+.batch-port-col {
+  width: 180px;
+}
+.batch-ai-col {
+  width: 140px;
+}
+.batch-table th,
+.batch-table td {
+  padding: 10px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+.batch-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f5f6f8;
+  font-weight: 500;
+}
+.batch-table th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  border-right: 1px solid #e5e7eb;
+}
+.batch-table thead th:first-child {
+  z-index: 3;
+}
+.batch-instance-name {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+.batch-results {
+  max-height: 240px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  padding-left: 20px;
+  margin: 0;
 }
 .dialog-actions {
   justify-content: flex-end;

@@ -11,6 +11,7 @@ import tempfile
 import threading
 from contextlib import contextmanager
 from pathlib import Path
+from time import monotonic
 from uuid import uuid4
 
 import yaml
@@ -66,6 +67,31 @@ def read_webview(space):
             "ai_assistant_enabled": assistant is True,
         },
     )
+
+
+def validate_settings(settings, *, partial=False):
+    allowed = {"token", "port", "ai_assistant_enabled"}
+    if (
+        not isinstance(settings, dict)
+        or not settings
+        or set(settings) - allowed
+        or (not partial and not {"token", "port"} <= set(settings))
+    ):
+        raise ValueError("不支持的实例配置项")
+    result = dict(settings)
+    if "token" in result and not isinstance(result["token"], str):
+        raise ValueError("Token 必须是文本")
+    if "port" in result:
+        if result["port"] in (None, ""):
+            result["port"] = 0
+        if type(result["port"]) is not int or not 0 <= result["port"] <= 65535:
+            raise ValueError("端口必须是 1 至 65535 的整数，或留空")
+    if (
+        "ai_assistant_enabled" in result
+        and type(result["ai_assistant_enabled"]) is not bool
+    ):
+        raise ValueError("Mower AI 助手开关必须是布尔值")
+    return result
 
 
 class InstanceController:
@@ -259,44 +285,122 @@ class InstanceController:
             self._save(updated)
 
     def update_settings(self, idx, settings):
-        if set(settings) not in (
-            {"token", "port"},
-            {"token", "port", "ai_assistant_enabled"},
-        ):
-            raise ValueError("不支持的实例配置项")
-        if (
-            "ai_assistant_enabled" in settings
-            and type(settings["ai_assistant_enabled"]) is not bool
-        ):
-            raise ValueError("Mower AI 助手开关必须是布尔值")
-        token, port = settings["token"], settings["port"]
-        if port in (None, ""):
-            port = 0
-        if (
-            not isinstance(token, str)
-            or type(port) is not int
-            or not 0 <= port <= 65535
-        ):
-            raise ValueError("Token 必须是文本，端口必须是 1 至 65535 的整数或留空")
+        settings = validate_settings(settings)
         with self._operation():
             instance = self.instances[idx]
             self._editable(instance, self._records())
-            if not instance["path"]:
-                raise ValueError("请先选择实例保存目录")
-            destination, raw = read_instance_config(instance["path"])
-            raw.setdefault("webview", {}).update(token=token, port=port)
-            if "ai_assistant_enabled" in settings:
-                raw["ai_assistant_enabled"] = settings["ai_assistant_enabled"]
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            fd, temporary = tempfile.mkstemp(dir=destination.parent)
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                    yaml.dump(raw, stream, Dumper=CoreDumper, allow_unicode=True)
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                runtime.replace_with_retry(temporary, destination)
-            finally:
-                Path(temporary).unlink(missing_ok=True)
+            self._write_settings(instance, settings)
+
+    def _write_settings(self, instance, settings):
+        if not instance["path"]:
+            raise ValueError("请先选择实例保存目录")
+        destination, raw = read_instance_config(instance["path"])
+        current = {
+            key: raw.get(key)
+            if key == "ai_assistant_enabled"
+            else raw.get("webview", {}).get(key)
+            for key in settings
+        }
+        if (
+            destination.is_file()
+            and current == settings
+            and all(
+                type(current[key]) is type(value) for key, value in settings.items()
+            )
+        ):
+            return False
+        connection = {
+            key: settings[key] for key in ("token", "port") if key in settings
+        }
+        if connection:
+            raw.setdefault("webview", {}).update(connection)
+        if "ai_assistant_enabled" in settings:
+            raw["ai_assistant_enabled"] = settings["ai_assistant_enabled"]
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(dir=destination.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                yaml.dump(raw, stream, Dumper=CoreDumper, allow_unicode=True)
+                stream.flush()
+                os.fsync(stream.fileno())
+            runtime.replace_with_retry(temporary, destination)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
+        return True
+
+    def update_all_settings(self, changes, targets):
+        if not isinstance(changes, list) or not changes:
+            raise ValueError("请选择需要保存的实例配置")
+        selected = {}
+        for change in changes:
+            if (
+                not isinstance(change, dict)
+                or set(change) != {"idx", "settings"}
+                or type(change["idx"]) is not int
+                or change["idx"] < 0
+                or change["idx"] in selected
+            ):
+                raise ValueError("批量实例配置格式不正确")
+            selected[change["idx"]] = validate_settings(
+                change["settings"], partial=True
+            )
+        with self._operation():
+            current = [
+                {"name": item["name"], "path": item["path"]} for item in self.instances
+            ]
+            if targets != current:
+                raise ValueError("实例列表已变化，请重新打开批量配置")
+            if any(idx >= len(current) for idx in selected):
+                raise ValueError("批量配置包含无效实例")
+            results, seen = [], set()
+            deadline = monotonic() + 10
+            records = self._records()
+            blocked = ""
+            for position, (idx, settings) in enumerate(sorted(selected.items())):
+                instance = self.instances[idx]
+                item = {
+                    "idx": idx,
+                    "name": instance["name"],
+                    "status": "failed",
+                    "message": "",
+                }
+                results.append(item)
+                if monotonic() >= deadline:
+                    blocked = "批量配置已达到时间上限，未执行"
+                if blocked:
+                    item["message"] = blocked
+                    continue
+                try:
+                    if position:
+                        records = self._records()
+                except (OSError, ValueError, runtime.InstanceScanError) as error:
+                    blocked = f"无法读取实例状态，未执行：{error}"
+                    item["message"] = blocked
+                    continue
+                try:
+                    self._editable(instance, records)
+                    if not instance["path"]:
+                        raise ValueError("未选择实例保存目录")
+                    key = instance_key(instance["path"])
+                    if key in seen:
+                        raise ValueError("保存目录重复，已跳过")
+                    seen.add(key)
+                except (OSError, ValueError) as error:
+                    item.update(status="skipped", message=str(error))
+                    continue
+                if monotonic() >= deadline:
+                    blocked = "批量配置已达到时间上限，未执行"
+                    item["message"] = blocked
+                    continue
+                try:
+                    changed = self._write_settings(instance, settings)
+                except (OSError, ValueError, yaml.YAMLError) as error:
+                    item["message"] = str(error)
+                else:
+                    item.update(
+                        status="updated", message="已更新" if changed else "已符合设置"
+                    )
+            return {"ok": True, "results": results}
 
     def start(self, idx):
         try:

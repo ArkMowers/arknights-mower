@@ -36,6 +36,8 @@ The existing assistant entry remains visible. A disabled instance displays â€œç®
 
 The [manager-owned assistant decision](../../.agents/notes/implemented/feature/2026-10-13-managed-ai-assistant-switch.md) explains the scope and stopped-instance choice. Focused offline checks use `managed_ai_assistant_tests.py`, `manager_instance_controls_tests.py` and the `WebSocketSecurityTests` class in `ai_security_tests.py`; frontend checks use `manager/MowerManager.test.js`, `src/components/ChatBot.test.js` and `src/stores/mower.test.js` from `ui/`.
 
+The batch table reuses this risk notice once for the captured instance list: the first attempt to enable an individual AI cell or use All On requires five seconds and acknowledgement. Confirmation enables only the requested draft cell or rows; subsequent AI edits in that same table session share the acknowledgement. All Off requires no reading notice. Save Changes submits only edited cells for eligible stopped instances. The [batch settings rules](web-access.md#batch-instance-settings) define target validation, partial field updates and per-instance failure results; running instances remain unchanged. Cancelling or reopening the batch editor discards its temporary acknowledgement and requires a fresh notice before enabling.
+
 ## 2. Tool Argument Contract
 
 Database examples use the schema in `solvers.record._DB_TABLE_STMTS`, explicit ordering and bounded SELECT results. `agent_current_room` records the previous position; `current_room` records the updated position. Unix-second timestamps are converted with SQLite local-time expressions. The published instructions do not depend on an unregistered time-conversion tool.

@@ -98,7 +98,7 @@ def manager_window(connection, ready, closed):
         url=manager_app(),
         js_api=api,
         min_size=(400, 500),
-        width=400,
+        width=800,
         height=500,
     )
 
