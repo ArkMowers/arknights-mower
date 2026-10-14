@@ -235,6 +235,7 @@ def prepare_empty_clue_workflow(scheduler, *, party_time=None):
     ):
         setattr(scheduler, name, MagicMock())
     scheduler.read_party_time = MagicMock(return_value=party_time)
+    scheduler._read_placed_clue_numbers = MagicMock(return_value=frozenset())
     scheduler.find = MagicMock(return_value=None)
     scenes = iter(
         [

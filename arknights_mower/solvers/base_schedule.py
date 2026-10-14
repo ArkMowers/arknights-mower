@@ -30,6 +30,7 @@ from arknights_mower.solvers.base_mixin import (
     fixed_selection_profile,
 )
 from arknights_mower.solvers.clue_credit import ClueCreditMixin
+from arknights_mower.solvers.clue_gift import ClueGiftMixin
 from arknights_mower.solvers.credit import CreditSolver
 from arknights_mower.solvers.cultivate_depot import cultivate as cultivateDepotSolver
 from arknights_mower.solvers.depotREC import depotREC as DepotSolver
@@ -373,7 +374,7 @@ class GroupShiftBlocked(ProductSwitchDeferred):
 
 
 class BaseSchedulerSolver(
-    ClueCreditMixin, EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin
+    ClueCreditMixin, ClueGiftMixin, EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin
 ):
     """
     收集基建的产物：物资、赤金、信赖
@@ -6565,6 +6566,7 @@ class BaseSchedulerSolver(
             ctm = ClueTaskManager()
 
             clue_status = {}
+            placed_clues = frozenset()
 
             def place_index():
                 for cl, st in clue_status.items():
@@ -6732,6 +6734,7 @@ class BaseSchedulerSolver(
                                 self.tap(unlock_pos)
                         ctm.complete("place")
                     elif ctm.task == "give_away":
+                        placed_clues = self._read_placed_clue_numbers()
                         self.ctap((1799, 578))
                     elif ctm.task == "party_time":
                         self.back()
@@ -6866,6 +6869,12 @@ class BaseSchedulerSolver(
                             clue_status[cl] = None
 
                 elif scene == Scene.CLUE_GIVE_AWAY:
+                    if placed_clues:
+                        self.wait_product_complete()
+                        self.recog.update()
+                        capacity = self._read_clue_gift_capacity()
+                        if capacity is not None:
+                            self.clue_count = capacity[0]
                     give_away_true = self.leifeng_mode or (
                         not self.leifeng_mode
                         and self.clue_count > self.clue_count_limit
@@ -6875,6 +6884,7 @@ class BaseSchedulerSolver(
                     ):
                         logger.info("快速送出线索")
                         self.tap(fast_giveaway)
+                    self._give_one_placed_clue(placed_clues)
                     ctm.complete("give_away")
                     self.tap((1868, 54))
 
