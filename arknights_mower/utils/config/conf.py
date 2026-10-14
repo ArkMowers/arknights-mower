@@ -3,7 +3,14 @@ import sys
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    field_validator,
+    model_validator,
+)
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils.config.device_profile import (
@@ -785,6 +792,12 @@ class SKLandPart(ConfModel):
 
 
 class AIAgentPart(ConfModel):
+    ai_assistant_enabled: StrictBool | None = None
+    "多开管理器保存的助手授权；未设置时采用启动模式默认值"
+
+    def assistant_enabled_for_launch(self, *, managed: bool) -> bool:
+        return not managed or self.ai_assistant_enabled is True
+
     ai_type: str = ""
     "名称"
     ai_key: str = ""

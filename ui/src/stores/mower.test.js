@@ -52,6 +52,19 @@ describe('worker status', () => {
     )
   })
 
+  it.each([true, false, null, undefined])(
+    'reads the assistant authorization snapshot %s without saving it',
+    async (enabled) => {
+      axios.get.mockResolvedValue({
+        data: { status: 'stopped', plan_condition: [], ai_assistant_enabled: enabled }
+      })
+      await store.get_running()
+      expect(store.ai_assistant_enabled).toBe(typeof enabled === 'boolean' ? enabled : null)
+      expect(axios.get).toHaveBeenCalledOnce()
+      expect(vi.getTimerCount()).toBe(0)
+    }
+  )
+
   it('keeps task polling through startup and recovery and clears it only after exit', async () => {
     for (const value of ['starting', 'recovering', 'working', 'sleeping']) {
       status = value
