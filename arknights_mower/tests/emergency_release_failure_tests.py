@@ -20,7 +20,7 @@ from arknights_mower.tests.emergency_group_return_tests import (
 )
 from arknights_mower.tests.emergency_group_staffing_tests import staffing as staffing
 from arknights_mower.tests.emergency_group_staffing_tests import staffing_task
-from arknights_mower.tests.mass_mood_recovery_tests import NOW, PRIMARY
+from arknights_mower.tests.mass_mood_recovery_tests import COVERS, NOW, PRIMARY
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.emergency_recovery import (
     emergency_dorm_plan,
@@ -306,3 +306,137 @@ def test_dorm_compaction_keeps_fiammetta_position(group_return):
     plan = {"dormitory_1": ["塑心", "", "菲亚梅塔", "银灰", ""]}
     compact_dorm_vacancies(group_return.solver.op_data, plan)
     assert plan["dormitory_1"] == ["塑心", "Free", "菲亚梅塔", "银灰", ""]
+
+
+def release_room_readback(solver, monkeypatch):
+    """隔离选人及读屏，保留救急离宿、房间安排和驻员核对。"""
+    actual = {
+        room: solver.op_data.get_current_room(room, True)
+        for room in solver.op_data.plan
+    }
+    chosen = {}
+    solver.agent_arrange = base_schedule.BaseSchedulerSolver.agent_arrange.__get__(
+        solver
+    )
+    solver.recog = SimpleNamespace(update=MagicMock())
+    solver.enter_room = MagicMock()
+    solver.turn_on_room_detail = MagicMock()
+    solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
+    solver.prepare_dorm_selection = MagicMock(return_value=None)
+    solver.find = MagicMock(return_value=True)
+    solver.scene = MagicMock(return_value=base_schedule.Scene.INFRA_MAIN)
+    solver.waiting_scene = []
+    solver.back = MagicMock()
+    solver.record_selection_success = MagicMock()
+    monkeypatch.setattr(
+        base_schedule, "defer_dorm_before_priority_task", lambda *args: False
+    )
+
+    def choose(row, room, **kwargs):
+        assert "Free" not in row
+        chosen[room] = list(row)
+
+    solver.choose_agent = MagicMock(side_effect=choose)
+    solver.tap_confirm = MagicMock(
+        side_effect=lambda room, previous: actual.update({room: chosen[room]})
+    )
+
+    def read(room, *args, **kwargs):
+        for index, name in enumerate(actual[room]):
+            if name:
+                operator = solver.op_data.operators[name]
+                solver.op_data.update_detail(name, operator.mood, room, index, True)
+        observed = [{"agent": name} for name in actual[room]]
+        solver._reconcile_room_observation(room, observed)
+        return observed
+
+    solver.get_agent_from_room = MagicMock(side_effect=read)
+
+
+@pytest.mark.parametrize("combined_fill", [False, True])
+def test_measured_release_readback_keeps_primary_reserved_without_readmission(
+    group_return, monkeypatch, combined_fill
+):
+    solver, state = group_return.solver, group_return.state
+    name, partner = PRIMARY[:2]
+    solver.op_data.operators[name].depletion_rate = -2
+    solver.op_data.operators[partner].mood = 8
+    if combined_fill:
+        waiting = solver.op_data.operators[PRIMARY[2]]
+        waiting._current_room, waiting.current_index = "", -1
+        for bed in solver.op_data.all_dorms():
+            if bed.name == waiting.name:
+                bed.reset()
+    release_room_readback(solver, monkeypatch)
+
+    assert solver._emergency_release_ready()
+
+    operator = solver.op_data.operators[name]
+    assert not operator.current_room
+    assert operator.mood == state["targets"][name]
+    assert operator.time_stamp == NOW
+    assert not operator.mood_is_prediction
+    assert operator.depletion_rate == 0
+    assert name in state["ready_members"]
+    assert name in solver.op_data.emergency_reserved_agents
+    assert solver.op_data.operators[partner].is_resting()
+    if combined_fill:
+        assert solver.op_data.operators[PRIMARY[2]].is_resting()
+
+    solver.choose_agent.reset_mock()
+    for _ in range(2):
+        solver._emergency_release_ready()
+        solver._open_emergency_beds()
+        solver._emergency_plan_beds(state)
+        assert all(
+            name not in row
+            for task in solver.tasks
+            if getattr(task, "emergency_dorm", False)
+            for row in task.plan.values()
+        )
+    solver.choose_agent.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "unconfirmed",
+    [
+        "ordinary_read",
+        "unlisted",
+        "prediction",
+        "unknown",
+        "below_target",
+        "partial",
+        "mismatch",
+    ],
+)
+def test_unconfirmed_release_readback_still_invalidates_old_measurement(
+    group_return, unconfirmed
+):
+    solver, state = group_return.solver, group_return.state
+    name = PRIMARY[0]
+    operator = solver.op_data.operators[name]
+    room = operator.current_room
+    row = solver.op_data.get_current_room(room, True)
+    row[operator.current_index] = ""
+    task = SchedulerTask(task_plan={room: row.copy()})
+    task.emergency_staffing = True
+    task.emergency_recovery_release = unconfirmed != "ordinary_read"
+    task.emergency_staffing_members = [] if unconfirmed == "unlisted" else [name]
+    solver.task = task
+    if unconfirmed == "prediction":
+        operator.mood_is_prediction = True
+    elif unconfirmed == "unknown":
+        operator.time_stamp = None
+    elif unconfirmed == "below_target":
+        operator.mood = state["targets"][name] - 0.1
+    elif unconfirmed == "mismatch":
+        row[-1] = COVERS[0]
+    observed = [{"agent": member} for member in row]
+    if unconfirmed == "partial":
+        observed[0]["observed"] = False
+
+    solver._reconcile_room_observation(room, observed)
+
+    assert not operator.current_room
+    assert operator.time_stamp is None
+    assert name not in state.get("ready_members", ())

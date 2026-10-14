@@ -9625,6 +9625,13 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
             if item.get("observed", True)
         }
         complete = len(slots) == len(observed)
+        task = self.task
+        confirmed_release = (
+            room.startswith("dorm")
+            and complete
+            and getattr(task, "emergency_recovery_release", False)
+            and task.plan.get(room) == [item["agent"] for item in observed]
+        )
         for name, operator in self.op_data.operators.items():
             if (
                 operator.current_room != room
@@ -9633,6 +9640,20 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 or slots.get(operator.current_index) == name
             ):
                 continue
+            target = (
+                (getattr(self, "emergency_state", None) or {})
+                .get("targets", {})
+                .get(name)
+            )
+            measured_release = (
+                confirmed_release
+                and name in getattr(task, "emergency_staffing_members", ())
+                and name not in slots.values()
+                and target is not None
+                and has_resting_mood(operator)
+                and not operator.mood_is_prediction
+                and operator.mood >= target
+            )
             if room.startswith("dorm"):
                 _, bed = self.op_data.get_dorm_by_name(
                     name, group_transitions=group_transitions
@@ -9645,7 +9666,11 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 ):
                     operator.rest_mood_release_limit = operator.upper_limit
             operator.current_room, operator.current_index = "", -1
-            operator.time_stamp = None
+            if measured_release:
+                # 主动达标离宿沿用实测，待命后停止按原恢复速度推算心情。
+                operator.depletion_rate = 0
+            else:
+                operator.time_stamp = None
             if name == "菲亚梅塔":
                 self._refresh_fiammetta_task(None)
             if self.task is not None and self.task.type != TaskTypes.SHIFT_OFF:
