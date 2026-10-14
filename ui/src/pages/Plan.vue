@@ -602,6 +602,7 @@ async function prepareIncome() {
   try {
     const plan = JSON.parse(JSON.stringify(plan_store.build_plan()))
     plan.advanced_settings = JSON.parse(JSON.stringify(config_store.build_advanced_settings()))
+    const droneRoom = config_store.drone_room
     const { incomeWorkspace } = await import('@/riic/income')
     incomeWorkspace(plan)
     if (generation !== income_preparation) return
@@ -645,7 +646,7 @@ async function prepareIncome() {
       timeout: 60000
     })
     if (generation === income_preparation)
-      income_snapshot.value = { plan, image: data, theme: imageTheme, label, roomBounds }
+      income_snapshot.value = { plan, image: data, theme: imageTheme, label, roomBounds, droneRoom }
   } catch (error) {
     if (generation === income_preparation) income_error.value = error.message || '排班快照准备失败'
   } finally {

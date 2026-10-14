@@ -55,10 +55,16 @@ it('reuses simulation interactions without fetching history or persisting custom
   try {
     const page = scope.run(() => RecordLine.setup(props, { expose: vi.fn() }))
     await io.mounted()
-    expect(page.orderedReportData.value.map((row) => row.groupName)).toEqual(['自定义', '制造'])
+    expect(page.orderedReportData.value.map((row) => row.groupName)).toEqual(['制造'])
+    expect(page.board.views).toEqual([])
     expect(page.effectiveChartOptions.value.scales.x.type).toBe('linear')
-    expect(page.orderedReportData.value[1].moodData.datasets[0].tension).toBe(0)
-    page.saveView({ id: page.board.views[0].id, name: '自定义', operators: ['芬'] })
+    expect(page.orderedReportData.value[0].moodData.datasets[0].tension).toBe(0)
+    page.saveView({ name: '自定义', operators: ['芬'] })
+    expect(page.orderedReportData.value.map((row) => row.groupName)).toEqual(['自定义', '制造'])
+    props.simulation = { ...props.simulation }
+    await nextTick()
+    expect(page.board.views).toHaveLength(1)
+    expect(page.board.views[0].operators).toEqual(['芬'])
     page.toggleLine('制造', 0)
     expect(page.orderedReportData.value[1].moodData.datasets[0].hidden).toBe(true)
     await nextTick()
@@ -68,6 +74,11 @@ it('reuses simulation interactions without fetching history or persisting custom
     expect(storage.getItem).not.toHaveBeenCalled()
     expect(storage.setItem).not.toHaveBeenCalled()
     expect(savedBoard.views).toEqual([])
+    page.deleteView(page.board.views[0].id)
+    props.simulation = { ...props.simulation }
+    await nextTick()
+    expect(page.board.views).toEqual([])
+    expect(page.orderedReportData.value.map((row) => row.groupName)).toEqual(['制造'])
   } finally {
     scope.stop()
   }

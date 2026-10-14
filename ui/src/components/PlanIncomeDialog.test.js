@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { effectScope } from 'vue'
+import { effectScope, reactive, nextTick } from 'vue'
 import Dialog from './PlanIncomeDialog.vue'
 import { renderIncomeImage, downloadIncomeImage } from '@/riic/incomeImage'
 vi.mock('./IncomeMoraleChart.vue', () => ({ default: { render: () => null } }))
@@ -29,7 +29,7 @@ const cache = () => ({
   inventory: { gold: 10, fragment: 0, orirock: 1, device: 0, lmd: 42, exp: 1000 },
   observed_at: 1234
 })
-let page, scope, workers
+let page, scope, workers, props
 beforeEach(() => {
   vi.clearAllMocks()
   io.client = {
@@ -48,21 +48,18 @@ beforeEach(() => {
     }
   )
   scope = effectScope()
-  page = scope.run(() =>
-    Dialog.setup(
-      {
-        snapshot: {
-          plan: {
-            default: 'plan1',
-            conf: {},
-            backup_plans: [],
-            plan1: { room_1_1: { name: '制造站', product: 'gold', plans: [] } }
-          }
-        }
-      },
-      { expose: vi.fn(), emit: vi.fn() }
-    )
-  )
+  props = reactive({
+    snapshot: {
+      droneRoom: 'room_1_1',
+      plan: {
+        default: 'plan1',
+        conf: {},
+        backup_plans: [],
+        plan1: { room_1_1: { name: '制造站', product: 'gold', plans: [] } }
+      }
+    }
+  })
+  page = scope.run(() => Dialog.setup(props, { expose: vi.fn(), emit: vi.fn() }))
 })
 afterEach(() => {
   io.cleanup()
@@ -149,7 +146,8 @@ it('keeps successful results on screen and exports only on request with frozen i
   page.exportName.value = '我的排班'
   await page.exportImage()
   expect(renderIncomeImage).toHaveBeenCalledOnce()
-  expect(renderIncomeImage.mock.calls[0][2].droneRoom).toBe('')
+  expect(renderIncomeImage.mock.calls[0][2].droneRoom).toBe('room_1_1')
+  expect(renderIncomeImage.mock.calls[0][3]).toEqual(props.snapshot.plan)
   expect(downloadIncomeImage).toHaveBeenCalledOnce()
   expect(downloadIncomeImage.mock.calls[0][1]).toBe('我的排班_日均收益103475_28天.jpg')
 })
@@ -166,4 +164,25 @@ it('retains bounded progress logs without triggering image rendering', async () 
   expect(page.activeTab.value).toBe('logs')
   page.session.cancel()
   expect(renderIncomeImage).not.toHaveBeenCalled()
+})
+
+it('uses the captured Mower drone target without saving temporary changes', async () => {
+  expect(page.settings.droneRoom).toBe('room_1_1')
+  page.settings.droneRoom = ''
+  await page.readCache()
+  await page.start()
+  expect(workers[0].postMessage.mock.calls[0][0].settings.droneRoom).toBe('')
+  expect(props.snapshot.droneRoom).toBe('room_1_1')
+  expect(io.client.put).not.toHaveBeenCalled()
+})
+it('applies the default after asynchronous capture and rejects unavailable facilities', async () => {
+  const snapshot = structuredClone(JSON.parse(JSON.stringify(props.snapshot)))
+  props.snapshot = null
+  await nextTick()
+  props.snapshot = { ...snapshot, droneRoom: 'room_3_3' }
+  await nextTick()
+  expect(page.settings.droneRoom).toBe('')
+  props.snapshot = snapshot
+  await nextTick()
+  expect(page.settings.droneRoom).toBe('room_1_1')
 })

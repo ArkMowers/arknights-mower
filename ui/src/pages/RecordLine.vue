@@ -370,11 +370,6 @@ watch(
     catalog.value = data.catalog
     fetchedSeries.value = data.series
     hiddenLines.value = {}
-    if (!board.views.length)
-      board.upsertView({
-        name: '自定义',
-        operators: data.catalog.slice(0, 3).map((row) => row.name)
-      })
   },
   { immediate: true }
 )

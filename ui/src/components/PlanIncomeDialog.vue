@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, onMounted, onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, inject, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   defaultIncomeSettings,
   incomeFacilities,
@@ -145,6 +145,16 @@ const targets = computed(() =>
     ? incomeFacilities(props.snapshot.plan).map((f) => ({ label: f.label, value: f.roomId }))
     : []
 )
+watch(
+  () => props.snapshot,
+  (snapshot) => {
+    if (!snapshot) return
+    settings.droneRoom = targets.value.some((target) => target.value === snapshot.droneRoom)
+      ? snapshot.droneRoom
+      : ''
+  },
+  { immediate: true }
+)
 const metrics = computed(() =>
   state.result?.success ? incomeMetrics(state.result.summary, state.result.observedHours / 24) : []
 )
@@ -213,6 +223,7 @@ async function exportImage() {
       props.snapshot.image,
       state.result,
       state.input.settings,
+      state.input.plan,
       props.snapshot.theme,
       props.snapshot.roomBounds
     )
@@ -704,11 +715,19 @@ onBeforeUnmount(() => {
 }
 .two-columns {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: 12px;
 }
 .n-form-item {
-  margin-bottom: 12px;
+  margin: 0 0 12px;
+  min-width: 0;
+}
+.two-columns > .n-form-item {
+  margin-top: 0;
+}
+.n-input-number {
+  width: 100%;
 }
 p {
   line-height: 1.7;
