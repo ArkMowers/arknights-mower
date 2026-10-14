@@ -3,7 +3,12 @@ import cv2
 from arknights_mower.models import noto_sans, riic_base_digits, shop
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.credit_shop import (
+    select_value_product,
+    value_purchase_deficit,
+)
 from arknights_mower.utils.graph import SceneGraphSolver
+from arknights_mower.utils.growth_value import price_catalog
 from arknights_mower.utils.image import cropimg, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
@@ -26,11 +31,56 @@ class CreditShop(SceneGraphSolver):
         self.selected_product = None
         self.rejected_product = None
         self.purchase_rechecks = 0
+        self.value_catalog = None
         logger.info("Start: 信用商店购物")
         super().run()
 
     def _can_afford(self, remain, price):
         return remain >= price if self.on_demand else remain > price
+
+    def _shop_by_value(self, remain):
+        """先买空优先商品，再按性价比购买；只使用本次读取的实际余额。"""
+        priority_names = config.conf.maa_mall_buy.split(",")
+        priorities = [
+            product
+            for product in self.products
+            if product and product["name"] in priority_names
+        ]
+        if priorities:
+            product = min(priorities, key=lambda item: item["price"])
+        else:
+            if self.value_catalog is None:
+                self.value_catalog = price_catalog()
+            product = select_value_product(
+                self.products,
+                self.value_catalog,
+                remain,
+                config.conf.credit_shop_value_threshold,
+                config.conf.maa_mall_blacklist.split(","),
+            )
+            if product is None:
+                return True
+        if remain < product["price"]:
+            if self.on_demand:
+                if self.value_catalog is None:
+                    self.value_catalog = price_catalog()
+                self.credit_deficit = value_purchase_deficit(
+                    self.products,
+                    self.value_catalog,
+                    remain,
+                    config.conf.credit_shop_value_threshold,
+                    priority_names,
+                    config.conf.maa_mall_blacklist.split(","),
+                )
+            logger.info(
+                "待购商品 %s 需 %s 信用，当前余额 %s，结束本轮购物",
+                product["name"],
+                product["price"],
+                remain,
+            )
+            return True
+        self.selected_product = product
+        self.tap(product["touch"])
 
     def number(
         self,
@@ -153,6 +203,8 @@ class CreditShop(SceneGraphSolver):
                     logger.warning("余额与信用不足提示矛盾，结束本次购物，不触发领板")
                     return True
                 self.rejected_product = None
+            if config.conf.should_use_credit_shop_value:
+                return self._shop_by_value(remain)
             for product in self.products:
                 if (
                     product
