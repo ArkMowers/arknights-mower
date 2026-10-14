@@ -58,7 +58,7 @@ describe('confirmed ordinary dorm departure keeps measured morale', () => {
     finish(f)
     expect(op.currentRoom).toBe('')
     expect(op.mood).toBe(upperLimit)
-    expect(op.timeStampMicros).toBe(0)
+    expect(op.timeStampMicros).toBe(toMowerMicros(1))
     expect(op.moodIsPrediction).toBe(false)
     expect(op.depletionRate).toBe(0)
     expect(op.currentMood(toMowerMicros(2))).toBe(upperLimit)
@@ -66,9 +66,18 @@ describe('confirmed ordinary dorm departure keeps measured morale', () => {
     expect(f.source.data.groupShiftState.g).toBe(true)
   })
 
-  it.each(['prediction', 'below-limit'] as const)('invalidates %s morale after the physical departure', evidence => {
-    const f = fixture(evidence === 'below-limit' ? 11 : 12), op = f.source.data.operators.A!
-    if (evidence === 'prediction') op.moodIsPrediction = true
+  it('replaces a predicted full mood with the departure observation', () => {
+    const f = fixture(), op = f.source.data.operators.A!
+    op.moodIsPrediction = true
+    finish(f)
+    expect(op.currentRoom).toBe('')
+    expect(op.timeStampMicros).toBe(toMowerMicros(1))
+    expect(op.moodIsPrediction).toBe(false)
+    expect(op.depletionRate).toBe(0)
+  })
+
+  it('invalidates below-limit morale after the physical departure', () => {
+    const f = fixture(11), op = f.source.data.operators.A!
     finish(f)
     expect(op.currentRoom).toBe('')
     expect(op.timeStampMicros).toBeUndefined()

@@ -173,8 +173,8 @@
       "sha256": "5c07b838134a34bea67e64a1ec0b7c0ac2dded59f1247347f2c5aa39adf6ea75"
     },
     "scheduler/mowerSourceRuntime.ts": {
-      "reason": "Keep the existing maintenance-backup task behavior; synchronize measured dormitory departure and isolate projected run-order room maps.",
-      "sha256": "ac5bc4cd97a2a00ba3a9d9f5911375cc699c1d40a32c63610672564a735cd575"
+      "sha256": "5e0754325dd4ff563d3921426cebb90736778c33141c3356f4e9b2277aec8064",
+      "reason": "Mirror native departing_plan mood reads before ordinary staffing changes, retaining measured full or personal-limit departure mood while preserving run-order, training and Fiammetta read boundaries."
     },
     "scheduler/rosterRuntime.ts": {
       "reason": "Keep the existing runtime configuration without introducing maintenance-primary pause state.",
@@ -183,6 +183,18 @@
     "workbench/compat/mowerJson.ts": {
       "reason": "Retain the existing Mower facility import/export adapter; facility-export changes are outside this two-fix synchronization.",
       "sha256": "5b80d31438e69316853e400911363f5aff41d6b6a76db6a246dd18289eeff841"
+    },
+    "scheduler/mowerOrdinaryPlanning.ts": {
+      "reason": "Retain explicit dorm admissions across one ordinary planning round, matching native Mower protection for earlier group reservations.",
+      "sha256": "4c8aecb9ab5bb09e3b66019802ab9c35f92109f51ccc12e1234a107be71e14b7"
+    },
+    "scheduler/mowerAlphaDorm.ts": {
+      "sha256": "32c6fc3628d5efab181d94e00f3acb9a0859db19e42e9523c853ea80d4b4d264",
+      "reason": "Preserve same-round dorm admissions and mirror native displacement restoration: shared members retain resting bindings, completed departures keep unfinished anchors resting, and named arrangement targets retain priority."
+    },
+    "scheduler/mowerCompletedDeparture.spec.ts": {
+      "sha256": "84ce808ec66ed5dce08056606dd74ed07b1e59f1f37a7939dec5735bc2ba000a",
+      "reason": "Verify that ordinary departures retain the newly measured departure timestamp and replace predicted full mood with an actual observation."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",

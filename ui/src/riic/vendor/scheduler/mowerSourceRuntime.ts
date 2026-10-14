@@ -161,7 +161,7 @@ function currentRoomChanged(s:RuntimeState,op:MowerOperatorState,startedWorking=
  }
  if(solved.size)queue.tasks.push(new MowerTask({time:s.time}))
 }
-function observeRoom(s:RuntimeState,rates:RuntimeRates,room:string,task?:MowerTask,readTimes:number[]=[]):void {
+function observeRoom(s:RuntimeState,rates:RuntimeRates,room:string,task?:MowerTask,readTimes:number[]=[],departingPlan?:readonly string[]):void {
  const {data,queue}=getMowerSourceRuntime(s),names=physicalRoom(s,room,data.plan[room]?.length??5),recognized=new Set(names.filter(Boolean))
  readTimes=mowerRoomReadIndexes(data,room,task,readTimes)
  const trueExhaustRooms=new Set(['central'])
@@ -177,7 +177,8 @@ function observeRoom(s:RuntimeState,rates:RuntimeRates,room:string,task?:MowerTa
    op.alpha=data.alpha
   }
   if(!op)continue
-  const read=shouldMowerReadMood(data,name,room,index,readTimes,task,queue.find({ignoreRunOrders:data.adjustForRunOrders===false}))
+  const departing=departingPlan!==undefined&&index<departingPlan.length&&departingPlan[index]!=='Current'&&!departingPlan.includes(name)
+  const read=departing&&task?.type!==T.FIAMMETTA||shouldMowerReadMood(data,name,room,index,readTimes,task,queue.find({ignoreRunOrders:data.adjustForRunOrders===false}))
   const previousPosition:[string,number]=[op.currentRoom,op.currentIndex]
   const displayedMood=read?s.morale[name]!:op.currentMood(data.nowMicros)
   const missing=mowerUpdateDetail(data,name,read?s.morale[name]!:op.mood,room,index,read,trueExhaustRooms,(changed,started)=>currentRoomChanged(s,changed,started))
@@ -310,6 +311,8 @@ function* arrangeRoom(s:RuntimeState,rates:RuntimeRates,room:string,names:string
   if(data.alpha&&room.startsWith('dorm')&&!fiaArrangement&&getTime)observeRoom(s,rates,room,task,refreshDormIndexes())
   return restoration
  }
+ // Native get_agent_from_room(departing_plan) reads departures before selection.
+ if(data.alpha&&task.type!==T.RUN_ORDER&&task.type!==T.FIAMMETTA&&room!=='train')observeRoom(s,rates,room,task,[],resolved)
  if(task.type===T.FIAMMETTA&&fia&&resolved.length===2&&resolved.includes(fia)){
   fiammettaCharge=true
   restoration=sharedRestoration
