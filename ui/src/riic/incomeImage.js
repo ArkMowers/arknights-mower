@@ -176,36 +176,42 @@ export async function renderIncomeImage(
         ctx.fillStyle = background
         ctx.fillRect((x + 18) * scale, (y + 4) * scale, 151 * scale, 26 * scale)
         if (metric.key === 'recycle' || metric.key === 'recruitment') {
-          // Keep the recognition symbol inside the same circular frame as product icons.
-          const cx = (x + 17) * scale
-          const cy = (y + 17) * scale
+          // Draw only the inner recognition symbol; replace the template's frame with a circle.
           ctx.save()
+          ctx.translate((x + 17) * scale, (y + 17) * scale)
+          ctx.scale(scale, scale)
           ctx.beginPath()
-          ctx.arc(cx, cy, 16 * scale, 0, Math.PI * 2)
-          ctx.fillStyle = metric.key === 'recruitment' ? '#535353' : '#243c3b'
+          ctx.arc(0, 0, 16, 0, Math.PI * 2)
+          ctx.fillStyle = '#2e2e2e'
           ctx.shadowColor = '#17233840'
           ctx.shadowBlur = 2 * scale
           ctx.shadowOffsetY = scale
           ctx.fill()
           ctx.shadowColor = 'transparent'
-          ctx.clip()
-          ctx.drawImage(
-            metric.image,
-            metric.key === 'recruitment' ? 7 : 0,
-            metric.key === 'recruitment' ? 4 : 0,
-            metric.key === 'recruitment' ? 58 : 54,
-            metric.key === 'recruitment' ? 60 : 58,
-            (x + 2) * scale,
-            (y + 1) * scale,
-            30 * scale,
-            32 * scale
-          )
-          ctx.restore()
+          if (metric.key === 'recruitment') {
+            ctx.drawImage(metric.image, 22, 20, 30, 35, -9, -10.5, 18, 21)
+          } else {
+            ctx.save()
+            ctx.scale(0.55, 0.55)
+            ctx.translate(-26, -28.5)
+            ctx.beginPath()
+            ctx.moveTo(26, 7)
+            ctx.lineTo(45, 18)
+            ctx.lineTo(45, 38)
+            ctx.lineTo(26, 49)
+            ctx.lineTo(5, 38)
+            ctx.lineTo(5, 18)
+            ctx.closePath()
+            ctx.clip()
+            ctx.drawImage(metric.image, 0, 0)
+            ctx.restore()
+          }
           ctx.beginPath()
-          ctx.arc(cx, cy, 16 * scale, 0, Math.PI * 2)
-          ctx.strokeStyle = '#78aaa1'
-          ctx.lineWidth = scale
+          ctx.arc(0, 0, 15, 0, Math.PI * 2)
+          ctx.strokeStyle = metric.key === 'recruitment' ? '#e8e8e8' : '#78aaa1'
+          ctx.lineWidth = 1.5
           ctx.stroke()
+          ctx.restore()
         } else {
           ctx.drawImage(metric.image, x * scale, y * scale, 34 * scale, 34 * scale)
         }
