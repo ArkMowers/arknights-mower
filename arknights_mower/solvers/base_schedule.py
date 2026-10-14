@@ -3706,6 +3706,7 @@ class BaseSchedulerSolver(
         result = {}
         group_dorm_positions = set()
         replacement_positions = set()
+        joining_resting = set()
         previous_owners = {
             slot.agent: (old_room, slot)
             for old_room, slots in previous_plan.items()
@@ -3743,6 +3744,18 @@ class BaseSchedulerSolver(
                 owner = self.op_data.operators[slot.agent]
                 previous_room, previous = previous_owners.get(slot.agent, (None, None))
                 relocated = old is None or old.agent != slot.agent
+                if (
+                    (previous is None or previous.group != slot.group)
+                    and self.op_data.is_group_shift_anchor(owner)
+                    and self.op_data.group_is_resting(slot.group)
+                    and (not owner.current_room or owner.is_resting())
+                    and owner.name not in self._protected_training_names()
+                    and not (room == "train" and _training_room_scan_disabled)
+                ):
+                    # 切表恢复的离岗成员跟随组内休息，不能以新岗位召回整组。
+                    replacement_positions.add((room, index))
+                    joining_resting.add(owner.name)
+                    continue
                 if previous is not None and (
                     # 未读驻员和心情的岗位沿用初始化纠错，不推断为离岗。
                     (
@@ -3774,7 +3787,7 @@ class BaseSchedulerSolver(
                 result.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
                     index
                 ] = slot.agent
-        return result, group_dorm_positions, replacement_positions
+        return result, group_dorm_positions, replacement_positions, joining_resting
 
     def _switch_products_before_backup_plan(self):
         """独立条件触发副表时，等切产物任务完成再切表。"""
@@ -3858,7 +3871,7 @@ class BaseSchedulerSolver(
             if any(name != "Current" for name in names):
                 restore_plan[room] = names
 
-        correction, group_dorm_positions, replacement_positions = (
+        correction, group_dorm_positions, replacement_positions, joining_resting = (
             self._cached_changed_slot_plan(
                 previous_plan,
                 {
@@ -3931,6 +3944,40 @@ class BaseSchedulerSolver(
             reserved_slots,
         ):
             return None
+        if joining_resting:
+            simulation = copy.copy(self)
+            simulation.op_data = self.op_data.project_arrangements([transition_plan])
+            missing = [
+                name
+                for name in sorted(joining_resting)
+                if (op := simulation.op_data.operators[name]).group
+                and simulation.op_data.group_is_resting(op.group)
+                and name not in explicit_names
+                and simulation.op_data.get_dorm_by_name(name)[0] is None
+                and not (
+                    not op.current_room
+                    and op.time_stamp is not None
+                    and op.mood >= op.upper_limit
+                )
+            ]
+            if missing:
+                # 新成员尚未恢复时复用正常替班与分床；只改投影中的床位缓存。
+                admissions = {}
+                if not simulation._get_resting_plan(
+                    missing,
+                    list(_assigned_operator_names(transition_plan)),
+                    transition_plan,
+                    simulation.op_data.active_high_resting_count(),
+                    dorm_admissions=admissions,
+                    excluded_names=reserved_names,
+                    reserved_slots=reserved_slots | explicit_dorm_slots,
+                ):
+                    return None
+                for (room, index), name in admissions.items():
+                    transition_plan.setdefault(
+                        room, ["Current"] * len(self.op_data.plan[room])
+                    )[index] = name
+                    preserved.pop(name, None)
         # 替班不足时允许召回本人；其余主班保留位置，阵容变化可使计时失效。
         assigned = _assigned_operator_names(transition_plan)
         preserved = {
@@ -4643,6 +4690,7 @@ class BaseSchedulerSolver(
         *,
         dorm_admissions=None,
         excluded_names=(),
+        reserved_slots=(),
     ):
         from arknights_mower.utils.exhaust_replacement import match_replacements
 
@@ -4655,6 +4703,7 @@ class BaseSchedulerSolver(
         retained_names, retained_slots = retained_task_reservations(
             self.op_data, self.tasks, current_task=getattr(self, "task", None)
         )
+        retained_slots |= set(reserved_slots)
         reserved_names = (
             self.op_data.reserved_product_replacements
             | retained_names
