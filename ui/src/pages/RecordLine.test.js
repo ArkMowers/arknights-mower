@@ -58,6 +58,10 @@ it('reuses simulation interactions without fetching history or persisting custom
     expect(page.orderedReportData.value.map((row) => row.groupName)).toEqual(['制造'])
     expect(page.board.views).toEqual([])
     expect(page.effectiveChartOptions.value.scales.x.type).toBe('linear')
+    const tick = page.effectiveChartOptions.value.scales.x.ticks.callback
+    expect(tick.call({ min: 0, max: 86400000 }, 43200000)).toBe(0.5)
+    expect(tick.call({ min: 0, max: 120000 }, 60000)).toBe(0.00069)
+    expect(tick.call({ min: 0, max: 120000 }, 120000)).toBe(0.00139)
     expect(page.orderedReportData.value[0].moodData.datasets[0].tension).toBe(0)
     page.saveView({ name: '自定义', operators: ['芬'] })
     expect(page.orderedReportData.value.map((row) => row.groupName)).toEqual(['自定义', '制造'])

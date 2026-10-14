@@ -428,7 +428,14 @@ const effectiveChartOptions = computed(() => {
         type: 'linear',
         min: 0,
         title: { display: true, text: '演算天数（含预热）' },
-        ticks: { maxTicksLimit: 7, callback: (value) => Number((value / 86400000).toFixed(2)) }
+        ticks: {
+          maxTicksLimit: 7,
+          callback(value) {
+            const days = (this.max - this.min) / 86400000
+            const precision = days < 0.01 ? 5 : days < 0.1 ? 4 : days < 1 ? 3 : 2
+            return Number((value / 86400000).toFixed(precision))
+          }
+        }
       }
     },
     plugins: {
