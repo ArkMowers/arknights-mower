@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -10,8 +11,11 @@ from rapidocr_onnxruntime import RapidOCR
 from arknights_mower.solvers.clue_gift import ClueGiftMixin, clue_card_number
 from arknights_mower.utils import rapidocr
 from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.device.adb_client.server import SharedADBError
+from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.image import bytes2img, cropimg
 from arknights_mower.utils.scene import Scene
+from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 FIXTURES = Path(__file__).parent / "fixtures" / "clue"
 
@@ -35,7 +39,7 @@ def gift_ui(monkeypatch):
         selected=False,
         number=None,
         delivery=True,
-        interrupt=False,
+        send_error=None,
         during_selection=None,
         scene=Scene.CLUE_GIVE_AWAY,
     )
@@ -75,8 +79,8 @@ def gift_ui(monkeypatch):
         elif point[0] == 1790:
             assert state.selected
             state.sent.append((state.number, state.filtered, (point[1] - 200) // 222))
-            if state.interrupt:
-                raise MowerExit
+            if state.send_error is not None:
+                raise state.send_error
             if state.delivery:
                 state.count -= 1
 
@@ -178,7 +182,7 @@ def test_unknown_or_unchanged_filter_does_not_send(gift_ui, known, works):
 
 def test_stop_during_send_propagates_without_additional_filter_click(gift_ui):
     solver, state = gift_ui
-    state.interrupt = True
+    state.send_error = MowerExit()
     with pytest.raises(MowerExit):
         solver._give_one_placed_clue({1})
     assert state.sent == [(1, True, 0)]
@@ -261,32 +265,37 @@ def test_disabled_recipient_button_is_skipped(gift_ui):
     assert state.sent == [(1, True, 1)]
 
 
-@pytest.mark.parametrize(
-    "leifeng,after_fast,expected_extra",
-    [(False, 10, 1), (False, 9, 0), (True, 9, 1)],
-)
-def test_real_clue_workflow_runs_extra_gift_after_fast_gift(
-    gift_ui, monkeypatch, leifeng, after_fast, expected_extra
-):
+@pytest.fixture
+def clue_workflow(gift_ui, monkeypatch):
     # 保留真正的线索任务列表和补送流程，仅替换画面、点击及外部操作。
     with monkeypatch.context() as imports:
         imports.setitem(sys.modules, "arknights_mower.utils.skland", MagicMock())
         from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 
+    monkeypatch.setattr(
+        "arknights_mower.solvers.base_schedule.save_exception", MagicMock()
+    )
     ui, state = gift_ui
     solver = object.__new__(BaseSchedulerSolver)
     solver.__dict__.update(ui.__dict__)
-    solver.leifeng_mode = leifeng
     solver.clue_count = 0  # 模拟之前没有读到最新数量，赠送页须重新读取。
     solver.clue_count_limit = 9
-    solver._clue_credit_enabled = lambda: False
+    solver._clue_credit_enabled = MagicMock(return_value=False)
+    solver._clue_flow_resume_time = MagicMock(return_value=None)
+    solver._prepare_clue_room = MagicMock()
+    solver._collect_clue_message_board = MagicMock(return_value=True)
+    solver.op_data = None
     solver.tasks = []
+    solver.skip = MagicMock()
+    solver._refresh_deferred_product_reservations = MagicMock()
     solver.scene_graph_navigation = MagicMock()
     solver.enter_room = MagicMock()
     solver.read_party_time = MagicMock(return_value=None)
     solver.set_detected_party_time = MagicMock()
     solver.backup_plan_solver = MagicMock()
     solver._run_clue_shop = MagicMock()
+    state.after_fast = 10
+    state.fast_taps = []
     state.scene = Scene.INFRA_DETAILS
     snapshots = {
         Scene.INFRA_DETAILS: frame("clue_placed_before_gift.jpg"),
@@ -306,6 +315,8 @@ def test_real_clue_workflow_runs_extra_gift_after_fast_gift(
     recipient_find = solver.find
 
     def find(resource, **kwargs):
+        if resource == "control_central":
+            return (960, 540)
         if resource == "clue/label_give_away":
             return recipient_find(resource, **kwargs)
         if resource == "clue/fast_giveaway":
@@ -314,7 +325,6 @@ def test_real_clue_workflow_runs_extra_gift_after_fast_gift(
 
     solver.find = find
     device_tap = ui.tap.side_effect
-    fast_taps = []
 
     def tap(point, **kwargs):
         if point == (330, 1000):
@@ -324,9 +334,9 @@ def test_real_clue_workflow_runs_extra_gift_after_fast_gift(
         elif point == (1868, 54):
             state.scene = Scene.INFRA_CONFIDENTIAL
         elif point == (300, 1030):
-            fast_taps.append(point)
+            state.fast_taps.append(point)
             assert state.sent == []
-            state.count = after_fast
+            state.count = state.after_fast
         else:
             device_tap(point)
 
@@ -334,11 +344,77 @@ def test_real_clue_workflow_runs_extra_gift_after_fast_gift(
     solver.ctap = solver.tap
     solver.back = lambda: setattr(state, "scene", Scene.INFRA_DETAILS)
 
+    return solver, state
+
+
+@pytest.mark.parametrize(
+    "leifeng,after_fast,expected_extra",
+    [(False, 10, 1), (False, 9, 0), (True, 9, 1)],
+)
+def test_real_clue_workflow_runs_extra_gift_after_fast_gift(
+    clue_workflow, leifeng, after_fast, expected_extra
+):
+    solver, state = clue_workflow
+    solver.leifeng_mode = leifeng
+    state.after_fast = after_fast
+
     solver.clue_new()
 
-    assert fast_taps == [(300, 1030)]
+    assert state.fast_taps == [(300, 1030)]
     assert len(state.sent) == expected_extra
     assert state.count == after_fast - expected_extra
     assert solver.clue_count == state.count
     solver.read_party_time.assert_called_once()
     solver._run_clue_shop.assert_called_once()
+
+
+@pytest.mark.parametrize("credit_enabled", [False, True])
+@pytest.mark.parametrize("error_type", [MowerExit, DeviceRecoveryError, SharedADBError])
+def test_gift_failure_does_not_complete_clue_flow(
+    clue_workflow, credit_enabled, error_type
+):
+    solver, state = clue_workflow
+    solver._clue_credit_enabled.return_value = credit_enabled
+    previous_check = solver.last_clue = datetime(2026, 10, 13, 12)
+    state.send_error = error_type("赠送故障")
+
+    with pytest.raises(error_type) as raised:
+        solver._run_clue_flow()
+
+    assert raised.value is state.send_error
+    assert state.sent == [(1, True, 0)]
+    assert solver.last_clue == previous_check
+    assert state.filtered is True
+    assert solver.tap.call_args.args == ((1790, 200),)
+    solver.read_party_time.assert_not_called()
+    solver._run_clue_shop.assert_not_called()
+    solver.skip.assert_not_called()
+
+
+@pytest.mark.parametrize("credit_enabled", [False, True])
+@pytest.mark.parametrize("error_type", [MowerExit, DeviceRecoveryError])
+@pytest.mark.parametrize("task_type", [TaskTypes.CLUE, TaskTypes.CLUE_PARTY])
+def test_gift_failure_preserves_dispatched_clue_task(
+    clue_workflow, credit_enabled, error_type, task_type
+):
+    solver, state = clue_workflow
+    solver._clue_credit_enabled.return_value = credit_enabled
+    previous_check = solver.last_clue = datetime(2026, 10, 13, 12)
+    task = SchedulerTask(
+        time=datetime.now() - timedelta(minutes=20), task_type=task_type
+    )
+    original_due = task.time
+    solver.task = task
+    solver.tasks = [task]
+    state.send_error = error_type("赠送故障")
+
+    with pytest.raises(error_type) as raised:
+        solver.infra_main()
+
+    assert raised.value is state.send_error
+    assert state.sent == [(1, True, 0)]
+    assert solver.tasks == [task]
+    assert solver.task is task
+    assert task.time == original_due
+    assert solver.last_clue == previous_check
+    solver.skip.assert_not_called()

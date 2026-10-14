@@ -6904,11 +6904,9 @@ class BaseSchedulerSolver(
                 self._run_clue_shop(settlement_checked=settlement_checked)
             else:
                 self._run_clue_shop()
+        except (MowerExit, DeviceRecoveryError, SharedADBError):
+            raise
         except Exception as e:
-            if self._clue_credit_enabled() and isinstance(
-                e, (MowerExit, DeviceRecoveryError, SharedADBError)
-            ):
-                raise
             save_exception(e)
             logger.exception(e)
             return
