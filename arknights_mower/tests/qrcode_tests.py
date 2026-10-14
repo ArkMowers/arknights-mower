@@ -8,9 +8,8 @@ from PIL import Image, ImageChops, ImageDraw
 
 # 回归覆盖回收站区域、旧版布局及第三方扩大或缩小后的图片导入。
 #
-# pyzbar 依赖系统 libzbar，CI 的 ubuntu-latest 没装。qrcode 模块顶层 `from pyzbar import
-# pyzbar` 在缺 zbar 时直接抛异常 → 会拖垮整个 unittest job。这里把 import 包起来，失败时
-# 把整组测试跳过（本机/有 zbar 时照常运行并守护回归）。
+# pyzbar 依赖系统 libzbar，Python 回归 CI 会安装该库并执行真实二维码测试。
+# 本地缺少该库时跳过本组，避免模块导入失败阻止其他测试收集。
 
 try:
     from arknights_mower.utils import qrcode
