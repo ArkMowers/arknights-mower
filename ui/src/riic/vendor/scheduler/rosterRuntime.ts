@@ -52,8 +52,6 @@ export interface RuntimeConfig {
   mowerDeviceObservations?:{initialManufactureDroneSelection:number|'max'}
   mowerServices?:{enableParty:boolean;droneIntervalHours:number;reloadRooms:readonly string[]|null;maaGapHours:number;leifengMode:boolean}
   mowerClueObservations?:{partyEndMicros:number|null;clueCount:number}
-  /** Explicit unresolved-plan state for backup conditions; distinct from enabling mastery. */
-  mowerMasteryPlanPresent?: boolean
   mowerTaskScheduling?:MowerTaskSchedulingOptions
   mowerPolicy?: { groupRestInFullOnMoodGap?:boolean; groupMoodGapThresholdMinutes?:number; groupMoodGapMaxExtraWaitHours?:number; mergeIntervalMinutes?:number; restMoodLimits?: Record<string,number>; freeRoom?: boolean; taskBuffers?: boolean; rescueThreshold?: number; restingThreshold: number; powerPlantCount: number; opeRestingPriority: string[] }
   runOrderPolicies?: RunOrderPolicy[]

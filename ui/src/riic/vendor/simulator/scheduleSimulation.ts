@@ -142,7 +142,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
  const diagnostic=(code:string,message:string)=>{if(!report.diagnostics.some(d=>d.code===code&&d.message===message))report.diagnostics.push({code,message})}
  if(options.production?.inventoryMode==='finite')diagnostic('FINITE_INVENTORY_MODEL','使用预设初始库存；从预热开始连续扣料、收取和交付，采样时不重置。无外源收入或自动补货；缺料停止相应生产或交付。回收站随机材料未计入物品库存。')
  for(const d of schedule.diagnostics)diagnostic(d.code,d.message)
- diagnostic('MOWER_SCHEDULING_MODEL',schedulingModel==='mower-default'?'使用 Mower 默认兼容换班策略；按六阶段评估副表，保留完整任务保护':'使用 Mower alpha 排班模型（3de2b2ac6 增量适配）：副表收敛、共享绑组与宿舍隔离')
+ diagnostic('MOWER_SCHEDULING_MODEL',schedulingModel==='mower-default'?'使用 Mower 默认兼容换班策略；按六阶段评估副表，保留完整任务保护':'使用 Mower alpha 排班模型（80c97ee60 增量适配）：副表收敛、共享绑组与宿舍隔离')
  if(schedule.diagnostics.some(d=>d.severity==='error'||d.code==='UNKNOWN_OPERATOR'))return report
  const inventory=options.operatorInventory===undefined?undefined:compileOperatorInventory(options.operatorInventory)
  const operatorRecords=inventory?inventoryOperatorRecords(inventory):undefined

@@ -1,7 +1,7 @@
 {
-  "repository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
-  "revision": "9c0b53ca4a0cb8934fe7c8a2372d5f28b6275937",
-  "mowerReference": "ab0a4e5bec23f6f8d7c37b0648f05dda28f31866",
+  "repository": "https://github.com/ALEXsun0/R.I.I.C-Calculator",
+  "revision": "55294037d208bf1c416af386236ac0b12f321f66",
+  "mowerReference": "80c97ee604375af144090656ef84b083acd6dc7f",
   "files": {
     "data/operators.generated.json": "c63e372a237a6c80194360536c4c5673f0db729cab7c77d778878aa54349e930",
     "data/riic-term-evidence.json": "2554416a3e3bfa10e48a338b33279e3cb5bfd2b72861de70eb10166bb8e4d2b5",
@@ -9,8 +9,8 @@
     "domain/defaults.ts": "7323b6604de2a5eccb263b721ffbff1985bb4e182f4ef1e115f0ff7ed30da4b6",
     "domain/droneCapacity.ts": "058e2288354c30583abef0085a4f8696ca3ab1eee0f2a5510e41497fc2329090",
     "domain/edition.ts": "54a261658a82c57990e1810f2a9807d873656f27f793f7a20d4d3790274bcfab",
-    "domain/facilities.ts": "ed3c3fa09804b8cd82cc20a181a9feab8bb8ade72196084c938217d30ec4ef82",
-    "domain/mowerBackupFacilities.ts": "5f884ae16942cd0f708e0631fa07a30b7c8bc07b296a42e97ad7f6001d680faa",
+    "domain/facilities.ts": "5a6477e426812bf24c18c5d61cdd33e2a3dea02ef6ae15cb7ed04553de9d1c0b",
+    "domain/mowerBackupFacilities.ts": "fbd5b53235954f73f97453379f722f6b664d09727d03d127896bbff43b469136",
     "domain/mowerDormOrder.ts": "4c2864ecab6825f639fbbfbcadf4b6b2a738604c5d0c42d890a6e8a49d548e01",
     "domain/mowerProducts.ts": "382e813176a6076a3bb1ca5186620f64347ba6c9224785c571b0abfee4ca223c",
     "domain/mowerRosterRules.ts": "0bd167a5835e131cd29018b85dd37d3272df65600705b667a5a2d30aca0426ce",
@@ -45,16 +45,16 @@
     "engine/tradeConditionalRules.ts": "f2610c3492471b5666ef7e34420ce7be2456e85f83c6d75913cbb14b9dd59e8f",
     "rules/orderRules.ts": "21c889662cf5219024b4122afe69cd1f3e147846ad566e8510bfc24c12e3cea4",
     "rules/orderValue.ts": "cf3be5de94c7878cc20b91722b46e9a90065fe6810cb7460ed86562e370882f8",
-    "scheduler/backupExpression.ts": "4792e2c9d83a7bb78349fdb9b282f08b2333d5fc41f5d86a7c9d0a7a84eaf0e7",
+    "scheduler/backupExpression.ts": "23c4f8d68da9d6db411a9a93b76bee3e5725ad94f5251b6f77075d595a6afab0",
     "scheduler/backupInventory.ts": "ed571be4e45d68c805fe67c2a97fc4f343484a5d4783d390e05e84ee6fb0b716",
-    "scheduler/backupPlans.ts": "cb97d17785497556964e3c85ee771c7d66b62d5c237d29e78292e23bd43d6611",
-    "scheduler/compileRosterSchedule.ts": "30fd401ed792d4f58853e87e49ea4a9dea481b3df06b436cc788899bc9837fef",
+    "scheduler/backupPlans.ts": "b0f7e62c75c8d1038dbc67116e437a2514cff932ad8cd0a8cd84f8dbf7c1f57d",
+    "scheduler/compileRosterSchedule.ts": "d6d5c3004b46c58cd71f7ff02e20b72d9c70ee3f402a1246a21c9d4cdca23de9",
     "scheduler/fiammettaPolicy.ts": "3e51b24c1138506ac1ce8a8e54ec135dd26e2b2f2fc11094f44545cb83bdc357",
     "scheduler/inventoryValidation.ts": "25eb1897e77394b73dbcbb8097e8b9fd4c68eed770a85e9f4b2c947f2ae55f83",
     "scheduler/mowerAcceptOrder.ts": "4f9d3f5ac70ee9eb18755cd3e8ccef4e717b15bbc8034133fb1d583598e97350",
     "scheduler/mowerAdvancedSettings.ts": "7410554654700653358916f78ca0250c093852e89d4c95d2d62e7f8b02a9b546",
     "scheduler/mowerAlphaCandidates.ts": "2c16e46e95aea804fd5ade79aceb55b5ebb6d14b019797e44c2e06c703f3837f",
-    "scheduler/mowerAlphaDorm.ts": "6387cd5bece8df8278c9b263533608261ee835add619e509e2595656874c05bc",
+    "scheduler/mowerAlphaDorm.ts": "79e3c069703fafee1037f6f98d20bb2992e97fa3fbffb8cd67683141eb29fe89",
     "scheduler/mowerAlphaDormPlanning.ts": "873d3d5640b0bdbf5a21c47b895dbe9ab8b757108f6d15d141cffeae7fce5df5",
     "scheduler/mowerAlphaExhaustSupport.ts": "3bc52e9b4ba25d02544148cdcee3f70934b78dd0ffc59616645a3a3bbdc42723",
     "scheduler/mowerAlphaMetadata.ts": "35c1f97e7f6923251f4741a563ad42ff9b433b36c8ae0b5ecf28390d2aaa0b5d",
@@ -66,7 +66,7 @@
     "scheduler/mowerBackupReplacements.ts": "d60efd6b1978ca8c694ba6c54078c0018c24cea1d20eaf7f7dc5c2679633ecc9",
     "scheduler/mowerClueLifecycle.ts": "37d6be3bc36484e22dd2ba8f8640ef7a983fe3cf90f89383391e6e1349750e2e",
     "scheduler/mowerCorrection.ts": "620b4c6918932823b084703340d9667a3890939a5bafa3e801a14f58cadfcbc4",
-    "scheduler/mowerDormAssignment.ts": "cb022f26c4f5d0e2c79c98a784b2bc00ca5c7cccdff6a6a05b5fe37a243f1c9f",
+    "scheduler/mowerDormAssignment.ts": "1f93041ae73ccc475833a8caaebac05f8bf75931120536209c0be00b58badbd2",
     "scheduler/mowerDormIsolation.ts": "92a5a161bb3fe0953352c5c08cbbbad589abcf5ba484eb24f2550a7ad5e25f17",
     "scheduler/mowerDormOrder.ts": "cfc83bfccd994ff36ba8c4bb5c35f4dbac39026a162463becd62921551772339",
     "scheduler/mowerDormRecovery.ts": "50f24ead377812f3be620f4d5b3cc401ca30edff1c47024d6e7dd7c71b5f8261",
@@ -81,9 +81,9 @@
     "scheduler/mowerMoodLimits.ts": "c1a50a7eca31cd17669d5ca7db0e86106796d8730caec22325ec5656ca4f8918",
     "scheduler/mowerNativeErrors.ts": "0bfd2bdf6f0efbeeed6cda68042a7961452273373e65dba7498b0f8ea893103d",
     "scheduler/mowerNotification.ts": "042bef84ec851d87a6b0759f7fbf42837dcd1c2857398a61f6df51f913bb4a01",
-    "scheduler/mowerObservations.ts": "3b15840ec2f69e9617aa6adf3d8b3263cc01059bf7f5f858866d7886619f7e92",
+    "scheduler/mowerObservations.ts": "b538a8a40ea6eb9cc2f77c75ffab8033c6777e0ca68fe20961871881a7b3b0a8",
     "scheduler/mowerOperatorState.ts": "959deba81ad4205f950c2f812c919fae1759365401db89782e29f4832c463a78",
-    "scheduler/mowerOrdinaryPlanning.ts": "cd76f14ed1f0bac5ba1f7a12b13490944198155e402af2775b21e19f9c5a3cfe",
+    "scheduler/mowerOrdinaryPlanning.ts": "f9acd319e62141d403d3ab2200b3955c69698df79e4c61265f1fea4bcee72fdf",
     "scheduler/mowerPlanOrder.ts": "52fafa25bd17e9834f15c9aa9c0f338d89f75263a37e1b5d1088c0e27fe49540",
     "scheduler/mowerPlanningWake.ts": "dc72c9ad22d7b63c9d377c8f753a8f3dc2df3220b355ee6a6da1c48444872f9c",
     "scheduler/mowerRecoveryBeds.ts": "2692a4e8ada080bd4f84481736597428fe56748322f4595de1e2a2b9dc60fdcf",
@@ -96,17 +96,17 @@
     "scheduler/mowerSchedulingData.ts": "d8df8c33070846208b398d62e6d624328982f2dc863f43039dff7bf8840ee3dc",
     "scheduler/mowerSelection.ts": "5b33bba0478ac07a6d96cf6022977bac9a3f7734270ac844349e4063b93e88e4",
     "scheduler/mowerSharedGroups.ts": "fdeece3488adc3543e3939f4aa6959443c77d68c3fe17780b8111212a227a687",
-    "scheduler/mowerShiftCycle.ts": "ad91f19ce151cdec5517a0eaa246cb4175898cd464fa70b96f3a8212863ed045",
+    "scheduler/mowerShiftCycle.ts": "037ce56eb536c69611d76b3957ce952f5c24fabe64273a309074d23f79208586",
     "scheduler/mowerShiftProtection.ts": "694d559911aa84fb2537c0186225cb03283220106042d55b87882c45a316f68d",
-    "scheduler/mowerSourceRuntime.ts": "1af471bcb071537e46414ec1c8bbff93cc176b70724e60b877dfe87f72b9c42f",
+    "scheduler/mowerSourceRuntime.ts": "3df25f97a05919f3fbc701f2e25c34af59858330ce0f3ec91b2b5b44241f028c",
     "scheduler/mowerTaskExecutor.ts": "c4ece2a18bddf2251ed987b7948be74a1cd6cf2b41377ce6714d1396a6c695ab",
     "scheduler/mowerTaskQueue.ts": "96d8134a40af1ef55b33bc442e0262f54cb96212fd6f15d4f691df0268ccdf00",
     "scheduler/mowerTaskScheduling.ts": "c5d77fe0e04ca4e0ca23262696690b5f00ef82313893e7167bca5da97da27c51",
     "scheduler/mowerTiming.ts": "482768893ed442d8eb317b286691be72d6ff85a5cb879cfe1f3fb4ed9ab10b3e",
     "scheduler/mowerTodoTask.ts": "a739d8499d93277f33b42d38b92c1a5718f8b68f509bdf3ef598ad1aad766cc8",
-    "scheduler/rosterRuntime.ts": "86697ed37f3aeb6d5ac068a955e2d9bfc407268e708838f12737e4b1f81b4f43",
-    "scheduler/scheduleAdapter.ts": "1f7524f330beb1378259da6858206e9608c9b43a5fccb46aae793dd1fceeaa74",
-    "scheduler/types.ts": "1b0888b5abae75af35dfd509b7741d7bdb4755648b50908cea3a3adc16bf88f7",
+    "scheduler/rosterRuntime.ts": "12b98d11d2efeefb44c5e3250fe66ee211aa495e564946fa265c2f99f44914ec",
+    "scheduler/scheduleAdapter.ts": "a2e501cb4a61527892e5ec4513be6dd60fd6d90e5251d4af96b5c60cdbe11b44",
+    "scheduler/types.ts": "c91d2c530b23289582ef7ec4cb07fcd2e959f5bc4894f72d18f268a570b619bb",
     "simulator/droneTimeline.ts": "d9e9f5df2dd7063942888bf6c1918cbe1a86b89b312b94e53d3ca5b5003e3ebf",
     "simulator/inventorySimulation.ts": "f5b31e75f9e03b0b5e20d9e3b30d002d8f5fc26632f66060847d0182f9a20b54",
     "simulator/manufacturingTimeline.ts": "4037214828c960b9700caffb732d021c81f7ab6d769c246ae9c1f9ad474a4298",
@@ -118,7 +118,7 @@
     "simulator/productionTimeline.ts": "f0603db72db6d8116d0b4494346e5745a255e58ef79b8d3005762de770df3d94",
     "simulator/recycleTimeline.ts": "3bad36431c5fcba877860a06748c59b91790e5052b54691939aedea0a091d136",
     "simulator/resourceLedger.ts": "46e8f98c97afdcacf654bac88067fc850318ed76ed4eacdc2a8f707e47c63827",
-    "simulator/scheduleSimulation.ts": "7bb942da3a62f32ddb2819bbdf0255911bc468b58a7b8e9db2505c761f1e7a3d",
+    "simulator/scheduleSimulation.ts": "2c73bff2ec66b487d5bbcfd454a9281e055c035fb4f52c9f043fb2c30da63244",
     "simulator/simulationActivity.ts": "d49d93689a45a57554f4d4ba780e8790ab50845ce406ca82ba75cc19299725eb",
     "simulator/simulationActivityFindings.ts": "5822770ab57231075a344435d0fd11910a97620fab9550b701f8080b890f65dc",
     "utils/assets.ts": "0c8947f863b5092ac0b91d2ad8ff64e45b188a9bd50d8af2a6ac954105231483",
@@ -127,7 +127,7 @@
     "workbench/calculationBridge.ts": "277d2e2d2742fa35b3483020225792962ed65cba3f56c0cdce89b896e895793d",
     "workbench/calculationWorker.ts": "d794e27a8ef52f21b0115067fea09059bbe8676e285a5b7d818e135b42efa670",
     "workbench/compat/mowerAlphaMigration.ts": "ee9f1da604e710f977ad7a99985674853243e24e2bd609ca6db99d99c72e4683",
-    "workbench/compat/mowerJson.ts": "21353c643169c091cad2b7aabee6d964edf7c072ea5f6d5a0ecb4e23c8b2a720",
+    "workbench/compat/mowerJson.ts": "b13ab5e67124005534ae065552a8435c3388e4ec5d6e3623e3c577e81e115d14",
     "workbench/defaults.ts": "9c90d6d5f7474f388e3b54afde54245280cd47580dbeb31ba9525e035f519a57",
     "workbench/droneTargets.ts": "15671fedd7a9ddcfbe1a6f3fc1c00e82872bb075a0eb2054e64bace14e986423",
     "workbench/facilityState.ts": "0768babc371fb69b607ca8c8827e2807eaf37d2edcb2506af3ef9697dedcbebf",
@@ -136,7 +136,7 @@
     "workbench/operatorHelpers.ts": "878a5fd24021b19a388e12e4685b36b4d3687dae0a8e6449deff5651eca76809",
     "workbench/scheduleSimulationBridge.ts": "bff7d8a34dc004a9f520067da5fee99ea3a646887692c5bb099d9b1d4d54d854",
     "workbench/timeline/timelineModel.ts": "2f34633f54a07ea962f4c687ba16574bef7fd35ca1bbfdd17c2a2d8b9038e0d4",
-    "workbench/validate.ts": "1489252e1e58ddc8a0e055866084ef4df2d06e1a1ddfc487eeccc4404d87f76b",
+    "workbench/validate.ts": "403fbb46a1b24096897f4b244e01511d7fd3a5bab179b4ba2f1dbaaef7e708d9",
     "workbench/validateBackupPlans.ts": "49b48c206a06825efa08db9670fae0c723c7d471590dfcec99f8051d35e1b0d4",
     "scheduler/mowerAlphaResting.spec.ts": "f34fadfce135ad92a22607778cea6e39a81512de08808ead48fc3025f517d68f",
     "scheduler/fixtures/mower-alpha-resting-boundaries.json": "275aadbbf58fb4bba3a3ba02022485886151458442bc4975ccf8cbab0bcdb001",
@@ -146,40 +146,59 @@
     "domain/simulationInventory.spec.ts": "47a948162d20b794687092726311b47a0791b4eecca007ecc6781b41ae8874a5",
     "workbench/inventorySimulationBridge.spec.ts": "592d93da91efdab0316cf2c561e9c26247c82cb98f696b41690a5c76d5aa6a1f",
     "workbench/mowerReportMetrics.ts": "0a238f60cf262cf232da3ca29d3b99929a741c535095fb407246e90537352047",
-    "simulator/manufacturingTimeline.spec.ts": "79a43609a7316068277b3433a169fbbaae2a3bc00424918acff17ee812153e04"
+    "simulator/manufacturingTimeline.spec.ts": "79a43609a7316068277b3433a169fbbaae2a3bc00424918acff17ee812153e04",
+    "scheduler/mowerBackupRestingJoin.spec.ts": "6c3d4cc64f8efd61b20df08fda998c97fceac116f6bfc5ddb611fd5c75c3c9b2",
+    "scheduler/mowerBackupRestingJoin.ts": "1d3031eed9f43cd75a90adf4668c5ccf210f5024de3f952b8347846ec2459c3c",
+    "scheduler/mowerCompletedDeparture.spec.ts": "6c361fc9563105e8ce5266f06a0516db7d8d03d98b17c14c67aa8f6e152c3ac3"
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
       "sha256": "1b7e838e3c0d89690b86cd79a2bde9b877e79fcd66e94509caa02337c7ee93fc",
       "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances."
     },
-    "workbench/compat/mowerJson.ts": {
-      "reason": "Preserve explicit Free dormitory positions without keepers. Apply saved shared facility levels while retaining legacy inference for unset rooms, including unstaffed buildings, and reject invalid level values. Default unset right-side buildings to level three even when unstaffed.",
-      "sha256": "5b80d31438e69316853e400911363f5aff41d6b6a76db6a246dd18289eeff841"
-    },
     "simulator/scheduleSimulation.ts": {
-      "sha256": "5ad8a0b5a837c4c5a60b01faa299f8d093cd7619e8b094281ab79eae526171a1",
+      "sha256": "d591e4fa3a9095c07003c672e3ebb6263fae6a92d44a7ec9e3e69cdbf749f249",
       "reason": "Optionally record bounded morale curves across warmup and sampling, preserving linear turns and same-time charge jumps without changing scheduling or production. Expose resolved intervals to a read-only local observer; omit its callback from serializable report inputs."
     },
     "workbench/scheduleSimulationBridge.ts": {
       "reason": "Forward the local interval observer separately from JSON-cloned simulation data.",
       "sha256": "8888318457b8aba820573a7edb882923a48f1a1c143f7ca7daf3575cc34d2682"
     },
-    "domain/mowerBackupFacilities.ts": {
-      "reason": "Respect explicit shared building capacity in backup overlays without creating left-side positions or rebuilding unbuilt facilities.",
-      "sha256": "fbd5b53235954f73f97453379f722f6b664d09727d03d127896bbff43b469136"
+    "scheduler/backupPlans.ts": {
+      "reason": "Keep the existing maintenance-backup behavior; selectively synchronize restored-member admission and protected dormitory migration from the pinned calculator revision.",
+      "sha256": "5c07b838134a34bea67e64a1ec0b7c0ac2dded59f1247347f2c5aa39adf6ea75"
     },
-    "domain/facilities.ts": {
-      "reason": "Use the control-center level as its staffing capacity, matching the game building table.",
-      "sha256": "5a6477e426812bf24c18c5d61cdd33e2a3dea02ef6ae15cb7ed04553de9d1c0b"
+    "scheduler/mowerSourceRuntime.ts": {
+      "reason": "Keep the existing maintenance-backup task behavior; synchronize measured dormitory departure and isolate projected run-order room maps.",
+      "sha256": "ac5bc4cd97a2a00ba3a9d9f5911375cc699c1d40a32c63610672564a735cd575"
     },
-    "workbench/validate.ts": {
-      "reason": "Expose the existing power calculation for the editor and simulator to share unchanged power constants.",
-      "sha256": "403fbb46a1b24096897f4b244e01511d7fd3a5bab179b4ba2f1dbaaef7e708d9"
+    "scheduler/rosterRuntime.ts": {
+      "reason": "Keep the existing runtime configuration without introducing maintenance-primary pause state.",
+      "sha256": "1a203dd520472c98ab0ec378c83e765ddfbe49e2018ea4381e0b1ca4a47ac166"
     },
-    "scheduler/compileRosterSchedule.ts": {
-      "reason": "Report saved facility levels with inferred fallback as the compilation source.",
-      "sha256": "664e78481d4e355a64b4e67d5c90b3c99886468e6358a0426ec67dc4f9b841e2"
+    "workbench/compat/mowerJson.ts": {
+      "reason": "Retain the existing Mower facility import/export adapter; facility-export changes are outside this two-fix synchronization.",
+      "sha256": "5b80d31438e69316853e400911363f5aff41d6b6a76db6a246dd18289eeff841"
     }
+  },
+  "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
+  "mowerCheckedRevision": "48ae469895dd9a64fda8a565d2403c49f431cde8",
+  "schedulingSync": {
+    "date": "2026-10-14",
+    "behaviors": [
+      "ordinary completed dorm departure retains a measured full-mood observation",
+      "restored primaries join an already-resting group with protected covers and recovery beds",
+      "new simulations always assume no unfinished training plan and ignore retired training-state input"
+    ],
+    "limitations": [
+      "ideal run orders do not simulate maintenance runner replacement acceleration or physical restoration",
+      "persistent return windows and complete cross-dorm prioritization are not ported",
+      "live mastery progress and device training observations are not simulated",
+      "this snapshot does not establish full native-scheduler parity or live-device results"
+    ],
+    "excludedChanges": [
+      "maintenance-primary run-order pause",
+      "additional facility-level export changes"
+    ]
   }
 }

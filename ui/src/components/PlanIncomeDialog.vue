@@ -443,9 +443,6 @@ onBeforeUnmount(() => {
             <n-form-item label="孑精零"
               ><n-switch v-model:value="settings.jayeElite0"
             /></n-form-item>
-            <n-form-item label="有未完成训练计划"
-              ><n-switch v-model:value="settings.masteryPlanPresent"
-            /></n-form-item>
             <n-form-item label="使用有限库存"
               ><n-switch
                 :value="required || settings.finiteInventory"

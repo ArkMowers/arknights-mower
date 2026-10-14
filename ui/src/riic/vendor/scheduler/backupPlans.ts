@@ -1,3 +1,4 @@
+import {mowerPrimaryJoinsRestingGroup,preserveMowerBackupRestingJoins} from './mowerBackupRestingJoin'
 import {validateMowerRosterRules} from '../domain/mowerRosterRules'
 import {assertMowerBackupRoomOwners, assertMowerBackupTaskRooms, mowerBackupRoomCapacity, prepareMowerBackupRoom} from '../domain/mowerBackupFacilities'
 import {MowerShiftPreviewError} from './mowerNativeErrors'
@@ -121,7 +122,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
   const diagnostics: BackupDiagnostic[] = []
   const participants = new Set<string>(), plans = parsePlans(base.sourceWorkspace, participants, diagnostics)
   if(plans.some(plan=>plan.usesMajorMaintenance)&&base.assumptions.majorMaintenanceStartHours===undefined)diagnostics.push({code:'MOWER_MAINTENANCE_ASSUMPTION',message:'未提供维护时间，本次模拟没有停服窗口'})
-  if(plans.some(plan=>plan.usesMasteryPlan)&&state.config.mowerMasteryPlanPresent!==undefined)diagnostics.push({code:'MOWER_MASTERY_PLAN_ASSUMPTION',message:`本次模拟固定为${state.config.mowerMasteryPlanPresent?'有':'无'}未完成的训练计划（包含失败但未清除的计划），不模拟训练进度或计划完成时刻`})
+  if(plans.some(plan=>plan.usesMasteryPlan))diagnostics.push({code:'MOWER_MASTERY_PLAN_ASSUMPTION',message:'本次模拟固定为无未完成的训练计划，不模拟训练进度或计划完成时刻'})
   const observedPlans = plans.filter(plan=>plan.usesInventory||plan.usesFacilityProduct)
   let observedConditions: string | undefined
   const observationSignature = () => JSON.stringify(observedPlans.map(plan=>Boolean(plan.condition(state))))
@@ -190,13 +191,15 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
     nextIdleConditionWakeMicros:data=>plans.some(plan=>plan.usesMajorMaintenance)&&base.assumptions.majorMaintenanceStartHours!==undefined&&data.nowMicros<=base.assumptions.majorMaintenanceStartHours*3_600_000_000?data.nowMicros+1_000_000:undefined,
     evaluate(data){return plans.map(p=>Boolean(p.condition({...state,time:data.nowMicros/3_600_000_000,mowerSource:{...getMowerSourceRuntime(state),data}})))},
     swap(data,conditions){const {config}=alphaConfiguration(conditions);const next=makeMowerSchedulingData({...state,config,morale:{...state.morale},initialMorale:{...state.initialMorale}},{data});next.planConditions=[...conditions];return next},
-    transition(previous,next,original,conditions,recovery=previous){
-      const transition:Record<string,string[]>={},groupPositions=new Set<string>(),replacementPositions:[string,number][]=[],restored=new Set<string>()
+    transition(previous,next,original,conditions,recovery=previous,pendingTasks){
+      const transition:Record<string,string[]>={},groupPositions=new Set<string>(),replacementPositions:[string,number][]=[],restored=new Set<string>(),joiningResting=new Set<string>()
+      const protectedTraining=new Set([...previous.busyRestingNames,...next.busyRestingNames])
       plans.forEach((p,i)=>{if(original[i]&&!conditions[i])for(const [room,names] of Object.entries(p.task))names.forEach((name,index)=>{if(name!=='Current')restored.add(alphaPosition(room,index))})})
       for(const [room,names] of Object.entries(next.plan))names.forEach((name,index)=>{
         if(room.startsWith('dorm')&&name==='Free')return
         const oldName=previous.plan[room]?.[index],old=previous.operators[oldName??''],op=next.operators[name]
         if(oldName===name&&old?.group===op?.group&&JSON.stringify(old?.replacement??[])===JSON.stringify(op?.replacement??[])&&JSON.stringify(old?.groupBindings??[])===JSON.stringify(op?.groupBindings??[])&&!(restored.has(alphaPosition(room,index))&&op?.isResting()))return
+        if(op&&mowerPrimaryJoinsRestingGroup(previous,next,op,protectedTraining)){replacementPositions.push([room,index]);joiningResting.add(name);return}
         const previousOwner=previous.operators[name]
         if(op&&previousOwner?.isHigh()&&(oldName===name||!op.currentRoom||op.isResting())&&(oldName===name||!room.startsWith('dorm'))&&(next.currentOperator(room,index)||op.currentRoom||op.timeStampMicros!==undefined)&&previousOwner.group===op.group&&previousOwner.room===op.room&&JSON.stringify(previousOwner.groupBindings.map(b=>b.group))===JSON.stringify(op.groupBindings.map(b=>b.group))){replacementPositions.push([room,index]);return}
         if(room.startsWith('dorm')&&op?.group){groupPositions.add(alphaPosition(room,index));return}
@@ -213,11 +216,12 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
         for(const [room,names] of Object.entries(p.task))names.forEach((name,index)=>{if(name!=='Current')groupPositions.delete(alphaPosition(room,index))})
       })
       if(groupPositions.size)alphaCorrectGroupDorms(next,transition,groupPositions)
-      if(!preserveMowerBackupReplacements(next,transition,replacementPositions,recovery.dorms))throw new MowerShiftPreviewError('副表替班与主班均不可用，暂缓切表')
+      if(joiningResting.size?!preserveMowerBackupRestingJoins(next,transition,replacementPositions,recovery.dorms,joiningResting,pendingTasks??getMowerSourceRuntime(state).queue.tasks.filter(task=>task!==getMowerSourceRuntime(state).activeTask),protectedTraining):!preserveMowerBackupReplacements(next,transition,replacementPositions,recovery.dorms))throw new MowerShiftPreviewError('副表替班或恢复床位不可用，暂缓切表')
       const signature=(data:MowerSchedulingData)=>JSON.stringify([data.dormOrder,data.dorms.map(b=>[b.position,data.plan[b.position[0]]?.[b.position[1]],data.operators[data.plan[b.position[0]]?.[b.position[1]]??'']?.group,data.effectiveFreeSlot(b),b.name])])
       if(signature(recovery)!==signature(next)){
-        const migration=projectMowerArrangements(next,[transition]),reserved=new Set(Object.entries(transition).flatMap(([room,names])=>room.startsWith('dorm')?[]:names.filter(n=>!['Current','Free',''].includes(n))))
-        const plan=alphaRebalanceDorms(migration,recovery.dorms,reserved);next.dorms=migration.dorms;mergeMowerShiftTransition(transition,plan,next)
+        const migration=projectMowerArrangements(next,[transition]),reserved=new Set(Object.values(transition).flat().filter(n=>!['Current','Free',''].includes(n)))
+        const slots=new Set(Object.entries(transition).flatMap(([room,names])=>names.flatMap((name,index)=>name!=='Current'?[alphaPosition(room,index)]:[])))
+        const plan=alphaRebalanceDorms(migration,recovery.dorms,reserved,slots);next.dorms=migration.dorms;mergeMowerShiftTransition(transition,plan,next)
       }
       for(const [room,names] of Object.entries(transition))if(room.startsWith('dorm'))names.forEach((name,index)=>{if(!['Current','Free',''].includes(name)&&next.restMoodComplete(name)&&next.currentOperator(room,index)?.name!==name)names[index]='Current'})
       return stripMowerCurrent(transition)

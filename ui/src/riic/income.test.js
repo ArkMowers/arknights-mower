@@ -348,3 +348,56 @@ it('caps recovered drones at 250 even when an imported legacy field says 200', (
   expect(drones.overflow).toBeCloseTo(drones.generated - 250, 8)
   expect(source).toEqual(original)
 })
+
+it.each([undefined, false, true])(
+  'ignores retired training state %s through the income worker',
+  (present) => {
+    expect(defaultIncomeSettings()).not.toHaveProperty('masteryPlanPresent')
+    for (const [trigger, active] of [
+      ["op_data.facility_has_mastery_plan('train')", false],
+      ["not op_data.facility_has_mastery_plan('train')", true]
+    ]) {
+      const source = plan()
+      source.backup_plans = [
+        {
+          name: '训练条件',
+          trigger,
+          plan: {}
+        }
+      ]
+      const settings = {
+        ...modelSettings(),
+        warmupDays: 0,
+        sampleDays: 1,
+        masteryPlanPresent: present
+      }
+      const original = structuredClone({ source, settings })
+      expect(incomeRequest(source, settings).options.simulationAssumptions).not.toHaveProperty(
+        'masteryPlanPresent'
+      )
+      const result = calculateIncome(source, settings)
+      expect(result.success, result.error).toBe(true)
+      expect(
+        result.eventLog.entries.some(
+          (event) => event.type === '副表切换' && event.detail === '训练条件（启用）'
+        )
+      ).toBe(active)
+      expect(result.summary.goldCount).toBeCloseTo(20, 8)
+      expect(
+        result.diagnostics.find((d) => d.code === 'MOWER_MASTERY_PLAN_ASSUMPTION')?.message
+      ).toContain('固定为无')
+      expect({ source, settings }).toEqual(original)
+    }
+  }
+)
+
+it('reports fixed training assumptions for new runs and preserves historical provenance', () => {
+  const result = { observedHours: 24, summary: {} }
+  const settings = modelSettings()
+  expect(incomeReportLines(result, settings, plan(), '主表').join('\n')).toContain(
+    '本次演算固定为无未完成训练计划'
+  )
+  expect(
+    incomeReportLines(result, { ...settings, masteryPlanPresent: true }, plan(), '主表').join('\n')
+  ).toContain('历史演算的未完成训练计划：有')
+})

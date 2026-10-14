@@ -29,7 +29,7 @@ import {MowerOperatorState,type MowerGroupBinding} from './mowerOperatorState'
 import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros,type MowerTaskPlan} from './mowerTaskQueue'
 import {executeMowerTaskArrangementSteps,type MowerRoomReturn,type MowerBackupResult} from './mowerTaskExecutor'
-import {mowerUpdateDetail,mowerRefreshDormTime,mowerCorrectDorm,mowerRoomReadIndexes,shouldMowerReadMood} from './mowerObservations'
+import {mowerUpdateDetail,mowerRefreshDormTime,mowerCorrectDorm,mowerRoomReadIndexes,shouldMowerReadMood,mowerHasMeasuredDormDeparture} from './mowerObservations'
 import {mowerIsDormReplacement,planMowerCorrection} from './mowerCorrection'
 import {planMowerOrdinary,mowerGetRestingPlan,mowerTryReorder,mowerPlanningHasNearTask} from './mowerOrdinaryPlanning'
 import {planMowerMetadata,mowerRestUnitKey} from './mowerMetadata'
@@ -82,7 +82,7 @@ export function makeMowerSchedulingData(s:RuntimeState,previous?:{data:MowerSche
   const record=OPERATOR_MAP.get(op.name),skills=record?.skillSlots?.flat()??record?.skills??[]
   op.singleRecoveryManager=managerNames.has(op.name)&&skills.some(skill=>skill.description.replace(/<[^>]*>/g,'').includes('进驻宿舍时，使该宿舍内除自身以外心情未满的某个干员每小时恢复'))
  }
- const runOrderRooms=config.mowerRunOrderEnabled===false?{}:previous?.data.runOrderRooms??{}
+ const runOrderRooms=config.mowerRunOrderEnabled===false?{}:{...previous?.data.runOrderRooms}
  if(config.mowerRunOrderEnabled!==false)for(const [room,slots] of Object.entries(source))if(room.startsWith('room')&&slots.some(slot=>slot.replacement.some(id=>isTradeRunOrderOperator(id)&&((OPERATOR_MAP.get(id)?.name??id)!=='U-Official'||isConfiguredTradeRoom(config,room)))))runOrderRooms[room]={}
  const oldBeds=new Map(previous?.data.dorms.map(b=>[b.position[0]+'_'+b.position[1],b]))
  normalizeMowerRecoveryBeds(config)
@@ -191,8 +191,10 @@ function observeRoom(s:RuntimeState,rates:RuntimeRates,room:string,task?:MowerTa
   }
  }
  for(const op of Object.values(data.operators))if(op.currentRoom===room&&!recognized.has(op.name)){
+  const measuredDeparture=data.alpha&&mowerHasMeasuredDormDeparture(data,op,room,names,task)
   const bed=data.getDormByName(op.name)?.[1];if(bed?.name===op.name)bed.reset()
   op.currentRoom='';currentRoomChanged(s,op);op.currentIndex=-1
+  if(data.alpha){if(measuredDeparture)op.depletionRate=0;else op.timeStampMicros=undefined}
   if(data.alpha&&room.startsWith('dorm')&&task?.strictMoodLimit&&task.metadata===op.name)op.restMoodReleaseLimit=op.upperLimit
   if(data.freeRoom&&task&&task.type!==T.SHIFT_OFF){const release=queue.find({type:T.RELEASE_DORM,metadata:op.name});if(release&&release!==task){if(data.alpha){release.removeReleaseDormOperator(op.name);if(!Object.keys(release.plan).length)queue.consume(release)}else queue.consume(release)}}
  }

@@ -173,7 +173,6 @@ export function compiledScheduleToRuntimeConfig(schedule: CompiledSchedule): Run
     mowerServices:{enableParty:false,leifengMode:schedule.assumptions.leifengMode??true,droneIntervalHours:schedule.assumptions.droneIntervalHours??3,reloadRooms:schedule.assumptions.reloadRooms===null?null:schedule.assumptions.reloadRooms??[],maaGapHours:schedule.assumptions.maaGapHours??3},
     mowerDeviceTiming:{roomReturnMicros:500_000},
     mowerTaskScheduling:{configuredDelayMinutes:3,enableMastery:schedule.assumptions.enableMastery},
-    mowerMasteryPlanPresent:schedule.assumptions.masteryPlanPresent,
     mowerDroneCountLimit:schedule.assumptions.droneCountLimit??100,
     mowerRecycleBuilt:schedule.rooms.some(room=>room.type==='recycle')||undefined,
     mowerRunLoopClock:{minimumClockStepMicros:1,notificationSleepMicros:1_000_000},

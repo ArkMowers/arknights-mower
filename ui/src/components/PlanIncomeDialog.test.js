@@ -284,3 +284,13 @@ it('does not let a late archive read replace a new calculation or a closed dialo
   await restore
   expect(page.state.result).toBeNull()
 })
+
+it('starts with no training-plan option and strips retired state before freezing a new run', async () => {
+  expect(page.settings).not.toHaveProperty('masteryPlanPresent')
+  page.settings.masteryPlanPresent = true
+  await page.readCache()
+  await page.start()
+  expect(workers).toHaveLength(1)
+  expect(workers[0].postMessage.mock.calls[0][0].settings).not.toHaveProperty('masteryPlanPresent')
+  expect(page.state.input.settings).not.toHaveProperty('masteryPlanPresent')
+})

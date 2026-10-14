@@ -28,6 +28,7 @@ export function createIncomeSession({ createWorker, update, now = () => performa
     start(plan, settings) {
       if (worker) return false
       input = JSON.parse(JSON.stringify({ plan, settings }))
+      delete input.settings.masteryPlanPresent
       tracker = createCalculationBottleneckTracker()
       started = now()
       update({ running: true, result: null, error: null, bottleneck: null, progress: null, input })

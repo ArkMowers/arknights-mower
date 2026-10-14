@@ -10,8 +10,8 @@ import { normalizeProductionWeights } from './vendor/domain/productionWeights'
 import { incomeInitialInventory } from './incomeCache'
 import { parseOperatorInventory, compileOperatorInventory } from './vendor/domain/operatorInventory'
 
-export const CALCULATOR_REVISION = '9c0b53c'
-export const MOWER_REFERENCE = 'ab0a4e5'
+export const CALCULATOR_REVISION = '5529403'
+export const MOWER_REFERENCE = '80c97ee6'
 export function defaultIncomeSettings() {
   return {
     warmupDays: 3,
@@ -29,7 +29,6 @@ export function defaultIncomeSettings() {
     mowerAlgorithm: null,
     initialInventory: {},
     jayeElite0: false,
-    masteryPlanPresent: false,
     operatorMode: 'cache',
     operatorText: '',
     productionWeights: normalizeProductionWeights()
@@ -90,10 +89,7 @@ export function incomeRequest(plan, settings) {
     options: {
       engine: 'simulation',
       jayeElite0: settings.jayeElite0,
-      simulationAssumptions: {
-        ...mowerAdvancedAssumptions(workspace),
-        masteryPlanPresent: settings.masteryPlanPresent
-      },
+      simulationAssumptions: mowerAdvancedAssumptions(workspace),
       simulationOptions: {
         schedulingModel: 'mower-alpha',
         warmupHours: settings.warmupDays * 24,

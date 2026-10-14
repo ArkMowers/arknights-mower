@@ -14,7 +14,7 @@ export interface MowerRestingOptions {
  returning?:Set<string>;returningGroups?:Set<string>;tasks?:MowerTask[]
  fiaTargets?:string[];hasActiveMastery?:boolean;isMasteryBusy?:(name:string)=>boolean
  isDormReplacement?:(name:string)=>boolean;onBlocked?:(names:string[])=>void;onException?:(error:unknown)=>void
- priorityScheduling?:MowerTaskSchedulingOptions
+ reservedSlots?:ReadonlySet<string>;priorityScheduling?:MowerTaskSchedulingOptions
 }
 export function mowerGetRestingPlan(data:MowerSchedulingData,names:string[],existingReplacements:string[],plan:MowerTaskPlan,options:MowerRestingOptions={}):boolean {
  if(data.alpha)return alphaGetRestingPlan(data,names,existingReplacements,plan,options)
@@ -88,7 +88,7 @@ function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:st
  if(Object.values(data.operators).some(op=>op.multiGroup))Object.assign(next,combined)
  const assignedCovers=new Set(Object.values(next).flat())
  const previous=alphaDormResidents(data),resting=agents.filter(name=>!data.operators[name]!.workaholic&&!data.operators[name]!.room.startsWith('dorm')&&!assignedCovers.has(name)&&!data.getDormByName(name))
- if(mowerAssignDormGroup(data,resting,new Set(Object.keys(transitions)),undefined,combined)===undefined)return false
+ if(mowerAssignDormGroup(data,resting,new Set(Object.keys(transitions)),undefined,combined,options.reservedSlots)===undefined)return false
  alphaRestoreDisplaced(data,previous,next,options.tasks??[])
  existing.push(...Object.values(match))
  for(const [room,names] of Object.entries(next)){if(!plan[room])plan[room]=names;else names.forEach((name,index)=>{if(plan[room]![index]==='Current'&&name!=='Current')plan[room]![index]=name})}

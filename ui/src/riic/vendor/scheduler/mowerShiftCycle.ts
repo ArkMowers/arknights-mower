@@ -21,7 +21,7 @@ export interface MowerShiftModel {
  nextIdleConditionWakeMicros?(data:MowerSchedulingData):number|undefined
  evaluate(data:MowerSchedulingData):boolean[]
  swap(data:MowerSchedulingData,conditions:boolean[]):MowerSchedulingData
- transition(previous:MowerSchedulingData,next:MowerSchedulingData,original:boolean[],conditions:boolean[],previousRecovery?:MowerSchedulingData):MowerTaskPlan
+ transition(previous:MowerSchedulingData,next:MowerSchedulingData,original:boolean[],conditions:boolean[],previousRecovery?:MowerSchedulingData,pendingTasks?:MowerTask[]):MowerTaskPlan
  activate(conditions:boolean[],task?:MowerTask):void
 }
 const same=(a:boolean[],b:boolean[])=>a.length===b.length&&a.every((v,i)=>v===b[i])
@@ -60,7 +60,7 @@ function cancelledShiftLeavesOnlyDormFill(data:MowerSchedulingData,simulation:Mo
 }
 
 /** Native backup convergence always reprojects from the original physical state. */
-export function prepareMowerShiftBackup(data:MowerSchedulingData,task:MowerTask,model:MowerShiftModel):void{
+export function prepareMowerShiftBackup(data:MowerSchedulingData,task:MowerTask,model:MowerShiftModel,pendingTasks?:MowerTask[]):void{
  if(!model.count||task.backupShiftActive||![T.SHIFT_ON,T.SHIFT_OFF,T.EXHAUST_OFF,T.SELF_CORRECTION,T.RE_ORDER].includes(task.type))return
  const intent=structuredClone(task.backupShiftIntent??task.plan),original=[...data.planConditions],seed=projectMowerArrangements(data,[intent])
  commitMowerGroupShifts(seed,task.groupShiftTransitions)
@@ -68,7 +68,7 @@ export function prepareMowerShiftBackup(data:MowerSchedulingData,task:MowerTask,
  for(let pass=0;pass<64;pass++){
   const key=JSON.stringify(conditions);if(seen.has(key))throw new MowerShiftPreviewError('上下班副表推演出现循环，保留原任务，暂不执行换人');seen.add(key)
   const simulation=model.swap(projectMowerArrangements(seed,[]),conditions)
-  const transition=model.transition(data,simulation,original,conditions,seed),merged=structuredClone(intent)
+  const transition=model.transition(data,simulation,original,conditions,seed,pendingTasks),merged=structuredClone(intent)
   mergeMowerShiftTransition(merged,transition,simulation)
   const projected=projectMowerArrangements(model.swap(projectMowerArrangements(data,[]),conditions),[merged]),next=model.evaluate(projected)
   if(same(next,conditions)){
@@ -94,7 +94,7 @@ export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,q
  if(task.backupShiftActive)return
  const probe=new MowerTask({time:data.nowMicros/3_600_000_000,type:T.FILL_DORM});simplifyMowerAlphaDormFill(probe,queue.tasks,data.nowMicros,options.priorityScheduling)
  if(probe.simpleDormFill||task.productShiftLocked||queue.tasks.some(t=>t!==task&&(t.type===T.FIAMMETTA&&t.timeMicros<=data.nowMicros||t.backupShiftActive||t.productShiftLocked))){
-  prepareMowerShiftBackup(data,task,model)
+  prepareMowerShiftBackup(data,task,model,queue.tasks.filter(t=>t!==task))
   const reserved=mowerDormTaskReservations(data,queue.tasks.filter(t=>t!==task&&t.type!==T.SHIFT_ON))
   task.plan=planMowerDormIsolation(data,task.plan,new Set([...reserved.slots,...task.backupExplicitSlots]),reserved.names);return
  }
@@ -120,7 +120,7 @@ export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,q
  step.backupExplicitSlots=new Set(explicitSlots)
  step.dormFillPlan=structuredClone(task.dormFillPlan)
  for(let pass=0;pass<64;pass++){
-  prepareMowerShiftBackup(simulation,step,model)
+  prepareMowerShiftBackup(simulation,step,model,pending)
   const conditions=step.backupShiftConditions??simulation.planConditions
   simulation=model.swap(simulation,conditions)
   step.backupExplicitSlots.forEach(slot=>explicitSlots.add(slot))

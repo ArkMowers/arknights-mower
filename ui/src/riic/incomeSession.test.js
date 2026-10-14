@@ -80,3 +80,13 @@ it('handles creation failure and disposes without late updates', () => {
   expect(workers[0].terminate).toHaveBeenCalledOnce()
   expect(state.result).toBeNull()
 })
+
+it('omits retired training state from new worker and completed-result snapshots', () => {
+  const { session, workers, state } = setup()
+  const settings = { sampleDays: 28, masteryPlanPresent: true }
+  session.start({}, settings)
+  expect(workers[0].postMessage.mock.calls[0][0].settings).toEqual({ sampleDays: 28 })
+  workers[0].onmessage({ data: { type: 'complete', result: { success: true } } })
+  expect(state.input.settings).toEqual({ sampleDays: 28 })
+  expect(settings.masteryPlanPresent).toBe(true)
+})

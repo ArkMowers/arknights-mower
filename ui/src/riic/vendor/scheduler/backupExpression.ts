@@ -136,7 +136,8 @@ export function compileBackupExpression(source: unknown, participants: Set<strin
         }
         if (token.member === 'facility_has_mastery_plan') {
           if (name !== 'train') return fail(`不支持的训练室位置：${name}`)
-          return state => state.config.mowerMasteryPlanPresent ?? fail('缺少训练室专精计划状态；请明确是否存在尚未完结的计划')
+          // User contract: local simulation always assumes no unfinished training plan.
+          return () => false
         }
         // Alpha _group_moods uses the current effective group and only fixed work anchors.
         return state => {

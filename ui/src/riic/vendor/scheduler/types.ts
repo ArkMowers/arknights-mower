@@ -24,8 +24,6 @@ export interface SimulationAssumptions {
   groupMoodGapMaxExtraWaitHours?: number
   mergeIntervalMinutes?: number
   enableMastery?: boolean
-  /** Fixed presence of unresolved training plans; does not model training progress. */
-  masteryPlanPresent?: boolean
   enableParty?: boolean
   leifengMode?: boolean
   droneRoom?: string | null
