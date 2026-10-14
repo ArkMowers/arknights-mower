@@ -246,16 +246,16 @@ describe('manager instance controls', () => {
     component.confirmAssistantChange()
     expect(component.assistantConfirmation.value).toBeNull()
     expect(component.draft.value.ai_assistant_enabled).toBe(true)
-    expect(component.editing.value).toEqual({ idx: 0, kind: 'settings' })
+    expect(component.editing.value).toMatchObject({ idx: 0, kind: 'settings' })
     expect(api.update_settings).not.toHaveBeenCalled()
     component.draft.value.token = 'after-reading'
     component.draft.value.port = 58001
     await component.save()
-    expect(api.update_settings).toHaveBeenCalledExactlyOnceWith(0, {
-      token: 'after-reading',
-      port: 58001,
-      ai_assistant_enabled: true
-    })
+    expect(api.update_settings).toHaveBeenCalledExactlyOnceWith(
+      0,
+      { token: 'after-reading', port: 58001, ai_assistant_enabled: true },
+      { name: 'first', path: '/first' }
+    )
     expect(component.editing.value).toBeNull()
   })
 
@@ -268,11 +268,68 @@ describe('manager instance controls', () => {
     expect(component.draft.value.ai_assistant_enabled).toBe(false)
     expect(api.update_settings).not.toHaveBeenCalled()
     await component.save()
-    expect(api.update_settings).toHaveBeenCalledExactlyOnceWith(0, {
-      token: '',
-      port: null,
-      ai_assistant_enabled: false
-    })
+    expect(api.update_settings).toHaveBeenCalledExactlyOnceWith(
+      0,
+      { token: '', port: null, ai_assistant_enabled: false },
+      { name: 'first', path: '/first' }
+    )
+  })
+
+  it.each([true, false])(
+    'does not submit an untouched AI choice after external authorization changes from %s',
+    async (original) => {
+      rows[0].ai_assistant_enabled = original
+      await mount()
+      component.edit(0, 'settings')
+      component.draft.value.token = 'only-token-edited'
+      rows[0].ai_assistant_enabled = !original
+      await component.refresh()
+      await component.save()
+      expect(api.update_settings).toHaveBeenCalledOnce()
+      expect(api.update_settings.mock.calls[0][1]).toEqual({
+        token: 'only-token-edited',
+        port: null
+      })
+      expect(component.assistantConfirmation.value).toBeNull()
+    }
+  )
+
+  it.each(['renamed', 'moved', 'removed', 'replaced'])(
+    'invalidates a confirmed single-instance draft when its target is %s',
+    async (change) => {
+      await mount()
+      component.edit(0, 'settings')
+      await component.changeAssistant(true)
+      await vi.advanceTimersByTimeAsync(5000)
+      component.riskAcknowledged.value = true
+      component.confirmAssistantChange()
+      expect(component.draft.value.ai_assistant_enabled).toBe(true)
+      if (change === 'renamed') rows[0].name = 'renamed'
+      else if (change === 'moved') rows[0].path = '/moved'
+      else if (change === 'removed') rows = []
+      else rows[0] = { ...stopped(), name: 'replacement', path: '/replacement' }
+      await component.refresh()
+      expect(component.editing.value).toBeNull()
+      expect(component.assistantConfirmation.value).toBeNull()
+      await component.save()
+      expect(api.update_settings).not.toHaveBeenCalled()
+    }
+  )
+
+  it('sends the captured instance identity even before a replacement is refreshed', async () => {
+    await mount()
+    component.edit(0, 'settings')
+    await component.changeAssistant(true)
+    await vi.advanceTimersByTimeAsync(5000)
+    component.riskAcknowledged.value = true
+    component.confirmAssistantChange()
+    rows[0] = { ...stopped(), name: 'replacement', path: '/replacement' }
+    await component.save()
+    expect(api.update_settings).toHaveBeenCalledExactlyOnceWith(
+      0,
+      { token: '', port: null, ai_assistant_enabled: true },
+      { name: 'first', path: '/first' }
+    )
   })
 
   it('cancels without saving and starts a fresh reading interval on retry', async () => {
@@ -303,7 +360,7 @@ describe('manager instance controls', () => {
     await component.save()
     expect(rows[0].ai_assistant_enabled).toBe(false)
     expect(component.draft.value.ai_assistant_enabled).toBe(true)
-    expect(component.editing.value).toEqual({ idx: 0, kind: 'settings' })
+    expect(component.editing.value).toMatchObject({ idx: 0, kind: 'settings' })
     expect(component.error.value).toBe('write failed')
   })
 
@@ -626,11 +683,15 @@ describe('manager instance controls', () => {
     expect(component.draft.value.token).toBe('new-secret')
     api.update_settings.mockRejectedValueOnce(new Error('write failed'))
     await component.save()
-    expect(component.editing.value).toEqual({ idx: 0, kind: 'settings' })
+    expect(component.editing.value).toMatchObject({ idx: 0, kind: 'settings' })
     expect(component.error.value).toBe('write failed')
     expect(component.draft.value.port).toBe(58001)
     await component.save()
-    expect(api.update_settings).toHaveBeenLastCalledWith(0, { token: 'new-secret', port: 58001 })
+    expect(api.update_settings).toHaveBeenLastCalledWith(
+      0,
+      { token: 'new-secret', port: 58001 },
+      { name: 'first', path: '/first' }
+    )
     expect(component.editing.value).toBeNull()
   })
 

@@ -54,6 +54,59 @@ def batch_changes(manager, settings):
     ]
 
 
+@pytest.mark.parametrize("change", ["renamed", "moved", "removed", "replaced"])
+def test_single_settings_reject_changed_target_without_touching_either_config(
+    manager, change
+):
+    manager.update_settings(0, {"token": "first", "port": 58001})
+    first = Path(manager.instances[0]["path"]) / "config/conf.yml"
+    target = dict(manager.instances[0])
+    manager.add("second", str(first.parent.parent.parent / "second"))
+    manager.update_settings(1, {"token": "second", "port": 58002})
+    second = Path(manager.instances[1]["path"]) / "config/conf.yml"
+    before = {path: path.read_bytes() for path in (first, second)}
+    other = Api(manager._storage_path)
+    if change == "renamed":
+        other.rename(0, "renamed")
+    elif change == "moved":
+        other._update(0, {"path": other.instances[1]["path"]})
+    elif change == "removed":
+        other.remove(1)
+        other.remove(0)
+    else:
+        other.remove(0)
+    assert manager.instances[0] == target
+    with pytest.raises(ValueError, match="实例已变化"):
+        manager.update_settings(
+            0,
+            {"token": "stale", "port": None, "ai_assistant_enabled": True},
+            target,
+        )
+    assert {path: path.read_bytes() for path in (first, second)} == before
+
+
+def test_single_settings_accept_matching_target_after_an_unrelated_list_change(manager):
+    target = dict(manager.instances[0])
+    manager.add("unrelated", str(Path(target["path"]).parent / "other"))
+    manager.update_settings(
+        0, {"token": "new", "port": None, "ai_assistant_enabled": True}, target
+    )
+    assert read_conf(manager)["webview"] == {"token": "new", "port": 0}
+    assert read_conf(manager)["ai_assistant_enabled"] is True
+
+
+def test_single_settings_matching_target_still_rejects_running_process(
+    manager, monkeypatch
+):
+    target = dict(manager.instances[0])
+    monkeypatch.setattr(runtime, "instances", lambda **kwargs: [record(manager)])
+    with pytest.raises(ValueError, match="实例进程运行期间"):
+        manager.update_settings(
+            0, {"token": "new", "port": None, "ai_assistant_enabled": True}, target
+        )
+    assert not Path(target["path"]).exists()
+
+
 def test_duplicate_launch_is_blocked_before_registration_and_after_window_reopen(
     manager,
 ):

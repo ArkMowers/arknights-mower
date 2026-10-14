@@ -89,7 +89,14 @@ async function refresh() {
       cancelAssistantConfirmation()
       error.value = '实例列表已变化，请重新打开批量配置'
     }
-  } else if (editing.value && !loaded[editing.value.idx]?.editable) editing.value = null
+  } else if (editing.value) {
+    const current = loaded[editing.value.idx]
+    const { target } = editing.value
+    if (!current?.editable || current.name !== target.name || current.path !== target.path) {
+      editing.value = null
+      cancelAssistantConfirmation()
+    }
+  }
   if (assistantConfirmation.value) {
     const target = assistantConfirmation.value
     if (target.kind === 'batch') {
@@ -97,6 +104,7 @@ async function refresh() {
     } else {
       const current = loaded[target.idx]
       if (
+        editing.value !== target.editor ||
         !current?.editable ||
         current.name !== target.name ||
         current.path !== target.path ||
@@ -180,12 +188,17 @@ async function execute(action, { waitForUser = false } = {}) {
 }
 
 function edit(idx, kind) {
-  if (unavailable.value || !instances.value[idx].editable) return
+  if (unavailable.value || !instances.value[idx]?.editable) return
   draft.value = {
     ...instances.value[idx],
     ai_assistant_enabled: instances.value[idx].ai_assistant_enabled === true
   }
-  editing.value = { idx, kind }
+  editing.value = {
+    idx,
+    kind,
+    target: { name: draft.value.name, path: draft.value.path },
+    originalAssistant: draft.value.ai_assistant_enabled
+  }
 }
 
 function clearClosedEditor() {
@@ -214,7 +227,7 @@ function selectPath(idx) {
 
 async function save() {
   if (!editing.value || unavailable.value || assistantConfirmation.value) return
-  const { idx, kind } = editing.value
+  const { idx, kind, target, originalAssistant } = editing.value
   if (kind === 'batch') {
     if (!batchChanges.value.length) return
     const changes = batchChanges.value
@@ -237,10 +250,9 @@ async function save() {
     return
   }
   const settings = { token: draft.value.token, port: draft.value.port }
-  const current = instances.value[idx]
-  if (draft.value.ai_assistant_enabled !== (current.ai_assistant_enabled === true))
+  if (draft.value.ai_assistant_enabled !== originalAssistant)
     settings.ai_assistant_enabled = draft.value.ai_assistant_enabled
-  const succeeded = await execute(() => api().update_settings(idx, settings))
+  const succeeded = await execute(() => api().update_settings(idx, settings, target))
   if (succeeded) editing.value = null
 }
 
@@ -263,7 +275,8 @@ async function changeAssistant(enabled) {
     idx,
     name: current.name,
     path: current.path,
-    original: current.ai_assistant_enabled === true
+    original: current.ai_assistant_enabled === true,
+    editor: editing.value
   })
 }
 
@@ -318,7 +331,7 @@ function confirmAssistantChange() {
     for (const idx of target.rows) {
       if (batchEditable(idx)) batchDraft.value[idx].ai_assistant_enabled = true
     }
-  } else if (editing.value?.kind === 'settings' && editing.value.idx === target.idx)
+  } else if (editing.value?.kind === 'settings' && editing.value === target.editor)
     draft.value.ai_assistant_enabled = true
   cancelAssistantConfirmation()
   return false

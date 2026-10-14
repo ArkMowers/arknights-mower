@@ -43,6 +43,7 @@ class FakeSocket {
 let scope
 let component
 let emit
+let props
 async function flush() {
   await nextTick()
   await nextTick()
@@ -61,7 +62,8 @@ beforeEach(() => {
   vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockResolvedValue() } })
   scope = effectScope()
   emit = vi.fn()
-  component = scope.run(() => ChatBot.setup({ show: true }, { expose: vi.fn(), emit }))
+  props = reactive({ show: true })
+  component = scope.run(() => ChatBot.setup(props, { expose: vi.fn(), emit }))
 })
 afterEach(() => {
   state.cleanup?.()
@@ -125,6 +127,52 @@ describe('AI chat interactions', () => {
     expect(state.dialog.warning).toHaveBeenCalledOnce()
     expect(emit).toHaveBeenCalledWith('update:show', false)
   })
+
+  it.each([
+    ['connecting', true],
+    ['streaming', true],
+    ['connecting', false],
+    ['streaming', false]
+  ])(
+    'ends a %s reply when authorization is disabled with panel visible=%s',
+    async (phase, visible) => {
+      const first = send()
+      if (phase === 'streaming') {
+        first.open()
+        first.receive({ reply: '已收到的部分回复' })
+      }
+      const partial = component.chatHistory.value.at(-1)
+      props.show = visible
+      await flush()
+      expect(component.loading.value).toBe(true)
+      state.mower.ai_assistant_enabled = false
+      await flush()
+      expect(component.loading.value).toBe(false)
+      expect(component.connecting.value).toBe(false)
+      expect(vi.getTimerCount()).toBe(0)
+      expect(first.close).toHaveBeenCalledOnce()
+      expect(first.onclose).toBeNull()
+      expect(first.onmessage).toBeNull()
+      expect(partial.error).toBe(true)
+      expect(partial.content).toContain('管理员未开启')
+      if (phase === 'streaming') expect(partial.content).toContain('已收到的部分回复')
+      expect(state.dialog.warning).toHaveBeenCalledTimes(visible ? 1 : 0)
+      const retained = partial.content
+      state.mower.ai_assistant_enabled = true
+      props.show = true
+      await flush()
+      const second = send('恢复后重新查询')
+      expect(second).not.toBe(first)
+      expect(FakeSocket.instances).toHaveLength(2)
+      second.open()
+      second.receive({ reply: '新的回复' })
+      second.receive({ done: true })
+      expect(component.chatHistory.value.at(-1).content).toBe('新的回复')
+      expect(partial.content).toBe(retained)
+      component.newConversation()
+      expect(component.chatHistory.value).toEqual([])
+    }
+  )
 
   it('drags by the header with pointer capture and stops after cancellation', () => {
     component.panelRef.value = { getBoundingClientRect: () => ({ left: 800, top: 300 }) }

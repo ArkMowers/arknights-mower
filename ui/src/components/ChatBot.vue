@@ -241,7 +241,7 @@ function openSettings() {
 function assistantAllowed() {
   if (mower.ai_assistant_enabled === true) return true
   if (mower.ai_assistant_enabled === false) {
-    closeConnection()
+    failReply('管理员未开启')
     showAssistantUnavailable()
   } else {
     notice.warning('尚未取得助手授权状态，请稍后重试。')
@@ -267,11 +267,12 @@ watch(
 watch(
   [() => props.show, () => mower.ai_assistant_enabled],
   async ([value, enabled]) => {
-    if (!value) return
     if (enabled === false) {
-      assistantAllowed()
+      if (value) assistantAllowed()
+      else failReply('管理员未开启')
       return
     }
+    if (!value) return
     await nextTick()
     inputRef.value?.focus()
     if (atBottom.value) scrollToLatest()

@@ -284,9 +284,15 @@ class InstanceController:
             self._editable(updated[idx], records)
             self._save(updated)
 
-    def update_settings(self, idx, settings):
+    def update_settings(self, idx, settings, target=None):
         settings = validate_settings(settings)
         with self._operation():
+            if target is not None and (
+                type(idx) is not int
+                or not 0 <= idx < len(self.instances)
+                or target != {key: self.instances[idx][key] for key in ("name", "path")}
+            ):
+                raise ValueError("实例已变化，请重新打开配置")
             instance = self.instances[idx]
             self._editable(instance, self._records())
             self._write_settings(instance, settings)
