@@ -9737,7 +9737,7 @@ class BaseSchedulerSolver(
         return result
 
     def _reconcile_room_observation(self, room, observed, *, group_transitions=None):
-        """提交已确认岗位的驻员归属、离宿结果及救急恢复责任。"""
+        """提交已确认岗位的驻员归属、离宿结果及恢复责任。"""
         slots = {
             index: item["agent"]
             for index, item in enumerate(observed)
@@ -9748,7 +9748,7 @@ class BaseSchedulerSolver(
         confirmed_release = (
             room.startswith("dorm")
             and complete
-            and getattr(task, "emergency_recovery_release", False)
+            and task is not None
             and task.plan.get(room) == [item["agent"] for item in observed]
         )
         for name, operator in self.op_data.operators.items():
@@ -9759,20 +9759,24 @@ class BaseSchedulerSolver(
                 or slots.get(operator.current_index) == name
             ):
                 continue
-            target = (
-                (getattr(self, "emergency_state", None) or {})
-                .get("targets", {})
-                .get(name)
-            )
-            measured_release = (
-                confirmed_release
-                and name in getattr(task, "emergency_staffing_members", ())
-                and name not in slots.values()
-                and target is not None
-                and has_resting_mood(operator)
-                and not operator.mood_is_prediction
-                and operator.mood >= target
-            )
+            measured_release = False
+            if confirmed_release:
+                target = operator.upper_limit
+                if getattr(task, "emergency_recovery_release", False):
+                    target = (
+                        (getattr(self, "emergency_state", None) or {})
+                        .get("targets", {})
+                        .get(name)
+                        if name in getattr(task, "emergency_staffing_members", ())
+                        else None
+                    )
+                measured_release = (
+                    name not in slots.values()
+                    and target is not None
+                    and has_resting_mood(operator)
+                    and not operator.mood_is_prediction
+                    and operator.mood >= target
+                )
             if room.startswith("dorm"):
                 _, bed = self.op_data.get_dorm_by_name(
                     name, group_transitions=group_transitions
@@ -9786,7 +9790,7 @@ class BaseSchedulerSolver(
                     operator.rest_mood_release_limit = operator.upper_limit
             operator.current_room, operator.current_index = "", -1
             if measured_release:
-                # 主动达标离宿沿用实测，待命后停止按原恢复速度推算心情。
+                # 普通回满与救急达标离宿均沿用实测，待命后不再按宿舍速度恢复。
                 operator.depletion_rate = 0
             else:
                 operator.time_stamp = None
