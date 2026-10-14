@@ -12830,6 +12830,13 @@ class BaseSchedulerSolver(
         if dispatched:
             logger.info(f"已为 {dispatched} 个材料足够的空闲专精计划安排开始训练")
 
+    def _sync_idle_device(self):
+        """接收空闲生命周期操作后设备控制持有的设备对象。"""
+        if control := getattr(self.device, "session_control", None):
+            device = control.start().unwrap()
+            self.device = device
+            self.recog.device = device
+
     def _idle_sleep(self, remaining_time, allow_wakeup=True):
         """等待任务并统一维护 `sleeping` 与连续场景观测边界。
 
@@ -12859,6 +12866,7 @@ class BaseSchedulerSolver(
                     raise ConnectionError("休眠结束后模拟器启动失败")
                 # 启动成功即结束本轮的主动启动，后续连接故障交由正常重连恢复。
                 self._simulator_closed_for_idle = False
+                self._sync_idle_device()
                 self.device.reconnect()
             self.recog.reset_after_external_control()
             self._idle_observation_pending = False
@@ -12940,6 +12948,7 @@ class BaseSchedulerSolver(
             if restart_simulator(start=False):
                 self._simulator_closed_for_idle = True
             else:
+                self._sync_idle_device()
                 logger.warning(
                     "空闲关闭模拟器失败，继续等待；请检查所选实例和管理程序。"
                 )

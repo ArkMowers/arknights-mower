@@ -78,6 +78,7 @@ class TestIdleSimulatorWake(unittest.TestCase):
         self.solver = object.__new__(BaseSchedulerSolver)
         self.solver._simulator_closed_for_idle = False
         self.solver.device = MagicMock()
+        self.solver.device.session_control = None
         self.solver.recog = MagicMock()
         self.now = datetime(2026, 9, 5, 13, 0)
         self.wake = Event()
