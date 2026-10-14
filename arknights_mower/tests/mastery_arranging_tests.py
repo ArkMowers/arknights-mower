@@ -14,6 +14,7 @@ from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import TaskTypes
 
 START = datetime(2026, 7, 31, 12, 0, 0)
+pytestmark = pytest.mark.usefixtures("income_db")
 
 
 @pytest.fixture(scope="module", autouse=True)

@@ -41,6 +41,9 @@ _DB_TABLE_STMTS = (
     "price INTEGER"
     ")",
     "CREATE TABLE IF NOT EXISTS inventory (item_name TEXT PRIMARY KEY, count INTEGER)",
+    "CREATE TABLE IF NOT EXISTS mastery_inventory_consumption ("
+    "char_id TEXT NOT NULL, skill_index INTEGER NOT NULL, level INTEGER NOT NULL,"
+    "PRIMARY KEY (char_id, skill_index, level))",
     "CREATE TABLE IF NOT EXISTS recycling_collection ("
     "event_id TEXT PRIMARY KEY, collected_at REAL NOT NULL,"
     "operators TEXT, materials TEXT NOT NULL)",
@@ -959,6 +962,7 @@ def save_inventory_counts(
     scanned_at=0,
     cloud_counts=None,
     cloud_at=0,
+    force_cloud=False,
 ):
     with _conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -1004,7 +1008,12 @@ def save_inventory_counts(
                 # count in its net direction; an actual game read can reconcile.
                 # Once an item was both made and consumed, an intermediate cloud
                 # count can cross that range. Only exact convergence is sufficient.
-                if from_cloud and name in pending and name in current:
+                if (
+                    from_cloud
+                    and not force_cloud
+                    and name in pending
+                    and name in current
+                ):
                     (baseline, directions), expected = pending[name], current[name]
                     caught_up = (
                         scanned == expected
@@ -1097,32 +1106,75 @@ def get_inventory_counts(item_names: list[str] | None = None):
         return dict(cursor.fetchall())
 
 
+def _apply_inventory_delta(conn, delta):
+    conn.executemany(
+        "INSERT INTO workshop_inventory_pending (item_name, baseline, directions) "
+        "SELECT item_name, count, ? FROM inventory WHERE item_name = ? "
+        "ON CONFLICT(item_name) DO UPDATE SET directions = directions | excluded.directions",
+        [(1 if amount > 0 else 2, name) for name, amount in delta.items() if amount],
+    )
+    conn.executemany(
+        "UPDATE inventory SET count = MAX(0, count + ?) WHERE item_name = ?",
+        [(amount, name) for name, amount in delta.items()],
+    )
+    _mark_workshop_inventory(conn, delta)
+
+
 def apply_workshop_inventory(delta: dict[str, int]):
     """Persist confirmed crafting or drop deltas without restoring invalidated stock."""
     with _conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
         before = dict(conn.execute("SELECT item_name, count FROM inventory"))
-        conn.executemany(
-            "INSERT INTO workshop_inventory_pending (item_name, baseline, directions) "
-            "SELECT item_name, count, ? FROM inventory WHERE item_name = ? "
-            "ON CONFLICT(item_name) DO UPDATE SET directions = directions | excluded.directions",
-            [
-                (1 if amount > 0 else 2, name)
-                for name, amount in delta.items()
-                if amount
-            ],
-        )
-        conn.executemany(
-            "UPDATE inventory SET count = MAX(0, count + ?) WHERE item_name = ?",
-            [(amount, name) for name, amount in delta.items()],
-        )
-        _mark_workshop_inventory(conn, delta)
+        _apply_inventory_delta(conn, delta)
         conn.commit()
         if any(
             name in before and max(0, before[name] + amount) != before[name]
             for name, amount in delta.items()
         ):
             workshop_inventory_changed.set()
+
+
+def apply_mastery_inventory(char_id, skill_index, level):
+    """Deduct a confirmed mastery stage once, including across restarts and replans."""
+    from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+    if type(level) is not int or not 1 <= level <= 3:
+        raise ValueError("无法确认专精材料扣减档位")
+    data = get_skill_data()
+    stage = data["characters"][char_id]["skills"][skill_index]["levels"][level - 1]
+    costs = collections.Counter()
+    for material in stage["materials"]:
+        count = material["count"]
+        if type(count) is not int or count <= 0:
+            raise ValueError("专精材料消耗数量无效")
+        costs[data["items"][material["id"]]["name"]] += count
+    if not costs:
+        raise ValueError("缺少当前专精档位的材料消耗")
+    with _conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        receipt = conn.execute(
+            "INSERT OR IGNORE INTO mastery_inventory_consumption "
+            "(char_id, skill_index, level) VALUES (?, ?, ?)",
+            (char_id, skill_index, level),
+        )
+        if receipt.rowcount == 0:
+            return False
+        current = dict(conn.execute("SELECT item_name, count FROM inventory"))
+        # A confirmed payment cannot establish zero from an inconsistent baseline.
+        unknown = [
+            name for name, count in costs.items() if current.get(name, 0) < count
+        ]
+        conn.executemany(
+            "DELETE FROM inventory WHERE item_name = ?", [(name,) for name in unknown]
+        )
+        conn.executemany(
+            "DELETE FROM workshop_inventory_pending WHERE item_name = ?",
+            [(name,) for name in unknown],
+        )
+        _apply_inventory_delta(conn, {name: -count for name, count in costs.items()})
+        conn.commit()
+    workshop_inventory_changed.set()
+    return True
 
 
 def invalidate_workshop_inventory(names):

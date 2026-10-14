@@ -15,6 +15,8 @@ from arknights_mower.utils import config, email, log, mastery_db, mastery_recomm
 from arknights_mower.utils.mastery_panel_model import FONT_SIZE, render_template
 from arknights_mower.utils.scene import Scene
 
+pytestmark = pytest.mark.usefixtures("income_db")
+
 
 @pytest.fixture
 def plan():

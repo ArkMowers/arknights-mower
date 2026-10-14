@@ -12674,7 +12674,9 @@ class BaseSchedulerSolver(
 
     def 仓库扫描(self):
         try:
-            cultivateDepotSolver().start()
+            if not cultivateDepotSolver().start(force_inventory=True):
+                logger.warning("仓库扫描: 森空岛同步未成功，保留现有库存并跳过本次扫描")
+                return False
             DepotSolver(self.device, self.recog).run()
             self._auto_schedule_mastery_after_scan()
         except Exception as e:

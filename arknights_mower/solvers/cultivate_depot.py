@@ -28,12 +28,12 @@ class cultivate:
         self.sign_token = ""
         self.all_recorded = True
 
-    def start(self):
+    def start(self, *, force_inventory=False):
         # Keep request, local persistence and remote upload in the same order.
         with _refresh_lock:
-            return self._refresh()
+            return self._refresh(force_inventory=force_inventory)
 
-    def _refresh(self):
+    def _refresh(self, *, force_inventory=False):
         self.yituliu_sync_result = None
         if not config.conf.skland_info:
             return False
@@ -86,6 +86,8 @@ class cultivate:
                         "_mower_player": {key: i[key] for key in player_fields},
                     }
                 items = resp.get("data", {}).get("items")
+                if force_inventory and items is None:
+                    raise ValueError("森空岛未返回库存，无法完成库存同步")
                 if items is not None:
                     if not isinstance(items, list) or any(
                         not isinstance(entry, dict)
@@ -100,7 +102,7 @@ class cultivate:
                 def dump(file):
                     json.dump(resp, file, ensure_ascii=False, indent=4)
 
-                # web 线程（views/mastery.py 刷新）与调度线程共用本写点，原子写防撕裂
+                # Manual refresh and warehouse tasks share this atomic cache write.
                 atomic_write(self.record_path, dump)
                 from arknights_mower.utils.growth import save_statistics
                 from arknights_mower.utils.mastery_recommendation import get_skill_data
@@ -124,6 +126,7 @@ class cultivate:
                         scanned_counts={},
                         cloud_counts=counts,
                         cloud_at=timestamp,
+                        force_cloud=force_inventory,
                     )
                 updated = True
                 from arknights_mower.utils.yituliu_sync import sync_after_cultivate

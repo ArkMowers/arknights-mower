@@ -1032,6 +1032,7 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
                     support_level_to_prepare = tier + 1
                     solver.back()  # The next TRAIN_MAIN iteration validates the route.
                     continue
+                step_level = tier + 1
             height = (skill_index - 1) * 0.3 + 0.32
             solver.ctap((solver.recog.w * 0.33, solver.recog.h * height))
         elif scene == Scene.TRAIN_SKILL_UPGRADE:
@@ -1206,6 +1207,26 @@ def _confirm_training_started(
                         step_level=plan_step,
                     )
                     return "failed"
+                requested_level = step_level
+                try:
+                    step_level = _count_lit_mastery_icons(solver)
+                except Exception:
+                    step_level = None
+                notes: list[str] = []
+                try:
+                    from arknights_mower.solvers.record import apply_mastery_inventory
+
+                    paid_level = (
+                        step_level
+                        if type(step_level) is int and 1 <= step_level <= 3
+                        else requested_level
+                    )
+                    apply_mastery_inventory(
+                        plan["char_id"], plan["skill_index"], paid_level
+                    )
+                except Exception:
+                    logger.exception("已确认专精开训，但材料库存扣减失败")
+                    notes.append("材料库存扣减失败，请执行仓库识别校准库存")
                 expires_at = execute_time.strftime("%Y-%m-%d %H:%M:%S")
                 _log_transition(plan, "training", "倒计时确认", 完成时间=expires_at)
                 update_plan_status(
@@ -1220,16 +1241,10 @@ def _confirm_training_started(
                 # mower 自己记错。失败信息逐条收进 notes，拼进下面那封开训邮件（训练
                 # 确实开始了，级别仍 INFO）；「到点收取任务」排在邮件之后，另发一封
                 # WARNING（_notify_collect_unscheduled）。
-                notes: list[str] = []
                 # #76：主面板专精图标在训练中 = 当前步目标级（亮 N 颗=专N）。确认开始
                 # 后先读图标作当前步级，传给协助位/换人安排（专三计划专一/专二步用
                 # level_1/2 路线减半换人）；同值复用作收取任务目标档位（原 tier）。
                 # #89：走到这里已 back 回 217 主页面，图标可读。
-                step_level = None
-                try:
-                    step_level = _count_lit_mastery_icons(solver)
-                except Exception:
-                    step_level = None
                 if arrange_support:
                     arrange_error = _arrange_support(solver, plan, step_level)
                     if isinstance(arrange_error, str) and arrange_error:

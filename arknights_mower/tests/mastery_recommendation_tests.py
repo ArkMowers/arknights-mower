@@ -46,11 +46,7 @@ def _plan(**overrides):
 
 
 def _write_inventory_files(tmp_dir, item_id, owned):
-    """写 cultivate.json（库存）+ skill_data.json（材料名→id）到临时目录。
-
-    auto_schedule_mastery_tasks 直接读这两文件（R-06 链路级递减）；
-    返回两路径供测试覆盖 get_path / _find_skill_data 指向。
-    """
+    """Write a cached cloud count and resource names for local-stock admission."""
     cultivate_path = os.path.join(tmp_dir, "cultivate.json")
     skill_path = os.path.join(tmp_dir, "skill_data.json")
     with open(cultivate_path, "w", encoding="utf-8") as f:
@@ -74,6 +70,11 @@ class TestAutoScheduleReadsDb(unittest.TestCase):
         )
         patcher.start()
         self.addCleanup(patcher.stop)
+        inventory = patch(
+            "arknights_mower.solvers.record.get_inventory_counts", return_value={}
+        )
+        self.inventory = inventory.start()
+        self.addCleanup(inventory.stop)
 
     def test_db_plan_scheduled_when_materials_sufficient(self):
         # #111：带真实材料链跑正分支——库存 owned == count（ID 解析命中）→ scheduled。
@@ -82,6 +83,7 @@ class TestAutoScheduleReadsDb(unittest.TestCase):
         cultivate_path, skill_path = _write_inventory_files(
             self.tmp.name, "item_T3", 50
         )
+        self.inventory.return_value = {"技巧概要·卷3": 50}
         mats = [{"name": "技巧概要·卷3", "count": 50}]
         with (
             patch(
@@ -102,7 +104,10 @@ class TestAutoScheduleReadsDb(unittest.TestCase):
 
     def test_db_plan_skipped_when_inventory_short(self):
         # #111 对照：同材料链库存 owned < count → skipped（确保正分支不是恒 True）
-        cultivate_path, skill_path = _write_inventory_files(self.tmp.name, "item_T3", 5)
+        cultivate_path, skill_path = _write_inventory_files(
+            self.tmp.name, "item_T3", 70
+        )
+        self.inventory.return_value = {"技巧概要·卷3": 5}
         mats = [{"name": "技巧概要·卷3", "count": 50}]
         with (
             patch(

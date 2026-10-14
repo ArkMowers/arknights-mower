@@ -3734,7 +3734,7 @@ def cultivate_fetch():
 
     try:
         syncer = cultivate()
-        if not syncer.start():
+        if not syncer.start(force_inventory=True):
             return {
                 "success": False,
                 "message": "未同步到干员数据，请检查森空岛账号及官服/B服选择",

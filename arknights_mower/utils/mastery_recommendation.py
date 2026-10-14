@@ -438,7 +438,7 @@ def _remaining_mastery_materials(plan, recommendation):
 
 
 def auto_schedule_mastery_tasks(*, inventory=None):
-    """Return material-ready plans using supplied name counts or the scan snapshot."""
+    """Return material-ready plans using supplied counts or shared local inventory."""
     result = {"scheduled": [], "skipped": []}
 
     # 计划直接读 DB（get_all_plans 非终态）——matery_plan.json 是全仓库无写入者
@@ -480,18 +480,9 @@ def auto_schedule_mastery_tasks(*, inventory=None):
     from arknights_mower.utils.mastery_support_data import trainee_schedule_conflict
 
     if inventory is None:
-        cultivate_path = get_path("@app/tmp/cultivate.json")
-        counts = {}
-        if os.path.exists(cultivate_path):
-            try:
-                with open(cultivate_path, "r", encoding="utf-8") as f:
-                    cdata = json.load(f)
-                for item in cdata.get("data", {}).get("items", []):
-                    cnt = int(item.get("count", 0))
-                    if cnt > 0:
-                        counts[item.get("id", "")] = cnt
-            except Exception:
-                pass
+        from arknights_mower.solvers.record import get_inventory_counts
+
+        inventory = get_inventory_counts()
 
     skill_data_path = _find_skill_data()
     name_to_id = {}
@@ -505,8 +496,6 @@ def auto_schedule_mastery_tasks(*, inventory=None):
                 name_to_id[info.get("name", "")] = iid
         except Exception:
             pass
-    if inventory is None:
-        inventory = {name: counts.get(iid, 0) for name, iid in name_to_id.items()}
 
     from arknights_mower.data import workshop_formula
 

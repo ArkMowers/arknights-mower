@@ -279,7 +279,7 @@ def refresh_and_sync_operators():
         from arknights_mower.solvers.cultivate_depot import cultivate
 
         syncer = cultivate()
-        refreshed = syncer.start()
+        refreshed = syncer.start(force_inventory=True)
     except Exception:
         raise ValueError(
             "森空岛同步失败，请检查账号和网络后重试；未上传旧缓存"

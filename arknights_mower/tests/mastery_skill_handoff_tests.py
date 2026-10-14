@@ -226,7 +226,7 @@ def test_removed_basic_successor_restores_reducer_protection(
 
 @pytest.mark.parametrize("supplied_inventory", [False, True])
 def test_joint_craftability_and_single_skill_preparation(
-    database, tmp_path, monkeypatch, supplied_inventory
+    database, income_db, tmp_path, monkeypatch, supplied_inventory
 ):
     a = db.insert_plan("a", 0, 3, "测试", "学员", priority=0)
     b = db.insert_plan("b", 0, 3, "测试", "乙", priority=1)
@@ -273,10 +273,16 @@ def test_joint_craftability_and_single_skill_preparation(
     )
 
     def schedule():
-        if not supplied_inventory:
-            return rec.auto_schedule_mastery_tasks()
         items = json.loads(cultivate.read_text())["data"]["items"]
         names = {"book": "书", "raw": "原料"}
+        if not supplied_inventory:
+            from arknights_mower.solvers.record import _conn, save_inventory_counts
+
+            with _conn() as conn:
+                conn.execute("DELETE FROM inventory")
+                conn.commit()
+            save_inventory_counts({names[item["id"]]: item["count"] for item in items})
+            return rec.auto_schedule_mastery_tasks()
         return rec.auto_schedule_mastery_tasks(
             inventory={names[item["id"]]: item["count"] for item in items}
         )

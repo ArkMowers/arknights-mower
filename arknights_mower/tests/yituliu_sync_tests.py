@@ -221,7 +221,8 @@ def test_token_and_sync_routes_require_local_auth_and_explicit_manual_action(
     _, _, _, snapshot, _ = sync_case
     syncer = SimpleNamespace(yituliu_sync_result=None)
 
-    def refresh():
+    def refresh(*, force_inventory):
+        assert force_inventory is True
         syncer.yituliu_sync_result = sync.sync_after_cultivate(snapshot)
         return True
 
@@ -241,7 +242,7 @@ def test_token_and_sync_routes_require_local_auth_and_explicit_manual_action(
     assert client.post("/growth-sync", json={"confirmed": True}, headers=headers).json[
         "success"
     ]
-    syncer.start.assert_called_once_with()
+    syncer.start.assert_called_once_with(force_inventory=True)
     assert (
         client.delete("/growth-sync-token", headers=headers).json["configured"] is False
     )
@@ -550,8 +551,9 @@ def test_manual_sync_refreshes_skland_before_single_upload_and_uses_new_roster(
     fresh["data"]["characters"][0]["level"] = 80
     syncer = SimpleNamespace(yituliu_sync_result=None)
 
-    def refresh():
+    def refresh(*, force_inventory):
         session.post.assert_not_called()
+        assert force_inventory is True
         syncer.yituliu_sync_result = sync.sync_after_cultivate(fresh)
         return True
 
@@ -562,7 +564,7 @@ def test_manual_sync_refreshes_skland_before_single_upload_and_uses_new_roster(
         SimpleNamespace(cultivate=lambda: syncer),
     )
     assert sync.refresh_and_sync_operators()["success"]
-    syncer.start.assert_called_once_with()
+    syncer.start.assert_called_once_with(force_inventory=True)
     session.post.assert_called_once()
     assert session.post.call_args.kwargs["json"]["operators"][0]["level"] == 80
 
