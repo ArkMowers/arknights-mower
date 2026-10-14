@@ -697,7 +697,7 @@ onBeforeUnmount(() => {
             >
           </template>
         </n-tab-pane>
-        <n-tab-pane name="timeline" tab="排班甘特图" display-directive="show:lazy">
+        <n-tab-pane name="timeline" tab="工作记录" display-directive="show:lazy">
           <IncomeTimeline
             v-if="
               state.result?.success && state.result.simulationReport && state.result.timelineData
@@ -709,8 +709,8 @@ onBeforeUnmount(() => {
             v-else
             :description="
               state.result?.success
-                ? '这份历史演算记录不含甘特图，请重新演算。原收益和排班图片仍可查看、导出。'
-                : '演算完成后显示排班甘特图'
+                ? '这份历史演算记录不含工作记录，请重新演算。原收益和排班图片仍可查看、导出。'
+                : '演算完成后显示工作记录'
             "
           />
         </n-tab-pane>

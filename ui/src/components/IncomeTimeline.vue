@@ -5,12 +5,12 @@ import ScheduleTimelineGantt from '@/riic/vendor/components/workbench/ScheduleTi
 
 const props = defineProps({ report: Object, timelineData: Object })
 const overviewPage = ref(1)
-const operators = computed(() => props.timelineData?.operatorTracks ?? [])
+const operators = computed(() => props.report?.operators ?? [])
 const overviewRows = computed(() =>
   operators.value.slice((overviewPage.value - 1) * 20, overviewPage.value * 20)
 )
 watch(
-  () => props.timelineData,
+  () => props.report,
   () => (overviewPage.value = 1)
 )
 const hours = (value) => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
@@ -33,31 +33,50 @@ const colors = computed(() => ({
 
 <template>
   <div class="income-timeline" :style="colors">
-    <n-collapse class="time-overview">
+    <n-collapse class="time-overview" :default-expanded-names="['operator-time']">
       <n-collapse-item title="干员时间总览" name="operator-time">
         <p>
           仅统计采样期
-          {{ hours(props.timelineData?.observedHours ?? 0) }}
-          小时，不含预热。工作时长包含零心情驻岗。
+          {{ hours(props.report?.observedHours ?? 0) }}
+          小时，不含预热。工作、休息、空闲和心情涣散驻岗分别统计，主班和替班工时不含心情涣散驻岗。
         </p>
-        <n-table size="small">
-          <thead>
-            <tr>
-              <th>干员</th>
-              <th>工作（小时）</th>
-              <th>休息（小时）</th>
-              <th>空闲（小时）</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="operator in overviewRows" :key="operator.operatorId">
-              <td>{{ operator.operatorName }}</td>
-              <td>{{ hours(operator.workHours + operator.exhaustedHours) }}</td>
-              <td>{{ hours(operator.restHours) }}</td>
-              <td>{{ hours(operator.idleHours) }}</td>
-            </tr>
-          </tbody>
-        </n-table>
+        <p>工作占比 = 工作时长 / 采样时长；工休比 = 工作时长 / 休息时长，无休息时显示 —。</p>
+        <div class="time-overview-table">
+          <n-table size="small">
+            <thead>
+              <tr>
+                <th>干员</th>
+                <th>工作占比</th>
+                <th>工休比</th>
+                <th>工作（小时）</th>
+                <th>主班（小时）</th>
+                <th>替班（小时）</th>
+                <th>休息（小时）</th>
+                <th>空闲（小时）</th>
+                <th>心情涣散（小时）</th>
+                <th>期末心情</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="operator in overviewRows" :key="operator.operatorId">
+                <td>{{ operator.operatorName }}</td>
+                <td>{{ hours(operator.workFraction * 100) }}%</td>
+                <td>
+                  {{
+                    operator.workRestRatio == null ? '—' : `${hours(operator.workRestRatio)} : 1`
+                  }}
+                </td>
+                <td>{{ hours(operator.workHours) }}</td>
+                <td>{{ hours(operator.mainWorkHours) }}</td>
+                <td>{{ hours(operator.substituteWorkHours) }}</td>
+                <td>{{ hours(operator.restHours) }}</td>
+                <td>{{ hours(operator.idleHours) }}</td>
+                <td>{{ hours(operator.exhaustedHours) }}</td>
+                <td>{{ hours(operator.finalMorale) }} / 24</td>
+              </tr>
+            </tbody>
+          </n-table>
+        </div>
         <n-pagination
           v-if="operators.length > 20"
           v-model:page="overviewPage"
@@ -85,6 +104,13 @@ const colors = computed(() => ({
 }
 .time-overview :deep(.n-pagination) {
   margin-top: 12px;
+}
+.time-overview-table {
+  overflow-x: auto;
+}
+.time-overview-table :deep(table) {
+  min-width: 1040px;
+  white-space: nowrap;
 }
 .income-timeline :deep(.schedule-timeline-gantt) {
   margin: 8px 0 0;
