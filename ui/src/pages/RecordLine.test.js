@@ -65,6 +65,9 @@ it('reuses simulation interactions without fetching history or persisting custom
     await nextTick()
     expect(page.board.views).toHaveLength(1)
     expect(page.board.views[0].operators).toEqual(['芬'])
+    const customPoints = page.orderedReportData.value[0].moodData.datasets[0].data
+    page.toggleLine(page.orderedReportData.value[0].boardKey, 0)
+    expect(page.orderedReportData.value[0].moodData.datasets[0].data).toBe(customPoints)
     page.toggleLine('制造', 0)
     expect(page.orderedReportData.value[1].moodData.datasets[0].hidden).toBe(true)
     await nextTick()

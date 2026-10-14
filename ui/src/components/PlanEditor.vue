@@ -247,7 +247,6 @@ function set_facility(e) {
 </script>
 
 <template>
-  <PlanFacilityLevels :facility="facility" :locked="edit_locked" />
   <div class="plan-container" ref="outer">
     <div class="outer" data-no-update-drop>
       <!-- 左 -->

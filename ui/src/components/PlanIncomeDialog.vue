@@ -11,6 +11,7 @@ import {
 import { applyIncomeCache } from '@/riic/incomeCache'
 import { incomeAlgorithms, incomeAlgorithmLabel, incomeSettingsUrl } from '@/utils/incomeSettings'
 import { createIncomeSession } from '@/riic/incomeSession'
+import { loadIncomeArchive, saveIncomeArchive } from '@/riic/incomeArchive'
 import { incomeLogTime } from '@/riic/incomeLogs'
 import IncomeMoraleChart from './IncomeMoraleChart.vue'
 import {
@@ -103,7 +104,7 @@ async function selectAlgorithm(value) {
     if (alive) weightsBusy.value = false
   }
 }
-onMounted(() => Promise.allSettled([readCache(), readWeights()]))
+onMounted(() => Promise.allSettled([readCache(), readWeights(), restoreResult()]))
 const state = reactive({
   running: false,
   result: null,
@@ -116,7 +117,16 @@ const exporting = ref(false)
 const exportError = ref('')
 const exported = ref(false)
 const exportName = ref('')
-const imageName = computed(() => exportName.value.trim() || props.snapshot?.label || '排班')
+const completedSnapshot = ref(null)
+const archiveLoading = ref(true)
+const archiveError = ref('')
+const attemptDiagnostics = ref([])
+const savedAt = ref(null)
+let lastCompleted = null
+let runSnapshot = null
+const imageName = computed(
+  () => exportName.value.trim() || completedSnapshot.value?.label || '排班'
+)
 const seconds = ref(0)
 const activeTab = ref('settings')
 const progressLog = ref([])
@@ -132,7 +142,12 @@ const visibleEvents = computed(() =>
 )
 const reportLines = computed(() =>
   state.result?.success
-    ? incomeReportLines(state.result, state.input.settings, state.input.plan, props.snapshot.label)
+    ? incomeReportLines(
+        state.result,
+        state.input.settings,
+        state.input.plan,
+        completedSnapshot.value?.label
+      )
     : []
 )
 let started = 0
@@ -174,7 +189,13 @@ const session = createIncomeSession({
   createWorker: () =>
     new Worker(new URL('../riic/incomeWorker.js', import.meta.url), { type: 'module' }),
   update(patch) {
-    Object.assign(state, patch)
+    const displayed = { ...patch }
+    if (lastCompleted && !patch.result?.success) {
+      delete displayed.result
+      delete displayed.input
+    }
+    Object.assign(state, displayed)
+    if (patch.error) attemptDiagnostics.value = patch.result?.diagnostics ?? []
     if (patch.progress) {
       lastProgress = seconds.value
       const entry =
@@ -183,14 +204,63 @@ const session = createIncomeSession({
       if (progressLog.value.at(-1) !== entry)
         progressLog.value = [...progressLog.value.slice(-199), entry]
     }
-    if (patch.result?.success) activeTab.value = 'results'
-    else if (patch.error) activeTab.value = 'logs'
+    if (patch.result?.success) {
+      completedSnapshot.value = runSnapshot
+      savedAt.value = Date.now()
+      lastCompleted = {
+        result: patch.result,
+        input: patch.input,
+        snapshot: runSnapshot,
+        bottleneck: patch.bottleneck,
+        progressLog: [...progressLog.value],
+        exportName: exportName.value,
+        savedAt: savedAt.value
+      }
+      persistResult()
+      activeTab.value = 'results'
+    } else if (patch.error) activeTab.value = 'logs'
   }
 })
+async function restoreResult() {
+  try {
+    const record = await loadIncomeArchive()
+    if (!alive || !record) return
+    lastCompleted = record
+    completedSnapshot.value = record.snapshot
+    savedAt.value = record.savedAt
+    exportName.value = record.exportName || ''
+    progressLog.value = record.progressLog
+    Object.assign(state, {
+      result: record.result,
+      input: record.input,
+      bottleneck: record.bottleneck
+    })
+    activeTab.value = 'results'
+  } catch (error) {
+    if (alive) archiveError.value = `上次收益记录读取失败：${error.message}`
+  } finally {
+    if (alive) archiveLoading.value = false
+  }
+}
+async function persistResult() {
+  if (!lastCompleted) return
+  lastCompleted = { ...lastCompleted, exportName: exportName.value }
+  archiveError.value = ''
+  try {
+    await saveIncomeArchive(lastCompleted)
+  } catch (error) {
+    if (alive)
+      archiveError.value = `收益记录保存失败：${error.message}。当前结果仍可导出，请重试保存。`
+  }
+}
+function saveName() {
+  if (lastCompleted && lastCompleted.exportName !== exportName.value) persistResult()
+}
 async function start() {
-  if (submitting.value || state.running || exporting.value) return
+  if (archiveLoading.value || submitting.value || state.running || exporting.value) return
   submitting.value = true
   state.error = null
+  attemptDiagnostics.value = []
   try {
     if (settings.weightMode === 'mower') await readWeights()
     if (!alive) return
@@ -205,7 +275,9 @@ async function start() {
     logPage.value = 1
     logSearch.value = ''
     activeTab.value = 'logs'
-    session.start(props.snapshot.plan, settings)
+    const { image, ...snapshot } = props.snapshot
+    runSnapshot = { ...JSON.parse(JSON.stringify(snapshot)), image }
+    session.start(runSnapshot.plan, settings)
   } catch (error) {
     if (alive) state.error = error.message
   } finally {
@@ -220,12 +292,12 @@ async function exportImage() {
   try {
     const name = imageName.value
     const blob = await renderIncomeImage(
-      props.snapshot.image,
+      completedSnapshot.value.image,
       state.result,
       state.input.settings,
       state.input.plan,
-      props.snapshot.theme,
-      props.snapshot.roomBounds
+      completedSnapshot.value.theme,
+      completedSnapshot.value.roomBounds
     )
     if (generation !== exportGeneration) return
     downloadIncomeImage(blob, incomeImageFilename(name, state.result))
@@ -237,6 +309,7 @@ async function exportImage() {
   }
 }
 function close() {
+  saveName()
   alive = false
   controller.abort()
   session.dispose()
@@ -244,6 +317,7 @@ function close() {
   emit('close')
 }
 onBeforeUnmount(() => {
+  saveName()
   alive = false
   controller.abort()
   session.dispose()
@@ -265,7 +339,17 @@ onBeforeUnmount(() => {
   >
     <n-spin v-if="preparing" description="正在准备原排班图片和数据" />
     <n-alert v-if="prepareError" type="error">{{ prepareError }}</n-alert>
-    <template v-if="snapshot">
+    <n-alert v-if="archiveError" type="warning" class="notice">
+      {{ archiveError }}
+      <n-button v-if="state.result?.success" size="small" @click="persistResult">重试保存</n-button>
+    </n-alert>
+    <p v-if="archiveLoading">正在读取上次收益记录…</p>
+    <p v-else-if="savedAt">
+      保留的成功演算：{{
+        new Date(savedAt).toLocaleString('zh-CN')
+      }}。结果和导出使用该次排班；重新演算使用当前排班。记录保存在本浏览器。
+    </p>
+    <template v-if="snapshot || state.result?.success">
       <div v-if="state.running" class="notice" role="status" aria-live="polite">
         <n-progress type="line" :percentage="Math.floor((state.progress?.fraction ?? 0) * 100)" />
         <p>{{ state.progress?.label || '正在准备演算' }} · 已用 {{ seconds }} 秒</p>
@@ -275,7 +359,7 @@ onBeforeUnmount(() => {
       </div>
       <n-alert v-if="state.error" class="notice" type="error">
         {{ state.error }}
-        <p v-for="(d, i) in state.result?.diagnostics" :key="i">{{ d.message }}</p>
+        <p v-for="(d, i) in attemptDiagnostics" :key="i">{{ d.message }}</p>
       </n-alert>
       <n-alert v-if="exportError" class="notice" type="error"
         >图片导出失败：{{ exportError }}。计算结果已保留，可以重新导出。</n-alert
@@ -427,7 +511,7 @@ onBeforeUnmount(() => {
                     v-model:value="settings.weightMode"
                     :options="[
                       { label: '同步 Mower 基报算法', value: 'mower' },
-                      { label: '本次自定义（不保存）', value: 'custom' }
+                      { label: '本次自定义', value: 'custom' }
                     ]"
                 /></n-form-item>
                 <template v-if="settings.weightMode === 'mower'">
@@ -483,7 +567,8 @@ onBeforeUnmount(() => {
             <n-form-item label="排班名称" :show-feedback="false"
               ><n-input
                 v-model:value="exportName"
-                :placeholder="snapshot.label || '排班'"
+                @change="saveName"
+                :placeholder="completedSnapshot?.label || '排班'"
                 :maxlength="60"
                 :disabled="exporting"
             /></n-form-item>
@@ -595,7 +680,7 @@ onBeforeUnmount(() => {
           <n-alert
             v-if="state.bottleneck"
             class="notice"
-            :type="state.result?.success ? 'info' : 'warning'"
+            :type="state.error ? 'warning' : 'info'"
             title="本次演算观察"
           >
             <p>
@@ -684,6 +769,7 @@ onBeforeUnmount(() => {
         <n-button
           type="primary"
           :disabled="
+            archiveLoading ||
             !snapshot ||
             preparing ||
             state.running ||

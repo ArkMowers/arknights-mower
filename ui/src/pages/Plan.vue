@@ -4,6 +4,7 @@ defineOptions({ name: 'MowerPlanPage' })
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore, useRescuePlanStore } from '@/stores/plan'
 import { useMowerStore } from '@/stores/mower'
+import PlanFacilityLevels from '@/components/PlanFacilityLevels.vue'
 import PlanAdvancedSettings from '@/components/PlanAdvancedSettings.vue'
 import PlanOperatorSelect from '@/components/PlanOperatorSelect.vue'
 import DropDown from '@/components/DropDown.vue'
@@ -896,7 +897,9 @@ function movePlanForward() {
       >
         计算收益
       </n-button>
+      <PlanFacilityLevels class="inline-power" />
     </div>
+    <PlanFacilityLevels v-if="rescue" class="w-980 mx-auto px-12 mw-980" />
     <n-form
       class="w-980 mx-auto mb-12 px-12 mw-980"
       :label-placement="mobile ? 'top' : 'left'"
@@ -1249,9 +1252,14 @@ function movePlanForward() {
 <style scoped lang="scss">
 .plan-advanced-actions.mx-auto {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.inline-power {
+  margin: 0;
 }
 
 .w-980 {

@@ -47,13 +47,6 @@
           <n-button size="tiny" secondary @click="setGroupVisibility(group.boardKey, false)">
             隐藏全部
           </n-button>
-          <n-button
-            size="tiny"
-            secondary
-            @click="adjustWidth(group.boardKey)"
-            title="拓宽图表以便水平滚动"
-            >↔</n-button
-          >
         </div>
         <mood-rate-legend
           :group-name="group.groupName"
@@ -61,13 +54,9 @@
           @toggle="toggleLine(group.boardKey, $event)"
         />
         <div class="line-outer-container">
-          <div
-            v-if="group.moodData.datasets.length"
-            class="line-inner-container"
-            :style="{ width: (expandChart[group.boardKey] ?? 100) + '%' }"
-          >
-            <Line
-              :key="group.boardKey + ':' + (hiddenLines[group.boardKey] || []).join('|')"
+          <div v-if="group.moodData.datasets.length" class="line-inner-container">
+            <MoodLineChart
+              :key="group.boardKey"
               :ref="(instance) => setChartRef(group.boardKey, instance)"
               :data="group.moodData"
               :options="effectiveChartOptions"
@@ -104,8 +93,9 @@
           @toggle="toggleLine(fullscreenGroup.boardKey, $event)"
         />
         <div class="fullscreen-chart">
-          <Line
+          <MoodLineChart
             v-if="fullscreenGroup.moodData.datasets.length"
+            :key="fullscreenGroup.boardKey"
             :data="fullscreenGroup.moodData"
             :options="effectiveChartOptions"
             :plugins="simulation ? [samplingBoundary] : []"
@@ -127,7 +117,7 @@
 
 <script setup>
 import { computed, reactive, ref, onMounted, watch } from 'vue'
-import { Line } from 'vue-chartjs'
+import MoodLineChart from '@/components/MoodLineChart.vue'
 import 'chartjs-adapter-luxon'
 import {
   CategoryScale,
@@ -182,7 +172,6 @@ const formError = ref('')
 const editorShow = ref(false)
 const editingId = ref('')
 const fullscreenKey = ref('')
-const expandChart = ref({})
 const hiddenLines = ref({})
 const chartRefs = new Map()
 const chartIntervalCache = new WeakMap()
@@ -192,8 +181,11 @@ const editingView = computed(() => board.views.find((view) => view.id === editin
 const fullscreenGroup = computed(
   () => orderedReportData.value.find((group) => group.boardKey === fullscreenKey.value) || null
 )
+const customGroups = computed(() =>
+  buildObservationGroups(board.views, reportData.value, fetchedSeries.value)
+)
 const orderedReportData = computed(() => {
-  const custom = buildObservationGroups(board.views, reportData.value, fetchedSeries.value)
+  const custom = customGroups.value
   const original = reportData.value.map((group) => ({ ...group, boardKey: group.groupName }))
   // Newly created observation cards lead unless the user has dragged them elsewhere.
   const manual = board.groupOrder
@@ -276,14 +268,6 @@ function toggleLine(key, index) {
   if (chart) {
     chart.setDatasetVisibility(index, !next.has(name))
     chart.update('none')
-  }
-}
-
-function adjustWidth(key) {
-  const value = expandChart.value[key] || 100
-  expandChart.value = {
-    ...expandChart.value,
-    [key]: value === 100 ? 200 : value === 200 ? 300 : 100
   }
 }
 

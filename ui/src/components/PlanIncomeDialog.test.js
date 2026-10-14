@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { effectScope, reactive, nextTick } from 'vue'
 import Dialog from './PlanIncomeDialog.vue'
+import { loadIncomeArchive, saveIncomeArchive } from '@/riic/incomeArchive'
 import { renderIncomeImage, downloadIncomeImage } from '@/riic/incomeImage'
+vi.mock('@/riic/incomeArchive', () => ({
+  loadIncomeArchive: vi.fn(async () => null),
+  saveIncomeArchive: vi.fn(async () => {})
+}))
 vi.mock('./IncomeMoraleChart.vue', () => ({ default: { render: () => null } }))
 vi.mock('@/riic/incomeImage', async (original) => ({
   ...(await original()),
@@ -30,8 +35,10 @@ const cache = () => ({
   observed_at: 1234
 })
 let page, scope, workers, props
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks()
+  loadIncomeArchive.mockResolvedValue(null)
+  saveIncomeArchive.mockResolvedValue(undefined)
   io.client = {
     get: vi.fn(async (url) => ({ data: url.includes('income-cache') ? cache() : valuation() })),
     put: vi.fn()
@@ -51,6 +58,10 @@ beforeEach(() => {
   props = reactive({
     snapshot: {
       droneRoom: 'room_1_1',
+      image: new Blob(['original']),
+      theme: 'light',
+      roomBounds: { room_1_1: { x: 42 } },
+      label: '原排班',
       plan: {
         default: 'plan1',
         conf: {},
@@ -60,6 +71,7 @@ beforeEach(() => {
     }
   })
   page = scope.run(() => Dialog.setup(props, { expose: vi.fn(), emit: vi.fn() }))
+  await page.restoreResult()
 })
 afterEach(() => {
   io.cleanup()
@@ -185,4 +197,90 @@ it('applies the default after asynchronous capture and rejects unavailable facil
   props.snapshot = snapshot
   await nextTick()
   expect(page.settings.droneRoom).toBe('room_1_1')
+})
+
+const success = () => ({
+  success: true,
+  diagnostics: [],
+  summary: { totalScore82: 100 },
+  observedHours: 672
+})
+it('restores the last result with its original plan image after reopening with a different schedule', async () => {
+  await page.readCache()
+  await page.start()
+  workers[0].onmessage({ data: { type: 'complete', result: success() } })
+  const saved = saveIncomeArchive.mock.calls.at(-1)[0]
+  expect(saved.input.plan).toEqual(props.snapshot.plan)
+  expect(saved.snapshot.image).toBe(props.snapshot.image)
+  io.cleanup()
+  scope.stop()
+  props.snapshot = {
+    ...props.snapshot,
+    label: '新排班',
+    image: new Blob(['new']),
+    theme: 'dark',
+    roomBounds: {}
+  }
+  props.snapshot.plan = { ...props.snapshot.plan, facility_levels: { contact: 1 } }
+  loadIncomeArchive.mockResolvedValue(saved)
+  scope = effectScope()
+  page = scope.run(() => Dialog.setup(props, { expose: vi.fn(), emit: vi.fn() }))
+  await page.restoreResult()
+  await page.exportImage()
+  expect(page.activeTab.value).toBe('results')
+  expect(renderIncomeImage.mock.calls.at(-1)).toEqual([
+    saved.snapshot.image,
+    saved.result,
+    saved.input.settings,
+    saved.input.plan,
+    'light',
+    { room_1_1: { x: 42 } }
+  ])
+  expect(downloadIncomeImage.mock.calls.at(-1)[1]).toContain('原排班_')
+  expect(page.state.input.plan.facility_levels).toBeUndefined()
+  expect(props.snapshot.plan.facility_levels).toEqual({ contact: 1 })
+})
+it('keeps the previous success through cancellation and replaces it only after a new success', async () => {
+  await page.readCache()
+  await page.start()
+  workers[0].onmessage({ data: { type: 'complete', result: success() } })
+  const previous = page.state.input
+  props.snapshot.plan.facility_levels = { contact: 1 }
+  await page.start()
+  expect(page.state.input).toBe(previous)
+  page.session.cancel()
+  expect(page.state.result.success).toBe(true)
+  expect(saveIncomeArchive).toHaveBeenCalledTimes(1)
+  await page.start()
+  workers[2].onmessage({ data: { type: 'complete', result: success() } })
+  expect(page.state.input.plan.facility_levels).toEqual({ contact: 1 })
+  expect(saveIncomeArchive).toHaveBeenCalledTimes(2)
+})
+it('reports storage failure while keeping the completed result exportable', async () => {
+  saveIncomeArchive.mockRejectedValue(new Error('quota'))
+  await page.readCache()
+  await page.start()
+  workers[0].onmessage({ data: { type: 'complete', result: success() } })
+  await nextTick()
+  expect(page.archiveError.value).toContain('quota')
+  expect(page.state.result.success).toBe(true)
+  await page.exportImage()
+  expect(downloadIncomeImage).toHaveBeenCalledOnce()
+})
+it('does not let a late archive read replace a new calculation or a closed dialog', async () => {
+  let done
+  loadIncomeArchive.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        done = resolve
+      })
+  )
+  page.archiveLoading.value = true
+  const restore = page.restoreResult()
+  await page.start()
+  expect(workers).toHaveLength(0)
+  page.close()
+  done({ result: success(), input: {}, snapshot: {}, progressLog: [] })
+  await restore
+  expect(page.state.result).toBeNull()
 })

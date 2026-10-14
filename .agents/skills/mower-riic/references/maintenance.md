@@ -5,7 +5,7 @@
 - 前端入口：`ui/src/pages/Plan.vue` 与 `ui/src/components/PlanIncomeDialog.vue`。
 - 缓存：`server.py` 的 `/riic/income-cache` 只读共享森空岛快照，`utils/building_skills.py` 筛选练度与库存字段。算法复用 `/report/recycling_settings`，演算前重新读取；切换共享算法只修改对应系数，保留回收站效率。
 - 输入与参数：`ui/src/riic/income.js`；默认预热 3 天、统计 28 天。
-- 演算：`ui/src/riic/incomeWorker.js`；生命周期：`incomeSession.js`；图片：`incomeImage.js`；心情曲线：`IncomeMoraleChart.vue`。
+- 演算：`ui/src/riic/incomeWorker.js`；生命周期：`incomeSession.js`；上次结果存储：`incomeArchive.js`；图片：`incomeImage.js`；心情曲线：`IncomeMoraleChart.vue`，共用缩放组件为 `MoodLineChart.vue`。
 - 固定源码：`ui/src/riic/vendor/`，`source.json` 记录来源提交、Mower 参考版本和逐文件 SHA-256。保留目录内已有许可证；来源记录不授予其他许可证。
 - 原图片接口：`server.py` 的 `/dialog/save/img`，可使用显式排班快照；导入继续走 `/import` 和 `arknights_mower/utils/qrcode.py`。
 
@@ -24,7 +24,7 @@
 从 `ui/` 执行修改范围对应的文件：
 
 ```bash
-npm test -- src/riic/income.test.js src/riic/incomeSession.test.js src/components/PlanIncomeDialog.test.js
+npm test -- src/riic/income.test.js src/riic/incomeSession.test.js src/riic/incomeArchive.test.js src/components/PlanIncomeDialog.test.js src/components/MoodLineChart.test.js src/pages/RecordLine.test.js
 ```
 
 图片传递从仓库根目录执行：
@@ -35,6 +35,6 @@ pytest arknights_mower/tests/config_backup_tests.py -k 'income or recycling_plan
 
 AI 知识与试排修改执行 `arknights_mower/tests/riic_assistant_tests.py`，涉及真实工具注册或调用再加入 `ai_feature_tests.py`。按需要运行前端生产构建一次，确认独立 Worker 产物；不要在快速迭代中反复构建。
 
-核对心情曲线的预热边界、充能跳变、干员筛选和末点，并用相同输入比较开关记录前后的产出。核对完成后不自动下载、手动导出使用冻结结果，以及取消、创建失败、消息反序、页面卸载和导出失败重试；核对旧排班变更后仍导出原快照，以及浅深主题下加高图片的完整二维码回导。用可手算场景验证数量，用代表性完整窗口验证调度和资源。测试通过不能证明真实设备收益。
+核对心情曲线的预热边界、充能跳变、干员筛选和末点，并用相同输入比较开关记录前后的产出。核对完成后不自动下载、手动导出使用冻结结果，以及取消、创建失败、消息反序、页面卸载和导出失败重试；核对关闭、刷新后恢复上次成功演算，存储失败保留旧记录、旧窗口保存不覆盖新结果，排班变更后仍导出原快照，以及浅深主题下加高图片的完整二维码回导。用可手算场景验证数量，用代表性完整窗口验证调度和资源。测试通过不能证明真实设备收益。
 
 设施等级在排班编辑器保存为 `facility_levels`，主副表共用；无需在收益窗口再次配置。右侧会客室、加工站、办公室、训练室和回收站未设置时默认三级，空房也计入建筑耗电，显式等级优先。维护时遵循[设施等级与电量规则](../../../../docs/subsystems/plan-editor.md#saved-facility-levels)，核对自动保存、未驻员建筑耗电、主副表容量、二维码往返及实际心情曲线。宿舍按当前等级满氛围，不能用任意速率覆盖掩盖等级传递问题。
