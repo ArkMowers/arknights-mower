@@ -2,7 +2,7 @@ import { runCalculationBridge } from './vendor/workbench/calculationBridge'
 import { incomeRequest } from './income'
 import { incomeEventLog } from './incomeLogs'
 import { createRecruitmentObservation } from './incomeRecruitment'
-import { OPERATOR_MAP } from './vendor/domain/operators'
+import { buildTimelineData } from './vendor/workbench/timeline/timelineModel'
 
 export function calculateIncome(plan, settings, onProgress) {
   const { workspace, options } = incomeRequest(plan, settings)
@@ -55,11 +55,8 @@ export function calculateIncome(plan, settings, onProgress) {
   return {
     success: true,
     eventLog: incomeEventLog(simulation),
-    morale: Object.entries(simulation.moraleTimeline ?? {}).map(([id, row]) => ({
-      id,
-      name: OPERATOR_MAP.get(id)?.name ?? id,
-      ...row
-    })),
+    simulationReport: simulation,
+    timelineData: buildTimelineData(simulation),
     resources: production.sample,
     droneRooms: [
       ...new Set(

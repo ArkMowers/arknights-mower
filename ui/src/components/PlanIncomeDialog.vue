@@ -13,7 +13,7 @@ import { incomeAlgorithms, incomeAlgorithmLabel, incomeSettingsUrl } from '@/uti
 import { createIncomeSession } from '@/riic/incomeSession'
 import { loadIncomeArchive, saveIncomeArchive } from '@/riic/incomeArchive'
 import { incomeLogTime } from '@/riic/incomeLogs'
-import IncomeMoraleChart from './IncomeMoraleChart.vue'
+import IncomeTimeline from './IncomeTimeline.vue'
 import {
   renderIncomeImage,
   downloadIncomeImage,
@@ -664,14 +664,22 @@ onBeforeUnmount(() => {
             >
           </template>
         </n-tab-pane>
-        <n-tab-pane name="morale" tab="心情曲线" display-directive="show:lazy">
-          <IncomeMoraleChart
-            v-if="state.result?.success"
-            :rows="state.result.morale"
-            :plan="state.input.plan"
-            :warmup-hours="state.input.settings.warmupDays * 24"
+        <n-tab-pane name="timeline" tab="排班甘特图" display-directive="show:lazy">
+          <IncomeTimeline
+            v-if="
+              state.result?.success && state.result.simulationReport && state.result.timelineData
+            "
+            :report="state.result.simulationReport"
+            :timeline-data="state.result.timelineData"
           />
-          <n-empty v-else description="演算完成后显示心情曲线" />
+          <n-empty
+            v-else
+            :description="
+              state.result?.success
+                ? '这份历史演算记录不含甘特图，请重新演算。原收益和排班图片仍可查看、导出。'
+                : '演算完成后显示排班甘特图'
+            "
+          />
         </n-tab-pane>
         <n-tab-pane name="logs" tab="演算日志">
           <n-alert

@@ -7,7 +7,9 @@ vi.mock('@/riic/incomeArchive', () => ({
   loadIncomeArchive: vi.fn(async () => null),
   saveIncomeArchive: vi.fn(async () => {})
 }))
-vi.mock('./IncomeMoraleChart.vue', () => ({ default: { render: () => null } }))
+vi.mock('@/riic/vendor/components/workbench/ScheduleTimelineGantt.vue', () => ({
+  default: { render: () => null }
+}))
 vi.mock('@/riic/incomeImage', async (original) => ({
   ...(await original()),
   renderIncomeImage: vi.fn(async () => new Blob(['image'])),

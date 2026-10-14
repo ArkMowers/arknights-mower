@@ -97,8 +97,7 @@ export function incomeRequest(plan, settings) {
         maxStepHours: 0.25,
         maxEvents: 200000,
         warmupModel: 'hourly',
-        recordSegments: false,
-        recordMorale: true,
+        recordSegments: true,
         operatorInventory: operators,
         productionWeights: incomeWeights(settings),
         production: {

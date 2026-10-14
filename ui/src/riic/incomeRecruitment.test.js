@@ -123,13 +123,8 @@ it('reports actual office interval production through the complete Worker calcul
   expect(result.summary.goldCount).toBe(unobserved.report.summary.goldCount)
   expect(result.summary.totalScore82).toBe(unobserved.report.summary.totalScore82)
   expect(result.resources).toEqual(unobserved.simulationReport.production.sample)
-  expect(result.morale).toEqual(
-    Object.entries(unobserved.simulationReport.moraleTimeline).map(([id, row]) => ({
-      id,
-      name: '梓兰',
-      ...row
-    }))
-  )
+  expect(result.simulationReport.operators).toEqual(unobserved.simulationReport.operators)
+  expect(result.simulationReport.segments).toEqual(unobserved.simulationReport.segments)
   plan.plan1.contact.plans = []
   const empty = calculateIncome(plan, settings)
   expect(empty.success, empty.error).toBe(true)

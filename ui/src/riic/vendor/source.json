@@ -149,7 +149,11 @@
     "simulator/manufacturingTimeline.spec.ts": "79a43609a7316068277b3433a169fbbaae2a3bc00424918acff17ee812153e04",
     "scheduler/mowerBackupRestingJoin.spec.ts": "6c3d4cc64f8efd61b20df08fda998c97fceac116f6bfc5ddb611fd5c75c3c9b2",
     "scheduler/mowerBackupRestingJoin.ts": "1d3031eed9f43cd75a90adf4668c5ccf210f5024de3f952b8347846ec2459c3c",
-    "scheduler/mowerCompletedDeparture.spec.ts": "6c361fc9563105e8ce5266f06a0516db7d8d03d98b17c14c67aa8f6e152c3ac3"
+    "scheduler/mowerCompletedDeparture.spec.ts": "6c361fc9563105e8ce5266f06a0516db7d8d03d98b17c14c67aa8f6e152c3ac3",
+    "components/workbench/ScheduleTimelineGantt.vue": "39bd3d0b1bc4a0ebaead389231d52dd643f84b4389f5b8c17df63522dcb4c2fe",
+    "workbench/timeline/timelineDisplay.ts": "74a47cd6fbbbb4cdc9e44a8574cc89881ab3ed092634734c8ef4d88c10a48738",
+    "workbench/timeline/timelineModel.spec.ts": "a3e2104f69ccf38fbb6f519f13ed4fab6e996601b55b45b85c6de22fcb9703fe",
+    "workbench/timeline/timelineDisplay.spec.ts": "2798866b0916a97a7a5f4c079d2323afbb46f4aceb0c7edf738ccdd7599252e7"
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
@@ -157,8 +161,8 @@
       "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances."
     },
     "simulator/scheduleSimulation.ts": {
-      "sha256": "d591e4fa3a9095c07003c672e3ebb6263fae6a92d44a7ec9e3e69cdbf749f249",
-      "reason": "Optionally record bounded morale curves across warmup and sampling, preserving linear turns and same-time charge jumps without changing scheduling or production. Expose resolved intervals to a read-only local observer; omit its callback from serializable report inputs."
+      "sha256": "94680c5a1c53384869cbfc2d54ffbd755718ea6036cac20fe6250f0ebeba9893",
+      "reason": "Expose resolved intervals to a read-only local recruitment observer; omit its callback from serializable report inputs. The upstream segment timeline and Gantt chart replace local morale-curve recording."
     },
     "workbench/scheduleSimulationBridge.ts": {
       "reason": "Forward the local interval observer separately from JSON-cloned simulation data.",

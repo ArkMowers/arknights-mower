@@ -56,7 +56,10 @@ afterEach(() => vi.unstubAllGlobals())
 function record(savedAt = 1) {
   return {
     savedAt,
-    result: { success: true, morale: [{ operator: '芬', x: 42 }] },
+    result: {
+      success: true,
+      timelineData: { operatorTracks: [{ operatorName: '芬', workHours: 42 }] }
+    },
     input: { plan: { conf: { rest: '芬' } }, settings: { sampleDays: 28 } },
     snapshot: {
       plan: { conf: { rest: '芬' } },
@@ -71,11 +74,11 @@ it('stores the image, inputs and result together and detaches later mutations', 
   const data = record()
   const saving = saveIncomeArchive(data)
   data.input.settings.sampleDays = 1
-  data.result.morale[0].x = 100
+  data.result.timelineData.operatorTracks[0].workHours = 100
   await saving
   const loaded = await loadIncomeArchive()
   expect(loaded.input.settings.sampleDays).toBe(28)
-  expect(loaded.result.morale[0].x).toBe(42)
+  expect(loaded.result.timelineData.operatorTracks[0].workHours).toBe(42)
   expect(await loaded.snapshot.image.text()).toBe('original image')
   expect(loaded.snapshot.plan).toEqual(loaded.input.plan)
 })

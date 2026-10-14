@@ -17,6 +17,7 @@ const modelSettings = () => ({
 import { calculateIncome } from './incomeWorker'
 import { runCalculationBridge } from './vendor/workbench/calculationBridge'
 import { incomeReportLines } from './incomeImage'
+import { buildTimelineData } from './vendor/workbench/timeline/timelineModel'
 const plan = () => ({
   default: 'plan1',
   conf: {},
@@ -36,7 +37,7 @@ describe('income export calculation', () => {
     expect(request.options.simulationOptions).toMatchObject({
       warmupHours: 72,
       sampleHours: 672,
-      recordSegments: false
+      recordSegments: true
     })
     expect(request.options.simulationAssumptions).toMatchObject({
       restingThreshold: 0.7,
@@ -128,15 +129,16 @@ describe('income export calculation', () => {
       expect(dorm.slots).toHaveLength(5)
       const result = calculateIncome(source, modelSettings())
       expect(result.success, JSON.stringify(result)).toBe(true)
-      const mood = result.morale.find((row) => row.name === '芬')
-      expect(mood.points[0]).toEqual([0, 24])
-      expect(mood.points.at(-1)[0]).toBeCloseTo(744, 7)
-      expect(mood.points.some(([time, value]) => time < 72 && value < 24)).toBe(true)
+      const track = result.timelineData.operatorTracks.find((row) => row.operatorName === '芬')
+      expect(track.intervals[0].start).toBe(0)
+      expect(track.intervals.at(-1).end).toBeCloseTo(672, 7)
+      expect(track.workHours).toBeGreaterThan(0)
+      expect(track.restHours).toBeGreaterThan(0)
       expect(
-        mood.points.some(([time, value], index) => index && value > mood.points[index - 1][1])
-      ).toBe(true)
-      expect(mood.points.every(([, value]) => value >= 0 && value <= 24)).toBe(true)
-      expect(mood.truncated).toBe(false)
+        track.workHours + track.restHours + track.idleHours + track.exhaustedHours
+      ).toBeCloseTo(672, 7)
+      expect(result.simulationReport.segments[0].start).toBeGreaterThanOrEqual(72)
+      expect(result).not.toHaveProperty('morale')
       expect(result.observedHours).toBeCloseTo(672, 7)
       expect(result.summary.goldCount).toBeGreaterThan(0)
       expect(
@@ -305,7 +307,7 @@ it('reports actual sample LMD balance changes and drone rooms with event logs', 
   expect(result.eventLog.entries.some((event) => event.type === '制造加速')).toBe(true)
 })
 
-it('records warmup and sampled morale without changing production or staffing', () => {
+it('uses the source Gantt timeline without changing production or staffing', () => {
   const source = plan()
   source.plan1.room_1_1.plans = [{ agent: '芬', group: '', replacement: ['香草'] }]
   source.plan1.room_2_3 = { name: '发电站', plans: [] }
@@ -316,18 +318,26 @@ it('records warmup and sampled morale without changing production or staffing', 
   }
   const settings = { ...modelSettings(), warmupDays: 1, sampleDays: 1 }
   const { workspace, options } = incomeRequest(source, settings)
-  options.simulationOptions.recordMorale = false
+  options.simulationOptions.recordSegments = false
   const without = runCalculationBridge(workspace, options)
-  const withCurves = calculateIncome(source, settings)
+  const withTimeline = calculateIncome(source, settings)
   expect(without.success).toBe(true)
-  expect(withCurves.success).toBe(true)
-  expect(withCurves.summary.totalScore82).toBe(without.report.summary.totalScore82)
-  expect(withCurves.summary.netGoldCount).toBe(without.report.summary.netGoldCount)
-  expect(withCurves.resources).toEqual(without.simulationReport.production.sample)
-  for (const operator of without.simulationReport.operators) {
-    const row = withCurves.morale.find((row) => row.id === operator.operatorId)
-    expect(row.points.at(-1)).toEqual([48, operator.finalMorale])
-  }
+  expect(withTimeline.success).toBe(true)
+  expect(withTimeline.summary.totalScore82).toBe(without.report.summary.totalScore82)
+  expect(withTimeline.summary.netGoldCount).toBe(without.report.summary.netGoldCount)
+  expect(withTimeline.resources).toEqual(without.simulationReport.production.sample)
+  expect(withTimeline.simulationReport.operators).toEqual(without.simulationReport.operators)
+  expect(withTimeline.timelineData).toEqual(buildTimelineData(withTimeline.simulationReport))
+  expect(withTimeline.timelineData.observedHours).toBeCloseTo(24, 8)
+  expect(withTimeline.timelineData.warmupHours).toBe(24)
+  expect(
+    withTimeline.timelineData.operatorTracks
+      .find((row) => row.operatorName === '芬')
+      .intervals.at(-1).end
+  ).toBeCloseTo(24, 8)
+  expect(withTimeline.simulationReport).not.toHaveProperty('moraleTimeline')
+  expect(withTimeline.simulationReport.inputs.options).not.toHaveProperty('recordMorale')
+  expect(withTimeline.simulationReport.inputs.options.observeInterval).toBeUndefined()
 })
 
 it('caps recovered drones at 250 even when an imported legacy field says 200', () => {
