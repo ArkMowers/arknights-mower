@@ -21,6 +21,7 @@ describe('manager instance controls', () => {
     state: 'stopped',
     editable: true,
     can_start: true,
+    ai_assistant_enabled: false,
     can_stop: false
   })
 
@@ -152,6 +153,136 @@ describe('manager instance controls', () => {
     component.confirmBulk('start')
     await component.applyBulk()
     expect(component.error.value).toBe('spawn failed')
+  })
+
+  it('requires five seconds and acknowledgement on enable, then waits for Save', async () => {
+    await mount()
+    component.edit(0, 'settings')
+    await component.changeAssistant(true)
+    expect(component.assistantConfirmation.value).toMatchObject({ idx: 0, original: false })
+    expect(component.draft.value.ai_assistant_enabled).toBe(false)
+    await component.save()
+    expect(api.update_settings).not.toHaveBeenCalled()
+    component.riskAcknowledged.value = true
+    await vi.advanceTimersByTimeAsync(4999)
+    component.confirmAssistantChange()
+    expect(component.draft.value.ai_assistant_enabled).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    component.riskAcknowledged.value = false
+    component.confirmAssistantChange()
+    expect(component.draft.value.ai_assistant_enabled).toBe(false)
+    component.riskAcknowledged.value = true
+    component.confirmAssistantChange()
+    expect(component.assistantConfirmation.value).toBeNull()
+    expect(component.draft.value.ai_assistant_enabled).toBe(true)
+    expect(component.editing.value).toEqual({ idx: 0, kind: 'settings' })
+    expect(api.update_settings).not.toHaveBeenCalled()
+    component.draft.value.token = 'after-reading'
+    component.draft.value.port = 58001
+    await component.save()
+    expect(api.update_settings).toHaveBeenCalledExactlyOnceWith(0, {
+      token: 'after-reading',
+      port: 58001,
+      ai_assistant_enabled: true
+    })
+    expect(component.editing.value).toBeNull()
+  })
+
+  it('disables without a reading dialog and persists only on Save', async () => {
+    rows[0].ai_assistant_enabled = true
+    await mount()
+    component.edit(0, 'settings')
+    await component.changeAssistant(false)
+    expect(component.assistantConfirmation.value).toBeNull()
+    expect(component.draft.value.ai_assistant_enabled).toBe(false)
+    expect(api.update_settings).not.toHaveBeenCalled()
+    await component.save()
+    expect(api.update_settings).toHaveBeenCalledExactlyOnceWith(0, {
+      token: '',
+      port: null,
+      ai_assistant_enabled: false
+    })
+  })
+
+  it('cancels without saving and starts a fresh reading interval on retry', async () => {
+    await mount()
+    component.edit(0, 'settings')
+    component.draft.value.token = 'keep-draft'
+    await component.changeAssistant(true)
+    await vi.advanceTimersByTimeAsync(5000)
+    component.cancelAssistantConfirmation()
+    expect(api.update_settings).not.toHaveBeenCalled()
+    expect(component.draft.value.ai_assistant_enabled).toBe(false)
+    expect(component.draft.value.token).toBe('keep-draft')
+    await component.changeAssistant(true)
+    component.riskAcknowledged.value = true
+    component.confirmAssistantChange()
+    expect(api.update_settings).not.toHaveBeenCalled()
+    expect(component.riskSeconds.value).toBe(5)
+  })
+
+  it('retains the saved AI choice and draft when a confirmed write fails', async () => {
+    await mount()
+    component.edit(0, 'settings')
+    await component.changeAssistant(true)
+    await vi.advanceTimersByTimeAsync(5000)
+    component.riskAcknowledged.value = true
+    component.confirmAssistantChange()
+    api.update_settings.mockRejectedValueOnce(new Error('write failed'))
+    await component.save()
+    expect(rows[0].ai_assistant_enabled).toBe(false)
+    expect(component.draft.value.ai_assistant_enabled).toBe(true)
+    expect(component.editing.value).toEqual({ idx: 0, kind: 'settings' })
+    expect(component.error.value).toBe('write failed')
+  })
+
+  it.each(['running', 'replaced'])(
+    'cancels AI confirmation when its instance is %s',
+    async (change) => {
+      await mount()
+      component.edit(0, 'settings')
+      await component.changeAssistant(true)
+      if (change === 'running') rows[0].editable = false
+      else rows[0].path = '/other'
+      await component.refresh()
+      await vi.advanceTimersByTimeAsync(5000)
+      component.riskAcknowledged.value = true
+      await component.confirmAssistantChange()
+      expect(component.assistantConfirmation.value).toBeNull()
+      expect(component.draft.value.ai_assistant_enabled).toBe(false)
+      expect(api.update_settings).not.toHaveBeenCalled()
+    }
+  )
+
+  it('does not retain an enabled draft after cancelling the settings editor', async () => {
+    await mount()
+    component.edit(0, 'settings')
+    await component.changeAssistant(true)
+    await vi.advanceTimersByTimeAsync(5000)
+    component.riskAcknowledged.value = true
+    component.confirmAssistantChange()
+    component.editing.value = null
+    component.edit(0, 'settings')
+    expect(component.draft.value.ai_assistant_enabled).toBe(false)
+    expect(api.update_settings).not.toHaveBeenCalled()
+    await component.changeAssistant(true)
+    expect(component.riskSeconds.value).toBe(5)
+    expect(component.riskAcknowledged.value).toBe(false)
+  })
+
+  it('requires a new acknowledgement when an enabled draft is turned off and on again', async () => {
+    await mount()
+    component.edit(0, 'settings')
+    await component.changeAssistant(true)
+    await vi.advanceTimersByTimeAsync(5000)
+    component.riskAcknowledged.value = true
+    component.confirmAssistantChange()
+    await component.changeAssistant(false)
+    await component.changeAssistant(true)
+    expect(component.draft.value.ai_assistant_enabled).toBe(false)
+    expect(component.riskAcknowledged.value).toBe(false)
+    expect(component.riskSeconds.value).toBe(5)
+    expect(api.update_settings).not.toHaveBeenCalled()
   })
 
   it('only persists confirmed settings and preserves drafts after write failure', async () => {

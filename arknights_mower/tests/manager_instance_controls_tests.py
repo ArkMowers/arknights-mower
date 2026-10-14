@@ -187,6 +187,66 @@ def test_settings_preserve_legacy_and_unknown_configuration(manager):
     assert manager.get_instances()[0]["port"] is None
 
 
+def test_assistant_defaults_off_and_saved_choices_survive_manager_recreation(manager):
+    assert manager.get_instances()[0]["ai_assistant_enabled"] is False
+    for enabled in (True, False):
+        manager.update_settings(
+            0, {"token": "", "port": None, "ai_assistant_enabled": enabled}
+        )
+        reopened = Api(manager._storage_path)
+        assert reopened.get_instances()[0]["ai_assistant_enabled"] is enabled
+        assert read_conf(reopened)["ai_assistant_enabled"] is enabled
+        reopened.update_settings(0, {"token": "changed", "port": None})
+        assert read_conf(reopened)["ai_assistant_enabled"] is enabled
+
+
+def test_running_process_cannot_change_assistant_and_failed_write_preserves_choice(
+    manager, monkeypatch
+):
+    settings = {"token": "", "port": None, "ai_assistant_enabled": True}
+    manager.update_settings(0, settings)
+    target = Path(manager.instances[0]["path"]) / "config/conf.yml"
+    before = target.read_bytes()
+    monkeypatch.setattr(runtime, "instances", lambda **kwargs: [record(manager)])
+    with pytest.raises(ValueError, match="进程运行"):
+        manager.update_settings(0, {**settings, "ai_assistant_enabled": False})
+    assert target.read_bytes() == before
+    monkeypatch.setattr(runtime, "instances", lambda **kwargs: [])
+    monkeypatch.setattr(
+        runtime, "replace_with_retry", Mock(side_effect=PermissionError("locked"))
+    )
+    with pytest.raises(PermissionError):
+        manager.update_settings(0, {**settings, "ai_assistant_enabled": False})
+    assert target.read_bytes() == before
+
+
+def test_assistant_choices_are_per_instance_and_preserve_unknown_yaml_fields(manager):
+    root = Path(manager.instances[0]["path"])
+    root.mkdir()
+    (root / "conf.yml").write_text(
+        "private_payload: encrypted-text\ncustom: {flag: true}\n", encoding="utf-8"
+    )
+    manager.add("second", str(root.parent / "second"))
+    manager.update_settings(
+        0, {"token": "", "port": None, "ai_assistant_enabled": True}
+    )
+    assert read_conf(manager)["private_payload"] == "encrypted-text"
+    assert read_conf(manager)["custom"] == {"flag": True}
+    assert [
+        row["ai_assistant_enabled"]
+        for row in Api(manager._storage_path).get_instances()
+    ] == [True, False]
+
+
+@pytest.mark.parametrize("enabled", [1, 0, "true", "false", None])
+def test_invalid_assistant_choice_never_writes(manager, enabled):
+    with pytest.raises(ValueError):
+        manager.update_settings(
+            0, {"token": "", "port": None, "ai_assistant_enabled": enabled}
+        )
+    assert not Path(manager.instances[0]["path"]).exists()
+
+
 def test_settings_can_repair_invalid_connection_values_without_losing_other_fields(
     manager,
 ):

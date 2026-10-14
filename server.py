@@ -74,6 +74,9 @@ mimetypes.add_type("image/webp", ".webp")
 app = Flask(__name__, static_folder="ui/dist", static_url_path="")
 app.config["SOCK_SERVER_OPTIONS"] = {"ping_interval": 25, "max_message_size": 64 * 1024}
 app.config["WEBVIEW_LOCAL_ONLY_NO_TOKEN"] = False
+app.config["AI_ASSISTANT_ENABLED"] = config.conf.assistant_enabled_for_launch(
+    managed=os.environ.get("MOWER_MANAGED") == "1"
+)
 sock = Sock(app)
 CORS(app)
 network_settings.start_proxy_sync()
@@ -1293,6 +1296,13 @@ def load_config():
                 "message": "配置必须是 JSON 对象",
             }, 400
         req = dict(payload)
+        if "ai_assistant_enabled" in req:
+            if req["ai_assistant_enabled"] != config.conf.ai_assistant_enabled:
+                return {
+                    "error": "manager_owned_setting",
+                    "message": "请在实例停止后通过多开管理器修改 Mower AI 助手开关",
+                }, 403
+            req.pop("ai_assistant_enabled")
         from arknights_mower.__main__ import device_control
 
         if _performance_test_status()["status"] == "running" and set(req) & {
@@ -1642,6 +1652,7 @@ def get_status():
     with scheduled_start_lock:
         start_at = scheduled_start_at.isoformat() if scheduled_start_at else None
     response = {
+        "ai_assistant_enabled": app.config["AI_ASSISTANT_ENABLED"],
         "desktop_startup_handled": bool(app.config.get("DESKTOP_STARTUP_HANDLED")),
         "auto_start_handled": bool(
             app.config.get("DESKTOP_STARTUP_HANDLED")
@@ -3899,6 +3910,17 @@ def submit_feedback():
 @sock.route("/ws/chat")
 def ws_chat(ws):
     if not _authorize_websocket(ws):
+        return
+    if not app.config["AI_ASSISTANT_ENABLED"]:
+        ws.send(
+            json.dumps(
+                {
+                    "error": "当前实例暂未开启该功能，请联系管理员。",
+                    "code": "ai_assistant_disabled",
+                }
+            )
+        )
+        ws.close(reason=4403, message="AI assistant disabled")
         return
     context = []
     while True:

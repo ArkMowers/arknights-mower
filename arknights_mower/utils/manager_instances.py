@@ -50,11 +50,22 @@ def read_webview(space):
     settings = raw.get("webview", {})
     token = settings.get("token", "")
     port = settings.get("port", 0)
+    assistant = raw.get("ai_assistant_enabled")
     if not isinstance(token, str):
         raise ValueError("Token 必须是文本")
     if type(port) is not int or not 0 <= port <= 65535:
         raise ValueError("端口必须是 1 至 65535 的整数，或留空")
-    return destination, raw, {"token": token, "port": port or None}
+    if assistant is not None and type(assistant) is not bool:
+        raise ValueError("Mower AI 助手开关必须是布尔值")
+    return (
+        destination,
+        raw,
+        {
+            "token": token,
+            "port": port or None,
+            "ai_assistant_enabled": assistant is True,
+        },
+    )
 
 
 class InstanceController:
@@ -179,6 +190,7 @@ class InstanceController:
                     instance,
                     token="",
                     port=None,
+                    ai_assistant_enabled=False,
                     editable=False,
                     can_start=False,
                     can_stop=False,
@@ -247,8 +259,16 @@ class InstanceController:
             self._save(updated)
 
     def update_settings(self, idx, settings):
-        if set(settings) != {"token", "port"}:
+        if set(settings) not in (
+            {"token", "port"},
+            {"token", "port", "ai_assistant_enabled"},
+        ):
             raise ValueError("不支持的实例配置项")
+        if (
+            "ai_assistant_enabled" in settings
+            and type(settings["ai_assistant_enabled"]) is not bool
+        ):
+            raise ValueError("Mower AI 助手开关必须是布尔值")
         token, port = settings["token"], settings["port"]
         if port in (None, ""):
             port = 0
@@ -265,6 +285,8 @@ class InstanceController:
                 raise ValueError("请先选择实例保存目录")
             destination, raw = read_instance_config(instance["path"])
             raw.setdefault("webview", {}).update(token=token, port=port)
+            if "ai_assistant_enabled" in settings:
+                raw["ai_assistant_enabled"] = settings["ai_assistant_enabled"]
             destination.parent.mkdir(parents=True, exist_ok=True)
             fd, temporary = tempfile.mkstemp(dir=destination.parent)
             try:

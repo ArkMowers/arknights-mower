@@ -1,15 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, nextTick, ref } from 'vue'
+import { effectScope, nextTick, reactive, ref } from 'vue'
 import ChatBot from './ChatBot.vue'
 
-const state = vi.hoisted(() => ({ feedback: null, cleanup: null, notice: null, push: null }))
+const state = vi.hoisted(() => ({
+  feedback: null,
+  cleanup: null,
+  notice: null,
+  push: null,
+  mower: null,
+  dialog: null
+}))
 vi.mock('vue', async (original) => ({
   ...(await original()),
   useSSRContext: () => ({ modules: new Set() }),
   inject: () => state.feedback,
   onBeforeUnmount: (callback) => (state.cleanup = callback)
 }))
-vi.mock('naive-ui', () => ({ useMessage: () => state.notice }))
+vi.mock('naive-ui', () => ({ useMessage: () => state.notice, useDialog: () => state.dialog }))
+vi.mock('@/stores/mower', () => ({ useMowerStore: () => state.mower }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: state.push }) }))
 
 class FakeSocket {
@@ -42,7 +50,9 @@ async function flush() {
 
 beforeEach(() => {
   state.feedback = ref(false)
-  state.notice = { success: vi.fn(), error: vi.fn() }
+  state.notice = { success: vi.fn(), error: vi.fn(), warning: vi.fn() }
+  state.dialog = { warning: vi.fn() }
+  state.mower = reactive({ ai_assistant_enabled: true })
   state.push = vi.fn()
   FakeSocket.instances = []
   vi.useFakeTimers()
@@ -66,6 +76,56 @@ function send(text = '检查日志') {
 }
 
 describe('AI chat interactions', () => {
+  it('shows the refusal on lazy mount when authorization is already disabled', async () => {
+    await flush()
+    state.cleanup?.()
+    scope.stop()
+    state.mower.ai_assistant_enabled = false
+    scope = effectScope()
+    component = scope.run(() => ChatBot.setup({ show: true }, { expose: vi.fn(), emit }))
+    expect(state.dialog.warning).toHaveBeenCalledOnce()
+    expect(emit).toHaveBeenCalledWith('update:show', false)
+    expect(FakeSocket.instances).toHaveLength(0)
+  })
+
+  it('keeps the entry usable but refuses disabled chat before opening a socket', async () => {
+    state.mower.ai_assistant_enabled = false
+    await flush()
+    expect(state.dialog.warning).toHaveBeenCalledWith({
+      title: '管理员未开启',
+      content: '当前实例暂未开启该功能，请联系管理员。',
+      positiveText: '知道了'
+    })
+    expect(emit).toHaveBeenCalledWith('update:show', false)
+    component.userInput.value = '保留草稿'
+    component.sendMessage()
+    expect(FakeSocket.instances).toHaveLength(0)
+    expect(component.chatHistory.value).toEqual([])
+    expect(component.userInput.value).toBe('保留草稿')
+  })
+
+  it('does not establish chat while the server authorization snapshot is unknown', () => {
+    state.mower.ai_assistant_enabled = null
+    send()
+    expect(FakeSocket.instances).toHaveLength(0)
+    expect(component.chatHistory.value).toEqual([])
+    expect(state.notice.warning).toHaveBeenCalledOnce()
+    expect(state.dialog.warning).not.toHaveBeenCalled()
+  })
+
+  it('shows the administrator notice if a restarted backend refuses an existing authorization snapshot', () => {
+    const socket = send()
+    socket.open()
+    socket.receive({
+      code: 'ai_assistant_disabled',
+      error: '当前实例暂未开启该功能，请联系管理员。'
+    })
+    expect(socket.close).toHaveBeenCalledOnce()
+    expect(component.loading.value).toBe(false)
+    expect(state.dialog.warning).toHaveBeenCalledOnce()
+    expect(emit).toHaveBeenCalledWith('update:show', false)
+  })
+
   it('drags by the header with pointer capture and stops after cancellation', () => {
     component.panelRef.value = { getBoundingClientRect: () => ({ left: 800, top: 300 }) }
     const handle = {

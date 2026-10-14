@@ -6,7 +6,8 @@ import {
   Play as PlayIcon,
   Stop as StopIcon,
   SettingsOutline as SettingsIcon,
-  TrashOutline as TrashIcon
+  TrashOutline as TrashIcon,
+  WarningOutline as WarningIcon
 } from '@vicons/ionicons5'
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { initializeManager, managerCall } from './bridge.js'
@@ -22,8 +23,20 @@ const confirmation = ref(null)
 const deleting = ref(null)
 const editing = ref(null)
 const draft = ref({ name: '', token: '', port: null })
+const assistantConfirmation = ref(null)
+const riskAcknowledged = ref(false)
+const riskSeconds = ref(5)
 const unavailable = computed(() => !ready.value || !connected.value || busy.value)
+const riskReady = computed(
+  () =>
+    Boolean(assistantConfirmation.value) &&
+    riskAcknowledged.value &&
+    riskSeconds.value === 0 &&
+    !unavailable.value
+)
 let timer
+let riskTimer
+let riskStartedAt = 0
 let disposed = false
 let refreshVersion = 0
 const api = () => window.pywebview.api
@@ -37,6 +50,17 @@ async function refresh() {
   instances.value = loaded
   connected.value = true
   if (editing.value && !loaded[editing.value.idx]?.editable) editing.value = null
+  if (assistantConfirmation.value) {
+    const target = assistantConfirmation.value
+    const current = loaded[target.idx]
+    if (
+      !current?.editable ||
+      current.name !== target.name ||
+      current.path !== target.path ||
+      (current.ai_assistant_enabled === true) !== target.original
+    )
+      cancelAssistantConfirmation()
+  }
   if (deleting.value) {
     const current = loaded[deleting.value.idx]
     if (
@@ -84,6 +108,7 @@ onMounted(async () => {
 onUnmounted(() => {
   disposed = true
   clearTimeout(timer)
+  cancelAssistantConfirmation()
 })
 
 async function execute(action, { waitForUser = false } = {}) {
@@ -112,7 +137,10 @@ async function execute(action, { waitForUser = false } = {}) {
 
 function edit(idx, kind) {
   if (unavailable.value || !instances.value[idx].editable) return
-  draft.value = { ...instances.value[idx] }
+  draft.value = {
+    ...instances.value[idx],
+    ai_assistant_enabled: instances.value[idx].ai_assistant_enabled === true
+  }
   editing.value = { idx, kind }
 }
 
@@ -121,14 +149,68 @@ function selectPath(idx) {
 }
 
 async function save() {
+  if (!editing.value || unavailable.value || assistantConfirmation.value) return
   const { idx, kind } = editing.value
-  const api = window.pywebview.api
-  const succeeded = await execute(() =>
-    kind === 'name'
-      ? api.rename(idx, draft.value.name)
-      : api.update_settings(idx, { token: draft.value.token, port: draft.value.port })
-  )
+  if (kind === 'name') {
+    const succeeded = await execute(() => api().rename(idx, draft.value.name))
+    if (succeeded) editing.value = null
+    return
+  }
+  const settings = { token: draft.value.token, port: draft.value.port }
+  const current = instances.value[idx]
+  if (draft.value.ai_assistant_enabled !== (current.ai_assistant_enabled === true))
+    settings.ai_assistant_enabled = draft.value.ai_assistant_enabled
+  const succeeded = await execute(() => api().update_settings(idx, settings))
   if (succeeded) editing.value = null
+}
+
+async function changeAssistant(enabled) {
+  if (
+    editing.value?.kind !== 'settings' ||
+    unavailable.value ||
+    assistantConfirmation.value ||
+    enabled === draft.value.ai_assistant_enabled
+  )
+    return
+  if (!enabled) {
+    draft.value.ai_assistant_enabled = false
+    return
+  }
+  const { idx } = editing.value
+  const current = instances.value[idx]
+  if (!current?.editable) return
+  assistantConfirmation.value = {
+    idx,
+    name: current.name,
+    path: current.path,
+    original: current.ai_assistant_enabled === true
+  }
+  const pending = assistantConfirmation.value
+  riskAcknowledged.value = false
+  riskSeconds.value = 5
+  await nextTick()
+  if (assistantConfirmation.value !== pending) return
+  riskStartedAt = performance.now()
+  riskTimer = setInterval(() => {
+    riskSeconds.value = Math.max(0, Math.ceil((5000 - (performance.now() - riskStartedAt)) / 1000))
+    if (riskSeconds.value === 0) clearInterval(riskTimer)
+  }, 100)
+}
+
+function cancelAssistantConfirmation() {
+  clearInterval(riskTimer)
+  assistantConfirmation.value = null
+  riskAcknowledged.value = false
+  riskSeconds.value = 5
+}
+
+function confirmAssistantChange() {
+  if (!riskReady.value || performance.now() - riskStartedAt < 5000) return false
+  const target = assistantConfirmation.value
+  if (editing.value?.kind === 'settings' && editing.value.idx === target.idx)
+    draft.value.ai_assistant_enabled = true
+  cancelAssistantConfirmation()
+  return false
 }
 
 function confirmBulk(action) {
@@ -220,8 +302,8 @@ async function applyDelete() {
         ></n-button>
         <n-button
           size="tiny"
-          title="Token 与端口"
-          aria-label="Token 与端口"
+          title="实例配置"
+          aria-label="实例配置"
           :disabled="unavailable || !instance.editable || !instance.path"
           @click="edit(idx, 'settings')"
           ><template #icon
@@ -309,10 +391,10 @@ async function applyDelete() {
     <n-modal
       :show="!!editing"
       preset="card"
-      :title="editing?.kind === 'name' ? '实例名称' : 'Token 与端口'"
+      :title="editing?.kind === 'name' ? '实例名称' : '实例配置'"
       class="settings-dialog"
-      :mask-closable="!busy"
-      :closable="!busy"
+      :mask-closable="!busy && !assistantConfirmation"
+      :closable="!busy && !assistantConfirmation"
       @update:show="
         (show) => {
           if (!show) editing = null
@@ -342,6 +424,14 @@ async function applyDelete() {
               clearable
               :disabled="unavailable"
           /></n-form-item>
+          <n-form-item label="Mower AI 助手">
+            <n-switch
+              :value="draft.ai_assistant_enabled"
+              aria-label="Mower AI 助手"
+              :disabled="unavailable || !!assistantConfirmation"
+              @update:value="changeAssistant"
+            />
+          </n-form-item>
           <n-alert v-if="draft.token" type="warning"
             >设置 Token 后将允许远程连接，请妥善保管。</n-alert
           >
@@ -355,6 +445,42 @@ async function applyDelete() {
           >
         </div></template
       >
+    </n-modal>
+    <n-modal
+      :show="!!assistantConfirmation"
+      preset="dialog"
+      type="warning"
+      title="开启 Mower AI 助手前请阅读"
+      :positive-text="riskSeconds > 0 ? `同意开启（${riskSeconds} 秒）` : '同意开启'"
+      negative-text="取消"
+      :positive-button-props="{ disabled: !riskReady }"
+      @positive-click="confirmAssistantChange"
+      @negative-click="cancelAssistantConfirmation"
+      @close="cancelAssistantConfirmation"
+      @update:show="
+        (show) => {
+          if (!show) cancelAssistantConfirmation()
+        }
+      "
+    >
+      <div class="ai-risk-content">
+        <p>实例：{{ assistantConfirmation?.name }}</p>
+        <n-alert type="error" title="数据与隐私风险" class="ai-risk-notice">
+          <template #icon
+            ><n-icon><warning-icon /></n-icon
+          ></template>
+          <p>
+            Mower AI
+            助手可通过工具读取日志、配置、排班等本地信息，并将对话内容及工具读取结果发送至已配置的模型服务。
+          </p>
+          <p>
+            多开实例不等同于数据隔离。工具访问范围或权限限制不当时，可能泄露当前实例、其他实例或他人的敏感信息，请仅向可信用户开放。
+          </p>
+        </n-alert>
+        <p>对话可能产生模型调用费用；助手支持数据查询和部分配置操作，请人工核对回答及操作结果。</p>
+        <p>此选择仅影响当前实例的助手对话，不影响模型服务配置、诊断分析或验证码处理。</p>
+      </div>
+      <n-checkbox v-model:checked="riskAcknowledged">我已阅读并了解上述风险</n-checkbox>
     </n-modal>
   </div>
 </template>
@@ -416,6 +542,17 @@ async function applyDelete() {
 }
 .delete-notice {
   overflow-wrap: anywhere;
+}
+.ai-risk-content {
+  max-height: min(320px, calc(100dvh - 240px));
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+.ai-risk-notice p:first-child {
+  margin-top: 0;
+}
+.ai-risk-notice p:last-child {
+  margin-bottom: 0;
 }
 .dialog-actions {
   justify-content: flex-end;
