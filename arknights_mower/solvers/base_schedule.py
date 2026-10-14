@@ -9759,23 +9759,24 @@ class BaseSchedulerSolver(
                 or slots.get(operator.current_index) == name
             ):
                 continue
-            target = operator.upper_limit
-            if getattr(task, "emergency_recovery_release", False):
-                target = (
-                    (getattr(self, "emergency_state", None) or {})
-                    .get("targets", {})
-                    .get(name)
-                    if name in getattr(task, "emergency_staffing_members", ())
-                    else None
+            measured_release = False
+            if confirmed_release:
+                target = operator.upper_limit
+                if getattr(task, "emergency_recovery_release", False):
+                    target = (
+                        (getattr(self, "emergency_state", None) or {})
+                        .get("targets", {})
+                        .get(name)
+                        if name in getattr(task, "emergency_staffing_members", ())
+                        else None
+                    )
+                measured_release = (
+                    name not in slots.values()
+                    and target is not None
+                    and has_resting_mood(operator)
+                    and not operator.mood_is_prediction
+                    and operator.mood >= target
                 )
-            measured_release = (
-                confirmed_release
-                and name not in slots.values()
-                and target is not None
-                and has_resting_mood(operator)
-                and not operator.mood_is_prediction
-                and operator.mood >= target
-            )
             if room.startswith("dorm"):
                 _, bed = self.op_data.get_dorm_by_name(
                     name, group_transitions=group_transitions
