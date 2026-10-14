@@ -19,10 +19,7 @@ export function calculateIncome(plan, settings, onProgress) {
     })
   )
   const simulation = result.simulationReport
-  const diagnostics = [
-    ...(result.validation?.criticalErrors ?? []),
-    ...(simulation?.diagnostics ?? [])
-  ]
+  const diagnostics = [...(result.validation?.issues ?? []), ...(simulation?.diagnostics ?? [])]
     .slice(0, 200)
     .map((d) => ({
       code: d.code,

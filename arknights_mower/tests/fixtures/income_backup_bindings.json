@@ -1,0 +1,173 @@
+{
+  "default": "plan1",
+  "conf": {},
+  "facility_levels": {
+    "dormitory_1": 5
+  },
+  "plan1": {
+    "room_1_1": {
+      "name": "制造站",
+      "product": "gold",
+      "plans": [
+        {
+          "agent": "苍苔",
+          "group": "sees",
+          "replacement": [
+            "斯卡蒂"
+          ],
+          "group_bindings": []
+        },
+        {
+          "agent": "砾",
+          "group": "sees",
+          "replacement": [
+            "幽灵鲨"
+          ],
+          "group_bindings": []
+        },
+        {
+          "agent": "安哲拉",
+          "group": "深海",
+          "replacement": [
+            "结城理"
+          ],
+          "group_bindings": []
+        }
+      ]
+    },
+    "room_2_1": {
+      "name": "制造站",
+      "product": "gold",
+      "plans": [
+        {
+          "agent": "结城理",
+          "group": "sees",
+          "replacement": [
+            "贝娜"
+          ],
+          "group_bindings": [
+            {
+              "group": "深海",
+              "replacement": [
+                "贝娜"
+              ]
+            }
+          ]
+        },
+        {
+          "agent": "斯卡蒂",
+          "group": "深海",
+          "replacement": [
+            "泡泡"
+          ],
+          "group_bindings": [
+            {
+              "group": "sees",
+              "replacement": [
+                "泡泡"
+              ]
+            }
+          ]
+        },
+        {
+          "agent": "幽灵鲨",
+          "group": "深海",
+          "replacement": [
+            "火神"
+          ],
+          "group_bindings": [
+            {
+              "group": "sees",
+              "replacement": [
+                "火神"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "room_1_3": {
+      "name": "发电站",
+      "plans": []
+    },
+    "room_2_3": {
+      "name": "发电站",
+      "plans": []
+    },
+    "dormitory_1": {
+      "name": "",
+      "plans": [
+        {
+          "agent": "Free",
+          "group": "",
+          "replacement": [],
+          "group_bindings": []
+        },
+        {
+          "agent": "Free",
+          "group": "",
+          "replacement": [],
+          "group_bindings": []
+        },
+        {
+          "agent": "Free",
+          "group": "",
+          "replacement": [],
+          "group_bindings": []
+        },
+        {
+          "agent": "Free",
+          "group": "",
+          "replacement": [],
+          "group_bindings": []
+        },
+        {
+          "agent": "Free",
+          "group": "",
+          "replacement": [],
+          "group_bindings": []
+        }
+      ]
+    }
+  },
+  "backup_plans": [
+    {
+      "name": "鸿雪下班",
+      "trigger": "False",
+      "conf": {},
+      "task": {},
+      "plan": {
+        "room_2_1": {
+          "name": "制造站",
+          "product": "exp3",
+          "plans": [
+            {
+              "agent": "结城理",
+              "group": "sees",
+              "replacement": [
+                "贝娜"
+              ],
+              "group_bindings": []
+            },
+            {
+              "agent": "斯卡蒂",
+              "group": "深海",
+              "replacement": [
+                "泡泡"
+              ],
+              "group_bindings": []
+            },
+            {
+              "agent": "幽灵鲨",
+              "group": "深海",
+              "replacement": [
+                "火神"
+              ],
+              "group_bindings": []
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

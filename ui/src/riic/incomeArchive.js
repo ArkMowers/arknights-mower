@@ -1,3 +1,5 @@
+import { toRaw } from 'vue'
+
 const DATABASE = 'mower-income-results'
 const STORE = 'results'
 const KEY = 'latest'
@@ -65,9 +67,7 @@ export async function loadIncomeArchive() {
 }
 export function saveIncomeArchive(record) {
   // IndexedDB commits the result and its original image/plan in one transaction.
-  const { image, ...snapshot } = record.snapshot
-  const plain = JSON.parse(JSON.stringify({ ...record, snapshot, version: VERSION }))
-  plain.snapshot.image = image
+  const plain = detachArchive({ ...record, version: VERSION })
   return access('readwrite', (store) => {
     const current = store.get(KEY)
     current.onsuccess = () => {
@@ -77,4 +77,15 @@ export function saveIncomeArchive(record) {
     }
     return current
   })
+}
+// Remove nested Vue proxies without expanding shared simulation data into a JSON string.
+function detachArchive(value, seen = new WeakMap()) {
+  if (value === null || typeof value !== 'object') return value
+  const raw = toRaw(value)
+  if (raw instanceof Blob) return raw
+  if (seen.has(raw)) return seen.get(raw)
+  const copy = Array.isArray(raw) ? [] : {}
+  seen.set(raw, copy)
+  for (const key of Object.keys(raw)) copy[key] = detachArchive(raw[key], seen)
+  return copy
 }

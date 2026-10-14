@@ -1,10 +1,11 @@
 <script setup>
-import { computed, inject, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   defaultIncomeSettings,
   incomeFacilities,
   incomeMetrics,
   incomeRequest,
+  incomeWorkspace,
   inventoryRequired,
   applyMowerIncomeSettings
 } from '@/riic/income'
@@ -14,6 +15,8 @@ import { createIncomeSession } from '@/riic/incomeSession'
 import { loadIncomeArchive, saveIncomeArchive } from '@/riic/incomeArchive'
 import { incomeLogTime } from '@/riic/incomeLogs'
 import IncomeTimeline from './IncomeTimeline.vue'
+import IncomeActivity from './IncomeActivity.vue'
+import { validateRosterWorkspace } from '@/riic/vendor/workbench/validate'
 import {
   renderIncomeImage,
   downloadIncomeImage,
@@ -31,6 +34,7 @@ const cacheError = ref('')
 const weightsBusy = ref(false)
 const weightsError = ref('')
 const submitting = ref(false)
+const errorAlert = ref(null)
 const controller = new AbortController()
 let alive = true
 let sharedRatios = null
@@ -174,6 +178,9 @@ const metrics = computed(() =>
   state.result?.success ? incomeMetrics(state.result.summary, state.result.observedHours / 24) : []
 )
 const summary = computed(() => state.bottleneck?.slowest ?? state.bottleneck?.latest)
+const planIssues = computed(() =>
+  props.snapshot ? validateRosterWorkspace(incomeWorkspace(props.snapshot.plan)).issues : []
+)
 const format = (value) => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
 const weights = [
   ['exp', '经验'],
@@ -264,7 +271,18 @@ async function start() {
   try {
     if (settings.weightMode === 'mower') await readWeights()
     if (!alive) return
-    incomeRequest(props.snapshot.plan, settings)
+    const { image, ...snapshot } = props.snapshot
+    const captured = { ...JSON.parse(JSON.stringify(snapshot)), image }
+    const runSettings = JSON.parse(JSON.stringify(settings))
+    incomeRequest(captured.plan, runSettings)
+    const { data: validation } = await axios.post(
+      `${import.meta.env.VITE_HTTP_URL}/validate-plan`,
+      { plan: captured.plan, operatorMode: runSettings.operatorMode },
+      { timeout: 15000, signal: controller.signal }
+    )
+    if (!alive) return
+    if (validation.success !== true)
+      throw new Error(validation.message || '排班校验未通过，尚未开始演算')
     exportGeneration++
     exported.value = false
     exportError.value = ''
@@ -275,11 +293,14 @@ async function start() {
     logPage.value = 1
     logSearch.value = ''
     activeTab.value = 'logs'
-    const { image, ...snapshot } = props.snapshot
-    runSnapshot = { ...JSON.parse(JSON.stringify(snapshot)), image }
-    session.start(runSnapshot.plan, settings)
+    runSnapshot = captured
+    session.start(runSnapshot.plan, runSettings)
   } catch (error) {
-    if (alive) state.error = error.message
+    if (alive) {
+      state.error = error.message
+      await nextTick()
+      if (alive) errorAlert.value?.$el?.scrollIntoView?.({ block: 'nearest' })
+    }
   } finally {
     if (alive) submitting.value = false
   }
@@ -332,7 +353,6 @@ onBeforeUnmount(() => {
     preset="card"
     title="计算收益"
     class="income-dialog"
-    style="width: 760px; max-width: 95vw; max-height: 90vh"
     :content-style="{ overflowY: 'auto' }"
     :mask-closable="false"
     @update:show="!$event && close()"
@@ -354,10 +374,12 @@ onBeforeUnmount(() => {
         <n-progress type="line" :percentage="Math.floor((state.progress?.fraction ?? 0) * 100)" />
         <p>{{ state.progress?.label || '正在准备演算' }} · 已用 {{ seconds }} 秒</p>
         <n-alert v-if="silent || state.progress?.activity?.status === 'slow'" type="warning">{{
-          state.progress?.activity?.message || '暂未收到新的进度，可以继续等待或停止演算。'
+          state.progress?.activity?.status === 'slow'
+            ? '演算推进较慢，具体任务与校验记录见“演算日志”。'
+            : '暂未收到新的进度，可以继续等待或停止演算。'
         }}</n-alert>
       </div>
-      <n-alert v-if="state.error" class="notice" type="error">
+      <n-alert v-if="state.error" ref="errorAlert" role="alert" class="notice" type="error">
         {{ state.error }}
         <p v-for="(d, i) in attemptDiagnostics" :key="i">{{ d.message }}</p>
       </n-alert>
@@ -366,8 +388,15 @@ onBeforeUnmount(() => {
       >
       <n-tabs v-model:value="activeTab" type="line" animated>
         <n-tab-pane name="settings" tab="参数配置">
+          <n-alert v-if="planIssues.length" class="notice" type="warning" title="排班校验提示">
+            <p>副表单独生效的警告仅供检查，实际组合仍在切表前校验。</p>
+            <ul>
+              <li v-for="(issue, i) in planIssues" :key="i">{{ issue.message }}</li>
+            </ul>
+          </n-alert>
           <n-alert class="notice" type="info">
             使用打开窗口时的完整排班快照；预热不计收益。演算采用固定版本的离线模型和理想跑单，结果不代表实测收入。
+            点击开始演算时自动校验排班，校验通过后才启动；全员满练与手动练度不校验森空岛名单。
             初始心情为
             24；设施等级读取排班保存值，未设置时推断；宿舍氛围按等级上限。导入收益图可恢复完整排班及高级设置。
           </n-alert>
@@ -668,7 +697,7 @@ onBeforeUnmount(() => {
             >
           </template>
         </n-tab-pane>
-        <n-tab-pane name="timeline" tab="排班甘特图" display-directive="show:lazy">
+        <n-tab-pane name="timeline" tab="工作记录" display-directive="show:lazy">
           <IncomeTimeline
             v-if="
               state.result?.success && state.result.simulationReport && state.result.timelineData
@@ -680,12 +709,20 @@ onBeforeUnmount(() => {
             v-else
             :description="
               state.result?.success
-                ? '这份历史演算记录不含甘特图，请重新演算。原收益和排班图片仍可查看、导出。'
-                : '演算完成后显示排班甘特图'
+                ? '这份历史演算记录不含工作记录，请重新演算。原收益和排班图片仍可查看、导出。'
+                : '演算完成后显示工作记录'
             "
           />
         </n-tab-pane>
         <n-tab-pane name="logs" tab="演算日志">
+          <n-alert
+            v-if="state.running && state.progress?.activity"
+            class="notice"
+            :type="state.progress.activity.status === 'slow' ? 'warning' : 'info'"
+            title="运行中的演算观察"
+          >
+            <IncomeActivity :activity="state.progress.activity" />
+          </n-alert>
           <n-alert
             v-if="state.bottleneck"
             class="notice"
@@ -700,17 +737,7 @@ onBeforeUnmount(() => {
             <p v-if="state.bottleneck.silence">
               结束前 {{ state.bottleneck.silence.seconds }} 秒未收到进度；尚不能确定原因。
             </p>
-            <template v-if="summary">
-              <p>{{ summary.activity.message }}</p>
-              <p v-if="summary.activity.task">
-                任务：{{ summary.activity.task.type }} {{ summary.activity.task.metadata }}
-              </p>
-              <p v-for="op in summary.activity.operators" :key="op.id">
-                {{ op.name }} · 心情 {{ format(op.morale) }} · {{ op.room }} ·
-                {{ op.groups.join('、') }}
-              </p>
-              <p>这些活动与慢速时段相关，不能仅据此认定某位干员是原因。</p>
-            </template>
+            <IncomeActivity v-if="summary" :activity="summary.activity" />
             <p v-for="(item, i) in state.bottleneck.diagnostics" :key="i">{{ item.message }}</p>
           </n-alert>
 
@@ -797,6 +824,15 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+:global(.income-dialog.n-card) {
+  width: 760px;
+  max-width: calc(95vw / var(--mower-zoom, 1));
+  max-height: calc(90vh / var(--mower-zoom, 1));
+}
+:global(.income-dialog .n-tab-pane) {
+  overflow: visible;
+}
+
 .income-log {
   max-height: 360px;
   overflow: auto;
@@ -810,7 +846,7 @@ onBeforeUnmount(() => {
 }
 .two-columns {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   align-items: start;
   gap: 12px;
 }

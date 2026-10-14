@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { reactive } from 'vue'
 import { loadIncomeArchive, saveIncomeArchive } from './incomeArchive'
 
 let stored, failWrite
@@ -52,7 +53,10 @@ beforeEach(() => {
     }
   })
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
 function record(savedAt = 1) {
   return {
     savedAt,
@@ -87,6 +91,26 @@ it('retains the previous result if a replacement transaction fails', async () =>
   failWrite = true
   await expect(saveIncomeArchive(record(2))).rejects.toThrow('quota')
   expect((await loadIncomeArchive()).savedAt).toBe(1)
+})
+it('saves shared report graphs and nested Vue state without JSON string expansion', async () => {
+  const data = record()
+  let shared = { roomId: 'room_1_1' }
+  for (let i = 0; i < 30; i++) shared = { left: shared, right: shared }
+  data.result.simulationReport = shared
+  data.result.timelineData.report = shared
+  data.input.settings = reactive({ sampleDays: 28, inventory: reactive({ gold: 42 }) })
+  const stringify = vi.spyOn(JSON, 'stringify').mockImplementation(() => {
+    throw new RangeError('Invalid string length')
+  })
+  const saving = saveIncomeArchive(data)
+  data.input.settings.inventory.gold = 99
+  await saving
+  const loaded = await loadIncomeArchive()
+  expect(stringify).not.toHaveBeenCalled()
+  expect(loaded.result.simulationReport).toBe(loaded.result.timelineData.report)
+  expect(loaded.result.simulationReport.left).toBe(loaded.result.simulationReport.right)
+  expect(loaded.input.settings.inventory.gold).toBe(42)
+  expect(await loaded.snapshot.image.text()).toBe('original image')
 })
 it('rejects a stale tab save while allowing renaming the current result', async () => {
   await saveIncomeArchive(record(2))

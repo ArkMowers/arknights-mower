@@ -1,7 +1,7 @@
 import {MowerShiftPreviewError} from './mowerNativeErrors'
 import {mowerDormIsolationCost} from './mowerDormIsolation'
 import { orderMowerAlphaDormIndices } from './mowerDormOrder'
-import {mowerRestingBindingGroups,mowerSharedReplacements,mowerSameGroupPrimaryReplacement} from './mowerSharedGroups'
+import {mowerRestingBindingGroups,mowerSharedReplacements,mowerSameGroupPrimaryReplacement,mowerArrangementGroupTransitions} from './mowerSharedGroups'
 // October 3 alpha b2d9ac85fe070e805aadf0d5f44fc095c1e95253 (Mower, MIT).
 // Shared identity, takeover and displacement rules; actual room I/O stays in the adapter.
 import {mowerReplacementCandidates,restingMood,hasRestingMood} from './mowerOperatorState'
@@ -41,20 +41,30 @@ export function alphaDormResidents(data:MowerSchedulingData):Map<string,string>{
  return [alphaPosition(...b.position),b.name||(op&&data.recoveryDorm(b,op.name)?op.name:'')]
 }))}
 /** Mandatory members losing a bed recall their whole group; standby retains its anchor. */
-export function alphaRestoreDisplaced(data:MowerSchedulingData,previous:Map<string,string>,plan:MowerTaskPlan,tasks:MowerTask[]):Set<string>{
+export function alphaRestoreDisplaced(data:MowerSchedulingData,previous:Map<string,string>,plan:MowerTaskPlan,tasks:MowerTask[],admissions:ReadonlyMap<string,string>=new Map()):Set<string>{
  const current=alphaDormResidents(data)
  for(const bed of data.dorms){
   const key=alphaPosition(...bed.position),name=plan[bed.position[0]]?.[bed.position[1]]
   if(name!==undefined&&name!=='Current'&&!(['Free',''].includes(name)&&bed.name!==previous.get(key)&&bed.name))current.set(key,['Free',''].includes(name)?'':name)
  }
+ for(const [position,name] of admissions)current.set(position,name)
  const retained=new Set(current.values()),recalled=new Set<string>()
  for(const [position,name] of previous){
   if(!name||name===current.get(position)||retained.has(name))continue
   const op=data.operators[name];if(!op?.isHigh()||!data.plan[op.room])continue
-  if(data.canStandby(op)&&Object.values(data.operators).some(anchor=>retained.has(anchor.name)&&anchor.isHigh()&&!data.canStandby(anchor)&&!anchor.room.startsWith('dorm')&&!anchor.workaholic&&!data.restMoodComplete(anchor.name)&&(!op.group||anchor.group===op.group)))continue
-  for(const member of op.group?data.group(op.group):[name])recalled.add(member)
+  if(op.multiGroup||op.group&&!data.isGroupShiftAnchor(op))continue
+  const members=op.group?data.shiftGroupMembers(op.group):[name],completed=!!op.group&&hasRestingMood(op,data.nowMicros)&&restingMood(op,data.nowMicros)>=op.upperLimit
+  if((completed||data.canStandby(op))&&Object.values(data.operators).some(anchor=>retained.has(anchor.name)&&data.isGroupShiftAnchor(anchor)&&(data.canStandby(op)&&alphaRestingTier(data,anchor.name)<=3||!data.canStandby(anchor)&&!(hasRestingMood(anchor,data.nowMicros)&&restingMood(anchor,data.nowMicros)>=anchor.upperLimit))&&(!op.group||members.includes(anchor.name))))continue
+  for(const member of members)recalled.add(member)
  }
- for(const name of recalled){const op=data.operators[name]!;(plan[op.room]??=Array(data.plan[op.room]!.length).fill('Current'))[op.index]=name}
+ const transitions=mowerArrangementGroupTransitions(data,plan)
+ for(const name of recalled){const op=data.operators[name]!;if(op.group&&!op.multiGroup)transitions[op.group]=false}
+ for(const name of [...recalled]){const op=data.operators[name]!;if(op.multiGroup&&mowerRestingBindingGroups(data,op,transitions).length)recalled.delete(name)}
+ for(const name of [...recalled]){
+  const op=data.operators[name]!,target=plan[op.room]?.[op.index]
+  if(target&&!['Current','Free','',name].includes(target)||Object.entries(plan).some(([room,row])=>row.some((target,index)=>target===name&&(room!==op.room||index!==op.index)))){recalled.delete(name);continue}
+  ;(plan[op.room]??=Array(data.plan[op.room]!.length).fill('Current'))[op.index]=name
+ }
  for(const bed of data.dorms)if(recalled.has(bed.name)){
   if(recalled.has(current.get(alphaPosition(...bed.position))??''))(plan[bed.position[0]]??=Array(data.plan[bed.position[0]]!.length).fill('Current'))[bed.position[1]]='Free'
   bed.reset()

@@ -43,7 +43,8 @@ beforeEach(async () => {
   saveIncomeArchive.mockResolvedValue(undefined)
   io.client = {
     get: vi.fn(async (url) => ({ data: url.includes('income-cache') ? cache() : valuation() })),
-    put: vi.fn()
+    put: vi.fn(),
+    post: vi.fn(async () => ({ data: { success: true, status: 'passed' } }))
   }
   workers = []
   vi.stubGlobal(
@@ -295,4 +296,89 @@ it('starts with no training-plan option and strips retired state before freezing
   expect(workers).toHaveLength(1)
   expect(workers[0].postMessage.mock.calls[0][0].settings).not.toHaveProperty('masteryPlanPresent')
   expect(page.state.input.settings).not.toHaveProperty('masteryPlanPresent')
+})
+
+it('shows conditional backup warnings before running without changing the captured schedule', async () => {
+  const { backupWarningPlan } = await import('@/riic/backupWarningFixture')
+  props.snapshot.plan = backupWarningPlan()
+  await nextTick()
+  const before = structuredClone(JSON.parse(JSON.stringify(props.snapshot.plan)))
+  const warnings = page.planIssues.value.filter((issue) => issue.code === 'CONFLICTING_REPLACEMENT')
+  expect(warnings).toHaveLength(3)
+  for (const name of ['斯卡蒂', '幽灵鲨', '结城理'])
+    expect(
+      warnings.some((issue) => issue.message.includes(name) && issue.message.includes('鸿雪下班'))
+    ).toBe(true)
+  expect(warnings.every((issue) => issue.severity === 'warning')).toBe(true)
+  expect(workers).toHaveLength(0)
+  expect(props.snapshot.plan).toEqual(before)
+})
+
+it.each(['failed', 'incomplete'])(
+  'automatically blocks calculation when schedule validation is %s',
+  async (status) => {
+    await page.readCache()
+    io.client.post.mockResolvedValueOnce({
+      data: { success: false, status, message: '副表组合验证失败（鸿雪下班）：斯卡蒂缺少共同绑组' }
+    })
+    await page.start()
+    expect(io.client.post).toHaveBeenCalledWith(
+      `${import.meta.env.VITE_HTTP_URL}/validate-plan`,
+      { plan: props.snapshot.plan, operatorMode: 'cache' },
+      expect.objectContaining({ timeout: 15000, signal: expect.any(AbortSignal) })
+    )
+    expect(workers).toHaveLength(0)
+    expect(page.state.error).toContain('鸿雪下班')
+    expect(page.state.error).toContain('斯卡蒂')
+    expect(page.submitting.value).toBe(false)
+  }
+)
+it('maximum development validates the schedule without requiring Skland cache', async () => {
+  page.settings.operatorMode = 'maximum'
+  page.settings.inventorySource = 'manual'
+  await page.start()
+  expect(io.client.post.mock.calls[0][1].operatorMode).toBe('maximum')
+  expect(workers).toHaveLength(1)
+})
+it('calculation uses the same frozen schedule and parameters that passed automatic validation', async () => {
+  await page.readCache()
+  let finishValidation
+  io.client.post.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishValidation = resolve
+      })
+  )
+  const captured = structuredClone(JSON.parse(JSON.stringify(props.snapshot.plan)))
+  const start = page.start()
+  await vi.waitFor(() => expect(io.client.post).toHaveBeenCalledOnce())
+  expect(workers).toHaveLength(0)
+  props.snapshot.plan.conf.workaholic = '阿米娅'
+  page.settings.sampleDays = 7
+  finishValidation({ data: { success: true, status: 'passed' } })
+  await start
+  const input = workers[0].postMessage.mock.calls[0][0]
+  expect(io.client.post.mock.calls[0][1].plan).toEqual(captured)
+  expect(input.plan).toEqual(captured)
+  expect(input.settings.sampleDays).toBe(28)
+})
+it('does not start on network failure or a validation response received after closing', async () => {
+  await page.readCache()
+  io.client.post.mockRejectedValueOnce(new Error('校验请求失败'))
+  await page.start()
+  expect(workers).toHaveLength(0)
+  expect(page.state.error).toBe('校验请求失败')
+  let finishValidation
+  io.client.post.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishValidation = resolve
+      })
+  )
+  const start = page.start()
+  await vi.waitFor(() => expect(io.client.post).toHaveBeenCalledTimes(2))
+  page.close()
+  finishValidation({ data: { success: true, status: 'passed' } })
+  await start
+  expect(workers).toHaveLength(0)
 })

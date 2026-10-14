@@ -503,3 +503,17 @@ it('reads old frozen gold summaries without treating consumed inventory as incom
   expect(incomeGoldEquivalentLmd({ goldConsumed: 99, netGoldCount: -99 })).toBe(0)
   expect(original).toEqual(before)
 })
+
+it('retains advisory backup validation in the worker report even when the backup is inactive', async () => {
+  const { backupWarningPlan } = await import('./backupWarningFixture')
+  const source = backupWarningPlan()
+  const result = calculateIncome(source, { ...modelSettings(), warmupDays: 0, sampleDays: 1 })
+  expect(result.success, result.error).toBe(true)
+  const warnings = result.diagnostics.filter((issue) => issue.code === 'CONFLICTING_REPLACEMENT')
+  expect(warnings).toHaveLength(3)
+  expect(warnings.every((issue) => issue.message.includes('鸿雪下班'))).toBe(true)
+  source.backup_plans[0].plan.room_2_1.plans = structuredClone(source.plan1.room_2_1.plans)
+  const fixed = calculateIncome(source, { ...modelSettings(), warmupDays: 0, sampleDays: 1 })
+  expect(fixed.success, fixed.error).toBe(true)
+  expect(fixed.diagnostics.some((issue) => issue.code === 'CONFLICTING_REPLACEMENT')).toBe(false)
+}, 30000)

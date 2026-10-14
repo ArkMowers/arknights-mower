@@ -131,8 +131,8 @@ def _training_slot_errors(global_plan, characters, name_to_ids):
     return errors
 
 
-def validate_owned_operators(global_plan) -> str | None:
-    """Check ownership and named training assignments, refreshing at most once."""
+def validate_owned_operators(global_plan, *, refresh=True) -> str | None:
+    """Check ownership and named training assignments, optionally refreshing once."""
     path = get_path("@app/tmp/cultivate.json")
     if not path.exists():
         return None
@@ -166,7 +166,13 @@ def validate_owned_operators(global_plan) -> str | None:
     training_errors = _training_slot_errors(global_plan, characters, name_to_ids)
     if not missing and not training_errors:
         return None
-    if _refresh_roster():
+    if missing and not refresh:
+        return (
+            f"森空岛缓存中未持有以下排班干员：{'、'.join(missing)}；"
+            "请前往「养成规划」页面手动点击「刷新」后重新验证排班，"
+            "或选择全员满练、手动练度进行演算"
+        )
+    if refresh and _refresh_roster():
         try:
             characters = _read_roster(path)
         except (OSError, ValueError):
