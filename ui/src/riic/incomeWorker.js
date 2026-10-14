@@ -1,10 +1,13 @@
 import { runCalculationBridge } from './vendor/workbench/calculationBridge'
 import { incomeRequest } from './income'
 import { incomeEventLog } from './incomeLogs'
+import { createRecruitmentObservation } from './incomeRecruitment'
 import { OPERATOR_MAP } from './vendor/domain/operators'
 
 export function calculateIncome(plan, settings, onProgress) {
   const { workspace, options } = incomeRequest(plan, settings)
+  const recruitment = createRecruitmentObservation(settings.warmupDays * 24)
+  options.simulationOptions.observeInterval = recruitment.observe
   const result = runCalculationBridge(workspace, options, (p) =>
     onProgress?.({
       label: `${p.phase === 'warmup' ? '预热' : '统计'} ${(p.phase === 'warmup'
@@ -68,6 +71,7 @@ export function calculateIncome(plan, settings, onProgress) {
     summary: {
       ...result.report.summary,
       netLmd,
+      recruitmentCount: recruitment.result().completed / days,
       lmdConsumed:
         production.assumptions.outputMode === 'potential'
           ? potentialLmdCost / days

@@ -51,6 +51,7 @@ export function incomeReportLines(result, settings, plan, label) {
     `模型假设：理想跑单；部分读房与调度耗时已建模，其余点击识别耗时忽略；宿舍氛围按等级上限。`,
     `推断等级：${levels}。`,
     `计算器 ${CALCULATOR_REVISION}（含本地完成时刻精度、全 Free 宿舍、赤金透支、制造成本观察及心情记录适配）；调度参考 Mower alpha ${MOWER_REFERENCE}，后续本体逻辑不自动同步。`,
+    '公招刷新按办公室驻员、心情与已解锁技能计算联络产出；初始进度为零，预热进度延续但预热完成次数不计。假设及时使用刷新次数，不模拟存满 3 次停工，不计入加权收益。',
     '回收站仅统计产出次数，不推算随机材料，不增加材料库存，也不计材料收益价值。',
     '这是离线模型估算，不是实测收益或实际排班可执行性的证明。图片导入不恢复本次计算参数和结果。'
   ]
@@ -81,7 +82,9 @@ export async function renderIncomeImage(
     ])
     const width = source.naturalWidth
     const scale = width / 980
-    const headerHeight = Math.ceil(145 * scale)
+    const headerHeight = Math.ceil(
+      Math.max(145, 28 + Math.ceil(metrics.length / 2) * 36 + 8) * scale
+    )
     const canvas = document.createElement('canvas')
     canvas.width = width
     canvas.height = source.naturalHeight + headerHeight
@@ -159,9 +162,10 @@ export async function renderIncomeImage(
       gold: ['#f36c3e', '#ffffff'],
       fragment: ['#9d7940', '#ffffff'],
       orundum: ['#be4c51', '#ffffff'],
-      recycle: ['#398d83', '#ffffff']
+      recycle: ['#398d83', '#ffffff'],
+      recruitment: ['#657385', '#ffffff']
     }
-    const order = ['exp', 'lmd', 'gold', 'fragment', 'orundum', 'recycle']
+    const order = ['exp', 'lmd', 'gold', 'fragment', 'orundum', 'recycle', 'recruitment']
     metrics
       .map((metric, index) => ({ ...metric, image: icons[index] }))
       .sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key))
@@ -171,14 +175,14 @@ export async function renderIncomeImage(
         const [background, color] = colors[metric.key]
         ctx.fillStyle = background
         ctx.fillRect((x + 18) * scale, (y + 4) * scale, 151 * scale, 26 * scale)
-        if (metric.key === 'recycle') {
+        if (metric.key === 'recycle' || metric.key === 'recruitment') {
           // Keep the recognition symbol inside the same circular frame as product icons.
           const cx = (x + 17) * scale
           const cy = (y + 17) * scale
           ctx.save()
           ctx.beginPath()
           ctx.arc(cx, cy, 16 * scale, 0, Math.PI * 2)
-          ctx.fillStyle = '#243c3b'
+          ctx.fillStyle = metric.key === 'recruitment' ? '#535353' : '#243c3b'
           ctx.shadowColor = '#17233840'
           ctx.shadowBlur = 2 * scale
           ctx.shadowOffsetY = scale
@@ -187,10 +191,10 @@ export async function renderIncomeImage(
           ctx.clip()
           ctx.drawImage(
             metric.image,
-            0,
-            0,
-            54,
-            58,
+            metric.key === 'recruitment' ? 7 : 0,
+            metric.key === 'recruitment' ? 4 : 0,
+            metric.key === 'recruitment' ? 58 : 54,
+            metric.key === 'recruitment' ? 60 : 58,
             (x + 2) * scale,
             (y + 1) * scale,
             30 * scale,
@@ -205,7 +209,7 @@ export async function renderIncomeImage(
         } else {
           ctx.drawImage(metric.image, x * scale, y * scale, 34 * scale, 34 * scale)
         }
-        const value = `${metric.signed && metric.daily > 0 ? '+' : ''}${compactIncomeNumber(metric.daily)}${metric.key === 'recycle' ? '次' : ''}`
+        const value = `${metric.signed && metric.daily > 0 ? '+' : ''}${compactIncomeNumber(metric.daily)}${metric.unit === '次' ? '次' : ''}`
         write(value, x + 42, y + 24, 18, color)
       })
     return await new Promise((resolve, reject) =>

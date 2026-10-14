@@ -158,8 +158,12 @@
       "reason": "Preserve explicit Free dormitory positions without keepers, as permitted by the native Mower dormitory contract."
     },
     "simulator/scheduleSimulation.ts": {
-      "sha256": "2a994269d22c4f811e82f0d147601405d57f3fb21009ebcb033a3137f2bfc548",
-      "reason": "Optionally record bounded morale curves across warmup and sampling, preserving linear turns and same-time charge jumps without changing scheduling or production."
+      "sha256": "5ad8a0b5a837c4c5a60b01faa299f8d093cd7619e8b094281ab79eae526171a1",
+      "reason": "Optionally record bounded morale curves across warmup and sampling, preserving linear turns and same-time charge jumps without changing scheduling or production. Expose resolved intervals to a read-only local observer; omit its callback from serializable report inputs."
+    },
+    "workbench/scheduleSimulationBridge.ts": {
+      "reason": "Forward the local interval observer separately from JSON-cloned simulation data.",
+      "sha256": "8888318457b8aba820573a7edb882923a48f1a1c143f7ca7daf3575cc34d2682"
     }
   }
 }

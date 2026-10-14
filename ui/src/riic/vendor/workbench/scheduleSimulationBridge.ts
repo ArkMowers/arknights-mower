@@ -13,6 +13,7 @@ export function runScheduleSimulationBridge(
 ): { report: ScheduleSimulationReport | null; error?: string } {
   const cleanWorkspace: RosterWorkspace = JSON.parse(JSON.stringify(workspace))
   const cleanOptions: ScheduleSimulationOptions = { schedulingModel: 'mower-alpha', ...JSON.parse(JSON.stringify(options)) }
+  cleanOptions.observeInterval = options.observeInterval
   const cleanAssumptions: Partial<SimulationAssumptions> = JSON.parse(JSON.stringify(assumptions))
 
   const validation = validateRosterWorkspace(cleanWorkspace)

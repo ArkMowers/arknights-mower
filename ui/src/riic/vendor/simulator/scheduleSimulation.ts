@@ -29,6 +29,8 @@ export interface ScheduleSimulationProgress {
  activity?:SimulationActivity
 }
 export interface ScheduleSimulationOptions {
+ /** Read-only observation of each resolved interval, including warmup. */
+ observeInterval?:(config:AppConfig,start:number,end:number)=>void
  /** The complete-preview alpha scheduler requires an explicit opt-in. */
  schedulingModel?:'mower-default'|'mower-alpha'
  productionWeights?:import('../domain/productionWeights').ProductionWeights
@@ -136,7 +138,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
  if(!['continuous','hourly'].includes(warmupModel))throw new Error('Invalid warmup model')
  const report:ScheduleSimulationReport={schemaVersion:1,engine:'mower-morale-v1',success:false,elapsedHours:0,observedHours:0,
   assumptions:{schedulingModel,sampleHours,warmupHours,maxStepHours,warmupModel,restingThreshold:schedule.assumptions.restingThreshold??.65,operationDurationHours:0,dormAtmosphere:'各宿舍默认等级上限；可逐室覆盖',singleRecoveryTarget:'优先采用 Mower 已确认的入驻顺序；无有效确认时采用槽位顺序，允许显式覆盖'},
-  inputs:{schedule:structuredClone(schedule),options:structuredClone(options)},operators:[],rooms:[],events:[],segments:[],diagnostics:[]}
+  inputs:{schedule:structuredClone(schedule),options:structuredClone({...options,observeInterval:undefined})},operators:[],rooms:[],events:[],segments:[],diagnostics:[]}
  const diagnostic=(code:string,message:string)=>{if(!report.diagnostics.some(d=>d.code===code&&d.message===message))report.diagnostics.push({code,message})}
  if(options.production?.inventoryMode==='finite')diagnostic('FINITE_INVENTORY_MODEL','使用预设初始库存；从预热开始连续扣料、收取和交付，采样时不重置。无外源收入或自动补货；缺料停止相应生产或交付。回收站随机材料未计入物品库存。')
  for(const d of schedule.diagnostics)diagnostic(d.code,d.message)
@@ -503,6 +505,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
    report.observedHours+=dt
    if(options.recordSegments)report.segments.push({start:state.time,end:state.time+dt,occupants:{...state.occupants},bedOccupants:{...state.bedOccupants},morale:{...state.morale},efficiencyPercent:eff})
   }
+  options.observeInterval?.(frame(dt/2).config,state.time,state.time+dt)
   production?.advance(dt,frame(dt/2))
   advanceRoster(state,dt,rates,derivativeRates())
   if(moraleStep&&Math.abs(state.time-moraleStep.end)<=EPS){
