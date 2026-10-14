@@ -1,4 +1,5 @@
 import recycleTemplate from '../../../arknights_mower/resources/room/recycle.png?url'
+import { DEFAULT_DRONE_CAPACITY } from './vendor/domain/droneCapacity'
 import { importMowerJson } from './vendor/workbench/compat/mowerJson'
 import { droneFacilities } from './vendor/workbench/droneTargets'
 import { mowerAdvancedAssumptions } from './vendor/scheduler/mowerAdvancedSettings'
@@ -34,7 +35,9 @@ export function defaultIncomeSettings() {
   }
 }
 export function incomeWorkspace(plan) {
-  return importMowerJson(JSON.stringify(plan))
+  const workspace = importMowerJson(JSON.stringify(plan))
+  workspace.droneCapacity = DEFAULT_DRONE_CAPACITY
+  return workspace
 }
 export function incomeFacilities(plan) {
   return droneFacilities(incomeWorkspace(plan))

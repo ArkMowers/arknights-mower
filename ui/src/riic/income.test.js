@@ -325,3 +325,22 @@ it('records warmup and sampled morale without changing production or staffing', 
     expect(row.points.at(-1)).toEqual([48, operator.finalMorale])
   }
 })
+
+it('caps recovered drones at 250 even when an imported legacy field says 200', () => {
+  const source = { ...plan(), efficiencyResources: { droneCapacity: 200 } }
+  const original = structuredClone(source)
+  const { workspace, options } = incomeRequest(source, {
+    ...modelSettings(),
+    warmupDays: 0,
+    sampleDays: 3
+  })
+  const result = runCalculationBridge(workspace, options)
+  expect(result.success, result.error).toBe(true)
+  const drones = result.simulationReport.production.drones
+  expect(drones.capacity).toBe(250)
+  expect(drones.initial).toBe(0)
+  expect(drones.stock).toBe(250)
+  expect(drones.generated).toBeGreaterThan(250)
+  expect(drones.overflow).toBeCloseTo(drones.generated - 250, 8)
+  expect(source).toEqual(original)
+})

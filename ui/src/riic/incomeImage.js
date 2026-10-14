@@ -114,7 +114,14 @@ export async function renderIncomeImage(
       ctx.font = `bold ${scoreSize * scale}px sans-serif`
     }
     write(score, 26, 84, scoreSize, dark ? '#88e0b5' : '#237345', 'bold')
-    write('离线排班收益估算', 28, 112, 12, dark ? '#a5b3ad' : '#687a70')
+    const algorithmLines = incomeImageAlgorithmLines(settings)
+    algorithmLines.forEach((line, index) => {
+      const size = algorithmLines.length === 1 ? 12 : index === 0 ? 11 : 10
+      const y = algorithmLines.length === 1 ? 112 : 104 + index * 15
+      ctx.font = `${size * scale}px sans-serif`
+      ctx.fillStyle = dark ? '#a5b3ad' : '#687a70'
+      ctx.fillText(line, 28 * scale, y * scale, 252 * scale)
+    })
 
     const stampColor = dark ? '#88cbb1' : '#35896c'
     ctx.strokeStyle = stampColor
@@ -201,6 +208,17 @@ export async function renderIncomeImage(
   } finally {
     URL.revokeObjectURL(sourceUrl)
   }
+}
+export function incomeImageAlgorithmLines(settings) {
+  if (settings.weightMode !== 'custom' && settings.mowerAlgorithm !== -1) {
+    return [incomeAlgorithmLabel(settings.mowerAlgorithm).split('（')[0].trim()]
+  }
+  const weights = incomeWeights(settings)
+  return [
+    '自定义',
+    `经验 ${weights.exp} · 赤金 ${weights.gold} · 订单 ${weights.orders}`,
+    `源石碎片 ${weights.fragments} · 合成玉 ${weights.orundum}`
+  ]
 }
 export function compactIncomeNumber(value) {
   const magnitude = Math.abs(value)
