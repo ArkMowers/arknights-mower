@@ -26,9 +26,16 @@ it('keeps recent sampled events with names and an explicit total', () => {
   expect(incomeLogTime(25.5)).toBe('第 2 天 01:30')
 })
 
-import { incomeImageFilename } from './incomeImage'
+import { compactIncomeNumber, incomeImageFilename } from './incomeImage'
 it('names JPG exports with the chosen title and completed run income', () => {
   const result = { summary: { totalScore82: 103475.123 }, observedHours: 672 }
   expect(incomeImageFilename(' 我的排班 ', result)).toBe('我的排班_日均收益103475.12_28天.jpg')
   expect(incomeImageFilename('A/B:*', result)).toBe('A_B___日均收益103475.12_28天.jpg')
+})
+
+it('keeps signed daily values compact without hiding small recycling counts', () => {
+  expect(compactIncomeNumber(37700)).toBe('37.7k')
+  expect(compactIncomeNumber(-1068)).toBe('-1.1k')
+  expect(compactIncomeNumber(0.714285)).toBe('0.71')
+  expect(compactIncomeNumber(1755500)).toBe('1.8m')
 })

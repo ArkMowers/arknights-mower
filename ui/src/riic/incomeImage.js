@@ -67,8 +67,6 @@ export async function renderIncomeImage(
   planImage,
   result,
   settings,
-  plan,
-  label,
   theme = 'light',
   roomBounds = {}
 ) {
@@ -82,57 +80,117 @@ export async function renderIncomeImage(
     ])
     const width = source.naturalWidth
     const scale = width / 980
+    const headerHeight = Math.ceil(145 * scale)
     const canvas = document.createElement('canvas')
     canvas.width = width
-    canvas.height = source.naturalHeight + Math.ceil((155 + metrics.length * 55) * scale)
+    canvas.height = source.naturalHeight + headerHeight
     const ctx = canvas.getContext('2d')
     const dark = theme === 'dark'
     const foreground = dark ? '#eef2f8' : '#172338'
     ctx.fillStyle = dark ? '#000000' : '#ffffff'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
-    ctx.drawImage(source, 0, 0)
+    ctx.drawImage(source, 0, headerHeight)
     for (const room of result.droneRooms ?? []) {
       const bounds = roomBounds[room]
       if (!bounds) continue
       const size = 18 * scale
       const x = bounds.x + bounds.width - size - 3 * scale
-      const y = bounds.y + 2 * scale
+      const y = headerHeight + bounds.y + 2 * scale
       ctx.fillStyle = '#e2f4e6'
       ctx.fillRect(x, y, size, size)
       ctx.drawImage(drone, x + 2 * scale, y + 2 * scale, size - 4 * scale, size - 4 * scale)
     }
-    const margin = 28 * scale
-    let y = source.naturalHeight + 42 * scale
-    const write = (text, size = 15, x = margin) => {
-      ctx.font = `${size * scale}px sans-serif`
-      ctx.fillStyle = foreground
-      ctx.fillText(text, x, y)
+    const write = (text, x, y, size, color = foreground, weight = 'normal') => {
+      ctx.font = `${weight} ${size * scale}px sans-serif`
+      ctx.fillStyle = color
+      ctx.fillText(text, x * scale, y * scale)
     }
-    let title = `${label?.trim() || '排班'} · 收益估算`
-    ctx.font = `${24 * scale}px sans-serif`
-    while (ctx.measureText(title).width > width - margin * 2 && title.length > 8)
-      title = title.slice(0, -2) + '…'
-    write(title, 24)
-    y += 34 * scale
+    write('日均加权收益', 28, 37, 17)
+    const score = number(result.summary.totalScore82)
+    let scoreSize = 38
+    ctx.font = `bold ${scoreSize * scale}px sans-serif`
+    while (ctx.measureText(score).width > 252 * scale && scoreSize > 18) {
+      scoreSize--
+      ctx.font = `bold ${scoreSize * scale}px sans-serif`
+    }
+    write(score, 26, 84, scoreSize, dark ? '#88e0b5' : '#237345', 'bold')
+    write('离线排班收益估算', 28, 112, 12, dark ? '#a5b3ad' : '#687a70')
+
+    const stampColor = dark ? '#88cbb1' : '#35896c'
+    ctx.strokeStyle = stampColor
+    ctx.lineWidth = 2 * scale
+    ctx.strokeRect(302 * scale, 27 * scale, 234 * scale, 91 * scale)
+    ctx.lineWidth = scale
+    ctx.strokeRect(307 * scale, 32 * scale, 224 * scale, 81 * scale)
+    ctx.textAlign = 'center'
+    const days = result.observedHours / 24
+    write('收益演算验证', 419, 57, 20, stampColor, 'bold')
+    write(`演算 ${number(settings.warmupDays + days)} 天`, 419, 81, 16, stampColor)
     write(
-      `日均加权产出 ${number(result.summary.totalScore82)} · 统计期 ${number(result.observedHours / 24)} 天`,
-      16
+      `预热 ${number(settings.warmupDays)} 天 · 采样 ${number(days)} 天`,
+      419,
+      102,
+      12,
+      stampColor
     )
-    y += 36 * scale
-    write('产物')
-    write('日均', 15, width * 0.45)
-    write('统计期合计', 15, width * 0.72)
-    y += 18 * scale
-    metrics.forEach((metric, index) => {
-      ctx.fillStyle = dark ? '#17212a' : '#f2f6f4'
-      ctx.fillRect(margin, y, width - margin * 2, 49 * scale)
-      ctx.drawImage(icons[index], margin + 9 * scale, y + 3 * scale, 43 * scale, 43 * scale)
-      y += 31 * scale
-      const value = (n) => `${metric.signed && n > 0 ? '+' : ''}${number(n)} ${metric.unit}`
-      write(value(metric.daily), 17, width * 0.45)
-      write(value(metric.total), 17, width * 0.72)
-      y += 24 * scale
-    })
+    ctx.textAlign = 'left'
+
+    write('日均产出', 570, 20, 12, dark ? '#a5b3ad' : '#687a70')
+    const colors = {
+      exp: ['#f7d833', '#172338'],
+      lmd: ['#087ead', '#ffffff'],
+      gold: ['#f36c3e', '#ffffff'],
+      fragment: ['#9d7940', '#ffffff'],
+      orundum: ['#be4c51', '#ffffff'],
+      recycle: ['#398d83', '#ffffff']
+    }
+    const order = ['exp', 'lmd', 'gold', 'fragment', 'orundum', 'recycle']
+    metrics
+      .map((metric, index) => ({ ...metric, image: icons[index] }))
+      .sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key))
+      .forEach((metric, index) => {
+        const x = 570 + (index % 2) * 192
+        const y = 28 + Math.floor(index / 2) * 36
+        const [background, color] = colors[metric.key]
+        ctx.fillStyle = background
+        ctx.fillRect((x + 18) * scale, (y + 4) * scale, 151 * scale, 26 * scale)
+        if (metric.key === 'recycle') {
+          // Keep the recognition symbol inside the same circular frame as product icons.
+          const cx = (x + 17) * scale
+          const cy = (y + 17) * scale
+          ctx.save()
+          ctx.beginPath()
+          ctx.arc(cx, cy, 16 * scale, 0, Math.PI * 2)
+          ctx.fillStyle = '#243c3b'
+          ctx.shadowColor = '#17233840'
+          ctx.shadowBlur = 2 * scale
+          ctx.shadowOffsetY = scale
+          ctx.fill()
+          ctx.shadowColor = 'transparent'
+          ctx.clip()
+          ctx.drawImage(
+            metric.image,
+            0,
+            0,
+            54,
+            58,
+            (x + 2) * scale,
+            (y + 1) * scale,
+            30 * scale,
+            32 * scale
+          )
+          ctx.restore()
+          ctx.beginPath()
+          ctx.arc(cx, cy, 16 * scale, 0, Math.PI * 2)
+          ctx.strokeStyle = '#78aaa1'
+          ctx.lineWidth = scale
+          ctx.stroke()
+        } else {
+          ctx.drawImage(metric.image, x * scale, y * scale, 34 * scale, 34 * scale)
+        }
+        const value = `${metric.signed && metric.daily > 0 ? '+' : ''}${compactIncomeNumber(metric.daily)}${metric.key === 'recycle' ? '次' : ''}`
+        write(value, x + 42, y + 24, 18, color)
+      })
     return await new Promise((resolve, reject) =>
       canvas.toBlob(
         (blob) => (blob ? resolve(blob) : reject(new Error('收益图片生成失败'))),
@@ -143,6 +201,11 @@ export async function renderIncomeImage(
   } finally {
     URL.revokeObjectURL(sourceUrl)
   }
+}
+export function compactIncomeNumber(value) {
+  const magnitude = Math.abs(value)
+  const unit = magnitude >= 1e6 ? ['m', 1e6] : magnitude >= 1e3 ? ['k', 1e3] : ['', 1]
+  return `${Number((value / unit[1]).toFixed(unit[1] === 1 ? 2 : 1))}${unit[0]}`
 }
 export function incomeImageFilename(name, result) {
   const safe =

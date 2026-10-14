@@ -997,9 +997,9 @@ def test_income_image_keeps_snapshot_after_live_plan_changes(
     assert config.conf.model_dump() == conf_before
     original = Image.open(BytesIO(response.data))
     image = Image.new("RGB", (2940, 4200), "black" if theme == "dark" else "white")
-    image.paste(original, (0, 0))
+    image.paste(original, (0, 435))
     ImageDraw.Draw(image).text(
-        (80, 1400), "Income: 28 days after 3 days warmup", fill="gray"
+        (80, 80), "Income: 28 days after 3 days warmup", fill="gray"
     )
     output = BytesIO()
     image.save(output, output_format, quality=95)

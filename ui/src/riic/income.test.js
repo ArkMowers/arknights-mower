@@ -257,7 +257,7 @@ it('shows only active product icons with net gold and LMD, preserving deficits a
     28
   )
   expect(rows.map((row) => row.key)).toEqual(['exp', 'gold', 'lmd'])
-  expect(rows[1]).toMatchObject({ daily: -2, total: -56, signed: true, icon: '/depot/赤金.webp' })
+  expect(rows[1]).toMatchObject({ daily: -2, total: -56, signed: true, icon: '/product/gold.png' })
   expect(rows[2]).toMatchObject({ daily: 0, total: 0 })
 })
 it.each([

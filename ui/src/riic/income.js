@@ -1,3 +1,4 @@
+import recycleTemplate from '../../../arknights_mower/resources/room/recycle.png?url'
 import { importMowerJson } from './vendor/workbench/compat/mowerJson'
 import { droneFacilities } from './vendor/workbench/droneTargets'
 import { mowerAdvancedAssumptions } from './vendor/scheduler/mowerAdvancedSettings'
@@ -158,10 +159,10 @@ export function incomeMetrics(summary, days) {
 
 export function incomeImageMetrics(summary, days) {
   return [
-    { key: 'exp', icon: '/depot/高级作战记录.webp', daily: summary.exp, unit: '经验值' },
+    { key: 'exp', icon: '/product/exp3.png', daily: summary.exp, unit: '经验值' },
     {
       key: 'gold',
-      icon: '/depot/赤金.webp',
+      icon: '/product/gold.png',
       daily: summary.netGoldCount,
       unit: '个',
       signed: true,
@@ -169,15 +170,15 @@ export function incomeImageMetrics(summary, days) {
     },
     {
       key: 'lmd',
-      icon: '/depot/龙门币.webp',
+      icon: '/product/lmd.png',
       daily: summary.netLmd,
       unit: '龙门币',
       signed: true,
       present: summary.orderLmd || summary.lmdConsumed
     },
-    { key: 'fragment', icon: '/depot/源石碎片.webp', daily: summary.fragments, unit: '个' },
-    { key: 'orundum', icon: '/depot/合成玉.webp', daily: summary.orundum, unit: '个' },
-    { key: 'recycle', icon: '/product/recycle.svg', daily: summary.recycleCount, unit: '次' }
+    { key: 'fragment', icon: '/product/orirock.png', daily: summary.fragments, unit: '个' },
+    { key: 'orundum', icon: '/product/orundum.png', daily: summary.orundum, unit: '个' },
+    { key: 'recycle', icon: recycleTemplate, daily: summary.recycleCount, unit: '次' }
   ]
     .filter((row) => Math.abs(row.daily ?? 0) > 1e-8 || Math.abs(row.present ?? 0) > 1e-8)
     .map((row) => ({ ...row, daily: row.daily ?? 0, total: (row.daily ?? 0) * days }))

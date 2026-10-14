@@ -213,8 +213,6 @@ async function exportImage() {
       props.snapshot.image,
       state.result,
       state.input.settings,
-      state.input.plan,
-      name,
       props.snapshot.theme,
       props.snapshot.roomBounds
     )
@@ -478,7 +476,7 @@ onBeforeUnmount(() => {
                 :maxlength="60"
                 :disabled="exporting"
             /></n-form-item>
-            <p>导出 JPG；文件名附加本次日均加权收益和统计天数。</p>
+            <p>排班名称仅用于 JPG 文件名，后附日均加权收益和采样天数；图片不显示名称。</p>
             <p>
               本次结果：预热 {{ state.input.settings.warmupDays }} 天、统计
               {{ state.input.settings.sampleDays }} 天。修改参数后需重新演算；再次导出使用本次结果。
