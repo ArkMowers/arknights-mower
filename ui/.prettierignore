@@ -1,2 +1,4 @@
 # 各种自动生成的json
 src/pages/basement_skill/*.json
+# 固定计算器源码按来源摘要维护，不参与本地格式化。
+src/riic/vendor/

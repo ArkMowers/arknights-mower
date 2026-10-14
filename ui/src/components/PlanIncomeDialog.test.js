@@ -7,7 +7,9 @@ vi.mock('@/riic/incomeArchive', () => ({
   loadIncomeArchive: vi.fn(async () => null),
   saveIncomeArchive: vi.fn(async () => {})
 }))
-vi.mock('./IncomeMoraleChart.vue', () => ({ default: { render: () => null } }))
+vi.mock('@/riic/vendor/components/workbench/ScheduleTimelineGantt.vue', () => ({
+  default: { render: () => null }
+}))
 vi.mock('@/riic/incomeImage', async (original) => ({
   ...(await original()),
   renderIncomeImage: vi.fn(async () => new Blob(['image'])),
@@ -283,4 +285,14 @@ it('does not let a late archive read replace a new calculation or a closed dialo
   done({ result: success(), input: {}, snapshot: {}, progressLog: [] })
   await restore
   expect(page.state.result).toBeNull()
+})
+
+it('starts with no training-plan option and strips retired state before freezing a new run', async () => {
+  expect(page.settings).not.toHaveProperty('masteryPlanPresent')
+  page.settings.masteryPlanPresent = true
+  await page.readCache()
+  await page.start()
+  expect(workers).toHaveLength(1)
+  expect(workers[0].postMessage.mock.calls[0][0].settings).not.toHaveProperty('masteryPlanPresent')
+  expect(page.state.input.settings).not.toHaveProperty('masteryPlanPresent')
 })

@@ -10,8 +10,8 @@ import { normalizeProductionWeights } from './vendor/domain/productionWeights'
 import { incomeInitialInventory } from './incomeCache'
 import { parseOperatorInventory, compileOperatorInventory } from './vendor/domain/operatorInventory'
 
-export const CALCULATOR_REVISION = '9c0b53c'
-export const MOWER_REFERENCE = 'ab0a4e5'
+export const CALCULATOR_REVISION = '5529403'
+export const MOWER_REFERENCE = '80c97ee6'
 export function defaultIncomeSettings() {
   return {
     warmupDays: 3,
@@ -29,7 +29,6 @@ export function defaultIncomeSettings() {
     mowerAlgorithm: null,
     initialInventory: {},
     jayeElite0: false,
-    masteryPlanPresent: false,
     operatorMode: 'cache',
     operatorText: '',
     productionWeights: normalizeProductionWeights()
@@ -90,10 +89,7 @@ export function incomeRequest(plan, settings) {
     options: {
       engine: 'simulation',
       jayeElite0: settings.jayeElite0,
-      simulationAssumptions: {
-        ...mowerAdvancedAssumptions(workspace),
-        masteryPlanPresent: settings.masteryPlanPresent
-      },
+      simulationAssumptions: mowerAdvancedAssumptions(workspace),
       simulationOptions: {
         schedulingModel: 'mower-alpha',
         warmupHours: settings.warmupDays * 24,
@@ -101,8 +97,7 @@ export function incomeRequest(plan, settings) {
         maxStepHours: 0.25,
         maxEvents: 200000,
         warmupModel: 'hourly',
-        recordSegments: false,
-        recordMorale: true,
+        recordSegments: true,
         operatorInventory: operators,
         productionWeights: incomeWeights(settings),
         production: {
@@ -146,12 +141,17 @@ export function applyMowerIncomeSettings(settings, value) {
   })
 }
 
+export function incomeGoldEquivalentLmd(summary) {
+  return (
+    (summary.goldValue ?? (summary.goldCount ?? 0) * 500) +
+    (summary.virtualGoldValue ?? (summary.virtualGoldCount ?? 0) * 500)
+  )
+}
+
 export function incomeMetrics(summary, days) {
   return [
     ['经验', summary.exp, '经验值'],
-    ['赤金产量', summary.goldCount, '个'],
-    ['赤金消耗', summary.goldConsumed, '个'],
-    ['赤金净增', summary.netGoldCount, '个'],
+    ['赤金等价龙门币', incomeGoldEquivalentLmd(summary), '龙门币'],
     ['贸易龙门币', summary.orderLmd, '龙门币'],
     ['龙门币消耗', summary.lmdConsumed, '龙门币'],
     ['龙门币净增', summary.netLmd, '龙门币'],
@@ -168,10 +168,8 @@ export function incomeImageMetrics(summary, days) {
     {
       key: 'gold',
       icon: '/product/gold.png',
-      daily: summary.netGoldCount,
-      unit: '个',
-      signed: true,
-      present: summary.goldCount || summary.goldConsumed
+      daily: incomeGoldEquivalentLmd(summary),
+      unit: '龙门币'
     },
     {
       key: 'lmd',

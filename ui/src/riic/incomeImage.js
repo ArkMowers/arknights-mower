@@ -42,7 +42,10 @@ export function incomeReportLines(result, settings, plan, label) {
         ]
       : []),
     `干员：${settings.operatorMode === 'cache' ? '森空岛缓存的实际拥有和练度' : settings.operatorMode === 'custom' ? '按本次填写的拥有和练度' : '全部干员满配假设'}；初始心情 24（受个人上限约束）；孑精零 ${settings.jayeElite0 ? '开启' : '关闭'}。`,
-    `未完成训练计划：${settings.masteryPlanPresent ? '有' : '无'}，整段演算保持此条件，不模拟训练完成。`,
+    settings.masteryPlanPresent === undefined
+      ? '本次演算固定为无未完成训练计划，不模拟训练进度或计划完成时刻。'
+      : `历史演算的未完成训练计划：${settings.masteryPlanPresent ? '有' : '无'}，整段演算保持此条件，不模拟训练完成。`,
+    '赤金等价龙门币为制造赤金 × 500 加特殊订单溢价，不扣除交付消耗的赤金；该项不是实际龙门币入账。',
     `收益权重（${settings.weightMode === 'mower' ? incomeAlgorithmLabel(settings.mowerAlgorithm) : '本次自定义'}）：${Object.entries(
       incomeWeights(settings)
     )
@@ -50,7 +53,7 @@ export function incomeReportLines(result, settings, plan, label) {
       .join('；')}。加权产出不是龙门币结算额。`,
     `模型假设：理想跑单；部分读房与调度耗时已建模，其余点击识别耗时忽略；宿舍氛围按等级上限。`,
     `本次设施等级（优先使用排班保存值，未设置时推断）：${levels}。`,
-    `计算器 ${CALCULATOR_REVISION}（含本地完成时刻精度、全 Free 宿舍、赤金透支、制造成本观察及心情记录适配）；调度参考 Mower alpha ${MOWER_REFERENCE}，后续本体逻辑不自动同步。`,
+    `计算器 ${CALCULATOR_REVISION}（含本地完成时刻精度、赤金透支、制造成本观察及公招观察适配）；调度参考 Mower alpha ${MOWER_REFERENCE}，后续本体逻辑不自动同步。`,
     '公招刷新按办公室驻员、心情与已解锁技能计算联络产出；初始进度为零，预热进度延续但预热完成次数不计。假设及时使用刷新次数，不模拟存满 3 次停工，不计入加权收益。',
     '回收站仅统计产出次数，不推算随机材料，不增加材料库存，也不计材料收益价值。',
     '这是离线模型估算，不是实测收益或实际排班可执行性的证明。图片导入不恢复本次计算参数和结果。'
@@ -215,7 +218,7 @@ export async function renderIncomeImage(
         } else {
           ctx.drawImage(metric.image, x * scale, y * scale, 34 * scale, 34 * scale)
         }
-        const value = `${metric.signed && metric.daily > 0 ? '+' : ''}${compactIncomeNumber(metric.daily)}${metric.unit === '次' ? '次' : ''}`
+        const value = `${metric.signed && metric.daily > 0 ? '+' : ''}${compactIncomeNumber(metric.daily)}${metric.key === 'gold' ? ' 龙门币' : metric.unit === '次' ? '次' : ''}`
         write(value, x + 42, y + 24, 18, color)
       })
     return await new Promise((resolve, reject) =>

@@ -40,7 +40,7 @@ export interface ScheduleSimulationOptions {
  /** Validation-only switch for the old ideal path that omitted order wakes. */
  experimentalDisableIdealWake?:boolean
  sampleHours?:number; warmupHours?:number; maxStepHours?:number; maxEvents?:number
- warmupModel?:'continuous'|'hourly'; recordSegments?:boolean; recordMorale?:boolean
+ warmupModel?:'continuous'|'hourly'; recordSegments?:boolean
  consumptionOverrides?:Record<string,number>; recoveryOverrides?:Record<string,number>
  atmosphereByRoom?:Record<string,number>; recoveryTargetByProvider?:Record<string,string>
  initialWorkHours?:Record<string,number>; efficiencyResources?:Partial<EfficiencyResources>
@@ -62,7 +62,6 @@ export interface ScheduleSimulationReport {
  inputs:{schedule:CompiledSchedule;options:ScheduleSimulationOptions}
  assumptions:{schedulingModel?:'mower-default'|'mower-alpha';sampleHours:number;warmupHours:number;maxStepHours:number;warmupModel:'continuous'|'hourly';restingThreshold:number;operationDurationHours:0;dormAtmosphere:string;singleRecoveryTarget:string}
  production?:ProductionReport
- moraleTimeline?:Record<string,{points:[number,number|null][];truncated:boolean}>
  operators:SimulatedOperator[];rooms:SimulatedRoom[];events:RuntimeEvent[];segments:ScheduleSegment[]
  diagnostics:{code:string;message:string}[]
  shiftDeferrals?:{key:string;operatorIds:string[];blockedAt:number;resolvedAt?:number}[]
@@ -142,7 +141,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
  const diagnostic=(code:string,message:string)=>{if(!report.diagnostics.some(d=>d.code===code&&d.message===message))report.diagnostics.push({code,message})}
  if(options.production?.inventoryMode==='finite')diagnostic('FINITE_INVENTORY_MODEL','使用预设初始库存；从预热开始连续扣料、收取和交付，采样时不重置。无外源收入或自动补货；缺料停止相应生产或交付。回收站随机材料未计入物品库存。')
  for(const d of schedule.diagnostics)diagnostic(d.code,d.message)
- diagnostic('MOWER_SCHEDULING_MODEL',schedulingModel==='mower-default'?'使用 Mower 默认兼容换班策略；按六阶段评估副表，保留完整任务保护':'使用 Mower alpha 排班模型（3de2b2ac6 增量适配）：副表收敛、共享绑组与宿舍隔离')
+ diagnostic('MOWER_SCHEDULING_MODEL',schedulingModel==='mower-default'?'使用 Mower 默认兼容换班策略；按六阶段评估副表，保留完整任务保护':'使用 Mower alpha 排班模型（80c97ee60 增量适配）：副表收敛、共享绑组与宿舍隔离')
  if(schedule.diagnostics.some(d=>d.severity==='error'||d.code==='UNKNOWN_OPERATOR'))return report
  const inventory=options.operatorInventory===undefined?undefined:compileOperatorInventory(options.operatorInventory)
  const operatorRecords=inventory?inventoryOperatorRecords(inventory):undefined
@@ -332,29 +331,9 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
   // physical rates above. An I/O return by itself changes none of those inputs.
   refreshSessions(events)
  }
- // Preserve linear turns and same-time charge jumps without retaining full state snapshots.
- const captureMorale=()=>{
-  if(!options.recordMorale)return
-  const timeline=report.moraleTimeline??={}
-  for(const [id,value] of Object.entries(state.morale)){
-   const row=timeline[id]??={points:[],truncated:false},points=row.points
-   if(!Number.isFinite(value))continue
-   if(row.truncated){points[points.length-1]=[state.time,value];continue}
-   const last=points.at(-1),before=points.at(-2)
-   if(last&&last[0]===state.time&&last[1]===value)continue
-   if(before&&last&&before[1]!==null&&last[1]!==null&&last[0]>before[0]&&state.time>last[0]){
-    const projected=before[1]+(value-before[1])*(last[0]-before[0])/(state.time-before[0])
-    if(Math.abs(projected-last[1])<1e-8)points.pop()
-   }
-   if(points.length>=6000){row.truncated=true;points.push([state.time,null])}
-   points.push([state.time,value])
-  }
- }
  const settle=()=>{
   if(backupFailed)return
-  captureMorale()
   try{settleUnsafe()}catch(error){backupFailed=true;diagnostic('BACKUP_EXECUTION_FAILED',error instanceof Error?error.message:String(error))}
-  captureMorale()
  }
  let cachedBaseConfig: ReturnType<typeof projectScheduleState> | undefined, cachedBaseConfigRevision = -1
  const getBaseConfig = () => {
@@ -513,7 +492,6 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
    Object.assign(state.morale,moraleStep.morale)
    moraleStep=undefined
   }
-  captureMorale()
   production?.settle(()=>frameAt(0))
   if(state.config.mowerSourcePlan?nextRosterActionHours(state,rates)===0:Math.abs(dt-action)<=EPS){settle();production?.settle(()=>frameAt(0))}
  }

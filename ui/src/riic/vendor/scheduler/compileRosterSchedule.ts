@@ -29,7 +29,8 @@ function safeClone<T>(val: T): T {
 
 export function compileRosterSchedule(workspace: RosterWorkspace, options: Partial<SimulationAssumptions> = {}): CompiledSchedule {
   const sourceWorkspace = safeClone(workspace)
-  const explicitOptions = Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)) as Partial<SimulationAssumptions>
+  // Retired training state from older callers cannot re-enable local mastery plans.
+  const explicitOptions = Object.fromEntries(Object.entries(options).filter(([key, value]) => value !== undefined && key !== 'masteryPlanPresent' && key !== 'mowerMasteryPlanPresent')) as Partial<SimulationAssumptions>
   const assumptions = { ...DEFAULTS, ...mowerAdvancedAssumptions(workspace), ...safeClone(explicitOptions), schemaVersion: 1 as const }
   // User contract: Party Time is a fixed disabled external condition.
   assumptions.enableParty=false
@@ -41,7 +42,6 @@ export function compileRosterSchedule(workspace: RosterWorkspace, options: Parti
     if (!Array.isArray(assumptions.dormIsolation) || assumptions.dormIsolation.some(group => !Array.isArray(group) || group.some(name => typeof name !== 'string' || !isKnown(resolveOperatorCharId(name))))) invalid('assumptions.dormIsolation', '宿舍隔离必须为已知干员名单的分组列表')
     else assumptions.dormIsolation = assumptions.dormIsolation.map(group => [...new Set(group.map(resolveOperatorCharId))])
   }
-  if(assumptions.masteryPlanPresent!==undefined&&typeof assumptions.masteryPlanPresent!=='boolean')invalid('assumptions.masteryPlanPresent','训练计划状态必须为布尔值')
   if(assumptions.majorMaintenanceStartHours!==undefined&&(!Number.isFinite(assumptions.majorMaintenanceStartHours)||assumptions.majorMaintenanceStartHours<0))invalid('assumptions.majorMaintenanceStartHours','Maintenance start must be a nonnegative finite hour offset')
   if(assumptions.runOrderSimulationMode!==undefined&&assumptions.runOrderSimulationMode!=='ideal')invalid('assumptions.runOrderSimulationMode','Invalid simulation run-order mode')
   for (const key of ['enableMastery','enableParty','leifengMode'] as const) if (typeof assumptions[key] !== 'boolean') invalid('assumptions.'+key, 'Native scheduling switch must be boolean')

@@ -13,7 +13,7 @@ import { incomeAlgorithms, incomeAlgorithmLabel, incomeSettingsUrl } from '@/uti
 import { createIncomeSession } from '@/riic/incomeSession'
 import { loadIncomeArchive, saveIncomeArchive } from '@/riic/incomeArchive'
 import { incomeLogTime } from '@/riic/incomeLogs'
-import IncomeMoraleChart from './IncomeMoraleChart.vue'
+import IncomeTimeline from './IncomeTimeline.vue'
 import {
   renderIncomeImage,
   downloadIncomeImage,
@@ -443,9 +443,6 @@ onBeforeUnmount(() => {
             <n-form-item label="孑精零"
               ><n-switch v-model:value="settings.jayeElite0"
             /></n-form-item>
-            <n-form-item label="有未完成训练计划"
-              ><n-switch v-model:value="settings.masteryPlanPresent"
-            /></n-form-item>
             <n-form-item label="使用有限库存"
               ><n-switch
                 :value="required || settings.finiteInventory"
@@ -589,6 +586,10 @@ onBeforeUnmount(() => {
                   : '本次自定义'
               }}；回收站仅计产出次数。
             </p>
+            <p>
+              赤金等价龙门币 = 制造赤金 × 500 + 龙舌兰等特殊订单溢价；不扣除交付消耗的赤金。
+              <span v-if="state.result.inventoryMode === 'finite'">实际消耗及余额见库存收支。</span>
+            </p>
             <h3>日均加权产出 {{ format(state.result.summary.totalScore82) }}</h3>
             <n-table size="small"
               ><thead>
@@ -667,14 +668,22 @@ onBeforeUnmount(() => {
             >
           </template>
         </n-tab-pane>
-        <n-tab-pane name="morale" tab="心情曲线" display-directive="show:lazy">
-          <IncomeMoraleChart
-            v-if="state.result?.success"
-            :rows="state.result.morale"
-            :plan="state.input.plan"
-            :warmup-hours="state.input.settings.warmupDays * 24"
+        <n-tab-pane name="timeline" tab="排班甘特图" display-directive="show:lazy">
+          <IncomeTimeline
+            v-if="
+              state.result?.success && state.result.simulationReport && state.result.timelineData
+            "
+            :report="state.result.simulationReport"
+            :timeline-data="state.result.timelineData"
           />
-          <n-empty v-else description="演算完成后显示心情曲线" />
+          <n-empty
+            v-else
+            :description="
+              state.result?.success
+                ? '这份历史演算记录不含甘特图，请重新演算。原收益和排班图片仍可查看、导出。'
+                : '演算完成后显示排班甘特图'
+            "
+          />
         </n-tab-pane>
         <n-tab-pane name="logs" tab="演算日志">
           <n-alert

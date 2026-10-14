@@ -148,16 +148,24 @@ describe('saved facility levels', () => {
   it.each([
     [1, 2],
     [5, 4]
-  ])('uses level %s full ambience for actual recovery curve', (level, recovery) => {
+  ])('uses level %s full ambience for actual sampled recovery', (level, recovery) => {
     const plan = fixture()
     plan.plan1.room_2_3 = { name: '发电站', plans: [] }
     plan.facility_levels = { dormitory_1: level }
     const result = calculateIncome(plan, settings())
     expect(result.success, JSON.stringify(result)).toBe(true)
-    const points = result.morale.find((r) => r.name === '芬').points
-    const slopes = points.slice(1).flatMap(([x, y], i) => {
-      const [previousX, previousY] = points[i]
-      return x - previousX > 0.001 ? [(y - previousY) / (x - previousX)] : []
+    const segments = result.simulationReport.segments
+    const id = result.simulationReport.operators.find((row) => row.operatorName === '芬').operatorId
+    const location = (segment) =>
+      Object.entries({ ...segment.occupants, ...segment.bedOccupants }).find(
+        ([, operator]) => operator === id
+      )?.[0]
+    const slopes = segments.slice(1).flatMap((segment, i) => {
+      const previous = segments[i]
+      const dt = segment.start - previous.start
+      return dt > 0.001 && location(segment) === location(previous)
+        ? [(segment.morale[id] - previous.morale[id]) / dt]
+        : []
     })
     expect(slopes.some((rate) => Math.abs(rate - recovery) < 0.001)).toBe(true)
     expect(slopes.some((rate) => Math.abs(rate + 1) < 0.001)).toBe(true)

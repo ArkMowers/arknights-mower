@@ -4,7 +4,6 @@ import { MAX_MOOD_VIEW_OPERATORS } from '@/utils/mood_observation'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
-  simulation: { type: Boolean, default: false },
   view: { type: Object, default: null },
   catalog: { type: Array, default: () => [] }
 })
@@ -77,17 +76,11 @@ function close() {
           clearable
           :max-tag-count="3"
           :max="MAX_MOOD_VIEW_OPERATORS"
-          :placeholder="
-            simulation ? '搜索本次演算的干员' : '搜索已有历史的干员；也可输入无记录的名字'
-          "
+          placeholder="搜索已有历史的干员；也可输入无记录的名字"
         />
       </div>
       <p class="observation-help">
-        {{
-          simulation
-            ? '仅使用本次演算记录；自定义观察表只在当前窗口保留。'
-            : '可搜索历史记录中的任意干员。没有记录时会明确提示；不会更改排班、采样或实际调度。'
-        }}
+        可搜索历史记录中的任意干员。没有记录时会明确提示；不会更改排班、采样或实际调度。
       </p>
       <p v-if="error" role="alert" class="observation-error">{{ error }}</p>
       <div class="observation-actions">
