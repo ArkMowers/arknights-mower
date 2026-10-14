@@ -81,6 +81,7 @@ export function formatMoodRate(rate) {
 export function describeMoodEvent(point, datasetLabel) {
   const event = point?.moodEvent
   const related = point?.relatedOperator
+  if (event === 'simulation_jump') return '演算中的瞬间心情变化'
   // Explicit backend event types override the heuristic applied to Fiammetta points.
   if (event === 'fiammetta_before') return '被肥鸭充能（交换前）'
   if (event === 'fiammetta_after') return '被肥鸭充能（交换后）'

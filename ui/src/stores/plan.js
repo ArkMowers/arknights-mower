@@ -31,6 +31,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
     const refresh_drained = ref([])
 
     const plan = ref({})
+    const facility_levels = ref({})
 
     const backup_plans = ref([])
 
@@ -209,6 +210,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
           }
         }
       }
+      facility_levels.value = deepcopy(response.data.facility_levels ?? {})
       plan.value = fill_empty(response.data.plan1)
 
       backup_plans.value = response.data.backup_plans ?? []
@@ -230,6 +232,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
 
     async function import_main_plan() {
       const { data } = await axios.get(`${import.meta.env.VITE_HTTP_URL}/plan`)
+      facility_levels.value = deepcopy(data.facility_levels ?? {})
       plan.value = fill_empty(deepcopy(data.plan1))
       sub_plan.value = 'main'
     }
@@ -272,6 +275,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
     function build_plan() {
       const result = {
         default: 'plan1',
+        facility_levels: deepcopy(facility_levels.value),
         plan1: strip_plan(plan.value),
         conf: {
           ling_xi: ling_xi.value,
@@ -405,6 +409,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       refresh_drained,
       dorm_order,
       plan,
+      facility_levels,
       operators,
       facility_operator_limit,
       left_side_facility,

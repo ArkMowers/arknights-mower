@@ -1,4 +1,5 @@
 <script setup>
+import PlanFacilityLevels from './PlanFacilityLevels.vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
@@ -254,6 +255,7 @@ function set_facility(e) {
           <div
             v-for="r in [`room_${row}_1`, `room_${row}_2`, `room_${row}_3`]"
             :key="r"
+            :data-income-room="r"
             @click="set_facility(r)"
             :class="[button_type[current_plan[r].name], r === facility ? 'true' : 'false']"
           >
@@ -553,6 +555,9 @@ function set_facility(e) {
       <table class="facility-actions">
         <tbody>
           <tr>
+            <td v-if="!facility.startsWith('gaming_')">
+              <PlanFacilityLevels mode="level" :facility="facility" :locked="edit_locked" />
+            </td>
             <td>设施类别：</td>
             <td>
               <n-select

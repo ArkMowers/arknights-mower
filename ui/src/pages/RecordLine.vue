@@ -1,8 +1,12 @@
 <template>
-  <div class="mood-page">
-    <h1 class="page-title">干员心情折线表</h1>
+  <div class="mood-page" :class="{ simulation: !!simulation }">
+    <h1 v-if="!simulation" class="page-title">干员心情折线表</h1>
     <div class="mood-page-tools">
-      <span>拖动卡片调整顺序；工休比报表自动同步。↓消耗 ↑恢复，单位：点/小时。</span>
+      <span>{{
+        simulation
+          ? '按排班绑组显示；自定义观察表可跨组选择干员。↓消耗 ↑恢复，单位：点/小时。'
+          : '拖动卡片调整顺序；工休比报表自动同步。↓消耗 ↑恢复，单位：点/小时。'
+      }}</span>
       <n-button type="primary" secondary @click="newView">＋ 新建自定义观察表</n-button>
     </div>
     <p v-if="historyLimited" class="history-note">
@@ -32,7 +36,7 @@
         <div v-if="group.isCustom" class="observation-description">
           自选观察表 · {{ group.operators.length }} 位干员
           <span v-if="group.missing.length" class="observation-missing">
-            · {{ group.missing.join('、') }} 暂无历史
+            · {{ group.missing.join('、') }} {{ simulation ? '暂无演算记录' : '暂无历史' }}
           </span>
         </div>
         <div class="card-controls">
@@ -43,13 +47,6 @@
           <n-button size="tiny" secondary @click="setGroupVisibility(group.boardKey, false)">
             隐藏全部
           </n-button>
-          <n-button
-            size="tiny"
-            secondary
-            @click="adjustWidth(group.boardKey)"
-            title="拓宽图表以便水平滚动"
-            >↔</n-button
-          >
         </div>
         <mood-rate-legend
           :group-name="group.groupName"
@@ -57,19 +54,22 @@
           @toggle="toggleLine(group.boardKey, $event)"
         />
         <div class="line-outer-container">
-          <div
-            v-if="group.moodData.datasets.length"
-            class="line-inner-container"
-            :style="{ width: (expandChart[group.boardKey] ?? 100) + '%' }"
-          >
-            <Line
-              :key="group.boardKey + ':' + (hiddenLines[group.boardKey] || []).join('|')"
+          <div v-if="group.moodData.datasets.length" class="line-inner-container">
+            <MoodLineChart
+              :key="group.boardKey"
               :ref="(instance) => setChartRef(group.boardKey, instance)"
               :data="group.moodData"
-              :options="chartOptions"
+              :options="effectiveChartOptions"
+              :plugins="simulation ? [samplingBoundary] : []"
             />
           </div>
-          <div v-else class="no-history">暂无可绘制的心情记录，等待 Mower 采样后会自动显示。</div>
+          <div v-else class="no-history">
+            {{
+              simulation
+                ? '暂无可绘制的演算心情记录，可编辑自定义观察表选择干员。'
+                : '暂无可绘制的心情记录，等待 Mower 采样后会自动显示。'
+            }}
+          </div>
         </div>
       </template>
     </mood-card-grid>
@@ -93,16 +93,19 @@
           @toggle="toggleLine(fullscreenGroup.boardKey, $event)"
         />
         <div class="fullscreen-chart">
-          <Line
+          <MoodLineChart
             v-if="fullscreenGroup.moodData.datasets.length"
+            :key="fullscreenGroup.boardKey"
             :data="fullscreenGroup.moodData"
-            :options="chartOptions"
+            :options="effectiveChartOptions"
+            :plugins="simulation ? [samplingBoundary] : []"
           />
-          <p v-else class="no-history">暂无历史记录</p>
+          <p v-else class="no-history">{{ simulation ? '暂无演算记录' : '暂无历史记录' }}</p>
         </div>
       </template>
     </n-modal>
     <mood-observation-editor
+      :simulation="!!simulation"
       v-model:show="editorShow"
       :view="editingView"
       :catalog="fullCatalog"
@@ -113,8 +116,8 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, watch } from 'vue'
-import { Line } from 'vue-chartjs'
+import { computed, reactive, ref, onMounted, watch } from 'vue'
+import MoodLineChart from '@/components/MoodLineChart.vue'
 import 'chartjs-adapter-luxon'
 import {
   CategoryScale,
@@ -132,7 +135,7 @@ import {
 import MoodCardGrid from '@/components/MoodCardGrid.vue'
 import MoodRateLegend from '@/components/MoodRateLegend.vue'
 import MoodObservationEditor from '@/components/MoodObservationEditor.vue'
-import { useMoodBoardStore } from '@/stores/mood_board'
+import { createMoodBoard, useMoodBoardStore } from '@/stores/mood_board'
 import { useRecordStore } from '@/stores/record'
 import { moodStroke } from '@/utils/mood_colors'
 import { buildObservationGroups, mergeOperatorCatalog } from '@/utils/mood_observation'
@@ -157,7 +160,8 @@ ChartJS.register(
   Colors
 )
 
-const board = useMoodBoardStore()
+const props = defineProps({ simulation: { type: Object, default: null } })
+const board = props.simulation ? reactive(createMoodBoard(() => null)) : useMoodBoardStore()
 const { getMoodRatios, getMoodCatalog, getMoodSeries } = useRecordStore()
 const reportData = ref([])
 const catalog = ref([])
@@ -168,7 +172,6 @@ const formError = ref('')
 const editorShow = ref(false)
 const editingId = ref('')
 const fullscreenKey = ref('')
-const expandChart = ref({})
 const hiddenLines = ref({})
 const chartRefs = new Map()
 const chartIntervalCache = new WeakMap()
@@ -178,8 +181,11 @@ const editingView = computed(() => board.views.find((view) => view.id === editin
 const fullscreenGroup = computed(
   () => orderedReportData.value.find((group) => group.boardKey === fullscreenKey.value) || null
 )
+const customGroups = computed(() =>
+  buildObservationGroups(board.views, reportData.value, fetchedSeries.value)
+)
 const orderedReportData = computed(() => {
-  const custom = buildObservationGroups(board.views, reportData.value, fetchedSeries.value)
+  const custom = customGroups.value
   const original = reportData.value.map((group) => ({ ...group, boardKey: group.groupName }))
   // Newly created observation cards lead unless the user has dragged them elsewhere.
   const manual = board.groupOrder
@@ -206,9 +212,10 @@ const orderedReportData = computed(() => {
             borderColor: color,
             pointBackgroundColor: color,
             hidden: hidden.includes(dataset.label),
-            tension: 0.14,
+            tension: props.simulation ? 0 : 0.14,
+            spanGaps: false,
             borderWidth: 2,
-            pointRadius: 2
+            pointRadius: props.simulation ? 0 : 2
           }
         })
       }
@@ -264,14 +271,6 @@ function toggleLine(key, index) {
   }
 }
 
-function adjustWidth(key) {
-  const value = expandChart.value[key] || 100
-  expandChart.value = {
-    ...expandChart.value,
-    [key]: value === 100 ? 200 : value === 200 ? 300 : 100
-  }
-}
-
 function newView() {
   formError.value = ''
   editingId.value = ''
@@ -293,7 +292,8 @@ function saveView(view) {
   formError.value = ''
 }
 function deleteView(id) {
-  if (!window.confirm('确定删除这张自定义观察表？不会删除任何历史记录。')) return
+  if (!props.simulation && !window.confirm('确定删除这张自定义观察表？不会删除任何历史记录。'))
+    return
   board.removeView(id)
   editorShow.value = false
   editingId.value = ''
@@ -301,6 +301,7 @@ function deleteView(id) {
 
 let requestNumber = 0
 async function refreshSeries() {
+  if (props.simulation) return
   const id = ++requestNumber
   const names = [...new Set(board.views.flatMap((view) => view.operators))].slice(0, 192)
   if (!names.length) {
@@ -329,6 +330,7 @@ watch(
 )
 
 onMounted(async () => {
+  if (props.simulation) return
   board.load()
   try {
     reportData.value = await getMoodRatios()
@@ -343,6 +345,39 @@ onMounted(async () => {
   }
   await refreshSeries()
 })
+
+watch(
+  () => props.simulation,
+  (data) => {
+    if (!data) return
+    reportData.value = data.groups
+    catalog.value = data.catalog
+    fetchedSeries.value = data.series
+    hiddenLines.value = {}
+  },
+  { immediate: true }
+)
+
+const samplingBoundary = {
+  id: 'simulation-sampling-boundary',
+  afterDraw(chart) {
+    if (!props.simulation?.warmupHours) return
+    const x = chart.scales.x.getPixelForValue(props.simulation.warmupHours * 3600000)
+    const { top, bottom, left, right } = chart.chartArea
+    if (x < left || x > right) return
+    const ctx = chart.ctx
+    ctx.save()
+    ctx.strokeStyle = '#49996d'
+    ctx.setLineDash([4, 4])
+    ctx.beginPath()
+    ctx.moveTo(x, top)
+    ctx.lineTo(x, bottom)
+    ctx.stroke()
+    ctx.fillStyle = '#49996d'
+    ctx.fillText('采样开始', Math.min(x + 4, right - 52), top + 12)
+    ctx.restore()
+  }
+}
 
 function getMoodInterval(points, index) {
   if (!Array.isArray(points)) return null
@@ -383,9 +418,46 @@ const chartOptions = {
     }
   }
 }
+const effectiveChartOptions = computed(() => {
+  if (!props.simulation) return chartOptions
+  return {
+    ...chartOptions,
+    scales: {
+      ...chartOptions.scales,
+      x: {
+        type: 'linear',
+        min: 0,
+        title: { display: true, text: '演算天数（含预热）' },
+        ticks: {
+          maxTicksLimit: 7,
+          callback(value) {
+            const days = (this.max - this.min) / 86400000
+            const precision = days < 0.01 ? 5 : days < 0.1 ? 4 : days < 1 ? 3 : 2
+            return Number((value / 86400000).toFixed(precision))
+          }
+        }
+      }
+    },
+    plugins: {
+      ...chartOptions.plugins,
+      tooltip: {
+        ...chartOptions.plugins.tooltip,
+        callbacks: {
+          ...chartOptions.plugins.tooltip.callbacks,
+          title: (items) => `演算第 ${Number((items[0]?.parsed.x / 86400000).toFixed(3))} 天`,
+          label: (context) => `${context.dataset.label}：${Number(context.parsed.y.toFixed(2))}`
+        }
+      }
+    }
+  }
+})
 </script>
 
 <style scoped>
+.simulation :deep(.mood-card-grid) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .mood-page {
   min-width: 0;
   padding: 4px 12px 20px;

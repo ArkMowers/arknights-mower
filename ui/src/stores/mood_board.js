@@ -13,18 +13,10 @@ import {
   saveMoodViews
 } from '@/utils/mood_observation'
 
-export const useMoodBoardStore = defineStore('mood-board', () => {
+export function createMoodBoard(storage = browserStorage) {
   const initialized = ref(false)
   const groupOrder = ref([])
   const views = ref([])
-
-  function storage() {
-    try {
-      return window.localStorage
-    } catch {
-      return null
-    }
-  }
 
   function load() {
     if (initialized.value) return
@@ -83,4 +75,14 @@ export const useMoodBoardStore = defineStore('mood-board', () => {
   }
 
   return { initialized, groupOrder, views, load, reorder, upsertView, removeView }
-})
+}
+
+function browserStorage() {
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+export const useMoodBoardStore = defineStore('mood-board', () => createMoodBoard())

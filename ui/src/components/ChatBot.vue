@@ -89,7 +89,11 @@ const statusLabel = computed(() =>
 )
 const suggestions = [
   { title: '排查连接', description: '设备连接失败，应该先检查什么？', icon: DocumentTextOutline },
-  { title: '理解排班', description: '干员到心情阈值还不下班，怎么排查？', icon: GridOutline },
+  {
+    title: '尝试排班',
+    description: '结合我的森空岛干员练度和基建组合，尝试安排基建主班。',
+    icon: GridOutline
+  },
   { title: '查看专精', description: '帮我查看当前专精计划的状态。', icon: SchoolOutline },
   { title: '整理反馈', description: '帮我整理一份问题反馈，先不要发送。', icon: MailOutline }
 ]

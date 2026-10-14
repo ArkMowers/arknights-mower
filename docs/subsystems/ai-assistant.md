@@ -52,7 +52,36 @@ Feedback sends email through `submit_issue`. Instructions require an explicit se
 
 ## 3. Subsystem Invariants
 
+- <a id="owned-read-only-staffing"></a>**Owned Read-Only Staffing**: AI staffing trials require confirmed ownership and growth, select only the current unlocked skill version per slot, reject duplicate primary occupancy and excess configured slots, and never mutate saved BOX, configuration or Scheduling Plans.
+
 - <a id="tool-instruction-alignment"></a>**Tool Instruction Alignment**: Published assistant instructions reference registered tools, describe actual argument formats and mutation scopes, and agree on response formatting.
 - <a id="managed-assistant-chat-admission"></a>**Managed Assistant Authorization**: Chat admission uses the process-owned launch decision described in [Managed Assistant Authorization](#managed-assistant-authorization); manager edits require a stopped process, and enabling the draft requires acknowledged, timed confirmation before an explicit save.
 
 The [assistant instruction decision](../../.agents/notes/implemented/bug-fix/2026-10-09-ai-assistant-prompts.md) records the scope and offline verification.
+
+<a id="riic-tools"></a>
+
+## 4. RIIC Tools
+
+`get_riic_context` reads the saved BOX and primary Scheduling Plan, returns owned operator names and growth, configured facility capacity and current assignments, and joins the curated base combinations with owned, missing and unknown members. Combination membership alone does not establish skill eligibility or simultaneous placement. Full credentials, configuration and backup trigger expressions are excluded.
+
+`get_riic_knowledge` queries at most twelve formal operator names and one fixed mechanics topic. It reads the shared catalog and term resource, expands nested term references, and selects the highest unlocked version of each independent skill slot. All catalog skill stages remain visible with their status, including when BOX data is absent. Missing or unowned operators never receive assumed maximum skills. External mechanics provenance and resource coverage remain separate.
+
+`try_riic_plan` accepts at most twenty-four room assignments, overlays a detached primary-plan copy, and validates all primary occupants including preserved rooms. Capacity follows the configured number of positions within the facility's physical maximum; no facility or position is created. Modified rooms clear their old group and replacement bindings. Missing occupants and occupants without a matching facility skill produce warnings; facility skills that exist but remain locked produce errors. The response contains the draft, structured errors, warnings and unchecked conditions. `valid` means primary staffing checks passed; it does not assert a complete, executable or optimal Scheduling Plan. Nothing is saved.
+
+All three tools accept at most sixty-four explicit `roster_overrides` containing a formal name, ownership and optional elite phase and level. Overrides take precedence in that call, report `source=user`, and never update BOX. The AI uses them only for roster facts explicitly stated by the user. An ownership override without complete growth keeps growth unknown.
+
+## 5. Mechanics Boundary
+
+The compact guide adapts the fixed external mechanics skill and retains its version and freshness result. Duplicate full skill catalogs, term exports, HTML browser assets and Node query scripts are omitted. The shared catalog adds only the three absent operators from the fixed snapshot; installed resource records take precedence as soon as they contain those operators. Supplemental character IDs resolve BOX ownership when the general operator map predates them. The frontend and AI read the same twenty curated combination definitions. Runtime skills and nested terms use Mower resources; their coverage can differ from the external guide. Unknown operators and missing terms are explicit. Trials do not calculate global interactions, power, current Operator Mood, Dormitory Recovery, replacement matching, backup activation, Drone Acceleration or long-term yield. Primary staffing success never establishes those properties.
+
+The existing `/ws/chat` credential and model configuration boundaries apply. Both model workflows register the same tools. Tool output is reference data, not instructions.
+
+
+The [RIIC planning decision](../../.agents/notes/implemented/feature/2026-10-13-riic-ai-planning.md) records source reuse and offline verification.
+
+### RIIC Topic Routing and Income Estimates
+
+`get_riic_knowledge` additionally exposes `taxonomy`, `mower_plan`, `new_operators`, `income_export` and `freshness`. These topics explain identity and skill-category matching, fixed Mower format compatibility, the supplemental operators' conditions, the income-export user flow and separate source-version checks. They reuse the shared current skill and term lookup; each query still returns only one topic with bounded operator detail. Tool declarations enumerate every supported topic.
+
+For numeric income requests, the AI reads `income_export` and directs the user to the [income export dialog](plan-editor.md#income-export). Existing AI tools do not execute that browser Worker, and the assistant must not claim to have run it or invent results. Full-development estimates cannot be represented as actual BOX observations. Interpreting a supplied result requires its warmup/sample windows, inventory mode, development assumptions and fixed engine version. The general mechanics guide's freshness, Mower resources, calculator source and native scheduler reference remain separately identified; none implies that the others are current.
