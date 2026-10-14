@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { effectScope } from 'vue'
 import Dialog from './PlanIncomeDialog.vue'
+import { renderIncomeImage, downloadIncomeImage } from '@/riic/incomeImage'
+vi.mock('./IncomeMoraleChart.vue', () => ({ default: { render: () => null } }))
+vi.mock('@/riic/incomeImage', async (original) => ({
+  ...(await original()),
+  renderIncomeImage: vi.fn(async () => new Blob(['image'])),
+  downloadIncomeImage: vi.fn()
+}))
 const io = vi.hoisted(() => ({ client: null, cleanup: null }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
@@ -24,6 +31,7 @@ const cache = () => ({
 })
 let page, scope, workers
 beforeEach(() => {
+  vi.clearAllMocks()
   io.client = {
     get: vi.fn(async (url) => ({ data: url.includes('income-cache') ? cache() : valuation() })),
     put: vi.fn()
@@ -119,4 +127,43 @@ it('closing during settings fetch does not create a worker from a late response'
   resolve({ data: valuation() })
   await start
   expect(workers).toHaveLength(0)
+})
+it('keeps successful results on screen and exports only on request with frozen inputs', async () => {
+  await page.readCache()
+  await page.start()
+  workers[0].onmessage({
+    data: {
+      type: 'complete',
+      result: {
+        success: true,
+        diagnostics: [],
+        summary: { totalScore82: 103475 },
+        observedHours: 672
+      }
+    }
+  })
+  expect(page.activeTab.value).toBe('results')
+  expect(renderIncomeImage).not.toHaveBeenCalled()
+  expect(downloadIncomeImage).not.toHaveBeenCalled()
+  page.settings.droneRoom = 'room_3_3'
+  page.exportName.value = '我的排班'
+  await page.exportImage()
+  expect(renderIncomeImage).toHaveBeenCalledOnce()
+  expect(renderIncomeImage.mock.calls[0][2].droneRoom).toBe('')
+  expect(downloadIncomeImage).toHaveBeenCalledOnce()
+  expect(downloadIncomeImage.mock.calls[0][1]).toBe('我的排班_日均收益103475_28天.jpg')
+})
+it('retains bounded progress logs without triggering image rendering', async () => {
+  await page.readCache()
+  await page.start()
+  for (let i = 0; i < 220; i++) {
+    workers[0].onmessage({
+      data: { type: 'progress', progress: { label: `统计 ${i} 小时`, fraction: 0.5 } }
+    })
+  }
+  expect(page.progressLog.value).toHaveLength(200)
+  expect(page.progressLog.value[0]).toBe('统计 20 小时')
+  expect(page.activeTab.value).toBe('logs')
+  page.session.cancel()
+  expect(renderIncomeImage).not.toHaveBeenCalled()
 })

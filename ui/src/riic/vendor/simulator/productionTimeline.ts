@@ -112,6 +112,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
   if(!m.state.awaitingPayment||m.state.storedWeight+m.state.formula.storageWeight>m.state.capacityWeight+EPS)return
   const delta=cost(m.state)
   if(!Object.keys(delta).length||unlimitedMaterials||transact(delta,`manufacture-start:${m.roomId}`)){
+   if(unlimitedMaterials&&Object.keys(delta).length)record('manufacture-cost',{roomId:m.roomId,delta},state.time)
    for(const [key,value] of Object.entries(delta)){const k=key as ResourceKind;materialsConsumed[k]=(materialsConsumed[k]??0)-value}
    m.state=authorizeManufacturingBatch(m.state,true).state
   }

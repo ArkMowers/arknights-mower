@@ -1,7 +1,7 @@
 import {
   CALCULATOR_REVISION,
   MOWER_REFERENCE,
-  incomeMetrics,
+  incomeImageMetrics,
   incomeFacilities,
   incomeWorkspace,
   incomeWeights
@@ -50,128 +50,115 @@ export function incomeReportLines(result, settings, plan, label) {
       .join('；')}。加权产出不是龙门币结算额。`,
     `模型假设：理想跑单；部分读房与调度耗时已建模，其余点击识别耗时忽略；宿舍氛围按等级上限。`,
     `推断等级：${levels}。`,
-    `计算器 ${CALCULATOR_REVISION}（含本地完成时刻精度、全 Free 宿舍及赤金透支适配）；调度参考 Mower alpha ${MOWER_REFERENCE}，后续本体逻辑不自动同步。`,
+    `计算器 ${CALCULATOR_REVISION}（含本地完成时刻精度、全 Free 宿舍、赤金透支、制造成本观察及心情记录适配）；调度参考 Mower alpha ${MOWER_REFERENCE}，后续本体逻辑不自动同步。`,
     '回收站仅统计产出次数，不推算随机材料，不增加材料库存，也不计材料收益价值。',
     '这是离线模型估算，不是实测收益或实际排班可执行性的证明。图片导入不恢复本次计算参数和结果。'
   ]
 }
 
-export async function renderIncomeImage(planImage, result, settings, plan, label, theme = 'light') {
+async function loadImage(url) {
+  const image = new Image()
+  image.src = url
+  await image.decode()
+  return image
+}
+
+export async function renderIncomeImage(
+  planImage,
+  result,
+  settings,
+  plan,
+  label,
+  theme = 'light',
+  roomBounds = {}
+) {
   const sourceUrl = URL.createObjectURL(planImage)
   try {
-    const source = new Image()
-    source.src = sourceUrl
-    await source.decode()
+    const metrics = incomeImageMetrics(result.summary, result.observedHours / 24)
+    const [source, drone, ...icons] = await Promise.all([
+      loadImage(sourceUrl),
+      loadImage('/product/drone.svg'),
+      ...metrics.map((row) => loadImage(row.icon))
+    ])
     const width = source.naturalWidth
     const scale = width / 980
     const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d')
-    const margin = 28 * scale
-    const lineHeight = 24 * scale
-    const lines = incomeReportLines(result, settings, plan, label)
-    const metrics = incomeMetrics(result.summary, result.observedHours / 24)
-    const diagnostics = result.diagnostics.slice(0, 12).map((d) => d.message)
-    ctx.font = `${12 * scale}px sans-serif`
-    function wrap(text) {
-      const chunks = []
-      let line = ''
-      for (const char of text) {
-        if (ctx.measureText(line + char).width > width - 2 * margin) {
-          chunks.push(line)
-          line = ''
-        }
-        line += char
-      }
-      if (line) chunks.push(line)
-      return chunks
-    }
-    const notes = lines.flatMap(wrap)
-    const warnings = diagnostics.flatMap(wrap)
-    const contributions = [
-      ['经验', result.summary.scoreBreakdown.weightedExp],
-      ['赤金及等价赤金', result.summary.scoreBreakdown.weightedGold],
-      ['贸易', result.summary.scoreBreakdown.weightedOrders],
-      ['碎片', result.summary.scoreBreakdown.weightedFragments],
-      ['合成玉', result.summary.scoreBreakdown.weightedOrundum]
-    ]
     canvas.width = width
-    canvas.height = Math.ceil(
-      source.naturalHeight +
-        scale * 180 +
-        lineHeight * (metrics.length + contributions.length + notes.length + warnings.length + 4)
-    )
-    ctx.fillStyle = theme === 'dark' ? '#000000' : '#ffffff'
+    canvas.height = source.naturalHeight + Math.ceil((155 + metrics.length * 55) * scale)
+    const ctx = canvas.getContext('2d')
+    const dark = theme === 'dark'
+    const foreground = dark ? '#eef2f8' : '#172338'
+    ctx.fillStyle = dark ? '#000000' : '#ffffff'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(source, 0, 0)
-    let y = source.naturalHeight + 45 * scale
-    const foreground = theme === 'dark' ? '#eef2f8' : '#172338'
-    const write = (text, size = 13, x = margin) => {
+    for (const room of result.droneRooms ?? []) {
+      const bounds = roomBounds[room]
+      if (!bounds) continue
+      const size = 18 * scale
+      const x = bounds.x + bounds.width - size - 3 * scale
+      const y = bounds.y + 2 * scale
+      ctx.fillStyle = '#e2f4e6'
+      ctx.fillRect(x, y, size, size)
+      ctx.drawImage(drone, x + 2 * scale, y + 2 * scale, size - 4 * scale, size - 4 * scale)
+    }
+    const margin = 28 * scale
+    let y = source.naturalHeight + 42 * scale
+    const write = (text, size = 15, x = margin) => {
       ctx.font = `${size * scale}px sans-serif`
       ctx.fillStyle = foreground
       ctx.fillText(text, x, y)
     }
-    write('排班收益估算', 24)
-    y += 35 * scale
+    let title = `${label?.trim() || '排班'} · 收益估算`
+    ctx.font = `${24 * scale}px sans-serif`
+    while (ctx.measureText(title).width > width - margin * 2 && title.length > 8)
+      title = title.slice(0, -2) + '…'
+    write(title, 24)
+    y += 34 * scale
     write(
       `日均加权产出 ${number(result.summary.totalScore82)} · 统计期 ${number(result.observedHours / 24)} 天`,
       16
     )
-    y += lineHeight * 1.5
-    write('产出项目')
-    write('日均', 13, width * 0.45)
-    write('统计期合计', 13, width * 0.7)
-    y += lineHeight
-    for (const metric of metrics) {
-      write(metric.label)
-      write(`${number(metric.daily)} ${metric.unit}`, 13, width * 0.45)
-      write(`${number(metric.total)} ${metric.unit}`, 13, width * 0.7)
-      y += lineHeight
-    }
-    y += lineHeight / 2
-    write('日均加权产出构成', 16)
-    y += lineHeight
-    const max = Math.max(1, ...contributions.map(([, value]) => value))
-    for (const [name, value] of contributions) {
-      write(name, 12)
-      ctx.fillStyle = '#45a68c'
-      ctx.fillRect(
-        width * 0.25,
-        y - 12 * scale,
-        (Math.max(0, value) / max) * width * 0.4,
-        14 * scale
-      )
-      write(number(value), 12, width * 0.7)
-      y += lineHeight
-    }
-    y += lineHeight / 2
-    for (const line of notes) {
-      write(line, 12)
-      y += lineHeight
-    }
-    if (warnings.length) {
-      y += lineHeight / 2
-      write(`演算诊断（显示 ${diagnostics.length} / ${result.diagnostics.length} 条）`, 14)
-      y += lineHeight
-      for (const line of warnings) {
-        write(line, 12)
-        y += lineHeight
-      }
-    }
+    y += 36 * scale
+    write('产物')
+    write('日均', 15, width * 0.45)
+    write('统计期合计', 15, width * 0.72)
+    y += 18 * scale
+    metrics.forEach((metric, index) => {
+      ctx.fillStyle = dark ? '#17212a' : '#f2f6f4'
+      ctx.fillRect(margin, y, width - margin * 2, 49 * scale)
+      ctx.drawImage(icons[index], margin + 9 * scale, y + 3 * scale, 43 * scale, 43 * scale)
+      y += 31 * scale
+      const value = (n) => `${metric.signed && n > 0 ? '+' : ''}${number(n)} ${metric.unit}`
+      write(value(metric.daily), 17, width * 0.45)
+      write(value(metric.total), 17, width * 0.72)
+      y += 24 * scale
+    })
     return await new Promise((resolve, reject) =>
       canvas.toBlob(
         (blob) => (blob ? resolve(blob) : reject(new Error('收益图片生成失败'))),
-        'image/png'
+        'image/jpeg',
+        0.95
       )
     )
   } finally {
     URL.revokeObjectURL(sourceUrl)
   }
 }
-export function downloadIncomeImage(blob) {
+export function incomeImageFilename(name, result) {
+  const safe =
+    (name?.trim() || '排班')
+      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+      .replace(/[. ]+$/g, '')
+      .slice(0, 60) || '排班'
+  const score = Number(result.summary.totalScore82.toFixed(2))
+  const days = Number((result.observedHours / 24).toFixed(2))
+  return `${safe}_日均收益${score}_${days}天.jpg`
+}
+export function downloadIncomeImage(blob, filename) {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = 'mower-income.png'
+  link.download = filename
   document.body.appendChild(link)
   link.click()
   link.remove()

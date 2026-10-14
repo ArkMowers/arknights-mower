@@ -97,6 +97,7 @@ export function incomeRequest(plan, settings) {
         maxEvents: 200000,
         warmupModel: 'hourly',
         recordSegments: false,
+        recordMorale: true,
         operatorInventory: operators,
         productionWeights: incomeWeights(settings),
         production: {
@@ -147,8 +148,37 @@ export function incomeMetrics(summary, days) {
     ['赤金消耗', summary.goldConsumed, '个'],
     ['赤金净增', summary.netGoldCount, '个'],
     ['贸易龙门币', summary.orderLmd, '龙门币'],
+    ['龙门币消耗', summary.lmdConsumed, '龙门币'],
+    ['龙门币净增', summary.netLmd, '龙门币'],
     ['源石碎片', summary.fragments, '个'],
     ['合成玉', summary.orundum, '个'],
     ['回收站产出', summary.recycleCount, '次']
   ].map(([label, daily, unit]) => ({ label, daily: daily ?? 0, total: (daily ?? 0) * days, unit }))
+}
+
+export function incomeImageMetrics(summary, days) {
+  return [
+    { key: 'exp', icon: '/depot/高级作战记录.webp', daily: summary.exp, unit: '经验值' },
+    {
+      key: 'gold',
+      icon: '/depot/赤金.webp',
+      daily: summary.netGoldCount,
+      unit: '个',
+      signed: true,
+      present: summary.goldCount || summary.goldConsumed
+    },
+    {
+      key: 'lmd',
+      icon: '/depot/龙门币.webp',
+      daily: summary.netLmd,
+      unit: '龙门币',
+      signed: true,
+      present: summary.orderLmd || summary.lmdConsumed
+    },
+    { key: 'fragment', icon: '/depot/源石碎片.webp', daily: summary.fragments, unit: '个' },
+    { key: 'orundum', icon: '/depot/合成玉.webp', daily: summary.orundum, unit: '个' },
+    { key: 'recycle', icon: '/product/recycle.svg', daily: summary.recycleCount, unit: '次' }
+  ]
+    .filter((row) => Math.abs(row.daily ?? 0) > 1e-8 || Math.abs(row.present ?? 0) > 1e-8)
+    .map((row) => ({ ...row, daily: row.daily ?? 0, total: (row.daily ?? 0) * days }))
 }

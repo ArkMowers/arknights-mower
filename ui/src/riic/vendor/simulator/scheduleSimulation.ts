@@ -38,7 +38,7 @@ export interface ScheduleSimulationOptions {
  /** Validation-only switch for the old ideal path that omitted order wakes. */
  experimentalDisableIdealWake?:boolean
  sampleHours?:number; warmupHours?:number; maxStepHours?:number; maxEvents?:number
- warmupModel?:'continuous'|'hourly'; recordSegments?:boolean
+ warmupModel?:'continuous'|'hourly'; recordSegments?:boolean; recordMorale?:boolean
  consumptionOverrides?:Record<string,number>; recoveryOverrides?:Record<string,number>
  atmosphereByRoom?:Record<string,number>; recoveryTargetByProvider?:Record<string,string>
  initialWorkHours?:Record<string,number>; efficiencyResources?:Partial<EfficiencyResources>
@@ -60,6 +60,7 @@ export interface ScheduleSimulationReport {
  inputs:{schedule:CompiledSchedule;options:ScheduleSimulationOptions}
  assumptions:{schedulingModel?:'mower-default'|'mower-alpha';sampleHours:number;warmupHours:number;maxStepHours:number;warmupModel:'continuous'|'hourly';restingThreshold:number;operationDurationHours:0;dormAtmosphere:string;singleRecoveryTarget:string}
  production?:ProductionReport
+ moraleTimeline?:Record<string,{points:[number,number|null][];truncated:boolean}>
  operators:SimulatedOperator[];rooms:SimulatedRoom[];events:RuntimeEvent[];segments:ScheduleSegment[]
  diagnostics:{code:string;message:string}[]
  shiftDeferrals?:{key:string;operatorIds:string[];blockedAt:number;resolvedAt?:number}[]
@@ -329,9 +330,29 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
   // physical rates above. An I/O return by itself changes none of those inputs.
   refreshSessions(events)
  }
+ // Preserve linear turns and same-time charge jumps without retaining full state snapshots.
+ const captureMorale=()=>{
+  if(!options.recordMorale)return
+  const timeline=report.moraleTimeline??={}
+  for(const [id,value] of Object.entries(state.morale)){
+   const row=timeline[id]??={points:[],truncated:false},points=row.points
+   if(!Number.isFinite(value))continue
+   if(row.truncated){points[points.length-1]=[state.time,value];continue}
+   const last=points.at(-1),before=points.at(-2)
+   if(last&&last[0]===state.time&&last[1]===value)continue
+   if(before&&last&&before[1]!==null&&last[1]!==null&&last[0]>before[0]&&state.time>last[0]){
+    const projected=before[1]+(value-before[1])*(last[0]-before[0])/(state.time-before[0])
+    if(Math.abs(projected-last[1])<1e-8)points.pop()
+   }
+   if(points.length>=6000){row.truncated=true;points.push([state.time,null])}
+   points.push([state.time,value])
+  }
+ }
  const settle=()=>{
   if(backupFailed)return
+  captureMorale()
   try{settleUnsafe()}catch(error){backupFailed=true;diagnostic('BACKUP_EXECUTION_FAILED',error instanceof Error?error.message:String(error))}
+  captureMorale()
  }
  let cachedBaseConfig: ReturnType<typeof projectScheduleState> | undefined, cachedBaseConfigRevision = -1
  const getBaseConfig = () => {
@@ -489,6 +510,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
    Object.assign(state.morale,moraleStep.morale)
    moraleStep=undefined
   }
+  captureMorale()
   production?.settle(()=>frameAt(0))
   if(state.config.mowerSourcePlan?nextRosterActionHours(state,rates)===0:Math.abs(dt-action)<=EPS){settle();production?.settle(()=>frameAt(0))}
  }

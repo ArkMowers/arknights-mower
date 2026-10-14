@@ -254,6 +254,7 @@ function set_facility(e) {
           <div
             v-for="r in [`room_${row}_1`, `room_${row}_2`, `room_${row}_3`]"
             :key="r"
+            :data-income-room="r"
             @click="set_facility(r)"
             :class="[button_type[current_plan[r].name], r === facility ? 'true' : 'false']"
           >

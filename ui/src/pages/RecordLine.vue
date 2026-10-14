@@ -1,8 +1,12 @@
 <template>
-  <div class="mood-page">
-    <h1 class="page-title">干员心情折线表</h1>
+  <div class="mood-page" :class="{ simulation: !!simulation }">
+    <h1 v-if="!simulation" class="page-title">干员心情折线表</h1>
     <div class="mood-page-tools">
-      <span>拖动卡片调整顺序；工休比报表自动同步。↓消耗 ↑恢复，单位：点/小时。</span>
+      <span>{{
+        simulation
+          ? '按排班绑组显示；自定义观察表可跨组选择干员。↓消耗 ↑恢复，单位：点/小时。'
+          : '拖动卡片调整顺序；工休比报表自动同步。↓消耗 ↑恢复，单位：点/小时。'
+      }}</span>
       <n-button type="primary" secondary @click="newView">＋ 新建自定义观察表</n-button>
     </div>
     <p v-if="historyLimited" class="history-note">
@@ -32,7 +36,7 @@
         <div v-if="group.isCustom" class="observation-description">
           自选观察表 · {{ group.operators.length }} 位干员
           <span v-if="group.missing.length" class="observation-missing">
-            · {{ group.missing.join('、') }} 暂无历史
+            · {{ group.missing.join('、') }} {{ simulation ? '暂无演算记录' : '暂无历史' }}
           </span>
         </div>
         <div class="card-controls">
@@ -66,10 +70,17 @@
               :key="group.boardKey + ':' + (hiddenLines[group.boardKey] || []).join('|')"
               :ref="(instance) => setChartRef(group.boardKey, instance)"
               :data="group.moodData"
-              :options="chartOptions"
+              :options="effectiveChartOptions"
+              :plugins="simulation ? [samplingBoundary] : []"
             />
           </div>
-          <div v-else class="no-history">暂无可绘制的心情记录，等待 Mower 采样后会自动显示。</div>
+          <div v-else class="no-history">
+            {{
+              simulation
+                ? '暂无可绘制的演算心情记录，可编辑自定义观察表选择干员。'
+                : '暂无可绘制的心情记录，等待 Mower 采样后会自动显示。'
+            }}
+          </div>
         </div>
       </template>
     </mood-card-grid>
@@ -96,13 +107,15 @@
           <Line
             v-if="fullscreenGroup.moodData.datasets.length"
             :data="fullscreenGroup.moodData"
-            :options="chartOptions"
+            :options="effectiveChartOptions"
+            :plugins="simulation ? [samplingBoundary] : []"
           />
-          <p v-else class="no-history">暂无历史记录</p>
+          <p v-else class="no-history">{{ simulation ? '暂无演算记录' : '暂无历史记录' }}</p>
         </div>
       </template>
     </n-modal>
     <mood-observation-editor
+      :simulation="!!simulation"
       v-model:show="editorShow"
       :view="editingView"
       :catalog="fullCatalog"
@@ -113,7 +126,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, watch } from 'vue'
+import { computed, reactive, ref, onMounted, watch } from 'vue'
 import { Line } from 'vue-chartjs'
 import 'chartjs-adapter-luxon'
 import {
@@ -132,7 +145,7 @@ import {
 import MoodCardGrid from '@/components/MoodCardGrid.vue'
 import MoodRateLegend from '@/components/MoodRateLegend.vue'
 import MoodObservationEditor from '@/components/MoodObservationEditor.vue'
-import { useMoodBoardStore } from '@/stores/mood_board'
+import { createMoodBoard, useMoodBoardStore } from '@/stores/mood_board'
 import { useRecordStore } from '@/stores/record'
 import { moodStroke } from '@/utils/mood_colors'
 import { buildObservationGroups, mergeOperatorCatalog } from '@/utils/mood_observation'
@@ -157,7 +170,8 @@ ChartJS.register(
   Colors
 )
 
-const board = useMoodBoardStore()
+const props = defineProps({ simulation: { type: Object, default: null } })
+const board = props.simulation ? reactive(createMoodBoard(() => null)) : useMoodBoardStore()
 const { getMoodRatios, getMoodCatalog, getMoodSeries } = useRecordStore()
 const reportData = ref([])
 const catalog = ref([])
@@ -206,9 +220,10 @@ const orderedReportData = computed(() => {
             borderColor: color,
             pointBackgroundColor: color,
             hidden: hidden.includes(dataset.label),
-            tension: 0.14,
+            tension: props.simulation ? 0 : 0.14,
+            spanGaps: false,
             borderWidth: 2,
-            pointRadius: 2
+            pointRadius: props.simulation ? 0 : 2
           }
         })
       }
@@ -293,7 +308,8 @@ function saveView(view) {
   formError.value = ''
 }
 function deleteView(id) {
-  if (!window.confirm('确定删除这张自定义观察表？不会删除任何历史记录。')) return
+  if (!props.simulation && !window.confirm('确定删除这张自定义观察表？不会删除任何历史记录。'))
+    return
   board.removeView(id)
   editorShow.value = false
   editingId.value = ''
@@ -301,6 +317,7 @@ function deleteView(id) {
 
 let requestNumber = 0
 async function refreshSeries() {
+  if (props.simulation) return
   const id = ++requestNumber
   const names = [...new Set(board.views.flatMap((view) => view.operators))].slice(0, 192)
   if (!names.length) {
@@ -329,6 +346,7 @@ watch(
 )
 
 onMounted(async () => {
+  if (props.simulation) return
   board.load()
   try {
     reportData.value = await getMoodRatios()
@@ -343,6 +361,44 @@ onMounted(async () => {
   }
   await refreshSeries()
 })
+
+watch(
+  () => props.simulation,
+  (data) => {
+    if (!data) return
+    reportData.value = data.groups
+    catalog.value = data.catalog
+    fetchedSeries.value = data.series
+    hiddenLines.value = {}
+    if (!board.views.length)
+      board.upsertView({
+        name: '自定义',
+        operators: data.catalog.slice(0, 3).map((row) => row.name)
+      })
+  },
+  { immediate: true }
+)
+
+const samplingBoundary = {
+  id: 'simulation-sampling-boundary',
+  afterDraw(chart) {
+    if (!props.simulation?.warmupHours) return
+    const x = chart.scales.x.getPixelForValue(props.simulation.warmupHours * 3600000)
+    const { top, bottom, left, right } = chart.chartArea
+    if (x < left || x > right) return
+    const ctx = chart.ctx
+    ctx.save()
+    ctx.strokeStyle = '#49996d'
+    ctx.setLineDash([4, 4])
+    ctx.beginPath()
+    ctx.moveTo(x, top)
+    ctx.lineTo(x, bottom)
+    ctx.stroke()
+    ctx.fillStyle = '#49996d'
+    ctx.fillText('采样开始', Math.min(x + 4, right - 52), top + 12)
+    ctx.restore()
+  }
+}
 
 function getMoodInterval(points, index) {
   if (!Array.isArray(points)) return null
@@ -383,9 +439,39 @@ const chartOptions = {
     }
   }
 }
+const effectiveChartOptions = computed(() => {
+  if (!props.simulation) return chartOptions
+  return {
+    ...chartOptions,
+    scales: {
+      ...chartOptions.scales,
+      x: {
+        type: 'linear',
+        min: 0,
+        title: { display: true, text: '演算天数（含预热）' },
+        ticks: { maxTicksLimit: 7, callback: (value) => Number((value / 86400000).toFixed(2)) }
+      }
+    },
+    plugins: {
+      ...chartOptions.plugins,
+      tooltip: {
+        ...chartOptions.plugins.tooltip,
+        callbacks: {
+          ...chartOptions.plugins.tooltip.callbacks,
+          title: (items) => `演算第 ${Number((items[0]?.parsed.x / 86400000).toFixed(3))} 天`,
+          label: (context) => `${context.dataset.label}：${Number(context.parsed.y.toFixed(2))}`
+        }
+      }
+    }
+  }
+})
 </script>
 
 <style scoped>
+.simulation :deep(.mood-card-grid) {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+}
+
 .mood-page {
   min-width: 0;
   padding: 4px 12px 20px;

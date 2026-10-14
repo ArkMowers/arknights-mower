@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { defaultIncomeSettings, incomeRequest, incomeMetrics, inventoryRequired } from './income'
+import {
+  defaultIncomeSettings,
+  incomeRequest,
+  incomeMetrics,
+  incomeImageMetrics,
+  inventoryRequired
+} from './income'
 const modelSettings = () => ({
   ...defaultIncomeSettings(),
   operatorMode: 'maximum',
@@ -9,6 +15,7 @@ const modelSettings = () => ({
   allowGoldDebt: false
 })
 import { calculateIncome } from './incomeWorker'
+import { runCalculationBridge } from './vendor/workbench/calculationBridge'
 import { incomeReportLines } from './incomeImage'
 const plan = () => ({
   default: 'plan1',
@@ -119,6 +126,15 @@ describe('income export calculation', () => {
       expect(dorm.slots).toHaveLength(5)
       const result = calculateIncome(source, modelSettings())
       expect(result.success, JSON.stringify(result)).toBe(true)
+      const mood = result.morale.find((row) => row.name === '芬')
+      expect(mood.points[0]).toEqual([0, 24])
+      expect(mood.points.at(-1)[0]).toBeCloseTo(744, 7)
+      expect(mood.points.some(([time, value]) => time < 72 && value < 24)).toBe(true)
+      expect(
+        mood.points.some(([time, value], index) => index && value > mood.points[index - 1][1])
+      ).toBe(true)
+      expect(mood.points.every(([, value]) => value >= 0 && value <= 24)).toBe(true)
+      expect(mood.truncated).toBe(false)
       expect(result.observedHours).toBeCloseTo(672, 7)
       expect(result.summary.goldCount).toBeGreaterThan(0)
       expect(
@@ -222,4 +238,90 @@ it('reports recycling counts without material inventory or score', () => {
   expect(incomeMetrics(result.summary, 1).find((row) => row.unit === '次').total).toBe(
     result.summary.recycleCount
   )
+})
+
+it('shows only active product icons with net gold and LMD, preserving deficits and balanced flows', () => {
+  const rows = incomeImageMetrics(
+    {
+      exp: 1000,
+      goldCount: 10,
+      goldConsumed: 12,
+      netGoldCount: -2,
+      orderLmd: 4000,
+      lmdConsumed: 4000,
+      netLmd: 0,
+      fragments: 0,
+      orundum: 0,
+      recycleCount: 0
+    },
+    28
+  )
+  expect(rows.map((row) => row.key)).toEqual(['exp', 'gold', 'lmd'])
+  expect(rows[1]).toMatchObject({ daily: -2, total: -56, signed: true, icon: '/depot/赤金.webp' })
+  expect(rows[2]).toMatchObject({ daily: 0, total: 0 })
+})
+it.each([
+  ['orirock', 1600],
+  ['orirock_device', 1000]
+])('reports sample LMD costs for potential %s production after warmup', (product, cost) => {
+  const source = plan()
+  source.plan1.room_1_1 = {
+    name: '制造站',
+    product,
+    plans: [{ agent: '芬' }, { agent: '香草' }, { agent: '翎羽' }]
+  }
+  const result = calculateIncome(source, { ...modelSettings(), warmupDays: 1, sampleDays: 1 })
+  expect(result.success, result.error).toBe(true)
+  expect(result.summary.lmdConsumed).toBeGreaterThan(0)
+  const totalCost = (result.summary.lmdConsumed * result.observedHours) / 24
+  expect(totalCost / cost).toBeCloseTo(Math.round(totalCost / cost), 6)
+  const funded = calculateIncome(source, {
+    ...modelSettings(),
+    finiteInventory: true,
+    initialInventory: { lmd: 10000000, orirock: 10000, device: 10000 },
+    warmupDays: 1,
+    sampleDays: 1
+  })
+  expect(funded.success, funded.error).toBe(true)
+  expect(result.summary.netLmd).toBeCloseTo(funded.summary.netLmd, 6)
+  expect(result.summary.netLmd).toBe(-result.summary.lmdConsumed)
+})
+it('reports actual sample LMD balance changes and drone rooms with event logs', () => {
+  const source = plan()
+  const result = calculateIncome(source, {
+    ...modelSettings(),
+    finiteInventory: true,
+    warmupDays: 0,
+    sampleDays: 1,
+    droneRoom: 'room_1_1'
+  })
+  expect(result.success, result.error).toBe(true)
+  expect(result.summary.netLmd).toBe(
+    (result.resources.closing.lmd ?? 0) - (result.resources.opening.lmd ?? 0)
+  )
+  expect(result.droneRooms).toEqual(['room_1_1'])
+  expect(result.eventLog.entries.some((event) => event.type === '制造加速')).toBe(true)
+})
+
+it('records warmup and sampled morale without changing production or staffing', () => {
+  const source = plan()
+  source.plan1.room_1_1.plans = [{ agent: '芬', group: '', replacement: ['香草'] }]
+  source.plan1.dormitory_1 = {
+    name: '',
+    plans: Array.from({ length: 5 }, () => ({ agent: 'Free', group: '', replacement: [] }))
+  }
+  const settings = { ...modelSettings(), warmupDays: 1, sampleDays: 1 }
+  const { workspace, options } = incomeRequest(source, settings)
+  options.simulationOptions.recordMorale = false
+  const without = runCalculationBridge(workspace, options)
+  const withCurves = calculateIncome(source, settings)
+  expect(without.success).toBe(true)
+  expect(withCurves.success).toBe(true)
+  expect(withCurves.summary.totalScore82).toBe(without.report.summary.totalScore82)
+  expect(withCurves.summary.netGoldCount).toBe(without.report.summary.netGoldCount)
+  expect(withCurves.resources).toEqual(without.simulationReport.production.sample)
+  for (const operator of without.simulationReport.operators) {
+    const row = withCurves.morale.find((row) => row.id === operator.operatorId)
+    expect(row.points.at(-1)).toEqual([48, operator.finalMorale])
+  }
 })

@@ -965,8 +965,9 @@ def test_imported_plan_encoding_survives_reload_without_rewriting_original(
 
 
 @pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("output_format", ["PNG", "JPEG"])
 def test_income_image_keeps_snapshot_after_live_plan_changes(
-    plan_client, populated_plan, theme
+    plan_client, populated_plan, theme, output_format
 ):
     from PIL import Image, ImageDraw
 
@@ -1001,12 +1002,18 @@ def test_income_image_keeps_snapshot_after_live_plan_changes(
         (80, 1400), "Income: 28 days after 3 days warmup", fill="gray"
     )
     output = BytesIO()
-    image.save(output, "PNG")
-    assert qrcode.decode(image.copy()) == expected
+    image.save(output, output_format, quality=95)
+    assert qrcode.decode(Image.open(BytesIO(output.getvalue()))) == expected
     result = plan_client.post(
         "/import",
         headers={"token": "test-token"},
-        data={"img": (BytesIO(output.getvalue()), "mower-income.png", "image/png")},
+        data={
+            "img": (
+                BytesIO(output.getvalue()),
+                "mower-income.jpg" if output_format == "JPEG" else "mower-income.png",
+                "image/jpeg" if output_format == "JPEG" else "image/png",
+            )
+        },
     )
     assert result.get_data(as_text=True) == "排班已加载"
     assert config.plan.plan1 == populated_plan.plan1

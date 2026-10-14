@@ -612,6 +612,23 @@ async function prepareIncome() {
     if (Bowser.getParser(window.navigator.userAgent).getEngine().name === 'WebKit') {
       await toBlob(plan_editor.value.outer)
     }
+    const root = plan_editor.value.outer
+    const rootRect = root.getBoundingClientRect()
+    const rootStyle = getComputedStyle(root)
+    const roomBounds = Object.fromEntries(
+      [...root.querySelectorAll('[data-income-room]')].map((element) => {
+        const rect = element.getBoundingClientRect()
+        return [
+          element.dataset.incomeRoom,
+          {
+            x: (rect.left - rootRect.left - parseFloat(rootStyle.paddingLeft)) * 3,
+            y: (rect.top - rootRect.top - parseFloat(rootStyle.paddingTop) + 8) * 3,
+            width: rect.width * 3,
+            height: rect.height * 3
+          }
+        ]
+      })
+    )
     const capture = await toBlob(plan_editor.value.outer, {
       pixelRatio: 3,
       backgroundColor: imageTheme === 'light' ? '#ffffff' : '#000000',
@@ -628,7 +645,7 @@ async function prepareIncome() {
       timeout: 60000
     })
     if (generation === income_preparation)
-      income_snapshot.value = { plan, image: data, theme: imageTheme, label }
+      income_snapshot.value = { plan, image: data, theme: imageTheme, label, roomBounds }
   } catch (error) {
     if (generation === income_preparation) income_error.value = error.message || '排班快照准备失败'
   } finally {

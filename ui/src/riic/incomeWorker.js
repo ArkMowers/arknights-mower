@@ -1,5 +1,7 @@
 import { runCalculationBridge } from './vendor/workbench/calculationBridge'
 import { incomeRequest } from './income'
+import { incomeEventLog } from './incomeLogs'
+import { OPERATOR_MAP } from './vendor/domain/operators'
 
 export function calculateIncome(plan, settings, onProgress) {
   const { workspace, options } = incomeRequest(plan, settings)
@@ -33,10 +35,43 @@ export function calculateIncome(plan, settings, onProgress) {
       error: result.error || diagnostics.map((d) => d.message).join('；') || '演算未完成',
       diagnostics
     }
+  const days = simulation.observedHours / 24
+  const production = simulation.production
+  const potentialLmdCost = production.events
+    .filter(
+      (e) =>
+        e.type === 'manufacture-cost' &&
+        e.time >= simulation.assumptions.warmupHours &&
+        e.time <= simulation.elapsedHours
+    )
+    .reduce((sum, e) => sum - (e.delta?.lmd ?? 0), 0)
+  const netLmd =
+    production.assumptions.outputMode === 'potential'
+      ? result.report.summary.orderLmd - potentialLmdCost / days
+      : (production.sample.net.lmd ?? 0) / days
   return {
     success: true,
+    eventLog: incomeEventLog(simulation),
+    morale: Object.entries(simulation.moraleTimeline ?? {}).map(([id, row]) => ({
+      id,
+      name: OPERATOR_MAP.get(id)?.name ?? id,
+      ...row
+    })),
+    resources: production.sample,
+    droneRooms: [
+      ...new Set(
+        production.events
+          .filter((e) => e.roomId && /(?:^|-)drone$/.test(e.type) && e.amount > 0)
+          .map((e) => e.roomId)
+      )
+    ],
     summary: {
       ...result.report.summary,
+      netLmd,
+      lmdConsumed:
+        production.assumptions.outputMode === 'potential'
+          ? potentialLmdCost / days
+          : (production.sample.outflows.lmd ?? 0) / days,
       recycleCount:
         (simulation.production?.recycle?.sampleCompletedItems ?? 0) /
         (simulation.observedHours / 24)
@@ -45,7 +80,8 @@ export function calculateIncome(plan, settings, onProgress) {
     observedHours: simulation.observedHours,
     rooms: simulation.rooms.map((r) => ({
       roomId: r.roomId,
-      averageEfficiencyPercent: r.averageEfficiencyPercent
+      averageEfficiencyPercent: r.averageEfficiencyPercent,
+      occupiedHours: r.occupiedHours
     })),
     assumptions: simulation.assumptions,
     inventoryMode: simulation.production?.assumptions.inventoryMode,

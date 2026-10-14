@@ -150,12 +150,16 @@
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
-      "sha256": "6f8b04697b7f03cfca30a3bba05ae8afe0aeb4f9d2c99ec84aa70bb4960d1d91",
-      "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained."
+      "sha256": "1b7e838e3c0d89690b86cd79a2bde9b877e79fcd66e94509caa02337c7ee93fc",
+      "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances."
     },
     "workbench/compat/mowerJson.ts": {
       "sha256": "c476a477935d9c2ccad02cefb2412d032d26a9eaeb466d03d51007284f027734",
       "reason": "Preserve explicit Free dormitory positions without keepers, as permitted by the native Mower dormitory contract."
+    },
+    "simulator/scheduleSimulation.ts": {
+      "sha256": "2a994269d22c4f811e82f0d147601405d57f3fb21009ebcb033a3137f2bfc548",
+      "reason": "Optionally record bounded morale curves across warmup and sampling, preserving linear turns and same-time charge jumps without changing scheduling or production."
     }
   }
 }
