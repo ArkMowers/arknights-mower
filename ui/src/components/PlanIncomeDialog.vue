@@ -586,6 +586,10 @@ onBeforeUnmount(() => {
                   : '本次自定义'
               }}；回收站仅计产出次数。
             </p>
+            <p>
+              赤金等价龙门币 = 制造赤金 × 500 + 龙舌兰等特殊订单溢价；不扣除交付消耗的赤金。
+              <span v-if="state.result.inventoryMode === 'finite'">实际消耗及余额见库存收支。</span>
+            </p>
             <h3>日均加权产出 {{ format(state.result.summary.totalScore82) }}</h3>
             <n-table size="small"
               ><thead>

@@ -141,12 +141,17 @@ export function applyMowerIncomeSettings(settings, value) {
   })
 }
 
+export function incomeGoldEquivalentLmd(summary) {
+  return (
+    (summary.goldValue ?? (summary.goldCount ?? 0) * 500) +
+    (summary.virtualGoldValue ?? (summary.virtualGoldCount ?? 0) * 500)
+  )
+}
+
 export function incomeMetrics(summary, days) {
   return [
     ['经验', summary.exp, '经验值'],
-    ['赤金产量', summary.goldCount, '个'],
-    ['赤金消耗', summary.goldConsumed, '个'],
-    ['赤金净增', summary.netGoldCount, '个'],
+    ['赤金等价龙门币', incomeGoldEquivalentLmd(summary), '龙门币'],
     ['贸易龙门币', summary.orderLmd, '龙门币'],
     ['龙门币消耗', summary.lmdConsumed, '龙门币'],
     ['龙门币净增', summary.netLmd, '龙门币'],
@@ -163,10 +168,8 @@ export function incomeImageMetrics(summary, days) {
     {
       key: 'gold',
       icon: '/product/gold.png',
-      daily: summary.netGoldCount,
-      unit: '个',
-      signed: true,
-      present: summary.goldCount || summary.goldConsumed
+      daily: incomeGoldEquivalentLmd(summary),
+      unit: '龙门币'
     },
     {
       key: 'lmd',

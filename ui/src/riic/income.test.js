@@ -4,6 +4,7 @@ import {
   incomeRequest,
   incomeMetrics,
   incomeImageMetrics,
+  incomeGoldEquivalentLmd,
   inventoryRequired
 } from './income'
 const modelSettings = () => ({
@@ -103,8 +104,8 @@ describe('income export calculation', () => {
     expect(result.summary.goldCount).toBeCloseTo(20, 8)
     expect(result.summary.totalScore82).toBeCloseTo(8000, 7)
     expect(
-      incomeMetrics(result.summary, 28).find((row) => row.label === '赤金产量').total
-    ).toBeCloseTo(560, 7)
+      incomeMetrics(result.summary, 28).find((row) => row.label === '赤金等价龙门币').total
+    ).toBeCloseTo(280000, 7)
     expect(source).toEqual(original)
     expect(progress.length).toBeGreaterThan(0)
     expect(incomeReportLines(result, settings, source, '主表').join('\n')).toContain('统计 28 天')
@@ -244,13 +245,14 @@ it('reports recycling counts without material inventory or score', () => {
   )
 })
 
-it('shows only active product icons with net gold and LMD, preserving deficits and balanced flows', () => {
+it('reports manufactured and premium gold as LMD equivalent while retaining net LMD', () => {
   const rows = incomeImageMetrics(
     {
       exp: 1000,
       goldCount: 10,
       goldConsumed: 12,
       netGoldCount: -2,
+      virtualGoldCount: 1.4,
       orderLmd: 4000,
       lmdConsumed: 4000,
       netLmd: 0,
@@ -261,7 +263,13 @@ it('shows only active product icons with net gold and LMD, preserving deficits a
     28
   )
   expect(rows.map((row) => row.key)).toEqual(['exp', 'gold', 'lmd'])
-  expect(rows[1]).toMatchObject({ daily: -2, total: -56, signed: true, icon: '/product/gold.png' })
+  expect(rows[1]).toMatchObject({
+    daily: 5700,
+    total: 159600,
+    unit: '龙门币',
+    icon: '/product/gold.png'
+  })
+  expect(rows[1].signed).toBeUndefined()
   expect(rows[2]).toMatchObject({ daily: 0, total: 0 })
 })
 it.each([
@@ -410,4 +418,88 @@ it('reports fixed training assumptions for new runs and preserves historical pro
   expect(
     incomeReportLines(result, { ...settings, masteryPlanPresent: true }, plan(), '主表').join('\n')
   ).toContain('历史演算的未完成训练计划：有')
+})
+
+it('does not count ordinary gold delivery as gold income or deduct it from manufacturing', () => {
+  const source = plan()
+  source.plan1.room_2_3 = { name: '发电站', plans: [] }
+  source.plan1.room_2_1 = { name: '贸易站', product: 'lmd', plans: [] }
+  const result = calculateIncome(source, {
+    ...modelSettings(),
+    finiteInventory: true,
+    allowGoldDebt: true,
+    warmupDays: 0,
+    sampleDays: 1
+  })
+  expect(result.success, result.error).toBe(true)
+  expect(result.summary.goldConsumed).toBeGreaterThan(0)
+  expect(incomeGoldEquivalentLmd(result.summary)).toBeCloseTo(9000, 8)
+  expect(incomeImageMetrics(result.summary, 1).find((row) => row.key === 'gold').daily).toBeCloseTo(
+    9000,
+    8
+  )
+  const rows = incomeMetrics(result.summary, 1)
+  expect(rows.find((row) => row.label === '赤金等价龙门币').daily).toBeCloseTo(9000, 8)
+  expect(rows.some((row) => ['赤金产量', '赤金消耗', '赤金净增'].includes(row.label))).toBe(false)
+  source.plan1.room_1_1.product = 'exp'
+  const noGold = calculateIncome(source, {
+    ...modelSettings(),
+    finiteInventory: true,
+    allowGoldDebt: true,
+    warmupDays: 0,
+    sampleDays: 1
+  })
+  expect(noGold.success, noGold.error).toBe(true)
+  expect(noGold.summary.goldConsumed).toBeGreaterThan(0)
+  expect(incomeGoldEquivalentLmd(noGold.summary)).toBe(0)
+  expect(incomeImageMetrics(noGold.summary, 1).some((row) => row.key === 'gold')).toBe(false)
+})
+
+it.each(['龙舌兰', '可露希尔'])(
+  'adds %s order premiums to manufacturing value without changing the ledger',
+  (agent) => {
+    const source = plan()
+    source.plan1.room_2_3 = { name: '发电站', plans: [] }
+    source.plan1.room_2_1 = {
+      name: '贸易站',
+      product: 'lmd',
+      plans: [{ agent }, { agent: '巫恋' }, { agent: '柏喙' }]
+    }
+    const result = calculateIncome(source, {
+      ...modelSettings(),
+      finiteInventory: true,
+      allowGoldDebt: true,
+      warmupDays: 0,
+      sampleDays: 3
+    })
+    expect(result.success, result.error).toBe(true)
+    const premiums = result.simulationReport.production.events
+      .filter((event) => event.type === 'order-collected' && event.time > 0 && event.order)
+      .reduce(
+        (total, event) => total + Math.max(0, event.order.lmdReward - event.order.goldCost * 500),
+        0
+      )
+    expect(premiums).toBeGreaterThan(0)
+    const value = incomeGoldEquivalentLmd(result.summary)
+    expect(value).toBeCloseTo(
+      (result.resources.inflows.gold * 500 + premiums) / (result.observedHours / 24),
+      6
+    )
+    expect(result.summary.totalScore82).toBeCloseTo(value * 0.8 + result.summary.orderLmd * 0.2, 6)
+    expect(result.resources.closing.gold).toBeCloseTo(
+      (result.resources.opening.gold ?? 0) +
+        (result.resources.inflows.gold ?? 0) -
+        (result.resources.outflows.gold ?? 0),
+      8
+    )
+  }
+)
+
+it('reads old frozen gold summaries without treating consumed inventory as income', () => {
+  const original = { goldCount: 10, virtualGoldCount: 1.4, goldConsumed: 99, netGoldCount: -89 }
+  const before = structuredClone(original)
+  expect(incomeGoldEquivalentLmd(original)).toBe(5700)
+  expect(incomeGoldEquivalentLmd({ goldValue: 5000, virtualGoldValue: 700 })).toBe(5700)
+  expect(incomeGoldEquivalentLmd({ goldConsumed: 99, netGoldCount: -99 })).toBe(0)
+  expect(original).toEqual(before)
 })
