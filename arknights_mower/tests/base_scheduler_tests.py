@@ -3623,6 +3623,7 @@ class TestClueProductCompleteWait(unittest.TestCase):
         solver.backup_plan_solver = MagicMock()
         solver.read_party_time = MagicMock(return_value=None)
         solver.set_detected_party_time = MagicMock()
+        solver._read_placed_clue_numbers = MagicMock(return_value=frozenset())
 
         scenes = [
             Scene.INFRA_DETAILS,
