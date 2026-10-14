@@ -191,15 +191,35 @@ export function importMowerJson(text: string): RosterWorkspace {
   for (const roomId of MOWER_ROOM_IDS) {
     const facility = ws.mainPlan.facilities[roomId]
     if (!importedPresentRooms.includes(roomId) ||
-      (facility.type === 'dormitory' && !hasDormKeeper(facility) &&
+      (!Object.prototype.hasOwnProperty.call(parsed.facility_levels ?? {}, roomId) && facility.type === 'dormitory' && !hasDormKeeper(facility) &&
         !facility.slots.some(slot => slot.occupant.kind === 'free'))) {
       facility.level = 0
       facility.slots = []
     }
   }
 
-  // Infer facility levels strictly according to existing inference rules
+  // Building levels are shared by the main roster and all backup arrangements.
+  if (parsed.facility_levels !== undefined) {
+    if (!isRecord(parsed.facility_levels)) throw new Error('设施等级必须为对象')
+    for (const [room, level] of Object.entries(parsed.facility_levels)) {
+      const maximum = room === 'central' || room.startsWith('dormitory_') ? 5 : 3
+      if (!knownRoomSet.has(room) || room.startsWith('gaming_') ||
+        !Number.isInteger(level) || Number(level) < 0 || Number(level) > maximum) {
+        throw new Error(`设施 ${room} 等级必须为 0–${maximum} 的整数`)
+      }
+      if (Number(level) > 0 && room.startsWith('room_') &&
+        !['制造站', '贸易站', '发电站'].includes(String((rawPlan[room] as Record<string, unknown> | undefined)?.name))) {
+        throw new Error(`请先设置 ${room} 的设施类别`)
+      }
+      ws.mainPlan.facilities[room as MowerRoomId].level = Number(level)
+    }
+  }
+
+  // Infer unset levels using the actual built-room layout, then restore explicit values.
   inferFacilityLevels(ws.mainPlan.facilities)
+  for (const [room, level] of Object.entries(parsed.facility_levels ?? {})) {
+    ws.mainPlan.facilities[room as MowerRoomId].level = Number(level)
+  }
 
   // Parse conf
   const hasConf = parsed.conf !== undefined

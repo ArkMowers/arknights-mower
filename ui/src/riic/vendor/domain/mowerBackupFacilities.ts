@@ -1,3 +1,4 @@
+import { facilityCapacity } from './facilities'
 import type { MowerFacility, MowerRoomId, RosterWorkspace } from './roster'
 
 // Mower alpha ab0a4e5 utils.plan.RIGHT_SIDE_ROOM_CAPACITY and Operators.merge_plan.
@@ -9,6 +10,12 @@ export const MOWER_RIGHT_SIDE_CAPACITY: Readonly<Partial<Record<MowerRoomId, num
 export function mowerBackupRoomCapacity(workspace: RosterWorkspace, roomId: string): number {
   const facility = workspace.mainPlan.facilities[roomId as MowerRoomId]
   if (!facility) throw new Error(`未知副表房间：${roomId}`)
+  const levels = workspace.compatibility.unrecognizedFields.facility_levels as Record<string, number> | undefined
+  if (levels && Object.prototype.hasOwnProperty.call(levels, roomId)) {
+    const physicalCapacity = facilityCapacity(facility.type, facility.level)
+    return MOWER_RIGHT_SIDE_CAPACITY[roomId as MowerRoomId] !== undefined
+      ? physicalCapacity : Math.min(physicalCapacity, facility.slots.length)
+  }
   const capacity = MOWER_RIGHT_SIDE_CAPACITY[roomId as MowerRoomId]
   if (capacity !== undefined) return capacity
   if (facility.level === 0) throw new Error(`副表房间不在主表设施中：${roomId}`)

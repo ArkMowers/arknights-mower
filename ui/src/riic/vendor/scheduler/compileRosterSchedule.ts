@@ -125,6 +125,6 @@ export function compileRosterSchedule(workspace: RosterWorkspace, options: Parti
   return {
     schemaVersion: 1, rooms, operators, restPools, policies, rawConf, runOrderPolicies,
     fiammettaPolicies, diagnostics, sourceWorkspace,
-    assumptions: { ...assumptions, dataVersion: GAME_DATA_VERSION, compilerVersion: '1', levelSource: 'workspace-inferred', importSource: workspace.compatibility.sourceVersion ?? 'workspace', defaultsApplied },
+    assumptions: { ...assumptions, dataVersion: GAME_DATA_VERSION, compilerVersion: '1', levelSource: Object.keys(workspace.compatibility.unrecognizedFields.facility_levels ?? {}).length ? 'saved-with-inferred-fallback' : 'workspace-inferred', importSource: workspace.compatibility.sourceVersion ?? 'workspace', defaultsApplied },
   }
 }

@@ -4,7 +4,7 @@ import ast
 import copy
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, StrictInt, field_validator, model_validator
 
 
 def contains_retired_rescue_condition(value) -> bool:
@@ -262,6 +262,19 @@ class BackupPlan(BaseModel):
 
 class PlanModel(BaseModel):
     default: str = "plan1"
+    facility_levels: dict[str, StrictInt] = Field(default_factory=dict)
+
+    @field_validator("facility_levels")
+    @classmethod
+    def validate_facility_levels(cls, value):
+        for room, level in value.items():
+            if room not in Plan1.model_fields or room.startswith("gaming_"):
+                raise ValueError(f"不支持的设施等级：{room}")
+            maximum = 5 if room == "central" or room.startswith("dormitory_") else 3
+            if not 0 <= level <= maximum:
+                raise ValueError(f"{room} 等级必须为 0–{maximum} 的整数")
+        return value
+
     plan1: Plan1 = Plan1()
     conf: PlanConf = PlanConf()
     backup_plans: list[BackupPlan] = []

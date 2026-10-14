@@ -761,6 +761,7 @@ def test_recycling_plan_json_and_image_round_trip(
         pytest.skip(f"二维码依赖不可用：{error}")
 
     value = populated_plan.model_dump(exclude_none=True)
+    value["facility_levels"] = {"dormitory_1": 2, "contact": 1, "recycle": 3}
     value["plan1"]["recycle"] = {
         "plans": [
             {
@@ -819,6 +820,7 @@ def test_recycling_plan_json_and_image_round_trip(
     )
     assert imported.get_data(as_text=True) == "排班已加载"
     restored = config.conf.automatic_rescue_plan if rescue else config.plan
+    assert restored.facility_levels == schedule.facility_levels
     assert restored.plan1.recycle == schedule.plan1.recycle
     assert (
         restored.backup_plans[0].plan.recycle == schedule.backup_plans[0].plan.recycle
@@ -1056,3 +1058,21 @@ def test_income_cache_endpoint_requires_token_and_does_not_save(
         "observed_at": None,
     }
     assert config.conf.model_dump() == before
+
+
+@pytest.mark.parametrize(
+    "room,level",
+    [
+        ("contact", 4),
+        ("central", 6),
+        ("dormitory_1", -1),
+        ("room_1_1", 1.5),
+        ("train", "2"),
+        ("gaming_1", 1),
+        ("unknown", 1),
+        ("contact", True),
+    ],
+)
+def test_plan_rejects_invalid_facility_levels(room, level):
+    with pytest.raises(ValueError):
+        config.PlanModel(facility_levels={room: level})

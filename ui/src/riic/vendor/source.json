@@ -154,8 +154,8 @@
       "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances."
     },
     "workbench/compat/mowerJson.ts": {
-      "sha256": "c476a477935d9c2ccad02cefb2412d032d26a9eaeb466d03d51007284f027734",
-      "reason": "Preserve explicit Free dormitory positions without keepers, as permitted by the native Mower dormitory contract."
+      "reason": "Preserve explicit Free dormitory positions without keepers. Apply saved shared facility levels while retaining legacy inference for unset rooms, including unstaffed buildings, and reject invalid level values.",
+      "sha256": "65352721e6011ad8bc8419f9cb25d817087f36b177b64eb076e5fc1630d41750"
     },
     "simulator/scheduleSimulation.ts": {
       "sha256": "5ad8a0b5a837c4c5a60b01faa299f8d093cd7619e8b094281ab79eae526171a1",
@@ -164,6 +164,22 @@
     "workbench/scheduleSimulationBridge.ts": {
       "reason": "Forward the local interval observer separately from JSON-cloned simulation data.",
       "sha256": "8888318457b8aba820573a7edb882923a48f1a1c143f7ca7daf3575cc34d2682"
+    },
+    "domain/mowerBackupFacilities.ts": {
+      "reason": "Respect explicit shared building capacity in backup overlays without creating left-side positions or rebuilding unbuilt facilities.",
+      "sha256": "fbd5b53235954f73f97453379f722f6b664d09727d03d127896bbff43b469136"
+    },
+    "domain/facilities.ts": {
+      "reason": "Use the control-center level as its staffing capacity, matching the game building table.",
+      "sha256": "5a6477e426812bf24c18c5d61cdd33e2a3dea02ef6ae15cb7ed04553de9d1c0b"
+    },
+    "workbench/validate.ts": {
+      "reason": "Expose the existing power calculation for the editor and simulator to share unchanged power constants.",
+      "sha256": "403fbb46a1b24096897f4b244e01511d7fd3a5bab179b4ba2f1dbaaef7e708d9"
+    },
+    "scheduler/compileRosterSchedule.ts": {
+      "reason": "Report saved facility levels with inferred fallback as the compilation source.",
+      "sha256": "664e78481d4e355a64b4e67d5c90b3c99886468e6358a0426ec67dc4f9b841e2"
     }
   }
 }

@@ -95,7 +95,7 @@ describe('plan facility display order', () => {
         config.right_side_room_order = order
         const html = await renderToString(editorApp())
         const regions = updateDropRegions(html)
-        expect(regions.markers).toEqual(['outer'])
+        expect(regions.markers).toEqual(['facility-levels', 'outer'])
         expect(regions.avatars.every((avatar) => avatar.excluded)).toBe(true)
         expect(regions.outsideSpaces).toBeGreaterThan(0)
         const office = html.indexOf('办公室干员.webp')

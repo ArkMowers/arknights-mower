@@ -285,7 +285,7 @@ onBeforeUnmount(() => {
           <n-alert class="notice" type="info">
             使用打开窗口时的完整排班快照；预热不计收益。演算采用固定版本的离线模型和理想跑单，结果不代表实测收入。
             初始心情为
-            24；设施等级由排班推断，宿舍氛围按等级上限。导入收益图可恢复完整排班及高级设置。
+            24；设施等级读取排班保存值，未设置时推断；宿舍氛围按等级上限。导入收益图可恢复完整排班及高级设置。
           </n-alert>
           <n-form
             :disabled="state.running || exporting || submitting || weightsBusy"

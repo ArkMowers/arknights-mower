@@ -104,33 +104,8 @@ export function validateRosterWorkspace(workspace: RosterWorkspace): ValidationR
 
   criticalErrors.push(...validateMowerRosterRules(workspace))
 
-  // 2. Power calculation
-  let totalGeneration = 0
-  let totalConsumption = 0
-
-  for (const roomId of MOWER_ROOM_IDS) {
-    const facility = facilities[roomId]
-    if (!facility || facility.level === 0) continue
-
-    // Gaming is strictly excluded from power totals
-    if (facility.type === 'gaming' || roomId.startsWith('gaming_')) {
-      continue
-    }
-
-    if (facility.type === 'power') {
-      totalGeneration += POWER_GENERATION[facility.level] ?? 0
-    } else if (facility.type === 'manufacture' || facility.type === 'trading') {
-      totalConsumption += OUTPUT_POWER_CONSUMPTION[facility.level] ?? 0
-    } else if (facility.type === 'dormitory') {
-      totalConsumption += DORM_POWER_CONSUMPTION[facility.level] ?? 0
-    } else if (facility.type === 'meeting' || facility.type === 'contact' || facility.type === 'train') {
-      totalConsumption += FUNCTIONAL_POWER_CONSUMPTION[facility.level] ?? 0
-    } else if (facility.type === 'factory') {
-      // Factory consumes fixed 10
-      totalConsumption += 10
-    }
-    // Central consumes 0
-  }
+  const power = calculateFacilityPower(facilities)
+  const { generation: totalGeneration, consumption: totalConsumption } = power
 
   if (totalConsumption > totalGeneration) {
     criticalErrors.push({
@@ -307,11 +282,44 @@ export function validateRosterWorkspace(workspace: RosterWorkspace): ValidationR
     criticalErrors,
     warnings,
     issues: [...criticalErrors, ...warnings],
-    power: {
-      generation: totalGeneration,
-      consumption: totalConsumption,
-      margin: totalGeneration - totalConsumption,
-      sufficient: totalGeneration >= totalConsumption,
-    },
+    power,
+  }
+}
+
+/** Shared editor and simulation power totals; unstaffed built rooms still consume power. */
+export function calculateFacilityPower(facilities: RosterWorkspace['mainPlan']['facilities']): ValidationPowerSummary {
+  // 2. Power calculation
+  let totalGeneration = 0
+  let totalConsumption = 0
+
+  for (const roomId of MOWER_ROOM_IDS) {
+    const facility = facilities[roomId]
+    if (!facility || facility.level === 0) continue
+
+    // Gaming is strictly excluded from power totals
+    if (facility.type === 'gaming' || roomId.startsWith('gaming_')) {
+      continue
+    }
+
+    if (facility.type === 'power') {
+      totalGeneration += POWER_GENERATION[facility.level] ?? 0
+    } else if (facility.type === 'manufacture' || facility.type === 'trading') {
+      totalConsumption += OUTPUT_POWER_CONSUMPTION[facility.level] ?? 0
+    } else if (facility.type === 'dormitory') {
+      totalConsumption += DORM_POWER_CONSUMPTION[facility.level] ?? 0
+    } else if (facility.type === 'meeting' || facility.type === 'contact' || facility.type === 'train') {
+      totalConsumption += FUNCTIONAL_POWER_CONSUMPTION[facility.level] ?? 0
+    } else if (facility.type === 'factory') {
+      // Factory consumes fixed 10
+      totalConsumption += 10
+    }
+    // Central consumes 0
+  }
+
+  return {
+    generation: totalGeneration,
+    consumption: totalConsumption,
+    margin: totalGeneration - totalConsumption,
+    sufficient: totalGeneration >= totalConsumption,
   }
 }
