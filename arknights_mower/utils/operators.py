@@ -157,17 +157,28 @@ def _validate_expression_resources(expression: str) -> None:
 
 
 @overload
-def build_global_plan(*, include_source: Literal[False] = False) -> dict[str, Any]: ...
+def build_global_plan(
+    *,
+    include_source: Literal[False] = False,
+    plan_model: config.PlanModel | None = None,
+    conf_model: config.Conf | None = None,
+) -> dict[str, Any]: ...
 
 
 @overload
 def build_global_plan(
-    *, include_source: Literal[True]
+    *,
+    include_source: Literal[True],
+    plan_model: config.PlanModel | None = None,
+    conf_model: config.Conf | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]: ...
 
 
 def build_global_plan(
-    *, include_source: bool = False
+    *,
+    include_source: bool = False,
+    plan_model: config.PlanModel | None = None,
+    conf_model: config.Conf | None = None,
 ) -> dict[str, Any] | tuple[dict[str, Any], dict[str, Any]]:
     """构建完整的 global_plan，包括 Plan 对象，用于运行时"""
     from ..utils import config
@@ -176,10 +187,12 @@ def build_global_plan(
 
     plan1 = {}
     default_products = {}
-    source_model = config.plan.model_copy(deep=True)
+    source_model = (plan_model if plan_model is not None else config.plan).model_copy(
+        deep=True
+    )
     plan = source_model.model_dump(exclude_none=True)
     source_plan = copy.deepcopy(plan) if include_source else None
-    conf = config.conf
+    conf = conf_model if conf_model is not None else config.conf
     if source_plan is not None:
         source_plan["advanced_settings"] = export_advanced_settings(conf)
     plan_config = PlanConfig(
@@ -290,7 +303,8 @@ class Operators:
     current_room_changed_callback = None
     first_init = True
 
-    def __init__(self, plan):
+    def __init__(self, plan, *, runtime_conf=None):
+        self.runtime_conf = runtime_conf
         self.operators = {}
         self.groups = {}
         self.group_shift_state = {}
@@ -368,7 +382,9 @@ class Operators:
                 if enabled
             ],
             product_switching_enabled=getattr(
-                getattr(config.conf, "product_switching", None), "enable", False
+                getattr((self.runtime_conf or config.conf), "product_switching", None),
+                "enable",
+                False,
             ),
         ):
             return error
@@ -1899,7 +1915,8 @@ class Operators:
     def rescue_mood_threshold(self, op):
         """按个人心情上下限换算现有急救阈值。"""
         return op.lower_limit + (op.upper_limit - op.lower_limit) * (
-            self.config.resting_threshold * config.conf.rescue_threshold
+            self.config.resting_threshold
+            * (self.runtime_conf or config.conf).rescue_threshold
         )
 
     def resting_mood_threshold(self, op):
@@ -2577,12 +2594,12 @@ class Operators:
 
     def dorm_isolation_cost(self, name, room, index=None, *, plan=None):
         """统计入住后的同组室友人数，供分床和入住前交换使用。"""
-        if not config.conf.dorm_isolation:
+        if not (self.runtime_conf or config.conf).dorm_isolation:
             return 0
         roommates = set(self.dorm_roommates(room, index, plan=plan))
         roommates.discard(name)
         cost = 0
-        for group in config.conf.dorm_isolation:
+        for group in (self.runtime_conf or config.conf).dorm_isolation:
             if name not in group:
                 continue
             shared = roommates.intersection(group)
@@ -2812,7 +2829,9 @@ class Operators:
             tuple(sorted(self.maintenance_primary_slots)),
         )
 
-    def validate_backup_plans(self, *, max_seconds=None):
+    def validate_backup_plans(
+        self, *, max_seconds=None, check_owned=True, refresh_roster=True
+    ):
         """独立检查可能的副表组合；可选耗时预算覆盖条件分析和组合检查。"""
         from arknights_mower.utils.backup_validation import (
             BackupValidationLimitExceeded,
@@ -2826,14 +2845,22 @@ class Operators:
             self.global_plan["default_plan"],
             self.backup_plans,
             product_switching_enabled=getattr(
-                getattr(config.conf, "product_switching", None), "enable", False
+                getattr((self.runtime_conf or config.conf), "product_switching", None),
+                "enable",
+                False,
             ),
         ):
             return {"success": False, "status": "failed", "message": error}
-        if error := validate_owned_operators(self.global_plan):
-            return {"success": False, "status": "failed", "message": error}
+        if check_owned:
+            error = (
+                validate_owned_operators(self.global_plan)
+                if refresh_roster
+                else validate_owned_operators(self.global_plan, refresh=False)
+            )
+            if error:
+                return {"success": False, "status": "failed", "message": error}
 
-        baseline = Operators(self.global_plan)
+        baseline = Operators(self.global_plan, runtime_conf=self.runtime_conf)
         validated = {baseline._schedule_validation_key()}
         if error := baseline.init_and_validate():
             return {

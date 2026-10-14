@@ -1,9 +1,19 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useThemeVars } from 'naive-ui'
 import ScheduleTimelineGantt from '@/riic/vendor/components/workbench/ScheduleTimelineGantt.vue'
 
 const props = defineProps({ report: Object, timelineData: Object })
+const overviewPage = ref(1)
+const operators = computed(() => props.timelineData?.operatorTracks ?? [])
+const overviewRows = computed(() =>
+  operators.value.slice((overviewPage.value - 1) * 20, overviewPage.value * 20)
+)
+watch(
+  () => props.timelineData,
+  () => (overviewPage.value = 1)
+)
+const hours = (value) => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
 const theme = useThemeVars()
 const colors = computed(() => ({
   '--timeline-surface': theme.value.cardColor,
@@ -23,6 +33,40 @@ const colors = computed(() => ({
 
 <template>
   <div class="income-timeline" :style="colors">
+    <n-collapse class="time-overview">
+      <n-collapse-item title="干员时间总览" name="operator-time">
+        <p>
+          仅统计采样期
+          {{ hours(props.timelineData?.observedHours ?? 0) }}
+          小时，不含预热。工作时长包含零心情驻岗。
+        </p>
+        <n-table size="small">
+          <thead>
+            <tr>
+              <th>干员</th>
+              <th>工作（小时）</th>
+              <th>休息（小时）</th>
+              <th>空闲（小时）</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="operator in overviewRows" :key="operator.operatorId">
+              <td>{{ operator.operatorName }}</td>
+              <td>{{ hours(operator.workHours + operator.exhaustedHours) }}</td>
+              <td>{{ hours(operator.restHours) }}</td>
+              <td>{{ hours(operator.idleHours) }}</td>
+            </tr>
+          </tbody>
+        </n-table>
+        <n-pagination
+          v-if="operators.length > 20"
+          v-model:page="overviewPage"
+          :item-count="operators.length"
+          :page-size="20"
+          simple
+        />
+      </n-collapse-item>
+    </n-collapse>
     <ScheduleTimelineGantt
       :report="props.report"
       :timeline-data="props.timelineData"
@@ -35,6 +79,12 @@ const colors = computed(() => ({
 <style scoped>
 .income-timeline {
   font-variant-numeric: tabular-nums;
+}
+.time-overview {
+  margin: 12px 0 20px;
+}
+.time-overview :deep(.n-pagination) {
+  margin-top: 12px;
 }
 .income-timeline :deep(.schedule-timeline-gantt) {
   margin: 8px 0 0;

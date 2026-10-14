@@ -2306,6 +2306,34 @@ def export_json():
 @require_token
 def validate_backup_plans_route():
     try:
+        body = request.get_json(silent=True) or {}
+        if "plan" in body:
+            from arknights_mower.utils.config.plan import parse_plan_document
+            from arknights_mower.utils.config.plan_advanced import (
+                apply_advanced_settings,
+            )
+
+            mode = body.get("operatorMode")
+            if mode not in ("cache", "custom", "maximum"):
+                return {
+                    "success": False,
+                    "status": "failed",
+                    "message": "干员练度选项无效",
+                }, 400
+            document = parse_plan_document(body["plan"])
+            conf = apply_advanced_settings(
+                config.conf.model_copy(deep=True), document.advanced_settings
+            )
+            global_plan = build_global_plan(plan_model=document, conf_model=conf)
+            op = Operators(global_plan, runtime_conf=conf)
+            result = op.validate_backup_plans(
+                max_seconds=5, check_owned=mode == "cache", refresh_roster=False
+            )
+            if result.get("status") == "incomplete":
+                result["message"] = (
+                    "排班组合校验未完成，尚未开始演算。请简化副表条件后重试。"
+                )
+            return result
         global_plan = build_global_plan()
         op = Operators(global_plan)
         result = op.validate_backup_plans()

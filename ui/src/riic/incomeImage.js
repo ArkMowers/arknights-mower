@@ -98,7 +98,7 @@ export async function renderIncomeImage(
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(source, 0, headerHeight)
     const droneTargets = incomeFacilities(plan)
-    for (const room of result.droneRooms ?? []) {
+    for (const room of settings.droneRoom ? [settings.droneRoom] : []) {
       const bounds = roomBounds[room]
       if (!bounds) continue
       const trading = droneTargets.find((target) => target.roomId === room)?.target === 'trading'
@@ -110,10 +110,8 @@ export async function renderIncomeImage(
       const badgeCtx = badge.getContext('2d')
       badgeCtx.drawImage(drone, 0, 0, badge.width, badge.height)
       badgeCtx.globalCompositeOperation = 'source-in'
-      badgeCtx.fillStyle = trading ? '#2587dc' : '#e4ad08'
+      badgeCtx.fillStyle = trading ? '#8ccaff' : '#f7d86a'
       badgeCtx.fillRect(0, 0, badge.width, badge.height)
-      ctx.fillStyle = trading ? '#e5f2ff' : '#fff5cf'
-      ctx.fillRect(x, y, size, size)
       ctx.drawImage(badge, x + 2 * scale, y + 2 * scale, size - 4 * scale, size - 4 * scale)
     }
     const write = (text, x, y, size, color = foreground, weight = 'normal') => {

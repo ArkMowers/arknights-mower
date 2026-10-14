@@ -112,6 +112,25 @@ def test_unconfirmed_cache_miss_does_not_block(roster_path, monkeypatch):
     assert schedule_roster.validate_owned_operators(make_plan()) is None
 
 
+def test_read_only_cache_miss_blocks_without_remote_refresh(roster_path, monkeypatch):
+    write_roster(roster_path, "char_103_angel")
+    refresh = MagicMock(side_effect=AssertionError("remote sync"))
+    monkeypatch.setattr(schedule_roster, "_refresh_roster", refresh)
+    message = schedule_roster.validate_owned_operators(make_plan(), refresh=False)
+    assert "森空岛缓存中未持有以下排班干员：Lancet-2、年、芬、香草" in message
+    assert "全员满练" in message
+    refresh.assert_not_called()
+
+
+def test_read_only_cache_checks_training_without_refresh(roster_path, monkeypatch):
+    write_training_roster(roster_path, level=6)
+    refresh = MagicMock(side_effect=AssertionError("remote sync"))
+    monkeypatch.setattr(schedule_roster, "_refresh_roster", refresh)
+    message = schedule_roster.validate_owned_operators(training_plan(), refresh=False)
+    assert "基础技能仅 6 级" in message
+    refresh.assert_not_called()
+
+
 def test_unknown_operator_name_reports_resource_mismatch(roster_path):
     write_roster(roster_path, "char_103_angel")
     plan = make_plan()
