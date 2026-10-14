@@ -20,9 +20,17 @@ for i in range(2):
 
 
 class CreditShop(SceneGraphSolver):
-    def run(self):
+    def run(self, *, on_demand=False):
+        self.on_demand = on_demand
+        self.credit_deficit = None
+        self.selected_product = None
+        self.rejected_product = None
+        self.purchase_rechecks = 0
         logger.info("Start: 信用商店购物")
         super().run()
+
+    def _can_afford(self, remain, price):
+        return remain >= price if self.on_demand else remain > price
 
     def number(
         self,
@@ -131,31 +139,68 @@ class CreditShop(SceneGraphSolver):
                 return
             remain = self.credit_remain()
             self.product_info()
+            if self.on_demand and self.rejected_product is not None:
+                rejected = next(
+                    (
+                        product
+                        for product in self.products
+                        if product
+                        and product["touch"] == self.rejected_product["touch"]
+                    ),
+                    None,
+                )
+                if rejected is not None and remain >= rejected["price"]:
+                    logger.warning("余额与信用不足提示矛盾，结束本次购物，不触发领板")
+                    return True
+                self.rejected_product = None
             for product in self.products:
                 if (
                     product
                     and product["name"] in config.conf.maa_mall_buy
-                    and remain > product["price"]
+                    and self._can_afford(remain, product["price"])
                 ):
+                    self.selected_product = product
                     self.tap(product["touch"])
                     return
             for product in self.products:
                 if (
                     product
                     and product["name"] not in config.conf.maa_mall_blacklist
-                    and remain > product["price"]
+                    and self._can_afford(remain, product["price"])
                 ):
+                    self.selected_product = product
                     self.tap(product["touch"])
                     return
             if remain > 300 and config.conf.maa_mall_ignore_blacklist_when_full:
                 for product in self.products:
-                    if product and remain > product["price"]:
+                    if product and self._can_afford(remain, product["price"]):
+                        self.selected_product = product
                         self.tap(product["touch"])
                         return
+            if self.on_demand:
+                self.credit_deficit = max(
+                    0,
+                    sum(
+                        product["price"]
+                        for product in self.products
+                        if product
+                        and product["name"] not in config.conf.maa_mall_blacklist
+                    )
+                    - remain,
+                )
             return True
         elif scene == Scene.SHOP_CREDIT_CONFIRM:
             if self.find("shop_credit_not_enough"):
                 self.back()
+                if (
+                    self.on_demand
+                    and self.selected_product is not None
+                    and not self.purchase_rechecks
+                ):
+                    # 只复核一次实际余额；矛盾观测不能作为领取信用的依据。
+                    self.purchase_rechecks += 1
+                    self.rejected_product = self.selected_product
+                    return
                 return True
             else:
                 self.tap_element("shop_cart")

@@ -541,6 +541,9 @@ def simulate(saved):
             )
             base_scheduler.party_time = saved["party_time"]
             base_scheduler.daily_visit_friend = saved["daily_visit_friend"]
+            base_scheduler.daily_visit_friend_attempt = saved.get(
+                "daily_visit_friend_attempt"
+            )
             base_scheduler.daily_report = saved["daily_report"]
             base_scheduler.daily_skland = saved["daily_skland"]
             base_scheduler.daily_mail = saved["daily_mail"]
@@ -606,8 +609,15 @@ def simulate(saved):
                         find_next_task(base_scheduler.tasks).time,
                     )
                     if base_scheduler.daily_visit_friend < get_server_time().date():
+                        visit_day = (
+                            get_server_time().date()
+                            if config.conf.should_defer_clue_credit
+                            else None
+                        )
                         if base_scheduler.visit_friend_plan_solver():
-                            base_scheduler.daily_visit_friend = get_server_time().date()
+                            base_scheduler.daily_visit_friend = (
+                                visit_day or get_server_time().date()
+                            )
 
                     if base_scheduler.daily_report < get_server_time().date():
                         if base_scheduler.report_plan_solver():

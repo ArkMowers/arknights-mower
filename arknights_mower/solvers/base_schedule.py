@@ -29,6 +29,7 @@ from arknights_mower.solvers.base_mixin import (
     agent_card_selected,
     fixed_selection_profile,
 )
+from arknights_mower.solvers.clue_credit import ClueCreditMixin
 from arknights_mower.solvers.credit import CreditSolver
 from arknights_mower.solvers.cultivate_depot import cultivate as cultivateDepotSolver
 from arknights_mower.solvers.depotREC import depotREC as DepotSolver
@@ -70,6 +71,7 @@ from arknights_mower.utils.character_recognize import estimate_agent_mood
 from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.datetime import (
     format_time,
+    get_server_time,
     get_server_weekday,
 )
 from arknights_mower.utils.device.adb_client.server import (
@@ -370,7 +372,9 @@ class GroupShiftBlocked(ProductSwitchDeferred):
         super().__init__(f"绑组依赖未解除，挂起换班，等待{waiting}")
 
 
-class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
+class BaseSchedulerSolver(
+    ClueCreditMixin, EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin
+):
     """
     收集基建的产物：物资、赤金、信赖
     """
@@ -415,6 +419,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self.daily_skland = (datetime.now() - timedelta(days=1, hours=4)).date()
         self.daily_mail = (datetime.now() - timedelta(days=1, hours=8)).date()
         self.daily_visit_friend = (datetime.now() - timedelta(days=1, hours=4)).date()
+        self.daily_visit_friend_attempt = None
         self.ideal_resting_count = 4
         self.choose_error = set()
         self.drop_send = False
@@ -1528,6 +1533,16 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 self.task = None
                 self.skip()
                 return True
+            if (
+                self.task.type in (TaskTypes.CLUE_PARTY, TaskTypes.CLUE)
+                and (resume_time := self._clue_flow_resume_time()) is not None
+            ):
+                # 执行前再次检查，覆盖旧存档及被其他任务拖延的线索任务。
+                self.task.time = resume_time
+                logger.info("临近 04:00 刷新，线索任务延后至 %s", resume_time)
+                self.task = None
+                self.skip()
+                return True
             product_tasks = []
             remove_current_task = True
             arrangement_deferred = False
@@ -1874,6 +1889,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                     or datetime.now() - self.last_clue > timedelta(hours=1)
                 )
                 and self.no_pending_task(3)
+                and self._clue_flow_resume_time() is None
             ):
                 self.clue_new()
                 self.last_clue = datetime.now()
@@ -6379,7 +6395,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
         self.last_clue = datetime.now()
         self.skip(["collect_notification"])
 
-    def _run_clue_shop(self):
+    def _run_clue_shop(self, *, settlement_checked=None):
+        if self._clue_credit_enabled():
+            self._run_on_demand_clue_shop(settlement_checked=settlement_checked)
+            return
         conf = config.conf
         if getattr(
             conf,
@@ -6393,6 +6412,7 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
     def clue_new(self):
         try:
+            settlement_checked = None
             logger.info("基建：线索")
             self.scene_graph_navigation(Scene.INFRA_MAIN)
             self.enter_room("meeting")
@@ -6497,6 +6517,18 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 if scene == Scene.INFRA_DETAILS:
                     logger.info("INFRA_DETAILS")
                     if ctm.task == "message_board":
+                        if self._clue_credit_enabled():
+                            if get_server_weekday() == 6:
+                                settlement_checked = self._collect_clue_message_board(
+                                    collect_current=False
+                                )
+                                if not settlement_checked:
+                                    self.scene_graph_navigation(Scene.INFRA_MAIN)
+                                    self.enter_room("meeting")
+                            else:
+                                self._prepare_clue_room()
+                            ctm.complete("message_board")
+                            continue
                         self.wait_product_complete()
 
                         # 左下角 (680, 1000) 在这个界面上有两处用途：一是信息板入口
@@ -6582,8 +6614,10 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                             ):
                                 self.tasks.append(
                                     SchedulerTask(
-                                        time=self.party_time
-                                        - timedelta(milliseconds=1),
+                                        time=self._clue_flow_resume_time(
+                                            self.party_time
+                                        )
+                                        or self.party_time - timedelta(milliseconds=1),
                                         task_type=TaskTypes.CLUE_PARTY,
                                     )
                                 )
@@ -6786,8 +6820,15 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
                 else:
                     self.scene_graph_navigation(Scene.INFRA_MAIN)
                     self.enter_room("meeting")
-            self._run_clue_shop()
+            if self._clue_credit_enabled():
+                self._run_clue_shop(settlement_checked=settlement_checked)
+            else:
+                self._run_clue_shop()
         except Exception as e:
+            if self._clue_credit_enabled() and isinstance(
+                e, (MowerExit, DeviceRecoveryError, SharedADBError)
+            ):
+                raise
             save_exception(e)
             logger.exception(e)
             return
@@ -12524,6 +12565,20 @@ class BaseSchedulerSolver(EmergencyRecoveryMixin, SceneGraphSolver, BaseMixin):
 
     def visit_friend_plan_solver(self):
         if config.conf.visit_friend_enable and config.conf.visit_friend_mode == "mower":
+            if self._clue_credit_enabled():
+                if config.stop_mower.is_set():
+                    raise MowerExit
+                solver = CreditSolver(self.device, self.recog)
+                visit_day = get_server_time().date()
+                try:
+                    return solver.run()
+                finally:
+                    # 只记录实际执行过的游戏日；保留原返回值、异常及重试行为。
+                    self.daily_visit_friend_attempt = visit_day
+                    try:
+                        save_current_state()
+                    except Exception:
+                        logger.exception("保存访友尝试日期失败")
             return CreditSolver(self.device, self.recog).run()
 
     def sign_in_plan_solver(self):

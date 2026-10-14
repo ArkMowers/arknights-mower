@@ -13,6 +13,7 @@ const {
   maa_mall_reserve_max_credit,
   maa_mall_enable,
   maa_mall_mode,
+  clue_credit_on_demand,
   maa_credit_fight,
   credit_fight,
   visit_friend_enable,
@@ -22,9 +23,12 @@ const {
 const plan_store = usePlanStore()
 const { operators } = storeToRefs(plan_store)
 
-import { h, inject, ref } from 'vue'
+import { computed, h, inject, ref } from 'vue'
 
 const mobile = inject('mobile')
+const mower_visit_enabled = computed(
+  () => visit_friend_enable.value && visit_friend_mode.value === 'mower'
+)
 
 import { NAvatar, NTag } from 'naive-ui'
 
@@ -167,6 +171,36 @@ const show_map = ref(false)
         <help-text>
           <div>MAA：在执行日常任务时由 MAA 进入采购中心进行信用收取和购物。</div>
           <div>Mower：在会客室线索流程处理完成后由 Mower 原生进入信用商店进行收取和购物。</div>
+        </help-text>
+      </n-form-item>
+      <n-form-item label="信息板" v-if="maa_mall_mode === 'mower'">
+        <n-tooltip :disabled="mower_visit_enabled">
+          <template #trigger>
+            <span style="display: inline-block">
+              <n-checkbox v-model:checked="clue_credit_on_demand" :disabled="!mower_visit_enabled">
+                按需领取信用
+              </n-checkbox>
+            </span>
+          </template>
+          需要开启 Mower 访问好友
+        </n-tooltip>
+        <help-text>
+          <div>默认关闭，仅在 Mower 访友和 Mower 购物均启用时生效。</div>
+          <div>
+            访友保持原调度。当天尝试过访友（成功或失败均可）后，线索流程才进入商店；
+            访友后不会立即购物。访友尝试记录随运行存档保存。
+          </div>
+          <div>买不起非黑名单商品时，先领取上周结算，仍缺信用才领取本周部分。</div>
+          <div>
+            若本日交流的 210 信用足以补齐剩余商品缺口，则暂缓领取；交流须在下次刷新前的 03:45
+            之前结束。
+          </div>
+          <div>周日 04:00 至周一 04:00，线索流程优先领取即将过期的上周结算。</div>
+          <div>
+            每日 03:45 至 04:00 不开始新的线索流程：交流领取和手动线索任务延后，定期整理跳过。
+            已开始的流程继续执行。此时才启动程序，不保证领取到刷新前即将过期的信用。
+          </div>
+          <div>关闭功能或改用其他处理方式时，恢复原有领取和购物流程。</div>
         </help-text>
       </n-form-item>
       <n-form-item label="购物设置" v-if="maa_mall_mode === 'maa'">
