@@ -49,7 +49,10 @@ def test_adding_scheduled_trainee_keeps_assistant_exclusions(database, context_g
 
 
 @pytest.mark.parametrize("legacy_payload", [False, True])
-def test_plan_api_allows_scheduled_trainee(database, context_game, legacy_payload):
+@pytest.mark.parametrize("sync_success", [False, True])
+def test_plan_api_allows_scheduled_trainee(
+    database, context_game, legacy_payload, sync_success
+):
     app = Flask(__name__)
     app.register_blueprint(mastery_bp)
     payload = (
@@ -66,12 +69,19 @@ def test_plan_api_allows_scheduled_trainee(database, context_game, legacy_payloa
             "arknights_mower.utils.mastery_recommendation.get_current_mastery_level",
             return_value=0,
         ),
+        patch(
+            "arknights_mower.solvers.cultivate_depot.cultivate.start",
+            return_value=sync_success,
+        ) as sync,
     ):
         conf.webview.token = ""
         response = app.test_client().post("/mastery-plan", json=payload)
     assert response.status_code == 200
+    sync.assert_called_once_with()
     result = response.json["results"][0]
-    assert result["status"] == "added"
+    assert result["status"] == ("added" if sync_success else "deferred")
+    if not sync_success:
+        assert result["reason"] == "森空岛同步失败，计划已保留，请刷新后重试"
     assert support.decode_supports(db.get_plan_by_id(result["id"]))["stages"]
 
 

@@ -17,6 +17,15 @@ def set_stock(fixture, stock):
         {"id": key, "count": value} for key, value in stock.items()
     ]
     fixture.cultivate.write_text(json.dumps(data))
+    from arknights_mower.solvers.record import _conn, save_inventory_counts
+
+    with _conn() as conn:
+        conn.execute("DELETE FROM inventory")
+        conn.commit()
+    items = rec.get_skill_data()["items"]
+    save_inventory_counts(
+        {items.get(iid, {"name": iid})["name"]: count for iid, count in stock.items()}
+    )
 
 
 def test_books_short_after_crafting_wait_then_resume_without_changing_plan(next_skill):
