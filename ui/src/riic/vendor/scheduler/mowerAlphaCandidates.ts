@@ -74,13 +74,14 @@ function alphaFill(data:MowerSchedulingData,pending:MowerTask[],emptyOnly:boolea
  if(Object.keys(plan).length)alphaRestoreDisplaced(data,alphaDormResidents(data),plan,pending)
  return {plan,residents,vacancies}
 }
-export function mowerAlphaFillPlan(data:MowerSchedulingData,pending:MowerTask[]):MowerTaskPlan{const reserved=mowerDormTaskReservations(data,pending);return planMowerDormIsolation(data,alphaPrioritizeRecovery(data,alphaFill(data,pending,true).plan,{},reserved.slots),reserved.slots,reserved.names)}
+export function mowerAlphaFillPlan(data:MowerSchedulingData,pending:MowerTask[]):MowerTaskPlan{const reserved=mowerDormTaskReservations(data,pending);return planMowerDormIsolation(data,alphaPrioritizeRecovery(data,alphaFill(data,pending,true).plan,{},reserved.slots,reserved.names),reserved.slots,reserved.names)}
 export function planMowerAlphaDormFill(data:MowerSchedulingData,queue:MowerTaskQueue,emptyOnly=false,options:MowerTaskSchedulingOptions={}):MowerTask|undefined {
  const result=alphaFill(data,queue.tasks,emptyOnly||!data.freeRoom);if(!Object.keys(result.plan).length)return
  const task=new MowerTask({type:result.vacancies.size?T.FILL_DORM:T.NOT_SPECIFIC,plan:result.plan});task.timeMicros=data.nowMicros;task.dormFillPlan=structuredClone(result.plan);task.dormMoodResidents=result.residents
  if(result.vacancies.size)simplifyMowerAlphaDormFill(task,queue.tasks,data.nowMicros,options)
- if(!task.simpleDormFill)task.plan=alphaPrioritizeRecovery(data,task.plan,{},mowerDormTaskReservations(data,queue.tasks).slots)
- const reserved=mowerDormTaskReservations(data,queue.tasks),isolated=planMowerDormIsolation(data,task.plan,reserved.slots,reserved.names)
+ const reserved=mowerDormTaskReservations(data,queue.tasks)
+ if(!task.simpleDormFill)task.plan=alphaPrioritizeRecovery(data,task.plan,{},reserved.slots,reserved.names)
+ const isolated=planMowerDormIsolation(data,task.plan,reserved.slots,reserved.names)
  if(JSON.stringify(isolated)!==JSON.stringify(task.plan)){
   const filling=new Set(Object.values(task.dormFillPlan).flat().filter(name=>!['Current','Free',''].includes(name)))
   task.dormFillPlan=Object.fromEntries(Object.entries(isolated).filter(([room])=>room.startsWith('dorm')).map(([room,row])=>[room,row.map(name=>filling.has(name)||name==='Free'?name:'Current')]))
