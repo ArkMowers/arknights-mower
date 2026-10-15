@@ -6,6 +6,7 @@ import IncomeHorizontalScroll from './IncomeHorizontalScroll.vue'
 
 const props = defineProps({ report: Object, timelineData: Object })
 const overviewPage = ref(1)
+const navigationTarget = ref(null)
 const operators = computed(() => props.report?.operators ?? [])
 const overviewRows = computed(() =>
   operators.value.slice((overviewPage.value - 1) * 20, overviewPage.value * 20)
@@ -89,20 +90,61 @@ const colors = computed(() => ({
         />
       </n-collapse-item>
     </n-collapse>
-    <IncomeHorizontalScroll selector=".gantt-container" label="甘特图横向滚动">
+    <div class="income-gantt">
       <ScheduleTimelineGantt
         :report="props.report"
         :timeline-data="props.timelineData"
         :initial-window-hours="24"
+        :overview-target="navigationTarget"
         initially-collapsed
       />
-    </IncomeHorizontalScroll>
+      <div ref="navigationTarget" class="income-gantt-navigation" />
+    </div>
   </div>
 </template>
 
 <style scoped>
 .income-timeline {
   font-variant-numeric: tabular-nums;
+}
+.income-gantt-navigation {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  background: var(--timeline-surface);
+}
+.income-gantt-navigation :deep(.gantt-overview-scrubber) {
+  margin: 0;
+  padding: 3px 0 0;
+  border: 0;
+  background: var(--timeline-surface);
+}
+.income-gantt-navigation :deep(:is(.overview-header-row, .overview-day-tick, .viewport-tag)) {
+  display: none;
+}
+.income-gantt-navigation :deep(.overview-track) {
+  height: 8px;
+  border: 0;
+  border-radius: 4px;
+}
+.income-gantt .income-gantt-navigation :deep(.overview-track .overview-window-viewport) {
+  box-sizing: border-box;
+  border-radius: 4px;
+  background: var(--timeline-muted);
+}
+.income-timeline :deep(.time-window-info) {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.income-timeline :deep(.cursor-info) {
+  min-height: 1.5em;
+}
+.income-gantt-navigation :deep(.overview-track:focus-visible) {
+  outline: 2px solid var(--timeline-primary);
+  outline-offset: 2px;
+}
+.income-timeline :deep(.gantt-scroll-wrapper) {
+  min-width: 0;
 }
 .time-overview {
   margin: 12px 0 20px;
@@ -351,6 +393,12 @@ const colors = computed(() => ({
   color: var(--timeline-muted);
 }
 .income-timeline :deep(.gantt-tooltip) {
+  box-sizing: border-box;
+  min-width: min(200px, calc(100vw / var(--mower-zoom, 1) - 16px));
+  max-width: min(280px, calc(100vw / var(--mower-zoom, 1) - 16px));
+  max-height: calc(100dvh / var(--mower-zoom, 1) - 16px);
+  overflow: hidden;
+  overflow-wrap: anywhere;
   background: var(--timeline-raised);
   border-color: var(--timeline-border);
   color: var(--timeline-text);

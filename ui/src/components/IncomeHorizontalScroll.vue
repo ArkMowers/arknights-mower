@@ -51,7 +51,7 @@ onBeforeUnmount(() => {
   <div ref="root" class="income-horizontal-scroll">
     <slot />
     <div
-      v-show="contentWidth > viewportWidth"
+      v-show="contentWidth > viewportWidth + 1"
       ref="scrollbar"
       class="income-horizontal-scrollbar"
       :style="{ width: `${viewportWidth}px` }"

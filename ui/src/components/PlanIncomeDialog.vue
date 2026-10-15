@@ -371,7 +371,10 @@ onBeforeUnmount(() => {
     preset="card"
     title="计算收益"
     class="income-dialog"
-    :content-style="{ overflowY: 'auto' }"
+    :content-style="{
+      overflowY: 'auto',
+      paddingBottom: activeTab === 'timeline' ? '0' : undefined
+    }"
     :mask-closable="false"
     @update:show="!$event && close()"
   >

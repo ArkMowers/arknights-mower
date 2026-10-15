@@ -260,6 +260,10 @@
     "scheduler/mowerPreviewRecovery.spec.ts": {
       "sha256": "782a11f09630cbe55e8cf06f30e86ab925d3cdf661002f4899f10cbec659fbcb",
       "reason": "Retain the packaged historical roster fixture and account for the confirmed MAX-minus-reserve click timing: 4212 intervals and a 227/hour peak fit bounds of 4400 and 240. Preserve the 48-hour completion, consecutive microstep, unique occupancy, morale and unchanged-input assertions."
+    },
+    "components/workbench/ScheduleTimelineGantt.vue": {
+      "sha256": "c5e8ee4f76e81c2b74ff59e0f2c60ce7f199a262371e3b73e3e38c88d32fe397",
+      "reason": "Allow the Mower wrapper to host the existing overview scrubber at the bottom without changing time-window state. Release overview drag listeners on collapse and unmount. Keep operator and event inspectors beside the pointer within viewport bounds under CSS zoom, and reserve cursor-info space to avoid hover-induced layout shifts."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
