@@ -8,6 +8,7 @@ import {
 } from './income'
 
 import { incomeInitialInventory } from './incomeCache'
+import { incomeOrderDistribution } from './incomeOrders'
 import { incomeAlgorithmLabel } from '@/utils/incomeSettings'
 
 const number = (value) => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
@@ -75,13 +76,34 @@ async function loadImage(url) {
   return image
 }
 
+function imageTopWhitespace(image, scale, dark) {
+  const probe = document.createElement('canvas')
+  probe.width = image.naturalWidth
+  probe.height = Math.min(image.naturalHeight, Math.ceil(16 * scale))
+  const ctx = probe.getContext('2d')
+  ctx.drawImage(image, 0, 0)
+  const { data } = ctx.getImageData(0, 0, probe.width, probe.height)
+  for (let y = 0; y < probe.height; y++) {
+    for (let x = 0; x < probe.width; x++) {
+      const i = (y * probe.width + x) * 4
+      if (!data[i + 3]) continue
+      const empty = dark
+        ? Math.max(data[i], data[i + 1], data[i + 2]) <= 5
+        : Math.min(data[i], data[i + 1], data[i + 2]) >= 250
+      if (!empty) return Math.max(0, y - Math.ceil(2 * scale))
+    }
+  }
+  return Math.max(0, probe.height - Math.ceil(2 * scale))
+}
+
 export async function renderIncomeImage(
   planImage,
   result,
   settings,
   plan,
   theme = 'light',
-  roomBounds = {}
+  roomBounds = {},
+  exportDetails = {}
 ) {
   const sourceUrl = URL.createObjectURL(planImage)
   try {
@@ -93,18 +115,36 @@ export async function renderIncomeImage(
     ])
     const width = source.naturalWidth
     const scale = width / 980
-    const headerHeight = Math.ceil(
-      Math.max(145, 28 + Math.ceil(metrics.length / 3) * 36 + 8) * scale
-    )
+    const algorithmLines = incomeImageAlgorithmLines(settings)
+    const days = result.observedHours / 24
+    const contentBottom = Math.max(100, 28 + Math.ceil(metrics.length / 3) * 24)
     const canvas = document.createElement('canvas')
     canvas.width = width
-    canvas.height = source.naturalHeight + headerHeight
     const ctx = canvas.getContext('2d')
+    ctx.font = `${10 * scale}px sans-serif`
+    const weightLines = algorithmLines
+      .slice(1)
+      .flatMap((line) =>
+        incomeImageAnnotationLines({}, (text) => ctx.measureText(text).width / scale, 252, line)
+      )
+    const annotationLines = incomeImageAnnotationLines(
+      exportDetails,
+      (text) => ctx.measureText(text).width / scale,
+      516,
+      `${algorithmLines[0]} · ${number(days)} 天采样`
+    )
+    const orders = result.orderDistribution ?? incomeOrderDistribution(result.simulationReport)
+    const annotationTop = Math.max(73 + weightLines.length * 14, orders?.other ? 100 : 87)
+    const headerHeight = Math.ceil(
+      Math.max(contentBottom, annotationTop + annotationLines.length * 16 + 3) * scale
+    )
     const dark = theme === 'dark'
+    const planTop = headerHeight - imageTopWhitespace(source, scale, dark)
+    canvas.height = source.naturalHeight + planTop
     const foreground = dark ? '#eef2f8' : '#172338'
     ctx.fillStyle = dark ? '#000000' : '#ffffff'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
-    ctx.drawImage(source, 0, headerHeight)
+    ctx.drawImage(source, 0, planTop)
     const droneTargets = incomeFacilities(plan)
     for (const room of settings.droneRoom ? [settings.droneRoom] : []) {
       const bounds = roomBounds[room]
@@ -112,7 +152,7 @@ export async function renderIncomeImage(
       const trading = droneTargets.find((target) => target.roomId === room)?.target === 'trading'
       const size = 20 * scale
       const x = bounds.x + bounds.width - size - 3 * scale
-      const y = headerHeight + bounds.y + 2 * scale
+      const y = planTop + bounds.y + 2 * scale
       const badge = document.createElement('canvas')
       badge.width = badge.height = Math.ceil(size - 4 * scale)
       const badgeCtx = badge.getContext('2d')
@@ -127,7 +167,7 @@ export async function renderIncomeImage(
       ctx.fillStyle = color
       ctx.fillText(text, x * scale, y * scale)
     }
-    write('日均加权收益', 28, 37, 17)
+    write('日均加权收益', 28, 24, 13)
     const score = number(result.summary.totalScore82)
     let scoreSize = 38
     ctx.font = `bold ${scoreSize * scale}px sans-serif`
@@ -135,36 +175,43 @@ export async function renderIncomeImage(
       scoreSize--
       ctx.font = `bold ${scoreSize * scale}px sans-serif`
     }
-    write(score, 26, 84, scoreSize, dark ? '#88e0b5' : '#237345', 'bold')
-    const algorithmLines = incomeImageAlgorithmLines(settings)
-    algorithmLines.forEach((line, index) => {
-      const size = algorithmLines.length === 1 ? 12 : index === 0 ? 11 : 10
-      const y = algorithmLines.length === 1 ? 112 : 104 + index * 15
-      ctx.font = `${size * scale}px sans-serif`
-      ctx.fillStyle = dark ? '#a5b3ad' : '#687a70'
-      ctx.fillText(line, 28 * scale, y * scale, 252 * scale)
+    write(score, 26, 69, scoreSize, dark ? '#88e0b5' : '#237345', 'bold')
+    weightLines.forEach((line, index) => {
+      write(line, 28, 84 + index * 14, 10, dark ? '#a5b3ad' : '#687a70')
     })
 
     const stampColor = dark ? '#88cbb1' : '#35896c'
-    ctx.strokeStyle = stampColor
-    ctx.lineWidth = 2 * scale
-    ctx.strokeRect(302 * scale, 27 * scale, 234 * scale, 91 * scale)
-    ctx.lineWidth = scale
-    ctx.strokeRect(307 * scale, 32 * scale, 224 * scale, 81 * scale)
+    const muted = dark ? '#a5b3ad' : '#687a70'
+    write('订单分布 · 原始档位', 302, 24, 12, muted)
+    ctx.textAlign = 'right'
+    write(orders ? `共 ${number(orders.total)} 单` : '暂无统计', 536, 24, 12, foreground, 'bold')
     ctx.textAlign = 'center'
-    const days = result.observedHours / 24
-    write('收益演算验证', 419, 57, 20, stampColor, 'bold')
-    write(`演算 ${number(settings.warmupDays + days)} 天`, 419, 81, 16, stampColor)
-    write(
-      `预热 ${number(settings.warmupDays)} 天 · 采样 ${number(days)} 天`,
-      419,
-      102,
-      12,
-      stampColor
-    )
+    if (orders) {
+      ctx.fillStyle = dark ? '#1c2d30' : '#f1f5f3'
+      ctx.beginPath()
+      ctx.roundRect(296 * scale, 33 * scale, 248 * scale, 54 * scale, 5 * scale)
+      ctx.fill()
+      orders.rows.forEach((row, index) => {
+        const x = 338 + index * 82
+        write(`${row.gold} 赤金`, x, 47, 10, muted)
+        write(number(row.count), x, 66, 17, foreground, 'bold')
+        write(orders.total ? `${number(row.ratio * 100)}%` : '—', x, 81, 10, stampColor)
+      })
+      if (orders.other) {
+        write(
+          `其他 ${number(orders.other)} 单 · ${number((orders.other / orders.total) * 100)}%`,
+          420,
+          100,
+          9,
+          muted
+        )
+      }
+    } else {
+      write('该记录未保存订单统计', 420, 65, 11, muted)
+    }
     ctx.textAlign = 'left'
 
-    write('日均产出', 570, 20, 12, dark ? '#a5b3ad' : '#687a70')
+    write('日均产出', 570, 24, 12, muted)
     const colors = {
       exp: ['#f7d833', '#172338'],
       lmd: ['#087ead', '#ffffff'],
@@ -175,21 +222,21 @@ export async function renderIncomeImage(
       recruitment: ['#657385', '#ffffff'],
       clue: ['#756791', '#ffffff']
     }
-    const order = ['exp', 'lmd', 'gold', 'fragment', 'orundum', 'recycle', 'recruitment', 'clue']
+    const order = ['exp', 'lmd', 'gold', 'fragment', 'orundum', 'clue', 'recruitment', 'recycle']
     metrics
       .map((metric, index) => ({ ...metric, image: icons[index] }))
       .sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key))
       .forEach((metric, index) => {
         const x = 570 + (index % 3) * 130
-        const y = 28 + Math.floor(index / 3) * 36
+        const y = 28 + Math.floor(index / 3) * 24
         const [background, color] = colors[metric.key]
         ctx.fillStyle = background
-        ctx.fillRect((x + 18) * scale, (y + 4) * scale, 104 * scale, 26 * scale)
+        ctx.fillRect((x + 12) * scale, (y + 3) * scale, 110 * scale, 18 * scale)
         if (['recycle', 'recruitment', 'clue'].includes(metric.key)) {
           // Draw only the inner recognition symbol; replace the template's frame with a circle.
           ctx.save()
-          ctx.translate((x + 17) * scale, (y + 17) * scale)
-          ctx.scale(scale, scale)
+          ctx.translate((x + 12) * scale, (y + 12) * scale)
+          ctx.scale((scale * 24) / 34, (scale * 24) / 34)
           ctx.beginPath()
           ctx.arc(0, 0, 16, 0, Math.PI * 2)
           ctx.fillStyle = '#2e2e2e'
@@ -225,13 +272,16 @@ export async function renderIncomeImage(
           ctx.stroke()
           ctx.restore()
         } else {
-          ctx.drawImage(metric.image, x * scale, y * scale, 34 * scale, 34 * scale)
+          ctx.drawImage(metric.image, x * scale, y * scale, 24 * scale, 24 * scale)
         }
         const value = `${compactIncomeNumber(metric.daily)}${metric.key === 'clue' ? '个' : metric.unit === '次' ? '次' : ''}`
-        ctx.font = `${16 * scale}px sans-serif`
+        ctx.font = `${14 * scale}px sans-serif`
         ctx.fillStyle = color
-        ctx.fillText(value, (x + 39) * scale, (y + 24) * scale, 79 * scale)
+        ctx.fillText(value, (x + 30) * scale, (y + 17) * scale, 89 * scale)
       })
+    annotationLines.forEach((line, index) => {
+      write(line, 28, annotationTop + 16 + index * 16, 10, muted)
+    })
     return await new Promise((resolve, reject) =>
       canvas.toBlob(
         (blob) => (blob ? resolve(blob) : reject(new Error('收益图片生成失败'))),
@@ -242,6 +292,33 @@ export async function renderIncomeImage(
   } finally {
     URL.revokeObjectURL(sourceUrl)
   }
+}
+export function incomeImageAnnotationLines(details, measure, maxWidth, prefix = '') {
+  const text = (key, limit) =>
+    Array.from(typeof details?.[key] === 'string' ? details[key].trim() : '')
+      .slice(0, limit)
+      .join('')
+  const author = text('author', 40).replace(/\s+/g, ' ')
+  const remarks = text('remarks', 300)
+  const paragraphs = [
+    ...(prefix ? [prefix] : []),
+    ...(author ? [`作者：${author}`] : []),
+    ...(remarks ? [`备注：${remarks}`] : [])
+  ].join('　')
+  const lines = []
+  if (!paragraphs) return lines
+  for (const part of paragraphs.split(/\r?\n/)) {
+    let line = ''
+    for (const char of part) {
+      if (line && measure(line + char) > maxWidth) {
+        lines.push(line)
+        line = ''
+      }
+      line += char
+    }
+    lines.push(line)
+  }
+  return lines
 }
 export function incomeImageAlgorithmLines(settings) {
   if (settings.weightMode !== 'custom' && settings.mowerAlgorithm !== -1) {

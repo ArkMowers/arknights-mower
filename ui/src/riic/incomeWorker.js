@@ -1,6 +1,7 @@
 import { runCalculationBridge } from './vendor/workbench/calculationBridge'
 import { incomeRequest } from './income'
 import { incomeEventLog } from './incomeLogs'
+import { incomeOrderDistribution } from './incomeOrders'
 import { createRecruitmentObservation } from './incomeRecruitment'
 import { createClueObservation } from './incomeClues'
 import { buildTimelineData } from './vendor/workbench/timeline/timelineModel'
@@ -62,6 +63,7 @@ export function calculateIncome(plan, settings, onProgress) {
   return {
     success: true,
     eventLog: incomeEventLog(simulation),
+    orderDistribution: incomeOrderDistribution(simulation),
     simulationReport: simulation,
     timelineData: buildTimelineData(simulation),
     resources: production.sample,

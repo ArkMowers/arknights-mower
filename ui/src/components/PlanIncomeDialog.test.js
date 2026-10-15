@@ -236,11 +236,39 @@ it('restores the last result with its original plan image after reopening with a
     saved.input.settings,
     saved.input.plan,
     'light',
-    { room_1_1: { x: 42 } }
+    { room_1_1: { x: 42 } },
+    { author: '', remarks: '' }
   ])
   expect(downloadIncomeImage.mock.calls.at(-1)[1]).toContain('原排班_')
   expect(page.state.input.plan.facility_levels).toBeUndefined()
   expect(props.snapshot.plan.facility_levels).toEqual({ contact: 1 })
+})
+it('saves editable image annotations separately from calculation inputs and restores them', async () => {
+  await page.readCache()
+  await page.start()
+  workers[0].onmessage({ data: { type: 'complete', result: success() } })
+  const original = JSON.parse(JSON.stringify(page.state.input))
+  page.exportDetails.author = '排班作者'
+  page.exportDetails.remarks = '满练，经验站加速\n菲亚梅塔防呆关闭'
+  page.saveName()
+  const saved = saveIncomeArchive.mock.calls.at(-1)[0]
+  expect(saved.exportDetails).toEqual({
+    author: '排班作者',
+    remarks: '满练，经验站加速\n菲亚梅塔防呆关闭'
+  })
+  await page.exportImage()
+  expect(renderIncomeImage.mock.calls.at(-1)[6]).toEqual(saved.exportDetails)
+  page.exportDetails.author = '修改后的作者'
+  expect(saved.exportDetails.author).toBe('排班作者')
+  expect(renderIncomeImage.mock.calls.at(-1)[6].author).toBe('排班作者')
+  expect(page.state.input).toEqual(original)
+  expect(workers).toHaveLength(1)
+  loadIncomeArchive.mockResolvedValue(saved)
+  await page.restoreResult()
+  expect(page.exportDetails).toEqual(saved.exportDetails)
+  delete saved.exportDetails
+  await page.restoreResult()
+  expect(page.exportDetails).toEqual({ author: '', remarks: '' })
 })
 it('keeps the previous success through cancellation and replaces it only after a new success', async () => {
   await page.readCache()

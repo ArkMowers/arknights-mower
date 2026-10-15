@@ -107,6 +107,7 @@ describe('income export calculation', () => {
     // Unstaffed gold factory: 72 minutes per bar, twenty bars daily.
     expect(result.summary.goldCount).toBeCloseTo(20, 8)
     expect(result.summary.totalScore82).toBeCloseTo(8000, 7)
+    expect(result.orderDistribution).toMatchObject({ total: 0, other: 0 })
     expect(
       incomeMetrics(result.summary, 28).find((row) => row.label === '赤金等价龙门币').total
     ).toBeCloseTo(280000, 7)
