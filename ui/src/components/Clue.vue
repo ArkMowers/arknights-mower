@@ -14,6 +14,8 @@ const {
   maa_mall_enable,
   maa_mall_mode,
   clue_credit_on_demand,
+  credit_shop_by_value,
+  credit_shop_value_threshold,
   maa_credit_fight,
   credit_fight,
   visit_friend_enable,
@@ -29,6 +31,19 @@ const mobile = inject('mobile')
 const mower_visit_enabled = computed(
   () => visit_friend_enable.value && visit_friend_mode.value === 'mower'
 )
+const value_shopping_enabled = computed(
+  () =>
+    credit_shop_by_value.value &&
+    maa_mall_enable.value &&
+    maa_mall_mode.value === 'mower' &&
+    mower_visit_enabled.value
+)
+
+function update_value_threshold(value) {
+  if (Number.isFinite(value) && value >= 0) {
+    credit_shop_value_threshold.value = value
+  }
+}
 
 import { NAvatar, NTag } from 'naive-ui'
 
@@ -173,35 +188,96 @@ const show_map = ref(false)
           <div>Mower：在会客室线索流程处理完成后由 Mower 原生进入信用商店进行收取和购物。</div>
         </help-text>
       </n-form-item>
-      <n-form-item label="信息板" v-if="maa_mall_mode === 'mower'">
-        <n-tooltip :disabled="mower_visit_enabled">
-          <template #trigger>
-            <span style="display: inline-block">
-              <n-checkbox v-model:checked="clue_credit_on_demand" :disabled="!mower_visit_enabled">
-                按需领取信用
-              </n-checkbox>
-            </span>
-          </template>
-          需要开启 Mower 访问好友
-        </n-tooltip>
-        <help-text>
-          <div>默认关闭，仅在 Mower 访友和 Mower 购物均启用时生效。</div>
-          <div>
-            访友保持原调度。当天尝试过访友（成功或失败均可）后，线索流程才进入商店；
-            访友后不会立即购物。访友尝试记录随运行存档保存。
-          </div>
-          <div>买不起非黑名单商品时，先领取上周结算，仍缺信用才领取本周部分。</div>
-          <div>
-            若本日交流的 210 信用足以补齐剩余商品缺口，则暂缓领取；交流须在下次刷新前的 03:45
-            之前结束。
-          </div>
-          <div>周日 04:00 至周一 04:00，线索流程优先领取即将过期的上周结算。</div>
-          <div>
-            每日 03:45 至 04:00 不开始新的线索流程：交流领取和手动线索任务延后，定期整理跳过。
-            已开始的流程继续执行。此时才启动程序，不保证领取到刷新前即将过期的信用。
-          </div>
-          <div>关闭功能或改用其他处理方式时，恢复原有领取和购物流程。</div>
-        </help-text>
+      <n-form-item label="购物设置" v-if="maa_mall_mode === 'mower'">
+        <n-space align="center" :size="[24, 12]">
+          <n-space align="center" :size="0">
+            <n-tooltip :disabled="mower_visit_enabled">
+              <template #trigger>
+                <span style="display: inline-block">
+                  <n-checkbox
+                    v-model:checked="clue_credit_on_demand"
+                    :disabled="!mower_visit_enabled"
+                  >
+                    按需领取信用
+                  </n-checkbox>
+                </span>
+              </template>
+              需要开启 Mower 访问好友
+            </n-tooltip>
+            <help-text>
+              <div>默认关闭，仅在 Mower 访友和 Mower 购物均启用时生效。</div>
+              <div>
+                访友保持原调度。当天尝试过访友（成功或失败均可）后，线索流程才进入商店；
+                访友后不会立即购物。访友尝试记录随运行存档保存。
+              </div>
+              <div>买不起非黑名单商品时，先领取上周结算，仍缺信用才领取本周部分。</div>
+              <div>
+                同时开启按性价比购物时，缺口只计算剩余优先商品和原始性价比高于阈值的非黑名单商品。
+                因溢出抵扣才达标的商品不计入缺口。
+              </div>
+              <div>
+                若本日交流的 210 信用足以补齐剩余商品缺口，则暂缓领取；交流须在下次刷新前的 03:45
+                之前结束。
+              </div>
+              <div>周日 04:00 至周一 04:00，线索流程优先领取即将过期的上周结算。</div>
+              <div>
+                每日 03:45 至 04:00 不开始新的线索流程：交流领取和手动线索任务延后，定期整理跳过。
+                已开始的流程继续执行。此时才启动程序，不保证领取到刷新前即将过期的信用。
+              </div>
+              <div>
+                关闭此功能或改用其他处理方式时，信息板恢复原有领取流程；购物仍按所选方式执行。
+              </div>
+            </help-text>
+          </n-space>
+          <n-tooltip :disabled="mower_visit_enabled">
+            <template #trigger>
+              <span style="display: inline-block">
+                <n-checkbox v-model:checked="credit_shop_by_value" :disabled="!mower_visit_enabled">
+                  按性价比购物
+                </n-checkbox>
+              </span>
+            </template>
+            需要开启 Mower 访问好友
+          </n-tooltip>
+          <n-space align="center" :size="8">
+            <span>阈值</span>
+            <mower-input-number
+              :value="credit_shop_value_threshold"
+              @update:value="update_value_threshold"
+              :disabled="!value_shopping_enabled"
+              :min="0"
+              :step="0.001"
+              :precision="3"
+              :show-button="false"
+              :input-props="{ 'aria-label': '购物性价比阈值' }"
+              style="width: 120px"
+            />
+            <span>理智/信用</span>
+            <help-text>
+              <div>默认阈值为二电的 0.045。</div>
+              <div>参考阈值：二电带线索号 0.043、三电 0.036、三电带线索号 0.032。</div>
+              <div>
+                不建议设置过多优先购买或黑名单商品。优先购买仅推荐设置招聘许可，黑名单仅推荐设置理智价值为
+                0 的物品。
+              </div>
+              <div>若你对物品的估值与当前价值表不同，请自行调整材料价值表和购物阈值。</div>
+              <div>优先商品按实际售价从低到高购买；未买完前不购买其他商品。</div>
+              <div>
+                普通商品排除黑名单后，按整份理智价值与售价之比排序；高于阈值才购买，首件买不起即停止。
+                理智价值使用当前保存的材料价值表。
+              </div>
+              <div>
+                原始性价比达标的商品买完后，若信用超过
+                300，再以售价扣除溢出信用后的有效成本重新排序。
+                实际购买仍支付全价，每买一件重新计算。
+              </div>
+              <div>
+                开启按需领取信用后，按上述目标商品的总缺口判断是否等待交流收入或领取信用板；
+                关闭时只使用商店实际余额。优先购买和黑名单仍可编辑。
+              </div>
+            </help-text>
+          </n-space>
+        </n-space>
       </n-form-item>
       <n-form-item label="购物设置" v-if="maa_mall_mode === 'maa'">
         <n-space :size="24">
@@ -215,12 +291,18 @@ const show_map = ref(false)
         </help-text>
       </n-form-item>
       <n-form-item label="信用溢出">
-        <n-radio-group v-model:value="maa_mall_ignore_blacklist_when_full">
+        <n-radio-group
+          v-model:value="maa_mall_ignore_blacklist_when_full"
+          :disabled="value_shopping_enabled"
+        >
           <n-space>
             <n-radio :value="false">停止购买</n-radio>
             <n-radio :value="true">无视黑名单继续购买，直至不再溢出</n-radio>
           </n-space>
         </n-radio-group>
+        <help-text v-if="value_shopping_enabled">
+          <div>开启按性价比购物时，此处不可设置；关闭后可继续使用原设置。</div>
+        </help-text>
       </n-form-item>
       <n-form-item label="优先购买">
         <n-select

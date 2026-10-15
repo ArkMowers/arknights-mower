@@ -60,6 +60,78 @@ async function setup(overrides = {}) {
 }
 
 describe('partial configuration saves', () => {
+  it('defaults value shopping off at 0.045 and saves only an explicit toggle', async () => {
+    await setup()
+    expect(store.credit_shop_by_value).toBe(false)
+    expect(store.credit_shop_value_threshold).toBe(0.045)
+    expect(axios.patch).not.toHaveBeenCalled()
+    store.credit_shop_by_value = true
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+      credit_shop_by_value: true
+    })
+    expect(store.clue_credit_on_demand).toBe(false)
+  })
+
+  it.each([0, 0.036])(
+    'loads and saves threshold %s without changing other settings',
+    async (threshold) => {
+      await setup({ credit_shop_value_threshold: threshold })
+      expect(store.credit_shop_value_threshold).toBe(threshold)
+      expect(store.build_config().credit_shop_value_threshold).toBe(threshold)
+      expect(axios.patch).not.toHaveBeenCalled()
+      store.credit_shop_value_threshold = 0.043
+      await nextTick()
+      await store.flush_config_saves()
+      expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+        credit_shop_value_threshold: 0.043
+      })
+      expect(store.credit_shop_by_value).toBe(false)
+    }
+  )
+
+  it.each(['visit_friend_mode', 'maa_mall_mode'])(
+    'retains shopping selections when changing %s',
+    async (key) => {
+      await setup({
+        visit_friend_enable: true,
+        visit_friend_mode: 'mower',
+        maa_mall_enable: true,
+        maa_mall_mode: 'mower',
+        credit_shop_by_value: true,
+        credit_shop_value_threshold: 0.032,
+        clue_credit_on_demand: false,
+        maa_mall_ignore_blacklist_when_full: true,
+        maa_mall_buy: '招聘许可',
+        maa_mall_blacklist: '家具零件'
+      })
+      store[key] = 'maa'
+      await nextTick()
+      await store.flush_config_saves()
+      expect(axios.patch.mock.lastCall[1][key]).toBe('maa')
+      const saved = axios.patch.mock.lastCall[1]
+      for (const unchanged of [
+        'credit_shop_by_value',
+        'credit_shop_value_threshold',
+        'clue_credit_on_demand',
+        'maa_mall_ignore_blacklist_when_full',
+        'maa_mall_buy',
+        'maa_mall_blacklist'
+      ]) {
+        expect(saved).not.toHaveProperty(unchanged)
+      }
+      expect(store.build_config()).toMatchObject({
+        credit_shop_by_value: true,
+        credit_shop_value_threshold: 0.032,
+        clue_credit_on_demand: false,
+        maa_mall_ignore_blacklist_when_full: true,
+        maa_mall_buy: '招聘许可',
+        maa_mall_blacklist: '家具零件'
+      })
+    }
+  )
+
   it('defaults deferred clue credit off and saves only its explicit selection', async () => {
     await setup()
     expect(store.clue_credit_on_demand).toBe(false)

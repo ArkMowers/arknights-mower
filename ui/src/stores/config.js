@@ -39,6 +39,8 @@ export const useConfigStore = defineStore('config', () => {
   const maa_mall_enable = ref(true)
   const maa_mall_mode = ref('maa')
   const clue_credit_on_demand = ref(false)
+  const credit_shop_by_value = ref(false)
+  const credit_shop_value_threshold = ref(0.045)
   const maa_path = ref('')
   const maa_mirrorchyan_token = ref('')
   const maa_update_channel = ref('stable')
@@ -499,6 +501,8 @@ export const useConfigStore = defineStore('config', () => {
           : response.data.maa_enable != 0
       maa_mall_mode.value = response.data.maa_mall_mode === 'mower' ? 'mower' : 'maa'
       clue_credit_on_demand.value = response.data.clue_credit_on_demand ?? false
+      credit_shop_by_value.value = response.data.credit_shop_by_value ?? false
+      credit_shop_value_threshold.value = response.data.credit_shop_value_threshold ?? 0.045
       maa_path.value = response.data.maa_path
       maa_mirrorchyan_token.value = response.data.maa_mirrorchyan_token || ''
       maa_update_channel.value = response.data.maa_update_channel === 'beta' ? 'beta' : 'stable'
@@ -687,6 +691,8 @@ export const useConfigStore = defineStore('config', () => {
       maa_mall_enable: maa_mall_enable.value,
       maa_mall_mode: maa_mall_mode.value,
       clue_credit_on_demand: clue_credit_on_demand.value,
+      credit_shop_by_value: credit_shop_by_value.value,
+      credit_shop_value_threshold: credit_shop_value_threshold.value,
       maa_path: maa_path.value,
       maa_mirrorchyan_token: maa_mirrorchyan_token.value,
       maa_update_channel: maa_update_channel.value,
@@ -1030,6 +1036,8 @@ export const useConfigStore = defineStore('config', () => {
     maa_mall_enable,
     maa_mall_mode,
     clue_credit_on_demand,
+    credit_shop_by_value,
+    credit_shop_value_threshold,
     maa_path,
     maa_mirrorchyan_token,
     maa_update_channel,

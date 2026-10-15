@@ -86,6 +86,10 @@ class CluePart(ConfModel):
     "信用商店购物处理方式：maa / mower"
     clue_credit_on_demand: bool = False
     "仅在 Mower 访友及购物均启用时按需领取信息板信用"
+    credit_shop_by_value: bool = False
+    "按性价比购物开关，仅在 Mower 访问好友及购物均启用时适用"
+    credit_shop_value_threshold: float = Field(default=0.045, ge=0, allow_inf_nan=False)
+    "购物性价比阈值，单位为理智/信用"
     maa_mall_blacklist: str = "加急许可,碳,碳素,家具零件"
     "黑名单"
     maa_mall_buy: str = "招聘许可,技巧概要·卷2"
@@ -1102,6 +1106,15 @@ class Conf(
     def should_defer_clue_credit(self) -> bool:
         return bool(
             self.clue_credit_on_demand
+            and self.should_run_mower_mall
+            and self.visit_friend_enable
+            and self.visit_friend_mode == "mower"
+        )
+
+    @property
+    def should_use_credit_shop_value(self) -> bool:
+        return bool(
+            self.credit_shop_by_value
             and self.should_run_mower_mall
             and self.visit_friend_enable
             and self.visit_friend_mode == "mower"
