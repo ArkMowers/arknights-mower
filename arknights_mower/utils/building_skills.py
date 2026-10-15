@@ -241,10 +241,7 @@ def load_income_cache():
         by_id = {item["id"]: int(item["count"]) for item in items}
         for resource, name in resources.items():
             entry = key_mapping[name]
-            # Skland reports material stock; absent basic currencies remain unknown.
-            counts[resource] = by_id.get(
-                entry[0], 0 if entry[3] == "MATERIAL" else None
-            )
+            counts[resource] = by_id.get(entry[0], 0)
         counts["exp"] = sum(
             by_id.get(key_mapping[name][0], 0) * weight
             for name, weight in (

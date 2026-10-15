@@ -166,7 +166,7 @@ def test_incomplete_or_malformed_validation_does_not_report_success(
     assert result == {
         "success": False,
         "status": "incomplete",
-        "message": "排班组合校验未完成，尚未开始演算。请简化副表条件后重试。",
+        "message": "排班组合校验未完成，尚未开始演算。请检查副表条件后重试。",
     }
     result = client.post(
         "/validate-plan",
@@ -179,3 +179,44 @@ def test_incomplete_or_malformed_validation_does_not_report_success(
         ).status_code
         == 400
     )
+
+
+def test_incomplete_validation_preserves_combination_limit_reason(client, monkeypatch):
+    reason = "副表组合超过检查上限"
+    monkeypatch.setattr(
+        Operators,
+        "validate_backup_plans",
+        lambda *a, **kw: {
+            "success": False,
+            "status": "incomplete",
+            "reason": reason,
+            "message": "主表已通过检查，允许启动",
+        },
+    )
+    result = client.post(
+        "/validate-plan", json={"plan": simple_plan(), "operatorMode": "maximum"}
+    ).json
+    assert result["success"] is False
+    assert result["message"] == f"排班组合校验未完成，尚未开始演算。{reason}"
+
+
+def test_income_combination_validation_has_no_elapsed_time_cutoff(client, monkeypatch):
+    from arknights_mower.utils import backup_validation, operators
+
+    monkeypatch.setattr(operators, "monotonic", lambda: 0)
+    monkeypatch.setattr(backup_validation, "monotonic", lambda: 60)
+    snapshot = simple_plan()
+    snapshot["backup_plans"] = [
+        {
+            "name": "副表组合",
+            "trigger": {"left": "True", "operator": "==", "right": "True"},
+            "plan": {},
+            "conf": {"workaholic": "能天使"},
+            "task": {},
+        }
+    ]
+    result = client.post(
+        "/validate-plan", json={"plan": snapshot, "operatorMode": "maximum"}
+    ).json
+    assert result["success"], result
+    assert result["status"] == "passed"

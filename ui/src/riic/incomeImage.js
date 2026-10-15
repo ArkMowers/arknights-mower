@@ -86,7 +86,7 @@ export async function renderIncomeImage(
     const width = source.naturalWidth
     const scale = width / 980
     const headerHeight = Math.ceil(
-      Math.max(145, 28 + Math.ceil(metrics.length / 2) * 36 + 8) * scale
+      Math.max(145, 28 + Math.ceil(metrics.length / 3) * 36 + 8) * scale
     )
     const canvas = document.createElement('canvas')
     canvas.width = width
@@ -171,11 +171,11 @@ export async function renderIncomeImage(
       .map((metric, index) => ({ ...metric, image: icons[index] }))
       .sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key))
       .forEach((metric, index) => {
-        const x = 570 + (index % 2) * 192
-        const y = 28 + Math.floor(index / 2) * 36
+        const x = 570 + (index % 3) * 130
+        const y = 28 + Math.floor(index / 3) * 36
         const [background, color] = colors[metric.key]
         ctx.fillStyle = background
-        ctx.fillRect((x + 18) * scale, (y + 4) * scale, 151 * scale, 26 * scale)
+        ctx.fillRect((x + 18) * scale, (y + 4) * scale, 104 * scale, 26 * scale)
         if (metric.key === 'recycle' || metric.key === 'recruitment') {
           // Draw only the inner recognition symbol; replace the template's frame with a circle.
           ctx.save()
@@ -216,8 +216,10 @@ export async function renderIncomeImage(
         } else {
           ctx.drawImage(metric.image, x * scale, y * scale, 34 * scale, 34 * scale)
         }
-        const value = `${metric.signed && metric.daily > 0 ? '+' : ''}${compactIncomeNumber(metric.daily)}${metric.key === 'gold' ? ' 龙门币' : metric.unit === '次' ? '次' : ''}`
-        write(value, x + 42, y + 24, 18, color)
+        const value = `${compactIncomeNumber(metric.daily)}${metric.unit === '次' ? '次' : ''}`
+        ctx.font = `${16 * scale}px sans-serif`
+        ctx.fillStyle = color
+        ctx.fillText(value, (x + 39) * scale, (y + 24) * scale, 79 * scale)
       })
     return await new Promise((resolve, reject) =>
       canvas.toBlob(

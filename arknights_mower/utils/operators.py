@@ -2916,6 +2916,7 @@ class Operators:
             return {
                 "success": False,
                 "status": "incomplete",
+                "reason": str(error),
                 "message": f"{error}，已验证 {tested_count} 次。主表已通过检查，允许启动；实际生效的副表组合由运行时检查。",
             }
         if backup_count == 0:

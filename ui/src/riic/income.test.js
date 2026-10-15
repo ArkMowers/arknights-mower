@@ -517,3 +517,78 @@ it('retains advisory backup validation in the worker report even when the backup
   expect(fixed.success, fixed.error).toBe(true)
   expect(fixed.diagnostics.some((issue) => issue.code === 'CONFLICTING_REPLACEMENT')).toBe(false)
 }, 30000)
+
+describe('cached simulation inventory', () => {
+  it('normalizes absent and null cached quantities to zero without changing reported stock', () => {
+    const settings = {
+      ...modelSettings(),
+      finiteInventory: true,
+      inventorySource: 'cache',
+      cachedInventory: { gold: null, lmd: 42 }
+    }
+    const before = structuredClone(settings)
+    expect(
+      incomeRequest(plan(), settings).options.simulationOptions.production.initialResources
+    ).toEqual({ gold: 0, fragment: 0, orirock: 0, device: 0, lmd: 42, exp: 0 })
+    expect(settings).toEqual(before)
+  })
+  it('accepts an available cache with no reported resources', () => {
+    expect(
+      incomeRequest(plan(), {
+        ...modelSettings(),
+        finiteInventory: true,
+        inventorySource: 'cache',
+        cachedInventory: {}
+      }).options.simulationOptions.production.initialResources
+    ).toEqual({ gold: 0, fragment: 0, orirock: 0, device: 0, lmd: 0, exp: 0 })
+  })
+  it.each([-1, true, '12', NaN, 1.5])('still rejects invalid reported stock %s', (gold) => {
+    expect(() =>
+      incomeRequest(plan(), {
+        ...modelSettings(),
+        finiteInventory: true,
+        inventorySource: 'cache',
+        cachedInventory: { gold }
+      })
+    ).toThrow('赤金')
+  })
+  it('still requires an available cache', () => {
+    expect(() =>
+      incomeRequest(plan(), {
+        ...modelSettings(),
+        finiteInventory: true,
+        inventorySource: 'cache',
+        cachedInventory: null
+      })
+    ).toThrow('没有可用')
+  })
+})
+
+it('calculates product-count backup conditions through the income Worker with a zero-filled cache', () => {
+  const source = plan()
+  source.backup_plans = [
+    {
+      name: '产品统计',
+      trigger:
+        "op_data.facility_product_count('gold') >= 1 and op_data.facility_product_type_count() >= 1 and op_data.inventory_count('源石碎片') == 0",
+      plan: {}
+    }
+  ]
+  const result = calculateIncome(source, {
+    ...modelSettings(),
+    warmupDays: 0,
+    sampleDays: 1,
+    finiteInventory: true,
+    inventorySource: 'cache',
+    cachedInventory: { lmd: 42 }
+  })
+  expect(result.success, result.error).toBe(true)
+  expect(result.inventoryMode).toBe('finite')
+  expect(
+    result.simulationReport.events
+      .filter((event) => event.type === 'backup-plan')
+      .map((event) => [event.backupName, event.active])
+  ).toEqual([['产品统计', true]])
+  expect(result.resources.opening.fragment).toBe(0)
+  expect(result.observedHours).toBeCloseTo(24, 7)
+})

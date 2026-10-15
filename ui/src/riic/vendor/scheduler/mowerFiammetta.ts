@@ -1,5 +1,5 @@
 // Source plan_fia target selection. Physical charging and restoration are task I/O.
-// Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
+// Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88; shared-follower priority: e470bb9be1 (MIT, Copyright 2021 Nano).
 import type {MowerSchedulingData} from './mowerSchedulingData'
 export function selectMowerFiaTarget(data:MowerSchedulingData,targets:string[],fool:boolean,threshold=.9):string|undefined {
  for(const name of targets){
@@ -8,7 +8,7 @@ export function selectMowerFiaTarget(data:MowerSchedulingData,targets:string[],f
   if(op.group&&data.group(op.group).some(member=>{
    if(member===name)return false
    const peer=data.operators[member]!
-   if(peer.room.startsWith('dorm')||peer.workaholic&&!targets.includes(member))return false
+   if(peer.multiGroup||peer.room.startsWith('dorm')||peer.workaholic&&!targets.includes(member))return false
    return peer.currentMood(data.nowMicros)-peer.lowerLimit<mood-op.lowerLimit
   }))continue
   return name

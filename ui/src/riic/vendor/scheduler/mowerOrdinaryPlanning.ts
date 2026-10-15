@@ -1,4 +1,4 @@
-import {mowerWorkingReplacementBlocked,mowerSameGroupPrimaryReplacement,mowerRestingBindingGroups,mowerSharedReplacements,normalizeMowerSharedArrangement,mowerArrangementGroupTransitions} from './mowerSharedGroups'
+import {mowerWorkingReplacementBlocked,mowerSameGroupPrimaryReplacement,mowerRestingBindingGroups,mowerSharedReplacements,normalizeMowerSharedArrangement,mowerArrangementGroupTransitions,commitMowerGroupShifts} from './mowerSharedGroups'
 // Port of default plan_solver/resting/_get_resting_plan_legacy/try_reorder.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
 import {MowerExitError} from './mowerNativeErrors'
@@ -65,39 +65,50 @@ export function mowerGetRestingPlan(data:MowerSchedulingData,names:string[],exis
 }
 function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:string[],plan:MowerTaskPlan,options:MowerRestingOptions):boolean{
  if(names.some(name=>data.reservedProductReplacements.has(name))||mowerWorkingReplacementBlocked(data,names,plan))return false
- const transitions=Object.fromEntries(names.map(name=>data.operators[name]!).filter(op=>data.isGroupShiftAnchor(op)&&op.group).map(op=>[op.group,true]))
- const agents=[...names].sort((a,b)=>{
-  const x=data.operators[a]!,y=data.operators[b]!,fia=options.fiaTargets??[]
-  return Number(x.room.startsWith('dorm'))-Number(y.room.startsWith('dorm'))||Number(!fia.includes(a))-Number(!fia.includes(b))||Number(['factory','train'].includes(x.currentRoom))-Number(['factory','train'].includes(y.currentRoom))||(x.currentMood(data.nowMicros)-x.lowerLimit)-(y.currentMood(data.nowMicros)-y.lowerLimit)
- })
- const choices:Record<string,string[]>={},next:MowerTaskPlan={}
- for(const name of agents){
-  const op=data.operators[name]!
-  if(!data.plan[op.room]||!op.multiGroup&&data.getDormByName(name))return false
-  const candidates=op.multiGroup?new MowerOperatorState({...op,replacement:mowerSharedReplacements(op,mowerRestingBindingGroups(data,op,transitions))}):op
-  if(op.room.startsWith('dorm')&&op.group&&candidates.replacement.includes('Free')){const resident=op.multiGroup?data.dorms.find(b=>b.position[0]===op.room&&b.position[1]===op.index)?.name:undefined;(next[op.room]??=Array(data.plan[op.room]!.length).fill('Current'))[op.index]=resident&&resident!==op.name?resident:'Free';continue}
-  choices[name]=mowerReplacementCandidates(candidates,data.operators,data.policy,data.nowMicros).filter(n=>{
-   const target=data.operators[n];if(!target)return false
-   const inSlot=target.currentRoom===op.room&&target.currentIndex===op.index,sameGroup=op.multiGroup?mowerRestingBindingGroups(data,op,transitions).some(group=>mowerSameGroupPrimaryReplacement(data,op,n,group)):mowerSameGroupPrimaryReplacement(data,op,n),departing=sameGroup&&agents.includes(n)&&target.currentRoom===target.room&&target.currentIndex===target.index
-   return (!target.currentRoom||target.isResting()||inSlot||departing)&&(op.room.startsWith('dorm')||!data.replacementExhausted(n))&&!data.excludedCandidates.has(n)&&!data.reservedProductReplacements.has(n)&&!options.isMasteryBusy?.(n)&&(!existing.includes(n)||plan[op.room]?.[op.index]===n)&&(!options.isDormReplacement?.(n)||inSlot||departing)&&(op.room.startsWith('dorm')||target.currentRoom!==op.room||sameGroup&&agents.includes(n)||inSlot)
+ const transitions={...mowerArrangementGroupTransitions(data,plan),...Object.fromEntries(names.map(name=>data.operators[name]!).filter(op=>data.isGroupShiftAnchor(op)&&op.group).map(op=>[op.group,true]))}
+ const shared=Object.values(data.operators).filter(op=>op.multiGroup),previousState=data.groupShiftState
+ const previousBindings=shared.map(op=>({op,group:op.group,replacement:op.replacement}))
+ try {
+  if(shared.some(op=>op.groupBindings.some(binding=>binding.group in transitions))){
+   data.groupShiftState={...previousState}
+   commitMowerGroupShifts(data,transitions)
+  }
+  const agents=[...names].sort((a,b)=>{
+   const x=data.operators[a]!,y=data.operators[b]!,fia=options.fiaTargets??[]
+   return Number(x.room.startsWith('dorm'))-Number(y.room.startsWith('dorm'))||Number(!fia.includes(a))-Number(!fia.includes(b))||Number(['factory','train'].includes(x.currentRoom))-Number(['factory','train'].includes(y.currentRoom))||(x.currentMood(data.nowMicros)-x.lowerLimit)-(y.currentMood(data.nowMicros)-y.lowerLimit)
   })
+  const choices:Record<string,string[]>={},next:MowerTaskPlan={}
+  for(const name of agents){
+   const op=data.operators[name]!
+   if(!data.plan[op.room]||!op.multiGroup&&data.getDormByName(name))return false
+   const candidates=op.multiGroup?new MowerOperatorState({...op,replacement:mowerSharedReplacements(op,mowerRestingBindingGroups(data,op,transitions))}):op
+   if(op.room.startsWith('dorm')&&op.group&&candidates.replacement.includes('Free')){const resident=op.multiGroup?data.dorms.find(b=>b.position[0]===op.room&&b.position[1]===op.index)?.name:undefined;(next[op.room]??=Array(data.plan[op.room]!.length).fill('Current'))[op.index]=resident&&resident!==op.name?resident:'Free';continue}
+   choices[name]=mowerReplacementCandidates(candidates,data.operators,data.policy,data.nowMicros).filter(n=>{
+    const target=data.operators[n];if(!target)return false
+    const inSlot=target.currentRoom===op.room&&target.currentIndex===op.index,sameGroup=op.multiGroup?mowerRestingBindingGroups(data,op,transitions).some(group=>mowerSameGroupPrimaryReplacement(data,op,n,group)):mowerSameGroupPrimaryReplacement(data,op,n),departing=sameGroup&&agents.includes(n)&&target.currentRoom===target.room&&target.currentIndex===target.index
+    return (!target.currentRoom||target.isResting()||inSlot||departing)&&(op.room.startsWith('dorm')||!data.replacementExhausted(n))&&!data.excludedCandidates.has(n)&&!data.reservedProductReplacements.has(n)&&!options.isMasteryBusy?.(n)&&(!existing.includes(n)||plan[op.room]?.[op.index]===n)&&(!options.isDormReplacement?.(n)||inSlot||departing)&&(op.room.startsWith('dorm')||target.currentRoom!==op.room||sameGroup&&agents.includes(n)||inSlot)
+   })
+  }
+  const match=mowerMatchReplacements(choices);if(!match)return false
+  for(const [name,cover] of Object.entries(match)){const op=data.operators[name]!;(next[op.room]??=Array(data.plan[op.room]!.length).fill('Current'))[op.index]=cover}
+  const combined=structuredClone(plan);for(const [room,row] of Object.entries(next)){const target=combined[room]??=Array(data.plan[room]!.length).fill('Current');row.forEach((name,index)=>{if(name!=='Current')target[index]=name})}
+  if(!normalizeMowerSharedArrangement(data,combined,transitions))return false
+  if(Object.values(data.operators).some(op=>op.multiGroup))Object.assign(next,combined)
+  const assignedCovers=new Set(Object.values(next).flat())
+  const previous=alphaDormResidents(data),resting=agents.filter(name=>!data.operators[name]!.workaholic&&!data.operators[name]!.room.startsWith('dorm')&&!assignedCovers.has(name)&&!data.getDormByName(name))
+  const admissions=mowerAssignDormGroup(data,resting,new Set(Object.keys(transitions)),undefined,combined,options.reservedSlots)
+  if(admissions===undefined)return false
+  const confirmed=new Map(options.dormAdmissions)
+  for(const bed of admissions)confirmed.set(alphaPosition(...bed.position),bed.name)
+  alphaRestoreDisplaced(data,previous,next,options.tasks??[],confirmed)
+  if(options.dormAdmissions)for(const [position,name] of confirmed)options.dormAdmissions.set(position,name)
+  existing.push(...Object.values(match))
+  for(const [room,names] of Object.entries(next)){if(!plan[room])plan[room]=names;else names.forEach((name,index)=>{if(plan[room]![index]==='Current'&&name!=='Current')plan[room]![index]=name})}
+  return true
+ }finally{
+  data.groupShiftState=previousState
+  for(const {op,group,replacement} of previousBindings){op.group=group;op.replacement=replacement}
  }
- const match=mowerMatchReplacements(choices);if(!match)return false
- for(const [name,cover] of Object.entries(match)){const op=data.operators[name]!;(next[op.room]??=Array(data.plan[op.room]!.length).fill('Current'))[op.index]=cover}
- const combined=structuredClone(plan);for(const [room,row] of Object.entries(next)){const target=combined[room]??=Array(data.plan[room]!.length).fill('Current');row.forEach((name,index)=>{if(name!=='Current')target[index]=name})}
- if(!normalizeMowerSharedArrangement(data,combined,transitions))return false
- if(Object.values(data.operators).some(op=>op.multiGroup))Object.assign(next,combined)
- const assignedCovers=new Set(Object.values(next).flat())
- const previous=alphaDormResidents(data),resting=agents.filter(name=>!data.operators[name]!.workaholic&&!data.operators[name]!.room.startsWith('dorm')&&!assignedCovers.has(name)&&!data.getDormByName(name))
- const admissions=mowerAssignDormGroup(data,resting,new Set(Object.keys(transitions)),undefined,combined,options.reservedSlots)
- if(admissions===undefined)return false
- const confirmed=new Map(options.dormAdmissions)
- for(const bed of admissions)confirmed.set(alphaPosition(...bed.position),bed.name)
- alphaRestoreDisplaced(data,previous,next,options.tasks??[],confirmed)
- if(options.dormAdmissions)for(const [position,name] of confirmed)options.dormAdmissions.set(position,name)
- existing.push(...Object.values(match))
- for(const [room,names] of Object.entries(next)){if(!plan[room])plan[room]=names;else names.forEach((name,index)=>{if(plan[room]![index]==='Current'&&name!=='Current')plan[room]![index]=name})}
- return true
 }
 export function mowerResting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRestingOptions={}):MowerTaskPlan {
  return resting(data,queue,options,false)

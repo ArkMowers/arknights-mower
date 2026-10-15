@@ -2327,11 +2327,11 @@ def validate_backup_plans_route():
             global_plan = build_global_plan(plan_model=document, conf_model=conf)
             op = Operators(global_plan, runtime_conf=conf)
             result = op.validate_backup_plans(
-                max_seconds=5, check_owned=mode == "cache", refresh_roster=False
+                check_owned=mode == "cache", refresh_roster=False
             )
             if result.get("status") == "incomplete":
-                result["message"] = (
-                    "排班组合校验未完成，尚未开始演算。请简化副表条件后重试。"
+                result["message"] = "排班组合校验未完成，尚未开始演算。" + result.get(
+                    "reason", "请检查副表条件后重试。"
                 )
             return result
         global_plan = build_global_plan()
