@@ -14,9 +14,10 @@ import cv2
 import numpy as np
 import pytest
 
-from arknights_mower.solvers import record
+from arknights_mower.solvers import base_mixin, record
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.utils import recycling
+from arknights_mower.utils.recognize import Recognizer
 from arknights_mower.utils.scene import Scene
 
 
@@ -326,6 +327,103 @@ def test_other_material_sources_are_not_recorded():
     solver.scene_graph_navigation.assert_called_once_with(Scene.INFRA_MAIN)
 
 
+@pytest.mark.parametrize("dismiss_failures", [0, 1])
+def test_room_entry_records_incidental_collection_before_dismissal(
+    db, monkeypatch, dismiss_failures
+):
+    solver = collection_solver()
+    page = ["map"]
+    ready = [True]
+    dismissals = [0]
+    solver.scene = lambda: {
+        "map": Scene.INFRA_MAIN,
+        "reward": Scene.MATERIEL,
+        "room": Scene.INFRA_DETAILS,
+    }[page[0]]
+    solver.find = lambda name: (
+        (100, 100) if name == "control_central" and page[0] == "map" else None
+    )
+    solver.detect_room = lambda: "recycle" if page[0] == "room" else ""
+    solver.adjust_room = Mock(return_value=(1278, 937))
+    solver.scene_graph_navigation.side_effect = lambda *_: page.__setitem__(0, "map")
+    monkeypatch.setattr(
+        base_mixin.segment, "base", lambda *_args, **_kw: {"recycle": ()}
+    )
+    monkeypatch.setattr(
+        recycling, "read_recycling_materials", Mock(return_value={"装置": 1})
+    )
+
+    def tap(*_args, **_kwargs):
+        if page[0] == "map":
+            page[0] = "reward" if ready[0] else "room"
+            ready[0] = False
+        else:
+            result = record.get_recycling_history("2000-01-01", "2100-01-01")
+            assert result["total"] == 1
+            assert result["records"][0]["materials"] == {"装置": 1}
+            dismissals[0] += 1
+            if dismissals[0] > dismiss_failures:
+                page[0] = "room"
+
+    solver.tap.side_effect = tap
+    solver.enter_room("recycle", max_attempts=1)
+
+    assert page[0] == "room"
+    result = record.get_recycling_history("2000-01-01", "2100-01-01")
+    assert result["total"] == 1
+    assert result["records"][0]["operators"] == ["旅骨"]
+    assert solver._recycling_pending is None
+
+
+@pytest.mark.parametrize(
+    "room,initial_page", [("recycle", "reward"), ("contact", "map")]
+)
+def test_room_entry_does_not_attribute_unrelated_rewards(
+    db, monkeypatch, room, initial_page
+):
+    solver = collection_solver()
+    page = [initial_page]
+    solver.scene = lambda: Scene.INFRA_MAIN if page[0] == "map" else Scene.MATERIEL
+    solver.find = lambda name: (
+        (100, 100) if name == "control_central" and page[0] == "map" else None
+    )
+    solver.detect_room = lambda: ""
+    solver.adjust_room = Mock(return_value=(1278, 937))
+    solver.tap.side_effect = lambda *_args, **_kw: page.__setitem__(0, "reward")
+    monkeypatch.setattr(base_mixin.segment, "base", lambda *_args, **_kw: {room: ()})
+
+    with pytest.raises(RuntimeError, match="未成功进入房间"):
+        solver.enter_room(room, max_attempts=1)
+
+    assert record.get_recycling_history("2000-01-01", "2100-01-01")["total"] == 0
+    solver._read_recycling_operators.assert_not_called()
+
+
+def test_room_entry_without_production_enters_room_without_recording(db, monkeypatch):
+    solver = collection_solver()
+    page = ["map"]
+    solver.scene = lambda: Scene.INFRA_MAIN if page[0] == "map" else Scene.INFRA_DETAILS
+    solver.find = lambda name: (
+        (100, 100) if name == "control_central" and page[0] == "map" else None
+    )
+    solver.detect_room = lambda: "recycle" if page[0] == "room" else ""
+    solver.adjust_room = Mock(return_value=(1278, 937))
+    solver.tap.side_effect = lambda *_args, **_kwargs: page.__setitem__(0, "room")
+    materials = Mock()
+    monkeypatch.setattr(recycling, "read_recycling_materials", materials)
+    monkeypatch.setattr(
+        base_mixin.segment, "base", lambda *_args, **_kw: {"recycle": ()}
+    )
+
+    solver.enter_room("recycle", max_attempts=1)
+
+    assert page[0] == "room"
+    assert record.get_recycling_history("2000-01-01", "2100-01-01")["total"] == 0
+    assert getattr(solver, "_recycling_pending", None) is None
+    materials.assert_not_called()
+    solver._read_recycling_operators.assert_not_called()
+
+
 @pytest.mark.parametrize("visible", [True, False])
 def test_roster_requires_facility_title_and_uses_two_actual_slots(visible):
     solver = collection_solver()
@@ -374,6 +472,56 @@ def test_roster_leaves_conversion_dashboard_before_reading():
     solver.read_screen = Mock(side_effect=["旅骨", "阿米娅"])
     assert BaseSchedulerSolver._read_recycling_operators(solver) == ["旅骨", "阿米娅"]
     solver.back.assert_called_once()
+
+
+def test_archived_occupants_complete_collection_without_toggling_panel(db, monkeypatch):
+    solver = collection_solver()
+    del solver._read_recycling_operators
+    path = Path(__file__).parent / "fixtures/recycling/occupants_20261012.jpg"
+    solver.recog = Recognizer(Mock(), path.read_bytes())
+    solver.enter_room = Mock()
+    solver.scene = Mock(return_value=Scene.INFRA_MAIN)
+    solver._recycling_pending = {"id": "archived-occupants"}
+    monkeypatch.setattr(
+        recycling, "read_recycling_materials", Mock(return_value={"装置": 1})
+    )
+
+    solver._finish_recycling_collection()
+
+    result = record.get_recycling_history("2000-01-01", "2100-01-01")
+    assert result["records"][0]["operators"] == ["旅骨", "岳羽由加莉"]
+    solver.enter_room.assert_called_once_with("recycle", max_attempts=1)
+    solver.tap.assert_not_called()
+    assert solver._recycling_pending is None
+
+
+@pytest.mark.parametrize("settles", [True, False])
+def test_roster_waits_for_opening_panel_and_checks_last_frame(settles):
+    solver = collection_solver()
+    solver.enter_room = Mock()
+    solver.detect_room = Mock(return_value="recycle")
+    solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
+    state = {"opened": False, "waits": 0}
+    solver.find = Mock(
+        side_effect=lambda name, **kwargs: (
+            (name == "room_detail" and state["opened"]) or name == "arrange_check_in"
+        )
+    )
+    solver.get_color = Mock(
+        side_effect=lambda pos: np.array(
+            [255 if settles and state["waits"] == 4 else 10] * 3
+        )
+    )
+    solver.tap.side_effect = lambda *args, **kwargs: state.update(opened=True)
+    solver.sleep.side_effect = lambda *args: state.update(waits=state["waits"] + 1)
+    solver.read_screen = Mock(side_effect=["旅骨", "岳羽由加莉"])
+
+    result = BaseSchedulerSolver._read_recycling_operators(solver)
+
+    assert result == (["旅骨", "岳羽由加莉"] if settles else None)
+    assert solver.read_screen.call_count == (2 if settles else 0)
+    solver.tap.assert_called_once()
+    assert state["waits"] == 4
 
 
 @pytest.mark.parametrize("ready", [True, False])

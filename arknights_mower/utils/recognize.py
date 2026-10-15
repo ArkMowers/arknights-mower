@@ -45,6 +45,7 @@ class Recognizer:
         self.last_scene_time = datetime.now()
 
     def clear(self):
+        self.capture_started_at = None
         self._screencap = None
         self._img = None
         self._gray = None
@@ -84,12 +85,15 @@ class Recognizer:
         retry_times = config.MAX_RETRYTIME
         while retry_times > 0:
             try:
+                capture_started_at = None
                 if screencap is not None:
                     self._screencap = screencap
                     self._img = bytes2img(screencap)
                     self._gray = bytes2img(screencap, True)
                 else:
+                    capture_started_at = datetime.now()
                     self._screencap, self._img, self._gray = self.device.screencap()
+                self.capture_started_at = capture_started_at
                 return
             except cv2.error as e:
                 logger.warning(e)

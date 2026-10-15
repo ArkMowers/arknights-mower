@@ -3034,6 +3034,9 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         self.conf_patch = patch.object(base_schedule.config, "conf", self.conf)
         self.conf_patch.start()
         self.addCleanup(self.conf_patch.stop)
+        self.capture_patch = patch.object(base_schedule.config, "screenshot_avg", None)
+        self.capture_patch.start()
+        self.addCleanup(self.capture_patch.stop)
 
     def make_solver(self, target="但书"):
         room = "room_1_1"
@@ -3150,6 +3153,53 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
                 solver.recog.update.assert_not_called()
                 solver.get_order_remaining_time.assert_not_called()
 
+    def test_slow_confirmation_capture_preserves_configured_advance(self):
+        solver, room, _ = self.make_solver()
+
+        class Clock(datetime):
+            @classmethod
+            def now(cls):
+                return cls.current
+
+        Clock.current = Clock(2026, 10, 15, 9, 20)
+        confirm_at = Clock.current + timedelta(seconds=90)
+        solver.task.time = Clock.current + timedelta(seconds=60)
+        state = {"captured": False, "confirmed": False}
+        taps = []
+
+        def invalidate():
+            state["captured"] = False
+
+        def find(name, **_kwargs):
+            if not state["captured"]:
+                Clock.current += timedelta(seconds=2)
+                state["captured"] = True
+            if name == ("room_detail" if state["confirmed"] else "confirm_blue"):
+                return (100, 100)
+            return None
+
+        def sleep(seconds):
+            Clock.current += timedelta(seconds=seconds)
+            invalidate()
+
+        def tap(*_args, **_kwargs):
+            taps.append(Clock.current)
+            state["confirmed"] = True
+            invalidate()
+
+        solver.recog.update.side_effect = invalidate
+        solver.find.side_effect = find
+        solver.sleep = MagicMock(side_effect=sleep)
+        solver.tap = MagicMock(side_effect=tap)
+        with (
+            patch.object(base_schedule, "datetime", Clock),
+            patch.object(base_schedule.config, "screenshot_avg", 2000),
+        ):
+            BaseSchedulerSolver.tap_confirm(solver, room, {room: ["旧干员"]})
+
+        self.assertEqual(taps, [confirm_at])
+        solver.sleep.assert_called_once_with(88.0)
+
     def test_two_slot_task_runs_after_extra_target_is_removed(self):
         solver, room, _ = self.make_solver(target="乌尔比安")
         solver.task.type = TaskTypes.SHIFT_ON
@@ -3193,22 +3243,29 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
                 solver.back.assert_called_once()
                 self.assertIn(room, solver.task.plan)
 
-    def test_invalid_countdown_uses_original_missed_order_path(self):
+    def test_invalid_countdown_retains_order_without_claiming_a_miss(self):
         for remaining in (0, -1, 660, 900):
             with self.subTest(remaining=remaining):
                 solver, room, _ = self.make_solver()
                 solver.get_order_remaining_time.side_effect = None
                 solver.get_order_remaining_time.return_value = remaining
+                original_time = solver.task.time
+                original_plan = {
+                    name: list(row) for name, row in solver.task.plan.items()
+                }
                 with (
                     patch.object(base_schedule, "send_message") as notify,
                     patch.object(base_schedule, "save_exception"),
                 ):
-                    result = solver.agent_arrange_room({}, room, solver.task.plan)
-                self.assertEqual(result, {})
+                    with self.assertRaises(base_schedule.RoomArrangementDeferred):
+                        solver.agent_arrange_room({}, room, solver.task.plan)
+                self.assertEqual(solver.task.time, original_time)
+                self.assertEqual(solver.task.plan, original_plan)
+                self.assertEqual(solver.tasks, [solver.task])
                 solver.choose_agent.assert_not_called()
                 solver.tap_confirm.assert_not_called()
-                solver.reset_room_time.assert_called_once_with(room)
-                notify.assert_called_once_with("检测到漏单！", level="WARNING")
+                solver.reset_room_time.assert_not_called()
+                notify.assert_not_called()
 
     def test_adjusted_order_can_continue_with_out_of_range_countdown(self):
         solver, room, events = self.make_solver()
@@ -3221,6 +3278,18 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         solver.get_order_remaining_time.assert_not_called()
         self.assertEqual(solver.turn_on_room_detail.call_count, 1)
         solver.reset_room_time.assert_not_called()
+
+    def test_resumed_window_failure_rechecks_countdown_before_selection(self):
+        solver, room, events = self.make_solver()
+        solver.task.arrangement_retry_room = room
+        solver.task.arrangement_retry_count = 1
+        original = solver.task.time
+        result = solver.agent_arrange_room({}, room, solver.task.plan)
+        self.assertEqual(result, {room: ["旧干员"]})
+        self.assertIn("countdown", events)
+        self.assertLess(events.index("countdown"), events.index("choose"))
+        self.assertGreater(solver.task.time, original)
+        solver.get_order_remaining_time.assert_called_once_with()
 
     def test_maintenance_order_keeps_advanced_time_with_nearby_countdown(self):
         solver, room, _ = self.make_solver()
@@ -3435,7 +3504,7 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         solver.get_order_remaining_time.assert_called_once_with()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_missed_order_emits_archivable_error(self):
+    def test_changed_countdown_checks_actual_order_without_claiming_a_miss(self):
         room = "room_1_1"
         task = SchedulerTask(
             time=datetime.now(),
@@ -3463,9 +3532,11 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         ):
             solver.agent_arrange(task.plan)
 
-        error.assert_called_once_with("检测到漏单", extra={"archive_screenshots": True})
-        save_exception.assert_called_once()
-        send_message.assert_called_once_with("检测到漏单！", level="WARNING")
+        error.assert_not_called()
+        save_exception.assert_not_called()
+        send_message.assert_not_called()
+        solver.accept_order.assert_called_once_with()
+        self.assertEqual(solver.agent_arrange_room.call_count, 2)
 
 
 class TestClueProductCompleteWait(unittest.TestCase):

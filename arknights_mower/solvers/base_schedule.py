@@ -6393,6 +6393,14 @@ class BaseSchedulerSolver(
         self._tap_recycling_collection((int(right - size / 3), int(top + size / 3)))
         return True
 
+    def _handle_room_entry_reward(self, room):
+        if room != "recycle":
+            return False
+        if not getattr(self, "_recycling_pending", None):
+            self._recycling_pending = {"id": str(uuid4())}
+        self._finish_recycling_collection()
+        return True
+
     def _tap_recycling_collection(self, pos):
         self._recycling_pending = {"id": str(uuid4())}
         self.tap(pos)
@@ -6410,20 +6418,33 @@ class BaseSchedulerSolver(
         self.enter_room("recycle", max_attempts=1)
         if self.detect_room() != "recycle":
             return None
-        for attempt in range(5):
+        opened = False
+        for attempt in range(6):
             if self.find("recycle/dashboard"):
+                if attempt == 5:
+                    return None
                 self.back()
+                opened = False
                 continue
-            if self.find("room_detail") and all(self.get_color((1233, 1)) > [252] * 3):
+            detail = self.find("room_detail")
+            # 取面板内部的白色，避开左边缘；标题出现后仍可能处于展开动画中。
+            if detail and all(self.get_color((1250, 1)) > [252] * 3):
                 break
-            if pos := self.find("arrange_check_in") or self.find(
-                "arrange_check_in_small"
+            if attempt == 5:
+                return None
+            if (
+                not detail
+                and not opened
+                and (
+                    pos := self.find("arrange_check_in")
+                    or self.find("arrange_check_in_small")
+                )
             ):
                 self.tap(pos, interval=0.2)
+                opened = True
             else:
+                # 进驻按钮也会在展开动画中命中，再次点击会把已打开的面板关闭。
                 self.sleep(0.2)
-        else:
-            return None
         names = []
         for top in (135, 344):
             if self.find("infra_no_operator", scope=((1288, top), (1869, top + 191))):
@@ -6471,6 +6492,8 @@ class BaseSchedulerSolver(
             names = None
         if names is not None:
             update_recycling_operators(event["id"], names)
+        else:
+            logger.warning("回收站进驻干员未确认，本次收取记录保留未知")
         self._recycling_pending = None
         self.scene_graph_navigation(Scene.INFRA_MAIN)
 
@@ -8074,11 +8097,14 @@ class BaseSchedulerSolver(
             and len(new_plan) == 1
             and config.conf.run_order_buffer_time > 0
         ):
+            # 等待结束后仍须读取确认页；为当前截图后端的实测耗时预留时间。
+            capture_seconds = (config.screenshot_avg or 0) / 1000
             wait_confirm = round(
                 (
                     (self.task.time - datetime.now()).total_seconds()
                     + config.conf.run_order_delay * 60
                     - config.conf.run_order_buffer_time
+                    - capture_seconds
                 ),
                 1,
             )
@@ -10590,13 +10616,18 @@ class BaseSchedulerSolver(
                     ):
                         # 换人前顺路读取离开者，不额外读取其工作／恢复倒计时。
                         self.get_agent_from_room(room, departing_plan=plan[room])
-                    # 沿用原跑单流程：换人前校准确认时刻，选人失败重试不重复读。
+                    # 换入前校准确认时刻；窗口失败后的新实测仍须重新校准。
                     if (
                         self.task.type == TaskTypes.RUN_ORDER
                         and not self.task.adjusted
                         and len(new_plan) == 1
                         and config.conf.run_order_buffer_time > 0
-                        and choose_error <= 0
+                        and (
+                            choose_error <= 0
+                            or not getattr(
+                                self.task, "run_order_restore_pending", False
+                            )
+                        )
                     ):
                         remaining_time = self.get_order_remaining_time()
                         if 0 < remaining_time < (config.conf.run_order_delay + 10) * 60:
@@ -10609,10 +10640,13 @@ class BaseSchedulerSolver(
                             self.back()
                             self.turn_on_room_detail(room)
                         else:
-                            logger.info("检测到漏单")
-                            send_message("检测到漏单！", level="WARNING")
-                            self.reset_room_time(room)
-                            raise Exception("检测到漏单！")
+                            raise RoomArrangementDeferred(
+                                room,
+                                RecognizeError(
+                                    f"订单倒计时 {remaining_time} 秒不在跑单窗口，"
+                                    "尚未确认漏单，等待相关实测或安排更新"
+                                ),
+                            )
                     if room == "train":
                         # #59：idx1 冻结已在 gate L1 按锁定状态处理好（Current），
                         # 不再依赖 find_next_task(SKILL_UPGRADE) 的脆弱信号。
@@ -10717,7 +10751,7 @@ class BaseSchedulerSolver(
                 if self.scene() in self.waiting_scene:
                     if not self.waiting_solver():
                         return
-            except (MowerExit, DeviceRecoveryError):
+            except (MowerExit, DeviceRecoveryError, RoomArrangementDeferred):
                 raise
             except Exception as e:
                 save_exception(e)
@@ -10754,8 +10788,6 @@ class BaseSchedulerSolver(
                     raise
                 choose_error += 1
                 self.recog.update()
-                if "检测到漏单！" in str(e):
-                    return {}
                 if confirmation_pending:
                     reconcile_after_confirmation = True
                     reconcile_after_selection = selection_attempted
@@ -11172,9 +11204,11 @@ class BaseSchedulerSolver(
                                     )
                                 return False
                     else:
-                        logger.error("检测到漏单", extra={"archive_screenshots": True})
-                        save_exception(Exception("检测到漏单"))
-                        send_message("检测到漏单！", level="WARNING")
+                        logger.warning(
+                            "换入后订单倒计时为 %s 秒；核对实际订单后恢复原班，"
+                            "倒计时超出窗口不能确认漏单",
+                            wait_time,
+                        )
                     self.accept_order()
                     if self.drone_room is None or (
                         self.drone_room == room and room in self.op_data.run_order_rooms

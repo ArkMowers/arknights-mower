@@ -506,7 +506,8 @@ def test_unreadable_countdown_before_selection_never_claims_compensation(
     solver.get_order_remaining_time.return_value = 0
     solver.reset_room_time = MagicMock()
 
-    solver.agent_arrange(task.plan)
+    with pytest.raises(base_schedule.RoomArrangementDeferred):
+        solver.agent_arrange(task.plan)
 
     assert solver.op_data.get_current_room(ROOM, True) == ORIGINAL
     assert not getattr(task, "run_order_restore_pending", False)

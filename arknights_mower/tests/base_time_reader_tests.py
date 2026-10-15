@@ -1,11 +1,14 @@
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock, create_autospec, patch
 
 import numpy as np
 
+from arknights_mower.solvers import base_mixin
 from arknights_mower.solvers.base_mixin import BaseMixin
+from arknights_mower.utils import recognize
 from arknights_mower.utils.digit_reader import DigitReader
+from arknights_mower.utils.recognize import Recognizer
 
 
 class BaseTimeReaderTests(unittest.TestCase):
@@ -56,3 +59,36 @@ class BaseTimeReaderTests(unittest.TestCase):
         warning.assert_called_once_with(
             "贸易站订单倒计时识别失败，回退为当前时间；不能据此确认实际订单完成时间"
         )
+
+    def test_slow_capture_and_recognition_do_not_extend_order_deadline(self):
+        class Clock(datetime):
+            @classmethod
+            def now(cls):
+                return cls.current
+
+        Clock.current = Clock(2026, 10, 15, 9, 20)
+        solver = self.solver()
+        device = MagicMock()
+        solver.recog = Recognizer(device)
+        frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+
+        def capture():
+            Clock.current += timedelta(seconds=2)
+            return None, frame, frame[:, :, 0]
+
+        def read(*_args):
+            Clock.current += timedelta(seconds=3)
+            return "00:02:01"
+
+        device.screencap.side_effect = capture
+        solver.digit_reader.get_time.side_effect = read
+        with (
+            patch.object(base_mixin, "datetime", Clock),
+            patch.object(recognize, "datetime", Clock),
+        ):
+            deadline = solver.double_read_time(None, use_digit_reader=True)
+
+        self.assertEqual(deadline, datetime(2026, 10, 15, 9, 22, 1))
+        self.assertEqual(Clock.current, datetime(2026, 10, 15, 9, 20, 5))
+        solver.recog.clear()
+        self.assertIsNone(solver.recog.capture_started_at)
