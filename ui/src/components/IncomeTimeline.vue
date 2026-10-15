@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useThemeVars } from 'naive-ui'
 import ScheduleTimelineGantt from '@/riic/vendor/components/workbench/ScheduleTimelineGantt.vue'
+import IncomeHorizontalScroll from './IncomeHorizontalScroll.vue'
 
 const props = defineProps({ report: Object, timelineData: Object })
 const overviewPage = ref(1)
@@ -41,42 +42,44 @@ const colors = computed(() => ({
           小时，不含预热。工作、休息、空闲和心情涣散驻岗分别统计，主班和替班工时不含心情涣散驻岗。
         </p>
         <p>工作占比 = 工作时长 / 采样时长；工休比 = 工作时长 / 休息时长，无休息时显示 —。</p>
-        <div class="time-overview-table">
-          <n-table size="small">
-            <thead>
-              <tr>
-                <th>干员</th>
-                <th>工作占比</th>
-                <th>工休比</th>
-                <th>工作（小时）</th>
-                <th>主班（小时）</th>
-                <th>替班（小时）</th>
-                <th>休息（小时）</th>
-                <th>空闲（小时）</th>
-                <th>心情涣散（小时）</th>
-                <th>期末心情</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="operator in overviewRows" :key="operator.operatorId">
-                <td>{{ operator.operatorName }}</td>
-                <td>{{ hours(operator.workFraction * 100) }}%</td>
-                <td>
-                  {{
-                    operator.workRestRatio == null ? '—' : `${hours(operator.workRestRatio)} : 1`
-                  }}
-                </td>
-                <td>{{ hours(operator.workHours) }}</td>
-                <td>{{ hours(operator.mainWorkHours) }}</td>
-                <td>{{ hours(operator.substituteWorkHours) }}</td>
-                <td>{{ hours(operator.restHours) }}</td>
-                <td>{{ hours(operator.idleHours) }}</td>
-                <td>{{ hours(operator.exhaustedHours) }}</td>
-                <td>{{ hours(operator.finalMorale) }} / 24</td>
-              </tr>
-            </tbody>
-          </n-table>
-        </div>
+        <IncomeHorizontalScroll selector=".time-overview-table" label="干员时间总览横向滚动">
+          <div class="time-overview-table">
+            <n-table size="small">
+              <thead>
+                <tr>
+                  <th>干员</th>
+                  <th>工作占比</th>
+                  <th>工休比</th>
+                  <th>工作（小时）</th>
+                  <th>主班（小时）</th>
+                  <th>替班（小时）</th>
+                  <th>休息（小时）</th>
+                  <th>空闲（小时）</th>
+                  <th>心情涣散（小时）</th>
+                  <th>期末心情</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="operator in overviewRows" :key="operator.operatorId">
+                  <td>{{ operator.operatorName }}</td>
+                  <td>{{ hours(operator.workFraction * 100) }}%</td>
+                  <td>
+                    {{
+                      operator.workRestRatio == null ? '—' : `${hours(operator.workRestRatio)} : 1`
+                    }}
+                  </td>
+                  <td>{{ hours(operator.workHours) }}</td>
+                  <td>{{ hours(operator.mainWorkHours) }}</td>
+                  <td>{{ hours(operator.substituteWorkHours) }}</td>
+                  <td>{{ hours(operator.restHours) }}</td>
+                  <td>{{ hours(operator.idleHours) }}</td>
+                  <td>{{ hours(operator.exhaustedHours) }}</td>
+                  <td>{{ hours(operator.finalMorale) }} / 24</td>
+                </tr>
+              </tbody>
+            </n-table>
+          </div>
+        </IncomeHorizontalScroll>
         <n-pagination
           v-if="operators.length > 20"
           v-model:page="overviewPage"
@@ -86,12 +89,14 @@ const colors = computed(() => ({
         />
       </n-collapse-item>
     </n-collapse>
-    <ScheduleTimelineGantt
-      :report="props.report"
-      :timeline-data="props.timelineData"
-      :initial-window-hours="24"
-      initially-collapsed
-    />
+    <IncomeHorizontalScroll selector=".gantt-container" label="甘特图横向滚动">
+      <ScheduleTimelineGantt
+        :report="props.report"
+        :timeline-data="props.timelineData"
+        :initial-window-hours="24"
+        initially-collapsed
+      />
+    </IncomeHorizontalScroll>
   </div>
 </template>
 
@@ -107,6 +112,10 @@ const colors = computed(() => ({
 }
 .time-overview-table {
   overflow-x: auto;
+  scrollbar-width: none;
+}
+.time-overview-table::-webkit-scrollbar {
+  display: none;
 }
 .time-overview-table :deep(table) {
   min-width: 1040px;
@@ -327,17 +336,6 @@ const colors = computed(() => ({
 }
 .income-timeline :deep(:is(.scrubber-cursor, .major-day .tick-line)) {
   background: var(--timeline-primary);
-}
-.income-timeline :deep(.gantt-container) {
-  scrollbar-width: thin;
-}
-.income-timeline :deep(.gantt-container::-webkit-scrollbar) {
-  display: block;
-  height: 8px;
-}
-.income-timeline :deep(.gantt-container::-webkit-scrollbar-thumb) {
-  background: var(--timeline-border);
-  border-radius: 4px;
 }
 .income-timeline :deep(.facility-tag) {
   display: none;
