@@ -1623,7 +1623,11 @@ def generate_plan_by_drom(
             if room.name in planned or room.name in excluded_names:
                 continue
             op = op_data.operators[room.name]
-            if op.multi_group and rest_in_full is not None:
+            if (
+                op.multi_group
+                and rest_in_full is not None
+                and (not op.independent_rest or op_data.resting_binding_groups(op))
+            ):
                 continue
             if op.exhaust_require:
                 exhaust_exist = True
@@ -1689,6 +1693,8 @@ def generate_plan_by_drom(
                     if agent in excluded_names:
                         continue
                     o = op_data.operators[agent]
+                    if o.independent_rest and o.name != op.name:
+                        continue
                     target_room, target_index = o.room, o.index
                     if existing_targets and agent in existing_targets:
                         t_room, t_index = existing_targets[agent]
@@ -1886,6 +1892,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
         and id(task) not in locked_ids
         and task.plan
     ]
+    observed_operators = op_data.operators
     op_data = op_data.project_arrangements(task.plan for task in pending_arrangements)
     _time = datetime.max
     min_resting_time = datetime.max
@@ -1943,6 +1950,14 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
             ),
         )
         start = previous_windows.get(identity, now)
+        if operator.independent_rest:
+            observed = observed_operators[operator.name]
+            saved = getattr(observed, "individual_return_window", None)
+            if saved is not None and saved[0] == identity:
+                start = min(start, saved[1])
+            # 具名组接管岗位期间没有个人回班任务，恢复窗口仍属于原休息周期。
+            if observed.dorm_position_version == operator.dorm_position_version:
+                observed.individual_return_window = (identity, start)
         for bed in dorms:
             return_windows[bed.name] = (identity, start)
         return min(
@@ -1966,7 +1981,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
                 or dorm.position in locked_slots
             ):
                 continue
-            if not operator.multi_group and (
+            if (not operator.multi_group or operator.independent_rest) and (
                 not operator.group or op_data.is_group_shift_anchor(operator)
             ):
                 grouped_dorms[operator.group].append(dorm)
@@ -2122,17 +2137,28 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
             not op.is_high()
             or op.name in excluded_names
             or op.multi_group
+            and (not op.independent_rest or op_data.resting_binding_groups(op))
             or op.group
             and not op_data.is_group_shift_anchor(op)
             or op.room.startswith("dorm")
             or op.current_room
-            or not op_data.rest_mood_complete(op.name)
+            or not (
+                op_data.rest_mood_complete(op.name)
+                or op.independent_rest
+                and has_resting_mood(op)
+                and op.mood >= op.upper_limit
+            )
         ):
             continue
         members = (
             set(op_data.shift_group_members(op.group)) if op.group else {op.name}
         ) - set(excluded_names)
-        anchors = {name for name in members if not op_data.operators[name].multi_group}
+        anchors = {
+            name
+            for name in members
+            if not op_data.operators[name].multi_group
+            or op_data.operators[name].independent_rest
+        }
         if (
             anchors & returning
             or members & (locked_names | busy)
