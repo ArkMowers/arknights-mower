@@ -31,6 +31,8 @@ def offline(monkeypatch, tmp_path):
     main = importlib.import_module("arknights_mower.__main__")
     server = importlib.import_module("server")
     record = importlib.import_module("arknights_mower.solvers.record")
+    monkeypatch.setattr(crash_recovery, "_cancelled", False)
+    monkeypatch.setattr(crash_recovery, "_progress", {})
     monkeypatch.setattr(config, "conf", config.Conf())
     monkeypatch.setattr(config, "stop_mower", Event())
     monkeypatch.setattr(config, "maintenance_recheck", Event())
@@ -46,7 +48,16 @@ def offline(monkeypatch, tmp_path):
         "get_path",
         lambda value: tmp_path / ("data.db" if value.endswith("data.db") else ""),
     )
-    return SimpleNamespace(main=main, server=server, record=record, io=forbidden)
+    inventory_changed = record.workshop_inventory_changed
+    was_changed = inventory_changed.is_set()
+    inventory_changed.clear()
+    try:
+        yield SimpleNamespace(main=main, server=server, record=record, io=forbidden)
+    finally:
+        if was_changed:
+            inventory_changed.set()
+        else:
+            inventory_changed.clear()
 
 
 @pytest.fixture
