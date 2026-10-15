@@ -32,7 +32,9 @@ export function calculateIncome(plan, settings, onProgress) {
     .map((d) => ({
       code: d.code,
       message:
-        d.message +
+        (d.code === 'MOWER_CLUE_OBSERVATION_MODEL'
+          ? '线索产量按交流固定开启计算；调度侧 Party Time 仍为空，不执行线索待办及交流任务。'
+          : d.message) +
         (d.code === 'FINITE_INVENTORY_MODEL' && settings.allowGoldDebt
           ? ' 本次允许赤金透支，赤金不足不阻止交付；其他材料仍受库存约束。'
           : '')
@@ -70,6 +72,7 @@ export function calculateIncome(plan, settings, onProgress) {
           .map((e) => e.roomId)
       )
     ],
+    clueExchangeMode: 'always-on',
     summary: {
       ...result.report.summary,
       netLmd,

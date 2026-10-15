@@ -670,3 +670,13 @@ it.each([
       expect(report.operators.find((op) => op.operatorId === fia).finalMorale).toBeCloseTo(12, 8)
   }
 )
+
+it('preserves exchange assumptions when displaying saved clue results', () => {
+  const result = { observedHours: 24, summary: { clueCount: 2 } }
+  const lines = (value) => incomeReportLines(value, modelSettings(), plan(), '主表').join('\n')
+  expect(lines(result)).toContain('历史记录按线索交流关闭')
+  expect(lines({ ...result, clueExchangeMode: 'always-on' })).toContain('线索产量按全程开启交流')
+  expect(lines({ ...result, clueExchangeMode: 'always-on' })).not.toContain(
+    '历史记录按线索交流关闭'
+  )
+})

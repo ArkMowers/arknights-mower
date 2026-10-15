@@ -51,7 +51,33 @@ it('handles all pinned reception skills without counting clue-type effects as sp
       }
     }
   }
-  expect(clueEfficiency(reception('char_4220_kormr'), phases)).toBeCloseTo(1.31)
+  expect(clueEfficiency(reception('char_4220_kormr'), phases)).toBeCloseTo(1.61)
+})
+it('counts always-active exchange speed only for unlocked, working operators', () => {
+  for (const [name, id, phase, level, expected] of [
+    ['跃跃', 'char_4100_caper', 0, 1, 1.43],
+    ['跃跃', 'char_4100_caper', 1, 1, 1.81],
+    ['跃跃', 'char_4100_caper', 2, 1, 1.89],
+    ['响石', 'char_4214_cairn', 1, 1, 1.43],
+    ['响石', 'char_4214_cairn', 2, 1, 1.81],
+    ['虎狼丸', 'char_4220_kormr', 0, 1, 1.31],
+    ['虎狼丸', 'char_4220_kormr', 0, 30, 1.61]
+  ]) {
+    const owned = compileOperatorInventory([{ operator: name, elitePhase: phase, level }])
+    const config = reception(id)
+    config.operatorRecords = inventoryOperatorRecords(owned)
+    expect(
+      clueEfficiency(config, new Map([[id, phase]])),
+      `${name} E${phase} L${level}`
+    ).toBeCloseTo(expected)
+  }
+  const config = reception('char_4100_caper')
+  config.operatorMorale.char_4100_caper = 0
+  expect(clueEfficiency(config, phases)).toBeCloseTo(1.44)
+  const observer = createClueObservation(0)
+  observer.observe(reception('char_4100_caper'), 0, 24)
+  expect(observer.result().completed).toBe(2)
+  expect(observer.result().progress).toBeCloseTo(0.268)
 })
 it('gates single-operator skills on awake coworkers and cooperative bonuses on providers', () => {
   const config = reception('char_1015_aglna2', 'char_202_demkni')
@@ -123,4 +149,28 @@ it('reports clue counts through the Worker without changing income, inventory or
   expect(empty.summary.clueCount).toBe(0)
   expect(incomeImageMetrics(empty.summary, 1).some((row) => row.key === 'clue')).toBe(false)
   expect(incomeMetrics({}, 1).some((row) => row.label === '会客室线索')).toBe(false)
+})
+
+it('applies exchange speed in a complete income calculation', () => {
+  const plan = {
+    default: 'plan1',
+    conf: { workaholic: ['跃跃'] },
+    backup_plans: [],
+    plan1: {
+      meeting: { name: '', plans: [{ agent: '跃跃' }] },
+      room_1_1: { name: '制造站', product: 'gold', plans: [] },
+      room_1_3: { name: '发电站', plans: [] }
+    }
+  }
+  const result = calculateIncome(plan, {
+    ...defaultIncomeSettings(),
+    operatorMode: 'maximum',
+    weightMode: 'custom',
+    finiteInventory: false,
+    warmupDays: 0,
+    sampleDays: 1
+  })
+  expect(result.success, result.error).toBe(true)
+  expect(result.summary.clueCount).toBeCloseTo(2)
+  expect(result.clueExchangeMode).toBe('always-on')
 })
