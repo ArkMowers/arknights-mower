@@ -122,6 +122,10 @@ class DroidCastStartTests(unittest.TestCase):
         self.assertEqual(self.android.version, "1.3.0")
         self.assertEqual(len(self.installs()), 1)
         self.assertEqual(self.adapter.opened, ["USB-A"])
+        self.assertIn(
+            ["shell", "dumpsys", "deviceidle", "whitelist", "+com.rayworks.droidcast"],
+            self.android.commands,
+        )
         self.assertEqual(
             control.settings_status()["preflight"]["observations"]["frame"],
             [1920, 1080],
@@ -148,6 +152,16 @@ class DroidCastStartTests(unittest.TestCase):
         self.assertEqual(self.android.processes, [])
         self.assertEqual(self.http.calls, [])
         self.assertTrue(self.android.commands)
+        self.assertFalse(any("deviceidle" in args for args in self.android.commands))
+
+    def test_runtime_start_whitelists_an_already_compatible_package(self):
+        result = self.control().start()
+        self.assertTrue(result.ok, result.error)
+        self.assertEqual(self.installs(), [])
+        self.assertIn(
+            ["shell", "dumpsys", "deviceidle", "whitelist", "+com.rayworks.droidcast"],
+            self.android.commands,
+        )
 
     def test_invalid_target_display_or_package_never_installs_helper(self):
         self.android.version = None
