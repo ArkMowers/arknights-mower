@@ -177,8 +177,8 @@
       "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances."
     },
     "simulator/scheduleSimulation.ts": {
-      "sha256": "b1184486b183cce5c39e1661ac2e3026d2ef3fbe2f1a19b673537d913c9ec10a",
-      "reason": "Mark completed windows with unresolved task failures as incomplete; preserve the local read-only interval observer and segment timeline."
+      "sha256": "c2ea95c26d1a3b6e98106d4928464102051a4b738ff43a8106be0d117715040a",
+      "reason": "Mark completed windows with unresolved task failures as incomplete; preserve the local read-only interval observer and segment timeline. Select the lowest-morale eligible resident when no valid single-target recovery confirmation remains; retain an automatic target until it becomes ineligible or the provider or target position changes. Equal morale uses stable slot order."
     },
     "workbench/scheduleSimulationBridge.ts": {
       "reason": "Forward the local interval observer separately from JSON-cloned simulation data.",
