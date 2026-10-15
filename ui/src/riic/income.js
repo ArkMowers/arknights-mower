@@ -1,3 +1,4 @@
+import receptionTemplate from '../../../arknights_mower/resources/room/meeting.png?url'
 import officeTemplate from '../../../arknights_mower/resources/room/contact.png?url'
 import recycleTemplate from '../../../arknights_mower/resources/room/recycle.png?url'
 import { DEFAULT_DRONE_CAPACITY } from './vendor/domain/droneCapacity'
@@ -158,7 +159,8 @@ export function incomeMetrics(summary, days) {
     ['源石碎片', summary.fragments, '个'],
     ['合成玉', summary.orundum, '个'],
     ['回收站产出', summary.recycleCount, '次'],
-    ['公招刷新', summary.recruitmentCount, '次']
+    ['公招刷新', summary.recruitmentCount, '次'],
+    ...(summary.clueCount == null ? [] : [['会客室线索', summary.clueCount, '个']])
   ].map(([label, daily, unit]) => ({ label, daily: daily ?? 0, total: (daily ?? 0) * days, unit }))
 }
 
@@ -182,7 +184,8 @@ export function incomeImageMetrics(summary, days) {
     { key: 'fragment', icon: '/product/orirock.png', daily: summary.fragments, unit: '个' },
     { key: 'orundum', icon: '/product/orundum.png', daily: summary.orundum, unit: '个' },
     { key: 'recycle', icon: recycleTemplate, daily: summary.recycleCount, unit: '次' },
-    { key: 'recruitment', icon: officeTemplate, daily: summary.recruitmentCount, unit: '次' }
+    { key: 'recruitment', icon: officeTemplate, daily: summary.recruitmentCount, unit: '次' },
+    { key: 'clue', icon: receptionTemplate, daily: summary.clueCount, unit: '个' }
   ]
     .filter((row) => Math.abs(row.daily ?? 0) > 1e-8 || Math.abs(row.present ?? 0) > 1e-8)
     .map((row) => ({ ...row, daily: row.daily ?? 0, total: (row.daily ?? 0) * days }))
