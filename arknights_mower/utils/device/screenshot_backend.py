@@ -1,6 +1,7 @@
 """Capture incidents use one owned rebuild and verified same-target ADB degradation."""
 
 import subprocess
+import time
 
 import numpy as np
 
@@ -10,6 +11,7 @@ from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.droidcast import DroidCastError
 from arknights_mower.utils.device.endpoint_identity import InstanceBindingError
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
+from arknights_mower.utils.log import logger
 
 BACKEND_LABELS = {
     "adb_gzip": "ADB gzip",
@@ -142,6 +144,7 @@ class ScreenshotSession:
         self.rebuilt = False
         if self.degraded:
             return self._standard_frame(standard_adb)
+        started = time.monotonic()
         try:
             frame = validate_frame(capture())
         except (MowerExit, DeviceRecoveryError, InstanceBindingError, SharedADBError):
@@ -153,20 +156,29 @@ class ScreenshotSession:
         else:
             self.failure = None
             return frame
+        self._report_failure("capture", cause, started)
         if self._blocks_recovery(cause):
             self._raise_failure(cause)
         self.rebuilt = True
+        stage = "recover"
         try:
             rebuilt_by_recovery = recover()
             if not rebuilt_by_recovery:
+                stage = "rebuild"
                 rebuild()
+            stage = "capture_after_rebuild"
             frame = validate_frame(capture())
-        except (MowerExit, DeviceRecoveryError, InstanceBindingError, SharedADBError):
+        except MowerExit:
+            raise
+        except (DeviceRecoveryError, InstanceBindingError, SharedADBError) as exc:
+            self._report_failure(stage, exc, started)
             raise
         except FrameSizeMismatch as exc:
+            self._report_failure(stage, exc, started)
             self._raise_failure(exc)
         except Exception as exc:
             cause = exc
+            self._report_failure(stage, cause, started)
         else:
             self.rebuilt = False
             self.failure = None
@@ -176,6 +188,16 @@ class ScreenshotSession:
         if self.backend != DEGRADABLE_BACKEND or standard_adb is None:
             self._raise_failure(cause)
         return self._standard_frame(standard_adb, cause)
+
+    def _report_failure(self, stage, cause, started):
+        logger.warning(
+            "%s 截图阶段失败：stage=%s code=%s elapsed_ms=%.1f detail=%s",
+            BACKEND_LABELS[self.profile.screenshot_backend],
+            stage,
+            getattr(cause, "code", type(cause).__name__),
+            (time.monotonic() - started) * 1000,
+            str(cause)[:1000],
+        )
 
     def _standard_frame(self, standard_adb, cause=None):
         """One plain ADB screencap, recorded as this session's degradation."""

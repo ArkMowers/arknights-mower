@@ -117,6 +117,15 @@ class DroidCastSession:
 
     def ensure_version(self, *, install=False):
         """Read-only by default; replacement never uninstalls another signature."""
+        path = self._ensure_version(install=install)
+        if install:
+            self._adb(
+                ["shell", "dumpsys", "deviceidle", "whitelist", f"+{PACKAGE}"],
+                stage="whitelist_failed",
+            )
+        return path
+
+    def _ensure_version(self, *, install=False):
         output = self._adb(
             ["shell", "pm", "path", PACKAGE], stage="version_failed", missing_ok=True
         )
@@ -334,6 +343,8 @@ class DroidCastSession:
             if self.process.poll() is not None:
                 raise DroidCastError("start_failed", "DroidCast helper 提前退出")
             response = None
+            phase = "headers"
+            data = bytearray()
             try:
                 # The helper's default payload is JPEG. Asking for
                 # `?format=png` costs 180-290ms per frame on the measured
@@ -351,14 +362,12 @@ class DroidCastSession:
                     raise DroidCastError(
                         "http_failed", f"DroidCast HTTP 状态码 {response.status_code}"
                     )
-                data = bytearray()
+                phase = "body"
                 while True:
                     if self._interrupted.is_set():
                         raise DroidCastError("closed", "DroidCast 会话正在关闭")
                     if time.monotonic() >= deadline:
-                        raise DroidCastError(
-                            "http_timeout", "DroidCast HTTP 读取超过限定时间"
-                        )
+                        raise TimeoutError("DroidCast HTTP 读取超过限定时间")
                     chunk = response.raw.read1(65536)
                     if not chunk:
                         break
@@ -375,7 +384,11 @@ class DroidCastSession:
                 return cv2.rotate(frame, cv2.ROTATE_180) if self.rotate else frame
             except (requests.Timeout, ReadTimeoutError, TimeoutError) as exc:
                 raise DroidCastError(
-                    "http_timeout", "DroidCast HTTP 连接或读取超时，请检查助手后重试"
+                    "http_timeout",
+                    "DroidCast HTTP 连接或读取超时："
+                    f"phase={phase} port={self.port} startup={self.starting} "
+                    f"received_bytes={len(data)} helper_exit={self.process.poll()} "
+                    f"cause={type(exc).__name__}: {str(exc)[:500]}",
                 ) from exc
             except requests.ConnectionError as exc:
                 if not self.starting:

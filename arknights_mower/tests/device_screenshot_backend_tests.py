@@ -139,6 +139,42 @@ class ScreenshotBackendTests(unittest.TestCase):
         self.assertEqual(self.handle.rebuilds, 0)
         self.assertEqual(self.simulator.actions, [])
 
+    def test_failed_recovery_preserves_initial_and_later_capture_diagnostics(self):
+        self.handle.frames = [
+            RuntimeError("original capture stalled"),
+            RuntimeError("rebuilt capture stalled"),
+        ]
+        with patch(
+            "arknights_mower.utils.device.screenshot_backend.logger.warning"
+        ) as log:
+            result = self.control.capture()
+        self.assertFalse(result.ok)
+        self.assertEqual(self.handle.rebuilds, 1)
+        messages = [call.args[0] % call.args[1:] for call in log.call_args_list]
+        self.assertEqual(len(messages), 2)
+        self.assertIn("stage=capture ", messages[0])
+        self.assertIn("original capture stalled", messages[0])
+        self.assertIn("stage=capture_after_rebuild ", messages[1])
+        self.assertIn("rebuilt capture stalled", messages[1])
+
+    def test_rebuild_failure_is_distinguished_from_failure_to_capture_after_rebuild(
+        self,
+    ):
+        def broken_rebuild():
+            raise RuntimeError("helper construction failed")
+
+        self.handle.rebuild_screenshot = broken_rebuild
+        with patch(
+            "arknights_mower.utils.device.screenshot_backend.logger.warning"
+        ) as log:
+            result = self.control.capture()
+        self.assertFalse(result.ok)
+        messages = [call.args[0] % call.args[1:] for call in log.call_args_list]
+        self.assertEqual(len(messages), 2)
+        self.assertIn("stage=rebuild ", messages[1])
+        self.assertIn("helper construction failed", messages[1])
+        self.assertEqual(self.handle.captures, 1)
+
     def test_backend_rebuild_failure_does_not_retry_or_restart(self):
         def broken_rebuild():
             self.handle.rebuilds += 1
