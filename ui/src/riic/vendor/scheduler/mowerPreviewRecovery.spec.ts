@@ -124,10 +124,12 @@ describe('recoverable Mower preview failure',()=>{
   const before=structuredClone(workspace)
   // This September fixture keeps its original model; current alpha decisions
   // are covered by the October 13 native oracles and shared-group runtime tests.
-  // Confirmed dorm recovery changes the physical return trajectory: this fixed
-  // fixture completes in 3027 intervals. Keep a tight total budget, and guard
-  // local density and consecutive clock quanta instead of only counting hours.
-  const result=runScheduleSimulationBridge(workspace,{schedulingModel:'mower-default',sampleHours:48,warmupHours:0,maxEvents:3200,warmupModel:'hourly',recordSegments:true,production:{outputMode:'potential',runOrderMode:'ideal',droneTarget:'gold',seed:42}},{fiammettaFool:true,restingThreshold:.65})
+  // MAX minus the 100-drone reserve performs 13 sets of 100 real 0.1-second
+  // decrement taps. This fixture completes in 4212 intervals (peak 227/hour),
+  // versus 3049 with the old reserve bug; 1152 of the 1163 extra intervals are
+  // additional decrement taps. Budget those actions while retaining the local
+  // density, consecutive clock-quanta, occupancy and morale safeguards below.
+  const result=runScheduleSimulationBridge(workspace,{schedulingModel:'mower-default',sampleHours:48,warmupHours:0,maxEvents:4400,warmupModel:'hourly',recordSegments:true,production:{outputMode:'potential',runOrderMode:'ideal',droneTarget:'gold',seed:42}},{fiammettaFool:true,restingThreshold:.65})
   expect(result.error).toBeUndefined()
   expect(result.report?.success,JSON.stringify(result.report?.diagnostics)).toBe(true)
   expect(result.report?.production?.success).toBe(true)
@@ -146,7 +148,7 @@ describe('recoverable Mower preview failure',()=>{
    expect(new Set(occupants).size).toBe(occupants.length)
    expect(Object.values(segment.morale).every(m=>Number.isFinite(m)&&m>=0&&m<=24)).toBe(true)
   }
-  expect(Math.max(...intervalsPerHour)).toBeLessThanOrEqual(200)
+  expect(Math.max(...intervalsPerHour)).toBeLessThanOrEqual(240)
   expect(maxTinyRun).toBeLessThanOrEqual(8)
  },90000)
 })

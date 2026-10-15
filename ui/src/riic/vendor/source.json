@@ -256,6 +256,10 @@
     "scheduler/fixtures/mower-drone-operations-alpha.json": {
       "sha256": "668802b1cd142242adf2f5216b853be6e863a6b527e51d2f3fca82516cbf8b7b",
       "reason": "Copy the unchanged frozen alpha fixture from calculator dffd403c8e2be5ac53824965cc9220d693c82e03 for regression of unaffected drone branches; its original native sourceCommit and hashes are retained."
+    },
+    "scheduler/mowerPreviewRecovery.spec.ts": {
+      "sha256": "782a11f09630cbe55e8cf06f30e86ab925d3cdf661002f4899f10cbec659fbcb",
+      "reason": "Retain the packaged historical roster fixture and account for the confirmed MAX-minus-reserve click timing: 4212 intervals and a 227/hour peak fit bounds of 4400 and 240. Preserve the 48-hour completion, consecutive microstep, unique occupancy, morale and unchanged-input assertions."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
