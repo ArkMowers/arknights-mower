@@ -371,7 +371,10 @@ onBeforeUnmount(() => {
     preset="card"
     title="计算收益"
     class="income-dialog"
-    :content-style="{ overflowY: 'auto' }"
+    :content-style="{
+      overflowY: 'auto',
+      paddingBottom: activeTab === 'timeline' ? '0' : undefined
+    }"
     :mask-closable="false"
     @update:show="!$event && close()"
   >
@@ -872,10 +875,15 @@ onBeforeUnmount(() => {
 
 <style scoped>
 :global(.income-dialog.n-card) {
-  width: 760px;
-  max-width: calc(95vw / var(--mower-zoom, 1));
-  max-height: calc(90vh / var(--mower-zoom, 1));
+  width: calc(98vw / var(--mower-zoom, 1));
+  height: calc(96vh / var(--mower-zoom, 1));
+  height: calc(96dvh / var(--mower-zoom, 1));
+  max-width: none;
 }
+:global(.income-dialog .n-card-content) {
+  min-height: 0;
+}
+:global(.income-dialog .n-tabs-pane-wrapper),
 :global(.income-dialog .n-tab-pane) {
   overflow: visible;
 }

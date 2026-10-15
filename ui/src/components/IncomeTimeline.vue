@@ -2,9 +2,11 @@
 import { computed, ref, watch } from 'vue'
 import { useThemeVars } from 'naive-ui'
 import ScheduleTimelineGantt from '@/riic/vendor/components/workbench/ScheduleTimelineGantt.vue'
+import IncomeHorizontalScroll from './IncomeHorizontalScroll.vue'
 
 const props = defineProps({ report: Object, timelineData: Object })
 const overviewPage = ref(1)
+const navigationTarget = ref(null)
 const operators = computed(() => props.report?.operators ?? [])
 const overviewRows = computed(() =>
   operators.value.slice((overviewPage.value - 1) * 20, overviewPage.value * 20)
@@ -41,42 +43,44 @@ const colors = computed(() => ({
           小时，不含预热。工作、休息、空闲和心情涣散驻岗分别统计，主班和替班工时不含心情涣散驻岗。
         </p>
         <p>工作占比 = 工作时长 / 采样时长；工休比 = 工作时长 / 休息时长，无休息时显示 —。</p>
-        <div class="time-overview-table">
-          <n-table size="small">
-            <thead>
-              <tr>
-                <th>干员</th>
-                <th>工作占比</th>
-                <th>工休比</th>
-                <th>工作（小时）</th>
-                <th>主班（小时）</th>
-                <th>替班（小时）</th>
-                <th>休息（小时）</th>
-                <th>空闲（小时）</th>
-                <th>心情涣散（小时）</th>
-                <th>期末心情</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="operator in overviewRows" :key="operator.operatorId">
-                <td>{{ operator.operatorName }}</td>
-                <td>{{ hours(operator.workFraction * 100) }}%</td>
-                <td>
-                  {{
-                    operator.workRestRatio == null ? '—' : `${hours(operator.workRestRatio)} : 1`
-                  }}
-                </td>
-                <td>{{ hours(operator.workHours) }}</td>
-                <td>{{ hours(operator.mainWorkHours) }}</td>
-                <td>{{ hours(operator.substituteWorkHours) }}</td>
-                <td>{{ hours(operator.restHours) }}</td>
-                <td>{{ hours(operator.idleHours) }}</td>
-                <td>{{ hours(operator.exhaustedHours) }}</td>
-                <td>{{ hours(operator.finalMorale) }} / 24</td>
-              </tr>
-            </tbody>
-          </n-table>
-        </div>
+        <IncomeHorizontalScroll selector=".time-overview-table" label="干员时间总览横向滚动">
+          <div class="time-overview-table">
+            <n-table size="small">
+              <thead>
+                <tr>
+                  <th>干员</th>
+                  <th>工作占比</th>
+                  <th>工休比</th>
+                  <th>工作（小时）</th>
+                  <th>主班（小时）</th>
+                  <th>替班（小时）</th>
+                  <th>休息（小时）</th>
+                  <th>空闲（小时）</th>
+                  <th>心情涣散（小时）</th>
+                  <th>期末心情</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="operator in overviewRows" :key="operator.operatorId">
+                  <td>{{ operator.operatorName }}</td>
+                  <td>{{ hours(operator.workFraction * 100) }}%</td>
+                  <td>
+                    {{
+                      operator.workRestRatio == null ? '—' : `${hours(operator.workRestRatio)} : 1`
+                    }}
+                  </td>
+                  <td>{{ hours(operator.workHours) }}</td>
+                  <td>{{ hours(operator.mainWorkHours) }}</td>
+                  <td>{{ hours(operator.substituteWorkHours) }}</td>
+                  <td>{{ hours(operator.restHours) }}</td>
+                  <td>{{ hours(operator.idleHours) }}</td>
+                  <td>{{ hours(operator.exhaustedHours) }}</td>
+                  <td>{{ hours(operator.finalMorale) }} / 24</td>
+                </tr>
+              </tbody>
+            </n-table>
+          </div>
+        </IncomeHorizontalScroll>
         <n-pagination
           v-if="operators.length > 20"
           v-model:page="overviewPage"
@@ -86,18 +90,61 @@ const colors = computed(() => ({
         />
       </n-collapse-item>
     </n-collapse>
-    <ScheduleTimelineGantt
-      :report="props.report"
-      :timeline-data="props.timelineData"
-      :initial-window-hours="24"
-      initially-collapsed
-    />
+    <div class="income-gantt">
+      <ScheduleTimelineGantt
+        :report="props.report"
+        :timeline-data="props.timelineData"
+        :initial-window-hours="24"
+        :overview-target="navigationTarget"
+        initially-collapsed
+      />
+      <div ref="navigationTarget" class="income-gantt-navigation" />
+    </div>
   </div>
 </template>
 
 <style scoped>
 .income-timeline {
   font-variant-numeric: tabular-nums;
+}
+.income-gantt-navigation {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  background: var(--timeline-surface);
+}
+.income-gantt-navigation :deep(.gantt-overview-scrubber) {
+  margin: 0;
+  padding: 3px 0 0;
+  border: 0;
+  background: var(--timeline-surface);
+}
+.income-gantt-navigation :deep(:is(.overview-header-row, .overview-day-tick, .viewport-tag)) {
+  display: none;
+}
+.income-gantt-navigation :deep(.overview-track) {
+  height: 8px;
+  border: 0;
+  border-radius: 4px;
+}
+.income-gantt .income-gantt-navigation :deep(.overview-track .overview-window-viewport) {
+  box-sizing: border-box;
+  border-radius: 4px;
+  background: var(--timeline-muted);
+}
+.income-timeline :deep(.time-window-info) {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.income-timeline :deep(.cursor-info) {
+  min-height: 1.5em;
+}
+.income-gantt-navigation :deep(.overview-track:focus-visible) {
+  outline: 2px solid var(--timeline-primary);
+  outline-offset: 2px;
+}
+.income-timeline :deep(.gantt-scroll-wrapper) {
+  min-width: 0;
 }
 .time-overview {
   margin: 12px 0 20px;
@@ -107,6 +154,10 @@ const colors = computed(() => ({
 }
 .time-overview-table {
   overflow-x: auto;
+  scrollbar-width: none;
+}
+.time-overview-table::-webkit-scrollbar {
+  display: none;
 }
 .time-overview-table :deep(table) {
   min-width: 1040px;
@@ -328,17 +379,6 @@ const colors = computed(() => ({
 .income-timeline :deep(:is(.scrubber-cursor, .major-day .tick-line)) {
   background: var(--timeline-primary);
 }
-.income-timeline :deep(.gantt-container) {
-  scrollbar-width: thin;
-}
-.income-timeline :deep(.gantt-container::-webkit-scrollbar) {
-  display: block;
-  height: 8px;
-}
-.income-timeline :deep(.gantt-container::-webkit-scrollbar-thumb) {
-  background: var(--timeline-border);
-  border-radius: 4px;
-}
 .income-timeline :deep(.facility-tag) {
   display: none;
 }
@@ -353,6 +393,12 @@ const colors = computed(() => ({
   color: var(--timeline-muted);
 }
 .income-timeline :deep(.gantt-tooltip) {
+  box-sizing: border-box;
+  min-width: min(200px, calc(100vw / var(--mower-zoom, 1) - 16px));
+  max-width: min(280px, calc(100vw / var(--mower-zoom, 1) - 16px));
+  max-height: calc(100dvh / var(--mower-zoom, 1) - 16px);
+  overflow: hidden;
+  overflow-wrap: anywhere;
   background: var(--timeline-raised);
   border-color: var(--timeline-border);
   color: var(--timeline-text);

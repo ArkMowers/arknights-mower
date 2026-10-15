@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { toPng, toBlob } from 'html-to-image'
 import type { ScheduleSimulationReport } from '../../simulator/scheduleSimulation'
 import {
@@ -17,6 +17,7 @@ const props = withDefaults(defineProps<{
   timelineData?: TimelineDataset | null
   initialWindowHours?: 24 | 72
   initiallyCollapsed?: boolean
+  overviewTarget?: HTMLElement | null
 }>(), {
   initialWindowHours: 72,
   initiallyCollapsed: false,
@@ -45,6 +46,11 @@ const overviewTrackRef = ref<HTMLElement | null>(null)
 const isDraggingOverview = ref(false)
 let overviewDragStartX = 0
 let overviewDragStartWindowStart = 0
+let stopOverviewDrag: (() => void) | undefined
+onBeforeUnmount(() => stopOverviewDrag?.())
+watch(isTimelineExpanded, (expanded) => {
+  if (!expanded) stopOverviewDrag?.()
+})
 
 // Export modal and state (Supports Full Sampling Phase & Multi-Day Volumes for 14+ days)
 const showExportModal = ref(false)
@@ -131,6 +137,24 @@ const hoveredInterval = ref<TimelineDisplayInterval | null>(null)
 const hoveredEvent = ref<TimelineMarkerEvent | null>(null)
 const tooltipX = ref(0)
 const tooltipY = ref(0)
+const intervalTooltipRef = ref<HTMLElement | null>(null)
+const eventTooltipRef = ref<HTMLElement | null>(null)
+let tooltipPointer = { x: 0, y: 0 }
+
+function updateTooltipPosition(e: MouseEvent): void {
+  tooltipPointer = { x: e.clientX, y: e.clientY }
+  nextTick(() => {
+    const tooltip = hoveredInterval.value ? intervalTooltipRef.value : eventTooltipRef.value
+    if (!tooltip) return
+    const rect = tooltip.getBoundingClientRect()
+    const zoom = rect.width / tooltip.offsetWidth || 1
+    const { x, y } = tooltipPointer
+    const left = x + 12 + rect.width <= window.innerWidth - 8 ? x + 12 : x - rect.width - 12
+    const top = y + 12 + rect.height <= window.innerHeight - 8 ? y + 12 : y - rect.height - 12
+    tooltipX.value = Math.max(8, Math.min(window.innerWidth - rect.width - 8, left)) / zoom
+    tooltipY.value = Math.max(8, Math.min(window.innerHeight - rect.height - 8, top)) / zoom
+  })
+}
 const cursorTime = ref<number | null>(null)
 const cursorXPercent = ref<number | null>(null)
 
@@ -333,6 +357,7 @@ function handleOverviewThumbMouseDown(e: MouseEvent): void {
   e.stopPropagation()
   e.preventDefault()
 
+  stopOverviewDrag?.()
   isDraggingOverview.value = true
   overviewDragStartX = e.clientX
   overviewDragStartWindowStart = customWindowStart.value
@@ -351,8 +376,10 @@ function handleOverviewThumbMouseDown(e: MouseEvent): void {
     isDraggingOverview.value = false
     window.removeEventListener('mousemove', onMouseMove)
     window.removeEventListener('mouseup', onMouseUp)
+    stopOverviewDrag = undefined
   }
 
+  stopOverviewDrag = onMouseUp
   window.addEventListener('mousemove', onMouseMove)
   window.addEventListener('mouseup', onMouseUp)
 }
@@ -367,6 +394,7 @@ function handleOverviewTrackMouseDown(e: MouseEvent): void {
   const clickHour = frac * totalObservedHours.value
   panWindowTo(clickHour - windowDuration.value / 2)
 
+  stopOverviewDrag?.()
   isDraggingOverview.value = true
   overviewDragStartX = e.clientX
   overviewDragStartWindowStart = customWindowStart.value
@@ -383,8 +411,10 @@ function handleOverviewTrackMouseDown(e: MouseEvent): void {
     isDraggingOverview.value = false
     window.removeEventListener('mousemove', onMouseMove)
     window.removeEventListener('mouseup', onMouseUp)
+    stopOverviewDrag = undefined
   }
 
+  stopOverviewDrag = onMouseUp
   window.addEventListener('mousemove', onMouseMove)
   window.addEventListener('mouseup', onMouseUp)
 }
@@ -710,6 +740,7 @@ function jumpToNextBackupEvent(): void {
 
 // Track mouse cursor over timeline
 function handleMouseMove(e: MouseEvent): void {
+  if (hoveredInterval.value || hoveredEvent.value) updateTooltipPosition(e)
   const container = (e.currentTarget as HTMLElement)
   const rect = container.getBoundingClientRect()
   const mouseX = Math.max(0, Math.min(rect.width, e.clientX - rect.left))
@@ -727,14 +758,12 @@ function handleMouseLeave(): void {
 
 function handleIntervalHover(interval: TimelineDisplayInterval, e: MouseEvent): void {
   hoveredInterval.value = interval
-  tooltipX.value = e.clientX + 12
-  tooltipY.value = e.clientY + 12
+  updateTooltipPosition(e)
 }
 
 function handleEventHover(event: TimelineMarkerEvent, e: MouseEvent): void {
   hoveredEvent.value = event
-  tooltipX.value = e.clientX + 12
-  tooltipY.value = e.clientY + 12
+  updateTooltipPosition(e)
 }
 
 function formatHour(h: number | null | undefined): string {
@@ -967,58 +996,74 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
         </div>
       </div>
 
-      <!-- Overview Scrubber Track (visible when total > window, Req 4) -->
-      <div
-        v-if="isTimelineExpanded && totalObservedHours > windowDuration"
-        class="gantt-overview-scrubber"
-        data-test="gantt-overview-scrubber"
-      >
-        <div class="overview-header-row">
-          <span class="overview-title">
-            全景概览（共 {{ totalObservedHours.toFixed(0) }}h / {{ (totalObservedHours / 24).toFixed(1) }} 天 · 支持拖拽滑块实时滑动预览）：
-          </span>
-          <span class="overview-pct">
-            视窗覆盖 {{ ((windowDuration / totalObservedHours) * 100).toFixed(0) }}% ({{ windowDuration.toFixed(1) }}h)
-          </span>
-        </div>
+      <!-- Overview Scrubber Track -->
+      <Teleport :to="overviewTarget || 'body'" :disabled="!overviewTarget">
         <div
-          ref="overviewTrackRef"
-          class="overview-track"
-          :class="{ 'is-dragging': isDraggingOverview }"
-          @mousedown="handleOverviewTrackMouseDown"
+          v-if="isTimelineExpanded && totalObservedHours > windowDuration"
+          class="gantt-overview-scrubber"
+          data-test="gantt-overview-scrubber"
         >
-          <!-- Day divider lines -->
-          <div
-            v-for="d in overviewDayTicks"
-            :key="d.day"
-            class="overview-day-tick"
-            :style="{ left: `${d.percent}%` }"
-          >
-            <span v-if="d.showLabel" class="overview-tick-label">D{{ d.day }}</span>
-          </div>
-
-          <!-- Viewport highlight thumb (draggable) -->
-          <div
-            class="overview-window-viewport"
-            :class="{ 'is-dragging': isDraggingOverview }"
-            :style="{
-              left: `${(customWindowStart / totalObservedHours) * 100}%`,
-              width: `${((customWindowEnd - customWindowStart) / totalObservedHours) * 100}%`,
-            }"
-            @mousedown.stop="handleOverviewThumbMouseDown"
-          >
-            <span class="viewport-tag">
-              T+{{ customWindowStart.toFixed(0) }}h ~ T+{{ customWindowEnd.toFixed(0) }}h
+          <div class="overview-header-row">
+            <span class="overview-title">
+              全景概览（共 {{ totalObservedHours.toFixed(0) }}h / {{ (totalObservedHours / 24).toFixed(1) }} 天 · 支持拖拽滑块实时滑动预览）：
+            </span>
+            <span class="overview-pct">
+              视窗覆盖 {{ ((windowDuration / totalObservedHours) * 100).toFixed(0) }}% ({{ windowDuration.toFixed(1) }}h)
             </span>
           </div>
+          <div
+            ref="overviewTrackRef"
+            class="overview-track"
+            role="scrollbar"
+            aria-label="甘特图时间导航"
+            aria-orientation="horizontal"
+            :aria-valuemin="0"
+            :aria-valuemax="Math.max(0, totalObservedHours - windowDuration)"
+            :aria-valuenow="customWindowStart"
+            :aria-valuetext="`T+${customWindowStart.toFixed(1)}h 至 T+${customWindowEnd.toFixed(1)}h`"
+            tabindex="0"
+            @keydown.left.prevent="panWindowTo(customWindowStart - windowDuration)"
+            @keydown.right.prevent="panWindowTo(customWindowStart + windowDuration)"
+            @keydown.home.prevent="jumpToStart"
+            @keydown.end.prevent="jumpToEnd"
+            :class="{ 'is-dragging': isDraggingOverview }"
+            @mousedown="handleOverviewTrackMouseDown"
+          >
+            <!-- Day divider lines -->
+            <div
+              v-for="d in overviewDayTicks"
+              :key="d.day"
+              class="overview-day-tick"
+              :style="{ left: `${d.percent}%` }"
+            >
+              <span v-if="d.showLabel" class="overview-tick-label">D{{ d.day }}</span>
+            </div>
+
+            <!-- Viewport highlight thumb (draggable) -->
+            <div
+              class="overview-window-viewport"
+              :class="{ 'is-dragging': isDraggingOverview }"
+              :style="{
+                left: `${(customWindowStart / totalObservedHours) * 100}%`,
+                width: `${((customWindowEnd - customWindowStart) / totalObservedHours) * 100}%`,
+              }"
+              @mousedown.stop="handleOverviewThumbMouseDown"
+            >
+              <span class="viewport-tag">
+                T+{{ customWindowStart.toFixed(0) }}h ~ T+{{ customWindowEnd.toFixed(0) }}h
+              </span>
+            </div>
+          </div>
         </div>
-      </div>
+      </Teleport>
 
       <!-- Time Window Info Bar -->
       <div v-if="isTimelineExpanded" class="time-window-info">
         <span>当前视窗：<strong>T+{{ customWindowStart.toFixed(1) }}h</strong> 至 <strong>T+{{ customWindowEnd.toFixed(1) }}h</strong>（共 {{ windowDuration.toFixed(1) }} 小时 / {{ (windowDuration / 24).toFixed(1) }} 天 · 按住鼠标左键可拖拽时间轴平移）</span>
-        <span v-if="cursorTime !== null" class="cursor-info">
-          🎯 光标定位：<strong>T+{{ cursorTime.toFixed(2) }}h</strong>（第 {{ Math.floor(cursorTime / 24) + 1 }} 天 {{ String(Math.floor(cursorTime % 24)).padStart(2, '0') }}:{{ String(Math.floor((cursorTime % 1) * 60)).padStart(2, '0') }}）
+        <span class="cursor-info">
+          <span v-if="cursorTime !== null">
+            🎯 光标定位：<strong>T+{{ cursorTime.toFixed(2) }}h</strong>（第 {{ Math.floor(cursorTime / 24) + 1 }} 天 {{ String(Math.floor(cursorTime % 24)).padStart(2, '0') }}:{{ String(Math.floor((cursorTime % 1) * 60)).padStart(2, '0') }}）
+          </span>
         </span>
       </div>
     </div>
@@ -1240,6 +1285,7 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
     <!-- Floating Inspector Tooltip -->
     <div
       v-if="isTimelineExpanded && hoveredInterval"
+      ref="intervalTooltipRef"
       class="gantt-tooltip"
       :style="{ left: `${tooltipX}px`, top: `${tooltipY}px` }"
     >
@@ -1283,6 +1329,7 @@ function getStatusBadgeClass(status: TimelineInterval['status'], roomType: strin
     <!-- Event Tooltip -->
     <div
       v-if="isTimelineExpanded && hoveredEvent"
+      ref="eventTooltipRef"
       class="gantt-tooltip event-tooltip"
       :style="{ left: `${tooltipX}px`, top: `${tooltipY}px` }"
     >
