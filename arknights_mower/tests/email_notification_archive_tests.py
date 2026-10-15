@@ -1,6 +1,7 @@
 """Error notifications log; only explicit visual failures request archives."""
 
 import logging
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -74,7 +75,7 @@ def test_error_notification_always_logs_and_only_visual_failure_archives(
         assert "记录编号" not in notification.live_log.call_args.args[0]
     assert len(notification.records) == 1
     record = notification.records[0]
-    assert record.pathname.endswith("utils/email.py")
+    assert Path(record.pathname).as_posix().endswith("utils/email.py")
     assert record.archive_screenshots is visual
     assert "白面鸮：训练室面板与计划不符" in notification.live_log.call_args.args[0]
     if mail_enable:

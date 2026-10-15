@@ -77,7 +77,10 @@ class Email:
             s = smtplib.SMTP_SSL(self.smtp_server, self.port, timeout=10)
         conf = config.conf
         s.login(conf.account, conf.pass_code)
-        recipient = (conf.recipient or [conf.account]) if not recipient else recipient
+        if not recipient:
+            recipient = [address for address in conf.recipient if address.strip()] or [
+                conf.account
+            ]
         s.send_message(self.msg, conf.account, recipient)
         s.quit()
 
