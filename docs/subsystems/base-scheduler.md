@@ -263,6 +263,7 @@ A focused live MuMu run with on-demand collection disabled confirmed recognition
 ### 2.7 Drone Acceleration
 - Consumes Power Plant drones (each drone deducting 3 minutes) to accelerate manufacturing lines or trading post orders.
 - Deconflicts concurrent trade order runs with scheduled acceleration windows.
+- Manufacturing acceleration selects MAX before confirming quantity. When trade order rooms exist and custom reserve handling is enabled, it decreases the selection by `drone_count_limit`, retaining that many drones: stock 250 and threshold 20 use 230. Stock below the threshold does not open the acceleration panel; stock equal to the threshold consumes none. Without trade order rooms or with `not_customize`, the existing all-in behavior applies after the stock threshold check. The calculator uses the same selection rule.
 - Calculates current-unit drone counts before manufacturing product switches, subject to the configured progress-loss tolerance.
 - After Drone Acceleration, carries the accelerated current unit's remaining time to the product change confirmation. A countdown for the next unit does not defer the switch.
 - The [manufacturing switch boundary decision](../../.agents/notes/implemented/bug-fix/2026-09-29-manufacturing-switch-boundary.md) records the failure case and verification.

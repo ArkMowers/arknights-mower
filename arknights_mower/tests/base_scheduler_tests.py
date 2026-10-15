@@ -2706,6 +2706,84 @@ class TestDroneAccelerate(unittest.TestCase):
     持续失败则抛异常，上层据此保留任务并按既有策略退避。
     """
 
+    def test_factory_reserves_threshold_after_selecting_maximum(self):
+        cases = [
+            ("reserve", 250, 20, 250, True, False, 230, 20),
+            ("partial_selection", 250, 20, 7, True, False, 230, 20),
+            ("at_threshold", 20, 20, 20, True, False, 0, 20),
+            ("below_threshold", 19, 20, 19, True, False, None, 0),
+            ("zero_threshold", 250, 0, 7, True, False, 250, 0),
+            ("no_run_orders", 250, 20, 7, False, False, 250, 0),
+            ("not_customize", 250, 20, 7, True, True, 250, 0),
+        ]
+        for (
+            name,
+            available,
+            threshold,
+            initial_selected,
+            has_run_orders,
+            not_customize,
+            expected_spend,
+            expected_reductions,
+        ) in cases:
+            with self.subTest(name=name):
+                solver = object.__new__(BaseSchedulerSolver)
+                solver.recog = SimpleNamespace(w=1920, h=1080, gray="gray")
+                solver.op_data = SimpleNamespace(
+                    run_order_rooms=["room_1_1"] if has_run_orders else []
+                )
+                solver.digit_reader = MagicMock()
+                solver.digit_reader.get_drone.return_value = available
+                accelerate_scope = ((100, 100), (200, 200))
+                maximum_scope = ((300, 300), (400, 400))
+                selected = initial_selected
+                spent = None
+                operations = []
+
+                def tap(poly, **kwargs):
+                    nonlocal selected, spent
+                    if poly == maximum_scope:
+                        selected = available
+                        operations.append("maximum")
+                    elif poly == (1920 * 0.7, 1080 * 0.5):
+                        selected = max(0, selected - 1)
+                        operations.append("reduce")
+                    elif poly == accelerate_scope:
+                        spent = selected
+                        operations.append("confirm")
+
+                with (
+                    patch.object(
+                        base_schedule.config,
+                        "conf",
+                        SimpleNamespace(drone_count_limit=threshold),
+                    ),
+                    patch.object(solver, "enter_room"),
+                    patch.object(solver, "_wait_drone_interface"),
+                    patch.object(solver, "_cache_facility_state_from_current_page"),
+                    patch.object(solver, "find", return_value=accelerate_scope),
+                    patch.object(solver, "tap", side_effect=tap),
+                    patch.object(
+                        solver, "_tap_drone_accelerate", return_value=maximum_scope
+                    ) as open_panel,
+                ):
+                    solver.drone(
+                        "room_1_2", not_customize=not_customize, not_return=True
+                    )
+
+                self.assertEqual(spent, expected_spend)
+                if expected_spend is None:
+                    self.assertEqual(operations, [])
+                    open_panel.assert_not_called()
+                else:
+                    self.assertEqual(
+                        operations,
+                        ["maximum"] + ["reduce"] * expected_reductions + ["confirm"],
+                    )
+                    open_panel.assert_called_once_with(
+                        "manufacture_accelerate", "all_in"
+                    )
+
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_tap_drone_accelerate_retries_when_first_attempt_fails(self):
         """首次点击 bill_accelerate 未打开面板时，重试后成功。"""

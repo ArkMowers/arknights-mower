@@ -240,6 +240,26 @@
     "engine/dormitoryRecovery.ts": {
       "reason": "Keep low-morale recovery separate from the all-room maximum and take the highest conditional extra across the two eligible providers; synchronized from calculator e58cc77de27e74f7ab261890a1824c02061a14f6.",
       "sha256": "1032e59a9d435e0b8ecd76f5236e5a49537803563bf0f36372d7659f77c141e4"
+    },
+    "scheduler/mowerDroneOperations.ts": {
+      "sha256": "ede7f1ae46261f588f800b9ecd0aec962642d48d84b63cd416fa3818e6c3a186",
+      "reason": "Synchronize the manufacturing reserve correction and focused tests from the calculator working tree: select MAX, then subtract the configured reserve. Frozen alpha traces keep their original provenance; corrected reserve branches use separate contract tests."
+    },
+    "scheduler/mowerDroneOperations.spec.ts": {
+      "sha256": "15b332ce027b36d60e10770633fa4a6ec148f5dfffeb0bd7e5ff82986ff45599",
+      "reason": "Synchronize the manufacturing reserve correction and focused tests from the calculator working tree: select MAX, then subtract the configured reserve. Frozen alpha traces keep their original provenance; corrected reserve branches use separate contract tests."
+    },
+    "simulator/mowerManufactureIO.spec.ts": {
+      "sha256": "a3a1ad285bdc56fffd0dfd0a15ddd113b7cc091d8898e5f12bdeb442a5351895",
+      "reason": "Synchronize the manufacturing reserve correction and focused tests from the calculator working tree: select MAX, then subtract the configured reserve. Frozen alpha traces keep their original provenance; corrected reserve branches use separate contract tests."
+    },
+    "scheduler/fixtures/mower-drone-operations-alpha.json": {
+      "sha256": "668802b1cd142242adf2f5216b853be6e863a6b527e51d2f3fca82516cbf8b7b",
+      "reason": "Copy the unchanged frozen alpha fixture from calculator dffd403c8e2be5ac53824965cc9220d693c82e03 for regression of unaffected drone branches; its original native sourceCommit and hashes are retained."
+    },
+    "scheduler/mowerPreviewRecovery.spec.ts": {
+      "sha256": "782a11f09630cbe55e8cf06f30e86ab925d3cdf661002f4899f10cbec659fbcb",
+      "reason": "Retain the packaged historical roster fixture and account for the confirmed MAX-minus-reserve click timing: 4212 intervals and a 227/hour peak fit bounds of 4400 and 240. Preserve the 48-hour completion, consecutive microstep, unique occupancy, morale and unchanged-input assertions."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",

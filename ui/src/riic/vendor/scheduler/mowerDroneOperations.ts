@@ -1,6 +1,7 @@
 /**
  * Ordinary trade/manufacture drone tasks.
  * Source c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
+ * Manufacturing reserve correction: select MAX, then subtract the configured reserve.
  * Observed absolute deadlines/counts and device timing come from I/O; no production fitting.
  */
 export interface MowerDroneOperationState {
@@ -83,12 +84,13 @@ export function* executeMowerDroneOperation(
     const count=finite(yield* observed(seam,{kind:'read-drone-count'}),'drone-count')
     if(count<state.droneCountLimit)return null
     const allInScope=yield* observed(seam,{kind:'tap-drone-accelerate',template:'manufacture_accelerate',control:'all_in'})
+    yield* observed(seam,{kind:'tap',action:'all-in',target:allInScope})
     if(retainReserve){
-      const tapTimes=count-state.droneCountLimit
+      const tapTimes=state.droneCountLimit
       if(!Number.isSafeInteger(tapTimes))throw new Error('Native manufacture minus count must be an integer')
       for(let tap=0;tap<tapTimes;tap+=1)
         yield* observed(seam,{kind:'tap',action:'minus-reserve',target:[state.width*.7,state.height*.5],intervalSeconds:.1})
-    }else yield* observed(seam,{kind:'tap',action:'all-in',target:allInScope})
+    }
     yield* observed(seam,{kind:'tap',action:'confirm-manufacture',target:manufacture,yRate:1})
   }else{
   let accelerate=yield* observed(seam,{kind:'find',name:'bill_accelerate'})

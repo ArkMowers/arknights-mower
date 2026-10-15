@@ -7952,15 +7952,11 @@ class BaseSchedulerSolver(
             all_in_scope = self._tap_drone_accelerate(
                 "manufacture_accelerate", "all_in"
             )
-            # 如果不是全部all in
+            self.tap(all_in_scope)
+            # 有跑单时从最大选量减去预留数量。
             if all_in > 0:
-                tap_times = (
-                    drone_count - config.conf.drone_count_limit
-                )  # 修改为无人机阈值
-                for _count in range(tap_times):
+                for _count in range(config.conf.drone_count_limit):
                     self.tap((self.recog.w * 0.7, self.recog.h * 0.5), interval=0.1)
-            else:
-                self.tap(all_in_scope)
             self.tap(accelerate, y_rate=1)
         else:
             accelerate = self.find("bill_accelerate")
