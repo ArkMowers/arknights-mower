@@ -1,6 +1,7 @@
 import json
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 # base_schedule 的导入链会初始化森空岛模块；上报测试不依赖网络。
@@ -55,11 +56,15 @@ def penguin_request(**overrides):
 
 class UploadReportTests(unittest.TestCase):
     def setUp(self):
-        thread_patch = patch.object(maa_report.threading, "Thread", InlineThread)
+        thread_patch = patch.object(
+            maa_report, "threading", SimpleNamespace(Thread=InlineThread)
+        )
         thread_patch.start()
         self.addCleanup(thread_patch.stop)
-        sleep_patch = patch.object(maa_report.time, "sleep")
-        self.sleep = sleep_patch.start()
+        sleep_patch = patch.object(
+            maa_report, "time", SimpleNamespace(sleep=MagicMock())
+        )
+        self.sleep = sleep_patch.start().sleep
         self.addCleanup(sleep_patch.stop)
         # 非企鹅目标的首次失败会升级为告警，用例之间必须清掉这个一次性标记。
         maa_report._report_failure_reported = False
