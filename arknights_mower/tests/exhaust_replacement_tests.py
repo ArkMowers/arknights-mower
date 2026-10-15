@@ -633,3 +633,100 @@ def test_rescue_projection_checks_occupied_cover_coordination(solver, coordinata
     assert solver.tasks == []
     solver.enter_room.assert_not_called()
     base_schedule.send_message.assert_not_called()
+
+
+@pytest.mark.parametrize("recall", [False, True])
+@pytest.mark.parametrize("restored", [False, True])
+def test_exhaust_support_dispatch_preserves_recovery_capacity(solver, recall, restored):
+    import jsonpickle
+
+    if recall:
+        solver.op_data.operators["苍苔"].replacement = ["槐琥"]
+    solver.overtake_room()
+    if restored:
+        solver.tasks = jsonpickle.decode(jsonpickle.encode(solver.tasks))
+    support, retry = solver.tasks
+    expected = (
+        {"room_2_2": ["苍苔"], "contact": ["絮雨"]}
+        if recall
+        else {"room_2_2": ["引星棘刺"]}
+    )
+    assert support.plan == expected
+    original_time = support.time
+    positions = {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+    beds = [(bed.name, bed.time) for bed in solver.op_data.dorm]
+    solver.task = support
+    solver._prepare_group_shift(support)
+    solver._prepare_shift_cycle(support)
+    solver._prepare_group_shift(support, remember_targets=True)
+    assert support.plan == expected
+    assert support.time == original_time
+    assert positions == {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+    assert beds == [(bed.name, bed.time) for bed in solver.op_data.dorm]
+    # 仅在前置接岗已确认后重算用尽下班，不允许普通轮休抢占最后一床。
+    solver.op_data = solver.op_data.project_arrangements([support.plan])
+    assert solver._complete_group_shift(support)
+    solver.tasks, solver.task = [], retry
+    solver.overtake_room()
+    (off,) = solver.tasks
+    assert off.type == TaskTypes.SHIFT_OFF
+    assert off.plan["room_3_3"] == ["槐琥"]
+    assert "机械师" in off.plan["dormitory_1"]
+    assert "能天使" not in off.plan.get("dormitory_1", [])
+    base_schedule.send_message.assert_not_called()
+
+
+def test_backup_coalescing_preserves_exhaust_support_task(solver):
+    solver.overtake_room()
+    support, retry = solver.tasks
+    original_plan, original_time = deepcopy(support.plan), support.time
+    _, consumed = solver._coalesce_backup_transition({"room_2_2": ["结城理"]})
+    assert not any(task is support for task in consumed)
+    assert support.plan == original_plan
+    assert support.time == original_time
+    assert solver.tasks == [support, retry]
+
+
+def test_ordinary_cycle_does_not_consume_exhaust_support(solver):
+    solver.overtake_room()
+    support, retry = solver.tasks
+    ordinary = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION, task_plan={})
+    solver.tasks.append(ordinary)
+    solver.task = ordinary
+    solver._prepare_shift_cycle(ordinary)
+    assert any(task is support for task in solver.tasks)
+    assert any(task is retry for task in solver.tasks)
+
+
+def test_exhaust_support_still_prepares_explicit_backup_entry(solver):
+    from arknights_mower.utils.logic_expression import LogicExpression
+
+    data = solver.op_data
+    data.backup_plans = [
+        Plan(
+            {},
+            PlanConfig("", "", ""),
+            trigger=LogicExpression(
+                "op_data.operators['槐琥'].current_room", "!=", "'room_2_2'"
+            ),
+            task={"meeting": ["陈"]},
+        )
+    ]
+    data.global_plan["backup_plans"] = data.backup_plans
+    data.plan_condition = [False]
+    solver.overtake_room()
+    support, _ = solver.tasks
+    solver.task = support
+    solver._prepare_group_shift(support)
+    solver._prepare_shift_cycle(support)
+    assert support.backup_shift_conditions == [True]
+    assert support.plan["room_2_2"] == ["引星棘刺"]
+    assert support.plan["meeting"] == ["陈"]
+    assert data.plan_condition == [False]
+    assert data.operators["槐琥"].current_room == "room_2_2"

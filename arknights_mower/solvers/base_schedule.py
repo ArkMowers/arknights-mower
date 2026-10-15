@@ -775,11 +775,11 @@ class BaseSchedulerSolver(
             support = self._plan_exhaust_support(candidates)
             if support:
                 logger.info(f"用尽下班优先协调替班和床位：{support}")
-                self.tasks.append(
-                    SchedulerTask(
-                        task_plan=support, task_type=TaskTypes.SELF_CORRECTION
-                    )
+                support_task = SchedulerTask(
+                    task_plan=support, task_type=TaskTypes.SELF_CORRECTION
                 )
+                support_task.exhaust_support = True
+                self.tasks.append(support_task)
                 # 先确认占用方接岗，再重算用尽下班；不能直接从工作站抽走替班。
                 self.tasks.append(
                     SchedulerTask(
@@ -4112,6 +4112,7 @@ class BaseSchedulerSolver(
             for task in task_view(self.tasks, TaskScope.REPLAN)
             if task.type in ordinary
             and task.plan
+            and not getattr(task, "exhaust_support", False)
             and min(task.time, getattr(task, "arrangement_retry_due_at", task.time))
             <= now + timedelta(minutes=1)
             and not getattr(task, "strict_mood_limit", False)
@@ -5547,6 +5548,10 @@ class BaseSchedulerSolver(
             task, "backup_shift_active", False
         ):
             return
+        if getattr(task, "exhaust_support", False):
+            # 先确认前置接岗，再由原用尽任务重算下班；普通轮休不能在此抢床。
+            self._prepare_shift_backup(task)
+            return
         # 肥鸭、延期切产物和临近关键任务仍由原有调度边界处理。
         probe = SchedulerTask(task_type=TaskTypes.FILL_DORM)
         simplify_dorm_fill(probe, self.tasks, op_data=self.op_data)
@@ -5603,6 +5608,7 @@ class BaseSchedulerSolver(
             if t is not task
             and t.type in ordinary
             and t.plan
+            and not getattr(t, "exhaust_support", False)
             and t.time <= datetime.now()
             and not getattr(t, "strict_mood_limit", False)
             and not getattr(t, "dorm_recovery_restore", [])
