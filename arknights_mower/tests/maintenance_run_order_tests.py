@@ -298,6 +298,9 @@ def test_entry_advances_existing_maintenance_orders_before_swap(solver, monkeypa
     solver.op_data.backup_plans[0].plan = {}
     now = datetime.now()
     info = maintenance_info(now + timedelta(minutes=20))
+    # 本例只检查公告维护前的跑单，将独立日切窗口放到这些订单之后。
+    daily_reset = NewsChecker.get_daily_reset(now + timedelta(days=1))
+    monkeypatch.setattr(NewsChecker, "get_daily_reset", lambda now=None: daily_reset)
     monkeypatch.setattr(NewsChecker, "get_maintenance", lambda: info)
     monkeypatch.setattr(NewsChecker, "get_update_time", lambda: (info.start, info.end))
     order = SchedulerTask(
