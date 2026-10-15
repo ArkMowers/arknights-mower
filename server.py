@@ -1968,6 +1968,12 @@ def _stop_mower(timeout=10, *, preserve_run_intent=False):
                 task_intent(False)
         except Exception:
             logger.exception("再次记录任务停止意图失败，继续取消工作线程")
+        finally:
+            if not preserve_run_intent:
+                try:
+                    crash_recovery.cancel()
+                except Exception:
+                    logger.exception("再次记录自动恢复取消失败，当前进程已停止后台重试")
         if mower_thread is None:
             return True
         mower_thread.join(max(0, deadline - time.monotonic()))

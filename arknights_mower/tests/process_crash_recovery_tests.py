@@ -142,6 +142,74 @@ def test_stop_keeps_automatic_retry_cancelled_despite_report_failure(
     offline.io.assert_not_called()
 
 
+def test_stop_cancels_resume_published_by_start_already_holding_lock(
+    offline, notice, monkeypatch, tmp_path
+):
+    monkeypatch.delenv("MOWER_SUPERVISOR_INTENT", raising=False)
+    monkeypatch.setattr(offline.server, "maa_maintenance_lock", RLock())
+    monkeypatch.setattr(offline.server, "get_path", lambda value: tmp_path)
+    monkeypatch.setattr(offline.server.resource_update, "running", lambda: False)
+    monkeypatch.setattr(offline.server, "load_state", Mock(return_value={}))
+    monkeypatch.setattr(offline.server, "_cancel_scheduled_start", Mock())
+    worker = Mock()
+    worker.is_alive.return_value = False
+    monkeypatch.setattr(offline.server, "Thread", Mock(return_value=worker))
+    observed, proceed, stop_cancelled = Event(), Event(), Event()
+    original_status, original_cancel = crash_recovery.status, crash_recovery.cancel
+    starts, stops, errors = [], [], []
+
+    def status():
+        value = original_status()
+        if not observed.is_set():
+            observed.set()
+            assert proceed.wait(5), "Start must resume after Stop cancels recovery"
+        return value
+
+    def cancel():
+        original_cancel()
+        stop_cancelled.set()
+
+    monkeypatch.setattr(crash_recovery, "status", status)
+    monkeypatch.setattr(crash_recovery, "cancel", cancel)
+
+    def start():
+        try:
+            starts.append(offline.server._start_mower("0"))
+        except BaseException as error:
+            errors.append(error)
+
+    def stop():
+        try:
+            stops.append(offline.server._stop_mower(timeout=5))
+        except BaseException as error:
+            errors.append(error)
+
+    starter, stopper = Thread(target=start), Thread(target=stop)
+    starter.start()
+    try:
+        assert observed.wait(5), (
+            "Start must read the active notice while holding the lock"
+        )
+        stopper.start()
+        assert stop_cancelled.wait(5), (
+            "Stop must cancel before waiting for Start's lock"
+        )
+    finally:
+        proceed.set()
+        starter.join(5)
+        if stopper.ident is not None:
+            stopper.join(5)
+    assert not starter.is_alive() and not stopper.is_alive() and not errors
+    assert starts == [True] and stops == [True]
+    assert config.stop_mower.is_set()
+    assert crash_recovery.cancelled()
+    assert runtime.read_json(notice)["resume_requested"] is False
+    assert not crash_recovery.status()["automatic"]
+    assert not offline.server._retry_after_process_crash()
+    worker.start.assert_called_once()
+    offline.io.assert_not_called()
+
+
 def test_start_report_failure_rolls_back_unstarted_worker(
     offline, monkeypatch, tmp_path
 ):
