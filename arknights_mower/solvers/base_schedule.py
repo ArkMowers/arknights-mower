@@ -747,7 +747,11 @@ class BaseSchedulerSolver(
             for name in candidates
             if not self.op_data.operators[name].room.startswith("dorm")
             and not self.op_data.operators[name].workaholic
-            and not self.op_data.operators[name].multi_group
+            and (
+                not self.op_data.operators[name].multi_group
+                or len(candidates) == 1
+                and self.op_data.operators[name].independent_rest
+            )
         ]
         if resting_members and all(op.is_resting() for op in resting_members):
             logger.info(f"{self.task.meta_data} 已完成用尽下班，继续正常规划")
@@ -801,7 +805,11 @@ class BaseSchedulerSolver(
             for name in candidates
             if not self.op_data.operators[name].room.startswith("dorm")
             and not self.op_data.operators[name].workaholic
-            and not self.op_data.operators[name].multi_group
+            and (
+                not self.op_data.operators[name].multi_group
+                or len(candidates) == 1
+                and self.op_data.operators[name].independent_rest
+            )
         ]
         if not members:
             return False
@@ -3584,7 +3592,7 @@ class BaseSchedulerSolver(
             op
             for op in self.total_agent
             if op.is_high()
-            and not op.multi_group
+            and (not op.multi_group or op.independent_rest)
             and (not op.group or self.op_data.is_group_shift_anchor(op))
         ]
         # 宿舍的普通空闲者统一交给补床入口，不依赖不养闲人开关；否则先预约
@@ -3612,6 +3620,10 @@ class BaseSchedulerSolver(
         attempted_groups = set()
         # 工作组先取得床位预约，空闲干员随后由统一补床入口安排。
         for op in shift_candidates:
+            if op.independent_rest and self.op_data.resting_binding_groups(
+                op, self.op_data.arrangement_group_transitions(_plan)
+            ):
+                continue
             mood = moods[op.name]
             if mood is None:
                 continue
@@ -4764,6 +4776,14 @@ class BaseSchedulerSolver(
             if not op.is_resting() and not self.op_data.is_standby(name):
                 self.op_data.update_standby_low_priority(op)
         logger.debug(f"计算排班:{agents}")
+        superseded_covers = {
+            previous[0]
+            for name in agents
+            if (op := self.op_data.operators[name]).independent_rest
+            and (groups := self.op_data.resting_binding_groups(op))
+            and (previous := plan.get(op.room, [])[op.index : op.index + 1])
+            and previous[0] not in self.op_data.shared_replacements(op, groups)
+        }
         for agent in agents:
             if not success:
                 break
@@ -4828,6 +4848,7 @@ class BaseSchedulerSolver(
                     and obj not in protected_training
                     and (
                         obj not in exist_replacement
+                        or obj in superseded_covers
                         or plan.get(x.room, [])[x.index : x.index + 1] == [obj]
                     )
                     and obj not in reserved_names
@@ -5250,7 +5271,7 @@ class BaseSchedulerSolver(
                     if op.multi_group
                     else resting
                 )
-                if not member_resting:
+                if not member_resting and not (op.independent_rest and op.is_resting()):
                     returns.setdefault(
                         op.room, ["Current"] * len(self.op_data.plan[op.room])
                     )[op.index] = name
