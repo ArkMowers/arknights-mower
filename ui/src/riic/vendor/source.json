@@ -96,11 +96,11 @@
     "scheduler/mowerSchedulingData.ts": "d8df8c33070846208b398d62e6d624328982f2dc863f43039dff7bf8840ee3dc",
     "scheduler/mowerSelection.ts": "5b33bba0478ac07a6d96cf6022977bac9a3f7734270ac844349e4063b93e88e4",
     "scheduler/mowerSharedGroups.ts": "fdeece3488adc3543e3939f4aa6959443c77d68c3fe17780b8111212a227a687",
-    "scheduler/mowerShiftCycle.ts": "037ce56eb536c69611d76b3957ce952f5c24fabe64273a309074d23f79208586",
+    "scheduler/mowerShiftCycle.ts": "90b4d0f8d4dbeb7924bf9e31f1becf885b8f0c916ada327f0a6d6a9c198bd439",
     "scheduler/mowerShiftProtection.ts": "694d559911aa84fb2537c0186225cb03283220106042d55b87882c45a316f68d",
-    "scheduler/mowerSourceRuntime.ts": "3df25f97a05919f3fbc701f2e25c34af59858330ce0f3ec91b2b5b44241f028c",
+    "scheduler/mowerSourceRuntime.ts": "a41ecfccdb07e1636ce51174b3fc4c83812860973982845ca745c700e7a19a7b",
     "scheduler/mowerTaskExecutor.ts": "c4ece2a18bddf2251ed987b7948be74a1cd6cf2b41377ce6714d1396a6c695ab",
-    "scheduler/mowerTaskQueue.ts": "96d8134a40af1ef55b33bc442e0262f54cb96212fd6f15d4f691df0268ccdf00",
+    "scheduler/mowerTaskQueue.ts": "a9f701ad3249fb2358f9e325930971a000aeff8430f8508e098b6ef633b3096c",
     "scheduler/mowerTaskScheduling.ts": "c5d77fe0e04ca4e0ca23262696690b5f00ef82313893e7167bca5da97da27c51",
     "scheduler/mowerTiming.ts": "482768893ed442d8eb317b286691be72d6ff85a5cb879cfe1f3fb4ed9ab10b3e",
     "scheduler/mowerTodoTask.ts": "a739d8499d93277f33b42d38b92c1a5718f8b68f509bdf3ef598ad1aad766cc8",
@@ -153,7 +153,20 @@
     "components/workbench/ScheduleTimelineGantt.vue": "39bd3d0b1bc4a0ebaead389231d52dd643f84b4389f5b8c17df63522dcb4c2fe",
     "workbench/timeline/timelineDisplay.ts": "74a47cd6fbbbb4cdc9e44a8574cc89881ab3ed092634734c8ef4d88c10a48738",
     "workbench/timeline/timelineModel.spec.ts": "a3e2104f69ccf38fbb6f519f13ed4fab6e996601b55b45b85c6de22fcb9703fe",
-    "workbench/timeline/timelineDisplay.spec.ts": "2798866b0916a97a7a5f4c079d2323afbb46f4aceb0c7edf738ccdd7599252e7"
+    "workbench/timeline/timelineDisplay.spec.ts": "2798866b0916a97a7a5f4c079d2323afbb46f4aceb0c7edf738ccdd7599252e7",
+    "scheduler/backupInventoryExpression.spec.ts": "62175e568909e7642f46668502d5e11b6b141c13a214be6b70d44d1b7480797e",
+    "scheduler/backupInventoryWake.spec.ts": "e0956656ccf4b5bee7ddc39a7289a36c7e13cc2375fd39efb2735473ecbf5788",
+    "simulator/mowerInventoryBackup.spec.ts": "3a818218af335b640d2d68eae01eb6864c76817bca0efec06f345aff814cfee7",
+    "scheduler/mowerTaskFailure.ts": "81c9c90e33a610b97f4ebefad9b6d9f02e34165ff09ecc173a03c7c011c2f72c",
+    "scheduler/mowerTaskFailure.spec.ts": "8c60557ba9837c3c142246eca97612da0282107af57c3ae47245ccd4a07d1948",
+    "scheduler/mowerPreviewRecovery.spec.ts": "f5640e0416e3cd73c8cfaa34b93e4cfc49d0b2d617773a1cc3f956c7222c188b",
+    "scheduler/mowerFiammetta.spec.ts": "8ed31150736f0089040692b350676e83acd081241b67b33b86d024aab14fa749",
+    "scheduler/fixtures/mower-fia-ready-cache-alpha.json": "71e03df275c11737217034644dc4c87fed7b5c609dd383770218d964530ccfa0",
+    "scheduler/fixtures/mower-preview-recovery-roster.json": "620e6e62bc7d6f752416e8cd9837dc572a65c29f8b179d67b03495a68b8771b2",
+    "simulator/mowerTaskFailureReport.spec.ts": "90c2797e43e56607194428cbf3a115c3666d0969622215ec1a03a0d83fef5105",
+    "scheduler/mowerSourceRuntime.spec.ts": "26de98b59309dceab8af1734c5fdd8b37e1860abdabd92f7fe96df795a5aa7c6",
+    "scheduler/mowerSharedRestingGroup.spec.ts": "203f11f3fc785be7295638f792138c0f189cec59aac5bb30cac0a4ed9211e73b",
+    "scheduler/mowerExhaustSupportDispatch.spec.ts": "93971114e3aad8e1ead9a981acc1100ce7044e555798686e2c0fabeddea9e039"
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
@@ -161,8 +174,8 @@
       "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances."
     },
     "simulator/scheduleSimulation.ts": {
-      "sha256": "94680c5a1c53384869cbfc2d54ffbd755718ea6036cac20fe6250f0ebeba9893",
-      "reason": "Expose resolved intervals to a read-only local recruitment observer; omit its callback from serializable report inputs. The upstream segment timeline and Gantt chart replace local morale-curve recording."
+      "sha256": "b1184486b183cce5c39e1661ac2e3026d2ef3fbe2f1a19b673537d913c9ec10a",
+      "reason": "Mark completed windows with unresolved task failures as incomplete; preserve the local read-only interval observer and segment timeline."
     },
     "workbench/scheduleSimulationBridge.ts": {
       "reason": "Forward the local interval observer separately from JSON-cloned simulation data.",
@@ -173,8 +186,8 @@
       "sha256": "5c07b838134a34bea67e64a1ec0b7c0ac2dded59f1247347f2c5aa39adf6ea75"
     },
     "scheduler/mowerSourceRuntime.ts": {
-      "sha256": "5e0754325dd4ff563d3921426cebb90736778c33141c3356f4e9b2277aec8064",
-      "reason": "Mirror native departing_plan mood reads before ordinary staffing changes, retaining measured full or personal-limit departure mood while preserving run-order, training and Fiammetta read boundaries."
+      "sha256": "a41ecfccdb07e1636ce51174b3fc4c83812860973982845ca745c700e7a19a7b",
+      "reason": "Synchronize native failure retention and observation-based recovery without changing the existing departing-plan observation adaptation. Retain full-to-full Fiammetta operations as failed pending work instead of adding a polling task; this offline safeguard is additional to the native selector. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning."
     },
     "scheduler/rosterRuntime.ts": {
       "reason": "Keep the existing runtime configuration without introducing maintenance-primary pause state.",
@@ -185,8 +198,8 @@
       "sha256": "5b80d31438e69316853e400911363f5aff41d6b6a76db6a246dd18289eeff841"
     },
     "scheduler/mowerOrdinaryPlanning.ts": {
-      "reason": "Retain explicit dorm admissions across one ordinary planning round, matching native Mower protection for earlier group reservations.",
-      "sha256": "4c8aecb9ab5bb09e3b66019802ab9c35f92109f51ccc12e1234a107be71e14b7"
+      "reason": "Retain explicit dorm admissions across one ordinary planning round, matching native Mower protection for earlier group reservations. Apply hypothetical shared-group bindings during dorm admission so eligible standby followers remain optional, then restore confirmed group state and bindings on success or failure.",
+      "sha256": "4e53d292e999c713de10aea6f665e73f7fb95dbd0e8e10eedb04b3b2c1f081b2"
     },
     "scheduler/mowerAlphaDorm.ts": {
       "sha256": "32c6fc3628d5efab181d94e00f3acb9a0859db19e42e9523c853ea80d4b4d264",
@@ -196,6 +209,34 @@
       "sha256": "84ce808ec66ed5dce08056606dd74ed07b1e59f1f37a7939dec5735bc2ba000a",
       "reason": "Verify that ordinary departures retain the newly measured departure timestamp and replace predicted full mood with an actual observation."
     },
+    "scheduler/backupExpression.ts": {
+      "sha256": "8b7ed6e1643f7611182c4ece1b19ff5f75ae8985eedec976c033cad7de980bc7",
+      "reason": "Synchronize native facility-product count and product-type-count conditions, strict arguments and observed-product dependency edges from the calculator compatibility branch; retain the fixed overall snapshot."
+    },
+    "scheduler/mowerFiammetta.ts": {
+      "sha256": "ac7489eadfe3b247aded6af5e84f088b82110282a388f44e0c3569e17d9015ae",
+      "reason": "Match native Fiammetta target priority by excluding shared multi-group followers from the single-group lowest-mood comparison."
+    },
+    "scheduler/mowerRunLifecycle.ts": {
+      "sha256": "4597f0191dc6040575dd87b4e9932a44aa3796f5b21dbc7e037d793e5c4a0ca4",
+      "reason": "Preserve exhausted tasks across ordinary run recovery and exclude suspended failures from dispatch deadlines."
+    },
+    "scheduler/mowerShiftCycle.ts": {
+      "sha256": "90b4d0f8d4dbeb7924bf9e31f1becf885b8f0c916ada327f0a6d6a9c198bd439",
+      "reason": "Keep retained arrangement tasks when rebuilding derived shift plans. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning."
+    },
+    "scheduler/mowerTaskQueue.ts": {
+      "sha256": "a9f701ad3249fb2358f9e325930971a000aeff8430f8508e098b6ef633b3096c",
+      "reason": "Separate pending failures from eligible dispatch without replacing task identity, remaining plan or deadline. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning."
+    },
+    "scheduler/mowerTaskScheduling.ts": {
+      "sha256": "69553cf8c8a453d15c23bc0aeed30cc0869ba462b5574a158371a362bcd3ed07",
+      "reason": "Exclude suspended failures from active scheduling mutations while retaining them in the pending task list."
+    },
+    "scheduler/mowerExhaustSupportDispatch.spec.ts": {
+      "sha256": "93971114e3aad8e1ead9a981acc1100ce7044e555798686e2c0fabeddea9e039",
+      "reason": "Verify runtime exhaustion-support generation, recovery capacity, required backups, task cloning and coalescing boundaries."
+    },
     "engine/dormitoryRecovery.ts": {
       "reason": "Keep low-morale recovery separate from the all-room maximum and take the highest conditional extra across the two eligible providers; synchronized from calculator e58cc77de27e74f7ab261890a1824c02061a14f6.",
       "sha256": "1032e59a9d435e0b8ecd76f5236e5a49537803563bf0f36372d7659f77c141e4"
@@ -204,11 +245,15 @@
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
   "mowerCheckedRevision": "48ae469895dd9a64fda8a565d2403c49f431cde8",
   "schedulingSync": {
-    "date": "2026-10-14",
+    "date": "2026-10-15",
     "behaviors": [
       "ordinary completed dorm departure retains a measured full-mood observation",
       "restored primaries join an already-resting group with protected covers and recovery beds",
-      "new simulations always assume no unfinished training plan and ignore retired training-state input"
+      "new simulations always assume no unfinished training plan and ignore retired training-state input",
+      "facility product counts use observed recipes with main-plan fallbacks",
+      "failed previews retain pending work until relevant observations or arrangements change",
+      "Fiammetta group priority excludes shared multi-group followers",
+      "exhaustion support preserves prerequisite identity without ordinary recovery expansion or coalescing"
     ],
     "limitations": [
       "ideal run orders do not simulate maintenance runner replacement acceleration or physical restoration",
@@ -219,6 +264,10 @@
     "excludedChanges": [
       "maintenance-primary run-order pause",
       "additional facility-level export changes"
-    ]
+    ],
+    "calculatorRevision": "00df41c24925029cb223f6fbf76f7d2d870db407",
+    "mowerRevision": "3ad69f15bd95a7fbc0aec0bbd2265bd7230f767f",
+    "exhaustSupportMowerRevision": "acd54324d549eec34ef1a0bb9910de4c92cfb7d1",
+    "exhaustSupportCalculatorRevision": "c2b50182da1bcd83dd3da1ce6f2da58f0f66efb8"
   }
 }

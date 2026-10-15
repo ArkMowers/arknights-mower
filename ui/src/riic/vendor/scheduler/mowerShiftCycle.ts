@@ -92,6 +92,7 @@ export function recordMowerDormAdmissions(data:MowerSchedulingData,step:MowerTas
 }
 export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,queue:MowerTaskQueue,model:MowerShiftModel,options:MowerRestingOptions={}):void{
  if(task.backupShiftActive)return
+ if(task.exhaustSupport){prepareMowerShiftBackup(data,task,model,queue.tasks.filter(t=>t!==task));return}
  const probe=new MowerTask({time:data.nowMicros/3_600_000_000,type:T.FILL_DORM});simplifyMowerAlphaDormFill(probe,queue.tasks,data.nowMicros,options.priorityScheduling)
  if(probe.simpleDormFill||task.productShiftLocked||queue.tasks.some(t=>t!==task&&(t.type===T.FIAMMETTA&&t.timeMicros<=data.nowMicros||t.backupShiftActive||t.productShiftLocked))){
   prepareMowerShiftBackup(data,task,model,queue.tasks.filter(t=>t!==task))
@@ -99,7 +100,7 @@ export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,q
   task.plan=planMowerDormIsolation(data,task.plan,new Set([...reserved.slots,...task.backupExplicitSlots]),reserved.names);return
  }
  const ordinary=[T.SHIFT_ON,T.SHIFT_OFF,T.EXHAUST_OFF,T.SELF_CORRECTION,T.RE_ORDER,T.FILL_DORM]
- const candidates=queue.tasks.filter(t=>t!==task&&ordinary.includes(t.type)&&Object.keys(t.plan).length&&t.timeMicros<=data.nowMicros&&!t.strictMoodLimit&&!t.dormRecoveryRestore.length),coalesced:MowerTask[]=[]
+ const candidates=queue.tasks.filter(t=>t!==task&&!t.retainsExecution&&!t.exhaustSupport&&ordinary.includes(t.type)&&Object.keys(t.plan).length&&t.timeMicros<=data.nowMicros&&!t.strictMoodLimit&&!t.dormRecoveryRestore.length),coalesced:MowerTask[]=[]
  let intent=structuredClone(task.backupShiftIntent??task.plan),explicitSlots=new Set(task.backupExplicitSlots)
  const explicitPlan=(plan:MowerTaskPlan,slots:ReadonlySet<string>)=>Object.fromEntries(Object.entries(plan).map(([room,row])=>[room,row.map((name,index)=>slots.has(alphaPosition(room,index))?name:'Current')]))
  for(const queued of [...candidates].sort((a,b)=>a.timeMicros-b.timeMicros)){
@@ -166,7 +167,7 @@ export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,q
 export function coalesceMowerBackupTransition(data:MowerSchedulingData,transition:MowerTaskPlan,tasks:MowerTask[]):{plan:MowerTaskPlan;consumed:MowerTask[]}{
  const footprint=(plan:MowerTaskPlan)=>({names:new Set(Object.values(plan).flat().filter(n=>!['Current','Free',''].includes(n))),slots:new Set(Object.entries(plan).flatMap(([r,names])=>names.flatMap((n,i)=>!['Current',''].includes(n)?[alphaPosition(r,i)]:[])))})
  const affected=footprint(transition),consumed:MowerTask[]=[]
- let remaining=tasks.filter(t=>[T.SHIFT_ON,T.SHIFT_OFF,T.SELF_CORRECTION,T.RE_ORDER,T.NOT_SPECIFIC,T.FILL_DORM].includes(t.type)&&Object.keys(t.plan).length&&Math.min(t.timeMicros,t.arrangementRetryDueMicros??t.timeMicros)<=data.nowMicros+toMowerMicros(1/60)&&!t.strictMoodLimit&&!t.dormRecoveryRestore.length)
+ let remaining=tasks.filter(t=>!t.retainsExecution&&!t.exhaustSupport&&[T.SHIFT_ON,T.SHIFT_OFF,T.SELF_CORRECTION,T.RE_ORDER,T.NOT_SPECIFIC,T.FILL_DORM].includes(t.type)&&Object.keys(t.plan).length&&Math.min(t.timeMicros,t.arrangementRetryDueMicros??t.timeMicros)<=data.nowMicros+toMowerMicros(1/60)&&!t.strictMoodLimit&&!t.dormRecoveryRestore.length)
  while(remaining.length){let matched=false;for(const t of [...remaining]){const f=footprint(t.plan);if(![...f.names].some(n=>affected.names.has(n))&&![...f.slots].some(s=>affected.slots.has(s)))continue;matched=true;consumed.push(t);f.names.forEach(n=>affected.names.add(n));f.slots.forEach(s=>affected.slots.add(s));remaining=remaining.filter(v=>v!==t)}if(!matched)break}
  if(!consumed.length)return {plan:transition,consumed}
  const plan:MowerTaskPlan={};for(const t of [...consumed].sort((a,b)=>a.timeMicros-b.timeMicros))mergeMowerShiftTransition(plan,t.plan,data);mergeMowerShiftTransition(plan,transition,data)

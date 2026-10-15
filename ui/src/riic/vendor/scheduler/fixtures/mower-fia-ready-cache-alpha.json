@@ -1,0 +1,77 @@
+{
+  "sourceCommit": "c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88",
+  "actualFunctions": [
+    "run_order_solver",
+    "find_next_task",
+    "SchedulerTask"
+  ],
+  "scope": "Full actual default Fia scheduling block. No run-order rooms or exhaust agents; deterministic cached inputs and explicit room timer seam. No recognition or UI elapsed duration.",
+  "cases": [
+    {
+      "id": "cached-full",
+      "mood": 24,
+      "stampMicros": 0,
+      "nowMicros": 10,
+      "timerMicros": 30,
+      "output": {
+        "readyMicros": 10,
+        "reads": 0
+      }
+    },
+    {
+      "id": "cached-full-future",
+      "mood": 24,
+      "stampMicros": 20,
+      "nowMicros": 10,
+      "timerMicros": 30,
+      "output": {
+        "readyMicros": 10,
+        "reads": 0
+      }
+    },
+    {
+      "id": "future",
+      "mood": 12,
+      "stampMicros": 20,
+      "nowMicros": 10,
+      "timerMicros": 30,
+      "output": {
+        "readyMicros": 20,
+        "reads": 0
+      }
+    },
+    {
+      "id": "same-time",
+      "mood": 12,
+      "stampMicros": 10,
+      "nowMicros": 10,
+      "timerMicros": 30,
+      "output": {
+        "readyMicros": 30,
+        "reads": 1
+      }
+    },
+    {
+      "id": "no-time",
+      "mood": 12,
+      "stampMicros": null,
+      "nowMicros": 10,
+      "timerMicros": 30,
+      "output": {
+        "readyMicros": 30,
+        "reads": 1
+      }
+    },
+    {
+      "id": "past",
+      "mood": 12,
+      "stampMicros": 0,
+      "nowMicros": 10,
+      "timerMicros": 30,
+      "output": {
+        "readyMicros": 30,
+        "reads": 1
+      }
+    }
+  ]
+}

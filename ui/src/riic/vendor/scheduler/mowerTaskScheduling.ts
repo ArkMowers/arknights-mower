@@ -130,12 +130,22 @@ function protectSwaps(tasks:MowerTask[],now:number,delay:number,execution:number
  sort(tasks);return conflict
 }
 export function protectMowerSupportSwaps(tasks:MowerTask[],nowMicros:number,options:MowerTaskSchedulingOptions={}):[MowerTask,MowerTask]|undefined {
+ const failed=tasks.filter(task=>task.executionFailure)
+ if(failed.length){
+  const active=tasks.filter(task=>!task.executionFailure),result=protectMowerSupportSwaps(active,nowMicros,options)
+  tasks.splice(0,tasks.length,...active,...failed);return result
+ }
  if(options.alpha)return
  if(options.enableMastery===false)return
  return protectSwaps(tasks,nowMicros,options.runOrderDelayMinutes??5,options.executionMinutes??.75,options.configuredDelayMinutes??3,options.adjustForRunOrders!==false)
 }
 /** All mutations retain native task identities; I/O timings and maintenance are explicit inputs. */
 export function scheduleMowerTasks(tasks:MowerTask[],nowMicros:number,options:MowerTaskSchedulingOptions={}):[MowerTask,MowerTask]|undefined {
+ const failed=tasks.filter(task=>task.executionFailure)
+ if(failed.length){
+  const active=tasks.filter(task=>!task.executionFailure),result=scheduleMowerTasks(active,nowMicros,options)
+  tasks.splice(0,tasks.length,...active,...failed);return result
+ }
  const delay=options.runOrderDelayMinutes??5,execution=options.executionMinutes??.75,enabled=options.enableMastery??true,configuredDelay=options.configuredDelayMinutes??3
  if(options.alpha){
   mergeMowerAlphaReleases(tasks,options.mergeIntervalMinutes??10,options)

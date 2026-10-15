@@ -338,7 +338,7 @@ def test_income_cache_preserves_actual_growth_and_only_exposes_simulation_fields
     }
     assert cache["inventory"] == {
         "gold": 12,
-        "fragment": None,
+        "fragment": 0,
         "orirock": 0,
         "device": 0,
         "lmd": 1234567,
@@ -356,7 +356,17 @@ def test_income_cache_does_not_replace_unavailable_inventory_with_zero(
     snapshot_path, items
 ):
     snapshot_path.write_text(
-        json.dumps({"code": 0, "data": {"characters": [], "items": items}})
+        json.dumps(
+            {
+                "code": 0,
+                "data": {
+                    "characters": [
+                        {"id": "char_108_silent", "evolvePhase": 0, "level": 25}
+                    ],
+                    "items": items,
+                },
+            }
+        )
     )
     cache = module.load_income_cache()
     assert not cache["has_inventory"]
@@ -368,3 +378,26 @@ def test_income_cache_missing_file_preserves_unknown(snapshot_path):
     assert not cache["has_roster"]
     assert not cache["has_inventory"]
     assert cache["operators"] == []
+
+
+def test_income_cache_valid_empty_items_default_all_resources_to_zero(snapshot_path):
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                "code": 0,
+                "data": {
+                    "characters": [
+                        {"id": "char_108_silent", "evolvePhase": 0, "level": 25}
+                    ],
+                    "items": [],
+                },
+            }
+        )
+    )
+    before = snapshot_path.read_bytes()
+    cache = module.load_income_cache()
+    assert cache["has_inventory"]
+    assert cache["inventory"] == dict.fromkeys(
+        ("gold", "fragment", "orirock", "device", "lmd", "exp"), 0
+    )
+    assert snapshot_path.read_bytes() == before

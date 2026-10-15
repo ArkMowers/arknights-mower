@@ -1,3 +1,4 @@
+import {retainMowerFailedTask,resumeMowerFailedTasks} from './mowerTaskFailure'
 import {mowerArrangementGroupTransitions,normalizeMowerSharedArrangement,commitMowerGroupShifts} from './mowerSharedGroups'
 import {mergeMowerBackupRefreshRule} from './mowerBackupRefresh'
 import {executeMowerReload} from './mowerReload'
@@ -35,7 +36,7 @@ import {planMowerOrdinary,mowerGetRestingPlan,mowerTryReorder,mowerPlanningHasNe
 import {planMowerMetadata,mowerRestUnitKey} from './mowerMetadata'
 import {planMowerExhaustSupport} from './mowerExhaustPlanning'
 import {selectMowerFiaTarget,mowerFiaReadyMicros} from './mowerFiammetta'
-import {prepareMowerDormSelection,mowerArrangementReadIndexes,mowerDormReplacementForSlot} from './mowerSelection'
+import {prepareMowerDormSelection,mowerArrangementReadIndexes} from './mowerSelection'
 import {prepareMowerShiftCycle,recordMowerDormAdmissions,type MowerShiftModel} from './mowerShiftCycle'
 import {prepareMowerRunEntry,nextMowerRunRecoveryMicros} from './mowerRunLifecycle'
 import {ensureMowerDormRecovery} from './mowerDormRecovery'
@@ -53,7 +54,7 @@ export interface MowerSourceRuntime {
  runReturn?:{wakeMicros:number;finishFallback:boolean}
  conditionWakeMicros?:number
  planningWake?:MowerPlanningWake;planningMoodRefreshNames?:string[]
- lastTrainMoodReadMicros?:number;lastWakeMicros?:number;lastFiaNoopMicros?:number;trace:{timeMicros:number;type:string;plan:MowerTaskPlan;metadata:string}[]
+ lastTrainMoodReadMicros?:number;lastWakeMicros?:number;trace:{timeMicros:number;type:string;plan:MowerTaskPlan;metadata:string}[]
 }
 const slotIndex=(id:string)=>Number(id.slice(id.lastIndexOf('_')+1))
 const isConfiguredTradeRoom=(config:RuntimeConfig,room:string)=>config.runOrderPolicies?.some(policy=>policy.roomId===room)??false
@@ -364,6 +365,7 @@ function* arrangeRoom(s:RuntimeState,rates:RuntimeRates,room:string,names:string
  }
  if(fiammettaCharge&&fia){
   const target=resolved[0]!,old=s.morale[target]!
+  if(old>=24-1e-8&&s.morale[fia]!>=24-1e-8)throw new MowerShiftPreviewError('菲亚梅塔与实际充能目标均已满心情，保留充能任务，等待相关实测或安排更新')
   s.morale[target]=24;s.morale[fia]=old;s.lastFiammettaTime=s.time
   s.events.push({time:s.time,type:'fiammetta',operators:[fia,target],moraleBefore:[24,old],moraleAfter:[old,24]})
   data.operators[fia]!.timeStampMicros=undefined;data.operators[target]!.timeStampMicros=undefined
@@ -386,6 +388,7 @@ function* arrangeRoomSteps(s:RuntimeState,rates:RuntimeRates,room:string,names:s
    return yield* arrangeRoom(s,rates,room,names,getTime,task,attempt,restoration)
   }catch(error){
    rethrowMowerInfraFatal(error)
+   if(error instanceof MowerShiftPreviewError)throw error
    const {data,queue}=getMowerSourceRuntime(s),queued=data.alpha&&![T.RUN_ORDER,T.FIAMMETTA,T.SKILL_UPGRADE,T.SWAP_SUPPORT].includes(task.type)&&queue.tasks.includes(task)
    const urgent=queued&&!task.dormRecoveryRestore.length&&queue.tasks.some(t=>t!==task&&[T.FIAMMETTA,T.RUN_ORDER,T.SWAP_SUPPORT,T.SKILL_UPGRADE].includes(t.type)&&(t.type!==T.RUN_ORDER||s.config.mowerTaskScheduling?.adjustForRunOrders!==false)&&t.timeMicros<=data.nowMicros+toMowerMicros(1/60))
    if(queued&&(attempt>=3||urgent))throw new MowerRoomArrangementDeferred(room,error)
@@ -396,7 +399,7 @@ function* arrangeRoomSteps(s:RuntimeState,rates:RuntimeRates,room:string,names:s
 }
 function scheduleFiaAndExhaust(s:RuntimeState,rates:RuntimeRates):void {
  const source=getMowerSourceRuntime(s),{data,queue}=source,fia=s.config.fiammetta
- if(fia&&!queue.find({type:T.FIAMMETTA})){
+ if(fia&&!queue.tasks.some(task=>task.type===T.FIAMMETTA)){
   const op=data.operators[fia.operatorId]
   if(op?.room.startsWith('dorm')){
    const ready=mowerFiaReadyMicros(op,data.nowMicros,()=>{
@@ -404,26 +407,7 @@ function scheduleFiaAndExhaust(s:RuntimeState,rates:RuntimeRates):void {
     observeRoom(s,rates,op.room,undefined,[index])
     return data.nowMicros+toMowerMicros(Math.max(0,(24-s.morale[fia.operatorId]!)/2))
    })
-   // Source Mower can repeatedly select a full worker when fool protection is
-   // disabled. Dorm selection releases that worker and charges an idle Free
-   // card instead. Recheck later when the observed roster or morale can differ.
-   const threshold=(fia.threshold??21.6)/24
-   const planned=selectMowerFiaTarget(data,fia.orderedTargets,fia.fool??true,threshold)
-   const target=planned?data.operators[planned]:undefined
-   const released=!!target&&target.mood===target.upperLimit&&!target.room.startsWith('dorm')&&
-    !mowerDormReplacementForSlot(data,planned!,op.room,0)
-   const trainee=data.currentOperator('train',0)?.name
-   const free=released?freeCandidateNames(s,data,new Set([planned!,fia.operatorId,...(s.config.freeBlacklist??[]),...(trainee?[trainee]:[])]))[0]:undefined
-   const effectiveTarget=released?free:planned
-   const fullNoop=effectiveTarget!==undefined&&(s.morale[effectiveTarget]??0)>=24-1e-8&&
-    ((s.morale[fia.operatorId]??0)>=24-1e-8||ready>data.nowMicros)
-   if(fullNoop){
-    if(!s.diagnostics.some(d=>d.code==='mower-fia-full-noop-skipped'))s.diagnostics.push({code:'mower-fia-full-noop-skipped',message:'跳过双方满心情的无收益充能；五分钟后重新检查。此优化精简了 Mower 原版的空操作事件。'})
-    const retry=ready>data.nowMicros?ready:data.nowMicros+toMowerMicros(5/60)
-    if(!queue.tasks.some(t=>t.type===T.NOT_SPECIFIC&&t.timeMicros>data.nowMicros&&t.timeMicros<=retry)){
-     const task=new MowerTask({type:T.NOT_SPECIFIC});task.timeMicros=retry;queue.tasks.push(task)
-    }
-   }else{const task=new MowerTask({type:T.FIAMMETTA});task.timeMicros=ready;queue.tasks.push(task)}
+   const task=new MowerTask({type:T.FIAMMETTA});task.timeMicros=ready;queue.tasks.push(task)
   }
  }
  for(const op of Object.values(data.operators)){
@@ -475,6 +459,7 @@ function mowerClueState(s:RuntimeState):MowerClueLifecycleState {
 }
 export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(phase:BackupTiming)=>boolean):void {
  const source=getMowerSourceRuntime(s),queue=source.queue
+ if(resumeMowerFailedTasks(s,source.data,queue)&&!source.execution&&!source.phaseExecution)delete source.runReturn
  if(!source.execution&&!source.phaseExecution&&!source.runReturn&&source.planningWake&&source.planningWake.timeMicros<=source.data.nowMicros){
   source.planningMoodRefreshNames=[...new Set([...(source.planningMoodRefreshNames??[]),...source.planningWake.names])]
   if(!queue.tasks.some(task=>task.type===T.NOT_SPECIFIC&&!Object.keys(task.plan).length&&task.timeMicros<=source.data.nowMicros))queue.tasks.push(new MowerTask({time:s.time}))
@@ -520,7 +505,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
   if(source.runReturn.wakeMicros>source.data.nowMicros){projectPublicState(s);return}
   if(source.runReturn.finishFallback){source.runFlags!.collectNotification=true;queue.ensureFallback(s.time,s.config.mowerTaskScheduling)}
   delete source.runReturn;queue.sort()
-  if(!queue.tasks[0]||queue.tasks[0].timeMicros>source.data.nowMicros){projectPublicState(s);return}
+  if(!queue.find()||queue.find()!.timeMicros>source.data.nowMicros){projectPublicState(s);return}
  }
  if(!source.execution&&!source.phaseExecution){
   source.runFlags={planned:false,todoTask:false,collectNotification:false};source.error=false
@@ -538,7 +523,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
    scheduleMowerTasks(queue.tasks,getMowerSourceRuntime(s).data.nowMicros,scheduling)
    protectMowerSupportSwaps(queue.tasks,getMowerSourceRuntime(s).data.nowMicros,scheduling)
   }
-  const selected=runningPhase?undefined:running?.task??queue.tasks[0]
+  const selected=runningPhase?undefined:running?.task??queue.find()
   const task=selected&&(running||selected.timeMicros<=getMowerSourceRuntime(s).data.nowMicros)?selected:undefined
   if(!task&&!runningPhase)break
   if(!running&&!runningPhase){mowerCorrectDorm(getMowerSourceRuntime(s).data);backup('BEGINNING',task)}
@@ -612,7 +597,10 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
      queue.tasks.push(new MowerTask({time:s.time,type:T.SHIFT_OFF,plan}))
     }else{
      const support=planMowerExhaustSupport(data,members,options())
-     if(support&&Object.keys(support).length){queue.tasks.push(new MowerTask({time:s.time,type:T.SELF_CORRECTION,plan:support}),new MowerTask({time:s.time,type:T.EXHAUST_OFF,metadata:task.metadata}));skipPlanning=true}
+     if(support&&Object.keys(support).length){
+      const supportTask=new MowerTask({time:s.time,type:T.SELF_CORRECTION,plan:support});supportTask.exhaustSupport=true
+      queue.tasks.push(supportTask,new MowerTask({time:s.time,type:T.EXHAUST_OFF,metadata:task.metadata}));skipPlanning=true
+     }
      else {options().onBlocked(members);skipPlanning=true}
     }
     queue.consume(task)
@@ -681,11 +669,10 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
     }else{
     source.error=true;skip();skipPlanning=true
     if(error instanceof MowerShiftPreviewError){
-     // Native infra_main catches ValueError, keeps the task, and lets handle_error
-     // rebuild stale work later. Recognition is zero-time here: retrying at every
-     // microsecond cannot reach that boundary within the simulation event budget.
-     source.runReturn={wakeMicros:nextMowerDecisionMicros(s,rates),finishFallback:false}
-     delete source.activeTask;break
+     retainMowerFailedTask(s,data,task,error.message)
+     source.error=false
+     delete source.activeTask
+     continue
     }
     }
    }
@@ -829,14 +816,14 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
    // Recognition/transport are separate zero-time seams; near tasks skip this branch.
    if(source.error)prepareMowerRunEntry(queue,data.nowMicros,data.alpha,s.config.mowerTaskScheduling)
    const notification=!source.runFlags?.collectNotification&&!skipPlanning&&!queue.find({time:s.time+1/60,ignoreRunOrders:s.config.mowerTaskScheduling?.adjustForRunOrders===false})?clock.notificationSleepMicros:0
-   const due=queue.tasks.filter(t=>t.timeMicros<=data.nowMicros)
+   const due=queue.tasks.filter(t=>!t.executionFailure&&t.timeMicros<=data.nowMicros)
    if(previewNoop&&due.length&&due.every(t=>[T.SHIFT_ON,T.SHIFT_OFF,T.EXHAUST_OFF,T.SELF_CORRECTION,T.RE_ORDER,T.FILL_DORM,T.NOT_SPECIFIC].includes(t.type))){
     source.runReturn={wakeMicros:nextMowerDecisionMicros(s,rates),finishFallback:false}
    }else if(notification>0)source.runReturn={wakeMicros:data.nowMicros+notification,finishFallback:true}
    else {
     source.runFlags!.collectNotification=true
     queue.ensureFallback(s.time,s.config.mowerTaskScheduling)
-    if(queue.tasks.some(t=>t.timeMicros<=data.nowMicros))source.runReturn={wakeMicros:data.nowMicros+clock.minimumClockStepMicros,finishFallback:false}
+    if(queue.tasks.some(t=>!t.executionFailure&&t.timeMicros<=data.nowMicros))source.runReturn={wakeMicros:data.nowMicros+clock.minimumClockStepMicros,finishFallback:false}
    }
    break
   }
@@ -848,7 +835,9 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
  queue.sort();projectPublicState(s);source.lastWakeMicros=toMowerMicros(s.time)
 }
 export function nextMowerSourceActionHours(s:RuntimeState,rates?:RuntimeRates):number {
- const source=getMowerSourceRuntime(s);source.queue.sort()
+ const source=getMowerSourceRuntime(s)
+ if(resumeMowerFailedTasks(s,source.data,source.queue)&&!source.execution&&!source.phaseExecution)delete source.runReturn
+ source.queue.sort()
  const running=source.execution?.wakeMicros??source.phaseExecution?.wakeMicros??source.runReturn?.wakeMicros
  if(running===undefined&&rates&&s.config.mowerTaskScheduling?.adjustForRunOrders===false){
   // Physical integration can reach the threshold before its ceil deadline,
@@ -859,7 +848,7 @@ export function nextMowerSourceActionHours(s:RuntimeState,rates?:RuntimeRates):n
  // New ledger or product observations may wake an idle/sleeping outer run, never an in-flight room operation.
  const observationWake=!source.execution&&!source.phaseExecution?s.mowerBackupObservationWakeMicros?.():undefined
  if(observationWake!==undefined)source.conditionWakeMicros=Math.min(source.conditionWakeMicros??Infinity,observationWake)
- const dispatch=running??Math.min(source.queue.tasks[0]?.timeMicros??Infinity,source.planningWake?.timeMicros??Infinity,source.conditionWakeMicros??Infinity)
+ const dispatch=running??Math.min(source.queue.find()?.timeMicros??Infinity,source.planningWake?.timeMicros??Infinity,source.conditionWakeMicros??Infinity)
  const next=Math.min(dispatch,observationWake??Infinity)
  return Math.max(0,(next-source.data.nowMicros)/3_600_000_000)
 }

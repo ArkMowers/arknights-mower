@@ -1,3 +1,4 @@
+import type {MowerTaskFailureSnapshot} from './mowerTaskFailure'
 // Port of ArkMowers/arknights-mower scheduler_task.py and base_schedule.py handle_error.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
 export interface MowerTaskType {readonly key:string;readonly value:string;readonly displayValue:string;readonly priority:1|2}
@@ -28,8 +29,12 @@ export interface MowerTaskOptions {time?:number;type?:MowerTaskType|string|null;
 export class MowerTask {
  timeMicros:number;type:MowerTaskType;plan:MowerTaskPlan;metadata:string;adjusted:boolean;strictMoodLimit:boolean;moodLimit:number|undefined
  observedOrderDueMicros?:number;wakeOnlyCompletion=false
+ executionFailure?:{reason:string;rooms:string[];snapshot:MowerTaskFailureSnapshot}
+ executionRetained=false
+ get retainsExecution():boolean{return !!this.executionFailure||this.executionRetained}
  groupShiftTransitions:Record<string,boolean>={}
  productShiftLocked=false
+ exhaustSupport=false
  /** A complete physical arrangement must finish before backup/return replanning. */
  backupShiftActive=false
  /** Old rules remain available only while this physical backup arrangement is unfinished. */
@@ -64,15 +69,15 @@ export interface MowerTaskQuery {time?:number;type?:MowerTaskType;comparison?:'<
 export class MowerTaskQueue {
  tasks:MowerTask[]=[]
  /** The no-run-order default scheduling path uses stable time sorting, not type priority. */
- sort():void {this.tasks.sort((a,b)=>a.timeMicros-b.timeMicros)}
+ sort():void {this.tasks.sort((a,b)=>Number(!!a.executionFailure)-Number(!!b.executionFailure)||a.timeMicros-b.timeMicros)}
  find(query:MowerTaskQuery={}):MowerTask|undefined {
   const time=query.time===undefined?undefined:toMowerMicros(query.time),comparison=query.comparison??'<'
-  return this.tasks.find(task=>(!query.ignoreRunOrders||!isMowerRunOrderTask(task))&&(comparison==='='?time!==undefined&&Math.abs(task.timeMicros-time)<1_500_000:time===undefined||(comparison==='>'?task.timeMicros>time:task.timeMicros<time))&&(!query.type||task.type===query.type)&&(!query.metadata||task.metadata.includes(query.metadata)))
+  return this.tasks.find(task=>!task.executionFailure&&(!query.ignoreRunOrders||!isMowerRunOrderTask(task))&&(comparison==='='?time!==undefined&&Math.abs(task.timeMicros-time)<1_500_000:time===undefined||(comparison==='>'?task.timeMicros>time:task.timeMicros<time))&&(!query.type||task.type===query.type)&&(!query.metadata||task.metadata.includes(query.metadata)))
  }
  /** infra_main removes every reference to the completed object, not every equal task. */
  consume(task:MowerTask):void {this.tasks=this.tasks.filter(t=>t!==task);delete task.backupRefreshRules}
  /** plan_metadata rebuilds these types; active arrangements and experimental locks retain identity. */
- removeDerived(experimental=false):void {this.tasks=this.tasks.filter(t=>t.backupShiftActive||![MOWER_TASK_TYPES.SHIFT_ON,MOWER_TASK_TYPES.RELEASE_DORM].includes(t.type)||experimental&&t.productShiftLocked)}
+ removeDerived(experimental=false):void {this.tasks=this.tasks.filter(t=>t.retainsExecution||t.backupShiftActive||![MOWER_TASK_TYPES.SHIFT_ON,MOWER_TASK_TYPES.RELEASE_DORM].includes(t.type)||experimental&&t.productShiftLocked)}
  /** Default handle_error branch: any queued task strictly inside 2.5h suppresses a fallback. */
  ensureFallback(now:number,options:{adjustForRunOrders?:boolean}={}):MowerTask|undefined {
   if(this.find({time:now+2.5,ignoreRunOrders:options.adjustForRunOrders===false}))return undefined

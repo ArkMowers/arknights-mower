@@ -34,6 +34,7 @@ const cacheError = ref('')
 const weightsBusy = ref(false)
 const weightsError = ref('')
 const submitting = ref(false)
+const validating = ref(false)
 const errorAlert = ref(null)
 const controller = new AbortController()
 let alive = true
@@ -275,11 +276,13 @@ async function start() {
     const captured = { ...JSON.parse(JSON.stringify(snapshot)), image }
     const runSettings = JSON.parse(JSON.stringify(settings))
     incomeRequest(captured.plan, runSettings)
+    validating.value = true
     const { data: validation } = await axios.post(
       `${import.meta.env.VITE_HTTP_URL}/validate-plan`,
       { plan: captured.plan, operatorMode: runSettings.operatorMode },
-      { timeout: 15000, signal: controller.signal }
+      { timeout: 0, signal: controller.signal }
     )
+    validating.value = false
     if (!alive) return
     if (validation.success !== true)
       throw new Error(validation.message || '排班校验未通过，尚未开始演算')
@@ -302,6 +305,7 @@ async function start() {
       if (alive) errorAlert.value?.$el?.scrollIntoView?.({ block: 'nearest' })
     }
   } finally {
+    validating.value = false
     if (alive) submitting.value = false
   }
 }
@@ -379,6 +383,9 @@ onBeforeUnmount(() => {
             : '暂未收到新的进度，可以继续等待或停止演算。'
         }}</n-alert>
       </div>
+      <n-alert v-if="validating" class="notice" type="info" role="status">
+        正在校验排班组合，完成后自动开始演算。可关闭窗口取消等待。
+      </n-alert>
       <n-alert v-if="state.error" ref="errorAlert" role="alert" class="notice" type="error">
         {{ state.error }}
         <p v-for="(d, i) in attemptDiagnostics" :key="i">{{ d.message }}</p>
@@ -483,7 +490,7 @@ onBeforeUnmount(() => {
                 <n-select
                   v-model:value="settings.inventorySource"
                   :options="[
-                    { label: '沿用森空岛缓存（可补填修改）', value: 'cache' },
+                    { label: '沿用森空岛缓存（可修改）', value: 'cache' },
                     { label: '手动设定', value: 'manual' }
                   ]"
                 />
@@ -491,7 +498,7 @@ onBeforeUnmount(() => {
               <p v-if="settings.inventorySource === 'cache'">
                 {{
                   settings.cachedInventory
-                    ? '未提供的数量保持空白，请补填后演算。重新读取会替换本次缓存修改。'
+                    ? '未提供的数量按 0 计算，可手动修改。重新读取会替换本次缓存修改。'
                     : '没有可用库存缓存，请同步或选择手动设定。'
                 }}
                 {{
@@ -519,11 +526,9 @@ onBeforeUnmount(() => {
                 :key="item.resource"
                 :label="item.label"
                 ><n-input-number
-                  :value="
-                    stock?.[item.resource] ?? (settings.inventorySource === 'manual' ? 0 : null)
-                  "
+                  :value="stock?.[item.resource] ?? 0"
                   :disabled="!stock || state.running || exporting || submitting || weightsBusy"
-                  placeholder="缓存未提供，请补填"
+                  placeholder="0"
                   :min="0"
                   :max="Number.MAX_SAFE_INTEGER"
                   :precision="0"
@@ -793,7 +798,9 @@ onBeforeUnmount(() => {
     </template>
     <template #footer
       ><n-space justify="end">
-        <n-button @click="close">{{ state.running ? '停止并关闭' : '关闭' }}</n-button>
+        <n-button @click="close">{{
+          validating ? '取消等待并关闭' : state.running ? '停止并关闭' : '关闭'
+        }}</n-button>
         <n-button v-if="state.running" type="warning" @click="session.cancel">停止演算</n-button>
         <n-button
           v-if="state.result?.success"
@@ -816,7 +823,9 @@ onBeforeUnmount(() => {
           "
           :loading="submitting"
           @click="start"
-          >{{ state.result?.success ? '重新演算' : '开始演算' }}</n-button
+          >{{
+            validating ? '正在校验排班' : state.result?.success ? '重新演算' : '开始演算'
+          }}</n-button
         >
       </n-space></template
     >
