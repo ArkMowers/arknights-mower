@@ -166,7 +166,10 @@
     "simulator/mowerTaskFailureReport.spec.ts": "90c2797e43e56607194428cbf3a115c3666d0969622215ec1a03a0d83fef5105",
     "scheduler/mowerSourceRuntime.spec.ts": "26de98b59309dceab8af1734c5fdd8b37e1860abdabd92f7fe96df795a5aa7c6",
     "scheduler/mowerSharedRestingGroup.spec.ts": "203f11f3fc785be7295638f792138c0f189cec59aac5bb30cac0a4ed9211e73b",
-    "scheduler/mowerExhaustSupportDispatch.spec.ts": "93971114e3aad8e1ead9a981acc1100ce7044e555798686e2c0fabeddea9e039"
+    "scheduler/mowerExhaustSupportDispatch.spec.ts": "93971114e3aad8e1ead9a981acc1100ce7044e555798686e2c0fabeddea9e039",
+    "scheduler/mowerDroneOperations.spec.ts": "15b332ce027b36d60e10770633fa4a6ec148f5dfffeb0bd7e5ff82986ff45599",
+    "simulator/mowerManufactureIO.spec.ts": "a3a1ad285bdc56fffd0dfd0a15ddd113b7cc091d8898e5f12bdeb442a5351895",
+    "scheduler/fixtures/mower-drone-operations-alpha.json": "668802b1cd142242adf2f5216b853be6e863a6b527e51d2f3fca82516cbf8b7b"
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
@@ -202,8 +205,8 @@
       "sha256": "4e53d292e999c713de10aea6f665e73f7fb95dbd0e8e10eedb04b3b2c1f081b2"
     },
     "scheduler/mowerAlphaDorm.ts": {
-      "sha256": "32c6fc3628d5efab181d94e00f3acb9a0859db19e42e9523c853ea80d4b4d264",
-      "reason": "Preserve same-round dorm admissions and mirror native displacement restoration: shared members retain resting bindings, completed departures keep unfinished anchors resting, and named arrangement targets retain priority."
+      "sha256": "1ca885eacfa2964a70b3d9eb362a68290a2d19a84aa5c3179c649103c7a1f230",
+      "reason": "Preserve same-round dorm admissions and mirror native displacement restoration: shared members retain resting bindings, completed departures keep unfinished anchors resting, and named arrangement targets retain priority. Allocate recovery-tier quotas in the complete configured bed order, including explicit ordinary beds, while retaining compatible actual occupants and protecting pending reservations."
     },
     "scheduler/mowerCompletedDeparture.spec.ts": {
       "sha256": "84ce808ec66ed5dce08056606dd74ed07b1e59f1f37a7939dec5735bc2ba000a",
@@ -261,6 +264,10 @@
       "sha256": "782a11f09630cbe55e8cf06f30e86ab925d3cdf661002f4899f10cbec659fbcb",
       "reason": "Retain the packaged historical roster fixture and account for the confirmed MAX-minus-reserve click timing: 4212 intervals and a 227/hour peak fit bounds of 4400 and 240. Preserve the 48-hour completion, consecutive microstep, unique occupancy, morale and unchanged-input assertions."
     },
+    "scheduler/mowerAlphaCandidates.ts": {
+      "reason": "Pass named task reservations into recovery allocation before dorm isolation.",
+      "sha256": "b8a9e0c109cc51927b6522039d6f779cebad502f6e3041e3f4c7b48103800446"
+    },
     "components/workbench/ScheduleTimelineGantt.vue": {
       "sha256": "c5e8ee4f76e81c2b74ff59e0f2c60ce7f199a262371e3b73e3e38c88d32fe397",
       "reason": "Allow the Mower wrapper to host the existing overview scrubber at the bottom without changing time-window state. Release overview drag listeners on collapse and unmount. Keep operator and event inspectors beside the pointer within viewport bounds under CSS zoom, and reserve cursor-info space to avoid hover-induced layout shifts."
@@ -269,7 +276,7 @@
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
   "mowerCheckedRevision": "48ae469895dd9a64fda8a565d2403c49f431cde8",
   "schedulingSync": {
-    "date": "2026-10-15",
+    "date": "2026-10-16",
     "behaviors": [
       "ordinary completed dorm departure retains a measured full-mood observation",
       "restored primaries join an already-resting group with protected covers and recovery beds",
@@ -277,11 +284,12 @@
       "facility product counts use observed recipes with main-plan fallbacks",
       "failed previews retain pending work until relevant observations or arrangements change",
       "Fiammetta group priority excludes shared multi-group followers",
-      "exhaustion support preserves prerequisite identity without ordinary recovery expansion or coalescing"
+      "exhaustion support preserves prerequisite identity without ordinary recovery expansion or coalescing",
+      "dorm recovery allocation respects explicit ordinary-bed order, retains same-tier actual residents and protects reserved rooms"
     ],
     "limitations": [
       "ideal run orders do not simulate maintenance runner replacement acceleration or physical restoration",
-      "persistent return windows and complete cross-dorm prioritization are not ported",
+      "persistent return windows, configuration-only dorm reallocation and crafting recovery ordering are not ported",
       "live mastery progress and device training observations are not simulated",
       "this snapshot does not establish full native-scheduler parity or live-device results"
     ],
@@ -292,6 +300,7 @@
     "calculatorRevision": "00df41c24925029cb223f6fbf76f7d2d870db407",
     "mowerRevision": "3ad69f15bd95a7fbc0aec0bbd2265bd7230f767f",
     "exhaustSupportMowerRevision": "acd54324d549eec34ef1a0bb9910de4c92cfb7d1",
-    "exhaustSupportCalculatorRevision": "c2b50182da1bcd83dd3da1ce6f2da58f0f66efb8"
+    "exhaustSupportCalculatorRevision": "c2b50182da1bcd83dd3da1ce6f2da58f0f66efb8",
+    "dormRecoveryMowerRevision": "ed6f10d9dae4a5ce1a992308582a0b13d240b6f5"
   }
 }

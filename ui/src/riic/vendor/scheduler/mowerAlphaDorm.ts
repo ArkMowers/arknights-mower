@@ -99,27 +99,71 @@ export function alphaFindDormSlot(data:MowerSchedulingData,name:string,used:Set<
  candidates.sort((a,b)=>{const x=cost(a),y=cost(b);return x[0]!-y[0]!||x[1]!-y[1]!||x[2]!-y[2]!||x[3]!-y[3]!})
  return candidates[0]
 }
-/** Only new arrivals compete for each room's first dynamic recovery position. */
-export function alphaPrioritizeRecovery(data:MowerSchedulingData,plan:MowerTaskPlan,preceding:MowerTaskPlan={},reservedSlots=new Set<string>()):MowerTaskPlan{
- if(!Object.keys(plan).length)return plan
- const projected=projectMowerArrangements(data,[preceding,plan]),explicit=new Set(Object.values(plan).flat()),lockedRooms=new Set<string>()
+/** Allocate recovery tiers in configured bed order; equal tiers retain actual beds. */
+export function alphaPrioritizeRecovery(data:MowerSchedulingData,plan:MowerTaskPlan,preceding:MowerTaskPlan={},reservedSlots:ReadonlySet<string>=new Set(),reservedNames:ReadonlySet<string>=new Set()):MowerTaskPlan{
+ if(!Object.keys(plan).length&&!Object.keys(preceding).length)return plan
+ const projected=projectMowerArrangements(data,[preceding,plan])
+ const explicit=new Set([...Object.values(preceding).flat(),...Object.values(plan).flat()]),lockedRooms=new Set<string>()
  for(const slot of [...reservedSlots,...data.reservedProductBeds.keys()])lockedRooms.add(slot.split('\0')[0]!)
  for(const bed of data.dorms){const op=data.operators[bed.name];if(op&&!explicit.has(op.name)&&(op.currentRoom!==bed.position[0]||op.currentIndex!==bed.position[1]))lockedRooms.add(bed.position[0])}
- const beds=projected.dorms.filter(b=>projected.effectiveFreeSlot(b)&&!lockedRooms.has(b.position[0]))
- const arrivals=beds.flatMap(b=>{const op=data.operators[b.name];return op&&explicit.has(op.name)&&!data.dynamicDormPosition(op.currentRoom,op.currentIndex)?[op.name]:[]})
- if(!arrivals.length)return plan
- arrivals.sort((a,b)=>compareAlphaKeys(alphaRestingKey(data,a),alphaRestingKey(data,b)))
- const targets=new Map<string,MowerDormState>();for(const b of beds)if(!targets.has(b.position[0]))targets.set(b.position[0],b)
- const result=structuredClone(plan)
- for(const name of arrivals){
-  const source=beds.find(b=>b.name===name)!
-  for(const target of targets.values()){
-   if(target===source)break
-   if(target.name&&compareAlphaKeys(alphaRestingKey(data,source.name),alphaRestingKey(data,target.name))>=0)continue
-   ;[source.name,target.name]=[target.name,source.name]
-   for(const bed of [source,target])(result[bed.position[0]]??=Array(data.plan[bed.position[0]]!.length).fill('Current'))[bed.position[1]]=bed.name||'Free'
-   if(!source.name)break
+ let beds=orderMowerAlphaDormIndices(projected).map(i=>projected.dorms[i]!).filter(b=>projected.effectiveFreeSlot(b))
+ for(const bed of beds)if(bed.name&&(!projected.operators[bed.name]||reservedNames.has(bed.name)||projected.freeRoomExcluded(bed.name)||projected.restMoodComplete(bed.name)||alphaRestingTier(projected,bed.name)===7))lockedRooms.add(bed.position[0])
+ beds=beds.filter(b=>!lockedRooms.has(b.position[0]))
+ const actual=new Map(beds.map(b=>[alphaPosition(...b.position),data.currentOperator(...b.position)?.name??'']))
+ if(beds.every(b=>actual.get(alphaPosition(...b.position))===b.name))return plan
+ const first=new Map<string,number>()
+ for(const bed of beds)first.set(bed.position[0],Math.min(first.get(bed.position[0])??Infinity,bed.position[1]))
+ const isFirst=(bed:MowerDormState)=>bed.position[1]===first.get(bed.position[0])
+ const groups:MowerDormState[][]=[]
+ for(const bed of beds){
+  const previous=groups.at(-1)
+  if(previous&&!isFirst(bed)&&previous[0]!.position[0]===bed.position[0]&&!isFirst(previous[0]!))previous.push(bed)
+  else groups.push([bed])
+ }
+ const fillerTier=8
+ const tier=(name:string)=>{
+  if(!name)return fillerTier
+  const op=projected.operators[name]!
+  return hasRestingMood(op,projected.nowMicros)&&restingMood(op,projected.nowMicros)>=op.upperLimit?fillerTier:alphaRestingTier(projected,name)
+ }
+ const names=beds.map(b=>b.name).filter(Boolean).sort((a,b)=>compareAlphaKeys(alphaRestingKey(projected,a),alphaRestingKey(projected,b)))
+ const desired=beds.map(b=>tier(b.name)).sort((a,b)=>a-b),allocations=new Map<string,string>()
+ let offset=0
+ const quotas=groups.map(group=>{
+  const quota=new Map<number,number>()
+  for(const level of desired.slice(offset,offset+group.length))quota.set(level,(quota.get(level)??0)+1)
+  offset+=group.length
+  return quota
+ })
+ const assign=(bed:MowerDormState,name:string,quota:Map<number,number>,level:number)=>{
+  allocations.set(alphaPosition(...bed.position),name);quota.set(level,quota.get(level)!-1)
+  if(name)names.splice(names.indexOf(name),1)
+ }
+ const retain=(index:number,completedOnly=false)=>{
+  const quota=quotas[index]!
+  for(const bed of groups[index]!){
+   const key=alphaPosition(...bed.position),level=tier(bed.name)
+   if(allocations.has(key)||completedOnly&&(!bed.name||level!==fillerTier))continue
+   if(bed.name&&actual.get(key)===bed.name&&names.includes(bed.name)&&quota.get(level))assign(bed,bed.name,quota,level)
   }
+ }
+ const fill=(index:number,includeFillers=false)=>{
+  const quota=quotas[index]!,vacant=groups[index]!.filter(b=>!allocations.has(alphaPosition(...b.position)))
+  for(const [level,count] of [...quota].sort(([a],[b])=>a-b)){
+   if(level===fillerTier&&!includeFillers)continue
+   for(let i=0;i<count;i++)assign(vacant.shift()!,names.find(name=>tier(name)===level)??'',quota,level)
+  }
+ }
+ const targets=groups.flatMap((group,i)=>isFirst(group[0]!)?[i]:[]),ordinary=groups.flatMap((_,i)=>targets.includes(i)?[]:[i])
+ // Quotas already follow the full order, including ordinary beds before later single-target beds.
+ groups.forEach((_,i)=>retain(i,true))
+ targets.forEach(i=>retain(i));targets.forEach(i=>fill(i))
+ ordinary.forEach(i=>retain(i));ordinary.forEach(i=>fill(i))
+ groups.forEach((_,i)=>fill(i,true))
+ const result=structuredClone(plan)
+ for(const bed of beds){
+  const name=allocations.get(alphaPosition(...bed.position))!
+  if(name!==bed.name)(result[bed.position[0]]??=Array(projected.plan[bed.position[0]]!.length).fill('Current'))[bed.position[1]]=name||'Free'
  }
  return result
 }
