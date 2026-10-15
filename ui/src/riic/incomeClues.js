@@ -41,6 +41,11 @@ export function clueEfficiency(config, phases, tenure = new Map()) {
         continue
       }
       switch (skill.buffId) {
+        case 'meet_spd&exchange[000]':
+        case 'meet_spd&exchange[001]':
+        case 'meet_spd&exchange[999]':
+          bonus += 30
+          break
         case 'meet_spd&cost_char[000]':
           if (awake.some((peer) => peer !== id)) bonus += 15
           break
@@ -102,8 +107,8 @@ export function clueEfficiency(config, phases, tenure = new Map()) {
           if (controlWorking('char_1048_orchd2')) bonus += 10
           break
         default:
-          // The simulation keeps clue exchange closed; clue-type probabilities do not change counts.
-          if (!fixed && !/处于线索交流|更容易获得|线索.*概率|线索倾向/.test(description))
+          // Clue exchange is assumed always active for production; clue-type probabilities do not change counts.
+          if (!fixed && !/更容易获得|线索.*概率|线索倾向/.test(description))
             throw new Error(`尚未支持的会客室技能：${skill.name}（${skill.buffId}）`)
       }
     }
