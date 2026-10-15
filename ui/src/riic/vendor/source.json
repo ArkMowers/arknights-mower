@@ -96,11 +96,11 @@
     "scheduler/mowerSchedulingData.ts": "d8df8c33070846208b398d62e6d624328982f2dc863f43039dff7bf8840ee3dc",
     "scheduler/mowerSelection.ts": "5b33bba0478ac07a6d96cf6022977bac9a3f7734270ac844349e4063b93e88e4",
     "scheduler/mowerSharedGroups.ts": "fdeece3488adc3543e3939f4aa6959443c77d68c3fe17780b8111212a227a687",
-    "scheduler/mowerShiftCycle.ts": "037ce56eb536c69611d76b3957ce952f5c24fabe64273a309074d23f79208586",
+    "scheduler/mowerShiftCycle.ts": "90b4d0f8d4dbeb7924bf9e31f1becf885b8f0c916ada327f0a6d6a9c198bd439",
     "scheduler/mowerShiftProtection.ts": "694d559911aa84fb2537c0186225cb03283220106042d55b87882c45a316f68d",
-    "scheduler/mowerSourceRuntime.ts": "3df25f97a05919f3fbc701f2e25c34af59858330ce0f3ec91b2b5b44241f028c",
+    "scheduler/mowerSourceRuntime.ts": "a41ecfccdb07e1636ce51174b3fc4c83812860973982845ca745c700e7a19a7b",
     "scheduler/mowerTaskExecutor.ts": "c4ece2a18bddf2251ed987b7948be74a1cd6cf2b41377ce6714d1396a6c695ab",
-    "scheduler/mowerTaskQueue.ts": "96d8134a40af1ef55b33bc442e0262f54cb96212fd6f15d4f691df0268ccdf00",
+    "scheduler/mowerTaskQueue.ts": "a9f701ad3249fb2358f9e325930971a000aeff8430f8508e098b6ef633b3096c",
     "scheduler/mowerTaskScheduling.ts": "c5d77fe0e04ca4e0ca23262696690b5f00ef82313893e7167bca5da97da27c51",
     "scheduler/mowerTiming.ts": "482768893ed442d8eb317b286691be72d6ff85a5cb879cfe1f3fb4ed9ab10b3e",
     "scheduler/mowerTodoTask.ts": "a739d8499d93277f33b42d38b92c1a5718f8b68f509bdf3ef598ad1aad766cc8",
@@ -165,7 +165,8 @@
     "scheduler/fixtures/mower-preview-recovery-roster.json": "620e6e62bc7d6f752416e8cd9837dc572a65c29f8b179d67b03495a68b8771b2",
     "simulator/mowerTaskFailureReport.spec.ts": "90c2797e43e56607194428cbf3a115c3666d0969622215ec1a03a0d83fef5105",
     "scheduler/mowerSourceRuntime.spec.ts": "26de98b59309dceab8af1734c5fdd8b37e1860abdabd92f7fe96df795a5aa7c6",
-    "scheduler/mowerSharedRestingGroup.spec.ts": "203f11f3fc785be7295638f792138c0f189cec59aac5bb30cac0a4ed9211e73b"
+    "scheduler/mowerSharedRestingGroup.spec.ts": "203f11f3fc785be7295638f792138c0f189cec59aac5bb30cac0a4ed9211e73b",
+    "scheduler/mowerExhaustSupportDispatch.spec.ts": "93971114e3aad8e1ead9a981acc1100ce7044e555798686e2c0fabeddea9e039"
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
@@ -185,8 +186,8 @@
       "sha256": "5c07b838134a34bea67e64a1ec0b7c0ac2dded59f1247347f2c5aa39adf6ea75"
     },
     "scheduler/mowerSourceRuntime.ts": {
-      "sha256": "98dd8c7b22b4e3722594594d6e5d5abb401237ae216217198a117c4336a41dbc",
-      "reason": "Synchronize native failure retention and observation-based recovery without changing the existing departing-plan observation adaptation. Retain full-to-full Fiammetta operations as failed pending work instead of adding a polling task; this offline safeguard is additional to the native selector."
+      "sha256": "a41ecfccdb07e1636ce51174b3fc4c83812860973982845ca745c700e7a19a7b",
+      "reason": "Synchronize native failure retention and observation-based recovery without changing the existing departing-plan observation adaptation. Retain full-to-full Fiammetta operations as failed pending work instead of adding a polling task; this offline safeguard is additional to the native selector. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning."
     },
     "scheduler/rosterRuntime.ts": {
       "reason": "Keep the existing runtime configuration without introducing maintenance-primary pause state.",
@@ -221,16 +222,20 @@
       "reason": "Preserve exhausted tasks across ordinary run recovery and exclude suspended failures from dispatch deadlines."
     },
     "scheduler/mowerShiftCycle.ts": {
-      "sha256": "8f67a298592ac3cc182d36089e2e15bfcde0ea8b76b70d05b83ef2dd7d388c78",
-      "reason": "Keep retained arrangement tasks when rebuilding derived shift plans."
+      "sha256": "90b4d0f8d4dbeb7924bf9e31f1becf885b8f0c916ada327f0a6d6a9c198bd439",
+      "reason": "Keep retained arrangement tasks when rebuilding derived shift plans. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning."
     },
     "scheduler/mowerTaskQueue.ts": {
-      "sha256": "2afd1da032ff22f3cc5a31faf318b5783f86a0c5ac6b4acd1368f32fc6bc487f",
-      "reason": "Separate pending failures from eligible dispatch without replacing task identity, remaining plan or deadline."
+      "sha256": "a9f701ad3249fb2358f9e325930971a000aeff8430f8508e098b6ef633b3096c",
+      "reason": "Separate pending failures from eligible dispatch without replacing task identity, remaining plan or deadline. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning."
     },
     "scheduler/mowerTaskScheduling.ts": {
       "sha256": "69553cf8c8a453d15c23bc0aeed30cc0869ba462b5574a158371a362bcd3ed07",
       "reason": "Exclude suspended failures from active scheduling mutations while retaining them in the pending task list."
+    },
+    "scheduler/mowerExhaustSupportDispatch.spec.ts": {
+      "sha256": "93971114e3aad8e1ead9a981acc1100ce7044e555798686e2c0fabeddea9e039",
+      "reason": "Verify runtime exhaustion-support generation, recovery capacity, required backups, task cloning and coalescing boundaries."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
@@ -243,7 +248,8 @@
       "new simulations always assume no unfinished training plan and ignore retired training-state input",
       "facility product counts use observed recipes with main-plan fallbacks",
       "failed previews retain pending work until relevant observations or arrangements change",
-      "Fiammetta group priority excludes shared multi-group followers"
+      "Fiammetta group priority excludes shared multi-group followers",
+      "exhaustion support preserves prerequisite identity without ordinary recovery expansion or coalescing"
     ],
     "limitations": [
       "ideal run orders do not simulate maintenance runner replacement acceleration or physical restoration",
@@ -256,6 +262,8 @@
       "additional facility-level export changes"
     ],
     "calculatorRevision": "00df41c24925029cb223f6fbf76f7d2d870db407",
-    "mowerRevision": "3ad69f15bd95a7fbc0aec0bbd2265bd7230f767f"
+    "mowerRevision": "3ad69f15bd95a7fbc0aec0bbd2265bd7230f767f",
+    "exhaustSupportMowerRevision": "acd54324d549eec34ef1a0bb9910de4c92cfb7d1",
+    "exhaustSupportCalculatorRevision": "c2b50182da1bcd83dd3da1ce6f2da58f0f66efb8"
   }
 }

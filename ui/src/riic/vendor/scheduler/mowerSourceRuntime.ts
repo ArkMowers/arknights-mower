@@ -597,7 +597,10 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
      queue.tasks.push(new MowerTask({time:s.time,type:T.SHIFT_OFF,plan}))
     }else{
      const support=planMowerExhaustSupport(data,members,options())
-     if(support&&Object.keys(support).length){queue.tasks.push(new MowerTask({time:s.time,type:T.SELF_CORRECTION,plan:support}),new MowerTask({time:s.time,type:T.EXHAUST_OFF,metadata:task.metadata}));skipPlanning=true}
+     if(support&&Object.keys(support).length){
+      const supportTask=new MowerTask({time:s.time,type:T.SELF_CORRECTION,plan:support});supportTask.exhaustSupport=true
+      queue.tasks.push(supportTask,new MowerTask({time:s.time,type:T.EXHAUST_OFF,metadata:task.metadata}));skipPlanning=true
+     }
      else {options().onBlocked(members);skipPlanning=true}
     }
     queue.consume(task)
