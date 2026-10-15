@@ -25,5 +25,32 @@
     "start_line": 47,
     "end_line": 63,
     "sha256": "2afd2ba38a7274c074b516719fbc85dcb4481735bd17c06454d039197db553ac"
+  },
+  {
+    "path": ".agents/skills/mower-commit/evals/fixtures/yituliu-oauth-and-upload-deduplication.md",
+    "kind": "historical-quotation",
+    "label": "Preserved line from an original commit diff used for offline writing evaluation; not a current recommendation.",
+    "source": "https://github.com/ArkMowers/arknights-mower/blob/a32ce1a3c12d0d8da178215d31e7c79ab9b5d15e/.agents/notes/implemented/simplification/2026-10-10-local-growth-sync-deduplication.zh.md",
+    "start_line": 80,
+    "end_line": 80,
+    "sha256": "abf0c66413c6bf529cd8e5b519e350ef358e0c2c4f8749c3f3b6b9ebf4b4dd0c"
+  },
+  {
+    "path": ".agents/skills/mower-commit/evals/fixtures/yituliu-oauth-and-upload-deduplication.md",
+    "kind": "historical-quotation",
+    "label": "Preserved line from an original commit diff used for offline writing evaluation; not a current recommendation.",
+    "source": "https://github.com/ArkMowers/arknights-mower/blob/a32ce1a3c12d0d8da178215d31e7c79ab9b5d15e/.agents/notes/implemented/simplification/2026-10-11-yituliu-oauth-upload.zh.md",
+    "start_line": 151,
+    "end_line": 151,
+    "sha256": "bda5b63754061602a5b89162dc4331049229b16381ca8288b9493e2e319bc801"
+  },
+  {
+    "path": ".agents/skills/mower-commit/evals/fixtures/yituliu-oauth-and-upload-deduplication.md",
+    "kind": "historical-quotation",
+    "label": "Preserved line from an original commit diff used for offline writing evaluation; not a current recommendation.",
+    "source": "https://github.com/ArkMowers/arknights-mower/blob/a32ce1a3c12d0d8da178215d31e7c79ab9b5d15e/.agents/notes/implemented/simplification/2026-10-11-yituliu-oauth-upload.zh.md",
+    "start_line": 155,
+    "end_line": 155,
+    "sha256": "e59abe94f41b7bf405eee3fe1ae6d19d0a22a173589995d16ed9a61a2869e28d"
   }
 ]

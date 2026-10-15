@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { createDefaultWorkspace } from './vendor/workbench/defaults'
+import { compileRosterSchedule } from './vendor/scheduler/compileRosterSchedule'
+import { simulateSchedule } from './vendor/simulator/scheduleSimulation'
+import { resolveOperatorCharId } from './vendor/domain/operatorIdentifiers'
 import {
   defaultIncomeSettings,
   incomeRequest,
@@ -592,3 +596,77 @@ it('calculates product-count backup conditions through the income Worker with a 
   expect(result.resources.opening.fragment).toBe(0)
   expect(result.observedHours).toBeCloseTo(24, 7)
 })
+
+it.each([
+  ['刺玫', 18],
+  ['撷英调香师', 20]
+])(
+  'integrates %s fatigue recovery separately from the all-room maximum until morale %s',
+  (provider, threshold) => {
+    const workspace = createDefaultWorkspace()
+    workspace.mainPlan.facilities.dormitory_1.level = 5
+    workspace.mainPlan.facilities.dormitory_1.slots = [provider, '杜林', '芬'].map((name) => ({
+      occupant: { kind: 'operator', operatorId: name },
+      groupId: null,
+      replacements: []
+    }))
+    const target = resolveOperatorCharId('芬')
+    const schedule = compileRosterSchedule(workspace, {
+      operatorMorale: { [target]: threshold - 1 }
+    })
+    for (const maxStepHours of [0.05, 1]) {
+      const report = simulateSchedule(schedule, { sampleHours: 0.5, maxStepHours })
+      expect(report.success).toBe(true)
+      expect(report.operators.find((op) => op.operatorId === target).finalMorale).toBeCloseTo(
+        threshold + (0.5 - 1 / 4.35) * 4.25,
+        7
+      )
+    }
+  }
+)
+it('takes only one fatigue recovery extra with both providers in the Mower simulation', () => {
+  const workspace = createDefaultWorkspace()
+  workspace.mainPlan.facilities.dormitory_1.level = 5
+  workspace.mainPlan.facilities.dormitory_1.slots = ['刺玫', '撷英调香师', '杜林', '芬'].map(
+    (name) => ({
+      occupant: { kind: 'operator', operatorId: name },
+      groupId: null,
+      replacements: []
+    })
+  )
+  const target = resolveOperatorCharId('芬')
+  const schedule = compileRosterSchedule(workspace, { operatorMorale: { [target]: 10 } })
+  const report = simulateSchedule(schedule, { sampleHours: 1 })
+  expect(report.success).toBe(true)
+  expect(report.operators.find((op) => op.operatorId === target).finalMorale).toBeCloseTo(14.35, 8)
+})
+
+it.each([
+  [true, 14.4],
+  [false, 15.05]
+])(
+  'retains Coldshot shared recovery category with unfinished Fiammetta: %s',
+  (withFiammetta, expected) => {
+    const workspace = createDefaultWorkspace()
+    workspace.mainPlan.facilities.dormitory_1.level = 5
+    const names = ['冰酿', '杜林', '芬', ...(withFiammetta ? ['菲亚梅塔'] : [])]
+    workspace.mainPlan.facilities.dormitory_1.slots = names.map((name) => ({
+      occupant: { kind: 'operator', operatorId: name },
+      groupId: null,
+      replacements: []
+    }))
+    const target = resolveOperatorCharId('芬')
+    const fia = resolveOperatorCharId('菲亚梅塔')
+    const schedule = compileRosterSchedule(workspace, {
+      operatorMorale: { [target]: 10, [fia]: 10 }
+    })
+    const report = simulateSchedule(schedule, { sampleHours: 1 })
+    expect(report.success).toBe(true)
+    expect(report.operators.find((op) => op.operatorId === target).finalMorale).toBeCloseTo(
+      expected,
+      8
+    )
+    if (withFiammetta)
+      expect(report.operators.find((op) => op.operatorId === fia).finalMorale).toBeCloseTo(12, 8)
+  }
+)

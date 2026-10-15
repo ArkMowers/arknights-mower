@@ -236,6 +236,10 @@
     "scheduler/mowerExhaustSupportDispatch.spec.ts": {
       "sha256": "93971114e3aad8e1ead9a981acc1100ce7044e555798686e2c0fabeddea9e039",
       "reason": "Verify runtime exhaustion-support generation, recovery capacity, required backups, task cloning and coalescing boundaries."
+    },
+    "engine/dormitoryRecovery.ts": {
+      "reason": "Keep low-morale recovery separate from the all-room maximum and take the highest conditional extra across the two eligible providers; synchronized from calculator e58cc77de27e74f7ab261890a1824c02061a14f6.",
+      "sha256": "1032e59a9d435e0b8ecd76f5236e5a49537803563bf0f36372d7659f77c141e4"
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
