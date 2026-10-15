@@ -53,8 +53,13 @@ export function incomeReportLines(result, settings, plan, label) {
       .join('；')}。加权产出不是龙门币结算额。`,
     `模型假设：理想跑单；部分读房与调度耗时已建模，其余点击识别耗时忽略；宿舍氛围按等级上限。`,
     `本次设施等级（优先使用排班保存值，未设置时推断）：${levels}。`,
-    `计算器 ${CALCULATOR_REVISION}（含本地完成时刻精度、赤金透支、制造成本观察及公招观察适配）；调度参考 Mower alpha ${MOWER_REFERENCE}，后续本体逻辑不自动同步。`,
+    `计算器 ${CALCULATOR_REVISION}（含本地完成时刻精度、赤金透支、制造成本观察、公招与线索观察适配）；调度参考 Mower alpha ${MOWER_REFERENCE}，后续本体逻辑不自动同步。`,
     '公招刷新按办公室驻员、心情与已解锁技能计算联络产出；初始进度为零，预热进度延续但预热完成次数不计。假设及时使用刷新次数，不模拟存满 3 次停工，不计入加权收益。',
+    ...(result.summary?.clueCount == null
+      ? ['这份历史记录未统计会客室线索，重新演算后可查看。']
+      : [
+          '会客室线索仅统计驻员搜集完成的个数，初始进度为零，预热进度延续但预热完成数不计；假设及时领取及清理库存，不模拟满库停工、每日赠送、好友赠送和线索交流，不计算信用点或加权收益。'
+        ]),
     '回收站仅统计产出次数，不推算随机材料，不增加材料库存，也不计材料收益价值。',
     '这是离线模型估算，不是实测收益或实际排班可执行性的证明。图片导入不恢复本次计算参数和结果。'
   ]
@@ -164,9 +169,10 @@ export async function renderIncomeImage(
       fragment: ['#9d7940', '#ffffff'],
       orundum: ['#be4c51', '#ffffff'],
       recycle: ['#398d83', '#ffffff'],
-      recruitment: ['#657385', '#ffffff']
+      recruitment: ['#657385', '#ffffff'],
+      clue: ['#756791', '#ffffff']
     }
-    const order = ['exp', 'lmd', 'gold', 'fragment', 'orundum', 'recycle', 'recruitment']
+    const order = ['exp', 'lmd', 'gold', 'fragment', 'orundum', 'recycle', 'recruitment', 'clue']
     metrics
       .map((metric, index) => ({ ...metric, image: icons[index] }))
       .sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key))
@@ -176,7 +182,7 @@ export async function renderIncomeImage(
         const [background, color] = colors[metric.key]
         ctx.fillStyle = background
         ctx.fillRect((x + 18) * scale, (y + 4) * scale, 104 * scale, 26 * scale)
-        if (metric.key === 'recycle' || metric.key === 'recruitment') {
+        if (['recycle', 'recruitment', 'clue'].includes(metric.key)) {
           // Draw only the inner recognition symbol; replace the template's frame with a circle.
           ctx.save()
           ctx.translate((x + 17) * scale, (y + 17) * scale)
@@ -189,7 +195,9 @@ export async function renderIncomeImage(
           ctx.shadowOffsetY = scale
           ctx.fill()
           ctx.shadowColor = 'transparent'
-          if (metric.key === 'recruitment') {
+          if (metric.key === 'clue') {
+            ctx.drawImage(metric.image, 15, 24, 42, 28, -12, -8, 24, 16)
+          } else if (metric.key === 'recruitment') {
             ctx.drawImage(metric.image, 22, 20, 30, 35, -9, -10.5, 18, 21)
           } else {
             ctx.save()
@@ -216,7 +224,7 @@ export async function renderIncomeImage(
         } else {
           ctx.drawImage(metric.image, x * scale, y * scale, 34 * scale, 34 * scale)
         }
-        const value = `${compactIncomeNumber(metric.daily)}${metric.unit === '次' ? '次' : ''}`
+        const value = `${compactIncomeNumber(metric.daily)}${metric.key === 'clue' ? '个' : metric.unit === '次' ? '次' : ''}`
         ctx.font = `${16 * scale}px sans-serif`
         ctx.fillStyle = color
         ctx.fillText(value, (x + 39) * scale, (y + 24) * scale, 79 * scale)
