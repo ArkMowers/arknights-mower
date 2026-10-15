@@ -129,7 +129,7 @@ def restart_environment(record, job):
     elif job["action"] == "apply_schedule":
         env["MOWER_RESUME_MODE"] = "1"
     else:
-        env.pop("MOWER_RESUME_MODE", None)
+        env["MOWER_RESUME_MODE"] = "preserve"
     return env
 
 

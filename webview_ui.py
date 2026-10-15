@@ -819,10 +819,14 @@ def _run_desktop():
     request_auto_check()
 
     resume_mode = os.environ.pop("MOWER_RESUME_MODE", "")
-    resume = resume_mode in ("0", "1") or (
-        os.environ.get("MOWER_RESUME_RUN") == "1"
-        if os.environ.get("MOWER_RESTART_JOB")
-        else conf.start_automatically
+    resume_run = (
+        bool(os.environ.get("MOWER_RESTART_JOB"))
+        and os.environ.get("MOWER_RESUME_RUN") == "1"
+    )
+    resume = (
+        resume_mode in ("0", "1")
+        or resume_run
+        or (resume_mode != "preserve" and conf.start_automatically)
     )
     auto_resource = conf.resource_update.enable and conf.resource_update.auto_update
 
@@ -860,7 +864,7 @@ def _run_desktop():
                 if resume_mode in ("0", "1"):
                     server.start(resume_mode)
                 else:
-                    server.start("2" if os.environ.get("MOWER_RESTART_JOB") else "0")
+                    server.start("2" if resume_run else "0")
 
     if resume or auto_resource:
         Thread(target=resume_after_update, daemon=True).start()

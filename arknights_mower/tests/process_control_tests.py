@@ -171,7 +171,7 @@ class ProcessControlTests(unittest.TestCase):
 
         self.assertEqual(resume["MOWER_RESUME_MODE"], "0")
         self.assertEqual(resume["MOWER_RESUME_RUN"], "1")
-        self.assertNotIn("MOWER_RESUME_MODE", normal)
+        self.assertEqual(normal["MOWER_RESUME_MODE"], "preserve")
         self.assertEqual(normal["MOWER_RESUME_RUN"], "1")
 
     def test_apply_schedule_uses_replan_mode(self):
@@ -181,6 +181,25 @@ class ProcessControlTests(unittest.TestCase):
         )
         self.assertEqual(env["MOWER_RESUME_MODE"], "1")
         self.assertEqual(env["MOWER_RESUME_RUN"], "1")
+
+    def test_plain_process_restart_preserves_stopped_or_running_task_admission(self):
+        from arknights_mower.tests.desktop_lifecycle_tests import DesktopStartupTests
+
+        desktop = DesktopStartupTests()
+        for running in (False, True):
+            env = control.restart_environment(
+                {"running": running}, {"id": "normal", "action": "restart"}
+            )
+            for automatic in (False, True):
+                with self.subTest(running=running, automatic=automatic):
+                    events, server = desktop.launch(
+                        automatic=automatic,
+                        restart=bool(env["MOWER_RESTART_JOB"]),
+                        resume_run=env["MOWER_RESUME_RUN"],
+                        resume_mode=env["MOWER_RESUME_MODE"],
+                    )
+                    self.assertEqual(events, [("start", "2")] if running else [])
+                    self.assertEqual(server.start.call_count, int(running))
 
     def test_restart_resume_requires_running_instance(self):
         with (

@@ -242,6 +242,7 @@ class DesktopStartupTests(unittest.TestCase):
         *,
         automatic=True,
         resource=False,
+        background=False,
         restart=False,
         resume_run="0",
         resume_mode="",
@@ -320,7 +321,7 @@ class DesktopStartupTests(unittest.TestCase):
                 patch.dict(
                     os.environ,
                     {
-                        "MOWER_BACKGROUND": "0",
+                        "MOWER_BACKGROUND": "1" if background else "0",
                         "MOWER_MANAGED": "1",
                         "MOWER_RESTART_JOB": "fixture" if restart else "",
                         "MOWER_RESTART_PORT": restart_port,
@@ -438,7 +439,8 @@ class DesktopStartupTests(unittest.TestCase):
     def test_restart_policy_overrides_the_saved_autostart_option(self):
         for automatic in (False, True):
             for resume_run, mode, expected in (
-                ("0", "", None),
+                ("0", "preserve", None),
+                ("1", "preserve", "2"),
                 ("1", "", "2"),
                 ("0", "0", "0"),
                 ("0", "1", "1"),
@@ -456,3 +458,17 @@ class DesktopStartupTests(unittest.TestCase):
                         events, [] if expected is None else [("start", expected)]
                     )
                     self.assertEqual(server.start.call_count, int(expected is not None))
+
+    def test_software_update_autostart_uses_the_saved_option_and_normal_mode(self):
+        for automatic in (False, True):
+            with self.subTest(automatic=automatic):
+                events, server = self.launch(
+                    automatic=automatic,
+                    restart=True,
+                    resource=True,
+                )
+                expected = ["check resource", "install resource"]
+                if automatic:
+                    expected.append(("start", "0"))
+                self.assertEqual(events, expected)
+                self.assertEqual(server.start.call_count, int(automatic))
