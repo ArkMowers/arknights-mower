@@ -80,11 +80,14 @@ describe('operator group bindings', () => {
       Object.assign(slot, { agent: '清流', group: '甲', replacement: ['结城理'] })
       addPlanBinding(slot)
       Object.assign(slot.group_bindings[0], { group: '乙', replacement: ['酒神'] })
+      addPlanBinding(slot)
+      slot.group_bindings[1].replacement = ['砾']
       expect(store.groups).toEqual(['甲', '乙'])
       const exported = store.build_plan()
       const selected = subPlan === 'main' ? exported.plan1 : exported.backup_plans[0].plan
       expect(selected.contact.plans[0].group_bindings).toEqual([
-        { group: '乙', replacement: ['酒神'] }
+        { group: '乙', replacement: ['酒神'] },
+        { group: '', replacement: ['砾'] }
       ])
       expect(store.fill_empty(JSON.parse(JSON.stringify(selected))).contact.plans[0]).toEqual(slot)
       store.$dispose()

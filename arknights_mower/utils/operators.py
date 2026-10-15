@@ -477,8 +477,8 @@ class Operators:
                     return f"Free只能安排在宿舍 房间->{room}, 干员->{data.agent}"
                 if data.group_bindings:
                     groups = [binding["group"].strip() for binding in data.bindings]
-                    if not all(groups) or len(groups) != len(set(groups)):
-                        return f"{data.agent}的多绑组名称不能为空或重复"
+                    if len(groups) != len(set(groups)):
+                        return f"{data.agent}的多绑组名称不能重复，空绑组最多填写一次"
                     if data.agent in ("Free", "菲亚梅塔"):
                         return f"{data.agent}不能配置多绑组"
                 if data.group and data.agent in ["Free", "菲亚梅塔"]:
@@ -1068,16 +1068,19 @@ class Operators:
     def select_group_binding(self, name, group):
         """Select a validated binding without changing the persisted Scheduling Plan."""
         op = self.operators[name]
+        if op.independent_rest:
+            group = ""
         if not op.multi_group or not any(
             binding["group"] == group for binding in op.group_bindings
         ):
             return
         replacements = list(op.replacements_for_group(group))
         if op.group != group:
-            self.groups[op.group] = [
-                member for member in self.groups.get(op.group, []) if member != name
-            ]
-            if name not in self.groups.setdefault(group, []):
+            if op.group:
+                self.groups[op.group] = [
+                    member for member in self.groups.get(op.group, []) if member != name
+                ]
+            if group and name not in self.groups.setdefault(group, []):
                 self.groups[group].append(name)
         op.group, op.replacement = group, replacements
 
@@ -1103,7 +1106,8 @@ class Operators:
         return [
             binding["group"]
             for binding in operator.group_bindings
-            if transitions.get(
+            if binding["group"]
+            and transitions.get(
                 binding["group"], self.group_is_resting(binding["group"])
             )
         ]
@@ -1255,9 +1259,17 @@ class Operators:
             relevant = any(b["group"] in transitions for b in op.group_bindings)
             groups = self.resting_binding_groups(op, transitions)
             if not groups:
-                if relevant:
+                if (
+                    op.independent_rest
+                    and op.is_resting()
+                    and (relevant or target != [op.name])
+                ):
+                    groups = [""]
+                elif relevant:
                     changes[op.name] = op.name
-                continue
+                    continue
+                else:
+                    continue
             candidates = self.shared_replacements(op, groups)
             if not candidates:
                 return False
@@ -1824,8 +1836,13 @@ class Operators:
         # 复制基建数据
         if operator.name in self.shadow_copy:
             exist = self.shadow_copy[operator.name]
-            if operator.multi_group and any(
-                binding["group"] == exist.group for binding in operator.group_bindings
+            if (
+                operator.multi_group
+                and not operator.independent_rest
+                and any(
+                    binding["group"] == exist.group
+                    for binding in operator.group_bindings
+                )
             ):
                 operator.group = exist.group
                 operator.replacement = list(
@@ -1852,13 +1869,16 @@ class Operators:
                 exist, "standby_low_priority", False
             )
             operator.temporary_dorm_fill = getattr(exist, "temporary_dorm_fill", False)
+            operator.individual_return_window = getattr(
+                exist, "individual_return_window", None
+            )
         self.operators[operator.name] = operator
         self.apply_custom_mood_limits(operator)
         self.apply_ling_xi_mood_limits()
         # 需要用尽心情干员逻辑
         if (
             operator.exhaust_require
-            and not operator.multi_group
+            and (not operator.multi_group or operator.independent_rest)
             and not (operator.group and operator.room.startswith("dorm"))
         ):
             self.exhaust_agent.add(operator.name)
@@ -1985,6 +2005,11 @@ class Operators:
 
     def is_same_group_primary_replacement(self, operator, name, group=None):
         """同一非空组内，不同主班可按对应绑组的配置互填替班。"""
+        if group is None and operator.independent_rest:
+            return any(
+                self.is_same_group_primary_replacement(operator, name, binding)
+                for binding in self.resting_binding_groups(operator)
+            )
         cover = self.operators.get(name)
         group = operator.group if group is None else group
         return bool(
@@ -2718,6 +2743,11 @@ class Operators:
             and not self.operators[name].standby_low_priority
             and (
                 self.operators[name].group in anchor_groups
+                or self.operators[name].independent_rest
+                and any(
+                    binding["group"] in anchor_groups
+                    for binding in self.operators[name].group_bindings
+                )
                 or not self.operators[name].group
                 and self.has_resting_anchor()
             )
@@ -2984,6 +3014,9 @@ class Operator:
         self.group = group
         self.replacement = replacement
         self.group_bindings = copy.deepcopy(group_bindings or [])
+        if self.independent_rest:
+            self.group = ""
+            self.replacement = list(self.replacements_for_group(""))
         self.resting_priority = resting_priority
         # 候补跌破急救线后，本轮休息周期锁定为低优。
         self.standby_low_priority = False
@@ -2999,6 +3032,7 @@ class Operator:
         self.idle_rest_check = None
         # 普通补床住客随时给主班让床，不计入集中恢复正式批次。
         self.temporary_dorm_fill = False
+        self.individual_return_window = None
         self._current_room = None
         self.current_room = current_room
         self.exhaust_require = exhaust_require
@@ -3017,6 +3051,15 @@ class Operator:
     @property
     def multi_group(self):
         return len(getattr(self, "group_bindings", ())) > 1
+
+    @property
+    def independent_rest(self):
+        """工作主班的空绑组提供个人轮休，具名绑组的岗位替班优先。"""
+        return (
+            self.multi_group
+            and not self.room.startswith("dorm")
+            and any(binding["group"] == "" for binding in self.group_bindings)
+        )
 
     def replacements_for_group(self, group):
         if self.multi_group:

@@ -128,14 +128,10 @@ def validate_rescue_schedule(data, schedule):
                     *slot.get("group_bindings", []),
                 ]
                 if slot.get("group_bindings"):
-                    groups = [
-                        binding["group"].strip() for binding in slot["group_bindings"]
-                    ]
-                    if slot.get("group"):
-                        groups.insert(0, slot["group"].strip())
-                    if not all(groups) or len(groups) != len(set(groups)):
+                    groups = [binding["group"].strip() for binding in bindings]
+                    if len(groups) != len(set(groups)):
                         raise ValueError(
-                            f"救急{label} {name}的多绑组名称不能为空或重复"
+                            f"救急{label} {name}的多绑组名称不能重复，空绑组最多填写一次"
                         )
                 for binding in bindings:
                     replacements = binding["replacement"]
