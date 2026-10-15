@@ -9,6 +9,8 @@ from pathlib import Path
 from arknights_mower.utils import update_runtime as runtime
 
 _lock = threading.RLock()
+_state_changed = threading.Condition(_lock)
+_completed_episodes = 0
 _cancelled = False
 _progress = {}
 RETRY_DELAYS = (2.0, 5.0, 15.0, 60.0, 300.0)
@@ -184,17 +186,22 @@ def activate(message):
 
 
 def complete():
+    global _completed_episodes
+
     from arknights_mower.utils import config
     from arknights_mower.utils.csleep import MowerExit
 
-    if config.stop_mower.is_set() or not status().get("automatic"):
-        raise MowerExit
-    _update(
-        active=False,
-        phase="resolved",
-        next_retry_at=None,
-        message="设备实际状态已重新观察并保存，正在自动接续调度。",
-    )
+    with _state_changed:
+        if config.stop_mower.is_set() or not status().get("automatic"):
+            raise MowerExit
+        _update(
+            active=False,
+            phase="resolved",
+            next_retry_at=None,
+            message="设备实际状态已重新观察并保存，正在自动接续调度。",
+        )
+        _completed_episodes += 1
+        _state_changed.notify_all()
 
 
 def observe_scheduler(scheduler):
@@ -414,14 +421,22 @@ class AutomaticRecovery(threading.Thread):
         self._closing = threading.Event()
 
     def close(self):
-        self._closing.set()
+        with _state_changed:
+            self._closing.set()
+            _state_changed.notify_all()
         if self.ident is not None:
             self.join(2)
 
     def run(self):
         attempts = 0
+        with _lock:
+            completed_episodes = _completed_episodes
         while not self._closing.is_set() and not self.closing():
-            current = status()
+            with _lock:
+                current = status()
+                if completed_episodes != _completed_episodes:
+                    attempts = 0
+                    completed_episodes = _completed_episodes
             if not current["active"]:
                 attempts = 0
                 self._closing.wait(0.5)
@@ -441,8 +456,15 @@ class AutomaticRecovery(threading.Thread):
                         _progress.update(
                             phase="waiting", attempt=attempts, next_retry_at=deadline
                         )
-                if self._closing.wait(delay):
-                    return
+                with _state_changed:
+                    if _state_changed.wait_for(
+                        lambda: (
+                            self._closing.is_set()
+                            or completed_episodes != _completed_episodes
+                        ),
+                        timeout=delay,
+                    ):
+                        continue
             if self.closing() or not status().get("automatic"):
                 continue
             attempts += 1

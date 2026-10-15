@@ -262,6 +262,111 @@ def test_new_failure_after_resolution_starts_without_previous_cooldown(
     assert calls == [1, 1]
 
 
+def test_new_worker_failure_before_next_poll_starts_without_previous_cooldown(
+    offline, notice, monkeypatch
+):
+    second_attempt = threading.Event()
+    calls = []
+    monkeypatch.setattr(
+        offline.main, "main", Mock(side_effect=RuntimeError("later worker failure"))
+    )
+
+    def attempt():
+        calls.append(1)
+        crash_recovery.complete()
+        if len(calls) == 1:
+            offline.server._run_mower_worker({})
+            assert crash_recovery.status()["automatic"]
+        else:
+            second_attempt.set()
+
+    runner = crash_recovery.AutomaticRecovery(
+        attempt, running=lambda: False, closing=lambda: False, delays=(2.0,)
+    )
+    runner.start()
+    try:
+        assert second_attempt.wait(1)
+    finally:
+        runner.close()
+    assert calls == [1, 1]
+    offline.io.assert_not_called()
+
+
+def test_completed_episode_interrupts_its_cooldown_for_new_worker_failure(
+    offline, notice, monkeypatch
+):
+    backoff, second_attempt = threading.Event(), threading.Event()
+    real_failed = crash_recovery.failed
+    calls = []
+    monkeypatch.setattr(
+        offline.main, "main", Mock(side_effect=RuntimeError("later worker failure"))
+    )
+
+    def failed(*args, **kwargs):
+        real_failed(*args, **kwargs)
+        if kwargs.get("attempt") == 1:
+            backoff.set()
+
+    def attempt():
+        calls.append(1)
+        if len(calls) == 1:
+            return
+        crash_recovery.complete()
+        second_attempt.set()
+
+    monkeypatch.setattr(crash_recovery, "failed", failed)
+    runner = crash_recovery.AutomaticRecovery(
+        attempt, running=lambda: False, closing=lambda: False, delays=(2.0,)
+    )
+    runner.start()
+    try:
+        assert backoff.wait(1)
+        crash_recovery.complete()
+        offline.server._run_mower_worker({})
+        assert second_attempt.wait(1)
+    finally:
+        runner.close()
+    assert calls == [1, 1]
+    offline.io.assert_not_called()
+
+
+def test_repeated_worker_failure_in_same_episode_keeps_retry_sequence(
+    offline, notice, monkeypatch
+):
+    recovered = threading.Event()
+    real_failed = crash_recovery.failed
+    calls, backoff_attempts = [], []
+    monkeypatch.setattr(
+        offline.main, "main", Mock(side_effect=RuntimeError("same worker failure"))
+    )
+
+    def failed(*args, **kwargs):
+        if "attempt" in kwargs:
+            backoff_attempts.append(kwargs["attempt"])
+        real_failed(*args, **kwargs)
+
+    def attempt():
+        calls.append(1)
+        if len(calls) < 3:
+            offline.server._run_mower_worker({})
+        else:
+            crash_recovery.complete()
+            recovered.set()
+
+    monkeypatch.setattr(crash_recovery, "failed", failed)
+    runner = crash_recovery.AutomaticRecovery(
+        attempt, running=lambda: False, closing=lambda: False, delays=(0.01, 0.02)
+    )
+    runner.start()
+    try:
+        assert recovered.wait(2)
+    finally:
+        runner.close()
+    assert calls == [1, 1, 1]
+    assert backoff_attempts == [1, 2]
+    offline.io.assert_not_called()
+
+
 def test_explicit_start_after_stop_reenables_later_worker_recovery(
     offline, notice, monkeypatch, tmp_path
 ):
