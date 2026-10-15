@@ -26,7 +26,37 @@ it('keeps recent sampled events with names and an explicit total', () => {
   expect(incomeLogTime(25.5)).toBe('第 2 天 01:30')
 })
 
-import { compactIncomeNumber, incomeImageFilename, incomeImageAlgorithmLines } from './incomeImage'
+import {
+  compactIncomeNumber,
+  incomeImageFilename,
+  incomeImageAlgorithmLines,
+  incomeImageAnnotationLines
+} from './incomeImage'
+it('keeps short author and remarks together and omits empty annotations', () => {
+  const measure = (text) => Array.from(text).length
+  expect(
+    incomeImageAnnotationLines({ author: '作者名', remarks: '备注内容' }, measure, 30)
+  ).toEqual(['作者：作者名　备注：备注内容'])
+  expect(incomeImageAnnotationLines({ author: ' ', remarks: '\n' }, measure, 30)).toEqual([])
+  expect(incomeImageAnnotationLines(undefined, measure, 30)).toEqual([])
+  expect(
+    incomeImageAnnotationLines(
+      { author: '作者名', remarks: '备注内容' },
+      measure,
+      60,
+      '82 算法 · 28 天采样'
+    )
+  ).toEqual(['82 算法 · 28 天采样　作者：作者名　备注：备注内容'])
+})
+it('wraps annotations within the left columns and retains explicit newlines and Unicode', () => {
+  const measure = (text) => Array.from(text).length
+  const lines = incomeImageAnnotationLines({ remarks: '甲乙丙丁😀\n下一行' }, measure, 5)
+  expect(lines).toEqual(['备注：甲乙', '丙丁😀', '下一行'])
+  expect(lines.every((line) => measure(line) <= 5)).toBe(true)
+  expect(incomeImageAnnotationLines({ remarks: '甲'.repeat(1000) }, measure, 400)[0]).toHaveLength(
+    303
+  )
+})
 it('names JPG exports with the chosen title and completed run income', () => {
   const result = { summary: { totalScore82: 103475.123 }, observedHours: 672 }
   expect(incomeImageFilename(' 我的排班 ', result)).toBe('我的排班_日均收益103475.12_28天.jpg')

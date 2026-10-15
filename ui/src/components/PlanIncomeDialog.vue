@@ -122,6 +122,7 @@ const exporting = ref(false)
 const exportError = ref('')
 const exported = ref(false)
 const exportName = ref('')
+const exportDetails = reactive({ author: '', remarks: '' })
 const completedSnapshot = ref(null)
 const archiveLoading = ref(true)
 const archiveError = ref('')
@@ -237,6 +238,8 @@ async function restoreResult() {
     completedSnapshot.value = record.snapshot
     savedAt.value = record.savedAt
     exportName.value = record.exportName || ''
+    exportDetails.author = record.exportDetails?.author || ''
+    exportDetails.remarks = record.exportDetails?.remarks || ''
     progressLog.value = record.progressLog
     Object.assign(state, {
       result: record.result,
@@ -252,7 +255,11 @@ async function restoreResult() {
 }
 async function persistResult() {
   if (!lastCompleted) return
-  lastCompleted = { ...lastCompleted, exportName: exportName.value }
+  lastCompleted = {
+    ...lastCompleted,
+    exportName: exportName.value,
+    exportDetails: { ...exportDetails }
+  }
   archiveError.value = ''
   try {
     await saveIncomeArchive(lastCompleted)
@@ -262,7 +269,13 @@ async function persistResult() {
   }
 }
 function saveName() {
-  if (lastCompleted && lastCompleted.exportName !== exportName.value) persistResult()
+  if (
+    lastCompleted &&
+    (lastCompleted.exportName !== exportName.value ||
+      (lastCompleted.exportDetails?.author || '') !== exportDetails.author ||
+      (lastCompleted.exportDetails?.remarks || '') !== exportDetails.remarks)
+  )
+    persistResult()
 }
 async function start() {
   if (archiveLoading.value || submitting.value || state.running || exporting.value) return
@@ -322,7 +335,8 @@ async function exportImage() {
       state.input.settings,
       state.input.plan,
       completedSnapshot.value.theme,
-      completedSnapshot.value.roomBounds
+      completedSnapshot.value.roomBounds,
+      { ...exportDetails }
     )
     if (generation !== exportGeneration) return
     downloadIncomeImage(blob, incomeImageFilename(name, state.result))
@@ -604,6 +618,30 @@ onBeforeUnmount(() => {
                 :disabled="exporting"
             /></n-form-item>
             <p>排班名称仅用于 JPG 文件名，后附日均加权收益和采样天数；图片不显示名称。</p>
+            <n-form-item label="作者" :show-feedback="false">
+              <n-input
+                v-model:value="exportDetails.author"
+                @change="saveName"
+                placeholder="可选，显示在收益与订单统计下方"
+                :maxlength="40"
+                :disabled="exporting"
+              />
+            </n-form-item>
+            <n-form-item label="备注" :show-feedback="false">
+              <n-input
+                v-model:value="exportDetails.remarks"
+                @change="saveName"
+                type="textarea"
+                placeholder="可填写排班版本、适用条件或使用说明"
+                :maxlength="300"
+                show-count
+                :autosize="{ minRows: 2, maxRows: 4 }"
+                :disabled="exporting"
+              />
+            </n-form-item>
+            <p>
+              作者和备注随收益记录保存，导出时显示在收益与订单统计下方；留空不占空间，无需重新演算。
+            </p>
             <p>
               本次结果：预热 {{ state.input.settings.warmupDays }} 天、统计
               {{ state.input.settings.sampleDays }} 天。修改参数后需重新演算；再次导出使用本次结果。
