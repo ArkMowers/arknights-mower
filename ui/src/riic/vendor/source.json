@@ -197,7 +197,7 @@
       "reason": "Verify that ordinary departures retain the newly measured departure timestamp and replace predicted full mood with an actual observation."
     },
     "engine/dormitoryRecovery.ts": {
-      "reason": "Keep low-morale recovery separate from the all-room maximum and take the highest conditional extra across Aroma and Perfumer Alter; synchronized from calculator e58cc77de27e74f7ab261890a1824c02061a14f6.",
+      "reason": "Keep low-morale recovery separate from the all-room maximum and take the highest conditional extra across the two eligible providers; synchronized from calculator e58cc77de27e74f7ab261890a1824c02061a14f6.",
       "sha256": "1032e59a9d435e0b8ecd76f5236e5a49537803563bf0f36372d7659f77c141e4"
     }
   },
