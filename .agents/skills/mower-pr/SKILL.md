@@ -37,7 +37,7 @@ description: 为 Arknights Mower 编写或更新中文 PR 标题和正文，从�
 
 使用[正文模板](assets/pr-body.md)，先写各主题的加粗短标签和结论句：按主要变化排列 Summary 的结论，为每项结论安排对应的 Evidence 结果，再写 Merge Danger 的影响和恢复条件。提纲能单独说明改动、验证发现与合并后果后，才补解释、证据和条件。展开时只使用已筛选事实，不从原始讨论重新摘抄。
 
-按 mower-commit 主文件中的[Changelog 写作规则](../mower-commit/SKILL.md#changelog-rules)，写一个脱离标题和正文仍能说明本次具体变化的简短 `Changelog:` 段，作为 Summary 第一段，后面留空行。后文承接首段展开问题，补充原因、方案和详细使用条件，恢复操作与验证记录放在对应审阅主题中。更新 PR 时也按当前最终 diff 重写这一段。
+按 mower-commit 主文件中的[Changelog 写作规则](../mower-commit/SKILL.md#changelog-rules)，写一个脱离标题和正文仍能说明本次具体变化的简短 `Changelog:` 段，作为 Summary 第一段，后面留空行。后文承接首段展开本次变化，补充原因、方案和详细使用条件，恢复操作与验证记录放在对应审阅主题中。更新 PR 时也按当前最终 diff 重写这一段。
 
 每个主题用加粗短标签和完整结论句引出，再按内容关系选择结构：
 

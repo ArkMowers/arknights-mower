@@ -2,7 +2,7 @@
 
 ## Summary（改动与方案）
 
-Changelog: 〈按[共享 Changelog 规则](../../mower-commit/SKILL.md#changelog-rules)选择本类型的核心事实，用一句自然、完整、简短的话说明。〉
+Changelog: 〈按[共享 Changelog 规则](../../mower-commit/SKILL.md#changelog-rules)说明已核实的核心变化。〉
 
 **问题与方案：** 〈展开首段的问题或变化，补充原因和主要方案。没有发布说明时，先交代最终变化。文档要求写明具体格式、内容或操作。关系图或短 diff 紧接方案放置。〉
 
