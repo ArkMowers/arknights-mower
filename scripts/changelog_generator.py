@@ -8,7 +8,7 @@
 - 条目：更新说明 + PR 链接 + 裸 @署名 `[(#N)](url) @user`，无 PR 时仅
   `@user`
 - 描述优先读取已合并 PR 的 Changelog 段，再读提交说明段，旧提交回退标题
-- 普通合并归并为一个发布条目；没有发布说明的旧合并继续读取分支提交
+- 已确认完整变化的 merge、squash 和 rebase PR 归并为一个条目
 - 本次发布内经差异确认的完整回退相互抵消，跨版本回退保留说明
 - 贡献者：通过 GitHub API 把 git 提交解析成裸 @登录名，逐条署名；GitHub Release
   根据 mention 生成原生 Contributors 头像区
@@ -226,9 +226,9 @@ def extract_pr(message: str) -> tuple[str, int | None]:
     return message, None
 
 
-def github_api_get(url: str):
+def github_api_get(url: str, *, accept="application/vnd.github+json", as_text=False):
     request = urllib.request.Request(url)
-    request.add_header("Accept", "application/vnd.github+json")
+    request.add_header("Accept", accept)
     request.add_header("X-GitHub-Api-Version", "2022-11-28")
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if token:
@@ -236,7 +236,8 @@ def github_api_get(url: str):
     for attempt in range(3):
         try:
             with urllib.request.urlopen(request, timeout=10) as response:
-                return json.loads(response.read().decode("utf-8"))
+                body = response.read().decode("utf-8")
+                return body if as_text else json.loads(body)
         except urllib.error.HTTPError as exc:
             if exc.code == 403 and attempt < 2:
                 time.sleep(2 * (attempt + 1))
@@ -245,6 +246,25 @@ def github_api_get(url: str):
         except Exception:
             return None
     return None
+
+
+def github_graphql(query: str, variables: dict):
+    request = urllib.request.Request(
+        "https://api.github.com/graphql",
+        data=json.dumps({"query": query, "variables": variables}).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/vnd.github+json",
+        },
+    )
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if token:
+        request.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return None
 
 
 def email_cache_key(email: str) -> str | None:
@@ -478,7 +498,126 @@ class PullRequests:
     def __init__(self, repo: str):
         self.repo = repo
         self.by_number = {}
+        self.introducers = {}
+        self.files = {}
+        self.diffs = {}
         self.failures = 0
+
+    def introducing(self, sha: str) -> tuple[bool, dict | None]:
+        """查询实际提交的引入 PR；失败与成功查询但没有 PR 分开保存。"""
+        if sha in self.introducers:
+            return self.introducers[sha]
+        if not self.repo or self.repo.count("/") != 1:
+            return False, None
+        owner, name = self.repo.split("/")
+        response = github_graphql(
+            """query($owner: String!, $name: String!, $sha: String!) {
+              repository(owner: $owner, name: $name) {
+                object(expression: $sha) { ... on Commit {
+                  oid associatedPullRequests(first: 100) {
+                    totalCount pageInfo { hasNextPage }
+                    nodes { number title body mergedAt changedFiles
+                      baseRepository { nameWithOwner } mergeCommit { oid }
+                    }
+                  }
+                } }
+              }
+            }""",
+            {"owner": owner, "name": name, "sha": sha},
+        )
+        result = False, None
+        try:
+            if not isinstance(response, dict) or response.get("errors"):
+                raise ValueError("GraphQL response unavailable")
+            commit = response["data"]["repository"]["object"]
+            connection = commit["associatedPullRequests"]
+            nodes = connection["nodes"]
+            if (
+                commit["oid"] != sha
+                or not isinstance(nodes, list)
+                or connection["pageInfo"]["hasNextPage"] is not False
+                or type(connection["totalCount"]) is not int
+                or connection["totalCount"] != len(nodes)
+            ):
+                raise ValueError("incomplete commit association")
+            valid = []
+            for pull in nodes:
+                if not isinstance(pull, dict):
+                    raise ValueError("missing association node")
+                # 非默认分支的结果还可能包含未合并 PR，不将其作为引入关系。
+                if not pull.get("mergedAt"):
+                    continue
+                if (
+                    pull["baseRepository"]["nameWithOwner"].casefold()
+                    != self.repo.casefold()
+                ):
+                    continue
+                if (
+                    type(pull["number"]) is not int
+                    or pull["number"] <= 0
+                    or not isinstance(pull["title"], str)
+                    or not isinstance(pull["body"], (str, type(None)))
+                    or not isinstance(pull["mergeCommit"]["oid"], str)
+                    or type(pull["changedFiles"]) is not int
+                    or pull["changedFiles"] < 0
+                ):
+                    raise ValueError("incomplete PR metadata")
+                valid.append(
+                    {
+                        "number": pull["number"],
+                        "title": pull["title"],
+                        "body": pull["body"],
+                        "merge_commit_sha": pull["mergeCommit"]["oid"],
+                        "changed_files": pull["changedFiles"],
+                    }
+                )
+            if len(valid) > 1:
+                raise ValueError("ambiguous introducing PR")
+            result = True, valid[0] if valid else None
+        except (KeyError, TypeError, ValueError, AttributeError):
+            self.failures += 1
+        self.introducers[sha] = result
+        return result
+
+    def complete_files(self, pull: dict) -> list[dict] | None:
+        number = pull["number"]
+        if number in self.files:
+            return self.files[number]
+        files = []
+        expected = pull["changed_files"]
+        # REST 最多提供 3000 个文件，到达上限时不能证明没有遗漏。
+        if not 0 < expected < 3000:
+            self.files[number] = None
+            return None
+        for page in range(1, 31):
+            response = github_api_get(
+                f"https://api.github.com/repos/{self.repo}/pulls/{number}/files"
+                f"?per_page=100&page={page}"
+            )
+            if not isinstance(response, list) or len(response) > 100:
+                self.failures += 1
+                files = None
+                break
+            files.extend(response)
+            if len(response) < 100:
+                if len(files) != expected:
+                    files = None
+                break
+        self.files[number] = files
+        return files
+
+    def full_diff(self, pull: dict) -> str | None:
+        number = pull["number"]
+        if number not in self.diffs:
+            response = github_api_get(
+                f"https://api.github.com/repos/{self.repo}/pulls/{number}",
+                accept="application/vnd.github.diff",
+                as_text=True,
+            )
+            self.diffs[number] = response if isinstance(response, str) else None
+            if self.diffs[number] is None:
+                self.failures += 1
+        return self.diffs[number]
 
     def for_change(self, change: dict) -> dict | None:
         if not self.repo:
@@ -536,6 +675,243 @@ class PullRequests:
         return None
 
 
+def normalized_patch(patch: str) -> str:
+    """忽略对象摘要与 hunk 的展示标签，保留范围数字和所有实际差异。"""
+    return "\n".join(
+        re.sub(r"^(@@ -[0-9]+(?:,[0-9]+)? \+[0-9]+(?:,[0-9]+)? @@).*$", r"\1", line)
+        for line in patch.rstrip("\n").split("\n")
+        if not line.startswith("index ")
+    )
+
+
+def pr_changes_match(
+    before: str, after: str, files: list[dict] | None, full_diff: str | None
+) -> bool:
+    """以文件清单、完整文本差异和目标 blob 确认候选组包含整个 PR。"""
+    if (
+        not files
+        or not isinstance(full_diff, str)
+        or not full_diff.startswith("diff --git ")
+    ):
+        return False
+    unsupported_headers = (
+        "old mode ",
+        "new mode ",
+        "rename from ",
+        "rename to ",
+        "copy from ",
+        "copy to ",
+        "similarity index ",
+        "GIT binary patch",
+        "Binary files ",
+    )
+    if any(line.startswith(unsupported_headers) for line in full_diff.splitlines()):
+        return False
+    actual_diff = subprocess.run(
+        ["git", "diff", "--no-ext-diff", "--no-renames", "--unified=3", before, after],
+        capture_output=True,
+        check=True,
+        timeout=30,
+    ).stdout.decode("utf-8")
+    if normalized_patch(actual_diff) != normalized_patch(full_diff):
+        return False
+    raw = subprocess.run(
+        ["git", "diff", "--raw", "--no-abbrev", "--no-renames", "-z", before, after],
+        capture_output=True,
+        check=True,
+        timeout=30,
+    ).stdout.split(b"\0")
+    actual = {}
+    for index in range(0, len(raw) - 1, 2):
+        old_mode, new_mode, old_sha, new_sha, status = raw[index].decode().split()
+        filename = raw[index + 1].decode("utf-8")
+        actual[filename] = (
+            old_mode.removeprefix(":"),
+            new_mode,
+            old_sha,
+            new_sha,
+            status,
+        )
+    if len(actual) != len(files):
+        return False
+    seen = set()
+    for file in files:
+        if not isinstance(file, dict):
+            return False
+        filename = file.get("filename")
+        if not isinstance(filename, str) or filename in seen or filename not in actual:
+            return False
+        seen.add(filename)
+        old_mode, new_mode, old_sha, new_sha, status = actual[filename]
+        expected_status = {"added": "A", "removed": "D", "modified": "M"}.get(
+            file.get("status")
+        )
+        # 缺少完整 patch、重命名、模式变化与二进制变化均逐提交回退。
+        if (
+            expected_status != status
+            or old_mode not in ("000000", "100644")
+            or new_mode not in ("000000", "100644")
+            or file.get("sha") != (old_sha if status == "D" else new_sha)
+            or not isinstance(file.get("patch"), str)
+            or not file["patch"].startswith("@@ ")
+            or any(
+                type(file.get(key)) is not int or file[key] < 0
+                for key in ("additions", "deletions")
+            )
+        ):
+            return False
+        counts = subprocess.run(
+            ["git", "diff", "--numstat", "-z", before, after, "--", filename],
+            capture_output=True,
+            check=True,
+            timeout=30,
+        ).stdout.split(b"\t", 2)
+        if len(counts) != 3 or counts[:2] != [
+            str(file[key]).encode("ascii") for key in ("additions", "deletions")
+        ]:
+            return False
+        patch = subprocess.run(
+            [
+                "git",
+                "diff",
+                "--no-ext-diff",
+                "--no-renames",
+                "--unified=3",
+                before,
+                after,
+                "--",
+                filename,
+            ],
+            capture_output=True,
+            check=True,
+            timeout=30,
+        ).stdout.decode("utf-8")
+        start = patch.find("\n@@ ")
+        if start < 0 or normalized_patch(patch[start + 1 :]) != normalized_patch(
+            file["patch"]
+        ):
+            return False
+    return True
+
+
+def confirmed_linear_groups(changes: list[dict], pulls: PullRequests) -> list[dict]:
+    """只合并归属、父链、组边界和完整净变化都能确认的线性 PR。"""
+    if not pulls.repo:
+        return []
+    mappings = {
+        change["hash"]: pulls.introducing(change["hash"])
+        for change in changes
+        if len(change["parents"]) < 2
+    }
+    groups = []
+    used = set()
+    for index, change in enumerate(changes):
+        known, pull = mappings.get(change["hash"], (False, None))
+        if not known or not pull or change["hash"] in used:
+            continue
+        number = pull["number"]
+        members = []
+        for member in changes[index:]:
+            member_known, member_pull = mappings.get(member["hash"], (False, None))
+            if not member_known or member_pull != pull:
+                break
+            members.append(member)
+        used.update(member["hash"] for member in members)
+        all_mapped = {
+            sha
+            for sha, (known, candidate) in mappings.items()
+            if known and candidate and candidate["number"] == number
+        }
+        complete = (
+            change["hash"] == pull["merge_commit_sha"]
+            and all_mapped == {member["hash"] for member in members}
+            and all(len(member["parents"]) == 1 for member in members)
+            and all(
+                newer["parents"] == [older["hash"]]
+                for newer, older in zip(members, members[1:])
+            )
+            and not any("[skip changelog]" in member["body"] for member in members)
+        )
+        before = members[-1]["parents"][0] if members[-1]["parents"] else ""
+        if complete and before:
+            previous_known, previous_pull = pulls.introducing(before)
+            complete = previous_known and (
+                not previous_pull or previous_pull["number"] != number
+            )
+        try:
+            if complete:
+                files = pulls.complete_files(pull)
+                complete = files is not None and pr_changes_match(
+                    before, change["hash"], files, pulls.full_diff(pull)
+                )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, UnicodeError):
+            complete = False
+        if not complete:
+            print(
+                f"changelog: incomplete PR changes for {change['hash'][:12]}; using Git",
+                file=sys.stderr,
+            )
+            continue
+        groups.append(
+            {
+                **change,
+                "parents": members[-1]["parents"],
+                "members": members[1:],
+                "contributor_commits": members,
+                "pull": pull,
+            }
+        )
+    return groups
+
+
+def changes_with_linear_prs(changes: list[dict], groups: list[dict]) -> list[dict]:
+    active = effective_changes(changes)
+    active_hashes = {change["hash"] for change in active}
+    eligible = [
+        group
+        for group in groups
+        if all(
+            member["hash"] in active_hashes for member in group["contributor_commits"]
+        )
+    ]
+    if not eligible:
+        return active
+    owners = {
+        member["hash"]: group
+        for group in eligible
+        for member in group["contributor_commits"]
+    }
+    combined = []
+    for change in active:
+        group = owners.get(change["hash"])
+        if group is None:
+            combined.append(change)
+        elif group["hash"] == change["hash"]:
+            combined.append(group)
+    remaining = effective_changes(combined)
+    # 尚存的部分或未确认撤销使整体摘要失真，将受影响组展开回逐提交。
+    targets = {
+        target
+        for change in remaining
+        for member in [change, *change["members"]]
+        for target in REVERT_TARGET_RE.findall(member["body"])
+    }
+    expanded = []
+    needs_expansion = False
+    for change in remaining:
+        members = change.get("contributor_commits")
+        if change.get("pull") and any(
+            member["hash"].startswith(target)
+            for member in members
+            for target in targets
+        ):
+            expanded.extend(members)
+            needs_expansion = True
+        else:
+            expanded.append(change)
+    return effective_changes(expanded) if needs_expansion else remaining
+
+
 def commit_entry(record: dict) -> dict | None:
     category = parse_category(record["subject"])
     if "[skip changelog]" in record["body"] or category is None:
@@ -567,14 +943,19 @@ def collect_commits(base: str, repo: str = "") -> list[dict]:
             else []
         )
     pulls = PullRequests(repo)
+    groups = confirmed_linear_groups(changes, pulls)
     entries = []
-    for change in effective_changes(changes):
+    for change in changes_with_linear_prs(changes, groups):
         if "[skip changelog]" in change["body"]:
             continue
         is_merge = len(change["parents"]) > 1
-        if not is_merge and parse_category(change["subject"]) is None:
+        if (
+            not is_merge
+            and not change.get("pull")
+            and parse_category(change["subject"]) is None
+        ):
             continue
-        pull = pulls.for_change(change)
+        pull = change.get("pull") or (pulls.for_change(change) if is_merge else None)
         description = extract_pr_changelog(pull.get("body") or "") if pull else None
         if description is None and is_merge:
             description = extract_pr_changelog(change["body"])
@@ -593,7 +974,8 @@ def collect_commits(base: str, repo: str = "") -> list[dict]:
                         "desc": description,
                         "number": number,
                         "authors": change["authors"],
-                        "contributor_commits": [
+                        "contributor_commits": change.get("contributor_commits")
+                        or [
                             record
                             for record in (change["members"] or [change])
                             if len(record["parents"]) < 2
@@ -607,7 +989,9 @@ def collect_commits(base: str, repo: str = "") -> list[dict]:
                 file=sys.stderr,
             )
         # 旧合并的分支提交也先抵消内部的完整回退，再沿用原有标题与分类。
-        fallback = change["members"] if is_merge else [change]
+        fallback = change.get("contributor_commits") or (
+            change["members"] if is_merge else [change]
+        )
         ordinary = [record for record in fallback if len(record["parents"]) < 2]
         for record in ordinary:
             record.setdefault("members", [])
