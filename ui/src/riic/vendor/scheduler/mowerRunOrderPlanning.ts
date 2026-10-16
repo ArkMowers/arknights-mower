@@ -51,9 +51,13 @@ export function* planDefaultRunOrder(state:RunOrderPlanningState,seam:RunOrderPl
  if(state.queue.find({type:T.RUN_ORDER,metadata:room}))return
  if(!state.plan[room])throw new Error('Native run-order room is absent from the plan: '+room)
  const timeMicros=yield* observeNativeRunOrderTime(state,seam,room)
+ const dueMicros=timeMicros+toMowerMicros(state.configuredDelayMinutes/60)
+ // A ready order or a full queue has no future completion to wake for. Leave
+ // its collection/resource dependency to production and the notification phase.
+ if(dueMicros<=seam.nowMicros())return
  const task=new MowerTask({type:T.RUN_ORDER,metadata:room})
  task.timeMicros=timeMicros
- task.observedOrderDueMicros=timeMicros+toMowerMicros(state.configuredDelayMinutes/60)
+ task.observedOrderDueMicros=dueMicros
  state.queue.tasks.push(task)
  return task
 }

@@ -14,6 +14,7 @@ export interface MowerSchedulingDataOptions {
  alpha?:boolean;priorityReplacement?:string[];freeRoomExclusions?:string[];dormOrder?:string[];standbyNames?:string[]
  plan:Record<string,string[]>;operators:Record<string,MowerOperatorState>;dorms:MowerDormState[];nowMicros:number;partyTime?:MowerDateTimeValue|boolean|null;runOrderRooms?:Record<string,Record<string,never>>
  policy?:Partial<MowerMoodPolicy>;freeRoom?:boolean;powerPlantCount?:number;planConditions?:boolean[]
+ groupRecoveryFullMembers?:Record<string,string[]>
  groupDorms?:MowerDormState[]
  pendingGroupTransitions?:Record<string,boolean>;groupShiftState?:Record<string,boolean>;groupMoodGapThresholdMinutes?:number
  groupRestInFullOnMoodGap?:boolean;groupMoodGapMaxExtraWaitHours?:number;mergeIntervalMinutes?:number
@@ -31,6 +32,7 @@ export class MowerSchedulingData {
  plan:Record<string,string[]>;operators:Record<string,MowerOperatorState>;dorms:MowerDormState[];nowMicros:number;partyTime?:MowerDateTimeValue|boolean|null;runOrderRooms:Record<string,Record<string,never>>
  recoveryOrderVersion=0
  policy:MowerMoodPolicy;freeRoom:boolean;powerPlantCount:number;planConditions:boolean[]
+ groupRecoveryFullMembers:Record<string,string[]>
  groupDorms:MowerDormState[]
  pendingGroupTransitions:Record<string,boolean>;groupShiftState:Record<string,boolean>;groupMoodGapThresholdMinutes:number
  groupRestInFullOnMoodGap:boolean;groupMoodGapMaxExtraWaitHours:number;mergeIntervalMinutes:number
@@ -46,8 +48,9 @@ export class MowerSchedulingData {
   this.plan=o.plan;this.operators=o.operators;this.dorms=o.dorms;this.nowMicros=o.nowMicros;this.partyTime=o.partyTime;this.runOrderRooms=o.runOrderRooms??{}
   this.policy={restingThreshold:.65,rescueThreshold:.75,experimentalDormLogic:false,...o.policy,alpha:this.alpha}
   this.freeRoom=o.freeRoom??false;this.powerPlantCount=o.powerPlantCount??2;this.planConditions=o.planConditions??[]
+  this.groupRecoveryFullMembers=Object.fromEntries(Object.entries(o.groupRecoveryFullMembers??{}).map(([group,names])=>[group,[...names]]))
   this.groupDorms=o.groupDorms??Object.values(this.operators).filter(op=>op.room.startsWith('dorm')&&op.group&&(op.multiGroup?op.groupBindings:[{group:op.group,replacement:op.replacement}]).some(binding=>!binding.replacement.includes('Free')&&binding.replacement.some(name=>mowerSameGroupPrimaryReplacement(this,op,name,binding.group)&&!this.operators[name]!.room.startsWith('dorm')))).map(op=>new MowerDormState([op.room,op.index]))
-  this.pendingGroupTransitions={...o.pendingGroupTransitions};this.groupShiftState={...o.groupShiftState};this.groupMoodGapThresholdMinutes=o.groupMoodGapThresholdMinutes??60
+  this.pendingGroupTransitions={...o.pendingGroupTransitions};this.groupShiftState={...o.groupShiftState};this.groupMoodGapThresholdMinutes=o.groupMoodGapThresholdMinutes??75
   this.groupRestInFullOnMoodGap=o.groupRestInFullOnMoodGap??true
   this.groupMoodGapMaxExtraWaitHours=o.groupMoodGapMaxExtraWaitHours??0;this.mergeIntervalMinutes=o.mergeIntervalMinutes??10
   this.busyRestingNames=o.busyRestingNames??new Set();this.excludedCandidates=o.excludedCandidates??new Set()

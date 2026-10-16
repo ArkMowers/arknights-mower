@@ -145,7 +145,7 @@ def test_switch_rebuilds_existing_return_and_preserves_other_tasks(solver, custo
     solver.op_data.backup_plans[0].task = custom_task
     solver.plan_metadata()
     old_task = return_task(solver)
-    assert old_task.time == datetime(2026, 9, 11, 16, 24, 21)
+    assert old_task.time == datetime(2026, 9, 11, 17, 5, 3)
     depot = SchedulerTask(task_type=TaskTypes.DEPOT)
     solver.tasks.append(depot)
     assert solver.backup_plan_solver() is False
@@ -766,7 +766,7 @@ def test_switch_preserves_shift_on_target_when_backup_modifies_room_plan(solver)
     solver.plan_metadata()
     old_task = return_task(solver)
     assert old_task.plan["contact"][0] == "黑键"
-    assert old_task.time == datetime(2026, 9, 11, 16, 24, 21)
+    assert old_task.time == datetime(2026, 9, 11, 17, 5, 3)
 
     # 模拟副表调整了工位（黑键与陈换位），并将歌蕾蒂娅设为用尽
     backup = solver.op_data.backup_plans[0]

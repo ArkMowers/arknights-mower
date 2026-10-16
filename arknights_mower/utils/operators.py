@@ -308,6 +308,7 @@ class Operators:
         self.operators = {}
         self.groups = {}
         self.group_shift_state = {}
+        self.group_recovery_full_members = {}
         self.exhaust_agent = set()
         self.exhaust_group = set()
         self.rest_in_full_group = set()
@@ -317,6 +318,7 @@ class Operators:
         self.idle_dorm_search_exhausted = False
         self.idle_dorm_search_stopped_at = None
         self.dorm_mood_estimates = {}
+        self.recall_recovery_rates = {}
         self.emergency_reserved_agents = set()
         self.emergency_dorm_agents = set()
         self.workaholic_agent = set()
@@ -1129,6 +1131,11 @@ class Operators:
         for group in self.groups:
             if group not in self.group_shift_state:
                 self.group_shift_state[group] = self.group_is_resting(group)
+        recovery = getattr(self, "group_recovery_full_members", {})
+        for group, resting in transitions.items():
+            if self.group_shift_state.get(group) != resting:
+                recovery.pop(group, None)
+        self.group_recovery_full_members = recovery
         self.group_shift_state.update(transitions)
         for op in self.operators.values():
             if op.multi_group:
@@ -1138,12 +1145,17 @@ class Operators:
                         op.name, op.group if op.group in groups else groups[0]
                     )
 
-    def restore_group_shift_state(self, saved=None):
+    def restore_group_shift_state(self, saved=None, recovery=None):
         """Legacy snapshots infer rest only from ordinary fixed members."""
         self.group_shift_state = {
             group: resting
             for group, resting in (saved or {}).items()
             if type(resting) is bool
+        }
+        self.group_recovery_full_members = {
+            group: list(names)
+            for group, names in (recovery or {}).items()
+            if self.group_shift_state.get(group) and isinstance(names, (list, tuple))
         }
         self.commit_group_shifts({})
 
@@ -1622,6 +1634,16 @@ class Operators:
         ) and (current_room, current_index) == (agent.room, agent.index)
         logger.debug(f"{name},{mood},{current_room},{current_index},{update_time}")
         if update_time:
+            from arknights_mower.utils.recall_estimates import observe_work_rate
+
+            observe_work_rate(
+                agent,
+                mood,
+                current_room,
+                current_index,
+                datetime.now(),
+                preserve=preserve_depletion_rate,
+            )
             agent.mood_is_prediction = False
             if (
                 not preserve_depletion_rate
@@ -1736,6 +1758,11 @@ class Operators:
                         dorm.time = _agent.time_stamp + timedelta(seconds=sec_remaining)
                     else:
                         dorm.time = agent["time"]
+                    from arknights_mower.utils.recall_estimates import (
+                        observe_recovery_rate,
+                    )
+
+                    observe_recovery_rate(self, dorm)
                 break
         # 记录真实用尽时间
         if room in self.true_exhaust_room and _name in self.operators.keys():
@@ -1852,6 +1879,10 @@ class Operators:
             operator.time_stamp = exist.time_stamp
             operator.mood_is_prediction = getattr(exist, "mood_is_prediction", False)
             operator.depletion_rate = exist.depletion_rate
+            operator.recall_work_rate = getattr(exist, "recall_work_rate", None)
+            operator.recall_work_rate_checked = getattr(
+                exist, "recall_work_rate_checked", False
+            )
             operator.current_room = exist.current_room
             operator.current_index = exist.current_index
             operator.dorm_position_version = getattr(exist, "dorm_position_version", 0)
@@ -2121,9 +2152,15 @@ class Operators:
         产物切换和回班规划共用这一份位置语义，不能只改工位而留下旧床位。
         """
         projected = copy.copy(self)
+        projected.recall_recovery_rates = dict(
+            getattr(self, "recall_recovery_rates", {})
+        )
         projected.operators = copy.deepcopy(self.operators)
         projected.groups = copy.deepcopy(self.groups)
         projected.group_shift_state = dict(self.group_shift_state)
+        projected.group_recovery_full_members = copy.deepcopy(
+            getattr(self, "group_recovery_full_members", {})
+        )
         projected.dorm = copy.deepcopy(self.dorm)
         projected.group_dorm = copy.deepcopy(getattr(self, "group_dorm", []))
         for plan in plans:
@@ -2661,6 +2698,9 @@ class Operators:
     def _find_dorm_slot(
         self, name, used, *, active_groups=None, plan=None, isolation=True
     ):
+        from arknights_mower.utils.dorm_recovery import single_recovery_bed_cost
+        from arknights_mower.utils.dorm_skills import is_single_recovery_manager
+
         if self.rest_mood_complete(name):
             return None
         if resting_tier(self, name) == RestingTier.EXCLUDED:
@@ -2687,13 +2727,25 @@ class Operators:
             )
         ]
         now = datetime.now()
+        compatible_beds = [
+            self.dorm[index]
+            for index in order
+            if self.is_effective_free_slot(
+                self.dorm[index], active_groups=active_groups
+            )
+        ]
+        single_manager = is_single_recovery_manager(name)
 
         def takeover_cost(index):
             bed = self.dorm[index]
+            single_cost = (
+                single_recovery_bed_cost(bed, compatible_beds) if single_manager else 0
+            )
             if not bed.name:
                 return (
                     0,
                     0,
+                    single_cost,
                     0,
                     self.dorm_isolation_cost(name, *bed.position, plan=plan)
                     if isolation
@@ -2704,6 +2756,7 @@ class Operators:
             return (
                 1,
                 -tier,
+                single_cost,
                 self.dorm_isolation_cost(name, *bed.position, plan=plan)
                 if isolation
                 else 0,

@@ -237,7 +237,7 @@ describe('October 13 shared group bindings and fixed-primary swaps',()=>{
   expect({down,returned,errors:state.diagnostics.filter(d=>d.code==='mower-task-exception')}).toEqual({down:true,returned:true,errors:[]})
  })
  it('uses the configured 60 minute mood gap with two power plants',()=>{
-  const data=fixture();delete data.operators.F;delete data.operators.B;data.plan.room_1_2=['G'];data.operators.G=new MowerOperatorState({name:'G',room:'room_1_2',index:0,group:'a',operatorType:'high',restingPriority:'high',currentRoom:'dormitory_1',currentIndex:1,mood:10,timeStampMicros:0})
+  const data=fixture();data.groupMoodGapThresholdMinutes=60;delete data.operators.F;delete data.operators.B;data.plan.room_1_2=['G'];data.operators.G=new MowerOperatorState({name:'G',room:'room_1_2',index:0,group:'a',operatorType:'high',restingPriority:'high',currentRoom:'dormitory_1',currentIndex:1,mood:10,timeStampMicros:0})
   data.operators.A!.currentRoom='dormitory_1';data.operators.A!.currentIndex=0;data.dorms[0]!.name='A';data.dorms[0]!.timeMicros=toMowerMicros(3);data.dorms[1]!.name='G';data.dorms[1]!.timeMicros=toMowerMicros(1.75)
   const q=new MowerTaskQueue();planMowerAlphaMetadata(data,q,[])
   expect(q.tasks.find(t=>t.plan.room_1_1?.[0]==='A')?.timeMicros).toBeGreaterThan(toMowerMicros(2.5))

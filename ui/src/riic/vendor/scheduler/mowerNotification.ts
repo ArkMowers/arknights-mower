@@ -45,8 +45,9 @@ export function resetMowerRunFlags(flags:MowerNotificationFlags):void{
 }
 /** Selected infra_main notification branch, not a replacement for the preceding stages. */
 export function* collectMowerInfraNotification(state:MowerNotificationState,seam:MowerNotificationSeam):MowerNotificationGenerator{
- // Native no_pending_task(1) uses strict time < now+one minute, with no task type filter.
- if(state.queue.tasks.every(task=>task.timeMicros>=seam.nowMicros()+60_000_000)){
+ // Native no_pending_task(1) uses strict time < now+one minute. Retained
+ // failures have released dispatch and must also release notification collection.
+ if(state.queue.tasks.every(task=>task.executionFailure||task.timeMicros>=seam.nowMicros()+60_000_000)){
   let notification=yield* observed(seam,{kind:'detect-notification'})
   if(notification===null){
    yield* observed(seam,{kind:'sleep',seconds:1})

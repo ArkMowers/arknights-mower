@@ -29,6 +29,8 @@ export interface RuntimeConfig {
  /** The application simulation selects the October 3 source contract. */
  mowerDormIsolation?:string[][]
  mowerAlpha?:boolean;mowerDormOrder?:string[]
+ /** Operators with an unlocked single-target recovery skill in the active simulation roster. */
+ mowerSingleRecoverySkillNames?:string[]
  mowerMoodLimits?:MowerMoodLimitConfig
   positions: RuntimePosition[]; beds: RuntimeBed[]; initialMorale?: Record<string, number>
   /** Default scene input uses native policy upper limits; explicit overrides remain unchanged. */
@@ -101,6 +103,8 @@ export interface RuntimeRates {
   recoveryRate: (operatorId: string, roomId: string, state: RuntimeState) => number
   /** Stable rate tables for one physical-state sweep; callers must not mutate state while using them. */
   snapshotRates?:()=>{work:Readonly<Record<string,number>>;recovery:Readonly<Record<string,number>>}
+  /** Isolated recall forecast: current projected consumption and conservative recovery. */
+  forecastRates?:(state:RuntimeState)=>{work:Readonly<Record<string,number>>;recovery:Readonly<Record<string,number>>}
   /** Additional skill morale boundaries; callers can split intervals at non-roster events too. */
   thresholds?: (operatorId: string, state: RuntimeState) => number[]
 }

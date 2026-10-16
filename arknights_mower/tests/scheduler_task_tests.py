@@ -624,8 +624,8 @@ class TestScheduling(unittest.TestCase):
         op_data.dorm[2].name = "夕"
         plan = try_reorder(op_data, {})
         self.assertEqual(plan["dormitory_1"][2:], ["夕", "Free", "Free"])
-        self.assertEqual(plan["dormitory_2"][2], "麒麟R夜刀")
-        self.assertEqual(plan["dormitory_3"][3], "凯尔希")
+        self.assertEqual(plan["dormitory_2"][2], "凯尔希")
+        self.assertEqual(plan["dormitory_3"][3], "麒麟R夜刀")
         projected = op_data.project_arrangements([plan])
         self.assertEqual(
             {bed.name for bed in projected.dorm if bed.name},

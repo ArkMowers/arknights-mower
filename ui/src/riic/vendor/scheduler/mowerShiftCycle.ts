@@ -1,3 +1,4 @@
+import {mowerExhaustGroups} from './mowerExhaustPolicy'
 import {planMowerDormIsolation} from './mowerDormIsolation'
 import {inheritMowerBackupRefreshRules} from './mowerBackupRefresh'
 import {normalizeMowerSharedArrangement,mowerArrangementGroupTransitions,commitMowerGroupShifts} from './mowerSharedGroups'
@@ -59,19 +60,52 @@ function cancelledShiftLeavesOnlyDormFill(data:MowerSchedulingData,simulation:Mo
  })
 }
 
+/** Backup rules can invalidate only part of a previously batched ordinary departure. */
+function filterExhaustedOrdinaryIntent(data:MowerSchedulingData,rules:MowerSchedulingData,task:MowerTask,intent:MowerTaskPlan,transitions:Record<string,boolean>):boolean{
+ if(!task.ordinaryCoordination||task.backupShiftActive||task.productShiftLocked)return false
+ const exhausted=mowerExhaustGroups(rules),blocked=new Set<string>(),blockedGroups=new Set<string>()
+ for(const name of task.coordinationRequestNames){
+  const op=rules.operators[name]
+  if(!op||op.multiGroup&&!op.independentRest||!op.exhaustRequire&&!exhausted.has(op.group))continue
+  const members=op.group?data.shiftGroupMembers(op.group):[name]
+  if(members.some(member=>{const original=data.operators[member];return !!original&&task.backupExplicitSlots.has(alphaPosition(original.currentRoom,original.currentIndex))||Object.entries(intent).some(([room,row])=>row.some((assigned,index)=>assigned===member&&task.backupExplicitSlots.has(alphaPosition(room,index))))}))continue
+  if(op.group)blockedGroups.add(op.group)
+  members.forEach(member=>blocked.add(member))
+ }
+ let changed=false
+ const removedCovers=new Set<string>()
+ for(const name of blocked){
+  const op=data.operators[name]
+  if(!op||!op.currentRoom||op.isResting()&&!op.room.startsWith('dorm')||op.multiGroup&&op.groupBindings.some(binding=>binding.group&&!blockedGroups.has(binding.group)&&rules.groupIsResting(binding.group)))continue
+  for(const [room,row] of Object.entries(intent))if(room.startsWith('dorm'))row.forEach((resident,index)=>{if(resident===name){row[index]='Current';changed=true}})
+  const row=intent[op.currentRoom]
+  if(row&&row[op.currentIndex]!==undefined&&row[op.currentIndex]!=='Current'&&row[op.currentIndex]!==name){removedCovers.add(row[op.currentIndex]!);row[op.currentIndex]='Current';changed=true}
+  if(op.group)delete transitions[op.group]
+ }
+ const retainedAssignments=new Set(Object.values(intent).flat())
+ for(const [room,row] of Object.entries(intent))if(room.startsWith('dorm'))row.forEach((name,index)=>{
+  const current=data.currentOperator(room,index)
+  if(name==='Free'&&!task.backupExplicitSlots.has(alphaPosition(room,index))&&current&&removedCovers.has(current.name)&&!retainedAssignments.has(current.name))row[index]='Current'
+ })
+ return changed
+}
+
 /** Native backup convergence always reprojects from the original physical state. */
 export function prepareMowerShiftBackup(data:MowerSchedulingData,task:MowerTask,model:MowerShiftModel,pendingTasks?:MowerTask[]):void{
  if(!model.count||task.backupShiftActive||![T.SHIFT_ON,T.SHIFT_OFF,T.EXHAUST_OFF,T.SELF_CORRECTION,T.RE_ORDER].includes(task.type))return
- const intent=structuredClone(task.backupShiftIntent??task.plan),original=[...data.planConditions],seed=projectMowerArrangements(data,[intent])
- commitMowerGroupShifts(seed,task.groupShiftTransitions)
+ const intent=structuredClone(task.backupShiftIntent??task.plan),original=[...data.planConditions],transitions={...task.groupShiftTransitions}
+ let seed=projectMowerArrangements(data,[intent])
+ commitMowerGroupShifts(seed,transitions)
  let conditions=model.evaluate(seed);const seen=new Set<string>()
  for(let pass=0;pass<64;pass++){
-  const key=JSON.stringify(conditions);if(seen.has(key))throw new MowerShiftPreviewError('上下班副表推演出现循环，保留原任务，暂不执行换人');seen.add(key)
+  const key=JSON.stringify([conditions,intent]);if(seen.has(key))throw new MowerShiftPreviewError('上下班副表推演出现循环，保留原任务，暂不执行换人');seen.add(key)
   const simulation=model.swap(projectMowerArrangements(seed,[]),conditions)
+  if(filterExhaustedOrdinaryIntent(data,simulation,task,intent,transitions)){seed=projectMowerArrangements(data,[intent]);commitMowerGroupShifts(seed,transitions);conditions=model.evaluate(seed);continue}
   const transition=model.transition(data,simulation,original,conditions,seed,pendingTasks),merged=structuredClone(intent)
   mergeMowerShiftTransition(merged,transition,simulation)
   const projected=projectMowerArrangements(model.swap(projectMowerArrangements(data,[]),conditions),[merged]),next=model.evaluate(projected)
   if(same(next,conditions)){
+   task.groupShiftTransitions=transitions
    for(const slot of model.explicitSlots?.(original,conditions)??[])task.backupExplicitSlots.add(slot)
    if(same(conditions,original)&&JSON.stringify(merged)===JSON.stringify(intent)){task.plan=intent;delete task.backupShiftIntent;delete task.backupShiftConditions;return}
    task.backupShiftIntent=intent;task.backupShiftConditions=[...conditions];task.plan=stripMowerCurrent(merged);return
@@ -116,14 +150,21 @@ export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,q
  }
  const pending=queue.tasks.filter(t=>t!==task&&!coalesced.includes(t)),returning=new Set<string>(),unresolved=new Set<string>(),ordinaryUnknown=new Set<string>(),seen=new Set<string>()
  let simulation=projectMowerArrangements(data,[]),step=new MowerTask({type:task.type,plan:intent})
- commitMowerGroupShifts(simulation,task.groupShiftTransitions)
+ step.groupShiftTransitions={...task.groupShiftTransitions}
  const returningGroups=new Set(Object.entries(task.groupShiftTransitions).filter(([group,resting])=>!resting&&data.groupIsResting(group)).map(([group])=>group))
+ const sources=[task,...coalesced],required=new Set<string>()
+ for(const source of sources)if(!source.ordinaryCoordination&&[T.SHIFT_OFF,T.EXHAUST_OFF].includes(source.type))for(const [room,row] of Object.entries(source.plan))if(room.startsWith('dorm'))for(const name of row){const op=data.operators[name];if(op&&!op.isResting())required.add(op.group?'group:'+op.group:'operator:'+name)}
+ step.coordinationRequestNames=[...new Set(sources.filter(candidate=>candidate.ordinaryCoordination).flatMap(candidate=>candidate.coordinationRequestNames))].filter(name=>{const op=data.operators[name];return !required.has(op?.group?'group:'+op.group:'operator:'+name)})
+ step.ordinaryCoordination=step.coordinationRequestNames.length>0
+ const ordinaryRequests=new Set(step.coordinationRequestNames)
  step.backupExplicitSlots=new Set(explicitSlots)
  step.dormFillPlan=structuredClone(task.dormFillPlan)
  for(let pass=0;pass<64;pass++){
   prepareMowerShiftBackup(simulation,step,model,pending)
+  if(pass===0)intent=structuredClone(step.backupShiftIntent??step.plan)
   const conditions=step.backupShiftConditions??simulation.planConditions
   simulation=model.swap(simulation,conditions)
+  commitMowerGroupShifts(simulation,step.groupShiftTransitions)
   step.backupExplicitSlots.forEach(slot=>explicitSlots.add(slot))
   const reserved=mowerDormTaskReservations(simulation,pending.filter(t=>t.type!==T.SHIFT_ON||t.backupShiftActive||t.productShiftLocked||t.dormRecoveryRestore.length))
   step.plan=planMowerDormIsolation(simulation,step.plan,new Set([...reserved.slots,...explicitSlots]),reserved.names)
@@ -147,11 +188,17 @@ export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,q
   if(!Object.keys(next).length){fill=mowerAlphaFillPlan(simulation,pending.map(cloneTask));next=structuredClone(fill)}
   for(const [room,names] of Object.entries(next))names.forEach((name,index)=>{if(name==='Free'&&unresolved.has(alphaPosition(room,index)))names[index]='Current'})
   next=stripMowerCurrent(next)
-  if(Object.keys(next).length){step=new MowerTask({type:T.SHIFT_OFF,plan:next});step.backupExplicitSlots=new Set(explicitSlots);step.dormFillPlan=fill;continue}
+  if(Object.keys(next).length){
+   step=new MowerTask({type:T.SHIFT_OFF,plan:next})
+   const ordinaryTasks=localQueue.tasks.filter(candidate=>candidate.ordinaryCoordination)
+   step.ordinaryCoordination=ordinaryTasks.length>0;step.coordinationRequestNames=[...new Set(ordinaryTasks.flatMap(candidate=>candidate.coordinationRequestNames))]
+   step.coordinationRequestNames.forEach(name=>ordinaryRequests.add(name));step.backupExplicitSlots=new Set(explicitSlots);step.dormFillPlan=fill;continue
+  }
   const final:MowerTaskPlan={}
   for(const [room,names] of Object.entries(simulation.plan))names.forEach((_,index)=>{const old=data.currentOperator(room,index)?.name??'',name=simulation.currentOperator(room,index)?.name??'';if(old!==name||unresolved.has(alphaPosition(room,index)))(final[room]??=Array(names.length).fill('Current'))[index]=name||'Free'})
   if(cancelledShiftLeavesOnlyDormFill(data,simulation,task,intent,conditions,coalesced,final))throw new MowerShiftPreviewError('原下班意图被完全取消，仅剩普通填床换位，保留原任务，暂不执行换人')
   task.groupShiftTransitions=Object.fromEntries(Object.entries(simulation.groupShiftState).filter(([group,resting])=>data.groupIsResting(group)!==resting))
+  task.coordinationRequestNames=[...ordinaryRequests].filter(name=>!data.operators[name]?.isResting()&&simulation.operators[name]?.isResting());task.ordinaryCoordination=task.coordinationRequestNames.length>0
   task.backupExplicitSlots=explicitSlots
   task.backupShiftIntent=intent;task.backupShiftConditions=[...conditions];task.plan=final
   inheritMowerBackupRefreshRules(task,coalesced)
@@ -170,6 +217,8 @@ export function coalesceMowerBackupTransition(data:MowerSchedulingData,transitio
  let remaining=tasks.filter(t=>!t.retainsExecution&&!t.exhaustSupport&&[T.SHIFT_ON,T.SHIFT_OFF,T.SELF_CORRECTION,T.RE_ORDER,T.NOT_SPECIFIC,T.FILL_DORM].includes(t.type)&&Object.keys(t.plan).length&&Math.min(t.timeMicros,t.arrangementRetryDueMicros??t.timeMicros)<=data.nowMicros+toMowerMicros(1/60)&&!t.strictMoodLimit&&!t.dormRecoveryRestore.length)
  while(remaining.length){let matched=false;for(const t of [...remaining]){const f=footprint(t.plan);if(![...f.names].some(n=>affected.names.has(n))&&![...f.slots].some(s=>affected.slots.has(s)))continue;matched=true;consumed.push(t);f.names.forEach(n=>affected.names.add(n));f.slots.forEach(s=>affected.slots.add(s));remaining=remaining.filter(v=>v!==t)}if(!matched)break}
  if(!consumed.length)return {plan:transition,consumed}
- const plan:MowerTaskPlan={};for(const t of [...consumed].sort((a,b)=>a.timeMicros-b.timeMicros))mergeMowerShiftTransition(plan,t.plan,data);mergeMowerShiftTransition(plan,transition,data)
+ const plan:MowerTaskPlan={}
+ for(const task of [...consumed].sort((a,b)=>a.timeMicros-b.timeMicros)){const intent=structuredClone(task.plan);filterExhaustedOrdinaryIntent(data,data,task,intent,{...task.groupShiftTransitions});mergeMowerShiftTransition(plan,intent,data)}
+ mergeMowerShiftTransition(plan,transition,data)
  return {plan:stripMowerCurrent(plan),consumed}
 }

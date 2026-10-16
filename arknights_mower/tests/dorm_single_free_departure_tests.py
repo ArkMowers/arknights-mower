@@ -105,8 +105,9 @@ def test_concurrent_ordinary_arrival_does_not_take_vacated_single_free(residents
     )
     assert result[ROOM][-1] == "苍苔"
     projected = data.project_arrangements([result])
-    assert projected.get_current_operator(OTHER, 2).name == "夕"
-    assert projected.get_current_operator(OTHER, 3).name == "红"
+    # 单回归属变化后，同层级按心情缺口重排，红为 1，夕为 2。
+    assert projected.get_current_operator(OTHER, 2).name == "红"
+    assert projected.get_current_operator(OTHER, 3).name == "夕"
 
 
 @pytest.mark.parametrize("lock", ["queued", "product", "protected", "returning"])

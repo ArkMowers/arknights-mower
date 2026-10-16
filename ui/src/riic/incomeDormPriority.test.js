@@ -233,3 +233,81 @@ it('still applies explicit dorm isolation after recovery allocation', () => {
     'dormitory_2'
   ])
 })
+
+function singleBedTakeover(moods = [2, 15, 18, 16, 19]) {
+  const data = fixture(false)
+  for (const [index, [name, room, slot]] of [
+    ['冬时', 'dormitory_1', 2],
+    ['芬', 'dormitory_1', 3],
+    ['香草', 'dormitory_1', 4],
+    ['翎羽', 'dormitory_2', 2],
+    ['黑角', 'dormitory_2', 3]
+  ].entries()) {
+    resident(data, name, room, slot, moods[index])
+  }
+  data.operators.歌蕾蒂娅 = new MowerOperatorState({
+    name: '歌蕾蒂娅',
+    room: 'room_1_1',
+    index: 2,
+    currentRoom: 'room_1_1',
+    currentIndex: 2,
+    operatorType: 'high',
+    restingPriority: 'high',
+    mood: 10,
+    timeStampMicros: 0
+  })
+  data.plan.room_1_1.push('歌蕾蒂娅')
+  data.restingPriorityNames = ['歌蕾蒂娅']
+  const plan = {
+    room_1_1: ['Current', 'Current', 'Free'],
+    dormitory_2: ['Current', 'Current', 'Current', 'Current', '歌蕾蒂娅']
+  }
+  return { data, plan }
+}
+
+function checkTakeover(data, plan) {
+  const result = alphaPrioritizeRecovery(data, plan)
+  const final = projectMowerArrangements(data, [result])
+  expect(final.currentOperator('dormitory_1', 2)?.name).toBe('歌蕾蒂娅')
+  for (const room of ['dormitory_1', 'dormitory_2']) {
+    for (const index of [0, 1]) {
+      expect(final.currentOperator(room, index)?.name).toBe(data.currentOperator(room, index)?.name)
+    }
+  }
+  const resting = final.dorms.map((bed) => final.currentOperator(...bed.position)?.name).sort()
+  expect(resting).toEqual(['冬时', '芬', '香草', '翎羽', '黑角', '歌蕾蒂娅'].sort())
+  expect(alphaPrioritizeRecovery(final, result)).toEqual(result)
+  expect(alphaPrioritizeRecovery(final, {})).toEqual({})
+  return final
+}
+
+it('gives a displaced single-recovery resident a faster ordinary bed before less exhausted peers', () => {
+  const { data, plan } = singleBedTakeover()
+  const final = checkTakeover(data, plan)
+  expect(final.operators.冬时.currentRoom).toBe('dormitory_1')
+  expect(final.operators.香草.currentRoom).toBe('dormitory_2')
+  // These ordinary beds have the same rate; the eligible incumbent need not move.
+  expect(final.currentOperator('dormitory_1', 3)?.name).toBe('芬')
+})
+
+it('compares personal mood deficits after a single-recovery takeover, rather than raw mood', () => {
+  const { data, plan } = singleBedTakeover([8, 2, 3, 16, 19])
+  data.operators.芬.upperLimit = 12
+  data.operators.香草.upperLimit = 12
+  const final = checkTakeover(data, plan)
+  expect(final.operators.冬时.currentRoom).toBe('dormitory_1')
+  expect(final.operators.芬.currentRoom).toBe('dormitory_1')
+  expect(final.operators.香草.currentRoom).toBe('dormitory_2')
+})
+
+it('retains existing beds when displaced and resident peers have equal priority and deficit', () => {
+  const { data, plan } = singleBedTakeover([15, 15, 15, 15, 15])
+  const final = checkTakeover(data, plan)
+  for (const name of ['芬', '香草', '翎羽', '黑角']) {
+    expect([final.operators[name].currentRoom, final.operators[name].currentIndex]).toEqual([
+      data.operators[name].currentRoom,
+      data.operators[name].currentIndex
+    ])
+  }
+  expect(final.currentOperator('dormitory_2', 4)?.name).toBe('冬时')
+})
