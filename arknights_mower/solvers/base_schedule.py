@@ -831,11 +831,19 @@ class BaseSchedulerSolver(
             if re_order_dorm_plan:
                 logger.debug(f"合并宿舍任务{re_order_dorm_plan}")
                 _merge_dorm_arrangement(plan, re_order_dorm_plan)
-            self.tasks.append(
-                SchedulerTask(
-                    datetime.now(), task_plan=plan, task_type=TaskTypes.SHIFT_OFF
-                )
+            task = SchedulerTask(
+                datetime.now(), task_plan=plan, task_type=TaskTypes.SHIFT_OFF
             )
+            if getattr(self.task, "ordinary_coordination", False):
+                task.ordinary_coordination = True
+                task.coordination_request_names = [
+                    name
+                    for name in candidates
+                    if self.op_data.is_group_shift_anchor(self.op_data.operators[name])
+                    or len(candidates) == 1
+                    and self.op_data.operators[name].independent_rest
+                ]
+            self.tasks.append(task)
         else:
             support = self._plan_exhaust_support(candidates)
             if support:
@@ -1055,6 +1063,129 @@ class BaseSchedulerSolver(
             ):
                 return True
         return False
+
+    def _prepare_ordinary_departure(self, task):
+        """普通下班先应用真实状态触发的副表，再复核每个请求。"""
+        if (
+            task.type != TaskTypes.SHIFT_OFF
+            or not getattr(task, "ordinary_coordination", False)
+            or getattr(task, "backup_shift_active", False)
+            or getattr(task, "group_shift_expected", {})
+            or getattr(task, "product_shift_locked", False)
+            or getattr(task, "backup_explicit_slots", ())
+        ):
+            return True
+        self.backup_plan_solver()
+        if not any(queued is task for queued in self.tasks):
+            return False
+        requests = {}
+        for name in task.coordination_request_names:
+            op = self.op_data.operators.get(name)
+            if op is None:
+                return False
+            key = ("group", op.group) if op.group else ("operator", name)
+            requests[key] = self.op_data.groups[op.group] if op.group else [name]
+        return bool(requests) and all(
+            self._ordinary_coordination_needed(names) for names in requests.values()
+        )
+
+    def _filter_ordinary_exhaust_departures(self, task, intent, effective):
+        """用尽副表取消普通组下班时，保留其他组及明确副表安排。"""
+        if (
+            not getattr(task, "ordinary_coordination", False)
+            or getattr(task, "backup_shift_active", False)
+            or getattr(task, "group_shift_expected", {})
+            or getattr(task, "product_shift_locked", False)
+        ):
+            return False
+        blocked, kept = set(), set()
+        blocked_requests, blocked_groups = set(), set()
+        explicit = set(getattr(task, "backup_explicit_slots", ()))
+        explicit_names = set()
+        for room, index in explicit:
+            slots = self.op_data.plan.get(room, [])
+            if index < len(slots):
+                explicit_names.add(slots[index].agent)
+            row = intent.get(room, [])
+            if index < len(row):
+                explicit_names.add(row[index])
+        for name in task.coordination_request_names:
+            op = effective.operators.get(name)
+            if op is None:
+                continue
+            members = (
+                set(effective.shift_group_members(op.group)) if op.group else {name}
+            )
+            if members & explicit_names:
+                kept.update(members)
+            elif name in effective.exhaust_agent or op.group in effective.exhaust_group:
+                blocked.update(members)
+                blocked_requests.add(name)
+                if op.group:
+                    blocked_groups.add(op.group)
+            else:
+                kept.update(members)
+        if not blocked_requests:
+            return False
+        remaining_transitions = self.op_data.arrangement_group_transitions(intent)
+        remaining_transitions.update({group: False for group in blocked_groups})
+        kept.update(
+            name
+            for name in blocked
+            if self.op_data.operators[name].multi_group
+            and self.op_data.resting_binding_groups(
+                self.op_data.operators[name], remaining_transitions
+            )
+        )
+        blocked.difference_update(kept)
+        removed_covers = set()
+        for room, names in list(intent.items()):
+            for index, name in enumerate(names):
+                if (room, index) in explicit:
+                    continue
+                current = self.op_data.get_current_operator(room, index)
+                if (
+                    current is not None
+                    and current.name in blocked
+                    and (current.room, current.index) == (room, index)
+                    or room.startswith("dorm")
+                    and name in blocked
+                    and not self.op_data.operators[name].is_resting()
+                ):
+                    if name in self.op_data.operators and name not in blocked:
+                        removed_covers.add(name)
+                    names[index] = "Current"
+            if all(name == "Current" for name in names):
+                del intent[room]
+        assigned = _assigned_operator_names(intent)
+        for room, names in list(intent.items()):
+            if not room.startswith("dorm"):
+                continue
+            for index, name in enumerate(names):
+                current = self.op_data.get_current_operator(room, index)
+                if (
+                    name == "Free"
+                    and (room, index) not in explicit
+                    and current is not None
+                    and current.name in removed_covers - assigned
+                ):
+                    names[index] = "Current"
+            if all(name == "Current" for name in names):
+                del intent[room]
+        task.coordination_request_names = [
+            name
+            for name in task.coordination_request_names
+            if name not in blocked_requests
+        ]
+        task.ordinary_exhaust_blocked_groups = (
+            set(getattr(task, "ordinary_exhaust_blocked_groups", ())) | blocked_groups
+        )
+        task.group_shift_transitions = {
+            group: resting
+            for group, resting in getattr(task, "group_shift_transitions", {}).items()
+            if group not in blocked_groups
+        }
+        return True
 
     def _refresh_coordination_support(self, task):
         if (
@@ -1868,7 +1999,10 @@ class BaseSchedulerSolver(
                 self.task.meta_data
             )
             try:
-                if self.task.meta_data == RESUME_META or getattr(
+                if not self._prepare_ordinary_departure(self.task):
+                    # 副表或心情变化已取消普通下班需求，重新规划尚未开始的整批安排。
+                    self.planned = False
+                elif self.task.meta_data == RESUME_META or getattr(
                     self.task, "emergency_recovery_release", False
                 ):
                     if self._emergency_active():
@@ -3975,6 +4109,7 @@ class BaseSchedulerSolver(
         dorm_admissions = {}
         _high_done = False
         attempted_groups = set()
+        ordinary_requests = []
         # 工作组先取得床位预约，空闲干员随后由统一补床入口安排。
         for op in shift_candidates:
             if op.independent_rest and self.op_data.resting_binding_groups(
@@ -4068,10 +4203,13 @@ class BaseSchedulerSolver(
                     if op.group
                     else [op.name]
                 )
+            else:
+                ordinary_requests.append(op.name)
         if len(_plan.keys()) > 0:
-            self.tasks.append(
-                SchedulerTask(task_plan=_plan, task_type=TaskTypes.SHIFT_OFF)
-            )
+            task = SchedulerTask(task_plan=_plan, task_type=TaskTypes.SHIFT_OFF)
+            task.ordinary_coordination = True
+            task.coordination_request_names = ordinary_requests
+            self.tasks.append(task)
             logger.info(f"生成{_plan}的下班任务")
         return _plan
 
@@ -4512,7 +4650,9 @@ class BaseSchedulerSolver(
             return transition, []
         merged = {}
         for task in sorted(merged_tasks, key=lambda task: task.time):
-            _merge_shift_transition(merged, copy.deepcopy(task.plan), self.op_data)
+            planned = copy.deepcopy(task.plan)
+            self._filter_ordinary_exhaust_departures(task, planned, self.op_data)
+            _merge_shift_transition(merged, planned, self.op_data)
         _merge_shift_transition(merged, transition, self.op_data)
         merged = {
             room: agents
@@ -4882,6 +5022,17 @@ class BaseSchedulerSolver(
                         name: (op.refresh_drained, op.refresh_order_room)
                         for name, op in previous_data.operators.items()
                     },
+                )
+                generated.coordination_request_names = list(
+                    dict.fromkeys(
+                        name
+                        for pending in superseded
+                        if getattr(pending, "ordinary_coordination", False)
+                        for name in pending.coordination_request_names
+                    )
+                )
+                generated.ordinary_coordination = bool(
+                    generated.coordination_request_names
                 )
                 for pending in superseded:
                     self._capture_shift_refresh_rules(
@@ -6041,6 +6192,11 @@ class BaseSchedulerSolver(
             and not getattr(t, "dorm_recovery_restore", [])
         ]
         consumed = set()
+        ordinary_requests = list(
+            getattr(task, "coordination_request_names", ())
+            if getattr(task, "ordinary_coordination", False)
+            else ()
+        )
         for queued in sorted(coalesced, key=lambda t: t.time):
             # 未执行的普通补床重新计算，不能作为轮休前必须保留的入住意图。
             if queued.type != TaskTypes.FILL_DORM:
@@ -6070,7 +6226,31 @@ class BaseSchedulerSolver(
                     continue
                 intent = combined
                 explicit_slots = combined_explicit
+                if getattr(queued, "ordinary_coordination", False):
+                    ordinary_requests.extend(queued.coordination_request_names)
             consumed.add(id(queued))
+        required_recovery = {
+            name
+            for planned in [task, *coalesced]
+            if (planned is task or id(planned) in consumed)
+            and planned.type in (TaskTypes.SHIFT_OFF, TaskTypes.EXHAUST_OFF)
+            and not getattr(planned, "ordinary_coordination", False)
+            for room, names in planned.plan.items()
+            if room.startswith("dorm")
+            for name in names
+            if name in self.op_data.operators
+        }
+        required_groups = {
+            self.op_data.operators[name].group
+            for name in required_recovery
+            if self.op_data.operators[name].group
+        }
+        ordinary_requests = [
+            name
+            for name in ordinary_requests
+            if name not in required_recovery
+            and self.op_data.operators[name].group not in required_groups
+        ]
         simulation = copy.copy(self)
         # 求值模型只读复用；eval 注入的 Python 内建对象不能全部深拷贝。
         simulation.op_data = copy.deepcopy(
@@ -6082,6 +6262,8 @@ class BaseSchedulerSolver(
         pending = [t for t in self.tasks if t is not task and id(t) not in consumed]
         step = SchedulerTask(task_type=task.type, task_plan=copy.deepcopy(intent))
         step.backup_explicit_slots = explicit_slots
+        step.ordinary_coordination = bool(ordinary_requests)
+        step.coordination_request_names = list(dict.fromkeys(ordinary_requests))
         step.dorm_fill_plan = copy.deepcopy(getattr(task, "dorm_fill_plan", {}))
         returning_groups = {
             group
@@ -6093,11 +6275,24 @@ class BaseSchedulerSolver(
         # Free 是执行时按游戏列表选人的占位符，预演不能把它当作已知干员。
         unresolved = set()
         ordinary_unknown = set()
+        initial_step = True
         for _ in range(64):
             simulation.tasks = copy.deepcopy(pending)
             simulation.task = step
             previous_dorm_layout = dorm_rebalance_signature(simulation.op_data)
             simulation._prepare_shift_backup(step)
+            if initial_step:
+                intent = copy.deepcopy(getattr(step, "backup_shift_intent", step.plan))
+                ordinary_requests = list(step.coordination_request_names)
+                initial_step = False
+            else:
+                ordinary_requests.extend(step.coordination_request_names)
+            simulation.op_data.commit_group_shifts(
+                {
+                    group: False
+                    for group in getattr(step, "ordinary_exhaust_blocked_groups", ())
+                }
+            )
             explicit_slots = set(getattr(step, "backup_explicit_slots", ()))
             conditions = getattr(
                 step, "backup_shift_conditions", simulation.op_data.plan_condition
@@ -6180,9 +6375,17 @@ class BaseSchedulerSolver(
                 for op in simulation.op_data.operators.values()
                 if op.is_high() and not op.room.startswith("dorm")
             ]
+            previous_task_count = len(simulation.tasks)
             rest = simulation.resting(
                 returning=returning, returning_groups=returning_groups
             )
+            rest_requests = [
+                name
+                for planned in simulation.tasks[previous_task_count:]
+                if planned.type == TaskTypes.SHIFT_OFF
+                and getattr(planned, "ordinary_coordination", False)
+                for name in planned.coordination_request_names
+            ]
             _merge_dorm_arrangement(
                 rest,
                 try_reorder(simulation.op_data, rest, tasks=simulation.tasks) or {},
@@ -6231,6 +6434,8 @@ class BaseSchedulerSolver(
             simulation._suppress_retained_arrangements(rest)
             if rest:
                 step = SchedulerTask(task_type=TaskTypes.SHIFT_OFF, task_plan=rest)
+                step.ordinary_coordination = bool(rest_requests)
+                step.coordination_request_names = rest_requests
                 step.backup_explicit_slots = explicit_slots
                 step.dorm_fill_plan = ordinary_fill
                 continue
@@ -6251,6 +6456,8 @@ class BaseSchedulerSolver(
                 if self.op_data.group_is_resting(group) != resting
             }
             task.backup_shift_intent = intent
+            task.ordinary_coordination = bool(ordinary_requests)
+            task.coordination_request_names = list(dict.fromkeys(ordinary_requests))
             task.backup_explicit_slots = explicit_slots
             task.backup_shift_conditions = list(conditions)
             task.plan = final
@@ -6338,6 +6545,8 @@ class BaseSchedulerSolver(
             )
         intent = copy.deepcopy(getattr(task, "backup_shift_intent", task.plan))
         original = list(self.op_data.plan_condition)
+        ordinary_policy = copy.copy(task)
+        ordinary_policy_changed = False
         self._suppress_train_arrangement(intent)
         seed = self.op_data.project_arrangements([intent])
         seed.commit_group_shifts(getattr(task, "group_shift_transitions", {}))
@@ -6354,6 +6563,26 @@ class BaseSchedulerSolver(
             simulation.op_data = seed.project_arrangements([])
             if error := simulation.op_data.swap_plan(conditions, refresh=True):
                 raise ValueError(f"上下班副表推演失败：{error}")
+            if self._filter_ordinary_exhaust_departures(
+                ordinary_policy, intent, simulation.op_data
+            ):
+                ordinary_policy_changed = True
+                seed = self.op_data.project_arrangements([intent])
+                seed.commit_group_shifts(
+                    getattr(ordinary_policy, "group_shift_transitions", {})
+                )
+                seed.commit_group_shifts(
+                    {
+                        group: False
+                        for group in ordinary_policy.ordinary_exhaust_blocked_groups
+                    }
+                )
+                conditions = [
+                    bool(seed.evaluate_expression(str(bp.trigger)))
+                    for bp in seed.backup_plans
+                ]
+                seen.clear()
+                continue
             transition = simulation._backup_transition_plan(
                 self.op_data.plan,
                 original,
@@ -6378,6 +6607,15 @@ class BaseSchedulerSolver(
                 for bp in projected.backup_plans
             ]
             if next_conditions == conditions:
+                if ordinary_policy_changed:
+                    for attr in (
+                        "coordination_request_names",
+                        "ordinary_exhaust_blocked_groups",
+                        "group_shift_transitions",
+                    ):
+                        setattr(
+                            task, attr, copy.deepcopy(getattr(ordinary_policy, attr))
+                        )
                 task.backup_explicit_slots = set(
                     getattr(task, "backup_explicit_slots", ())
                 ) | self._backup_explicit_slots(original, conditions)

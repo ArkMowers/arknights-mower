@@ -1,3 +1,4 @@
+import {mowerOrdinaryCoordinationNeeded,mowerPendingExhaust} from './mowerExhaustPolicy'
 import {hasSingleRecoverySkill} from '../engine/singleRecoveryEligibility'
 import {retainMowerFailedTask,resumeMowerFailedTasks} from './mowerTaskFailure'
 import {mowerArrangementGroupTransitions,normalizeMowerSharedArrangement,commitMowerGroupShifts} from './mowerSharedGroups'
@@ -458,7 +459,7 @@ function scheduleFiaAndExhaust(s:RuntimeState,rates:RuntimeRates):void {
   }
  }
  for(const op of Object.values(data.operators)){
-  if(!op.exhaustRequire||op.isResting()||!op.isHigh()||!data.plan[op.currentRoom]||op.currentMood(data.nowMicros)>op.lowerLimit+2||queue.find({type:T.EXHAUST_OFF,metadata:op.name}))continue
+  if(!op.exhaustRequire||op.isResting()||!op.isHigh()||!data.plan[op.currentRoom]||op.currentMood(data.nowMicros)>op.lowerLimit+2||mowerPendingExhaust(queue.tasks,op.name))continue
   observeRoom(s,rates,op.currentRoom,undefined,[op.currentIndex])
   const rate=-physicalRate(s,rates,op.name,op.currentRoom),mood=s.morale[op.name]!,group=op.group?data.group(op.group).map(n=>data.operators[n]!):[]
   const fullGroups=new Set(Object.values(data.operators).filter(p=>p.restInFull&&p.group&&!p.room.startsWith('dorm')).map(p=>p.group))
@@ -469,7 +470,7 @@ function scheduleFiaAndExhaust(s:RuntimeState,rates:RuntimeRates):void {
   const exhaustedTime=due<data.nowMicros
   due=Math.max(data.nowMicros,due)
   let shared=false
-  if(op.group)for(const peer of group.filter(p=>p.exhaustRequire)){const old=queue.find({type:T.EXHAUST_OFF,metadata:peer.name});if(old){old.timeMicros=Math.min(old.timeMicros,due);old.metadata+=','+op.name;shared=true}}
+  if(op.group)for(const peer of group.filter(p=>p.exhaustRequire)){const old=mowerPendingExhaust(queue.tasks,peer.name);if(old){if(!old.retainsExecution){old.timeMicros=Math.min(old.timeMicros,due);if(!old.metadata.split(',').includes(op.name))old.metadata+=','+op.name}shared=true}}
   if(!shared){const task=new MowerTask({type:T.EXHAUST_OFF,metadata:op.name});task.timeMicros=due;queue.tasks.push(task)}
   if(exhaustedTime)break
  }
@@ -507,7 +508,7 @@ function mowerClueState(s:RuntimeState):MowerClueLifecycleState {
 export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(phase:BackupTiming)=>boolean):void {
  const source=getMowerSourceRuntime(s),queue=source.queue
  for(const task of [...queue.tasks])if(task!==source.execution?.task&&task.type===T.EXHAUST_OFF&&mowerCoordinationRequestFulfilled(source.data,task.metadata.split(',')))queue.consume(task)
- for(const task of [...queue.tasks])if(task!==source.execution?.task&&task.coordinationRequestNames.length&&!queue.tasks.some(request=>request.type===T.EXHAUST_OFF&&request.metadata.split(',').some(name=>task.coordinationRequestNames.includes(name))))queue.consume(task)
+ for(const task of [...queue.tasks])if(task!==source.execution?.task&&task.exhaustSupport&&task.coordinationRequestNames.length&&!queue.tasks.some(request=>request.type===T.EXHAUST_OFF&&request.metadata.split(',').some(name=>task.coordinationRequestNames.includes(name))))queue.consume(task)
  if(resumeMowerFailedTasks(s,source.data,queue)&&!source.execution&&!source.phaseExecution)delete source.runReturn
  if(!source.execution&&!source.phaseExecution&&!source.runReturn&&source.planningWake&&source.planningWake.timeMicros<=source.data.nowMicros){
   source.planningMoodRefreshNames=[...new Set([...(source.planningMoodRefreshNames??[]),...source.planningWake.names])]
@@ -588,6 +589,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
   if(task){
    try {
     source.activeTask=task
+    if(!running&&!task.backupShiftActive&&!task.productShiftLocked&&!task.backupExplicitSlots.size&&task.ordinaryCoordination&&(task.exhaustSupport||[T.SHIFT_OFF,T.EXHAUST_OFF].includes(task.type))&&!mowerOrdinaryCoordinationNeeded(data,task.coordinationRequestNames.length?task.coordinationRequestNames:task.metadata.split(','))){queue.consume(task);delete source.activeTask;continue}
     if(!running&&task.preferredReplacementRestore){
      const reservations=mowerReplacementReservations(data,queue.tasks.filter(other=>other!==task))
      for(const pending of queue.tasks)if(pending!==task&&pending.type===T.EXHAUST_OFF&&pending.timeMicros<=data.nowMicros)mowerReplacementDependencyNames(data,pending.metadata.split(',')).forEach(name=>reservations.reservedNames.add(name))
@@ -608,7 +610,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
       const readyAt=confirmMowerGroupReturn(s,rates,task)
       if(readyAt!==undefined){task.timeMicros=readyAt;queue.sort();delete source.activeTask;continue}
      }
-     if(task.coordinationRequestNames.length){
+     if(task.exhaustSupport&&task.coordinationRequestNames.length){
       const effective=task.backupShiftConditions?model.swap(projectMowerArrangements(data,[]),task.backupShiftConditions):data
       const projected=projectMowerArrangements(data,[task.plan]),recalls=Object.values(data.operators).some(op=>op.isHigh()&&op.isResting()&&projected.operators[op.name]?.currentRoom===op.room&&!op.room.startsWith('dorm'))
       if(recalls&&task.backupShiftConditions&&JSON.stringify(task.backupShiftConditions)!==JSON.stringify(data.planConditions))throw new MowerShiftPreviewError('副表改变召回条件，保留任务等待实际配置确认')
@@ -667,7 +669,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
     queue.consume(task)
    }else if(!running&&task.type===T.EXHAUST_OFF&&!Object.keys(task.plan).length){
     const first=data.operators[task.metadata.split(',')[0]!],members=first?.group?data.shiftGroupMembers(first.group):first?[first.name]:[],plan:MowerTaskPlan={}
-    const pendingSupport=queue.tasks.find(other=>other!==task&&!other.executionFailure&&other.coordinationRequestNames.some(name=>members.includes(name)))
+    const pendingSupport=queue.tasks.find(other=>other!==task&&other.exhaustSupport&&!other.executionFailure&&other.coordinationRequestNames.some(name=>members.includes(name)))
     if(pendingSupport){
      const dependencies=mowerReplacementDependencyNames(data,members),rooms=[...new Set([...dependencies].flatMap(name=>{const op=data.operators[name];return op?[op.room,op.currentRoom].filter(Boolean):[]}).concat(data.allDorms().map(bed=>bed.position[0])))]
      retainMowerFailedTask(s,data,task,'等待已排定的替班交接',rooms);task.coordinationDependencyWait=true;delete source.activeTask;continue
@@ -675,11 +677,11 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
     mowerGetRestingPlan(data,[...members],[],plan,options())
     if(Object.keys(plan).length){
      const reorder=mowerTryReorder(data,plan);if(reorder)Object.assign(plan,reorder)
-     queue.tasks.push(new MowerTask({time:s.time,type:T.SHIFT_OFF,plan}))
+     const departure=new MowerTask({time:s.time,type:T.SHIFT_OFF,plan});departure.ordinaryCoordination=task.ordinaryCoordination;departure.coordinationRequestNames=task.ordinaryCoordination?[...members]:[];queue.tasks.push(departure)
     }else{
      const support=planMowerExhaustSupport(data,members,options())
      if(support&&Object.keys(support).length){
-      const supportTask=new MowerTask({time:s.time,type:T.SELF_CORRECTION,plan:support});supportTask.exhaustSupport=true;supportTask.coordinationRequestNames=[...members]
+      const supportTask=new MowerTask({time:s.time,type:T.SELF_CORRECTION,plan:support});supportTask.exhaustSupport=true;supportTask.ordinaryCoordination=task.ordinaryCoordination;supportTask.coordinationRequestNames=[...members]
       for(const old of [...queue.tasks])if(old.executionFailure&&!old.backupShiftActive&&old.coordinationRequestNames.some(name=>members.includes(name)))queue.consume(old)
       queue.tasks.push(supportTask);skipPlanning=true
       const dependencies=mowerReplacementDependencyNames(data,members),rooms=[...new Set([...dependencies].flatMap(name=>{const op=data.operators[name];return op?[op.room,op.currentRoom].filter(Boolean):[]}).concat(data.allDorms().map(bed=>bed.position[0])))]

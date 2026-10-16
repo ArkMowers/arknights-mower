@@ -1,3 +1,4 @@
+import {mowerExhaustGroups} from './mowerExhaustPolicy'
 import {mowerWorkingReplacementBlocked,mowerSameGroupPrimaryReplacement,mowerRestingBindingGroups,mowerSharedReplacements,normalizeMowerSharedArrangement,mowerArrangementGroupTransitions,commitMowerGroupShifts} from './mowerSharedGroups'
 // Port of default plan_solver/resting/_get_resting_plan_legacy/try_reorder.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
@@ -129,8 +130,8 @@ function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRest
  if(!metadataPrepared)planMowerMetadata(data,queue)
  const current=mowerActiveHighRestingCount(data),effective=data.dorms.filter(b=>data.effectiveFreeSlot(b)).length
  const ideal=mowerAverageMood(data)>data.policy.restingThreshold*data.policy.rescueThreshold?Math.min(4,effective):effective
- const replacements:string[]=[],plan:MowerTaskPlan={},used=new Set<number>(),attempted=new Set<string>();let highDone=false
- const exhaustGroups=new Set(Object.values(data.operators).filter(op=>op.exhaustRequire&&op.group).map(op=>op.group))
+ const ordinaryRequests:string[]=[],replacements:string[]=[],plan:MowerTaskPlan={},used=new Set<number>(),attempted=new Set<string>();let highDone=false
+ const exhaustGroups=mowerExhaustGroups(data)
  for(const op of [...total.filter(op=>op.isHigh()),...total.filter(op=>!op.isHigh())]){
   if(data.alpha&&(moods.get(op.name)===undefined||data.reservedProductReplacements.has(op.name)||options.returning?.has(op.name)||options.returningGroups?.has(op.group)||op.group&&data.group(op.group).some(n=>options.returning?.has(n))||replacements.includes(op.name)||alphaRestingTier(data,op.name)===7))continue
   if(op.isHigh()&&!op.workshop){
@@ -152,11 +153,11 @@ function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRest
   if(!mowerGetRestingPlan(data,[...members],replacements,plan,{...options,tasks:queue.tasks})){
    options.onBlocked?.(members)
    if(data.alpha&&!queue.tasks.some(task=>task.type===T.EXHAUST_OFF&&members.some(name=>task.metadata.split(',').includes(name)))){
-    const task=new MowerTask({type:T.EXHAUST_OFF,metadata:members.join(',')});task.timeMicros=data.nowMicros;queue.tasks.push(task)
+    const task=new MowerTask({type:T.EXHAUST_OFF,metadata:members.join(',')});task.ordinaryCoordination=true;task.coordinationRequestNames=[...members];task.timeMicros=data.nowMicros;queue.tasks.push(task)
    }
-  }
+  }else ordinaryRequests.push(op.name)
  }
- if(Object.keys(plan).length){const task=new MowerTask({plan,type:T.SHIFT_OFF});task.timeMicros=data.nowMicros;queue.tasks.push(task)}
+ if(Object.keys(plan).length){const task=new MowerTask({plan,type:T.SHIFT_OFF});task.ordinaryCoordination=ordinaryRequests.length>0;task.coordinationRequestNames=ordinaryRequests;task.timeMicros=data.nowMicros;queue.tasks.push(task)}
  return plan
 }
 export function mowerTryReorder(data:MowerSchedulingData,newPlan:MowerTaskPlan):MowerTaskPlan|undefined {

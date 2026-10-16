@@ -34,6 +34,7 @@ export class MowerTask {
  get retainsExecution():boolean{return !!this.executionFailure||this.executionRetained}
  groupShiftTransitions:Record<string,boolean>={}
  productShiftLocked=false
+ ordinaryCoordination=false
  exhaustSupport=false
  coordinationRequestNames:string[]=[]
  preferredReplacementRestore=false

@@ -248,6 +248,8 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
         const generated:MowerTask[]=[]
         if(Object.keys(merged.plan).length){const task=new MowerTask({time:state.time,type:Object.keys(merged.plan).some(room=>room.startsWith('dorm'))?T.RE_ORDER:T.SELF_CORRECTION,plan:merged.plan,metadata:'副表内存收敛'});if(state.mowerBackupContext?.customTimeMicros!==undefined)task.timeMicros=state.mowerBackupContext.customTimeMicros;generated.push(task);queue.tasks.push(task);queue.tasks=queue.tasks.filter(t=>!merged.consumed.includes(t))}
         if(generated[0]){
+          generated[0].coordinationRequestNames=[...new Set(merged.consumed.filter(task=>task.ordinaryCoordination).flatMap(task=>task.coordinationRequestNames))]
+          generated[0].ordinaryCoordination=generated[0].coordinationRequestNames.length>0
           inheritMowerBackupRefreshRules(generated[0],merged.consumed)
           generated[0].backupExplicitSlots=new Set([...(alphaModel.explicitSlots?.(original,conditions)??[]),...merged.consumed.flatMap(task=>[...task.backupExplicitSlots].filter(slot=>{const [room,index]=slot.split('\0');return merged.plan[room!]?.[Number(index)]===task.plan[room!]?.[Number(index)]}))])
         }

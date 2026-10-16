@@ -194,7 +194,10 @@
     "workbench/validate.ts": "403fbb46a1b24096897f4b244e01511d7fd3a5bab179b4ba2f1dbaaef7e708d9",
     "workbench/validateBackupPlans.ts": "49b48c206a06825efa08db9670fae0c723c7d471590dfcec99f8051d35e1b0d4",
     "scheduler/mowerIndependentRest.spec.ts": "fc9bdb24ee84277c0990de410cfea239888eda65308fcb265001dcdb898e9a55",
-    "workbench/mowerIndependentRest.spec.ts": "e0f3cfb6c8d50597b041d6a13fd20c1d1548d6a6c03fb971f42f62020a2772e4"
+    "workbench/mowerIndependentRest.spec.ts": "e0f3cfb6c8d50597b041d6a13fd20c1d1548d6a6c03fb971f42f62020a2772e4",
+    "scheduler/mowerExhaustPolicy.ts": "52a2dccc1738dca0b11cc16f97e0b54f42b82141494d023c2cb393e7933f29f1",
+    "scheduler/mowerExhaustInterlock.spec.ts": "2ef7dae6d7bf3a1958c4f2f5dc6c82567e762fb4d5aac2a64f7aeb8f06b4b41a",
+    "scheduler/mowerExhaustPreview.spec.ts": "602d2d8befb2151cf7047498b0df119a8a3b63cbac13fae4e1ea084ccf293e4e"
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
@@ -210,12 +213,12 @@
       "sha256": "8888318457b8aba820573a7edb882923a48f1a1c143f7ca7daf3575cc34d2682"
     },
     "scheduler/backupPlans.ts": {
-      "sha256": "e90c3dc79aab15cf8d1094816414c71b5ddeafe38af493e40be811d3cf46a74d",
-      "reason": "Keep the existing maintenance-backup behavior; selectively synchronize restored-member admission and protected dormitory migration from the pinned calculator revision. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+      "sha256": "6fefce4c76678cccfa828f00d5865912adcf090efbac5f3cfab46f7ee65baf68",
+      "reason": "Keep the existing maintenance-backup behavior; selectively synchronize restored-member admission and protected dormitory migration from the pinned calculator revision. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Preserve ordinary request provenance through queued departures and backup previews; cancel only ordinary departures blocked by effective exhaustion rules, retain real exhaustion and explicit or started arrangements, and deduplicate retained exhaustion requests."
     },
     "scheduler/mowerSourceRuntime.ts": {
-      "sha256": "c480bbd90b71b87d09ef8d91d0016a4a18c4251bce3e8615a54adee09f99ece7",
-      "reason": "Synchronize native failure retention and observation-based recovery without changing the existing departing-plan observation adaptation. Retain full-to-full Fiammetta operations as failed pending work instead of adding a polling task; this offline safeguard is additional to the native selector. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning. Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+      "sha256": "546e22d57c2e6fbdd1a8f5d3da0d989fe8f921f2a9d2ca4c5be4fe64462bd9cd",
+      "reason": "Synchronize native failure retention and observation-based recovery without changing the existing departing-plan observation adaptation. Retain full-to-full Fiammetta operations as failed pending work instead of adding a polling task; this offline safeguard is additional to the native selector. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning. Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Preserve ordinary request provenance through queued departures and backup previews; cancel only ordinary departures blocked by effective exhaustion rules, retain real exhaustion and explicit or started arrangements, and deduplicate retained exhaustion requests."
     },
     "scheduler/rosterRuntime.ts": {
       "sha256": "7deeee17f15ce01a38ed28c1c18950b90b43964d58071f18ac053b833c8dd6cf",
@@ -226,8 +229,8 @@
       "sha256": "5b80d31438e69316853e400911363f5aff41d6b6a76db6a246dd18289eeff841"
     },
     "scheduler/mowerOrdinaryPlanning.ts": {
-      "sha256": "074dc4e7c5079a93eb61154792ff762be9bffc4bcc6773fe89e2b0e92af0103b",
-      "reason": "Synchronize personal recovery through one empty binding from calculator e7e8966330d351539684b1daba82e9ccead48fa1, following the working-primary behavior in Mower alpha 9995754f702d05b0661c9214d7abc62585366027; retain existing bundled recovery and replacement coordination. "
+      "sha256": "e4cf7c75d4916faefb998c3272383f5ce80a10149fd5e4082a578f632f9db2fe",
+      "reason": "Synchronize personal recovery through one empty binding from calculator e7e8966330d351539684b1daba82e9ccead48fa1, following the working-primary behavior in Mower alpha 9995754f702d05b0661c9214d7abc62585366027; retain existing bundled recovery and replacement coordination.  Preserve ordinary request provenance through queued departures and backup previews; cancel only ordinary departures blocked by effective exhaustion rules, retain real exhaustion and explicit or started arrangements, and deduplicate retained exhaustion requests."
     },
     "scheduler/mowerAlphaDorm.ts": {
       "sha256": "6dccd50768efd575af0f4dcaace7c3e37970fe6b495ae415e258585b24e72a6c",
@@ -250,12 +253,12 @@
       "reason": "Preserve exhausted tasks across ordinary run recovery and exclude suspended failures from dispatch deadlines."
     },
     "scheduler/mowerShiftCycle.ts": {
-      "sha256": "90b4d0f8d4dbeb7924bf9e31f1becf885b8f0c916ada327f0a6d6a9c198bd439",
-      "reason": "Keep retained arrangement tasks when rebuilding derived shift plans. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning."
+      "sha256": "8c27c56cea074dac17684159a0b10583e8236db9cfa13e019f6aef8002f0e38b",
+      "reason": "Keep retained arrangement tasks when rebuilding derived shift plans. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning. Preserve ordinary request provenance through queued departures and backup previews; cancel only ordinary departures blocked by effective exhaustion rules, retain real exhaustion and explicit or started arrangements, and deduplicate retained exhaustion requests."
     },
     "scheduler/mowerTaskQueue.ts": {
-      "sha256": "88e03d95b087c1f6329e3f26d760b15d14e1eed8a8ca47d28111e6fcfc67728a",
-      "reason": "Separate pending failures from eligible dispatch without replacing task identity, remaining plan or deadline. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+      "sha256": "0ed47255f3ad0da13fc2e87fec99de8da7433b61efb508e9c2c52aa92844c641",
+      "reason": "Separate pending failures from eligible dispatch without replacing task identity, remaining plan or deadline. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Preserve ordinary request provenance through queued departures and backup previews; cancel only ordinary departures blocked by effective exhaustion rules, retain real exhaustion and explicit or started arrangements, and deduplicate retained exhaustion requests."
     },
     "scheduler/mowerTaskScheduling.ts": {
       "sha256": "69553cf8c8a453d15c23bc0aeed30cc0869ba462b5574a158371a362bcd3ed07",
@@ -472,6 +475,18 @@
     "workbench/mowerIndependentRest.spec.ts": {
       "sha256": "b2deffd9cf7dc2e204489ff7f3a97ceb2a4c7544fa42314f5072bb2b90c3e56b",
       "reason": "Synchronize personal recovery through one empty binding from calculator e7e8966330d351539684b1daba82e9ccead48fa1, following the working-primary behavior in Mower alpha 9995754f702d05b0661c9214d7abc62585366027; retain existing bundled recovery and replacement coordination. Extract the shared-group validation cases from workbench/validate.spec.ts."
+    },
+    "scheduler/mowerExhaustPolicy.ts": {
+      "sha256": "52a2dccc1738dca0b11cc16f97e0b54f42b82141494d023c2cb393e7933f29f1",
+      "reason": "Synchronize exhaustion admission and focused regressions from calculator e6d19f5a1e41d03124ce9411ba81d81d48641b63. Preserve ordinary request provenance through queued departures and backup previews; cancel only ordinary departures blocked by effective exhaustion rules, retain real exhaustion and explicit or started arrangements, and deduplicate retained exhaustion requests."
+    },
+    "scheduler/mowerExhaustInterlock.spec.ts": {
+      "sha256": "2ef7dae6d7bf3a1958c4f2f5dc6c82567e762fb4d5aac2a64f7aeb8f06b4b41a",
+      "reason": "Synchronize exhaustion admission and focused regressions from calculator e6d19f5a1e41d03124ce9411ba81d81d48641b63. Preserve ordinary request provenance through queued departures and backup previews; cancel only ordinary departures blocked by effective exhaustion rules, retain real exhaustion and explicit or started arrangements, and deduplicate retained exhaustion requests."
+    },
+    "scheduler/mowerExhaustPreview.spec.ts": {
+      "sha256": "602d2d8befb2151cf7047498b0df119a8a3b63cbac13fae4e1ea084ccf293e4e",
+      "reason": "Synchronize exhaustion admission and focused regressions from calculator e6d19f5a1e41d03124ce9411ba81d81d48641b63. Preserve ordinary request provenance through queued departures and backup previews; cancel only ordinary departures blocked by effective exhaustion rules, retain real exhaustion and explicit or started arrangements, and deduplicate retained exhaustion requests."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
@@ -493,7 +508,8 @@
       "single-recovery skill holders never receive their own bonus and receive another only as the sole unfinished eligible recipient",
       "single-recovery skill holders are not proactively locked and use multi-Free first beds only as fallback while retaining configured ordinary-bed order",
       "failed incidental dorm moves permit valid normal group returns and are removed only after observed complete return",
-      "one empty binding permits working primaries to rest independently while named bindings retain shared-cover precedence and group returns preserve active personal recovery"
+      "one empty binding permits working primaries to rest independently while named bindings retain shared-cover precedence and group returns preserve active personal recovery",
+      "ordinary departures revalidate effective exhaustion after queuing and backup preview while genuine exhaustion, explicit backups and started arrangements retain their execution rules"
     ],
     "limitations": [
       "ideal run orders do not simulate maintenance runner replacement acceleration or physical restoration",
@@ -515,6 +531,8 @@
     "replacementCoordinationCalculatorRevision": "aa5f7e46377eb5446708e150ff9fdacdfbb606d6",
     "retainedRecoveryCalculatorRevision": "e7e8966330d351539684b1daba82e9ccead48fa1",
     "independentRestCalculatorRevision": "e7e8966330d351539684b1daba82e9ccead48fa1",
-    "independentRestMowerReference": "9995754f702d05b0661c9214d7abc62585366027"
+    "independentRestMowerReference": "9995754f702d05b0661c9214d7abc62585366027",
+    "exhaustInterlockCalculatorRevision": "e6d19f5a1e41d03124ce9411ba81d81d48641b63",
+    "exhaustInterlockMowerReference": "9995754f702d05b0661c9214d7abc62585366027"
   }
 }
