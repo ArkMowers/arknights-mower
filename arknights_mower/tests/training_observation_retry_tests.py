@@ -1,4 +1,4 @@
-"""训练室巡检失败保留成功时间，仅由相关实测或安排变化重新准入。"""
+"""训练室巡检失败保留成功时间，随后按原有周期再次观察。"""
 
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -31,11 +31,9 @@ def solver(monkeypatch):
     s.task, s.tasks = None, []
     old = Clock.now() - timedelta(hours=3)
     s.last_train_mood_read = old
+    s.last_train_mood_attempt = old
     s.op_data = SimpleNamespace(
         plan={"train": []},
-        products={},
-        facility_states={},
-        room_observations={"train": 1, "meeting": 1},
         operators={
             "艾丽妮": Operator(
                 "艾丽妮",
@@ -53,8 +51,25 @@ def solver(monkeypatch):
     return s
 
 
+def test_failed_scan_repeats_at_normal_interval_without_cache_changes(
+    solver, monkeypatch
+):
+    read = Mock(side_effect=ValueError("unreadable"))
+    monkeypatch.setattr(reader, "read_room_state", read)
+    old = solver.last_train_mood_read
+    solver._read_agent_mood()
+    assert read.call_count == 1
+    assert solver.last_train_mood_read == old
+
+    Clock.current += timedelta(hours=2.5)
+    solver._read_agent_mood()
+
+    assert read.call_count == 2
+    assert solver.last_train_mood_read == old
+
+
 @pytest.mark.parametrize("failure", ["exception", "unknown_slots", "unread_slots"])
-def test_failed_observation_preserves_success_time_without_timer_retry(
+def test_failed_observation_preserves_success_time_and_normal_patrol_interval(
     solver, monkeypatch, failure
 ):
     old = solver.last_train_mood_read
@@ -68,54 +83,57 @@ def test_failed_observation_preserves_success_time_without_timer_retry(
     solver._read_agent_mood()
 
     assert solver.last_train_mood_read == old
+    assert solver.last_train_mood_attempt == Clock.now()
     assert not base._training_room_scan_disabled
-    for _ in range(3):
-        Clock.current += timedelta(hours=3)
+    attempt = Clock.now()
+    for elapsed in (
+        timedelta(),
+        timedelta(minutes=2),
+        timedelta(hours=2.5, seconds=-1),
+    ):
+        Clock.current = attempt + elapsed
         solver._read_agent_mood()
-    assert read.call_count == 1
+        assert read.call_count == 1
+    Clock.current = attempt + timedelta(hours=2.5)
+    solver._read_agent_mood()
+    assert read.call_count == 2
+    assert solver.last_train_mood_attempt == Clock.now()
     assert solver.last_train_mood_read == old
     assert solver.tasks == []
 
 
-@pytest.mark.parametrize("change", ["revision", "arrangement", "occupancy", "mood"])
-def test_related_update_retries_once_despite_recent_successful_mood(
-    solver, monkeypatch, change
+def test_repeated_failures_use_bounded_patrols_and_success_restores_normal_interval(
+    solver, monkeypatch
 ):
-    good = reader.RoomState("training", slots_read=True, slots_reliable=True)
-    read = Mock(side_effect=[ValueError("unreadable"), (good, [])])
+    read = Mock(side_effect=ValueError("unreadable"))
     monkeypatch.setattr(reader, "read_room_state", read)
-    solver._read_agent_mood()
-    assert read.call_count == 1
-    recent = Clock.now() - timedelta(minutes=1)
-    solver.last_train_mood_read = recent
-    op = solver.op_data.operators["艾丽妮"]
-    if change == "revision":
-        solver.op_data.room_observations["train"] += 1
-    elif change == "arrangement":
-        solver.op_data.plan["train"] = [Room("艾丽妮", "", [])]
-    elif change == "occupancy":
-        op.current_index = 1
-    else:
-        op.time_stamp = recent
+    old = solver.last_train_mood_read
+    for count in range(1, 4):
+        solver._read_agent_mood()
+        solver._read_agent_mood()
+        assert read.call_count == count
+        assert solver.last_train_mood_read == old
+        Clock.current += timedelta(hours=2.5)
 
-    solver._read_agent_mood()
-    assert read.call_count == 2
-    assert solver.last_train_mood_read == Clock.now()
-    solver._read_agent_mood()
-    assert read.call_count == 2
-
-    op.time_stamp = Clock.now()
-    Clock.current += timedelta(hours=3)
+    good = reader.RoomState("training", slots_read=True, slots_reliable=True)
     read.side_effect = None
     read.return_value = (good, [])
     solver._read_agent_mood()
-    assert read.call_count == 3
+    assert read.call_count == 4
+    assert solver.last_train_mood_read == Clock.now()
+    solver._read_agent_mood()
+    assert read.call_count == 4
+    Clock.current += timedelta(hours=2.5)
+    solver._read_agent_mood()
+    assert read.call_count == 5
+    assert solver.tasks == []
 
 
-def test_unrelated_observations_do_not_reopen_failed_training_scan(solver, monkeypatch):
+def test_failed_training_scan_keeps_other_room_observations_running(
+    solver, monkeypatch
+):
     read = Mock(side_effect=ValueError("unreadable"))
     monkeypatch.setattr(reader, "read_room_state", read)
-    solver._read_agent_mood()
     solver.op_data.plan["meeting"] = [Room("银灰", "", [])]
     solver.op_data.operators["银灰"] = Operator(
         "银灰",
@@ -125,51 +143,55 @@ def test_unrelated_observations_do_not_reopen_failed_training_scan(solver, monke
         time_stamp=Clock.now() - timedelta(hours=3),
     )
     solver._read_room_mood = Mock()
-    solver.op_data.room_observations["meeting"] += 1
     solver._read_agent_mood()
 
     read.assert_called_once()
     solver._read_room_mood.assert_called_once_with("meeting", force_mood=False)
+    solver._read_agent_mood()
+    assert read.call_count == 1
+    assert solver._read_room_mood.call_count == 2
+    Clock.current += timedelta(hours=2.5)
+    solver._read_agent_mood()
+    assert read.call_count == 2
+    assert solver._read_room_mood.call_count == 3
     assert solver.tasks == []
 
 
-def test_mastery_setting_change_allows_a_manual_training_observation(
-    solver, monkeypatch
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("configured", [False, True])
+def test_empty_unstaffed_room_returns_to_normal_patrol_after_failure(
+    solver, monkeypatch, enabled, configured
 ):
+    monkeypatch.setattr(base.config.conf, "enable_mastery", enabled)
+    solver.op_data.operators = {}
+    solver.op_data.plan = {"train": []} if configured else {}
     read = Mock(side_effect=ValueError("unreadable"))
     monkeypatch.setattr(reader, "read_room_state", read)
     solver._read_agent_mood()
     old = solver.last_train_mood_read
-    monkeypatch.setattr(base.config.conf, "enable_mastery", False)
     read.side_effect = None
-    read.return_value = reader.RoomState("empty")
+    empty = reader.RoomState("empty", slots_read=True, slots_reliable=True)
+    read.return_value = (empty, []) if enabled else empty
     solver.get_agent_from_room = Mock(
         return_value=[{"agent": "", "mood": -1}, {"agent": "", "mood": -1}]
     )
 
     solver._read_agent_mood()
+    assert read.call_count == 1
+    Clock.current += timedelta(hours=2.5)
+    solver._read_agent_mood()
     solver._read_agent_mood()
 
     assert read.call_count == 2
-    solver.get_agent_from_room.assert_called_once_with("train", None)
+    if enabled:
+        solver.get_agent_from_room.assert_not_called()
+    else:
+        solver.get_agent_from_room.assert_called_once_with("train", None)
     assert solver.last_train_mood_read > old
-    assert solver._training_mood_failure is None
+    Clock.current += timedelta(hours=2.5)
+    solver._read_agent_mood()
+    assert read.call_count == 3
     assert solver.tasks == []
-
-
-def test_prediction_invalidation_does_not_reopen_failed_training_scan(
-    solver, monkeypatch
-):
-    read = Mock(side_effect=ValueError("unreadable"))
-    monkeypatch.setattr(reader, "read_room_state", read)
-    solver._read_agent_mood()
-    op = solver.op_data.operators["艾丽妮"]
-    op.mood_is_prediction = True
-    Clock.current += timedelta(hours=3)
-
-    solver._read_agent_mood()
-
-    read.assert_called_once()
 
 
 @pytest.mark.parametrize("failure", ["exception", "unknown_slots"])
@@ -207,6 +229,23 @@ def test_successful_empty_slots_keep_normal_room_throttle(solver, monkeypatch):
     assert read.call_count == 2
 
 
+@pytest.mark.parametrize("has_previous_attempt", [False, True])
+def test_recent_successful_read_throttles_patrol_after_an_older_attempt(
+    solver, monkeypatch, has_previous_attempt
+):
+    solver.last_train_mood_attempt = (
+        Clock.now() - timedelta(hours=3) if has_previous_attempt else None
+    )
+    solver.last_train_mood_read = Clock.now() - timedelta(minutes=1)
+    read = Mock()
+    monkeypatch.setattr(reader, "read_room_state", read)
+
+    solver._read_agent_mood()
+
+    read.assert_not_called()
+    solver.enter_room.assert_not_called()
+
+
 def test_failed_entry_retains_process_scan_disable(solver, monkeypatch):
     solver.enter_room.side_effect = RuntimeError("unbuilt training room")
     read = Mock()
@@ -224,24 +263,29 @@ def test_failed_entry_retains_process_scan_disable(solver, monkeypatch):
 
 
 @pytest.mark.parametrize("error_type", [reader.MowerExit, reader.DeviceRecoveryError])
+@pytest.mark.parametrize("failure_site", ["entry", "reading"])
 def test_device_or_stop_interruption_does_not_become_observation_retry(
-    solver, monkeypatch, error_type
+    solver, monkeypatch, error_type, failure_site
 ):
-    read = Mock(side_effect=error_type())
+    read = Mock(side_effect=error_type() if failure_site == "reading" else None)
+    if failure_site == "entry":
+        solver.enter_room.side_effect = error_type()
     monkeypatch.setattr(reader, "read_room_state", read)
     old = solver.last_train_mood_read
+    old_attempt = solver.last_train_mood_attempt
 
     with pytest.raises(error_type):
         solver._read_agent_mood()
 
     assert solver.last_train_mood_read == old
-    assert not getattr(solver, "_training_mood_failure", None)
+    assert solver.last_train_mood_attempt == old_attempt
     assert not base._training_room_scan_disabled
     solver.back_to_infrastructure.assert_not_called()
 
     good = reader.RoomState("training", slots_read=True, slots_reliable=True)
+    solver.enter_room.side_effect = None
     read.side_effect = None
     read.return_value = (good, [])
     solver._read_agent_mood()
-    assert read.call_count == 2
+    assert read.call_count == (2 if failure_site == "reading" else 1)
     assert solver.last_train_mood_read == Clock.now()

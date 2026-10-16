@@ -202,7 +202,8 @@ def test_valid_read_commits_both_physical_slots_and_success_time(
     if configured:
         s.op_data.plan["train"] = []
     old_time = s.last_train_mood_read
-    s._training_mood_failure = {"previous_failure": True}
+    previous_attempt = datetime.now()
+    s.last_train_mood_attempt = previous_attempt
 
     result = s.get_agent_from_room("train")
 
@@ -214,7 +215,7 @@ def test_valid_read_commits_both_physical_slots_and_success_time(
     assert s.op_data.get_current_room("train", True) == ["艾丽妮", "克莱门莎"]
     assert s.history.call_count == 2
     assert s.last_train_mood_read > old_time
-    assert s._training_mood_failure is None
+    assert s.last_train_mood_attempt == previous_attempt
     assert s.op_data.room_observations == {"train": 5, "dormitory_1": 9}
     s.op_data.refresh_idle_dorm_search.assert_not_called()
 
