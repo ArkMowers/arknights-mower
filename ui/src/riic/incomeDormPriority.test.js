@@ -236,19 +236,25 @@ it('still applies explicit dorm isolation after recovery allocation', () => {
 
 function singleBedTakeover(moods = [2, 15, 18, 16, 19]) {
   const data = fixture(false)
-  for (const [index, [name, room, slot]] of ([
+  for (const [index, [name, room, slot]] of [
     ['冬时', 'dormitory_1', 2],
     ['芬', 'dormitory_1', 3],
     ['香草', 'dormitory_1', 4],
     ['翎羽', 'dormitory_2', 2],
     ['黑角', 'dormitory_2', 3]
-  ]).entries()) {
+  ].entries()) {
     resident(data, name, room, slot, moods[index])
   }
   data.operators.歌蕾蒂娅 = new MowerOperatorState({
-    name: '歌蕾蒂娅', room: 'room_1_1', index: 2,
-    currentRoom: 'room_1_1', currentIndex: 2,
-    operatorType: 'high', restingPriority: 'high', mood: 10, timeStampMicros: 0
+    name: '歌蕾蒂娅',
+    room: 'room_1_1',
+    index: 2,
+    currentRoom: 'room_1_1',
+    currentIndex: 2,
+    operatorType: 'high',
+    restingPriority: 'high',
+    mood: 10,
+    timeStampMicros: 0
   })
   data.plan.room_1_1.push('歌蕾蒂娅')
   data.restingPriorityNames = ['歌蕾蒂娅']
@@ -268,7 +274,7 @@ function checkTakeover(data, plan) {
       expect(final.currentOperator(room, index)?.name).toBe(data.currentOperator(room, index)?.name)
     }
   }
-  const resting = final.dorms.map(bed => final.currentOperator(...bed.position)?.name).sort()
+  const resting = final.dorms.map((bed) => final.currentOperator(...bed.position)?.name).sort()
   expect(resting).toEqual(['冬时', '芬', '香草', '翎羽', '黑角', '歌蕾蒂娅'].sort())
   expect(alphaPrioritizeRecovery(final, result)).toEqual(result)
   expect(alphaPrioritizeRecovery(final, {})).toEqual({})
@@ -299,7 +305,8 @@ it('retains existing beds when displaced and resident peers have equal priority 
   const final = checkTakeover(data, plan)
   for (const name of ['芬', '香草', '翎羽', '黑角']) {
     expect([final.operators[name].currentRoom, final.operators[name].currentIndex]).toEqual([
-      data.operators[name].currentRoom, data.operators[name].currentIndex
+      data.operators[name].currentRoom,
+      data.operators[name].currentIndex
     ])
   }
   expect(final.currentOperator('dormitory_2', 4)?.name).toBe('冬时')
