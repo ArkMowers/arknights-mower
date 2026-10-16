@@ -28,6 +28,7 @@ export function mowerSameGroupPrimaryReplacement(data:MowerSchedulingData,op:Mow
 export function commitMowerGroupShifts(data:MowerSchedulingData,transitions:MowerGroupTransitions):void {
  const groups=new Set(Object.values(data.operators).flatMap(op=>op.multiGroup?op.groupBindings.map(binding=>binding.group):[op.group]).filter(Boolean))
  for(const group of groups)data.groupShiftState[group]??=data.groupIsResting(group)
+ for(const [group,resting] of Object.entries(transitions))if(data.groupShiftState[group]!==resting)delete data.groupRecoveryFullMembers[group]
  Object.assign(data.groupShiftState,transitions)
  for(const op of Object.values(data.operators))if(op.multiGroup){
   const resting=mowerRestingBindingGroups(data,op)

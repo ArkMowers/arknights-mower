@@ -169,7 +169,12 @@
     "scheduler/mowerExhaustSupportDispatch.spec.ts": "93971114e3aad8e1ead9a981acc1100ce7044e555798686e2c0fabeddea9e039",
     "scheduler/mowerDroneOperations.spec.ts": "15b332ce027b36d60e10770633fa4a6ec148f5dfffeb0bd7e5ff82986ff45599",
     "simulator/mowerManufactureIO.spec.ts": "a3a1ad285bdc56fffd0dfd0a15ddd113b7cc091d8898e5f12bdeb442a5351895",
-    "scheduler/fixtures/mower-drone-operations-alpha.json": "668802b1cd142242adf2f5216b853be6e863a6b527e51d2f3fca82516cbf8b7b"
+    "scheduler/fixtures/mower-drone-operations-alpha.json": "668802b1cd142242adf2f5216b853be6e863a6b527e51d2f3fca82516cbf8b7b",
+    "scheduler/mowerGroupFullRecovery.spec.ts": "9481504048e55fe778c2d4d662d56ca7786b7d080284a47cdfd0a214784b3fb9",
+    "scheduler/mowerGroupRecovery.ts": "8490efd4658673bf1f6cb2b3f3cb19b39c8ad03f0b5d7b5252742e260f1519aa",
+    "scheduler/mowerNotificationProgress.spec.ts": "2ff879db1566daae713bad9e682a720d5bc2a2923f94e2c65f69d991940503c8",
+    "scheduler/mowerObservedFullRelease.spec.ts": "b89fba07c2a1310accfd86267019d1a942785e3ce882b40a5da93580ac7a7e5d",
+    "scheduler/mowerRunOrderPlanning.spec.ts": "a39f0a8288caf1d210e164869e09d0820ace68ad4dc7e9042107e0a1336ea42a"
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
@@ -189,8 +194,8 @@
       "sha256": "5c07b838134a34bea67e64a1ec0b7c0ac2dded59f1247347f2c5aa39adf6ea75"
     },
     "scheduler/mowerSourceRuntime.ts": {
-      "sha256": "a41ecfccdb07e1636ce51174b3fc4c83812860973982845ca745c700e7a19a7b",
-      "reason": "Synchronize native failure retention and observation-based recovery without changing the existing departing-plan observation adaptation. Retain full-to-full Fiammetta operations as failed pending work instead of adding a polling task; this offline safeguard is additional to the native selector. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning."
+      "sha256": "a6a18bb7acd0b676b62f20f2ff782728e9b91307087b43116b898f1047415a8b",
+      "reason": "Synchronize native failure retention and observation-based recovery without changing the existing departing-plan observation adaptation. Retain full-to-full Fiammetta operations as failed pending work instead of adding a polling task; this offline safeguard is additional to the native selector. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning. Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
     },
     "scheduler/rosterRuntime.ts": {
       "reason": "Keep the existing runtime configuration without introducing maintenance-primary pause state.",
@@ -209,8 +214,8 @@
       "reason": "Preserve same-round dorm admissions and mirror native displacement restoration: shared members retain resting bindings, completed departures keep unfinished anchors resting, and named arrangement targets retain priority. Allocate recovery-tier quotas in the complete configured bed order, including explicit ordinary beds, while retaining compatible actual occupants and protecting pending reservations. When an arrangement changes single-target bed ownership, reallocate all movable recovering residents by tier and personal morale deficit; retain equal-deficit incumbents and same-speed positions."
     },
     "scheduler/mowerCompletedDeparture.spec.ts": {
-      "sha256": "84ce808ec66ed5dce08056606dd74ed07b1e59f1f37a7939dec5735bc2ba000a",
-      "reason": "Verify that ordinary departures retain the newly measured departure timestamp and replace predicted full mood with an actual observation."
+      "sha256": "0d24553c0b7db6e294e2516e0b304f0414616e26b1b8f5701fdfdd43005180e8",
+      "reason": "Verify that ordinary departures retain the newly measured departure timestamp and replace predicted full mood with an actual observation. Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
     },
     "scheduler/backupExpression.ts": {
       "sha256": "8b7ed6e1643f7611182c4ece1b19ff5f75ae8985eedec976c033cad7de980bc7",
@@ -271,6 +276,58 @@
     "components/workbench/ScheduleTimelineGantt.vue": {
       "sha256": "c5e8ee4f76e81c2b74ff59e0f2c60ce7f199a262371e3b73e3e38c88d32fe397",
       "reason": "Allow the Mower wrapper to host the existing overview scrubber at the bottom without changing time-window state. Release overview drag listeners on collapse and unmount. Keep operator and event inspectors beside the pointer within viewport bounds under CSS zoom, and reserve cursor-info space to avoid hover-induced layout shifts."
+    },
+    "scheduler/compileRosterSchedule.ts": {
+      "sha256": "b2ac2ea603aa17763e1657fbb5f294c7bb2d10b07db03404cd825fe0eb7d4e0e",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
+    },
+    "scheduler/mowerAlphaMetadata.ts": {
+      "sha256": "a9713cfb33db3e29009814c716ed6134632228360ef0d9c0f56ab9d33651e806",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
+    },
+    "scheduler/mowerDormTasks.ts": {
+      "sha256": "ffea907690b3f33602fe87bc4289bb1b28c17a3b649413cd92942048962f2f55",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
+    },
+    "scheduler/mowerGroupRecovery.ts": {
+      "sha256": "5bfb85aa44a12facef35bc3c22594eda1f4368d7dc513469273903770fd941c6",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
+    },
+    "scheduler/mowerNotification.ts": {
+      "sha256": "09a6b5f533829fbac9cd1264d61e1c53fa7abf3f44f71f271df34ff636be8fc3",
+      "reason": "Keep failed work pending while allowing notification collection, and avoid deriving order wakes without a future observed completion, from calculator ebb743c11964898046d2d00dddf8e96bcf09a522."
+    },
+    "scheduler/mowerNotificationProgress.spec.ts": {
+      "sha256": "69cb194b0c21a3228c476194554b18aaec8a60391e524fe657cc862770c85a4e",
+      "reason": "Extract the retained-failure notification regression from scheduler/mowerNotification.spec.ts at calculator ebb743c11964898046d2d00dddf8e96bcf09a522 without importing unrelated native-oracle fixtures."
+    },
+    "scheduler/mowerObservations.ts": {
+      "sha256": "0fd90076931c3691d28741aa460e18a57a78a37a457b0eb89ea04226242ee5ee",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
+    },
+    "scheduler/mowerObservedFullRelease.spec.ts": {
+      "sha256": "272948d30556323470395d3fbb5096881a423d4e375fbdb3ba50e35c8fb31c60",
+      "reason": "Sync mandatory full-recovery release regressions from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Omit the independentRest case because this bundled baseline does not implement personal independent rest."
+    },
+    "scheduler/mowerRelease.ts": {
+      "sha256": "4cfa6e7f2f866919218af2d892b755ecc4f3bf57569dab6424185f7bf6acb8a9",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
+    },
+    "scheduler/mowerRunOrderPlanning.ts": {
+      "sha256": "749b6454c412436a2ceac899f0d9aba043b18581a9f3a96bb2f48488c67dd5b0",
+      "reason": "Keep failed work pending while allowing notification collection, and avoid deriving order wakes without a future observed completion, from calculator ebb743c11964898046d2d00dddf8e96bcf09a522."
+    },
+    "scheduler/mowerSchedulingData.ts": {
+      "sha256": "be4941dd7939e41adac8cf591495bb816f6bcca56ea9626a802ebe8f0433ee74",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
+    },
+    "scheduler/mowerSharedGroups.spec.ts": {
+      "sha256": "45bbb6090a5943ce048ef02bb406a475cc85be42da09c2759300829c5242a2ed",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
+    },
+    "scheduler/mowerSharedGroups.ts": {
+      "sha256": "d5923d1a07d45784484a31c3cf265fca62c04b0d660b2190d606277761bfa163",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
@@ -301,6 +358,7 @@
     "mowerRevision": "3ad69f15bd95a7fbc0aec0bbd2265bd7230f767f",
     "exhaustSupportMowerRevision": "acd54324d549eec34ef1a0bb9910de4c92cfb7d1",
     "exhaustSupportCalculatorRevision": "c2b50182da1bcd83dd3da1ce6f2da58f0f66efb8",
-    "dormRecoveryMowerRevision": "ed6f10d9dae4a5ce1a992308582a0b13d240b6f5"
+    "dormRecoveryMowerRevision": "ed6f10d9dae4a5ce1a992308582a0b13d240b6f5",
+    "groupFullRecoveryCalculatorRevision": "ebb743c11964898046d2d00dddf8e96bcf09a522"
   }
 }

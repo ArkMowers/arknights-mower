@@ -2337,7 +2337,7 @@ def test_group_recovery_spread_uses_extremes_and_configured_minutes(
             and "伊内丝" in [name for names in task.plan.values() for name in names]
         )
 
-    assert config.conf.group_mood_gap_threshold_minutes == 60
+    assert config.conf.group_mood_gap_threshold_minutes == 75
     delayed = return_time()
     assert delayed == max(bed.time for bed in beds) - timedelta(
         minutes=8 + 0.4 * len(beds)

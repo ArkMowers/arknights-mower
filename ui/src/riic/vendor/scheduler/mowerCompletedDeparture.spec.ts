@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { createRosterRuntime, settleRoster, type RuntimeConfig } from './rosterRuntime'
+import { advanceRoster, createRosterRuntime, settleRoster, type RuntimeConfig } from './rosterRuntime'
 import { getMowerSourceRuntime } from './mowerSourceRuntime'
-import { mowerHasMeasuredDormDeparture } from './mowerObservations'
+import { mowerCorrectionPlan } from './mowerCorrection'
+import { mowerHasMeasuredDormDeparture, projectMowerArrangements } from './mowerObservations'
 import { MowerTask, MOWER_TASK_TYPES as T, toMowerMicros } from './mowerTaskQueue'
 
 const room = 'dormitory_1'
@@ -76,11 +77,199 @@ describe('confirmed ordinary dorm departure keeps measured morale', () => {
     expect(op.depletionRate).toBe(0)
   })
 
+  it.each([12, 24])('retains completed departure through temporary single recovery ordering at limit %s', upperLimit => {
+    const f = fixture(upperLimit, upperLimit), op = f.source.data.operators.A!
+    f.source.data.operators.K1!.singleRecoveryManager = true
+    f.source.data.operators.Incoming!.mood = 2
+    f.source.data.operators.Incoming!.timeStampMicros = 0
+    f.source.data.operators.B!.restInFull = true
+    finish(f)
+    expect(f.source.data.recoveryOrderVersion).toBeGreaterThan(0)
+    expect(f.source.data.operators.Incoming!.dormRecoveryRoom).toBe(room)
+    expect(op.currentRoom).toBe('')
+    expect(op.mood).toBe(upperLimit)
+    expect(op.timeStampMicros).toBe(toMowerMicros(1))
+    expect(op.moodIsPrediction).toBe(false)
+    expect(op.depletionRate).toBe(0)
+    expect(f.source.data.operators.B!.isResting()).toBe(true)
+    expect(f.source.data.groupShiftState.g).toBe(true)
+    expect(f.state.completedRest).toContain('A')
+    expect(f.state.bedOccupants[room + '_4']).toBe('B')
+    advanceRoster(f.state, 1 / 60, rates)
+    finish(f)
+    expect(f.source.data.operators.B!.isResting()).toBe(true)
+    expect(f.source.data.groupShiftState.g).toBe(true)
+  })
+
+  it('reads actual below-limit mood before temporary ordering and restores the unfinished resident', () => {
+    const f = fixture(11), op = f.source.data.operators.A!
+    f.task.type = T.SELF_CORRECTION
+    f.source.data.operators.K1!.singleRecoveryManager = true
+    f.source.data.operators.Incoming!.mood = 2
+    f.source.data.operators.Incoming!.timeStampMicros = 0
+    op.mood = 24; op.moodIsPrediction = true
+    finish(f)
+    expect(f.source.data.recoveryOrderVersion).toBeGreaterThan(0)
+    expect(op.currentRoom).toBe('')
+    expect(op.mood).toBe(11)
+    expect(op.timeStampMicros).toBeUndefined()
+    expect(f.state.completedRest).not.toContain('A')
+    expect(f.source.data.operators.B!.isResting()).toBe(true)
+    expect(f.state.bedOccupants[room + '_4']).toBe('B')
+  })
+
   it('invalidates below-limit morale after the physical departure', () => {
     const f = fixture(11), op = f.source.data.operators.A!
     finish(f)
     expect(op.currentRoom).toBe('')
     expect(op.timeStampMicros).toBeUndefined()
+  })
+})
+
+describe('group full-rest execution confirmation', () => {
+  it('reschedules an old return against the observed recovery deadline after losing single recovery', () => {
+    const f = fixture(24, 24)
+    f.source.data.operators.B!.restInFull = true
+    f.source.data.operators.B!.mood = 24
+    f.source.data.operators.B!.moodIsPrediction = true
+    f.source.data.dorms[1]!.timeMicros = toMowerMicros(1)
+    f.state.morale.B = 20
+    const task = new MowerTask({ time: 1, type: T.SHIFT_ON, plan: { room_1_1: ['A'], room_1_2: ['B'] } })
+    task.backupShiftActive = true
+    f.source.queue.tasks = [task]
+    const slowerRates = { workRate: () => 1, recoveryRate: (name: string) => name === 'B' ? 2 : 4 }
+    settleRoster(f.state, slowerRates)
+    expect(f.source.data.operators.B!.isResting()).toBe(true)
+    expect(f.source.data.operators.B!.mood).toBe(20)
+    expect(f.source.data.operators.B!.moodIsPrediction).toBe(false)
+    expect(f.source.queue.tasks).toContain(task)
+    expect(task.timeMicros).toBe(toMowerMicros(3))
+    expect(task.executionFailure).toBeUndefined()
+    advanceRoster(f.state, 2, slowerRates)
+    settleRoster(f.state, slowerRates)
+    advanceRoster(f.state, .5 / 3600, slowerRates)
+    settleRoster(f.state, slowerRates)
+    expect(f.source.data.operators.B!.currentRoom).toBe('room_1_2')
+    expect(f.state.morale.B).toBe(24)
+  })
+
+  it.each([T.SELF_CORRECTION, T.RE_ORDER])('keeps a completed anchor from returning through $key while its latched standby peer is unfinished', type => {
+    const f = fixture(24, 24)
+    const a = f.source.data.operators.A!, b = f.source.data.operators.B!, r = f.source.data.operators.R!
+    a.currentRoom = ''; a.currentIndex = -1; a.depletionRate = 0
+    r.currentRoom = ''; r.currentIndex = -1
+    delete f.state.bedOccupants[room + '_3']; delete f.state.occupants.room_1_1_0
+    f.source.data.dorms[0]!.reset()
+    b.restingPriority = 'standby'
+    f.source.data.groupRecoveryFullMembers.g = ['A', 'B']
+    const plan = mowerCorrectionPlan(f.source.data)
+    expect(plan.room_1_1).toEqual(['A'])
+    const task = new MowerTask({ time: 1, type, plan })
+    task.backupShiftActive = true
+    f.source.queue.tasks = [task]
+    finish(f)
+    expect(a.currentRoom).toBe('')
+    expect(b.isResting()).toBe(true)
+    expect(f.source.queue.tasks).toContain(task)
+    expect(task.timeMicros).toBe(toMowerMicros(5))
+  })
+
+  it.each(['recovering', 'unknown'] as const)('does not activate projected return backups before %s full-rest members are ready', status => {
+    const f = fixture(24, 24), b = f.source.data.operators.B!
+    b.restInFull = true
+    f.source.data.planConditions = [true]
+    if (status === 'unknown') {
+      b.currentRoom = ''; b.currentIndex = -1; b.timeStampMicros = undefined
+      delete f.state.bedOccupants[room + '_4']; f.source.data.dorms[1]!.reset()
+    }
+    const intent = { room_1_1: ['A'], room_1_2: ['B'] }
+    const task = new MowerTask({ time: 1, type: T.SHIFT_ON, plan: structuredClone(intent) })
+    f.source.queue.tasks = [task]
+    const activated: boolean[][] = []
+    f.state.mowerShiftModel = {
+      count: 1,
+      evaluate: data => [data.groupIsResting('g')],
+      swap: (data, conditions) => Object.assign(projectMowerArrangements(data, []), { planConditions: [...conditions] }),
+      transition: () => ({}),
+      activate: conditions => { activated.push([...conditions]); f.source.data.planConditions = [...conditions] },
+    }
+    finish(f)
+    expect(task.backupShiftConditions).toEqual([false])
+    expect(activated).toEqual([])
+    expect(f.source.data.planConditions).toEqual([true])
+    expect(f.source.queue.tasks).toContain(task)
+    expect(task.backupShiftIntent).toEqual(intent)
+    if (status === 'unknown') {
+      expect(task.timeMicros).toBe(toMowerMicros(1))
+      expect(task.executionFailure).toBeDefined()
+      const plan = structuredClone(task.plan)
+      finish(f)
+      expect(task.plan).toEqual(plan)
+      expect(activated).toEqual([])
+    } else {
+      expect(task.timeMicros).toBe(toMowerMicros(5))
+      expect(task.executionFailure).toBeUndefined()
+      advanceRoster(f.state, 4, rates)
+      finish(f)
+      expect(activated).toEqual([[false]])
+      expect(f.source.data.planConditions).toEqual([false])
+      expect(b.mood).toBe(24)
+      for (let i = 0; i < 12 && f.source.queue.tasks.includes(task); i++) {
+        advanceRoster(f.state, .5 / 3600, rates)
+        finish(f)
+      }
+      expect(f.source.queue.tasks).not.toContain(task)
+      expect(b.currentRoom).toBe('room_1_2')
+    }
+  })
+
+  it('preserves an explicitly requested backup return independently of automatic group recovery', () => {
+    const f = fixture(24, 24)
+    f.source.data.operators.B!.restInFull = true
+    const task = new MowerTask({ time: 1, type: T.SHIFT_ON, plan: { room_1_1: ['A'], room_1_2: ['B'] } })
+    task.backupShiftActive = true
+    task.backupExplicitSlots = new Set(['room_1_1\0' + '0', 'room_1_2\0' + '0'])
+    f.source.queue.tasks = [task]
+    finish(f)
+    advanceRoster(f.state, .5 / 3600, rates)
+    finish(f)
+    expect(f.source.data.operators.B!.currentRoom).toBe('room_1_2')
+    expect(f.state.morale.B).toBeLessThan(24)
+  })
+
+  it('retains an unobserved full-rest member and admits no repeat on unchanged observations', () => {
+    const f = fixture(24, 24)
+    f.source.data.operators.B!.restInFull = true
+    f.source.data.operators.B!.currentRoom = ''
+    f.source.data.operators.B!.currentIndex = -1
+    f.source.data.operators.B!.timeStampMicros = undefined
+    delete f.state.bedOccupants[room + '_4']
+    f.source.data.dorms[1]!.reset()
+    const task = new MowerTask({ time: 1, type: T.SHIFT_ON, plan: { room_1_1: ['A'], room_1_2: ['B'] } })
+    task.backupShiftActive = true
+    f.source.queue.tasks = [task]
+    settleRoster(f.state, rates)
+    expect(f.source.queue.tasks).toContain(task)
+    expect(task.timeMicros).toBe(toMowerMicros(1))
+    expect(task.executionFailure).toBeDefined()
+    const failure = task.executionFailure
+    settleRoster(f.state, rates)
+    expect(task.executionFailure).toBe(failure)
+    expect(f.state.occupants.room_1_2_0).toBe('S')
+    // A separate physical arrangement supplies the previously missing observation.
+    f.state.morale.B = 24
+    const admission = new MowerTask({ time: f.state.time, type: T.RE_ORDER, plan: { [room]: ['K1', 'K2', 'K3', 'A', 'B'] } })
+    admission.backupShiftActive = true
+    f.source.queue.tasks.push(admission)
+    finish(f)
+    for (let i = 0; i < 8 && f.source.queue.tasks.includes(task); i++) {
+      advanceRoster(f.state, .5 / 3600, rates)
+      finish(f)
+    }
+    expect(f.source.queue.tasks).not.toContain(admission)
+    expect(f.source.queue.tasks).not.toContain(task)
+    expect(task.executionFailure).toBeUndefined()
+    expect(f.source.data.operators.B!.currentRoom).toBe('room_1_2')
   })
 })
 
@@ -96,5 +285,73 @@ describe('ordinary departure observation evidence', () => {
     if (evidence === 'below-limit') op.mood = 11.9
     if (evidence === 'still-present') { observed[3] = 'A'; task.plan[room] = [...observed] }
     expect(mowerHasMeasuredDormDeparture(source.data, op, room, observed, evidence === 'no-task' ? undefined : task)).toBe(false)
+    const temporary = ['K1', 'K2', 'K3', 'Incoming', 'B']
+    expect(mowerHasMeasuredDormDeparture(source.data, op, room, observed, evidence === 'no-task' ? undefined : task, temporary)).toBe(false)
   })
+})
+
+
+describe('mandatory full recovery releases read actual recovery before freeing the bed', () => {
+  it.each(['explicit', 'delayed'] as const)('keeps an underfull %s member in bed after an old timer expires', mode => {
+    const f = fixture(23.8, 24), op = f.source.data.operators.A!
+    f.source.data.freeRoom = true; f.state.config.mowerPolicy!.freeRoom = true
+    if (mode === 'explicit') op.restInFull = true
+    else f.source.data.groupRecoveryFullMembers.g = ['A']
+    f.source.data.dorms[0]!.timeMicros = toMowerMicros(1)
+    finish(f)
+    expect(f.state.bedOccupants[room + '_3']).toBe('A')
+    expect(op.currentRoom).toBe(room)
+    expect(op.mood).toBe(23.8)
+    const pending = f.source.queue.tasks.find(task => task.type === T.RELEASE_DORM && task.metadata === 'A')!
+    expect(pending).toBeDefined()
+    expect(pending.timeMicros).toBeGreaterThan(toMowerMicros(1))
+    expect(pending.timeMicros).toBeLessThanOrEqual(toMowerMicros(1.05))
+    advanceRoster(f.state, .05, rates)
+    finish(f)
+    expect(op.mood).toBe(24)
+    expect(op.currentRoom).toBe('')
+  })
+})
+
+
+describe.each(['direct', 'queued'] as const)('exhaust refresh after measured full departure: %s', path => {
+  it.each(['idle-full', 'working', 'predicted'] as const)('preserves only completed idle evidence when another operator changes room: %s', mode => {
+    const f = fixture(24, 24), op = f.source.data.operators.A!
+    finish(f)
+    expect(op.currentRoom).toBe('')
+    expect(op.timeStampMicros).toBe(toMowerMicros(1))
+    advanceRoster(f.state, .5 / 3600, rates); finish(f)
+    op.exhaustRequire = true
+    f.state.config.mowerSourceRules!.refreshDrained = ['S']
+    if (mode === 'working') {
+      f.state.occupants.room_1_1_0 = 'A'; op.currentRoom = 'room_1_1'; op.currentIndex = 0; op.depletionRate = 1
+    }
+    if (mode === 'predicted') op.moodIsPrediction = true
+    const stamp = op.timeStampMicros
+    const move = new MowerTask({ time: f.state.time, type: T.NOT_SPECIFIC, plan: { room_1_2: ['B'] } })
+    move.backupShiftActive = true
+    const exhaust = new MowerTask({ time: f.state.time + 1, type: T.EXHAUST_OFF, metadata: 'A' })
+    f.source.queue.tasks = path === 'queued' ? [move, exhaust] : [move]
+    finish(f)
+    expect(f.source.queue.tasks).not.toContain(exhaust)
+    expect(f.source.data.operators.S!.currentRoom).toBe('')
+    if (mode === 'idle-full') expect(op.timeStampMicros).toBe(stamp)
+    else expect(op.timeStampMicros).toBeUndefined()
+  })
+})
+
+
+it.each(['direct', 'queued'] as const)('keeps measured full departure when the departing operator triggers %s exhaust refresh', path => {
+  const f = fixture(24, 24), op = f.source.data.operators.A!
+  op.exhaustRequire = true
+  f.state.config.mowerSourceRules!.refreshDrained = ['A']
+  const exhaust = new MowerTask({ time: f.state.time + 1, type: T.EXHAUST_OFF, metadata: 'A' })
+  if (path === 'queued') f.source.queue.tasks.push(exhaust)
+  finish(f)
+  expect(op.currentRoom).toBe('')
+  expect(op.mood).toBe(24)
+  expect(op.timeStampMicros).toBe(toMowerMicros(1))
+  expect(op.depletionRate).toBe(0)
+  expect(op.moodIsPrediction).toBe(false)
+  expect(f.source.queue.tasks).not.toContain(exhaust)
 })

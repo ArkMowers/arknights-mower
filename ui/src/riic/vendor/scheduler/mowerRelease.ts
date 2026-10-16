@@ -1,10 +1,21 @@
-// Port of default prepare_release_dorm. A source timer is not an extra physical-mood gate.
+// Port of default prepare_release_dorm; mandatory full recovery rechecks measured mood.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,MowerTask,type MowerTaskQueue} from './mowerTaskQueue'
 import {hasObservedFullMood,hasRestingMood} from './mowerOperatorState'
+import {MowerShiftPreviewError} from './mowerNativeErrors'
+import {mowerGroupRecoveryWorkers} from './mowerGroupRecovery'
 export function prepareMowerRelease(data:MowerSchedulingData,queue:MowerTaskQueue,task:MowerTask):boolean {
- if(data.alpha)return prepareAlphaRelease(data,queue,task)
+ if(data.alpha){
+  // Validate all mandatory members before changing a merged release's plan.
+  for(const name of mowerMandatoryReleaseNames(data,task)){
+   const op=data.operators[name]!
+   if(hasObservedFullMood(op)&&!op.moodIsPrediction)continue
+   const due=data.getDormByName(name)?.[1].timeMicros
+   if(due===undefined||due<=data.nowMicros)throw new MowerShiftPreviewError('组员尚未确认回满心情，保留释放任务并等待有效恢复观察：'+op.nativeName)
+  }
+  return prepareAlphaRelease(data,queue,task)
+ }
  let op=data.operators[task.metadata]
  if(task.strictMoodLimit&&!(op?.restMoodLimit&&(task.moodLimit===undefined||task.moodLimit===op.upperLimit))){task.plan={};return false}
  const room=Object.keys(task.plan)[0],index=room?task.plan[room]!.indexOf('Free'):-1
@@ -19,6 +30,17 @@ export function prepareMowerRelease(data:MowerSchedulingData,queue:MowerTaskQueu
   }
  }
  return true
+}
+
+/** Only mandatory recovery residents need a fresh physical observation before release. */
+export function mowerMandatoryReleaseNames(data:MowerSchedulingData,task:MowerTask):string[]{
+ if(!data.alpha)return []
+ return Object.entries(task.releaseDormTargets()).flatMap(([name,[room,index]])=>{
+  const op=data.operators[name]
+  if(!op||op.currentRoom!==room||op.currentIndex!==index)return []
+  if(task.strictMoodLimit?!(op.restMoodLimit&&(task.moodLimit===undefined||task.moodLimit===op.upperLimit)):data.skipIdleDormRelease(name))return []
+  return op.restInFull||Object.entries(data.groupRecoveryFullMembers).some(([group,names])=>names.includes(name)&&mowerGroupRecoveryWorkers(data,group).some(member=>member.name===name))?[name]:[]
+ })
 }
 
 function prepareAlphaRelease(data:MowerSchedulingData,queue:MowerTaskQueue,task:MowerTask):boolean {
@@ -39,7 +61,8 @@ function prepareAlphaMember(data:MowerSchedulingData,queue:MowerTaskQueue,task:M
  const room=Object.keys(task.plan)[0],index=room?task.plan[room]!.indexOf('Free'):-1
  if(!room||index<0||!op||op.currentRoom!==room||op.currentIndex!==index)return reject()
  // A saved full dorm observation takes precedence over a retained working depletion rate.
- if(!strict&&!hasObservedFullMood(op)&&(!hasRestingMood(op,data.nowMicros)||op.currentMood(data.nowMicros)<op.upperLimit)){
+ const mandatory=mowerMandatoryReleaseNames(data,task).includes(op.name)
+ if(mandatory?!(hasObservedFullMood(op)&&!op.moodIsPrediction):!strict&&!hasObservedFullMood(op)&&(!hasRestingMood(op,data.nowMicros)||op.currentMood(data.nowMicros)<op.upperLimit)){
   const bed=data.getDormByName(op.name)?.[1]
   if(bed?.timeMicros===undefined)return reject()
   if(bed.timeMicros>data.nowMicros){const pending=new MowerTask({type:task.type,plan:structuredClone(task.plan),metadata:task.metadata,strictMoodLimit:strict,moodLimit:task.moodLimit});pending.timeMicros=bed.timeMicros;queue.tasks.push(pending);return reject()}
