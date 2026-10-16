@@ -3,7 +3,7 @@
 from arknights_mower.utils.group_recovery import group_recovery_deadline
 
 
-def required_recovery_members(data, task):
+def required_recovery_members(data, task, *, now=None):
     required = set()
     explicit = set(getattr(task, "backup_explicit_slots", ()))
     for room, row in task.plan.items():
@@ -20,7 +20,7 @@ def required_recovery_members(data, task):
             if op.rest_in_full and not op.workaholic:
                 required.add(name)
             if op.group:
-                required.update(group_recovery_deadline(data, op.group)[0])
+                required.update(group_recovery_deadline(data, op.group, now=now)[0])
     targets = (
         task.release_dorm_targets() if hasattr(task, "release_dorm_targets") else {}
     )
@@ -30,7 +30,17 @@ def required_recovery_members(data, task):
             not getattr(op, "rest_in_full", False) and not getattr(op, "group", "")
         ):
             continue
-        group_required = group_recovery_deadline(data, op.group)[0] if op.group else ()
+        if (op.current_room, op.current_index) != targets[name] or (
+            getattr(task, "strict_mood_limit", False)
+            and (
+                not data.has_rest_mood_limit(name)
+                or getattr(task, "mood_limit", None) not in (None, op.upper_limit)
+            )
+        ):
+            continue
+        group_required = (
+            group_recovery_deadline(data, op.group, now=now)[0] if op.group else ()
+        )
         if op.rest_in_full and not op.workaholic or name in group_required:
             required.add(name)
     return required

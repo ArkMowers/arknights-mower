@@ -1560,7 +1560,7 @@ class BaseSchedulerSolver(
         from arknights_mower.utils.group_recovery import observed_full_mood
         from arknights_mower.utils.recovery_execution import required_recovery_members
 
-        names = required_recovery_members(self.op_data, task)
+        names = required_recovery_members(self.op_data, task, now=datetime.now())
         if not names:
             return True
         rooms = {
@@ -1574,7 +1574,7 @@ class BaseSchedulerSolver(
         }
         self._read_recovery_rooms(rooms)
         # 读房可能重排期限，但不得把刚读到的未满干员从本次检查名单中丢掉。
-        names.update(required_recovery_members(self.op_data, task))
+        names.update(required_recovery_members(self.op_data, task, now=datetime.now()))
         if all(
             observed_full_mood(self.op_data.operators.get(name))
             and (

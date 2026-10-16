@@ -862,8 +862,8 @@ def test_rest_in_full_returns_at_configured_upper_limit(op_data, exhaust, indivi
     assert bed.time == op.time_stamp + timedelta(hours=1)
     tasks = plan_metadata(data, [])
     returning = next(t for t in tasks if t.type == TaskTypes.SHIFT_ON)
-    # 保留原回满准备提前量；用尽＋回满不提前回岗。
-    assert returning.time == bed.time - timedelta(minutes=0 if exhaust else 8)
+    # 明确回满均须达到个人上限，不按普通回班的准备提前量回岗。
+    assert returning.time == bed.time
     if individual:
         release = next(t for t in tasks if t.strict_mood_limit)
         assert release.time == bed.time
@@ -948,6 +948,7 @@ def test_changed_cap_invalidates_old_release_task(solver):
     solver.agent_arrange = MagicMock()
     solver.infra_main()
     solver.agent_arrange.assert_called_once_with({}, False)
+    solver.enter_room.assert_not_called()
     assert data.operators["絮雨"].is_resting()
 
 
