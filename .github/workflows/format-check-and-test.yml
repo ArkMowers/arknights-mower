@@ -271,6 +271,8 @@ jobs:
             arknights_mower.tests.software_update_transaction_tests
       - name: Verify Windows administrator launch shortcuts
         if: runner.os == 'Windows'
+        env:
+          PYTHONIOENCODING: utf-8
         run: python -m unittest -v arknights_mower.tests.windows_shortcuts_tests
       - name: Verify furniture, OCR, scheduling, screenshot and device recovery on each OS
         shell: bash

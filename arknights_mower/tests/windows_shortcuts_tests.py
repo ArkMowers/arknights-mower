@@ -28,7 +28,7 @@ class WindowsShortcutTests(unittest.TestCase):
 
     def test_frozen_windows_uses_real_executable_directory_and_bounded_command(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary) / "中文 ' & $ Mower"
+            root = Path(temporary).resolve() / "中文 ' & $ Mower"
             root.mkdir()
             with (
                 patch.object(
@@ -152,20 +152,34 @@ class NativeWindowsShortcutTests(unittest.TestCase):
         self,
     ):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary) / "中文 ' & $ Mower"
+            root = Path(temporary).resolve() / "中文 ' & $ Mower"
             root.mkdir()
             for name in ("mower.exe", "多开管理器.exe"):
                 (root / name).touch()
 
+            run = subprocess.run
+
+            def run_checked(*args, **kwargs):
+                try:
+                    return run(*args, **kwargs)
+                except subprocess.CalledProcessError as error:
+                    self.fail(
+                        "Native shortcut generation failed:\n"
+                        + error.stderr.decode("utf-8", errors="replace")
+                    )
+
             def create(directory):
-                with patch.object(
-                    shortcuts,
-                    "sys",
-                    SimpleNamespace(
-                        platform="win32",
-                        frozen=True,
-                        executable=str(directory / "mower.exe"),
+                with (
+                    patch.object(
+                        shortcuts,
+                        "sys",
+                        SimpleNamespace(
+                            platform="win32",
+                            frozen=True,
+                            executable=str(directory / "mower.exe"),
+                        ),
                     ),
+                    patch.object(shortcuts.subprocess, "run", side_effect=run_checked),
                 ):
                     shortcuts.create_admin_shortcuts()
 
