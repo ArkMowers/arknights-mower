@@ -443,8 +443,10 @@ def simulate(saved):
                 or config.conf.automatic_rescue_enable
                 or bool(saved and saved.get("automatic_rescue_state"))
             )
-            base_scheduler._initial_staffing_pending = not saved or bool(
-                saved.get("initial_staffing_pending", False)
+            base_scheduler._initial_staffing_pending = (
+                not saved
+                or bool(saved.get("_process_crash_no_snapshot"))
+                or bool(saved.get("initial_staffing_pending", False))
             )
             base_scheduler._initial_mood_refresh_rooms = set(
                 saved.get("initial_mood_refresh_rooms", ()) if saved else ()
@@ -515,6 +517,8 @@ def simulate(saved):
                     ("dorm_mood_peers", {}),
                     ("idle_rest_check", None),
                     ("temporary_dorm_fill", False),
+                    ("recall_work_rate", None),
+                    ("recall_work_rate_checked", False),
                 ):
                     setattr(
                         base_scheduler.op_data.operators[k],
@@ -551,6 +555,9 @@ def simulate(saved):
             )
             base_scheduler.op_data.room_observations = copy.deepcopy(
                 saved.get("room_observations", {})
+            )
+            base_scheduler.op_data.recall_recovery_rates = copy.deepcopy(
+                saved.get("recall_recovery_rates", {})
             )
             base_scheduler.emergency_state = copy.deepcopy(
                 saved.get("automatic_rescue_state")

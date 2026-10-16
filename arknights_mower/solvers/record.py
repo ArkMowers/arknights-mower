@@ -264,6 +264,9 @@ def current_state():
         "operators": data.operators,
         "facility_states": getattr(data, "facility_states", {}),
         "room_observations": getattr(data, "room_observations", {}),
+        "recall_recovery_rates": copy.deepcopy(
+            getattr(data, "recall_recovery_rates", {})
+        ),
         "group_shift_state": dict(getattr(data, "group_shift_state", {})),
         "group_recovery_full_members": copy.deepcopy(
             getattr(data, "group_recovery_full_members", {})
