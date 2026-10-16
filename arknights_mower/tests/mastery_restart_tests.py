@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 from arknights_mower.solvers import base_schedule, record
 from arknights_mower.solvers import mastery_reader as reader
@@ -392,6 +392,88 @@ class MasteryRestartTests(unittest.TestCase):
         collect.assert_called_once()
         self.assertEqual(self.plan()["status"], "completed")
         self.assertEqual(solver.tasks, [])
+
+    def test_mood_scan_recovers_swap_from_trusted_panel_with_unreadable_slots(self):
+        from arknights_mower.solvers import mastery
+
+        mastery_db.update_plan_status(self.plan_id, "training")
+        solver = self.mood_solver()
+        route = {
+            "operator": "协助干员",
+            "swap_target": "艾丽妮",
+            "efficiency": 75,
+            "job_match": True,
+            "central_bonus": 0,
+            "mastery_swap_buffer": 10,
+        }
+        with (
+            patch.object(
+                reader, "_settle_in_room", return_value=reader.Scene.TRAIN_MAIN
+            ),
+            patch.object(reader, "read_main_panel", return_value=self.room.panel),
+            patch.object(
+                reader, "_read_slots_checked", return_value=("", "", [], False)
+            ),
+            patch.object(mastery, "_get_plan_route", return_value=route),
+        ):
+            self.read_mood(solver)
+
+        observed = solver.train_room_state
+        self.assertTrue(observed.slots_read)
+        self.assertFalse(observed.slots_reliable)
+        self.assertTrue(
+            base_schedule.BaseSchedulerSolver._train_scheduling_protected(
+                SimpleNamespace(
+                    train_room_state=observed,
+                    _train_mastery_active=lambda: False,
+                    _train_protected=lambda: False,
+                )
+            )
+        )
+        self.assertIsNone(solver.last_train_mood_read)
+        self.assertIsInstance(solver.last_train_mood_attempt, datetime)
+        self.assertEqual(len(solver.tasks), 1)
+        task = solver.tasks[0]
+        self.assertEqual(task.type, TaskTypes.SWAP_SUPPORT)
+        self.assertEqual(task.plan_key, str(self.plan_id))
+        self.assertFalse(observed.read_failed)
+        # 310 minutes at 135% replaces 232.5 minutes at the current 180% rate.
+        expected = self.room.panel.countdown - timedelta(minutes=232.5)
+        self.assertLess(abs((task.time - expected).total_seconds()), 1)
+        self.assertEqual(self.plan()["status"], "training")
+
+    def test_mood_scan_collects_finish_banner_without_reading_slots(self):
+        mastery_db.update_plan_status(self.plan_id, "waiting_collect")
+        panel = reader.RoomPanel(
+            operator_name="测试干员",
+            skill_name="测试技能",
+            mastery_tier=3,
+            countdown_state="zero",
+        )
+        solver = self.mood_solver()
+        with (
+            patch.object(
+                reader, "_settle_in_room", return_value=reader.Scene.TRAIN_FINISH
+            ),
+            patch.object(reader, "read_main_panel", return_value=panel),
+            patch.object(reader, "_read_slots_checked") as read_slots,
+            patch.object(reader, "collect_flow") as collect,
+            patch.object(reader, "_tap_collect_confirm") as confirm,
+        ):
+            self.read_mood(solver)
+
+        observed = solver.train_room_state
+        self.assertFalse(observed.slots_read)
+        self.assertFalse(observed.slots_reliable)
+        read_slots.assert_not_called()
+        collect.assert_called_once_with(solver, ANY, panel)
+        confirm.assert_called_once_with(solver)
+        self.assertFalse(observed.read_failed)
+        self.assertTrue(observed.collected)
+        self.assertEqual(self.plan()["status"], "completed")
+        self.assertEqual(solver.tasks, [])
+        self.assertIsNone(solver.last_train_mood_read)
+        self.assertIsInstance(solver.last_train_mood_attempt, datetime)
 
     def test_empty_and_failed_mood_scans_resume_at_normal_interval(self):
         for failed in (False, True):

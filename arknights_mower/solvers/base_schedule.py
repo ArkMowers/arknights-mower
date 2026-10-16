@@ -2854,8 +2854,6 @@ class BaseSchedulerSolver(
                                 self.train_room_state = room_state
                                 if room_state.slots_reliable is True:
                                     self.last_train_mood_read = datetime.now()
-                                else:
-                                    room_state.read_failed = True
                                 if room_state.read_failed or room_state.state not in (
                                     "empty",
                                     "training",
