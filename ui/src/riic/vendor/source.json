@@ -328,6 +328,10 @@
     "scheduler/mowerSharedGroups.ts": {
       "sha256": "d5923d1a07d45784484a31c3cf265fca62c04b0d660b2190d606277761bfa163",
       "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
+    },
+    "scheduler/mowerAlphaResting.spec.ts": {
+      "sha256": "34a92e26c546fa402de4c62065df0928d9b2b10227cb6d3d4a67fb9b122ec38d",
+      "reason": "Sync the alpha and delayed-group-return toggle regression from calculator f32a8639fe457b0a6584f7b7b55c986a371dbcbd. Only enabled strict alpha group recovery waits for the resting standby member; ordinary return expectations remain unchanged."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
@@ -359,6 +363,7 @@
     "exhaustSupportMowerRevision": "acd54324d549eec34ef1a0bb9910de4c92cfb7d1",
     "exhaustSupportCalculatorRevision": "c2b50182da1bcd83dd3da1ce6f2da58f0f66efb8",
     "dormRecoveryMowerRevision": "ed6f10d9dae4a5ce1a992308582a0b13d240b6f5",
-    "groupFullRecoveryCalculatorRevision": "ebb743c11964898046d2d00dddf8e96bcf09a522"
+    "groupFullRecoveryCalculatorRevision": "ebb743c11964898046d2d00dddf8e96bcf09a522",
+    "groupFullRecoveryTestsCalculatorRevision": "f32a8639fe457b0a6584f7b7b55c986a371dbcbd"
   }
 }
