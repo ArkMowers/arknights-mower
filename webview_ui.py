@@ -695,6 +695,9 @@ def _run_desktop():
     owner = runtime.read_json(runtime.state_dir() / "active/owner.json", {})
     if runtime.active_job() and os.environ.get("MOWER_RESTART_JOB") != owner.get("id"):
         sys.exit("软件更新或进程操作正在进行，请等待完成后启动 Mower")
+    from arknights_mower.utils.windows_shortcuts import create_admin_shortcuts
+
+    create_admin_shortcuts()
     background = background_requested()
     managed = os.environ.get("MOWER_MANAGED") == "1"
     manager_owned = managed
