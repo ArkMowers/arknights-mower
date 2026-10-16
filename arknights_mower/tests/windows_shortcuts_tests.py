@@ -189,14 +189,16 @@ class NativeWindowsShortcutTests(unittest.TestCase):
                     data = link.read_bytes()
                     self.assertEqual(struct.unpack_from("<I", data)[0], 0x4C)
                     self.assertTrue(struct.unpack_from("<I", data, 20)[0] & 0x2000)
-                script = """
+                script = (
+                    shortcuts._LOAD_SHELL_LINK_TYPE
+                    + """
                 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
-                $shell = New-Object -ComObject WScript.Shell
                 @('mower', '多开管理器') | ForEach-Object {
-                    $link = $shell.CreateShortcut((Join-Path $env:MOWER_SHORTCUT_ROOT ($_ + '（管理员启动）.lnk')))
-                    @{ target = $link.TargetPath; directory = $link.WorkingDirectory }
+                    $link = [Mower.Shortcuts]::Read((Join-Path $env:MOWER_SHORTCUT_ROOT ($_ + '（管理员启动）.lnk')))
+                    @{ target = $link[0]; directory = $link[1] }
                 } | ConvertTo-Json -Compress
                 """
+                )
                 env = os.environ.copy()
                 env["MOWER_SHORTCUT_ROOT"] = str(directory)
                 result = subprocess.run(
@@ -241,7 +243,7 @@ class NativeWindowsShortcutTests(unittest.TestCase):
                     for link in root.glob("*.lnk")
                 },
             )
-            moved = root.rename(Path(temporary) / "移动后的目录")
+            moved = root.rename(Path(temporary).resolve() / "移动后的目录")
             create(moved)
             verify(moved)
             self.assertEqual(len(list(moved.glob("*.lnk"))), 2)
