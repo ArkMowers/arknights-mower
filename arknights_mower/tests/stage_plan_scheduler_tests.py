@@ -60,6 +60,7 @@ def test_has_maa_tasks_false_when_all_maa_tasks_disabled(scheduler, monkeypatch)
         base_schedule.config,
         "conf",
         Conf(
+            maa_credit_fight=False,
             stage_plan_enable=False,
             stage_plan_runner="mower",
             maa_mall_enable=False,
@@ -135,6 +136,7 @@ def test_maa_plan_solver_skips_when_has_maa_tasks_is_false(scheduler, monkeypatc
         base_schedule.config,
         "conf",
         Conf(
+            maa_credit_fight=False,
             stage_plan_enable=False,
             stage_plan_runner="mower",
             maa_mall_enable=False,
@@ -157,6 +159,7 @@ def test_has_maa_tasks_false_when_mall_mode_is_mower_and_others_disabled(
         base_schedule.config,
         "conf",
         Conf(
+            maa_credit_fight=False,
             stage_plan_enable=False,
             stage_plan_runner="mower",
             maa_mall_enable=True,
@@ -177,6 +180,7 @@ def test_has_maa_tasks_true_when_only_visit_friend_mode_is_maa(scheduler, monkey
         base_schedule.config,
         "conf",
         Conf(
+            maa_credit_fight=False,
             stage_plan_enable=False,
             stage_plan_runner="mower",
             maa_mall_enable=False,
@@ -192,13 +196,15 @@ def test_has_maa_tasks_true_when_only_visit_friend_mode_is_maa(scheduler, monkey
     assert scheduler.has_maa_tasks() is True
 
 
-def test_maa_plan_solver_omits_mall_when_mode_is_mower_and_visit_friend_not_maa(
-    scheduler, monkeypatch
+@pytest.mark.parametrize("credit_fight_enabled", [False, True])
+def test_maa_plan_solver_controls_mall_independently_of_mower_modes(
+    scheduler, monkeypatch, credit_fight_enabled
 ):
     monkeypatch.setattr(
         base_schedule.config,
         "conf",
         Conf(
+            maa_credit_fight=credit_fight_enabled,
             stage_plan_enable=True,
             stage_plan_runner="maa",
             maa_mall_enable=True,
@@ -213,7 +219,9 @@ def test_maa_plan_solver_omits_mall_when_mode_is_mower_and_visit_friend_not_maa(
     scheduler.maa_plan_solver()
 
     assert "Fight" in [c.args[0] for c in order.append.mock_calls]
-    assert "Mall" not in [c.args[0] for c in order.append.mock_calls]
+    assert (
+        "Mall" in [c.args[0] for c in order.append.mock_calls]
+    ) is credit_fight_enabled
 
 
 def test_maa_plan_solver_includes_mall_for_visit_friends_when_mall_mode_is_mower(
@@ -266,6 +274,81 @@ def test_append_maa_task_mall_shopping_flag(scheduler, monkeypatch):
     )
     scheduler.append_maa_task("Mall")
     assert scheduler.MAA.append_task.call_args[0][1]["shopping"] is True
+
+
+@pytest.mark.parametrize("legacy_conf", [False, True])
+@pytest.mark.parametrize("native_services_enabled", [False, True])
+@pytest.mark.parametrize("credit_fight_enabled", [False, True])
+def test_credit_fight_admission_is_independent_of_native_credit_services(
+    scheduler, monkeypatch, legacy_conf, native_services_enabled, credit_fight_enabled
+):
+    conf = Conf(
+        stage_plan_enable=False,
+        maa_credit_fight=credit_fight_enabled,
+        maa_mall_enable=native_services_enabled,
+        maa_mall_mode="mower",
+        visit_friend_enable=native_services_enabled,
+        visit_friend_mode="mower",
+        maa_mail=False,
+        maa_recruit=False,
+        maa_orundum=False,
+        maa_mining=False,
+        maa_specialaccess=False,
+    )
+    if legacy_conf:
+        conf = SimpleNamespace(
+            **dict(conf), RG=False, SSS=False, RCL=False, RA=False, SF=False
+        )
+    monkeypatch.setattr(base_schedule.config, "conf", conf)
+    scheduler.maa_stop = MagicMock()
+    scheduler._idle_sleep = MagicMock(side_effect=AssertionError("unexpected failure"))
+    maa = scheduler.MAA
+
+    assert scheduler.has_maa_daily_tasks() is credit_fight_enabled
+    assert scheduler.has_maa_tasks() is credit_fight_enabled
+    scheduler.maa_plan_solver()
+
+    if credit_fight_enabled:
+        scheduler.initialize_maa.assert_called_once()
+        assert [call.args[0] for call in maa.append_task.call_args_list] == [
+            "StartUp",
+            "Mall",
+            "Award",
+        ]
+        params = maa.append_task.call_args_list[1].args[1]
+        assert params["credit_fight"] is True
+        assert params["shopping"] is False
+        assert params["visit_friends"] is False
+        maa.start.assert_called_once()
+        assert scheduler.last_execution["maa"] is not None
+    else:
+        scheduler.initialize_maa.assert_not_called()
+        maa.append_task.assert_not_called()
+        maa.start.assert_not_called()
+        assert scheduler.last_execution["maa"] is None
+
+
+@pytest.mark.parametrize(
+    "credit_fight_enabled, completed_day, stages, expected",
+    [
+        (True, None, [], True),
+        (False, None, [], False),
+        (True, 0, [], False),
+        (True, None, [""], False),
+    ],
+)
+def test_mall_credit_fight_keeps_existing_execution_guards(
+    scheduler, monkeypatch, credit_fight_enabled, completed_day, stages, expected
+):
+    monkeypatch.setattr(
+        base_schedule.config, "conf", Conf(maa_credit_fight=credit_fight_enabled)
+    )
+    scheduler.credit_fight = completed_day
+    scheduler.stages = stages
+
+    scheduler.append_maa_task("Mall")
+
+    assert scheduler.MAA.append_task.call_args.args[1]["credit_fight"] is expected
 
 
 def test_run_clue_shop_conditional_execution(scheduler, monkeypatch):
@@ -334,6 +417,7 @@ def test_conf_helper_properties():
     assert c6.should_run_mower_mall is False
 
     c7 = Conf(
+        maa_credit_fight=False,
         maa_mall_enable=False,
         visit_friend_enable=True,
         visit_friend_mode="maa",
@@ -342,6 +426,7 @@ def test_conf_helper_properties():
     assert c7.should_run_maa_mall_task is True
 
     c8 = Conf(
+        maa_credit_fight=False,
         maa_mall_enable=False,
         visit_friend_enable=True,
         visit_friend_mode="mower",
