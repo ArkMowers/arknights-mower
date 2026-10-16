@@ -1,5 +1,5 @@
 import {afterEach,describe,expect,it,vi} from 'vitest'
-import {createRosterRuntime,type RuntimeConfig,type RuntimeState} from './rosterRuntime'
+import {advanceRoster,createRosterRuntime,nextRosterActionHours,type RuntimeConfig,type RuntimeState} from './rosterRuntime'
 import {getMowerSourceRuntime,settleMowerSource} from './mowerSourceRuntime'
 import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros,type MowerTaskPlan} from './mowerTaskQueue'
 import {MowerDormState} from './mowerSchedulingData'
@@ -38,7 +38,7 @@ function generatedSupport(recall=false){
  const support=source.queue.tasks.find(task=>task.type===T.SELF_CORRECTION)!,retry=source.queue.tasks.find(task=>task.type===T.EXHAUST_OFF)!
  expect(support).toBeDefined();expect(retry).toBe(exhausted)
  expect(support.plan).toEqual(recall?{room_1_2:['B'],contact:['D']}:{room_1_2:['Y']})
- return {data:source.data,queue:source.queue,support,retry}
+ return {state,source,data:source.data,queue:source.queue,support,retry}
 }
 
 afterEach(()=>vi.restoreAllMocks())
@@ -96,5 +96,47 @@ describe('exhaust support dispatch preserves native recovery capacity',()=>{
   prepareMowerShiftCycle(data,ordinary,queue,model)
   expect(ordinary.exhaustSupport).toBe(false)
   expect(ordinary.plan.dormitory_1).toContain('C')
+ })
+})
+
+
+describe('urgent support backup dependencies',()=>{
+ it.each([false,true])('validates the final backup before recall (replacement removed=%s)',blocked=>{
+  const {state,source,data,support,retry}=generatedSupport(true),time=retry.timeMicros
+  data.groupRecoveryFullMembers.resting=['B','D']
+  data.planConditions=[false]
+  const activations:boolean[][]=[]
+  state.mowerShiftModel={...model,count:1,evaluate:d=>[d.operators.B!.currentRoom==='room_1_2'],swap:(d,conditions)=>{
+   d.planConditions=[...conditions]
+   if(blocked&&conditions[0])d.operators.A!.replacement=[]
+   return d
+  },activate:conditions=>{activations.push([...conditions]);source.data.planConditions=[...conditions]}}
+  for(let n=0;n<30&&!support.executionFailure&&!Object.values(state.bedOccupants).includes('A');n++){
+   settleMowerSource(state,rates)
+   if(!support.executionFailure)advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+  }
+  if(blocked){
+   expect(support.executionFailure).toBeDefined()
+   const failure=support.executionFailure,supportTime=support.timeMicros
+   for(let n=0;n<12;n++)settleMowerSource(state,rates)
+   expect(source.queue.tasks.filter(t=>t.exhaustSupport)).toEqual([support])
+   expect(source.queue.tasks).toContain(retry)
+   expect(retry.timeMicros).toBe(time);expect(support.timeMicros).toBe(supportTime)
+   expect(support.executionFailure).toBeDefined()
+   expect(support.executionFailure).toBe(failure)
+   expect(activations).toEqual([])
+   expect(state.occupants.room_1_2_0).toBe('X')
+   // A changed backup is relevant evidence; the retained handoff can now finish.
+   state.mowerShiftModel.swap=(d,conditions)=>{d.planConditions=[...conditions];return d}
+   Object.assign(source.data.operators.B!,{timeStampMicros:source.data.nowMicros+1})
+   for(let n=0;n<40&&!Object.values(state.bedOccupants).includes('A');n++){
+    settleMowerSource(state,rates)
+    if(!Object.values(state.bedOccupants).includes('A'))advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+   }
+  }
+  expect(Object.values(state.bedOccupants)).toContain('A')
+  expect(state.occupants.room_1_1_0).toBe('X')
+  expect(state.occupants.room_1_2_0).toBe('B')
+  expect(activations).toContainEqual([true])
  })
 })

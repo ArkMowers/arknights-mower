@@ -213,9 +213,9 @@ def preferred_replacement_restore(data, is_busy, protected=(), slots=()):
 
 
 def recall_can_sustain(
-    original, admitted, recalled, candidates, *, rates=None, now=None
+    original, admitted, recalled, candidates, *, rates=None, now=None, urgent=False
 ):
-    """用实测近似速率检查关联组的恢复周期，未知数据不授权召回。"""
+    """普通召回检查续航，用尽交接仅保留明确恢复要求。"""
     from arknights_mower.utils.group_recovery import group_recovery_deadline
     from arknights_mower.utils.recovery_execution import (
         recovery_ready_for_arrangement,
@@ -230,6 +230,10 @@ def recall_can_sustain(
             return False
         if op.group:
             required, _ = group_recovery_deadline(original, op.group, now=now)
+            if urgent:
+                required = [
+                    name for name in required if original.operators[name].rest_in_full
+                ]
             if any(
                 not recovery_ready_for_arrangement(
                     original, member, sampled_after=None, now=now
@@ -237,6 +241,9 @@ def recall_can_sustain(
                 for member in required
             ):
                 return False
+    if urgent:
+        # 用尽急救不能被普通回班等待和未来续航预测阻挡。
+        return True
     if rates is None:
         from arknights_mower.utils.recall_estimates import estimated_recall_rates
 

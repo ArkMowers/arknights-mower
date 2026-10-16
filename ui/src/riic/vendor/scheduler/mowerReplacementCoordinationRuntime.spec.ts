@@ -36,9 +36,11 @@ function dispatchUntil(state:RuntimeState,done:()=>boolean,maxSteps=50){
 }
 
 describe('replacement coordination through source runtime',()=>{
- it.each([{mood:4,rate:1,allowed:false},{mood:20,rate:1,allowed:true}])('recall feasibility uses remaining work endurance: $mood mood, $rate depletion',({mood,rate,allowed})=>{
+ it.each([{mood:4,rate:1,allowed:false,ordinary:true},{mood:4,rate:1,allowed:true,ordinary:false},{mood:20,rate:1,allowed:true,ordinary:true}])('recall feasibility uses remaining work endurance: $mood mood, $rate depletion',({mood,rate,allowed,ordinary})=>{
   const {state,source}=fixture([])
   state.config.mowerSourceRules!.restInFull=['B'];source.data.operators.A!.restInFull=false
+  source.queue.tasks[0]!.ordinaryCoordination=ordinary
+  if(ordinary){source.data.operators.B!.exhaustRequire=false;state.config.mowerSourceRules!.exhaustRequire=[]}
   state.morale.A=mood;Object.assign(source.data.operators.A!,{mood,depletionRate:rate})
   source.data.getDormByName('A')![1].timeMicros=toMowerMicros(24-mood)
   settleMowerSource(state,rates)
@@ -47,7 +49,7 @@ describe('replacement coordination through source runtime',()=>{
    expect(support?.plan).toEqual({room_1_1:['A']})
    dispatchUntil(state,()=>state.occupants.room_1_1_0==='A'&&state.occupants.room_1_2_0==='X'&&Object.values(state.bedOccupants).includes('B'))
    dispatchUntil(state,()=>state.occupants.room_1_2_0==='B',100)
-   expect(state.morale.A).toBeGreaterThan(0)
+   if(ordinary)expect(state.morale.A).toBeGreaterThan(0)
   }else{
    expect(support).toBeUndefined()
    expect(state.occupants.room_1_1_0).toBe('X')
@@ -59,6 +61,8 @@ describe('replacement coordination through source runtime',()=>{
   state.config.mowerSourceRules!.restInFull=['B'];source.data.operators.A!.restInFull=false
   state.morale.A=20;Object.assign(source.data.operators.A!,{mood:20,depletionRate:1})
   source.data.getDormByName('A')![1].timeMicros=toMowerMicros(4)
+  source.queue.tasks[0]!.ordinaryCoordination=true
+  source.data.operators.B!.exhaustRequire=false;state.config.mowerSourceRules!.exhaustRequire=[]
   const changingRates={...rates,forecastRates:(projected:RuntimeState)=>{const forecast=rates.forecastRates(projected);return {...forecast,work:{...forecast.work,A:projected.mowerSource?.data.planConditions[0]?5:1}}}}
   settleMowerSource(state,changingRates)
   const support=source.queue.tasks.find(task=>task.exhaustSupport)!

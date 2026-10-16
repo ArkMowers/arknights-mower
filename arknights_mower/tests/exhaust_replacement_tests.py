@@ -258,6 +258,7 @@ def test_working_alternate_is_not_taken(solver):
 
 def test_exhausted_full_rest_group_is_not_recalled(solver):
     data = solver.op_data
+    data.operators["絮雨"].rest_in_full = True
     data.operators["苍苔"].replacement = ["槐琥"]
     data.rest_in_full_group.add("感知")
     data.exhaust_group.add("感知")
@@ -610,8 +611,8 @@ def test_exhaust_simulation_clones_mutable_state_without_copying_eval_capsule(
     monkeypatch.setattr(BaseSchedulerSolver, "get_resting_plan", check_simulated_rest)
     monkeypatch.setattr(
         "arknights_mower.utils.exhaust_replacement.plan_exhaust_support",
-        lambda data, candidates, can_rest, _mastery, _protected, _fia, _slots: can_rest(
-            data
+        lambda data, candidates, can_rest, _mastery, _protected, _fia, _slots, **_options: (
+            can_rest(data)
         ),
     )
     assert solver._plan_exhaust_support(["机械师"]) is True
@@ -630,7 +631,9 @@ def test_partially_resting_exhaust_group_retains_planning(solver):
 
     assert solver.tasks == [original]
     solver.get_resting_plan.assert_called_once_with(["苍苔", "机械师"], [], {}, 2)
-    solver._plan_exhaust_support.assert_called_once_with(["苍苔", "机械师"])
+    solver._plan_exhaust_support.assert_called_once_with(
+        ["苍苔", "机械师"], urgent=True
+    )
     assert solver.planned
     base_schedule.send_message.assert_not_called()
 
@@ -670,15 +673,6 @@ def test_exhaust_support_dispatch_preserves_recovery_capacity(solver, recall, re
 
     if recall:
         solver.op_data.operators["苍苔"].replacement = ["槐琥"]
-        original = run_retained(solver)
-        saved_time, saved_plan = original.time, deepcopy(original.plan)
-        if restored:
-            solver.tasks = jsonpickle.decode(jsonpickle.encode(solver.tasks))
-        (retained,) = solver.tasks
-        assert retained.time == saved_time
-        assert retained.plan == saved_plan
-        assert retained.execution_failure
-        return
     solver.overtake_room()
     if restored:
         solver.tasks = jsonpickle.decode(jsonpickle.encode(solver.tasks))

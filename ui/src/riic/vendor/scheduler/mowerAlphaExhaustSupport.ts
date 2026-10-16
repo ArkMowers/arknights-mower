@@ -28,7 +28,7 @@ export function planMowerAlphaExhaustSupport(original:MowerSchedulingData,candid
   if(!op.isResting())return false
   if(op.restInFull&&!mowerRecoveryReady(state,op,options.priorityScheduling))return true
   const recovery=op.group?mowerGroupRecoveryDeadline(projectMowerArrangements(state,[]),op.group):undefined
-  return !!recovery?.requiredNames.length&&(recovery.requiredNames.some(member=>!mowerRecoveryReady(state,state.operators[member],options.priorityScheduling)))
+  return !!recovery?.requiredNames.length&&(recovery.requiredNames.some(member=>(!options.urgentExhaust||state.operators[member]!.restInFull)&&!mowerRecoveryReady(state,state.operators[member],options.priorityScheduling)))
  }
  const recall=(state:MowerSchedulingData,previous:MowerTaskPlan,name:string):[MowerTaskPlan,MowerSchedulingData]|undefined=>{
   const op=state.operators[name]!,members=new Set(op.group?state.group(op.group):[name])

@@ -820,6 +820,26 @@ class BaseSchedulerSolver(
         if self._has_pending_exhausted_shift(candidates):
             logger.debug("用尽下班已有完整待执行恢复安排：%s", candidates)
             return
+        support = next(
+            (
+                pending
+                for pending in self.tasks
+                if pending is not self.task
+                and getattr(pending, "exhaust_support", False)
+                and set(getattr(pending, "coordination_request_names", ()))
+                & set(candidates)
+            ),
+            None,
+        )
+        if support is not None:
+            if not any(queued is self.task for queued in self.tasks):
+                self.tasks.append(self.task)
+            self.task.coordination_request_names = list(candidates)
+            self._retain_failed_task(
+                self.task, "等待已排定的替班交接", list(support.plan)
+            )
+            self.skip()
+            return
         # 在candidate 中，计算出需要的high free 和 Low free 数量
         # 只计算无法直接接管的主力床位。低优、替班和临时休息干员会让床，
         # 不能在这里阻止整个大组尝试下班。
@@ -845,7 +865,10 @@ class BaseSchedulerSolver(
                 ]
             self.tasks.append(task)
         else:
-            support = self._plan_exhaust_support(candidates)
+            support = self._plan_exhaust_support(
+                candidates,
+                urgent=not getattr(self.task, "ordinary_coordination", False),
+            )
             if support:
                 logger.info(f"用尽下班优先协调替班和床位：{support}")
                 support_task = SchedulerTask(
@@ -943,8 +966,14 @@ class BaseSchedulerSolver(
             recall_can_sustain,
         )
 
+        data = self.op_data
+        conditions = getattr(self.task, "backup_shift_conditions", None)
+        if conditions is not None and list(conditions) != data.plan_condition:
+            data = data.project_arrangements([])
+            if data.swap_plan(conditions, refresh=True):
+                return False
         reserved, slots = coordination_reservations(
-            self.op_data, self.tasks, getattr(self, "task", None)
+            data, self.tasks, getattr(self, "task", None)
         )
         if any(
             name != "Current" and ((room, index) in slots or name in reserved)
@@ -953,13 +982,13 @@ class BaseSchedulerSolver(
         ):
             return False
         admitted = self._coordination_admission(
-            self.op_data.project_arrangements([plan]), candidates
+            data.project_arrangements([plan]), candidates
         )
         if admitted is None:
             return False
         recalled = {
             op.name
-            for op in self.op_data.operators.values()
+            for op in data.operators.values()
             if op.is_high()
             and op.is_resting()
             and not op.room.startswith("dorm")
@@ -967,10 +996,15 @@ class BaseSchedulerSolver(
         }
         # 召回评估使用工作实测掉率及宿舍恢复位估计，仍保留严格回满保护。
         return not recalled or recall_can_sustain(
-            self.op_data, admitted, recalled, candidates
+            data,
+            admitted,
+            recalled,
+            candidates,
+            urgent=getattr(self.task, "exhaust_support", False)
+            and not getattr(self.task, "ordinary_coordination", False),
         )
 
-    def _plan_exhaust_support(self, candidates):
+    def _plan_exhaust_support(self, candidates, *, urgent=False):
         from arknights_mower.utils.exhaust_replacement import plan_exhaust_support
         from arknights_mower.utils.replacement_coordination import (
             coordination_reservations,
@@ -993,7 +1027,7 @@ class BaseSchedulerSolver(
                 and admitted.operators[op.name].is_working()
             }
             return not recalled or recall_can_sustain(
-                self.op_data, admitted, recalled, candidates
+                self.op_data, admitted, recalled, candidates, urgent=urgent
             )
 
         protected, slots = coordination_reservations(
@@ -1002,7 +1036,14 @@ class BaseSchedulerSolver(
         protected.update(self._protected_training_names())
         fia, _ = self.check_fia()
         return plan_exhaust_support(
-            self.op_data, candidates, can_rest, _is_mastery_busy, protected, fia, slots
+            self.op_data,
+            candidates,
+            can_rest,
+            _is_mastery_busy,
+            protected,
+            fia,
+            slots,
+            urgent=urgent,
         )
 
     def _schedule_group_coordination(self, candidates):
@@ -1207,7 +1248,12 @@ class BaseSchedulerSolver(
             task.plan = {}
         else:
             # 岗位及配置已经改变时，旧前置安排不再拥有独立的换班请求。
-            task.plan = self._plan_exhaust_support(names) or {}
+            task.plan = (
+                self._plan_exhaust_support(
+                    names, urgent=not getattr(task, "ordinary_coordination", False)
+                )
+                or {}
+            )
         if hasattr(task, "backup_shift_intent"):
             task.backup_shift_intent = copy.deepcopy(task.plan)
 

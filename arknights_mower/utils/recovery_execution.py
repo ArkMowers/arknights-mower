@@ -38,6 +38,9 @@ def recovery_ready_for_arrangement(data, name, *, sampled_after, now):
 
 def required_recovery_members(data, task, *, now=None):
     required = set()
+    urgent = getattr(task, "exhaust_support", False) and not getattr(
+        task, "ordinary_coordination", False
+    )
     explicit = set(getattr(task, "backup_explicit_slots", ()))
     for room, row in task.plan.items():
         for index, name in enumerate(row):
@@ -53,7 +56,11 @@ def required_recovery_members(data, task, *, now=None):
             if op.rest_in_full and not op.workaholic:
                 required.add(name)
             if op.group:
-                required.update(group_recovery_deadline(data, op.group, now=now)[0])
+                required.update(
+                    member
+                    for member in group_recovery_deadline(data, op.group, now=now)[0]
+                    if not urgent or data.operators[member].rest_in_full
+                )
     targets = (
         task.release_dorm_targets() if hasattr(task, "release_dorm_targets") else {}
     )

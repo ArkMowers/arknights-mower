@@ -46,7 +46,15 @@ def match_replacements(options, *, allow_partial=False, preferred=()):
 
 
 def plan_exhaust_support(
-    op_data, candidates, can_rest, is_busy, protected=(), fia=(), reserved_slots=()
+    op_data,
+    candidates,
+    can_rest,
+    is_busy,
+    protected=(),
+    fia=(),
+    reserved_slots=(),
+    *,
+    urgent=False,
 ):
     """返回能让用尽组取得替班和床位的前置安排；失败不改变真实状态。"""
     protected = set(protected) | set(op_data.reserved_product_replacements)
@@ -113,6 +121,12 @@ def plan_exhaust_support(
             return True
         if op.group:
             required, _ = group_recovery_deadline(state, op.group, now=now)
+            if urgent:
+                required = [
+                    member
+                    for member in required
+                    if state.operators[member].rest_in_full
+                ]
             return any(
                 not recovery_ready_for_arrangement(
                     state, member, sampled_after=None, now=now

@@ -183,8 +183,15 @@ function computeRates(
   const activeControl = active.filter((item) => item.roomType === 'control')
   const activeControlCount = activeControl.length
   const resourceValues = resources(config, all, activeIds, morale)
+  const lingResetsSuiConsumption = activeControl.some(item =>
+    item.operator.charId === 'char_2023_ling' && hasOperatorSkill(config, item.operator.charId, 'control_facCostReset[000]'),
+  )
+  const resetConsumptionIds = new Set(lingResetsSuiConsumption
+    ? activeControl.filter(item => isFaction(item.operator, 'sui')).map(item => item.operator.charId)
+    : [])
 
   const add = (target: Assignment, delta: number, detail: string) => {
+    if (resetConsumptionIds.has(target.operator.charId)) return
     rates.set(target.operator.charId, (rates.get(target.operator.charId) ?? 0) + delta)
     const targetDetails = details.get(target.operator.charId) ?? []
     if (!targetDetails.includes(detail)) targetDetails.push(detail)
@@ -206,6 +213,9 @@ function computeRates(
       rate -= reduction
       if (reduction) baseDetails.push(`${count} 人进驻减免：-${reduction.toFixed(2)}/h`)
     }
+    if (resetConsumptionIds.has(assignment.operator.charId)) {
+      baseDetails.push('令·杯莫停：同中枢岁干员仅保留基础消耗与中枢人数减免')
+    }
     rates.set(assignment.operator.charId, rate)
     details.set(assignment.operator.charId, baseDetails)
   }
@@ -219,10 +229,7 @@ function computeRates(
     source: Assignment,
     delta: number,
     scope: ReturnType<typeof moodScope>,
-  ) => delta > 0 && scope === 'self' && (
-    waaiFuRooms.has(source.roomId) ||
-    (source.roomType === 'control' && activeControl.some((item) => item.operator.charId === 'char_2023_ling') && isFaction(source.operator, 'sui'))
-  )
+  ) => delta > 0 && scope === 'self' && waaiFuRooms.has(source.roomId)
 
   for (const source of active) {
     for (const skill of source.operator.skills.filter((item) => item.roomType === relevantRoomType(source.roomType))) {
@@ -232,7 +239,7 @@ function computeRates(
       if (delta === null) continue
       const scope = moodScope(skill.description)
       if (shouldCancelPositiveSelf(source, delta, scope)) {
-        add(source, 0, `${waaiFuRooms.has(source.roomId) ? '槐琥·团队精神' : '令·杯莫停'}：消除 ${source.operator.name}·${skill.name} 的自身消耗`)
+        add(source, 0, `槐琥·团队精神：消除 ${source.operator.name}·${skill.name} 的自身消耗`)
         continue
       }
       addAll(
@@ -290,11 +297,7 @@ function computeRates(
 
   const chongyue = activeControl.find((item) => item.operator.charId === 'char_2024_chyue')
   if (chongyue) {
-    if (activeControl.some((item) => item.operator.charId === 'char_2023_ling')) {
-      add(chongyue, 0, '令·杯莫停：消除重岳·知我为我的自身消耗')
-    } else {
-      add(chongyue, 0.5, '重岳·知我为我：+0.5/h')
-    }
+    add(chongyue, 0.5, '重岳·知我为我：+0.5/h')
   }
 
   const sakiko = activeControl.find((item) => item.operator.charId === 'char_4182_oblvns')
