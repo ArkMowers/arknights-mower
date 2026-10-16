@@ -30,7 +30,7 @@ from arknights_mower.solvers.base_mixin import (
     fixed_selection_profile,
 )
 from arknights_mower.solvers.clue_credit import ClueCreditMixin
-from arknights_mower.solvers.clue_gift import ClueGiftMixin
+from arknights_mower.solvers.clue_gift import ClueGiftMixin, clue_card_number
 from arknights_mower.solvers.credit import CreditSolver
 from arknights_mower.solvers.cultivate_depot import cultivate as cultivateDepotSolver
 from arknights_mower.solvers.depotREC import depotREC as DepotSolver
@@ -6590,6 +6590,23 @@ class BaseSchedulerSolver(
             shop_solver.run()
             self.scene_graph_navigation(Scene.INFRA_MAIN)
 
+    def _clue_receive_credit_capped(self):
+        """确认接收页底部显示今日接受信用已达上限。"""
+        if self.scene() != Scene.CLUE_RECEIVE:
+            return False
+        if rapidocr.engine is None:
+            rapidocr.initialize_ocr()
+        result = rapidocr.engine(
+            cropimg(self.recog.img, ((1275, 900), (1920, 975))),
+            use_det=True,
+            use_cls=False,
+            use_rec=True,
+        )[0]
+        return any(
+            score >= 0.9 and "".join(text.split()) == "今日接受信用已达上限"
+            for _, text, score in result or []
+        )
+
     def clue_new(self):
         try:
             settlement_checked = None
@@ -6700,6 +6717,9 @@ class BaseSchedulerSolver(
                     if ctm.task == "message_board":
                         if self._clue_credit_enabled():
                             if get_server_weekday() == 6:
+                                logger.info(
+                                    "上周信息板结算将在周一 04:00 过期，准备打开信息板领取，本次不领取本周信用"
+                                )
                                 settlement_checked = self._collect_clue_message_board(
                                     collect_current=False
                                 )
@@ -6710,74 +6730,31 @@ class BaseSchedulerSolver(
                                 self._prepare_clue_room()
                             ctm.complete("message_board")
                             continue
-                        self.wait_product_complete()
-
-                        # 左下角 (680, 1000) 在这个界面上有两处用途：一是信息板入口
-                        # 没露出来时按它唤出入口，二是关掉领取信用后的确认页
+                        # 普通领取与按需领取共用打开流程，领取规则保持原样。
                         bottom_left = (680, 1000)
-
-                        # 线索交流提示占住右上角一小块，会挡住会客室界面，先点掉
-                        if self.find("clue/title_party"):
-                            self.tap_element("clue/title_party")
-
-                        # 提示关掉后入口可能已经露出来了，先匹配一次。
-                        # tap_element 不会重新抓帧，这里得先取一帧再匹配，否则
-                        # 找的还是关提示之前那张图
-                        self.recog.update()
-                        board_pos = self.find("clue/message_board")
-
-                        if board_pos is None:
-                            # 入口没露出来：按左下角把它唤出，再匹配几次等动画走完
-                            self.tap(bottom_left)
-                            for _ in range(3):
-                                self.recog.update()
-                                board_pos = self.find("clue/message_board")
-                                if board_pos:
-                                    break
-                                self.sleep(0.5)
-
-                        if board_pos:
-                            logger.info("打开会客室信息板")
-                            self.tap(board_pos)
-
-                            # 用信息板页面自己的场景判断有没有进去，好处是日志里
-                            # 会留下一条 get_scene: Scene 229。不能用 room/meeting：
-                            # 它匹配的是会客室顶栏，信息板页面上同样可见，会在刚
-                            # 进入时就把人退出来
-                            opened = False
-                            for _ in range(6):
-                                self.sleep(0.5)
-                                self.recog.update()
-                                if self.scene() == Scene.CLUE_MESSAGE_BOARD:
-                                    opened = True
-                                    break
-
-                            if opened:
-                                if collect := self.find("clue/message_board_collect"):
-                                    logger.info("领取信息板信用")
-                                    self.tap(collect)
-                                    for _ in range(6):
-                                        self.sleep(0.5)
-                                        self.recog.update()
-                                        if not self.find("clue/message_board_collect"):
-                                            # 领取后弹「领取物资」确认页，点任意位置关掉
-                                            self.tap(bottom_left)
-                                            break
-
-                                self.back()
-                                # 等淡出结束、确实回到房间详情页再往下走，否则后续的
-                                # tap((330, 1000)) 会打在还在淡出的信息板上
-                                for _ in range(4):
-                                    self.recog.update()
-                                    if self.scene() == Scene.INFRA_DETAILS:
-                                        break
+                        logger.info(
+                            "信息板按需领取未生效，按常规流程打开信息板领取可用信用"
+                        )
+                        if self._open_clue_message_board():
+                            if collect := self.find("clue/message_board_collect"):
+                                logger.info("领取信息板信用")
+                                self.tap(collect)
+                                for _ in range(6):
                                     self.sleep(0.5)
-                            else:
-                                # 没进去就不按返回：可能只是板子还没淡入完，下一轮循环
-                                # 识别到 Scene.CLUE_MESSAGE_BOARD 时会把它退掉
-                                logger.info("信息板未打开，跳过")
-                        else:
-                            logger.info("未找到信息板入口，跳过")
+                                    self.recog.update()
+                                    if not self.find("clue/message_board_collect"):
+                                        # 领取后弹「领取物资」确认页，点任意位置关掉
+                                        self.tap(bottom_left)
+                                        break
+
+                            self.back()
+                            # 等淡出结束、确实回到房间详情页再往下走，否则后续的
+                            # tap((330, 1000)) 会打在还在淡出的信息板上
+                            for _ in range(4):
+                                self.recog.update()
+                                if self.scene() == Scene.INFRA_DETAILS:
+                                    break
+                                self.sleep(0.5)
                         ctm.complete("message_board")
                     elif ctm.task == "party_time":
                         self.wait_product_complete()
@@ -6843,7 +6820,16 @@ class BaseSchedulerSolver(
                                 self.tap(unlock_pos)
                         ctm.complete("place")
                     elif ctm.task == "give_away":
-                        placed_clues = self._read_placed_clue_numbers()
+                        observed_placed = self._read_placed_clue_numbers()
+                        # 取帧时可能已进入赠送页，不能用非线索板的空结果覆盖已确认编号。
+                        if observed_placed is None:
+                            logger.debug(
+                                "读取板上编号时页面已切换，保留上次结果：%s",
+                                sorted(placed_clues),
+                            )
+                            continue
+                        placed_clues = observed_placed
+                        logger.debug("线索板已摆放编号：%s", sorted(placed_clues))
                         self.ctap((1799, 578))
                     elif ctm.task == "party_time":
                         self.back()
@@ -6862,8 +6848,34 @@ class BaseSchedulerSolver(
 
                 elif scene == Scene.CLUE_RECEIVE:
                     logger.info("CLUE_RECEIVE")
+                    if ctm.task != "receive":
+                        self.ctap(exit_pos)
+                        continue
                     self.wait_product_complete()
+                    if self.scene() != Scene.CLUE_RECEIVE:
+                        continue
                     if clue := clue_cls("receive"):
+                        # 接收页的板位左移，须确认七张真实卡片，空槽数字不算已填满。
+                        board_full = all(
+                            clue_card_number(
+                                cropimg(
+                                    self.recog.img,
+                                    (
+                                        va(clue_top_left[number], (-16, -16)),
+                                        va(clue_top_left[number], (178, 232)),
+                                    ),
+                                )
+                            )
+                            == number
+                            for number in range(1, 8)
+                        )
+                        if board_full and self._clue_receive_credit_capped():
+                            logger.info(
+                                "线索板已填满，今日接受信用已达上限，暂不领取剩余好友线索"
+                            )
+                            ctm.complete("receive")
+                            self.tap(exit_pos)
+                            continue
                         name_scope = ((1580, 220), (1880, 255))
                         name_img = cropimg(self.recog.gray, name_scope)
                         name_img = cv2.copyMakeBorder(

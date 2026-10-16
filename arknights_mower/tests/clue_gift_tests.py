@@ -212,11 +212,20 @@ def test_unconfirmed_capacity_does_not_send(gift_ui, monkeypatch, ocr):
     assert state.sent == []
 
 
-def test_real_board_identifies_placed_cards_but_not_empty_number_slots(gift_ui):
+@pytest.mark.parametrize(
+    "filename,expected",
+    [
+        ("clue_placed_before_gift.jpg", {1, 4, 6, 7}),
+        ("clue_received_12347.jpg", {1, 2, 3, 4, 7}),
+    ],
+)
+def test_real_board_identifies_placed_cards_but_not_empty_number_slots(
+    gift_ui, filename, expected
+):
     solver, state = gift_ui
     state.scene = Scene.INFRA_CONFIDENTIAL
-    solver.recog.img = frame("clue_placed_before_gift.jpg")
-    assert solver._read_placed_clue_numbers() == {1, 4, 6, 7}
+    solver.recog.img = frame(filename)
+    assert solver._read_placed_clue_numbers() == expected
     solver.wait_product_complete.assert_called_once()
     assert (
         clue_card_number(
@@ -230,6 +239,7 @@ def test_real_board_identifies_placed_cards_but_not_empty_number_slots(gift_ui):
     "filename,capacity,filtered",
     [
         ("clue_gift_inventory.jpg", (5, 10), False),
+        ("clue_gift_single_3.jpg", (1, 10), False),
         ("clue_gift_missing_filter.png", (5, 10), True),
         ("clue_gift_sent.png", (4, 10), False),
     ],
@@ -284,6 +294,7 @@ def clue_workflow(gift_ui, monkeypatch):
     solver._clue_flow_resume_time = MagicMock(return_value=None)
     solver._prepare_clue_room = MagicMock()
     solver._collect_clue_message_board = MagicMock(return_value=True)
+    solver._open_clue_message_board = MagicMock(return_value=False)
     solver.op_data = None
     solver.tasks = []
     solver.skip = MagicMock()
@@ -296,13 +307,23 @@ def clue_workflow(gift_ui, monkeypatch):
     solver._run_clue_shop = MagicMock()
     state.after_fast = 10
     state.fast_taps = []
+    state.gift_entry_delayed = False
+    state.gift_entry_pending = False
     state.scene = Scene.INFRA_DETAILS
     snapshots = {
         Scene.INFRA_DETAILS: frame("clue_placed_before_gift.jpg"),
         Scene.INFRA_CONFIDENTIAL: frame("clue_placed_before_gift.jpg"),
         Scene.CLUE_GIVE_AWAY: frame("clue_gift_inventory.jpg"),
     }
+    state.snapshots = snapshots
     frames = 0
+
+    def update():
+        if state.gift_entry_pending:
+            state.scene = Scene.CLUE_GIVE_AWAY
+            state.gift_entry_pending = False
+
+    solver.recog.update.side_effect = update
 
     def scene():
         nonlocal frames
@@ -330,7 +351,10 @@ def clue_workflow(gift_ui, monkeypatch):
         if point == (330, 1000):
             state.scene = Scene.INFRA_CONFIDENTIAL
         elif point == (1799, 578):
-            state.scene = Scene.CLUE_GIVE_AWAY
+            if state.gift_entry_delayed:
+                state.gift_entry_pending = True
+            else:
+                state.scene = Scene.CLUE_GIVE_AWAY
         elif point == (1868, 54):
             state.scene = Scene.INFRA_CONFIDENTIAL
         elif point == (300, 1030):
@@ -365,6 +389,27 @@ def test_real_clue_workflow_runs_extra_gift_after_fast_gift(
     assert state.count == after_fast - expected_extra
     assert solver.clue_count == state.count
     solver.read_party_time.assert_called_once()
+    solver._run_clue_shop.assert_called_once()
+
+
+@pytest.mark.parametrize("delayed", [False, True])
+@pytest.mark.parametrize("leifeng,count", [(True, 1), (False, 10)])
+def test_received_board_clue_allows_own_duplicate_gift_during_page_transition(
+    clue_workflow, delayed, leifeng, count
+):
+    solver, state = clue_workflow
+    solver.leifeng_mode = leifeng
+    state.count = state.after_fast = count
+    state.gift_entry_delayed = delayed
+    state.snapshots[Scene.INFRA_CONFIDENTIAL] = frame("clue_received_12347.jpg")
+    state.snapshots[Scene.CLUE_GIVE_AWAY] = frame("clue_gift_single_3.jpg")
+
+    solver.clue_new()
+
+    assert state.sent == [(3, True, 0)]
+    assert state.count == count - 1
+    assert state.fast_taps == [(300, 1030)]
+    assert sum(c.args[0] == (1799, 578) for c in solver.tap.call_args_list) == 1
     solver._run_clue_shop.assert_called_once()
 
 
