@@ -61,6 +61,23 @@ def incoming(**files):
     return archive({**backup.read_archive(backup.export_archive()), **files})
 
 
+@pytest.mark.parametrize("saved", [False, True])
+@pytest.mark.parametrize("archived", [None, False, True])
+def test_restore_preserves_current_update_authorization(storage, saved, archived):
+    config.conf.updates_enabled = saved
+    config.save_conf()
+    uploaded = {} if archived is None else {"updates_enabled": archived}
+    raw = incoming(**{"conf.yml": json.dumps(uploaded)})
+    backup.import_configuration(raw)
+    assert config.conf.updates_enabled is saved
+    assert (
+        backup._object_file(backup.read_archive(backup.export_archive()), "conf.yml")[
+            "updates_enabled"
+        ]
+        is saved
+    )
+
+
 @pytest.fixture
 def populated_plan():
     return config.PlanModel(

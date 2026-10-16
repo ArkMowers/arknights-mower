@@ -11,6 +11,7 @@ vi.mock('vue', async (original) => ({
   onUnmounted: (callback) => state.unmounted.push(callback)
 }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => ({}) }))
+vi.mock('@/stores/mower', () => ({ useMowerStore: () => ({}) }))
 vi.mock('pinia', () => ({ storeToRefs: () => state.config }))
 
 describe('Android MAA companion update checks', () => {
@@ -23,6 +24,7 @@ describe('Android MAA companion update checks', () => {
     state.config = Object.fromEntries(
       Object.entries({
         runtime_platform: 'android',
+        updates_enabled: true,
         maa_path: '/maa',
         maa_mirrorchyan_token: '',
         maa_update_channel: 'beta',
@@ -85,6 +87,27 @@ describe('Android MAA companion update checks', () => {
     await pending
     expect(component.maa_update_check.value.id).toBe('maa-only')
     expect(component.maa_combined_checking.value).toBe(false)
+  })
+
+  it.each([false, null])('does not call update endpoints with permission %s', async (enabled) => {
+    state.config.updates_enabled.value = enabled
+    state.config.maa_auto_check_update.value = true
+    state.config.maa_resource_auto_check_update.value = true
+    const companion = vi.fn()
+    component.maa_component_controls.value = [{ check: companion }]
+    await component.get_maa_update_info()
+    await component.get_maa_resource_update_info()
+    await component.check_maa_update()
+    await component.check_maa_core_update()
+    await component.check_maa_resource_update()
+    await component.start_maa_update()
+    await component.start_maa_resource_update()
+    await component.check_mirrorchyan_cdk()
+    component.schedule_auto_check_updates(0)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(state.client.get).not.toHaveBeenCalled()
+    expect(state.client.post).not.toHaveBeenCalled()
+    expect(companion).not.toHaveBeenCalled()
   })
   it('a companion failure does not hide the core update', async () => {
     component.maa_component_controls.value = [

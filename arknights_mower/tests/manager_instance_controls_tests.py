@@ -54,6 +54,45 @@ def batch_changes(manager, settings):
     ]
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_update_permission_is_persisted_without_changing_other_settings(
+    manager, enabled
+):
+    assert manager.get_instances()[0]["updates_enabled"] is False
+    manager.update_settings(
+        0, {"token": "keep", "port": 58001, "ai_assistant_enabled": True}
+    )
+    manager.update_all_settings(
+        batch_changes(manager, {"updates_enabled": enabled}), manager.instances.copy()
+    )
+    reopened = Api(manager._storage_path)
+    assert reopened.get_instances()[0]["updates_enabled"] is enabled
+    saved = read_conf(reopened)
+    assert saved["updates_enabled"] is enabled
+    assert saved["ai_assistant_enabled"] is True
+    assert saved["webview"] == {"token": "keep", "port": 58001}
+
+
+@pytest.mark.parametrize("enabled", [None, 0, 1, "true", "false"])
+def test_manager_rejects_invalid_update_permission_without_writing(manager, enabled):
+    with pytest.raises(ValueError, match="布尔值"):
+        manager.update_settings(
+            0, {"token": "", "port": None, "updates_enabled": enabled}
+        )
+    assert not (Path(manager.instances[0]["path"]) / "config/conf.yml").exists()
+
+
+def test_manager_skips_live_update_permission_edits(manager, monkeypatch):
+    monkeypatch.setattr(runtime, "instances", lambda **kwargs: [record(manager)])
+    with pytest.raises(ValueError):
+        manager.update_settings(0, {"token": "", "port": None, "updates_enabled": True})
+    result = manager.update_all_settings(
+        batch_changes(manager, {"updates_enabled": True}), manager.instances.copy()
+    )
+    assert result["results"][0]["status"] == "skipped"
+    assert not (Path(manager.instances[0]["path"]) / "config/conf.yml").exists()
+
+
 @pytest.mark.parametrize("change", ["renamed", "moved", "removed", "replaced"])
 def test_single_settings_reject_changed_target_without_touching_either_config(
     manager, change

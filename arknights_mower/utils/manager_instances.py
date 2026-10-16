@@ -52,12 +52,15 @@ def read_webview(space):
     token = settings.get("token", "")
     port = settings.get("port", 0)
     assistant = raw.get("ai_assistant_enabled")
+    updates = raw.get("updates_enabled", False)
     if not isinstance(token, str):
         raise ValueError("Token 必须是文本")
     if type(port) is not int or not 0 <= port <= 65535:
         raise ValueError("端口必须是 1 至 65535 的整数，或留空")
     if assistant is not None and type(assistant) is not bool:
         raise ValueError("Mower AI 助手开关必须是布尔值")
+    if type(updates) is not bool:
+        raise ValueError("允许更新开关必须是布尔值")
     return (
         destination,
         raw,
@@ -65,12 +68,13 @@ def read_webview(space):
             "token": token,
             "port": port or None,
             "ai_assistant_enabled": assistant is True,
+            "updates_enabled": updates,
         },
     )
 
 
 def validate_settings(settings, *, partial=False):
-    allowed = {"token", "port", "ai_assistant_enabled"}
+    allowed = {"token", "port", "ai_assistant_enabled", "updates_enabled"}
     if (
         not isinstance(settings, dict)
         or not settings
@@ -91,6 +95,8 @@ def validate_settings(settings, *, partial=False):
         and type(result["ai_assistant_enabled"]) is not bool
     ):
         raise ValueError("Mower AI 助手开关必须是布尔值")
+    if "updates_enabled" in result and type(result["updates_enabled"]) is not bool:
+        raise ValueError("允许更新开关必须是布尔值")
     return result
 
 
@@ -217,6 +223,7 @@ class InstanceController:
                     token="",
                     port=None,
                     ai_assistant_enabled=False,
+                    updates_enabled=False,
                     editable=False,
                     can_start=False,
                     can_stop=False,
@@ -303,7 +310,7 @@ class InstanceController:
         destination, raw = read_instance_config(instance["path"])
         current = {
             key: raw.get(key)
-            if key == "ai_assistant_enabled"
+            if key in {"ai_assistant_enabled", "updates_enabled"}
             else raw.get("webview", {}).get(key)
             for key in settings
         }
@@ -322,6 +329,8 @@ class InstanceController:
             raw.setdefault("webview", {}).update(connection)
         if "ai_assistant_enabled" in settings:
             raw["ai_assistant_enabled"] = settings["ai_assistant_enabled"]
+        if "updates_enabled" in settings:
+            raw["updates_enabled"] = settings["updates_enabled"]
         destination.parent.mkdir(parents=True, exist_ok=True)
         fd, temporary = tempfile.mkstemp(dir=destination.parent)
         try:

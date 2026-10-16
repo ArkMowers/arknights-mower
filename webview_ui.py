@@ -768,6 +768,7 @@ def _run_desktop():
         port=port,
         listen_host=host,
         token_hash=sha256(runtime_token.encode()).hexdigest(),
+        updates_enabled=config.updates_enabled,
     )
     registration.publish()
     if splash_queue is not None:
@@ -874,9 +875,14 @@ def _run_desktop():
 
     from arknights_mower.utils.software_update import request_auto_check
 
-    request_auto_check()
+    if config.updates_enabled:
+        request_auto_check()
 
-    auto_resource = conf.resource_update.enable and conf.resource_update.auto_update
+    auto_resource = (
+        config.updates_enabled
+        and conf.resource_update.enable
+        and conf.resource_update.auto_update
+    )
 
     def startup_cancelled():
         return (

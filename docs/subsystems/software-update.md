@@ -4,6 +4,17 @@
 
 `Worker.run_command` executes fixed argument lists without a shell. Each command has a monotonic deadline and respects preparation cancellation. POSIX commands own a process group; Windows commands enter a dedicated Job before execution and keep their descendants inside that Job. The installer uses the standard library.
 
+<a id="managed-update-authorization"></a>
+### Managed Update Authorization
+
+Each instance stores `updates_enabled` as a strict boolean in `config/conf.yml`. Standalone launches retain update access regardless of this saved manager choice. Managed launches (`MOWER_MANAGED=1`) deny updates unless the saved choice is explicitly true; a missing choice defaults to false. Effective permission is captured once at startup and exposed through `/status`, independently of later configuration reloads or manager termination.
+
+The manager edits this choice only after the instance process exits. Individual settings and the batch table use the existing stopped-instance checks, captured targets, changed-cell submission and atomic YAML writes. Update All On and All Off affect only editable rows' drafts, without changing AI authorization or starting an update; Save commits the choices. No AI risk-reading notice applies to this independent permission.
+
+Disabled instances hide software, resource and MAA update controls and the global update-package drop interface. Their backend rejects software-update, MAA core/resource-update and manual/online resource-install requests with HTTP 403 and `updates_disabled`, before reading uploads or starting workers. Remote resource-version checks are denied; local version reads remain available. Desktop and page-start automatic update checks and installations are suppressed without changing the user's saved automatic-update preferences. Ordinary configuration saves cannot change manager authorization, and configuration backup imports preserve the current instance's authorization instead of adopting the archive's choice.
+
+During a shared software update, the temporary progress service preserves each instance's permission: unauthorized instances can read progress but cannot cancel the update, and their cancellation control is hidden. Authorization controls who can initiate or cancel maintenance, not which version an instance uses. Authorized updates can still replace a shared installation or shared resources used by unauthorized instances. This boundary does not restrict users who can directly edit host files or launch a separate standalone process.
+
 ## 2. Global Update Drop
 
 `GlobalUpdateDrop` excludes local upload targets, editable controls, draggable elements and elements marked `data-no-update-drop`, including their descendants. The Scheduling Plan facility layout carries one marker covering every card, background and gap, including fixed facilities and cards locked during import. The marker does not cover the surrounding page or the editing section below the layout. Entering or hovering over an excluded target clears the update drag hint, including when a local handler consumes the event. Other page regions accept update packages through the existing confirmation flow.

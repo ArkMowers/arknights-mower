@@ -92,6 +92,7 @@ describe('desktop page startup', () => {
       log_lines: ['existing log'],
       auto_start_handled: false,
       desktop_startup_handled: false,
+      updates_enabled: true,
       listen_ws: vi.fn(),
       get_running: vi.fn(async () => {
         state.mower.auto_start_handled = true
@@ -164,5 +165,18 @@ describe('desktop page startup', () => {
     await mount()
     expect(state.client.get).not.toHaveBeenCalled()
     expect(state.resource.installResource).toHaveBeenCalledOnce()
+  })
+
+  it.each([false, null])('suppresses all automatic updates with permission %s', async (enabled) => {
+    state.mower.updates_enabled = enabled
+    await mount()
+    expect(state.client.post).not.toHaveBeenCalled()
+    expect(state.resource.loadResourceJob).not.toHaveBeenCalled()
+    expect(state.resource.loadResourceVersion).not.toHaveBeenCalled()
+    expect(state.resource.installResource).not.toHaveBeenCalled()
+    expect(state.resource.loadResourceVersionLocal).toHaveBeenCalledOnce()
+    expect(state.config.resource_update_enable).toBe(true)
+    expect(state.config.resource_update_auto_update).toBe(true)
+    expect(state.loaded.value).toBe(true)
   })
 })
