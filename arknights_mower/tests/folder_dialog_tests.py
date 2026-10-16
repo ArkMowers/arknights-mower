@@ -143,13 +143,19 @@ def test_other_platforms_keep_pywebview_selection(monkeypatch, platform):
 def test_windows_dialog_runs_on_owning_ui_thread(
     monkeypatch, invoke_required, selection
 ):
-    from arknights_mower.utils import windows_frameless
-
     monkeypatch.setattr(dialogs.sys, "platform", "win32")
+    # Verify dispatch without loading Windows DLLs, including on Linux CI.
+    monkeypatch.delattr(ctypes, "WinDLL", raising=False)
     form = Mock(InvokeRequired=invoke_required)
     form.Invoke.side_effect = lambda callback: callback()
-    monkeypatch.setattr(windows_frameless, "_winforms_window", lambda window: form)
-    monkeypatch.setattr(windows_frameless, "_winforms_hwnd", lambda window: 987)
+    monkeypatch.setitem(
+        sys.modules,
+        "arknights_mower.utils.windows_frameless",
+        SimpleNamespace(
+            _winforms_window=lambda window: form,
+            _winforms_hwnd=lambda window: 987,
+        ),
+    )
     show = Mock(return_value=selection)
     monkeypatch.setattr(dialogs, "_show_windows_folder", show)
     delegate = Mock()
