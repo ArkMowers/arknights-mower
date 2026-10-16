@@ -281,8 +281,8 @@
       "reason": "Copy the unchanged frozen alpha fixture from calculator dffd403c8e2be5ac53824965cc9220d693c82e03 for regression of unaffected drone branches; its original native sourceCommit and hashes are retained."
     },
     "scheduler/mowerPreviewRecovery.spec.ts": {
-      "sha256": "782a11f09630cbe55e8cf06f30e86ab925d3cdf661002f4899f10cbec659fbcb",
-      "reason": "Retain the packaged historical roster fixture and account for the confirmed MAX-minus-reserve click timing: 4212 intervals and a 227/hour peak fit bounds of 4400 and 240. Preserve the 48-hour completion, consecutive microstep, unique occupancy, morale and unchanged-input assertions."
+      "sha256": "12187d2e7410391924837ca9cb72308ede42a7f01a96357a2f931d05c97e2b28",
+      "reason": "Retain the packaged historical roster fixture and account for the confirmed MAX-minus-reserve click timing: 4212 intervals and a 227/hour peak fit bounds of 4400 and 240. Preserve the 48-hour completion, consecutive microstep, unique occupancy, morale and unchanged-input assertions. Synchronize prediction-only and actual-room-observation assertions from calculator e7e8966330d351539684b1daba82e9ccead48fa1; retain the packaged historical fixture."
     },
     "scheduler/mowerAlphaCandidates.ts": {
       "reason": "Pass named task reservations into recovery allocation before dorm isolation.",
