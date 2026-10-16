@@ -1439,11 +1439,7 @@ class BaseMixin:
                         self.tap(visible_room, interval=0.2)
                         pending = True
                         entry_source = True
-                elif (
-                    entry_source
-                    and self.scene() == Scene.MATERIEL
-                    and self._handle_room_entry_reward(room)
-                ):
+                elif entry_source and self._handle_room_entry_reward(room):
                     pending = False
                 elif self.detect_room() == room:
                     return
@@ -1459,7 +1455,7 @@ class BaseMixin:
                     else:
                         self.sleep()
             # 最后一次点击也可能成功，检查其刷新后的画面再决定是否重试。
-            if entry_source and self.scene() == Scene.MATERIEL:
+            if entry_source:
                 self._handle_room_entry_reward(room)
             if (
                 not self.find("connecting")

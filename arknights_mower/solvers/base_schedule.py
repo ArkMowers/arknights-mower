@@ -6431,7 +6431,7 @@ class BaseSchedulerSolver(
         return True
 
     def _handle_room_entry_reward(self, room):
-        if room != "recycle":
+        if room != "recycle" or self.scene() != Scene.MATERIEL:
             return False
         if not getattr(self, "_recycling_pending", None):
             self._recycling_pending = {"id": str(uuid4())}
