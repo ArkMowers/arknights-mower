@@ -276,7 +276,7 @@ def close_screenshot_store(timeout=5) -> dict:
     if store is None:
         return {"remaining_threads": []}
     result = store.close(timeout=timeout)
-    if result["remaining_threads"]:
+    if result["remaining_threads"] or result.get("remaining_encoding_workers"):
         logger.warning("截图关闭超过等待预算，剩余后台操作：%s", result)
     return result
 
@@ -294,7 +294,11 @@ def save_screenshot_frame(img, sub_folder=None, *, capture_ms=None) -> None:
     store = _store()
     if store is None:
         return
-    filename = store.submit_frame(img, sub_folder, capture_ms=capture_ms)
+    try:
+        filename = store.submit_frame(img, sub_folder, capture_ms=capture_ms)
+    except MemoryError as exc:
+        store._report_error("截图快照内存不足，本帧不保存", str(exc))
+        return
     logger.debug(filename)
 
 

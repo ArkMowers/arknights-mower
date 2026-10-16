@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 from arknights_mower.tests import device_settings_route_tests as settings_routes
 from arknights_mower.tests.device_preflight_tests import PreflightIO
-from arknights_mower.utils import config
+from arknights_mower.utils import config, crash_recovery
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.io_budget import budget_sleep
 from arknights_mower.utils.device.preflight import PreflightService
@@ -16,6 +16,8 @@ from arknights_mower.utils.device.preflight import PreflightService
 class ServerStatusTests(unittest.TestCase):
     def setUp(self):
         settings_routes.DeviceSettingsRouteTests.setUp(self)
+        self.enterContext(patch.object(crash_recovery, "_cancelled", False))
+        self.enterContext(patch.object(crash_recovery, "_progress", {}))
         self.enterContext(patch.object(self.main, "base_scheduler", None))
         self.enterContext(patch.object(config, "stop_mower", Event()))
         self.enterContext(patch.object(self.server, "scheduled_start_at", None))

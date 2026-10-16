@@ -16,6 +16,9 @@ flowchart TD
         DeviceRouter["Device Routes (/device)"]
     end
 
+    Supervisor["Windows Desktop Supervisor (independent process)"]
+    JPEG["Preview / History JPEG Workers (independent processes)"]
+
     subgraph Subsystems ["Core Domain Subsystems"]
         subgraph DeviceSubsystem ["Device Control Subsystem"]
             Profile["DeviceProfile (Conf.device)"]
@@ -48,6 +51,9 @@ flowchart TD
     end
 
     UI -->|REST / WebSocket| Service
+    Supervisor -->|Own Instance Lifetime| Service
+    Service -->|Bounded RGB Snapshot| JPEG
+    JPEG -->|Encoded Diagnostic Frame| RingBuffer
     Service --> Subsystems
     DeviceSubsystem --> Persistence
     BaseSubsystem --> Persistence
@@ -72,6 +78,7 @@ Arknights Mower consists of four decoupled layers:
 - Provides RESTful JSON endpoints and real-time WebSocket feeds.
 - Implements `GET /conf` on-the-fly migration, `PATCH /conf` partial updates, and `POST /conf` backward compatibility.
 - Dispatches scheduling runs and orchestrates graceful shutdown across threads and child processes.
+- The Windows desktop entry keeps its supervisor outside this process; [Main Instance Process Recovery](subsystems/process-recovery.md) defines ownership and safe dispatch recovery.
 
 ### 1.3 Core Subsystems (`arknights_mower/`)
 - **[Device Control Subsystem](subsystems/device-control.md)**: Manages emulator discovery, socket-level transport, standard canvas frame acquisition, readiness verdicts, and bounded crash recovery.

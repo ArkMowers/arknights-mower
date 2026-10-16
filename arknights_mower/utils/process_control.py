@@ -155,6 +155,7 @@ def execute(job_path):
                     "当前实例未能在 90 秒内退出，已取消操作；其他实例不受影响"
                 )
             time.sleep(0.25)
+        runtime.wait_for_supervisor_release(record, deadline)
         if job["action"] == "stop":
             report("当前实例已结束", "succeeded")
             return

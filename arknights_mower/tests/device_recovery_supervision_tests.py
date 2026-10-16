@@ -140,38 +140,50 @@ def test_runtime_recovery_preserves_scheduler_and_refreshes_capture(
     recovery.csleep.assert_called_once_with(30)
 
 
-def test_unknown_side_effect_keeps_task_and_worker_until_cancel(
-    task_main, monkeypatch, cancellation
+@pytest.mark.parametrize("cancel_observation", [False, True])
+def test_unknown_side_effect_observes_before_existing_solver_reentry(
+    task_main, monkeypatch, cancellation, cancel_observation
 ):
+    from arknights_mower.utils import crash_recovery
+
     failure = TouchFailure(
         Conf().device, "windows", OSError("unknown"), delivery_unknown=True
     )
     device = object()
     control = SimpleNamespace(
         shutdown_requested=False,
+        close=Mock(return_value=SimpleNamespace(unwrap=lambda: None)),
         recover=Mock(return_value=SimpleNamespace(unwrap=lambda: device)),
         pause_dispatch=Mock(),
     )
     pending = [object()]
     scheduler = SimpleNamespace(
-        device=device, tasks=pending, recog=SimpleNamespace(update=Mock())
+        device=device,
+        tasks=pending,
+        recog=SimpleNamespace(update=Mock(), reset_after_external_control=Mock()),
     )
     monkeypatch.setattr(task_main, "device_control", control)
-    sleeps = []
 
-    def stop_after_paused(seconds):
-        sleeps.append(seconds)
-        if len(sleeps) == 3:
+    def observe(current):
+        assert current is scheduler and current.tasks is pending
+        control.close.assert_called_once_with()
+        control.recover.assert_called_once_with()
+        if cancel_observation:
             cancellation.set()
             raise MowerExit
 
-    monkeypatch.setattr(task_main, "csleep", stop_after_paused)
-    with pytest.raises(MowerExit):
-        task_main._resume_device_dispatch(scheduler, failure)
+    observed = Mock(side_effect=observe)
+    monkeypatch.setattr(crash_recovery, "observe_scheduler", observed)
+    if cancel_observation:
+        with pytest.raises(MowerExit):
+            task_main._resume_device_dispatch(scheduler, failure)
+    else:
+        assert task_main._resume_device_dispatch(scheduler, failure) is device
     assert scheduler.tasks is pending
-    assert control.pause_dispatch.call_count == 2
-    assert control.recover.call_count == 2
-    assert scheduler.recog.update.call_count == 2
+    observed.assert_called_once_with(scheduler)
+    control.pause_dispatch.assert_not_called()
+    scheduler.recog.reset_after_external_control.assert_called_once_with()
+    scheduler.recog.update.assert_not_called()
 
 
 def test_dispatch_returns_to_same_scheduler_after_budget_exhaustion(

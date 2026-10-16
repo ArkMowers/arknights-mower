@@ -1,5 +1,5 @@
 ﻿# 图像处理
-opencv-python==4.9.0.80
+opencv-python==4.11.0.86
 numpy==1.26.4
 pillow==10.3.0
 
