@@ -3764,40 +3764,79 @@ class TestClueProductCompleteWait(unittest.TestCase):
         solver.scene_graph_navigation = MagicMock()
         solver.enter_room = MagicMock()
         solver.recog = MagicMock()
-        solver.tap = MagicMock()
-        solver.ctap = MagicMock()
         solver.tap_element = MagicMock()
-        solver.back = MagicMock()
         solver.sleep = MagicMock()
         solver.backup_plan_solver = MagicMock()
-        solver.read_party_time = MagicMock(return_value=None)
         solver.set_detected_party_time = MagicMock()
         solver._read_placed_clue_numbers = MagicMock(return_value=frozenset())
+        solver._clue_credit_enabled = MagicMock(return_value=False)
+        solver._clue_access_record_visible = MagicMock(return_value=False)
 
-        scenes = [
-            Scene.INFRA_DETAILS,
-            Scene.INFRA_CONFIDENTIAL,
-            Scene.INFRA_CONFIDENTIAL,
-            Scene.INFRA_CONFIDENTIAL,
-            Scene.INFRA_CONFIDENTIAL,
-            Scene.CLUE_GIVE_AWAY,
-            Scene.INFRA_CONFIDENTIAL,
-            Scene.INFRA_DETAILS,
-        ]
-        solver.scene = MagicMock(
-            side_effect=lambda: scenes.pop(0) if scenes else Scene.INDEX
+        # 画面随点击切换；重复识别当前画面不能推进流程。
+        ui = SimpleNamespace(scene=Scene.INFRA_DETAILS, entry_visible=False)
+        board_pos = (500, 500)
+        solver.scene = MagicMock(side_effect=lambda: ui.scene)
+        events = []
+
+        def mock_find(name, **kwargs):
+            if (
+                name == "clue/message_board"
+                and ui.scene == Scene.INFRA_DETAILS
+                and ui.entry_visible
+            ):
+                return board_pos
+            return None
+
+        def mock_tap(pos, **kwargs):
+            if pos == (680, 1000):
+                self.assertEqual(ui.scene, Scene.INFRA_DETAILS)
+                ui.entry_visible = True
+            elif pos == board_pos:
+                self.assertEqual(ui.scene, Scene.INFRA_DETAILS)
+                self.assertTrue(ui.entry_visible)
+                events.append("open_message_board")
+                ui.scene = Scene.CLUE_MESSAGE_BOARD
+            elif pos == (330, 1000):
+                ui.scene = Scene.INFRA_CONFIDENTIAL
+            elif pos == (1799, 578):
+                ui.scene = Scene.CLUE_GIVE_AWAY
+            elif pos == (1868, 54):
+                ui.scene = Scene.INFRA_CONFIDENTIAL
+            else:
+                self.fail(f"出现未预期的点击：{pos}")
+
+        solver.find = MagicMock(side_effect=mock_find)
+        solver.tap = MagicMock(side_effect=mock_tap)
+        solver.ctap = MagicMock(side_effect=mock_tap)
+        solver.back = MagicMock(
+            side_effect=lambda: setattr(ui, "scene", Scene.INFRA_DETAILS)
+        )
+        solver.read_party_time = MagicMock(
+            side_effect=lambda: events.append("read_party_time")
         )
 
         wait_calls = []
 
         def mock_wait_product():
             wait_calls.append("wait_product_complete")
+            events.append("wait_product_complete")
             return True
 
         solver.wait_product_complete = MagicMock(side_effect=mock_wait_product)
-        solver.find = MagicMock(return_value=None)
 
-        solver.clue_new()
+        with patch.object(base_schedule, "save_exception") as save_exception:
+            solver.clue_new()
 
         # 验证在 message_board 与 party_time 阶段均调用了 wait_product_complete
+        save_exception.assert_not_called()
         self.assertEqual(len(wait_calls), 2)
+        self.assertEqual(
+            events,
+            [
+                "wait_product_complete",
+                "open_message_board",
+                "wait_product_complete",
+                "read_party_time",
+            ],
+        )
+        solver._run_clue_shop.assert_called_once_with()
