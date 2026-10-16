@@ -34,6 +34,7 @@
     "engine/globalContext.ts": "f6c61b3a9aac13b540d3ae37d5e3a20681b50a07151a22c56cc587adc273da01",
     "engine/jayeRules.ts": "691eb8047af77eb16c3983270367387c96488a5ed0025b9b31653e72fb5ee869",
     "engine/morale.ts": "d0e4915c4919626e4f0a0eec47141107a314613f6a95eb4174690f21ce720ec3",
+    "engine/moraleSui.spec.ts": "cdb825d55dd348a81728beae4b3f9eb06f897069d01d4473a8ef39278351620f",
     "engine/operatorGroups.ts": "7e3641b88d4e8f9dd008150e7f492b59026d51e46a2b253b86edcba9debbd621",
     "engine/operatorRules.ts": "c07812ea02bed35cf503e2acbcba399cf1915b0413e7c72d59befb9e70fa26a0",
     "engine/orderCapacity.ts": "00a45da50a9113a1ddcdbf9d9592f95aea79fc71fa1970b496a0cc9e7247dad0",
@@ -217,8 +218,8 @@
       "reason": "Keep the existing maintenance-backup behavior; selectively synchronize restored-member admission and protected dormitory migration from the pinned calculator revision. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Preserve ordinary request provenance through queued departures and backup previews; cancel only ordinary departures blocked by effective exhaustion rules, retain real exhaustion and explicit or started arrangements, and deduplicate retained exhaustion requests."
     },
     "scheduler/mowerSourceRuntime.ts": {
-      "sha256": "66274decbe0316c4ed56b4f6e2085f40ceb144b6c492b2b5d8d478b84372262d",
-      "reason": "Synchronize native failure retention and observation-based recovery without changing the existing departing-plan observation adaptation. Retain full-to-full Fiammetta operations as failed pending work instead of adding a polling task; this offline safeguard is additional to the native selector. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning. Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Preserve ordinary request provenance through queued departures and backup previews; cancel only ordinary departures blocked by effective exhaustion rules, retain real exhaustion and explicit or started arrangements, and deduplicate retained exhaustion requests. Preserve personal-limit departure lead time and observed mood; admit required recovery within the current room operation allowance without redefining measured full mood, and pass room timing through replacement recall guards. Apply due exhaustion priority while preserving explicit full recovery, validate final backup admission and retain failed support identities."
+      "sha256": "04956db1fe5f52f8653363e21c2688e12b4fc5b955ccd8859b89ef2a58677857",
+      "reason": "Synchronize native failure retention and observation-based recovery without changing the existing departing-plan observation adaptation. Retain full-to-full Fiammetta operations as failed pending work instead of adding a polling task; this offline safeguard is additional to the native selector. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning. Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Preserve ordinary request provenance through queued departures and backup previews; cancel only ordinary departures blocked by effective exhaustion rules, retain real exhaustion and explicit or started arrangements, and deduplicate retained exhaustion requests. Preserve personal-limit departure lead time and observed mood; admit required recovery within the current room operation allowance without redefining measured full mood, and pass room timing through replacement recall guards. Apply due exhaustion priority while preserving explicit full recovery, validate final backup admission and retain failed support identities. Resolve dorm admission before recovery ordering, and share the selected temporary roster with confirmation, matching Mower a216c4cc69fda51774b213da14a4309fa81b9309."
     },
     "scheduler/rosterRuntime.ts": {
       "sha256": "7deeee17f15ce01a38ed28c1c18950b90b43964d58071f18ac053b833c8dd6cf",
@@ -393,8 +394,8 @@
       "reason": "Synchronize full-dorm first-manager confirmation and focused regressions from calculator a4c6bc668b54d637305c2218a14b48ba285bb050. Inspect every slot, retain only the first single-recovery manager confirmation, and skip that provider when selecting the recovery target."
     },
     "scheduler/mowerDormRecovery.ts": {
-      "sha256": "6fcb91e76d5568ea2032c3f28b1871762a2b8e9f8a11959fc5fef10433232948",
-      "reason": "Synchronize full-dorm first-manager confirmation and focused regressions from calculator a4c6bc668b54d637305c2218a14b48ba285bb050. Inspect every slot, retain only the first single-recovery manager confirmation, and skip that provider when selecting the recovery target."
+      "sha256": "d9474a7e9edbfeb946aa446237afaf54640ab843a143124597e896b1540b8535",
+      "reason": "Synchronize full-dorm first-manager confirmation and focused regressions from calculator a4c6bc668b54d637305c2218a14b48ba285bb050. Inspect every slot, retain only the first single-recovery manager confirmation, and skip that provider when selecting the recovery target. Recompute the expected temporary roster after selection, matching Mower a216c4cc69fda51774b213da14a4309fa81b9309; keep the complete restoration plan unchanged and continue rejecting actual observation mismatches."
     },
     "scheduler/mowerOperatorState.ts": {
       "sha256": "8d921780af1cc7a9a1e8238201c0b4877b29ef6036480a7d85e219712bc63341",
@@ -495,6 +496,10 @@
     "engine/moraleSui.spec.ts": {
       "sha256": "cdb825d55dd348a81728beae4b3f9eb06f897069d01d4473a8ef39278351620f",
       "reason": "Apply Ling Cup Never Empty to all skill consumption changes for Sui operators in the same control center; retain the facility population baseline."
+    },
+    "scheduler/mowerSelection.ts": {
+      "sha256": "45086253d58c25dfc97c2d56aa631c43c9deb1f9551f0526bff601e4786ddb55",
+      "reason": "Match Mower a216c4cc69fda51774b213da14a4309fa81b9309: preserve explicit temporary dorm occupants after admission while retaining personal-limit cancellation."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",

@@ -341,11 +341,13 @@ function* arrangeRoom(s:RuntimeState,rates:RuntimeRates,room:string,names:string
   for(const bed of beds)bed.timeMicros=undefined
   return beds.filter(bed=>{const name=resolved[bed.position[1]];return !!name&&data.recoveryDorm(bed,name)}).map(bed=>bed.position[1])
  }
- // Native recovery ordering runs even when the requested final roster is an exact no-op.
+ // Native admission resolves the final roster before recovery ordering and no-op detection.
+ if(room.startsWith('dorm')){prepareMowerDormSelection(data,resolved,room,false,false,task);names.splice(0,names.length,...resolved)}
  const resumingRecovery=task.dormRecoveryRestore.includes(room)
  const ensureRecovery=()=>ensureMowerDormRecovery(data,getMowerSourceRuntime(s).queue,task,room,resolved,{
   arrangeTemporary:retained=>{
    const selected=selectConcreteNames(s,room,retained,task,true)
+   retained.splice(0,retained.length,...selected)
    const confirmed=[...selected,...Array(data.plan[room]!.length-selected.length).fill('')]
    // Observe departures before temporary single-target ordering removes them.
    // Completion is valid only after observing this exact intermediate roster.
