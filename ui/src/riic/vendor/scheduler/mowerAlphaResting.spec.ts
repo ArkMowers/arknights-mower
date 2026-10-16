@@ -133,7 +133,7 @@ describe('group standby morale does not drive shifts',()=>{
   const queue=new MowerTaskQueue();planMowerMetadata(data,queue)
   expect(queue.tasks.find(t=>t.type.key==='SHIFT_ON')!.time).toBeCloseTo(4-8/60,8)
  })
- it.each([{alpha:false,gap:false},{alpha:false,gap:true},{alpha:true,gap:false},{alpha:true,gap:true}])('uses standby recovery only for an enabled full-group wait: %o',({alpha,gap})=>{
+ it.each([{alpha:false,gap:false},{alpha:false,gap:true},{alpha:true,gap:false},{alpha:true,gap:true}])('does not let standby recovery delay its primary with either gap setting: %o',({alpha,gap})=>{
   const {data}=fixture(alpha);data.groupRestInFullOnMoodGap=gap
   for(const [index,name] of ['H','S'].entries()){
    const op=data.operators[name]!;op.currentRoom='dormitory_1';op.currentIndex=2+index
@@ -141,7 +141,7 @@ describe('group standby morale does not drive shifts',()=>{
   }
   const queue=new MowerTaskQueue();planMowerMetadata(data,queue)
   const task=queue.tasks.find(t=>t.type.key==='SHIFT_ON')!
-  expect(task.time).toBeCloseTo(alpha&&gap?12:2-8/60,8)
+  expect(task.time).toBeCloseTo(2-8/60,8)
   expect(task.plan.room_1_1).toEqual(['H','S'])
  })
  it.each([false,true])('returns a capped idle anchor with its still-recovering standby, alpha=%s',alpha=>{

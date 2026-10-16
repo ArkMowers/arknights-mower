@@ -159,13 +159,15 @@ describe('mandatory release policy boundaries', () => {
     expect(prepareMowerRelease(data, queue, task)).toBe(true)
   })
 
-  it.each(['removed', 'workaholic'] as const)('ignores stale delayed-return membership after becoming %s', change => {
+  it.each(['removed', 'workaholic', 'standby', 'shared'] as const)('ignores stale delayed-return membership after becoming %s', change => {
     const { data, queue, task, operators } = fixture([{ mood: 23.8 }])
     Object.assign(operators.A!, { group: 'g', operatorType: 'high', room: 'room_1_1' })
     data.groupRecoveryFullMembers.g = ['A']
     data.dorms[0]!.timeMicros = now
     if (change === 'removed') operators.A!.group = 'other'
     if (change === 'workaholic') operators.A!.workaholic = true
+    if (change === 'standby') operators.A!.restingPriority = 'standby'
+    if (change === 'shared') operators.A!.groupBindings = [{ group: 'g', replacement: [] }, { group: 'h', replacement: [] }]
     expect(prepareMowerRelease(data, queue, task)).toBe(true)
   })
 })
@@ -179,4 +181,14 @@ it.each(['excluded', 'removed-limit', 'changed-limit'] as const)('discards an in
   if (change === 'changed-limit') operators.A!.upperLimit = 20
   expect(prepareMowerRelease(data, queue, task)).toBe(false)
   expect(task.plan).toEqual({})
+})
+
+
+it('still requires measured full recovery for an explicitly configured shared resident release', () => {
+  const { data, queue, task, operators } = fixture([{ mood: 23.8, restInFull: true }])
+  Object.assign(operators.A!, { group: 'g', operatorType: 'high', room: 'room_1_1', groupBindings: [{ group: 'g', replacement: [] }, { group: 'h', replacement: [] }] })
+  data.dorms[0]!.timeMicros = now
+  expect(() => prepareMowerRelease(data, queue, task)).toThrow('尚未确认回满心情')
+  operators.A!.mood = 24; operators.A!.timeStampMicros = now
+  expect(prepareMowerRelease(data, queue, task)).toBe(true)
 })

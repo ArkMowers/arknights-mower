@@ -214,8 +214,8 @@
       "reason": "Preserve same-round dorm admissions and mirror native displacement restoration: shared members retain resting bindings, completed departures keep unfinished anchors resting, and named arrangement targets retain priority. Allocate recovery-tier quotas in the complete configured bed order, including explicit ordinary beds, while retaining compatible actual occupants and protecting pending reservations. When an arrangement changes single-target bed ownership, reallocate all movable recovering residents by tier and personal morale deficit; retain equal-deficit incumbents and same-speed positions."
     },
     "scheduler/mowerCompletedDeparture.spec.ts": {
-      "sha256": "0d24553c0b7db6e294e2516e0b304f0414616e26b1b8f5701fdfdd43005180e8",
-      "reason": "Verify that ordinary departures retain the newly measured departure timestamp and replace predicted full mood with an actual observation. Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
+      "sha256": "30550b9d22f066915b017471041edc1764159f7fb6111513f58001f8054a9490",
+      "reason": "Verify that ordinary departures retain the newly measured departure timestamp and replace predicted full mood with an actual observation. Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Sync primary-only recovery-gap waiting and shared-primary explicit full-rest handling from calculator d44f81a27937c5f87e92e9d2d00c6b136af4c059; preserve the bundled scheduling baseline."
     },
     "scheduler/backupExpression.ts": {
       "sha256": "8b7ed6e1643f7611182c4ece1b19ff5f75ae8985eedec976c033cad7de980bc7",
@@ -282,16 +282,16 @@
       "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
     },
     "scheduler/mowerAlphaMetadata.ts": {
-      "sha256": "a9713cfb33db3e29009814c716ed6134632228360ef0d9c0f56ab9d33651e806",
-      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
+      "sha256": "06d7778cb5275f14c2c5add317124fd0c38752eac0b66d3b9310ede4292eaa6f",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Sync primary-only recovery-gap waiting and shared-primary explicit full-rest handling from calculator d44f81a27937c5f87e92e9d2d00c6b136af4c059; preserve the bundled scheduling baseline."
     },
     "scheduler/mowerDormTasks.ts": {
       "sha256": "ffea907690b3f33602fe87bc4289bb1b28c17a3b649413cd92942048962f2f55",
       "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
     },
     "scheduler/mowerGroupRecovery.ts": {
-      "sha256": "5bfb85aa44a12facef35bc3c22594eda1f4368d7dc513469273903770fd941c6",
-      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
+      "sha256": "14b46c2b9a2fbbadfc7cbb33f4876592cd3e506d107dd6cd0bc3dec71fe8bb64",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Sync primary-only recovery-gap waiting and shared-primary explicit full-rest handling from calculator d44f81a27937c5f87e92e9d2d00c6b136af4c059; preserve the bundled scheduling baseline."
     },
     "scheduler/mowerNotification.ts": {
       "sha256": "09a6b5f533829fbac9cd1264d61e1c53fa7abf3f44f71f271df34ff636be8fc3",
@@ -306,12 +306,12 @@
       "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
     },
     "scheduler/mowerObservedFullRelease.spec.ts": {
-      "sha256": "272948d30556323470395d3fbb5096881a423d4e375fbdb3ba50e35c8fb31c60",
-      "reason": "Sync mandatory full-recovery release regressions from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Omit the independentRest case because this bundled baseline does not implement personal independent rest."
+      "sha256": "1ef5ad0eceb3aa86f8b64026ddef5ac7e92fb163900d0aed74d789781b01bb21",
+      "reason": "Sync mandatory full-recovery release regressions from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Omit the independentRest case because this bundled baseline does not implement personal independent rest. Sync primary-only recovery-gap waiting and shared-primary explicit full-rest handling from calculator d44f81a27937c5f87e92e9d2d00c6b136af4c059; preserve the bundled scheduling baseline."
     },
     "scheduler/mowerRelease.ts": {
-      "sha256": "4cfa6e7f2f866919218af2d892b755ecc4f3bf57569dab6424185f7bf6acb8a9",
-      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
+      "sha256": "7768b87e2bd8aabcaca1ba67364a42ad9bfaac24aebc697db295876531c02802",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Sync primary-only recovery-gap waiting and shared-primary explicit full-rest handling from calculator d44f81a27937c5f87e92e9d2d00c6b136af4c059; preserve the bundled scheduling baseline."
     },
     "scheduler/mowerRunOrderPlanning.ts": {
       "sha256": "749b6454c412436a2ceac899f0d9aba043b18581a9f3a96bb2f48488c67dd5b0",
@@ -330,8 +330,12 @@
       "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
     },
     "scheduler/mowerAlphaResting.spec.ts": {
-      "sha256": "34a92e26c546fa402de4c62065df0928d9b2b10227cb6d3d4a67fb9b122ec38d",
-      "reason": "Sync the alpha and delayed-group-return toggle regression from calculator f32a8639fe457b0a6584f7b7b55c986a371dbcbd. Only enabled strict alpha group recovery waits for the resting standby member; ordinary return expectations remain unchanged."
+      "sha256": "e90cc3ee94410bb4110a76a6bb8b3bb94c1affbd57e232ab8ba866a67a375bf2",
+      "reason": "Sync primary-only recovery-gap waiting and shared-primary explicit full-rest handling from calculator d44f81a27937c5f87e92e9d2d00c6b136af4c059; preserve the bundled scheduling baseline."
+    },
+    "scheduler/mowerGroupFullRecovery.spec.ts": {
+      "sha256": "71efc9fb609c2d9554c9f0c1de56f084e664f9c61e1aa27ef26b663d1a215441",
+      "reason": "Sync primary-only recovery-gap waiting and shared-primary explicit full-rest handling from calculator d44f81a27937c5f87e92e9d2d00c6b136af4c059; preserve the bundled scheduling baseline."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
@@ -363,7 +367,7 @@
     "exhaustSupportMowerRevision": "acd54324d549eec34ef1a0bb9910de4c92cfb7d1",
     "exhaustSupportCalculatorRevision": "c2b50182da1bcd83dd3da1ce6f2da58f0f66efb8",
     "dormRecoveryMowerRevision": "ed6f10d9dae4a5ce1a992308582a0b13d240b6f5",
-    "groupFullRecoveryCalculatorRevision": "ebb743c11964898046d2d00dddf8e96bcf09a522",
-    "groupFullRecoveryTestsCalculatorRevision": "f32a8639fe457b0a6584f7b7b55c986a371dbcbd"
+    "groupFullRecoveryCalculatorRevision": "d44f81a27937c5f87e92e9d2d00c6b136af4c059",
+    "groupFullRecoveryTestsCalculatorRevision": "d44f81a27937c5f87e92e9d2d00c6b136af4c059"
   }
 }

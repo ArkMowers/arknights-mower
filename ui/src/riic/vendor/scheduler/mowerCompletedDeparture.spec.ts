@@ -127,9 +127,10 @@ describe('confirmed ordinary dorm departure keeps measured morale', () => {
 })
 
 describe('group full-rest execution confirmation', () => {
-  it('reschedules an old return against the observed recovery deadline after losing single recovery', () => {
+  it.each([false, true])('reschedules an old return against the observed explicit full-rest deadline, shared=%s', shared => {
     const f = fixture(24, 24)
     f.source.data.operators.B!.restInFull = true
+    if (shared) { f.source.data.operators.B!.groupBindings = [{ group: 'g', replacement: ['S'] }, { group: 'h', replacement: ['S'] }]; f.source.data.groupShiftState.h = false }
     f.source.data.operators.B!.mood = 24
     f.source.data.operators.B!.moodIsPrediction = true
     f.source.data.dorms[1]!.timeMicros = toMowerMicros(1)
@@ -153,17 +154,16 @@ describe('group full-rest execution confirmation', () => {
     expect(f.state.morale.B).toBe(24)
   })
 
-  it.each([T.SELF_CORRECTION, T.RE_ORDER])('keeps a completed anchor from returning through $key while its latched standby peer is unfinished', type => {
+  it.each([T.SELF_CORRECTION, T.RE_ORDER])('keeps a completed anchor from returning through $key while its latched low-priority primary is unfinished', type => {
     const f = fixture(24, 24)
     const a = f.source.data.operators.A!, b = f.source.data.operators.B!, r = f.source.data.operators.R!
     a.currentRoom = ''; a.currentIndex = -1; a.depletionRate = 0
     r.currentRoom = ''; r.currentIndex = -1
     delete f.state.bedOccupants[room + '_3']; delete f.state.occupants.room_1_1_0
     f.source.data.dorms[0]!.reset()
-    b.restingPriority = 'standby'
+    b.restingPriority = 'low'
     f.source.data.groupRecoveryFullMembers.g = ['A', 'B']
-    const plan = mowerCorrectionPlan(f.source.data)
-    expect(plan.room_1_1).toEqual(['A'])
+    const plan = { room_1_1: ['A'], room_1_2: ['B'] }
     const task = new MowerTask({ time: 1, type, plan })
     task.backupShiftActive = true
     f.source.queue.tasks = [task]
@@ -172,6 +172,29 @@ describe('group full-rest execution confirmation', () => {
     expect(b.isResting()).toBe(true)
     expect(f.source.queue.tasks).toContain(task)
     expect(task.timeMicros).toBe(toMowerMicros(5))
+  })
+
+  it.each(['standby', 'shared'] as const)('returns a completed primary without waiting for an ordinary %s member in an old latch', kind => {
+    const f = fixture(24, 24)
+    const a = f.source.data.operators.A!, b = f.source.data.operators.B!, r = f.source.data.operators.R!
+    a.currentRoom = ''; a.currentIndex = -1; a.depletionRate = 0
+    r.currentRoom = ''; r.currentIndex = -1
+    delete f.state.bedOccupants[room + '_3']; delete f.state.occupants.room_1_1_0
+    f.source.data.dorms[0]!.reset()
+    if (kind === 'standby') b.restingPriority = 'standby'
+    else { b.groupBindings = [{ group: 'g', replacement: ['S'] }, { group: 'h', replacement: ['S'] }]; f.source.data.groupShiftState.h = true }
+    f.source.data.groupRecoveryFullMembers.g = ['A', 'B']
+    const plan = mowerCorrectionPlan(f.source.data)
+    expect(plan.room_1_1).toEqual(['A'])
+    const task = new MowerTask({ time: 1, type: T.SELF_CORRECTION, plan })
+    task.backupShiftActive = true
+    f.source.queue.tasks = [task]
+    finish(f)
+    expect(a.currentRoom).toBe('room_1_1')
+    expect(b.isResting()).toBe(true)
+    expect(task.executionFailure).toBeUndefined()
+    expect(task.timeMicros).toBe(toMowerMicros(1))
+    expect(f.source.data.groupRecoveryFullMembers.g ?? []).not.toContain('B')
   })
 
   it.each(['recovering', 'unknown'] as const)('does not activate projected return backups before %s full-rest members are ready', status => {

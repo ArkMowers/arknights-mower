@@ -52,17 +52,18 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
   if(!op.isHigh()||op.multiGroup||op.room.startsWith('dorm')||op.currentRoom||op.group&&data.canStandby(op))continue
   const recovery=op.group?mowerGroupRecoveryDeadline(data,op.group):undefined
   const strict=!!recovery?.requiredNames.length
-  if(!(data.restMoodComplete(op.name)||strict&&hasObservedFullMood(op)))continue
+  const recoveredPrimaryGroup=!!op.group&&data.groupRestInFullOnMoodGap&&data.groupIsResting(op.group)&&hasObservedFullMood(op)&&!op.moodIsPrediction
+  if(!(recoveredPrimaryGroup||data.restMoodComplete(op.name)||strict&&hasObservedFullMood(op)))continue
   if(op.group&&data.groupRecoveryFullMembers[op.group]&&data.groupIsResting(op.group)&&actual.groupIsResting(op.group))actual.groupRecoveryFullMembers[op.group]=[...data.groupRecoveryFullMembers[op.group]!]
   if(strict&&recovery!.timeMicros===undefined)continue
-  const members=op.group?(strict?data.shiftGroupMembers(op.group):data.group(op.group)):[op.name]
+  const members=op.group?data.shiftGroupMembers(op.group):[op.name]
   if(groups.has(op.group)||members.some(n=>returning.has(n)||names.has(n)||data.busyRestingNames.has(n)))continue
-  const workers=members.map(n=>data.operators[n]!).filter(o=>!o.room.startsWith('dorm')&&!o.workaholic&&!(o.group&&data.canStandby(o)))
+  const workers=members.map(n=>data.operators[n]!).filter(o=>!o.multiGroup&&!o.room.startsWith('dorm')&&!o.workaholic&&!(o.group&&data.canStandby(o)))
   if(!strict&&!workers.every(o=>!o.currentRoom&&(data.canStandby(o)||hasRestingMood(o,now)&&o.currentMood(now)>=o.upperLimit)))continue
   const plan:MowerTaskPlan={}
   for(const name of members){const member=data.operators[name]!;if(member.room&&data.plan[member.room]){const row=plan[member.room]??=Array(data.plan[member.room]!.length).fill('Current');if(['Current',name].includes(row[member.index]!))row[member.index]=name}}
-  if(strict&&!normalizeMowerSharedArrangement(data,plan))continue
-  const participants=strict?members.filter(name=>Object.values(plan).some(row=>row.includes(name))):members
+  if(!normalizeMowerSharedArrangement(data,plan))continue
+  const participants=members.filter(name=>Object.values(plan).some(row=>row.includes(name)))
   const recalled=alphaRebalanceClosingDorms(projectMowerArrangements(data,[]),plan,participants),resources=mowerArrangementResources(plan)
   if([...recalled].some(n=>names.has(n)||data.busyRestingNames.has(n))||[...resources.slots].some(s=>slots.has(s)))continue
   const task=new MowerTask({type:T.SHIFT_ON,plan});task.timeMicros=Math.max(recovery?.timeMicros??now,mowerAfterPendingArrangements(plan,pending));queue.tasks.push(task);[...participants,...recalled].forEach(n=>returning.add(n))

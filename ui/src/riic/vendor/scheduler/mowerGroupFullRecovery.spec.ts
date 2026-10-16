@@ -5,6 +5,7 @@ import {planMowerAlphaMetadata} from './mowerAlphaMetadata'
 import {MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros} from './mowerTaskQueue'
 import {projectMowerArrangements} from './mowerObservations'
 import {commitMowerGroupShifts} from './mowerSharedGroups'
+import {mowerGroupRecoveryDeadline,mowerGroupRecoveryWorkers} from './mowerGroupRecovery'
 
 type Resident={name:string;hours?:number;options?:Partial<MowerOperatorOptions>}
 function fixture(rows:Resident[],gap=false,maxWait=0){
@@ -27,6 +28,17 @@ describe('strict grouped recovery in the alpha simulator',()=>{
  it('combines explicit full recovery with the gap rule and includes low-priority workers',()=>{
   const data=fixture([{name:'A',hours:1,options:{restInFull:true}},{name:'B',hours:3},{name:'C',hours:6,options:{restingPriority:'low'}}],true)
   expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(6))
+ })
+ it('uses only non-standby work primaries for the gap and full-recovery membership',()=>{
+  const data=fixture([
+   {name:'A',hours:1},{name:'B',hours:4,options:{restingPriority:'low'}},
+   {name:'S',hours:30,options:{restingPriority:'standby'}},
+   {name:'R',hours:40,options:{operatorType:'low',room:''}},
+   {name:'K',hours:50,options:{room:'dormitory_1'}},
+   {name:'W',hours:60,options:{workaholic:true}}
+  ],true)
+  expect(mowerGroupRecoveryWorkers(data,'G').map(op=>op.name)).toEqual(['A','B'])
+  expect(mowerGroupRecoveryDeadline(data,'G')).toEqual({requiredNames:['A','B'],timeMicros:toMowerMicros(4)})
  })
  it('does not shorten full recovery using the extra-wait cap',()=>{
   const data=fixture([{name:'A',hours:1},{name:'B',hours:6}],true,1)
@@ -69,7 +81,7 @@ describe('strict grouped recovery in the alpha simulator',()=>{
   data.dorms.find(b=>b.name==='B')!.reset();data.operators.B!.currentRoom='';data.operators.B!.currentIndex=-1
   expect(returnTask(data)).toBeUndefined()
  })
- it('applies an already triggered group wait to newly joined recovery members',()=>{
+ it('applies an already triggered group wait to newly joined primary members',()=>{
   const data=fixture([{name:'A',hours:1},{name:'B',hours:4},{name:'C',hours:7,options:{group:'other'}}],true)
   expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(4))
   data.operators.C!.group='G'
@@ -81,25 +93,31 @@ describe('strict grouped recovery in the alpha simulator',()=>{
   data.operators.C!.group='other';data.dorms.find(b=>b.name==='C')!.timeMicros=undefined
   expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(4))
  })
- it('keeps an unfinished standby obligation if its recovery bed is temporarily unavailable',()=>{
+ it('excludes a standby member from an activated group wait even if its bed becomes unavailable',()=>{
   const data=fixture([{name:'A',hours:1},{name:'B',hours:4},{name:'C',hours:7,options:{restingPriority:'standby'}}],true)
-  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(7))
-  data.dorms.find(b=>b.name==='C')!.reset();data.operators.C!.currentRoom='';data.operators.C!.currentIndex=-1
-  expect(returnTask(data)).toBeUndefined()
- })
- it('schedules the remaining standby deadline after all ordinary group members leave',()=>{
-  const data=fixture([{name:'A',hours:1,options:{restMoodLimit:true}},{name:'B',hours:4,options:{restingPriority:'standby'}}],true)
   expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(4))
-  data.nowMicros=toMowerMicros(1);releaseFull(data,'A')
-  const task=returnTask(data)!
-  expect(task.timeMicros).toBe(toMowerMicros(4));expect(task.plan.room_1_1).toEqual(['A','B'])
+  expect(data.groupRecoveryFullMembers.G).toEqual(['A','B'])
+  data.dorms.find(b=>b.name==='C')!.reset();data.operators.C!.currentRoom='';data.operators.C!.currentIndex=-1
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(4))
  })
- it('does not let the off-bed fallback bypass an unknown standby full deadline',()=>{
+ it('does not trigger a gap wait from a standby recovery deadline',()=>{
   const data=fixture([{name:'A',hours:1,options:{restMoodLimit:true}},{name:'B',hours:4,options:{restingPriority:'standby'}}],true)
-  returnTask(data);data.nowMicros=toMowerMicros(1);releaseFull(data,'A')
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(1-8/60))
+  expect(data.groupRecoveryFullMembers.G).toBeUndefined()
+  data.nowMicros=toMowerMicros(1);releaseFull(data,'A')
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(1))
+ })
+ it('clears stale standby obligations without blocking an off-bed primary return',()=>{
+  const data=fixture([{name:'A',hours:1,options:{restMoodLimit:true}},{name:'B',hours:4,options:{restingPriority:'standby'}}],true)
+  data.groupRecoveryFullMembers.G=['A','B']
+  data.nowMicros=toMowerMicros(1);releaseFull(data,'A')
   data.dorms.find(b=>b.name==='B')!.timeMicros=undefined
-  expect(returnTask(data)).toBeUndefined()
-  data.nowMicros=toMowerMicros(4);releaseFull(data,'B')
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(1))
+  expect(data.groupRecoveryFullMembers.G).toEqual(['A'])
+ })
+ it.each(['restInFull','exhaustRequire'] as const)('preserves primary recovery when %s overrides standby priority',rule=>{
+  const data=fixture([{name:'A',hours:1},{name:'B',hours:4,options:{restingPriority:'standby',[rule]:true}}],rule==='exhaustRequire')
+  expect(data.canStandby(data.operators.B!)).toBe(false)
   expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(4))
  })
  it('preserves ordinary off-bed group recall when no standby full obligation was activated',()=>{
@@ -107,23 +125,40 @@ describe('strict grouped recovery in the alpha simulator',()=>{
   data.nowMicros=toMowerMicros(1);releaseFull(data,'A')
   expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(1))
  })
- it.each([false,true])('retains a shared worker deadline after its anchor leaves without changing another group: %s',otherResting=>{
+ it.each([false,true])('ignores shared recovery before and after its primary leaves without changing another group: %s',otherResting=>{
   const data=fixture([{name:'A',hours:1},{name:'B',hours:4,options:{groupBindings:[{group:'G',replacement:['Y']},{group:'H',replacement:['Y']}],replacement:['Y']}}],true)
   data.groupShiftState.H=otherResting
   data.operators.Y=new MowerOperatorState({name:'Y',currentRoom:'room_1_1',currentIndex:1,mood:24,timeStampMicros:0})
-  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(4))
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(1-8/60))
+  expect(data.groupRecoveryFullMembers.G).toBeUndefined()
   data.nowMicros=toMowerMicros(1);releaseFull(data,'A')
   const task=returnTask(data)!
-  expect(task.timeMicros).toBe(toMowerMicros(4))
+  expect(task.timeMicros).toBe(toMowerMicros(1))
   expect(task.plan.room_1_1).toEqual(['A',otherResting?'Current':'B'])
   expect(data.groupShiftState).toEqual({G:true,H:otherResting})
  })
- it('keeps explicit full recovery for a shared last resident when gap waiting is disabled',()=>{
-  const data=fixture([{name:'A',hours:1},{name:'B',hours:4,options:{restInFull:true,groupBindings:[{group:'G',replacement:['Y']},{group:'H',replacement:['Y']}],replacement:['Y']}}])
+ it.each([false,true])('keeps explicit full recovery for a shared last resident with gap=%s',gap=>{
+  const data=fixture([{name:'A',hours:1},{name:'B',hours:4,options:{restInFull:true,groupBindings:[{group:'G',replacement:['Y']},{group:'H',replacement:['Y']}],replacement:['Y']}}],gap)
   data.groupShiftState.H=false
   expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(4))
   data.nowMicros=toMowerMicros(1);releaseFull(data,'A')
   expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(4))
+ })
+ it('does not extend an activated primary gap wait to a shared member and removes its stale latch',()=>{
+  const data=fixture([{name:'A',hours:1},{name:'B',hours:4},{name:'Shared',hours:10,options:{groupBindings:[{group:'G',replacement:['Y']},{group:'H',replacement:['Y']}],replacement:['Y']}}],true)
+  data.groupRecoveryFullMembers.G=['A','B','Shared']
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(4))
+  expect(data.groupRecoveryFullMembers.G).toEqual(['A','B'])
+  data.dorms.find(b=>b.name==='Shared')!.timeMicros=undefined
+  data.nowMicros=toMowerMicros(1);releaseFull(data,'A')
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(4))
+ })
+ it.each([{last:2,expected:1},{last:2.25,expected:1},{last:3,expected:3}])('combines explicit full recovery with the 75-minute primary gap: $last hours',({last,expected})=>{
+  const data=fixture([{name:'Required',hours:1,options:{restInFull:true}},{name:'A',hours:1.5},{name:'B',hours:last}],true)
+  data.groupMoodGapThresholdMinutes=75
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(expected))
+  data.nowMicros=toMowerMicros(1);releaseFull(data,'Required')
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(expected))
  })
  it('isolates projected cycle transitions and resets only on a new actual group cycle',()=>{
   const data=fixture([{name:'A',hours:1},{name:'B',hours:4},{name:'C',hours:4.5}],true)
