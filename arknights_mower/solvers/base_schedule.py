@@ -1467,6 +1467,40 @@ class BaseSchedulerSolver(
             self.task = None
         if not self._product_switching_enabled():
             self._discard_product_switches()
+        if self.task is not None and self.task.type == TaskTypes.SWITCH_PRODUCT:
+            # 到期换班先收敛最终阵容，再由该任务执行前置切产物。
+            # 独立切换仍留在队列，收敛或换班失败不能丢失其执行责任。
+            due = [
+                task
+                for task in self.tasks
+                if task.type
+                in (
+                    TaskTypes.SHIFT_ON,
+                    TaskTypes.SHIFT_OFF,
+                    TaskTypes.EXHAUST_OFF,
+                    TaskTypes.SELF_CORRECTION,
+                    TaskTypes.RE_ORDER,
+                )
+                and task.plan
+                and task.time <= datetime.now()
+                and not getattr(task, "strict_mood_limit", False)
+                and not getattr(task, "exhaust_support", False)
+                and not getattr(task, "product_shift_locked", False)
+                and not getattr(task, "backup_shift_active", False)
+            ]
+            ready = [
+                task for task in due if not getattr(task, "execution_failure", None)
+            ]
+            if ready:
+                self.task = min(ready, key=lambda task: task.time)
+            elif due:
+                rooms = set().union(*(task.plan for task in due))
+                rooms.add(parse_product_task_meta(self.task.meta_data)[0])
+                self._retain_failed_task(
+                    self.task, "等待到期换班确认最终产物", sorted(rooms)
+                )
+                self.skip()
+                return True
         if getattr(self, "_emergency_startup_pending", False):
             if (
                 self.task is not None
@@ -6220,10 +6254,20 @@ class BaseSchedulerSolver(
         baseline = self.op_data.products
         baseline, _ = self._products_after_arrangement({})
         products, projected_plan = self._products_after_arrangement(task.plan)
+        queued = [
+            pending
+            for pending in self.tasks
+            if pending.type == TaskTypes.SWITCH_PRODUCT
+            and pending.time <= datetime.now()
+            and not getattr(pending, "execution_failure", None)
+        ]
+        queued_rooms = {
+            parse_product_task_meta(pending.meta_data)[0] for pending in queued
+        }
         targets = {}
         switches = []
         for room, target in products.items():
-            if target == baseline.get(room):
+            if target == baseline.get(room) and room not in queued_rooms:
                 continue
             room_plan = projected_plan.get(room) or []
             if not room_plan:
@@ -6246,19 +6290,18 @@ class BaseSchedulerSolver(
                     meta_data=product_task_meta(room, target),
                 )
             )
-        if not switches:
-            return
-        task.pending_product_targets = targets
-        logger.info("换班前先切换产物或订单：%s", targets)
-        try:
-            self.switch_base_products(switches, before_arrangement=True)
-        except ProductSwitchDeferred:
-            slots = self._product_dependent_slots(
-                task.plan, targets, baseline, products
-            )
-            self._reserve_deferred_product_shift(task, slots)
-            self._refresh_deferred_product_reservations()
-            raise
+        if switches:
+            task.pending_product_targets = targets
+            logger.info("换班前先切换产物或订单：%s", targets)
+            try:
+                self.switch_base_products(switches, before_arrangement=True)
+            except ProductSwitchDeferred:
+                slots = self._product_dependent_slots(
+                    task.plan, targets, baseline, products
+                )
+                self._reserve_deferred_product_shift(task, slots)
+                self._refresh_deferred_product_reservations()
+                raise
         unfinished = {
             room: target
             for room, target in targets.items()
@@ -6268,7 +6311,20 @@ class BaseSchedulerSolver(
             raise ProductSwitchFailed(
                 f"换班前切换实测未达到目标：{unfinished}", unfinished
             )
-        task.product_switched_before_arrangement = True
+        # 只撤销最终目标已实测满足的到期切换；未完成房间仍保留原任务。
+        settled = {
+            id(pending)
+            for pending in queued
+            for room, _ in (parse_product_task_meta(pending.meta_data),)
+            if room in products
+            and self.op_data.facility_states.get(room, {}).get("product")
+            == products[room]
+        }
+        self.tasks[:] = [
+            pending for pending in self.tasks if id(pending) not in settled
+        ]
+        if switches:
+            task.product_switched_before_arrangement = True
 
     def _refresh_orders_after_product_switch(self):
         """产物和驻员均已变化，废弃旧订单倒计时并重新从游戏读取。"""
