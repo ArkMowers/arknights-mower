@@ -276,7 +276,7 @@ jobs:
           PYTHONUTF8: "1"
         run: python scripts/check_pe_arch.py dist/mower --arch x64
 
-      - name: Verify administrator manifests
+      - name: Verify asInvoker manifests
         shell: bash
         env:
           PYTHONUTF8: "1"
@@ -301,9 +301,9 @@ jobs:
               for manifest in manifests:
                   levels = [node.attrib for node in ElementTree.fromstring(manifest).iter()
                             if node.tag.rsplit("}", 1)[-1] == "requestedExecutionLevel"]
-                  if levels != [{"level": "requireAdministrator", "uiAccess": "false"}]:
-                      raise SystemExit(f"{path}: administrator manifest required, got {levels}")
-              print(f"Administrator manifest verified: {path}")
+                  if levels != [{"level": "asInvoker", "uiAccess": "false"}]:
+                      raise SystemExit(f"{path}: asInvoker manifest required, got {levels}")
+              print(f"asInvoker manifest verified: {path}")
           PY
 
       - name: Package into zip

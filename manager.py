@@ -129,6 +129,9 @@ def run_manager():
 
     if runtime.active_job() and not os.environ.get("MOWER_RESTART_JOB"):
         sys.exit("软件更新或进程操作正在进行，请等待完成后启动多开管理器")
+    from arknights_mower.utils.windows_shortcuts import create_admin_shortcuts
+
+    create_admin_shortcuts()
     exit_if_webview_backend_missing()
     if existing := runtime.unified_managers():
         runtime.send_instance_command(existing[0], "show")

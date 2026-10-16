@@ -134,7 +134,7 @@ def main():
             image,
             "python",
             "-c",
-            "import platform, ssl, cv2, numpy, onnxruntime, rjieba, yamlcore, flask; from pyzbar.pyzbar import decode; assert platform.machine() == 'aarch64'; assert cv2.__version__ == '4.9.0'; print(platform.python_version())",
+            "import platform, ssl, cv2, numpy, onnxruntime, rjieba, yamlcore, flask; from pyzbar.pyzbar import decode; assert platform.machine() == 'aarch64'; assert cv2.__version__ == '4.11.0'; print(platform.python_version())",
         ],
         check=True,
     )

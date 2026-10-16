@@ -40,8 +40,8 @@ jobs:
             update:
               # Updater, shared runtime helpers and their regression tests.
               - 'arknights_mower/{utils,views,tests}/**/*{update,resource,process,network,proxy,version,download,source,backup}*.py'
-              - 'arknights_mower/utils/{config/**,path.py,log.py,csv_utils.py,zip_safe.py,git_rev.py}'
-              - 'arknights_mower/tests/{config,path,log,csv_utils,zip_safe,git_rev}_tests.py'
+              - 'arknights_mower/utils/{config/**,path.py,log.py,csv_utils.py,zip_safe.py,git_rev.py,windows_shortcuts.py}'
+              - 'arknights_mower/tests/{config,path,log,csv_utils,zip_safe,git_rev,windows_shortcuts}_tests.py'
               # Furniture safety and native OCR run on all three desktop platforms.
               - 'arknights_mower/{solvers,utils,tests}/furniture*.py'
               - 'arknights_mower/solvers/base_schedule.py'
@@ -269,6 +269,11 @@ jobs:
             arknights_mower.tests.software_update_progress_tests \
             arknights_mower.tests.process_control_tests \
             arknights_mower.tests.software_update_transaction_tests
+      - name: Verify Windows administrator launch shortcuts
+        if: runner.os == 'Windows'
+        env:
+          PYTHONIOENCODING: utf-8
+        run: python -m unittest -v arknights_mower.tests.windows_shortcuts_tests
       - name: Verify furniture, OCR, scheduling, screenshot and device recovery on each OS
         shell: bash
         env:

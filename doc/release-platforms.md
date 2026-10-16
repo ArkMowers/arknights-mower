@@ -193,7 +193,7 @@ workflow 不读取代码签名 secrets。
 ## Windows ARM64
 
 当前平台矩阵不包含 Windows ARM64。仓库锁定的
-[`opencv-python==4.9.0.80`](https://pypi.org/project/opencv-python/4.9.0.80/)
+[`opencv-python==4.11.0.86`](https://pypi.org/project/opencv-python/4.11.0.86/)
 和 [`rjieba==0.2.1`](https://pypi.org/project/rjieba/0.2.1/) 没有
 `win_arm64` wheel，现有依赖安装步骤无法产出完整的 Windows ARM64 构建。
 

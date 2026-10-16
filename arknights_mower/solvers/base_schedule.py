@@ -587,6 +587,14 @@ class BaseSchedulerSolver(
     def _resume_failed_tasks(self):
         for task in self.tasks:
             failure = getattr(task, "execution_failure", None)
+            if failure and getattr(task, "process_recovery_fia_wait", False):
+                fia = self.op_data.operators.get("菲亚梅塔")
+                if (
+                    not has_resting_mood(fia)
+                    or fia.mood < 24
+                    or getattr(fia, "mood_is_prediction", False)
+                ):
+                    continue
             if failure:
                 failure["snapshot"].setdefault(
                     "reservations",
@@ -616,6 +624,7 @@ class BaseSchedulerSolver(
                 # 解除派发暂停后，剩余执行仍免于普通过期清理。
                 task.execution_retained = True
                 del task.execution_failure
+                task.__dict__.pop("process_recovery_fia_wait", None)
                 logger.info("相关实测或安排已更新，恢复原任务：%s", task)
 
     def run(self) -> None:
@@ -2497,7 +2506,7 @@ class BaseSchedulerSolver(
                 )
                 self._emergency_save()
 
-    def _read_room_mood(self, room, *, force_mood=False):
+    def _read_room_mood(self, room, *, force_mood=False, strict_observation=False):
         """实读普通房间的驻员与心情，清除已离开房间的缓存驻员。"""
         mood_data = self.get_agent_from_room(
             room,
@@ -2505,6 +2514,7 @@ class BaseSchedulerSolver(
             if room in self.op_data.true_exhaust_room
             else None,
             **({"force_mood": True} if force_mood else {}),
+            **({"strict_observation": True} if strict_observation else {}),
         )
         mood_info = [
             f"干员: '{item['agent']}', 心情: {round(item['mood'], 3)}"
@@ -9922,6 +9932,7 @@ class BaseSchedulerSolver(
         *,
         departing_plan=None,
         force_mood=False,
+        strict_observation=False,
     ):
         """读取实际驻员；姓名未决槽位标记 observed=False，不据此确认离岗。"""
         # 只观察真实读房；初始化试住和肥鸭临时换位不产生新的休息周期。
@@ -10035,6 +10046,10 @@ class BaseSchedulerSolver(
             observation_complete = observation_complete and slot_observed
             if not slot_observed:
                 data["observed"] = False
+            if strict_observation and not slot_observed:
+                raise RecognizeError(
+                    f"房间 {room} 第 {i + 1} 槽位未核实，不能恢复进程崩溃后的调度"
+                )
             _mood = 24
             # 如果房间不为空
             update_time = False
@@ -10076,6 +10091,12 @@ class BaseSchedulerSolver(
                         read_time_index.append(i)
                 if should_read_mood:
                     _mood = self.read_accurate_mood(cropimg(self.recog.gray, mood_p[i]))
+                    if strict_observation and (
+                        not isinstance(_mood, (int, float))
+                        or not math.isfinite(_mood)
+                        or not 0 <= _mood <= 24
+                    ):
+                        raise RecognizeError(f"房间 {room} 第 {i + 1} 槽位心情未核实")
                     update_time = True
                 else:
                     _mood = self.op_data.operators[_name].current_mood()

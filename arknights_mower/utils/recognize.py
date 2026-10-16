@@ -799,7 +799,6 @@ class Recognizer:
             "infra_overview_in": (64, 705),
             # "infra_todo": (13, 1013),
             "loading2": (630, 240),
-            "loading7": (106, 635),
             "login_account": (622, 703),
             # "login_awake": (888, 743),
             "login_connecting": (760, 881),
@@ -922,6 +921,8 @@ class Recognizer:
             "loading2": (630, 240),
             "loading3": (1681, 1000),
             "loading4": (828, 429),
+            # 启动画面的健康提示随 Logo 淡入淡出，按固定位置匹配文字形状。
+            "loading7": (106, 635),
             "main_theme": (283, 945),
             "main_theme_small": (321, 973),
             "materiel_ico": (892, 61),

@@ -1,6 +1,6 @@
 ---
 title: Windows Desktop Elevation
-status: implemented
+status: archived
 category: feature
 date: 2026-10-11
 ---
@@ -8,6 +8,8 @@ date: 2026-10-11
 # Windows Desktop Elevation
 
 [中文](2026-10-11-windows-desktop-elevation.zh.md)
+
+This historical decision is superseded by [Windows desktop launcher permissions](../../implemented/feature/2026-10-16-windows-desktop-launcher-permissions.md): mandatory elevation prevents users without administrator credentials from starting Mower. The rationale and verification below describe the earlier implementation.
 
 The simplification audit finds two Windows PyInstaller executables and an existing direct process launch in `Api.start`. Native executable manifests provide the required startup consent without another relaunch helper, per-instance shell elevation or persisted permission setting. No existing decision covers this elevation policy. The domain concepts retain their existing meanings and need no glossary changes.
 
