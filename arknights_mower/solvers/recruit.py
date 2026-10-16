@@ -325,34 +325,37 @@ class RecruitSolver(SceneGraphSolver):
             self.scene_graph_navigation(Scene.RECRUIT_MAIN)
 
     def recruit_result(self):
-        try:
-            # 存在读完一次没退完再读一次
-            if str(self.recruit_index) in self.result_agent.keys():
-                self.tap((950, 150))
-                return
+        if self.recruit_index in self.result_agent:
+            self.tap((950, 150))
+            return
 
+        for attempt in range(5):
             job_pt = None
             for i in job_list:
                 if job_pt := self.find(i):
                     break
+            if job_pt is not None:
+                break
+            if attempt < 4:
+                self.sleep(1)
+        else:
+            logger.warning("公招干员职业图标连续5次未识别，结束本次公招")
+            self.recog.update()
+            return True
 
-            img = cropimg(self.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
-            img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
+        img = cropimg(self.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
+        img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
 
-            score = {}
-            for id in recruit_res_template:
-                res = recruit_res_template[id]
-                result = cv2.matchTemplate(img, res, cv2.TM_CCORR_NORMED, res)
-                _, max_val, _, _ = cv2.minMaxLoc(result)
-                score[id] = max_val
-            self.result_agent[self.recruit_index] = recruit_agent[
-                max(score, key=score.get)
-            ]["name"]
-
-        except Exception as e:
-            logger.exception(f"公招开包异常:{e}")
-        finally:
-            self.tap((500, 500))
+        score = {}
+        for id in recruit_res_template:
+            res = recruit_res_template[id]
+            result = cv2.matchTemplate(img, res, cv2.TM_CCORR_NORMED, res)
+            _, max_val, _, _ = cv2.minMaxLoc(result)
+            score[id] = max_val
+        self.result_agent[self.recruit_index] = recruit_agent[
+            max(score, key=score.get)
+        ]["name"]
+        self.tap((500, 500))
 
     def recruit_tags(self, tags):
         tem_res = self.recruit_cal(sorted(tags))
