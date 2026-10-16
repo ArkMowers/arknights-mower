@@ -72,6 +72,8 @@ class TestUnscheduledTrainingRoom(unittest.TestCase):
                     solver.tasks = []
                     solver.task = None
                     solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
+                    solver.train_scene.return_value = Scene.INFRA_DETAILS
+                    solver.detect_room.return_value = "train"
                     solver.detect_product_complete.return_value = False
                     solver.find.return_value = empty
                     solver.read_screen.side_effect = ["暴雨", "号角"]
