@@ -17,7 +17,9 @@ LMD uses the shared OCR engine on the complete quantity band. A single result wi
 
 A scan confirms the depot scene and a stable Capture Frame before selecting a category and again before reading that category. Recognition uses the same frame that passed those checks. A game restart during scene waiting, a scene mismatch or a stability timeout ends the current scan with failure. Each invocation starts with an empty result and runs once; failure does not restart the complete scan in the solver loop.
 
-Failed scans leave the previous scan CSV, scan timestamp and merged history unchanged and skip the post-scan mastery dispatch. A nonempty category with no confirmed quantities cannot produce an empty successful scan; an empty result is accepted only when both categories are explicitly recognized as empty. Skland synchronization remains a separate observation and retains its existing inventory updates. Existing manual and periodic scan entry points keep their scheduling behavior; scan failure creates no additional retry task or timer.
+Scene checks, frame stability checks and the check for a nonempty scan with no confirmed quantities all precede result writes. Failures at these checks leave the previous scan CSV, scan timestamp and merged history unchanged and skip the post-scan mastery dispatch. A nonempty category with no confirmed quantities cannot produce an empty successful scan; an empty result is accepted only when both categories are explicitly recognized as empty.
+
+After successful confirmation, the scan CSV, database and merged history are written separately; a later persistence error can leave earlier writes in place. Skland synchronization remains a separate observation and retains its existing inventory updates. Existing manual and periodic scan entry points keep their scheduling behavior; scan failure creates no additional retry task or timer.
 
 ## 4. Verification
 
