@@ -38,11 +38,11 @@ def clue_card_number(image):
 
 class ClueGiftMixin:
     def _read_placed_clue_numbers(self):
-        """在离开线索板前，记录确实已摆放的编号。"""
+        """读取确实已摆放的编号；取帧后已离开线索板时返回 None。"""
         self.wait_product_complete()
         self.recog.update()
         if self.scene() != Scene.INFRA_CONFIDENTIAL:
-            return frozenset()
+            return None
         placed = set()
         for number, (x, y) in BOARD_CLUE_ORIGINS.items():
             # 卡片位置存在数像素偏移，在各自槽位内留出模板搜索余量。
