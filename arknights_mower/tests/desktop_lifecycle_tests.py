@@ -252,6 +252,7 @@ class DesktopStartupTests(unittest.TestCase):
         token="",
         manager_port="0",
         restart_port="58100",
+        updates_enabled=True,
     ):
         import server as task_server
         import webview_ui
@@ -263,6 +264,7 @@ class DesktopStartupTests(unittest.TestCase):
             config.conf.start_automatically = automatic
             config.conf.resource_update.enable = resource
             config.conf.resource_update.auto_update = resource
+            config.updates_enabled = updates_enabled
             config.stop_mower = threading.Event()
             server = Mock(app=Flask(__name__))
             server.http_start = Mock()
@@ -436,6 +438,14 @@ class DesktopStartupTests(unittest.TestCase):
         events, server = self.launch(automatic=False, resource=True)
         self.assertEqual(events, ["check resource", "install resource"])
         server.start.assert_not_called()
+
+    def test_disabled_updates_preserve_automatic_task_start_without_resource_maintenance(
+        self,
+    ):
+        events, server = self.launch(resource=True, updates_enabled=False)
+        self.assertEqual(events, [("start", "0")])
+        server.get_resource_version.assert_not_called()
+        server.install_resource.assert_not_called()
 
     def test_restart_policy_overrides_the_saved_autostart_option(self):
         for automatic in (False, True):

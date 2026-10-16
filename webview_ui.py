@@ -462,9 +462,15 @@ def webview_window(
                     dialog_type=webview.OPEN_DIALOG,
                 )
             elif msg == "folder":
-                result = window.create_file_dialog(
-                    dialog_type=webview.FOLDER_DIALOG,
-                )
+                from arknights_mower.utils.folder_dialog import choose_directory
+
+                try:
+                    result = choose_directory(window)
+                except Exception:
+                    from arknights_mower.utils.log import logger
+
+                    logger.exception("打开目录选择窗口失败")
+                    result = None
             if result is None:
                 result = ""
             elif not isinstance(result, str):
@@ -768,6 +774,7 @@ def _run_desktop():
         port=port,
         listen_host=host,
         token_hash=sha256(runtime_token.encode()).hexdigest(),
+        updates_enabled=config.updates_enabled,
     )
     registration.publish()
     if splash_queue is not None:
@@ -874,9 +881,14 @@ def _run_desktop():
 
     from arknights_mower.utils.software_update import request_auto_check
 
-    request_auto_check()
+    if config.updates_enabled:
+        request_auto_check()
 
-    auto_resource = conf.resource_update.enable and conf.resource_update.auto_update
+    auto_resource = (
+        config.updates_enabled
+        and conf.resource_update.enable
+        and conf.resource_update.auto_update
+    )
 
     def startup_cancelled():
         return (

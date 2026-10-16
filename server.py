@@ -74,6 +74,7 @@ mimetypes.add_type("image/webp", ".webp")
 app = Flask(__name__, static_folder="ui/dist", static_url_path="")
 app.config["SOCK_SERVER_OPTIONS"] = {"ping_interval": 25, "max_message_size": 64 * 1024}
 app.config["WEBVIEW_LOCAL_ONLY_NO_TOKEN"] = False
+app.config["UPDATES_ENABLED"] = config.updates_enabled
 app.config["AI_ASSISTANT_ENABLED"] = config.conf.assistant_enabled_for_launch(
     managed=os.environ.get("MOWER_MANAGED") == "1"
 )
@@ -825,6 +826,29 @@ def vary_frontend_response(response):
 
 
 @app.before_request
+def authorize_instance_updates():
+    if app.config["UPDATES_ENABLED"]:
+        return None
+    if (
+        request.path.startswith(
+            (
+                "/software-update/",
+                "/maa-update/",
+                "/maa-resource-update/",
+                "/resource-update/",
+            )
+        )
+        or request.path in {"/resource/install", "/resource/status"}
+        or (request.path == "/resource-version" and request.args.get("local") != "1")
+    ):
+        return {
+            "ok": False,
+            "error": "updates_disabled",
+            "message": "管理员未开启更新功能",
+        }, 403
+
+
+@app.before_request
 def serialize_configuration_requests():
     # Export/restore must not interleave with form saves, plan edits or startup.
     if (
@@ -1296,6 +1320,13 @@ def load_config():
                 "message": "配置必须是 JSON 对象",
             }, 400
         req = dict(payload)
+        if "updates_enabled" in req:
+            if req["updates_enabled"] != config.conf.updates_enabled:
+                return {
+                    "error": "manager_owned_setting",
+                    "message": "请在实例退出后通过多开管理器修改允许更新开关",
+                }, 403
+            req.pop("updates_enabled")
         if "ai_assistant_enabled" in req:
             if req["ai_assistant_enabled"] != config.conf.ai_assistant_enabled:
                 return {
@@ -1655,6 +1686,7 @@ def get_status():
     with scheduled_start_lock:
         start_at = scheduled_start_at.isoformat() if scheduled_start_at else None
     response = {
+        "updates_enabled": app.config["UPDATES_ENABLED"],
         "ai_assistant_enabled": app.config["AI_ASSISTANT_ENABLED"],
         "desktop_startup_handled": bool(app.config.get("DESKTOP_STARTUP_HANDLED")),
         "auto_start_handled": bool(

@@ -89,6 +89,17 @@ describe('worker status', () => {
     expect(store.status_label).toBe('已停止')
   })
 
+  it.each([true, false, null, undefined, 'true', 1])(
+    'reads update authorization %s without accepting non-booleans',
+    async (enabled) => {
+      axios.get.mockResolvedValue({
+        data: { status: 'stopped', plan_condition: [], updates_enabled: enabled }
+      })
+      await store.get_running()
+      expect(store.updates_enabled).toBe(typeof enabled === 'boolean' ? enabled : null)
+    }
+  )
+
   it('reads desktop startup ownership while stopped without starting tasks', async () => {
     axios.get.mockResolvedValue({
       data: {

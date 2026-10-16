@@ -267,9 +267,18 @@ class ManagerAppTests(unittest.TestCase):
 
 
 class ManagerFolderDialogTests(unittest.TestCase):
+    def test_windows_uses_shared_modern_folder_picker(self):
+        window = mock.Mock()
+        with (
+            mock.patch("manager.sys.platform", "win32"),
+            mock.patch("manager.choose_directory", return_value="C:\\data") as choose,
+        ):
+            self.assertEqual(choose_instance_directory(window, "C:\\old"), "C:\\data")
+        choose.assert_called_once_with(window, "C:\\old", title="选择实例保存目录")
+
     def test_other_platforms_keep_standard_folder_dialog(self):
         window = mock.Mock()
-        with mock.patch("manager.sys.platform", "win32"):
+        with mock.patch("manager.sys.platform", "linux"):
             self.assertEqual(
                 choose_instance_directory(window, "/data"),
                 window.create_file_dialog.return_value,

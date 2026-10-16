@@ -22,6 +22,7 @@ describe('manager instance controls', () => {
     editable: true,
     can_start: true,
     ai_assistant_enabled: false,
+    updates_enabled: false,
     can_stop: false
   })
 
@@ -422,11 +423,78 @@ describe('manager instance controls', () => {
     })
     expect(component.batchChanges.value).toEqual([])
     expect(component.batchDraft.value).toEqual([
-      { token: '', port: null, ai_assistant_enabled: false }
+      { token: '', port: null, ai_assistant_enabled: false, updates_enabled: false }
     ])
     await component.save()
     expect(api.update_all_settings).not.toHaveBeenCalled()
     expect(api.update_settings).not.toHaveBeenCalled()
+  })
+
+  it('saves update permission separately without triggering the AI notice', async () => {
+    await mount()
+    component.edit(0, 'settings')
+    component.draft.value.updates_enabled = true
+    expect(component.assistantConfirmation.value).toBeNull()
+    expect(api.update_settings).not.toHaveBeenCalled()
+    await component.save()
+    expect(api.update_settings).toHaveBeenCalledExactlyOnceWith(
+      0,
+      { token: '', port: null, updates_enabled: true },
+      { name: 'first', path: '/first' }
+    )
+  })
+
+  it.each([true, false])(
+    'does not overwrite an untouched update choice %s after external changes',
+    async (original) => {
+      rows[0].updates_enabled = original
+      await mount()
+      component.edit(0, 'settings')
+      rows[0].updates_enabled = !original
+      component.draft.value.token = 'edited'
+      await component.refresh()
+      await component.save()
+      expect(api.update_settings.mock.calls[0][1]).toEqual({ token: 'edited', port: null })
+    }
+  )
+
+  it('changes all editable update drafts and saves only changed cells', async () => {
+    rows.push(
+      { ...stopped(), name: 'second', path: '/second' },
+      { ...stopped(), name: 'live', path: '/live', editable: false, state: 'running' },
+      { ...stopped(), name: 'missing', path: '' }
+    )
+    await mount()
+    component.editBatch()
+    component.changeBatchUpdates(true)
+    expect(component.batchDraft.value.map((row) => row.updates_enabled)).toEqual([
+      true,
+      true,
+      false,
+      false
+    ])
+    expect(component.batchDraft.value.every((row) => row.ai_assistant_enabled === false)).toBe(true)
+    expect(component.assistantConfirmation.value).toBeNull()
+    expect(api.update_all_settings).not.toHaveBeenCalled()
+    component.changeBatchUpdates(false, 1)
+    await component.save()
+    expect(api.update_all_settings).toHaveBeenCalledExactlyOnceWith(
+      [{ idx: 0, settings: { updates_enabled: true } }],
+      rows.map(({ name, path }) => ({ name, path }))
+    )
+  })
+
+  it('can cancel a bulk update choice or turn it all off before saving', async () => {
+    rows[0].updates_enabled = true
+    await mount()
+    component.editBatch()
+    component.changeBatchUpdates(false)
+    expect(component.batchChanges.value).toEqual([{ idx: 0, settings: { updates_enabled: false } }])
+    component.editing.value = null
+    component.editBatch()
+    expect(component.batchDraft.value[0].updates_enabled).toBe(true)
+    expect(component.batchChanges.value).toEqual([])
+    expect(api.update_all_settings).not.toHaveBeenCalled()
   })
 
   it('requires one reading notice for a batch, then saves all confirmed fields once', async () => {
