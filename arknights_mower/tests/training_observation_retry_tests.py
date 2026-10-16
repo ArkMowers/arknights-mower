@@ -204,7 +204,7 @@ def test_failed_scan_keeps_previously_confirmed_training_protection(
     solver._train_protected = Mock(return_value=False)
     read = Mock(
         side_effect=ValueError("unreadable") if failure == "exception" else None,
-        return_value=(reader.RoomState("empty"), []),
+        return_value=(reader.RoomState("empty", slots_read=True), []),
     )
     monkeypatch.setattr(reader, "read_room_state", read)
 
