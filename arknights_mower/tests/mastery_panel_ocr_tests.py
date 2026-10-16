@@ -66,18 +66,17 @@ def test_real_device_panel_passes_identity_check(monkeypatch):
     from pathlib import Path
     from types import MethodType
 
-    from rapidocr_onnxruntime import RapidOCR
-
     from arknights_mower.solvers.base_mixin import BaseMixin
     from arknights_mower.utils import rapidocr
     from arknights_mower.utils.image import loadimg
+    from arknights_mower.utils.rapidocr import create_engine
 
     # Keep only the panel text from the device screenshot. Exercise the real
     # preprocessing and OCR together, without depending on the original misread.
     image = np.zeros((1080, 1920, 3), dtype=np.uint8)
     path = Path(__file__).with_name("fixtures") / "mastery_panel_hairin.png"
     image[930:972, 235:755] = loadimg(str(path))
-    monkeypatch.setattr(rapidocr, "engine", RapidOCR(text_score=0.3))
+    monkeypatch.setattr(rapidocr, "engine", create_engine())
     solver = MagicMock()
     solver.read_screen = MethodType(BaseMixin.read_screen, solver)
     panel = reader._read_panel_text(solver, image)
@@ -93,20 +92,19 @@ def test_orchid_panel_ocr_and_template_in_both_training_states(monkeypatch, stat
     from pathlib import Path
     from types import MethodType
 
-    from rapidocr_onnxruntime import RapidOCR
-
     from arknights_mower.solvers.base_mixin import BaseMixin
     from arknights_mower.utils import rapidocr
     from arknights_mower.utils.image import loadimg
     from arknights_mower.utils.mastery_panel_template import recognize_skill
     from arknights_mower.utils.mastery_recommendation import get_skill_data
+    from arknights_mower.utils.rapidocr import create_engine
 
     card = loadimg(
         str(Path(__file__).with_name("fixtures") / f"mastery_card_orchid_{state}.png")
     )
     image = np.zeros((1080, 1920, 3), dtype=np.uint8)
     image[925:1020, 220:780] = card
-    monkeypatch.setattr(rapidocr, "engine", RapidOCR(text_score=0.3))
+    monkeypatch.setattr(rapidocr, "engine", create_engine())
     solver = MagicMock()
     solver.read_screen = MethodType(BaseMixin.read_screen, solver)
 

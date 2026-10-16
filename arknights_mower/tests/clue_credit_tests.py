@@ -9,7 +9,8 @@ from unittest.mock import MagicMock
 import cv2
 import numpy as np
 import pytest
-from rapidocr_onnxruntime import RapidOCR
+
+from arknights_mower.utils.rapidocr import create_engine
 
 with pytest.MonkeyPatch.context() as import_context:
     import_context.setitem(sys.modules, "arknights_mower.utils.skland", MagicMock())
@@ -1105,7 +1106,7 @@ def test_access_record_real_ocr_on_screenshots(monkeypatch, filename, resize, ex
     if resize:
         # 视频截帧并非标准画面帧；额外验证缩放到运行时尺寸后的识别。
         frame = cv2.resize(frame, (1920, 1080), interpolation=cv2.INTER_AREA)
-    monkeypatch.setattr(rapidocr, "engine", RapidOCR(text_score=0.3))
+    monkeypatch.setattr(rapidocr, "engine", create_engine())
     scheduler = object.__new__(base_schedule.BaseSchedulerSolver)
     scheduler.recog = SimpleNamespace(img=frame)
 
