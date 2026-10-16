@@ -12,6 +12,15 @@ LMD uses the shared OCR engine on the complete quantity band. A single result wi
 
 - **[INV-REC-07] Complete LMD Amount**: Depot LMD quantities retain the complete recognized amount and its 万 or 亿 multiplier; malformed or low-confidence OCR returns an unconfirmed count without digit-template fallback.
 
+<a id="confirmed-depot-scan"></a>
+### Confirmed Depot Scan
+
+A scan confirms the depot scene and a stable Capture Frame before selecting a category and again before reading that category. Recognition uses the same frame that passed those checks. A game restart during scene waiting, a scene mismatch or a stability timeout ends the current scan with failure. Each invocation starts with an empty result and runs once; failure does not restart the complete scan in the solver loop.
+
+Failed scans leave the previous scan CSV, scan timestamp and merged history unchanged and skip the post-scan mastery dispatch. A nonempty category with no confirmed quantities cannot produce an empty successful scan; an empty result is accepted only when both categories are explicitly recognized as empty. Skland synchronization remains a separate observation and retains its existing inventory updates. Existing manual and periodic scan entry points keep their scheduling behavior; scan failure creates no additional retry task or timer.
+
 ## 4. Verification
 
 `pytest arknights_mower/tests/depot_quantity_tests.py arknights_mower/tests/recognition_model_tests.py` covers conversion, rejection and reader selection offline. OCR accuracy on game pixels requires recorded quantity bands. The [decision](../../.agents/notes/implemented/bug-fix/2026-10-13-depot-lmd-units.md) records the template limitation and existing engine reuse.
+
+`pytest arknights_mower/tests/depot_scene_tests.py` exercises the scan and its scheduling caller offline, covering restart interruption, scene and stability failures, preservation of prior snapshots, successful scans and explicitly empty categories.

@@ -3,7 +3,6 @@ import lzma
 import os
 import pickle
 import re
-import time
 import unicodedata
 from datetime import datetime
 from decimal import Decimal
@@ -183,22 +182,33 @@ class depotREC(SceneGraphSolver):
         )
         return [predicted_label, 物品数字]
 
-    def run(self) -> None:
+    def run(self) -> bool:
         logger.info("Start: 仓库扫描")
-        super().run()
+        self.check_current_focus()
+        return self.transition()
+
+    def _wait_for_depot_ready(self) -> bool:
+        if not self.wait_for_scene_stable(Scene.DEPOT):
+            logger.warning("仓库扫描: 未能进入仓库，本次扫描失败")
+            return False
+        if not self.wait_for_scene_stable(timeout_seconds=5, interval_seconds=0.2):
+            logger.warning("仓库扫描: 仓库画面未稳定，本次扫描失败")
+            return False
+        if self.scene() != Scene.DEPOT:
+            logger.warning("仓库扫描: 已离开仓库，本次扫描失败")
+            return False
+        return True
 
     def transition(self) -> bool:
+        self.结果字典 = {}
         logger.info("仓库扫描: 回到桌面")
         self.back_to_index()
         if self.scene() == Scene.INDEX:
             self.tap_index_element("warehouse")
             logger.info("仓库扫描: 从主界面点击仓库界面")
 
-            # 进仓库后等界面就绪再切 tab：先确认识别到仓库场景，再等画面稳定（物品网格渲染完）。
-            # 否则持续加载期间点击 tab 会被吞掉，导致在「全部物品」视图上误识别。
-            if not self.wait_for_scene_stable(Scene.DEPOT):
-                logger.warning("仓库扫描: 未识别到仓库场景，继续等待画面稳定")
-            self.wait_for_scene_stable(timeout_seconds=5, interval_seconds=0.2)
+            if not self._wait_for_depot_ready():
+                return False
 
             starttime = datetime.now()
             任务组 = [
@@ -206,16 +216,22 @@ class depotREC(SceneGraphSolver):
                 (1298, self.knn模型_NORMAL, "基础物品"),
             ]
 
+            有非空分类 = False
             for 任务 in 任务组:
                 self.tap((任务[0], 70))
-                time.sleep(0.5)
+                if not self._wait_for_depot_ready():
+                    return False
                 if not self.find("depot_empty"):
+                    有非空分类 = True
                     self.分类扫描(任务[1])
                     logger.info(
                         f"仓库扫描: {任务[2]}识别，识别用时{datetime.now() - starttime}"
                     )
                 else:
                     logger.info("仓库扫描: 这个分类下没有物品")
+            if 有非空分类 and not self.结果字典:
+                logger.warning("仓库扫描: 未确认任何物品数量，本次扫描失败")
+                return False
             logger.info(f"仓库扫描: {self.结果字典}")
             扫描时刻 = int(datetime.now().timestamp())
             result = [
@@ -228,14 +244,13 @@ class depotREC(SceneGraphSolver):
             with open(self.仓库输出, "a", encoding="utf-8", newline="") as f:
                 csv.writer(f).writerow(result)
         else:
-            扫描时刻 = None
-            self.back_to_index()
+            logger.warning("仓库扫描: 未能返回首页，本次扫描失败")
+            return False
         ## 读取的时候会存入数据库；扫描成功时顺手记一条完整库存快照（材料就靠它进历史），
         ## 用同一个时间戳，读取端才能把两条记录并成一条完整快照。
         depot.读取仓库(记录快照时刻=扫描时刻)
-        if 扫描时刻 is not None:
-            # 保留条数由设置决定（0 = 不清理）；放在这里是因为一次扫描才写一次文件。
-            depot.清理历史()
+        # 保留条数由设置决定（0 = 不清理）；放在这里是因为一次扫描才写一次文件。
+        depot.清理历史()
         return True
 
     def 对比截图(self, image1, image2):
@@ -252,7 +267,6 @@ class depotREC(SceneGraphSolver):
         旧的截图 = self.recog.img
         旧的截图 = 旧的截图[140:1000, :]
         截图列表.append(旧的截图)
-        self.recog.update()
         拼接好的图片 = 截图列表[0]
         切图列表 = self.切图主程序(拼接好的图片)
         logger.info(f"仓库扫描: 需要识别{len(切图列表)}个物品")

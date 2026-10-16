@@ -904,7 +904,8 @@ class BaseSolver:
                 if (scene := self.scene()) == target_scene:
                     return True
                 if scene in self.waiting_scene:
-                    self.waiting_solver()
+                    if not self.waiting_solver():
+                        return False
                 else:
                     self.sleep(interval)
             return False
