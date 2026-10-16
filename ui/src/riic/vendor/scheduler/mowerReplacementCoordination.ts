@@ -152,6 +152,6 @@ export function mowerReplacementReservations(data:MowerSchedulingData,tasks:read
 /** Another committed shift can satisfy a retained request before its own task resumes. */
 export function mowerCoordinationRequestFulfilled(data:MowerSchedulingData,names:readonly string[]):boolean {
  const requested=[...new Set(names.flatMap(name=>{const op=data.operators[name];return op?.group?data.shiftGroupMembers(op.group):op?[name]:[]}))]
- const anchors=requested.map(name=>data.operators[name]!).filter(op=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&!op.multiGroup)
+ const anchors=requested.map(name=>data.operators[name]!).filter(op=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&(!op.multiGroup||op.independentRest))
  return anchors.length>0&&anchors.every(op=>op.isResting()||data.isStandby(op.name)||!op.currentRoom&&hasObservedFullMood(op))
 }

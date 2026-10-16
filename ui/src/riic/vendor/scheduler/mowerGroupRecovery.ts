@@ -2,9 +2,9 @@ import {hasObservedFullMood,type MowerOperatorState} from './mowerOperatorState'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {toMowerMicros} from './mowerTaskQueue'
 
-/** Work primaries participating in group recovery, excluding standby. */
+/** Work primaries participating in group recovery, excluding standby and personal rest. */
 export function mowerGroupRecoveryWorkers(data:MowerSchedulingData,group:string):MowerOperatorState[]{
- return data.shiftGroupMembers(group).map(name=>data.operators[name]!).filter(op=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&!data.canStandby(op)&&(op.isResting()||!op.currentRoom))
+ return data.shiftGroupMembers(group).map(name=>data.operators[name]!).filter(op=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&!op.independentRest&&!data.canStandby(op)&&(op.isResting()||!op.currentRoom))
 }
 function completedAt(data:MowerSchedulingData,op:MowerOperatorState):number|undefined {
  if(hasObservedFullMood(op))return data.nowMicros

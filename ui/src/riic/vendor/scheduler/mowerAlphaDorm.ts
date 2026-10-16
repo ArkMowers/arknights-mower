@@ -52,10 +52,10 @@ export function alphaRestoreDisplaced(data:MowerSchedulingData,previous:Map<stri
  for(const [position,name] of previous){
   if(!name||name===current.get(position)||retained.has(name))continue
   const op=data.operators[name];if(!op?.isHigh()||!data.plan[op.room])continue
-  if(op.multiGroup||op.group&&!data.isGroupShiftAnchor(op))continue
+  if(op.multiGroup&&!op.independentRest||op.group&&!data.isGroupShiftAnchor(op))continue
   const members=op.group?data.shiftGroupMembers(op.group):[name],completed=!!op.group&&hasRestingMood(op,data.nowMicros)&&restingMood(op,data.nowMicros)>=op.upperLimit
   if((completed||data.canStandby(op))&&Object.values(data.operators).some(anchor=>retained.has(anchor.name)&&data.isGroupShiftAnchor(anchor)&&(data.canStandby(op)&&alphaRestingTier(data,anchor.name)<=3||!data.canStandby(anchor)&&!(hasRestingMood(anchor,data.nowMicros)&&restingMood(anchor,data.nowMicros)>=anchor.upperLimit))&&(!op.group||members.includes(anchor.name))))continue
-  for(const member of members)recalled.add(member)
+  for(const member of members)if(member===name||!data.operators[member]!.independentRest)recalled.add(member)
  }
  const transitions=mowerArrangementGroupTransitions(data,plan)
  for(const name of recalled){const op=data.operators[name]!;if(op.group&&!op.multiGroup)transitions[op.group]=false}

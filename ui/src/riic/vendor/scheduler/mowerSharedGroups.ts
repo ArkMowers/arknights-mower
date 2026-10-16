@@ -16,7 +16,7 @@ export function mowerArrangementGroupTransitions(data:MowerSchedulingData,plan:M
  return transitions
 }
 export function mowerRestingBindingGroups(data:MowerSchedulingData,op:MowerOperatorState,transitions:MowerGroupTransitions={}):string[]{
- return op.groupBindings.filter(binding=>transitions[binding.group]??data.groupIsResting(binding.group)).map(binding=>binding.group)
+ return op.groupBindings.filter(binding=>binding.group&&(transitions[binding.group]??data.groupIsResting(binding.group))).map(binding=>binding.group)
 }
 export function mowerSharedReplacements(op:MowerOperatorState,groups:string[]):string[]{
  return groups.length?op.replacementsForGroup(groups[0]!).filter(name=>groups.slice(1).every(group=>op.replacementsForGroup(group).includes(name))):[...op.replacement]
@@ -31,6 +31,7 @@ export function commitMowerGroupShifts(data:MowerSchedulingData,transitions:Mowe
  for(const [group,resting] of Object.entries(transitions))if(data.groupShiftState[group]!==resting)delete data.groupRecoveryFullMembers[group]
  Object.assign(data.groupShiftState,transitions)
  for(const op of Object.values(data.operators))if(op.multiGroup){
+  if(op.independentRest){op.group='';op.replacement=[...op.replacementsForGroup('')];continue}
   const resting=mowerRestingBindingGroups(data,op)
   if(resting.length){op.group=resting.includes(op.group)?op.group:resting[0]!;op.replacement=[...op.replacementsForGroup(op.group)]}
  }
@@ -59,7 +60,9 @@ export function normalizeMowerSharedArrangement(data:MowerSchedulingData,plan:Mo
  const changes:Record<string,string>={},options:Record<string,string[]>={}
  for(const op of followers){
   const groups=mowerRestingBindingGroups(data,op,transitions),target=plan[op.room]?.[op.index],actual=data.currentOperator(op.room,op.index)
-  if(!groups.length){if(op.groupBindings.some(binding=>binding.group in transitions))changes[op.name]=op.name;continue}
+  const bindingTransition=op.groupBindings.some(binding=>!!binding.group&&binding.group in transitions)
+  const personalRest=op.independentRest&&(op.isResting()||!!data.getDormByName(op.name))&&(bindingTransition||target!==op.name)
+  if(!groups.length&&!personalRest){if(bindingTransition)changes[op.name]=op.name;continue}
   const candidates=mowerSharedReplacements(op,groups)
   if(!candidates.length)return false
   if(candidates.includes('Free')&&op.room.startsWith('dorm')){

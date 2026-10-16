@@ -84,7 +84,9 @@ function generateAlphaDormTasks(batches:MowerDormBatch[],data:MowerSchedulingDat
     }
     ;(plan[room]??=Array(row.length).fill('Current'))[index]='Free'
    }else for(const name of op.group?shadow.shiftGroupMembers(op.group):[op.name]){
-    const member=shadow.operators[name]!;let room=member.room,index=member.index
+    const member=shadow.operators[name]!
+    if(member.independentRest&&(name!==op.name||mowerRestingBindingGroups(shadow,member).length))continue
+    let room=member.room,index=member.index
     const old=existing[name]
     if(old){const [r,i]=old,native=shadow.plan[r]?.[i];if(native!==undefined&&(!plan[r]||['Current',name].includes(plan[r]![i]!))&&(native===name||!batch.dorms.some(d=>d.name===native))){room=r;index=i}}
     const row=plan[room]??=Array(shadow.plan[room]!.length).fill('Current')

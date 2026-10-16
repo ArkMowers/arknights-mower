@@ -33,6 +33,7 @@ export function planMowerAlphaExhaustSupport(original:MowerSchedulingData,candid
  }
  const recall=(state:MowerSchedulingData,previous:MowerTaskPlan,name:string):[MowerTaskPlan,MowerSchedulingData]|undefined=>{
   const op=state.operators[name]!,members=new Set(op.group?state.group(op.group):[name])
+  if(op.independentRest&&mowerRestingBindingGroups(state,op).length)return
   if([...members].some(n=>required.has(n)||protectedNames.has(n)||options.reservedSlots?.has(state.operators[n]!.room+'\0'+state.operators[n]!.index)||options.isMasteryBusy?.(n)||protectedRest(state,n)))return
   const trial=structuredClone(previous)
   for(const member of members){const worker=state.operators[member]!;if(working(worker)&&worker.currentRoom!==worker.room)return;if(worker.currentRoom!==worker.room||worker.currentIndex!==worker.index)(trial[worker.room]??=Array(state.plan[worker.room]!.length).fill('Current'))[worker.index]=member}
