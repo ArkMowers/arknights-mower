@@ -9951,6 +9951,7 @@ class BaseSchedulerSolver(
                         )
                     pre_order = arrange_type
             first_time = False
+            tail_search_target = None
             if (
                 not siege
                 and not is_dorm
@@ -9993,6 +9994,7 @@ class BaseSchedulerSolver(
                     and agent[0] not in self.choose_error
                 ):
                     # 普通设备保留休息干员的末页快路；低帧率设备逐页确认。
+                    tail_search_target = agent[0]
                     swipe_map = [20, 3, 5, 3, 3, 3, 3, 3, 3]
                     right_swipe = swipe_map[
                         self.profession_labels.index(last_special_filter)
@@ -10013,6 +10015,16 @@ class BaseSchedulerSolver(
                 else None,
             )
             observation = None
+            if tail_search_target in agent:
+                # 休息缓存不能确定当前排序位置；末页未命中后从头查找。
+                self.choose_error.add(tail_search_target)
+                selected.extend(changed)
+                index_change = bool(changed)
+                right_swipe, observation = self.swipe_left(
+                    right_swipe, last_special_filter, return_page=True
+                )
+                previous_page = None
+                continue
             if changed:
                 selected.extend(changed)
                 # 如果找到了
