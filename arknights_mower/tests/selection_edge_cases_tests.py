@@ -27,6 +27,7 @@ def test_same_profession_waits_for_all_then_restores_without_repeated_inputs(
     state = configure_real_filter(solver, monkeypatch, initial="MEDIC", opened=opened)
     apply_tap = solver.device.tap.side_effect
     clock = [0.0]
+    monkeypatch.setattr(base_mixin, "perf_counter", lambda: clock[0])
     pending = []
 
     def sleep(interval=1):
