@@ -68,10 +68,11 @@ export function ensureMowerDormRecovery(data:MowerSchedulingData,queue:MowerTask
  const target=mowerRecoveryTarget(data,room,names)!,index=names.indexOf(target.name)
  if(queue.tasks.some(t=>{const upcoming=t.plan[room];return t!==task&&t.timeMicros>=task.timeMicros&&t.timeMicros<=task.timeMicros+1_000_000&&upcoming&&upcoming.length>index&&!['Current','Free','',target.name].includes(upcoming[index]!)}))return pending.includes(room)
  if(!pending.includes(room))pending.push(room)
- const expected=[...retained,...Array(names.length-retained.length).fill('')]
+ let expected=[...retained,...Array(names.length-retained.length).fill('')]
  let current=data.currentRoom(room,true)!
  if(!expected.every((name,index)=>name===current[index])){
-  hooks.arrangeTemporary([...retained]);current=data.currentRoom(room,true)!
+  hooks.arrangeTemporary(retained);current=data.currentRoom(room,true)!
+  expected=[...retained,...Array(names.length-retained.length).fill('')]
   if(!expected.every((name,index)=>name===current[index]))throw new MowerArrangementError('Mower dorm recovery ordering observation failed '+JSON.stringify({room,expected,current}))
  }
  if(!names.every((name,index)=>name===current[index])){
