@@ -4,13 +4,14 @@ import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,MowerTask,type MowerTaskQueue} from './mowerTaskQueue'
 import {hasObservedFullMood,hasRestingMood} from './mowerOperatorState'
 import {MowerShiftPreviewError} from './mowerNativeErrors'
-import {mowerGroupRecoveryWorkers} from './mowerGroupRecovery'
-export function prepareMowerRelease(data:MowerSchedulingData,queue:MowerTaskQueue,task:MowerTask):boolean {
+import {mowerGroupRecoveryWorkers,mowerRecoveryReady} from './mowerGroupRecovery'
+import type {MowerTaskSchedulingOptions} from './mowerTaskScheduling'
+export function prepareMowerRelease(data:MowerSchedulingData,queue:MowerTaskQueue,task:MowerTask,options:MowerTaskSchedulingOptions={}):boolean {
  if(data.alpha){
   // Validate all mandatory members before changing a merged release's plan.
   for(const name of mowerMandatoryReleaseNames(data,task)){
    const op=data.operators[name]!
-   if(hasObservedFullMood(op)&&!op.moodIsPrediction)continue
+   if(mowerRecoveryReady(data,op,options))continue
    const due=data.getDormByName(name)?.[1].timeMicros
    if(due===undefined||due<=data.nowMicros)throw new MowerShiftPreviewError('组员尚未确认回满心情，保留释放任务并等待有效恢复观察：'+op.nativeName)
   }
@@ -34,7 +35,7 @@ export function prepareMowerRelease(data:MowerSchedulingData,queue:MowerTaskQueu
 
 /** Only mandatory recovery residents need a fresh physical observation before release. */
 export function mowerMandatoryReleaseNames(data:MowerSchedulingData,task:MowerTask):string[]{
- if(!data.alpha)return []
+ if(!data.alpha||task.strictMoodLimit)return []
  return Object.entries(task.releaseDormTargets()).flatMap(([name,[room,index]])=>{
   const op=data.operators[name]
   if(!op||op.currentRoom!==room||op.currentIndex!==index)return []

@@ -45,7 +45,7 @@ import {prepareMowerShiftCycle,recordMowerDormAdmissions,type MowerShiftModel} f
 import {prepareMowerRunEntry,nextMowerRunRecoveryMicros} from './mowerRunLifecycle'
 import {ensureMowerDormRecovery} from './mowerDormRecovery'
 import {normalizeMowerRecoveryBeds} from './mowerRecoveryBeds'
-import {mowerGroupRecoveryDeadline,mowerGroupRecoveryWorkers} from './mowerGroupRecovery'
+import {mowerGroupRecoveryDeadline,mowerGroupRecoveryWorkers,mowerRecoveryReady} from './mowerGroupRecovery'
 import {mowerMandatoryReleaseNames,prepareMowerRelease} from './mowerRelease'
 import {nextMowerMoodPlanningWake,type MowerPlanningWake} from './mowerPlanningWake'
 import {mowerProtectedShift,prepareMowerShiftBeds} from './mowerShiftProtection'
@@ -234,7 +234,7 @@ function confirmMowerGroupReturn(s:RuntimeState,rates:RuntimeRates,task:MowerTas
   const required=mowerGroupRecoveryDeadline(data,group).requiredNames
   for(const name of required){
    const op=data.operators[name]
-   if(hasObservedFullMood(op)&&!op!.moodIsPrediction)continue
+   if(mowerRecoveryReady(data,op,s.config.mowerTaskScheduling))continue
    const due=op?.isResting()?data.getDormByName(name)?.[1].timeMicros:undefined
    if(due===undefined||due<=data.nowMicros)throw new MowerShiftPreviewError('组员尚未确认回满心情，保留回班任务并等待有效恢复观察：'+(op?.nativeName??name))
    deadline=Math.max(deadline,due)
@@ -711,7 +711,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
        const indexes=rooms.get(op.currentRoom)??[];indexes.push(op.currentIndex);rooms.set(op.currentRoom,indexes)
       }
       for(const [room,indexes] of rooms)observeRoom(s,rates,room,current,indexes)
-      return prepareMowerRelease(actual,queue,current)
+      return prepareMowerRelease(actual,queue,current,s.config.mowerTaskScheduling)
      },
      deferRoom:(room,current)=>deferMowerAlphaDorm(current,queue.tasks,room,getMowerSourceRuntime(s).data.nowMicros,s.config.mowerTaskScheduling),
      skip

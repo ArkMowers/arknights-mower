@@ -216,22 +216,25 @@ def recall_can_sustain(
     original, admitted, recalled, candidates, *, rates=None, now=None
 ):
     """用实测近似速率检查关联组的恢复周期，未知数据不授权召回。"""
-    from arknights_mower.utils.group_recovery import (
-        group_recovery_deadline,
-        observed_full_mood,
+    from arknights_mower.utils.group_recovery import group_recovery_deadline
+    from arknights_mower.utils.recovery_execution import (
+        recovery_ready_for_arrangement,
     )
 
     now = now or datetime.now()
     for name in recalled:
         op = original.operators[name]
-        if op.rest_in_full and not observed_full_mood(op):
+        if op.rest_in_full and not recovery_ready_for_arrangement(
+            original, name, sampled_after=None, now=now
+        ):
             return False
         if op.group:
-            required, deadline = group_recovery_deadline(original, op.group, now=now)
-            if required and (
-                deadline is None
-                or deadline > now
-                or any(not observed_full_mood(original.operators[n]) for n in required)
+            required, _ = group_recovery_deadline(original, op.group, now=now)
+            if any(
+                not recovery_ready_for_arrangement(
+                    original, member, sampled_after=None, now=now
+                )
+                for member in required
             ):
                 return False
     if rates is None:

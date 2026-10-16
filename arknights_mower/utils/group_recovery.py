@@ -16,6 +16,16 @@ def observed_full_mood(operator):
     )
 
 
+def completed_mood_limit_release(data, operator):
+    """已确认的个人上限离宿完成本轮恢复，实际心情仍保留读数。"""
+    return (
+        not operator.current_room
+        and not getattr(operator, "mood_is_prediction", False)
+        and getattr(operator, "rest_mood_release_limit", None) == operator.upper_limit
+        and data.rest_mood_complete(operator.name)
+    )
+
+
 def group_recovery_workers(data, group):
     """仅工作主班参与组内恢复，候补、宿管和零心情工作者不增加等待。"""
     return [
@@ -41,7 +51,7 @@ def group_recovery_deadline(data, group, *, now=None):
         latches = data.group_recovery_full_members = {}
 
     def completed_at(op):
-        if observed_full_mood(op):
+        if observed_full_mood(op) or completed_mood_limit_release(data, op):
             return now
         _, bed = data.get_dorm_by_name(op.name)
         return bed.time if bed is not None else None

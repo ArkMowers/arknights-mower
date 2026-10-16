@@ -1,5 +1,5 @@
 import {alphaPosition,mowerMatchReplacements} from './mowerAlphaDorm'
-import {mowerGroupRecoveryDeadline} from './mowerGroupRecovery'
+import {mowerGroupRecoveryDeadline,mowerRecoveryReady} from './mowerGroupRecovery'
 import {hasObservedFullMood,mowerReplacementCandidates,MowerOperatorState} from './mowerOperatorState'
 import {projectMowerArrangements} from './mowerObservations'
 import type {MowerRestingOptions} from './mowerOrdinaryPlanning'
@@ -94,8 +94,8 @@ export function mowerReplacementDependencyNames(data:MowerSchedulingData,seeds:I
 export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:MowerSchedulingData,recalled:ReadonlySet<string>,candidates:readonly string[],options:MowerRestingOptions):boolean {
  for(const name of recalled){
   const op=original.operators[name];if(!op||!op.isResting())continue
-  if(op.restInFull&&!hasObservedFullMood(op))return false
-  if(op.group){const recovery=mowerGroupRecoveryDeadline(projectMowerArrangements(original,[]),op.group);if(recovery.requiredNames.length&&(recovery.timeMicros===undefined||recovery.timeMicros>original.nowMicros||recovery.requiredNames.some(member=>!hasObservedFullMood(original.operators[member]))))return false}
+  if(op.restInFull&&!mowerRecoveryReady(original,op,options.priorityScheduling))return false
+  if(op.group){const recovery=mowerGroupRecoveryDeadline(projectMowerArrangements(original,[]),op.group);if(recovery.requiredNames.length&&(recovery.requiredNames.some(member=>!mowerRecoveryReady(original,original.operators[member],options.priorityScheduling))))return false}
  }
  if(!options.coordinationRates)return false
  let connected=mowerReplacementDependencyNames(original,[...candidates,...recalled])

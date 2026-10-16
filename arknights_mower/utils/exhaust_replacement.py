@@ -98,25 +98,26 @@ def plan_exhaust_support(
         )
 
     def protected_rest(state, name):
-        from arknights_mower.utils.group_recovery import (
-            group_recovery_deadline,
-            observed_full_mood,
+        from arknights_mower.utils.group_recovery import group_recovery_deadline
+        from arknights_mower.utils.recovery_execution import (
+            recovery_ready_for_arrangement,
         )
 
         op = state.operators[name]
         if not op.is_resting():
             return False
-        if op.rest_in_full and not observed_full_mood(op):
+        now = datetime.now()
+        if op.rest_in_full and not recovery_ready_for_arrangement(
+            state, name, sampled_after=None, now=now
+        ):
             return True
         if op.group:
-            required, deadline = group_recovery_deadline(state, op.group)
-            return bool(required) and (
-                deadline is None
-                or deadline > datetime.now()
-                or any(
-                    not observed_full_mood(state.operators[member])
-                    for member in required
+            required, _ = group_recovery_deadline(state, op.group, now=now)
+            return any(
+                not recovery_ready_for_arrangement(
+                    state, member, sampled_after=None, now=now
                 )
+                for member in required
             )
         return False
 

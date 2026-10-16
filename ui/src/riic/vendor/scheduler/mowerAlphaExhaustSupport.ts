@@ -1,7 +1,6 @@
 // Mower alpha b2d9ac8 exhaust_replacement.plan_exhaust_support (MIT).
 import {planMowerReplacementHandoff,mowerRecallCanSustain,mowerCoordinationPrimaryReplacement} from './mowerReplacementCoordination'
-import {mowerGroupRecoveryDeadline} from './mowerGroupRecovery'
-import {hasObservedFullMood} from './mowerOperatorState'
+import {mowerGroupRecoveryDeadline,mowerRecoveryReady} from './mowerGroupRecovery'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {mowerReplacementCandidates,MowerOperatorState} from './mowerOperatorState'
 import {projectMowerArrangements} from './mowerObservations'
@@ -27,9 +26,9 @@ export function planMowerAlphaExhaustSupport(original:MowerSchedulingData,candid
  const protectedRest=(state:MowerSchedulingData,name:string)=>{
   const op=state.operators[name]!
   if(!op.isResting())return false
-  if(op.restInFull&&!hasObservedFullMood(op))return true
+  if(op.restInFull&&!mowerRecoveryReady(state,op,options.priorityScheduling))return true
   const recovery=op.group?mowerGroupRecoveryDeadline(projectMowerArrangements(state,[]),op.group):undefined
-  return !!recovery?.requiredNames.length&&(recovery.timeMicros===undefined||recovery.timeMicros>state.nowMicros||recovery.requiredNames.some(member=>!hasObservedFullMood(state.operators[member])))
+  return !!recovery?.requiredNames.length&&(recovery.requiredNames.some(member=>!mowerRecoveryReady(state,state.operators[member],options.priorityScheduling)))
  }
  const recall=(state:MowerSchedulingData,previous:MowerTaskPlan,name:string):[MowerTaskPlan,MowerSchedulingData]|undefined=>{
   const op=state.operators[name]!,members=new Set(op.group?state.group(op.group):[name])

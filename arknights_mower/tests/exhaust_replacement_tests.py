@@ -157,13 +157,14 @@ def test_future_exhaust_does_not_reserve_cover_for_normal_group(solver, future_e
 
 
 @pytest.mark.parametrize("cover_released", [False, True])
+@pytest.mark.parametrize("remaining_mood", [0, 0.18])
 def test_exhaust_coordinates_latest_occupancy_at_execution(
-    solver, future_exhaust, cover_released
+    solver, future_exhaust, cover_released, remaining_mood
 ):
     # 倒计时生成后，原替班已释放，或第一候补已被别处使用。
     change = {"room_2_2": ["引星棘刺"]} if cover_released else {"meeting": ["引星棘刺"]}
     solver.op_data = solver.op_data.project_arrangements([change])
-    solver.op_data.operators["机械师"].mood = 0
+    solver.op_data.operators["机械师"].mood = remaining_mood
     solver.tasks, solver.task = [], future_exhaust
     solver.enter_room.reset_mock()
     solver.overtake_room()

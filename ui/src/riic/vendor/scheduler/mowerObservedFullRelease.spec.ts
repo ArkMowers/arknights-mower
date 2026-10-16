@@ -151,12 +151,12 @@ describe('mandatory full recovery before ordinary dorm release', () => {
 
 
 describe('mandatory release policy boundaries', () => {
-  it('requires measured recovery when a personal mood limit also requires full rest', () => {
+  it('preserves advanced personal-limit release even with an explicit full-rest requirement', () => {
     const { data, queue, task, operators } = fixture([{ mood: 11.8, upperLimit: 12, restMoodLimit: true, restInFull: true }])
     data.dorms[0]!.timeMicros = now
-    expect(() => prepareMowerRelease(data, queue, task)).toThrow('尚未确认回满心情')
-    operators.A!.mood = 12; operators.A!.timeStampMicros = now
     expect(prepareMowerRelease(data, queue, task)).toBe(true)
+    expect(operators.A!.mood).toBe(11.8)
+    expect(queue.tasks).toEqual([task])
   })
 
   it.each(['removed', 'workaholic', 'standby', 'shared'] as const)('ignores stale delayed-return membership after becoming %s', change => {

@@ -4,6 +4,7 @@ import {MowerDormState,MowerSchedulingData} from './mowerSchedulingData'
 import {projectMowerArrangements} from './mowerObservations'
 import {mowerRecallCanSustain,type MowerCoordinationRates} from './mowerReplacementCoordination'
 import {toMowerMicros} from './mowerTaskQueue'
+import {planMowerExhaustSupport} from './mowerExhaustPlanning'
 
 function fixture(mood=20){
  const original=new MowerSchedulingData({alpha:true,nowMicros:0,plan:{room_1_1:['A'],room_1_2:['B'],dormitory_1:['Free','Free','Free']},operators:{
@@ -70,5 +71,22 @@ describe('replacement recall forecast covers the connected recovery cycle',()=>{
   expect(allowed(original,admit(),fixed)).toBe(false)
   original.operators.A!.restInFull=false;original.operators.A!.group='g';original.groupRecoveryFullMembers.g=['A']
   expect(allowed(original,admit(),fixed)).toBe(false)
+ })
+})
+
+
+describe('recall uses the recovering room operation allowance',()=>{
+ it.each(['personal','group'] as const)('passes room timing to both recall guards for %s recovery',mode=>{
+  const {original,admit}=fixture(23.9)
+  original.dorms[0]!.timeMicros=toMowerMicros(120/3600)
+  if(mode==='personal')original.operators.A!.restInFull=true
+  else {original.operators.A!.group='g';original.groupRecoveryFullMembers.g=['A']}
+  const options={coordinationRates:fixed,priorityScheduling:{dormDurations:{dormitory_1:[100]}}}
+  const before=JSON.stringify(original)
+  expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B'],{coordinationRates:fixed})).toBe(false)
+  expect(planMowerExhaustSupport(original,['B'],{coordinationRates:fixed})).toBeUndefined()
+  expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B'],options)).toBe(true)
+  expect(planMowerExhaustSupport(original,['B'],options)?.room_1_1).toEqual(['A'])
+  expect(JSON.stringify(original)).toBe(before)
  })
 })

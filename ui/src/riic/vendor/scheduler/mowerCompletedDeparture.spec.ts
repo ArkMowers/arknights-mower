@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { advanceRoster, createRosterRuntime, settleRoster, type RuntimeConfig } from './rosterRuntime'
 import { getMowerSourceRuntime } from './mowerSourceRuntime'
 import { mowerCorrectionPlan } from './mowerCorrection'
+import { mowerGroupRecoveryDeadline } from './mowerGroupRecovery'
 import { mowerHasMeasuredDormDeparture, projectMowerArrangements } from './mowerObservations'
 import { MowerTask, MOWER_TASK_TYPES as T, toMowerMicros } from './mowerTaskQueue'
 
@@ -377,4 +378,41 @@ it.each(['direct', 'queued'] as const)('keeps measured full departure when the d
   expect(op.depletionRate).toBe(0)
   expect(op.moodIsPrediction).toBe(false)
   expect(f.source.queue.tasks).not.toContain(exhaust)
+})
+
+it('executes an advanced personal-limit release during a group recovery wait', () => {
+  const f = fixture(11.879426865, 12), op = f.source.data.operators.A!
+  op.restMoodLimit = true
+  f.source.data.groupRecoveryFullMembers.g = ['A', 'B']
+  f.task.strictMoodLimit = true; f.task.moodLimit = 12
+  for (let i = 0; i < 8; i++) { finish(f); advanceRoster(f.state, .5 / 3600, rates) }
+  expect(op.isResting()).toBe(false)
+  expect(f.source.queue.tasks.filter(task => task.type === T.RELEASE_DORM && task.metadata === 'A')).toEqual([])
+  expect(f.state.morale.A).toBeCloseTo(11.879426865)
+  expect(f.source.data.restMoodComplete('A')).toBe(true)
+  expect(mowerGroupRecoveryDeadline(f.source.data, 'g').timeMicros).toBeDefined()
+  expect(f.source.data.operators.B!.isResting()).toBe(true)
+  expect(f.source.data.groupShiftState.g).toBe(true)
+})
+
+it.each([{ mood: 23.95, history: false, ready: true }, { mood: 23, history: false, ready: false }, { mood: 23.87, history: false, ready: false }, { mood: 23.87, history: true, ready: true }])('checks every full-rest member against its room allowance: $mood, history=$history', ({ mood, history, ready }) => {
+  const f = fixture(23.95, 24)
+  f.state.morale.B = mood
+  if (history) f.state.config.mowerTaskScheduling!.dormDurations = { [room]: [100] }
+  for (const name of ['A', 'B']) f.source.data.operators[name]!.restInFull = true
+  const task = new MowerTask({ time: 1, type: T.SHIFT_ON, plan: { room_1_1: ['A'], room_1_2: ['B'] } })
+  task.backupShiftActive = true
+  f.source.queue.tasks = [task]
+  for (let i = 0; i < 8; i++) { finish(f); advanceRoster(f.state, .5 / 3600, rates) }
+  if (ready) {
+    expect(f.source.data.operators.A!.currentRoom).toBe('room_1_1')
+    expect(f.source.data.operators.B!.currentRoom).toBe('room_1_2')
+    expect(f.state.morale.A).toBeLessThan(24)
+    expect(f.state.morale.B).toBeLessThan(24)
+    expect(f.source.queue.tasks).not.toContain(task)
+  } else {
+    expect(f.source.data.operators.A!.isResting()).toBe(true)
+    expect(f.source.data.operators.B!.isResting()).toBe(true)
+    expect(f.source.queue.tasks).toContain(task)
+  }
 })

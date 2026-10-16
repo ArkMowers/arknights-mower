@@ -712,3 +712,33 @@ def test_approximate_recall_preserves_protection_and_sustainability(solver, fail
         data.operators["絮雨"].depletion_rate = 0
         del data.operators["絮雨"].recall_work_rate
     assert solver._plan_exhaust_support(["机械师"]) is None
+
+
+@pytest.mark.parametrize("group_wait", [False, True])
+@pytest.mark.parametrize("remaining", [60, 180])
+def test_recall_requires_each_selected_member_within_operation_window(
+    solver, monkeypatch, group_wait, remaining
+):
+    from arknights_mower.utils import operation_timing
+
+    data = solver.op_data
+    data.operators["苍苔"].replacement = ["槐琥"]
+    seed_observed_recall_rates(data)
+    monkeypatch.setattr(operation_timing, "_dorm_durations", {})
+    for name in ["苍苔", "絮雨"]:
+        op = data.operators[name]
+        op.rest_in_full = not group_wait
+        op.mood, op.time_stamp, op.mood_is_prediction = 23.9, datetime.now(), False
+        data.get_dorm_by_name(name)[1].time = datetime.now() + timedelta(
+            seconds=60 if name == "苍苔" else remaining
+        )
+    if group_wait:
+        data.group_recovery_full_members["感知"] = ["苍苔", "絮雨"]
+    support = solver._plan_exhaust_support(["机械师"])
+    if remaining == 60:
+        assert support is not None
+        assert support["room_2_2"] == ["苍苔"]
+        assert support["contact"] == ["絮雨"]
+    else:
+        assert support is None
+    assert data.operators["苍苔"].mood == data.operators["絮雨"].mood == 23.9

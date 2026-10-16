@@ -1697,39 +1697,59 @@ class BaseSchedulerSolver(
             self.back()
 
     def _verify_required_recovery(self, task):
-        from arknights_mower.utils.group_recovery import observed_full_mood
-        from arknights_mower.utils.recovery_execution import required_recovery_members
+        from arknights_mower.utils.recovery_execution import (
+            recovery_ready_for_arrangement,
+            required_recovery_members,
+        )
 
         names = required_recovery_members(self.op_data, task, now=datetime.now())
         if not names:
             return True
-        rooms = {
-            self.op_data.operators[name].current_room
-            for name in names
-            if self.op_data.operators[name].is_resting()
-        }
         sampled_after = datetime.now()
-        resting_names = {
-            name for name in names if self.op_data.operators[name].is_resting()
-        }
-        self._read_recovery_rooms(rooms)
-        # 读房可能重排期限，但不得把刚读到的未满干员从本次检查名单中丢掉。
-        names.update(required_recovery_members(self.op_data, task, now=datetime.now()))
-        if all(
-            observed_full_mood(self.op_data.operators.get(name))
-            and (
-                name not in resting_names
-                or self.op_data.operators[name].time_stamp >= sampled_after
+        dorm_rooms = {room for room in self.op_data.plan if room.startswith("dorm")}
+        observed_rooms = set()
+        while True:
+            rooms = {
+                self.op_data.operators[name].current_room
+                for name in names
+                if self.op_data.operators[name].is_resting()
+            }
+            pending_rooms = rooms & dorm_rooms - observed_rooms
+            if not pending_rooms:
+                break
+            self._read_recovery_rooms(pending_rooms)
+            observed_rooms.update(pending_rooms)
+            # 读房新触发组等待时补读新成员所在宿舍，每房在本次检查中至多读一次。
+            names.update(
+                required_recovery_members(self.op_data, task, now=datetime.now())
             )
-            for name in names
-        ):
-            return True
-        self._retain_failed_task(task, "需要回满的主班尚未实读确认恢复完成", rooms)
         now = datetime.now()
+        ready = {
+            name
+            for name in names
+            if recovery_ready_for_arrangement(
+                self.op_data,
+                name,
+                sampled_after=(
+                    sampled_after if self.op_data.operators[name].is_resting() else None
+                ),
+                now=now,
+            )
+        }
+        if ready == names:
+            return True
+        self._retain_failed_task(
+            task, "需要回满的主班尚未实读确认恢复完成", rooms | observed_rooms
+        )
         deadlines = {}
-        for name in names:
+        for name in names - ready:
             op = self.op_data.operators.get(name)
-            if observed_full_mood(op):
+            if (
+                op is None
+                or op.time_stamp is None
+                or op.time_stamp < sampled_after
+                or getattr(op, "mood_is_prediction", False)
+            ):
                 continue
             _, bed = self.op_data.get_dorm_by_name(name)
             if bed is not None and bed.time is not None and bed.time > now:
@@ -10549,9 +10569,16 @@ class BaseSchedulerSolver(
                     and self.task.meta_data == name
                 ):
                     operator.rest_mood_release_limit = operator.upper_limit
+                    measured_release = measured_release or (
+                        self.op_data.has_rest_mood_limit(name)
+                        and getattr(self.task, "mood_limit", None)
+                        in (None, operator.upper_limit)
+                        and has_resting_mood(operator)
+                        and not operator.mood_is_prediction
+                    )
             operator.current_room, operator.current_index = "", -1
             if measured_release:
-                # 普通回满与救急达标离宿均沿用实测，待命后不再按宿舍速度恢复。
+                # 已确认离宿保留实测心情，待命后不再按宿舍速度恢复。
                 operator.depletion_rate = 0
             else:
                 operator.time_stamp = None

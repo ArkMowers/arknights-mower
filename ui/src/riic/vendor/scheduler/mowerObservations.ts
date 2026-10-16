@@ -9,7 +9,7 @@ import {toMowerMicros,fromMowerMicros,roundMowerMicros,MOWER_TASK_TYPES as T,typ
 export function mowerHasMeasuredDormDeparture(data:MowerSchedulingData,op:MowerOperatorState,room:string,observed:readonly string[],task?:MowerTask,confirmedPlan?:readonly string[]):boolean {
  const planned=confirmedPlan??task?.plan[room]
  return !!task?.plan[room]&&room.startsWith('dorm')&&!!planned&&planned.length===observed.length&&planned.every((name,index)=>name===observed[index])&&
-  !observed.includes(op.name)&&hasRestingMood(op,data.nowMicros)&&!op.moodIsPrediction&&op.mood>=op.upperLimit
+  !observed.includes(op.name)&&hasRestingMood(op,data.nowMicros)&&!op.moodIsPrediction&&(op.mood>=op.upperLimit||task.strictMoodLimit&&op.restMoodLimit&&task.metadata===op.name&&(task.moodLimit===undefined||task.moodLimit===op.upperLimit))
 }
 /** Actual get_agent_from_room input expansion; FIA reads only explicitly passed indexes. */
 export function mowerRoomReadIndexes(data:MowerSchedulingData,room:string,task?:MowerTask,requested:number[]=[]):number[] {
