@@ -12,6 +12,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 import arknights_mower.solvers.base_schedule as base_schedule  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
+from arknights_mower.tests.maa_process_helpers import fake_sdk_worker  # noqa: E402
 from arknights_mower.utils.maa_callback import (  # noqa: E402
     CONNECTION_TEXT,
     SUB_TASK_INFO,
@@ -782,6 +783,7 @@ class MaaInitializeCallbackTests(unittest.TestCase):
                 patch.object(base_schedule.requests, "get", return_value=response),
                 # initialize_maa 在连接前会确认共享 ADB 服务；本用例只验证回调装配。
                 patch.object(base_schedule, "guard_adb"),
+                patch("arknights_mower.utils.maa_process.MaaProcess", fake_sdk_worker),
                 patch(
                     "arknights_mower.utils.maa_runtime.read_installed_version",
                     return_value="v6.test",

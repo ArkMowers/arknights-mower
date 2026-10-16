@@ -846,7 +846,7 @@ class TestInstallAndBackup(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.target = self.root / "maa"
-        self.backup = self.root / "maa.old"
+        self.backup = self.target / ".old"
         self.release = mu.MaaRelease(
             tag="v6.17.0",
             runtime=mu.ReleaseAsset("runtime.zip", "https://example.test/runtime", 200),
@@ -881,6 +881,10 @@ class TestInstallAndBackup(unittest.TestCase):
     def test_mirrorchyan_no_update_preserves_installation_and_backup(self):
         self.target.mkdir()
         (self.target / "MaaCore.dll").write_bytes(b"installed")
+        (self.target / "MAA.exe").write_bytes(b"client")
+        (self.target / "MAA.Updater.exe").write_bytes(b"updater")
+        (self.target / "resource").mkdir()
+        (self.target / "Python").mkdir()
         self.backup.mkdir()
         (self.backup / "original.txt").write_text("backup")
         with (
@@ -1135,6 +1139,8 @@ class TestInstallAndBackup(unittest.TestCase):
         (self.target / "MAA.Updater.exe").write_bytes(b"updater")
         (self.target / "resource/removed.json").write_text("remove")
         (self.target / "config.json").write_text("user")
+        self.backup.mkdir()
+        (self.backup / "older.txt").write_text("previous backup")
         ota_release = mu.MaaRelease(
             tag="v6.18.0",
             runtime=mu.ReleaseAsset(
@@ -1179,6 +1185,8 @@ class TestInstallAndBackup(unittest.TestCase):
         self.assertEqual((self.target / "resource/new.json").read_bytes(), b"new")
         self.assertEqual((self.target / "config.json").read_text(), "user")
         self.assertEqual((self.backup / "MaaCore.dll").read_bytes(), b"old-core")
+        self.assertFalse((self.backup / ".old").exists())
+        self.assertFalse((self.backup / "older.txt").exists())
 
     def test_swap_failure_restores_target_and_previous_old(self):
         self.target.mkdir()
