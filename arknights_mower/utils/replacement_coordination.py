@@ -1,6 +1,7 @@
 """共享替班的完整交接、首选恢复及保守召回检查。"""
 
 from datetime import datetime
+from math import isfinite
 
 from arknights_mower.utils.operators import TRADE_ORDER_AGENTS
 
@@ -214,7 +215,7 @@ def preferred_replacement_restore(data, is_busy, protected=(), slots=()):
 def recall_can_sustain(
     original, admitted, recalled, candidates, *, rates=None, now=None
 ):
-    """只有完整的可靠速率及恢复期限才能授权提前召回，不外推未知阵容。"""
+    """用实测近似速率检查关联组的恢复周期，未知数据不授权召回。"""
     from arknights_mower.utils.group_recovery import (
         group_recovery_deadline,
         observed_full_mood,
@@ -234,8 +235,18 @@ def recall_can_sustain(
             ):
                 return False
     if rates is None:
-        return False
+        from arknights_mower.utils.recall_estimates import estimated_recall_rates
+
+        rates = estimated_recall_rates(original, admitted, now=now)
     work, recovery = rates
+
+    def mood_at_check(op):
+        # 休息期间保守沿用实读心情，不把旧工作掉率套在恢复阶段。
+        if op.is_resting():
+            return op.mood
+        elapsed = max(0, (now - op.time_stamp).total_seconds() / 3600)
+        return max(0, min(24, op.mood - max(0, op.depletion_rate) * elapsed))
+
     connected = replacement_dependencies(
         original,
         [
@@ -254,6 +265,9 @@ def recall_can_sustain(
             observed is None
             or observed.time_stamp is None
             or getattr(observed, "mood_is_prediction", False)
+            or observed.time_stamp > now
+            or not isfinite(observed.mood)
+            or not 0 <= observed.mood <= 24
         ):
             return False
         if (
@@ -263,10 +277,10 @@ def recall_can_sustain(
             and not op.room.startswith("dorm")
         ):
             rate = recovery.get(name)
-            if rate is None or rate <= 0:
+            if rate is None or not isfinite(rate) or rate <= 0:
                 return False
             horizon = max(
-                horizon, max(0, op.upper_limit - observed.current_mood(now)) / rate
+                horizon, max(0, op.upper_limit - mood_at_check(observed)) / rate
             )
     if horizon <= 0:
         return True
@@ -277,8 +291,9 @@ def recall_can_sustain(
         rate = work.get(name)
         if (
             rate is None
+            or not isfinite(rate)
             or rate < 0
-            or original.operators[name].current_mood(now) - rate * horizon
+            or mood_at_check(original.operators[name]) - rate * horizon
             <= op.lower_limit
         ):
             return False

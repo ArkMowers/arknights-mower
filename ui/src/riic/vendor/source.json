@@ -389,12 +389,12 @@
       "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
     },
     "scheduler/mowerDormRecovery.spec.ts": {
-      "sha256": "5c05f951d2f00ad9187f4d03b5ebfa8292ae65c8df95ae23d611355c19a64ac5",
-      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+      "sha256": "599f32321e0ddca302364157127746e356517cfaf5875e56fb2c8c1186bf7808",
+      "reason": "Synchronize full-dorm first-manager confirmation and focused regressions from calculator a4c6bc668b54d637305c2218a14b48ba285bb050. Inspect every slot, retain only the first single-recovery manager confirmation, and skip that provider when selecting the recovery target."
     },
     "scheduler/mowerDormRecovery.ts": {
-      "sha256": "e67a3555001561a3665126b6a72a7c0937bd1d0300d4fc2ba5eeea27ad78e6ce",
-      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+      "sha256": "6fcb91e76d5568ea2032c3f28b1871762a2b8e9f8a11959fc5fef10433232948",
+      "reason": "Synchronize full-dorm first-manager confirmation and focused regressions from calculator a4c6bc668b54d637305c2218a14b48ba285bb050. Inspect every slot, retain only the first single-recovery manager confirmation, and skip that provider when selecting the recovery target."
     },
     "scheduler/mowerOperatorState.ts": {
       "sha256": "8d921780af1cc7a9a1e8238201c0b4877b29ef6036480a7d85e219712bc63341",
@@ -417,8 +417,8 @@
       "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
     },
     "scheduler/mowerSingleRecoveryRouting.spec.ts": {
-      "sha256": "9a8f2719cfd50fedc023bca66b045124259ff99b2282a353b5fc8e3ad8a1dc7e",
-      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+      "sha256": "f04e1de194da3f3b9127e76e6be2685d2a1f399a95d8171e7611bda6eb8a1ec7",
+      "reason": "Synchronize full-dorm first-manager confirmation and focused regressions from calculator a4c6bc668b54d637305c2218a14b48ba285bb050. Inspect every slot, retain only the first single-recovery manager confirmation, and skip that provider when selecting the recovery target."
     },
     "scheduler/mowerSourceRuntime.spec.ts": {
       "sha256": "490ad9c1070976de8f747d1f5653b0f5115fb0d6fec4f0b4eb42e36c59317bea",
@@ -492,7 +492,7 @@
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
   "mowerCheckedRevision": "48ae469895dd9a64fda8a565d2403c49f431cde8",
   "schedulingSync": {
-    "date": "2026-10-16",
+    "date": "2026-10-17",
     "behaviors": [
       "ordinary completed dorm departure retains a measured full-mood observation",
       "restored primaries join an already-resting group with protected covers and recovery beds",
@@ -509,7 +509,8 @@
       "single-recovery skill holders are not proactively locked and use multi-Free first beds only as fallback while retaining configured ordinary-bed order",
       "failed incidental dorm moves permit valid normal group returns and are removed only after observed complete return",
       "one empty binding permits working primaries to rest independently while named bindings retain shared-cover precedence and group returns preserve active personal recovery",
-      "ordinary departures revalidate effective exhaustion after queuing and backup preview while genuine exhaustion, explicit backups and started arrangements retain their execution rules"
+      "ordinary departures revalidate effective exhaustion after queuing and backup preview while genuine exhaustion, explicit backups and started arrangements retain their execution rules",
+      "single-recovery confirmation inspects every dormitory slot and retains only the first manager, matching native scheduling"
     ],
     "limitations": [
       "ideal run orders do not simulate maintenance runner replacement acceleration or physical restoration",
@@ -533,6 +534,7 @@
     "independentRestCalculatorRevision": "e7e8966330d351539684b1daba82e9ccead48fa1",
     "independentRestMowerReference": "9995754f702d05b0661c9214d7abc62585366027",
     "exhaustInterlockCalculatorRevision": "e6d19f5a1e41d03124ce9411ba81d81d48641b63",
-    "exhaustInterlockMowerReference": "9995754f702d05b0661c9214d7abc62585366027"
+    "exhaustInterlockMowerReference": "9995754f702d05b0661c9214d7abc62585366027",
+    "dormManagerCalculatorRevision": "a4c6bc668b54d637305c2218a14b48ba285bb050"
   }
 }

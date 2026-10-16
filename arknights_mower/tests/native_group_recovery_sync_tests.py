@@ -77,6 +77,86 @@ def test_shared_explicit_full_member_still_sets_deadline(resting):
     assert returns(data)[0].time == now + timedelta(hours=5)
 
 
+@pytest.fixture
+def independent_full_member(resting):
+    instance, now = resting
+    data = instance.op_data
+    op = data.operators["讯使"]
+    op.group_bindings = [
+        {"group": "", "replacement": ["红"]},
+        {"group": "联动", "replacement": ["红"]},
+    ]
+    data.select_group_binding(op.name, "")
+    op.rest_in_full = True
+    return instance, now
+
+
+@pytest.mark.parametrize("known_deadline", [False, True])
+def test_independent_full_member_does_not_delay_bound_group(
+    independent_full_member, known_deadline
+):
+    instance, now = independent_full_member
+    data = instance.op_data
+    if not known_deadline:
+        data.get_dorm_by_name("讯使")[1].time = None
+
+    tasks = returns(data)
+    group_returns = [task for task in tasks if "meeting" in task.plan]
+    assert len(group_returns) == 1
+    assert group_returns[0].time == now + timedelta(minutes=52)
+    assert group_returns[0].plan["meeting"] == ["伊内丝", "银灰"]
+    assert "contact" not in group_returns[0].plan
+    personal_returns = [task for task in tasks if "contact" in task.plan]
+    assert len(personal_returns) == int(known_deadline)
+    if known_deadline:
+        assert personal_returns[0].time == now + timedelta(hours=5)
+        assert personal_returns[0].plan["contact"] == ["讯使"]
+    assert data.operators["讯使"].is_resting()
+
+
+def test_independent_full_member_does_not_extend_latched_group_wait(
+    independent_full_member,
+):
+    instance, now = independent_full_member
+    data = instance.op_data
+    config.conf.group_rest_in_full_on_mood_gap = True
+    data.group_recovery_full_members["联动"] = ["伊内丝", "银灰", "讯使"]
+
+    tasks = returns(data)
+    group_return = next(task for task in tasks if "meeting" in task.plan)
+    assert group_return.time == now + timedelta(hours=3)
+    assert "contact" not in group_return.plan
+    assert data.group_recovery_full_members["联动"] == ["伊内丝", "银灰"]
+    personal_return = next(task for task in tasks if "contact" in task.plan)
+    assert personal_return.time == now + timedelta(hours=5)
+
+
+def test_independent_full_member_is_checked_only_for_personal_return(
+    independent_full_member, monkeypatch
+):
+    from arknights_mower.utils.scheduler_task import SchedulerTask
+
+    instance, now = independent_full_member
+    group_return = SchedulerTask(
+        time=now,
+        task_plan={"meeting": ["伊内丝", "银灰"]},
+        task_type=TaskTypes.SHIFT_ON,
+    )
+    personal_return = SchedulerTask(
+        time=now,
+        task_plan={"contact": ["讯使"]},
+        task_type=TaskTypes.SHIFT_ON,
+    )
+    instance.tasks = [group_return, personal_return]
+    monkeypatch.setattr(instance, "_read_recovery_rooms", lambda rooms: None)
+
+    assert instance._verify_required_recovery(group_return)
+    assert not instance._verify_required_recovery(personal_return)
+    assert personal_return.time == now
+    assert personal_return.plan == {"contact": ["讯使"]}
+    assert personal_return.execution_failure
+
+
 def test_gap_excludes_standby_member(resting):
     solver, now = resting
     data = solver.op_data

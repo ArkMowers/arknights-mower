@@ -965,7 +965,7 @@ class BaseSchedulerSolver(
             and not op.room.startswith("dorm")
             and admitted.operators[op.name].is_working()
         }
-        # 本体没有未执行阵容的可靠掉率或恢复实读，不能用旧阵容速率授权召回。
+        # 召回评估使用工作实测掉率及宿舍恢复位估计，仍保留严格回满保护。
         return not recalled or recall_can_sustain(
             self.op_data, admitted, recalled, candidates
         )

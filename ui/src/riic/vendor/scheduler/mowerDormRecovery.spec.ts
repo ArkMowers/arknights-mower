@@ -3,7 +3,7 @@ import oracle from './fixtures/mower-dorm-recovery-alpha.json'
 import {MowerOperatorState} from './mowerOperatorState'
 import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {MowerTask,MowerTaskQueue,toMowerMicros} from './mowerTaskQueue'
-import {ensureMowerDormRecovery,mowerRecoveryTarget,mowerConfirmedRecoveryTarget,mowerConfirmedRecoveryTargets} from './mowerDormRecovery'
+import {ensureMowerDormRecovery,mowerRecoveryTarget,mowerConfirmedRecoveryTarget,mowerConfirmedRecoveryTargets,mowerRecoveryManagers} from './mowerDormRecovery'
 function fixture(groupHole=false,padding='known'){
  const room='dormitory_1',fixed=['M0','M1',groupHole?'Resident':'Free','Free','Free']
  const agents=groupHole?['M0','M1','Cover','H','Q']:['M0','M1','H','R','Q'],operators:Record<string,MowerOperatorState>={}
@@ -41,6 +41,43 @@ describe('actual alpha default dorm recovery ordering',()=>{
   expect(mowerConfirmedRecoveryTarget(f.data,f.room,'M0')).toBeUndefined()
   expect(mowerConfirmedRecoveryTargets(f.data).size).toBe(0)
  })
+ it('confirms a fourth-slot manager and keeps only the first provider in the confirmation',()=>{
+  const f=fixture();f.operators.M0!.singleRecoveryManager=false
+  const manager=new MowerOperatorState({name:'琴柳',room:f.room,index:3,currentRoom:f.room,currentIndex:3,operatorType:'high',mood:12,timeStampMicros:0,singleRecoveryManager:true})
+  delete f.operators.R;f.operators['琴柳']=manager;f.agents[3]='琴柳';f.data.plan[f.room]![3]='琴柳'
+  f.operators.Q!.singleRecoveryManager=true
+  expect(f.ensure()).toBe(true)
+  expect(f.marker().fixed).toEqual([['琴柳',3,2]])
+  expect(f.trace).toEqual([{intermediate:['M0','M1','H','琴柳','']}])
+  f.restore()
+  expect(mowerConfirmedRecoveryTargets(f.data).get(f.room)).toEqual(new Map([['琴柳','H']]))
+  expect(mowerConfirmedRecoveryTarget(f.data,f.room,'Q')).toBeUndefined()
+ })
+ it('selects only the earlier of two providers even when both occupy the first two slots',()=>{
+  const f=fixture();f.operators.M1!.singleRecoveryManager=true
+  expect(f.ensure()).toBe(true)
+  expect(f.marker().fixed).toEqual([['M0',0,2]])
+  f.restore()
+  expect(mowerConfirmedRecoveryTargets(f.data).get(f.room)).toEqual(new Map([['M0','H']]))
+ })
+ it('skips the selected provider in a recovery bed and confirms the next eligible resident',()=>{
+  const f=fixture();f.operators.M0!.singleRecoveryManager=false;f.operators.H!.singleRecoveryManager=true
+  expect(mowerRecoveryTarget(f.data,f.room,f.agents)?.name).toBe('R')
+  expect(f.ensure()).toBe(true)
+  expect(f.operators.R!.dormRecoveryFixed).toEqual([['H',2,2]])
+  expect(f.operators.H!.dormRecoveryRoom).toBe('')
+ })
+ it('keeps a fifth-slot manager at its final position while filling the temporary gap',()=>{
+  const f=fixture();f.operators.M0!.singleRecoveryManager=false;f.operators.Q!.singleRecoveryManager=true
+  f.operators.Padding=new MowerOperatorState({name:'Padding',mood:24,timeStampMicros:0})
+  expect(f.ensure()).toBe(true)
+  expect(f.marker().fixed).toEqual([['Q',4,2]])
+  expect(f.trace).toEqual([{intermediate:['M0','M1','H','Padding','Q']}])
+ })
+ it('does not recognize a manager from an incomplete final roster',()=>{
+  const f=fixture()
+  expect(mowerRecoveryManagers(f.data,f.room,f.agents.slice(0,4))).toEqual([])
+ })
  it('matches establishing, reusing and manager-away-and-back native markers',()=>{
   const f=fixture(),cases=oracle.cases
   expect({ordered:f.ensure(),marker:f.marker(),pending:f.task.dormRecoveryRestore,intermediate:f.trace,bedTimerCleared:f.data.getDormByName('H')![1].timeMicros===undefined}).toEqual(cases[0]!.output)
@@ -52,7 +89,13 @@ describe('actual alpha default dorm recovery ordering',()=>{
  for(const [index,label] of ['no-manager','manager-only-index3','target-full-cached','target-static-native-dorm','upcoming-vip-overwrite'].entries())it(label,()=>{
   const f=fixture()
   if(label==='no-manager')f.operators.M0!.singleRecoveryManager=false
-  if(label==='manager-only-index3'){f.operators.M0!.singleRecoveryManager=false;f.operators.R!.singleRecoveryManager=true}
+  if(label==='manager-only-index3'){
+   f.operators.M0!.singleRecoveryManager=false;f.operators.R!.singleRecoveryManager=true
+   expect(f.ensure()).toBe(true)
+   expect(f.marker().fixed).toEqual([['R',3,2]])
+   expect(f.trace).toEqual([{intermediate:['M0','M1','H','R','']}])
+   return
+  }
   if(label==='target-full-cached')f.operators.H!.mood=24
   if(label==='target-static-native-dorm')f.operators.H!.room=f.room
   if(label==='upcoming-vip-overwrite')f.queue.tasks.push(new MowerTask({time:.5/3600,plan:{[f.room]:['Current','Current','Other','Current','Current']}}))

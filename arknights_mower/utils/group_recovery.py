@@ -24,6 +24,7 @@ def group_recovery_workers(data, group):
         for op in [data.operators[name]]
         if op.is_high()
         and not op.room.startswith("dorm")
+        and not op.independent_rest
         and not op.workaholic
         and not data._can_standby(op)
         and (op.is_resting() or not op.current_room)

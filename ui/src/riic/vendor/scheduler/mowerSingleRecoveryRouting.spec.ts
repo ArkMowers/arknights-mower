@@ -4,6 +4,7 @@ import {compileRosterSchedule} from './compileRosterSchedule'
 import {createRosterRuntime,compiledScheduleToRuntimeConfig} from './rosterRuntime'
 import {makeMowerSchedulingData} from './mowerSourceRuntime'
 import {createBackupPlanController} from './backupPlans'
+import {mowerRecoveryManagers} from './mowerDormRecovery'
 import {describe,it,expect} from 'vitest'
 import {MowerOperatorState} from './mowerOperatorState'
 import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
@@ -79,6 +80,14 @@ describe('single-recovery skill workers use compatible recovery beds',()=>{
 })
 
 describe('active single-recovery skill classification survives scheduler adaptation',()=>{
+ it('recognizes a fourth-slot Saileach through the compiled scheduler and catalog skill adapter',()=>{
+  const workspace=createDefaultWorkspace(),names=['杜林','芬','香草','琴柳','闪灵']
+  workspace.mainPlan.facilities.dormitory_1.slots=names.map(name=>({occupant:{kind:'operator' as const,operatorId:id(name)},groupId:null,replacements:[]}))
+  const config=compiledScheduleToRuntimeConfig(compileRosterSchedule(workspace)),data=makeMowerSchedulingData(createRosterRuntime(config))
+  expect(data.operators[id('琴柳')]!.singleRecoveryManager).toBe(true)
+  expect(data.operators[id('闪灵')]!.singleRecoveryManager).toBe(true)
+  expect(mowerRecoveryManagers(data,'dormitory_1',names.map(id))).toEqual([[id('琴柳'),3,data.operators[id('琴柳')]!.dormPositionVersion]])
+ })
  it('marks workers outside dorm manager slots and honors an explicitly empty active skill snapshot',()=>{
   const workspace=createDefaultWorkspace()
   workspace.mainPlan.facilities.room_1_1.slots=[{occupant:{kind:'operator',operatorId:id('流明')},groupId:null,replacements:[id('芬')]}]

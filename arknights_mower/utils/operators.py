@@ -318,6 +318,7 @@ class Operators:
         self.idle_dorm_search_exhausted = False
         self.idle_dorm_search_stopped_at = None
         self.dorm_mood_estimates = {}
+        self.recall_recovery_rates = {}
         self.emergency_reserved_agents = set()
         self.emergency_dorm_agents = set()
         self.workaholic_agent = set()
@@ -1633,6 +1634,16 @@ class Operators:
         ) and (current_room, current_index) == (agent.room, agent.index)
         logger.debug(f"{name},{mood},{current_room},{current_index},{update_time}")
         if update_time:
+            from arknights_mower.utils.recall_estimates import observe_work_rate
+
+            observe_work_rate(
+                agent,
+                mood,
+                current_room,
+                current_index,
+                datetime.now(),
+                preserve=preserve_depletion_rate,
+            )
             agent.mood_is_prediction = False
             if (
                 not preserve_depletion_rate
@@ -1747,6 +1758,11 @@ class Operators:
                         dorm.time = _agent.time_stamp + timedelta(seconds=sec_remaining)
                     else:
                         dorm.time = agent["time"]
+                    from arknights_mower.utils.recall_estimates import (
+                        observe_recovery_rate,
+                    )
+
+                    observe_recovery_rate(self, dorm)
                 break
         # 记录真实用尽时间
         if room in self.true_exhaust_room and _name in self.operators.keys():
@@ -1863,6 +1879,10 @@ class Operators:
             operator.time_stamp = exist.time_stamp
             operator.mood_is_prediction = getattr(exist, "mood_is_prediction", False)
             operator.depletion_rate = exist.depletion_rate
+            operator.recall_work_rate = getattr(exist, "recall_work_rate", None)
+            operator.recall_work_rate_checked = getattr(
+                exist, "recall_work_rate_checked", False
+            )
             operator.current_room = exist.current_room
             operator.current_index = exist.current_index
             operator.dorm_position_version = getattr(exist, "dorm_position_version", 0)
@@ -2132,6 +2152,9 @@ class Operators:
         产物切换和回班规划共用这一份位置语义，不能只改工位而留下旧床位。
         """
         projected = copy.copy(self)
+        projected.recall_recovery_rates = dict(
+            getattr(self, "recall_recovery_rates", {})
+        )
         projected.operators = copy.deepcopy(self.operators)
         projected.groups = copy.deepcopy(self.groups)
         projected.group_shift_state = dict(self.group_shift_state)

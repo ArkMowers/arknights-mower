@@ -111,7 +111,7 @@ def test_failed_ordinary_request_waits_for_observation_without_duplication(solve
     assert request.time == at
 
 
-def test_unknown_recall_forecast_never_uses_old_rates(solver):
+def test_unknown_recall_forecast_requires_work_and_recovery_estimates(solver):
     data = solver.op_data
     admitted = data.project_arrangements(
         [
@@ -123,8 +123,6 @@ def test_unknown_recall_forecast_never_uses_old_rates(solver):
             }
         ]
     )
-    for op in data.operators.values():
-        op.depletion_rate = 0.5
     assert not recall_can_sustain(data, admitted, ["苍苔", "絮雨"], ["机械师"])
     # 完整可信阵容速率存在时才比较整个连通范围与共享床位的恢复周期。
     work = {name: 0.1 for name in data.operators}
@@ -657,3 +655,60 @@ def test_failed_exhaust_preview_retains_original_ordinary_request(
     assert task.__dict__ == original
     assert s.op_data.plan_condition == [False]
     assert s.op_data.operators["歌蕾蒂娅"].is_working()
+
+
+def seed_observed_recall_rates(data):
+    from arknights_mower.utils.dorm_recovery import recovery_managers
+
+    for op in data.operators.values():
+        op.depletion_rate = 0.5
+        op.recall_work_rate = (0.5, op.time_stamp)
+    room = "dormitory_1"
+    names = [
+        data.get_current_operator(room, index) for index in range(len(data.plan[room]))
+    ]
+    target = data.operators["苍苔"]
+    target.dorm_recovery_room, target.dorm_recovery_index = room, 2
+    target.dorm_recovery_fixed = recovery_managers(
+        data, room, [op.name if op else "" for op in names]
+    )
+
+
+def test_native_support_can_recall_using_observed_approximate_rates(solver):
+    data = solver.op_data
+    data.operators["苍苔"].replacement = ["槐琥"]
+    seed_observed_recall_rates(data)
+    before = {
+        name: (op.current_room, op.current_index, op.mood, op.time_stamp)
+        for name, op in data.operators.items()
+    }
+    before_beds = [(bed.name, bed.time) for bed in data.all_dorms()]
+    support = solver._plan_exhaust_support(["机械师"])
+    assert support is not None
+    assert support["room_2_2"] == ["苍苔"]
+    assert support["contact"] == ["絮雨"]
+    assert solver._coordination_support_valid(support, ["机械师"])
+    assert before == {
+        name: (op.current_room, op.current_index, op.mood, op.time_stamp)
+        for name, op in data.operators.items()
+    }
+    assert before_beds == [(bed.name, bed.time) for bed in data.all_dorms()]
+
+
+@pytest.mark.parametrize("failure", ["short-work", "full-required", "unknown-work"])
+def test_approximate_recall_preserves_protection_and_sustainability(solver, failure):
+    data = solver.op_data
+    data.operators["苍苔"].replacement = ["槐琥"]
+    seed_observed_recall_rates(data)
+    if failure == "short-work":
+        data.operators["絮雨"].depletion_rate = 10
+        data.operators["絮雨"].recall_work_rate = (
+            10,
+            data.operators["絮雨"].time_stamp,
+        )
+    elif failure == "full-required":
+        data.operators["絮雨"].rest_in_full = True
+    else:
+        data.operators["絮雨"].depletion_rate = 0
+        del data.operators["絮雨"].recall_work_rate
+    assert solver._plan_exhaust_support(["机械师"]) is None
