@@ -7,8 +7,10 @@ import numpy as np
 import pytest
 
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.recognize import RecognizeError
+from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask
 
 BLUE = ((1550, 40), (1800, 100))
@@ -30,7 +32,16 @@ def solver_for(frames):
         value = frame.get(name)
         return None if score and frame.get("fading") else value
 
-    solver.recog = SimpleNamespace(w=1920, h=1080, update=MagicMock())
+    solver.recog = SimpleNamespace(
+        w=1920,
+        h=1080,
+        update=MagicMock(),
+        get_scene=lambda: (
+            Scene.CONNECTING
+            if frames[state["frame"]].get("connecting")
+            else Scene.INFRA_DETAILS
+        ),
+    )
     solver.find = MagicMock(side_effect=find)
     solver.tap = MagicMock(side_effect=advance)
     solver.sleep = MagicMock(side_effect=advance)
@@ -134,8 +145,55 @@ def test_connecting_prevents_confirming_underneath_overlay():
         ]
     )
     solver.tap_confirm("room_1_1")
-    solver.sleep.assert_called_once_with()
+    solver.sleep.assert_called_once_with(1)
     solver.tap.assert_called_once_with(BLUE, interval=0.2)
+
+
+@pytest.mark.parametrize("before_click", [False, True])
+@pytest.mark.parametrize("secondary", [False, True])
+def test_confirmation_uses_configured_connection_budget(
+    monkeypatch, before_click, secondary
+):
+    monkeypatch.setattr(config.conf.waiting_scene, "CONNECTING", (1, 20))
+    connection = [{"connecting": True, "confirm_blue": BLUE}] * 13
+    destination = ([{"arrange_confirm": BLUE}] if secondary else []) + [
+        {"room_detail": DETAIL}
+    ]
+    frames = (
+        connection + [{"confirm_blue": BLUE}] + destination
+        if before_click
+        else [{"confirm_blue": BLUE}] + connection + destination
+    )
+    solver = solver_for(frames)
+
+    solver.tap_confirm("room_1_1")
+
+    assert [call.args[0] for call in solver.tap.call_args_list] == [BLUE] + (
+        [(1280, 1070)] if secondary else []
+    )
+    assert solver.sleep.call_count == 13
+
+
+def test_connection_timeout_recovers_without_reporting_confirmation_success(
+    monkeypatch,
+):
+    from arknights_mower.utils import solver as solver_module
+
+    monkeypatch.setattr(config.conf.waiting_scene, "CONNECTING", (1, 3))
+    recovery_sleep = MagicMock()
+    monkeypatch.setattr(solver_module, "csleep", recovery_sleep)
+    solver = solver_for([{"confirm_blue": BLUE}, {"connecting": True}])
+    solver.device = MagicMock()
+    solver.check_current_focus = MagicMock()
+
+    with pytest.raises(RecognizeError, match="联网等待超时"):
+        solver.tap_confirm("room_1_1")
+
+    solver.tap.assert_called_once_with(BLUE, interval=0.2)
+    assert solver.sleep.call_count == 3
+    solver.device.exit.assert_called_once_with()
+    recovery_sleep.assert_called_once_with(3)
+    solver.check_current_focus.assert_called_once_with()
 
 
 def test_detail_is_closed_before_opening_orders():
