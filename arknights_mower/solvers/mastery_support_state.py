@@ -134,12 +134,16 @@ def enqueue_support_swap(solver, plan, at, name):
             and task.type == TaskTypes.SWAP_SUPPORT
             and getattr(task, "plan_key", None) == str(plan["id"])
         ):
+            if getattr(task, "execution_failure", None) or getattr(
+                task, "execution_retained", False
+            ):
+                return task
             task.time = (
                 min(task.time, at)
                 if getattr(task, "advance_support_swap", False)
                 else at
             )
-            return
+            return task
     task = SchedulerTask(
         time=at,
         task_type=TaskTypes.SWAP_SUPPORT,
@@ -147,6 +151,7 @@ def enqueue_support_swap(solver, plan, at, name):
     )
     task.plan_key = str(plan["id"])
     solver.tasks.append(task)
+    return task
 
 
 def finish_support_swap(solver, plan, level, freeze=False):
@@ -158,13 +163,6 @@ def finish_support_swap(solver, plan, level, freeze=False):
             update_plan_status(plan["id"], "training", swap_frozen=1)
     finally:
         _schedule_collect_after_swap(solver, plan, tier=level)
-
-
-def stop_support_swap(solver, plan, level, reason):
-    try:
-        notify_support_failure(plan, level, reason)
-    finally:
-        finish_support_swap(solver, plan, level, freeze=True)
 
 
 def select_swap_support(work_seconds, current_rate, stats, settings):

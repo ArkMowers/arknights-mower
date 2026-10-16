@@ -1927,8 +1927,7 @@ class TestReconcileMatrix(unittest.TestCase):
         self.assertIsNone(plan)
 
     def test_training_unreadable_panel_no_adoption(self):
-        # B8：面板干员名不可读 → 不采纳倒计时（不刷新、不改写状态），也不判「假记录」、
-        # 不排重检——让排班系统下次自然进房重读（用户 08-15 定案）
+        # 面板身份未知时保留原训练状态，仅恢复尚未入队的换人核验。
         solver = MagicMock()
         solver.tasks = []
         room = make_room("training", operator_name="")
@@ -1937,6 +1936,10 @@ class TestReconcileMatrix(unittest.TestCase):
             patch.object(reader, "_reset_fake") as rf,
             patch.object(reader, "_update_expiry") as ue,
             patch.object(reader, "_notify_blocked") as nb,
+            patch(
+                "arknights_mower.solvers.mastery._get_plan_route",
+                return_value={"operator": "夜半", "swap_target": "逻各斯"},
+            ),
         ):
             start, arrange_support = reader._reconcile(solver, room, active, [active])
         rf.assert_not_called()
@@ -1944,11 +1947,13 @@ class TestReconcileMatrix(unittest.TestCase):
         nb.assert_not_called()
         self.assertIsNone(start)
         self.assertTrue(arrange_support)
-        self.assertEqual(solver.tasks, [], "不可读不排重检，等排班自然重读")
+        self.assertEqual(len(solver.tasks), 1)
+        self.assertEqual(solver.tasks[0].type, reader.TaskTypes.SWAP_SUPPORT)
+        self.assertEqual(solver.tasks[0].plan_key, str(active["id"]))
+        self.assertTrue(solver.tasks[0].mastery_swap_verify_only)
 
     def test_training_skill_unreadable_panel_no_adoption(self):
-        # B8：干员名可读且匹配、但技能名不可读 → 不采纳（不认不可读技能）、
-        # 不判假记录（干员对得上）、不排重检
+        # 技能未知不授权更新进度；换人意图仍保留到实读确认。
         solver = MagicMock()
         solver.tasks = []
         room = make_room("training", skill_name="")
@@ -1956,13 +1961,20 @@ class TestReconcileMatrix(unittest.TestCase):
         with (
             patch.object(reader, "_reset_fake") as rf,
             patch.object(reader, "_update_expiry") as ue,
+            patch(
+                "arknights_mower.solvers.mastery._get_plan_route",
+                return_value={"operator": "夜半", "swap_target": "逻各斯"},
+            ),
         ):
             start, arrange_support = reader._reconcile(solver, room, active, [active])
         rf.assert_not_called()
         ue.assert_not_called()
         self.assertIsNone(start)
         self.assertTrue(arrange_support)
-        self.assertEqual(solver.tasks, [], "技能不可读不排重检")
+        self.assertEqual(len(solver.tasks), 1)
+        self.assertEqual(solver.tasks[0].type, reader.TaskTypes.SWAP_SUPPORT)
+        self.assertEqual(solver.tasks[0].plan_key, str(active["id"]))
+        self.assertTrue(solver.tasks[0].mastery_swap_verify_only)
 
     def test_training_unreadable_no_downgrade_waiting_collect(self):
         # B8：DB 计划 status=waiting_collect + 面板干员名不可读 → 不被无校验刷新降回
