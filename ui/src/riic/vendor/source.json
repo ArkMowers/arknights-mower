@@ -205,8 +205,8 @@
       "sha256": "4e53d292e999c713de10aea6f665e73f7fb95dbd0e8e10eedb04b3b2c1f081b2"
     },
     "scheduler/mowerAlphaDorm.ts": {
-      "sha256": "1ca885eacfa2964a70b3d9eb362a68290a2d19a84aa5c3179c649103c7a1f230",
-      "reason": "Preserve same-round dorm admissions and mirror native displacement restoration: shared members retain resting bindings, completed departures keep unfinished anchors resting, and named arrangement targets retain priority. Allocate recovery-tier quotas in the complete configured bed order, including explicit ordinary beds, while retaining compatible actual occupants and protecting pending reservations."
+      "sha256": "70207154b3869329374b6b23ab86bea9daf9d19a55735b9fbda14a3eaf142256",
+      "reason": "Preserve same-round dorm admissions and mirror native displacement restoration: shared members retain resting bindings, completed departures keep unfinished anchors resting, and named arrangement targets retain priority. Allocate recovery-tier quotas in the complete configured bed order, including explicit ordinary beds, while retaining compatible actual occupants and protecting pending reservations. When an arrangement changes single-target bed ownership, reallocate all movable recovering residents by tier and personal morale deficit; retain equal-deficit incumbents and same-speed positions."
     },
     "scheduler/mowerCompletedDeparture.spec.ts": {
       "sha256": "84ce808ec66ed5dce08056606dd74ed07b1e59f1f37a7939dec5735bc2ba000a",

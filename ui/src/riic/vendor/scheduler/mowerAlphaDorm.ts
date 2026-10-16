@@ -160,6 +160,23 @@ export function alphaPrioritizeRecovery(data:MowerSchedulingData,plan:MowerTaskP
  targets.forEach(i=>retain(i));targets.forEach(i=>fill(i))
  ordinary.forEach(i=>retain(i));ordinary.forEach(i=>fill(i))
  groups.forEach((_,i)=>fill(i,true))
+ if(targets.some(i=>allocations.get(alphaPosition(...groups[i]![0]!.position))!==actual.get(alphaPosition(...groups[i]![0]!.position)))){
+  // A changed single-target owner releases equal-tier bed preservation across dorms.
+  // Keep full-morale padding in its compatible quota; rank recovering residents first.
+  const remaining=beds.map(b=>b.name).filter(name=>name&&tier(name)!==fillerTier)
+  for(const [position,name] of allocations)if(tier(name)!==fillerTier)allocations.delete(position)
+  for(const group of groups){
+   const slots=group.filter(b=>!allocations.has(alphaPosition(...b.position)))
+   const residents=new Set(slots.map(b=>actual.get(alphaPosition(...b.position))))
+   remaining.sort((a,b)=>compareAlphaKeys(alphaRestingKey(projected,a),alphaRestingKey(projected,b))||Number(residents.has(b))-Number(residents.has(a)))
+   const selected=remaining.splice(0,slots.length)
+   for(const bed of slots){
+    const position=alphaPosition(...bed.position),name=actual.get(position)??'',index=selected.indexOf(name)
+    if(index>=0){allocations.set(position,name);selected.splice(index,1)}
+   }
+   for(const bed of slots){const position=alphaPosition(...bed.position);if(!allocations.has(position))allocations.set(position,selected.shift()!)}
+  }
+ }
  const result=structuredClone(plan)
  for(const bed of beds){
   const name=allocations.get(alphaPosition(...bed.position))!
