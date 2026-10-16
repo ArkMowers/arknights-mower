@@ -205,10 +205,12 @@ class CreditShop(SceneGraphSolver):
                 self.rejected_product = None
             if config.conf.should_use_credit_shop_value:
                 return self._shop_by_value(remain)
+            priority_names = config.conf.maa_mall_buy.split(",")
+            blacklist = config.conf.maa_mall_blacklist.split(",")
             for product in self.products:
                 if (
                     product
-                    and product["name"] in config.conf.maa_mall_buy
+                    and product["name"] in priority_names
                     and self._can_afford(remain, product["price"])
                 ):
                     self.selected_product = product
@@ -217,7 +219,7 @@ class CreditShop(SceneGraphSolver):
             for product in self.products:
                 if (
                     product
-                    and product["name"] not in config.conf.maa_mall_blacklist
+                    and product["name"] not in blacklist
                     and self._can_afford(remain, product["price"])
                 ):
                     self.selected_product = product
@@ -235,8 +237,7 @@ class CreditShop(SceneGraphSolver):
                     sum(
                         product["price"]
                         for product in self.products
-                        if product
-                        and product["name"] not in config.conf.maa_mall_blacklist
+                        if product and product["name"] not in blacklist
                     )
                     - remain,
                 )
