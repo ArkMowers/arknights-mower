@@ -308,6 +308,7 @@ class Operators:
         self.operators = {}
         self.groups = {}
         self.group_shift_state = {}
+        self.group_recovery_full_members = {}
         self.exhaust_agent = set()
         self.exhaust_group = set()
         self.rest_in_full_group = set()
@@ -1129,6 +1130,11 @@ class Operators:
         for group in self.groups:
             if group not in self.group_shift_state:
                 self.group_shift_state[group] = self.group_is_resting(group)
+        recovery = getattr(self, "group_recovery_full_members", {})
+        for group, resting in transitions.items():
+            if self.group_shift_state.get(group) != resting:
+                recovery.pop(group, None)
+        self.group_recovery_full_members = recovery
         self.group_shift_state.update(transitions)
         for op in self.operators.values():
             if op.multi_group:
@@ -1138,12 +1144,17 @@ class Operators:
                         op.name, op.group if op.group in groups else groups[0]
                     )
 
-    def restore_group_shift_state(self, saved=None):
+    def restore_group_shift_state(self, saved=None, recovery=None):
         """Legacy snapshots infer rest only from ordinary fixed members."""
         self.group_shift_state = {
             group: resting
             for group, resting in (saved or {}).items()
             if type(resting) is bool
+        }
+        self.group_recovery_full_members = {
+            group: list(names)
+            for group, names in (recovery or {}).items()
+            if self.group_shift_state.get(group) and isinstance(names, (list, tuple))
         }
         self.commit_group_shifts({})
 
@@ -2124,6 +2135,9 @@ class Operators:
         projected.operators = copy.deepcopy(self.operators)
         projected.groups = copy.deepcopy(self.groups)
         projected.group_shift_state = dict(self.group_shift_state)
+        projected.group_recovery_full_members = copy.deepcopy(
+            getattr(self, "group_recovery_full_members", {})
+        )
         projected.dorm = copy.deepcopy(self.dorm)
         projected.group_dorm = copy.deepcopy(getattr(self, "group_dorm", []))
         for plan in plans:
@@ -2661,6 +2675,9 @@ class Operators:
     def _find_dorm_slot(
         self, name, used, *, active_groups=None, plan=None, isolation=True
     ):
+        from arknights_mower.utils.dorm_recovery import single_recovery_bed_cost
+        from arknights_mower.utils.dorm_skills import is_single_recovery_manager
+
         if self.rest_mood_complete(name):
             return None
         if resting_tier(self, name) == RestingTier.EXCLUDED:
@@ -2687,13 +2704,25 @@ class Operators:
             )
         ]
         now = datetime.now()
+        compatible_beds = [
+            self.dorm[index]
+            for index in order
+            if self.is_effective_free_slot(
+                self.dorm[index], active_groups=active_groups
+            )
+        ]
+        single_manager = is_single_recovery_manager(name)
 
         def takeover_cost(index):
             bed = self.dorm[index]
+            single_cost = (
+                single_recovery_bed_cost(bed, compatible_beds) if single_manager else 0
+            )
             if not bed.name:
                 return (
                     0,
                     0,
+                    single_cost,
                     0,
                     self.dorm_isolation_cost(name, *bed.position, plan=plan)
                     if isolation
@@ -2704,6 +2733,7 @@ class Operators:
             return (
                 1,
                 -tier,
+                single_cost,
                 self.dorm_isolation_cost(name, *bed.position, plan=plan)
                 if isolation
                 else 0,

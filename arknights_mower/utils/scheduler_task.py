@@ -1604,6 +1604,9 @@ def generate_plan_by_drom(
     op_data.operators = copy.deepcopy(op_data.operators)
     op_data.groups = copy.deepcopy(op_data.groups)
     op_data.group_shift_state = dict(op_data.group_shift_state)
+    op_data.group_recovery_full_members = copy.deepcopy(
+        getattr(op_data, "group_recovery_full_members", {})
+    )
     batches = copy.deepcopy(batches)
     ordered = sorted(batches, key=lambda batch: batch[0])
     result = []
@@ -1615,7 +1618,6 @@ def generate_plan_by_drom(
     for time, (dorms, rest_in_full) in ordered:
         logger.debug(f"{time},{dorms},{rest_in_full}")
         plan = {}
-        exhaust_exist = False
         for room in dorms:
             if not room.name or room.name not in op_data.operators:
                 logger.debug(f"跳过已失效的宿舍回班项：{room}")
@@ -1629,8 +1631,6 @@ def generate_plan_by_drom(
                 and (not op.independent_rest or op_data.resting_binding_groups(op))
             ):
                 continue
-            if op.exhaust_require:
-                exhaust_exist = True
             # 不养闲人只释放个人床位；主班身份不能把清退变成整组回班。
             if not op.is_high() or (rest_in_full is None):
                 if rest_in_full is None and op_data.skip_idle_dorm_release(op.name):
@@ -1739,10 +1739,7 @@ def generate_plan_by_drom(
             planned.update(rebalance_closing_dorm_slots(op_data, plan, planned))
         earliest = _after_pending_arrangements(plan, pending_resources)
         if rest_in_full:
-            if exhaust_exist:
-                time = max(time, current_time, earliest)
-            else:
-                time = max(time - timedelta(minutes=8), current_time, earliest)
+            time = max(time, current_time, earliest)
             result.append(
                 SchedulerTask(
                     task_plan=plan,
@@ -1813,6 +1810,12 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
         ]
         tasks.extend(releases)
         return tasks
+    from arknights_mower.utils.group_recovery import (
+        group_recovery_deadline,
+        observed_full_mood,
+    )
+
+    actual_data = op_data
     op_data.refresh_idle_dorm_search()
     locked_tasks = [
         task
@@ -1828,6 +1831,21 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
         for name in locked_names
         if name in op_data.operators and op_data.operators[name].group
     }
+
+    def recovery_reservations(group):
+        names, slots = retained_task_reservations(
+            actual_data, locked_tasks, returning_groups=[group] if group else ()
+        )
+        for pending in locked_tasks:
+            names.update(getattr(pending, "product_lock_names", ()))
+            slots.update(getattr(pending, "product_lock_slots", ()))
+        groups = {
+            actual_data.operators[name].group
+            for name in names
+            if name in actual_data.operators and actual_data.operators[name].group
+        }
+        return names, slots, groups
+
     locked_ids = {id(task) for task in locked_tasks}
     # 仅当副表处于激活状态时，保留既有回班任务中的工位快照，避免副表临时调整工位覆盖回班目标；
     # 当所有副表均已失效（恢复纯主表）时，所有干员统一按主表规划回班，避免副表工位粘滞。
@@ -1960,10 +1978,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
                 observed.individual_return_window = (identity, start)
         for bed in dorms:
             return_windows[bed.name] = (identity, start)
-        return min(
-            min(bed.time for bed in dorms if bed.time is not None),
-            max(min_resting_time, start + timedelta(minutes=30)),
-        )
+        return min(bed.time for bed in dorms if bed.time is not None)
 
     logger.debug(f"预测最低休息时间为: {min_resting_time}")
     grouped_dorms = defaultdict(list)
@@ -1974,19 +1989,22 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
             continue
         if dorm.name and dorm.name in op_data.operators:
             operator = op_data.operators[dorm.name]
+            return_names, return_slots, return_groups = recovery_reservations(
+                operator.group
+            )
             if (
-                dorm.name in locked_names
-                or dorm.name in excluded_names
-                or operator.group in locked_groups
-                or dorm.position in locked_slots
-            ):
-                continue
-            if (not operator.multi_group or operator.independent_rest) and (
-                not operator.group or op_data.is_group_shift_anchor(operator)
+                dorm.name not in return_names | set(excluded_names)
+                and operator.group not in return_groups
+                and dorm.position not in return_slots
+                and (not operator.multi_group or operator.independent_rest)
+                and (not operator.group or op_data.is_group_shift_anchor(operator))
             ):
                 grouped_dorms[operator.group].append(dorm)
             if (
                 dorm in op_data.dorm
+                and dorm.name not in locked_names | set(excluded_names)
+                and operator.group not in locked_groups
+                and dorm.position not in locked_slots
                 and not op_data.has_rest_mood_limit(dorm.name)
                 and not op_data.skip_idle_dorm_release(dorm.name)
             ):
@@ -1995,7 +2013,6 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
     for group_name, dorms in grouped_dorms.items():
         logger.debug(f"开始计算:{group_name}")
         logger.debug(f"开始计算:{dorms}")
-        max_rest_in_full_time = None
         task_time = datetime.max
         # 高优先宿舍
         _high_dorms = [
@@ -2017,66 +2034,30 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
                 ]
         else:
             high_dorms = _high_dorms
-        rest_in_full_dorms = [
-            dorm for dorm in high_dorms if op_data.operators[dorm.name].rest_in_full
-        ]
         if high_dorms and group_name:
-            # 高优先干员恢复时间差过大时，可延后整组回班。
-            recovery_times = [dorm.time for dorm in high_dorms if dorm.time is not None]
-            need_early = not op_data.operators[high_dorms[0].name].exhaust_require
-            mood_gap_full_rest = False
+            required, deadline = group_recovery_deadline(op_data, group_name, now=now)
             if (
-                config.conf.group_rest_in_full_on_mood_gap
-                and len(recovery_times) > 1
-                and not rest_in_full_dorms
+                group_name in op_data.group_recovery_full_members
+                and op_data.group_is_resting(group_name)
+                and actual_data.group_is_resting(group_name)
             ):
-                limit = timedelta(minutes=config.conf.group_mood_gap_threshold_minutes)
-                earliest, latest = min(recovery_times), max(recovery_times)
-                if latest - earliest > limit:
-                    logger.debug(
-                        f"{group_name} 预计恢复时间差 {latest - earliest} 超过 {limit}，延后整组回班"
-                    )
-                    max_rest_in_full_time = latest
-                    mood_gap_full_rest = True
-            if rest_in_full_dorms:
-                max_rest_in_full_time = max(
-                    (dorm.time for dorm in rest_in_full_dorms if dorm.time is not None),
-                    default=None,
+                actual_data.group_recovery_full_members[group_name] = list(
+                    op_data.group_recovery_full_members[group_name]
                 )
-            nearest_dorm = min(
-                (dorm for dorm in high_dorms if dorm.time is not None),
-                key=lambda d: d.time,
-                default=None,
-            )
-            logger.debug(f"最前上班时间为{nearest_dorm}")
-            logger.debug({max_rest_in_full_time})
-            if max_rest_in_full_time:
-                # 处理回满逻辑
-                task_time = max_rest_in_full_time - (
-                    timedelta(minutes=0.4 * len(high_dorms))
-                    if need_early
-                    else timedelta(seconds=0)
-                )
-                max_extra_wait = config.conf.group_mood_gap_max_extra_wait_hours
-                if mood_gap_full_rest and max_extra_wait > 0 and nearest_dorm:
-                    normal_time = normal_return_time(high_dorms)
-                    task_time = max(
-                        normal_time,
-                        min(
-                            task_time,
-                            normal_time + timedelta(hours=max_extra_wait),
-                        ),
-                    )
-            elif nearest_dorm:
-                task_time = normal_return_time(high_dorms)
+            if required:
+                if deadline is None:
+                    continue
+                task_time = deadline
             else:
-                continue
+                if not any(dorm.time is not None for dorm in high_dorms):
+                    continue
+                task_time = normal_return_time(high_dorms)
             if task_time not in new_task:
-                new_task[task_time] = (high_dorms, len(rest_in_full_dorms) > 0)
+                new_task[task_time] = (high_dorms, bool(required))
             else:
                 combined = new_task[task_time][0] + high_dorms
-                type = new_task[task_time][1] or len(rest_in_full_dorms) > 0
-                new_task[task_time] = (combined, type)
+                full = new_task[task_time][1] or bool(required)
+                new_task[task_time] = (combined, full)
         if high_dorms and not group_name:
             # 单独添加，最后合并
             # high_droms 如果触发急救模式，后面的移送到急救前
@@ -2142,14 +2123,32 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
             and not op_data.is_group_shift_anchor(op)
             or op.room.startswith("dorm")
             or op.current_room
-            or not (
-                op_data.rest_mood_complete(op.name)
-                or op.independent_rest
-                and has_resting_mood(op)
-                and op.mood >= op.upper_limit
+        ):
+            continue
+        required, deadline = (
+            group_recovery_deadline(op_data, op.group, now=now)
+            if op.group
+            else ([], None)
+        )
+        if not (
+            op_data.rest_mood_complete(op.name)
+            or op.independent_rest
+            and observed_full_mood(op)
+            or op.group
+            and observed_full_mood(op)
+            and (
+                required
+                or config.conf.group_rest_in_full_on_mood_gap
+                and op_data.group_is_resting(op.group)
             )
         ):
             continue
+        if required and deadline is None:
+            continue
+        if op.group in op_data.group_recovery_full_members:
+            actual_data.group_recovery_full_members[op.group] = list(
+                op_data.group_recovery_full_members[op.group]
+            )
         members = (
             set(op_data.shift_group_members(op.group)) if op.group else {op.name}
         ) - set(excluded_names)
@@ -2159,10 +2158,11 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
             if not op_data.operators[name].multi_group
             or op_data.operators[name].independent_rest
         }
+        return_names, return_slots, return_groups = recovery_reservations(op.group)
         if (
             anchors & returning
-            or members & (locked_names | busy)
-            or op.group in locked_groups
+            or members & (return_names | busy)
+            or op.group in return_groups
         ):
             continue
         workers = [
@@ -2170,7 +2170,7 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
             for name in members
             if op_data.is_group_shift_anchor(op_data.operators[name])
         ]
-        if not all(
+        if not required and not all(
             not worker.current_room
             and (
                 op_data._can_standby(worker)
@@ -2187,8 +2187,8 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
         recalled = rebalance_closing_dorm_slots(
             op_data.project_arrangements([]), plan, members
         )
-        if recalled & (locked_names | busy) or any(
-            (room, index) in locked_slots
+        if recalled & (return_names | busy) or any(
+            (room, index) in return_slots
             for room, names in plan.items()
             for index, name in enumerate(names)
             if name != "Current"
@@ -2198,7 +2198,8 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
             SchedulerTask(
                 task_plan=plan,
                 time=max(
-                    datetime.now(), _after_pending_arrangements(plan, pending_resources)
+                    deadline or datetime.now(),
+                    _after_pending_arrangements(plan, pending_resources),
                 ),
                 task_type=TaskTypes.SHIFT_ON,
             )
@@ -2351,6 +2352,9 @@ def prioritize_new_dorm_recovery(
     配置的宿舍顺序表达各类位置的恢复速度偏好；仅心情变化不搬床。
     只修改投影计划，保留住客集合、预约和真实恢复标记。
     """
+    from arknights_mower.utils.dorm_recovery import single_recovery_bed_cost
+    from arknights_mower.utils.dorm_skills import is_single_recovery_manager
+
     if not plan and not preceding_plan and not configuration_changed:
         return plan
     projected = op_data.project_arrangements([preceding_plan or {}, plan])
@@ -2485,6 +2489,69 @@ def prioritize_new_dorm_recovery(
     # 被未恢复者挤出的满心情垫位者按完整顺序补空，不优先搬去后续单回位。
     for group, quota in zip(groups, quotas):
         fill(group, quota, include_fillers=True)
+    if any(
+        allocations[groups[index][0].position] != actual[groups[index][0].position]
+        for index in targets
+    ):
+        # 单回归属改变时，同级恢复者重新按缺口分配；满心情垫位保留兼容原位。
+        remaining = [
+            bed.name for bed in beds if bed.name and tier(bed.name) != filler_tier
+        ]
+        allocations = {
+            position: name
+            for position, name in allocations.items()
+            if tier(name) == filler_tier
+        }
+        for group in groups:
+            slots = [bed for bed in group if bed.position not in allocations]
+            residents = {actual[bed.position] for bed in slots}
+            remaining.sort(
+                key=lambda name: (
+                    *resting_key(projected, name, now),
+                    name not in residents,
+                )
+            )
+            remaining = crafting_rest_order(projected, remaining)
+            selected, remaining = remaining[: len(slots)], remaining[len(slots) :]
+            for bed in slots:
+                name = actual[bed.position]
+                if name in selected:
+                    allocations[bed.position] = name
+                    selected.remove(name)
+            for bed in slots:
+                if bed.position not in allocations:
+                    allocations[bed.position] = selected.pop(0)
+
+    all_beds = [bed for bed in projected.dorm if projected.is_effective_free_slot(bed)]
+    providers = [
+        name
+        for name in allocations.values()
+        if name and tier(name) != filler_tier and is_single_recovery_manager(name)
+    ]
+    providers.sort(key=lambda name: resting_key(projected, name, now))
+    placed = set()
+    for name in providers:
+        source = next(bed for bed in beds if allocations[bed.position] == name)
+        destination = next(
+            (
+                bed
+                for bed in beds
+                if allocations[bed.position] not in placed
+                and single_recovery_bed_cost(bed, all_beds)
+                < single_recovery_bed_cost(source, all_beds)
+                and (
+                    not allocations[bed.position]
+                    or tier(allocations[bed.position]) == tier(name)
+                )
+            ),
+            None,
+        )
+        if destination is not None:
+            allocations[source.position], allocations[destination.position] = (
+                allocations[destination.position],
+                name,
+            )
+        placed.add(name)
     result = copy.deepcopy(plan)
     for bed in beds:
         name = allocations[bed.position]

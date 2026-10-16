@@ -436,9 +436,7 @@ def test_planned_target_is_still_a_new_arrival_and_can_preempt(residents):
 
 
 @pytest.mark.parametrize("last_tier", [RestingTier.MAIN, RestingTier.IDLE])
-def test_displaced_target_skips_equal_tiers_even_with_larger_mood_deficit(
-    residents, last_tier
-):
+def test_displaced_target_reallocates_equal_tiers_by_mood_deficit(residents, last_tier):
     data = residents
     data.operators["银灰"].mood = 1
     for room, name, tier in (
@@ -453,13 +451,12 @@ def test_displaced_target_skips_equal_tiers_even_with_larger_mood_deficit(
     result = prioritize_new_dorm_recovery(data, {"dormitory_3": ["Current", "红"]})
     projected = data.project_arrangements([result])
     assert projected.get_current_operator(ROOM, 3).name == "红"
-    assert projected.get_current_operator("dormitory_2", 0).name == "陈"
-    assert "dormitory_2" not in result
+    assert projected.get_current_operator("dormitory_2", 0).name == "银灰"
     assert projected.get_current_operator("dormitory_3", 0).name == (
-        "空爆" if last_tier == RestingTier.MAIN else "银灰"
+        "空爆" if last_tier == RestingTier.MAIN else "陈"
     )
     assert projected.get_current_operator(ROOM, 4).name == (
-        "银灰" if last_tier == RestingTier.MAIN else "空爆"
+        "陈" if last_tier == RestingTier.MAIN else "空爆"
     )
 
 
@@ -470,7 +467,7 @@ def test_low_option_can_precede_another_rooms_high_slot(residents, explicit_low)
     data.plan[second] = [Room("Free", "", []), Room("Free", "", [])]
     data.dorm += [Dormitory((second, 0)), Dormitory((second, 1))]
     data.config.dorm_order = [ROOM, *([f"{ROOM}_low"] if explicit_low else []), second]
-    set_tier(data, "红", RestingTier.MAIN, 5)
+    set_tier(data, "红", RestingTier.MAIN, 10)
     plan = {ROOM: ["Current"] * 4 + ["红"]}
     result = prioritize_new_dorm_recovery(data, plan)
     projected = data.project_arrangements([result])

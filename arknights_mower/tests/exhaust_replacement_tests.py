@@ -67,6 +67,31 @@ def solver(monkeypatch):
     return instance
 
 
+def run_retained(solver):
+    """无法交接时保留原请求和实际驻员，不发送重复通知。"""
+    original = solver.task
+    original_time, original_plan = original.time, deepcopy(original.plan)
+    previous = list(solver.tasks)
+    positions = {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+    beds = [(bed.name, bed.time) for bed in solver.op_data.dorm]
+    solver.overtake_room()
+    assert any(task is original for task in solver.tasks)
+    assert all(any(task is old for task in solver.tasks) for old in previous)
+    assert original.time == original_time
+    assert original.plan == original_plan
+    assert original.execution_failure
+    assert positions == {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+    assert beds == [(bed.name, bed.time) for bed in solver.op_data.dorm]
+    base_schedule.send_message.assert_not_called()
+    return original
+
+
 def finish_support(solver):
     """前置换班已读屏确认后的状态，再执行动态用尽规划。"""
     support, retry = solver.tasks
@@ -205,18 +230,16 @@ def test_exhaust_support_allows_zero_mood_cover_for_group_dorm_member(solver):
     assert "机械师" in task.plan["dormitory_1"]
 
 
-def test_no_other_cover_recalls_only_owning_group(solver):
+def test_no_other_cover_retains_request_without_reliable_recall_rates(solver):
     solver.op_data.operators["苍苔"].replacement = ["槐琥"]
     # 心情更高的无关休息者不能抢先被叫回。
     solver.op_data = solver.op_data.project_arrangements(
         [{"meeting": ["陈"], "dormitory_1": ["Current"] * 4 + ["能天使"]}]
     )
     solver.op_data.operators["能天使"].mood = 20
-    solver.overtake_room()
-    assert solver.tasks[0].plan == {"room_2_2": ["苍苔"], "contact": ["絮雨"]}
-    task = finish_support(solver)
-    assert task.plan["room_3_3"] == ["槐琥"]
-    assert "机械师" in task.plan["dormitory_1"]
+    run_retained(solver)
+    assert solver.op_data.operators["苍苔"].is_resting()
+    assert solver.op_data.operators["絮雨"].is_resting()
     assert solver.op_data.operators["能天使"].is_resting()
 
 
@@ -238,10 +261,10 @@ def test_exhausted_full_rest_group_is_not_recalled(solver):
     data.rest_in_full_group.add("感知")
     data.exhaust_group.add("感知")
     before = deepcopy(data.dorm)
-    solver.overtake_room()
-    assert solver.tasks == []
+    original = run_retained(solver)
+    assert solver.tasks == [original]
     assert [(b.name, b.time) for b in data.dorm] == [(b.name, b.time) for b in before]
-    base_schedule.send_message.assert_called_once()
+    base_schedule.send_message.assert_not_called()
 
 
 def test_full_rest_group_can_keep_resting_with_another_cover(solver):
@@ -259,8 +282,8 @@ def test_no_bed_does_not_commit_cover_swap(solver):
     for name in ("苍苔", "絮雨", "能天使"):
         op = solver.op_data.operators[name]
         op.rest_in_full = op.exhaust_require = True
-    solver.overtake_room()
-    assert solver.tasks == []
+    original = run_retained(solver)
+    assert solver.tasks == [original]
     assert solver.op_data.operators["槐琥"].current_room == "room_2_2"
 
 
@@ -269,17 +292,15 @@ def test_bed_shortage_is_checked_after_replacement_conflict(solver):
         [{"meeting": ["陈"], "dormitory_1": ["Current"] * 4 + ["能天使"]}]
     )
     solver.op_data.operators["能天使"].mood = 20
-    solver.overtake_room()
-    assert solver.tasks[0].plan == {"room_2_2": ["引星棘刺"], "meeting": ["能天使"]}
-    task = finish_support(solver)
-    assert task.plan["room_3_3"] == ["槐琥"]
-    assert "机械师" in task.plan["dormitory_1"]
+    run_retained(solver)
+    assert solver.op_data.operators["能天使"].is_resting()
+    assert solver.op_data.operators["槐琥"].current_room == "room_2_2"
 
 
 def test_busy_alternates_and_group_member_block_recall(solver, monkeypatch):
     monkeypatch.setattr(base_schedule, "_is_mastery_busy", lambda name: name != "槐琥")
-    solver.overtake_room()
-    assert solver.tasks == []
+    original = run_retained(solver)
+    assert solver.tasks == [original]
 
 
 def test_pending_product_reservation_is_not_taken(solver):
@@ -289,8 +310,8 @@ def test_pending_product_reservation_is_not_taken(solver):
     task.product_shift_locked = True
     task.product_lock_names = {"槐琥"}
     solver.tasks.append(task)
-    solver.overtake_room()
-    assert solver.tasks == [task]
+    original = run_retained(solver)
+    assert solver.tasks == [task, original]
 
 
 def test_free_cover_uses_normal_shift_without_support(solver):
@@ -437,12 +458,12 @@ def test_unfinished_group_member_still_requires_exhaust_planning(solver, member_
     solver._plan_exhaust_support = MagicMock(return_value=None)
     solver.skip = MagicMock()
 
-    solver.overtake_room()
+    run_retained(solver)
 
     solver.get_resting_plan.assert_called_once()
     solver._plan_exhaust_support.assert_called_once()
     solver.skip.assert_called_once()
-    base_schedule.send_message.assert_called_once()
+    base_schedule.send_message.assert_not_called()
 
 
 def test_exhaust_off_without_workable_replacements_preserves_occupancy(solver):
@@ -455,13 +476,13 @@ def test_exhaust_off_without_workable_replacements_preserves_occupancy(solver):
         name: (op.current_room, op.current_index) for name, op in data.operators.items()
     }
 
-    solver.overtake_room()
+    original = run_retained(solver)
 
-    assert solver.tasks == []
+    assert solver.tasks == [original]
     assert {
         name: (op.current_room, op.current_index) for name, op in data.operators.items()
     } == before
-    base_schedule.send_message.assert_called_once()
+    base_schedule.send_message.assert_not_called()
 
 
 def test_exhaust_coordinates_only_cover_even_at_zero_mood(solver):
@@ -521,11 +542,11 @@ def test_training_protection_prevents_partial_group_recall(solver):
     data.add(op)
     data.groups["感知"].append("逻各斯")
     data.operators["苍苔"].replacement = ["槐琥"]
-    solver.overtake_room()
-    assert solver.tasks == []
+    original = run_retained(solver)
+    assert solver.tasks == [original]
 
 
-def test_group_recall_restores_temporary_dorm_slot_and_keeps_occupant(solver):
+def test_unknown_recall_keeps_temporary_dorm_slot_and_occupant(solver):
     solver.global_plan["default_plan"].plan["dormitory_1"][1] = Room(
         "爱丽丝", "感知", ["Free"]
     )
@@ -545,13 +566,11 @@ def test_group_recall_restores_temporary_dorm_slot_and_keeps_occupant(solver):
     for op in solver.op_data.operators.values():
         op.time_stamp, op.mood = datetime.now(), 5
     solver.op_data.operators["苍苔"].replacement = ["槐琥"]
-    solver.overtake_room()
-    support = solver.tasks[0].plan
-    assert support["room_2_2"] == ["苍苔"]
-    assert support["contact"] == ["絮雨"]
-    assert support["dormitory_1"][1] == "爱丽丝"
-    finish_support(solver)
+    run_retained(solver)
+    assert solver.op_data.operators["苍苔"].is_resting()
+    assert solver.op_data.operators["絮雨"].is_resting()
     assert solver.op_data.operators["砾"].is_resting()
+    assert solver.op_data.operators["砾"].current_index == 1
 
 
 def test_exhaust_simulation_clones_mutable_state_without_copying_eval_capsule(
@@ -579,12 +598,20 @@ def test_exhaust_simulation_clones_mutable_state_without_copying_eval_capsule(
         assert instance.op_data.dorm[0] is not source.dorm[0]
         instance.op_data.operators["机械师"].mood = 18
         instance.op_data.dorm[0].name = "机械师"
-        plan["simulated"] = ["机械师"]
+        plan.update(
+            {
+                "room_3_3": ["槐琥"],
+                "room_2_2": ["引星棘刺"],
+                "dormitory_1": ["Current"] * 4 + ["机械师"],
+            }
+        )
 
     monkeypatch.setattr(BaseSchedulerSolver, "get_resting_plan", check_simulated_rest)
     monkeypatch.setattr(
         "arknights_mower.utils.exhaust_replacement.plan_exhaust_support",
-        lambda data, candidates, can_rest, _mastery, _protected, _fia: can_rest(data),
+        lambda data, candidates, can_rest, _mastery, _protected, _fia, _slots: can_rest(
+            data
+        ),
     )
     assert solver._plan_exhaust_support(["机械师"]) is True
     assert source.operators["机械师"].mood == before_mood
@@ -598,13 +625,13 @@ def test_partially_resting_exhaust_group_retains_planning(solver):
     solver.get_resting_plan = MagicMock()
     solver._plan_exhaust_support = MagicMock(return_value=None)
 
-    solver.overtake_room()
+    original = run_retained(solver)
 
-    assert solver.tasks == []
+    assert solver.tasks == [original]
     solver.get_resting_plan.assert_called_once_with(["苍苔", "机械师"], [], {}, 2)
     solver._plan_exhaust_support.assert_called_once_with(["苍苔", "机械师"])
     assert solver.planned
-    base_schedule.send_message.assert_called_once()
+    base_schedule.send_message.assert_not_called()
 
 
 @pytest.mark.parametrize("coordinatable", [False, True])
@@ -642,6 +669,15 @@ def test_exhaust_support_dispatch_preserves_recovery_capacity(solver, recall, re
 
     if recall:
         solver.op_data.operators["苍苔"].replacement = ["槐琥"]
+        original = run_retained(solver)
+        saved_time, saved_plan = original.time, deepcopy(original.plan)
+        if restored:
+            solver.tasks = jsonpickle.decode(jsonpickle.encode(solver.tasks))
+        (retained,) = solver.tasks
+        assert retained.time == saved_time
+        assert retained.plan == saved_plan
+        assert retained.execution_failure
+        return
     solver.overtake_room()
     if restored:
         solver.tasks = jsonpickle.decode(jsonpickle.encode(solver.tasks))

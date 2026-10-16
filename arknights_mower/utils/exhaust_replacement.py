@@ -45,7 +45,9 @@ def match_replacements(options, *, allow_partial=False, preferred=()):
     return {name: cover for cover, name in owners.items()}
 
 
-def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), fia=()):
+def plan_exhaust_support(
+    op_data, candidates, can_rest, is_busy, protected=(), fia=(), reserved_slots=()
+):
     """返回能让用尽组取得替班和床位的前置安排；失败不改变真实状态。"""
     protected = set(protected) | set(op_data.reserved_product_replacements)
     required = set(candidates)
@@ -55,8 +57,16 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
         for name in op_data.operators[name].replacement
         if name != "Free"
     }
-    plan, selected = {}, set()
-    data = op_data.project_arrangements([])
+    from arknights_mower.utils.replacement_coordination import plan_replacement_handoff
+
+    plan = (
+        plan_replacement_handoff(
+            op_data, candidates, is_busy, protected, reserved_slots
+        )
+        or {}
+    )
+    selected = set()
+    data = op_data.project_arrangements([plan])
 
     def eligible(state, name, target):
         op = state.operators.get(name)
@@ -66,6 +76,7 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
                 not op.is_high()
                 or state.is_same_group_primary_replacement(target, name)
             )
+            and (op.current_room, op.current_index) not in reserved_slots
             and name not in protected | selected | set(TRADE_ORDER_AGENTS)
             and (
                 name not in required
@@ -87,13 +98,27 @@ def plan_exhaust_support(op_data, candidates, can_rest, is_busy, protected=(), f
         )
 
     def protected_rest(state, name):
-        op = state.operators[name]
-        return op.is_resting() and (
-            op.rest_in_full
-            and op.exhaust_require
-            or op.group in state.rest_in_full_group
-            and op.group in state.exhaust_group
+        from arknights_mower.utils.group_recovery import (
+            group_recovery_deadline,
+            observed_full_mood,
         )
+
+        op = state.operators[name]
+        if not op.is_resting():
+            return False
+        if op.rest_in_full and not observed_full_mood(op):
+            return True
+        if op.group:
+            required, deadline = group_recovery_deadline(state, op.group)
+            return bool(required) and (
+                deadline is None
+                or deadline > datetime.now()
+                or any(
+                    not observed_full_mood(state.operators[member])
+                    for member in required
+                )
+            )
+        return False
 
     def recall(state, previous, name):
         op = state.operators[name]

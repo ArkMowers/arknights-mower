@@ -219,11 +219,14 @@ def test_group_mood_gap_full_rest_can_be_disabled(solver):
     assert config.conf.group_rest_in_full_on_mood_gap
     full_rest_time = group_return_time()
     config.conf.group_mood_gap_max_extra_wait_hours = 0.5
-    capped_time = group_return_time()
+    assert group_return_time() == full_rest_time
     config.conf.group_rest_in_full_on_mood_gap = False
+    # 已触发的等待属于当前休息周期；新周期才使用关闭后的配置。
+    assert group_return_time() == full_rest_time
+    data.commit_group_shifts({"联动": False})
+    data.commit_group_shifts({"联动": True})
     earliest_time = group_return_time()
     assert full_rest_time > earliest_time + timedelta(hours=1)
-    assert capped_time == earliest_time + timedelta(minutes=30)
 
     config.conf.group_rest_in_full_on_mood_gap = True
     data.operators[data.dorm[0].name].rest_in_full = True
@@ -257,7 +260,7 @@ def return_window(solver, monkeypatch):
 def test_return_window_does_not_restart_on_each_planning_pass(return_window):
     data, clock, _ = return_window
     tasks = plan_metadata(data, [])
-    expected = datetime(2026, 10, 8, 4, 9)
+    expected = datetime(2026, 10, 8, 7, 12)
     for at in [(4, 1), (4, 4), (4, 8), (4, 9)]:
         clock[0] = datetime(2026, 10, 8, *at)
         tasks = plan_metadata(data, tasks)
@@ -269,14 +272,14 @@ def test_return_window_does_not_restart_on_each_planning_pass(return_window):
 def test_due_return_window_remains_immediate(return_window):
     data, clock, _ = return_window
     tasks = plan_metadata(data, [])
-    clock[0] = datetime(2026, 10, 8, 4, 15)
+    clock[0] = datetime(2026, 10, 8, 7, 25)
     returned = next(
         task for task in plan_metadata(data, tasks) if task.type == TaskTypes.SHIFT_ON
     )
     assert clock[0] - timedelta(seconds=1) <= returned.time <= clock[0]
 
 
-def test_return_window_accepts_an_earlier_exhaust_prediction(return_window):
+def test_return_window_ignores_an_earlier_unrelated_exhaust_prediction(return_window):
     data, clock, prediction = return_window
     tasks = plan_metadata(data, [])
     clock[0] = datetime(2026, 10, 8, 4, 1)
@@ -284,7 +287,7 @@ def test_return_window_accepts_an_earlier_exhaust_prediction(return_window):
     returned = next(
         task for task in plan_metadata(data, tasks) if task.type == TaskTypes.SHIFT_ON
     )
-    assert returned.time == datetime(2026, 10, 8, 4, 2)
+    assert returned.time == datetime(2026, 10, 8, 7, 12)
 
 
 @pytest.mark.parametrize("change", ["read", "new_episode", "target", "full_rest"])
@@ -309,11 +312,11 @@ def test_return_window_reconciles_current_recovery_rules(return_window, change):
         task for task in plan_metadata(data, tasks) if task.type == TaskTypes.SHIFT_ON
     )
     if change == "read":
-        assert returned.time == datetime(2026, 10, 8, 4, 9)
+        assert returned.time == datetime(2026, 10, 8, 7, 12)
     elif change == "full_rest":
-        assert returned.time > clock[0] + timedelta(hours=2)
+        assert returned.time == datetime(2026, 10, 8, 7, 20)
     else:
-        assert returned.time == clock[0] + timedelta(minutes=22)
+        assert returned.time == datetime(2026, 10, 8, 7, 12)
 
 
 def test_return_windows_survive_batch_split_and_merge(return_window):
@@ -327,13 +330,13 @@ def test_return_windows_survive_batch_split_and_merge(return_window):
     tasks = plan_metadata(data, tasks)
     assert sorted(t.time for t in tasks if t.type == TaskTypes.SHIFT_ON) == [
         datetime(2026, 10, 8, 4, 4),
-        datetime(2026, 10, 8, 4, 9),
+        datetime(2026, 10, 8, 7, 12),
     ]
     clock[0] = datetime(2026, 10, 8, 4, 2)
     bed.time = datetime(2026, 10, 8, 7, 20)
     tasks = plan_metadata(data, tasks)
     assert [t.time for t in tasks if t.type == TaskTypes.SHIFT_ON] == [
-        datetime(2026, 10, 8, 4, 9)
+        datetime(2026, 10, 8, 7, 12)
     ]
 
 
@@ -342,7 +345,7 @@ def test_return_window_respects_pending_arrangement(return_window):
     tasks = plan_metadata(data, [])
     clock[0] = datetime(2026, 10, 8, 4, 1)
     pending = SchedulerTask(
-        time=datetime(2026, 10, 8, 4, 20),
+        time=datetime(2026, 10, 8, 7, 30),
         task_plan={"contact": ["红"]},
         task_type=TaskTypes.SELF_CORRECTION,
     )
@@ -364,7 +367,7 @@ def test_return_window_keeps_locked_product_task(return_window):
     clock[0] = datetime(2026, 10, 8, 4, 1)
     regenerated = plan_metadata(data, tasks)
     assert [task for task in regenerated if task.type == TaskTypes.SHIFT_ON] == [locked]
-    assert locked.time == datetime(2026, 10, 8, 4, 9)
+    assert locked.time == datetime(2026, 10, 8, 7, 12)
 
 
 def test_return_window_initializes_legacy_task_then_survives_copy(return_window):
@@ -378,7 +381,7 @@ def test_return_window_initializes_legacy_task_then_survives_copy(return_window)
     clock[0] = datetime(2026, 10, 8, 4, 4)
     copied = deepcopy(tasks)
     returns = [t for t in plan_metadata(data, copied) if t.type == TaskTypes.SHIFT_ON]
-    assert [t.time for t in returns] == [datetime(2026, 10, 8, 4, 23)]
+    assert [t.time for t in returns] == [datetime(2026, 10, 8, 7, 12)]
 
 
 @pytest.mark.parametrize("priority", ["high", "low", "standby"])
@@ -445,7 +448,11 @@ def test_main_idle_release_respects_switch_and_exclusions(solver, protection):
 
     tasks = plan_metadata(data, [])
 
-    assert not any(task.type == TaskTypes.RELEASE_DORM for task in tasks)
+    releases = [task for task in tasks if task.type == TaskTypes.RELEASE_DORM]
+    if protection == "excluded":
+        assert not any("银灰" in task.release_dorm_targets() for task in releases)
+    else:
+        assert releases == []
     assert next(task for task in tasks if task.type == TaskTypes.SHIFT_ON).plan[
         "meeting"
     ] == ["伊内丝", "银灰"]
@@ -2339,17 +2346,18 @@ def test_group_recovery_spread_uses_extremes_and_configured_minutes(
 
     assert config.conf.group_mood_gap_threshold_minutes == 75
     delayed = return_time()
-    assert delayed == max(bed.time for bed in beds) - timedelta(
-        minutes=8 + 0.4 * len(beds)
-    )
+    assert delayed == max(bed.time for bed in beds)
     config.conf.group_mood_gap_threshold_minutes = 82
+    assert return_time() == delayed
+    data.commit_group_shifts({"联动": False})
+    data.commit_group_shifts({"联动": True})
     normal = return_time()
     assert normal < delayed
     config.conf.group_mood_gap_threshold_minutes = 90
     assert return_time() == normal
     config.conf.group_mood_gap_threshold_minutes = 60
     config.conf.group_mood_gap_max_extra_wait_hours = 0.5
-    assert return_time() == normal + timedelta(minutes=30)
+    assert return_time() == delayed
 
 
 def test_priority_reorder_keeps_named_group_cover_in_fixed_bed(solver):

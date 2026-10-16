@@ -1,3 +1,4 @@
+import {admitMowerDerivedTasks} from './mowerTaskDerivation'
 import {planMowerPreferredReplacementRestore,mowerReplacementDependencyNames,mowerReplacementReservations} from './mowerReplacementCoordination'
 import {normalizeMowerSharedArrangement} from './mowerSharedGroups'
 import {mowerGroupRecoveryDeadline} from './mowerGroupRecovery'
@@ -46,7 +47,7 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
   if(high.length&&!group)for(const b of high)if(b.timeMicros!==undefined){const full=data.operators[b.name]!.restInFull;add(b.timeMicros,[b],full)}
  }
  if(data.freeRoom)for(const b of free){const op=data.operators[b.name]!,observed=hasObservedFullMood(op);if(b.timeMicros===undefined&&!observed)continue;const time=observed?now:b.timeMicros!,previous=releases.get(time);if(previous)previous.dorms.push(b);else releases.set(time,{timeMicros:time,dorms:[b],restInFull:null})}
- const generated=generateMowerDormTasks([...batches.values(),...releases.values()],data,existing,pending);queue.tasks.push(...generated)
+ const generated=admitMowerDerivedTasks(actual,queue.tasks,generateMowerDormTasks([...batches.values(),...releases.values()],data,existing,pending));queue.tasks.push(...generated)
  const returning=new Set(generated.flatMap(t=>Object.values(t.plan).flat()))
  for(const op of Object.values(data.operators)){
   if(!op.isHigh()||op.multiGroup||op.room.startsWith('dorm')||op.currentRoom||op.group&&data.canStandby(op))continue
@@ -66,7 +67,7 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
   const participants=members.filter(name=>Object.values(plan).some(row=>row.includes(name)))
   const recalled=alphaRebalanceClosingDorms(projectMowerArrangements(data,[]),plan,participants),resources=mowerArrangementResources(plan)
   if([...recalled].some(n=>names.has(n)||data.busyRestingNames.has(n))||[...resources.slots].some(s=>slots.has(s)))continue
-  const task=new MowerTask({type:T.SHIFT_ON,plan});task.timeMicros=Math.max(recovery?.timeMicros??now,mowerAfterPendingArrangements(plan,pending));queue.tasks.push(task);[...participants,...recalled].forEach(n=>returning.add(n))
+  const task=new MowerTask({type:T.SHIFT_ON,plan});task.timeMicros=Math.max(recovery?.timeMicros??now,mowerAfterPendingArrangements(plan,pending));queue.tasks.push(...admitMowerDerivedTasks(actual,queue.tasks,[task]));[...participants,...recalled].forEach(n=>returning.add(n))
  }
  // A due coordination intent owns its cover dependency until the physical handoff finishes.
  const coordinationReservations=mowerReplacementReservations(actual,queue.tasks)
@@ -78,7 +79,7 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
  }
  const restore=planMowerPreferredReplacementRestore(actual,protectedNames,protectedSlots)
  if(Object.keys(restore).length){const task=new MowerTask({type:T.SELF_CORRECTION,plan:restore});task.timeMicros=now;task.exhaustSupport=true;task.preferredReplacementRestore=true;queue.tasks.push(task)}
- queue.tasks.push(...limited)
+ queue.tasks.push(...admitMowerDerivedTasks(actual,queue.tasks,limited))
  const retained=queue.tasks.filter(task=>task.retainsExecution),active=queue.tasks.filter(task=>!task.retainsExecution)
  mergeMowerAlphaReleases(active,data.mergeIntervalMinutes,{adjustForRunOrders:actual.adjustForRunOrders});queue.tasks=[...active,...retained]
 }
