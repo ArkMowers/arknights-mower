@@ -695,6 +695,7 @@ class BaseSchedulerSolver(
             self._emergency_frozen()
             or op_data is None
             or self._initial_mood_read_pending()
+            or getattr(self, "_initial_staffing_pending", False)
         ):
             return False
         due_fills = [
@@ -2009,6 +2010,7 @@ class BaseSchedulerSolver(
             self._emergency_startup()
             if self._emergency_active() and not self._emergency_startup_pending:
                 self._emergency_tick()
+        self._reconcile_initial_staffing()
         initial_fia_pending = any(
             getattr(task, "initial_fia", False)
             and not getattr(task, "execution_failure", None)
@@ -2451,6 +2453,9 @@ class BaseSchedulerSolver(
                         # 先执行副表差异、产物切换或扫描恢复出的训练室任务，
                         # 避免普通纠错覆盖这些任务的明确安排。
                         if not self.no_pending_task(1):
+                            self.skip(["planned", "todo_task", "collect_notification"])
+                            return True
+                        if self._reconcile_initial_staffing():
                             self.skip(["planned", "todo_task", "collect_notification"])
                             return True
                         mood_result = self.agent_get_mood(
@@ -4763,6 +4768,31 @@ class BaseSchedulerSolver(
             "副表收敛合并 %s 条旧安排，直接执行最终换班：%s", len(merged_tasks), merged
         )
         return merged, merged_tasks
+
+    def _reconcile_initial_staffing(self):
+        """清零启动实读后先纠正旧驻员，再规划轮休与补床。"""
+        if (
+            not getattr(self, "_initial_staffing_pending", False)
+            or self._initial_mood_read_pending()
+            or self._emergency_active()
+            or getattr(self, "_emergency_startup_pending", False)
+        ):
+            return False
+        # 明确换班先完成；普通清退任务不能跳过初始化驻员纠错。
+        if any(
+            task.type
+            in (TaskTypes.SHIFT_ON, TaskTypes.SHIFT_OFF, TaskTypes.SELF_CORRECTION)
+            and task.plan
+            and task.time <= datetime.now()
+            or getattr(task, "backup_shift_active", False)
+            or getattr(task, "initial_fia", False)
+            or getattr(task, "group_shift_expected", {})
+            for task in [*self.tasks, *getattr(self, "waiting_group_shifts", [])]
+        ):
+            return False
+        result = self.agent_get_mood(force=True, read_rooms=False)
+        self._initial_staffing_pending = False
+        return result is not None
 
     def _initial_mood_read_pending(self):
         return getattr(self, "defer_backup_plan_until_mood_read", False)

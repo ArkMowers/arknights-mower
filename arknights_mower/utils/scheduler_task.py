@@ -3414,10 +3414,18 @@ class SchedulerTask:
         self.release_targets = targets
         self.meta_data = ",".join(targets)
 
+    @property
+    def display_name(self):
+        if self.type == TaskTypes.EXHAUST_OFF and getattr(
+            self, "ordinary_coordination", False
+        ):
+            return "轮休协调"
+        return self.type.display_value
+
     def format(self, time_offset=0):
         res = copy.deepcopy(self)
         res.time += timedelta(hours=time_offset)
-        res.type = res.type.display_value
+        res.type = self.display_name
         if res.type == "空任务" and res.meta_data:
             res.type = res.meta_data
         return res

@@ -443,6 +443,9 @@ def simulate(saved):
                 or config.conf.automatic_rescue_enable
                 or bool(saved and saved.get("automatic_rescue_state"))
             )
+            base_scheduler._initial_staffing_pending = not saved or bool(
+                saved.get("initial_staffing_pending", False)
+            )
             base_scheduler._initial_mood_refresh_rooms = set(
                 saved.get("initial_mood_refresh_rooms", ()) if saved else ()
             ) | set(saved.get("initial_mood_probe_layout", {}) if saved else {})

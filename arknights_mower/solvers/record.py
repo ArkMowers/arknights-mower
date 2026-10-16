@@ -276,6 +276,9 @@ def current_state():
         "idle_dorm_search_stopped_at": getattr(
             data, "idle_dorm_search_stopped_at", None
         ),
+        "initial_staffing_pending": bool(
+            getattr(base_scheduler, "_initial_staffing_pending", False)
+        ),
         "initial_mood_pending": bool(
             getattr(base_scheduler, "defer_backup_plan_until_mood_read", False)
         ),
