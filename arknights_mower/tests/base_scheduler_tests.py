@@ -276,6 +276,7 @@ class TestMoodInitialization(unittest.TestCase):
         self.initialize.return_value = scheduler
         self.main.simulate(None)
         self.assertTrue(scheduler.defer_backup_plan_until_mood_read)
+        self.assertTrue(scheduler._initial_staffing_pending)
 
     def test_saved_state_does_not_defer_backup_plan(self):
         scheduler = MagicMock()
@@ -283,6 +284,19 @@ class TestMoodInitialization(unittest.TestCase):
         self.initialize.return_value = scheduler
         self.main.simulate({"tasks": []})
         self.assertFalse(scheduler.defer_backup_plan_until_mood_read)
+        self.assertFalse(scheduler._initial_staffing_pending)
+
+    def test_crash_without_snapshot_reconciles_as_fresh_start(self):
+        from arknights_mower.utils.crash_recovery import prepare_resume
+
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = "测试完成"
+        self.initialize.return_value = scheduler
+        with patch("arknights_mower.utils.crash_recovery.status", return_value={}):
+            saved = prepare_resume(None)
+        self.main.simulate(saved)
+        self.assertTrue(scheduler.defer_backup_plan_until_mood_read)
+        self.assertTrue(scheduler._initial_staffing_pending)
 
     def test_saved_unfinished_mood_read_still_defers_backup_plan(self):
         scheduler = MagicMock()
@@ -298,6 +312,14 @@ class TestMoodInitialization(unittest.TestCase):
         )
         self.assertTrue(scheduler.defer_backup_plan_until_mood_read)
         self.assertEqual(scheduler._initial_mood_refresh_rooms, set(layout))
+
+    def test_saved_initial_staffing_is_resumed_without_resetting_observations(self):
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = "测试完成"
+        self.initialize.return_value = scheduler
+        self.main.simulate({"tasks": [], "initial_staffing_pending": True})
+        self.assertTrue(scheduler._initial_staffing_pending)
+        self.assertFalse(scheduler.defer_backup_plan_until_mood_read)
 
     def test_unified_initialization_never_requests_mood_reload(self):
         scheduler = MagicMock()

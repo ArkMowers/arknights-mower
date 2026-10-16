@@ -194,7 +194,9 @@ def test_saved_state_uses_live_operators_and_tasks_without_card_estimates(
         setattr(solver, attr, 0)
     solver._read_initial_card_mood()
     solver._initial_mood_refresh_rooms = {ROOM}
+    solver._initial_staffing_pending = True
     snapshot = pickle.loads(pickle.dumps(record.current_state()))
+    assert snapshot["initial_staffing_pending"]
     assert snapshot["operators"]["银灰"].time_stamp is None
     assert snapshot["initial_mood_pending"]
     assert snapshot["initial_mood_refresh_rooms"] == [ROOM]
