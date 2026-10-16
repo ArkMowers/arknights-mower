@@ -28,12 +28,15 @@ from typing import Optional
 
 from arknights_mower.data import agent_list
 from arknights_mower.utils import config
+from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.image import cropimg
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.mastery_panel_template import (
     recognize_operator,
     recognize_skill,
 )
+from arknights_mower.utils.recognize import RecognizeError
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 from arknights_mower.utils.skill_label import (
@@ -684,14 +687,11 @@ def _settle_in_room(solver, max_iters=15) -> int:
 
 
 def _read_slots_raw(solver):
-    """读进驻详情浮窗原始扫描：返回 (scan, reliable)。
-
-    reliable=False = get_agent_from_room 异常（如 OCR 坏名 KeyError）或返回非列表。
-    与「真空位」不可混淆：真空位是 scan 内 agent 为空的项（train 房恒 2 槽），
-    读失败才是 scan 空。补位等 mutation 必须只在 reliable 时做（稳为先：读不到不动）。
-    """
+    """消费公共读房入口校验过的两槽观察；失败不能当作空位。"""
     try:
         scan = solver.get_agent_from_room("train")
+    except (MowerExit, DeviceRecoveryError):
+        raise
     except Exception as e:
         logger.debug(f"进驻详情读取失败: {e}")
         return [], False
@@ -702,24 +702,10 @@ def _read_slots_raw(solver):
 
 
 def _read_slots_checked(solver):
-    """读进驻详情浮窗：返回 (协助位, 训练位, scan, reliable)。读后关浮窗。
+    """返回可信协助位、训练位和心情观察，随后关闭进驻详情。
 
-    #100：reliable=False（读失败）时返回 ("", "", scan, False)——调用方不得把读失败
-    当真空位做补位/纠错 mutation（与「真空」区分，稳为先：读不到就不动作）。
-    scan 为 get_agent_from_room 原始列表（want_mood 用，含 mood）。
-    槽位约定（与 choose_train 一致）：scan[0]=上排=协助位、scan[1]=下排=训练位——
-    get_agent_from_room 与 operator_list_train 的 name_y 同为上→下，choose_train 内部
-    idx==0 走 choose_agent（协助位）、idx==1 走 choose_train_ope（训练位）。读不到
-    名字的槽位是空串。
-    #140 场景闸门：开浮窗前先确认在训练室主页面（TRAIN_MAIN=217，浮窗开着先关回）；
-    浮窗读取后再确认浮窗确实开了（INFRA_DETAILS=205）才消费——turn_on_room_detail 只靠
-    room_detail 模板 + 单像素颜色确认浮窗、不判场景，非 205 的槽位读取是垃圾（读之前
-    场景未确认，垃圾读已被消费）。场景不符/读失败 → ("", "", scan, False)（稳为先）。
-    浮窗已开（205）时不再盲目「关掉再打开」：先用 detect_room() 认门牌（房间标题牌
-    色块，训练室返回 "train"）——认出是训练室 → 就地读（turn_on_room_detail 看到浮窗
-    已开会直接返回），省一次关+开两下 UI 动作；认不出 / 是别的房间 / 抛异常 → 照旧关
-    回 217 重开（安全降级：最坏等于旧行为）。之所以必须先认门牌，是因为 205 不区分房间
-    （任何房间的进驻详情都是 205），而读名字用的坐标是全房间共用的一套。
+    公共读房入口在修改实际缓存前校验场景与两槽身份。读取失败返回
+    reliable=False；关窗或离开训练室属于导航失败，不否决已提交的可信观察。
     """
     popup_is_ours = False
     try:
@@ -727,6 +713,8 @@ def _read_slots_checked(solver):
         if scene == Scene.INFRA_DETAILS:
             try:
                 popup_is_ours = solver.detect_room() == "train"
+            except (MowerExit, DeviceRecoveryError):
+                raise
             except Exception:
                 popup_is_ours = False
             if popup_is_ours:
@@ -737,24 +725,18 @@ def _read_slots_checked(solver):
         if not popup_is_ours and scene != Scene.TRAIN_MAIN:
             logger.debug(f"[mastery] 读槽位前置场景不符：{scene}，不读")
             return "", "", [], False
+    except (MowerExit, DeviceRecoveryError):
+        raise
     except Exception:
         return "", "", [], False
     scan, reliable = _read_slots_raw(solver)
-    try:
-        if solver.train_scene() == Scene.INFRA_DETAILS:
-            _close_room_detail(solver)
-        elif reliable:
-            # 浮窗没开/开错（get_agent_from_room 未确认 205）→ 槽位数据来自非目标场景，
-            # 不消费并清空（调用方就是据此判空的，槽位必须为空防误用）
-            logger.debug("[mastery] 读槽位后场景非 INFRA_DETAILS，浮窗未确认，不消费")
-            reliable = False
-            scan = []
-    except Exception:
-        reliable = False
-        scan = []
-    if len(scan) < 2:
-        # 没读全（train 房恒 2 槽）＝没读到：不能报 reliable，否则「空 scan + 可靠」会被
-        # 调用方当成「可靠地空着」去做补位/换人 mutation（#101/#100 稳为先）。
+    scene = solver.train_scene()
+    if scene == Scene.INFRA_DETAILS:
+        if not _close_room_detail(solver):
+            raise RecognizeError("训练室进驻详情未关闭")
+    elif scene != Scene.TRAIN_MAIN:
+        raise RecognizeError("读取槽位后离开训练室")
+    if not reliable or len(scan) != 2:
         return "", "", scan, False
     return scan[0].get("agent", ""), scan[1].get("agent", ""), scan, reliable
 
