@@ -291,6 +291,8 @@ def replan_dynamic_tasks(scheduler):
     except (AttributeError, TypeError, ValueError):
         cutoff = now
     for index, task in enumerate(scheduler.tasks):
+        if task.retains_execution:
+            continue
         if task.time > cutoff:
             continue
         if (
@@ -325,17 +327,22 @@ def replan_dynamic_tasks(scheduler):
             ):
                 continue
             # A saved return-phase task has empty meta_data and is retained.
+            _, dorm = scheduler.op_data.get_dorm_by_name("菲亚梅塔")
+            ready_at = getattr(dorm, "time", None)
+            roster = getattr(task, "emergency_original_roster", None)
+            observed_deadline = isinstance(ready_at, datetime)
+            rooms = set(task.plan) | {
+                getattr(fia, "current_room", "") or getattr(fia, "room", "")
+            }
+            rooms.discard("")
+            if not observed_deadline and not (task.plan and roster):
+                task.process_recovery_fia_wait = True
+                scheduler._retain_failed_task(task, "菲亚梅塔回满时间未核实", rooms)
+                continue
             replacement = copy.deepcopy(task)
             replacement.plan, replacement.meta_data = {}, ""
             replacement.initial_fia = False
-            _, dorm = scheduler.op_data.get_dorm_by_name("菲亚梅塔")
-            ready_at = getattr(dorm, "time", None)
-            replacement.time = (
-                max(now, ready_at)
-                if isinstance(ready_at, datetime)
-                else now + timedelta(minutes=5)
-            )
-            roster = getattr(task, "emergency_original_roster", None)
+            replacement.time = max(now, ready_at) if observed_deadline else task.time
             if task.plan and roster:
                 returning = copy.deepcopy(task)
                 returning.plan, returning.meta_data, returning.time = (
@@ -345,6 +352,11 @@ def replan_dynamic_tasks(scheduler):
                 )
                 scheduler.tasks[index] = returning
                 scheduler.tasks.append(replacement)
+                if not observed_deadline:
+                    replacement.process_recovery_fia_wait = True
+                    scheduler._retain_failed_task(
+                        replacement, "菲亚梅塔回满时间未核实", rooms
+                    )
             else:
                 scheduler.tasks[index] = replacement
 
@@ -370,26 +382,6 @@ def workshop_inventory_names():
     return names
 
 
-def retry_workshop_inventory(scheduler, names):
-    """Use the existing depot task while unknown stock gates only crafting."""
-    from arknights_mower.solvers.record import get_inventory_counts
-    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
-
-    names = set(names) & workshop_inventory_names()
-    if not names - set(get_inventory_counts()):
-        return
-    if any(
-        task is not scheduler.task and getattr(task, "process_recovery_inventory", None)
-        for task in scheduler.tasks
-    ):
-        return
-    refresh = SchedulerTask(
-        datetime.now() + timedelta(minutes=5), task_type=TaskTypes.DEPOT
-    )
-    refresh.process_recovery_inventory = sorted(names)
-    scheduler.tasks.append(refresh)
-
-
 def refresh_workshop_inventory(scheduler):
     from arknights_mower.solvers.record import invalidate_workshop_inventory
 
@@ -398,7 +390,6 @@ def refresh_workshop_inventory(scheduler):
         return
     invalidate_workshop_inventory(names)
     scheduler.仓库扫描()
-    retry_workshop_inventory(scheduler, names)
 
 
 def prepare_resume(saved):

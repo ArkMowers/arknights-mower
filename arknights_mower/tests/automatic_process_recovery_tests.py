@@ -1,5 +1,6 @@
 """Automatic recovery retries preserve saved intent and honor cancellation."""
 
+import copy
 import sqlite3
 import threading
 from datetime import datetime, timedelta
@@ -156,6 +157,130 @@ def test_fia_empty_due_plan_waits_for_observed_ready_time(offline, observed_sche
     solver.tasks = [due]
     crash_recovery.replan_dynamic_tasks(solver)
     assert solver.tasks[0].time == ready and solver.tasks[0].plan == {}
+
+
+def test_recovery_preserves_failed_and_reopened_tasks(offline, observed_scheduler):
+    from arknights_mower.utils.dorm_candidates import retained_task_reservations
+    from arknights_mower.utils.scheduler_task import find_next_task
+
+    solver = observed_scheduler
+    for kind in (TaskTypes.RUN_ORDER, TaskTypes.FIAMMETTA):
+        for reopened in (False, True):
+            task = SchedulerTask(
+                datetime.now() - timedelta(hours=1),
+                {"central": ["夕"]},
+                kind,
+                "room_1_1" if kind == TaskTypes.RUN_ORDER else "夕",
+            )
+            task.run_order_original_roster = {"central": ["夕"]}
+            solver.tasks = [task]
+            solver._retain_failed_task(task, "读取未核实", ["central"])
+            if reopened:
+                solver.op_data.room_observations["central"] = (
+                    solver.op_data.room_observations.get("central", 0) + 1
+                )
+                solver._resume_failed_tasks()
+                assert task.execution_retained
+            original = copy.deepcopy(task.__dict__)
+            reservations = retained_task_reservations(solver.op_data, solver.tasks)
+            crash_recovery.replan_dynamic_tasks(solver)
+            assert solver.tasks == [task] and solver.tasks[0] is task
+            assert task.__dict__ == original
+            assert (
+                retained_task_reservations(solver.op_data, solver.tasks) == reservations
+            )
+            assert find_next_task(solver.tasks) is (task if reopened else None)
+    offline.io.assert_not_called()
+
+
+def test_fia_unknown_ready_time_keeps_original_roster_restoration_dispatchable(
+    offline, observed_scheduler
+):
+    from arknights_mower.utils.scheduler_task import find_next_task
+
+    solver = observed_scheduler
+    fia = solver.op_data.operators["夕"]
+    fia.mood = 0
+    fia.current_room = "dormitory_1"
+    solver.op_data.operators["菲亚梅塔"] = fia
+    solver.op_data.get_dorm_by_name = Mock(return_value=(None, None))
+    due = SchedulerTask(
+        datetime.now() - timedelta(minutes=1),
+        {"dormitory_1": ["夕", "菲亚梅塔"]},
+        TaskTypes.FIAMMETTA,
+        "夕",
+    )
+    due.emergency_original_roster = {"central": ["夕"]}
+    solver.tasks = [due]
+    crash_recovery.replan_dynamic_tasks(solver)
+    returning, charging = solver.tasks
+    assert returning.plan == due.emergency_original_roster
+    assert returning.meta_data == "" and find_next_task(solver.tasks) is returning
+    assert charging.plan == {} and charging.time == due.time
+    assert charging.execution_failure
+    assert not config.stop_mower.is_set()
+    offline.io.assert_not_called()
+
+
+def test_fia_unknown_ready_time_retains_task_until_related_observation(
+    offline, observed_scheduler
+):
+    from arknights_mower.utils.scheduler_task import find_next_task
+
+    solver = observed_scheduler
+    fia = solver.op_data.operators["夕"]
+    fia.mood = 0
+    fia.current_room = "dormitory_1"
+    solver.op_data.operators["菲亚梅塔"] = fia
+    solver.op_data.get_dorm_by_name = Mock(return_value=(None, None))
+    due = SchedulerTask(
+        datetime.now() - timedelta(minutes=1), task_type=TaskTypes.FIAMMETTA
+    )
+    independent = SchedulerTask(datetime.now(), task_type=TaskTypes.DEPOT)
+    solver.tasks = [due, independent]
+    original_time = due.time
+    for _ in range(3):
+        crash_recovery.replan_dynamic_tasks(solver)
+        solver._resume_failed_tasks()
+        assert solver.tasks == [due, independent] and solver.tasks[0] is due
+        assert due.time == original_time and due.plan == {}
+        assert find_next_task(solver.tasks) is independent
+    solver.op_data.room_observations["contact"] = 1
+    solver._resume_failed_tasks()
+    assert find_next_task(solver.tasks) is independent
+    solver.op_data.room_observations["dormitory_1"] = 1
+    solver.op_data.get_dorm_by_name.return_value = (
+        0,
+        SimpleNamespace(time=datetime.now() + timedelta(hours=4)),
+    )
+    solver._resume_failed_tasks()
+    assert find_next_task(solver.tasks) is independent
+    assert due.time == original_time and due.execution_failure
+    fia.current_mood = Mock(return_value=24)
+    solver._resume_failed_tasks()
+    assert find_next_task(solver.tasks) is independent
+    fia.mood = 24
+    fia.time_stamp = None
+    solver._resume_failed_tasks()
+    assert find_next_task(solver.tasks) is independent
+    fia.time_stamp = datetime.now()
+    fia.mood_is_prediction = True
+    solver._resume_failed_tasks()
+    assert find_next_task(solver.tasks) is independent
+    fia.mood_is_prediction = False
+    solver._resume_failed_tasks()
+    assert find_next_task(solver.tasks) is due
+    assert not hasattr(due, "process_recovery_fia_wait")
+    target = solver.op_data.operators["絮雨"]
+    target.mood = 0
+    solver.check_fia = Mock(return_value=(["絮雨"], "dormitory_1"))
+    solver._refresh_fia_candidate_moods = Mock()
+    solver._emergency_fia_fallback = Mock(return_value=None)
+    solver.task = due
+    solver.plan_fia()
+    assert solver.tasks[-1].plan == {"dormitory_1": ["絮雨", "菲亚梅塔"]}
+    assert not config.stop_mower.is_set()
+    offline.io.assert_not_called()
 
 
 def test_fia_saved_return_roster_is_immediate_before_next_charge(
@@ -599,7 +724,7 @@ def test_uncertain_touch_rebuilds_owned_session_and_observes_before_reentry(
     offline.io.assert_not_called()
 
 
-def test_unknown_workshop_stock_delays_only_crafting_and_retries_existing_depot_task(
+def test_unknown_workshop_stock_waits_for_observation_without_polling_tasks(
     offline, observed_scheduler
 ):
     from arknights_mower.data import workshop_formula
@@ -623,11 +748,8 @@ def test_unknown_workshop_stock_delays_only_crafting_and_retries_existing_depot_
     crash_recovery.refresh_workshop_inventory(solver)
     assert offline.record.get_inventory_counts() == {}
     assert solver.tasks[:2] == [original, future]
-    refresh = solver.tasks[-1]
-    assert (
-        refresh.type.name == "DEPOT"
-        and set(refresh.process_recovery_inventory) == names
-    )
+    assert solver.tasks == [original, future]
+    solver.仓库扫描.assert_called_once()
     setting = config.conf.workshop_settings[0].items[0]
     assert (
         workshop_limits.batch_limit("碳素", workshop_formula["碳素"], setting, {}) == 0
@@ -637,8 +759,6 @@ def test_unknown_workshop_stock_delays_only_crafting_and_retries_existing_depot_
     offline.record.save_inventory_counts(
         old, scanned_counts=old, scanned_at=10_000_000_000
     )
-    solver.tasks.remove(refresh)
-    crash_recovery.retry_workshop_inventory(solver, names)
     assert solver.tasks == [original, future]
     assert (
         workshop_limits.batch_limit(

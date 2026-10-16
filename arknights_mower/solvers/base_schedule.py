@@ -548,6 +548,14 @@ class BaseSchedulerSolver(
     def _resume_failed_tasks(self):
         for task in self.tasks:
             failure = getattr(task, "execution_failure", None)
+            if failure and getattr(task, "process_recovery_fia_wait", False):
+                fia = self.op_data.operators.get("菲亚梅塔")
+                if (
+                    not has_resting_mood(fia)
+                    or fia.mood < 24
+                    or getattr(fia, "mood_is_prediction", False)
+                ):
+                    continue
             if failure:
                 failure["snapshot"].setdefault(
                     "room_observations", {room: None for room in failure["rooms"]}
@@ -568,6 +576,7 @@ class BaseSchedulerSolver(
                 # 解除派发暂停后，剩余执行仍免于普通过期清理。
                 task.execution_retained = True
                 del task.execution_failure
+                task.__dict__.pop("process_recovery_fia_wait", None)
                 logger.info("相关实测或安排已更新，恢复原任务：%s", task)
 
     def run(self) -> None:
@@ -1706,12 +1715,6 @@ class BaseSchedulerSolver(
                     self.skip(["todo_task", "collect_notification"])
                 elif self.task.type == TaskTypes.DEPOT:
                     self.仓库扫描()
-                    if names := getattr(self.task, "process_recovery_inventory", None):
-                        from arknights_mower.utils.crash_recovery import (
-                            retry_workshop_inventory,
-                        )
-
-                        retry_workshop_inventory(self, names)
                 elif self.task.type == TaskTypes.NOT_SPECIFIC:
                     pass
                 if remove_current_task:
