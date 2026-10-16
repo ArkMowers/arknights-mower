@@ -569,15 +569,6 @@ class BaseSchedulerSolver(
                     sorted(names & reserved),
                     sorted(slot for slot in slots if slot[0] in rooms),
                 ),
-                **self._room_observation_snapshot(rooms, names),
-            }
-        )
-
-    def _room_observation_snapshot(self, rooms, names=()):
-        """保存相关房间的安排和实测，供失败任务与训练室巡检共同核对。"""
-        data = self.op_data
-        return copy.deepcopy(
-            {
                 "effective_plan": {
                     room: [vars(slot) for slot in data.plan.get(room, [])]
                     for room in rooms
@@ -606,19 +597,6 @@ class BaseSchedulerSolver(
                 },
             }
         )
-
-    def _training_mood_snapshot(self):
-        return {
-            "mastery_enabled": config.conf.enable_mastery,
-            "room": self._room_observation_snapshot(("train",)),
-        }
-
-    def _normalize_observation_predictions(self, snapshot):
-        """预测失效不构成新实测，比较前同步旧快照中的采样时间。"""
-        for name, observation in snapshot["observations"].items():
-            op = self.op_data.operators.get(name)
-            if op is not None and getattr(op, "mood_is_prediction", False):
-                snapshot["observations"][name] = (*observation[:2], None)
 
     def _retain_failed_task(self, task, reason, rooms, *, dependency=False):
         rooms = tuple(rooms)
@@ -722,7 +700,14 @@ class BaseSchedulerSolver(
                 failure["snapshot"].setdefault(
                     "room_observations", {room: None for room in failure["rooms"]}
                 )
-                self._normalize_observation_predictions(failure["snapshot"])
+                # 旧快照中的预测时间也不构成实测证据；预测失效不解除失败。
+                for name, observation in failure["snapshot"]["observations"].items():
+                    op = self.op_data.operators.get(name)
+                    if op is not None and getattr(op, "mood_is_prediction", False):
+                        failure["snapshot"]["observations"][name] = (
+                            *observation[:2],
+                            None,
+                        )
             if (
                 failure
                 and self._task_failure_snapshot(task, failure["rooms"])
@@ -2789,29 +2774,29 @@ class BaseSchedulerSolver(
         need_read.add("train")
 
         for room in sorted(need_read):
-            retry_training = False
             if room == "train":
                 if _training_room_scan_disabled:
                     force_rooms.discard(room)
                     continue
-                failed = getattr(self, "_training_mood_failure", None)
-                if failed is not None:
-                    BaseSchedulerSolver._normalize_observation_predictions(
-                        self, failed["room"]
-                    )
-                    if failed == self._training_mood_snapshot():
-                        continue
-                    retry_training = True
-                last_read = getattr(self, "last_train_mood_read", None)
+                last_read = max(
+                    (
+                        observed_at
+                        for observed_at in (
+                            getattr(self, "last_train_mood_read", None),
+                            getattr(self, "last_train_mood_attempt", None),
+                        )
+                        if isinstance(observed_at, datetime)
+                    ),
+                    default=None,
+                )
                 if (
                     room not in force_rooms
-                    and not retry_training
                     and last_read
                     and datetime.now() - last_read < timedelta(hours=2.5)
                 ):
                     continue
             error_count = 0
-            # 近期可信读过的房内干员无需重复扫描；相关新观察解除失败后允许复读。
+            # 近期可信读过的房内干员无需重复扫描；训练室保持原有巡检间隔。
             current_working = [
                 value
                 for key, value in self.op_data.operators.items()
@@ -2820,7 +2805,6 @@ class BaseSchedulerSolver(
 
             if (
                 room not in force_rooms
-                and not retry_training
                 and current_working
                 and all(
                     operator.time_stamp
@@ -2870,12 +2854,8 @@ class BaseSchedulerSolver(
                                 self.train_room_state = room_state
                                 if room_state.slots_reliable is True:
                                     self.last_train_mood_read = datetime.now()
-                                    self._training_mood_failure = None
                                 else:
                                     room_state.read_failed = True
-                                    self._training_mood_failure = (
-                                        self._training_mood_snapshot()
-                                    )
                                 if room_state.read_failed or room_state.state not in (
                                     "empty",
                                     "training",
@@ -2925,11 +2905,6 @@ class BaseSchedulerSolver(
                             _mood_data = self.get_agent_from_room(room, None)
                             if len(_mood_data) == 2:
                                 self.last_train_mood_read = datetime.now()
-                                self._training_mood_failure = None
-                            else:
-                                self._training_mood_failure = (
-                                    self._training_mood_snapshot()
-                                )
                             trainee = (
                                 _mood_data[1].get("agent", "")
                                 if len(_mood_data) > 1
@@ -2947,6 +2922,7 @@ class BaseSchedulerSolver(
                                 logger.info(
                                     f"房间 {self.translate_room(room)}  {mood_info}"
                                 )
+                        self.last_train_mood_attempt = datetime.now()
                     else:
                         self._read_room_mood(room, force_mood=room in force_rooms)
                     break
@@ -2967,8 +2943,8 @@ class BaseSchedulerSolver(
                             self.train_room_state = RoomState(
                                 "unknown", read_failed=True
                             )
-                            self._training_mood_failure = self._training_mood_snapshot()
                             logger.warning(f"训练室本次读取失败，跳过本轮巡检：{e}")
+                        self.last_train_mood_attempt = datetime.now()
                         self.back_to_infrastructure()
                         skip_room_exit = True
                         break
@@ -11327,7 +11303,6 @@ class BaseSchedulerSolver(
             )
         if training_observation is not None:
             self.last_train_mood_read = datetime.now()
-            self._training_mood_failure = None
         return result
 
     def _reconcile_room_observation(self, room, observed, *, group_transitions=None):
