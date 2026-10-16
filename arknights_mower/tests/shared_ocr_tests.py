@@ -263,17 +263,17 @@ def test_initialize_ocr_is_lightweight_and_does_not_load_local_model(
 
 
 def test_real_ocr_through_service_matches_local_engine(tmp_path):
-    import cv2
-
     from arknights_mower.solvers import furniture
+    from arknights_mower.utils.image import bytes2img
 
     local = rapidocr.create_engine(threads=2)
     with service(tmp_path, factory=ocr_service._engine):
         client = ocr_shared.SharedOCREngine(directory=tmp_path)
-        image = cv2.imread(
-            str(Path(__file__).parent / "fixtures/furniture/stock_3_2.png")
-        )
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        source = Path(__file__).parent / "fixtures/furniture/stock_3_2.png"
+        fixture = tmp_path / "中文目录" / "家具截图.png"
+        fixture.parent.mkdir()
+        fixture.write_bytes(source.read_bytes())
+        image = bytes2img(fixture.read_bytes())
         # 直接比较原图局部文字的坐标、文本和分数；耗时独立统计。
         crop = furniture.crop_relative(image, furniture.NAME_SCOPE)
         shared_result = client(crop, use_cls=False)[0]
@@ -458,7 +458,7 @@ def test_default_endpoint_scope_separates_installations_and_network_namespaces(
     namespace = [123]
 
     def stat(path, *args, **kwargs):
-        if str(path) == "/proc/self/ns/net":
+        if path == Path("/proc/self/ns/net"):
             return SimpleNamespace(st_dev=1, st_ino=namespace[0])
         return real_stat(path, *args, **kwargs)
 
@@ -471,3 +471,52 @@ def test_default_endpoint_scope_separates_installations_and_network_namespaces(
     namespace[0] = 123
     monkeypatch.setattr(runtime, "installation_root", lambda: Path("/install/other"))
     assert ocr_shared.shared_directory() != first
+
+
+@pytest.mark.parametrize("failure_site", ["poll", "recv", "drain"])
+@pytest.mark.parametrize("error", [EOFError, BrokenPipeError])
+@pytest.mark.parametrize("recycle", [False, True])
+def test_generation_channel_close_preserves_recycle_and_cleans_worker(
+    monkeypatch, tmp_path, failure_site, error, recycle
+):
+    from unittest.mock import Mock
+
+    from arknights_mower.utils.device import owned
+
+    parent, child = Mock(), Mock()
+    process = Mock(pid=123)
+    context = Mock()
+    context.Pipe.return_value = (parent, child)
+    context.Process.return_value = process
+    monkeypatch.setattr(ocr_service.mp, "get_context", lambda method: context)
+    cleanup = Mock()
+    monkeypatch.setattr(owned, "close_process", cleanup)
+    registration = Mock()
+    registration.shutdown_requested.return_value = False
+    listener = Mock()
+    listener.getsockname.return_value = ("127.0.0.1", 12345)
+
+    # Windows 管道关闭可能在任一 poll 或 recv 报错；已经收到的回收通知仍有效。
+    parent.recv.side_effect = ["recycle" if recycle else None, error()]
+    parent.poll.side_effect = (
+        [True, True] if failure_site == "recv" else [True, error()]
+    )
+    process.is_alive.return_value = failure_site != "drain"
+
+    assert (
+        ocr_service._generation(
+            listener,
+            "token",
+            tmp_path,
+            tmp_path / "endpoint.json",
+            registration,
+            60,
+            fake_engine,
+            256,
+        )
+        is recycle
+    )
+    cleanup.assert_called_once_with(process, os.getpid(), timeout=0.5)
+    parent.close.assert_called_once()
+    assert child.close.called
+    listener.close.assert_not_called()

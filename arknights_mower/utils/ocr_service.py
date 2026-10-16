@@ -226,20 +226,21 @@ def _generation(
         )
         deadline = monotonic() + REQUEST_TIMEOUT
         while not registration.shutdown_requested():
-            if parent.poll(0.05):
-                try:
+            try:
+                if parent.poll(0.05):
                     message = parent.recv()
-                except EOFError:
+                    if message == "recycle":
+                        recycle = True
+                        deadline = monotonic() + 3
+                    else:
+                        deadline = message
+                if not process.is_alive():
+                    # 即使工作进程已退出，也先读完它在退出前发送的回收通知。
+                    if parent.poll():
+                        continue
                     break
-                if message == "recycle":
-                    recycle = True
-                    deadline = monotonic() + 3
-                else:
-                    deadline = message
-            if not process.is_alive():
-                # 即使工作进程已退出，也先读完它在退出前发送的回收通知。
-                if parent.poll():
-                    continue
+            except (EOFError, OSError):
+                # Windows 的 poll 也会报告管道关闭；保留已收到的回收通知。
                 break
             if deadline is not None and monotonic() >= deadline:
                 break
