@@ -212,7 +212,9 @@ class NativeWindowsShortcutTests(unittest.TestCase):
                     env=env,
                     capture_output=True,
                     encoding="utf-8",
-                    timeout=5,
+                    # Inspection includes PowerShell startup and Add-Type compilation.
+                    # It does not enforce the application's five-second launch budget.
+                    timeout=30,
                     check=True,
                 )
                 self.assertEqual(

@@ -282,7 +282,9 @@ class ScreenshotEncodingTests(unittest.TestCase):
             bank.encode(self.rgb(), preview=True)
             auxiliary = self.children[-1]
             mapping = bank._slots[1]._mapping_path
-            wait_until(lambda: bank._slots[1]._process is None)
+            # The process exits before its mapping is closed and unlinked.
+            wait_until(lambda: bank._slots[1]._mapping_path is None)
+            self.assertIsNone(bank._slots[1]._process)
             self.assertIsNotNone(auxiliary.poll())
             self.assertFalse(mapping.exists())
             self.assertTrue(thread.is_alive())
