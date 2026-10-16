@@ -342,6 +342,8 @@ def _idle_marker_visible(solver) -> bool:
     """
     try:
         hit = bool(solver.find("training_idle"))
+    except (MowerExit, DeviceRecoveryError):
+        raise
     except Exception as e:
         logger.debug(f"空闲标记读取失败: {e}")
         return False
@@ -359,6 +361,8 @@ def _read_train_countdown3(solver):
     """
     try:
         seconds = solver.read_time(COUNTDOWN_REGION, None)
+    except (MowerExit, DeviceRecoveryError):
+        raise
     except Exception as e:
         logger.debug(f"倒计时读取异常: {e}")
         return "failed", None
@@ -543,6 +547,8 @@ def _read_panel_text(solver, img=None) -> RoomPanel:
         try:
             solver.recog.update()
             img = solver.recog.img
+        except (MowerExit, DeviceRecoveryError):
+            raise
         except Exception as e:
             logger.debug(f"面板截图失败: {e}")
             return RoomPanel()
@@ -553,6 +559,8 @@ def _read_panel_text(solver, img=None) -> RoomPanel:
         return RoomPanel()
     try:
         text = solver.read_screen(img, type="text", cord=PANEL_REGION)
+    except (MowerExit, DeviceRecoveryError):
+        raise
     except Exception as e:
         logger.debug(f"面板技能 OCR 失败: {e}")
         return RoomPanel(operator_name=operator_name)
@@ -623,7 +631,8 @@ def read_main_panel(solver, img=None) -> Optional[RoomPanel]:
     误判成空闲。传入 img 的调用方对场景与标记自行负责（生产路径都传 `img=None`，即由
     本函数自己截图，那时两张图才保证同源）。
     """
-    if img is None:
+    current_frame = img is None
+    if current_frame:
         solver.recog.update()
         img = solver.recog.img
         scene = solver.train_scene()
@@ -637,12 +646,21 @@ def read_main_panel(solver, img=None) -> Optional[RoomPanel]:
             logger.debug("[mastery] 检测到「空闲中」标记，直接判空闲，面板三项不读")
             panel = RoomPanel()
             panel.idle_marker = True
+            solver.last_mastery_observation = datetime.now()
             return panel
     panel = _read_panel_text(solver, img)
     panel.mastery_tier = _count_lit_mastery_icons(solver, img)
     state, countdown = _read_train_countdown3(solver)
     panel.countdown_state = state
     panel.countdown = countdown
+    if (
+        current_frame
+        and panel.operator_name
+        and panel.skill_name
+        and panel.mastery_tier >= 1
+        and state in ("active", "zero")
+    ):
+        solver.last_mastery_observation = datetime.now()
     return panel
 
 
@@ -874,7 +892,7 @@ def _retry_ocr(solver, scan_plan=None) -> RoomState:
 
     每一轮都重新确认画面在训练室主界面（read_main_panel 内部判，判不到返回 None）：
     画面在重试期间被换掉时读出来的东西不算数，直接结束重试、保守按训练中处理。
-    仍不一致 → 保守训练中（不动、重排到 now+2min、记日志）。
+    仍不一致时保留训练状态；状态核对保留已有任务，并恢复缺失的换人意图。
     """
     first = None
     for i in range(5):
@@ -923,6 +941,7 @@ def read_room_state(solver, enter=True, want_mood=False, scan_plan=None):
         # 完成横幅页：只读左下角面板供收取，不读进驻详情/不算保护（该页 get_agent_from_room
         # 不可靠）。保护判定等收取完成回 TRAIN_MAIN 后再读（§4.3 读全以主页面为主）。
         room = RoomState("waiting_collect", _safe_read_panel(solver) or RoomPanel())
+        solver.last_mastery_observation = datetime.now()
         if config.conf.enable_mastery:
             _check_pending_amiya_form(solver, room)
         return (room, []) if want_mood else room
@@ -965,6 +984,8 @@ def _safe_read_panel(solver) -> Optional[RoomPanel]:
     """read_main_panel 的异常兜底：读失败 → 空面板；画面不是主界面 → None 照传。"""
     try:
         return read_main_panel(solver)
+    except (MowerExit, DeviceRecoveryError):
+        raise
     except Exception as e:
         logger.debug(f"面板读取失败: {e}")
         return RoomPanel()
@@ -1153,6 +1174,10 @@ def _upsert_skill_upgrade_task(solver, target_time, meta_data="", plan_key=None)
         task.plan_key = plan_key
         solver.tasks.append(task)
     else:
+        if getattr(task, "execution_failure", None) or getattr(
+            task, "execution_retained", False
+        ):
+            return
         task.time = target_time
         if meta_data:
             task.meta_data = meta_data
@@ -1417,18 +1442,110 @@ def _refresh_training_plan(solver, plan, room):
     #80 陌生人纠错）；排了换人（或队列已有换人任务）就不排收取，没排换人才排收取——
     消除「收取+换人两任务同队列」的中间态（§5.2，排了换人等 SWAP 完成后重读再排收取）。
     """
-    _update_expiry(solver, plan, room)
-    if plan.get("support_plan") and plan.get("swap_frozen") and room.slots_reliable:
-        from arknights_mower.solvers.mastery_support_state import refresh_end
-        from arknights_mower.utils.mastery_support import stage_for
+    from arknights_mower.utils.mastery_support_types import (
+        SupportPlanError,
+        TrainingObservationError,
+    )
 
-        route = stage_for(plan, room.panel.mastery_tier)
-        if route and route.get("working_operator") == room.support_slot:
-            refresh_end(plan, room.panel.mastery_tier, room.panel.countdown)
-    if not _maybe_recover_swap(solver, plan, room):
-        countdown = room.panel.countdown
-        if countdown is not None:
-            _schedule_collect(solver, plan, countdown, tier=room.panel.mastery_tier)
+    _update_expiry(solver, plan, room)
+    try:
+        if plan.get("support_plan") and plan.get("swap_frozen") and room.slots_reliable:
+            from arknights_mower.solvers.mastery_support_state import refresh_end
+            from arknights_mower.utils.mastery_support import stage_for
+
+            route = stage_for(plan, room.panel.mastery_tier)
+            if route and route.get("working_operator") == room.support_slot:
+                refresh_end(plan, room.panel.mastery_tier, room.panel.countdown)
+        if not _maybe_recover_swap(solver, plan, room):
+            countdown = room.panel.countdown
+            if countdown is not None:
+                _schedule_collect(solver, plan, countdown, tier=room.panel.mastery_tier)
+    except (TrainingObservationError, SupportPlanError) as exc:
+        _queue_swap_verification(solver, plan)
+        logger.warning("训练协助方案未确认，保留待核验的换人任务：%s", exc)
+
+
+def _queue_swap_verification(solver, plan):
+    plan_key = str(plan["id"])
+    for task in solver.tasks:
+        if (
+            task.type == TaskTypes.SWAP_SUPPORT
+            and str(getattr(task, "plan_key", None)) == plan_key
+        ):
+            return task
+    task = SchedulerTask(
+        time=datetime.now(),
+        task_type=TaskTypes.SWAP_SUPPORT,
+        meta_data=f"{_plan_label(plan)} 复核协助位换人",
+    )
+    task.plan_key = plan_key
+    task.mastery_swap_verify_only = True
+    solver.tasks.append(task)
+    return task
+
+
+def _restore_unconfirmed_swap(solver, plan):
+    """Restore missing work without treating persisted timing as an observation."""
+    if (
+        plan is None
+        or plan.get("status") != "training"
+        or plan.get("swap_frozen")
+        or not config.conf.enable_mastery
+        or config.conf.assistant_follows_schedule
+    ):
+        return
+    plan_key = str(plan["id"])
+    if any(
+        task.type == TaskTypes.SWAP_SUPPORT
+        and str(getattr(task, "plan_key", None)) == plan_key
+        for task in solver.tasks
+    ):
+        return
+
+    from arknights_mower.utils.mastery_order import halving_successor
+    from arknights_mower.utils.mastery_support_types import decode_json, stage_for
+
+    if plan.get("support_plan"):
+        runtime = decode_json(plan.get("support_runtime")) or {}
+        level = runtime.get("level")
+        route = stage_for(plan, level) if isinstance(level, int) else None
+        if route:
+            if (
+                not route.get("swap_target")
+                or not halving_successor(plan, level)
+                or route.get("working_operator") == route["swap_target"]
+            ):
+                return
+            try:
+                deadline = datetime.fromisoformat(plan.get("expires_at") or "")
+            except (TypeError, ValueError):
+                deadline = None
+            if deadline is not None:
+                from arknights_mower.solvers.mastery_support_state import (
+                    schedule_support_swap,
+                )
+
+                if schedule_support_swap(solver, plan, deadline, level) is not None:
+                    return
+            routes = [route]
+        else:
+            routes = (decode_json(plan["support_plan"]) or {}).get("stages", [])
+            routes = [
+                route for route in routes if halving_successor(plan, route.get("level"))
+            ]
+    else:
+        from arknights_mower.solvers.mastery import _get_plan_route
+
+        routes = [
+            _get_plan_route(plan, level) for level in range(1, plan["target_level"] + 1)
+        ]
+    if not any(route and route.get("swap_target") for route in routes) and all(
+        route is not None for route in routes
+    ):
+        return
+
+    _queue_swap_verification(solver, plan)
+    logger.info(f"训练室面板未确认，恢复待核验的换人任务 id={plan['id']}")
 
 
 def _maybe_recover_swap(solver, plan, room) -> bool:
@@ -1567,6 +1684,10 @@ def _upsert_swap_task_now(solver, plan, operator):
         task.plan_key = str(plan["id"])
         solver.tasks.append(task)
     else:
+        if getattr(task, "execution_failure", None) or getattr(
+            task, "execution_retained", False
+        ):
+            return
         task.time = datetime.now()
         task.meta_data = meta_data
     logger.info(
@@ -2001,12 +2122,9 @@ def _reconcile(
                 plan["status"] = "idle"
         active = None
 
-    # §4.3 OCR 失败 5 次仍不一致 → 保守训练中：不动 + 记日志。
-    # 用户 08-15 定案：读不出不排重检——等排班系统下次自然进房重读。
     if room.read_failed:
-        _log_judgment(
-            solver, room, "ocr_fail", "保守训练中，不排重检（等排班自然重读）"
-        )
+        _restore_unconfirmed_swap(solver, active)
+        _log_judgment(solver, room, "ocr_fail", "保留训练状态和待核验的换人任务")
         return None, True
 
     if room.state == "empty":
@@ -2057,9 +2175,8 @@ def _reconcile_training(solver, room, active, plans):
     跟随排班 → 训练位冻结（gate 负责）；未开跟随排班 + 计划匹配 → 静默重读+重排收取
     （保护训练室）；不匹配 → 通知① blocked（不动房间，下次排班再看）。
 
-    B8：采纳倒计时（`_update_expiry`）只在 `_can_adopt_expiry` 通过时发生——面板
-    干员名+技能名任一不可读 → 不采纳（不刷新、不改写状态）、不排重检，静默等排班
-    系统下次自然进房重读（用户 08-15 定案）。
+    采纳倒计时只在 `_can_adopt_expiry` 通过时发生。面板干员名或技能名不可读时，
+    保留训练状态和已有任务；训练中的计划缺少换人任务时恢复一次执行意图，执行前重读。
     #98：failed/idle 命中训练 + 面板可读且匹配（倒计时 active 由本函数前提保证）→
     恢复 training（截图为准适用于所有状态），此后进入正常 active×训练中管理。
     """
@@ -2073,8 +2190,8 @@ def _reconcile_training(solver, room, active, plans):
             # 干员/技能可读但不匹配 → 假记录 → 重置 + 通知②
             _reset_fake(solver, active, room)
         else:
-            # B8：面板名/技能名不可读 → 不采纳、不重置、不重检——让排班下次自然进房重读
-            logger.debug("训练室占用但面板不可读，不采纳倒计时，静默等待")
+            _restore_unconfirmed_swap(solver, active)
+            logger.debug("训练室占用但面板不可读，不采纳倒计时，保留待核验的换人任务")
             return None, True
 
     if hit is not None:

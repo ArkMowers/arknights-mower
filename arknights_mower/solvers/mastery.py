@@ -24,8 +24,13 @@ from arknights_mower.solvers.mastery_reader import (
     _wait_for_training,
     read_main_panel,
 )
+from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.mastery_support_types import DEFAULT_SWAP_BUFFER_MINUTES
+from arknights_mower.utils.mastery_support_types import (
+    DEFAULT_SWAP_BUFFER_MINUTES,
+    TrainingObservationError,
+)
 from arknights_mower.utils.scene import Scene
 
 ARRANGING_DEADLINE = timedelta(minutes=5)
@@ -440,7 +445,26 @@ def run_mastery_task(solver):
             scan_plan = None
 
     logger.debug("[mastery] 训练室动作 触发源=定时任务 动作=dispatch")
-    plan, arrange_support, room = reconcile_and_act(solver, scan_plan=scan_plan)
+    try:
+        plan, arrange_support, room = reconcile_and_act(solver, scan_plan=scan_plan)
+    except (MowerExit, DeviceRecoveryError, TrainingObservationError):
+        raise
+    except Exception as exc:
+        raise TrainingObservationError(
+            "专精任务的训练室读取未完成，保留原任务"
+        ) from exc
+    if room is not None and (
+        getattr(room, "read_failed", False) is True
+        or room.state == "training"
+        and (
+            room.panel.countdown_state != "active"
+            or room.panel.countdown is None
+            or not room.panel.operator_name
+            or not room.panel.skill_name
+            or not room.panel.mastery_tier
+        )
+    ):
+        raise TrainingObservationError("专精任务的训练室面板未确认，保留原任务")
     if plan:
         # 扫描派发时算出的本次安排步级（current_level+1，森空岛数据）——安排失败邮件
         # 需要「这次要练的专几」，不依赖现场图标（图标可能是占用者的）。
@@ -448,8 +472,6 @@ def run_mastery_task(solver):
         # #93：reconcile 已进房读完全部状态（room），开始流程直接复用，不再重复进房。
         # 中途抛异常时状态还停在 arranging（铁律 9 要求置 failed）——统一在出口补写，
         # 处理完照旧上抛，排班主循环的通用兜底不受影响。
-        from arknights_mower.utils.csleep import MowerExit
-
         try:
             _start_new_training(
                 solver,
@@ -1138,12 +1160,14 @@ def _confirm_training_started(
     并入 #15 的全局 10 分钟 deadline（由调用方传入），不单独分段计时。
     step_level：扫描派发算出的本次安排步级，供归属校验失败邮件报「本次要练的专几」。
     返回 "started" / "failed" / "timeout"：
-    - started: 已转入 TRAINING 并完成协助位/收取安排
+    - started: 已转入 TRAINING，已安排后续任务或保留待确认的协助安排
     - failed: 材料不足 或 #69/B2 面板干员/技能与计划不符，已标记 failed + 通知 + 退出训练室
     - timeout: deadline 内未确认训练开始（含面板不可读无法校验归属），由调用方走统一超时出口
     #103：路线 operator 每次开始照常安排（2026-08-17 用户拍板，原 #63 减半守卫的
     arrange_support=False 已删——「收取后级联」也安排路线 operator，见 _start_new_training）。
     """
+    from arknights_mower.solvers.mastery_support_state import enqueue_support_swap
+    from arknights_mower.utils import config
     from arknights_mower.utils.email import send_message
     from arknights_mower.utils.mastery_db import update_plan_status
 
@@ -1236,31 +1260,52 @@ def _confirm_training_started(
                     expires_at=expires_at,
                     swap_frozen=0,
                 )
-                # 以下全是「训练已经在跑」的收尾。每一件都就地处理：失败只记日志，绝不
-                # 往上抛——抛出去会被 _fail_arranging 把正在跑的训练记成失败，那只是
-                # mower 自己记错。失败信息逐条收进 notes，拼进下面那封开训邮件（训练
-                # 确实开始了，级别仍 INFO）；「到点收取任务」排在邮件之后，另发一封
-                # WARNING（_notify_collect_unscheduled）。
+                plan.update(status="training", expires_at=expires_at, swap_frozen=0)
+                # 训练已确认开始，后续协助安排失败保留独立换人任务，不重开训练。
+                # 取消和设备恢复异常保存续行责任后透传；普通失败原因写入开训邮件。
                 # #76：主面板专精图标在训练中 = 当前步目标级（亮 N 颗=专N）。确认开始
                 # 后先读图标作当前步级，传给协助位/换人安排（专三计划专一/专二步用
                 # level_1/2 路线减半换人）；同值复用作收取任务目标档位（原 tier）。
                 # #89：走到这里已 back 回 217 主页面，图标可读。
+                support_pending = False
                 if arrange_support:
-                    arrange_error = _arrange_support(solver, plan, step_level)
-                    if isinstance(arrange_error, str) and arrange_error:
-                        notes.append(
-                            f"协助位没能安排（{arrange_error}），这一级仍按原协助位练完"
+                    try:
+                        arrange_error = _arrange_support(solver, plan, step_level)
+                    except (MowerExit, DeviceRecoveryError):
+                        recovery = enqueue_support_swap(
+                            solver, plan, datetime.now(), "计划协助者"
                         )
-                # #90 §5.2 第7步「以当前读取为准」：协助位安排（换效率干员）后倒计时
-                # 会变，重读一次——换人/收取/邮件完成时间都以此为准；读不到回退安排前值。
-                fresh_execute_time = _re_read_train_countdown(solver)
+                        recovery.mastery_swap_verify_only = True
+                        raise
+                    if isinstance(arrange_error, str) and arrange_error:
+                        recovery = enqueue_support_swap(
+                            solver, plan, datetime.now(), "计划协助者"
+                        )
+                        recovery.mastery_swap_verify_only = True
+                        support_pending = True
+                        notes.append(
+                            f"协助位没能安排（{arrange_error}），已保留换人任务，"
+                            "后续实读后继续安排"
+                        )
+                # 协助位安排后倒计时会变化；后续安排使用新读数，旧读数仅保留展示。
+                fresh_execute_time = (
+                    execute_time
+                    if support_pending
+                    else _re_read_train_countdown(solver)
+                )
                 if fresh_execute_time is None:
                     fresh_execute_time = execute_time
                     notes.append(
-                        "换协助位后没能重新读到剩余时间，完成时间按换人前的读数记，"
-                        "实际可能更早"
+                        "换协助位后没能重新读到剩余时间，显示的完成时间暂用换人前读数"
                     )
-                if plan.get("support_plan"):
+                    if arrange_support and not config.conf.assistant_follows_schedule:
+                        recovery = enqueue_support_swap(
+                            solver, plan, datetime.now(), "计划协助者"
+                        )
+                        recovery.mastery_swap_verify_only = True
+                        support_pending = True
+                        notes.append("已保留换人任务，后续实读后继续安排")
+                if plan.get("support_plan") and not support_pending:
                     from arknights_mower.solvers.mastery_support_state import (
                         refresh_end,
                     )
@@ -1283,17 +1328,32 @@ def _confirm_training_started(
                 # 中途换人的目的是给下一级攒这 5 小时减半，不是加速这一级——排不上丢的是
                 # 下一级的减半，这一级的训练照旧在跑，所以只报告、不标失败。
                 try:
-                    swap_time = _schedule_swap_if_needed(
-                        solver, plan, fresh_execute_time, step_level
+                    swap_time = (
+                        None
+                        if support_pending
+                        else _schedule_swap_if_needed(
+                            solver, plan, fresh_execute_time, step_level
+                        )
                     )
                     swap_error = None
+                except (MowerExit, DeviceRecoveryError):
+                    recovery = enqueue_support_swap(
+                        solver, plan, datetime.now(), "计划协助者"
+                    )
+                    recovery.mastery_swap_verify_only = True
+                    raise
                 except Exception as e:
                     logger.warning(f"[mastery] 安排中途换人失败 id={plan['id']}: {e}")
                     swap_time, swap_error = None, str(e)
                 if swap_error is not None:
+                    recovery = enqueue_support_swap(
+                        solver, plan, datetime.now(), "计划协助者"
+                    )
+                    recovery.mastery_swap_verify_only = True
+                    support_pending = True
                     notes.append(
-                        f"没能安排中途换人（{swap_error}），这一级的减半累积没做上，"
-                        "下一级可能不会减半"
+                        f"没能安排中途换人（{swap_error}），已保留换人任务，"
+                        "后续实读后继续安排"
                     )
                 # #90：DB 里的 expires_at 也要用换协助位后的最终倒计时（安排前的倒计时
                 # 基于旧效率、不是最终完成时间）；同值跳过 DB 写（#82 同款）。
@@ -1348,7 +1408,7 @@ def _confirm_training_started(
                     msg = f"{msg}；{'；'.join(notes)}"
                 logger.info(msg)
                 send_message(msg, level="INFO")
-                if swap_time is None:
+                if swap_time is None and not support_pending:
                     collect_error = _schedule_collect_checked(
                         solver, plan, fresh_execute_time, step_level
                     )
@@ -1375,8 +1435,7 @@ def _arrange_support(solver, plan, step_level=None) -> Optional[str]:
     step_level 读不到回退 target_level（保守用整体目标路线）。
 
     返回值：None = 这一级不用安排（跟随排班 / 路线没 operator）或已安排成功；
-    错误文案 = 这一级的协助位没安排成（取路线失败或换人失败）。调用方把它补进开训
-    邮件——训练已经在跑，协助位没换只是效率差一点，不能因此把计划标成失败。
+    错误文案 = 协助位尚未确认。调用方保留换人任务，并将原因补进开训邮件。
     """
     from arknights_mower.utils import config
 
@@ -1384,11 +1443,15 @@ def _arrange_support(solver, plan, step_level=None) -> Optional[str]:
         return None
     try:
         route = _get_plan_route(plan, step_level)
+    except (MowerExit, DeviceRecoveryError):
+        raise
     except Exception as e:
         logger.warning(f"协助位路线读取失败: {e}")
         logger.debug(f"[mastery] 协助位判定 id={plan['id']} 结果=路线读取失败 err={e}")
         return str(e)
-    if not route or not route.get("operator"):
+    if route is None:
+        return "当前阶段协助路线尚未确认"
+    if not route.get("operator"):
         return None
     support_name = route["operator"]
     logger.info(f"安排协助位：{support_name}")
@@ -1407,22 +1470,9 @@ def _arrange_support(solver, plan, step_level=None) -> Optional[str]:
             solver.choose_train([support_name, "Current"])
         logger.debug(f"[mastery] 协助位判定 id={plan['id']} 结果=ok")
         return None
+    except (MowerExit, DeviceRecoveryError):
+        raise
     except Exception as e:
-        from arknights_mower.utils.csleep import MowerExit
-
-        if isinstance(e, MowerExit):
-            raise
-        if plan.get("support_plan"):
-            from arknights_mower.solvers.mastery_support_state import (
-                notify_support_failure,
-            )
-            from arknights_mower.utils.mastery_db import update_plan_status
-
-            notify_support_failure(
-                plan, step_level, f"安排协助者失败：{e}，停止本级自动换人"
-            )
-            plan["swap_frozen"] = 1
-            update_plan_status(plan["id"], "training", swap_frozen=1)
         logger.warning(f"安排协助位失败: {e}")
         logger.debug(f"[mastery] 协助位判定 id={plan['id']} 结果=失败 err={e}")
         return str(e)
@@ -1470,6 +1520,8 @@ def _schedule_swap_if_needed(
         return schedule_support_swap(solver, plan, execute_time, step_level)
 
     route = _get_plan_route(plan, step_level)
+    if route is None:
+        raise TrainingObservationError("换人路线未确认，保留换人意图")
     if not route or not route.get("swap_target"):
         return None
 
@@ -1512,6 +1564,23 @@ def _schedule_swap_if_needed(
         )
     else:
         level_text = ""
+    current = getattr(solver, "task", None)
+    retained = next(
+        (
+            task
+            for task in solver.tasks
+            if task is not current
+            and task.type == TaskTypes.SWAP_SUPPORT
+            and getattr(task, "plan_key", None) == str(plan["id"])
+            and (
+                getattr(task, "execution_failure", None)
+                or getattr(task, "execution_retained", False)
+            )
+        ),
+        None,
+    )
+    if retained is not None:
+        return retained.time
     existing = next(
         (
             task
@@ -1540,27 +1609,39 @@ def _schedule_swap_if_needed(
     return swap_time
 
 
-def run_swap_support(solver):
-    """被 SWAP_SUPPORT 任务触发：确认房间与下一训练后换入减半干员。
+def _read_swap_panel(solver, plan):
+    """未确认的训练状态交给调度器恢复，不能结束换人任务。"""
+    try:
+        scene = solver.train_scene()
+        if scene == Scene.INFRA_DETAILS:
+            _close_room_detail(solver)
+            scene = solver.train_scene()
+        if scene == Scene.TRAIN_FINISH:
+            return scene, None
+        if scene == Scene.TRAIN_MAIN:
+            panel = read_main_panel(solver)
+            if panel is not None and panel.countdown_state == "zero":
+                return scene, panel
+            if (
+                panel is not None
+                and panel.countdown_state == "active"
+                and panel.countdown is not None
+                and type(panel.mastery_tier) is int
+                and 1 <= panel.mastery_tier <= 3
+                and panel.operator_name
+                and panel.skill_name
+                and _plan_matches_room(plan, RoomState("training", panel))
+            ):
+                return scene, panel
+    except (MowerExit, DeviceRecoveryError):
+        raise
+    except Exception as exc:
+        raise TrainingObservationError("训练室面板读取失败，保留换人任务") from exc
+    raise TrainingObservationError("训练室面板未确认，保留换人任务等待新实测")
 
-    专三及其他最终目标级在下一技能为同干员且已达专一时仍允许换人。
-    #78 整合：换人前先读全（read_main_panel 一次截图）确认训练——场景必须在训练室
-    主页面（TRAIN_MAIN，219=技能选择页读不出倒计时、不再放行）且倒计时非 0 非空
-    （countdown_state=="active"）才算训练确认，才读图标/算路线/换人（铁律 1）。
-    #79：读全后开进驻浮窗（_read_slots_checked）读实际协助位——协助位 ∉ {operator,
-    swap_target}（陌生人/坐错）先 choose_train 纠错成 operator，纠错成功重读倒计时
-    （此时效率已知 = route["efficiency"]）才算换人；纠错失败 → 邮件通知 + 不换人 +
-    排收取退出。协助位已 = swap_target（已减半）→ 不再换、不置 swap_frozen。
-    #101：协助位**空着**一步定夺（当前效率已知=0）——calc_swap_threshold(0,...) 判
-    「放 operator 还是 swap_target」：should_swap（含 301 值得门）→ 直接换入减半对象
-    （不先放 operator 再立刻换的浪费；仅剩余≤阈值不够——低剩余窗 swap_target 速率 ≤
-    路线 operator）；should_swap=False（剩余 > 阈值 / 值得门不满足 / 倒计时读失败）→
-    放路线 operator 拿前半程加成，**不立刻换**（重读倒计时排阈值时刻的换人任务；重读
-    失败 → 轻量重试读重排阈值，防丢减半）。只在倒计时 active 或 failed 时动（00:00:00
-    收取边界不动，铁律 6）且读协助位可靠（reliable，OCR 坏名读失败不算空，稳为先）；
-    空位补位失败 → 不阻塞减半（直接尝试换入 swap_target）。
-    换人公式/路线沿用稳定方案，只加协助位确认 + 倒计时门。
-    """
+
+def run_swap_support(solver):
+    """确认训练与协助位后换人；读取或安排失败保留当前任务。"""
     from arknights_mower.utils import config
     from arknights_mower.utils.mastery_db import get_active_plan
     from arknights_mower.utils.mastery_support_data import actual_central_bonus
@@ -1583,34 +1664,53 @@ def run_swap_support(solver):
     plan = get_active_plan()
     if not plan or plan["status"] != "training":
         return
+    task_plan = getattr(getattr(solver, "task", None), "plan_key", None)
+    if task_plan is not None and str(task_plan) != str(plan["id"]):
+        return
     from arknights_mower.utils.mastery_order import basic_mastery_successor
 
-    if plan["swap_frozen"] and not basic_mastery_successor(plan, 3):
-        return
-
-    # 进房读全：read_main_panel 一次截图读干员/技能/图标/倒计时。倒计时 active（读到
-    # 非 0 秒）才算训练确认；zero(00:00:00 待收取)/failed(读失败) 都不换（DB 过期或
-    # 空房）。场景只在训练室主页面才换——219 是技能选择页读不出倒计时，天然被门挡住。
     solver.enter_room("train")
-    scene = solver.train_scene()
-    if scene == Scene.INFRA_DETAILS:
-        _close_room_detail(solver)
-        scene = solver.train_scene()
-    panel = None
-    if scene == Scene.TRAIN_MAIN:
-        try:
-            panel = read_main_panel(solver)
-        except Exception as e:
-            logger.debug(f"主面板读取失败: {e}")
-    countdown_active = bool(panel is not None and panel.countdown_state == "active")
+    scene, panel = _read_swap_panel(solver, plan)
     step_level = panel.mastery_tier if panel is not None else None
-    if plan["swap_frozen"] and not basic_mastery_successor(plan, step_level):
+    if scene == Scene.TRAIN_FINISH or panel.countdown_state == "zero":
+        _schedule_collect(solver, plan, datetime.now(), tier=step_level)
+        solver.back()
+        return
+    countdown_active = bool(panel is not None and panel.countdown_state == "active")
+    task = getattr(solver, "task", None)
+    collect_pending = getattr(task, "mastery_collect_pending", False) is True
+    collect_level = getattr(task, "mastery_collect_level", None)
+    if collect_pending and type(collect_level) is int and collect_level != step_level:
+        from arknights_mower.utils.mastery_db import update_plan_status
+
+        if plan["swap_frozen"]:
+            try:
+                saved = update_plan_status(plan["id"], "training", swap_frozen=0)
+            except (MowerExit, DeviceRecoveryError):
+                raise
+            except Exception as exc:
+                raise TrainingObservationError("新训练阶段的协助位记录未保存") from exc
+            if saved is False:
+                raise TrainingObservationError("新训练阶段的协助位记录未保存")
+            plan["swap_frozen"] = 0
+        task.mastery_collect_pending = False
+        task.__dict__.pop("mastery_collect_level", None)
+        collect_pending = False
+    if (
+        collect_pending
+        and collect_level == step_level
+        or plan["swap_frozen"]
+        and not basic_mastery_successor(plan, step_level)
+    ):
+        _schedule_collect_after_swap(solver, plan, tier=step_level)
         solver.back()
         return
 
     _warn_training_room_group(plan)
 
     route = _get_plan_route(plan, step_level)
+    if route is None:
+        raise TrainingObservationError("当前训练阶段的协助路线未确认，保留换人任务")
     if route:
         route["current_central"] = actual_central_bonus(
             solver, route.get("central_bonus", 0)
@@ -1628,7 +1728,18 @@ def run_swap_support(solver):
 
         run_planned_swap(solver, plan, panel)
         return
-    support_slot, _, _, reliable = _read_slots_checked(solver)
+    if not operator and not swap_target:
+        _schedule_collect_after_swap(solver, plan, tier=step_level)
+        solver.back()
+        return
+    try:
+        support_slot, _, _, reliable = _read_slots_checked(solver)
+    except (MowerExit, DeviceRecoveryError):
+        raise
+    except Exception as exc:
+        raise TrainingObservationError("训练室驻员读取失败，保留换人任务") from exc
+    if not reliable:
+        raise TrainingObservationError("训练室驻员未确认，保留换人任务等待新实测")
     if operator and reliable and support_slot not in (operator, swap_target):
         # #107 保护门（2026-08-17）：逻各斯/艾丽妮在协助位（非路线干员/减半对象）且
         # 剩余不足 5h+缓冲 → 不纠不换——她们本身是最优加成，路线干员+减半收益在这里
@@ -1652,15 +1763,8 @@ def run_swap_support(solver):
                 solver.back()
                 return
         if not support_slot:
-            # #101 空位一步定夺（当前效率已知=0）：calc_swap_threshold(0,...) 判
-            # 「放 operator 还是 swap_target」——should_swap（含 301 值得门）→ 直接放
-            # 减半对象；否则（剩余 > 阈值 / 值得门不满足 / 倒计时读失败）→ 放 operator
-            # 拿前半程加成，不立刻换（重排阈值时刻的换人任务，阈值时机不丢）。只在训练
-            # 确认（countdown active）或读失败（failed，保守补 operator）时动；00:00:00
-            # （zero，收取边界）不动（铁律 6）。
-            if countdown_active or (
-                panel is not None and panel.countdown_state == "failed"
-            ):
+            # 先依据确认的剩余时间选择补位或减半；补位后再读取倒计时安排后继任务。
+            if countdown_active:
                 remaining = None
                 if panel is not None and panel.countdown is not None:
                     remaining = (panel.countdown - datetime.now()).total_seconds() / 60
@@ -1683,10 +1787,10 @@ def run_swap_support(solver):
                 if place_swap_target:
                     # 已到减半时刻 → 直接换入 swap_target（等价于一次减半换人）
                     logger.info(f"协助位空着且已到减半时刻，直接换入 {swap_target}")
-                    did_swap = _try_swap(solver, plan, swap_target)
+                    did_swap = _try_swap(solver, plan, swap_target, step_level)
                     if not did_swap:
                         did_swap = _retry_swap_in_place(
-                            solver, plan, route, swap_target
+                            solver, plan, route, swap_target, step_level
                         )
                     _schedule_collect_after_swap(solver, plan, tier=step_level)
                     if not did_swap:
@@ -1699,6 +1803,8 @@ def run_swap_support(solver):
                 )
                 try:
                     solver.choose_train([operator, "Current"])
+                except (MowerExit, DeviceRecoveryError):
+                    raise
                 except Exception as e:
                     logger.warning(f"协助位补位失败: {e}")
                     logger.debug(
@@ -1710,26 +1816,21 @@ def run_swap_support(solver):
                     )
                     did_swap = False
                     if swap_target:
-                        did_swap = _try_swap(solver, plan, swap_target)
+                        did_swap = _try_swap(solver, plan, swap_target, step_level)
                         if not did_swap:
                             did_swap = _retry_swap_in_place(
-                                solver, plan, route, swap_target
+                                solver, plan, route, swap_target, step_level
                             )
                     _schedule_collect_after_swap(solver, plan, tier=step_level)
                     solver.back()
                     return
                 logger.debug(f"[mastery] 协助位补位 id={plan['id']} 结果=ok")
                 # 补位消耗时间 → 重读倒计时（铁律 1 动作前先读房），排阈值时刻换人任务
-                scene = solver.train_scene()
-                if scene == Scene.INFRA_DETAILS:
-                    _close_room_detail(solver)
-                    scene = solver.train_scene()
-                panel = None
-                if scene == Scene.TRAIN_MAIN:
-                    try:
-                        panel = read_main_panel(solver)
-                    except Exception as e:
-                        logger.debug(f"主面板重读失败: {e}")
+                scene, panel = _read_swap_panel(solver, plan)
+                if scene == Scene.TRAIN_FINISH or panel.countdown_state == "zero":
+                    _schedule_collect(solver, plan, datetime.now(), tier=step_level)
+                    solver.back()
+                    return
                 if panel is not None and panel.countdown is not None:
                     # 有换人目标 → 排阈值时刻任务（排了换人就不排收取，§5.2 等 SWAP
                     # 完成后重读再排）；专三/无减半目标 → 直接排收取
@@ -1741,24 +1842,6 @@ def run_swap_support(solver):
                         is None
                     ):
                         _schedule_collect_after_swap(solver, plan, tier=step_level)
-                else:
-                    # 重读失败 → 轻量倒计时重试读（_read_countdown_with_retry）重排阈值
-                    # 任务——#101 合并后阈值任务已被本 dispatch 消费，重读失败只排收取会
-                    # 丢减半（review 修复）；重试也读不到 → 保守排收取（下次进房再读）
-                    countdown = _read_countdown_with_retry(solver)
-                    step_level = panel.mastery_tier if panel is not None else None
-                    if (
-                        countdown is not None
-                        and route
-                        and route.get("swap_target")
-                        and _schedule_swap_if_needed(
-                            solver, plan, countdown, step_level
-                        )
-                        is not None
-                    ):
-                        pass  # 已重排换人任务，不排收取
-                    else:
-                        _schedule_collect_after_swap(solver, plan, tier=step_level)
                 solver.back()
                 return
         elif countdown_active:
@@ -1769,6 +1852,8 @@ def run_swap_support(solver):
             )
             try:
                 solver.choose_train([operator, "Current"])
+            except (MowerExit, DeviceRecoveryError):
+                raise
             except Exception as e:
                 logger.warning(f"协助位补位/纠错失败: {e}")
                 logger.debug(
@@ -1777,34 +1862,53 @@ def run_swap_support(solver):
                 _notify_swap_correction_failed(
                     solver, plan, support_slot, operator, fallback_swap=False
                 )
-                # #79 坐错人纠错失败 → 维持语义：不换人、排收取退出
-                _schedule_collect_after_swap(solver, plan, tier=step_level)
-                solver.back()
-                return
+                raise TrainingObservationError(
+                    "训练室协助位纠错未完成，保留换人任务"
+                ) from e
             else:
                 logger.debug(f"[mastery] 协助位补位/纠错 id={plan['id']} 结果=ok")
                 support_slot = operator
                 # 纠错消耗时间 → 重读倒计时（铁律 1 动作前先读房）
-                scene = solver.train_scene()
-                if scene == Scene.INFRA_DETAILS:
-                    _close_room_detail(solver)
-                    scene = solver.train_scene()
-                panel = None
-                if scene == Scene.TRAIN_MAIN:
-                    try:
-                        panel = read_main_panel(solver)
-                    except Exception as e:
-                        logger.debug(f"主面板重读失败: {e}")
+                scene, panel = _read_swap_panel(solver, plan)
+                if scene == Scene.TRAIN_FINISH or panel.countdown_state == "zero":
+                    _schedule_collect(solver, plan, datetime.now(), tier=step_level)
+                    solver.back()
+                    return
                 countdown_active = bool(
                     panel is not None and panel.countdown_state == "active"
                 )
                 step_level = panel.mastery_tier if panel is not None else None
                 route = _get_plan_route(plan, step_level)
+                if route is None:
+                    raise TrainingObservationError(
+                        "纠错后的训练路线未确认，保留换人任务"
+                    )
                 if route:
                     route["current_central"] = actual_central_bonus(
                         solver, route.get("central_bonus", 0)
                     )
                 swap_target = route.get("swap_target") if route else None
+
+    if (
+        getattr(getattr(solver, "task", None), "mastery_swap_verify_only", False)
+        is True
+        and not getattr(solver.task, "advance_support_swap", False)
+        and support_slot == operator
+        and swap_target
+    ):
+        remaining = (panel.countdown - datetime.now()).total_seconds() / 60
+        _, threshold = calc_swap_threshold(
+            route["efficiency"],
+            route.get("job_match", False),
+            route.get("central_bonus", 0),
+            remaining,
+            route.get("mastery_swap_buffer", DEFAULT_SWAP_BUFFER_MINUTES),
+            current_central=route.get("current_central", route.get("central_bonus", 0)),
+        )
+        if remaining > threshold:
+            if _schedule_swap_if_needed(solver, plan, panel.countdown, step_level):
+                solver.back()
+                return
 
     # #80：换人前用当前倒计时判「值不值得换」（_swap_worthwhileness = calc_swap_threshold
     # 的 301 守卫，换后真实剩余 <5h 不值得）——纠错任务由 reconcile 排（排程时不做值得
@@ -1828,41 +1932,52 @@ def run_swap_support(solver):
         logger.debug(
             f"[mastery] 协助位判定 id={plan['id']} 期望={swap_target} 动作=换入减半对象"
         )
-        did_swap = _try_swap(solver, plan, swap_target)
+        did_swap = _try_swap(solver, plan, swap_target, step_level)
         if not did_swap:
             # #81：立刻原地重试（无 +5min 间隔），至多 SWAP_RETRY_LIMIT 次；放弃 → ⑧
             # 通知，不置 swap_frozen（接受下次进房重排，暂时性失败可被救回）
-            did_swap = _retry_swap_in_place(solver, plan, route, swap_target)
+            did_swap = _retry_swap_in_place(
+                solver, plan, route, swap_target, step_level
+            )
     else:
         logger.info(
             "场景不在训练主页面或倒计时未确认，跳过减半换人"
             if not countdown_active
             else "当前步路线无换人目标、协助位已是减半对象或剩余不足，跳过减半换人"
         )
-    # §5.2：无论换人成功与否/是否跳过，重读倒计时再排收取——开始训练时「排了换人
-    # 任务则不排收取」，收集只能靠这里补；跳过换人也补排（防读图标失败/不在主页面丢收集）。
+    # 完成换人或已确认无需换人后，再按新倒计时安排收取。
     _schedule_collect_after_swap(solver, plan, tier=step_level)
     if not did_swap:
         solver.back()
 
 
-def _try_swap(solver, plan, swap_target) -> bool:
-    """换入减半对象：choose_train + 置 swap_frozen。成功 True，抛异常 False。
-
-    #81：run_swap_support 首试与 _retry_swap_in_place 重试共用同一换人动作与日志。
-    """
+def _try_swap(solver, plan, swap_target, step_level=None) -> bool:
+    """换入减半对象后记录收取续行，保存失败也不能重复已完成的换人。"""
     from arknights_mower.utils.mastery_db import update_plan_status
 
     try:
         solver.choose_train([swap_target, "Current"])
-        update_plan_status(plan["id"], "training", swap_frozen=1)
-        logger.info("换人完成，协助位已冻结")
-        logger.debug(f"[mastery] 协助位判定 id={plan['id']} 结果=ok")
-        return True
+    except (MowerExit, DeviceRecoveryError):
+        raise
     except Exception as e:
         logger.warning(f"换人失败: {e}")
         logger.debug(f"[mastery] 协助位判定 id={plan['id']} 结果=失败 err={e}")
         return False
+    task = getattr(solver, "task", None)
+    if task is not None:
+        task.mastery_collect_pending = True
+        task.mastery_collect_level = step_level
+    try:
+        update_plan_status(plan["id"], "training", swap_frozen=1)
+    except (MowerExit, DeviceRecoveryError):
+        raise
+    except Exception as exc:
+        raise TrainingObservationError(
+            "换人已完成，协助位记录保存失败，保留收取规划"
+        ) from exc
+    logger.info("换人完成，协助位已冻结")
+    logger.debug(f"[mastery] 协助位判定 id={plan['id']} 结果=ok")
+    return True
 
 
 def _notify_swap_correction_failed(
@@ -1889,50 +2004,37 @@ def _notify_swap_correction_failed(
     else:
         msg = (
             f"{label} 协助位 {support_slot or '空'} 补位/纠错失败（未能换入 {operator}），"
-            "本次跳过减半换人，减半收益可能丢失"
+            "已保留换人任务，等待相关新实测后重试"
         )
     send_message(msg, level="WARNING")
 
 
-def _retry_swap_in_place(solver, plan, route, swap_target) -> bool:
-    """#81：换人失败立刻原地重试（无 +5min 间隔），至多 SWAP_RETRY_LIMIT 次。
-
-    每次重试前重读倒计时（_swap_still_worthwhile）判还值不值得换——换后真实剩余不足
-    5 小时就不值得，放弃（不减半，按全时长收取，收取任务由 _schedule_collect_after_swap
-    保证）。放弃（达上限/不足 5h）发⑧ 通知（去重按 plan id，WARNING），**不置
-    swap_frozen=1**（#81 回滚 #77 的 give-up 分支）：reconcile（_maybe_recover_swap）
-    下次进房会重新补排再试一轮，暂时性失败（减半干员当时忙/动画卡）会被救回；接受
-    低频重试（reconcile 默认低频）。返回最终是否换人成功（成功 → 调用方不退出房间）。
-    """
+def _retry_swap_in_place(solver, plan, route, swap_target, step_level=None) -> bool:
+    """有限恢复换人；确认收益窗口结束才终结，未完成安排保留原任务。"""
     retries = 0
     while retries < SWAP_RETRY_LIMIT:
         if not _swap_still_worthwhile(solver, plan, route):
             logger.info("剩余时间不足 5 小时，放弃减半换人（不减半，按全时长收取）")
-            _notify_swap_giveup(solver, plan)
             return False
         retries += 1
         logger.warning(f"换人失败，原地重试（{retries}/{SWAP_RETRY_LIMIT}）")
         solver.sleep(1)
-        if _try_swap(solver, plan, swap_target):
+        if _try_swap(solver, plan, swap_target, step_level):
             return True
-    logger.warning("换人重试已达上限，放弃减半换人（不减半，按全时长收取）")
+    logger.warning("本次换人恢复已达上限，保留换人任务等待新实测")
     _notify_swap_giveup(solver, plan)
-    return False
+    raise TrainingObservationError("训练室协助位换人未完成，保留换人任务")
 
 
 def _notify_swap_giveup(solver, plan):
-    """⑧ 换人失败放弃通知（#81）：减半收益可能丢失。
-
-    去重按 plan id（INSERT OR IGNORE，WARNING），与⑦ 纠错失败并列（doc §10.2）；
-    异常时 fail open 照发（宁可多发不漏发）。
-    """
+    """通知本次恢复耗尽；原任务由相关新实测重新准入。"""
     from arknights_mower.utils.email import send_message
     from arknights_mower.utils.mastery_db import should_notify
 
     if not should_notify("swap_failed_giveup", str(plan["id"])):
         return
     label = _plan_fail_label(plan)
-    msg = f"{label} 换人失败已放弃，减半收益可能丢失"
+    msg = f"{label} 本次换人未完成，已保留任务，等待相关新实测后重试"
     send_message(msg, level="WARNING")
 
 
@@ -1955,26 +2057,12 @@ def _swap_worthwhileness(remaining_minutes, route) -> bool:
 
 
 def _swap_still_worthwhile(solver, plan, route) -> bool:
-    """重读倒计时判断换人后真实剩余时间是否 ≥ 301（不足 5 小时就不值得继续换）。
-
-    读倒计时前先确认在训练室主页面（TRAIN_MAIN）；INFRA_DETAILS 先关浮窗再读。
-    读不到/不在主页 → 保守按「还值得」继续重试（下次重试再判）。公式同式
-    `_swap_worthwhileness`（calc_swap_threshold 的 real_time_after_swap 守卫）。
-    """
-    try:
-        scene = solver.train_scene()
-        if scene == Scene.INFRA_DETAILS:
-            _close_room_detail(solver)
-            scene = solver.train_scene()
-        if scene != Scene.TRAIN_MAIN:
-            return True
-        countdown = _read_train_countdown(solver)
-        if countdown is None:
-            return True
-        remaining = (countdown - datetime.now()).total_seconds() / 60
-        return _swap_worthwhileness(remaining, route)
-    except Exception:
-        return True
+    """恢复安排前重新确认剩余时间，未知读数不授权再次换人。"""
+    countdown = _read_countdown_with_retry(solver)
+    if countdown is None:
+        raise TrainingObservationError("恢复换人前的倒计时未确认，保留换人任务")
+    remaining = (countdown - datetime.now()).total_seconds() / 60
+    return _swap_worthwhileness(remaining, route)
 
 
 def _read_countdown_with_retry(solver) -> Optional[datetime]:
@@ -1982,34 +2070,38 @@ def _read_countdown_with_retry(solver) -> Optional[datetime]:
     浮窗先关再读；仍读不到 → None（调用方保守处理）。
     """
     countdown = None
-    for _ in range(5):
+    for attempt in range(5):
         try:
             scene = solver.train_scene()
             if scene == Scene.INFRA_DETAILS:
                 _close_room_detail(solver)
                 scene = solver.train_scene()
+            if scene == Scene.TRAIN_FINISH:
+                return datetime.now()
             if scene == Scene.TRAIN_MAIN:
-                countdown = _read_train_countdown(solver)
+                state, countdown = _read_train_countdown3(solver)
+                if state == "zero":
+                    return datetime.now()
                 if countdown is not None:
                     break
+        except (MowerExit, DeviceRecoveryError):
+            raise
         except Exception:
             pass
-        solver.sleep(1)
+        if attempt < 4:
+            solver.sleep(1)
     return countdown
 
 
 def _schedule_collect_after_swap(solver, plan, tier=None):
-    """§5.2：SWAP_SUPPORT 完成后重读倒计时再排收取。
-
-    #150：与训练开始路径（_confirm_training_started）一致，收取任务档位标签用实际
-    读到的面板图标档位（tier=panel.mastery_tier，run_swap_support 进房已读），读不到
-    （None/0）回退 target_level——不再恒为专三。读倒计时前先确认在训练室主页面
-    （TRAIN_MAIN）；若是主页面带进驻详情浮窗（INFRA_DETAILS），先关浮窗再读。最多
-    原地重试 5 次；仍读不到 → 保守重排到 now+缓冲（下次进房再读）。
-    """
+    """按新确认的训练完成时间安排收取；未知时保留原任务的收取续行。"""
+    task = getattr(solver, "task", None)
+    if task is not None:
+        task.mastery_collect_pending = True
+        task.mastery_collect_level = tier
     countdown = _read_countdown_with_retry(solver)
     if countdown is None:
-        countdown = datetime.now() + ARRANGING_RETRY_BUFFER
+        raise TrainingObservationError("换人后的训练倒计时未确认，保留收取规划")
     _schedule_collect(solver, plan, countdown, tier=tier)
 
 

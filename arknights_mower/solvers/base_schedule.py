@@ -109,6 +109,7 @@ from arknights_mower.utils.manufacture_product import (
     parse_product_task_meta,
     product_task_meta,
 )
+from arknights_mower.utils.mastery_support_types import TrainingObservationError
 from arknights_mower.utils.operation_timing import (
     estimate_dorm_minutes,
     record_dorm_recovery,
@@ -558,45 +559,88 @@ class BaseSchedulerSolver(
                 for binding in op.group_bindings
                 if binding["group"]
             }
-        return copy.deepcopy(
-            {
-                "plan": task.plan,
-                "meta_data": task.meta_data,
-                "correction_groups": {
-                    group: data.group_is_resting(group) for group in correction_groups
-                },
-                "reservations": (
-                    sorted(names & reserved),
-                    sorted(slot for slot in slots if slot[0] in rooms),
-                ),
-                "effective_plan": {
-                    room: [vars(slot) for slot in data.plan.get(room, [])]
-                    for room in rooms
-                },
-                "products": {
-                    room: getattr(data, "products", {}).get(room) for room in rooms
-                },
-                "observations": {
-                    name: (
-                        op.current_room,
-                        op.current_index,
-                        None
-                        if getattr(op, "mood_is_prediction", False)
-                        else op.time_stamp,
-                    )
-                    for name, op in data.operators.items()
-                    if name in names or op.current_room in rooms
-                },
-                "facilities": {
-                    room: getattr(data, "facility_states", {}).get(room)
-                    for room in rooms
-                },
-                "room_observations": {
-                    room: getattr(data, "room_observations", {}).get(room)
-                    for room in rooms
-                },
+        snapshot = {
+            "plan": task.plan,
+            "meta_data": task.meta_data,
+            "correction_groups": {
+                group: data.group_is_resting(group) for group in correction_groups
+            },
+            "reservations": (
+                sorted(names & reserved),
+                sorted(slot for slot in slots if slot[0] in rooms),
+            ),
+            "effective_plan": {
+                room: [vars(slot) for slot in data.plan.get(room, [])] for room in rooms
+            },
+            "products": {
+                room: getattr(data, "products", {}).get(room) for room in rooms
+            },
+            "observations": {
+                name: (
+                    op.current_room,
+                    op.current_index,
+                    None if getattr(op, "mood_is_prediction", False) else op.time_stamp,
+                )
+                for name, op in data.operators.items()
+                if name in names or op.current_room in rooms
+            },
+            "facilities": {
+                room: getattr(data, "facility_states", {}).get(room) for room in rooms
+            },
+            "room_observations": {
+                room: getattr(data, "room_observations", {}).get(room) for room in rooms
+            },
+        }
+        if getattr(task, "mastery_observation_pending", False):
+            from arknights_mower.solvers.mastery import PROF_MAP
+            from arknights_mower.utils.mastery_db import (
+                get_active_plan,
+                get_all_plans,
+                get_plan_by_id,
+                get_route,
+                get_route_settings,
+            )
+            from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+            plan_key = getattr(task, "plan_key", None)
+            plan = get_plan_by_id(plan_key) if plan_key else get_active_plan()
+            try:
+                character = (
+                    get_skill_data()
+                    .get("characters", {})
+                    .get((plan or {}).get("char_id"), {})
+                )
+                profession = PROF_MAP.get(character.get("profession"))
+            except Exception:
+                # 静态资源读取失败也不能阻止保留原任务。
+                profession = None
+            snapshot["mastery"] = {
+                "observation": getattr(self, "last_mastery_observation", None),
+                "enabled": config.conf.enable_mastery,
+                "assistant_follows_schedule": config.conf.assistant_follows_schedule,
+                "plan": plan,
+                "route": get_route(profession) if profession else None,
+                "successors": [
+                    item
+                    for item in get_all_plans()
+                    if plan and item["char_id"] == plan.get("char_id")
+                ],
+                "settings": get_route_settings(),
             }
-        )
+        return copy.deepcopy(snapshot)
+
+    def _run_mastery_with_recovery(self, action):
+        """本次执行内有限复核，耗尽后交给原任务的失败保留边界。"""
+        for attempt in range(3):
+            try:
+                return action(self)
+            except TrainingObservationError:
+                if attempt == 2:
+                    raise
+                logger.warning(
+                    "训练状态未确认，本次执行重新进房复核（%s/3）", attempt + 2
+                )
+                self.back_to_infrastructure()
 
     def _retain_failed_task(self, task, reason, rooms, *, dependency=False):
         rooms = tuple(rooms)
@@ -700,6 +744,10 @@ class BaseSchedulerSolver(
                 failure["snapshot"].setdefault(
                     "room_observations", {room: None for room in failure["rooms"]}
                 )
+                mastery = failure["snapshot"].get("mastery")
+                if mastery and getattr(self, "last_mastery_observation", None) is None:
+                    # 重启丢失进程内观测时间不构成新的训练实测。
+                    mastery["observation"] = None
                 # 旧快照中的预测时间也不构成实测证据；预测失效不解除失败。
                 for name, observation in failure["snapshot"]["observations"].items():
                     op = self.op_data.operators.get(name)
@@ -2293,7 +2341,7 @@ class BaseSchedulerSolver(
                 elif self.task.type == TaskTypes.SKILL_UPGRADE:
                     from arknights_mower.solvers.mastery import run_mastery_task
 
-                    run_mastery_task(self)
+                    self._run_mastery_with_recovery(run_mastery_task)
                     from arknights_mower.utils.workshop_automation import (
                         restore_if_no_plans,
                     )
@@ -2302,7 +2350,7 @@ class BaseSchedulerSolver(
                 elif self.task.type == TaskTypes.SWAP_SUPPORT:
                     from arknights_mower.solvers.mastery import run_swap_support
 
-                    run_swap_support(self)
+                    self._run_mastery_with_recovery(run_swap_support)
                 elif self.task.type == TaskTypes.FURNITURE:
                     from arknights_mower.solvers.furniture import FurnitureDismantler
                     from arknights_mower.utils.furniture_task import (
@@ -2505,6 +2553,11 @@ class BaseSchedulerSolver(
                     and self.tasks[0].type in [TaskTypes.SHIFT_ON]
                 ):
                     self.backup_plan_solver()
+            except TrainingObservationError as e:
+                self.task.mastery_observation_pending = True
+                self._retain_failed_task(self.task, str(e), ["train"])
+                self.skip()
+                self.back_to_infrastructure()
             except RoomArrangementDeferred as e:
                 task = self.task
                 attempts = (

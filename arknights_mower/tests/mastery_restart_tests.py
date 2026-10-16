@@ -12,7 +12,8 @@ from arknights_mower.solvers import base_schedule, record
 from arknights_mower.solvers import mastery_reader as reader
 from arknights_mower.utils import mastery_db, mastery_support_data
 from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.scheduler_task import TaskTypes
+from arknights_mower.utils.device.recovery import DeviceRecoveryError
+from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
 class MasteryRestartTests(unittest.TestCase):
@@ -36,6 +37,9 @@ class MasteryRestartTests(unittest.TestCase):
         )
         # Deterministic route and skill inputs; persistence and scheduling stay real.
         self.enterContext(patch.object(reader, "resolve_panel_skill", return_value=1))
+        self.enterContext(
+            patch("arknights_mower.solvers.mastery._get_plan_route", return_value={})
+        )
         self.plan_id = mastery_db.insert_plan(
             "char_fixture", 1, 3, char_name="测试干员", skill_name="二技能·测试技能"
         )
@@ -99,6 +103,32 @@ class MasteryRestartTests(unittest.TestCase):
         self.assertEqual(
             self.plan()["expires_at"], task.time.strftime("%Y-%m-%d %H:%M:%S")
         )
+
+    def test_trusted_panel_with_unavailable_route_preserves_swap_intent(self):
+        mastery_db.update_plan_status(self.plan_id, "training", swap_frozen=0)
+        with patch(
+            "arknights_mower.solvers.mastery._get_plan_route", return_value=None
+        ):
+            for _ in range(2):
+                reader.reconcile_short(self.solver, self.room)
+        task = self.assert_one_task(TaskTypes.SWAP_SUPPORT)
+        self.assertTrue(task.mastery_swap_verify_only)
+        self.assertLessEqual(task.time, datetime.now())
+        self.assertEqual(self.plan()["status"], "training")
+        self.assertEqual(self.plan()["swap_frozen"], 0)
+
+    def test_unreadable_panel_and_route_preserve_one_swap_verification(self):
+        mastery_db.update_plan_status(self.plan_id, "training", swap_frozen=0)
+        room = reader.RoomState("training", read_failed=True)
+        with patch(
+            "arknights_mower.solvers.mastery._get_plan_route", return_value=None
+        ):
+            for _ in range(2):
+                reader.reconcile_short(self.solver, room)
+        task = self.assert_one_task(TaskTypes.SWAP_SUPPORT)
+        self.assertTrue(task.mastery_swap_verify_only)
+        self.assertEqual(self.plan()["status"], "training")
+        self.assertEqual(self.plan()["swap_frozen"], 0)
 
     def test_reset_recovers_observed_training_from_each_persisted_status(self):
         for status in ("idle", "failed", "arranging", "training", "waiting_collect"):
@@ -296,6 +326,204 @@ class MasteryRestartTests(unittest.TestCase):
                 reader.reconcile_short(self.solver, self.room)
         self.assert_one_task(TaskTypes.SWAP_SUPPORT)
         self.assertEqual(self.plan()["status"], "training")
+
+    def test_failed_panel_restores_legacy_swap_before_next_patrol(self):
+        from arknights_mower.solvers import mastery
+
+        expiry = (datetime.now() + timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
+        mastery_db.update_plan_status(self.plan_id, "training", expires_at=expiry)
+        before = self.plan()
+        solver = self.mood_solver()
+        solver.find.return_value = None
+        started = datetime.now()
+        with (
+            patch.object(
+                reader, "_settle_in_room", return_value=reader.Scene.TRAIN_MAIN
+            ),
+            patch.object(reader, "read_main_panel", return_value=reader.RoomPanel()),
+            patch.object(
+                mastery,
+                "_get_plan_route",
+                side_effect=lambda plan, level: (
+                    {"operator": "协助干员", "swap_target": "艾丽妮"}
+                    if level == 2
+                    else None
+                ),
+            ),
+        ):
+            self.read_mood(solver)
+            reader.reconcile_short(solver, solver.train_room_state)
+        self.assertTrue(solver.train_room_state.read_failed)
+        self.assertEqual(len(solver.tasks), 1)
+        task = solver.tasks[0]
+        self.assertEqual(task.type, TaskTypes.SWAP_SUPPORT)
+        self.assertEqual(task.plan_key, str(self.plan_id))
+        self.assertGreaterEqual(task.time, started)
+        self.assertLessEqual(task.time, datetime.now())
+        self.assertEqual(self.plan(), before)
+        solver.choose_train.assert_not_called()
+
+    def test_unreadable_identity_restores_swap_without_inventing_deadline(self):
+        mastery_db.update_plan_status(self.plan_id, "training")
+        room = reader.RoomState("training")
+        with patch(
+            "arknights_mower.solvers.mastery._get_plan_route",
+            return_value={"operator": "协助干员", "swap_target": "艾丽妮"},
+        ):
+            reader.reconcile_short(self.solver, room)
+            reader.reconcile_short(self.solver, room)
+        self.assert_one_task(TaskTypes.SWAP_SUPPORT)
+        self.assertIsNone(self.plan()["expires_at"])
+        self.assertFalse(self.plan()["swap_frozen"])
+
+    def test_failed_panel_restores_confirmed_runtime_swap_deadline(self):
+        from arknights_mower.tests.mastery_support_fixtures import stat
+        from arknights_mower.utils.mastery_support import StageSpec, stage_route
+
+        route = stage_route(
+            stat("协助干员", 75), stat("艾丽妮", 30, True), StageSpec(2, 16)
+        )
+        route["working_operator"] = "协助干员"
+        mastery_db.save_support_plan(self.plan_id, {"stages": [route]})
+        mastery_db.save_support_plan(self.plan_id, route, runtime=True)
+        expiry = (datetime.now() + timedelta(hours=8)).replace(microsecond=0)
+        mastery_db.update_plan_status(
+            self.plan_id, "training", expires_at=expiry.isoformat(sep=" ")
+        )
+        before = self.plan()
+        room = reader.RoomState("training", read_failed=True)
+        for _ in range(2):
+            reader.reconcile_short(self.solver, room)
+        task = self.assert_one_task(TaskTypes.SWAP_SUPPORT)
+        self.assertLess(
+            abs((task.time - expiry + timedelta(minutes=232.5)).total_seconds()), 1
+        )
+        self.assertEqual(self.plan(), before)
+
+    def test_failed_panel_preserves_existing_swap_including_current_and_failures(self):
+        mastery_db.update_plan_status(self.plan_id, "training")
+        room = reader.RoomState("training", read_failed=True)
+        for state in ("queued", "current", "execution_failure", "execution_retained"):
+            with self.subTest(state=state):
+                original_time = datetime.now() - timedelta(minutes=15)
+                task = SchedulerTask(
+                    time=original_time, task_type=TaskTypes.SWAP_SUPPORT
+                )
+                task.plan_key = str(self.plan_id)
+                if state == "execution_failure":
+                    task.execution_failure = {"reason": "读取失败"}
+                elif state == "execution_retained":
+                    task.execution_retained = True
+                self.solver.tasks = [task]
+                self.solver.task = task if state == "current" else None
+                reader.reconcile_short(self.solver, room)
+                self.assertEqual(len(self.solver.tasks), 1)
+                self.assertIs(self.solver.tasks[0], task)
+                self.assertEqual(task.time, original_time)
+
+    def test_failed_panel_does_not_restart_confirmed_finished_swap(self):
+        mastery_db.update_plan_status(self.plan_id, "training", swap_frozen=1)
+        with patch(
+            "arknights_mower.solvers.mastery._get_plan_route",
+            return_value={"operator": "协助干员", "swap_target": "艾丽妮"},
+        ):
+            reader.reconcile_short(
+                self.solver, reader.RoomState("training", read_failed=True)
+            )
+        self.assertEqual(self.solver.tasks, [])
+
+    def test_retained_reader_tasks_keep_their_timestamp_after_observation(self):
+        for task_type in (TaskTypes.SWAP_SUPPORT, TaskTypes.SKILL_UPGRADE):
+            for state in ("execution_failure", "execution_retained"):
+                with self.subTest(task_type=task_type, state=state):
+                    original_time = datetime.now() - timedelta(hours=1)
+                    task = SchedulerTask(time=original_time, task_type=task_type)
+                    task.plan_key = str(self.plan_id)
+                    setattr(
+                        task,
+                        state,
+                        {"reason": "读取失败"}
+                        if state == "execution_failure"
+                        else True,
+                    )
+                    self.solver.tasks = [task]
+                    if task_type == TaskTypes.SWAP_SUPPORT:
+                        reader._upsert_swap_task_now(
+                            self.solver, self.plan(), "协助干员"
+                        )
+                    else:
+                        reader._schedule_collect(
+                            self.solver, self.plan(), datetime.now()
+                        )
+                    self.assertIs(self.solver.tasks[0], task)
+                    self.assertEqual(task.time, original_time)
+
+    def test_countdown_and_safe_panel_propagate_interruption(self):
+        for error_type in (MowerExit, DeviceRecoveryError):
+            for read in (reader._read_train_countdown3, reader._safe_read_panel):
+                with self.subTest(error_type=error_type, read=read):
+                    solver = MagicMock()
+                    solver.read_time.side_effect = error_type("interrupted")
+                    solver.recog.update.side_effect = error_type("interrupted")
+                    with self.assertRaises(error_type):
+                        read(solver)
+
+    def test_only_successful_current_panel_releases_observation_failure(self):
+        old = datetime.now() - timedelta(hours=1)
+        for seconds in (None, 0, 3600):
+            with self.subTest(seconds=seconds):
+                solver = MagicMock(last_mastery_observation=old)
+                solver.train_scene.return_value = reader.Scene.TRAIN_MAIN
+                solver.find.return_value = None
+                solver.read_time.return_value = seconds
+                with (
+                    patch.object(
+                        reader,
+                        "_read_panel_text",
+                        return_value=reader.RoomPanel(
+                            operator_name="测试干员", skill_name="测试技能"
+                        ),
+                    ),
+                    patch.object(reader, "_count_lit_mastery_icons", return_value=2),
+                ):
+                    reader.read_main_panel(solver)
+                if seconds is None:
+                    self.assertEqual(solver.last_mastery_observation, old)
+                else:
+                    self.assertGreater(solver.last_mastery_observation, old)
+
+    def test_confirmed_finish_banner_releases_failure_without_slot_reads(self):
+        old = datetime.now() - timedelta(hours=1)
+        solver = MagicMock(last_mastery_observation=old)
+        with (
+            patch.object(
+                reader, "_settle_in_room", return_value=reader.Scene.TRAIN_FINISH
+            ),
+            patch.object(reader, "read_main_panel", return_value=None),
+            patch.object(reader, "_read_slots_checked") as slots,
+        ):
+            room = reader.read_room_state(solver)
+        self.assertEqual(room.state, "waiting_collect")
+        self.assertGreater(solver.last_mastery_observation, old)
+        slots.assert_not_called()
+
+    def test_explicit_panel_image_does_not_release_retained_execution(self):
+        old = datetime.now() - timedelta(hours=1)
+        solver = MagicMock(last_mastery_observation=old)
+        solver.read_time.return_value = 3600
+        with (
+            patch.object(
+                reader,
+                "_read_panel_text",
+                return_value=reader.RoomPanel(
+                    operator_name="测试干员", skill_name="测试技能"
+                ),
+            ),
+            patch.object(reader, "_count_lit_mastery_icons", return_value=2),
+        ):
+            reader.read_main_panel(solver, img=object())
+        self.assertEqual(solver.last_mastery_observation, old)
+        solver.recog.update.assert_not_called()
 
     def mood_solver(self, count=None):
         solver = MagicMock()

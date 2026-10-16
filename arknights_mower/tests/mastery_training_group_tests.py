@@ -10,6 +10,7 @@ from arknights_mower.solvers import mastery
 from arknights_mower.utils.config.plan import PlanModel
 from arknights_mower.utils.mastery_support_data import training_room_group_warning
 from arknights_mower.utils.scene import Scene
+from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
 def grouped_schedule(backup=False, index=0):
@@ -158,14 +159,18 @@ def test_pending_swap_warns_but_continues_dispatch():
         "skill_index": 1,
         "skill_name": "聚焦指令",
         "target_level": 3,
-        "support_plan": {"stages": []},
+        "support_plan": {"stages": [{"level": 2, "operator": "赫默"}]},
     }
     panel = SimpleNamespace(
         mastery_tier=2,
+        operator_name="异客",
+        skill_name="聚焦指令",
         countdown_state="active",
         countdown=datetime.now() + timedelta(hours=6),
     )
-    solver = MagicMock()
+    task = SchedulerTask(task_type=TaskTypes.SWAP_SUPPORT)
+    task.plan_key = "1"
+    solver = MagicMock(task=task, tasks=[task])
     solver.train_scene.return_value = Scene.TRAIN_MAIN
     with (
         patch("arknights_mower.utils.config.plan", PlanModel(**grouped_schedule())),
