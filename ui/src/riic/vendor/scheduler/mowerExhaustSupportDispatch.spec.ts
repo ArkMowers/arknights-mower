@@ -1,5 +1,5 @@
 import {afterEach,describe,expect,it,vi} from 'vitest'
-import {createRosterRuntime,type RuntimeConfig} from './rosterRuntime'
+import {createRosterRuntime,type RuntimeConfig,type RuntimeState} from './rosterRuntime'
 import {getMowerSourceRuntime,settleMowerSource} from './mowerSourceRuntime'
 import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros,type MowerTaskPlan} from './mowerTaskQueue'
 import {MowerDormState} from './mowerSchedulingData'
@@ -8,7 +8,7 @@ import {projectMowerArrangements} from './mowerObservations'
 import * as ordinaryPlanning from './mowerOrdinaryPlanning'
 
 const model:MowerShiftModel={count:0,evaluate:data=>data.planConditions,swap:data=>data,transition:()=>({}),activate:()=>{}}
-const rates={workRate:()=>1,recoveryRate:()=>4}
+const rates={workRate:()=>1,recoveryRate:()=>4,forecastRates:(state:RuntimeState)=>({work:Object.fromEntries(Object.keys(state.morale).map(name=>[name,1])),recovery:Object.fromEntries(Object.keys(state.morale).map(name=>[name,4]))})}
 function generatedSupport(recall=false){
  const rows={room_1_1:[{agent:'A',group:'',replacement:['X']}],room_1_2:[{agent:'B',group:'resting',replacement:recall?['X']:['X','Y']}],room_1_3:[{agent:'C',group:'',replacement:['Z']}],contact:[{agent:'D',group:'resting',replacement:['W']}],dormitory_1:[...['K1','K2'].map(agent=>({agent,group:'',replacement:[]})),...['Free','Free','Free'].map(agent=>({agent,group:'',replacement:[]}))]}
  const config:RuntimeConfig={
@@ -29,12 +29,14 @@ function generatedSupport(recall=false){
  Object.assign(data.operators.D!,{currentRoom:'dormitory_1',currentIndex:3,mood:4,timeStampMicros:0})
  Object.assign(data.operators.W!,{currentRoom:'contact',currentIndex:0,mood:24,timeStampMicros:0})
  data.dorms=[new MowerDormState(['dormitory_1',2],'B',toMowerMicros(5)),new MowerDormState(['dormitory_1',3],'D',toMowerMicros(5)),new MowerDormState(['dormitory_1',4])]
+ if(recall)for(const name of ['B','C','D']){state.morale[name]=20;Object.assign(data.operators[name]!,{mood:20,timeStampMicros:0,depletionRate:1})}
  const exhausted=new MowerTask({type:T.EXHAUST_OFF,metadata:'A'})
  source.queue.tasks=[exhausted]
  settleMowerSource(state,rates)
- expect(source.queue.tasks).not.toContain(exhausted)
+ expect(source.queue.tasks).toContain(exhausted)
+ expect(exhausted.executionFailure).toBeDefined();expect(exhausted.timeMicros).toBe(0)
  const support=source.queue.tasks.find(task=>task.type===T.SELF_CORRECTION)!,retry=source.queue.tasks.find(task=>task.type===T.EXHAUST_OFF)!
- expect(support).toBeDefined();expect(retry).toBeDefined()
+ expect(support).toBeDefined();expect(retry).toBe(exhausted)
  expect(support.plan).toEqual(recall?{room_1_2:['B'],contact:['D']}:{room_1_2:['Y']})
  return {data:source.data,queue:source.queue,support,retry}
 }

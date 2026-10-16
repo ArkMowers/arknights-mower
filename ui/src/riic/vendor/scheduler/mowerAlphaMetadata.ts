@@ -1,3 +1,4 @@
+import {planMowerPreferredReplacementRestore,mowerReplacementDependencyNames,mowerReplacementReservations} from './mowerReplacementCoordination'
 import {normalizeMowerSharedArrangement} from './mowerSharedGroups'
 import {mowerGroupRecoveryDeadline} from './mowerGroupRecovery'
 // Mower b2d9ac8 scheduler_task.plan_metadata; recovery gap updated to ab0a4e5 (MIT, Copyright 2021 Nano).
@@ -5,7 +6,7 @@ import {hasObservedFullMood,hasRestingMood} from './mowerOperatorState'
 import {projectMowerArrangements} from './mowerObservations'
 import {alphaPosition,alphaRebalanceClosingDorms} from './mowerAlphaDorm'
 import {generateMowerDormTasks,mergeMowerAlphaReleases,mowerArrangementResources,mowerAfterPendingArrangements,type MowerDormBatch,type MowerReturnTargets} from './mowerDormTasks'
-import {MowerTask,MOWER_TASK_TYPES as T,toMowerMicros,type MowerTaskQueue,type MowerTaskPlan} from './mowerTaskQueue'
+import {MowerTask,MOWER_TASK_TYPES as T,type MowerTaskQueue,type MowerTaskPlan} from './mowerTaskQueue'
 import type {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 
 export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTaskQueue,limited:MowerTask[]):void {
@@ -17,10 +18,9 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
  const reserved=new Set(queue.tasks.filter(t=>t.type!==T.FILL_DORM).flatMap(t=>[...mowerArrangementResources(t.plan).slots].filter(s=>s.startsWith('dorm'))))
  const vacancies=new Set(actual.dorms.filter(b=>!b.name&&!reserved.has(alphaPosition(...b.position))&&actual.effectiveFreeSlot(b)&&!actual.currentOperator(...b.position)).map(b=>alphaPosition(...b.position)))
  queue.tasks=queue.tasks.filter(t=>{if(t.type!==T.FILL_DORM||t.productShiftLocked||t.dormRecoveryRestore.length)return true;const resources=mowerArrangementResources(t.dormFillPlan&&Object.keys(t.dormFillPlan).length?t.dormFillPlan:t.plan);return resources.slots.size>0&&[...resources.slots].every(s=>vacancies.has(s))})
- const pending=queue.tasks.filter(t=>[T.SELF_CORRECTION,T.RE_ORDER].includes(t.type)&&!t.productShiftLocked&&Object.keys(t.plan).length).sort((a,b)=>a.timeMicros-b.timeMicros)
+ const pending=queue.tasks.filter(t=>[T.SELF_CORRECTION,T.RE_ORDER].includes(t.type)&&!t.executionFailure&&!t.productShiftLocked&&Object.keys(t.plan).length).sort((a,b)=>a.timeMicros-b.timeMicros)
  const data=projectMowerArrangements(actual,pending.map(t=>t.plan)),now=data.nowMicros
- let minimum=Infinity
- for(const op of Object.values(data.operators))if(op.isHigh()&&!op.multiGroup&&(!op.group||data.isGroupShiftAnchor(op))&&!op.room.startsWith('dorm')&&!op.isResting()&&!data.isStandby(op.name))minimum=Math.min(minimum,Math.max(op.predictExhaust(now),now+toMowerMicros(.5)))
+
  const grouped=new Map<string,MowerDormState[]>(),free:MowerDormState[]=[]
  for(const bed of data.allDorms()){
   const op=data.operators[bed.name]
@@ -41,9 +41,9 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
     continue
    }
    const nearest=high.filter(b=>b.timeMicros!==undefined).sort((a,b)=>a.timeMicros!-b.timeMicros!)[0]
-   if(nearest)add(Math.min(nearest.timeMicros!,minimum),high,false)
+   if(nearest)add(nearest.timeMicros!,high,false)
   }
-  if(high.length&&!group)for(const b of high)if(b.timeMicros!==undefined){const full=data.operators[b.name]!.restInFull;add(full?b.timeMicros:Math.min(b.timeMicros,minimum),[b],full)}
+  if(high.length&&!group)for(const b of high)if(b.timeMicros!==undefined){const full=data.operators[b.name]!.restInFull;add(b.timeMicros,[b],full)}
  }
  if(data.freeRoom)for(const b of free){const op=data.operators[b.name]!,observed=hasObservedFullMood(op);if(b.timeMicros===undefined&&!observed)continue;const time=observed?now:b.timeMicros!,previous=releases.get(time);if(previous)previous.dorms.push(b);else releases.set(time,{timeMicros:time,dorms:[b],restInFull:null})}
  const generated=generateMowerDormTasks([...batches.values(),...releases.values()],data,existing,pending);queue.tasks.push(...generated)
@@ -68,5 +68,17 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
   if([...recalled].some(n=>names.has(n)||data.busyRestingNames.has(n))||[...resources.slots].some(s=>slots.has(s)))continue
   const task=new MowerTask({type:T.SHIFT_ON,plan});task.timeMicros=Math.max(recovery?.timeMicros??now,mowerAfterPendingArrangements(plan,pending));queue.tasks.push(task);[...participants,...recalled].forEach(n=>returning.add(n))
  }
- queue.tasks.push(...limited);mergeMowerAlphaReleases(queue.tasks,data.mergeIntervalMinutes,{adjustForRunOrders:actual.adjustForRunOrders})
+ // A due coordination intent owns its cover dependency until the physical handoff finishes.
+ const coordinationReservations=mowerReplacementReservations(actual,queue.tasks)
+ const protectedNames=new Set([...names,...coordinationReservations.reservedNames]),protectedSlots=new Set([...slots,...coordinationReservations.reservedSlots])
+ for(const task of queue.tasks)if(task.timeMicros<=now&&![T.SHIFT_ON,T.RELEASE_DORM].includes(task.type)){
+  const resources=mowerArrangementResources(task.plan)
+  resources.names.forEach(name=>protectedNames.add(name));resources.slots.forEach(slot=>protectedSlots.add(slot))
+  if(task.type===T.EXHAUST_OFF)mowerReplacementDependencyNames(data,task.metadata.split(',')).forEach(name=>protectedNames.add(name))
+ }
+ const restore=planMowerPreferredReplacementRestore(actual,protectedNames,protectedSlots)
+ if(Object.keys(restore).length){const task=new MowerTask({type:T.SELF_CORRECTION,plan:restore});task.timeMicros=now;task.exhaustSupport=true;task.preferredReplacementRestore=true;queue.tasks.push(task)}
+ queue.tasks.push(...limited)
+ const retained=queue.tasks.filter(task=>task.retainsExecution),active=queue.tasks.filter(task=>!task.retainsExecution)
+ mergeMowerAlphaReleases(active,data.mergeIntervalMinutes,{adjustForRunOrders:actual.adjustForRunOrders});queue.tasks=[...active,...retained]
 }

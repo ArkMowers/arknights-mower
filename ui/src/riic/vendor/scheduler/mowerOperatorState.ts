@@ -8,7 +8,9 @@ export interface MowerOperatorOptions {
  dormMoodPeers?:Record<string,unknown>
  name:string;nativeName?:string;room?:string;index?:number;group?:string;replacement?:string[];operatorType?:'high'|'low';restingPriority?:'high'|'low'|'standby'
  currentRoom?:string;currentIndex?:number;mood?:number;timeStampMicros?:number;depletionRate?:number;exhaustTimeMicros?:number
- dormPositionVersion?:number;dormRecoveryRoom?:string;dormRecoveryIndex?:number;dormRecoveryFixed?:MowerRecoveryManager[];singleRecoveryManager?:boolean;restingFromTrain?:boolean;idleRestCheck?:[number,number,number|undefined]
+ dormPositionVersion?:number;dormRecoveryRoom?:string;dormRecoveryIndex?:number;dormRecoveryFixed?:MowerRecoveryManager[];
+ /** An unlocked single-target recovery skill, including workers outside fixed manager slots. */
+ singleRecoveryManager?:boolean;restingFromTrain?:boolean;idleRestCheck?:[number,number,number|undefined]
  lowerLimit?:number;upperLimit?:number;workaholic?:boolean;exhaustRequire?:boolean;restInFull?:boolean;restMoodLimit?:boolean;customMoodLimit?:boolean;standbyLowPriority?:boolean;workshop?:boolean
 }
 export type MowerRecoveryManager=[name:string,index:number,positionVersion:number]

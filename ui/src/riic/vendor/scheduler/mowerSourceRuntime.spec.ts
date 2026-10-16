@@ -234,7 +234,14 @@ describe('integrated Mower source scheduler',()=>{
   state.time=.01;settleRoster(state,rates)
   expect(source.queue.tasks).not.toContain(independent)
   expect(source.queue.tasks.filter(task=>task.type===T.FIAMMETTA)).toEqual([retained])
-  expect(source.trace.filter(t=>t.type==='FIAMMETTA')).toHaveLength(traceCount)
+  // The independent arrangement moved R into a Free bed and refreshed the observed state.
+  expect(source.trace.filter(t=>t.type==='FIAMMETTA')).toHaveLength(traceCount+1)
+  expect(source.data.operators.R!.currentRoom).toBe('dormitory_1')
+  expect(retained.executionFailure).toBeDefined()
+  for(let attempt=0;attempt<3;attempt++)settleRoster(state,rates)
+  expect(source.trace.filter(t=>t.type==='FIAMMETTA')).toHaveLength(traceCount+1)
+  expect(source.queue.tasks.filter(task=>task.type===T.FIAMMETTA)).toEqual([retained])
+  expect(state.events.filter(e=>e.type==='fiammetta')).toHaveLength(0)
   expect(retained.timeMicros).toBe(0)
   expect(state.diagnostics.some(d=>d.message.includes('五分钟'))).toBe(false)
   const target=retained.plan.dormitory_1![0]!

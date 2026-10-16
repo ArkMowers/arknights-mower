@@ -11,10 +11,11 @@ import {mowerDormCandidateMood} from './mowerAlphaCandidates'
 import {alphaPosition,alphaDormResidents,alphaRestoreDisplaced,alphaRestingTier,alphaSlotTakable,mowerMatchReplacements,alphaPrioritizeRecovery} from './mowerAlphaDorm'
 import {MowerTask,MOWER_TASK_TYPES as T,type MowerTaskPlan,type MowerTaskQueue,fromMowerMicros,toMowerMicros} from './mowerTaskQueue'
 export interface MowerRestingOptions {
+ coordinationRates?:(data:MowerSchedulingData)=>import('./mowerReplacementCoordination').MowerCoordinationRates|undefined
  returning?:Set<string>;returningGroups?:Set<string>;tasks?:MowerTask[]
  fiaTargets?:string[];hasActiveMastery?:boolean;isMasteryBusy?:(name:string)=>boolean
  isDormReplacement?:(name:string)=>boolean;onBlocked?:(names:string[])=>void;onException?:(error:unknown)=>void
- reservedSlots?:ReadonlySet<string>;priorityScheduling?:MowerTaskSchedulingOptions
+ reservedNames?:ReadonlySet<string>;reservedSlots?:ReadonlySet<string>;priorityScheduling?:MowerTaskSchedulingOptions
  dormAdmissions?:Map<string,string>
 }
 export function mowerGetRestingPlan(data:MowerSchedulingData,names:string[],existingReplacements:string[],plan:MowerTaskPlan,options:MowerRestingOptions={}):boolean {
@@ -143,7 +144,12 @@ function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRest
   if(op.group&&exhaustGroups.has(op.group))continue
   if((data.alpha||data.adjustForRunOrders===false)&&op.group){if(attempted.has(op.group))continue;attempted.add(op.group)}
   const members=op.group?data.shiftGroupMembers(op.group):[op.name]
-  if(!mowerGetRestingPlan(data,[...members],replacements,plan,{...options,tasks:queue.tasks}))options.onBlocked?.(members)
+  if(!mowerGetRestingPlan(data,[...members],replacements,plan,{...options,tasks:queue.tasks})){
+   options.onBlocked?.(members)
+   if(data.alpha&&!queue.tasks.some(task=>task.type===T.EXHAUST_OFF&&members.some(name=>task.metadata.split(',').includes(name)))){
+    const task=new MowerTask({type:T.EXHAUST_OFF,metadata:members.join(',')});task.timeMicros=data.nowMicros;queue.tasks.push(task)
+   }
+  }
  }
  if(Object.keys(plan).length){const task=new MowerTask({plan,type:T.SHIFT_OFF});task.timeMicros=data.nowMicros;queue.tasks.push(task)}
  return plan

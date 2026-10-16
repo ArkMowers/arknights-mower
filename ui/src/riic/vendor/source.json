@@ -174,7 +174,22 @@
     "scheduler/mowerGroupRecovery.ts": "8490efd4658673bf1f6cb2b3f3cb19b39c8ad03f0b5d7b5252742e260f1519aa",
     "scheduler/mowerNotificationProgress.spec.ts": "2ff879db1566daae713bad9e682a720d5bc2a2923f94e2c65f69d991940503c8",
     "scheduler/mowerObservedFullRelease.spec.ts": "b89fba07c2a1310accfd86267019d1a942785e3ce882b40a5da93580ac7a7e5d",
-    "scheduler/mowerRunOrderPlanning.spec.ts": "a39f0a8288caf1d210e164869e09d0820ace68ad4dc7e9042107e0a1336ea42a"
+    "scheduler/mowerRunOrderPlanning.spec.ts": "a39f0a8288caf1d210e164869e09d0820ace68ad4dc7e9042107e0a1336ea42a",
+    "engine/dormitoryRecovery.spec.ts": "9ef9d3935936b2d90ce271930ffeada7b90b88832bdc23d602272de77f3b08da",
+    "engine/singleRecoveryEligibility.ts": "2f02ca260d2d3a61a9af32588bab5f56b5cf4f2d794ba25e5295b31ec3af99f4",
+    "scheduler/fixtures/mower-alpha-exhaust-support.json": "b121dfd1ab645ca75feb202b0df88efa1048318bc51aa3b100927bdc4f847ba7",
+    "scheduler/fixtures/mower-dorm-recovery-alpha.json": "981055215e957a4962e1c4e939b4a0ec644fe6d4671b8b8fc5d7adbba0a8e3d0",
+    "scheduler/mowerAlphaExhaustSupport.spec.ts": "2ddbb7f4526515aed581b3a3a345834102810d479065e387e2071cc0dc3dcb10",
+    "scheduler/mowerCoordinationRunBoundary.spec.ts": "bd41c788658e554814ba07e3c9897787bc7631c23f55af876eb1cf08f7450e27",
+    "scheduler/mowerDormRecovery.spec.ts": "5c05f951d2f00ad9187f4d03b5ebfa8292ae65c8df95ae23d611355c19a64ac5",
+    "scheduler/mowerReplacementCoordination.ts": "2e034dff63a3ed73387fcac723e287fa751d069e34e172482a46955f9570f2a2",
+    "scheduler/mowerReplacementCoordinationForecast.spec.ts": "2fad066ffde02ac4665bdad14988fd2583da3dfeb41e650e4f99a14714c6ac3b",
+    "scheduler/mowerReplacementCoordinationRuntime.spec.ts": "1ec6fdda3467c9e1c2c15c98d82b28d2f50c701b48f8496138c3657ba0ee24a4",
+    "scheduler/mowerSameGroupReplacementCoordination.spec.ts": "3ffc56e0970686dbe49dfc2ee687af1d974c5a2ee79ec70e57409b90abff5294",
+    "scheduler/mowerSingleRecoveryRouting.spec.ts": "9a8f2719cfd50fedc023bca66b045124259ff99b2282a353b5fc8e3ad8a1dc7e",
+    "simulator/mowerCoordinationRates.spec.ts": "b99547690d7c686b20ba41cf9ae737b214a88c1e4a382fbe76a4e2076aeca720",
+    "simulator/mowerCoordinationRates.ts": "2ae7f2e7cdb2625d7cb52d799f5a4507765fbef9cff3db9e7cd42395b1be594c",
+    "simulator/singleRecoveryTargets.spec.ts": "8e0df1258d84b6e8c23cf744dacec369630d0d00f61f8aec38f8b0d22aaf8248"
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
@@ -182,36 +197,36 @@
       "reason": "Use 48 bisection iterations to preserve endpoint completion counts; allow explicit gold debt for order delivery while other finite resources remain constrained. Record unfunded manufacturing costs for sample-window net LMD reporting without changing production or ledger balances."
     },
     "simulator/scheduleSimulation.ts": {
-      "sha256": "c2ea95c26d1a3b6e98106d4928464102051a4b738ff43a8106be0d117715040a",
-      "reason": "Mark completed windows with unresolved task failures as incomplete; preserve the local read-only interval observer and segment timeline. Select the lowest-morale eligible resident when no valid single-target recovery confirmation remains; retain an automatic target until it becomes ineligible or the provider or target position changes. Equal morale uses stable slot order."
+      "sha256": "24af31b42e82db6a362917cfaea4df6bd4948c1ce5363eb3c8ab66ffdbab0725",
+      "reason": "Mark completed windows with unresolved task failures as incomplete; preserve the local read-only interval observer and segment timeline. Select the lowest-morale eligible resident when no valid single-target recovery confirmation remains; retain an automatic target until it becomes ineligible or the provider or target position changes. Equal morale uses stable slot order. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
     },
     "workbench/scheduleSimulationBridge.ts": {
       "reason": "Forward the local interval observer separately from JSON-cloned simulation data.",
       "sha256": "8888318457b8aba820573a7edb882923a48f1a1c143f7ca7daf3575cc34d2682"
     },
     "scheduler/backupPlans.ts": {
-      "reason": "Keep the existing maintenance-backup behavior; selectively synchronize restored-member admission and protected dormitory migration from the pinned calculator revision.",
-      "sha256": "5c07b838134a34bea67e64a1ec0b7c0ac2dded59f1247347f2c5aa39adf6ea75"
+      "sha256": "e90c3dc79aab15cf8d1094816414c71b5ddeafe38af493e40be811d3cf46a74d",
+      "reason": "Keep the existing maintenance-backup behavior; selectively synchronize restored-member admission and protected dormitory migration from the pinned calculator revision. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
     },
     "scheduler/mowerSourceRuntime.ts": {
-      "sha256": "a6a18bb7acd0b676b62f20f2ff782728e9b91307087b43116b898f1047415a8b",
-      "reason": "Synchronize native failure retention and observation-based recovery without changing the existing departing-plan observation adaptation. Retain full-to-full Fiammetta operations as failed pending work instead of adding a polling task; this offline safeguard is additional to the native selector. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning. Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
+      "sha256": "c480bbd90b71b87d09ef8d91d0016a4a18c4251bce3e8615a54adee09f99ece7",
+      "reason": "Synchronize native failure retention and observation-based recovery without changing the existing departing-plan observation adaptation. Retain full-to-full Fiammetta operations as failed pending work instead of adding a polling task; this offline safeguard is additional to the native selector. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning. Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
     },
     "scheduler/rosterRuntime.ts": {
-      "reason": "Keep the existing runtime configuration without introducing maintenance-primary pause state.",
-      "sha256": "1a203dd520472c98ab0ec378c83e765ddfbe49e2018ea4381e0b1ca4a47ac166"
+      "sha256": "7deeee17f15ce01a38ed28c1c18950b90b43964d58071f18ac053b833c8dd6cf",
+      "reason": "Keep the existing runtime configuration without introducing maintenance-primary pause state. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
     },
     "workbench/compat/mowerJson.ts": {
       "reason": "Retain the existing Mower facility import/export adapter; facility-export changes are outside this two-fix synchronization.",
       "sha256": "5b80d31438e69316853e400911363f5aff41d6b6a76db6a246dd18289eeff841"
     },
     "scheduler/mowerOrdinaryPlanning.ts": {
-      "reason": "Retain explicit dorm admissions across one ordinary planning round, matching native Mower protection for earlier group reservations. Apply hypothetical shared-group bindings during dorm admission so eligible standby followers remain optional, then restore confirmed group state and bindings on success or failure.",
-      "sha256": "4e53d292e999c713de10aea6f665e73f7fb95dbd0e8e10eedb04b3b2c1f081b2"
+      "sha256": "b850ab3247d6ff20c8b4b556cf53d7618727434e2e74fbea0cc460b02df1f7e1",
+      "reason": "Retain explicit dorm admissions across one ordinary planning round, matching native Mower protection for earlier group reservations. Apply hypothetical shared-group bindings during dorm admission so eligible standby followers remain optional, then restore confirmed group state and bindings on success or failure. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
     },
     "scheduler/mowerAlphaDorm.ts": {
-      "sha256": "70207154b3869329374b6b23ab86bea9daf9d19a55735b9fbda14a3eaf142256",
-      "reason": "Preserve same-round dorm admissions and mirror native displacement restoration: shared members retain resting bindings, completed departures keep unfinished anchors resting, and named arrangement targets retain priority. Allocate recovery-tier quotas in the complete configured bed order, including explicit ordinary beds, while retaining compatible actual occupants and protecting pending reservations. When an arrangement changes single-target bed ownership, reallocate all movable recovering residents by tier and personal morale deficit; retain equal-deficit incumbents and same-speed positions."
+      "sha256": "9cac6f46457a413b1b18ba6e331b7e4961f9b6ef580a2f803400d669d7921cc1",
+      "reason": "Preserve same-round dorm admissions and mirror native displacement restoration: shared members retain resting bindings, completed departures keep unfinished anchors resting, and named arrangement targets retain priority. Allocate recovery-tier quotas in the complete configured bed order, including explicit ordinary beds, while retaining compatible actual occupants and protecting pending reservations. When an arrangement changes single-target bed ownership, reallocate all movable recovering residents by tier and personal morale deficit; retain equal-deficit incumbents and same-speed positions. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
     },
     "scheduler/mowerCompletedDeparture.spec.ts": {
       "sha256": "30550b9d22f066915b017471041edc1764159f7fb6111513f58001f8054a9490",
@@ -234,20 +249,20 @@
       "reason": "Keep retained arrangement tasks when rebuilding derived shift plans. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning."
     },
     "scheduler/mowerTaskQueue.ts": {
-      "sha256": "a9f701ad3249fb2358f9e325930971a000aeff8430f8508e098b6ef633b3096c",
-      "reason": "Separate pending failures from eligible dispatch without replacing task identity, remaining plan or deadline. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning."
+      "sha256": "88e03d95b087c1f6329e3f26d760b15d14e1eed8a8ca47d28111e6fcfc67728a",
+      "reason": "Separate pending failures from eligible dispatch without replacing task identity, remaining plan or deadline. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
     },
     "scheduler/mowerTaskScheduling.ts": {
       "sha256": "69553cf8c8a453d15c23bc0aeed30cc0869ba462b5574a158371a362bcd3ed07",
       "reason": "Exclude suspended failures from active scheduling mutations while retaining them in the pending task list."
     },
     "scheduler/mowerExhaustSupportDispatch.spec.ts": {
-      "sha256": "93971114e3aad8e1ead9a981acc1100ce7044e555798686e2c0fabeddea9e039",
-      "reason": "Verify runtime exhaustion-support generation, recovery capacity, required backups, task cloning and coalescing boundaries."
+      "sha256": "6141aea5241d5f48331420008b9bb85b0ff43bc047ba5e92da88a7c0debd15b8",
+      "reason": "Verify runtime exhaustion-support generation, recovery capacity, required backups, task cloning and coalescing boundaries. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
     },
     "engine/dormitoryRecovery.ts": {
-      "reason": "Keep low-morale recovery separate from the all-room maximum and take the highest conditional extra across the two eligible providers; synchronized from calculator e58cc77de27e74f7ab261890a1824c02061a14f6.",
-      "sha256": "1032e59a9d435e0b8ecd76f5236e5a49537803563bf0f36372d7659f77c141e4"
+      "sha256": "88594b24e38610b68c77315f1131a0b96fb9fe982fdb4da6c2229639aba13821",
+      "reason": "Keep low-morale recovery separate from the all-room maximum and take the highest conditional extra across the two eligible providers; synchronized from calculator e58cc77de27e74f7ab261890a1824c02061a14f6. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
     },
     "scheduler/mowerDroneOperations.ts": {
       "sha256": "ede7f1ae46261f588f800b9ecd0aec962642d48d84b63cd416fa3818e6c3a186",
@@ -282,8 +297,8 @@
       "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline."
     },
     "scheduler/mowerAlphaMetadata.ts": {
-      "sha256": "06d7778cb5275f14c2c5add317124fd0c38752eac0b66d3b9310ede4292eaa6f",
-      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Sync primary-only recovery-gap waiting and shared-primary explicit full-rest handling from calculator d44f81a27937c5f87e92e9d2d00c6b136af4c059; preserve the bundled scheduling baseline."
+      "sha256": "9bacdf4657f1f889996836df2eb039744902e598442fb9c2f24b2c5c8211a8e4",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Sync primary-only recovery-gap waiting and shared-primary explicit full-rest handling from calculator d44f81a27937c5f87e92e9d2d00c6b136af4c059; preserve the bundled scheduling baseline. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
     },
     "scheduler/mowerDormTasks.ts": {
       "sha256": "ffea907690b3f33602fe87bc4289bb1b28c17a3b649413cd92942048962f2f55",
@@ -336,6 +351,90 @@
     "scheduler/mowerGroupFullRecovery.spec.ts": {
       "sha256": "71efc9fb609c2d9554c9f0c1de56f084e664f9c61e1aa27ef26b663d1a215441",
       "reason": "Sync primary-only recovery-gap waiting and shared-primary explicit full-rest handling from calculator d44f81a27937c5f87e92e9d2d00c6b136af4c059; preserve the bundled scheduling baseline."
+    },
+    "engine/dormitoryRecovery.spec.ts": {
+      "sha256": "9ef9d3935936b2d90ce271930ffeada7b90b88832bdc23d602272de77f3b08da",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "engine/singleRecoveryEligibility.ts": {
+      "sha256": "2f02ca260d2d3a61a9af32588bab5f56b5cf4f2d794ba25e5295b31ec3af99f4",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "scheduler/fixtures/mower-alpha-exhaust-support.json": {
+      "sha256": "b121dfd1ab645ca75feb202b0df88efa1048318bc51aa3b100927bdc4f847ba7",
+      "reason": "Copy the unchanged frozen alpha fixture from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; retain its original native source commit and hashes."
+    },
+    "scheduler/fixtures/mower-dorm-recovery-alpha.json": {
+      "sha256": "981055215e957a4962e1c4e939b4a0ec644fe6d4671b8b8fc5d7adbba0a8e3d0",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "scheduler/mowerAlphaExhaustSupport.spec.ts": {
+      "sha256": "2ddbb7f4526515aed581b3a3a345834102810d479065e387e2071cc0dc3dcb10",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "scheduler/mowerAlphaExhaustSupport.ts": {
+      "sha256": "7646d97f0ab95fb316c02bbc390956a71294f89900d148dff4bf8f87cca79011",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "scheduler/mowerCoordinationRunBoundary.spec.ts": {
+      "sha256": "bd41c788658e554814ba07e3c9897787bc7631c23f55af876eb1cf08f7450e27",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "scheduler/mowerDormRecovery.spec.ts": {
+      "sha256": "5c05f951d2f00ad9187f4d03b5ebfa8292ae65c8df95ae23d611355c19a64ac5",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "scheduler/mowerDormRecovery.ts": {
+      "sha256": "e67a3555001561a3665126b6a72a7c0937bd1d0300d4fc2ba5eeea27ad78e6ce",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "scheduler/mowerOperatorState.ts": {
+      "sha256": "2aa8fa2c12bd5098f7e9e218cd26c25334c93bcb47a8474e37bf43251a141dd9",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "scheduler/mowerReplacementCoordination.ts": {
+      "sha256": "59302139af50a52cd02dadd177f34b44851d609de2bda8bb12a3f9e384d0a579",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Omit independent-rest eligibility because this bundle does not implement personal independent rest."
+    },
+    "scheduler/mowerReplacementCoordinationForecast.spec.ts": {
+      "sha256": "2fad066ffde02ac4665bdad14988fd2583da3dfeb41e650e4f99a14714c6ac3b",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "scheduler/mowerReplacementCoordinationRuntime.spec.ts": {
+      "sha256": "1ec6fdda3467c9e1c2c15c98d82b28d2f50c701b48f8496138c3657ba0ee24a4",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "scheduler/mowerSameGroupReplacementCoordination.spec.ts": {
+      "sha256": "3ffc56e0970686dbe49dfc2ee687af1d974c5a2ee79ec70e57409b90abff5294",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "scheduler/mowerSingleRecoveryRouting.spec.ts": {
+      "sha256": "9a8f2719cfd50fedc023bca66b045124259ff99b2282a353b5fc8e3ad8a1dc7e",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "scheduler/mowerSourceRuntime.spec.ts": {
+      "sha256": "490ad9c1070976de8f747d1f5653b0f5115fb0d6fec4f0b4eb42e36c59317bea",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Retain the bundled runtime suite and verify one retry after new observations, followed by no retries in unchanged state; the source keeps these cases in a separate suite."
+    },
+    "scheduler/mowerTaskFailure.ts": {
+      "sha256": "843f5e0fb36751cbb8872335aa518431f3deebed331bf3d131870cf67d198003",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "simulator/mowerCoordinationRates.spec.ts": {
+      "sha256": "b99547690d7c686b20ba41cf9ae737b214a88c1e4a382fbe76a4e2076aeca720",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "simulator/mowerCoordinationRates.ts": {
+      "sha256": "2ae7f2e7cdb2625d7cb52d799f5a4507765fbef9cff3db9e7cd42395b1be594c",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "simulator/mowerTaskFailureReport.spec.ts": {
+      "sha256": "f2a698ecdbacb396713992299c34ffddc9cd6cf0dc40d8d9cde05d31010c930b",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
+    },
+    "simulator/singleRecoveryTargets.spec.ts": {
+      "sha256": "8e0df1258d84b6e8c23cf744dacec369630d0d00f61f8aec38f8b0d22aaf8248",
+      "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
@@ -350,7 +449,12 @@
       "failed previews retain pending work until relevant observations or arrangements change",
       "Fiammetta group priority excludes shared multi-group followers",
       "exhaustion support preserves prerequisite identity without ordinary recovery expansion or coalescing",
-      "dorm recovery allocation respects explicit ordinary-bed order, retains same-tier actual residents and protects reserved rooms"
+      "dorm recovery allocation respects explicit ordinary-bed order, retains same-tier actual residents and protects reserved rooms",
+      "connected replacement handoffs preserve primary recovery and restore preferred covers after dependent groups release them",
+      "unavoidable recalls require conservative forecasts across connected groups and recovery beds",
+      "retained coordination requests resume only after relevant observations or actual reservation releases",
+      "single-recovery skill holders never receive their own bonus and receive another only as the sole unfinished eligible recipient",
+      "single-recovery skill holders are not proactively locked and use multi-Free first beds only as fallback while retaining configured ordinary-bed order"
     ],
     "limitations": [
       "ideal run orders do not simulate maintenance runner replacement acceleration or physical restoration",
@@ -368,6 +472,7 @@
     "exhaustSupportCalculatorRevision": "c2b50182da1bcd83dd3da1ce6f2da58f0f66efb8",
     "dormRecoveryMowerRevision": "ed6f10d9dae4a5ce1a992308582a0b13d240b6f5",
     "groupFullRecoveryCalculatorRevision": "d44f81a27937c5f87e92e9d2d00c6b136af4c059",
-    "groupFullRecoveryTestsCalculatorRevision": "d44f81a27937c5f87e92e9d2d00c6b136af4c059"
+    "groupFullRecoveryTestsCalculatorRevision": "d44f81a27937c5f87e92e9d2d00c6b136af4c059",
+    "replacementCoordinationCalculatorRevision": "aa5f7e46377eb5446708e150ff9fdacdfbb606d6"
   }
 }

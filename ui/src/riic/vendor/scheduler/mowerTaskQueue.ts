@@ -35,6 +35,9 @@ export class MowerTask {
  groupShiftTransitions:Record<string,boolean>={}
  productShiftLocked=false
  exhaustSupport=false
+ coordinationRequestNames:string[]=[]
+ preferredReplacementRestore=false
+ coordinationDependencyWait=false
  /** A complete physical arrangement must finish before backup/return replanning. */
  backupShiftActive=false
  /** Old rules remain available only while this physical backup arrangement is unfinished. */
