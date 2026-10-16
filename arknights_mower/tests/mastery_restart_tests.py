@@ -305,16 +305,10 @@ class MasteryRestartTests(unittest.TestCase):
         solver._read_room_mood = (
             base_schedule.BaseSchedulerSolver._read_room_mood.__get__(solver)
         )
-        solver._room_observation_snapshot = (
-            base_schedule.BaseSchedulerSolver._room_observation_snapshot.__get__(solver)
-        )
-        solver._training_mood_snapshot = (
-            base_schedule.BaseSchedulerSolver._training_mood_snapshot.__get__(solver)
-        )
         solver.task = None
         solver.tasks = []
         solver.last_train_mood_read = None
-        solver._training_mood_failure = None
+        solver.last_train_mood_attempt = None
         self.room.slots_read = self.room.slots_reliable = True
         names = ["协助干员", "测试干员"][: count or 0]
         solver.op_data.plan = (
@@ -323,9 +317,6 @@ class MasteryRestartTests(unittest.TestCase):
             else {"train": [SimpleNamespace(agent=name) for name in names]}
         )
         solver.op_data.operators = {}
-        solver.op_data.products = {}
-        solver.op_data.facility_states = {}
-        solver.op_data.room_observations = {}
         solver.op_data.get_current_room.return_value = ["协助干员", "测试干员"]
         solver.op_data.has_dorm_groups.return_value = False
         return solver
@@ -402,7 +393,7 @@ class MasteryRestartTests(unittest.TestCase):
         self.assertEqual(self.plan()["status"], "completed")
         self.assertEqual(solver.tasks, [])
 
-    def test_empty_mood_scan_uses_interval_and_failure_requires_new_observation(self):
+    def test_empty_and_failed_mood_scans_resume_at_normal_interval(self):
         for failed in (False, True):
             with self.subTest(failed=failed):
                 mastery_db.update_plan_status(self.plan_id, "idle")
@@ -419,12 +410,9 @@ class MasteryRestartTests(unittest.TestCase):
                     self.assertEqual(read.call_count, 1)
                     if failed:
                         self.assertIsNone(solver.last_train_mood_read)
-                        solver.op_data.room_observations["meeting"] = 1
-                        self.read_mood(solver)
-                        self.assertEqual(read.call_count, 1)
-                        solver.op_data.room_observations["train"] = 1
                     else:
                         solver.last_train_mood_read -= timedelta(hours=3)
+                    solver.last_train_mood_attempt -= timedelta(hours=3)
                     self.read_mood(solver)
                     self.assertEqual(read.call_count, 2)
                 self.assertEqual(solver.tasks, [])
