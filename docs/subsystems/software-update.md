@@ -15,7 +15,7 @@
 - <a id="cleanup-contention-isolation"></a>**Cleanup Contention Isolation**: The [backup cleanup boundary](#16-backup-cleanup-contention) distinguishes routine lock contention from failed maintenance and preserves pending records.
 - <a id="local-update-cache"></a>**Local Update Cache**: Software update coordination, uploads, downloaded packages and job workspaces reside under shared `@app/tmp/updates/`, with installation identity isolation; package-inspection temporary directories use the same tree instead of system cache or temporary directories.
 
-- <a id="elevated-windows-desktop-launch"></a>**Elevated Windows Desktop Launch**: Both packaged Windows desktop executables require administrator elevation before application startup; manager-launched instances inherit the manager's elevated token through ordinary process creation.
+- <a id="elevated-windows-desktop-launch"></a><a id="windows-desktop-launch-permissions"></a>**Windows Desktop Launch Permissions**: Both packaged Windows desktop executables inherit the launcher's permissions without requesting elevation; manager-launched instances inherit the manager's token through ordinary process creation.
 
 - <a id="cross-channel-upgrade-selection"></a>**Cross-Channel Upgrade Selection**: Installed development and beta channels admit newer installable releases from more stable channels, preserve the selected channel and use only a verified OTA from the exact installed version to the selected target.
 
@@ -104,15 +104,20 @@ OTA starting-file reads follow the [bundled reconstruction contract](resource-up
 
 `ProgressServers` reuses registered instance ports and credentials while the application is replaced. Its POST handler reads supported request bodies within the existing 1024-byte limit and five-second socket timeout before returning a rejection, preventing unread POST data from aborting the response on Windows. Invalid credentials, update headers or origins retain HTTP 403 precedence; an authenticated unknown path returns HTTP 404. Only an authorized cancellation request with a valid body reaches `cancel_update`; body-reading failures retain the applicable rejection or return HTTP 400. Closing the service releases its registered ports for the restarted application.
 
-## 14. Windows Desktop Elevation
+<a id="14-windows-desktop-elevation"></a>
+## 14. Windows Desktop Launch Permissions
 
-The Windows package embeds `requireAdministrator` with `uiAccess=false` in both `mower.exe` and `多开管理器.exe`. Windows requests elevation before application startup; cancelling consent leaves that application stopped. The elevated manager starts instances through ordinary `Popen`, so they inherit its token without separate elevation requests. Existing desktop children, maintenance workers and restarts retain their parent's permissions. Starting the manager independently from a non-elevated shell still requires its own authorization.
+The Windows package embeds `asInvoker` with `uiAccess=false` in both `mower.exe` and `多开管理器.exe`. A standard Windows account can launch either executable without administrator credentials or a UAC elevation request. The manager starts instances through ordinary `Popen`, so they inherit its token. Desktop children, maintenance workers and restarts retain their parent's permissions. A user can explicitly choose Run as administrator when needed and authorized; Mower does not automatically request elevation on failure.
 
-The release workflow verifies both built executable manifests before creating the archive. Source deployments inherit the Python process permissions and require an elevated terminal for administrator access. Elevation does not repair missing or malformed resources or guarantee access through every file ACL.
+Normal startup of either frozen Windows desktop entry creates `mower（管理员启动）.lnk` and `多开管理器（管理员启动）.lnk` beside the corresponding installed executables. These optional links target the actual installation directory, use it as their working directory and carry the Windows RunAsUser flag. Only explicitly launching a link requests elevation; cancelling that authorization leaves the requested application stopped. Each normal startup refreshes links after a directory move and leaves matching links untouched. Generation uses Windows PowerShell and WScript.Shell within a five-second timeout; creation failure logs a warning and ordinary startup continues. Users can still right-click an EXE to request elevation. Source deployments, other platforms and maintenance or GUI child workers do not generate these links.
 
-The first upgrade from an older non-elevated package requires restarting that old application as administrator before updating. Its existing updater uses ordinary process creation and cannot restart the new administrator-required executable from a non-elevated token.
+The existing single-manager reuse rule still applies. To replace an already running standard-permission manager with an elevated one, exit that manager before opening its administrator shortcut.
 
-[Windows desktop elevation](../../.agents/notes/implemented/feature/2026-10-11-windows-desktop-elevation.md) records the startup decision and verification limits.
+The release workflow verifies both built executable manifests before creating the archive. Source deployments inherit the Python process permissions. Windows retains the portable installation and data layout: standard accounts require write access to the installation for software updates and to the configured data and MAA directories for their writes. `MOWER_DATA_DIR` redirects application data but does not make a protected installation writable. Permission failures remain subject to Windows file ACLs and emulator access restrictions.
+
+An already elevated old package and its updater remain elevated until they exit. Users without administrator credentials can install the new full package in a writable directory and launch it directly; changing Python sources alone does not replace the manifest in an old executable.
+
+[Windows desktop launcher permissions](../../.agents/notes/implemented/feature/2026-10-16-windows-desktop-launcher-permissions.md) records the startup decision and verification limits.
 
 ## 15. Update Cache Storage
 

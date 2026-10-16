@@ -235,7 +235,7 @@ Use the entries relevant to changed call paths. Follow each owning contract for 
 
 ### 2.7 Software Update
 
-- [ ] **Elevated Windows Desktop Launch**: Do both Windows executable manifests require administrator elevation, and does the manager launch instances directly without per-instance elevation wrappers? See the [complete contract](../../../../docs/subsystems/software-update.md#elevated-windows-desktop-launch).
+- [ ] **Windows Desktop Launch Permissions**: Do both Windows executable manifests use `asInvoker` with `uiAccess=false`, and does the manager launch instances directly with inherited permissions? Do optional administrator shortcuts target the installed executables without blocking ordinary startup on creation failure? See the [software update description](../../../../docs/subsystems/software-update.md#windows-desktop-launch-permissions).
 - [ ] **Local Update Cache**: Do software update state, uploads, downloads, job workspaces and package-inspection temporary directories use shared `@app/tmp/updates/`, preserve installation isolation and ignore instance space? See the [complete contract](../../../../docs/subsystems/software-update.md#local-update-cache).
 - [ ] **Cleanup Contention Isolation**: Does a competing cleanup process return quietly with pending records intact, retain real lock failure diagnostics and clean the same records after lock release? See the [complete contract](../../../../docs/subsystems/software-update.md#cleanup-contention-isolation).
 
