@@ -160,12 +160,18 @@ class NativeWindowsShortcutTests(unittest.TestCase):
             run = subprocess.run
 
             def run_checked(*args, **kwargs):
+                # Native compatibility includes PowerShell startup and compilation.
+                # The mocked command test separately enforces the five-second budget.
+                kwargs["timeout"] = 30
                 try:
                     return run(*args, **kwargs)
-                except subprocess.CalledProcessError as error:
+                except (
+                    subprocess.CalledProcessError,
+                    subprocess.TimeoutExpired,
+                ) as error:
                     self.fail(
-                        "Native shortcut generation failed:\n"
-                        + error.stderr.decode("utf-8", errors="replace")
+                        f"Native shortcut generation failed ({type(error).__name__}):\n"
+                        + (error.stderr or b"").decode("utf-8", errors="replace")
                     )
 
             def create(directory):
