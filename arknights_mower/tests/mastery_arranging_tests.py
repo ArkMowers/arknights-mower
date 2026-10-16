@@ -618,9 +618,12 @@ class TestArrangingConvergence(unittest.TestCase):
         档位读失败（None，无法判是否已到 target）→ 保持 idle 重排退出，绝不点技能行。"""
         solver = self.make_solver(
             scenes=[
-                Scene.TRAIN_MAIN,  # 读占用(无) → 读槽位(空) → back
-                Scene.TRAIN_MAIN,  # 训练位已确认 → 点开技能选择页（身份确认）
-                Scene.TRAIN_SKILL_SELECT,  # 读档位 → 失败（img=None）
+                Scene.TRAIN_MAIN,
+                Scene.TRAIN_MAIN,
+                Scene.INFRA_DETAILS,  # 可信空槽观察后关闭详情。
+                Scene.INFRA_DETAILS,  # 换入训练干员后的详情浮窗。
+                Scene.TRAIN_MAIN,  # 确认训练干员后打开技能页。
+                Scene.TRAIN_SKILL_SELECT,  # 档位读取失败。
             ]
         )
         solver.recog.img = None  # 档位读取失败
@@ -3108,16 +3111,16 @@ class TestStartWithReconciledRoom(unittest.TestCase):
         solver.enter_room.assert_not_called()  # 仍不重复进房（room 非 None）
 
     def test_fallback_read_popup_unconfirmed_skips_swap(self):
-        """兜底重读也过场景闸门：浮窗没确认（读后不是 205）→ 不换人、不当空位。
-
-        #100 之前这里是无闸门的裸读 get_agent_from_room：不看场景（非 205 上的垃圾读
-        也当依据）、读后还无条件多按一次 back。"""
+        """公共读房拒绝未确认的详情，兜底重读不把失败当空槽换人。"""
         scenes = [
             Scene.TRAIN_MAIN,  # 迭代1：读倒计时(无) → 兜底重读槽位
             Scene.TRAIN_MAIN,  # 重读前置：主页面
             Scene.TRAIN_MAIN,  # 重读后场景仍是 217（浮窗没开/没确认）→ 不消费
         ]
         solver = self._solver(scenes, slots=[{"agent": ""}, {"agent": "错误干员"}])
+        solver.get_agent_from_room.side_effect = mastery_reader.RecognizeError(
+            "详情未确认"
+        )
         room = mastery_reader.RoomState("empty")  # 空串 + 不可靠 → 触发兜底重读
         plan = make_plan()
         _, upd = self._run(solver, plan, room)
