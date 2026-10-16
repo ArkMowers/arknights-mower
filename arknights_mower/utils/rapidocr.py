@@ -23,10 +23,17 @@ class _BoundedDetectionInput:
         return self.preprocess(image)
 
 
-def create_engine(score=0.3):
+def create_engine(score=0.3, *, threads=None):
     from rapidocr_onnxruntime import RapidOCR
 
-    result = RapidOCR(text_score=score, det_limit_type="max", det_limit_side_len=1920)
+    options = (
+        {}
+        if threads is None
+        else {"intra_op_num_threads": threads, "inter_op_num_threads": 1}
+    )
+    result = RapidOCR(
+        text_score=score, det_limit_type="max", det_limit_side_len=1920, **options
+    )
     result.text_det.preprocess_op = _BoundedDetectionInput(
         result.text_det.preprocess_op
     )
@@ -37,4 +44,6 @@ def initialize_ocr(score=0.3):
     global engine
     with _initialize_lock:
         if engine is None:
-            engine = create_engine(score)
+            from arknights_mower.utils.ocr_shared import SharedOCREngine
+
+            engine = SharedOCREngine(score)

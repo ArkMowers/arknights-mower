@@ -8,13 +8,21 @@ import pytest
 from arknights_mower.solvers import furniture
 
 
-@pytest.fixture(scope="module")
-def ocr():
+@pytest.fixture(scope="module", params=("local", "shared"))
+def ocr(request, tmp_path_factory):
     from unittest.mock import patch
 
-    with patch.object(furniture.rapidocr, "engine", None):
-        furniture.rapidocr.initialize_ocr()
-        yield furniture.rapidocr.engine
+    if request.param == "shared":
+        from arknights_mower.tests.shared_ocr_tests import service
+        from arknights_mower.utils import ocr_service, ocr_shared
+
+        directory = tmp_path_factory.mktemp("furniture-shared-ocr")
+        with service(directory, factory=ocr_service._engine):
+            yield ocr_shared.SharedOCREngine(directory=directory)
+    else:
+        with patch.object(furniture.rapidocr, "engine", None):
+            furniture.rapidocr.engine = furniture.rapidocr.create_engine()
+            yield furniture.rapidocr.engine
 
 
 @pytest.mark.parametrize(

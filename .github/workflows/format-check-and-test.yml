@@ -279,6 +279,7 @@ jobs:
             arknights_mower/tests/furniture_tests.py \
             arknights_mower/tests/furniture_data_tests.py \
             arknights_mower/tests/furniture_ocr_tests.py \
+            arknights_mower/tests/shared_ocr_tests.py \
             arknights_mower/tests/scheduler_wakeup_tests.py \
             arknights_mower/tests/scheduler_recovery_preservation_tests.py \
             arknights_mower/tests/adb_shared_server_tests.py \

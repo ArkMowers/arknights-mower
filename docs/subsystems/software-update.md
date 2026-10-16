@@ -129,3 +129,9 @@ Startup instances and verified update workers share the existing nonblocking `ba
 `retry_backup_cleanup` treats a busy lock during acquisition as a completed skipped attempt, without warnings, tracebacks, waiting or record mutation. The lock owner continues cleanup; pending `cleanup.json` records remain available for subsequent startup attempts. Other acquisition failures and cleanup failures retain application logger or detached updater diagnostics. Successful acquisition retains verified-restart, permitted-path and recorded-file-identity checks, with lock release on completion or error. The lock file remains in place.
 
 [Backup cleanup contention](../../.agents/notes/implemented/bug-fix/2026-10-12-backup-cleanup-contention.md) records the decision and focused verification.
+
+## Shared OCR Update Lifecycle
+
+The on-demand OCR coordinator registers as `ocr-service` in the existing installation update state. Update shutdown waits for this coordinator like the other registered processes and then verifies release of its model lifetime lock before replacing files. The service retains its registration until owned-worker cleanup finishes. A surviving orphan model therefore prevents replacement through the existing supervision-release budget. Shared OCR endpoint metadata remains outside the update cache, as specified by [Recognition](recognition.md#independent-shared-ocr).
+
+Restart and rollback relaunch only the saved applications, excluding the on-demand OCR service. A restored instance creates OCR when needed. A service start during an active update or process-control job is rejected unless its inherited restart-job identity matches that owner. Service registration participates in the existing submission lock, preventing a late registration from escaping the update's shutdown snapshot. Shared-service registration disables optional backup cleanup so the coordinator does not load application image or logging dependencies for maintenance.

@@ -189,7 +189,7 @@ def test_concurrent_ocr_initialization_loads_one_engine(monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Event
 
-    from arknights_mower.utils import rapidocr
+    from arknights_mower.utils import ocr_shared, rapidocr
 
     entered, release = Event(), Event()
     instance = object()
@@ -201,7 +201,7 @@ def test_concurrent_ocr_initialization_loads_one_engine(monkeypatch):
 
     factory = Mock(side_effect=construct)
     monkeypatch.setattr(rapidocr, "engine", None)
-    monkeypatch.setattr(rapidocr, "create_engine", factory)
+    monkeypatch.setattr(ocr_shared, "SharedOCREngine", factory)
     with ThreadPoolExecutor(max_workers=4) as pool:
         futures = [pool.submit(rapidocr.initialize_ocr) for _ in range(8)]
         try:
@@ -217,12 +217,12 @@ def test_concurrent_ocr_initialization_loads_one_engine(monkeypatch):
 def test_failed_ocr_initialization_can_retry(monkeypatch):
     import pytest
 
-    from arknights_mower.utils import rapidocr
+    from arknights_mower.utils import ocr_shared, rapidocr
 
     instance = object()
     factory = Mock(side_effect=[RuntimeError("model unavailable"), instance])
     monkeypatch.setattr(rapidocr, "engine", None)
-    monkeypatch.setattr(rapidocr, "create_engine", factory)
+    monkeypatch.setattr(ocr_shared, "SharedOCREngine", factory)
     with pytest.raises(RuntimeError, match="model unavailable"):
         rapidocr.initialize_ocr()
     assert rapidocr.engine is None
