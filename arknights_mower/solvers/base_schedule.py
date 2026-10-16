@@ -11782,7 +11782,8 @@ class BaseSchedulerSolver(
         if hasattr(conf, "has_maa_daily_tasks"):
             return conf.has_maa_daily_tasks
         return (
-            (
+            getattr(conf, "maa_credit_fight", False)
+            or (
                 getattr(conf, "stage_plan_enable", True)
                 and getattr(conf, "stage_plan_runner", "maa") == "maa"
             )
@@ -11868,7 +11869,8 @@ class BaseSchedulerSolver(
                         or (
                             getattr(conf, "visit_friend_enable", False)
                             and getattr(conf, "visit_friend_mode", "maa") == "maa"
-                        ),
+                        )
+                        or getattr(conf, "maa_credit_fight", False),
                     ):
                         tasks.append("Mall")
                     tasks.append("Award")

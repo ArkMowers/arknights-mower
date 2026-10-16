@@ -262,6 +262,7 @@ def run(monkeypatch, tmp_path):
     monkeypatch.setenv("MOWER_ANDROID", "0")
     conf = Conf(
         maa_stage_inventory_enable=False,
+        maa_credit_fight=False,
         maa_mall_enable=False,
         visit_friend_enable=False,
     )

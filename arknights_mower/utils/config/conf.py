@@ -1126,7 +1126,11 @@ class Conf(
 
     @property
     def should_run_maa_mall_task(self) -> bool:
-        return self.should_run_maa_mall or self.should_run_maa_visit_friend
+        return (
+            self.maa_credit_fight
+            or self.should_run_maa_mall
+            or self.should_run_maa_visit_friend
+        )
 
     @property
     def has_maa_daily_tasks(self) -> bool:
