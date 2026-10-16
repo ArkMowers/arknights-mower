@@ -10,9 +10,10 @@ from arknights_mower.solvers import mastery_support_state as state
 from arknights_mower.solvers.mastery_support_dispatch import run_planned_swap
 from arknights_mower.tests.mastery_support_fixtures import database as database
 from arknights_mower.utils import mastery_db as db
+from arknights_mower.utils.mastery_support_types import TrainingObservationError
 
 
-def test_unreadable_panel_alerts_once_per_saved_stage(database):
+def test_unreadable_panel_preserves_stage_without_terminal_alert(database):
     pid = db.insert_plan("test", 0, 3, support_plan={"stages": []})
     solver = MagicMock()
     with (
@@ -25,20 +26,20 @@ def test_unreadable_panel_alerts_once_per_saved_stage(database):
             db.update_plan_status(pid, "training", swap_frozen=0)
             db.save_support_plan(pid, {"level": level}, runtime=True)
             plan = db.get_plan_by_id(pid)
-            run_planned_swap(solver, plan, panel=None)
-            run_planned_swap(solver, plan, panel=None)
-            assert db.get_plan_by_id(pid)["swap_frozen"] == 1
-        assert send.call_count == 2
-        assert "专1：" in send.call_args_list[0].args[0]
-        assert "专2：" in send.call_args_list[1].args[0]
-        assert collect.call_count == 4
-        # Cached progress must not become evidence for collection/device actions.
-        assert all(call.kwargs["tier"] is None for call in collect.call_args_list)
+            for _ in range(2):
+                with pytest.raises(TrainingObservationError):
+                    run_planned_swap(solver, plan, panel=None)
+            assert db.get_plan_by_id(pid)["swap_frozen"] == 0
+        send.assert_not_called()
+        collect.assert_not_called()
     solver.choose_train.assert_not_called()
     with sqlite3.connect(database) as conn:
-        assert conn.execute(
-            "SELECT dedup_key FROM mastery_notify ORDER BY dedup_key"
-        ).fetchall() == [(f"{pid}:1",), (f"{pid}:2",)]
+        assert (
+            conn.execute(
+                "SELECT dedup_key FROM mastery_notify ORDER BY dedup_key"
+            ).fetchall()
+            == []
+        )
 
 
 @pytest.mark.parametrize("observed", [1, 2, 3])

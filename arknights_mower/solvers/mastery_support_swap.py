@@ -15,6 +15,7 @@ from arknights_mower.utils.mastery_support import (
     stage_for,
 )
 from arknights_mower.utils.mastery_support_data import actual_central_bonus
+from arknights_mower.utils.mastery_support_types import TrainingObservationError
 
 from .mastery_support_state import (
     enqueue_support_swap,
@@ -24,7 +25,6 @@ from .mastery_support_state import (
     refresh_end,
     save_runtime,
     schedule_support_swap,
-    stop_support_swap,
 )
 from .mastery_support_state import (
     select_swap_support as select_swap_support,
@@ -43,7 +43,7 @@ def confirm_training_panel(solver, plan, level):
     if solver.train_scene() == Scene.INFRA_DETAILS:
         _close_room_detail(solver)
     if solver.train_scene() != Scene.TRAIN_MAIN:
-        raise SupportPlanError("未返回训练室主页面，停止换人")
+        raise TrainingObservationError("尚未确认训练室主页面，保留换人任务")
     panel = read_main_panel(solver)
     if (
         not panel
@@ -53,7 +53,7 @@ def confirm_training_panel(solver, plan, level):
         or not panel.skill_name
         or not _plan_matches_room(plan, RoomState("training", panel))
     ):
-        raise SupportPlanError("训练室状态变化或读取失败，停止换人")
+        raise TrainingObservationError("尚未确认计划对应的训练，保留换人任务")
     return panel
 
 
@@ -65,7 +65,7 @@ def place_support(solver, plan, level, name):
     solver.choose_train([name, "Current"])
     actual, trainee, _, reliable = _read_slots_checked(solver)
     if not reliable or actual != name or trainee != plan.get("char_name"):
-        raise SupportPlanError("换人后无法确认协助者与训练位，停止自动换人")
+        raise TrainingObservationError("换人后尚未确认协助者与训练位，保留换人任务")
     panel = confirm_training_panel(solver, plan, level)
     record_work(plan, level, name, panel.countdown)
     return panel
@@ -223,13 +223,7 @@ def _prepare_swap_execution(solver, plan, panel):
         finish_support_swap(solver, plan, level)
         return None
     if not _matches_training(plan, panel):
-        stop_support_swap(
-            solver,
-            plan,
-            level,
-            "训练室面板读取失败或与计划不符，停止换人并安排收取检查",
-        )
-        return None
+        raise TrainingObservationError("尚未确认计划对应的训练，保留换人任务")
     route = stage_for(plan, level)
     from .mastery_support_runtime import route_without_unusable_reducer
 
@@ -238,16 +232,14 @@ def _prepare_swap_execution(solver, plan, panel):
         save_runtime(plan, selected_route)
     route = selected_route
     if not route:
-        stop_support_swap(
-            solver, plan, level, "当前阶段缺少协助方案，停止换人并安排收取检查"
-        )
-        return None
+        raise TrainingObservationError("当前阶段协助方案尚未确认，保留换人任务")
     return SwapExecution(solver, plan, level, route)
 
 
 def perform_swap(solver, plan, panel, support):
     """The caller must have confirmed a reliable slot read before entering."""
     from arknights_mower.utils.csleep import MowerExit
+    from arknights_mower.utils.device.recovery import DeviceRecoveryError
 
     execution = _prepare_swap_execution(solver, plan, panel)
     if execution is None:
@@ -255,7 +247,10 @@ def perform_swap(solver, plan, panel, support):
     route = execution.route
 
     if support == route.get("swap_target"):
-        refresh_end(plan, execution.level, panel.countdown)
+        if route.get("working_operator") != support:
+            record_work(plan, execution.level, support, panel.countdown)
+        else:
+            refresh_end(plan, execution.level, panel.countdown)
         return execution.collect()
     try:
         options, central = candidates(
@@ -264,8 +259,7 @@ def perform_swap(solver, plan, panel, support):
             inputs=TrainingInputs(schedule=schedule_context()),
         )
         _apply_swap(execution, support, options, central)
-    except MowerExit:
+    except (MowerExit, DeviceRecoveryError, TrainingObservationError):
         raise
     except Exception as exc:
-        notify_support_failure(plan, execution.level, str(exc))
-        execution.collect(freeze=True)
+        raise TrainingObservationError("训练室换人尚未确认，保留换人任务") from exc

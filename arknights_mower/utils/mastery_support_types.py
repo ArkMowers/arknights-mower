@@ -52,6 +52,10 @@ class SupportPlanError(ValueError):
     pass
 
 
+class TrainingObservationError(RuntimeError):
+    """训练实测未确认，当前任务仍有未完成工作。"""
+
+
 class RosterUnavailableError(SupportPlanError):
     pass
 

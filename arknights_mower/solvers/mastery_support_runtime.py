@@ -199,6 +199,24 @@ def recover(solver, plan, room):
     from arknights_mower.solvers.mastery_reader import (
         _read_slots_checked,
     )
+    from arknights_mower.utils.csleep import MowerExit
+    from arknights_mower.utils.device.recovery import DeviceRecoveryError
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
+    pending = next(
+        (
+            task
+            for task in solver.tasks
+            if task.type == TaskTypes.SWAP_SUPPORT
+            and getattr(task, "plan_key", None) == str(plan["id"])
+        ),
+        None,
+    )
+    if pending is not None and (
+        getattr(pending, "execution_failure", None)
+        or getattr(pending, "execution_retained", False)
+    ):
+        return True
 
     level = room.panel.mastery_tier
     saved_route = stage_for(plan, level)
@@ -232,9 +250,17 @@ def recover(solver, plan, room):
                     central_bonus=central,
                 )
                 save_runtime(plan, route)
-    support, _, _, reliable = _read_slots_checked(solver)
+    try:
+        support, _, _, reliable = _read_slots_checked(solver)
+    except (MowerExit, DeviceRecoveryError):
+        raise
+    except Exception:
+        support, reliable = None, False
     if not reliable:
-        return False
+        if pending is None:
+            if schedule_support_swap(solver, plan, room.panel.countdown, level) is None:
+                enqueue_support_swap(solver, plan, datetime.now(), route["operator"])
+        return True
     if support == route.get("working_operator"):
         refresh_end(plan, level, room.panel.countdown)
     if support == route.get("swap_target"):
