@@ -492,6 +492,7 @@ def main_runtime(monkeypatch):
     runtime.op_data.all_dorms.return_value = []
     runtime.op_data.facility_states = {}
     runtime.op_data.room_observations = {}
+    runtime.op_data.recall_recovery_rates = {}
     runtime.op_data.group_shift_state = {}
     runtime.op_data.group_recovery_full_members = {}
     runtime.op_data.idle_dorm_search_exhausted = False
