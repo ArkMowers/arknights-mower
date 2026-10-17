@@ -111,6 +111,17 @@ def installation_lease(target, *, exclusive=False):
     """Coordinate native workers and installation across Mower instances."""
     target = Path(target).expanduser().resolve()
     lock_path = target.parent / f".{target.name}.mower-maa.lock"
+    return _file_lease(lock_path, exclusive=exclusive)
+
+
+def navigation_lease(target):
+    """Admit one navigation refresh without blocking installation readers."""
+    target = Path(target).expanduser().resolve()
+    lock_path = target.parent / f".{target.name}.mower-maa-navigation.lock"
+    return _file_lease(lock_path, exclusive=True)
+
+
+def _file_lease(lock_path, *, exclusive):
     stream = lock_path.open("a+b")
     try:
         if os.name == "nt":
