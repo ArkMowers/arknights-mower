@@ -36,6 +36,7 @@ export function mowerAlphaDormCandidates(data:MowerSchedulingData,excluded=new S
 }
 export function mowerDormTaskReservations(data:MowerSchedulingData,pending:MowerTask[]){
  const names=new Set<string>(),slots=new Set<string>()
+ for(const task of pending){task.urgentRecoveryReservedNames.forEach(name=>names.add(name));task.urgentRecoveryReservedSlots.forEach(slot=>slots.add(slot))}
  for(const task of pending)for(const [room,row] of Object.entries(task.plan))row.forEach((name,index)=>{
   if(room.startsWith('dorm')&&name!=='Current')slots.add(alphaPosition(room,index))
   if(!['Current','Free',''].includes(name)&&!(task.type===T.SHIFT_ON&&data.isStandby(name)))names.add(name)

@@ -962,6 +962,11 @@ class BaseSchedulerSolver(
                     or len(candidates) == 1
                     and self.op_data.operators[name].independent_rest
                 ]
+            from arknights_mower.utils.urgent_recovery import PENDING_FIELDS
+
+            for field in PENDING_FIELDS:
+                if hasattr(self.task, field):
+                    setattr(task, field, copy.deepcopy(getattr(self.task, field)))
             self.tasks.append(task)
         else:
             support = self._plan_exhaust_support(
@@ -979,6 +984,14 @@ class BaseSchedulerSolver(
                 )
                 self.tasks.append(support_task)
                 support_task.coordination_request_names = list(candidates)
+                if not support_task.ordinary_coordination:
+                    from arknights_mower.utils.urgent_recovery import (
+                        prepare_urgent_support,
+                    )
+
+                    prepare_urgent_support(self.op_data, support_task, candidates)
+                    if hasattr(support_task, "urgent_recovery_request_names"):
+                        self.task.urgent_recovery_request_names = list(candidates)
                 # 前置安排完成后才释放原请求，不重建其任务时刻。
                 if not any(queued is self.task for queued in self.tasks):
                     self.tasks.append(self.task)
@@ -1108,6 +1121,11 @@ class BaseSchedulerSolver(
         from arknights_mower.utils.replacement_coordination import (
             coordination_reservations,
         )
+        from arknights_mower.utils.urgent_recovery import urgent_support_blocked
+
+        recall_blocked = urgent_support_blocked(
+            self.op_data, candidates, self.tasks, getattr(self, "task", None)
+        )
 
         def can_rest(data):
             admitted = self._coordination_admission(data, candidates)
@@ -1143,6 +1161,7 @@ class BaseSchedulerSolver(
             fia,
             slots,
             urgent=urgent,
+            recall_blocked=recall_blocked,
         )
 
     def _schedule_group_coordination(self, candidates):
@@ -1367,6 +1386,10 @@ class BaseSchedulerSolver(
                 )
                 or {}
             )
+        if not getattr(task, "ordinary_coordination", False):
+            from arknights_mower.utils.urgent_recovery import prepare_urgent_support
+
+            prepare_urgent_support(self.op_data, task, names)
         if hasattr(task, "backup_shift_intent"):
             task.backup_shift_intent = copy.deepcopy(task.plan)
 
@@ -5034,6 +5057,7 @@ class BaseSchedulerSolver(
             if task.type in ordinary
             and task.plan
             and not getattr(task, "exhaust_support", False)
+            and not getattr(task, "urgent_recovery_request_names", ())
             and min(task.time, getattr(task, "arrangement_retry_due_at", task.time))
             <= now + timedelta(minutes=1)
             and not getattr(task, "strict_mood_limit", False)
@@ -6164,6 +6188,12 @@ class BaseSchedulerSolver(
             raise GroupShiftBlocked(predecessors=predecessors)
         task.plan = proposed
         task.group_shift_transitions = transitions
+        if getattr(task, "exhaust_support", False) and not getattr(
+            task, "ordinary_coordination", False
+        ):
+            from arknights_mower.utils.urgent_recovery import prepare_urgent_support
+
+            prepare_urgent_support(self.op_data, task, task.coordination_request_names)
         if remember_targets and transitions:
             expected = getattr(task, "group_shift_expected", {})
             for room, names in proposed.items():
@@ -6522,6 +6552,9 @@ class BaseSchedulerSolver(
         """Confirm required targets; mastery-owned slots retain their protection."""
         if not hasattr(task, "group_shift_transitions"):
             task.__dict__.pop("backup_refresh_rules", None)
+            from arknights_mower.utils.urgent_recovery import complete_urgent_recovery
+
+            complete_urgent_recovery(self.op_data, task, self.tasks)
             return True
         expected_plan = {}
         for (room, index), name in getattr(task, "group_shift_expected", {}).items():
@@ -6581,6 +6614,9 @@ class BaseSchedulerSolver(
             if self.op_data.group_is_resting(group) != resting
         }
         self.op_data.commit_group_shifts(transitions)
+        from arknights_mower.utils.urgent_recovery import complete_urgent_recovery
+
+        complete_urgent_recovery(self.op_data, task, self.tasks)
         if changes:
             logger.info("绑组换班确认完成：%s", changes)
         task.group_shift_expected = {}
@@ -6705,6 +6741,7 @@ class BaseSchedulerSolver(
             and t.type in ordinary
             and t.plan
             and not getattr(t, "exhaust_support", False)
+            and not getattr(t, "urgent_recovery_request_names", ())
             and t.time <= datetime.now()
             and not getattr(t, "strict_mood_limit", False)
             and not getattr(t, "dorm_recovery_restore", [])
@@ -11291,6 +11328,17 @@ class BaseSchedulerSolver(
         if index >= len(names) or names[index] not in (name, "Free"):
             return
         op = self.op_data.operators[name]
+        from arknights_mower.utils.urgent_recovery import recovery_owner
+
+        requested = set(getattr(task, "urgent_recovery_request_names", ()))
+        if (
+            name in requested
+            and getattr(task, "urgent_recovery_support_names", ())
+            and recovery_owner(self.op_data, op, requested)
+        ):
+            self.op_data.urgent_recovery_supporters[name] = list(
+                task.urgent_recovery_support_names
+            )
         ordinary_plan = getattr(task, "dorm_fill_plan", {}).get(room, [])
         if (
             getattr(task, "type", None) in (TaskTypes.FILL_DORM, TaskTypes.RELEASE_DORM)

@@ -14,6 +14,7 @@ import {alphaPosition,alphaDormResidents,alphaRestoreDisplaced,alphaRestingTier,
 import {MowerTask,MOWER_TASK_TYPES as T,type MowerTaskPlan,type MowerTaskQueue,fromMowerMicros,toMowerMicros} from './mowerTaskQueue'
 export interface MowerRestingOptions {
  urgentExhaust?:boolean
+ urgentRecoveryPendingSupporters?:ReadonlySet<string>
  dependencyReturn?:MowerDependencyReturnAdmission
  coordinationRates?:(data:MowerSchedulingData)=>import('./mowerReplacementCoordination').MowerCoordinationRates|undefined
  returning?:Set<string>;returningGroups?:Set<string>;tasks?:MowerTask[]
@@ -69,7 +70,7 @@ export function mowerGetRestingPlan(data:MowerSchedulingData,names:string[],exis
  return true
 }
 function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:string[],plan:MowerTaskPlan,options:MowerRestingOptions):boolean{
- if(names.some(name=>data.reservedProductReplacements.has(name))||mowerWorkingReplacementBlocked(data,names,plan))return false
+ if(names.some(name=>data.reservedProductReplacements.has(name)||options.reservedNames?.has(name))||mowerWorkingReplacementBlocked(data,names,plan))return false
  const transitions={...mowerArrangementGroupTransitions(data,plan),...Object.fromEntries(names.map(name=>data.operators[name]!).filter(op=>data.isGroupShiftAnchor(op)&&op.group).map(op=>[op.group,true]))}
  const shared=Object.values(data.operators).filter(op=>op.multiGroup),previousState=data.groupShiftState
  const previousBindings=shared.map(op=>({op,group:op.group,replacement:op.replacement}))
@@ -95,7 +96,7 @@ function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:st
    choices[name]=mowerReplacementCandidates(candidates,data.operators,data.policy,data.nowMicros).filter(n=>{
     const target=data.operators[n];if(!target)return false
     const inSlot=target.currentRoom===op.room&&target.currentIndex===op.index,sameGroup=op.multiGroup?mowerRestingBindingGroups(data,op,transitions).some(group=>mowerSameGroupPrimaryReplacement(data,op,n,group)):mowerSameGroupPrimaryReplacement(data,op,n),departing=sameGroup&&agents.includes(n)&&target.currentRoom===target.room&&target.currentIndex===target.index
-    return (!target.currentRoom||target.isResting()||inSlot||departing)&&(op.room.startsWith('dorm')||inSlot||!data.replacementExhausted(n,candidates))&&!data.excludedCandidates.has(n)&&!data.reservedProductReplacements.has(n)&&!options.isMasteryBusy?.(n)&&(!existing.includes(n)||supersededCovers.has(n)||plan[op.room]?.[op.index]===n)&&(!options.isDormReplacement?.(n)||inSlot||departing)&&(op.room.startsWith('dorm')||target.currentRoom!==op.room||sameGroup&&agents.includes(n)||inSlot)
+    return (!target.currentRoom||target.isResting()||inSlot||departing)&&(op.room.startsWith('dorm')||inSlot||!data.replacementExhausted(n,candidates))&&!data.excludedCandidates.has(n)&&!options.reservedNames?.has(n)&&!data.reservedProductReplacements.has(n)&&!options.isMasteryBusy?.(n)&&(!existing.includes(n)||supersededCovers.has(n)||plan[op.room]?.[op.index]===n)&&(!options.isDormReplacement?.(n)||inSlot||departing)&&(op.room.startsWith('dorm')||target.currentRoom!==op.room||sameGroup&&agents.includes(n)||inSlot)
    })
   }
   const match=mowerMatchReplacements(choices);if(!match)return false

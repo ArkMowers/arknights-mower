@@ -310,6 +310,7 @@ class Operators:
         self.group_shift_state = {}
         self.group_recovery_full_members = {}
         self.group_recovery_return_time = {}
+        self.urgent_recovery_supporters = {}
         self.exhaust_agent = set()
         self.exhaust_group = set()
         self.rest_in_full_group = set()
@@ -2173,6 +2174,9 @@ class Operators:
         projected.group_recovery_return_time = dict(
             getattr(self, "group_recovery_return_time", {})
         )
+        projected.urgent_recovery_supporters = copy.deepcopy(
+            getattr(self, "urgent_recovery_supporters", {})
+        )
         projected.dorm = copy.deepcopy(self.dorm)
         projected.group_dorm = copy.deepcopy(getattr(self, "group_dorm", []))
         for plan in plans:
@@ -2324,13 +2328,15 @@ class Operators:
             and candidate.current_mood(now) <= candidate.lower_limit
         )
 
-    def replacement_candidates(self, operator):
+    def replacement_candidates(self, operator, *, replacement_override=None):
         """工作替班按配置顺序取用；未豁免的耗尽候补稳定移到末尾。"""
         replacements = (
             self.shared_replacements(operator, self.resting_binding_groups(operator))
             if operator.multi_group
             else operator.replacement
         )
+        if replacement_override is not None:
+            replacements = replacement_override
         candidates = [
             name
             for name in replacements

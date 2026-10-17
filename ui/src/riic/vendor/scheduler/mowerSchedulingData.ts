@@ -16,6 +16,7 @@ export interface MowerSchedulingDataOptions {
  alpha?:boolean;priorityReplacement?:string[];freeRoomExclusions?:string[];dormOrder?:string[];standbyNames?:string[]
  plan:Record<string,string[]>;operators:Record<string,MowerOperatorState>;dorms:MowerDormState[];nowMicros:number;partyTime?:MowerDateTimeValue|boolean|null;runOrderRooms?:Record<string,Record<string,never>>
  policy?:Partial<MowerMoodPolicy>;freeRoom?:boolean;powerPlantCount?:number;planConditions?:boolean[]
+ urgentRecoverySupporters?:Record<string,string[]>
  groupRecoveryFullMembers?:Record<string,string[]>
  groupRecoveryReturnMicros?:Record<string,number>
  groupDorms?:MowerDormState[]
@@ -37,6 +38,7 @@ export class MowerSchedulingData {
  plan:Record<string,string[]>;operators:Record<string,MowerOperatorState>;dorms:MowerDormState[];nowMicros:number;partyTime?:MowerDateTimeValue|boolean|null;runOrderRooms:Record<string,Record<string,never>>
  recoveryOrderVersion=0
  policy:MowerMoodPolicy;freeRoom:boolean;powerPlantCount:number;planConditions:boolean[]
+ urgentRecoverySupporters:Record<string,string[]>
  groupRecoveryFullMembers:Record<string,string[]>
  groupRecoveryReturnMicros:Record<string,number>
  groupDorms:MowerDormState[]
@@ -56,6 +58,7 @@ export class MowerSchedulingData {
   this.plan=o.plan;this.operators=o.operators;this.dorms=o.dorms;this.nowMicros=o.nowMicros;this.partyTime=o.partyTime;this.runOrderRooms=o.runOrderRooms??{}
   this.policy={restingThreshold:.65,rescueThreshold:.75,experimentalDormLogic:false,...o.policy,alpha:this.alpha}
   this.freeRoom=o.freeRoom??false;this.powerPlantCount=o.powerPlantCount??2;this.planConditions=o.planConditions??[]
+  this.urgentRecoverySupporters=Object.fromEntries(Object.entries(o.urgentRecoverySupporters??{}).map(([name,supporters])=>[name,[...supporters]]))
   this.groupRecoveryReturnMicros={...o.groupRecoveryReturnMicros}
   this.groupRecoveryFullMembers=Object.fromEntries(Object.entries(o.groupRecoveryFullMembers??{}).map(([group,names])=>[group,[...names]]))
   this.groupDorms=o.groupDorms??Object.values(this.operators).filter(op=>op.room.startsWith('dorm')&&op.group&&(op.multiGroup?op.groupBindings:[{group:op.group,replacement:op.replacement}]).some(binding=>!binding.replacement.includes('Free')&&binding.replacement.some(name=>mowerSameGroupPrimaryReplacement(this,op,name,binding.group)&&!this.operators[name]!.room.startsWith('dorm')))).map(op=>new MowerDormState([op.room,op.index]))

@@ -1,3 +1,4 @@
+import {mowerUrgentRecallBlocked} from './mowerUrgentRecovery'
 import {alphaPosition,mowerMatchReplacements} from './mowerAlphaDorm'
 import {mowerGroupRecoveryDeadline,mowerRecoveryReady} from './mowerGroupRecovery'
 import {hasObservedFullMood,mowerReplacementCandidates,MowerOperatorState} from './mowerOperatorState'
@@ -92,6 +93,7 @@ export function mowerReplacementDependencyNames(data:MowerSchedulingData,seeds:I
 }
 /** Recall is admitted only with a complete post-admission recovery/depletion forecast. */
 export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:MowerSchedulingData,recalled:ReadonlySet<string>,candidates:readonly string[],options:MowerRestingOptions):boolean {
+ if(recalled.size&&(mowerUrgentRecallBlocked(original,candidates,options.urgentRecoveryPendingSupporters)||[...recalled].some(name=>name in original.urgentRecoverySupporters)))return false
  for(const name of recalled){
   const op=original.operators[name];if(!op||!op.isResting())continue
   if(op.restInFull&&!mowerRecoveryReady(original,op,options.priorityScheduling))return false
@@ -137,9 +139,13 @@ export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:Mowe
 }
 
 /** Active explicit arrangements and product reservations take precedence over coordination. */
-export function mowerReplacementReservations(data:MowerSchedulingData,tasks:readonly MowerTask[]):{reservedNames:Set<string>;reservedSlots:Set<string>}{
+export function mowerReplacementReservations(data:MowerSchedulingData,tasks:readonly MowerTask[],ownRecovery:readonly string[]=[]):{reservedNames:Set<string>;reservedSlots:Set<string>}{
  const reservedNames=new Set([...data.busyRestingNames,...data.reservedProductReplacements]),reservedSlots=new Set(data.reservedProductBeds.keys())
  for(const task of tasks){
+  if(!ownRecovery.length||task.urgentRecoveryRequestNames.length!==ownRecovery.length||!task.urgentRecoveryRequestNames.every(name=>ownRecovery.includes(name))){
+   task.urgentRecoveryReservedNames.forEach(name=>reservedNames.add(name))
+   task.urgentRecoveryReservedSlots.forEach(slot=>reservedSlots.add(slot))
+  }
   if(task.productShiftLocked){task.productLockNames.forEach(name=>reservedNames.add(name));task.productLockSlots.forEach(slot=>reservedSlots.add(slot))}
   if(task.backupShiftActive||task.dormRecoveryRestore.length){
    task.dormRecoveryRestore.forEach(name=>reservedNames.add(name))

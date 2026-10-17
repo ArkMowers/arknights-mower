@@ -220,7 +220,15 @@ def recall_can_sustain(
     from arknights_mower.utils.recovery_execution import (
         recovery_ready_for_arrangement,
     )
+    from arknights_mower.utils.urgent_recovery import (
+        active_urgent_recovery,
+        urgent_support_blocked,
+    )
 
+    if set(recalled) & active_urgent_recovery(
+        original
+    ).keys() or urgent_support_blocked(original, candidates):
+        return False
     now = now or datetime.now()
     for name in recalled:
         op = original.operators[name]

@@ -43,6 +43,10 @@ export class MowerTask {
  ordinaryCoordination=false
  exhaustSupport=false
  coordinationRequestNames:string[]=[]
+ urgentRecoveryRequestNames:string[]=[]
+ urgentRecoverySupportNames:string[]=[]
+ urgentRecoveryReservedNames:string[]=[]
+ urgentRecoveryReservedSlots:string[]=[]
  preferredReplacementRestore=false
  coordinationDependencyWait=false
  /** A complete physical arrangement must finish before backup/return replanning. */
