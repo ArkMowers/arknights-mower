@@ -315,8 +315,8 @@
       "reason": "Allow the Mower wrapper to host the existing overview scrubber at the bottom without changing time-window state. Release overview drag listeners on collapse and unmount. Keep operator and event inspectors beside the pointer within viewport bounds under CSS zoom, and reserve cursor-info space to avoid hover-induced layout shifts."
     },
     "scheduler/compileRosterSchedule.ts": {
-      "sha256": "cbe89eb46204f2e9606a0acbeaeeaea82b1effc49767bb8eb9787fe1e140b5c6",
-      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch."
+      "sha256": "5acccbf09704c7c42afd438b52d303334432502cb72dfd61c91ee87fa374edd0",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch. Restore the default group recovery spread threshold to 60 minutes from calculator b77478801e825fc5cbaf152e27c3511b5f0d518c; preserve explicitly saved thresholds."
     },
     "scheduler/mowerAlphaMetadata.ts": {
       "sha256": "9173257c79cb7003f5abf0cd67b46e868fd74eb394a6d046e8567c1f5d973804",
@@ -355,8 +355,8 @@
       "reason": "Keep failed work pending while allowing notification collection, and avoid deriving order wakes without a future observed completion, from calculator ebb743c11964898046d2d00dddf8e96bcf09a522."
     },
     "scheduler/mowerSchedulingData.ts": {
-      "sha256": "48e40c6a41007fcf39fcbdb58f4a80b9e52e14293cb4680de1a91da64b69df68",
-      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Restore the configurable extra-wait cap for spread-triggered group recovery, preserving explicit full recovery, completed-member idle release, and cycle-scoped timing across replanning and projections. Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch. Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions."
+      "sha256": "0d58d5e7483b5a3fca619e5aa642db3f90b46d2897e6d53fc587a6b95f6d15ed",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Restore the configurable extra-wait cap for spread-triggered group recovery, preserving explicit full recovery, completed-member idle release, and cycle-scoped timing across replanning and projections. Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch. Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions. Restore the default group recovery spread threshold to 60 minutes from calculator b77478801e825fc5cbaf152e27c3511b5f0d518c; preserve explicitly saved thresholds."
     },
     "scheduler/mowerSharedGroups.spec.ts": {
       "sha256": "45bbb6090a5943ce048ef02bb406a475cc85be42da09c2759300829c5242a2ed",
@@ -631,7 +631,8 @@
       "already assigned legal covers remain at their working slots while displaced primaries enter recovery",
       "observation-derived unstarted corrections refresh after relevant failures or recovery waits without preserving obsolete staffing reservations",
       "priority recovery candidates may take over lower-tier occupied beds with free-room release disabled while protecting resident tiers, reservations and actual observations; displacement planning preserves live beds and existing tasks",
-      "exhausted-shift support normalizes shared follower staffing before checking actual recalls; another resting binding retains its cover and the pending exhausted request keeps its original identity and time"
+      "exhausted-shift support normalizes shared follower staffing before checking actual recalls; another resting binding retains its cover and the pending exhausted request keeps its original identity and time",
+      "Default group recovery spread to 60 minutes while preserving explicitly saved thresholds, including 75 minutes."
     ],
     "limitations": [
       "ideal run orders do not simulate maintenance runner replacement acceleration or physical restoration",
@@ -644,7 +645,7 @@
       "maintenance-primary run-order pause",
       "additional facility-level export changes"
     ],
-    "calculatorRevision": "5473efd934db64d4a8c34fe321d6a7732da7cba0",
+    "calculatorRevision": "b77478801e825fc5cbaf152e27c3511b5f0d518c",
     "mowerRevision": "af37816f5c67225180f933fd7ce6ccd222dc1dc2",
     "exhaustSupportMowerRevision": "acd54324d549eec34ef1a0bb9910de4c92cfb7d1",
     "exhaustSupportCalculatorRevision": "c2b50182da1bcd83dd3da1ce6f2da58f0f66efb8",
@@ -667,6 +668,7 @@
     "derivedCorrectionMowerRevision": "890fb2e8cc5c845f748ec55636a2abcbcba48a54",
     "priorityDormTakeoverCalculatorRevision": "77202b0209bcea85dc46efb05dd2965cc494ed9c",
     "sharedUrgentRecallCalculatorRevision": "5473efd934db64d4a8c34fe321d6a7732da7cba0",
-    "sharedUrgentRecallMowerRevision": "af37816f5c67225180f933fd7ce6ccd222dc1dc2"
+    "sharedUrgentRecallMowerRevision": "af37816f5c67225180f933fd7ce6ccd222dc1dc2",
+    "groupRecoveryDefaultCalculatorRevision": "b77478801e825fc5cbaf152e27c3511b5f0d518c"
   }
 }

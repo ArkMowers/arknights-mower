@@ -59,7 +59,7 @@ export class MowerSchedulingData {
   this.groupRecoveryReturnMicros={...o.groupRecoveryReturnMicros}
   this.groupRecoveryFullMembers=Object.fromEntries(Object.entries(o.groupRecoveryFullMembers??{}).map(([group,names])=>[group,[...names]]))
   this.groupDorms=o.groupDorms??Object.values(this.operators).filter(op=>op.room.startsWith('dorm')&&op.group&&(op.multiGroup?op.groupBindings:[{group:op.group,replacement:op.replacement}]).some(binding=>!binding.replacement.includes('Free')&&binding.replacement.some(name=>mowerSameGroupPrimaryReplacement(this,op,name,binding.group)&&!this.operators[name]!.room.startsWith('dorm')))).map(op=>new MowerDormState([op.room,op.index]))
-  this.pendingGroupTransitions={...o.pendingGroupTransitions};this.groupShiftState={...o.groupShiftState};this.groupMoodGapThresholdMinutes=o.groupMoodGapThresholdMinutes??75
+  this.pendingGroupTransitions={...o.pendingGroupTransitions};this.groupShiftState={...o.groupShiftState};this.groupMoodGapThresholdMinutes=o.groupMoodGapThresholdMinutes??60
   this.groupRestInFullOnMoodGap=o.groupRestInFullOnMoodGap??true
   this.groupMoodGapExclusions=[...(o.groupMoodGapExclusions??[])]
   this.groupMoodGapMaxExtraWaitHours=o.groupMoodGapMaxExtraWaitHours??0;this.mergeIntervalMinutes=o.mergeIntervalMinutes??10
