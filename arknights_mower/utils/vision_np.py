@@ -144,5 +144,17 @@ def linear_svc_predict(x, w, b):
 def knn1_predict(x, X, y_idx, classes):
     """复刻 sklearn KNeighborsClassifier(k=1, weights='distance')：
     X=训练样本, y_idx=编码标签(_y), classes=类别名(classes_)，返回最近邻类别。"""
-    idx = np.argmin(np.sum((X - x) ** 2, axis=1))
+    # 每次只保留一组样本的差值，并在原缓冲区平方，避免整张模型的临时副本。
+    x = np.asarray(x)
+    block_size = 16
+    work = np.empty((min(block_size, len(X)), X.shape[1]), dtype=np.result_type(X, x))
+    # 空切片只确定求和结果的类型，保留整数输入原有的类型提升。
+    distances = np.empty(len(X), dtype=np.sum(work[:0], axis=1).dtype)
+    for start in range(0, len(X), block_size):
+        samples = X[start : start + block_size]
+        block = work[: len(samples)]
+        np.subtract(samples, x, out=block)
+        np.square(block, out=block)
+        distances[start : start + len(samples)] = np.sum(block, axis=1)
+    idx = np.argmin(distances)
     return classes[y_idx[idx]]
