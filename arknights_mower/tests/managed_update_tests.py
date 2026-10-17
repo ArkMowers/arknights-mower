@@ -21,10 +21,12 @@ def test_launch_choice_only_restricts_managed_instances(choice):
     assert conf.updates_enabled_for_launch(managed=True) is choice
 
 
-def test_managed_update_default_is_disabled_without_persisting_a_choice():
+def test_managed_update_default_is_enabled_without_persisting_a_choice():
     conf = Conf()
-    assert conf.updates_enabled_for_launch(managed=True) is False
+    assert conf.updates_enabled_for_launch(managed=True) is True
+    assert conf.assistant_enabled_for_launch(managed=True) is False
     assert "updates_enabled" not in conf.model_dump(exclude_unset=True)
+    assert "ai_assistant_enabled" not in conf.model_dump(exclude_unset=True)
 
 
 @pytest.mark.parametrize("choice", [None, 0, 1, "true", "false", [], {}])
@@ -35,7 +37,12 @@ def test_update_choice_rejects_non_boolean_values(choice):
 
 @pytest.mark.parametrize(
     "managed,choice,expected",
-    [(False, False, True), (True, None, False), (True, True, True)],
+    [
+        (False, False, True),
+        (True, None, True),
+        (True, False, False),
+        (True, True, True),
+    ],
 )
 def test_fresh_launch_captures_permission_once(tmp_path, managed, choice, expected):
     directory = tmp_path / "config"

@@ -430,6 +430,23 @@ describe('manager instance controls', () => {
     expect(api.update_settings).not.toHaveBeenCalled()
   })
 
+  it('keeps the enabled update default and disabled AI in individual and batch drafts', async () => {
+    rows[0].updates_enabled = true
+    await mount()
+    component.edit(0, 'settings')
+    expect(component.draft.value.updates_enabled).toBe(true)
+    expect(component.draft.value.ai_assistant_enabled).toBe(false)
+    await component.save()
+    expect(api.update_settings.mock.calls[0][1]).toEqual({ token: '', port: null })
+    component.editBatch()
+    expect(component.batchDraft.value[0].updates_enabled).toBe(true)
+    expect(component.batchDraft.value[0].ai_assistant_enabled).toBe(false)
+    expect(component.batchChanges.value).toEqual([])
+    expect(component.assistantConfirmation.value).toBeNull()
+    await component.save()
+    expect(api.update_all_settings).not.toHaveBeenCalled()
+  })
+
   it('saves update permission separately without triggering the AI notice', async () => {
     await mount()
     component.edit(0, 'settings')

@@ -889,7 +889,7 @@ class Conf(
     MaaRewardPart,
     AIAgentPart,
 ):
-    updates_enabled: StrictBool = False
+    updates_enabled: StrictBool = True
     "多开管理器保存的更新授权；单开不受此设置限制"
 
     def updates_enabled_for_launch(self, *, managed: bool) -> bool:
