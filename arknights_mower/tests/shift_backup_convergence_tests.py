@@ -277,13 +277,24 @@ def test_backup_actions_can_trigger_another_backup_before_any_real_arrangement(s
 
 def test_cycle_keeps_live_state_queue_and_original_task_unchanged(solver):
     solver.op_data.backup_plans[0].task["central"] = ["薇薇安娜"]
+    solver.op_data.backup_plans.append(
+        Plan(
+            {},
+            PlanConfig("", "", ""),
+            trigger=LogicExpression(
+                "op_data.operators['薇薇安娜'].is_working()", "==", "True"
+            ),
+            task={"central": ["陈"]},
+        )
+    )
+    solver.op_data.plan_condition.append(False)
     task = downshift(solver)
     original = copy.deepcopy(task.plan)
     before = positions(solver.op_data)
     with pytest.raises(ValueError, match="循环"):
         solver._prepare_shift_backup(task)
     assert task.plan == original
-    assert solver.op_data.plan_condition == [False]
+    assert solver.op_data.plan_condition == [False, False]
     assert positions(solver.op_data) == before
     assert not hasattr(task, "backup_shift_active")
 
@@ -327,7 +338,16 @@ def test_product_delay_keeps_real_configuration_and_all_actions_pending(solver):
     solver.infra_main()
     assert not getattr(task, "backup_shift_active", False)
     assert task in solver.tasks
-    assert task.backup_shift_intent == intent
+    assert task.backup_shift_intent["central"] == intent["central"]
+    assert task.backup_shift_intent["dormitory_1"] == intent["dormitory_1"]
+    assert task.backup_shift_intent["room_1_2"] == ["乌尔比安", "安哲拉"]
+    assert task.backup_shift_intent["room_2_2"] == ["苍苔", "引星棘刺"]
+    assert task.backup_explicit_slots >= {
+        ("room_1_2", 0),
+        ("room_1_2", 1),
+        ("room_2_2", 0),
+        ("room_2_2", 1),
+    }
     assert task.time > datetime.now() + timedelta(minutes=4)
     assert solver.op_data.plan_condition == [False]
     assert positions(solver.op_data) == before

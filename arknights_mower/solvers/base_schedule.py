@@ -3261,8 +3261,15 @@ class BaseSchedulerSolver(
                     current.name if current else "Free"
                 )
         _merge_shift_transition(fix_plan, explicit, self.op_data)
+        changed_plan = copy.deepcopy(fix_plan)
+        for room, names in changed_plan.items():
+            for index, name in enumerate(names):
+                current = self.op_data.get_current_operator(room, index)
+                if current is not None and current.name == name:
+                    names[index] = "Current"
         if not self.op_data.normalize_shared_arrangement(
             fix_plan,
+            transitions=self.op_data.arrangement_group_transitions(changed_plan),
             explicit_slots=explicit_slots,
             excluded_names=self._protected_training_names(),
         ):
@@ -6641,6 +6648,7 @@ class BaseSchedulerSolver(
             state = (
                 tuple(conditions),
                 tuple(sorted(unresolved)),
+                tuple(sorted(explicit_slots)),
                 tuple(
                     (name, op.current_room, op.current_index)
                     for name, op in simulation.op_data.operators.items()
@@ -6824,6 +6832,7 @@ class BaseSchedulerSolver(
             )
         intent = copy.deepcopy(getattr(task, "backup_shift_intent", task.plan))
         original = list(self.op_data.plan_condition)
+        explicit_slots = set(getattr(task, "backup_explicit_slots", ()))
         ordinary_policy = copy.copy(task)
         ordinary_policy_changed = False
         self._suppress_train_arrangement(intent)
@@ -6834,7 +6843,11 @@ class BaseSchedulerSolver(
         ]
         seen = set()
         for _ in range(64):
-            key = tuple(conditions)
+            key = (
+                tuple(conditions),
+                tuple(sorted((room, tuple(names)) for room, names in intent.items())),
+                tuple(sorted(explicit_slots)),
+            )
             if key in seen:
                 raise ValueError("上下班副表推演出现循环，保留原任务，暂不执行换人")
             seen.add(key)
@@ -6873,6 +6886,39 @@ class BaseSchedulerSolver(
                 raise ProductSwitchDeferred(
                     "副表替班暂不可用，保留原换班安排", minutes=1
                 )
+            entry_slots = {
+                (room, index)
+                for room, index in self._backup_explicit_slots(original, conditions)
+                if index < len(transition.get(room, ()))
+                and transition[room][index] != "Current"
+            }
+            entry = self._plan_for_slots(transition, entry_slots)
+            if entry:
+                # 本次显式任务撤销自身触发条件后，仍保留已触发的岗位安排。
+                explicit_slots.update(entry_slots)
+                _merge_shift_transition(intent, entry, simulation.op_data)
+                explicit = self._plan_for_slots(intent, explicit_slots)
+                departing = {
+                    group
+                    for group, resting in simulation.op_data.arrangement_group_transitions(
+                        explicit
+                    ).items()
+                    if resting
+                }
+                for room, names in intent.items():
+                    for index, name in enumerate(names):
+                        op = simulation.op_data.operators.get(name)
+                        if (
+                            op is not None
+                            and op.group in departing
+                            and (op.room, op.index) == (room, index)
+                            and (room, index) not in explicit_slots
+                        ):
+                            names[index] = "Current"
+                seed = self.op_data.project_arrangements([intent])
+                seed.commit_group_shifts(
+                    simulation.op_data.arrangement_group_transitions(intent)
+                )
             merged = copy.deepcopy(intent)
             _merge_shift_transition(merged, transition, simulation.op_data)
             self._suppress_train_arrangement(merged)
@@ -6895,9 +6941,7 @@ class BaseSchedulerSolver(
                         setattr(
                             task, attr, copy.deepcopy(getattr(ordinary_policy, attr))
                         )
-                task.backup_explicit_slots = set(
-                    getattr(task, "backup_explicit_slots", ())
-                ) | self._backup_explicit_slots(original, conditions)
+                task.backup_explicit_slots = explicit_slots
                 if conditions == original and merged == intent:
                     task.plan = intent
                     for attr in ("backup_shift_intent", "backup_shift_conditions"):
