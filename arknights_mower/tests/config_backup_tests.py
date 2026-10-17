@@ -744,6 +744,7 @@ def test_plan_advanced_settings_round_trip_without_drone_room(
         "group_rest_in_full_on_mood_gap": False,
         "group_mood_gap_threshold_minutes": 75,
         "group_mood_gap_max_extra_wait_hours": 1.5,
+        "group_mood_gap_exclusions": ["主表组", "副表组"],
     }
     result = post_plan_file(plan_client, value)
     assert result.get_data(as_text=True) == "排班已加载"
@@ -753,6 +754,7 @@ def test_plan_advanced_settings_round_trip_without_drone_room(
     assert config.conf.group_rest_in_full_on_mood_gap is False
     assert config.conf.group_mood_gap_threshold_minutes == 75
     assert config.conf.group_mood_gap_max_extra_wait_hours == 1.5
+    assert config.conf.group_mood_gap_exclusions == ["主表组", "副表组"]
     assert config.conf.drone_room == "room_1_1"
 
     exported = plan_client.get("/export-json", headers={"token": "test-token"}).json
@@ -761,6 +763,10 @@ def test_plan_advanced_settings_round_trip_without_drone_room(
     assert exported["advanced_settings"]["group_rest_in_full_on_mood_gap"] is False
     assert exported["advanced_settings"]["group_mood_gap_threshold_minutes"] == 75
     assert exported["advanced_settings"]["group_mood_gap_max_extra_wait_hours"] == 1.5
+    assert exported["advanced_settings"]["group_mood_gap_exclusions"] == [
+        "主表组",
+        "副表组",
+    ]
     assert "drone_room" not in exported["advanced_settings"]
     assert "reload_room" not in exported["advanced_settings"]
 
@@ -1093,3 +1099,19 @@ def test_income_cache_endpoint_requires_token_and_does_not_save(
 def test_plan_rejects_invalid_facility_levels(room, level):
     with pytest.raises(ValueError):
         config.PlanModel(facility_levels={room: level})
+
+
+@pytest.mark.parametrize("groups", [None, "组名", [""], ["  "], [123]])
+def test_invalid_gap_exclusions_are_rejected(groups):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        config.Conf(group_mood_gap_exclusions=groups)
+
+
+def test_gap_exclusions_preserve_exact_names_and_have_isolated_defaults():
+    first, second = config.Conf(), config.Conf()
+    first.group_mood_gap_exclusions.append("组一")
+    assert second.group_mood_gap_exclusions == []
+    conf = config.Conf(group_mood_gap_exclusions=[" 组一 ", "组二", " 组一 "])
+    assert conf.group_mood_gap_exclusions == [" 组一 ", "组二"]

@@ -14,10 +14,21 @@ describe('integrated Mower source scheduler',()=>{
  it('retains temporary standby promotion and identity when rebuilding scheduling data',()=>{
   const config=fixture();config.mowerAlpha=true;config.mowerSourceRules!.standby=['A']
   config.mowerSourcePlan!.room_1_1![0]!.group='g'
+  config.mowerPolicy!.groupMoodGapExclusions=['other','saved']
   const state=createRosterRuntime(config),source=getMowerSourceRuntime(state)
   mowerUpdateDetail(source.data,'A',0,'dormitory_1',4,true)
   mowerUpdateDetail(source.data,'A',24,'dormitory_1',4,true)
+  source.data.groupShiftState.g=true
+  source.data.groupRecoveryFullMembers.g=['A']
+  source.data.groupRecoveryReturnMicros.g=12345
   const rebuilt=makeMowerSchedulingData(state,source),op=rebuilt.operators.A!
+  expect(rebuilt.groupMoodGapExclusions).toEqual(['other','saved'])
+  rebuilt.groupMoodGapExclusions.push('extra')
+  expect(source.data.groupMoodGapExclusions).toEqual(['other','saved'])
+  expect(config.mowerPolicy!.groupMoodGapExclusions).toEqual(['other','saved'])
+  expect(rebuilt.groupRecoveryReturnMicros.g).toBe(12345)
+  rebuilt.groupRecoveryReturnMicros.g=67890
+  expect(source.data.groupRecoveryReturnMicros.g).toBe(12345)
   expect(op).not.toBe(source.data.operators.A)
   expect(op.mood).toBe(24)
   expect(op.standbyLowPriority).toBe(true)

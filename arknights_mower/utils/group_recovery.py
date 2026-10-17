@@ -42,13 +42,16 @@ def group_recovery_workers(data, group):
 
 
 def group_recovery_deadline(data, group, *, now=None):
-    """合并明确回满与已触发的组内等待；未知恢复期限不能允许提前回班。"""
+    """额外等待仅限制组内时间差等待，明确回满要求始终生效。"""
     now = now or datetime.now()
     workers = group_recovery_workers(data, group)
     gap_workers = [op for op in workers if not op.multi_group]
     latches = getattr(data, "group_recovery_full_members", None)
     if latches is None:
         latches = data.group_recovery_full_members = {}
+    anchors = getattr(data, "group_recovery_return_time", None)
+    if anchors is None:
+        anchors = data.group_recovery_return_time = {}
 
     def completed_at(op):
         if observed_full_mood(op) or completed_mood_limit_release(data, op):
@@ -56,20 +59,48 @@ def group_recovery_deadline(data, group, *, now=None):
         _, bed = data.get_dorm_by_name(op.name)
         return bed.time if bed is not None else None
 
-    if group in latches:
+    if group in config.conf.group_mood_gap_exclusions:
+        latches.pop(group, None)
+        anchors.pop(group, None)
+    elif group in latches:
         latches[group] = [op.name for op in gap_workers]
     elif config.conf.group_rest_in_full_on_mood_gap:
         times = [at for op in gap_workers if (at := completed_at(op)) is not None]
         limit = timedelta(minutes=config.conf.group_mood_gap_threshold_minutes)
         if len(times) > 1 and max(times) - min(times) > limit:
             latches[group] = [op.name for op in gap_workers]
+    gap_names = latches.get(group, [])
+    if gap_names and group not in anchors:
+        residents = [op for op in gap_workers if op.is_resting()]
+        high = [op for op in residents if op.resting_priority == "high"]
+        times = [
+            at
+            for op in high or residents or gap_workers
+            if (at := completed_at(op)) is not None
+        ]
+        if times:
+            anchors[group] = max(now, min(times) - timedelta(minutes=8))
+    max_wait = config.conf.group_mood_gap_max_extra_wait_hours
+    cap = (
+        anchors[group] + timedelta(hours=max_wait)
+        if gap_names and max_wait > 0 and group in anchors
+        else None
+    )
+    explicit = [op.name for op in workers if op.rest_in_full]
     required = list(
-        dict.fromkeys(
-            [op.name for op in workers if op.rest_in_full] + latches.get(group, [])
-        )
+        dict.fromkeys(explicit + (gap_names if cap is None or now < cap else []))
     )
-    times = [completed_at(data.operators[name]) for name in required]
-    deadline = (
-        max(now, *times) if times and all(at is not None for at in times) else None
-    )
-    return required, deadline
+    explicit_times = [completed_at(data.operators[name]) for name in explicit]
+    if any(at is None for at in explicit_times):
+        return required, None
+    deadlines = list(explicit_times)
+    if gap_names:
+        times = [completed_at(data.operators[name]) for name in gap_names]
+        if any(at is None for at in times):
+            if cap is None:
+                return required, None
+            deadlines.append(cap)
+        else:
+            latest = max(times)
+            deadlines.append(min(latest, cap) if cap is not None else latest)
+    return required, max(now, *deadlines) if deadlines else None

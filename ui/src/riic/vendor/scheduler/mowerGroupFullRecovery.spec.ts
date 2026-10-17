@@ -40,9 +40,51 @@ describe('strict grouped recovery in the alpha simulator',()=>{
   expect(mowerGroupRecoveryWorkers(data,'G').map(op=>op.name)).toEqual(['A','B'])
   expect(mowerGroupRecoveryDeadline(data,'G')).toEqual({requiredNames:['A','B'],timeMicros:toMowerMicros(4)})
  })
- it('does not shorten full recovery using the extra-wait cap',()=>{
+ it('caps the gap wait from the ordinary return including its existing lead',()=>{
   const data=fixture([{name:'A',hours:1},{name:'B',hours:6}],true,1)
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(2-8/60))
+ })
+
+ it('removes gap-only execution requirements exactly at the cap and preserves the anchor in projections',()=>{
+  const data=fixture([{name:'A',hours:1},{name:'B',hours:6}],true,1)
+  returnTask(data)
+  const cap=toMowerMicros(2-8/60)
+  data.nowMicros=cap-1
+  expect(mowerGroupRecoveryDeadline(data,'G').requiredNames).toEqual(['A','B'])
+  const projected=projectMowerArrangements(data,[])
+  commitMowerGroupShifts(projected,{G:false})
+  expect(data.groupRecoveryReturnMicros.G).toBe(toMowerMicros(1-8/60))
+  data.nowMicros=cap
+  expect(mowerGroupRecoveryDeadline(data,'G').requiredNames).toEqual([])
+  expect(returnTask(data)!.timeMicros).toBe(cap)
+  data.operators.B!.restInFull=true
+  expect(mowerGroupRecoveryDeadline(data,'G').requiredNames).toEqual(['B'])
+  commitMowerGroupShifts(data,{G:false})
+  expect(data.groupRecoveryReturnMicros.G).toBeUndefined()
+ })
+ it.each([0,10])('returns as soon as gap recovery finishes with cap=%s hours',maxWait=>{
+  const data=fixture([{name:'A',hours:1},{name:'B',hours:6}],true,maxWait)
   expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(6))
+ })
+ it('never caps explicit full recovery',()=>{
+  const data=fixture([{name:'A',hours:1},{name:'B',hours:6,options:{restInFull:true}}],true,1)
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(6))
+ })
+ it('keeps the capped deadline after a member leaves and recovery speeds change',()=>{
+  const data=fixture([{name:'A',hours:1},{name:'B',hours:6}],true,1)
+  const expected=toMowerMicros(2-8/60)
+  expect(returnTask(data)!.timeMicros).toBe(expected)
+  data.nowMicros=toMowerMicros(1);releaseFull(data,'A')
+  data.dorms.find(b=>b.name==='B')!.timeMicros=toMowerMicros(9)
+  expect(returnTask(data)!.timeMicros).toBe(expected)
+ })
+ it('uses the known cap with an unknown gap deadline but still blocks unknown explicit recovery',()=>{
+  const data=fixture([{name:'A',hours:1},{name:'B',hours:6}],true,1)
+  returnTask(data)
+  data.dorms.find(b=>b.name==='B')!.timeMicros=undefined
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(2-8/60))
+  data.operators.B!.restInFull=true
+  expect(returnTask(data)).toBeUndefined()
  })
  it('keeps waiting when one required member has already recovered and left its bed',()=>{
   const data=fixture([{name:'A',hours:1,options:{restInFull:true}},{name:'B',hours:4,options:{restInFull:true}},{name:'C',hours:2}])
@@ -169,4 +211,48 @@ describe('strict grouped recovery in the alpha simulator',()=>{
   data.operators.A!.currentRoom='room_1_1';data.operators.A!.currentIndex=0
   expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(4-8/60))
  })
+})
+
+describe('group recovery spread exclusions',()=>{
+ it.each([['G'],['other','G'],['other']])('applies only to selected groups %j',(...exclusions)=>{
+  const data=fixture([{name:'A',hours:1},{name:'B',hours:6}],true)
+  data.groupMoodGapExclusions=exclusions
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(exclusions.includes('G')?1-8/60:6))
+ })
+ it('cancels an existing wait and its anchor without changing another group, and can be removed',()=>{
+  const data=fixture([{name:'A',hours:1},{name:'B',hours:6}],true)
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(6))
+  data.groupRecoveryFullMembers.other=['C'];data.groupRecoveryReturnMicros.other=123
+  data.groupMoodGapExclusions=['G']
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(1-8/60))
+  expect(data.groupRecoveryFullMembers).toEqual({other:['C']})
+  expect(data.groupRecoveryReturnMicros).toEqual({other:123})
+  data.groupMoodGapExclusions=[]
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(6))
+ })
+ it('retains explicit full recovery and unknown deadline protection in an excluded group',()=>{
+  const data=fixture([{name:'A',hours:1},{name:'B',hours:6,options:{restInFull:true}}],true)
+  data.groupMoodGapExclusions=['G']
+  expect(returnTask(data)!.timeMicros).toBe(toMowerMicros(6))
+  data.dorms[1]!.timeMicros=undefined
+  expect(returnTask(data)).toBeUndefined()
+ })
+ it('isolates selected groups in projections',()=>{
+  const data=fixture([{name:'A',hours:1},{name:'B',hours:6}],true)
+  data.groupMoodGapExclusions=['G']
+  const projected=projectMowerArrangements(data,[])
+  projected.groupMoodGapExclusions.push('other')
+  expect(data.groupMoodGapExclusions).toEqual(['G'])
+ })
+})
+
+it('applies multiple exclusions independently when two groups rest together',()=>{
+ const data=fixture([{name:'A',hours:1},{name:'B',hours:6},{name:'C',hours:2,options:{group:'H'}},{name:'D',hours:9,options:{group:'H'}}],true)
+ data.groupShiftState.H=true
+ data.groupMoodGapExclusions=['G']
+ const times=()=>{const queue=new MowerTaskQueue();planMowerAlphaMetadata(data,queue,[]);return queue.tasks.filter(task=>task.type===T.SHIFT_ON).map(task=>task.timeMicros).sort((a,b)=>a-b)}
+ expect(times()).toEqual([toMowerMicros(1-8/60),toMowerMicros(9)])
+ data.groupMoodGapExclusions=['G','H']
+ expect(times()).toEqual([toMowerMicros(1-8/60),toMowerMicros(2-8/60)])
+ expect(data.groupRecoveryFullMembers).toEqual({})
 })

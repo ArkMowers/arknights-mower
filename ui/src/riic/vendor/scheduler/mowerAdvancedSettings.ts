@@ -12,6 +12,7 @@ export function mowerAdvancedAssumptions(workspace: RosterWorkspace): Partial<Si
     free_room: 'freeRoom', group_rest_in_full_on_mood_gap: 'groupRestInFullOnMoodGap',
     group_mood_gap_threshold_minutes: 'groupMoodGapThresholdMinutes',
     group_mood_gap_max_extra_wait_hours: 'groupMoodGapMaxExtraWaitHours',
+    group_mood_gap_exclusions: 'groupMoodGapExclusions',
     merge_interval: 'mergeIntervalMinutes', fia_fool: 'fiammettaFool',
     fia_threshold: 'fiammettaThreshold', drone_interval: 'droneIntervalHours',
     drone_count_limit: 'droneCountLimit',

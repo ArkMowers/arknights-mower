@@ -4,7 +4,7 @@ import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,MowerTask,type MowerTaskQueue} from './mowerTaskQueue'
 import {hasObservedFullMood,hasRestingMood} from './mowerOperatorState'
 import {MowerShiftPreviewError} from './mowerNativeErrors'
-import {mowerGroupRecoveryWorkers,mowerRecoveryReady} from './mowerGroupRecovery'
+import {mowerGroupRecoveryDeadline,mowerRecoveryReady} from './mowerGroupRecovery'
 import type {MowerTaskSchedulingOptions} from './mowerTaskScheduling'
 export function prepareMowerRelease(data:MowerSchedulingData,queue:MowerTaskQueue,task:MowerTask,options:MowerTaskSchedulingOptions={}):boolean {
  if(data.alpha){
@@ -40,7 +40,7 @@ export function mowerMandatoryReleaseNames(data:MowerSchedulingData,task:MowerTa
   const op=data.operators[name]
   if(!op||op.currentRoom!==room||op.currentIndex!==index)return []
   if(task.strictMoodLimit?!(op.restMoodLimit&&(task.moodLimit===undefined||task.moodLimit===op.upperLimit)):data.skipIdleDormRelease(name))return []
-  return op.restInFull||!op.multiGroup&&Object.entries(data.groupRecoveryFullMembers).some(([group,names])=>names.includes(name)&&mowerGroupRecoveryWorkers(data,group).some(member=>member.name===name))?[name]:[]
+  return op.restInFull||!op.multiGroup&&Object.entries(data.groupRecoveryFullMembers).some(([group,names])=>names.includes(name)&&mowerGroupRecoveryDeadline(data,group).requiredNames.includes(name))?[name]:[]
  })
 }
 

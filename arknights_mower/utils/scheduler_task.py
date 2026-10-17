@@ -1649,6 +1649,9 @@ def generate_plan_by_drom(
     op_data.group_recovery_full_members = copy.deepcopy(
         getattr(op_data, "group_recovery_full_members", {})
     )
+    op_data.group_recovery_return_time = dict(
+        getattr(op_data, "group_recovery_return_time", {})
+    )
     batches = copy.deepcopy(batches)
     ordered = sorted(batches, key=lambda batch: batch[0])
     result = []
@@ -1858,6 +1861,9 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
     )
 
     actual_data = op_data
+    for group in config.conf.group_mood_gap_exclusions:
+        actual_data.group_recovery_full_members.pop(group, None)
+        actual_data.group_recovery_return_time.pop(group, None)
     op_data.refresh_idle_dorm_search()
     locked_tasks = [
         task
@@ -2086,7 +2092,11 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
                 actual_data.group_recovery_full_members[group_name] = list(
                     op_data.group_recovery_full_members[group_name]
                 )
-            if required:
+                if group_name in op_data.group_recovery_return_time:
+                    actual_data.group_recovery_return_time[group_name] = (
+                        op_data.group_recovery_return_time[group_name]
+                    )
+            if required or deadline is not None:
                 if deadline is None:
                     continue
                 task_time = deadline
@@ -2095,10 +2105,10 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
                     continue
                 task_time = normal_return_time(high_dorms)
             if task_time not in new_task:
-                new_task[task_time] = (high_dorms, bool(required))
+                new_task[task_time] = (high_dorms, deadline is not None)
             else:
                 combined = new_task[task_time][0] + high_dorms
-                full = new_task[task_time][1] or bool(required)
+                full = new_task[task_time][1] or deadline is not None
                 new_task[task_time] = (combined, full)
         if high_dorms and not group_name:
             # 单独添加，最后合并
@@ -2191,6 +2201,10 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
             actual_data.group_recovery_full_members[op.group] = list(
                 op_data.group_recovery_full_members[op.group]
             )
+            if op.group in op_data.group_recovery_return_time:
+                actual_data.group_recovery_return_time[op.group] = (
+                    op_data.group_recovery_return_time[op.group]
+                )
         members = (
             set(op_data.shift_group_members(op.group)) if op.group else {op.name}
         ) - set(excluded_names)
@@ -2212,16 +2226,20 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
             for name in members
             if op_data.is_group_shift_anchor(op_data.operators[name])
         ]
-        if not required and not all(
-            not worker.current_room
-            and (
-                op_data._can_standby(worker)
-                or (
-                    has_resting_mood(worker)
-                    and worker.current_mood() >= worker.upper_limit
+        if (
+            not required
+            and deadline is None
+            and not all(
+                not worker.current_room
+                and (
+                    op_data._can_standby(worker)
+                    or (
+                        has_resting_mood(worker)
+                        and worker.current_mood() >= worker.upper_limit
+                    )
                 )
+                for worker in workers
             )
-            for worker in workers
         ):
             continue
         plan = {}

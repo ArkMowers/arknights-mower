@@ -22,6 +22,7 @@ export interface SimulationAssumptions {
   groupRestInFullOnMoodGap?: boolean
   groupMoodGapThresholdMinutes?: number
   groupMoodGapMaxExtraWaitHours?: number
+  groupMoodGapExclusions?: string[]
   mergeIntervalMinutes?: number
   enableMastery?: boolean
   enableParty?: boolean

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { createDefaultWorkspace } from './vendor/workbench/defaults'
 import { compileRosterSchedule } from './vendor/scheduler/compileRosterSchedule'
+import { compiledScheduleToRuntimeConfig } from './vendor/scheduler/scheduleAdapter'
+import { createRosterRuntime } from './vendor/scheduler/rosterRuntime'
+import { getMowerSourceRuntime } from './vendor/scheduler/mowerSourceRuntime'
 import { simulateSchedule } from './vendor/simulator/scheduleSimulation'
 import { resolveOperatorCharId } from './vendor/domain/operatorIdentifiers'
 import {
@@ -36,7 +39,13 @@ describe('income export calculation', () => {
   it('converts the default horizon and isolates inputs', () => {
     const source = plan(),
       settings = modelSettings()
-    source.advanced_settings = { resting_threshold: 0.7, fia_fool: false }
+    source.advanced_settings = {
+      resting_threshold: 0.7,
+      fia_fool: false,
+      group_rest_in_full_on_mood_gap: true,
+      group_mood_gap_max_extra_wait_hours: 0.5,
+      group_mood_gap_exclusions: ['主表组', '副表组']
+    }
     const original = structuredClone(source),
       request = incomeRequest(source, settings)
     expect(request.options.simulationOptions).toMatchObject({
@@ -46,8 +55,17 @@ describe('income export calculation', () => {
     })
     expect(request.options.simulationAssumptions).toMatchObject({
       restingThreshold: 0.7,
-      fiammettaFool: false
+      fiammettaFool: false,
+      groupRestInFullOnMoodGap: true,
+      groupMoodGapMaxExtraWaitHours: 0.5,
+      groupMoodGapExclusions: ['主表组', '副表组']
     })
+    const compiled = compileRosterSchedule(request.workspace, request.options.simulationAssumptions)
+    const runtimeConfig = compiledScheduleToRuntimeConfig(compiled)
+    const runtime = createRosterRuntime(runtimeConfig)
+    expect(getMowerSourceRuntime(runtime).data.groupMoodGapExclusions).toEqual(['主表组', '副表组'])
+    runtimeConfig.mowerPolicy.groupMoodGapExclusions.push('额外组')
+    expect(compiled.assumptions.groupMoodGapExclusions).toEqual(['主表组', '副表组'])
     request.workspace.mainPlan.facilities.room_1_1.product = 'exp'
     expect(source).toEqual(original)
     expect(modelSettings()).toEqual(settings)
@@ -679,5 +697,17 @@ it('preserves exchange assumptions when displaying saved clue results', () => {
   expect(lines({ ...result, clueExchangeMode: 'always-on' })).toContain('线索产量按全程开启交流')
   expect(lines({ ...result, clueExchangeMode: 'always-on' })).not.toContain(
     '历史记录按线索交流关闭'
+  )
+})
+
+it.each([null, '组名', [''], ['  '], [123]])('模拟拒绝无效的延后回班排除组：%j', (groups) => {
+  const workspace = createDefaultWorkspace()
+  const compiled = compileRosterSchedule(workspace, { groupMoodGapExclusions: groups })
+  expect(compiled.diagnostics).toContainEqual(
+    expect.objectContaining({
+      code: 'INVALID_ASSUMPTION',
+      severity: 'error',
+      path: 'assumptions.groupMoodGapExclusions'
+    })
   )
 })

@@ -47,13 +47,144 @@ def test_all_explicit_full_members_must_finish(resting):
     assert returns(data)[0].time == now + timedelta(hours=3)
 
 
-def test_explicit_full_and_gap_wait_are_cumulative_without_wait_cap(resting):
+def test_wait_cap_shortens_only_gap_wait(resting):
     solver, now = resting
     data = solver.op_data
     data.operators["伊内丝"].rest_in_full = True
     config.conf.group_rest_in_full_on_mood_gap = True
     config.conf.group_mood_gap_max_extra_wait_hours = 0.5
+    assert returns(data)[0].time == now + timedelta(hours=1, minutes=22)
+
+
+def test_wait_cap_never_shortens_explicit_full_recovery(resting):
+    solver, now = resting
+    data = solver.op_data
+    data.operators["讯使"].rest_in_full = True
+    config.conf.group_rest_in_full_on_mood_gap = True
+    config.conf.group_mood_gap_max_extra_wait_hours = 0.5
     assert returns(data)[0].time == now + timedelta(hours=5)
+
+
+@pytest.mark.parametrize("max_wait", [0, 10])
+def test_full_recovery_before_cap_returns_without_waiting_for_cap(resting, max_wait):
+    solver, now = resting
+    config.conf.group_rest_in_full_on_mood_gap = True
+    config.conf.group_mood_gap_max_extra_wait_hours = max_wait
+    assert returns(solver.op_data)[0].time == now + timedelta(hours=5)
+
+
+def test_wait_cap_keeps_original_anchor_after_replanning_and_release(resting):
+    solver, now = resting
+    data = solver.op_data
+    config.conf.group_rest_in_full_on_mood_gap = True
+    config.conf.group_mood_gap_max_extra_wait_hours = 0.5
+    expected = now + timedelta(hours=1, minutes=22)
+    assert returns(data)[0].time == expected
+    release_observed(data, "伊内丝")
+    data.get_dorm_by_name("银灰")[1].time += timedelta(hours=2)
+    assert returns(data)[0].time == expected
+
+
+def test_unknown_gap_deadline_keeps_known_wait_cap(resting):
+    solver, now = resting
+    data = solver.op_data
+    config.conf.group_rest_in_full_on_mood_gap = True
+    config.conf.group_mood_gap_max_extra_wait_hours = 0.5
+    returns(data)
+    data.get_dorm_by_name("讯使")[1].time = None
+    assert returns(data)[0].time == now + timedelta(hours=1, minutes=22)
+    data.operators["讯使"].rest_in_full = True
+    assert returns(data) == []
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_execution_stops_gap_requirement_at_cap_but_keeps_explicit_full(
+    resting, monkeypatch, explicit
+):
+    from arknights_mower.solvers import base_schedule
+
+    solver, now = resting
+    data = solver.op_data
+    config.conf.group_rest_in_full_on_mood_gap = True
+    config.conf.group_mood_gap_max_extra_wait_hours = 0.5
+    task = returns(data)[0]
+    data.operators["讯使"].rest_in_full = explicit
+    cap = now + timedelta(hours=1, minutes=22)
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls):
+            return cap
+
+    monkeypatch.setattr(base_schedule, "datetime", Clock)
+    monkeypatch.setattr(solver, "_read_recovery_rooms", lambda rooms: None)
+    assert solver._verify_required_recovery(task) is not explicit
+    assert data.operators["讯使"].mood == 5
+
+
+def test_free_room_releases_completed_member_without_resetting_group_wait(
+    resting, monkeypatch
+):
+    from arknights_mower.utils.scheduler_task import SchedulerTask
+
+    solver, now = resting
+    data = solver.op_data
+    data.config.free_room = True
+    config.conf.group_rest_in_full_on_mood_gap = True
+    config.conf.group_mood_gap_max_extra_wait_hours = 0.5
+    return_time = returns(data)[0].time
+    op = data.operators["伊内丝"]
+    op.mood, op.time_stamp, op.mood_is_prediction = 24, datetime.now(), False
+    _, bed = data.get_dorm_by_name(op.name)
+    bed.time = now
+    tasks = plan_metadata(data, [])
+    release = next(t for t in tasks if t.type == TaskTypes.RELEASE_DORM)
+    target = SchedulerTask(
+        time=release.time,
+        task_plan=release.plan,
+        task_type=TaskTypes.RELEASE_DORM,
+        meta_data=op.name,
+    )
+
+    def read(rooms):
+        op.time_stamp = datetime.now()
+
+    monkeypatch.setattr(solver, "_read_recovery_rooms", read)
+    assert solver._verify_required_recovery(target)
+    assert solver.prepare_release_dorm(target)
+    release_observed(data, op.name)
+    assert returns(data)[0].time == return_time
+    assert data.operators["银灰"].is_resting()
+    assert data.group_is_resting("联动")
+
+
+def test_early_execution_waits_for_cap_without_resetting_original_task(
+    resting, monkeypatch
+):
+    solver, now = resting
+    data = solver.op_data
+    config.conf.group_rest_in_full_on_mood_gap = True
+    config.conf.group_mood_gap_max_extra_wait_hours = 0.5
+    task = returns(data)[0]
+    original_time, original_plan = task.time, dict(task.plan)
+    solver.tasks = [task]
+
+    def read(rooms):
+        for op in data.operators.values():
+            if op.current_room in rooms:
+                op.time_stamp = datetime.now()
+
+    monkeypatch.setattr(solver, "_read_recovery_rooms", read)
+    assert not solver._verify_required_recovery(task)
+    observers = [
+        t for t in solver.tasks if getattr(t, "recovery_observation_rooms", None)
+    ]
+    assert max(t.time for t in observers) == now + timedelta(hours=1, minutes=22)
+    solver._resume_waiting_group_shifts()
+    solver._resume_waiting_group_shifts()
+    assert task in solver.waiting_group_shifts
+    assert task.time == original_time and task.plan == original_plan
+    assert not getattr(task, "execution_failure", None)
 
 
 def test_unknown_explicit_full_deadline_blocks_group_return(resting):
@@ -249,7 +380,7 @@ def test_predicted_full_does_not_confirm_required_member(resting):
     assert returns(data) == []
 
 
-def test_full_recovery_latch_restores_and_isolates_saved_state(resting):
+def test_full_recovery_latch_restores_and_isolates_saved_state(resting, monkeypatch):
     solver, _ = resting
     data = solver.op_data
     config.conf.group_rest_in_full_on_mood_gap = True
@@ -257,11 +388,31 @@ def test_full_recovery_latch_restores_and_isolates_saved_state(resting):
     saved = {
         group: list(names) for group, names in data.group_recovery_full_members.items()
     }
-    data.restore_group_shift_state({"联动": True}, saved)
+    from arknights_mower import __main__ as main
+    from arknights_mower.solvers.record import current_state
+
+    for attr in (
+        "daily_visit_friend",
+        "daily_report",
+        "daily_skland",
+        "daily_mail",
+        "task_count",
+    ):
+        setattr(solver, attr, None)
+    monkeypatch.setattr(main, "base_scheduler", solver)
+    snapshot = current_state()
+    anchors = snapshot["group_recovery_return_time"]
+    assert anchors == data.group_recovery_return_time
+    data.restore_group_shift_state({"联动": True}, saved, anchors)
+    assert data.group_recovery_return_time == anchors
+    projected = data.project_arrangements([])
+    projected.commit_group_shifts({"联动": False})
+    assert data.group_recovery_return_time == anchors
     data.group_recovery_full_members["联动"].remove("伊内丝")
     assert "伊内丝" in saved["联动"]
-    data.restore_group_shift_state({"联动": False}, saved)
+    data.restore_group_shift_state({"联动": False}, saved, anchors)
     assert data.group_recovery_full_members == {}
+    assert data.group_recovery_return_time == {}
 
 
 @pytest.mark.parametrize("explicit", [False, True])
@@ -293,3 +444,57 @@ def test_future_recovery_return_ignores_only_incidental_failed_dorm_move(
     assert any(task is failed for task in tasks)
     assert failed.time == original_time
     assert failed.plan["dormitory_1"][-1] == "讯使"
+
+
+@pytest.mark.parametrize(
+    "exclusions, delayed",
+    [(["联动"], False), (["其他组", "联动"], False), (["其他组"], True)],
+)
+def test_gap_exclusions_apply_only_to_named_groups(resting, exclusions, delayed):
+    solver, now = resting
+    config.conf.group_rest_in_full_on_mood_gap = True
+    config.conf.group_mood_gap_exclusions = exclusions
+    expected = timedelta(hours=5) if delayed else timedelta(minutes=52)
+    assert returns(solver.op_data)[0].time == now + expected
+
+
+def test_excluding_latched_group_clears_only_its_wait_and_can_be_removed(resting):
+    solver, now = resting
+    data = solver.op_data
+    config.conf.group_rest_in_full_on_mood_gap = True
+    assert returns(data)[0].time == now + timedelta(hours=5)
+    data.group_recovery_full_members["其他组"] = ["其他成员"]
+    data.group_recovery_return_time["其他组"] = now
+    config.conf.group_mood_gap_exclusions = ["联动"]
+    assert returns(data)[0].time == now + timedelta(minutes=52)
+    assert "联动" not in data.group_recovery_full_members
+    assert "联动" not in data.group_recovery_return_time
+    assert data.group_recovery_full_members == {"其他组": ["其他成员"]}
+    assert data.group_recovery_return_time == {"其他组": now}
+    config.conf.group_mood_gap_exclusions = []
+    assert returns(data)[0].time == now + timedelta(hours=5)
+
+
+def test_excluded_group_still_waits_for_explicit_full_recovery(resting):
+    solver, now = resting
+    data = solver.op_data
+    config.conf.group_rest_in_full_on_mood_gap = True
+    config.conf.group_mood_gap_exclusions = ["联动"]
+    data.operators["讯使"].rest_in_full = True
+    assert returns(data)[0].time == now + timedelta(hours=5)
+    data.get_dorm_by_name("讯使")[1].time = None
+    assert returns(data) == []
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_saved_return_respects_exclusion_and_explicit_full(
+    resting, monkeypatch, explicit
+):
+    solver, _ = resting
+    data = solver.op_data
+    config.conf.group_rest_in_full_on_mood_gap = True
+    task = returns(data)[0]
+    config.conf.group_mood_gap_exclusions = ["联动"]
+    data.operators["讯使"].rest_in_full = explicit
+    monkeypatch.setattr(solver, "_read_recovery_rooms", lambda rooms: None)
+    assert solver._verify_required_recovery(task) is not explicit

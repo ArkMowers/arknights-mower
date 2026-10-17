@@ -219,10 +219,11 @@ def test_group_mood_gap_full_rest_can_be_disabled(solver):
     assert config.conf.group_rest_in_full_on_mood_gap
     full_rest_time = group_return_time()
     config.conf.group_mood_gap_max_extra_wait_hours = 0.5
-    assert group_return_time() == full_rest_time
+    capped_time = now + timedelta(hours=2, minutes=22)
+    assert group_return_time() == capped_time
     config.conf.group_rest_in_full_on_mood_gap = False
     # 已触发的等待属于当前休息周期；新周期才使用关闭后的配置。
-    assert group_return_time() == full_rest_time
+    assert group_return_time() == capped_time
     data.commit_group_shifts({"联动": False})
     data.commit_group_shifts({"联动": True})
     earliest_time = group_return_time()
@@ -2357,7 +2358,7 @@ def test_group_recovery_spread_uses_extremes_and_configured_minutes(
     assert return_time() == normal
     config.conf.group_mood_gap_threshold_minutes = 60
     config.conf.group_mood_gap_max_extra_wait_hours = 0.5
-    assert return_time() == delayed
+    assert return_time() == normal + timedelta(minutes=30)
 
 
 def test_priority_reorder_keeps_named_group_cover_in_fixed_bed(solver):

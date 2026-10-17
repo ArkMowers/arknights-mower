@@ -68,7 +68,7 @@ export function planMowerMetadata(data:MowerSchedulingData,queue:MowerTaskQueue)
   if(high.length&&group){
    const baseTime=high[0]!.timeMicros,needEarly=!data.operators[high[0]!.name]!.exhaustRequire
    let maximumFull:number|undefined,moodGap=false
-   if(data.groupRestInFullOnMoodGap&&baseTime!==undefined&&!full.length)for(const bed of high.slice(1))if(bed.timeMicros!==undefined&&baseTime-bed.timeMicros>toMowerMicros(data.powerPlantCount===2?1.5:1)){maximumFull=baseTime;moodGap=true}
+   if(data.groupRestInFullOnMoodGap&&!data.groupMoodGapExclusions.includes(group)&&baseTime!==undefined&&!full.length)for(const bed of high.slice(1))if(bed.timeMicros!==undefined&&baseTime-bed.timeMicros>toMowerMicros(data.powerPlantCount===2?1.5:1)){maximumFull=baseTime;moodGap=true}
    if(full.length){const times=full.flatMap(b=>b.timeMicros===undefined?[]:[b.timeMicros]);maximumFull=times.length?Math.max(...times):undefined}
    const known=high.filter(b=>b.timeMicros!==undefined).sort((a,b)=>a.timeMicros!-b.timeMicros!),nearest=known[0]
    let time:number

@@ -11,6 +11,7 @@ import {MowerTask,MOWER_TASK_TYPES as T,type MowerTaskQueue,type MowerTaskPlan} 
 import type {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 
 export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTaskQueue,limited:MowerTask[]):void {
+ for(const group of actual.groupMoodGapExclusions){delete actual.groupRecoveryFullMembers[group];delete actual.groupRecoveryReturnMicros[group]}
  actual.refreshIdleDormSearch()
  const locked=queue.tasks.filter(t=>t.productShiftLocked),names=new Set(locked.flatMap(t=>[...t.productLockNames])),slots=new Set(locked.flatMap(t=>[...t.productLockSlots]))
  const groups=new Set([...names].map(n=>actual.operators[n]?.group??'').filter(Boolean)),existing:MowerReturnTargets={}
@@ -36,8 +37,8 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
   const high=priority.length?priority:ordinary.length?ordinary:beds.filter(b=>(!data.operators[b.name]!.multiGroup||data.operators[b.name]!.independentRest)&&data.operators[b.name]!.isHigh()&&!(group&&data.canStandby(data.operators[b.name]!)))
   if(group){
    const recovery=mowerGroupRecoveryDeadline(data,group)
-   if(data.groupRecoveryFullMembers[group]&&data.groupIsResting(group)&&actual.groupIsResting(group))actual.groupRecoveryFullMembers[group]=[...data.groupRecoveryFullMembers[group]!]
-   if(recovery.requiredNames.length){
+   if(data.groupRecoveryFullMembers[group]&&data.groupIsResting(group)&&actual.groupIsResting(group)){actual.groupRecoveryFullMembers[group]=[...data.groupRecoveryFullMembers[group]!];if(data.groupRecoveryReturnMicros[group]!==undefined)actual.groupRecoveryReturnMicros[group]=data.groupRecoveryReturnMicros[group]!}
+   if(recovery.requiredNames.length||recovery.timeMicros!==undefined){
     if(recovery.timeMicros!==undefined)add(recovery.timeMicros,high.length?high:beds.filter(b=>data.operators[b.name]!.isHigh()),true)
     continue
    }
@@ -52,10 +53,10 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
  for(const op of Object.values(data.operators)){
   if(!op.isHigh()||op.multiGroup&&(!op.independentRest||mowerRestingBindingGroups(data,op).length)||op.room.startsWith('dorm')||op.currentRoom||op.group&&data.canStandby(op))continue
   const recovery=op.group?mowerGroupRecoveryDeadline(data,op.group):undefined
-  const strict=!!recovery?.requiredNames.length
+  const strict=!!recovery?.requiredNames.length||recovery?.timeMicros!==undefined
   const recoveredPrimaryGroup=!!op.group&&data.groupRestInFullOnMoodGap&&data.groupIsResting(op.group)&&hasObservedFullMood(op)&&!op.moodIsPrediction
   if(!(recoveredPrimaryGroup||data.restMoodComplete(op.name)||op.independentRest&&hasRestingMood(op,now)&&op.currentMood(now)>=op.upperLimit||strict&&hasObservedFullMood(op)))continue
-  if(op.group&&data.groupRecoveryFullMembers[op.group]&&data.groupIsResting(op.group)&&actual.groupIsResting(op.group))actual.groupRecoveryFullMembers[op.group]=[...data.groupRecoveryFullMembers[op.group]!]
+  if(op.group&&data.groupRecoveryFullMembers[op.group]&&data.groupIsResting(op.group)&&actual.groupIsResting(op.group)){actual.groupRecoveryFullMembers[op.group]=[...data.groupRecoveryFullMembers[op.group]!];if(data.groupRecoveryReturnMicros[op.group]!==undefined)actual.groupRecoveryReturnMicros[op.group]=data.groupRecoveryReturnMicros[op.group]!}
   if(strict&&recovery!.timeMicros===undefined)continue
   const members=op.group?data.shiftGroupMembers(op.group).filter(name=>!data.operators[name]!.independentRest):[op.name]
   if(groups.has(op.group)||members.some(n=>returning.has(n)||names.has(n)||data.busyRestingNames.has(n)))continue

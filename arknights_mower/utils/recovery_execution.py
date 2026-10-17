@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 
+from arknights_mower.utils import config
 from arknights_mower.utils.group_recovery import (
     completed_mood_limit_release,
     group_recovery_deadline,
@@ -90,7 +91,7 @@ def required_recovery_members(data, task, *, now=None):
 
 
 def pending_recovery_observations(data, names, *, now, sampled_after=None):
-    """已实读且有未来恢复期限时，返回正常等待所依据的观测。"""
+    """已有恢复期限或本轮等待上限时，返回等待所依据的实读。"""
     observations = {}
     for name in names:
         op = data.operators.get(name)
@@ -105,12 +106,26 @@ def pending_recovery_observations(data, names, *, now, sampled_after=None):
         ):
             return None
         _, bed = data.get_dorm_by_name(name)
-        if (
-            bed is None
-            or bed.position != (op.current_room, op.current_index)
-            or bed.time is None
-            or bed.time <= now
-        ):
+        due = recovery_observation_deadline(data, name, now=now)
+        if bed is None or bed.position != (op.current_room, op.current_index):
+            return None
+        if due is None or due <= now:
             return None
         observations[name] = op.time_stamp
     return observations
+
+
+def recovery_observation_deadline(data, name, *, now):
+    """下一次核验不晚于已确认的组内等待上限，不延长原任务。"""
+    op = data.operators[name]
+    _, bed = data.get_dorm_by_name(name)
+    due = bed.time if bed is not None else None
+    if (
+        not op.rest_in_full
+        and config.conf.group_mood_gap_max_extra_wait_hours > 0
+        and name in getattr(data, "group_recovery_full_members", {}).get(op.group, [])
+    ):
+        _, group_due = group_recovery_deadline(data, op.group, now=now)
+        if group_due is not None:
+            due = min(due, group_due) if due is not None else group_due
+    return due
