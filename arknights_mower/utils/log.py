@@ -233,6 +233,28 @@ listener.start()
 # 抛 PermissionError [WinError 32]，且失败后该进程之后所有日志都会重复失败、全部丢失。
 # 因此文件日志交由主进程显式 init_file_logging() 建立，子进程不调用。
 fhlr = None
+_stderr_handler = None
+_stderr_handler_lock = Lock()
+
+
+def init_stderr_logging(stream=None) -> None:
+    """同步保存独立服务的诊断，不建立实例文件日志或读取配置。
+
+    服务工作进程可能通过 os._exit 退出，不能依赖异步队列完成输出。
+    调用方可以传入自己的 stderr；重复初始化复用同一个 handler。
+    """
+    global _stderr_handler
+    stream = sys.stderr if stream is None else stream
+    if stream is None:
+        return
+    with _stderr_handler_lock:
+        if _stderr_handler is None:
+            _stderr_handler = logging.StreamHandler(stream)
+            _stderr_handler.setFormatter(basic_formatter)
+            _stderr_handler.addFilter(filter)
+            logger.addHandler(_stderr_handler)
+        elif _stderr_handler.stream is not stream:
+            _stderr_handler.setStream(stream)
 
 
 def init_file_logging() -> None:
@@ -324,7 +346,7 @@ def close_mp_logging():
 
 def close_logging():
     """Release only mower's listeners and file handler, after other resources."""
-    global fhlr
+    global fhlr, _stderr_handler
     close_mp_logging()
     logger.removeHandler(queue_handler)
     if mp_queue_handler is not None:
@@ -334,6 +356,11 @@ def close_logging():
     if current is not None:
         logger.removeHandler(current)
         current.close()
+    with _stderr_handler_lock:
+        current, _stderr_handler = _stderr_handler, None
+        if current is not None:
+            logger.removeHandler(current)
+            current.close()
 
 
 _store_instance: ScreenshotStore | None = None

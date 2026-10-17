@@ -69,8 +69,10 @@ RECYCLE_DECISION_TIMEOUT = 30.0
 
 def _log(message):
     """诊断写协调进程 stderr；启动器已把它重定向到 service.log。"""
-    if sys.stderr is not None:
-        print(message, file=sys.stderr, flush=True)
+    from arknights_mower.utils.log import init_stderr_logging, logger
+
+    init_stderr_logging()
+    logger.warning("%s", message)
 
 
 class _Refusal(Exception):
@@ -216,10 +218,10 @@ def _serve(
             if completed >= max_requests:
                 # 先请求协调进程判定，收到 resume 后继续用当前工作进程服务；
                 # 只有协调进程完成替代登记后才发送授权并退出。
+                recycle_resumed.clear()
                 if not _notify(control, CONTROL_RECYCLE):
                     return
                 pending = True
-                recycle_resumed.clear()
                 decision_deadline = monotonic() + RECYCLE_DECISION_TIMEOUT
 
 
@@ -246,7 +248,7 @@ def _register(kind, state, model_directory, timeout=0.0):
         if timeout > 0 and kind == "ocr-service" and not announced:
             # 客户端先于协调进程耗尽启动子预算；把等待原因写进 service.log，
             # 客户端读取日志尾部时仍能区分"更新准备期"与普通启动失败。
-            print("共享 OCR 协调进程等待更新准入", file=sys.stderr, flush=True)
+            _log("共享 OCR 协调进程等待更新准入")
             announced = True
         if monotonic() >= deadline:
             raise RuntimeError("更新或进程操作期间不能启动共享 OCR") from None

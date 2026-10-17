@@ -163,6 +163,7 @@ def start_service(directory, deadline=None):
     environment = os.environ.copy()
     environment["MOWER_DATA_DIR"] = str(get_path("@app", space="").resolve())
     environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    environment["PYTHONIOENCODING"] = "utf-8"
     if deadline is not None:
         # 两个解释器共享同一系统单调时钟，协调进程据此限定注册等待预算。
         environment[SERVICE_DEADLINE_ENV] = repr(float(deadline))

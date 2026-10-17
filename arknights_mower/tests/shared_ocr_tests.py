@@ -3,7 +3,6 @@
 import multiprocessing as mp
 import os
 import select
-import shutil
 import signal
 import socket
 import sys
@@ -46,6 +45,31 @@ class RecordingEngine:
 
 def fake_engine():
     return RecordingEngine()
+
+
+def serve_with_late_update(directory):
+    """在回收获准后、替代工作进程登记前开始更新，确定性拒绝替代登记。"""
+    directory = Path(directory)
+    state = directory / "updates"
+    start_worker = ocr_service._start_worker
+
+    def start_after_update(*args, **kwargs):
+        if kwargs.get("wait_for_start"):
+            runtime.write_json(
+                state / "active/owner.json",
+                {"id": "fixture-update", "pid": os.getpid()},
+            )
+        return start_worker(*args, **kwargs)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(ocr_service, "_start_worker", start_after_update)
+        ocr_service.serve(
+            directory,
+            state_directory=state,
+            factory=fake_engine,
+            idle_timeout=10,
+            max_requests=1,
+        )
 
 
 def recording_factory():
@@ -896,8 +920,11 @@ def test_update_preparation_resumes_recycle_and_keeps_worker(tmp_path):
 
 def test_replacement_registration_failure_keeps_worker_and_endpoint(tmp_path):
     state = tmp_path / "updates"
-    instances = state / "instances"
-    with service(tmp_path, factory=fake_engine, idle=10, max_requests=1) as process:
+    process = mp.get_context("spawn").Process(
+        target=serve_with_late_update, args=(tmp_path,)
+    )
+    process.start()
+    try:
         try:
             wait_for(
                 lambda: (
@@ -906,11 +933,7 @@ def test_replacement_registration_failure_keeps_worker_and_endpoint(tmp_path):
                 ),
                 timeout=10,
             )
-            endpoint = read_endpoint(tmp_path)
-            # 登记目录变成普通文件后，替代工作进程无法发布登记；这与更新
-            # 准入拒绝替代登记等价：它会在 CONTROL_REGISTERED 之前退出。
-            shutil.rmtree(instances)
-            instances.write_text("fixture registration failure", encoding="utf-8")
+            endpoint = wait_for(lambda: read_endpoint(tmp_path))
             client = ocr_shared.SharedOCREngine(directory=tmp_path, timeout=10)
             first = client(np.zeros((1, 1), np.uint8))[0][0]
             # 交接失败后协调进程必须 resume 旧工作进程，而不是结束整代服务。
@@ -921,19 +944,61 @@ def test_replacement_registration_failure_keeps_worker_and_endpoint(tmp_path):
             assert read_endpoint(tmp_path) == endpoint
             assert endpoint["worker_pid"] == first[0]
             assert runtime.process_alive(first[0])
+            assert runtime.read_json(state / "active/owner.json")["pid"] == process.pid
+            # active owner 只在替代启动入口写入，证明本次经过登记失败后的
+            # 恢复分支，而不只是回收前就发现更新并跳过交接。
+            workers = [
+                record["pid"]
+                for record in runtime.instances(state)
+                if record["kind"] == "ocr-worker"
+            ]
+            assert workers == [first[0]]
         finally:
-            # 恢复目录让旧工作进程与协调进程重新发布登记，再走正常关闭路径。
-            if instances.is_file():
-                instances.unlink()
-                instances.mkdir()
-            wait_for(
-                lambda: (
-                    {record["kind"] for record in runtime.instances(state)}
-                    >= {"ocr-service", "ocr-worker"}
-                ),
-                timeout=20,
-            )
             shutdown_service(tmp_path, state)
+    finally:
+        close_process(process, os.getpid(), timeout=0.5)
+
+
+def test_immediate_recycle_resume_serves_the_next_request_without_waiting(monkeypatch):
+    from unittest.mock import MagicMock, Mock
+
+    granted, resumed = Event(), Event()
+    control = Mock()
+    requests = []
+
+    def decide(message):
+        if message == ocr_service.CONTROL_RECYCLE:
+            requests.append(message)
+            if len(requests) == 1:
+                # 控制线程可以在 send 返回前收到协调进程的决定。
+                resumed.set()
+            else:
+                granted.set()
+
+    control.send.side_effect = decide
+    listener = Mock()
+    listener.accept.side_effect = [(MagicMock(), None), (MagicMock(), None)]
+    monkeypatch.setattr(ocr_service, "_authenticate", lambda *args: None)
+    monkeypatch.setattr(
+        ocr_service,
+        "read_json",
+        lambda *args: {
+            "version": ocr_shared.VERSION,
+            "deadline": time.monotonic() + 5,
+            "shape": [1, 1],
+            "options": {},
+        },
+    )
+    monkeypatch.setattr(ocr_service, "receive", lambda *args: b"\0")
+    monkeypatch.setattr(ocr_service, "send_json", lambda *args: None)
+    monkeypatch.setattr(
+        ocr_service,
+        "sleep",
+        lambda seconds: pytest.fail("已收到 resume，不应再等待回收决定"),
+    )
+    ocr_service._serve(listener, control, "token", 5, fake_engine, 1, granted, resumed)
+    assert listener.accept.call_count == 2
+    assert len(requests) == 2
 
 
 def test_client_reports_server_refusal_text(tmp_path):
