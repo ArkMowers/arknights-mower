@@ -873,8 +873,8 @@ class BaseSolver:
                     logger.warning(f"RelaunchAnchor 导航第{attempt + 1}次失败，重试")
             raise Exception("无法找到指定的 RelaunchAnchor 模式")
 
-    def waiting_solver(self):
-        """需要等待的页面解决方法。触发超时重启会返回False"""
+    def waiting_solver(self, *, restart_on_timeout: bool = True):
+        """等待当前场景变化；超时返回 False，可由调用方禁止重启。"""
         scene = self.scene()
         sleep_time, wait_count = getattr(
             config.conf.waiting_scene, scene_list[str(scene)]["label"]
@@ -884,6 +884,8 @@ class BaseSolver:
             if self.scene() != scene:
                 return True
         logger.warning("相同场景等待超时")
+        if not restart_on_timeout:
+            return False
         self.device.exit()
         csleep(3)
         self.check_current_focus()

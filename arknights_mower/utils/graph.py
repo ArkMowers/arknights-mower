@@ -3,6 +3,7 @@ import functools
 import networkx as nx
 
 from arknights_mower.utils.csleep import MowerExit, csleep
+from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.application import RECOVERABLE_DEVICE_ERRORS
 from arknights_mower.utils.device.recovery import (
     DeviceRecoveryError,
@@ -520,7 +521,7 @@ class SceneGraphSolver(BaseSolver):
                     resume_navigation, retry_errors=RECOVERABLE_DEVICE_ERRORS
                 )
                 continue
-            except (MowerExit, DeviceRecoveryError):
+            except (MowerExit, DeviceRecoveryError, SharedADBError):
                 raise
             except Exception as e:
                 logger.exception(f"场景转移异常：{e}")

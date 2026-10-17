@@ -11,6 +11,7 @@ from arknights_mower.utils import config, graph
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device import recovery
+from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.device.screenshot_backend import ScreenshotFailure
 from arknights_mower.utils.device.touch_backend import TouchFailure
@@ -71,7 +72,10 @@ def test_persistent_transition_failure_stops_after_one_game_restart(navigation):
     solver.device.launch.assert_called_once_with()
 
 
-@pytest.mark.parametrize("failure", [MowerExit(), DeviceRecoveryError("exhausted")])
+@pytest.mark.parametrize(
+    "failure",
+    [MowerExit(), DeviceRecoveryError("exhausted"), SharedADBError("unavailable")],
+)
 def test_terminal_transition_failure_never_restarts_or_replays(navigation, failure):
     solver, _, transition = navigation
     transition.side_effect = failure

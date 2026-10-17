@@ -6,11 +6,12 @@ import re
 import unicodedata
 from datetime import datetime
 from decimal import Decimal
+from time import monotonic
 
 import cv2
 import numpy as np
 
-from arknights_mower.utils import depot, rapidocr, vision_np
+from arknights_mower.utils import config, depot, rapidocr, vision_np
 from arknights_mower.utils.graph import SceneGraphSolver
 
 from .. import __rootdir__
@@ -75,6 +76,14 @@ def 切图(圆心x坐标, 圆心y坐标, 拼接结果, 正方形边长=130):
                 正方形切 = 正方形[26:239, 26:239]
                 图片.append([正方形切, 正方形灰, id])
     return 图片
+
+
+class _DepotGameRestarted(Exception):
+    pass
+
+
+class _DepotRecoveryExhausted(Exception):
+    pass
 
 
 class depotREC(SceneGraphSolver):
@@ -184,8 +193,51 @@ class depotREC(SceneGraphSolver):
 
     def run(self) -> bool:
         logger.info("Start: 仓库扫描")
+        self._game_restart_used = False
         self.check_current_focus()
-        return self.transition()
+        for _ in range(2):
+            try:
+                return self.transition()
+            except _DepotGameRestarted:
+                self.结果字典 = {}
+                logger.info("仓库扫描: 游戏已重启，完成登录后重新进入仓库完整扫描")
+            except _DepotRecoveryExhausted:
+                self.结果字典 = {}
+                logger.warning("仓库扫描: 游戏恢复后仍未就绪，本次扫描失败")
+                return False
+        return False
+
+    def waiting_solver(self):
+        restart_allowed = not self._game_restart_used
+        if super().waiting_solver(restart_on_timeout=restart_allowed):
+            return True
+        if not restart_allowed:
+            raise _DepotRecoveryExhausted
+        self._game_restart_used = True
+        raise _DepotGameRestarted
+
+    def restart_game(self):
+        if self._game_restart_used:
+            raise _DepotRecoveryExhausted
+        super().restart_game()
+        self._game_restart_used = True
+        raise _DepotGameRestarted
+
+    def back_to_index(self):
+        # 在识别器的同场景重启之前结束无进展的登录导航。
+        timeout = min(120, config.conf.run_order_delay * 90)
+        self._navigation_deadline = monotonic() + timeout
+        try:
+            self.recog.reset_after_external_control()
+            super().back_to_index()
+        finally:
+            self._navigation_deadline = None
+
+    def scene(self) -> int:
+        deadline = getattr(self, "_navigation_deadline", None)
+        if deadline is not None and monotonic() >= deadline:
+            raise _DepotRecoveryExhausted
+        return super().scene()
 
     def _wait_for_depot_ready(self) -> bool:
         if not self.wait_for_scene_stable(Scene.DEPOT):
