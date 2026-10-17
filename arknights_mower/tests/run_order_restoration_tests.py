@@ -13,6 +13,7 @@ from arknights_mower.tests.emergency_compensation_tests import selection_harness
 from arknights_mower.tests.mass_mood_recovery_tests import COVERS, NOW, PRIMARY
 from arknights_mower.tests.mass_mood_recovery_tests import solver as solver
 from arknights_mower.utils import config, scheduler_task
+from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.plan import Room
 from arknights_mower.utils.recognize import Scene
@@ -55,6 +56,29 @@ def assert_pending_restoration(task):
     assert task.plan == {ROOM: ORIGINAL}
     assert task.run_order_original_roster == {ROOM: ORIGINAL}
     assert task.run_order_restore_pending
+
+
+@pytest.mark.parametrize("start_minutes,expected_minutes", [(8, 8), (2, 5)])
+def test_daily_reset_uses_drones_and_restores_original_roster(
+    solver, monkeypatch, start_minutes, expected_minutes
+):
+    task, _ = prepare_order(solver, monkeypatch, buffer=30, adjusted=False)
+    config.conf.run_order_delay = 5
+    reset = NewsChecker.get_daily_reset(NOW).start
+    task.time = reset - timedelta(minutes=start_minutes)
+
+    scheduler_task.scheduling(solver.tasks, time_now=reset - timedelta(hours=1))
+    assert task.time == reset - timedelta(minutes=expected_minutes)
+    assert task.adjusted
+
+    solver.agent_arrange(task.plan)
+
+    solver.drone.assert_called_once_with(ROOM, not_customize=True)
+    solver.sleep.assert_not_called()
+    assert solver.op_data.get_current_room(ROOM, True) == ORIGINAL
+    assert task.plan == {}
+    assert not getattr(task, "run_order_restore_pending", False)
+    assert not hasattr(task, "run_order_original_roster")
 
 
 @pytest.mark.parametrize("original", [["", ""], [COVERS[0], ""]])
