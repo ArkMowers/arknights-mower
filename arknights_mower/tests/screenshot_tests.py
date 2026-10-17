@@ -1100,6 +1100,122 @@ class ScreenshotTests(unittest.TestCase):
         self.assertEqual((self.root / filename).read_bytes(), b"last frame")
         self.assertTrue(all(not thread.is_alive() for thread in self.store._threads))
 
+    def test_archive_buffer_matches_queued_references_and_releases_to_zero(self):
+        """预算计数等于排队任务的引用；删除、重复删除和关闭后归零且不为负。"""
+        self.retention = 0
+        self.limit_store(max_recent_bytes=1024)
+        store = self.store
+        store.submit(b"a" * 16)
+        store.submit(b"b" * 16)
+        archive_id = store.mark_error(time.time_ns(), "画面异常")
+        self.assertEqual(store.stats()["archive_buffer_bytes"], 32)
+        with store._ready:
+            store._assert_archive_buffer_locked()
+
+        archive = self.root / "errors" / archive_id
+        archive.mkdir(parents=True)
+        (archive / "event.json").write_text("{}", encoding="utf-8")
+        self.assertTrue(store.delete_error_archive(archive_id))
+        self.assertEqual(store.stats()["archive_buffer_bytes"], 0)
+        self.assertFalse(store.delete_error_archive(archive_id))
+        self.assertEqual(store.stats()["archive_buffer_bytes"], 0)
+        with store._ready:
+            store._assert_archive_buffer_locked()
+
+        store.submit(b"c" * 16)
+        store.mark_error(time.time_ns(), "再次失败")
+        self.assertEqual(store.stats()["archive_buffer_bytes"], 48)
+        with store._ready:
+            store._assert_archive_buffer_locked()
+        store.close(timeout=0)
+        self.assertEqual(store.stats()["archive_buffer_bytes"], 0)
+        store.close(timeout=0)
+        self.assertEqual(store.stats()["archive_buffer_bytes"], 0)
+        with store._ready:
+            store._assert_archive_buffer_locked()
+
+    def test_archive_buffer_is_released_when_archive_worker_fails(self):
+        """归档线程处理失败后释放预留，计数归零且不为负。"""
+        self.retention = 0
+        self.limit_store(max_recent_bytes=1024)
+        store = self.store
+        store.submit(b"frame")
+        store.mark_error(time.time_ns(), "运行失败")
+        self.assertEqual(store.stats()["archive_buffer_bytes"], 5)
+        worker = Thread(target=store._archiver, daemon=True)
+        with patch.object(store, "_archive_frame", side_effect=OSError("磁盘不可用")):
+            worker.start()
+            deadline = time.monotonic() + 3
+            while store.stats()["archive_buffer_bytes"] and time.monotonic() < deadline:
+                Event().wait(0.01)
+            self.assertEqual(store.stats()["archive_buffer_bytes"], 0)
+            self.assertEqual(store.stats()["archive_buffer_dropped"], 0)
+        store.close(timeout=0)
+        worker.join(3)
+        self.assertFalse(worker.is_alive())
+        with store._ready:
+            store._assert_archive_buffer_locked()
+
+    def test_archive_buffer_cap_omits_new_context_but_keeps_error_task(self):
+        """超出预算时只省略新任务的缓存画面，错误记录仍入队。"""
+        self.retention = 0
+        now = [10**18]
+        self.limit_store(max_recent_bytes=20, wall_time_ns=lambda: now[0])
+        store = self.store
+        store.submit(b"a" * 10)
+        now[0] += 10**9
+        store.submit(b"b" * 10)
+        now[0] += 10**9
+        first = store.mark_error(now[0], "首次失败")
+        self.assertEqual(store.stats()["archive_buffer_bytes"], 20)
+        self.assertEqual(len(store._archive_queue[0][5]), 2)
+        now[0] += 10**9
+        store.submit(b"c" * 10)
+        # 更早的错误记录不与首次窗口合并，单独成为一个任务。
+        second = store.mark_error(now[0] - 2 * 10**9, "第二次失败")
+        self.assertNotEqual(first, second)
+        self.assertEqual(store.stats()["archive_buffer_bytes"], 20)
+        self.assertEqual(store.stats()["archive_buffer_dropped"], 2)
+        self.assertEqual(len(store._archive_queue), 2)
+        self.assertEqual(len(store._archive_queue[1][5]), 0)
+        self.assertEqual(store._archive_queue[1][3], "第二次失败")
+        with store._ready:
+            store._assert_archive_buffer_locked()
+
+    def test_shared_frame_counts_once_per_omitting_task(self):
+        """dropped 按任务引用计数：共享帧被两个任务省略时各计一次。"""
+        self.retention = 0
+        base = 10**18
+        now = [base]
+        self.limit_store(max_recent_bytes=40, wall_time_ns=lambda: now[0])
+        store = self.store
+        for offset_seconds in (-60, 0, 60, 120):
+            now[0] = base + offset_seconds * 10**9
+            store.submit(b"f" * 10)
+        self.assertEqual(len(store._recent_frames), 4)
+        first = store.mark_error(base + 100 * 10**9, "第一个错误")
+        second = store.mark_error(base + 80 * 10**9, "第二个错误")
+        third = store.mark_error(base + 60 * 10**9, "第三个错误")
+        self.assertEqual(first, str(base + 100 * 10**9))
+        self.assertNotEqual(second, first)
+        self.assertNotEqual(third, first)
+        # 三个任务都能看到同样的四帧；只保留了第一个任务的引用。
+        self.assertEqual([len(task[5]) for task in store._archive_queue], [4, 0, 0])
+        self.assertEqual(
+            [frame.captured_ns for frame in store._archive_queue[0][5]],
+            [
+                base - 60 * 10**9,
+                base,
+                base + 60 * 10**9,
+                base + 120 * 10**9,
+            ],
+        )
+        self.assertEqual(store.stats()["archive_buffer_bytes"], 40)
+        # 两个被省略的任务各计四条引用，共享帧按任务重复计为 8；去重口径会是 4。
+        self.assertEqual(store.stats()["archive_buffer_dropped"], 8)
+        with store._ready:
+            store._assert_archive_buffer_locked()
+
 
 class ScreenshotMaintenanceTests(unittest.TestCase):
     def setUp(self):

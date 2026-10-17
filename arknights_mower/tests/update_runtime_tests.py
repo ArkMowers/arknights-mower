@@ -321,6 +321,43 @@ class InstanceScanTests(unittest.TestCase):
         self.assertTrue(self.path.exists())
 
 
+class OcrWorkerScanCleanupTests(unittest.TestCase):
+    """A dead model worker leaves registration and shutdown request to clean."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix="mower ocr worker ")
+        self.addCleanup(temporary.cleanup)
+        self.state = Path(temporary.name)
+        (self.state / "instances").mkdir()
+        self.requests = self.state / "shutdown"
+
+    def register(self, record):
+        runtime.write_json(self.state / "instances" / f"{record['id']}.json", record)
+        runtime.write_json(self.requests / f"{record['id']}.json", {})
+
+    def test_dead_worker_removes_registration_and_shutdown_request(self):
+        record = {"id": "worker", "pid": 2**31 - 1, "kind": "ocr-worker"}
+        self.register(record)
+        with patch.object(runtime, "process_alive", return_value=False):
+            self.assertEqual(runtime.instances(self.state), [])
+        self.assertFalse((self.state / "instances/worker.json").exists())
+        self.assertFalse((self.requests / "worker.json").exists())
+
+    def test_dead_other_kind_keeps_its_shutdown_request(self):
+        record = {"id": "instance", "pid": 2**31 - 1, "kind": "instance"}
+        self.register(record)
+        with patch.object(runtime, "process_alive", return_value=False):
+            self.assertEqual(runtime.instances(self.state), [])
+        self.assertTrue((self.requests / "instance.json").exists())
+
+    def test_live_worker_keeps_pending_shutdown_request(self):
+        # A concurrent scan must not cancel the request update shutdown waits on.
+        record = {"id": "worker", "pid": os.getpid(), "kind": "ocr-worker"}
+        self.register(record)
+        self.assertEqual(runtime.instances(self.state), [record])
+        self.assertTrue((self.requests / "worker.json").exists())
+
+
 @contextmanager
 def windows_read_handle(path):
     """Hold a real Windows handle which allows reads but denies replacement."""
