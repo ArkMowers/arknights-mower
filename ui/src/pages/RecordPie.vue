@@ -169,7 +169,7 @@ async function clearData() {
       data: { date_time: selectedTime.value }
     })
     alert('数据已清除')
-    reportData.value = await getMoodRatios()
+    reportData.value = await getMoodRatios({ includeWorkRest: false })
   } catch {
     alert('清除数据失败；若当前为只读验收页面，请先返回主界面确认操作权限。')
   } finally {
@@ -180,7 +180,7 @@ async function clearData() {
 onMounted(async () => {
   board.load()
   try {
-    reportData.value = await getMoodRatios()
+    reportData.value = await getMoodRatios({ includeWorkRest: false })
   } catch {
     loadError.value = '工休比数据读取失败，请检查本地 Mower 后端。'
   }
