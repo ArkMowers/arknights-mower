@@ -496,6 +496,8 @@ def main_runtime(monkeypatch):
     runtime.op_data.recall_recovery_rates = {}
     runtime.op_data.group_shift_state = {}
     runtime.op_data.group_recovery_full_members = {}
+    runtime.op_data.group_recovery_return_time = {}
+    runtime.op_data.urgent_recovery_supporters = {}
     runtime.op_data.idle_dorm_search_exhausted = False
     runtime.op_data.idle_dorm_search_stopped_at = None
     runtime.op_data.party_time = None

@@ -62,16 +62,20 @@ def test_crash_restores_one_child_after_backoff_and_removes_auto_resume(
     assert not list(directory.glob("child-*.json"))
 
 
-@pytest.mark.parametrize("mode, active", [("1", True), ("2", True), ("2", False)])
+@pytest.mark.parametrize(
+    "mode, active, pending_reset",
+    [("1", True, False), ("2", True, False), ("2", False, False), ("2", False, True)],
+)
 def test_crash_preserves_requested_start_mode_only_during_pending_recovery(
-    isolated_runtime, mode, active
+    isolated_runtime, mode, active, pending_reset
 ):
     directory = isolated_runtime
     command = child_script(
         directory,
         "if len(events) == 1:\n"
         f" runtime.write_json(Path({str(directory / 'recovery.json')!r}), "
-        f"{{'active': {active!r}, 'start_type': {mode!r}, 'resume_requested': True}})\n"
+        f"{{'active': {active!r}, 'start_type': {mode!r}, "
+        f"'reset_observation_pending': {pending_reset!r}, 'resume_requested': True}})\n"
         " os._exit(23)\n"
         "child_exit('window')\n",
     )
@@ -80,7 +84,7 @@ def test_crash_preserves_requested_start_mode_only_during_pending_recovery(
         == 0
     )
     notice = runtime.read_json(directory / "recovery.json")
-    assert notice.get("start_type", "0") == (mode if active else "0")
+    assert notice.get("start_type", "0") == (mode if active or pending_reset else "0")
 
 
 @pytest.mark.parametrize(

@@ -68,7 +68,7 @@ function tokenize(text: string): Token[] {
   return tokens
 }
 
-export function compileBackupExpression(source: unknown, participants: Set<string>): { evaluate: Expression; usesCurrentMood: boolean; usesMajorMaintenance: boolean; usesMasteryPlan: boolean; usesInventory: boolean; usesFacilityProduct: boolean; skipped?: string } {
+export function compileBackupExpression(source: unknown, participants: Set<string>): { evaluate: Expression; usesCurrentMood: boolean; usesMajorMaintenance: boolean; usesMasteryPlan: boolean; usesInventory: boolean; usesFacilityProduct: boolean; observedOperatorDependenciesOnly: boolean; skipped?: string } {
   const tokens = tokenize(serialize(source))
   let cursor = 0, nesting = 0
   const peek = () => tokens[cursor]?.text
@@ -242,6 +242,7 @@ export function compileBackupExpression(source: unknown, participants: Set<strin
   const usesMajorMaintenance = tokens.some(token => token.kind === 'external' && token.text === 'op_data.major_maintenance_remaining_hours()')
   return {
     evaluate, usesMajorMaintenance,
+    observedOperatorDependenciesOnly:tokens.some(token=>token.kind==='worker')&&tokens.every(token=>token.kind==='operator'||token.kind==='value'||token.kind==='worker'&&['is_working()','is_resting()','current_room','current_index','room','index','current_mood()','mood'].includes(token.member!)),
     usesInventory: tokens.some(token=>token.kind==='query'&&token.member==='inventory_count'),
     usesFacilityProduct: tokens.some(token=>token.kind==='query'&&['facility_product','facility_product_count','facility_product_type_count'].includes(token.member!)),
     usesMasteryPlan: tokens.some(token=>token.kind==='query'&&token.member==='facility_has_mastery_plan'),

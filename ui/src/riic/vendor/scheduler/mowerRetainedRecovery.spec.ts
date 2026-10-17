@@ -78,6 +78,12 @@ describe('failed incidental dorm moves release normal recovered-group returns',(
   expect(task.plan).toEqual({room_1_1:['X'],dormitory_1:['Current','Current','A','Current','Current']})
   expect(task.executionFailure).toBeUndefined()
  })
+ it('keeps a started arrangement protected after its process lock is released',()=>{
+  const {data,queue,task}=fixture()
+  task.arrangementStarted=true
+  planMowerMetadata(data,queue)
+  expect(returned(queue.tasks)).toBeUndefined()
+ })
  it('removes a blocked group’s Free clear step for a shared follower whose current group differs',()=>{
   const {state,data,task}=fixture(),follower=data.operators.S!
   follower.group='c';follower.groupBindings=[{group:'b',replacement:['Z']},{group:'c',replacement:['Z']}]

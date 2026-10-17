@@ -40,7 +40,7 @@ export function preserveMowerBackupReplacements(data: MowerSchedulingData, plan:
       if (cover.currentRoom === position[0] && cover.currentIndex === position[1] && !assigned.has(candidate)) { options[name]!.push(candidate); continue }
       if (reserved.has(candidate) || owners.has(candidate) || isTradeRunOrderOperator(candidate) || data.excludedCandidates.has(candidate) || data.busyRestingNames.has(candidate)
         || cover.isHigh() && (!mowerSameGroupPrimaryReplacement(data, owner, candidate) || cover.currentRoom === cover.room && cover.currentIndex === cover.index)
-        || data.replacementExhausted(candidate) || cover.restInFull && cover.isResting() && cover.currentMood(data.nowMicros) < cover.upperLimit) continue
+        || data.replacementExhausted(candidate,owner) || cover.restInFull && cover.isResting() && cover.currentMood(data.nowMicros) < cover.upperLimit) continue
       if (!movable.has(key(cover.currentRoom, cover.currentIndex)) && (data.dormReplacementForSlot(candidate, cover.currentRoom, cover.currentIndex) || cover.currentRoom && !cover.isResting())) continue
       if (beds.has(key(...position)) && beds.get(key(...position)) !== candidate) continue
       options[name]!.push(candidate)

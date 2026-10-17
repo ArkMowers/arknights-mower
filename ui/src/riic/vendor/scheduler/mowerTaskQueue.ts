@@ -31,12 +31,22 @@ export class MowerTask {
  observedOrderDueMicros?:number;wakeOnlyCompletion=false
  executionFailure?:{reason:string;rooms:string[];snapshot:MowerTaskFailureSnapshot}
  executionRetained=false
+ /** Only observation-derived corrections may be rebuilt before physical execution. */
+ derivedCorrection=false
+ correctionSkipDorm=false
  get retainsExecution():boolean{return !!this.executionFailure||this.executionRetained}
+ previewReturnVeto?:{conditions:number[];names:string[]}
  groupShiftTransitions:Record<string,boolean>={}
+ /** Once room execution begins, remaining rooms retain the confirmed shift intent. */
+ arrangementStarted=false
  productShiftLocked=false
  ordinaryCoordination=false
  exhaustSupport=false
  coordinationRequestNames:string[]=[]
+ urgentRecoveryRequestNames:string[]=[]
+ urgentRecoverySupportNames:string[]=[]
+ urgentRecoveryReservedNames:string[]=[]
+ urgentRecoveryReservedSlots:string[]=[]
  preferredReplacementRestore=false
  coordinationDependencyWait=false
  /** A complete physical arrangement must finish before backup/return replanning. */

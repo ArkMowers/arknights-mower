@@ -10,6 +10,7 @@ import pytest
 
 from arknights_mower.solvers import base_schedule as base
 from arknights_mower.tests import shift_backup_convergence_tests as backup
+from arknights_mower.tests.local_backup_replay_tests import assert_only_stale_mood_reads
 from arknights_mower.utils import config, operators, scheduler_task
 from arknights_mower.utils.config.plan import PlanModel
 from arknights_mower.utils.operators import Operator, Operators, build_global_plan
@@ -175,8 +176,7 @@ def test_logged_return_and_automation_rest_converge_in_one_plan(
     )
     assert solver.op_data.plan_condition[5]
     assert solver.op_data.plan_condition[1] is (not calibrated)
-    correction = solver.agent_get_mood(read_rooms=False, return_plan=True)
-    assert not correction
+    assert_only_stale_mood_reads(solver)
     next_task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF)
     solver._prepare_shift_cycle(next_task)
     assert not next_task.plan

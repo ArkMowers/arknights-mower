@@ -1,5 +1,6 @@
 """用尽下班的替班协调：先换替班，再整组回班，所有安排先在缓存中验证。"""
 
+from collections import deque
 from copy import deepcopy
 from datetime import datetime
 
@@ -55,6 +56,52 @@ def plan_exhaust_support(
     reserved_slots=(),
     *,
     urgent=False,
+    recall_blocked=False,
+):
+    """先保留既有换替班方案，再联合召回实际阻塞的休息组。"""
+    pending, visited = deque([()]), {()}
+    while pending:
+        seeds, dependencies = pending.popleft(), set()
+        result = _plan_exhaust_support_attempt(
+            op_data,
+            candidates,
+            can_rest,
+            is_busy,
+            protected,
+            fia,
+            reserved_slots,
+            urgent=urgent,
+            recall_blocked=recall_blocked,
+            seeds=seeds,
+            dependency=dependencies.add,
+        )
+        if result is not None:
+            return result
+        if not urgent or recall_blocked:
+            return None
+        for name in sorted(dependencies):
+            if name in seeds:
+                continue
+            updated = tuple(sorted((*seeds, name)))
+            if updated not in visited:
+                visited.add(updated)
+                pending.append(updated)
+    return None
+
+
+def _plan_exhaust_support_attempt(
+    op_data,
+    candidates,
+    can_rest,
+    is_busy,
+    protected=(),
+    fia=(),
+    reserved_slots=(),
+    *,
+    urgent=False,
+    recall_blocked=False,
+    seeds=(),
+    dependency=lambda name: None,
 ):
     """返回能让用尽组取得替班和床位的前置安排；失败不改变真实状态。"""
     protected = set(protected) | set(op_data.reserved_product_replacements)
@@ -76,6 +123,86 @@ def plan_exhaust_support(
     selected = set()
     data = op_data.project_arrangements([plan])
 
+    request_groups = {
+        op_data.operators[name].group
+        for name in candidates
+        if op_data.operators[name].group
+        and op_data.is_group_shift_anchor(op_data.operators[name])
+    }
+    transitions = dict.fromkeys(request_groups, True)
+
+    def covers(state, worker):
+        replacement = (
+            state.shared_replacements(
+                worker,
+                state.resting_binding_groups(
+                    worker, transitions if worker.name in required else None
+                ),
+            )
+            if worker.multi_group
+            else worker.replacement
+        )
+        return state.replacement_candidates(worker, replacement_override=replacement)
+
+    def depend_on(state, worker, group=None):
+        if worker is None:
+            return
+        group = worker.group if group is None else group
+        if group:
+            if group in request_groups or not state.group_is_resting(group):
+                return
+            anchor = next(
+                (
+                    name
+                    for name in state.shift_group_members(group)
+                    if state.is_group_shift_anchor(state.operators[name])
+                    and state.operators[name].is_resting()
+                ),
+                None,
+            )
+            if anchor is not None:
+                dependency(anchor)
+        elif worker.is_high() and worker.is_resting() and worker.name not in required:
+            dependency(worker.name)
+
+    def shared_dependencies(state, trial):
+        changes = state.arrangement_group_transitions(trial)
+        for worker in state.operators.values():
+            if worker.multi_group:
+                groups = state.resting_binding_groups(worker, changes)
+                if not state.shared_replacements(worker, groups):
+                    for group in groups:
+                        depend_on(state, worker, group)
+
+    def replacement_dependencies(state, worker):
+        groups = (
+            state.resting_binding_groups(worker, transitions)
+            if worker.multi_group
+            else [worker.group]
+        )
+        if worker.multi_group:
+            for group in groups:
+                depend_on(state, worker, group)
+        names = (
+            {
+                cover
+                for group in groups
+                for cover in worker.replacements_for_group(group)
+            }
+            if worker.multi_group
+            else set(worker.replacement)
+        )
+        for name in names:
+            cover = state.operators.get(name)
+            if cover is None or not cover.current_room:
+                continue
+            slots = state.plan.get(cover.current_room, [])
+            if not 0 <= cover.current_index < len(slots):
+                continue
+            owner = state.operators.get(slots[cover.current_index].agent)
+            if owner is not None and owner.name != name and not owner.is_working():
+                depend_on(state, owner)
+
     def eligible(state, name, target):
         op = state.operators.get(name)
         return (
@@ -90,7 +217,10 @@ def plan_exhaust_support(
                 name not in required
                 or state.is_same_group_primary_replacement(target, name)
             )
-            and not state.is_dorm_replacement(name)
+            and (
+                not state.is_dorm_replacement(name)
+                or (op.current_room, op.current_index) == (target.room, target.index)
+            )
             and not state.replacement_exhausted(name, operator=target)
             and not is_busy(name)
         )
@@ -106,6 +236,10 @@ def plan_exhaust_support(
         )
 
     def protected_rest(state, name):
+        from arknights_mower.utils.urgent_recovery import active_urgent_recovery
+
+        if name in active_urgent_recovery(state):
+            return True
         from arknights_mower.utils.group_recovery import group_recovery_deadline
         from arknights_mower.utils.recovery_execution import (
             recovery_ready_for_arrangement,
@@ -135,13 +269,42 @@ def plan_exhaust_support(
             )
         return False
 
-    def recall(state, previous, name):
-        op = state.operators[name]
-        members = set(state.groups[op.group]) if op.group else {name}
-        if members & (required | protected) or any(
-            is_busy(member) or protected_rest(state, member) for member in members
-        ):
+    def recall(state, previous, names):
+        if recall_blocked:
             return None
+        names = [names] if isinstance(names, str) else names
+        transitions = state.arrangement_group_transitions(previous)
+        for name in names:
+            if state.operators[name].group:
+                transitions[state.operators[name].group] = False
+        members = {
+            member
+            for name in names
+            for op in [state.operators[name]]
+            for member in (state.shift_group_members(op.group) if op.group else [name])
+            if not state.operators[member].multi_group
+            or not state.resting_binding_groups(state.operators[member], transitions)
+        }
+        required_anchors = {
+            member
+            for member in required
+            if not (
+                state.operators[member].multi_group
+                and (
+                    not state.operators[member].independent_rest
+                    or state._can_standby(state.operators[member])
+                    and not state.operators[member].current_room
+                )
+                and any(
+                    state.is_group_shift_anchor(state.operators[other])
+                    and any(
+                        binding["group"] == state.operators[other].group
+                        for binding in state.operators[member].group_bindings
+                    )
+                    for other in required - {member}
+                )
+            )
+        }
         trial = deepcopy(previous)
         for member in members:
             worker = state.operators[member]
@@ -165,11 +328,53 @@ def plan_exhaust_support(
                 trial.setdefault(
                     worker.room, ["Current"] * len(state.plan[worker.room])
                 )[worker.index] = member
+        if not state.normalize_shared_arrangement(
+            trial, transitions, reserved_replacements=protected
+        ):
+            shared_dependencies(state, trial)
+            return None
+
+        def actual_returns():
+            return {
+                worker.name
+                for worker in state.operators.values()
+                if worker.is_high()
+                and trial.get(worker.room, [])[worker.index : worker.index + 1]
+                == [worker.name]
+                and (worker.current_room, worker.current_index)
+                != (worker.room, worker.index)
+            }
+
+        members = actual_returns()
+        if members & (required_anchors | protected) or any(
+            is_busy(member) or protected_rest(state, member) for member in members
+        ):
+            return None
         # 绑组宿舍回班可能关闭临时床位，复用已有迁移逻辑，不能挤丢入住者。
         simulation = state.project_arrangements([])
-        recalled = rebalance_closing_dorm_slots(simulation, trial, members)
-        if recalled & (required | protected) or any(
-            is_busy(member) or protected_rest(state, member) for member in recalled
+        rebalance_closing_dorm_slots(simulation, trial, members)
+        if not state.normalize_shared_arrangement(
+            trial, reserved_replacements=protected
+        ):
+            shared_dependencies(state, trial)
+            return None
+        recalled = actual_returns()
+        moved = {
+            member
+            for room, row in trial.items()
+            for index, member in enumerate(row)
+            if member in state.operators
+            and (
+                state.operators[member].current_room,
+                state.operators[member].current_index,
+            )
+            != (room, index)
+        }
+        if (
+            recalled & moved & required_anchors
+            or moved & protected
+            or any(is_busy(member) for member in moved)
+            or any(protected_rest(state, member) for member in recalled & moved)
         ):
             return None
         projected = op_data.project_arrangements([trial])
@@ -182,6 +387,12 @@ def plan_exhaust_support(
         ):
             return None
         return trial, projected
+
+    if seeds:
+        seeded = recall(data, plan, seeds)
+        if seeded is None:
+            return None
+        plan, data = seeded
 
     # 与普通下班一致的组内顺序；宿舍固定成员最后处理。
     ordered = sorted(
@@ -199,7 +410,7 @@ def plan_exhaust_support(
         options = {
             name: [
                 cover
-                for cover in data.replacement_candidates(data.operators[name])
+                for cover in covers(data, data.operators[name])
                 if available(data, cover, data.operators[name])
             ]
             for name in ordered
@@ -215,10 +426,10 @@ def plan_exhaust_support(
         worker = data.operators[name]
         if data.is_auto_free_dorm_operator(worker) or name in matching:
             continue
-        covers = data.replacement_candidates(worker)
+        worker_covers = covers(data, worker)
         # 只协调正在给其他主班顶岗的替班，不能搬走原岗位主班或训练干员。
         occupied = []
-        for cover in covers:
+        for cover in worker_covers:
             if not eligible(data, cover, worker):
                 continue
             op = data.operators[cover]
@@ -242,7 +453,7 @@ def plan_exhaust_support(
             alternate = next(
                 (
                     other
-                    for other in data.replacement_candidates(owner)
+                    for other in covers(data, owner)
                     if other not in cover_names and available(data, other, owner)
                 ),
                 None,
@@ -267,11 +478,15 @@ def plan_exhaust_support(
                 resolved = True
                 break
         if not resolved:
+            replacement_dependencies(data, worker)
             return None
         matching = free_matching()
         if name not in matching:
+            replacement_dependencies(data, worker)
             return None
     if free_matching(allow_partial=False) is None:
+        for name in ordered:
+            replacement_dependencies(data, data.operators[name])
         return None
     if can_rest(data):
         return plan
@@ -287,6 +502,7 @@ def plan_exhaust_support(
     )
     for bed in beds:
         op = data.operators.get(bed.name)
+        depend_on(data, op)
         if (
             op is None
             or not op.is_high()

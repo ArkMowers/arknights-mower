@@ -104,6 +104,22 @@ describe('ordinary departure honors exhaustion enabled inside the full preview',
   expect(projected.operators.Y!.currentIndex).toBe(4)
   expect(task.plan.dormitory_1?.[4]).not.toBe('Free')
  })
+ it.each([false,true])('keeps unrelated pending or failed group requests out of a personal departure, retained=%s',retained=>{
+  const {data,model,planA,ordinary}=fixture(),queue=new MowerTaskQueue()
+  data.plan.room_1_3=['F']
+  data.operators.F=new MowerOperatorState({name:'F',room:'room_1_3',index:0,currentRoom:'room_1_3',currentIndex:0,mood:4,timeStampMicros:0,operatorType:'high',groupBindings:[{group:'',replacement:['R']},{group:'b',replacement:['R']}]})
+  data.operators.R=new MowerOperatorState({name:'R',mood:24,timeStampMicros:0})
+  const task=ordinary(planA,['A']),waiting=ordinary({},['B'])
+  waiting.type=T.EXHAUST_OFF
+  if(retained)waiting.executionRetained=true
+  queue.tasks=[task,waiting]
+  prepareMowerShiftCycle(data,task,queue,model)
+  const projected=projectMowerArrangements(data,[task.plan])
+  expect(projected.operators.F!.isResting()).toBe(true)
+  expect(projected.operators.B!.currentRoom).toBe('room_1_2')
+  expect(task.coordinationRequestNames).not.toContain('B')
+  expect(queue.tasks).toContain(waiting);expect(waiting.plan).toEqual({})
+ })
  it('preserves genuine exhaustion and a departure already in progress',()=>{
   for(const started of [false,true]){
    const {data,model,planA,planB,ordinary}=fixture(),observed=projectMowerArrangements(data,[planA]),task=ordinary(planB,['B']),queue=new MowerTaskQueue()

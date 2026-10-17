@@ -3476,6 +3476,25 @@ class SchedulerTask:
 
     @property
     def display_name(self):
+        if self.type == TaskTypes.SELF_CORRECTION and getattr(
+            self, "exhaust_support", False
+        ):
+            return "替班交接"
+        if self.type == TaskTypes.REFRESH_TIME:
+            rooms = getattr(self, "recovery_observation_rooms", None)
+            if rooms:
+                targets = getattr(self, "recovery_observation_targets", {})
+                descriptions = []
+                for room in sorted(rooms):
+                    label = room.replace("dormitory_", "宿舍")
+                    names = sorted(
+                        name for name, target in targets.items() if target == room
+                    )
+                    if names:
+                        label += "（" + "、".join(names) + "）"
+                    descriptions.append(label)
+                return "复查宿舍心情：" + "、".join(descriptions)
+            return "刷新跑单时间"
         if self.type == TaskTypes.EXHAUST_OFF and getattr(
             self, "ordinary_coordination", False
         ):
@@ -3491,7 +3510,8 @@ class SchedulerTask:
         return res
 
     def __str__(self):
-        return f"SchedulerTask(time='{self.time}',task_plan={self.plan},task_type={self.type},meta_data='{self.meta_data}',adjusted={self.adjusted})"
+        label = self.display_name if isinstance(self.type, TaskTypes) else self.type
+        return f"{label}: SchedulerTask(time='{self.time}',task_plan={self.plan},task_type={self.type},meta_data='{self.meta_data}',adjusted={self.adjusted})"
 
     def __eq__(self, other):
         if isinstance(other, SchedulerTask):

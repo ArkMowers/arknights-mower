@@ -273,12 +273,14 @@ describe('group full-rest execution confirmation', () => {
       activate: conditions => { activated.push([...conditions]); f.source.data.planConditions = [...conditions] },
     }
     finish(f)
-    expect(task.backupShiftConditions).toEqual([false])
+    expect(task.backupShiftConditions).toEqual(status==='unknown'?undefined:[false])
     expect(activated).toEqual([])
     expect(f.source.data.planConditions).toEqual([true])
     expect(f.source.queue.tasks).toContain(task)
-    expect(task.backupShiftIntent).toEqual(intent)
+    expect(task.backupShiftIntent).toEqual(status==='unknown'?undefined:intent)
+    expect(task.plan).toMatchObject(intent)
     if (status === 'unknown') {
+      expect(task.plan).toEqual(intent)
       expect(task.timeMicros).toBe(toMowerMicros(1))
       expect(task.executionFailure).toBeDefined()
       const plan = structuredClone(task.plan)

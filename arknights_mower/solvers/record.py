@@ -274,6 +274,9 @@ def current_state():
         "group_recovery_return_time": dict(
             getattr(data, "group_recovery_return_time", {})
         ),
+        "urgent_recovery_supporters": copy.deepcopy(
+            getattr(data, "urgent_recovery_supporters", {})
+        ),
         "automatic_rescue_state": getattr(base_scheduler, "emergency_state", None),
         "backup_plan_names": [backup.name for backup in data.backup_plans],
         "idle_dorm_search_exhausted": getattr(

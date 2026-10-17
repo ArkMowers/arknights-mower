@@ -23,9 +23,47 @@ def suppress_completed_dorm_returns(op_data, plan):
             del plan[room]
 
 
+def covered_recovery_members(op_data):
+    """已确认休息且原岗位仍有合法替班的成员不因未入宿被召回。"""
+    result = set()
+    for name, op in op_data.operators.items():
+        if (
+            not op.is_high()
+            or op.workaholic
+            or op.room.startswith("dorm")
+            or not op.group
+            or not op_data.group_is_resting(op.group)
+            or op.current_room
+            and not op.is_resting()
+            or op.time_stamp is not None
+            and op.current_mood() >= op.upper_limit
+            or op_data.rest_mood_complete(name)
+        ):
+            continue
+        cover = op_data.get_current_operator(op.room, op.index)
+        if (
+            cover is not None
+            and cover.name in op_data.replacement_candidates(op)
+            and cover.name not in TRADE_ORDER_AGENTS
+            and any(
+                (backup.task or {}).get(op.room, [])[op.index : op.index + 1]
+                == [cover.name]
+                and not any(
+                    name in row
+                    for room, row in (backup.task or {}).items()
+                    if not room.startswith("dorm")
+                )
+                for backup in op_data.backup_plans
+            )
+        ):
+            result.add(name)
+    return result
+
+
 def _resting_members(op_data):
     ends = {d.name: d.time for d in op_data.all_dorms() if d.name}
-    resting, groups = set(), set()
+    covered = covered_recovery_members(op_data)
+    resting, groups = set(covered), set()
     now = datetime.now()
     for name, op in op_data.operators.items():
         if (
@@ -64,7 +102,7 @@ def _resting_members(op_data):
         ):
             # 半组在岗、或成员离岗却没有有效满心情记录，不能当作整组
             # 正常轮休。让原有整组纠错完成回班，而不是逐人保留休息。
-            resting.difference_update(op_data.groups[group])
+            resting.difference_update(set(op_data.groups[group]) - covered)
         else:
             resting.update(op.name for op in members)
     return resting
@@ -234,7 +272,7 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
             ] = name
     for room, slots in list(fix_plan.items()):
         for index, name in enumerate(slots):
-            if name not in PLACEHOLDERS and name == current[room][index]:
+            if name in resting and name == current[room][index]:
                 slots[index] = "Current"
         if all(name == "Current" for name in slots):
             del fix_plan[room]

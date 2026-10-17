@@ -533,6 +533,9 @@ def simulate(saved):
                 saved.get("group_recovery_full_members"),
                 saved.get("group_recovery_return_time"),
             )
+            base_scheduler.op_data.urgent_recovery_supporters = copy.deepcopy(
+                saved.get("urgent_recovery_supporters", {})
+            )
             base_scheduler.waiting_group_shifts = saved.get("waiting_group_shifts", [])
             from arknights_mower.utils.config.plan import migrate_backup_tasks
 
@@ -633,6 +636,11 @@ def simulate(saved):
         from arknights_mower.utils.crash_recovery import reconcile_scheduler
 
         reconcile_scheduler(base_scheduler)
+    else:
+        from arknights_mower.utils import crash_recovery
+
+        if crash_recovery.reset_observation_pending():
+            crash_recovery.checkpoint_reset(base_scheduler)
     base_scheduler._state_restore_complete = True
     while True:
         try:

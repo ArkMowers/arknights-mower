@@ -2324,7 +2324,7 @@ def test_multiple_idle_beds_finishing_together_generate_release(solver):
 
 
 @pytest.mark.parametrize("power_plants", [2, 3])
-@pytest.mark.parametrize("offsets", [(0, 30, 82), (82, 0, 30), (30, 82, 0)])
+@pytest.mark.parametrize("offsets", [(0, 30, 68), (68, 0, 30), (30, 68, 0)])
 def test_group_recovery_spread_uses_extremes_and_configured_minutes(
     solver, power_plants, offsets
 ):
@@ -2345,10 +2345,10 @@ def test_group_recovery_spread_uses_extremes_and_configured_minutes(
             and "伊内丝" in [name for names in task.plan.values() for name in names]
         )
 
-    assert config.conf.group_mood_gap_threshold_minutes == 75
+    assert config.conf.group_mood_gap_threshold_minutes == 60
     delayed = return_time()
     assert delayed == max(bed.time for bed in beds)
-    config.conf.group_mood_gap_threshold_minutes = 82
+    config.conf.group_mood_gap_threshold_minutes = 68
     assert return_time() == delayed
     data.commit_group_shifts({"联动": False})
     data.commit_group_shifts({"联动": True})

@@ -57,6 +57,7 @@ def retained_task_reservations(
     op_data, tasks, *, current_task=None, returning_groups=()
 ):
     """保留执行预约目标、当前驻员和整组成员，规划与纠错共用。"""
+    tasks = list(tasks)
     if returning_groups:
         from arknights_mower.utils.retained_recovery import retained_recovery_may_return
 
@@ -103,6 +104,11 @@ def retained_task_reservations(
                 if name not in ("", "Current", "Free"):
                     names.add(name)
         names.update(task.release_dorm_targets())
+    from arknights_mower.utils.urgent_recovery import pending_urgent_reservations
+
+    pending_names, pending_slots = pending_urgent_reservations(tasks, current_task)
+    names.update(pending_names)
+    slots.update(pending_slots)
     if not names and not slots:
         return names, slots
     names.update(

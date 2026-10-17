@@ -63,6 +63,7 @@ describe('income export calculation', () => {
     const compiled = compileRosterSchedule(request.workspace, request.options.simulationAssumptions)
     const runtimeConfig = compiledScheduleToRuntimeConfig(compiled)
     const runtime = createRosterRuntime(runtimeConfig)
+    expect(getMowerSourceRuntime(runtime).data.groupMoodGapThresholdMinutes).toBe(60)
     expect(getMowerSourceRuntime(runtime).data.groupMoodGapExclusions).toEqual(['主表组', '副表组'])
     runtimeConfig.mowerPolicy.groupMoodGapExclusions.push('额外组')
     expect(compiled.assumptions.groupMoodGapExclusions).toEqual(['主表组', '副表组'])

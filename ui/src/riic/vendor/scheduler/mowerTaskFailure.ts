@@ -1,3 +1,4 @@
+import {refreshMowerDerivedCorrection} from './mowerCorrection'
 import {reconcileMowerRetainedRecovery} from './mowerRetainedRecovery'
 // Port of base_schedule task failure snapshots, Mower alpha 3ad69f15 (MIT).
 import {mowerReplacementDependencyNames,mowerReplacementReservations} from './mowerReplacementCoordination'
@@ -24,8 +25,10 @@ function snapshot(state:RuntimeState,data:MowerSchedulingData,task:MowerTask,roo
   names.add(op.name);replacements.forEach(name=>names.add(name))
   return [op.name,op.room,op.index,groups,replacements]
  })
+ const correctionGroups=task.derivedCorrection&&task.type===T.SELF_CORRECTION?new Set(Object.entries(task.plan).flatMap(([room,row])=>row.flatMap((name,index)=>name==='Current'?[]:[name,data.plan[room]?.[index]]).flatMap(name=>{const op=name?data.operators[name]:undefined;return op?[op.group,...op.groupBindings.map(binding=>binding.group)]:[]})).filter(Boolean)):new Set<string>()
  return {
   intent:JSON.stringify({plan:task.plan,metadata:task.metadata,
+   correctionGroups:[...correctionGroups].sort().map(group=>[group,data.groupIsResting(group)]),
    effectivePlan:Object.fromEntries(rooms.map(room=>[room,state.config.mowerSourcePlan?.[room]])),
    products:Object.fromEntries(rooms.map(room=>[room,state.mowerFacilityProducts?.[room]??null])),
    conditions:data.planConditions,shared,
@@ -52,6 +55,7 @@ export function resumeMowerFailedTasks(state:RuntimeState,data:MowerSchedulingDa
   // A prediction replacing a measurement does not constitute new evidence.
   for(const [name,observation] of Object.entries(failure.snapshot.observations))if(data.operators[name]?.moodIsPrediction)observation[2]=null
   if(JSON.stringify(snapshot(state,data,task,failure.rooms))===JSON.stringify(failure.snapshot))continue
+  refreshMowerDerivedCorrection(data,task,queue.tasks)
   delete task.executionFailure;task.coordinationDependencyWait=false;task.executionRetained=true;changed=true
  }
  return changed
