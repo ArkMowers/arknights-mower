@@ -159,6 +159,19 @@ def upgrades(crafting):
     return [t for t in crafting.solver.tasks if t.type == TaskTypes.SKILL_UPGRADE]
 
 
+@pytest.mark.parametrize("mood", [-1, 0, 1])
+def test_full_card_never_supplies_actual_crafting_budget(crafting, mood):
+    crafting.solver.op_data.operators["赫拉格"].mood = mood
+    crafting.solver.op_data.dorm_mood_estimates = {"赫拉格": (24, datetime.now())}
+    before = record.get_inventory_counts()
+
+    crafting.run()
+
+    assert record.get_inventory_counts() == before
+    crafting.solver.tap.assert_not_called()
+    assert upgrades(crafting) == []
+
+
 def test_confirmed_output_dispatches_once_before_next_scan(crafting):
     before = datetime.now()
     crafting.run()

@@ -6,7 +6,10 @@ from functools import lru_cache
 from pathlib import Path
 from time import time
 
-from arknights_mower.utils.dorm_candidates import dorm_task_reservations
+from arknights_mower.utils.dorm_candidates import (
+    card_mood_estimate,
+    dorm_task_reservations,
+)
 from arknights_mower.utils.workshop_material_policy import workshop_recipe_allowed
 
 # Process-local observations; recipe names bound the cache to the resource catalog.
@@ -266,6 +269,18 @@ def workshop_material_block_reason(
     return None
 
 
+def workshop_candidate_mood(op_data, operator):
+    """加工准入优先使用数值心情，未知时接受有效的满心情卡牌预估。"""
+    op = op_data.operators.get(operator)
+    mood = (
+        op.current_mood() if hasattr(op, "current_mood") else getattr(op, "mood", None)
+    )
+    if mood is not None and mood >= 0:
+        return mood
+    estimate = card_mood_estimate(op_data, operator)
+    return 24 if estimate == 24 else None
+
+
 def workshop_operator_block_reason(
     op_data,
     operator,
@@ -297,15 +312,15 @@ def workshop_operator_block_reason(
     op = op_data.operators.get(operator)
     if op is None and not require_known_mood:
         return None
-    mood = (
-        op.current_mood() if hasattr(op, "current_mood") else getattr(op, "mood", None)
-    )
+    mood = workshop_candidate_mood(op_data, operator)
     # 未知心情的手动加工沿用入站读取；自动入队仍需已知心情超过门槛。
     if (mood is None or mood < 0) and minimum_mood == 0 and not require_known_mood:
         return None
     if mood is None or mood < 0:
         return WorkshopBlock(
-            "mood_unknown", "心情尚未读取，无法确认自动加工门槛", operator
+            "mood_unknown",
+            "缺少可用心情读数或满心情卡牌预估，无法确认加工门槛",
+            operator,
         )
     if mood <= minimum_mood:
         return WorkshopBlock(
@@ -325,12 +340,7 @@ def workshop_admission_block(
     from arknights_mower.utils import config
 
     automatic = config.conf.workshop_auto_active and setting.source == "mastery"
-    operator = op_data.operators.get(setting.operator)
-    mood = (
-        operator.current_mood()
-        if hasattr(operator, "current_mood")
-        else getattr(operator, "mood", None)
-    )
+    mood = workshop_candidate_mood(op_data, setting.operator)
     return workshop_operator_block_reason(
         op_data,
         setting.operator,
