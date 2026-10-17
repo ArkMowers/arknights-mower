@@ -216,16 +216,61 @@ def test_loading_failure_does_not_overwrite_independently_replaced_navigation(ru
     assert runtime.navigation.read_bytes() == independent
 
 
-def test_other_mower_reader_blocks_navigation_download_before_mutation(runtime):
+def test_other_mower_reader_skips_navigation_download_and_allows_connection(runtime):
     from arknights_mower.utils.maa_process import installation_lease
 
     previous = b'{"Previous": {}}'
     runtime.navigation.write_bytes(previous)
     with installation_lease(runtime.navigation.parents[3]):
-        with pytest.raises(RuntimeError, match="其他实例"):
-            runtime.solver.initialize_maa()
+        runtime.solver.initialize_maa()
     assert runtime.navigation.read_bytes() == previous
     runtime.get.assert_not_called()
+    runtime.asst.return_value.connect.assert_called_once()
+
+
+def test_loaded_client_does_not_block_normal_initialization(runtime, monkeypatch):
+    from arknights_mower.utils.maa_update import MaaUpdateError
+
+    previous = b'{"Previous": {}}'
+    runtime.navigation.write_bytes(previous)
+    guard = MagicMock(side_effect=MaaUpdateError("MAA 核心仍被其他进程使用"))
+    monkeypatch.setattr("arknights_mower.utils.maa_process.maa_client_guard", guard)
+    runtime.solver.initialize_maa()
+    guard.assert_called_once()
+    runtime.get.assert_not_called()
+    assert runtime.navigation.read_bytes() == previous
+    runtime.asst.return_value.connect.assert_called_once()
+
+
+def test_concurrent_navigation_refresh_uses_cache_without_download(runtime):
+    from arknights_mower.utils.maa_process import installation_lease, navigation_lease
+
+    target = runtime.navigation.parents[3]
+    previous = b'{"Previous": {}}'
+    runtime.navigation.write_bytes(previous)
+    with navigation_lease(target), installation_lease(target):
+        runtime.solver.initialize_maa()
+    runtime.get.assert_not_called()
+    assert runtime.navigation.read_bytes() == previous
+    runtime.asst.return_value.connect.assert_called_once()
+
+
+def test_navigation_refresh_allows_readers_and_serializes_other_refreshes(runtime):
+    from arknights_mower.utils.maa_process import installation_lease, navigation_lease
+
+    response = runtime.response
+
+    def get(*args, **kwargs):
+        with installation_lease(runtime.navigation.parents[3]):
+            pass
+        with pytest.raises(RuntimeError, match="其他实例"):
+            navigation_lease(runtime.navigation.parents[3])
+        return response
+
+    runtime.get.side_effect = get
+    runtime.solver.initialize_maa()
+    assert json.loads(runtime.navigation.read_bytes()) == runtime.payload
+    runtime.get.assert_called_once()
 
 
 def test_oversized_previous_navigation_is_preserved_without_downloading(runtime):

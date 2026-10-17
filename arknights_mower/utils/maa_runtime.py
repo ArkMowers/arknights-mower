@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import tempfile
+from contextlib import ExitStack
 from pathlib import Path
 
 from arknights_mower.utils.maa_backup import (
@@ -82,6 +83,7 @@ def load_maa_with_navigation(target, callback, download):
         close_idle_maa_processes,
         installation_lease,
         maa_client_guard,
+        navigation_lease,
     )
 
     target = Path(target).expanduser().absolute()
@@ -89,43 +91,55 @@ def load_maa_with_navigation(target, callback, download):
     if maa_in_use():
         raise MaaUpdateError("MAA 正在使用中，不能更新活动导航")
     close_idle_maa_processes(target)
-    with maa_client_guard(target):
-        with installation_lease(target, exclusive=True):
-            previous = None
-            if path.is_file():
-                with path.open("rb") as stream:
-                    previous = stream.read(4 * 1024 * 1024 + 1)
-                if len(previous) > 4 * 1024 * 1024:
-                    raise MaaCallError(
-                        "load", detail="活动导航缓存超过大小限制，请检查缓存文件"
-                    )
-            download(target)
-            written = identity(path)
+    with ExitStack() as admission:
+        try:
+            admission.enter_context(navigation_lease(target))
+            with installation_lease(target, exclusive=True):
+                pass
+            admission.enter_context(maa_client_guard(target))
+        except MaaUpdateError as error:
+            admission.close()
+            from arknights_mower.utils.log import logger
+
+            logger.info("MAA 活动导航本轮不刷新，继续使用现有资源")
+            logger.debug("MAA 活动导航刷新条件不满足：%s", error)
+            return load_maa_process(target, callback)
+        # Keep core/resource replacement excluded, but allow concurrent readers.
+        admission.enter_context(installation_lease(target))
+        previous = None
+        if path.is_file():
+            with path.open("rb") as stream:
+                previous = stream.read(4 * 1024 * 1024 + 1)
+            if len(previous) > 4 * 1024 * 1024:
+                raise MaaCallError(
+                    "load", detail="活动导航缓存超过大小限制，请检查缓存文件"
+                )
+        download(target)
+        written = identity(path)
         try:
             return load_maa_process(target, callback)
         except BaseException:
             try:
-                with installation_lease(target, exclusive=True):
-                    # Do not replace a cache file changed by an independent writer.
-                    if written is not None and identity(path) == written:
-                        if previous is None:
-                            path.unlink()
-                        else:
-                            with tempfile.NamedTemporaryFile(
-                                dir=path.parent, delete=False
-                            ) as stream:
-                                temporary = Path(stream.name)
-                                try:
-                                    stream.write(previous)
-                                    stream.flush()
-                                except BaseException:
-                                    temporary.unlink(missing_ok=True)
-                                    raise
+                # Do not replace a cache file changed by an independent writer.
+                if written is not None and identity(path) == written:
+                    if previous is None:
+                        path.unlink()
+                    else:
+                        with tempfile.NamedTemporaryFile(
+                            dir=path.parent, delete=False
+                        ) as stream:
+                            temporary = Path(stream.name)
                             try:
-                                os.replace(temporary, path)
-                            finally:
+                                stream.write(previous)
+                                stream.flush()
+                            except BaseException:
                                 temporary.unlink(missing_ok=True)
-            except (OSError, MaaUpdateError) as error:
+                                raise
+                        try:
+                            os.replace(temporary, path)
+                        finally:
+                            temporary.unlink(missing_ok=True)
+            except OSError as error:
                 from arknights_mower.utils.log import logger
 
                 logger.warning(f"MAA 活动导航恢复失败，路径={path}：{error}")

@@ -18,7 +18,7 @@ date: 2026-10-17
 
 本决策部分替代旧决策的桌面激活机制，核心校验、任务准入和备份归属仍然适用。领域概念和持久化配置含义保持不变，无需修改术语表。[MAA 运行子系统说明](../../../../docs/subsystems/maa-runtime.md)继续拥有完整行为规则。
 
-同一边界也保护共享客户端文件：Windows 使用官方安装目录互斥锁协议，macOS 在写入和清理备份前检查已映射的核心文件。[软件更新子系统说明](../../../../docs/subsystems/software-update.md#17-maa-package-validation-and-backups)规定包文件清单校验、完整包修复和安装目录内的 `.old` 备份。新工作进程拒绝加载时恢复活动导航的旧内容，布局选择及恢复规则由 [MAA 集成子系统说明](../../../../docs/subsystems/maa-integration.md#6-desktop-activity-navigation)规定。
+同一边界也保护共享客户端文件：Windows 使用官方安装目录互斥锁协议，macOS 在替换文件和清理备份前检查已映射的核心文件。被占用的安装仍可读取；可选活动导航刷新遇到占用或无法取得写入许可时跳过，并使用现有资源，因为已加载核心不妨碍另一个进程读取。独立导航锁阻止并发刷新，同时允许其他读取者。[软件更新子系统说明](../../../../docs/subsystems/software-update.md#17-maa-package-validation-and-backups)规定包文件清单校验、完整包修复和安装目录内的 `.old` 备份。新工作进程拒绝加载时恢复活动导航的旧内容，布局选择及恢复规则由 [MAA 集成子系统说明](../../../../docs/subsystems/maa-integration.md#6-desktop-activity-navigation)规定。
 
 ## 考虑过的替代方案
 

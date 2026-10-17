@@ -139,6 +139,31 @@ def test_replacement_uses_new_build_without_restarting_parent(installation):
     second.close()
 
 
+def test_navigation_initialization_shares_installation_with_running_worker(
+    installation, monkeypatch
+):
+    first = processes.MaaProcess(installation, None)
+    # A worker owned by another Mower is not closed by this process's registry.
+    monkeypatch.setattr(processes, "close_idle_maa_processes", lambda *args: None)
+    second = None
+    try:
+        assert first.start()
+        refreshed = []
+
+        def download(target):
+            refreshed.append(target)
+
+        second = runtime.load_maa_with_navigation(installation, None, download)
+        assert refreshed == []
+        assert first._process.poll() is None
+        assert second.connect("adb", "other-serial", "General")
+        assert first.get_version() == second.get_version() == "v1.0.0"
+    finally:
+        first.close()
+        if second is not None:
+            second.close()
+
+
 def test_update_cleanup_releases_idle_worker_with_retained_python_reference(
     installation,
 ):
@@ -493,6 +518,21 @@ def test_actual_native_core_replacement_uses_fresh_process(
             with pytest.raises(maa_update.MaaUpdateError, match="仍被其他进程使用"):
                 with processes.maa_client_guard(target):
                     pytest.fail("a mapped native core passed update admission")
+        with monkeypatch.context() as another_owner:
+            another_owner.setattr(
+                processes, "close_idle_maa_processes", lambda *args: None
+            )
+            if sys.platform == "darwin":
+                # Standalone clients map the core without holding a Mower lease.
+                instance._asst._lease.close()
+            download = Mock()
+            shared = runtime.load_maa_with_navigation(target, None, download)
+            try:
+                download.assert_not_called()
+                assert child.poll() is None
+                assert shared.append_task("Build", {}) == build
+            finally:
+                shared.close()
         instance.close()
         assert child.poll() is not None
         if sys.platform == "darwin":
