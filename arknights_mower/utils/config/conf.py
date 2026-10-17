@@ -616,6 +616,16 @@ class RIICPart(ConfModel):
     "组内预计恢复时间差触发延后回班的阈值（分钟）"
     group_mood_gap_max_extra_wait_hours: float = Field(default=0, ge=0, le=24)
     "组内恢复时间差过大时最多额外等待的小时数；0 表示不限时"
+    group_mood_gap_exclusions: list[str] = Field(default_factory=list)
+    "不因组内恢复时间差延后回班的组名"
+
+    @field_validator("group_mood_gap_exclusions")
+    @classmethod
+    def validate_group_mood_gap_exclusions(cls, groups):
+        if any(not group.strip() for group in groups):
+            raise ValueError("延后回班排除组的组名不能为空")
+        return list(dict.fromkeys(groups))
+
     fia_fool: bool = True
     "菲亚防呆"
     fia_threshold: float = 0.9

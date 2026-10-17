@@ -55,7 +55,7 @@ export interface RuntimeConfig {
   mowerServices?:{enableParty:boolean;droneIntervalHours:number;reloadRooms:readonly string[]|null;maaGapHours:number;leifengMode:boolean}
   mowerClueObservations?:{partyEndMicros:number|null;clueCount:number}
   mowerTaskScheduling?:MowerTaskSchedulingOptions
-  mowerPolicy?: { groupRestInFullOnMoodGap?:boolean; groupMoodGapThresholdMinutes?:number; groupMoodGapMaxExtraWaitHours?:number; mergeIntervalMinutes?:number; restMoodLimits?: Record<string,number>; freeRoom?: boolean; taskBuffers?: boolean; rescueThreshold?: number; restingThreshold: number; powerPlantCount: number; opeRestingPriority: string[] }
+  mowerPolicy?: { groupRestInFullOnMoodGap?:boolean; groupMoodGapThresholdMinutes?:number; groupMoodGapMaxExtraWaitHours?:number; groupMoodGapExclusions?:string[]; mergeIntervalMinutes?:number; restMoodLimits?: Record<string,number>; freeRoom?: boolean; taskBuffers?: boolean; rescueThreshold?: number; restingThreshold: number; powerPlantCount: number; opeRestingPriority: string[] }
   runOrderPolicies?: RunOrderPolicy[]
 }
 export interface RuntimeEvent {

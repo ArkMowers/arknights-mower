@@ -1820,6 +1820,7 @@ class BaseSchedulerSolver(
                 required_recovery_members(self.op_data, task, now=datetime.now())
             )
         now = datetime.now()
+        names = required_recovery_members(self.op_data, task, now=now)
         ready = {
             name
             for name in names
@@ -1851,6 +1852,10 @@ class BaseSchedulerSolver(
 
     def _schedule_recovery_observations(self, names, now, sampled_after=None):
         """仅由已观测恢复期限安排读房，期限变化后重用同一等待。"""
+        from arknights_mower.utils.recovery_execution import (
+            recovery_observation_deadline,
+        )
+
         deadlines = {}
         for name in names:
             op = self.op_data.operators.get(name)
@@ -1863,8 +1868,9 @@ class BaseSchedulerSolver(
             ):
                 continue
             _, bed = self.op_data.get_dorm_by_name(name)
-            if bed is not None and bed.time is not None and bed.time > now:
-                deadlines.setdefault(bed.time, set()).add(bed.position[0])
+            due = recovery_observation_deadline(self.op_data, name, now=now)
+            if bed is not None and due is not None and due > now:
+                deadlines.setdefault(due, set()).add(bed.position[0])
         for deadline, pending_rooms in deadlines.items():
             if any(
                 getattr(pending, "recovery_observation_rooms", set()) == pending_rooms
@@ -5406,6 +5412,9 @@ class BaseSchedulerSolver(
         previous_recovery = copy.deepcopy(
             getattr(self.op_data, "group_recovery_full_members", {})
         )
+        previous_return_time = dict(
+            getattr(self.op_data, "group_recovery_return_time", {})
+        )
         previous = {
             name: (op.group, list(op.replacement))
             for name, op in self.op_data.operators.items()
@@ -5427,6 +5436,7 @@ class BaseSchedulerSolver(
         finally:
             self.op_data.group_shift_state = previous_state
             self.op_data.group_recovery_full_members = previous_recovery
+            self.op_data.group_recovery_return_time = previous_return_time
             for name, (group, replacements) in previous.items():
                 self.op_data.operators[name].group = group
                 self.op_data.operators[name].replacement = replacements

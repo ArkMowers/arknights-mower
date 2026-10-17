@@ -529,7 +529,9 @@ def simulate(saved):
                     v, "dorm_recovery_fixed", ()
                 )
             base_scheduler.op_data.restore_group_shift_state(
-                saved.get("group_shift_state"), saved.get("group_recovery_full_members")
+                saved.get("group_shift_state"),
+                saved.get("group_recovery_full_members"),
+                saved.get("group_recovery_return_time"),
             )
             base_scheduler.waiting_group_shifts = saved.get("waiting_group_shifts", [])
             from arknights_mower.utils.config.plan import migrate_backup_tasks

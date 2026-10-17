@@ -11,7 +11,7 @@ import type { MowerMainConf, RosterWorkspace } from '../domain/roster'
 import type { CompiledSchedule, CompiledSlot, SimulationAssumptions } from './types'
 
 const DEFAULTS: SimulationAssumptions = {
-  schemaVersion: 1, initialMorale: 24, enableParty:false, leifengMode:true, droneIntervalHours:3, droneCountLimit:100, reloadRooms:[], maaGapHours:3, restingThreshold: 0.65, rescueThreshold: 0.75, freeRoom: false, dormOrder: '', groupRestInFullOnMoodGap: true, groupMoodGapThresholdMinutes: 75, groupMoodGapMaxExtraWaitHours: 0, mergeIntervalMinutes: 10, enableMastery: true, fiammettaFool: true, fiammettaThreshold: 0.9, operatorMorale: {}, dormAtmosphere: 0,
+  schemaVersion: 1, initialMorale: 24, enableParty:false, leifengMode:true, droneIntervalHours:3, droneCountLimit:100, reloadRooms:[], maaGapHours:3, restingThreshold: 0.65, rescueThreshold: 0.75, freeRoom: false, dormOrder: '', groupRestInFullOnMoodGap: true, groupMoodGapThresholdMinutes: 75, groupMoodGapMaxExtraWaitHours: 0, groupMoodGapExclusions: [], mergeIntervalMinutes: 10, enableMastery: true, fiammettaFool: true, fiammettaThreshold: 0.9, operatorMorale: {}, dormAtmosphere: 0,
   initialGold: 0, initialFragments: 0, initialDrones: 0,
   collectionIntervalHours: 0, operationDurationHours: 0, horizonHours: 24 * 90,
   elitePhase: 2, currentOccupants: {},
@@ -51,6 +51,8 @@ export function compileRosterSchedule(workspace: RosterWorkspace, options: Parti
   if (!Number.isInteger(assumptions.groupMoodGapThresholdMinutes) || assumptions.groupMoodGapThresholdMinutes! < 1 || assumptions.groupMoodGapThresholdMinutes! > 1440) invalid('assumptions.groupMoodGapThresholdMinutes', '恢复时间差阈值必须为 1–1440 分钟的整数')
   if (typeof assumptions.groupRestInFullOnMoodGap !== 'boolean') invalid('assumptions.groupRestInFullOnMoodGap', 'group_rest_in_full_on_mood_gap must be boolean')
   if (!Number.isFinite(assumptions.groupMoodGapMaxExtraWaitHours) || assumptions.groupMoodGapMaxExtraWaitHours! < 0 || assumptions.groupMoodGapMaxExtraWaitHours! > 24) invalid('assumptions.groupMoodGapMaxExtraWaitHours', 'group_mood_gap_max_extra_wait_hours must be within 0..24')
+  if (!Array.isArray(assumptions.groupMoodGapExclusions) || assumptions.groupMoodGapExclusions.some(group => typeof group !== 'string' || !group.trim())) invalid('assumptions.groupMoodGapExclusions', '延后回班排除组必须为非空组名列表')
+  else assumptions.groupMoodGapExclusions = [...new Set(assumptions.groupMoodGapExclusions)]
   if (!Number.isFinite(assumptions.mergeIntervalMinutes)) invalid('assumptions.mergeIntervalMinutes', 'merge_interval must be finite')
   if (typeof assumptions.freeRoom !== 'boolean') invalid('assumptions.freeRoom', 'free_room must be boolean')
   if (!Number.isFinite(assumptions.restingThreshold) || assumptions.restingThreshold! < 0 || assumptions.restingThreshold! > 1) invalid('assumptions.restingThreshold', 'Resting threshold must be within 0..1')

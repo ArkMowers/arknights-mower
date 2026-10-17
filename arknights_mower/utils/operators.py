@@ -309,6 +309,7 @@ class Operators:
         self.groups = {}
         self.group_shift_state = {}
         self.group_recovery_full_members = {}
+        self.group_recovery_return_time = {}
         self.exhaust_agent = set()
         self.exhaust_group = set()
         self.rest_in_full_group = set()
@@ -1132,10 +1133,13 @@ class Operators:
             if group not in self.group_shift_state:
                 self.group_shift_state[group] = self.group_is_resting(group)
         recovery = getattr(self, "group_recovery_full_members", {})
+        anchors = dict(getattr(self, "group_recovery_return_time", {}))
         for group, resting in transitions.items():
             if self.group_shift_state.get(group) != resting:
                 recovery.pop(group, None)
+                anchors.pop(group, None)
         self.group_recovery_full_members = recovery
+        self.group_recovery_return_time = anchors
         self.group_shift_state.update(transitions)
         for op in self.operators.values():
             if op.multi_group:
@@ -1145,7 +1149,7 @@ class Operators:
                         op.name, op.group if op.group in groups else groups[0]
                     )
 
-    def restore_group_shift_state(self, saved=None, recovery=None):
+    def restore_group_shift_state(self, saved=None, recovery=None, return_time=None):
         """Legacy snapshots infer rest only from ordinary fixed members."""
         self.group_shift_state = {
             group: resting
@@ -1156,6 +1160,11 @@ class Operators:
             group: list(names)
             for group, names in (recovery or {}).items()
             if self.group_shift_state.get(group) and isinstance(names, (list, tuple))
+        }
+        self.group_recovery_return_time = {
+            group: at
+            for group, at in (return_time or {}).items()
+            if group in self.group_recovery_full_members and isinstance(at, datetime)
         }
         self.commit_group_shifts({})
 
@@ -2160,6 +2169,9 @@ class Operators:
         projected.group_shift_state = dict(self.group_shift_state)
         projected.group_recovery_full_members = copy.deepcopy(
             getattr(self, "group_recovery_full_members", {})
+        )
+        projected.group_recovery_return_time = dict(
+            getattr(self, "group_recovery_return_time", {})
         )
         projected.dorm = copy.deepcopy(self.dorm)
         projected.group_dorm = copy.deepcopy(getattr(self, "group_dorm", []))

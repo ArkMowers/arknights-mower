@@ -15,6 +15,7 @@ ADVANCED_SETTING_KEYS = (
     "group_rest_in_full_on_mood_gap",
     "group_mood_gap_threshold_minutes",
     "group_mood_gap_max_extra_wait_hours",
+    "group_mood_gap_exclusions",
     "fia_fool",
     "assistant_follows_schedule",
     "fia_threshold",
