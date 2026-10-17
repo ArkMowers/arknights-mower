@@ -8849,7 +8849,7 @@ class BaseSchedulerSolver(
         skip_enter=False,
     ):
         logger.info("基建：无人机加速" if not adjust_time else "开始调整订单时间")
-        retain_reserve = not not_customize and bool(self.op_data.run_order_rooms)
+        retain_reserve = not not_customize
         # 点击进入该房间
         if not skip_enter:
             self.enter_room(room)

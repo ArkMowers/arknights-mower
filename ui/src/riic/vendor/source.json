@@ -282,8 +282,8 @@
       "reason": "Synchronize the manufacturing reserve correction and focused tests from the calculator working tree: select MAX, then subtract the configured reserve. Frozen alpha traces keep their original provenance; corrected reserve branches use separate contract tests."
     },
     "simulator/mowerManufactureIO.spec.ts": {
-      "sha256": "a3a1ad285bdc56fffd0dfd0a15ddd113b7cc091d8898e5f12bdeb442a5351895",
-      "reason": "Synchronize the manufacturing reserve correction and focused tests from the calculator working tree: select MAX, then subtract the configured reserve. Frozen alpha traces keep their original provenance; corrected reserve branches use separate contract tests."
+      "sha256": "7796e12067567e39cd39a1ea62f70121a870cfea31368fc2f3d6fe01e9b6b222",
+      "reason": "Verify manufacturing drone consumption, ledger debits and production progress with and without run-order rooms and automatic product switching, including stock at or below the reserve and a zero reserve. Retain initial-selection independence checks for the MAX-minus-reserve simulation model."
     },
     "scheduler/fixtures/mower-drone-operations-alpha.json": {
       "sha256": "668802b1cd142242adf2f5216b853be6e863a6b527e51d2f3fca82516cbf8b7b",
@@ -500,6 +500,10 @@
     "scheduler/mowerSelection.ts": {
       "sha256": "45086253d58c25dfc97c2d56aa631c43c9deb1f9551f0526bff601e4786ddb55",
       "reason": "Match Mower a216c4cc69fda51774b213da14a4309fa81b9309: preserve explicit temporary dorm occupants after admission while retaining personal-limit cancellation."
+    },
+    "simulator/mowerNativeProductionIO.ts": {
+      "sha256": "b9f5c3adecd456ccd93798ab4846f93da683fe5a705f07729be3a301d52f31de",
+      "reason": "Retain the configured drone reserve for ordinary manufacturing acceleration regardless of run-order rooms or automatic product-switch settings; preserve explicit specialized bypass and trade acceleration behavior."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
