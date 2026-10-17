@@ -94,7 +94,9 @@ class TestCheckCurrentFocus(unittest.TestCase):
         self.device.launch.assert_not_called()
 
     def test_focus_other_game_in_background_brings_to_foreground(self):
-        self.device.current_focus = MagicMock(return_value=self.LAUNCHER_FOCUS)
+        self.device.current_focus = MagicMock(
+            side_effect=[self.LAUNCHER_FOCUS, self.GAME_FOCUS]
+        )
         with self._patchers():
             with self.assertLogs("arknights_mower.utils.log", level="INFO") as logs:
                 result = self.device.check_current_focus()
@@ -111,7 +113,9 @@ class TestCheckCurrentFocus(unittest.TestCase):
         self.assertIn("明日方舟，启动！", "\n".join(logs.output))
 
     def test_focus_other_game_not_running_launches(self):
-        self.device.current_focus = MagicMock(return_value=self.LAUNCHER_FOCUS)
+        self.device.current_focus = MagicMock(
+            side_effect=[self.LAUNCHER_FOCUS, self.GAME_FOCUS]
+        )
         self.device.is_app_running_in_background = MagicMock(return_value=False)
         with self._patchers():
             result = self.device.check_current_focus()
@@ -121,12 +125,16 @@ class TestCheckCurrentFocus(unittest.TestCase):
 
     def test_transient_error_recovers_and_retries(self):
         self.device.current_focus = MagicMock(
-            side_effect=[ConnectionError(b"closed"), self.LAUNCHER_FOCUS]
+            side_effect=[
+                ConnectionError(b"closed"),
+                self.LAUNCHER_FOCUS,
+                self.GAME_FOCUS,
+            ]
         )
         with self._patchers():
             result = self.device.check_current_focus()
         self.assertTrue(result)
-        self.assertEqual(self.device.current_focus.call_count, 2)
+        self.assertEqual(self.device.current_focus.call_count, 3)
         self.reconnect_once.assert_called_once_with(wait_for_device=True)
         self.device.bring_to_foreground.assert_called_once_with()
 
@@ -141,7 +149,8 @@ class TestCheckCurrentFocus(unittest.TestCase):
 
     def test_last_local_attempt_can_recover(self):
         self.device.current_focus = MagicMock(
-            side_effect=[ConnectionError(b"closed")] * 3 + [self.LAUNCHER_FOCUS]
+            side_effect=[ConnectionError(b"closed")] * 3
+            + [self.LAUNCHER_FOCUS, self.GAME_FOCUS]
         )
         with self._patchers():
             result = self.device.check_current_focus()
