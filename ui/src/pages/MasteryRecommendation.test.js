@@ -244,3 +244,41 @@ describe('公开统计加载隔离', () => {
     expect(store.recommendations).toBe(local)
   })
 })
+
+describe('大数据养成筛选', () => {
+  it('读取专精统计后按门槛筛选，完成与未达门槛的干员隐藏，未知数据保留', async () => {
+    const page = setup()
+    const store = useMasteryStore()
+    const roster = operators()
+      .slice(0, 4)
+      .map((op, index) => ({
+        ...op,
+        skill_levels: [index === 1 ? 3 : 0]
+      }))
+    store.recommendations = roster
+    const plan = JSON.stringify(page.plan.value)
+    axios.get.mockResolvedValueOnce({
+      data: {
+        operators: [
+          { charId: 'char_0', own: 100, skill1: { 0: 19, 3: 81 } },
+          { charId: 'char_1', own: 100, skill1: { 0: 19, 3: 81 } },
+          { charId: 'char_2', own: 100, skill1: { 0: 21, 3: 79 } }
+        ],
+        stale: false,
+        error: null
+      }
+    })
+    await page.loadSurvey()
+    page.surveyFilters.value.mastery = 80
+    expect(page.displayList.value.map((op) => op.char_id)).toEqual(['char_0', 'char_3'])
+    expect(page.surveyFor(roster[0]).skillHighlights).toEqual([0])
+    expect(page.surveyFor(roster[3]).skills[0].rate).toBeNull()
+    page.surveyFilters.value.mastery = 90
+    expect(page.displayList.value.map((op) => op.char_id)).toEqual(['char_3'])
+    page.surveyFilters.value.hideCompleted = false
+    expect(page.displayList.value).toHaveLength(4)
+    expect(JSON.stringify(page.plan.value)).toBe(plan)
+    expect(store.recommendations).toEqual(roster)
+    expect(axios.post).not.toHaveBeenCalled()
+  })
+})

@@ -106,7 +106,7 @@ def build_upload_payload(snapshot, definitions):
             "id": cid,
             "level": _integer(char.get("level"), 1, 90, "等级"),
             "evolvePhase": _integer(char.get("evolvePhase"), 0, 2, "精英化阶段"),
-            "potentialRank": _integer(char.get("potentialRank"), 0, 5, "潜能等级"),
+            "potentialRank": _integer(char.get("potentialRank"), 0, 5, "潜能等级") + 1,
             "rarity": _integer(definition.get("rarity"), 1, 6, "星级"),
             "mainSkillLevel": _integer(
                 char.get("mainSkillLevel"), 1, 7, "基础技能等级"
@@ -124,9 +124,7 @@ def build_upload_payload(snapshot, definitions):
         for index, skill in enumerate(skills, 1):
             if not isinstance(skill, dict):
                 raise ValueError("干员技能缓存无效，请重新同步森空岛")
-            row[f"skill{index}"] = row["mainSkillLevel"] + _integer(
-                skill.get("level"), 0, 3, "专精等级"
-            )
+            row[f"skill{index}"] = _integer(skill.get("level"), 0, 3, "专精等级")
         modules = {m["id"]: m for m in definition.get("modules", [])}
         for equip in equips:
             if not isinstance(equip, dict) or not isinstance(equip.get("id"), str):
