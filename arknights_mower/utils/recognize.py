@@ -91,6 +91,7 @@ class Recognizer:
                     self._img = bytes2img(screencap)
                     self._gray = bytes2img(screencap, True)
                 else:
+                    self.check_current_focus()
                     capture_started_at = datetime.now()
                     self._screencap, self._img, self._gray = self.device.screencap()
                 self.capture_started_at = capture_started_at
@@ -137,9 +138,11 @@ class Recognizer:
         logger.debug(result)
         return result < 0.31
 
-    def check_current_focus(self):
+    def check_current_focus(self) -> bool:
         if self.device.check_current_focus():
-            self.update()
+            self.reset_after_external_control()
+            return True
+        return False
 
     def check_loading_time(self):
         if self.scene == Scene.CONNECTING:

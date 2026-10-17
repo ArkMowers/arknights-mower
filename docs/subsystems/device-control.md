@@ -123,6 +123,15 @@ Selection page gestures use an endpoint callback on the selected input helper. T
 
 `DeviceControl.capture_once()` retains the session's effective screenshot backend, including standard ADB after DroidCast degradation, within the caller's input deadline. It performs no readiness recovery, helper rebuild or task-cancellation cleanup while touch remains held. The input boundary retains ownership until release; capture errors propagate through the existing gesture boundary.
 
+<a id="game-foreground-observation"></a>
+### 1.5 Game Foreground Observation
+
+Normal `Recognizer.start()` acquisition checks the game foreground before collecting a new Capture Frame. A successful restore clears cached frames, matching results, scenes and scene-wait timers before capture. Supplied image bytes, cached frame reads and held-gesture frames do not initiate foreground recovery. Restoring an existing game keeps the current ADB foreground command; launching an absent game honors the configured launch mode. The foreground is checked again after restoration or launch, and an unconfirmed result prevents capture.
+
+The click-to-launch path checks for the confirmed MuMu launcher advertisement before sending the configured game-icon coordinates. Recognition requires the launcher foreground and the advertisement's `pic`, `member`, `memberText` and `close` controls in the captured UI hierarchy. The close-button bounds must belong to their observed parent. One ADB close click uses the existing input-delivery boundary, followed by a read-only confirmation that the advertisement disappeared. UI inspection and closure share a ten-second deadline and the caller's remaining I/O budget. Unreadable or incomplete advertisement controls, a changed foreground, failed closure or cancellation prevents the game-icon click; uncertain close delivery is not replayed. The foreground-recovery path uses the same advertisement handling.
+
+These checks run with ordinary recognition and launch operations, without an independent polling task. They cover the confirmed MuMu launcher layout; other advertisements and a popup appearing after observation but before input remain outside this guarantee. No package or component is disabled, and no membership setting is changed. Focused offline evidence is in [MuMu popup tests](../../arknights_mower/tests/mumu_popup_tests.py) and [recognizer foreground tests](../../arknights_mower/tests/recognizer_foreground_tests.py).
+
 ## 2. Vendor Discovery & Compatibility Presets
 
 The subsystem integrates platform-specific emulators through deterministic discovery mechanisms:
