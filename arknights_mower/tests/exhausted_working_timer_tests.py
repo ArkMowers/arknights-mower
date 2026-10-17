@@ -651,7 +651,7 @@ def test_exhaust_task_uses_custom_lower_limit_with_original_preparation_margin(
         plan={},
         run_order_rooms={},
         exhaust_agent={op.name},
-        rest_in_full_group={op.name} if rest_in_full else set(),
+        rest_in_full_group=set(),
     )
     solver._sync_run_order_tasks = MagicMock()
     solver.check_fia = MagicMock(return_value=(None, None))
