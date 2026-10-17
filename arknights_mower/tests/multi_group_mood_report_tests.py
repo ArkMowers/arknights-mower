@@ -2,6 +2,7 @@
 
 import sqlite3
 from datetime import datetime, timedelta
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -174,3 +175,68 @@ def test_repeated_plan_declarations_do_not_duplicate_shared_samples(
 
     assert len(groups) == 3
     assert all(len(group["moodData"]["datasets"][0]["data"]) == 1 for group in groups)
+
+
+@pytest.mark.parametrize("options", [{}, {"include_work_rest": True}])
+def test_curve_only_reports_skip_monthly_work_rest_and_preserve_curves(
+    history, monkeypatch, options
+):
+    bind_shared(monkeypatch)
+    history("结城理", "旧组", 0, 24, room="dormitory_1")
+    history("结城理", "深海", 1, 20)
+    history("结城理", "自动化", 2, 24, related="菲亚梅塔", event="fiammetta_after")
+    complete = record.get_mood_ratios(**options)
+    assert len(complete) == 3
+    assert all(
+        group["workRestData"]
+        == {
+            "labels": ["休息时间", "工作时间"],
+            "datasets": [{"data": [3600, 3600]}],
+        }
+        for group in complete
+    )
+    monthly = Mock(
+        side_effect=AssertionError("curve requests do not read monthly history")
+    )
+    monkeypatch.setattr(record, "get_work_rest_ratios", monthly)
+
+    curves = record.get_mood_ratios(include_work_rest=False)
+
+    monthly.assert_not_called()
+    assert curves == [
+        {"groupName": group["groupName"], "moodData": group["moodData"]}
+        for group in complete
+    ]
+    for group in curves:
+        points = group["moodData"]["datasets"][0]["data"]
+        assert [point["y"] for point in points] == [24, 20, 24]
+        assert points[-1]["relatedOperator"] == "菲亚梅塔"
+        assert points[-1]["moodEvent"] == "fiammetta_after"
+
+
+@pytest.mark.parametrize("flag", [None, "true", "false"])
+def test_mood_report_http_keeps_legacy_default_and_accepts_curve_only_requests(
+    history, monkeypatch, flag
+):
+    with (
+        patch("threading.Thread.start"),
+        patch("arknights_mower.utils.network_settings.start_proxy_sync"),
+    ):
+        from server import app
+
+    history("歌蕾蒂娅", "深海", 0, 20)
+    history("歌蕾蒂娅", "深海", 1, 18)
+    monthly = Mock(wraps=record.get_work_rest_ratios)
+    monkeypatch.setattr(record, "get_work_rest_ratios", monthly)
+
+    response = app.test_client().get(
+        "/record/getMoodRatios",
+        query_string={} if flag is None else {"include_work_rest": flag},
+    )
+
+    assert response.status_code == 200
+    assert [
+        point["y"] for point in response.json[0]["moodData"]["datasets"][0]["data"]
+    ] == [20, 18]
+    assert ("workRestData" in response.json[0]) is (flag != "false")
+    assert monthly.call_count == (0 if flag == "false" else 1)
