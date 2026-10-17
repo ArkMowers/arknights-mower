@@ -185,6 +185,7 @@ def test_connection_timeout_recovers_without_reporting_confirmation_success(
     solver = solver_for([{"confirm_blue": BLUE}, {"connecting": True}])
     solver.device = MagicMock()
     solver.check_current_focus = MagicMock()
+    solver.back_to_infrastructure = MagicMock()
 
     with pytest.raises(RecognizeError, match="联网等待超时"):
         solver.tap_confirm("room_1_1")
@@ -194,6 +195,7 @@ def test_connection_timeout_recovers_without_reporting_confirmation_success(
     solver.device.exit.assert_called_once_with()
     recovery_sleep.assert_called_once_with(3)
     solver.check_current_focus.assert_called_once_with()
+    solver.back_to_infrastructure.assert_called_once_with()
 
 
 def test_detail_is_closed_before_opening_orders():

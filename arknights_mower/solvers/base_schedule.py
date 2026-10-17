@@ -9052,6 +9052,8 @@ class BaseSchedulerSolver(
                 if self.find("connecting"):
                     retry_ready = False
                     if not self.waiting_solver():
+                        # 联网超时已重启游戏；先完成登录，调用方再实读驻员。
+                        self.back_to_infrastructure()
                         raise RecognizeError("干员确认联网等待超时，返回房间重试")
                 # 已点击后提高按钮清晰度要求，避免再次点击淡出动画里的残影。
                 # 初次按钮沿用原识别规则，兼容不同背景和训练室。
@@ -11784,9 +11786,12 @@ class BaseSchedulerSolver(
                 while (scene := self.scene()) != Scene.INFRA_MAIN:
                     if scene in self.waiting_scene:
                         if not self.waiting_solver():
-                            if queued:
-                                raise RoomArrangementDeferred(room, e) from e
-                            raise e
+                            self.back_to_infrastructure()
+                            if self.scene() != Scene.INFRA_MAIN:
+                                if queued:
+                                    raise RoomArrangementDeferred(room, e) from e
+                                raise e
+                            break
                     else:
                         self.back(interval=0.5)
                     back_count += 1
