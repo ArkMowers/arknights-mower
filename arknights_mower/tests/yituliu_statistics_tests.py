@@ -204,7 +204,7 @@ def test_mixed_skill_scales_preserve_other_public_metrics(public_survey):
     result = survey.get_statistics()
     assert result["error"] is None and not result["stale"]
     operator = result["operators"][0]
-    assert "skill1" not in operator  # Mixed scales cannot supply a known mastery rate.
+    assert operator["skill1"] == {"0": 114141, "1": 1458, "2": 840, "3": 2613}
     assert operator["elite"]["2"] == 115665
     assert operator["modY"]["3"] == 9684
     assert json.loads(path.read_text())["operators"] == [operator]
@@ -252,7 +252,11 @@ def test_valid_instance_cache_is_promoted_without_remote_fetch(
     _, session, _, rows = public_survey
     shared = tmp_path / "shared.json"
     legacy = tmp_path / "instance.json"
-    legacy.write_text(json.dumps({"operators": rows, "fetched_at": 999_999}))
+    legacy.write_text(
+        json.dumps(
+            {"operators": rows, "fetched_at": 999_999, "version": survey.CACHE_VERSION}
+        )
+    )
     if shared_timestamp:
         shared.write_text(
             json.dumps({"operators": rows, "fetched_at": shared_timestamp})
@@ -395,3 +399,56 @@ def test_separate_processes_share_one_refresh_or_failure_cooldown(tmp_path, fail
                 process.terminate()
             process.join(timeout=5)
         output.close()
+
+
+def test_known_legacy_skill_ranks_are_merged_without_losing_owners(public_survey):
+    _, _, _, rows = public_survey
+    rows[0]["skill1"] = {
+        "0": 10,
+        "1": 5,
+        "2": 6,
+        "3": 7,
+        "4": 8,
+        "5": 9,
+        "6": 10,
+        "7": 11,
+        "8": 4,
+        "9": 3,
+        "10": 7,
+    }
+    result = survey.get_statistics()
+    assert result["error"] is None
+    assert result["operators"][0]["skill1"] == {"0": 48, "1": 9, "2": 9, "3": 14}
+
+
+def test_unrecognized_skill_scale_keeps_only_that_metric_unknown(public_survey):
+    _, _, _, rows = public_survey
+    rows[0]["skill1"] = {"0": 79, "11": 1}
+    result = survey.get_statistics()
+    assert result["error"] is None
+    assert "skill1" not in result["operators"][0]
+    assert result["operators"][0]["elite"] == rows[0]["elite"]
+
+
+def test_fresh_legacy_cache_with_omitted_skills_is_refetched(public_survey):
+    path, session, _, rows = public_survey
+    legacy = {key: value for key, value in rows[0].items() if key != "skill1"}
+    path.write_text(json.dumps({"operators": [legacy], "fetched_at": 999_999}))
+    result = survey.get_statistics()
+    assert result["operators"][0]["skill1"] == rows[0]["skill1"]
+    assert not result["stale"]
+    assert survey.get_statistics() == result
+    session.get.assert_called_once()
+
+
+def test_legacy_cache_is_preserved_as_stale_when_refresh_fails(public_survey):
+    path, session, _, rows = public_survey
+    old = json.dumps({"operators": rows, "fetched_at": 999_999})
+    path.write_text(old)
+    session.get.side_effect = requests.Timeout("offline")
+    result = survey.get_statistics()
+    assert result["operators"] == rows
+    assert result["stale"] and result["error"]
+    assert path.read_text() == old
+    assert survey.get_statistics() == result
+    session.get.assert_called_once()
