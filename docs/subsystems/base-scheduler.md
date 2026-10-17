@@ -150,6 +150,16 @@ An urgent handoff reserves the covers and beds it releases for the original requ
 
 A retained failed preview may contain incidental standby dormitory moves. Such moves do not block another group’s valid ordinary return. Exemptions are computed per task and per returning group; explicit staffing, started arrangements and product locks remain protected. Only confirmed complete return removes obsolete incidental dormitory actions, preserving the original request, time and unrelated remaining actions.
 
+#### Working Replacement Checks
+
+An ordinary configured replacement actually occupying a working slot receives a single mood check through the existing task queue. Its first check reads the current occupant, measured mood and working countdown, including at full mood. A confirmed positive countdown determines the next check at the replacement's personal mood floor; an unknown consumption rate does not supply a guessed deadline. Future checks reserve neither replacements nor beds.
+
+Repeated planning preserves the same check and deadline while its source remains unchanged. The primary's return, the replacement's departure, removal from the effective candidate list or an existing zero-mood-work or sole-cover exemption cancels the check. Changes to relevant staffing, products, configuration or confirmed exhaustion-refresh events invalidate its timing source and require a fresh observation.
+
+At execution, the check verifies the original slot and reads mood again before using the existing ordered replacement correction and arrangement flow. A new valid countdown can establish another deadline. Unconfirmed observations or a lack of available candidates follow [Runtime Task Failure](#211-runtime-task-failure): preserve the original check and time, allow independent work, and require a relevant new observation or dependency change before another attempt. Time passing and the check's own unchanged readback do not reopen a failed attempt. Task persistence retains the target, source and failure state.
+
+The [check implementation](../../arknights_mower/utils/replacement_check.py), [check regressions](../../arknights_mower/tests/replacement_check_tests.py), [scheduler callers](../../arknights_mower/tests/replacement_check_dispatch_tests.py) and [working countdown observations](../../arknights_mower/tests/replacement_working_time_tests.py) cover planning, dispatch, cancellation, failure retention and saved tasks without operating a live device.
+
 ### 2.3 Base Facilities
 - Encapsulates distinct working facilities (Control Center, Manufacturing Station, Trading Post, Power Plant, HR Office, Reception Room, Training Room, Workshop, Recycling Station) and resting facilities (Dormitories 1 through 4).
 - Serves as the primary operational unit for operator assignment, production monitoring, and capacity validation.
