@@ -3476,6 +3476,10 @@ class SchedulerTask:
 
     @property
     def display_name(self):
+        if self.type == TaskTypes.SELF_CORRECTION and getattr(
+            self, "exhaust_support", False
+        ):
+            return "替班交接"
         if self.type == TaskTypes.REFRESH_TIME:
             rooms = getattr(self, "recovery_observation_rooms", None)
             if rooms:
