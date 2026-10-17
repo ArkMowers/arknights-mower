@@ -10142,6 +10142,17 @@ class BaseSchedulerSolver(
             for (target_room, index), name in expected.items()
             if target_room == room
         }
+        if required:
+            targets = ["Current"] * (max(required) + 1)
+            for index, name in required.items():
+                targets[index] = name
+            protected_plan = {room: targets}
+            self._suppress_train_arrangement(protected_plan)
+            required = {
+                index: name
+                for index, name in enumerate(protected_plan.get(room, ()))
+                if name != "Current"
+            }
         conflicts = []
         for index, name in required.items():
             selected = agents[index] if index < len(agents) else ""
