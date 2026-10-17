@@ -1,0 +1,26 @@
+{
+  "title": "Grouped Intelligent Rescue",
+  "status": "archived",
+  "category": "simplification",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]",
+    "[INV-SCHED-14]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_schedule_staffing",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_return_groups",
+    "arknights_mower.utils.emergency_recovery.emergency_dorm_plan"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/emergency_group_beds_tests.py",
+    "arknights_mower/tests/emergency_group_staffing_tests.py",
+    "arknights_mower/tests/emergency_group_return_tests.py",
+    "arknights_mower/tests/emergency_group_reservation_tests.py",
+    "arknights_mower/tests/emergency_staffing_replan_tests.py",
+    "arknights_mower/tests/rescue_dorm_fill_tests.py"
+  ]
+}

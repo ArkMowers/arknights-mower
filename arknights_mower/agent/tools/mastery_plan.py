@@ -1,30 +1,34 @@
+from arknights_mower.solvers.mastery import get_char_name, validate_route_supports
 from arknights_mower.utils.mastery_db import (
+    add_plan_checked,
+    auto_interleave_new_plans,
     get_all_plans,
     get_route,
-    has_train_group_plan,
-    insert_plan,
-    retry_plan,
+    retry_failed_plans,
     save_route,
 )
 
 
-def add_mastery_plan(char_id: str, skill_index: int, skill_name: str = ""):
+def add_mastery_plan(
+    char_id: str, skill_index: int, skill_name: str = "", target_level: int = 3
+):
     """Add a new mastery plan for an operator skill."""
-    if has_train_group_plan():
-        return "训练室已设置小组轮换，无法添加专精计划"
-    plan_id = insert_plan(
+    plan_id, reason = add_plan_checked(
         char_id,
         skill_index,
-        "pending",
+        target_level=target_level,
         skill_name=skill_name or f"技能{skill_index + 1}",
+        # 补传干员名，否则计划 char_name 为 NULL，邮件读不出练谁
+        char_name=get_char_name(char_id),
     )
     if plan_id > 0:
-        return f"已添加专精计划: {char_id} 技能{skill_index + 1}"
-    return f"添加专精计划失败: {char_id} 技能{skill_index + 1}"
+        auto_interleave_new_plans([plan_id])
+        return f"已添加专精计划: {char_id} 技能{skill_index + 1} 专{target_level}"
+    return f"添加专精计划失败: {char_id} 技能{skill_index + 1}（{reason}）"
 
 
 def list_plans(status_filter: str = ""):
-    """List mastery plans, optionally filtered by status (pending/in_progress/completed/failed)."""
+    """List mastery plans, optionally filtered by their stored status."""
     if status_filter:
         plans = [p for p in get_all_plans() if p["status"] == status_filter]
     else:
@@ -37,7 +41,7 @@ def list_plans(status_filter: str = ""):
             f"<tr><td>{p['char_id']}</td>"
             f"<td>{p.get('skill_name', '技能' + str(p['skill_index'] + 1))}</td>"
             f"<td>{p['status']}</td>"
-            f"<td>{p.get('level', 1)}</td>"
+            f"<td>{p.get('target_level', 1)}</td>"
             f"<td>{p.get('failed_reason', '')}</td>"
             f"<td>{p.get('created_at', '')}</td></tr>"
         )
@@ -46,7 +50,17 @@ def list_plans(status_filter: str = ""):
 
 
 def set_route(profession: str, supports_json: str):
-    """Save a user-customized mastery route for a profession."""
+    """Save a user-customized mastery route for a profession.
+
+    supports_json 为该职业路线的 supports 数组（[{name, skill_level, efficiency,
+    swap, swap_name, match}, ...]）或含 supports 的包装对象；中枢加成/换人缓冲是全局
+    设置（POST /mastery-route/settings），不在路线 JSON 里。
+    """
+    # 写入端校验 supports 是合法 JSON 且形态是数组/包装对象/旧字典之一，
+    # 不合法拒绝保存（读取端 json.loads 无守卫，review 决策，坏数据不得进库）。
+    err = validate_route_supports(supports_json)
+    if err:
+        return f"保存 {profession} 路线失败: {err}"
     save_route(profession, supports_json, is_default=0)
     return f"已保存 {profession} 路线的专精路线"
 
@@ -60,18 +74,18 @@ def get_route_info(profession: str):
 
 
 def retry_plan_tool(char_id: str, skill_index: int):
-    """Retry a failed mastery plan by inserting a new pending row."""
-    plan_id = retry_plan(char_id, skill_index)
-    if plan_id > 0:
-        return f"已重试专精计划: {char_id} 技能{skill_index + 1}"
-    return f"重试专精计划失败: {char_id} 技能{skill_index + 1}"
+    """Retry failed mastery plans by resetting them to idle."""
+    count = retry_failed_plans()
+    if count > 0:
+        return f"已重置 {count} 个失败的专精计划为待执行"
+    return "没有失败的专精计划需要重试"
 
 
 add_mastery_plan_tool_def = {
     "type": "function",
     "function": {
         "name": "add_mastery_plan",
-        "description": "新增一个干员技能的专精计划",
+        "description": "按用户明确要求新增专精计划。使用已知干员ID，技能索引从0开始，目标等级缺省3；不猜测干员ID或技能。以返回结果确认是否添加成功。",
         "parameters": {
             "type": "object",
             "properties": {
@@ -81,6 +95,11 @@ add_mastery_plan_tool_def = {
                 },
                 "skill_index": {"type": "integer", "description": "技能索引 0/1/2"},
                 "skill_name": {"type": "string", "description": "技能名称（可选）"},
+                "target_level": {
+                    "type": "integer",
+                    "description": "目标专精等级 1/2/3，缺省 3",
+                    "enum": [1, 2, 3],
+                },
             },
             "required": ["char_id", "skill_index"],
         },
@@ -97,8 +116,16 @@ list_plans_tool_def = {
             "properties": {
                 "status_filter": {
                     "type": "string",
-                    "description": "筛选状态: pending/completed/failed/in_progress，留空则全部",
-                    "enum": ["", "pending", "in_progress", "completed", "failed"],
+                    "description": "筛选数据库实际状态：idle 待执行、arranging 安排中、training 训练中、waiting_collect 待收取、completed 已完成、failed 失败；留空则全部。查询进行中需分别查询安排、训练和待收取状态，或查询全部后汇总。",
+                    "enum": [
+                        "",
+                        "idle",
+                        "arranging",
+                        "training",
+                        "waiting_collect",
+                        "completed",
+                        "failed",
+                    ],
                 },
             },
             "required": [],
@@ -110,7 +137,7 @@ set_route_tool_def = {
     "type": "function",
     "function": {
         "name": "set_route",
-        "description": "保存某个职业的自定义专精路线",
+        "description": "按用户明确要求保存某个职业的自定义专精路线，会覆盖该职业已有路线。先核对职业和完整 supports 内容，不推测协助干员或效率；中枢加成与换人缓冲不属于此工具的路线参数。",
         "parameters": {
             "type": "object",
             "properties": {
@@ -120,7 +147,7 @@ set_route_tool_def = {
                 },
                 "supports_json": {
                     "type": "string",
-                    "description": "包含 supports/controlCenter 的完整 JSON 配置",
+                    "description": "该职业路线的 supports JSON 数组 [{name, skill_level, efficiency, swap, swap_name, match}]",
                 },
             },
             "required": ["profession", "supports_json"],
@@ -150,12 +177,18 @@ retry_plan_tool_def = {
     "type": "function",
     "function": {
         "name": "retry_plan_tool",
-        "description": "重试一个失败的专精计划",
+        "description": "将全部失败的专精计划重置为 idle 待执行。当前实现不按 char_id 或 skill_index 筛选，这两个参数仅为兼容参数。用户只要求重试单个计划时，说明批量范围并取得确认后调用；不要声称只重试了指定干员。",
         "parameters": {
             "type": "object",
             "properties": {
-                "char_id": {"type": "string", "description": "干员ID"},
-                "skill_index": {"type": "integer", "description": "技能索引 0/1/2"},
+                "char_id": {
+                    "type": "string",
+                    "description": "兼容参数，不用于筛选；批量重试可传空字符串",
+                },
+                "skill_index": {
+                    "type": "integer",
+                    "description": "兼容参数，不用于筛选；批量重试可传0",
+                },
             },
             "required": ["char_id", "skill_index"],
         },

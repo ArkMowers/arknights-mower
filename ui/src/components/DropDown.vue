@@ -25,7 +25,6 @@ const btn_pad = computed(() => {
 <template>
   <n-dropdown
     trigger="hover"
-    width="trigger"
     :options="options"
     @select="select"
     :placement="up ? 'top' : 'bottom'"

@@ -2,14 +2,14 @@
   <span v-html="des" @click="handleTermClick($event)"></span>
   <n-modal v-model:show="showModal" v-if="props.isbuffer">
     <n-card
-      style="width: 600px; user-select: none"
+      style="width: min(600px, calc(100vw - 32px)); user-select: text"
       title="特殊效果"
       :bordered="false"
       size="huge"
       role="dialog"
       aria-modal="true"
     >
-      <div v-for="item in props.buffer">
+      <div v-for="item in props.buffer" :key="item">
         <n-card :title="buffer1[item].termName">
           <div v-html="richText2HTML(buffer1[item].description)"></div>
         </n-card>
@@ -19,9 +19,13 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { richText2HTML, findTerm } from '@/stores/richText2HTML'
-import buffer1 from '@/pages/basement_skill/buffer.json'
+import { useBasementSkill } from '@/stores/basementSkill'
+
+defineOptions({ name: 'BasementSkillTerms' })
+
+const { buffer: buffer1 } = useBasementSkill()
 const showModal = ref(false)
 const props = defineProps({
   des: String,

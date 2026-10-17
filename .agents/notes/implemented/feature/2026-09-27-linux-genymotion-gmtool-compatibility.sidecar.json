@@ -1,0 +1,21 @@
+{
+  "title": "Linux Genymotion GMTool Compatibility Preset",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-09-27",
+  "authors": [
+    "Antigravity"
+  ],
+  "invariants": [
+    "[INV-01]",
+    "[INV-02]",
+    "[INV-03]",
+    "[INV-04]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.discovery.genymotion"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_genymotion_tests.py"
+  ]
+}

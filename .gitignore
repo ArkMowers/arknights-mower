@@ -8,6 +8,7 @@ FZDYSK.TTF
 
 # Local debug output
 /debug/
+/.playwright-cli/
 
 !main.spec
 *.yaml
@@ -199,6 +200,17 @@ dmypy.json
 ### 命令行运行产生的/tmp/data.db
 /tmp/
 
+# pytest 运行期产物
+/.pytest_cache/
+/.pytest_temp/
+/.pytest_tmp/
+
+# 运行期配置文件（@app/config/，2026-08-21 由 @app/ 迁移而来）
+/config/
+
+# Shared persistent runtime resource packages (never bundled or tracked)
+/resources/
+
 # End of https://www.toptal.com/developers/gitignore/api/visualstudiocode
 /*.json
 dist
@@ -223,3 +235,12 @@ MAA
 # opencode
 .opencode/
 openspec/
+
+# Official macOS ADB, staged during packaging
+/platform-tools/
+
+# Local Codex workspace files
+/.codex/
+
+# Generated compatibility entry for the resource publisher; shared source lives in data/.
+/ui/src/pages/basement_skill/skill.json

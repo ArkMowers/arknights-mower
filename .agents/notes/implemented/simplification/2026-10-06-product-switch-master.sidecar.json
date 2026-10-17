@@ -1,0 +1,26 @@
+{
+  "title": "Product Switching Master Setting",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-27]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.config.conf.RIICPart.ProductSwitchingConf",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._product_switching_enabled",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._discard_product_switches",
+    "arknights_mower.solvers.base_mixin.BaseMixin.detect_room_type",
+    "arknights_mower.utils.operators.Operators.facility_type"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/manufacture_product_switch_tests.py",
+    "ui/src/components/ProductSwitchingSettings.test.js",
+    "ui/src/stores/configPartial.test.js",
+    "arknights_mower/tests/room_map_relocation_tests.py",
+    "ui/src/stores/config.test.js"
+  ]
+}

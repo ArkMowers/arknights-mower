@@ -1,0 +1,39 @@
+{
+  "title": "Device Settings Save Scope and Start-and-Test Action",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-09-28",
+  "authors": [
+    "DeepSeek Harness"
+  ],
+  "invariants": [
+    "[INV-01]",
+    "[INV-02]",
+    "[INV-03]",
+    "[INV-04]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.config.conf.Conf.sync_legacy_device_fields",
+    "arknights_mower.utils.device.application.DeviceControl.start_bound",
+    "arknights_mower.utils.device.session.DeviceSession.ensure_ready",
+    "arknights_mower.utils.device.session.DeviceSession._format_human_observation",
+    "arknights_mower.utils.device.session.DeviceSession._flow_names_state",
+    "arknights_mower.utils.device.window.trigger_simulator_boss_key",
+    "arknights_mower.utils.device.session_io.MANAGED_INSTANCE_PRESETS",
+    "arknights_mower.utils.device.session_io.ProductionSimulator.start",
+    "ui.src.utils.deviceSettings.editedDevicePatch",
+    "ui.src.utils.deviceSettings.isImmediateDeviceField",
+    "ui.src.utils.deviceSettings.deviceSettingsState",
+    "ui.src.components.DropDown"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_start_bound_tests.py",
+    "arknights_mower/tests/device_config_tests.py",
+    "arknights_mower/tests/device_window_tests.py",
+    "arknights_mower/tests/device_session_tests.py",
+    "arknights_mower/tests/device_recovery_tests.py",
+    "arknights_mower/tests/device_droidcast_start_tests.py",
+    "arknights_mower/tests/device_preflight_io_tests.py",
+    "ui/src/utils/deviceSettings.test.js"
+  ]
+}

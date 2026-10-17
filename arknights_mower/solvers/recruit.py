@@ -5,7 +5,6 @@ from itertools import combinations
 import cv2
 import numpy as np
 
-from arknights_mower import __rootdir__
 from arknights_mower.data import (
     agent_with_tags,
     recruit_agent,
@@ -18,13 +17,41 @@ from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cmatch, cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import Recognizer, Scene
+from arknights_mower.utils.resource_pkg import (
+    register_resource_reload,
+    resource_pkg_path,
+)
 from arknights_mower.utils.vector import va
 
 number = riic_base_digits
-with lzma.open(f"{__rootdir__}/models/recruit_result.pkl", "rb") as f:
-    recruit_res_template = pickle.load(f)
-with lzma.open(f"{__rootdir__}/models/recruit.pkl", "rb") as f:
-    tag_template = pickle.load(f)
+
+
+def _load_recruit_models():
+    with lzma.open(
+        str(resource_pkg_path("arknights_mower/models/recruit_result.pkl")), "rb"
+    ) as f:
+        result = pickle.load(f)
+    with lzma.open(
+        str(resource_pkg_path("arknights_mower/models/recruit.pkl")), "rb"
+    ) as f:
+        tags = pickle.load(f)
+    if not isinstance(result, dict) or not isinstance(tags, dict):
+        raise ValueError("公开招募识别模型格式错误")
+    return result, tags
+
+
+recruit_res_template, tag_template = _load_recruit_models()
+
+
+@register_resource_reload
+def reload_resource_models() -> None:
+    result, tags = _load_recruit_models()
+    recruit_res_template.clear()
+    recruit_res_template.update(result)
+    tag_template.clear()
+    tag_template.update(tags)
+
+
 job_list = [
     "recruit/riic_res/CASTER",
     "recruit/riic_res/MEDIC",
@@ -298,34 +325,37 @@ class RecruitSolver(SceneGraphSolver):
             self.scene_graph_navigation(Scene.RECRUIT_MAIN)
 
     def recruit_result(self):
-        try:
-            # 存在读完一次没退完再读一次
-            if str(self.recruit_index) in self.result_agent.keys():
-                self.tap((950, 150))
-                return
+        if self.recruit_index in self.result_agent:
+            self.tap((950, 150))
+            return
 
+        for attempt in range(5):
             job_pt = None
             for i in job_list:
                 if job_pt := self.find(i):
                     break
+            if job_pt is not None:
+                break
+            if attempt < 4:
+                self.sleep(1)
+        else:
+            logger.warning("公招干员职业图标连续5次未识别，结束本次公招")
+            self.recog.update()
+            return True
 
-            img = cropimg(self.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
-            img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
+        img = cropimg(self.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
+        img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
 
-            score = {}
-            for id in recruit_res_template:
-                res = recruit_res_template[id]
-                result = cv2.matchTemplate(img, res, cv2.TM_CCORR_NORMED, res)
-                _, max_val, _, _ = cv2.minMaxLoc(result)
-                score[id] = max_val
-            self.result_agent[self.recruit_index] = recruit_agent[
-                max(score, key=score.get)
-            ]["name"]
-
-        except Exception as e:
-            logger.exception(f"公招开包异常:{e}")
-        finally:
-            self.tap((500, 500))
+        score = {}
+        for id in recruit_res_template:
+            res = recruit_res_template[id]
+            result = cv2.matchTemplate(img, res, cv2.TM_CCORR_NORMED, res)
+            _, max_val, _, _ = cv2.minMaxLoc(result)
+            score[id] = max_val
+        self.result_agent[self.recruit_index] = recruit_agent[
+            max(score, key=score.get)
+        ]["name"]
+        self.tap((500, 500))
 
     def recruit_tags(self, tags):
         tem_res = self.recruit_cal(sorted(tags))
@@ -364,7 +394,10 @@ class RecruitSolver(SceneGraphSolver):
                 return
             elif recruit_result_level == 5:
                 if config.conf.recruit_auto_5 == 2:
-                    if config.conf.recruit_auto_only5 and len(recruit_cal_result) > 1:
+                    if (
+                        not config.conf.recruit_auto_only5
+                        or len(recruit_cal_result) > 1
+                    ):
                         logger.debug(
                             f"{recruit_result_level}星稀有tag,但不止一个或纯手动选择"
                         )
@@ -564,8 +597,11 @@ class RecruitSolver(SceneGraphSolver):
                     continue
                 result = cv2.matchTemplate(digit, im, cv2.TM_SQDIFF_NORMED)
                 min_val, _, _, _ = cv2.minMaxLoc(result)
-                score.append(min_val)
-            value = value * 10 + score.index(min(score))
+                score.append((min_val, i))
+            # 阈值化可能把一个数字分成两块；无法匹配模板的碎片不是一位数字。
+            if not score:
+                continue
+            value = value * 10 + min(score)[1]
         return value
 
     def add_recruit_param(self):

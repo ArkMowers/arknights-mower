@@ -1,0 +1,20 @@
+{
+  "title": "Group Recovery Managers",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-03",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.dorm_skills.is_group_recovery_manager",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._open_emergency_beds"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/dorm_skills_tests.py",
+    "arknights_mower/tests/emergency_manager_capacity_tests.py"
+  ]
+}

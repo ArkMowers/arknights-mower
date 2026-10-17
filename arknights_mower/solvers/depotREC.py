@@ -3,14 +3,15 @@ import lzma
 import os
 import pickle
 import re
-import time
+import unicodedata
 from datetime import datetime
+from decimal import Decimal
+from time import monotonic
 
 import cv2
 import numpy as np
-from skimage.feature import hog
 
-from arknights_mower.utils import depot
+from arknights_mower.utils import config, depot, rapidocr, vision_np
 from arknights_mower.utils.graph import SceneGraphSolver
 
 from .. import __rootdir__
@@ -19,6 +20,7 @@ from ..utils.image import loadimg
 from ..utils.log import logger
 from ..utils.path import get_path
 from ..utils.recognize import Recognizer, Scene
+from ..utils.resource_pkg import resource_pkg_path
 
 # 向下x变大 = 0
 # 向右y变大 = 0
@@ -40,16 +42,7 @@ def 导入_数字模板():
 
 def 提取特征点(模板):
     模板 = 模板[40:173, 40:173]
-    hog_features = hog(
-        模板,
-        orientations=18,
-        pixels_per_cell=(8, 8),
-        cells_per_block=(2, 2),
-        block_norm="L2-Hys",
-        transform_sqrt=True,
-        channel_axis=2,
-    )
-    return hog_features
+    return vision_np.hog(模板)
 
 
 def 识别空物品(物品灰):
@@ -85,6 +78,14 @@ def 切图(圆心x坐标, 圆心y坐标, 拼接结果, 正方形边长=130):
     return 图片
 
 
+class _DepotGameRestarted(Exception):
+    pass
+
+
+class _DepotRecoveryExhausted(Exception):
+    pass
+
+
 class depotREC(SceneGraphSolver):
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
@@ -99,9 +100,13 @@ class depotREC(SceneGraphSolver):
 
         self.仓库输出 = get_path("@app/tmp/depotresult.csv")
 
-        with lzma.open(f"{__rootdir__}/models/CONSUME.pkl", "rb") as pkl:
+        with lzma.open(
+            str(resource_pkg_path("arknights_mower/models/CONSUME.pkl")), "rb"
+        ) as pkl:
             self.knn模型_CONSUME = pickle.load(pkl)
-        with lzma.open(f"{__rootdir__}/models/NORMAL.pkl", "rb") as pkl:
+        with lzma.open(
+            str(resource_pkg_path("arknights_mower/models/NORMAL.pkl")), "rb"
+        ) as pkl:
             self.knn模型_NORMAL = pickle.load(pkl)
         self.物品数字 = 导入_数字模板()
 
@@ -142,46 +147,147 @@ class depotREC(SceneGraphSolver):
         格式化数字 = int(float("".join(matches)) * (10000 if "万" in 物品个数 else 1))
         return 格式化数字
 
-    def 匹配物品一次(self, 物品, 物品灰, 模型名称):
+    def 读取龙门币数字(self, 数字图片):
+        """Read a complete LMD amount, including its displayed unit."""
+        try:
+            if rapidocr.engine is None:
+                rapidocr.initialize_ocr()
+            result, _ = rapidocr.engine(
+                cv2.resize(数字图片, None, fx=2, fy=2),
+                use_det=False,
+                use_cls=False,
+                use_rec=True,
+            )
+        except Exception:
+            logger.exception("仓库扫描: 龙门币数量 OCR 失败")
+            return None
+        if not result or len(result) != 1:
+            return None
+        text, confidence = result[0]
+        if not 0.90 <= confidence <= 1:
+            return None
+        text = re.sub(r"\s+", "", unicodedata.normalize("NFKC", text))
+        match = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)([万亿]?)", text)
+        if match is None:
+            return None
+        number, unit = match.groups()
+        amount = Decimal(number) * {"": 1, "万": 10000, "亿": 100000000}[unit]
+        return int(amount) if amount == amount.to_integral_value() else None
+
+    def 匹配物品一次(self, 物品, 物品灰, knn模型: vision_np.Knn1Model):
         物品特征 = 提取特征点(物品)
-        predicted_label = 模型名称.predict([物品特征])
+        predicted_label = vision_np.knn1_predict(
+            物品特征,
+            knn模型["X"],
+            knn模型["y"],
+            knn模型["classes"],
+        )
 
         数字区域 = 物品灰[160:210, 30:210]  # 多加了一次裁切，把数字区域单独裁出来
-        物品数字 = self.读取物品数字(数字区域)  # 解决了合成玉只能识别3位数的问题
+        物品数字 = (
+            self.读取龙门币数字(数字区域)
+            if predicted_label == "龙门币"
+            else self.读取物品数字(数字区域)
+        )
+        return [predicted_label, 物品数字]
 
-        # 物品数字 = self.读取物品数字(物品灰)  # 这里是原来的逻辑
-        return [predicted_label[0], 物品数字]
-
-    def run(self) -> None:
+    def run(self) -> bool:
         logger.info("Start: 仓库扫描")
-        super().run()
+        self._game_restart_used = False
+        self.check_current_focus()
+        for _ in range(2):
+            try:
+                return self.transition()
+            except _DepotGameRestarted:
+                self.结果字典 = {}
+                logger.info("仓库扫描: 游戏已重启，完成登录后重新进入仓库完整扫描")
+            except _DepotRecoveryExhausted:
+                self.结果字典 = {}
+                logger.warning("仓库扫描: 游戏恢复后仍未就绪，本次扫描失败")
+                return False
+        return False
+
+    def waiting_solver(self):
+        restart_allowed = not self._game_restart_used
+        if super().waiting_solver(restart_on_timeout=restart_allowed):
+            return True
+        if not restart_allowed:
+            raise _DepotRecoveryExhausted
+        self._game_restart_used = True
+        raise _DepotGameRestarted
+
+    def restart_game(self):
+        if self._game_restart_used:
+            raise _DepotRecoveryExhausted
+        super().restart_game()
+        self._game_restart_used = True
+        raise _DepotGameRestarted
+
+    def back_to_index(self):
+        # 在识别器的同场景重启之前结束无进展的登录导航。
+        timeout = min(120, config.conf.run_order_delay * 90)
+        self._navigation_deadline = monotonic() + timeout
+        try:
+            self.recog.reset_after_external_control()
+            super().back_to_index()
+        finally:
+            self._navigation_deadline = None
+
+    def scene(self) -> int:
+        deadline = getattr(self, "_navigation_deadline", None)
+        if deadline is not None and monotonic() >= deadline:
+            raise _DepotRecoveryExhausted
+        return super().scene()
+
+    def _wait_for_depot_ready(self) -> bool:
+        if not self.wait_for_scene_stable(Scene.DEPOT):
+            logger.warning("仓库扫描: 未能进入仓库，本次扫描失败")
+            return False
+        if not self.wait_for_scene_stable(timeout_seconds=5, interval_seconds=0.2):
+            logger.warning("仓库扫描: 仓库画面未稳定，本次扫描失败")
+            return False
+        if self.scene() != Scene.DEPOT:
+            logger.warning("仓库扫描: 已离开仓库，本次扫描失败")
+            return False
+        return True
 
     def transition(self) -> bool:
+        self.结果字典 = {}
         logger.info("仓库扫描: 回到桌面")
         self.back_to_index()
         if self.scene() == Scene.INDEX:
             self.tap_index_element("warehouse")
             logger.info("仓库扫描: 从主界面点击仓库界面")
 
+            if not self._wait_for_depot_ready():
+                return False
+
             starttime = datetime.now()
             任务组 = [
-                (1200, self.knn模型_CONSUME, "消耗物品"),
-                (1400, self.knn模型_NORMAL, "基础物品"),
+                (1063, self.knn模型_CONSUME, "消耗物品"),
+                (1298, self.knn模型_NORMAL, "基础物品"),
             ]
 
+            有非空分类 = False
             for 任务 in 任务组:
                 self.tap((任务[0], 70))
-                time.sleep(0.5)
+                if not self._wait_for_depot_ready():
+                    return False
                 if not self.find("depot_empty"):
+                    有非空分类 = True
                     self.分类扫描(任务[1])
                     logger.info(
                         f"仓库扫描: {任务[2]}识别，识别用时{datetime.now() - starttime}"
                     )
                 else:
                     logger.info("仓库扫描: 这个分类下没有物品")
+            if 有非空分类 and not self.结果字典:
+                logger.warning("仓库扫描: 未确认任何物品数量，本次扫描失败")
+                return False
             logger.info(f"仓库扫描: {self.结果字典}")
+            扫描时刻 = int(datetime.now().timestamp())
             result = [
-                int(datetime.now().timestamp()),
+                扫描时刻,
                 json.dumps(self.结果字典, ensure_ascii=False),
                 {"森空岛输出仅占位": ""},
             ]
@@ -190,9 +296,13 @@ class depotREC(SceneGraphSolver):
             with open(self.仓库输出, "a", encoding="utf-8", newline="") as f:
                 csv.writer(f).writerow(result)
         else:
-            self.back_to_index()
-        ## 读取的时候会存入数据库
-        depot.读取仓库()
+            logger.warning("仓库扫描: 未能返回首页，本次扫描失败")
+            return False
+        ## 读取的时候会存入数据库；扫描成功时顺手记一条完整库存快照（材料就靠它进历史），
+        ## 用同一个时间戳，读取端才能把两条记录并成一条完整快照。
+        depot.读取仓库(记录快照时刻=扫描时刻)
+        # 保留条数由设置决定（0 = 不清理）；放在这里是因为一次扫描才写一次文件。
+        depot.清理历史()
         return True
 
     def 对比截图(self, image1, image2):
@@ -204,18 +314,17 @@ class depotREC(SceneGraphSolver):
         similarity = len(matches) / max(len(descriptors1), len(descriptors2))
         return similarity * 100
 
-    def 分类扫描(self, 模型名称):
+    def 分类扫描(self, knn模型: vision_np.Knn1Model):
         截图列表 = []
         旧的截图 = self.recog.img
         旧的截图 = 旧的截图[140:1000, :]
         截图列表.append(旧的截图)
-        self.recog.update()
         拼接好的图片 = 截图列表[0]
         切图列表 = self.切图主程序(拼接好的图片)
         logger.info(f"仓库扫描: 需要识别{len(切图列表)}个物品")
 
         for [物品, 物品灰, id] in 切图列表:
-            [物品名称, 物品数字] = self.匹配物品一次(物品, 物品灰, 模型名称)
+            [物品名称, 物品数字] = self.匹配物品一次(物品, 物品灰, knn模型)
             if 物品数字 is None:
                 logger.warning(f"仓库扫描: 无法识别 {物品名称} 的数量，跳过")
                 continue

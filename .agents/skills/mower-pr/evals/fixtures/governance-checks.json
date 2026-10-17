@@ -1,0 +1,92 @@
+[
+  {
+    "bucket": "pass",
+    "completedAt": "2026-10-11T12:53:15Z",
+    "link": "https://github.com/ArkMowers/arknights-mower/actions/runs/38140954718/job/114474570439",
+    "name": "ruff",
+    "startedAt": "2026-10-11T12:53:01Z",
+    "state": "SUCCESS",
+    "workflow": "代码格式检查与测试"
+  },
+  {
+    "bucket": "pass",
+    "completedAt": "2026-10-11T13:00:35Z",
+    "link": "https://github.com/ArkMowers/arknights-mower/actions/runs/38140954718/job/114474570359",
+    "name": "unittest",
+    "startedAt": "2026-10-11T12:53:01Z",
+    "state": "SUCCESS",
+    "workflow": "代码格式检查与测试"
+  },
+  {
+    "bucket": "pass",
+    "completedAt": "2026-10-11T12:53:22Z",
+    "link": "https://github.com/ArkMowers/arknights-mower/actions/runs/38140954718/job/114474570376",
+    "name": "prettier",
+    "startedAt": "2026-10-11T12:53:00Z",
+    "state": "SUCCESS",
+    "workflow": "代码格式检查与测试"
+  },
+  {
+    "bucket": "pass",
+    "completedAt": "2026-10-11T12:54:17Z",
+    "link": "https://github.com/ArkMowers/arknights-mower/actions/runs/38140954718/job/114474570387",
+    "name": "Frontend tests and build",
+    "startedAt": "2026-10-11T12:53:00Z",
+    "state": "SUCCESS",
+    "workflow": "代码格式检查与测试"
+  },
+  {
+    "bucket": "pass",
+    "completedAt": "2026-10-11T12:53:36Z",
+    "link": "https://github.com/ArkMowers/arknights-mower/actions/runs/38140954718/job/114474570420",
+    "name": "actionlint",
+    "startedAt": "2026-10-11T12:53:00Z",
+    "state": "SUCCESS",
+    "workflow": "代码格式检查与测试"
+  },
+  {
+    "bucket": "pass",
+    "completedAt": "2026-10-11T12:54:00Z",
+    "link": "https://github.com/ArkMowers/arknights-mower/actions/runs/38140954718/job/114474570413",
+    "name": "recognition-equivalence",
+    "startedAt": "2026-10-11T12:53:00Z",
+    "state": "SUCCESS",
+    "workflow": "代码格式检查与测试"
+  },
+  {
+    "bucket": "skipping",
+    "completedAt": "2026-10-11T12:52:58Z",
+    "link": "https://github.com/ArkMowers/arknights-mower/actions/runs/38140954718/job/114474571410",
+    "name": "Update compatibility (${{ matrix.os }})",
+    "startedAt": "2026-10-11T12:52:58Z",
+    "state": "SKIPPED",
+    "workflow": "代码格式检查与测试"
+  },
+  {
+    "bucket": "skipping",
+    "completedAt": "2026-10-11T12:52:58Z",
+    "link": "https://github.com/ArkMowers/arknights-mower/actions/runs/38140954718/job/114474570989",
+    "name": "Update compatibility (android-arm64)",
+    "startedAt": "2026-10-11T12:52:58Z",
+    "state": "SKIPPED",
+    "workflow": "代码格式检查与测试"
+  },
+  {
+    "bucket": "pass",
+    "completedAt": "2026-10-11T12:52:58Z",
+    "link": "https://github.com/ArkMowers/arknights-mower/actions/runs/38140954718/job/114474545537",
+    "name": "Determine test scope",
+    "startedAt": "2026-10-11T12:52:52Z",
+    "state": "SUCCESS",
+    "workflow": "代码格式检查与测试"
+  },
+  {
+    "bucket": "pass",
+    "completedAt": "2026-10-11T12:53:22Z",
+    "link": "https://github.com/ArkMowers/arknights-mower/actions/runs/38140954719/job/114474545712",
+    "name": "校验文档规范、相对链接与术语一致性",
+    "startedAt": "2026-10-11T12:52:52Z",
+    "state": "SUCCESS",
+    "workflow": "文档规范与一致性检查"
+  }
+]

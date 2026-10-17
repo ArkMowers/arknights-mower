@@ -1,0 +1,23 @@
+{
+  "title": "Rescue Facility Capacity and Dorm Batching",
+  "status": "archived",
+  "category": "bug-fix",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]",
+    "[INV-SCHED-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.emergency_staffing.facility_score",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_plan_beds",
+    "arknights_mower.utils.emergency_recovery.emergency_dorm_plan"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/emergency_staffing_tests.py",
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/emergency_group_beds_tests.py"
+  ]
+}

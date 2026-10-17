@@ -1,0 +1,35 @@
+{
+  "title": "Group Shift Retry Confirmation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-25]",
+    "[INV-SCHED-28]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/group_shift_confirmation_tests.py",
+    "arknights_mower/tests/multi_group_shift_tests.py",
+    "arknights_mower/tests/manufacture_product_switch_tests.py",
+    "arknights_mower/tests/completed_group_departure_tests.py",
+    "arknights_mower/tests/exhaust_replacement_tests.py",
+    "arknights_mower/tests/emergency_observation_budget_tests.py",
+    "arknights_mower/tests/emergency_group_return_tests.py",
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/custom_mood_limits_tests.py",
+    "arknights_mower/tests/dorm_recovery_tests.py",
+    "arknights_mower/tests/dorm_batch_release_tests.py",
+    "arknights_mower/tests/scheduler_recovery_preservation_tests.py",
+    "arknights_mower/tests/backup_replacement_state_tests.py",
+    "arknights_mower/tests/shift_backup_convergence_tests.py",
+    "arknights_mower/tests/shift_cycle_convergence_tests.py"
+  ]
+}

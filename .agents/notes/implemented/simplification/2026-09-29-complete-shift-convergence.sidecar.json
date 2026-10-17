@@ -1,0 +1,21 @@
+{
+  "title": "Complete shift convergence",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-01]",
+    "[INV-SCHED-04]",
+    "[INV-SCHED-05]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._prepare_shift_cycle"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/shift_cycle_convergence_tests.py",
+    "arknights_mower/tests/fiammetta_dorm_isolation_tests.py"
+  ]
+}

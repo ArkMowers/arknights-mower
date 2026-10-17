@@ -21,8 +21,6 @@ setuptools.setup(
         "opencv_python",
         "matplotlib",
         "numpy",
-        "scikit_image==0.18.3",
-        "scikit_learn>=1",
         "onnxruntime",
         "pyclipper",
         "shapely",

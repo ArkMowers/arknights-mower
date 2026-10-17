@@ -1,0 +1,29 @@
+{
+  "title": "Isolated device test fixtures",
+  "status": "implemented",
+  "category": "testing",
+  "date": "2026-09-30",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-03]",
+    "[INV-DEV-05]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.application.DeviceControl",
+    "arknights_mower.utils.maa_backup.VerifiedAsst",
+    "webview_ui.start_desktop_child"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/desktop_process_tests.py",
+    "arknights_mower/tests/device_control_shutdown_tests.py",
+    "arknights_mower/tests/device_preflight_io_tests.py",
+    "arknights_mower/tests/device_screenshot_backend_tests.py",
+    "arknights_mower/tests/device_session_io_tests.py",
+    "arknights_mower/tests/device_settings_route_tests.py",
+    "arknights_mower/tests/device_start_bound_tests.py",
+    "arknights_mower/tests/maa_error_no_exit_tests.py",
+    "arknights_mower/tests/maa_resource_update_tests.py"
+  ]
+}
