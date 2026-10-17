@@ -234,7 +234,14 @@ describe('integrated Mower source scheduler',()=>{
   state.time=.01;settleRoster(state,rates)
   expect(source.queue.tasks).not.toContain(independent)
   expect(source.queue.tasks.filter(task=>task.type===T.FIAMMETTA)).toEqual([retained])
-  expect(source.trace.filter(t=>t.type==='FIAMMETTA')).toHaveLength(traceCount)
+  // The independent arrangement moved R into a Free bed and refreshed the observed state.
+  expect(source.trace.filter(t=>t.type==='FIAMMETTA')).toHaveLength(traceCount+1)
+  expect(source.data.operators.R!.currentRoom).toBe('dormitory_1')
+  expect(retained.executionFailure).toBeDefined()
+  for(let attempt=0;attempt<3;attempt++)settleRoster(state,rates)
+  expect(source.trace.filter(t=>t.type==='FIAMMETTA')).toHaveLength(traceCount+1)
+  expect(source.queue.tasks.filter(task=>task.type===T.FIAMMETTA)).toEqual([retained])
+  expect(state.events.filter(e=>e.type==='fiammetta')).toHaveLength(0)
   expect(retained.timeMicros).toBe(0)
   expect(state.diagnostics.some(d=>d.message.includes('五分钟'))).toBe(false)
   const target=retained.plan.dormitory_1![0]!
@@ -247,3 +254,19 @@ describe('integrated Mower source scheduler',()=>{
   expect(state.occupants.dormitory_1_0).toBe(fia)
   expect(state.occupants.room_1_1_0).toBe('A')
  })
+
+
+it('starts an exhausted shift before observed morale reaches zero',()=>{
+ const config=fixture();config.mowerAlpha=true;config.initialMorale.A=.18;config.mowerSourceRules!.exhaustRequire=['A']
+ const state=createRosterRuntime(config),source=getMowerSourceRuntime(state)
+ source.initial=false;source.firstInit=false
+ for(const [slot,name] of Object.entries(state.occupants)){const op=source.data.operators[name]!;op.currentRoom=slot.slice(0,slot.lastIndexOf('_'));op.currentIndex=Number(slot.slice(slot.lastIndexOf('_')+1));op.mood=state.morale[name]??24;op.timeStampMicros=0}
+ source.queue.tasks=[new MowerTask({type:T.EXHAUST_OFF,metadata:'A'})]
+ for(let i=0;i<20&&!source.data.operators.A!.isResting();i++){
+  settleRoster(state,rates)
+  if(!source.data.operators.A!.isResting())advanceRoster(state,nextRosterActionHours(state,rates),rates)
+ }
+ expect(source.data.operators.A!.isResting()).toBe(true)
+ expect(state.morale.A).toBeGreaterThan(0)
+ expect(state.occupants.room_1_1_0).toBe('R')
+})

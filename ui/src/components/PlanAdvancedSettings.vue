@@ -18,7 +18,6 @@ const {
   merge_interval,
   group_rest_in_full_on_mood_gap,
   group_mood_gap_threshold_minutes,
-  group_mood_gap_max_extra_wait_hours,
   fia_fool,
   assistant_follows_schedule,
   fia_threshold,
@@ -118,6 +117,7 @@ const {
         <template #label>
           <span>无人机使用阈值</span>
           <help-text>
+            <div>普通制造站加速仅使用超过阈值的无人机，与跑单房间和自动切产物开关无关。</div>
             <div>如加速贸易，推荐大于 贸易站数*10 + 92</div>
             <div>如加速制造，推荐大于 贸易站数*10</div>
           </help-text>
@@ -249,7 +249,7 @@ const {
         <n-checkbox v-model:checked="group_rest_in_full_on_mood_gap">
           组内心情差距过大时延后回班
           <help-text
-            >默认开启。参与正常回班计时成员的最晚与最早预计恢复完成时间之差超过下方阈值时，延后整组回班。关闭后按组内最早恢复时间安排回班；单独设置“回满”的干员仍会回满。</help-text
+            >默认开启。单绑、非候补工作主班的最晚与最早预计恢复完成时间之差超过下方阈值后，本轮等这些主班全部回满再回班。候补、替班和多绑主班不延长这项等待；明确设置“回满”的主班仍须全部回满。两项要求同时生效，不按额外等待上限提前回班。</help-text
           >
         </n-checkbox>
       </n-form-item>
@@ -261,25 +261,6 @@ const {
           :step="5"
         >
           <template #suffix>分钟</template>
-        </mower-input-number>
-      </n-form-item>
-      <n-form-item v-if="group_rest_in_full_on_mood_gap">
-        <template #label>
-          <span class="label-with-help">
-            <span>额外等待上限</span>
-            <help-text
-              >仅对上方“组内心情差距过大时延后回班”生效。以不延后时的预计回班时间为起点；0
-              表示不限时。单独设置“回满”的干员不受此限制。</help-text
-            >
-          </span>
-        </template>
-        <mower-input-number
-          v-model:value="group_mood_gap_max_extra_wait_hours"
-          :min="0"
-          :max="24"
-          :step="0.5"
-        >
-          <template #suffix>小时</template>
         </mower-input-number>
       </n-form-item>
       <n-form-item :show-label="false">

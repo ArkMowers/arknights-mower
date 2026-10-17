@@ -1,3 +1,4 @@
+import { eligibleSingleRecoveryTargets } from './singleRecoveryEligibility'
 import { operatorFor } from '../domain/operatorContext'
 import { isWanderingMedic, isLaiosSquad } from './supportRecovery'
 import { hasRiicTag } from '../domain/riicTags'
@@ -5,8 +6,8 @@ import { buildRiicGlobalContext } from './globalContext'
 import { matchesRiicFaction, matchesRiicIdentity } from '../domain/riicIdentity'
 import type { AppConfig } from '../domain/types'
 export interface DormitoryRecoveryResult { rates:Map<string,number>; details:Map<string,string[]>; unquantified:string[] }
-/** Actual-room rates; unspecified atmosphere is zero and explicitly diagnosed. Targets are policy input, not a lowest-morale rule. */
-export function evaluateDormitoryRecovery(config:AppConfig,roomIndex:number,moraleValues:ReadonlyMap<string,number>,atmosphere?:number,targetByProvider?:ReadonlyMap<string,string>):DormitoryRecoveryResult {
+/** Actual-room rates; unspecified atmosphere is diagnosed. Valid policy targets are retained; invalid targets fall back to eligible residents. */
+export function evaluateDormitoryRecovery(config:AppConfig,roomIndex:number,moraleValues:ReadonlyMap<string,number>,atmosphere?:number,targetByProvider?:ReadonlyMap<string,string>,conservative=false):DormitoryRecoveryResult {
  const rates=new Map<string,number>(),details=new Map<string,string[]>(),unquantified:string[]=[]
  const level=config.facilities.dormitories[roomIndex]
  if(!level)return {rates,details,unquantified:['宿舍等级缺失']}
@@ -27,11 +28,11 @@ export function evaluateDormitoryRecovery(config:AppConfig,roomIndex:number,mora
   }
  }
  const all=new Map<string,number>(),single=new Map<string,number>(),self=new Map<string,number>(),fatigue=new Map<string,number>()
- const record=(id:string,value:number,kind:'all'|'single'|'self'|'fatigue',label:string)=>{const table=kind==='all'?all:kind==='single'?single:kind==='fatigue'?fatigue:self;table.set(id,kind==='self'?(table.get(id)??0)+value:Math.max(table.get(id)??0,value));details.set(id,[...(details.get(id)??[]),`${label}：${kind} ${value}/h`])}
+ const record=(id:string,value:number,kind:'all'|'single'|'self'|'fatigue',label:string)=>{if(conservative&&value>0)return;const table=kind==='all'?all:kind==='single'?single:kind==='fatigue'?fatigue:self;table.set(id,kind==='self'?(table.get(id)??0)+value:Math.max(table.get(id)??0,value));details.set(id,[...(details.get(id)??[]),`${label}：${kind} ${value}/h`])}
  for(const provider of operators)for(const skill of provider.skills.filter(s=>s.roomType==='DORMITORY')) {
   const d=skill.description,b=skill.buffId,label=`${provider.name}·${skill.name}`
   if(b==='dorm_recExcludeOther[000]'||b==='dorm_exchangeAp[000]'||b==='dorm_rec_toone[000]')continue
-  if(b==='dorm_rec_all&single[000]'){const targets=operators.filter(o=>mood(o.charId)<24);for(const t of targets)record(t.charId,.8/targets.length,targets.length===1?'single':'all',label);continue}
+  if(b==='dorm_rec_all&single[000]'){const targets=operators.filter(o=>mood(o.charId)<24);for(const t of targets){if(targets.length===1&&t.charId===provider.charId)continue;record(t.charId,.8/targets.length,targets.length===1?'single':'all',label)};continue}
   if(b==='dorm_rec_all&tag[000]'){for(const target of operators)record(target.charId,.15+(isLaiosSquad(target)?.15:0),'all',label);continue}
   let dynamicAll:number|undefined
   if(b==='dorm_rec_all&profession[000]')dynamicAll=.06*Math.min(4,global.presentOperators.filter(isWanderingMedic).length)
@@ -61,7 +62,7 @@ export function evaluateDormitoryRecovery(config:AppConfig,roomIndex:number,mora
   const allMatch=d.match(/(?:该宿舍内|宿舍内)(?:所有|除自身以外所有)干员的心情每小时恢复\+([\d.]+)/)
   if(allMatch)for(const t of operators){if(d.includes('除自身以外所有')&&t.charId===provider.charId)continue;const morganExtra=provider.name==='推进之王'&&operators.some(o=>o.skills.some(s=>s.buffId==='dorm_rec_toone[000]'))&&matchesRiicIdentity(t,'groupId','glasgow')?.3:0;record(t.charId,Number(allMatch[1])+morganExtra,'all',label)}
   const singleMatch=d.match(/某个干员(?:的心情)?每小时恢复\+([\d.]+)/)
-  if(singleMatch){const candidates=operators.filter(o=>mood(o.charId)<24&&(!d.includes('除自身以外')||o.charId!==provider.charId));const requested=targetByProvider?.get(provider.charId);const target=requested?candidates.find(o=>o.charId===requested):candidates.length===1?candidates[0]:undefined;if(target){
+  if(singleMatch){const candidates=eligibleSingleRecoveryTargets(operators,provider.charId,mood);const requested=targetByProvider?.get(provider.charId);const requestedTarget=candidates.find(o=>o.charId===requested);const target=requestedTarget??(requested?[...candidates].sort((a,b)=>mood(a.charId)-mood(b.charId))[0]:candidates.length===1?candidates[0]:undefined);if(target){
    const named:Record<string,string>={'dorm_rec_single_P[000]':'锡兰','dorm_rec_single_P[001]':'嘉维尔','dorm_rec_single_P[002]':'蓝毒'}
    const extra=(b==='dorm_rec_single&tag[000]'&&(hasRiicTag(target,'monsterHunter')||hasRiicTag(target,'bubbleHunter')))||(named[b]===target.name)||(b==='dorm_rec_single_power[000]'&&matchesRiicIdentity(target,'nationId','sami'))||(b==='dorm_rec_single_power[001]'&&matchesRiicIdentity(target,'nationId','laterano'))
    record(target.charId,Number(singleMatch[1])+(extra?.45:0),'single',label)
@@ -70,7 +71,7 @@ export function evaluateDormitoryRecovery(config:AppConfig,roomIndex:number,mora
  }
  for(const op of operators){
   const fixed=op.skills.some(s=>s.buffId==='dorm_recExcludeOther[000]')
-  const central=fixed?0:Math.max(0,...centralEffects.filter(e=>!e.eliteOnly||matchesRiicIdentity(op,'groupId','elite')).map(e=>e.value))
+  const central=fixed||conservative?0:Math.max(0,...centralEffects.filter(e=>!e.eliteOnly||matchesRiicIdentity(op,'groupId','elite')).map(e=>e.value))
   if(central>0)details.set(op.charId,[...(details.get(op.charId)??[]),`中枢加成：+${central}/h`])
   const rate=fixed?2:base+central+(all.get(op.charId)??0)+(single.get(op.charId)??0)+(self.get(op.charId)??0)+(fatigue.get(op.charId)??0)
   rates.set(op.charId,rate)

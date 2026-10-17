@@ -449,7 +449,9 @@ def test_maa_connect_preserves_shared_compatibility(
     platform, selected_adb, failure, monkeypatch, tmp_path
 ):
     from arknights_mower.solvers import base_schedule
+    from arknights_mower.tests.maa_process_helpers import fake_sdk_worker
 
+    monkeypatch.setattr("arknights_mower.utils.maa_process.MaaProcess", fake_sdk_worker)
     monkeypatch.setattr(sys, "path", list(sys.path))
     monkeypatch.setattr(base_schedule, "Message", int, raising=False)
     adb_path = (
@@ -508,7 +510,7 @@ def test_maa_connect_preserves_shared_compatibility(
     order = Mock()
     order.attach_mock(guard, "guard")
     order.attach_mock(assistant.connect, "connect")
-    response = Mock(content=b"{}")
+    response = Mock(content=b'{"OfflineStage": {"algorithm": "JustReturn"}}')
     response.__enter__ = Mock(return_value=response)
     response.__exit__ = Mock(return_value=False)
     monkeypatch.setattr(requests, "get", Mock(return_value=response))
@@ -539,7 +541,7 @@ def test_maa_connect_preserves_shared_compatibility(
         assert solver.device.client.adb_bin == (adb_path if selected_adb else None)
     finally:
         if hasattr(solver, "MAA"):
-            solver.MAA.stop()
+            solver.release_maa()
 
 
 @pytest.mark.parametrize(

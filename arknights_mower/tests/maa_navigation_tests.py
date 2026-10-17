@@ -1,6 +1,7 @@
 """Activity navigation survives MAA task-directory precedence."""
 
 import json
+import os
 import sys
 import threading
 from pathlib import Path
@@ -12,11 +13,13 @@ import pytest
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 import arknights_mower.solvers.base_schedule as base_schedule  # noqa: E402
+from arknights_mower.tests.maa_process_helpers import fake_sdk_worker  # noqa: E402
 from arknights_mower.utils.config.conf import Conf  # noqa: E402
 
 
 @pytest.fixture
 def runtime(tmp_path, monkeypatch):
+    monkeypatch.setattr("arknights_mower.utils.maa_process.MaaProcess", fake_sdk_worker)
     installed = tmp_path / "resource" / "tasks" / "tasks.json"
     installed.parent.mkdir(parents=True)
     installed.write_text('{"FightBegin": {"algorithm": "JustReturn"}}')
@@ -143,3 +146,137 @@ def test_duplicate_cached_tasks_are_reported_as_resource_load_failure(runtime):
     with pytest.raises(RuntimeError, match="MAA.*资源加载失败"):
         runtime.solver.initialize_maa()
     runtime.asst.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "previous", [None, b'{"Previous-8": {"algorithm": "JustReturn"}}\n']
+)
+def test_rejected_download_restores_previous_navigation(runtime, previous):
+    if previous is not None:
+        runtime.navigation.write_bytes(previous)
+    runtime.asst.load.return_value = False
+    runtime.asst.load.side_effect = None
+    with pytest.raises(RuntimeError, match="MAA.*资源加载失败"):
+        runtime.solver.initialize_maa()
+    if previous is None:
+        assert not runtime.navigation.exists()
+    else:
+        assert runtime.navigation.read_bytes() == previous
+    runtime.guard.assert_not_called()
+    runtime.asst.return_value.connect.assert_not_called()
+    assert runtime.hotfix.exists()
+    assert runtime.legacy.exists()
+
+
+def test_older_resource_layout_downloads_navigation_to_root_cache(runtime):
+    runtime.installed.unlink()
+    runtime.installed.parent.rmdir()
+    runtime.hotfix.unlink()
+    runtime.hotfix.parent.rmdir()
+    runtime.navigation.parent.rmdir()
+    (runtime.installed.parents[1] / "tasks.json").write_text('{"FightBegin": {}}')
+    runtime.solver.initialize_maa()
+    assert json.loads(runtime.legacy.read_text()) == runtime.payload
+    assert not runtime.navigation.exists()
+    assert "YW-8" in runtime.loaded
+
+
+def test_native_read_access_time_does_not_prevent_navigation_restore(runtime):
+    previous = b'{"Previous-8": {"algorithm": "JustReturn"}}\n'
+    runtime.navigation.write_bytes(previous)
+
+    def reject(**kwargs):
+        value = runtime.navigation.stat()
+        os.utime(
+            runtime.navigation,
+            ns=(value.st_atime_ns + 1_000_000_000, value.st_mtime_ns),
+        )
+        return False
+
+    runtime.asst.load.side_effect = reject
+    with pytest.raises(RuntimeError, match="MAA.*资源加载失败"):
+        runtime.solver.initialize_maa()
+    assert runtime.navigation.read_bytes() == previous
+    runtime.guard.assert_not_called()
+
+
+def test_loading_failure_does_not_overwrite_independently_replaced_navigation(runtime):
+    independent = b'{"Independent": {"algorithm": "JustReturn"}}'
+    runtime.navigation.write_text('{"Previous": {}}')
+
+    def reject(**kwargs):
+        replacement = runtime.navigation.with_suffix(".replacement")
+        replacement.write_bytes(independent)
+        replacement.replace(runtime.navigation)
+        return False
+
+    runtime.asst.load.side_effect = reject
+    with pytest.raises(RuntimeError, match="MAA.*资源加载失败"):
+        runtime.solver.initialize_maa()
+    assert runtime.navigation.read_bytes() == independent
+
+
+def test_other_mower_reader_skips_navigation_download_and_allows_connection(runtime):
+    from arknights_mower.utils.maa_process import installation_lease
+
+    previous = b'{"Previous": {}}'
+    runtime.navigation.write_bytes(previous)
+    with installation_lease(runtime.navigation.parents[3]):
+        runtime.solver.initialize_maa()
+    assert runtime.navigation.read_bytes() == previous
+    runtime.get.assert_not_called()
+    runtime.asst.return_value.connect.assert_called_once()
+
+
+def test_loaded_client_does_not_block_normal_initialization(runtime, monkeypatch):
+    from arknights_mower.utils.maa_update import MaaUpdateError
+
+    previous = b'{"Previous": {}}'
+    runtime.navigation.write_bytes(previous)
+    guard = MagicMock(side_effect=MaaUpdateError("MAA 核心仍被其他进程使用"))
+    monkeypatch.setattr("arknights_mower.utils.maa_process.maa_client_guard", guard)
+    runtime.solver.initialize_maa()
+    guard.assert_called_once()
+    runtime.get.assert_not_called()
+    assert runtime.navigation.read_bytes() == previous
+    runtime.asst.return_value.connect.assert_called_once()
+
+
+def test_concurrent_navigation_refresh_uses_cache_without_download(runtime):
+    from arknights_mower.utils.maa_process import installation_lease, navigation_lease
+
+    target = runtime.navigation.parents[3]
+    previous = b'{"Previous": {}}'
+    runtime.navigation.write_bytes(previous)
+    with navigation_lease(target), installation_lease(target):
+        runtime.solver.initialize_maa()
+    runtime.get.assert_not_called()
+    assert runtime.navigation.read_bytes() == previous
+    runtime.asst.return_value.connect.assert_called_once()
+
+
+def test_navigation_refresh_allows_readers_and_serializes_other_refreshes(runtime):
+    from arknights_mower.utils.maa_process import installation_lease, navigation_lease
+
+    response = runtime.response
+
+    def get(*args, **kwargs):
+        with installation_lease(runtime.navigation.parents[3]):
+            pass
+        with pytest.raises(RuntimeError, match="其他实例"):
+            navigation_lease(runtime.navigation.parents[3])
+        return response
+
+    runtime.get.side_effect = get
+    runtime.solver.initialize_maa()
+    assert json.loads(runtime.navigation.read_bytes()) == runtime.payload
+    runtime.get.assert_called_once()
+
+
+def test_oversized_previous_navigation_is_preserved_without_downloading(runtime):
+    previous = b" " * (4 * 1024 * 1024 + 1)
+    runtime.navigation.write_bytes(previous)
+    with pytest.raises(RuntimeError, match="大小限制"):
+        runtime.solver.initialize_maa()
+    assert runtime.navigation.read_bytes() == previous
+    runtime.get.assert_not_called()

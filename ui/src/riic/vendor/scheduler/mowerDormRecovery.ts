@@ -5,13 +5,18 @@ import {hasRestingMood,restingMood,type MowerOperatorState,type MowerRecoveryMan
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,type MowerTask,type MowerTaskQueue} from './mowerTaskQueue'
 export function mowerRecoveryManagers(data:MowerSchedulingData,room:string,names:string[]):MowerRecoveryManager[]{
- return names.length!==data.plan[room]?.length?[]:names.slice(0,2).flatMap((name,index)=>data.operators[name]?.singleRecoveryManager?[[name,index,data.operators[name]!.dormPositionVersion] as MowerRecoveryManager]:[])
+ if(names.length!==data.plan[room]?.length)return []
+ const index=names.findIndex(name=>data.operators[name]?.singleRecoveryManager)
+ if(index<0)return []
+ const manager=data.operators[names[index]!]!
+ return [[manager.name,index,manager.dormPositionVersion]]
 }
 export function mowerRecoveryTarget(data:MowerSchedulingData,room:string,names:string[]):MowerOperatorState|undefined {
  if(!room.startsWith('dorm')||names.length!==data.plan[room]?.length)return undefined
- const index=names.findIndex((_,i)=>data.dynamicDormPosition(room,i))
+ const managerNames=new Set(mowerRecoveryManagers(data,room,names).map(([name])=>name))
+ const index=names.findIndex((name,i)=>!managerNames.has(name)&&data.dynamicDormPosition(room,i))
  const target=data.operators[names[index]??'']
- return target&&target.mood<24&&!target.room.startsWith('dorm')?target:undefined
+ return target&&!target.singleRecoveryManager&&target.mood<24&&!target.room.startsWith('dorm')?target:undefined
 }
 const sameManagers=(a:MowerRecoveryManager[],b:MowerRecoveryManager[])=>a.length===b.length&&a.every((x,i)=>x.every((v,j)=>v===b[i]![j]))
 function active(op:MowerOperatorState,room:string,index:number){return op.dormRecoveryRoom===room&&op.dormRecoveryIndex===index&&op.currentRoom===room&&op.currentIndex===index}
@@ -63,10 +68,11 @@ export function ensureMowerDormRecovery(data:MowerSchedulingData,queue:MowerTask
  const target=mowerRecoveryTarget(data,room,names)!,index=names.indexOf(target.name)
  if(queue.tasks.some(t=>{const upcoming=t.plan[room];return t!==task&&t.timeMicros>=task.timeMicros&&t.timeMicros<=task.timeMicros+1_000_000&&upcoming&&upcoming.length>index&&!['Current','Free','',target.name].includes(upcoming[index]!)}))return pending.includes(room)
  if(!pending.includes(room))pending.push(room)
- const expected=[...retained,...Array(names.length-retained.length).fill('')]
+ let expected=[...retained,...Array(names.length-retained.length).fill('')]
  let current=data.currentRoom(room,true)!
  if(!expected.every((name,index)=>name===current[index])){
-  hooks.arrangeTemporary([...retained]);current=data.currentRoom(room,true)!
+  hooks.arrangeTemporary(retained);current=data.currentRoom(room,true)!
+  expected=[...retained,...Array(names.length-retained.length).fill('')]
   if(!expected.every((name,index)=>name===current[index]))throw new MowerArrangementError('Mower dorm recovery ordering observation failed '+JSON.stringify({room,expected,current}))
  }
  if(!names.every((name,index)=>name===current[index])){
@@ -83,7 +89,7 @@ export function ensureMowerDormRecovery(data:MowerSchedulingData,queue:MowerTask
 /** Confirmed entry order for the physical recovery adapter; invalid markers fall back to explicit game modeling. */
 export function mowerConfirmedRecoveryTarget(data:MowerSchedulingData,room:string,provider:string):string|undefined {
  for(const op of Object.values(data.operators)){
-  if(!active(op,room,op.dormRecoveryIndex)||!op.dormRecoveryFixed.some(([name])=>name===provider))continue
+  if(op.singleRecoveryManager||!active(op,room,op.dormRecoveryIndex)||!op.dormRecoveryFixed.some(([name])=>name===provider))continue
   if(op.dormRecoveryFixed.every(([name,index,version])=>{const manager=data.operators[name];return !!manager&&manager.currentRoom===room&&manager.currentIndex===index&&manager.dormPositionVersion===version}))return op.name
  }
  return undefined
@@ -93,7 +99,7 @@ export function mowerConfirmedRecoveryTargets(data:MowerSchedulingData):Map<stri
  const rooms=new Map<string,Map<string,string>>()
  for(const op of Object.values(data.operators)){
   const room=op.dormRecoveryRoom,index=op.dormRecoveryIndex
-  if(!room||!active(op,room,index)||!op.dormRecoveryFixed.length)continue
+  if(op.singleRecoveryManager||!room||!active(op,room,index)||!op.dormRecoveryFixed.length)continue
   if(!op.dormRecoveryFixed.every(([name,position,version])=>{
    const manager=data.operators[name]
    return !!manager&&manager.currentRoom===room&&manager.currentIndex===position&&manager.dormPositionVersion===version

@@ -327,21 +327,24 @@ def test_other_material_sources_are_not_recorded():
     solver.scene_graph_navigation.assert_called_once_with(Scene.INFRA_MAIN)
 
 
-@pytest.mark.parametrize("dismiss_failures", [0, 1])
+@pytest.mark.parametrize(("entry_delay", "dismiss_failures"), [(0, 0), (0, 1), (8, 0)])
 def test_room_entry_records_incidental_collection_before_dismissal(
-    db, monkeypatch, dismiss_failures
+    db, monkeypatch, dismiss_failures, entry_delay
 ):
     solver = collection_solver()
     page = ["map"]
     ready = [True]
     dismissals = [0]
+    waits = [0]
     solver.scene = lambda: {
         "map": Scene.INFRA_MAIN,
+        "connecting": Scene.CONNECTING,
         "reward": Scene.MATERIEL,
         "room": Scene.INFRA_DETAILS,
     }[page[0]]
     solver.find = lambda name: (
-        (100, 100) if name == "control_central" and page[0] == "map" else None
+        ((100, 100) if name == "control_central" and page[0] == "map" else None)
+        or (name == "connecting" and page[0] == "connecting")
     )
     solver.detect_room = lambda: "recycle" if page[0] == "room" else ""
     solver.adjust_room = Mock(return_value=(1278, 937))
@@ -355,7 +358,9 @@ def test_room_entry_records_incidental_collection_before_dismissal(
 
     def tap(*_args, **_kwargs):
         if page[0] == "map":
-            page[0] = "reward" if ready[0] else "room"
+            page[0] = (
+                ("connecting" if entry_delay else "reward") if ready[0] else "room"
+            )
             ready[0] = False
         else:
             result = record.get_recycling_history("2000-01-01", "2100-01-01")
@@ -365,14 +370,55 @@ def test_room_entry_records_incidental_collection_before_dismissal(
             if dismissals[0] > dismiss_failures:
                 page[0] = "room"
 
-    solver.tap.side_effect = tap
-    solver.enter_room("recycle", max_attempts=1)
+    def sleep(*_args):
+        if page[0] == "connecting":
+            waits[0] += 1
+            if waits[0] == entry_delay:
+                page[0] = "reward"
 
-    assert page[0] == "room"
+    solver.tap.side_effect = tap
+    solver.sleep.side_effect = sleep
+    if entry_delay:
+        with pytest.raises(RuntimeError, match="未成功进入房间"):
+            solver.enter_room("recycle", max_attempts=1)
+    else:
+        solver.enter_room("recycle", max_attempts=1)
+
+    assert page[0] == ("map" if entry_delay else "room")
+    assert waits[0] == entry_delay
     result = record.get_recycling_history("2000-01-01", "2100-01-01")
     assert result["total"] == 1
     assert result["records"][0]["operators"] == ["旅骨"]
     assert solver._recycling_pending is None
+
+
+def test_room_entry_waits_for_connecting_before_recording_reward(db, monkeypatch):
+    solver = collection_solver()
+    page = ["map"]
+    solver.scene = lambda: Scene.INFRA_MAIN if page[0] == "map" else Scene.CONNECTING
+    solver.find = lambda name: (
+        ((100, 100) if name == "control_central" and page[0] == "map" else None)
+        or (page[0] == "connecting" and name in {"connecting", "materiel_ico"})
+    )
+    solver.detect_room = Mock(return_value="")
+    solver.adjust_room = Mock(return_value=(1278, 937))
+    solver.tap.side_effect = lambda *_args, **_kwargs: page.__setitem__(0, "connecting")
+    materials = Mock()
+    monkeypatch.setattr(recycling, "read_recycling_materials", materials)
+    monkeypatch.setattr(
+        base_mixin.segment, "base", lambda *_args, **_kw: {"recycle": ()}
+    )
+
+    with pytest.raises(RuntimeError, match="未成功进入房间"):
+        solver.enter_room("recycle", max_attempts=1)
+
+    assert page[0] == "connecting"
+    assert record.get_recycling_history("2000-01-01", "2100-01-01")["total"] == 0
+    assert getattr(solver, "_recycling_pending", None) is None
+    solver.tap.assert_called_once_with((1278, 937), interval=0.2)
+    solver.detect_room.assert_not_called()
+    solver._read_recycling_operators.assert_not_called()
+    materials.assert_not_called()
 
 
 @pytest.mark.parametrize(

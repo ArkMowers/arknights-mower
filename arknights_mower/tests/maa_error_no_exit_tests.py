@@ -11,6 +11,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 import arknights_mower.solvers.base_schedule as base_schedule  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
+from arknights_mower.tests.maa_process_helpers import fake_sdk_worker  # noqa: E402
 from arknights_mower.utils.config.device_profile import DeviceProfile  # noqa: E402
 from arknights_mower.utils.device.recovery import DeviceRecoveryError  # noqa: E402
 from arknights_mower.utils.device.session import (  # noqa: E402
@@ -192,6 +193,9 @@ class MaaErrorNoExitTests(unittest.TestCase):
                     ),
                     patch.object(base_schedule.requests, "get", return_value=response),
                     patch.object(base_schedule, "guard_adb") as guard,
+                    patch(
+                        "arknights_mower.utils.maa_process.MaaProcess", fake_sdk_worker
+                    ),
                     patch(
                         "arknights_mower.utils.maa_runtime.read_installed_version",
                         return_value="v6.19.0-beta.1",

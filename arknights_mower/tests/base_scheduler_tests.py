@@ -276,6 +276,7 @@ class TestMoodInitialization(unittest.TestCase):
         self.initialize.return_value = scheduler
         self.main.simulate(None)
         self.assertTrue(scheduler.defer_backup_plan_until_mood_read)
+        self.assertTrue(scheduler._initial_staffing_pending)
 
     def test_saved_state_does_not_defer_backup_plan(self):
         scheduler = MagicMock()
@@ -283,6 +284,19 @@ class TestMoodInitialization(unittest.TestCase):
         self.initialize.return_value = scheduler
         self.main.simulate({"tasks": []})
         self.assertFalse(scheduler.defer_backup_plan_until_mood_read)
+        self.assertFalse(scheduler._initial_staffing_pending)
+
+    def test_crash_without_snapshot_reconciles_as_fresh_start(self):
+        from arknights_mower.utils.crash_recovery import prepare_resume
+
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = "测试完成"
+        self.initialize.return_value = scheduler
+        with patch("arknights_mower.utils.crash_recovery.status", return_value={}):
+            saved = prepare_resume(None)
+        self.main.simulate(saved)
+        self.assertTrue(scheduler.defer_backup_plan_until_mood_read)
+        self.assertTrue(scheduler._initial_staffing_pending)
 
     def test_saved_unfinished_mood_read_still_defers_backup_plan(self):
         scheduler = MagicMock()
@@ -298,6 +312,14 @@ class TestMoodInitialization(unittest.TestCase):
         )
         self.assertTrue(scheduler.defer_backup_plan_until_mood_read)
         self.assertEqual(scheduler._initial_mood_refresh_rooms, set(layout))
+
+    def test_saved_initial_staffing_is_resumed_without_resetting_observations(self):
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = "测试完成"
+        self.initialize.return_value = scheduler
+        self.main.simulate({"tasks": [], "initial_staffing_pending": True})
+        self.assertTrue(scheduler._initial_staffing_pending)
+        self.assertFalse(scheduler.defer_backup_plan_until_mood_read)
 
     def test_unified_initialization_never_requests_mood_reload(self):
         scheduler = MagicMock()
@@ -464,7 +486,6 @@ class TestBaseScheduler(unittest.TestCase):
             )
         }
         start_time = datetime(2026, 5, 2, 15, 19, 33)
-        detected_exhaust_time = start_time + timedelta(minutes=10)
 
         class FixedDateTime(datetime):
             now_value = start_time
@@ -483,7 +504,14 @@ class TestBaseScheduler(unittest.TestCase):
             patch.object(
                 BaseSchedulerSolver,
                 "get_agent_from_room",
-                return_value=[{"time": detected_exhaust_time}],
+                return_value=[
+                    {
+                        "agent": "伊内丝",
+                        "time": FixedDateTime.fromtimestamp(
+                            (start_time + timedelta(minutes=10)).timestamp()
+                        ),
+                    }
+                ],
             ),
             patch.object(BaseSchedulerSolver, "back"),
         ):
@@ -2706,15 +2734,19 @@ class TestDroneAccelerate(unittest.TestCase):
     持续失败则抛异常，上层据此保留任务并按既有策略退避。
     """
 
-    def test_factory_reserves_threshold_after_selecting_maximum(self):
+    def test_factory_reserves_threshold_without_selecting_maximum(self):
         cases = [
-            ("reserve", 250, 20, 250, True, False, 230, 20),
-            ("partial_selection", 250, 20, 7, True, False, 230, 20),
-            ("at_threshold", 20, 20, 20, True, False, 0, 20),
-            ("below_threshold", 19, 20, 19, True, False, None, 0),
-            ("zero_threshold", 250, 0, 7, True, False, 250, 0),
-            ("no_run_orders", 250, 20, 7, False, False, 250, 0),
-            ("not_customize", 250, 20, 7, True, True, 250, 0),
+            ("reserve", 250, 20, 0, True, False, 230),
+            ("surplus", 71, 30, 0, True, False, 41),
+            ("at_threshold", 20, 20, 0, True, False, None),
+            ("below_threshold", 19, 20, 0, True, False, None),
+            ("zero_threshold", 250, 0, 0, True, False, 250),
+            ("no_run_orders", 250, 20, 0, False, False, 230),
+            ("no_run_orders_surplus", 71, 30, 0, False, False, 41),
+            ("no_run_orders_below", 29, 30, 0, False, False, None),
+            ("not_customize", 250, 20, 7, True, True, 250),
+            ("no_run_orders_at_threshold", 20, 20, 0, False, False, None),
+            ("specialized_at_threshold", 20, 20, 7, False, True, 20),
         ]
         for (
             name,
@@ -2724,7 +2756,6 @@ class TestDroneAccelerate(unittest.TestCase):
             has_run_orders,
             not_customize,
             expected_spend,
-            expected_reductions,
         ) in cases:
             with self.subTest(name=name):
                 solver = object.__new__(BaseSchedulerSolver)
@@ -2745,10 +2776,10 @@ class TestDroneAccelerate(unittest.TestCase):
                     if poly == maximum_scope:
                         selected = available
                         operations.append("maximum")
-                    elif poly == (1920 * 0.7, 1080 * 0.5):
-                        selected = max(0, selected - 1)
-                        operations.append("reduce")
-                    elif poly == accelerate_scope:
+                    elif poly in ((1320, 502), (1920 * 0.7, 1080 * 0.5)):
+                        selected = min(available, selected + 1)
+                        operations.append("increase")
+                    elif poly == (1440, 864) or poly == accelerate_scope:
                         spent = selected
                         operations.append("confirm")
 
@@ -2763,6 +2794,7 @@ class TestDroneAccelerate(unittest.TestCase):
                     patch.object(solver, "_cache_facility_state_from_current_page"),
                     patch.object(solver, "find", return_value=accelerate_scope),
                     patch.object(solver, "tap", side_effect=tap),
+                    patch.object(solver, "scene", return_value=Scene.INFRA_DETAILS),
                     patch.object(
                         solver, "_tap_drone_accelerate", return_value=maximum_scope
                     ) as open_panel,
@@ -2778,7 +2810,12 @@ class TestDroneAccelerate(unittest.TestCase):
                 else:
                     self.assertEqual(
                         operations,
-                        ["maximum"] + ["reduce"] * expected_reductions + ["confirm"],
+                        (
+                            ["increase"] * expected_spend
+                            if not not_customize
+                            else ["maximum"]
+                        )
+                        + ["confirm"],
                     )
                     open_panel.assert_called_once_with(
                         "manufacture_accelerate", "all_in"
@@ -3763,40 +3800,79 @@ class TestClueProductCompleteWait(unittest.TestCase):
         solver.scene_graph_navigation = MagicMock()
         solver.enter_room = MagicMock()
         solver.recog = MagicMock()
-        solver.tap = MagicMock()
-        solver.ctap = MagicMock()
         solver.tap_element = MagicMock()
-        solver.back = MagicMock()
         solver.sleep = MagicMock()
         solver.backup_plan_solver = MagicMock()
-        solver.read_party_time = MagicMock(return_value=None)
         solver.set_detected_party_time = MagicMock()
         solver._read_placed_clue_numbers = MagicMock(return_value=frozenset())
+        solver._clue_credit_enabled = MagicMock(return_value=False)
+        solver._clue_access_record_visible = MagicMock(return_value=False)
 
-        scenes = [
-            Scene.INFRA_DETAILS,
-            Scene.INFRA_CONFIDENTIAL,
-            Scene.INFRA_CONFIDENTIAL,
-            Scene.INFRA_CONFIDENTIAL,
-            Scene.INFRA_CONFIDENTIAL,
-            Scene.CLUE_GIVE_AWAY,
-            Scene.INFRA_CONFIDENTIAL,
-            Scene.INFRA_DETAILS,
-        ]
-        solver.scene = MagicMock(
-            side_effect=lambda: scenes.pop(0) if scenes else Scene.INDEX
+        # 画面随点击切换；重复识别当前画面不能推进流程。
+        ui = SimpleNamespace(scene=Scene.INFRA_DETAILS, entry_visible=False)
+        board_pos = (500, 500)
+        solver.scene = MagicMock(side_effect=lambda: ui.scene)
+        events = []
+
+        def mock_find(name, **kwargs):
+            if (
+                name == "clue/message_board"
+                and ui.scene == Scene.INFRA_DETAILS
+                and ui.entry_visible
+            ):
+                return board_pos
+            return None
+
+        def mock_tap(pos, **kwargs):
+            if pos == (680, 1000):
+                self.assertEqual(ui.scene, Scene.INFRA_DETAILS)
+                ui.entry_visible = True
+            elif pos == board_pos:
+                self.assertEqual(ui.scene, Scene.INFRA_DETAILS)
+                self.assertTrue(ui.entry_visible)
+                events.append("open_message_board")
+                ui.scene = Scene.CLUE_MESSAGE_BOARD
+            elif pos == (330, 1000):
+                ui.scene = Scene.INFRA_CONFIDENTIAL
+            elif pos == (1799, 578):
+                ui.scene = Scene.CLUE_GIVE_AWAY
+            elif pos == (1868, 54):
+                ui.scene = Scene.INFRA_CONFIDENTIAL
+            else:
+                self.fail(f"出现未预期的点击：{pos}")
+
+        solver.find = MagicMock(side_effect=mock_find)
+        solver.tap = MagicMock(side_effect=mock_tap)
+        solver.ctap = MagicMock(side_effect=mock_tap)
+        solver.back = MagicMock(
+            side_effect=lambda: setattr(ui, "scene", Scene.INFRA_DETAILS)
+        )
+        solver.read_party_time = MagicMock(
+            side_effect=lambda: events.append("read_party_time")
         )
 
         wait_calls = []
 
         def mock_wait_product():
             wait_calls.append("wait_product_complete")
+            events.append("wait_product_complete")
             return True
 
         solver.wait_product_complete = MagicMock(side_effect=mock_wait_product)
-        solver.find = MagicMock(return_value=None)
 
-        solver.clue_new()
+        with patch.object(base_schedule, "save_exception") as save_exception:
+            solver.clue_new()
 
         # 验证在 message_board 与 party_time 阶段均调用了 wait_product_complete
+        save_exception.assert_not_called()
         self.assertEqual(len(wait_calls), 2)
+        self.assertEqual(
+            events,
+            [
+                "wait_product_complete",
+                "open_message_board",
+                "wait_product_complete",
+                "read_party_time",
+            ],
+        )
+        solver._run_clue_shop.assert_called_once_with()

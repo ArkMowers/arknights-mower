@@ -133,8 +133,8 @@ describe('group standby morale does not drive shifts',()=>{
   const queue=new MowerTaskQueue();planMowerMetadata(data,queue)
   expect(queue.tasks.find(t=>t.type.key==='SHIFT_ON')!.time).toBeCloseTo(4-8/60,8)
  })
- it.each([false,true])('waits only for the anchor recovery, not the standby recovery, alpha=%s',alpha=>{
-  const {data}=fixture(alpha)
+ it.each([{alpha:false,gap:false},{alpha:false,gap:true},{alpha:true,gap:false},{alpha:true,gap:true}])('does not let standby recovery delay its primary with either gap setting: %o',({alpha,gap})=>{
+  const {data}=fixture(alpha);data.groupRestInFullOnMoodGap=gap
   for(const [index,name] of ['H','S'].entries()){
    const op=data.operators[name]!;op.currentRoom='dormitory_1';op.currentIndex=2+index
    data.dorms[index]!.name=name;data.dorms[index]!.timeMicros=(index?12:2)*3_600_000_000

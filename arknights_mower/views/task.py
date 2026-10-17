@@ -114,7 +114,11 @@ def add_task():
             from jsonpickle import encode
 
             return [
-                json.loads(encode(i, unpicklable=False)) for i in base_scheduler.tasks
+                {
+                    **json.loads(encode(i, unpicklable=False)),
+                    "display_name": i.display_name,
+                }
+                for i in base_scheduler.tasks
             ]
         else:
             return []

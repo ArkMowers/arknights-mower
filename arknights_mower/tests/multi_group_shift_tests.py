@@ -156,14 +156,17 @@ def test_other_group_waits_for_working_shared_covers(working_shared_covers, obse
     assert shift_off(s, "乙")[0]
 
 
-def test_ordinary_resting_preserves_other_groups_working_covers(working_shared_covers):
+def test_ordinary_resting_preserves_other_groups_working_covers(
+    working_shared_covers, caplog
+):
     s = working_shared_covers
     assert shift_off(s, "甲")[0]
     s.total_agent = list(s.op_data.operators.values())
     s.op_data.operators[B].mood = 0
     before_beds = [(bed.name, bed.time) for bed in s.op_data.dorm]
     assert s.resting() == {}
-    assert not s.tasks
+    assert s.tasks == []
+    assert not [record for record in caplog.records if record.levelno >= 30]
     assert [(bed.name, bed.time) for bed in s.op_data.dorm] == before_beds
     assert s.op_data.operators[SHARED].current_room == "central"
     assert s.op_data.operators["清道夫"].current_room == "central"
@@ -286,20 +289,24 @@ def test_shared_cover_survives_first_return_and_last_return_recalls_primary(
     assert not solver.op_data.group_is_resting("乙")
 
 
-def test_follower_recovery_time_does_not_delay_group_return(solver):
+@pytest.mark.parametrize("explicit_full", [False, True])
+def test_shared_member_delays_group_only_for_explicit_full_rest(solver, explicit_full):
     assert shift_off(solver, "甲")[0]
     now = datetime.now()
     data = solver.op_data
     data.get_dorm_by_name(A)[1].time = now + timedelta(hours=1)
     data.get_dorm_by_name(SHARED)[1].time = now + timedelta(hours=12)
-    data.operators[SHARED].rest_in_full = True
+    data.operators[SHARED].rest_in_full = explicit_full
     data.operators[SHARED].mood = 0
     data.operators[A].mood = 10
     data.operators[B].depletion_rate = 0
     tasks = plan_metadata(data, [])
     returns = [task for task in tasks if task.plan.get("contact") == [SHARED]]
     assert len(returns) == 1
-    assert returns[0].time < now + timedelta(hours=2)
+    if explicit_full:
+        assert returns[0].time == now + timedelta(hours=12)
+    else:
+        assert returns[0].time < now + timedelta(hours=2)
 
 
 @pytest.mark.parametrize(

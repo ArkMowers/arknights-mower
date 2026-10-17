@@ -612,7 +612,7 @@ class RIICPart(ConfModel):
 
     group_rest_in_full_on_mood_gap: bool = True
     "组内高优先干员预计恢复时间差过大时，等待整组回满"
-    group_mood_gap_threshold_minutes: int = Field(default=60, ge=1, le=1440)
+    group_mood_gap_threshold_minutes: int = Field(default=75, ge=1, le=1440)
     "组内预计恢复时间差触发延后回班的阈值（分钟）"
     group_mood_gap_max_extra_wait_hours: float = Field(default=0, ge=0, le=24)
     "组内恢复时间差过大时最多额外等待的小时数；0 表示不限时"
@@ -879,6 +879,12 @@ class Conf(
     MaaRewardPart,
     AIAgentPart,
 ):
+    updates_enabled: StrictBool = False
+    "多开管理器保存的更新授权；单开不受此设置限制"
+
+    def updates_enabled_for_launch(self, *, managed: bool) -> bool:
+        return not managed or self.updates_enabled
+
     @model_validator(mode="after")
     def migrate_device_profile(self):
         if "device" not in self.model_fields_set:

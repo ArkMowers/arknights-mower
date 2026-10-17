@@ -133,7 +133,7 @@ def test_unknown_mood_without_timer_does_not_release(solver):
     assert not any(t.strict_mood_limit for t in solver.tasks)
 
 
-@pytest.mark.parametrize("mood", [11, 20.8])
+@pytest.mark.parametrize("mood", [12, 20.8])
 def test_departed_operator_waits_without_recalling_group_or_refilling(
     solver, monkeypatch, mood
 ):
@@ -152,9 +152,6 @@ def test_departed_operator_waits_without_recalling_group_or_refilling(
     solver.preserve_resting_crafters(agents, "dormitory_1")
     assert agents[3] == ("")
     solver.op_data = solver.op_data.project_arrangements([task.plan])
-    if mood < 12:
-        # 实际读房确认离宿后会记录本轮提前清退，心情仍保留真实值。
-        solver.op_data.operators[name].rest_mood_release_limit = 12
     assert solver.op_data.operators[name].current_room == ""
     assert solver.op_data.operators["絮雨"].is_resting()
     # 同住者离宿后，等待最终阵容的新计时，不能沿用原四小时的恢复记录。
@@ -284,7 +281,9 @@ def test_rebuild_uses_confirmed_new_bed(solver):
 
 
 @pytest.mark.parametrize("stale", [False, True])
-def test_release_execution_reads_remaining_beds_and_ignores_stale_mode(solver, stale):
+def test_release_execution_preserves_early_dispatch_and_ignores_stale_mode(
+    solver, stale, monkeypatch
+):
     name = limited_name(solver)
     solver.op_data.operators[name].mood = 12
     solver.plan_metadata()
@@ -299,10 +298,18 @@ def test_release_execution_reads_remaining_beds_and_ignores_stale_mode(solver, s
         solver.op_data = solver.op_data.project_arrangements([plan])
 
     solver.agent_arrange = MagicMock(side_effect=arrange)
+
+    def read(rooms):
+        assert rooms == {"dormitory_1"}
+        solver.op_data.operators[name].time_stamp = NOW
+
+    read_rooms = MagicMock(side_effect=read)
+    monkeypatch.setattr(solver, "_read_recovery_rooms", read_rooms)
     solver.infra_main()
     assert solver.op_data.operators[name].is_resting() is stale
     assert not any(t.strict_mood_limit for t in solver.tasks)
     solver.agent_arrange.assert_called_once()
+    read_rooms.assert_not_called()
 
 
 @pytest.mark.parametrize("mood", [12, 20.8, 11.9])
@@ -354,3 +361,32 @@ def test_selection_rejects_explicit_completed_ling_xi_even_when_preserving(solve
         solver.choose_agent(agents, "dormitory_1", preserve_dorm_occupants=True)
     assert name not in agents
     assert agents[3] == "Free"
+
+
+def test_near_limit_member_can_dispatch_at_reserved_operation_start(
+    solver, monkeypatch
+):
+    name = limited_name(solver)
+    op = solver.op_data.operators[name]
+    op.mood = 11.879
+    solver.plan_metadata()
+    task = release(solver)
+    task.time = NOW
+    scheduling(solver.tasks, time_now=NOW)
+    original_time = task.time
+    solver.task = task
+    solver.agent_arrange = MagicMock(return_value=True)
+    monkeypatch.setattr(
+        solver, "_read_recovery_rooms", MagicMock(side_effect=AssertionError)
+    )
+    assert solver.arrange_release_dorm() == (True, True)
+    assert task in solver.tasks and task.time == original_time
+    assert task.plan == {}
+    assert not getattr(task, "execution_failure", None)
+    assert op.mood == 11.879
+    solver.agent_arrange.assert_called_once()
+    assert not [
+        pending
+        for pending in solver.tasks
+        if getattr(pending, "recovery_observation_rooms", None)
+    ]

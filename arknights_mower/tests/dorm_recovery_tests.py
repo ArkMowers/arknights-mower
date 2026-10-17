@@ -593,7 +593,7 @@ def test_manager_selection_uses_position_even_when_later_skill_is_stronger(
     ] == [selected]
 
 
-def test_later_single_manager_in_free_slot_can_receive_recovery(solver):
+def test_later_single_manager_in_free_slot_is_not_proactively_confirmed(solver):
     from arknights_mower.utils.dorm_recovery import recovery_target
 
     solver.op_data.plan[ROOM] = [Room("Free", "", []) for _ in range(5)]
@@ -602,10 +602,12 @@ def test_later_single_manager_in_free_slot_can_receive_recovery(solver):
         solver.op_data.operators[name].mood = 5
         solver.op_data.operators[name].time_stamp = datetime.now()
     updated = ["安赛尔", "闪灵", "银灰", "陈", "红"]
-    assert recovery_target(solver.op_data, ROOM, updated).name == "闪灵"
-    assert recovery_order_plan(solver.op_data, ROOM, updated) == ["安赛尔", "闪灵"]
+    assert recovery_target(solver.op_data, ROOM, updated) is None
+    assert recovery_order_plan(solver.op_data, ROOM, updated) is None
     arrange(solver, updated)
-    assert solver.op_data.operators["闪灵"].dorm_recovery_index == 1
+    assert len(solver.confirms) == 1
+    assert solver.physical == updated
+    assert solver.op_data.operators["闪灵"].dorm_recovery_room == ""
     assert solver.op_data.operators["安赛尔"].dorm_recovery_room == ""
 
 

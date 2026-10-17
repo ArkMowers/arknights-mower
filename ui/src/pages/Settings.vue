@@ -1,6 +1,7 @@
 <script setup lang="jsx">
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
+import { useMowerStore } from '@/stores/mower'
 import { storeToRefs } from 'pinia'
 import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 
@@ -16,6 +17,7 @@ defineOptions({ name: 'MowerSettings' })
 
 const config_store = useConfigStore()
 const plan_store = usePlanStore()
+const { updates_enabled } = storeToRefs(useMowerStore())
 
 const mobile = inject('mobile')
 
@@ -589,7 +591,7 @@ const idleOptions = computed(() => [
     <div class="settings-network">
       <NetworkSettings ref="networkSettings" />
     </div>
-    <div class="settings-updates">
+    <div v-if="updates_enabled === true" class="settings-updates">
       <div><SoftwareUpdate ref="softwareUpdate" /></div>
       <div><ResourceUpdate /></div>
     </div>

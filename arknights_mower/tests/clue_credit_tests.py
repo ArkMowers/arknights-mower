@@ -238,6 +238,7 @@ def prepare_empty_clue_workflow(scheduler, *, party_time=None):
     scheduler.read_party_time = MagicMock(return_value=party_time)
     scheduler._read_placed_clue_numbers = MagicMock(return_value=frozenset())
     scheduler.find = MagicMock(return_value=None)
+    scheduler._open_clue_message_board = MagicMock(return_value=False)
     scenes = iter(
         [
             Scene.INFRA_DETAILS,
@@ -441,14 +442,13 @@ def test_clue_workflow_preserves_legacy_board_and_shop(shopping, monkeypatch, op
     run_empty_clue_workflow(scheduler, state, monkeypatch)
     scheduler._collect_clue_message_board.assert_not_called()
     if options == (True,) * 5:
+        scheduler._open_clue_message_board.assert_not_called()
         assert state.purchased == []
         assert "clue/message_board" not in [
             c.args[0] for c in scheduler.find.call_args_list
         ]
     else:
-        assert "clue/message_board" in [
-            c.args[0] for c in scheduler.find.call_args_list
-        ]
+        scheduler._open_clue_message_board.assert_called_once_with()
         assert state.purchased == (["招聘许可"] if options[3] and options[4] else [])
 
 
@@ -493,7 +493,9 @@ def main_runtime(monkeypatch):
     runtime.op_data.all_dorms.return_value = []
     runtime.op_data.facility_states = {}
     runtime.op_data.room_observations = {}
+    runtime.op_data.recall_recovery_rates = {}
     runtime.op_data.group_shift_state = {}
+    runtime.op_data.group_recovery_full_members = {}
     runtime.op_data.idle_dorm_search_exhausted = False
     runtime.op_data.idle_dorm_search_stopped_at = None
     runtime.op_data.party_time = None
@@ -944,7 +946,10 @@ def test_unfinished_board_navigation_reports_failure(board_navigation, opened):
 
     assert scheduler._collect_clue_message_board(collect_current=False) is False
 
-    scheduler.tap.assert_called_once_with((500, 500))
+    assert [c.args[0] for c in scheduler.tap.call_args_list] == [
+        (680, 1000),
+        (500, 500),
+    ]
     assert scheduler.back.call_count == int(opened)
     assert warning.call_args.kwargs["extra"]["archive_screenshots"] is True
 
@@ -970,6 +975,12 @@ def board_navigation(shopping, monkeypatch):
         popup_stuck=False,
         claim_works=True,
         return_works=True,
+        activation_works=True,
+        activation_count=0,
+        require_activation=False,
+        entry_visible=True,
+        open_failures=0,
+        entry_actions=[],
         events=[],
     )
 
@@ -1005,7 +1016,7 @@ def board_navigation(shopping, monkeypatch):
     monkeypatch.setattr(base_schedule.rapidocr, "engine", ocr)
 
     def find(name):
-        if name == "clue/message_board" and ui.panel == "room":
+        if name == "clue/message_board" and ui.panel == "room" and ui.entry_visible:
             return (500, 500)
         if name == "materiel_ico" and ui.panel == "reward":
             return (960, 80)
@@ -1020,6 +1031,13 @@ def board_navigation(shopping, monkeypatch):
     def tap(position):
         if position == (500, 500):
             ui.events.append("open")
+            ui.entry_actions.append("open")
+            if ui.open_failures:
+                ui.open_failures -= 1
+                ui.entry_visible = False
+                return
+            if ui.require_activation and not ui.activation_count:
+                return
             state.balance += state.previous
             state.previous = 0
             show(
@@ -1037,6 +1055,11 @@ def board_navigation(shopping, monkeypatch):
                 state.balance += state.current
                 state.current = 0
                 show("reward")
+        elif position == (680, 1000) and ui.panel == "room":
+            ui.entry_actions.append("activate")
+            ui.activation_count += 1
+            if ui.activation_works:
+                ui.entry_visible = True
         elif position in ((680, 1000), (960, 960)):
             assert ui.panel == "reward"
             ui.events.append("dismiss")
@@ -1062,6 +1085,179 @@ def board_navigation(shopping, monkeypatch):
     monkeypatch.setattr(base_schedule.logger, "warning", warning)
     show("room")
     return scheduler, shop, state, ui, warning
+
+
+def test_visible_board_entry_is_activated_before_click(board_navigation):
+    scheduler, _, state, ui, _ = board_navigation
+    ui.require_activation = True
+
+    assert scheduler._collect_clue_message_board(collect_current=False) is True
+
+    assert ui.entry_actions == ["activate", "open"]
+    assert state.current == 300
+
+
+@pytest.mark.parametrize("failures", [0, 1, 2])
+def test_legacy_workflow_uses_real_board_open_and_preserves_claim_policy(
+    board_navigation, failures
+):
+    scheduler, _, state, ui, _ = board_navigation
+    board_io = {
+        name: getattr(scheduler, name)
+        for name in ("scene", "find", "tap", "back", "sleep", "enter_room")
+    }
+    prepare_empty_clue_workflow(scheduler)
+    del scheduler._open_clue_message_board
+    for name, method in board_io.items():
+        setattr(scheduler, name, method)
+    scheduler._clue_credit_enabled = MagicMock(return_value=False)
+    ui.open_failures = failures
+    original_tap = scheduler.tap.side_effect
+
+    def tap(position):
+        if position == (330, 1000):
+            # 进入后续线索整理前结束观测，信息板打开与领取均走真实调用路径。
+            raise MowerExit
+        original_tap(position)
+
+    scheduler.tap.side_effect = tap
+    with pytest.raises(MowerExit):
+        scheduler.clue_new()
+
+    opened = failures < 2
+    assert ui.activation_count == min(failures + 1, 2)
+    assert ui.events == ["open"] * min(failures + 1, 2) + (
+        ["claim", "dismiss", "back"] if opened else []
+    )
+    assert state.current == (0 if opened else 300)
+
+
+def test_already_open_board_is_not_activated_again(board_navigation):
+    scheduler, _, state, ui, _ = board_navigation
+    ui.panel = "board"
+    state.scene = Scene.CLUE_MESSAGE_BOARD
+
+    assert scheduler._collect_clue_message_board(collect_current=False) is True
+    assert ui.entry_actions == []
+    assert ui.events == ["back"]
+
+
+def test_failed_board_click_is_recovered_after_fresh_activation(board_navigation):
+    scheduler, _, state, ui, _ = board_navigation
+    ui.open_failures = 1
+    state.previous = 300
+
+    assert scheduler._collect_clue_message_board(collect_current=False) is True
+
+    assert ui.entry_actions == ["activate", "open", "activate", "open"]
+    assert ui.events == ["open", "open", "back"]
+    assert state.balance == 300
+    assert state.current == 300
+
+
+def test_recovery_relocates_the_entry_instead_of_reusing_old_coordinates(
+    board_navigation,
+):
+    scheduler, _, _, ui, _ = board_navigation
+    ui.open_failures = 1
+    original_find = scheduler.find
+    original_tap = scheduler.tap.side_effect
+
+    def find(name):
+        if name == "clue/message_board" and ui.panel == "room" and ui.entry_visible:
+            return (600, 500) if ui.activation_count >= 2 else (500, 500)
+        return original_find(name)
+
+    def tap(position):
+        if position == (500, 500) and ui.activation_count >= 2:
+            pytest.fail("Recovery reused the stale entry coordinates")
+        original_tap((500, 500) if position == (600, 500) else position)
+
+    scheduler.find = find
+    scheduler.tap.side_effect = tap
+
+    assert scheduler._collect_clue_message_board(collect_current=False) is True
+    assert [c.args[0] for c in scheduler.tap.call_args_list] == [
+        (680, 1000),
+        (500, 500),
+        (680, 1000),
+        (600, 500),
+    ]
+
+
+def test_board_open_recovery_is_bounded_and_does_not_claim(board_navigation):
+    scheduler, _, state, ui, warning = board_navigation
+    ui.open_failures = 2
+
+    assert scheduler._collect_clue_message_board(collect_current=True) is False
+
+    assert ui.entry_actions == ["activate", "open", "activate", "open"]
+    assert ui.events == ["open", "open"]
+    assert state.current == 300
+    assert warning.call_args.kwargs["extra"]["archive_screenshots"] is True
+
+
+def test_expired_visible_entry_is_reactivated_before_opening(board_navigation):
+    scheduler, _, _, ui, _ = board_navigation
+    original_tap = scheduler.tap.side_effect
+
+    def tap(position):
+        original_tap(position)
+        if position == (680, 1000) and ui.activation_count == 1:
+            ui.entry_visible = False
+
+    scheduler.tap.side_effect = tap
+
+    assert scheduler._collect_clue_message_board(collect_current=False) is True
+    assert ui.entry_actions == ["activate", "activate", "open"]
+
+
+def test_missing_entry_without_change_does_not_repeat_activation(board_navigation):
+    scheduler, _, _, ui, _ = board_navigation
+    ui.entry_visible = False
+    ui.activation_works = False
+
+    assert scheduler._collect_clue_message_board(collect_current=False) is False
+    assert ui.entry_actions == ["activate"]
+    assert ui.events == []
+
+
+@pytest.mark.parametrize("scene", [Scene.UNKNOWN, Scene.MATERIEL, Scene.INFRA_MAIN])
+def test_board_open_does_not_activate_outside_room(board_navigation, scene):
+    scheduler, _, state, ui, _ = board_navigation
+    state.scene = scene
+
+    assert scheduler._collect_clue_message_board(collect_current=False) is False
+    assert ui.entry_actions == []
+
+
+def test_stuck_record_over_room_does_not_trigger_open_recovery(board_navigation):
+    scheduler, _, state, ui, _ = board_navigation
+    ui.access_record = True
+    ui.record_stuck = True
+    scheduler.scene = lambda: (
+        Scene.INFRA_DETAILS if ui.panel == "record" else state.scene
+    )
+
+    assert scheduler._collect_clue_message_board(collect_current=False) is False
+    assert ui.entry_actions == ["activate", "open"]
+    assert ui.events == ["open", "dismiss_record"]
+
+
+@pytest.mark.parametrize("error", [RuntimeError("input failed"), MowerExit()])
+def test_board_open_input_error_propagates_without_recovery(board_navigation, error):
+    scheduler, _, _, ui, _ = board_navigation
+    original_tap = scheduler.tap.side_effect
+
+    def tap(position):
+        original_tap(position)
+        raise error
+
+    scheduler.tap.side_effect = tap
+
+    with pytest.raises(type(error)):
+        scheduler._collect_clue_message_board(collect_current=False)
+    assert ui.entry_actions == ["activate"]
 
 
 def test_automatic_settlement_popup_is_closed_without_claiming_current(

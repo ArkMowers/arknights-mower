@@ -148,7 +148,7 @@ def test_shared_covers_keep_original_preferences_when_already_feasible(solver):
     assert plan["room_2_2"] == ["陈"]
 
 
-def test_resting_attempts_failed_group_once_and_retries_next_round(solver):
+def test_resting_attempts_blocked_group_once_and_replans_after_change(solver, caplog):
     data = solver.op_data
     solver.total_agent = [data.operators[name] for name in MEMBERS]
     solver.plan_metadata = MagicMock()
@@ -157,6 +157,7 @@ def test_resting_attempts_failed_group_once_and_retries_next_round(solver):
     assert solver.resting() == {}
     assert solver.get_resting_plan.call_count == 1
     assert solver.tasks == []
+    assert not [record for record in caplog.records if record.levelno >= 30]
     solver.get_resting_plan.reset_mock()
     data.operators["迷迭香"].replacement.append("酒神")
     plan = solver.resting()
@@ -164,6 +165,7 @@ def test_resting_attempts_failed_group_once_and_retries_next_round(solver):
     assert plan["room_2_2"] == ["结城理"]
     assert solver.get_resting_plan.call_count == 1
     assert len(solver.tasks) == 1
+    assert solver.tasks[0].plan == plan
 
 
 def test_full_member_does_not_prevent_later_low_member_from_triggering_group(solver):

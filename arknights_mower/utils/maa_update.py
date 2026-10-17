@@ -906,6 +906,42 @@ def _validate_windows_installation(destination: Path) -> None:
         raise MaaUpdateError(
             "MAA Windows 完整包缺少 MaaCore、MAA.exe、更新程序、resource 或 Python"
         )
+    missing = missing_maa_resource_files(destination)
+    if missing:
+        raise MaaUpdateError(
+            f"MAA 安装资源不完整，缺少 {len(missing)} 个文件，例如 {missing[0]}；请使用完整包修复"
+        )
+
+
+def missing_maa_resource_files(
+    target: Path, *, resource_root: Path | None = None
+) -> list[str]:
+    """Apply the client's filelist resource-presence check, without native loading."""
+    manifest = target / "filelist.txt"
+    try:
+        with manifest.open("rb") as stream:
+            content = stream.read(4 * 1024 * 1024 + 1)
+    except FileNotFoundError:
+        return []
+    except OSError as error:
+        raise MaaUpdateError(f"MAA 文件清单无法读取：{error}") from error
+    if len(content) > 4 * 1024 * 1024:
+        raise MaaUpdateError("MAA 文件清单超过大小限制")
+    try:
+        lines = content.decode("utf-8-sig").splitlines()
+    except UnicodeError as error:
+        raise MaaUpdateError("MAA 文件清单编码无效") from error
+    missing = []
+    for line in lines:
+        parts = _windows_ota_parts(line)
+        if parts is None or Path(parts[-1]).suffix.lower() in {".dll", ".exe", ".py"}:
+            continue
+        path = target.joinpath(*parts)
+        if resource_root is not None and parts[0].lower() == "resource":
+            path = resource_root.joinpath(*parts[1:])
+        if not path.is_file():
+            missing.append("/".join(parts))
+    return missing
 
 
 def _windows_ota_parts(value: str) -> tuple[str, ...] | None:
@@ -1463,15 +1499,29 @@ def preserve_user_data(
 
 def backup_path_for(target: Path | str) -> Path:
     path = Path(target).expanduser()
-    return path.with_name(path.name + ".old")
+    if os.environ.get("MOWER_ANDROID") == "1":
+        return path.with_name(path.name + ".old")
+    return path / ".old"
 
 
-def replace_with_backup(staged: Path, target: Path, work_dir: Path) -> Path:
-    """以 ``target.old`` 保存原版本，再原子换入已完成的 staging 目录。
+def replace_with_backup(
+    staged: Path, target: Path, work_dir: Path, *, installation: Path | None = None
+) -> Path:
+    """在安装目录的 ``.old`` 保存原文件，再换入已完成的 staging 目录。
 
     上一次的 ``.old`` 会先移入本次临时目录；成功后随临时目录清理，失败时恢复。
     """
-    backup = backup_path_for(target)
+    android = os.environ.get("MOWER_ANDROID") == "1"
+    if installation is None and not android:
+        return _replace_core_with_backup(staged, target, work_dir)
+    if android:
+        backup = backup_path_for(target)
+    else:
+        backup_root = backup_path_for(installation)
+        if backup_root.is_symlink():
+            raise MaaUpdateError("MAA .old 备份目录不能是符号链接")
+        backup = backup_root / target.relative_to(installation)
+    backup.parent.mkdir(parents=True, exist_ok=True)
     previous_backup = work_dir / "previous.old"
     had_previous_backup = backup.exists() or backup.is_symlink()
     target_moved = False
@@ -1490,6 +1540,36 @@ def replace_with_backup(staged: Path, target: Path, work_dir: Path) -> Path:
             if backup.exists() or backup.is_symlink():
                 _remove_path(backup)
             os.replace(previous_backup, backup)
+        raise
+    return backup
+
+
+def _replace_core_with_backup(staged: Path, target: Path, work_dir: Path) -> Path:
+    backup = backup_path_for(target)
+    previous = work_dir / "previous.old"
+    displaced = work_dir / "current.old"
+    previous_moved = target_moved = installed = backup_moved = False
+    try:
+        if backup.exists() or backup.is_symlink():
+            os.replace(backup, previous)
+            previous_moved = True
+        if target.exists() or target.is_symlink():
+            os.replace(target, displaced)
+            target_moved = True
+        os.replace(staged, target)
+        installed = True
+        if target_moved:
+            os.replace(displaced, backup)
+            backup_moved = True
+    except Exception:
+        if backup_moved:
+            os.replace(backup, displaced)
+        if installed:
+            os.replace(target, staged)
+        if target_moved:
+            os.replace(displaced, target)
+        if previous_moved:
+            os.replace(previous, backup)
         raise
     return backup
 
@@ -1677,6 +1757,9 @@ def clear_loaded_maa_cache(target: Path | str) -> None:
         return  # Native core is isolated in the Android service; restart activates updates.
     if maa_in_use():
         raise MaaUpdateError("MAA 正在使用中，不能释放核心")
+    from arknights_mower.utils.maa_process import close_idle_maa_processes
+
+    close_idle_maa_processes(target)
     main_module = sys.modules.get("arknights_mower.__main__")
     scheduler = getattr(main_module, "base_scheduler", None)
     if scheduler is not None:
@@ -1746,7 +1829,7 @@ def install_latest_maa(
     machine: str | None = None,
     channel: str = "stable",
 ) -> dict[str, Any]:
-    """下载或更新 MAA，切换成功后把原目录保留为同级 ``.old``。"""
+    """下载或更新 MAA，切换成功后把原文件保留在安装目录内的 ``.old``。"""
     if maa_in_use():
         raise MaaUpdateError("MAA 正在使用中，请等待当前 MAA 任务结束后再更新")
     if os.environ.get("MOWER_ANDROID") == "1":
@@ -1768,6 +1851,7 @@ def install_latest_maa(
     installed_before = has_maa_installation(target_path)
     operation = "更新" if installed_before else "下载"
     installed_version = ""
+    repair_installation = False
     if system not in {"darwin", "linux", "windows"}:
         raise MaaUpdateError("当前系统不使用 Mower 的 MAA 下载流程")
     if system == "linux":
@@ -1776,8 +1860,15 @@ def install_latest_maa(
         arch = normalize_windows_arch(machine)
         if installed_before:
             installed_version = read_installed_version(target_path, fresh=True)
-            if not installed_version:
-                raise MaaUpdateError("未读取到已安装的 Windows MAA 版本")
+            try:
+                _validate_windows_installation(target_path)
+            except MaaUpdateError:
+                repair_installation = True
+            repair_installation = (
+                repair_installation
+                or not installed_version
+                or (target_path / "pending-update-failure.txt").exists()
+            )
     else:
         arch = ""
     if source not in {"github", "mirrorchyan"}:
@@ -1797,7 +1888,7 @@ def install_latest_maa(
             system=system,
             machine=machine,
             channel=channel,
-            installed_version=installed_version,
+            installed_version="" if repair_installation else installed_version,
         )
     else:
         _emit(
@@ -1812,12 +1903,14 @@ def install_latest_maa(
             system=system,
             machine=machine,
             channel=channel,
-            installed_version=installed_version,
+            installed_version="" if repair_installation else installed_version,
         )
 
     if release.runtime is None:
-        if not installed_version or is_maa_version_newer(
-            release.tag, installed_version
+        if (
+            repair_installation
+            or not installed_version
+            or is_maa_version_newer(release.tag, installed_version)
         ):
             raise MaaUpdateError("MAA 更新缺少下载资源")
         return {
@@ -1838,8 +1931,16 @@ def install_latest_maa(
             "preserved": [],
         }
 
+    if repair_installation and release.package_type != "full":
+        raise MaaUpdateError("MAA 安装已损坏，更新源必须提供完整包，不能使用 OTA 修复")
+
     prefix = f".{target_path.name}.maa-update-"
-    with tempfile.TemporaryDirectory(prefix=prefix, dir=target_path.parent) as temp:
+    from arknights_mower.utils.maa_process import maa_installation_transaction
+
+    with (
+        maa_installation_transaction(target_path),
+        tempfile.TemporaryDirectory(prefix=prefix, dir=target_path.parent) as temp,
+    ):
         work_dir = Path(temp)
         archive_path = work_dir / release.runtime.name
         staged = work_dir / "new"
@@ -1887,7 +1988,14 @@ def install_latest_maa(
                     0,
                     "正在准备 Windows MAA OTA 更新副本",
                 )
-                shutil.copytree(target_path, staged, dirs_exist_ok=True)
+                shutil.copytree(
+                    target_path,
+                    staged,
+                    dirs_exist_ok=True,
+                    ignore=lambda path, names: (
+                        {".old"} if Path(path) == target_path else set()
+                    ),
+                )
                 apply_windows_ota_package(archive_path, staged, callback=callback)
             else:
                 extract_windows_package(archive_path, staged, callback=callback)

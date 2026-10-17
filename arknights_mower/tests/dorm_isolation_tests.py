@@ -445,7 +445,7 @@ def test_isolation_alone_does_not_move_existing_residents(data):
 
 
 @pytest.mark.parametrize("explicit", [False, True])
-def test_complete_shift_separates_mechanist_from_fixed_arc_by_swapping_low_bed(
+def test_complete_shift_separates_mechanist_and_reallocates_by_priority(
     solver, explicit
 ):
     config.conf.dorm_isolation = [["机械师", "逻各斯", "电弧"]]
@@ -520,17 +520,18 @@ def test_complete_shift_separates_mechanist_from_fixed_arc_by_swapping_low_bed(
     assert projected.operators["机械师"].current_room == (
         "dormitory_4" if explicit else "dormitory_2"
     )
-    assert projected.operators["机械师"].current_index == 4
-    assert projected.operators["阿罗玛"].current_room == (
-        "dormitory_2" if explicit else "dormitory_4"
-    )
+    assert projected.operators["机械师"].current_index == (4 if explicit else 2)
+    # 隔离改变单回归属后，零心情机械师取得二号单回位，森蚺取得四号床位。
+    assert projected.operators["阿罗玛"].current_room == "dormitory_2"
     assert projected.operators["阿罗玛"].current_index == 4
     assert projected.operators["安哲拉"].current_room == "dormitory_2"
     assert projected.operators["安哲拉"].current_index == 3
     assert projected.operators["电弧"].current_room == "dormitory_4"
     assert projected.operators["电弧"].current_index == 3
-    assert projected.operators["森蚺"].current_index == 2
-    assert projected.operators["森蚺"].current_room == "dormitory_2"
+    assert projected.operators["森蚺"].current_index == (2 if explicit else 4)
+    assert projected.operators["森蚺"].current_room == (
+        "dormitory_2" if explicit else "dormitory_4"
+    )
     assert positions(data) == before
     assert all(bed.time == due for bed in data.dorm)
     assert all(

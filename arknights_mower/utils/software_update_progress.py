@@ -85,7 +85,7 @@ body{margin:0;padding:24px;background:light-dark(#f5f6f8,#18181c)}
 main{max-width:880px;margin:24px auto;padding:24px;border-radius:12px;background:light-dark(white,#242428);box-shadow:0 2px 14px #0001}
 h1{font-size:22px;margin:0 0 12px}p{overflow-wrap:anywhere}pre{max-height:55vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 ui-monospace,monospace}
 button,a{display:inline-block;box-sizing:border-box;min-height:40px;padding:8px 14px;border-radius:6px;font:inherit}
-button{cursor:pointer}button:disabled{cursor:default;opacity:.5}#bytes{font-variant-numeric:tabular-nums}#connection{opacity:.65}
+button{cursor:pointer}button:disabled{cursor:default;opacity:.5}#cancel[hidden]{display:none}#bytes{font-variant-numeric:tabular-nums}#connection{opacity:.65}
 .progress-row{display:flex;align-items:center;gap:12px;margin:16px 0 8px}
 #progress{--progress-color:light-dark(#18a058,#63e2b7);display:block;flex:1;min-width:0;height:8px;border:0;border-radius:100px;overflow:hidden;appearance:none;background:light-dark(#eee,#ffffff14)}
 #progress::-webkit-progress-bar{background:light-dark(#eee,#ffffff14);border-radius:100px}
@@ -102,7 +102,7 @@ button{cursor:pointer}button:disabled{cursor:default;opacity:.5}#bytes{font-vari
 </style><main><h1>Mower 更新进度</h1>
 <div class="progress-row"><progress id="progress" max="100" aria-label="软件更新进度" aria-describedby="message"></progress><span id="percentage"></span></div>
 <p id="message" role="status" aria-live="polite">正在读取更新状态…</p><p id="bytes"></p>
-<p id="connection"></p><button id="cancel" disabled>取消更新</button> <a id="return" href="/mowersettings#software-update">返回 Mower</a>
+<p id="connection"></p><button id="cancel" hidden disabled>取消更新</button> <a id="return" href="/mowersettings#software-update">返回 Mower</a>
 <details><summary>安装日志</summary><pre id="log"></pre></details></main>
 <script>
 const parameters = new URLSearchParams(location.hash.slice(1));
@@ -131,6 +131,7 @@ async function poll(){
     document.getElementById('bytes').textContent = data.current ? '已下载 '+(data.current/1048576).toFixed(1)+' MiB'+(data.total ? ' / '+(data.total/1048576).toFixed(1)+' MiB' : '') : '';
     connection.textContent = '';
     cancel.disabled = !data.cancellable || cancelling;
+    cancel.hidden = data.updates_enabled === false;
     if (['succeeded','failed','cancelled'].includes(data.status)) return;
   } catch(error) { connection.textContent = error.message || '更新服务正在交接，稍后自动重试。'; }
   setTimeout(poll, 1000);
@@ -155,7 +156,7 @@ class ProgressServers:
         self.records = records
         self.servers = []
 
-    def handler(self, token_hash):
+    def handler(self, token_hash, updates_enabled=True):
         state = self.state
 
         class Handler(BaseHTTPRequestHandler):
@@ -191,13 +192,18 @@ class ProgressServers:
                     return self.reply(403, {"ok": False})
                 if path != "/software-update/status":
                     return self.reply(404, {"ok": False})
-                self.reply(200, read_status(state))
+                result = read_status(state)
+                result["updates_enabled"] = updates_enabled
+                if not updates_enabled:
+                    result["cancellable"] = False
+                self.reply(200, result)
 
             def do_POST(self):
                 origin = self.headers.get("Origin")
                 rejection = None
                 if (
                     not self.authorized()
+                    or not updates_enabled
                     or self.headers.get("X-Mower-Update") != "1"
                     or (origin and urlparse(origin).netloc != self.headers.get("Host"))
                 ):
@@ -245,7 +251,12 @@ class ProgressServers:
                 continue
             seen.add(port)
             try:
-                server = ThreadingHTTPServer((host, port), self.handler(token_hash))
+                allowed = (
+                    not record.get("managed") or record.get("updates_enabled") is True
+                )
+                server = ThreadingHTTPServer(
+                    (host, port), self.handler(token_hash, allowed)
+                )
             except OSError as exc:
                 print(f"更新进度端口 {port} 无法接管：{exc}", flush=True)
                 continue

@@ -6,10 +6,10 @@ import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {toMowerMicros,fromMowerMicros,roundMowerMicros,MOWER_TASK_TYPES as T,type MowerTask,type MowerTaskPlan} from './mowerTaskQueue'
 /** A confirmed ordinary departure preserves a saved observation at the personal limit.
  * Source: Mower b9ec78a822099285a2e509630fce98f27afa6580 (MIT). */
-export function mowerHasMeasuredDormDeparture(data:MowerSchedulingData,op:MowerOperatorState,room:string,observed:readonly string[],task?:MowerTask):boolean {
- const planned=task?.plan[room]
- return room.startsWith('dorm')&&!!planned&&planned.length===observed.length&&planned.every((name,index)=>name===observed[index])&&
-  !observed.includes(op.name)&&hasRestingMood(op,data.nowMicros)&&!op.moodIsPrediction&&op.mood>=op.upperLimit
+export function mowerHasMeasuredDormDeparture(data:MowerSchedulingData,op:MowerOperatorState,room:string,observed:readonly string[],task?:MowerTask,confirmedPlan?:readonly string[]):boolean {
+ const planned=confirmedPlan??task?.plan[room]
+ return !!task?.plan[room]&&room.startsWith('dorm')&&!!planned&&planned.length===observed.length&&planned.every((name,index)=>name===observed[index])&&
+  !observed.includes(op.name)&&hasRestingMood(op,data.nowMicros)&&!op.moodIsPrediction&&(op.mood>=op.upperLimit||task.strictMoodLimit&&op.restMoodLimit&&task.metadata===op.name&&(task.moodLimit===undefined||task.moodLimit===op.upperLimit))
 }
 /** Actual get_agent_from_room input expansion; FIA reads only explicitly passed indexes. */
 export function mowerRoomReadIndexes(data:MowerSchedulingData,room:string,task?:MowerTask,requested:number[]=[]):number[] {

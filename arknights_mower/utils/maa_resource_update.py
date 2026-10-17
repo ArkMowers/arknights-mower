@@ -25,6 +25,7 @@ from arknights_mower.utils.maa_update import (
     backup_path_for,
     has_maa_installation,
     mirrorchyan_sp_id,
+    missing_maa_resource_files,
     replace_with_backup,
 )
 from arknights_mower.utils.zip_safe import is_unsafe_zip_member
@@ -166,7 +167,9 @@ def read_maa_resource_info(target: Path | str) -> dict[str, str]:
 
 
 def resource_backup_path(target: Path | str) -> Path:
-    return backup_path_for(Path(target).expanduser() / "resource")
+    if os.environ.get("MOWER_ANDROID") == "1":
+        return backup_path_for(Path(target).expanduser() / "resource")
+    return backup_path_for(target) / "resource"
 
 
 def get_github_resource_release(
@@ -509,9 +512,14 @@ def install_maa_resource_update(
             "downloaded": 0,
         }
 
-    with tempfile.TemporaryDirectory(
-        prefix=".maa-resource-update-", dir=target_path
-    ) as temp:
+    from arknights_mower.utils.maa_process import maa_installation_transaction
+
+    with (
+        maa_installation_transaction(target_path),
+        tempfile.TemporaryDirectory(
+            prefix=".maa-resource-update-", dir=target_path
+        ) as temp,
+    ):
         work_dir = Path(temp)
         archive_path = work_dir / "MaaResource.zip"
         staged_resource = work_dir / "resource"
@@ -529,9 +537,16 @@ def install_maa_resource_update(
         )
         if merged_version != release.version:
             raise MaaUpdateError("下载包与 MAA 资源版本信息不一致")
+        missing = missing_maa_resource_files(target_path, resource_root=staged_resource)
+        if missing:
+            raise MaaUpdateError(
+                f"合并后的 MAA 资源不完整，例如缺少 {missing[0]}；请使用完整包修复"
+            )
         _emit(callback, "installing", 0, 0, "正在切换 MAA 资源并保留回滚副本")
         try:
-            backup = replace_with_backup(staged_resource, resource_path, work_dir)
+            backup = replace_with_backup(
+                staged_resource, resource_path, work_dir, installation=target_path
+            )
         except OSError as e:
             raise MaaUpdateError(f"替换 MAA 资源目录失败：{e}") from e
         installed = read_maa_resource_info(target_path)

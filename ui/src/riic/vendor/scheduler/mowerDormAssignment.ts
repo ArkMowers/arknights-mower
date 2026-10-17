@@ -66,7 +66,7 @@ export function mowerFindDormSlot(data:MowerSchedulingData,name:string,used:Set<
 export function mowerStandbyCandidates(data:MowerSchedulingData,names:string[]):Set<string> {
  const anchors=new Set(names.map(n=>data.operators[n]!).filter(op=>op.group&&op.isHigh()&&(data.alpha?!data.canStandby(op):op.restingPriority==='high')&&!op.workaholic&&(data.alpha||data.policy.experimentalDormLogic||!op.workshop)&&!op.room.startsWith('dorm')&&op.mood>=0&&op.mood<op.upperLimit&&op.currentMood(data.nowMicros)<op.upperLimit).map(op=>op.group))
  const hasAnchor=data.dorms.some(b=>{const op=data.operators[b.name];return !!op&&data.effectiveFreeSlot(b)&&op.isHigh()&&(data.alpha?!data.canStandby(op)&&!data.restMoodComplete(op.name):op.restingPriority==='high')})
- return new Set(names.filter(n=>{const op=data.operators[n]!;return data.canStandby(op)&&(anchors.has(op.group)||!op.group&&hasAnchor)}))
+ return new Set(names.filter(n=>{const op=data.operators[n]!;return data.canStandby(op)&&(anchors.has(op.group)||op.independentRest&&op.groupBindings.some(binding=>!!binding.group&&anchors.has(binding.group))||!op.group&&hasAnchor)}))
 }
 export function mowerAssignDormGroup(data:MowerSchedulingData,names:string[],activeGroups?:Set<string>,departingNames?:ReadonlySet<string>,plan:MowerTaskPlan={},reservedSlots:ReadonlySet<string>=new Set()):MowerDormState[]|undefined {
  defaultOnly(data)

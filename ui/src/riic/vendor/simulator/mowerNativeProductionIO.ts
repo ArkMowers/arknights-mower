@@ -70,7 +70,7 @@ export function createMowerProductionIO(state:RuntimeState,production:Controller
    return {kind:request.kind,observedAtMicros:now(),value}
   }
   const generator=executeMowerDroneOperation({
-   retainManufacturingReserve:!flags.notCustomize&&planning.runOrderRooms.length>0,
+   retainManufacturingReserve:!flags.notCustomize,
    get repeatTradeAcceleration(){return planning.droneRoom===null||(planning.droneRoom===room&&planning.runOrderRooms.includes(room))},
    room,width:1920,height:1080,...flags,droneCountLimit,waitingScenes:[],
   },seam)

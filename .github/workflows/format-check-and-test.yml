@@ -292,12 +292,16 @@ jobs:
             arknights_mower/tests/server_status_tests.py \
             arknights_mower/tests/screenshot_tests.py \
             arknights_mower/tests/workshop_inflight_tests.py
-      - name: Verify MAA core identity and native unload policy on each OS
+      - name: Verify MAA worker lifecycle and update admission on each OS
         shell: bash
         env:
           PYTHONIOENCODING: utf-8
         run: |
           python -m pytest -q -o faulthandler_timeout=60 \
+            arknights_mower/tests/maa_process_tests.py \
+            arknights_mower/tests/maa_update_parity_tests.py \
+            arknights_mower/tests/maa_navigation_tests.py \
+            arknights_mower/tests/maa_admission_tests.py \
             arknights_mower/tests/maa_runtime_tests.py \
             arknights_mower/tests/maa_runtime_native_tests.py \
             arknights_mower/tests/maa_update_tests.py::TestLoadedMaaCache \

@@ -7,6 +7,8 @@ date: 2026-10-05
 
 # MAA Core Generation Validation
 
+The [desktop process isolation decision](../architecture/2026-10-17-maa-process-isolation.md) replaces this record's desktop activation mechanism. Core identity/version validation and backup ownership remain applicable; the native-unload rationale below governs the compatibility loader and already-loaded in-process cores.
+
 ## Contract
 
 [INV-MAA-11] validates desktop core identity and version before connection. The [MAA runtime contract](../../../../docs/subsystems/maa-runtime.md) owns initialization, safe idle reloading and process-restart fallback. The identifier uses the MAA namespace because the software-update namespace already assigns its second identifier to registration scans.

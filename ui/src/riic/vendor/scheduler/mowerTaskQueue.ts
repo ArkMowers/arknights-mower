@@ -34,7 +34,11 @@ export class MowerTask {
  get retainsExecution():boolean{return !!this.executionFailure||this.executionRetained}
  groupShiftTransitions:Record<string,boolean>={}
  productShiftLocked=false
+ ordinaryCoordination=false
  exhaustSupport=false
+ coordinationRequestNames:string[]=[]
+ preferredReplacementRestore=false
+ coordinationDependencyWait=false
  /** A complete physical arrangement must finish before backup/return replanning. */
  backupShiftActive=false
  /** Old rules remain available only while this physical backup arrangement is unfinished. */

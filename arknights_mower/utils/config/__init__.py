@@ -189,6 +189,10 @@ def load_conf():
 
 conf: Conf
 load_conf()
+# Managed update permission stays fixed across configuration reloads.
+updates_enabled = conf.updates_enabled_for_launch(
+    managed=os.environ.get("MOWER_MANAGED") == "1"
+)
 
 
 def save_plan():

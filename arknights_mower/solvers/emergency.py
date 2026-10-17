@@ -270,7 +270,10 @@ class EmergencyRecoveryMixin:
             return
         self.backup_plan_solver()
         self._emergency_startup_pending = False
+        reconciled = self._reconcile_initial_staffing()
         self._emergency_save()
+        if reconciled or getattr(self, "_initial_staffing_pending", False):
+            return
         if not config.conf.automatic_rescue_enable:
             return
         if any(

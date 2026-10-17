@@ -155,6 +155,10 @@ def automatic_check_key(settings):
 
 def check_on_launch():
     """One installation checks once when several instances start together."""
+    from arknights_mower.utils import config
+
+    if not config.updates_enabled:
+        return True
     settings = get_settings()
     if not settings["auto_check"]:
         return True
@@ -208,6 +212,10 @@ def check_on_launch():
 def request_auto_check():
     """Check on app entry or settings changes; coalesce simultaneous callers."""
     global _auto_check_thread, _auto_check_revision
+    from arknights_mower.utils import config
+
+    if not config.updates_enabled:
+        return {"ok": True, "scheduled": False}
     if not get_settings()["auto_check"]:
         return {"ok": True, "scheduled": False}
 

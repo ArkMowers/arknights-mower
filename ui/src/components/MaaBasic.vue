@@ -7,9 +7,12 @@ const axios = inject('axios')
 const mobile = inject('mobile')
 
 import { useConfigStore } from '@/stores/config'
+import { useMowerStore } from '@/stores/mower'
 const store = useConfigStore()
 
 import { storeToRefs } from 'pinia'
+const { updates_enabled } = storeToRefs(useMowerStore())
+const updatesAllowed = computed(() => updates_enabled.value === true)
 const {
   runtime_platform,
   maa_path,
@@ -189,6 +192,7 @@ function reset_mirrorchyan_cdk_status(message = '') {
 }
 
 async function check_mirrorchyan_cdk(token = maa_mirrorchyan_token.value) {
+  if (!updatesAllowed.value) return
   if (mirrorchyan_cdk_timer) {
     window.clearTimeout(mirrorchyan_cdk_timer)
     mirrorchyan_cdk_timer = null
@@ -246,6 +250,7 @@ async function check_mirrorchyan_cdk(token = maa_mirrorchyan_token.value) {
 }
 
 function schedule_mirrorchyan_cdk_check(token) {
+  if (!updatesAllowed.value) return
   if (runtime_platform.value === 'android') return
   if (mirrorchyan_cdk_timer) window.clearTimeout(mirrorchyan_cdk_timer)
   mirrorchyan_cdk_request_id++
@@ -446,6 +451,7 @@ const maa_resource_update_progress_status = computed(() => {
 })
 
 async function auto_check_updates() {
+  if (!updatesAllowed.value) return
   if (disposed || maa_path_missing.value || maa_updating.value || maa_resource_updating.value)
     return
 
@@ -482,7 +488,12 @@ async function auto_check_updates() {
 function schedule_auto_check_updates(delay = 400) {
   if (maa_auto_check_timer) window.clearTimeout(maa_auto_check_timer)
   maa_auto_check_timer = null
-  if (disposed || (!maa_auto_check_update.value && !maa_resource_auto_check_update.value)) return
+  if (
+    !updatesAllowed.value ||
+    disposed ||
+    (!maa_auto_check_update.value && !maa_resource_auto_check_update.value)
+  )
+    return
   maa_auto_check_timer = window.setTimeout(() => {
     maa_auto_check_timer = null
     auto_check_updates()
@@ -504,7 +515,7 @@ function apply_maa_update_job(job, apply_install_info = true) {
 }
 
 async function poll_maa_update() {
-  if (disposed) return
+  if (disposed || !updatesAllowed.value) return
   if (maa_update_timer) window.clearTimeout(maa_update_timer)
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/maa-update/status`)
@@ -527,7 +538,7 @@ async function poll_maa_update() {
 }
 
 async function get_maa_update_info() {
-  if (disposed) return
+  if (disposed || !updatesAllowed.value) return
   const request_id = ++maa_update_info_request_id
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/maa-update/info`, {
@@ -581,7 +592,7 @@ function apply_maa_resource_update_job(job, apply_install_info = true) {
 }
 
 async function poll_maa_resource_update() {
-  if (disposed) return
+  if (disposed || !updatesAllowed.value) return
   if (maa_resource_update_timer) window.clearTimeout(maa_resource_update_timer)
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/maa-resource-update/status`)
@@ -602,7 +613,7 @@ async function poll_maa_resource_update() {
 }
 
 async function get_maa_resource_update_info() {
-  if (disposed) return
+  if (disposed || !updatesAllowed.value) return
   const request_id = ++maa_resource_update_info_request_id
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/maa-resource-update/info`, {
@@ -642,6 +653,7 @@ async function get_maa_resource_update_info() {
 }
 
 async function check_maa_update() {
+  if (!updatesAllowed.value) return
   if (
     maa_combined_checking.value ||
     maa_update_checking.value ||
@@ -666,6 +678,7 @@ async function check_maa_update() {
 }
 
 async function check_maa_core_update() {
+  if (!updatesAllowed.value) return
   if (maa_update_checking.value || maa_updating.value || !maa_installed.value) return
   reset_maa_update_check(false)
   const request_id = maa_update_check_request_id
@@ -728,6 +741,7 @@ async function check_maa_core_update() {
 }
 
 async function check_maa_resource_update() {
+  if (!updatesAllowed.value) return
   if (maa_resource_update_checking.value || maa_resource_updating.value || maa_updating.value)
     return
   reset_maa_resource_update_check(false)
@@ -796,6 +810,7 @@ async function check_maa_resource_update() {
 }
 
 async function start_maa_update() {
+  if (!updatesAllowed.value) return
   if (maa_updating.value) return
   maa_update_info_msg.value = ''
   maa_update_job.value = {
@@ -844,6 +859,7 @@ async function start_maa_update() {
 }
 
 async function start_maa_resource_update() {
+  if (!updatesAllowed.value) return
   if (maa_resource_updating.value || maa_updating.value) return
   maa_resource_update_info_msg.value = ''
   maa_resource_update_job.value = {
@@ -995,7 +1011,7 @@ onUnmounted(() => {
       </n-button>
       <div>{{ maa_msg }}</div>
     </div>
-    <template v-if="maa_update_supported">
+    <template v-if="updatesAllowed && maa_update_supported">
       <n-divider />
       <div class="maa-updater">
         <div class="update-title">
@@ -1182,7 +1198,7 @@ onUnmounted(() => {
         <div class="update-error">{{ maa_update_info_msg }}</div>
       </div>
     </template>
-    <template v-if="maa_resource_update_supported">
+    <template v-if="updatesAllowed && maa_resource_update_supported">
       <n-divider />
       <div class="maa-updater">
         <div class="update-title">{{ maa_update_platform_label }} 更新 MAA 资源</div>

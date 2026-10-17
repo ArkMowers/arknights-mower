@@ -11,7 +11,7 @@ import type { MowerMainConf, RosterWorkspace } from '../domain/roster'
 import type { CompiledSchedule, CompiledSlot, SimulationAssumptions } from './types'
 
 const DEFAULTS: SimulationAssumptions = {
-  schemaVersion: 1, initialMorale: 24, enableParty:false, leifengMode:true, droneIntervalHours:3, droneCountLimit:100, reloadRooms:[], maaGapHours:3, restingThreshold: 0.65, rescueThreshold: 0.75, freeRoom: false, dormOrder: '', groupRestInFullOnMoodGap: true, groupMoodGapThresholdMinutes: 60, groupMoodGapMaxExtraWaitHours: 0, mergeIntervalMinutes: 10, enableMastery: true, fiammettaFool: true, fiammettaThreshold: 0.9, operatorMorale: {}, dormAtmosphere: 0,
+  schemaVersion: 1, initialMorale: 24, enableParty:false, leifengMode:true, droneIntervalHours:3, droneCountLimit:100, reloadRooms:[], maaGapHours:3, restingThreshold: 0.65, rescueThreshold: 0.75, freeRoom: false, dormOrder: '', groupRestInFullOnMoodGap: true, groupMoodGapThresholdMinutes: 75, groupMoodGapMaxExtraWaitHours: 0, mergeIntervalMinutes: 10, enableMastery: true, fiammettaFool: true, fiammettaThreshold: 0.9, operatorMorale: {}, dormAtmosphere: 0,
   initialGold: 0, initialFragments: 0, initialDrones: 0,
   collectionIntervalHours: 0, operationDurationHours: 0, horizonHours: 24 * 90,
   elitePhase: 2, currentOccupants: {},

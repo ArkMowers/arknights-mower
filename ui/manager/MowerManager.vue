@@ -191,13 +191,15 @@ function edit(idx, kind) {
   if (unavailable.value || !instances.value[idx]?.editable) return
   draft.value = {
     ...instances.value[idx],
-    ai_assistant_enabled: instances.value[idx].ai_assistant_enabled === true
+    ai_assistant_enabled: instances.value[idx].ai_assistant_enabled === true,
+    updates_enabled: instances.value[idx].updates_enabled === true
   }
   editing.value = {
     idx,
     kind,
     target: { name: draft.value.name, path: draft.value.path },
-    originalAssistant: draft.value.ai_assistant_enabled
+    originalAssistant: draft.value.ai_assistant_enabled,
+    originalUpdates: draft.value.updates_enabled
   }
 }
 
@@ -210,7 +212,8 @@ function editBatch() {
   const originals = instances.value.map((item) => ({
     token: item.token,
     port: item.port,
-    ai_assistant_enabled: item.ai_assistant_enabled === true
+    ai_assistant_enabled: item.ai_assistant_enabled === true,
+    updates_enabled: item.updates_enabled === true
   }))
   batchDraft.value = originals.map((row) => ({ ...row }))
   batchAiRead.value = false
@@ -227,7 +230,7 @@ function selectPath(idx) {
 
 async function save() {
   if (!editing.value || unavailable.value || assistantConfirmation.value) return
-  const { idx, kind, target, originalAssistant } = editing.value
+  const { idx, kind, target, originalAssistant, originalUpdates } = editing.value
   if (kind === 'batch') {
     if (!batchChanges.value.length) return
     const changes = batchChanges.value
@@ -252,6 +255,8 @@ async function save() {
   const settings = { token: draft.value.token, port: draft.value.port }
   if (draft.value.ai_assistant_enabled !== originalAssistant)
     settings.ai_assistant_enabled = draft.value.ai_assistant_enabled
+  if (draft.value.updates_enabled !== originalUpdates)
+    settings.updates_enabled = draft.value.updates_enabled
   const succeeded = await execute(() => api().update_settings(idx, settings, target))
   if (succeeded) editing.value = null
 }
@@ -282,6 +287,13 @@ async function changeAssistant(enabled) {
 
 function batchEditable(idx) {
   return Boolean(instances.value[idx]?.editable && instances.value[idx]?.path)
+}
+
+function changeBatchUpdates(enabled, idx = null) {
+  if (editing.value?.kind !== 'batch' || unavailable.value || assistantConfirmation.value) return
+  for (const index of idx === null ? batchDraft.value.map((_, index) => index) : [idx]) {
+    if (batchEditable(index)) batchDraft.value[index].updates_enabled = enabled
+  }
 }
 
 async function changeBatchAssistant(enabled, idx = null) {
@@ -591,6 +603,18 @@ async function applyDelete() {
               @click="changeBatchAssistant(false)"
               >AI 全部关闭</n-button
             >
+            <n-button
+              size="small"
+              :disabled="unavailable || !!assistantConfirmation"
+              @click="changeBatchUpdates(true)"
+              >全部允许更新</n-button
+            >
+            <n-button
+              size="small"
+              :disabled="unavailable || !!assistantConfirmation"
+              @click="changeBatchUpdates(false)"
+              >全部禁止更新</n-button
+            >
           </div>
           <div class="batch-table-scroll">
             <table class="batch-table">
@@ -599,6 +623,7 @@ async function applyDelete() {
                 <col class="batch-token-col" />
                 <col class="batch-port-col" />
                 <col class="batch-ai-col" />
+                <col class="batch-updates-col" />
               </colgroup>
               <thead>
                 <tr>
@@ -606,6 +631,7 @@ async function applyDelete() {
                   <th scope="col">Token</th>
                   <th scope="col">端口</th>
                   <th scope="col">Mower AI 助手</th>
+                  <th scope="col">允许更新</th>
                 </tr>
               </thead>
               <tbody>
@@ -649,6 +675,14 @@ async function applyDelete() {
                       @update:value="(enabled) => changeBatchAssistant(enabled, idx)"
                     />
                   </td>
+                  <td>
+                    <n-switch
+                      :value="row.updates_enabled"
+                      :disabled="unavailable || !batchEditable(idx) || !!assistantConfirmation"
+                      :aria-label="`${displayedEditing.targets[idx].name} 允许更新`"
+                      @update:value="(enabled) => changeBatchUpdates(enabled, idx)"
+                    />
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -679,6 +713,13 @@ async function applyDelete() {
               aria-label="Mower AI 助手"
               :disabled="unavailable || !!assistantConfirmation"
               @update:value="changeAssistant"
+            />
+          </n-form-item>
+          <n-form-item label="允许更新">
+            <n-switch
+              v-model:value="draft.updates_enabled"
+              aria-label="允许更新"
+              :disabled="unavailable || !!assistantConfirmation"
             />
           </n-form-item>
           <n-alert v-if="draft.token" type="warning"
@@ -838,7 +879,7 @@ async function applyDelete() {
 }
 .batch-table {
   width: 100%;
-  min-width: 700px;
+  min-width: 820px;
   table-layout: fixed;
   border-spacing: 0;
   font-size: 13px;
@@ -854,6 +895,9 @@ async function applyDelete() {
 }
 .batch-ai-col {
   width: 140px;
+}
+.batch-updates-col {
+  width: 120px;
 }
 .batch-table th,
 .batch-table td {

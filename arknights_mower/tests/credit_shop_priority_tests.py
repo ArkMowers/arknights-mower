@@ -271,3 +271,66 @@ def test_disabled_value_feature_keeps_old_priority_and_overflow_order(shopping):
 
     assert state.purchased == [(1, 100), (2, 100), (0, 100), (3, 100)]
     assert state.balance == 430
+
+
+@pytest.mark.parametrize(
+    "name,listed_name", [("糖", "代糖"), ("源岩", "固源岩"), ("碳", "碳素")]
+)
+@pytest.mark.parametrize("on_demand", [False, True])
+def test_ordinary_blacklist_matches_whole_names(shopping, name, listed_name, on_demand):
+    shop, state = shopping
+    config.conf.credit_shop_by_value = False
+    config.conf.maa_mall_buy = ""
+    config.conf.maa_mall_blacklist = f"加急许可,{listed_name},家具零件"
+    state.balance = 250
+    state.products = [
+        product(0, name, 100),
+        product(1, listed_name, 100),
+        product(2, "聚酸酯", 200),
+    ]
+
+    shop.run(on_demand=on_demand)
+
+    assert state.purchased == [(0, 100)]
+    assert state.balance == 150
+    assert shop.credit_deficit == (50 if on_demand else None)
+
+
+@pytest.mark.parametrize(
+    "name,listed_name", [("糖", "代糖"), ("源岩", "固源岩"), ("碳", "碳素")]
+)
+@pytest.mark.parametrize("on_demand", [False, True])
+def test_ordinary_priority_matches_whole_names(shopping, name, listed_name, on_demand):
+    shop, state = shopping
+    config.conf.credit_shop_by_value = False
+    config.conf.maa_mall_buy = f"招聘许可,{listed_name}"
+    config.conf.maa_mall_blacklist = ""
+    state.balance = 150
+    state.products = [product(0, name, 100), product(1, listed_name, 100)]
+
+    shop.run(on_demand=on_demand)
+
+    assert state.purchased == [(1, 100)]
+    assert state.balance == 50
+    assert shop.credit_deficit == (50 if on_demand else None)
+
+
+@pytest.mark.parametrize(
+    "name,listed_name", [("糖", "代糖"), ("源岩", "固源岩"), ("碳", "碳素")]
+)
+def test_ordinary_deficit_blacklist_matches_whole_names(shopping, name, listed_name):
+    shop, state = shopping
+    config.conf.credit_shop_by_value = False
+    config.conf.maa_mall_buy = ""
+    config.conf.maa_mall_blacklist = listed_name
+    state.balance = 50
+    state.products = [
+        product(0, name, 100),
+        product(1, listed_name, 100),
+        product(2, "聚酸酯", 200),
+    ]
+
+    shop.run(on_demand=True)
+
+    assert state.purchased == []
+    assert shop.credit_deficit == 250

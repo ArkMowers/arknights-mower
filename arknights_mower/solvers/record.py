@@ -1,5 +1,6 @@
 # 用于记录Mower操作行为
 import collections
+import copy
 import json
 import pickle
 import sqlite3
@@ -263,7 +264,13 @@ def current_state():
         "operators": data.operators,
         "facility_states": getattr(data, "facility_states", {}),
         "room_observations": getattr(data, "room_observations", {}),
+        "recall_recovery_rates": copy.deepcopy(
+            getattr(data, "recall_recovery_rates", {})
+        ),
         "group_shift_state": dict(getattr(data, "group_shift_state", {})),
+        "group_recovery_full_members": copy.deepcopy(
+            getattr(data, "group_recovery_full_members", {})
+        ),
         "automatic_rescue_state": getattr(base_scheduler, "emergency_state", None),
         "backup_plan_names": [backup.name for backup in data.backup_plans],
         "idle_dorm_search_exhausted": getattr(
@@ -271,6 +278,9 @@ def current_state():
         ),
         "idle_dorm_search_stopped_at": getattr(
             data, "idle_dorm_search_stopped_at", None
+        ),
+        "initial_staffing_pending": bool(
+            getattr(base_scheduler, "_initial_staffing_pending", False)
         ),
         "initial_mood_pending": bool(
             getattr(base_scheduler, "defer_backup_plan_until_mood_read", False)
