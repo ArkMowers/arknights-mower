@@ -817,7 +817,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
     // The driver can fail after a yield, outside the executor's try/finally.
     if(!(data.alpha&&error instanceof MowerRoomArrangementDeferred))task.backupShiftActive=false
     rethrowMowerInfraFatal(error)
-    if(error instanceof MowerBackupRecoveryBlocked&&parkMowerBackupDepartureRecovery(source,task,error.names,s.mowerShiftModel?.observationNames)){delete source.execution;delete source.activeTask;source.error=false;continue}
+    if(error instanceof MowerBackupRecoveryBlocked&&parkMowerBackupDepartureRecovery(source,task,error,s.mowerShiftModel?.observationNames)){delete source.execution;delete source.activeTask;source.error=false;continue}
     s.diagnostics.push({code:'mower-task-exception',message:error instanceof Error?error.message:String(error)})
     delete source.execution
     if(data.alpha&&error instanceof MowerRoomArrangementDeferred){

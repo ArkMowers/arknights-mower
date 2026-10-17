@@ -1,4 +1,4 @@
-import {completeMowerBackupDepartureRecovery,mowerCoveredRecoveryPending} from './mowerBackupDepartureRecovery'
+import {completeMowerBackupDepartureRecovery,mowerCoveredRecoveryPending,MowerBackupRecoveryBlocked} from './mowerBackupDepartureRecovery'
 import {describe,it,expect} from 'vitest'
 import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {MowerOperatorState} from './mowerOperatorState'
@@ -50,15 +50,18 @@ describe('backup departure recovery completion',()=>{
   expect(projected.operators.A!.isResting()).toBe(true)
   expect(projected.currentOperator('meeting',0)?.name).toBe('B')
  })
- it('does not recall recovered peers while an explicit partial departure is still recovering',()=>{
+ it.each(['fresh','stale','unknown'] as const)('does not recall recovered peers while an explicit partial departure is still recovering, observation=%s',observation=>{
   const {data}=fixture(),op=data.operators.A!
   op.currentRoom='dormitory_1';op.currentIndex=1;op.mood=3;data.dorms[0]!.name='A';data.dorms[0]!.timeMicros=3_600_000_000
   data.operators.R!.currentRoom='central';data.operators.R!.currentIndex=0
   data.operators.C=new MowerOperatorState({name:'C',room:'room_1_1',index:0,currentRoom:'dormitory_1',currentIndex:2,group:'g',replacement:['S'],mood:24,timeStampMicros:0,operatorType:'high'})
   data.plan.room_1_1=['C'];data.dorms[1]!.name='C';data.dorms[1]!.timeMicros=0
   data.operators.S!.currentRoom='room_1_1';data.operators.S!.currentIndex=0;data.groupShiftState.g=true
+  data.operators.B!.mood=20
+  if(observation==='stale')data.operators.B!.timeStampMicros=-3*3_600_000_000
+  if(observation==='unknown')data.operators.B!.timeStampMicros=undefined
   const future=new MowerTask({time:1,type:T.SHIFT_ON,plan:{central:['A'],meeting:['B'],room_1_1:['C']}})
-  for(let repeat=0;repeat<3;repeat++)expect(mowerCorrectionPlan(data,false,new Set(),[future])).toEqual({})
+  for(let repeat=0;repeat<3;repeat++)expect(mowerCorrectionPlan(data,false,new Set(),[future])).toEqual(observation==='fresh'?{}:{meeting:['B']})
   expect(future.timeMicros).toBe(3_600_000_000)
   data.backupExplicitTasks=[]
   expect(mowerCorrectionPlan(data).room_1_1).toContain('C')
@@ -151,7 +154,7 @@ describe('backup departure recovery completion',()=>{
 import {createRosterRuntime,settleRoster,advanceRoster,nextRosterActionHours,type RuntimeConfig} from './rosterRuntime'
 import {getMowerSourceRuntime} from './mowerSourceRuntime'
 import {toMowerMicros} from './mowerTaskQueue'
-import {resumeMowerPreviewRecovery} from './mowerPreviewRecoveryWait'
+import {parkMowerBackupDepartureRecovery,resumeMowerPreviewRecovery} from './mowerPreviewRecoveryWait'
 function blockedRuntime(){
  const config:RuntimeConfig={mowerAlpha:true,positions:[{id:'central_0',roomId:'central',primary:'A',candidates:['R'],group:'g'}, {id:'meeting_0',roomId:'meeting',primary:'B',candidates:['S'],group:'h'}, {id:'dormitory_1_0',roomId:'dormitory_1',primary:'K',candidates:[],dormitory:true,permanent:true}],beds:[{id:'dormitory_1_1',roomId:'dormitory_1',vip:true}],initialMorale:{A:0,B:2,R:24,S:24,K:24},idleOperators:['Idle'],mowerPolicy:{restingThreshold:.65,powerPlantCount:2,opeRestingPriority:[]},mowerTaskScheduling:{adjustForRunOrders:false},mowerSourcePlan:{central:[{agent:'A',group:'g',replacement:['R']}],meeting:[{agent:'B',group:'h',replacement:['S']}],dormitory_1:[{agent:'K',group:'',replacement:[]},{agent:'Free',group:'',replacement:[]}]},mowerSourceRules:{workaholic:[],exhaustRequire:['A'],restInFull:['B'],lowPriority:[],refreshDrained:[],lingMode:0}}
  const state=createRosterRuntime(config),source=getMowerSourceRuntime(state),data=source.data
@@ -208,4 +211,46 @@ describe('backup bed dependencies through real dispatch',()=>{
   expect(source.queue.tasks).toContain(task);expect(task.timeMicros).toBe(0)
  })
 
+})
+
+
+describe('departure waits use the failed effective projection',()=>{
+ it('waits on projected recovery even when the actual arrangement still has a takable bed',()=>{
+  const {data,task,queue}=fixture(1),resident=data.operators.B!
+  resident.currentRoom='dormitory_1';resident.currentIndex=1;resident.mood=2;resident.restingPriority='standby'
+  data.dorms[0]!.name='B';data.dorms[0]!.timeMicros=3_600_000_000
+  expect(completeMowerBackupDepartureRecovery(data,{central:['R']},new Set(['central\0'+0]))).toBeDefined()
+  const effective=projectMowerArrangements(data,[]);effective.operators.B!.restingPriority='high'
+  let failure:MowerBackupRecoveryBlocked|undefined
+  try{completeMowerBackupDepartureRecovery(effective,{central:['R']},new Set(['central\0'+0]),new Set(),[],false,true)}catch(error){if(error instanceof MowerBackupRecoveryBlocked)failure=error;else throw error}
+  expect(failure).toBeInstanceOf(MowerBackupRecoveryBlocked)
+  const source={data,queue},original=structuredClone(task.plan)
+  expect(parkMowerBackupDepartureRecovery(source,task,failure!)).toBe(true)
+  expect(task.plan).toEqual(original);expect(task.timeMicros).toBe(0)
+  expect(source.queue.tasks).not.toContain(task)
+  for(let i=0;i<3;i++)expect(resumeMowerPreviewRecovery(source)).toBe(false)
+  resident.timeStampMicros=1;resident.mood=3
+  expect(resumeMowerPreviewRecovery(source)).toBe(true)
+  expect(source.queue.tasks).toContain(task);expect(task.timeMicros).toBe(0)
+  expect(data.currentOperator('central',0)?.name).toBe('A')
+ })
+})
+
+
+describe('projected bed waits require actual recovery evidence',()=>{
+ it.each(['unknown','predicted','expired','moved'] as const)('does not use a %s actual resident as a projected recovery deadline',invalid=>{
+  const {data,task,queue}=fixture(1),resident=data.operators.B!
+  resident.currentRoom='dormitory_1';resident.currentIndex=1;resident.mood=2;resident.restingPriority='standby'
+  data.dorms[0]!.name='B';data.dorms[0]!.timeMicros=3_600_000_000
+  const effective=projectMowerArrangements(data,[]);effective.operators.B!.restingPriority='high'
+  let failure:MowerBackupRecoveryBlocked|undefined
+  try{completeMowerBackupDepartureRecovery(effective,{central:['R']},new Set(['central\0'+0]),new Set(),[],false,true)}catch(error){if(error instanceof MowerBackupRecoveryBlocked)failure=error;else throw error}
+  expect(failure).toBeDefined()
+  if(invalid==='unknown')resident.timeStampMicros=undefined
+  if(invalid==='predicted')resident.moodIsPrediction=true
+  if(invalid==='expired')data.dorms[0]!.timeMicros=0
+  if(invalid==='moved'){resident.currentRoom='';resident.currentIndex=-1}
+  expect(parkMowerBackupDepartureRecovery({data,queue},task,failure!)).toBe(false)
+  expect(queue.tasks).toContain(task);expect(task.timeMicros).toBe(0)
+ })
 })

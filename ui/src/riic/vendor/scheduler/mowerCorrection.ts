@@ -62,7 +62,7 @@ export function preferMowerRestingReplacements(data:MowerSchedulingData,plan:Mow
  }
  for(const group of recall)for(const name of data.group(group)){const op=data.operators[name]!;if(!op.room.startsWith('dorm'))(plan[op.room]??=Array(data.plan[op.room]!.length).fill('Current'))[op.index]=name}
  for(const [room,names] of Object.entries(plan)){
-  names.forEach((name,index)=>{if(!placeholders.has(name)&&data.currentRoom(room,true)![index]===name)names[index]='Current'})
+  names.forEach((name,index)=>{if(!placeholders.has(name)&&data.currentRoom(room,true)![index]===name&&!(data.alpha&&data.operators[name]?.needToRefresh(data.nowMicros,2.5)))names[index]='Current'})
   if(names.every(n=>n==='Current'))delete plan[room]
  }
 }
@@ -81,7 +81,7 @@ export function mowerCorrectionPlan(data:MowerSchedulingData,skipDorm=false,expl
  for(const op of miss){
   const peers=op.group?data.group(op.group).map(n=>data.operators[n]!):[]
   if(op.group&&(data.alpha?data.groupIsResting(op.group):peers.some(peer=>!peer.room.startsWith('dorm')&&!mowerNotValid(data,peer)&&peer.isResting()))&&(op.workaholic||data.alpha&&data.restMoodComplete(op.name)||op.timeStampMicros!==undefined&&(op.currentMood(data.nowMicros)>=op.upperLimit||op.mood>=op.upperLimit)))continue
-  for(const peer of peers)if(!data.waitingRecoveryNames.has(peer.name)&&!mowerCoveredRecoveryPending(data,peer)&&(!data.alpha||data.isGroupShiftAnchor(op))&&!peer.room.startsWith('dorm')&&(peer.currentRoom!==peer.room||peer.currentIndex!==peer.index))set(peer.room,peer.index,peer.name)
+  for(const peer of peers)if((!data.alpha||op.currentRoom!==op.room||op.currentIndex!==op.index)&&!data.waitingRecoveryNames.has(peer.name)&&!mowerCoveredRecoveryPending(data,peer)&&(!data.alpha||data.isGroupShiftAnchor(op))&&!peer.room.startsWith('dorm')&&(peer.currentRoom!==peer.room||peer.currentIndex!==peer.index))set(peer.room,peer.index,peer.name)
   set(op.room,op.index,op.name)
   if(op.currentIndex!==-1&&op.currentIndex!==op.index||op.currentRoom&&op.currentRoom!==op.room)set(op.currentRoom,op.currentIndex,data.plan[op.currentRoom]![op.currentIndex]!)
  }

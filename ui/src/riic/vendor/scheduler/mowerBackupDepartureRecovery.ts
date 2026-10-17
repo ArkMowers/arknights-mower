@@ -10,7 +10,7 @@ import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MowerTask,type MowerTaskPlan} from './mowerTaskQueue'
 
 export class MowerBackupRecoveryBlocked extends MowerShiftPreviewError {
- constructor(readonly names:string[]){super('副表下班干员尚无可用恢复床位，保留原任务')}
+ constructor(readonly names:string[],readonly projection:MowerSchedulingData,readonly explicitSlots:ReadonlySet<string>,readonly reservedSlots:ReadonlySet<string>){super('副表下班干员尚无可用恢复床位，保留原任务')}
 }
 
 /** A concrete cover and resting-group intent distinguish interrupted recovery from an ordinary idle primary. */
@@ -36,7 +36,7 @@ export function completeMowerBackupDepartureRecovery(data:MowerSchedulingData,pl
  if(!required.size)return structuredClone(plan)
  const previous=alphaDormResidents(projected),combined=structuredClone(plan)
  const admissions=mowerAssignDormGroup(projected,[...required],new Set([...required].map(name=>projected.operators[name]!.group).filter(Boolean)),undefined,{},new Set([...reservedSlots,...explicitSlots]))
- if(admissions===undefined){if(blockOnMissingBed)throw new MowerBackupRecoveryBlocked([...required]);return undefined}
+ if(admissions===undefined){if(blockOnMissingBed)throw new MowerBackupRecoveryBlocked([...required],projected,new Set(explicitSlots),new Set(reservedSlots));return undefined}
  const confirmed=new Map<string,string>()
  for(const bed of admissions){const [room,index]=bed.position;(combined[room]??=Array(projected.plan[room]!.length).fill('Current'))[index]=bed.name;confirmed.set(alphaPosition(room,index),bed.name)}
  alphaRestoreDisplaced(projected,previous,combined,pending.map(task=>Object.assign(new MowerTask({type:task.type}),task,{plan:structuredClone(task.plan)})),confirmed)

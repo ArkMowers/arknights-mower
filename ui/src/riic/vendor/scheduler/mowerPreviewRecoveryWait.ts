@@ -1,4 +1,4 @@
-import {mowerDormTaskReservations} from './mowerAlphaCandidates'
+import type {MowerBackupRecoveryBlocked} from './mowerBackupDepartureRecovery'
 import {projectMowerArrangements} from './mowerObservations'
 import {mowerAssignDormGroup} from './mowerDormAssignment'
 import type {MowerSchedulingData} from './mowerSchedulingData'
@@ -73,22 +73,23 @@ export function nextMowerPreviewRecoveryObservation(source:RecoveryWaitState):nu
  return Math.min(...(source.waitingRecovery??[]).flatMap(wait=>Object.values(wait.deadlines)))
 }
 
-/** A blocked backup departure waits only on a proven, observed bed release. */
-export function parkMowerBackupDepartureRecovery(source:RecoveryWaitState,task:MowerTask,departing:readonly string[],conditionNames:readonly string[]=[]):boolean {
- const {data}=source
+/** Keep the failed effective projection for proof; only actual observations can release the original request. */
+export function parkMowerBackupDepartureRecovery(source:RecoveryWaitState,task:MowerTask,failure:MowerBackupRecoveryBlocked,conditionNames:readonly string[]=[]):boolean {
+ const {data}=source,{names:departing,projection,explicitSlots,reservedSlots}=failure
  if(task.arrangementStarted||task.backupShiftActive||task.productShiftLocked)return false
- const groups=new Set(departing.map(name=>data.operators[name]?.group).filter((group):group is string=>!!group)),released=projectMowerArrangements(data,[]),deadlines:Record<string,number>={}
- const reserved=mowerDormTaskReservations(data,source.queue.tasks.filter(candidate=>candidate!==task))
- if(mowerAssignDormGroup(projectMowerArrangements(data,[]),[...departing],groups,undefined,{},reserved.slots)!==undefined)return false
- const reservationOnly=reserved.slots.size>0&&mowerAssignDormGroup(projectMowerArrangements(data,[]),[...departing],groups)!==undefined
+ const groups=new Set(departing.map(name=>projection.operators[name]?.group).filter((group):group is string=>!!group)),released=projectMowerArrangements(projection,[]),deadlines:Record<string,number>={}
+ const allReserved=new Set([...reservedSlots,...explicitSlots])
+ if(mowerAssignDormGroup(projectMowerArrangements(projection,[]),[...departing],groups,undefined,{},allReserved)!==undefined)return false
+ const reservationOnly=reservedSlots.size>0&&mowerAssignDormGroup(projectMowerArrangements(projection,[]),[...departing],groups,undefined,{},explicitSlots)!==undefined
  for(const bed of released.allDorms()){
-  const op=released.operators[bed.name]
-  if(!op?.isResting()||op.currentRoom!==bed.position[0]||op.currentIndex!==bed.position[1]||op.timeStampMicros===undefined||op.moodIsPrediction||op.mood<0||op.mood>=op.upperLimit||bed.timeMicros===undefined||bed.timeMicros<=data.nowMicros)continue
-  deadlines[op.currentRoom]=Math.min(deadlines[op.currentRoom]??Infinity,bed.timeMicros)
+  const op=released.operators[bed.name],actual=data.operators[bed.name],observed=actual&&data.getDormByName(actual.name)?.[1]
+  if(explicitSlots.has(bed.position[0]+'\0'+bed.position[1])||!op?.isResting()||!actual?.isResting()||actual.currentRoom!==bed.position[0]||actual.currentIndex!==bed.position[1]||actual.timeStampMicros===undefined||actual.moodIsPrediction||actual.mood<0||actual.mood>=actual.upperLimit||observed?.timeMicros===undefined||observed.timeMicros<=data.nowMicros)continue
+  deadlines[actual.currentRoom]=Math.min(deadlines[actual.currentRoom]??Infinity,observed.timeMicros)
   bed.reset();op.setProjectedPosition('',-1)
  }
- if(!reservationOnly&&(!Object.keys(deadlines).length||mowerAssignDormGroup(released,[...departing],groups)===undefined))return false
- const watched=[...new Set([...departing,...conditionNames,...Object.values(task.plan).flat(),...departing.flatMap(name=>data.operators[name]?.replacement??[])])],rooms=[...new Set([...Object.keys(task.plan),...Object.keys(deadlines),...Array.from(reserved.slots,slot=>slot.split('\0')[0]!)])]
+ if(!reservationOnly&&(!Object.keys(deadlines).length||mowerAssignDormGroup(released,[...departing],groups,undefined,{},explicitSlots)===undefined))return false
+ const projectedNames=Object.values(projection.operators).filter(op=>{const actual=data.operators[op.name];return actual&&(actual.currentRoom!==op.currentRoom||actual.currentIndex!==op.currentIndex)}).map(op=>op.name)
+ const watched=[...new Set([...departing,...conditionNames,...projectedNames,...Object.values(task.plan).flat(),...departing.flatMap(name=>projection.operators[name]?.replacement??[])])],rooms=[...new Set([...Object.keys(task.plan),...projection.allDorms().map(bed=>bed.position[0]),...Array.from(reservedSlots,slot=>slot.split('\0')[0]!)])]
  source.queue.tasks=source.queue.tasks.filter(candidate=>candidate!==task)
  ;(source.waitingRecovery??=[]).push({task,reason:'departure-bed',observation:observations(data,watched,rooms),deadlines,names:watched,rooms,reservations:reservations(source,task,watched,rooms)})
  names(source)
