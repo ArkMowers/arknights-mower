@@ -10,6 +10,7 @@ import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
+from arknights_mower.solvers import base_schedule  # noqa: E402
 from arknights_mower.solvers.base_schedule import (  # noqa: E402
     BaseSchedulerSolver,
     ProductSwitchDeferred,
@@ -19,6 +20,7 @@ from arknights_mower.tests.emergency_compensation_tests import (  # noqa: E402
 )
 from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils import operators as operators_module  # noqa: E402
+from arknights_mower.utils import scheduler_task as scheduler_task_module  # noqa: E402
 from arknights_mower.utils.logic_expression import LogicExpression  # noqa: E402
 from arknights_mower.utils.news_checker import (  # noqa: E402
     MaintenanceInfo,
@@ -349,6 +351,55 @@ def test_entry_advances_existing_maintenance_orders_before_swap(solver, monkeypa
     assert not solver.maintenance_entry_pending
     assert set(solver.op_data.run_order_rooms) == {"room_1_1", "room_2_2"}
     assert unaffected in solver.tasks
+
+
+@pytest.mark.parametrize("already_adjusted", [False, True])
+def test_maintenance_entry_rechecks_daily_refresh_orders(
+    solver, monkeypatch, already_adjusted
+):
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return current
+
+    current = datetime(2026, 10, 17, 3, 35)
+    reset = MaintenanceInfo(
+        start=current.replace(hour=4),
+        end=current.replace(hour=4),
+        update_type="hot",
+        title="每日服务器刷新",
+        url="",
+        announcement_id="daily-reset",
+    )
+    info = maintenance_info(current.replace(hour=6))
+    monkeypatch.setattr(base_schedule, "datetime", Clock)
+    monkeypatch.setattr(scheduler_task_module, "datetime", Clock)
+    monkeypatch.setattr(NewsChecker, "get_daily_reset", lambda now=None: reset)
+    monkeypatch.setattr(NewsChecker, "get_maintenance", lambda: info)
+    monkeypatch.setattr(NewsChecker, "get_update_time", lambda: (info.start, info.end))
+    solver.op_data.backup_plans[0].plan = {}
+    solver.op_data.backup_plans[0].trigger = LogicExpression(
+        "op_data.major_maintenance_remaining_hours()", "<=", "2.5"
+    )
+    monkeypatch.setattr(
+        solver.op_data, "major_maintenance_remaining_hours", lambda: 2.5
+    )
+    order = SchedulerTask(
+        time=reset.start - timedelta(minutes=2), task_type=TaskTypes.RUN_ORDER
+    )
+    if already_adjusted:
+        order.time = reset.start - timedelta(minutes=5)
+        order.adjusted = True
+    solver.tasks = [order]
+
+    solver.backup_plan_solver()
+
+    assert solver.op_data.plan_condition == [False]
+    assert order.time == current - timedelta(seconds=1)
+    assert order.adjusted
+    assert order.maintenance_advance_before_backup
+    assert order.maintenance_start == reset.start
+    assert solver.maintenance_entry_pending
 
 
 @pytest.mark.parametrize("entry", ["adjustment", "backup"])

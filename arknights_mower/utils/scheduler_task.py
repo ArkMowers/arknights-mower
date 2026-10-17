@@ -1162,12 +1162,25 @@ def adjust_run_order_for_maintenance(
         if daily_reset:
             entry_delay = timedelta(minutes=config.conf.run_order_delay)
             deadline = st - timedelta(minutes=max(config.conf.run_order_delay, 5))
-            for task in orders:
+            daily_orders = []
+            for task in sorted(orders, key=lambda task: task.time):
                 expected_end = task.time + entry_delay
-                if task.time >= st or expected_end < deadline:
+                if (
+                    task.time >= st
+                    or expected_end < deadline
+                    and not (
+                        advance_time is not None
+                        and getattr(task, "maintenance_start", None) == st
+                    )
+                ):
                     continue
-                new_time = deadline if expected_end >= st else task.time
-                if task.adjusted and task.time == new_time:
+                daily_orders.append((task, expected_end))
+            for index, (task, expected_end) in enumerate(daily_orders, 1):
+                if advance_time is not None:
+                    new_time = min(deadline, advance_time) - timedelta(seconds=index)
+                else:
+                    new_time = deadline if expected_end >= st else task.time
+                if advance_time is None and task.adjusted and task.time == new_time:
                     continue
                 logger.info(
                     f"每日四点刷新附近的跑单改用无人机，开始时间 {task.time} -> {new_time}"
@@ -1175,6 +1188,8 @@ def adjust_run_order_for_maintenance(
                 )
                 task.time = new_time
                 task.adjusted = True
+                if advance_time is not None:
+                    task.maintenance_start = st
                 adjusted[id(task)] = task
             continue
         window_start = st - timedelta(minutes=time_gap)
