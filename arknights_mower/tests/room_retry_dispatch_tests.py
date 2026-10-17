@@ -1,7 +1,7 @@
 """房间失败在安全边界让出队列，重试仍以实际驻员为准。"""
 
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -97,3 +97,61 @@ def test_persistent_page_exit_retains_pending_task_and_bounded_retry(solver):
     assert solver.choose_agent.call_count == 4
     solver.tap_confirm.assert_not_called()
     assert solver.task.plan == original
+
+
+@pytest.mark.parametrize(
+    "outcome", ["submitted", "timeout", "cancelled", "transitioning"]
+)
+def test_room_recovery_does_not_back_through_pending_submission(solver, outcome):
+    solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
+    solver.waiting_scene = [base.Scene.CONNECTING, base.Scene.LOADING]
+    state = {"scene": base.Scene.INFRA_MAIN}
+    solver.scene.side_effect = lambda: state["scene"]
+    original = {room: names.copy() for room, names in solver.task.plan.items()}
+    original_time = solver.task.time
+    original_task = solver.task
+
+    def submission_pending(*args):
+        state["scene"] = base.Scene.CONNECTING
+        raise base.RecognizeError("干员确认结果尚未读回")
+
+    def finish_wait():
+        if outcome == "cancelled":
+            raise base.MowerExit
+        if outcome == "timeout":
+            return False
+        if outcome == "transitioning":
+            state["scene"] = (
+                base.Scene.LOADING
+                if state["scene"] == base.Scene.CONNECTING
+                else base.Scene.CONNECTING
+            )
+            return True
+        solver.physical = dorm_recovery_tests.FINAL.copy()
+        state["scene"] = base.Scene.INFRA_MAIN
+        return True
+
+    solver.tap_confirm.side_effect = submission_pending
+    solver.waiting_solver = MagicMock(side_effect=finish_wait)
+
+    if outcome == "submitted":
+        solver.agent_arrange_room({}, ROOM, solver.task.plan)
+        assert not solver.task.plan
+        # 返回动作只用于结束已读回确认的房间流程。
+        assert solver.back.call_args_list == [call(0.5)]
+    else:
+        expected = (
+            base.MowerExit if outcome == "cancelled" else base.RoomArrangementDeferred
+        )
+        with pytest.raises(expected):
+            solver.agent_arrange_room({}, ROOM, solver.task.plan)
+        assert solver.task is original_task
+        assert solver.task.plan == original
+        assert solver.task.time == original_time
+        assert any(task is original_task for task in solver.tasks)
+        solver.back.assert_not_called()
+    assert solver.waiting_solver.call_args_list == [call()] * (
+        4 if outcome == "transitioning" else 1
+    )
+    solver.choose_agent.assert_called_once()
+    solver.tap_confirm.assert_called_once()
