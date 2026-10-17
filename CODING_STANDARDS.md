@@ -54,7 +54,7 @@ AI primary staffing follows [Owned Read-Only Staffing](docs/subsystems/ai-assist
 ## 3. Concurrency & Resource Lifecycle
 
 - **Monotonic Deadline Budgets**: All external process invocations, socket I/O, and manager commands must operate within a bounded deadline (e.g., `COMMAND_TIMEOUT`, `DISCOVERY_TIMEOUT`, `RecoveryPolicy.timeout`).
-- **Guaranteed Compensation**: Resources acquired during execution (temporary screen overrides, child processes, socket ports, lock files) must register compensation actions to ensure cleanup on normal completion, errors, or application shutdown.
+- **Guaranteed Compensation**: Resources acquired during execution (temporary screen overrides, child processes, socket ports, lock files) must register compensation actions to ensure cleanup on normal completion, errors, or application shutdown. The [Independent Shared OCR](docs/subsystems/recognition.md#independent-shared-ocr) coordinator and its model worker are an explicit exception: the coordinator compensates its own worker. A requesting instance only reaps the launched process's exit status and must not close the shared service as its own child process. Only the registered software-update shutdown path stops it.
 - **Controlled Verdicts**: Subsystem failures must be classified into structured domain results (`ReadinessResult`, `PreflightError`, `SessionFailure`) with actionable remedy codes rather than raising unhandled process exits.
 
 ## 4. Code Cleanliness & Smells

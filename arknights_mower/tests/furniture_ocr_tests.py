@@ -14,7 +14,7 @@ def ocr(request, tmp_path_factory):
     from unittest.mock import patch
 
     if request.param == "shared":
-        from arknights_mower.tests.shared_ocr_tests import service
+        from arknights_mower.tests.ocr_test_support import service
         from arknights_mower.utils import ocr_service, ocr_shared
 
         directory = tmp_path_factory.mktemp("furniture-shared-ocr")

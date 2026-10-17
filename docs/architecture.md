@@ -18,6 +18,8 @@ flowchart TD
 
     Supervisor["Windows Desktop Supervisor (independent process)"]
     JPEG["Preview / History JPEG Workers (independent processes)"]
+    OCRCoordinator["Shared OCR Coordinator (independent process, shared per installation, data root and network namespace)"]
+    OCRWorker["OCR Model Worker (independent process, owned by the coordinator)"]
 
     subgraph Subsystems ["Core Domain Subsystems"]
         subgraph DeviceSubsystem ["Device Control Subsystem"]
@@ -39,7 +41,7 @@ flowchart TD
         end
 
         subgraph RecSubsystem ["Recognition & Vision Subsystem"]
-            Matcher["Template Matching / OCR Engine"]
+            Matcher["Template Matching / OCR Engine (in-process or shared client)"]
             Scene["Scene Detection"]
         end
     end
@@ -54,11 +56,14 @@ flowchart TD
     Supervisor -->|Own Instance Lifetime| Service
     Service -->|Bounded RGB Snapshot| JPEG
     JPEG -->|Encoded Diagnostic Frame| RingBuffer
+    Service -->|On-Demand OCR Launch| OCRCoordinator
     Service --> Subsystems
     DeviceSubsystem --> Persistence
     BaseSubsystem --> Persistence
     BaseSubsystem -->|Read Frame / Dispatch Touch| DeviceSubsystem
     BaseSubsystem -->|Verify Screen State| RecSubsystem
+    RecSubsystem -->|Loopback OCR Request| OCRCoordinator
+    OCRCoordinator -->|Owns Sole Worker| OCRWorker
     RecSubsystem -->|Read Frame| Buffer
 ```
 
@@ -84,7 +89,7 @@ Arknights Mower consists of four decoupled layers:
 - **[Device Control Subsystem](subsystems/device-control.md)**: Manages emulator discovery, socket-level transport, standard canvas frame acquisition, readiness verdicts, and bounded crash recovery.
 - **[Base Infrastructure & Scheduling Subsystem](subsystems/base-scheduler.md)**: Drives automated base operations: operator mood evaluation, empirical depletion rate calculation, dormitory recovery ordering, dynamic shift transitions, clue party management, and drone acceleration.
 - **[MAA Integration Subsystem](subsystems/maa-integration.md)**: Consumes MAA core callbacks across a MAA run boundary, translating task-chain transitions and whitelisted milestones into runtime-log lines while recurring telemetry stays at DEBUG.
-- **[Recognition Subsystem](subsystems/recognition.md)**: Performs template matching and neural OCR over immutable 1920×1080 canvas frames, with bounded OCR detector inputs.
+- **[Recognition Subsystem](subsystems/recognition.md)**: Performs template matching and neural OCR over immutable 1920×1080 canvas frames, with bounded OCR detector inputs. By default (`MOWER_OCR_MODE=auto`), OCR execution uses the in-process engine for a single live Mower instance and the [Independent Shared OCR](subsystems/recognition.md#independent-shared-ocr) service when at least two live instances share an installation and data root; `local` and `shared` force one path. On the shared path, an independent coordinator process owns one model worker process, and separate network namespaces do not share that service.
 
 ### 1.4 Persistence & Storage Layer
 - Stores explicit user configuration in `conf.yml` via [`DeviceProfile`](../arknights_mower/utils/config/device_profile.py).
@@ -101,6 +106,7 @@ Start with the affected user operation. The linked contracts provide current beh
 | :--- | :--- | :--- |
 | Change device settings, discover an instance or recover a connection | [`server.py`](../server.py), [`DeviceControl`](../arknights_mower/utils/device/application.py) | [Device Control task entry](subsystems/device-control.md#start-with-the-affected-operation), [connection diagnosis](cookbook/device-troubleshooting.md) |
 | Change plan validation, shift projection or confirmed staffing | [`BaseSchedulerSolver`](../arknights_mower/solvers/base_schedule.py), [`Operators`](../arknights_mower/utils/operators.py) | [Base Scheduling task entry](subsystems/base-scheduler.md#start-with-the-affected-operation) |
+| Change OCR engine selection, shared OCR service lifetime or recognition memory bounds | [`rapidocr.py`](../arknights_mower/utils/rapidocr.py), [`ocr_shared.py`](../arknights_mower/utils/ocr_shared.py), [`ocr_service.py`](../arknights_mower/utils/ocr_service.py) | [Recognition](subsystems/recognition.md), [Independent Shared OCR](subsystems/recognition.md#independent-shared-ocr); focused offline verification in [`shared_ocr_tests.py`](../arknights_mower/tests/shared_ocr_tests.py), [`ocr_gate_tests.py`](../arknights_mower/tests/ocr_gate_tests.py) and [`runtime_memory_tests.py`](../arknights_mower/tests/runtime_memory_tests.py) |
 | Change the settings or plan editor UI | [`ui/src/components/`](../ui/src/components/), [`ui/src/stores/`](../ui/src/stores/) | [Frontend development and focused tests](../ui/README.md), [UI contract](../ui/AGENTS.md) |
 | Change shipped files or software/resource updates | [`scripts/`](../scripts/), [`software_update.py`](../arknights_mower/utils/software_update.py), [`resource_update_job.py`](../arknights_mower/utils/resource_update_job.py) | [Packaging](cookbook/packaging.md), [software update](subsystems/software-update.md), [resource update](subsystems/resource-update.md) |
 | Change MAA core activation or worker lifetime | [`maa_runtime.py`](../arknights_mower/utils/maa_runtime.py), [`maa_process.py`](../arknights_mower/utils/maa_process.py), [`maa_backup.py`](../arknights_mower/utils/maa_backup.py) | [MAA runtime](subsystems/maa-runtime.md), focused worker and scheduler suites under `arknights_mower/tests/maa_*tests.py` |
@@ -117,6 +123,8 @@ All socket connections, ADB commands, emulator CLI interactions, and instance re
 
 ### 3.2 Guaranteed Compensation
 Every acquired runtime resource (temporary screen geometry overrides, child processes, open socket handles, file locks) registers cleanup and compensation with [`PreparationSession`](../arknights_mower/utils/device/preparation.py), [`close_process`](../arknights_mower/utils/device/owned.py), or dedicated process termination handlers. Compensation executes unconditionally upon normal exit, exceptions, or cancellation signals.
+
+The on-demand shared OCR coordinator and its model worker are an explicit exception to child-process compensation. They are independent of the launcher: closing the manager or the instance that started the service leaves it available to other instances sharing the installation, data root and network namespace. The instance only reaps the launched process's exit status and must not close the shared service as its own child process or register `close_process` (or another own-child termination) for it. The coordinator owns and compensates its model worker. Only the registered [software-update shutdown](subsystems/software-update.md#shared-ocr-update-lifecycle) path stops it. [Independent Shared OCR](subsystems/recognition.md#independent-shared-ocr) owns the service's lifetime, admission and failure behavior; [Main Instance Process Recovery](subsystems/process-recovery.md#shared-ocr-service-boundary) owns the instance boundary.
 
 ### 3.3 Structured Verdicts
 External device interactions produce structured status verdicts ([`ReadinessResult`](../arknights_mower/utils/device/session.py)) containing concrete classifications (`absent`, `offline`, `booting`, `ready`) and remediation guidance rather than unhandled tracebacks.

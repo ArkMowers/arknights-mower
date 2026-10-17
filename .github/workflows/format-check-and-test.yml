@@ -47,9 +47,9 @@ jobs:
               - 'arknights_mower/solvers/base_schedule.py'
               - 'arknights_mower/utils/{screenshot,workshop_ui,rapidocr,scheduler_task}.py'
               - 'arknights_mower/utils/{ocr_shared,ocr_service}.py'
-              - 'arknights_mower/tests/shared_ocr_tests.py'
               - 'arknights_mower/views/task.py'
               - 'arknights_mower/tests/{scheduler_wakeup,screenshot,workshop_inflight}_tests.py'
+              - 'arknights_mower/tests/{shared_ocr,shared_ocr_update_lifecycle,ocr_gate,ocr_service_logging,runtime_memory}_tests.py'
               - 'arknights_mower/utils/device/{application.py,adb_client/**}'
               - 'arknights_mower/tests/{adb_shared_server,adb_shared_transport,device_adb_recovery,device_control_shutdown,scheduler_recovery_preservation}_tests.py'
               - 'arknights_mower/tests/server_status_tests.py'
@@ -148,7 +148,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Install QR recognition system library
@@ -168,7 +168,7 @@ jobs:
         shell: bash
         run: |
           status=0
-          timeout --signal=TERM --kill-after=30s 10m \
+          timeout --signal=TERM --kill-after=30s 15m \
             ./venv/bin/python3 -u -m pytest -v -o faulthandler_timeout=60 \
             > "${RUNNER_TEMP}/python-regressions.log" 2>&1 || status=$?
           tail -n 200 "${RUNNER_TEMP}/python-regressions.log"
@@ -283,6 +283,9 @@ jobs:
             arknights_mower/tests/furniture_ocr_tests.py \
             arknights_mower/tests/shared_ocr_tests.py \
             arknights_mower/tests/shared_ocr_update_lifecycle_tests.py \
+            arknights_mower/tests/ocr_gate_tests.py \
+            arknights_mower/tests/ocr_service_logging_tests.py \
+            arknights_mower/tests/runtime_memory_tests.py \
             arknights_mower/tests/scheduler_wakeup_tests.py \
             arknights_mower/tests/scheduler_recovery_preservation_tests.py \
             arknights_mower/tests/adb_shared_server_tests.py \

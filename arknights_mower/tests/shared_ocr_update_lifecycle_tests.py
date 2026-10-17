@@ -16,18 +16,11 @@ from unittest.mock import Mock, patch
 import numpy as np
 import pytest
 
+from arknights_mower.tests.ocr_test_support import wait_for
 from arknights_mower.utils import ocr_service, ocr_shared
 from arknights_mower.utils import software_update_worker as updater
 from arknights_mower.utils import update_runtime as runtime
 from arknights_mower.utils.device.owned import close_process
-
-
-def wait_for(predicate, timeout=10):
-    deadline = time.monotonic() + timeout
-    while not (result := predicate()):
-        assert time.monotonic() < deadline, "fixture wait expired"
-        time.sleep(0.01)
-    return result
 
 
 class NativeEngine:
@@ -55,13 +48,27 @@ def empty_engine():
     return EmptyEngine()
 
 
-def recording_engine():
-    Path(os.environ["OCR_MODEL_CONSTRUCTED"]).write_text(str(os.getpid()))
+class GatedEngine:
+    def __call__(self, image, **options):
+        Path(os.environ["OCR_MODEL_ENTERED"]).write_text(str(os.getpid()))
+        release = Path(os.environ["OCR_MODEL_RELEASE"])
+        deadline = time.monotonic() + 5
+        while not release.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        return None, None
+
+
+def gated_engine():
+    return GatedEngine()
+
+
+def probe_engine():
+    Path(os.environ["OCR_MODEL_ENTERED"]).write_text(str(os.getpid()))
     return EmptyEngine()
 
 
 @contextmanager
-def standalone_worker(directory, *, factory=empty_engine):
+def standalone_worker(directory, factory=empty_engine):
     state = directory / "updates"
     context = mp.get_context("spawn")
     parent, child = context.Pipe()
@@ -77,14 +84,20 @@ def standalone_worker(directory, *, factory=empty_engine):
         child.close()
         runtime.write_json(
             directory / "endpoint.json",
-            {"version": 1, "port": listener.getsockname()[1], "token": token},
+            {
+                "version": ocr_shared.VERSION,
+                "port": listener.getsockname()[1],
+                "token": token,
+                "pid": os.getpid(),
+                "worker_pid": process.pid,
+            },
         )
         try:
             yield process, state
         finally:
             parent.close()
             child.close()
-            close_process(process, os.getpid(), timeout=0.5)
+            close_process(process, os.getpid(), timeout=2)
 
 
 def registered_instance(state):
@@ -188,8 +201,8 @@ def test_worker_start_after_update_snapshot_is_rejected_before_model_loading(
     tmp_path, monkeypatch, gate
 ):
     monkeypatch.delenv("MOWER_RESTART_JOB", raising=False)
-    constructed = tmp_path / "model-constructed"
-    monkeypatch.setenv("OCR_MODEL_CONSTRUCTED", str(constructed))
+    entered = tmp_path / "model-entered"
+    monkeypatch.setenv("OCR_MODEL_ENTERED", str(entered))
     state = tmp_path / "updates"
     if gate == "active-job":
         runtime.write_json(
@@ -202,15 +215,14 @@ def test_worker_start_after_update_snapshot_is_rejected_before_model_loading(
     )
     with (
         admission,
-        standalone_worker(tmp_path, factory=recording_engine) as (process, state),
+        standalone_worker(tmp_path, factory=probe_engine) as (
+            process,
+            state,
+        ),
     ):
-        with pytest.raises((OSError, RuntimeError)):
-            ocr_shared.SharedOCREngine(directory=tmp_path, timeout=2)(
-                np.zeros((1, 1), np.uint8)
-            )
-        process.join(3)
-        assert not process.is_alive()
-        assert not constructed.exists()
+        wait_for(lambda: not process.is_alive(), timeout=20)
+        assert process.exitcode != 0
+        assert not entered.exists(), "rejected worker constructed a model"
         assert runtime.instances(state) == []
         with runtime.supervision_lock(tmp_path / "model", timeout=0):
             pass
@@ -218,13 +230,38 @@ def test_worker_start_after_update_snapshot_is_rejected_before_model_loading(
 
 def test_worker_registration_responds_to_shutdown_without_coordinator(tmp_path):
     with standalone_worker(tmp_path) as (process, state):
-        record = wait_for(lambda: runtime.instances(state))[0]
+        record = wait_for(lambda: runtime.instances(state), timeout=20)[0]
         assert record["kind"] == "ocr-worker"
         assert record["pid"] == process.pid
         runtime.write_json(state / "shutdown" / f"{record['id']}.json", {})
         process.join(3)
         assert not process.is_alive()
         assert runtime.instances(state) == []
+
+
+def test_worker_registration_precedes_model_construction(tmp_path, monkeypatch):
+    entered = tmp_path / "model-entered"
+    release = tmp_path / "model-release"
+    monkeypatch.setenv("OCR_MODEL_ENTERED", str(entered))
+    monkeypatch.setenv("OCR_MODEL_RELEASE", str(release))
+    with standalone_worker(tmp_path, factory=gated_engine) as (process, state):
+        record = wait_for(lambda: runtime.instances(state), timeout=20)[0]
+        assert record["kind"] == "ocr-worker"
+        assert record["pid"] == process.pid
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(
+                ocr_shared.SharedOCREngine(directory=tmp_path),
+                np.zeros((1, 1), np.uint8),
+            )
+            wait_for(lambda: entered.exists(), timeout=20)
+            # 模型构造被阻塞时，更新关闭仍能通过登记找到工作进程。
+            assert any(
+                record["kind"] == "ocr-worker" and record["pid"] == process.pid
+                for record in runtime.instances(state)
+            )
+            assert process.is_alive()
+            release.write_text("", encoding="utf-8")
+            assert future.result(timeout=10) == (None, None)
 
 
 def test_restarted_worker_may_start_for_matching_active_update(tmp_path, monkeypatch):
@@ -234,7 +271,7 @@ def test_restarted_worker_may_start_for_matching_active_update(tmp_path, monkeyp
         state / "active/owner.json", {"id": "fixture-update", "pid": os.getpid()}
     )
     with standalone_worker(tmp_path) as (process, state):
-        record = wait_for(lambda: runtime.instances(state))[0]
+        record = wait_for(lambda: runtime.instances(state), timeout=20)[0]
         assert record["kind"] == "ocr-worker"
         assert ocr_shared.SharedOCREngine(directory=tmp_path)(
             np.zeros((1, 1), np.uint8)

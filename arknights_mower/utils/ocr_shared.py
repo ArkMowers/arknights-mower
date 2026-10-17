@@ -12,14 +12,38 @@ from pathlib import Path
 from threading import Lock, Thread
 from time import monotonic, sleep
 
+from arknights_mower.utils.rapidocr import DEFAULT_TEXT_SCORE
+
 REQUEST_TIMEOUT = 60.0
 START_TIMEOUT = 10.0
 IDLE_TIMEOUT = 60.0
+# 认证 preamble 之后的请求头接收预算；保持文档中的五秒值。
+HEADER_TIMEOUT = 5.0
+# 未认证连接只允许占用固定长度 preamble 的接收时间。
+PREAUTH_TIMEOUT = 1.0
+CONNECT_TIMEOUT = 1.0
+RECYCLE_GRACE = 3.0
+ACCEPT_POLL = 0.05
+CLOSE_TIMEOUT = 0.5
+STARTUP_RETRY = 0.02
+CONNECT_RETRY = 0.05
+ERROR_TEXT_LIMIT = 512
+SERVICE_LOG_NAME = "service.log"
+SERVICE_LOG_ROTATED = "service.log.1"
+SERVICE_LOG_BYTES = 64 * 1024
+SERVICE_LOG_TAIL = 2048
+SERVICE_DEADLINE_ENV = "MOWER_OCR_SERVICE_DEADLINE"
 MAX_IMAGE_BYTES = 32 * 1024 * 1024
 MAX_RESULT_BYTES = 2 * 1024 * 1024
 MAX_HEADER_BYTES = 4096
 BACKLOG = 32
-VERSION = 1
+# 前置认证改变了首帧顺序；端点中的版本号让旧服务的端点按失效端点处理。
+VERSION = 2
+PREAMBLE_MAGIC = b"MOWR"
+PREAMBLE = struct.Struct("!4sB64s")
+AUTH_FAILED = "共享 OCR 身份校验失败"
+VERSION_MISMATCH = "共享 OCR 协议版本不一致"
+INVALID_REQUEST = "共享 OCR 请求无效"
 _LENGTH = struct.Struct("!I")
 
 
@@ -65,6 +89,17 @@ def read_json(channel, deadline, limit=MAX_RESULT_BYTES):
     return json.loads(receive(channel, size, deadline))
 
 
+def prepare_directory(directory):
+    """以 0700 创建共享目录；Windows 无 POSIX 权限位，跳过 chmod。"""
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if sys.platform != "win32":
+        try:
+            directory.chmod(0o700)
+        except OSError:
+            pass
+
+
 def shared_directory():
     from arknights_mower.utils import update_runtime as runtime
     from arknights_mower.utils.path import get_path
@@ -88,74 +123,150 @@ def service_command(directory):
     ]
 
 
-def start_service(directory):
+def _open_service_log(directory):
+    path = Path(directory) / SERVICE_LOG_NAME
+    try:
+        if path.stat().st_size >= SERVICE_LOG_BYTES:
+            rotated = Path(directory) / SERVICE_LOG_ROTATED
+            rotated.unlink(missing_ok=True)
+            path.replace(rotated)
+    except OSError:
+        pass
+    return path.open("ab", buffering=0)
+
+
+def read_service_log(directory):
+    """读取协调进程日志尾部，供客户端附带启动失败原因。"""
+    try:
+        text = (Path(directory) / SERVICE_LOG_NAME).read_text(
+            encoding="utf-8", errors="replace"
+        )
+    except OSError:
+        return ""
+    return text[-SERVICE_LOG_TAIL:].strip()
+
+
+def _startup_failure(directory):
+    detail = read_service_log(directory)
+    message = "共享 OCR 服务启动失败"
+    if detail:
+        message = f"{message}：{detail}"
+    return RuntimeError(message)
+
+
+def start_service(directory, deadline=None):
     from arknights_mower.utils import update_runtime as runtime
     from arknights_mower.utils.path import get_path
 
-    options = (
-        {
-            "creationflags": subprocess.CREATE_NEW_PROCESS_GROUP
-            | subprocess.DETACHED_PROCESS
-        }
-        if sys.platform == "win32"
-        else {"start_new_session": True}
-    )
+    directory = Path(directory)
+    prepare_directory(directory)
     environment = os.environ.copy()
     environment["MOWER_DATA_DIR"] = str(get_path("@app", space="").resolve())
     environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
-    process = subprocess.Popen(
-        service_command(directory),
-        cwd=runtime.installation_root(),
-        env=environment,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        **options,
-    )
+    environment["PYTHONIOENCODING"] = "utf-8"
+    if deadline is not None:
+        # 两个解释器共享同一系统单调时钟，协调进程据此限定注册等待预算。
+        environment[SERVICE_DEADLINE_ENV] = repr(float(deadline))
+    try:
+        log = _open_service_log(directory)
+    except OSError:
+        log = None
+    try:
+        process = subprocess.Popen(
+            service_command(directory),
+            cwd=runtime.installation_root(),
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=log if log is not None else subprocess.DEVNULL,
+            **runtime.detached_options(),
+        )
+    finally:
+        if log is not None:
+            log.close()
     # 服务独立存活；创建它的实例只负责回收退出状态，不终止共享进程。
     Thread(target=process.wait, name="ocr-service-reaper", daemon=True).start()
     return process
 
 
-def _connect(directory, deadline):
+def send_preamble(channel, token, deadline):
+    send(
+        channel, PREAMBLE.pack(PREAMBLE_MAGIC, VERSION, token.encode("ascii")), deadline
+    )
+
+
+def _endpoint(directory):
     from arknights_mower.utils import update_runtime as runtime
 
-    endpoint = runtime.read_json(directory / "endpoint.json", {})
+    endpoint = runtime.read_json(Path(directory) / "endpoint.json", {})
+    token = endpoint.get("token") if isinstance(endpoint, dict) else None
     if (
         not isinstance(endpoint, dict)
         or endpoint.get("version") != VERSION
         or type(endpoint.get("port")) is not int
         or not 0 < endpoint["port"] <= 65535
-        or not isinstance(endpoint.get("token"), str)
-        or len(endpoint["token"]) != 64
+        or type(endpoint.get("pid")) is not int
+        or endpoint["pid"] <= 0
+        or not isinstance(token, str)
+        or len(token) != 64
+        or any(char not in "0123456789abcdef" for char in token)
     ):
         return None
-    try:
-        channel = socket.create_connection(
-            ("127.0.0.1", endpoint["port"]), timeout=min(1.0, remaining(deadline))
-        )
-    except ConnectionRefusedError:
+    if not runtime.process_alive(endpoint["pid"]):
+        # 协调进程已消失：删除残留端点，让下一次请求直接冷启动。删除前
+        # 重新读取并比对，避免把并发冷启动刚发布的新端点当成残留删掉。
+        path = Path(directory) / "endpoint.json"
+        if runtime.read_json(path, {}) == endpoint:
+            path.unlink(missing_ok=True)
         return None
-    return channel, endpoint["token"]
+    return endpoint
+
+
+def _connect_endpoint(endpoint, deadline):
+    timeout = min(CONNECT_TIMEOUT, remaining(deadline))
+    try:
+        return socket.create_connection(
+            ("127.0.0.1", endpoint["port"]), timeout=timeout
+        )
+    except OSError:
+        # 连接被拒绝、超时或端口尚未监听都只表示本次未能连接。
+        return None
+
+
+def _wait_for_service(directory, deadline):
+    """等待存活协调进程释放连接名额，而不是启动第二个协调进程。"""
+    while True:
+        endpoint = _endpoint(directory)
+        if endpoint is None:
+            return None
+        channel = _connect_endpoint(endpoint, deadline)
+        if channel is not None:
+            return channel, endpoint["token"]
+        sleep(min(CONNECT_RETRY, remaining(deadline)))
 
 
 def open_service(directory, deadline):
     from arknights_mower.utils import update_runtime as runtime
 
-    if connection := _connect(directory, deadline):
+    directory = Path(directory)
+    prepare_directory(directory)
+    if connection := _wait_for_service(directory, deadline):
         return connection
     # 仅在尚未发送请求时协调冷启动；发送后的错误不自动重放。
     with runtime.supervision_lock(directory / "startup", timeout=remaining(deadline)):
-        if connection := _connect(directory, deadline):
+        if connection := _wait_for_service(directory, deadline):
             return connection
         startup_deadline = min(deadline, monotonic() + START_TIMEOUT)
-        process = start_service(directory)
+        try:
+            process = start_service(directory, deadline)
+        except OSError as exc:
+            raise RuntimeError(f"共享 OCR 服务启动失败：{exc}") from exc
         while True:
-            if connection := _connect(directory, startup_deadline):
+            if connection := _wait_for_service(directory, startup_deadline):
                 return connection
-            if process.poll() is not None:
-                raise RuntimeError("共享 OCR 服务启动失败")
-            sleep(min(0.02, remaining(startup_deadline)))
+            if process.poll() is not None or monotonic() >= startup_deadline:
+                raise _startup_failure(directory)
+            sleep(min(STARTUP_RETRY, remaining(startup_deadline)))
 
 
 def image_size(shape):
@@ -173,6 +284,11 @@ def image_size(shape):
 
 
 def checked_options(options):
+    """校验协议选项白名单。
+
+    协议保留三个推理开关（use_det/use_cls/use_rec）与三个阈值；生产调用方只发送
+    三个布尔开关，阈值由服务端的默认值补齐。
+    """
     if not isinstance(options, dict) or options.keys() - {
         "use_det",
         "use_cls",
@@ -195,10 +311,20 @@ def checked_options(options):
     return options
 
 
+def _refusal(response):
+    if isinstance(response, dict):
+        error = response.get("error")
+        if isinstance(error, str) and error:
+            return f"共享 OCR 拒绝请求：{error}"
+    return "共享 OCR 拒绝请求"
+
+
 class SharedOCREngine:
     """同一调用方串行提交，排队期间只发送小型请求头。"""
 
-    def __init__(self, score=0.3, *, directory=None, timeout=REQUEST_TIMEOUT):
+    def __init__(
+        self, score=DEFAULT_TEXT_SCORE, *, directory=None, timeout=REQUEST_TIMEOUT
+    ):
         self.score = checked_options({"text_score": score})["text_score"]
         self.directory = (
             Path(directory) if directory is not None else shared_directory()
@@ -228,6 +354,13 @@ class SharedOCREngine:
         try:
             channel, token = open_service(self.directory, deadline)
             with channel:
+                send_preamble(channel, token, deadline)
+                authenticated = read_json(channel, deadline)
+                if (
+                    not isinstance(authenticated, dict)
+                    or authenticated.get("status") != "authenticated"
+                ):
+                    raise RuntimeError(_refusal(authenticated))
                 send_json(
                     channel,
                     dict(
@@ -241,8 +374,8 @@ class SharedOCREngine:
                     MAX_HEADER_BYTES,
                 )
                 ready = read_json(channel, deadline)
-                if ready != {"status": "ready"}:
-                    raise RuntimeError("共享 OCR 拒绝请求")
+                if not isinstance(ready, dict) or ready.get("status") != "ready":
+                    raise RuntimeError(_refusal(ready))
                 # 只对已获准执行的请求生成连续传输副本。
                 send(
                     channel, memoryview(np.ascontiguousarray(image)).cast("B"), deadline
