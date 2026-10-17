@@ -125,6 +125,12 @@ from arknights_mower.utils.operators import (
 from arknights_mower.utils.path import get_path, resolve_config_path
 from arknights_mower.utils.plan import RIGHT_SIDE_ROOM_CAPACITY
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
+from arknights_mower.utils.replacement_check import (
+    invalidate_replacement_checks,
+    replacement_check_snapshot,
+    run_replacement_check,
+    sync_replacement_checks,
+)
 from arknights_mower.utils.resource_pkg import refresh_resource_at_boundary
 from arknights_mower.utils.resting_priority import (
     RestingTier,
@@ -627,6 +633,8 @@ class BaseSchedulerSolver(
                 ],
                 "settings": get_route_settings(),
             }
+        if getattr(task, "replacement_check", None):
+            snapshot["replacement_check"] = replacement_check_snapshot(self, task)
         return copy.deepcopy(snapshot)
 
     def _run_mastery_with_recovery(self, action):
@@ -782,6 +790,7 @@ class BaseSchedulerSolver(
         if config.maintenance_recheck.is_set():
             return
         self.error = False
+        sync_replacement_checks(self)
         self._resume_failed_tasks()
         self._card_moods_scanned_this_run = False
         self.handle_error(True)
@@ -1534,6 +1543,7 @@ class BaseSchedulerSolver(
                 and not getattr(t, "backup_shift_active", False)
                 and not getattr(t, "execution_failure", None)
                 and not getattr(t, "execution_retained", False)
+                and not getattr(t, "replacement_check", None)
                 for t in self.tasks
             ):
                 logger.info(
@@ -1550,6 +1560,7 @@ class BaseSchedulerSolver(
                     or getattr(t, "backup_shift_active", False)
                     or getattr(t, "execution_failure", None)
                     or getattr(t, "execution_retained", False)
+                    or getattr(t, "replacement_check", None)
                 ]
                 # #144：清队后补立即空任务——队列只剩远期专精重检时，让下一次
                 # run() 走正常 planned 分支重读心情/换班/跑单，而不是睡到远期任务开始
@@ -1928,6 +1939,7 @@ class BaseSchedulerSolver(
             | self._waiting_recovery_names(),
         )
         self._resume_waiting_group_shifts()
+        sync_replacement_checks(self)
 
     def _read_recovery_rooms(self, rooms):
         for room in sorted(set(rooms)):
@@ -2188,6 +2200,7 @@ class BaseSchedulerSolver(
         if self.find("control_central") is None:
             self.back()
             return
+        sync_replacement_checks(self)
         self._resume_failed_tasks()
         if getattr(self.task, "execution_failure", None):
             self.task = None
@@ -2333,6 +2346,9 @@ class BaseSchedulerSolver(
                 if not self._prepare_ordinary_departure(self.task):
                     # 副表或心情变化已取消普通下班需求，重新规划尚未开始的整批安排。
                     self.planned = False
+                elif getattr(self.task, "replacement_check", None):
+                    remove_current_task = run_replacement_check(self, self.task)
+                    self.skip()
                 elif self.task.meta_data == RESUME_META or getattr(
                     self.task, "emergency_recovery_release", False
                 ):
@@ -2641,6 +2657,10 @@ class BaseSchedulerSolver(
                             task, "run_order_restore_pending", False
                         ):
                             logger.warning("跑单插拔中断，原任务立即转为恢复原驻员")
+                        elif getattr(task, "replacement_check", None):
+                            self._retain_failed_task(
+                                task, str(e), [task.replacement_check["room"]]
+                            )
                         elif (
                             task.plan or task.type == TaskTypes.SWITCH_PRODUCT
                         ) and any(queued is task for queued in self.tasks):
@@ -11018,6 +11038,7 @@ class BaseSchedulerSolver(
         departing_plan=None,
         force_mood=False,
         strict_observation=False,
+        force_working_time=False,
     ):
         """读取实际驻员；姓名未决槽位标记 observed=False，不据此确认离岗。"""
         training_observation = None
@@ -11318,7 +11339,12 @@ class BaseSchedulerSolver(
                 elif exhausted_working:
                     data["time"] = datetime.now()
                     logger.debug(f"中枢干员 {_name} 已复核心情耗尽，无需读取倒计时")
-                elif _mood == 24 or room in ["meeting", "factory"] and not update_time:
+                elif (
+                    _mood == 24
+                    and not force_working_time
+                    or room in ["meeting", "factory"]
+                    and not update_time
+                ):
                     data["time"] = datetime.now()
                 else:
                     logger.debug(f"开始记录时间:{room},{i}")
@@ -11597,6 +11623,7 @@ class BaseSchedulerSolver(
 
     def refresh_drained_time(self):
         logger.debug("刷新用尽倒计时")
+        invalidate_replacement_checks(self)
         solved = []
         for agent in self.op_data.exhaust_agent:
             if agent in solved:
