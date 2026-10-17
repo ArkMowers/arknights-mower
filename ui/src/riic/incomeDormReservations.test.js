@@ -82,7 +82,7 @@ it('retains both groups through the real ordinary planning round', () => {
   expect(final.currentOperator('room_1_2', 0)?.name).toBe('Y')
 })
 
-it('does not recall unfinished group when a completed member gives up its bed', () => {
+it('protects a completed primary bed while its group is still recovering', () => {
   const make = (
     name,
     room,
@@ -128,9 +128,10 @@ it('does not recall unfinished group when a completed member gives up its bed', 
   })
   const queue = new MowerTaskQueue(),
     task = planMowerAlphaDormFill(data, queue)
-  const projected = projectMowerArrangements(data, [task.plan])
-  expect(projected.operators.B.currentRoom).toBe('dormitory_1')
-  expect(projected.currentOperator('room_1_1', 1)?.name).toBe('Y')
+  expect(task).toBeUndefined()
+  expect(data.operators.A.currentRoom).toBe('dormitory_1')
+  expect(data.operators.B.currentRoom).toBe('dormitory_1')
+  expect(data.currentOperator('room_1_1', 1)?.name).toBe('Y')
 })
 
 function releaseObservationFixture({ merged = false, future = false, strict = false } = {}) {
