@@ -278,7 +278,10 @@ def test_released_bed_wait_yields_to_confirmation_then_resumes_without_new_read(
     assert task.time == original_time
 
 
-def test_partial_backup_departure_keeps_full_peers_until_scheduled_group_return(solver):
+@pytest.mark.parametrize("reading", ["fresh", "stale", "unknown"])
+def test_partial_backup_departure_keeps_full_peers_until_scheduled_group_return(
+    solver, reading
+):
     from datetime import datetime, timedelta
 
     data = solver.op_data
@@ -287,6 +290,10 @@ def test_partial_backup_departure_keeps_full_peers_until_scheduled_group_return(
     glady.mood = 5
     worker = data.operators["旅骨"]
     worker.mood, worker.time_stamp = 22, datetime.now()
+    if reading == "stale":
+        worker.time_stamp -= timedelta(hours=3)
+    elif reading == "unknown":
+        worker.time_stamp = None
     peer = data.operators["令"]
     peer.group = "深海"
     peer.group_bindings = [{"group": "深海", "replacement": ["重岳"]}]
@@ -310,6 +317,8 @@ def test_partial_backup_departure_keeps_full_peers_until_scheduled_group_return(
         correction = solver.agent_get_mood(read_rooms=False, return_plan=True)
         assert correction.get("contact", ["Current"]) == ["Current"]
         assert correction.get("central", ["Current"]) == ["Current"]
+        if reading != "fresh":
+            assert correction["recycle"] == ["旅骨"]
         assert correction.get("dormitory_1", ["Current"])[0] != "撷英调香师"
         assert solver.tasks == [task]
         assert (task.time, task.plan) == original

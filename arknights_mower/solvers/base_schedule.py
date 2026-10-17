@@ -3150,8 +3150,13 @@ class BaseSchedulerSolver(
                 ):
                     logger.debug(f"跳过检查{_agent}")
                     continue
-                elif _agent.group and self.op_data.is_group_shift_anchor(_agent):
-                    # 把所有小组成员都移到工作站（已在岗成员跳过，避免 no-op 假任务）
+                elif (
+                    _agent.group
+                    and self.op_data.is_group_shift_anchor(_agent)
+                    and (_agent.current_room, _agent.current_index)
+                    != (_agent.room, _agent.index)
+                ):
+                    # 原位重读只核对该成员，实际回岗才补齐组内回班安排。
                     _add_group_to_fix_plan(fix_plan, self.op_data, _agent.group)
                 if _agent.room not in fix_plan.keys():
                     fix_plan[_agent.room] = ["Current"] * len(
