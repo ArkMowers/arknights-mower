@@ -41,16 +41,18 @@ def test_predicted_full_is_rechecked_and_keeps_original_request(resting, monkeyp
     monkeypatch.setattr(scheduler, "_read_recovery_rooms", read)
     assert scheduler._verify_required_recovery(task) is False
     assert task.plan == before and task.time == original_time
-    assert task.execution_failure
+    assert not getattr(task, "execution_failure", None)
+    assert scheduler.waiting_group_shifts == [task]
     observers = [
         t for t in scheduler.tasks if getattr(t, "recovery_observation_rooms", None)
     ]
     assert len(observers) == 1 and observers[0].time == deadline
-    scheduler._resume_failed_tasks()
-    assert task.execution_failure
-    assert len(scheduler.tasks) == 2
+    scheduler._resume_waiting_group_shifts()
+    assert scheduler.waiting_group_shifts == [task]
+    assert len(scheduler.tasks) == 1
     op.mood, op.time_stamp = 24, datetime.now()
-    scheduler._resume_failed_tasks()
+    scheduler._resume_waiting_group_shifts()
+    assert task in scheduler.tasks and not scheduler.waiting_group_shifts
     assert not getattr(task, "execution_failure", None)
     assert task.time == original_time
 
@@ -150,13 +152,24 @@ def test_infra_main_blocks_physical_arrangement_until_every_required_member_is_f
             op = data.operators[name]
             op.mood, op.time_stamp, op.mood_is_prediction = mood, datetime.now(), False
 
-    monkeypatch.setattr(scheduler, "_read_recovery_rooms", read)
+    reader = Mock(side_effect=read)
+    monkeypatch.setattr(scheduler, "_read_recovery_rooms", reader)
     arrange = Mock(side_effect=AssertionError("未回满时不得进入实际换人"))
     monkeypatch.setattr(scheduler, "agent_arrange", arrange)
     assert scheduler.infra_main()
     arrange.assert_not_called()
-    assert task in scheduler.tasks and task.execution_failure
+    assert task in scheduler.waiting_group_shifts and task not in scheduler.tasks
+    assert not getattr(task, "execution_failure", None)
     assert task.plan == before and task.time == original_time
+
+    scheduler.planned = scheduler.todo_task = scheduler.collect_notification = True
+    monkeypatch.setattr(scheduler, "handle_error", Mock(return_value=True))
+    for _ in range(3):
+        assert scheduler.infra_main()
+    assert reader.call_count == 1
+    arrange.assert_not_called()
+    assert scheduler.task is None
+    assert scheduler.waiting_group_shifts == [task]
 
 
 @pytest.mark.parametrize("group_wait", [False, True])
@@ -206,7 +219,11 @@ def test_near_full_mood_alone_does_not_allow_return(resting, monkeypatch, remain
 
     monkeypatch.setattr(scheduler, "_read_recovery_rooms", read)
     assert not scheduler._verify_required_recovery(task)
-    assert task.execution_failure
+    if remaining is not None and remaining > 0:
+        assert task in scheduler.waiting_group_shifts
+        assert not getattr(task, "execution_failure", None)
+    else:
+        assert task.execution_failure
     assert op.mood == 23.99
 
 
@@ -398,7 +415,8 @@ def test_new_required_members_receive_one_supplemental_room_read(
     if observation == "unread":
         assert task.execution_failure and scheduler.tasks == [task]
     elif observation == "unfinished":
-        assert task.execution_failure
-        assert len(scheduler.tasks) == 2
-        assert scheduler.tasks[1].recovery_observation_rooms == {"dormitory_2"}
-        assert scheduler.tasks[1].time == bed.time
+        assert not getattr(task, "execution_failure", None)
+        assert scheduler.waiting_group_shifts == [task]
+        assert len(scheduler.tasks) == 1
+        assert scheduler.tasks[0].recovery_observation_rooms == {"dormitory_2"}
+        assert scheduler.tasks[0].time == bed.time

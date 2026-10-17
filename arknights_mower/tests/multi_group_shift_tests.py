@@ -156,16 +156,17 @@ def test_other_group_waits_for_working_shared_covers(working_shared_covers, obse
     assert shift_off(s, "乙")[0]
 
 
-def test_ordinary_resting_preserves_other_groups_working_covers(working_shared_covers):
+def test_ordinary_resting_preserves_other_groups_working_covers(
+    working_shared_covers, caplog
+):
     s = working_shared_covers
     assert shift_off(s, "甲")[0]
     s.total_agent = list(s.op_data.operators.values())
     s.op_data.operators[B].mood = 0
     before_beds = [(bed.name, bed.time) for bed in s.op_data.dorm]
     assert s.resting() == {}
-    (request,) = s.tasks
-    assert request.ordinary_coordination and request.execution_failure
-    assert request.plan == {}
+    assert s.tasks == []
+    assert not [record for record in caplog.records if record.levelno >= 30]
     assert [(bed.name, bed.time) for bed in s.op_data.dorm] == before_beds
     assert s.op_data.operators[SHARED].current_room == "central"
     assert s.op_data.operators["清道夫"].current_room == "central"
