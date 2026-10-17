@@ -209,7 +209,9 @@
     "scheduler/mowerRecoveryDependency.spec.ts": "70ccdc6d59c8e2d0da3f400d2408e3fe8f6059d38e0dc488b7c17e512c988f11",
     "scheduler/mowerRecoveryDependency.ts": "1e1708bcf7c60b07c149a545199c0810826fc41d3543dc797b37eb83e2845209",
     "scheduler/mowerRetainedCorrection.spec.ts": "c6209045c6496151f806ac0e4c3284c7c45b8c9011b28e4f86894f4847d86560",
-    "scheduler/mowerSupportRefresh.spec.ts": "0737859e4fea0b3e19250aff55fd4f1fc7514c390a658d64a6adceb20cb0bbdf"
+    "scheduler/mowerSupportRefresh.spec.ts": "0737859e4fea0b3e19250aff55fd4f1fc7514c390a658d64a6adceb20cb0bbdf",
+    "scheduler/mowerAlphaCandidates.spec.ts": "f7c4f46bacdf0902b4123495286608fd7757b94a4686073ef63a041665c8e5db",
+    "scheduler/mowerDormAdmissions.spec.ts": "c996b18eafd4e72bf3ccd809c81d5131526e37963ce22c4ab2a008810b770270"
   },
   "localPatches": {
     "simulator/productionTimeline.ts": {
@@ -305,8 +307,8 @@
       "reason": "Retain the packaged historical roster fixture and account for the confirmed MAX-minus-reserve click timing: 4212 intervals and a 227/hour peak fit bounds of 4400 and 240. Preserve the 48-hour completion, consecutive microstep, unique occupancy, morale and unchanged-input assertions. Synchronize prediction-only and actual-room-observation assertions from calculator e7e8966330d351539684b1daba82e9ccead48fa1; retain the packaged historical fixture. Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions."
     },
     "scheduler/mowerAlphaCandidates.ts": {
-      "reason": "Pass named task reservations into recovery allocation before dorm isolation.",
-      "sha256": "b8a9e0c109cc51927b6522039d6f779cebad502f6e3041e3f4c7b48103800446"
+      "sha256": "a31c45b5c50fdc5bb811bfdf98ca30ef689aa7a1de90167729b5f4539d0840c6",
+      "reason": "Pass named task reservations into recovery allocation before dorm isolation. Synchronize priority recovery takeover of lower-tier occupied beds with free-room release disabled, protected resident tiers and isolated displacement planning from calculator 77202b0209bcea85dc46efb05dd2965cc494ed9c."
     },
     "components/workbench/ScheduleTimelineGantt.vue": {
       "sha256": "c5e8ee4f76e81c2b74ff59e0f2c60ce7f199a262371e3b73e3e38c88d32fe397",
@@ -591,6 +593,14 @@
     "scheduler/mowerTaskFailure.spec.ts": {
       "sha256": "6148371f988d8bde7cff09cbd36fd1ab0b15367d145819ac707100858cb8dc1a",
       "reason": "Refresh only explicitly observation-derived, unstarted corrections after related observations or group/dependency changes; preserve original task identity and time and explicit or started remaining work, synchronized from calculator 4448dd3916b681e4c2ff08a80e851ae9256215a0."
+    },
+    "scheduler/mowerAlphaCandidates.spec.ts": {
+      "sha256": "f7c4f46bacdf0902b4123495286608fd7757b94a4686073ef63a041665c8e5db",
+      "reason": "Synchronize priority recovery takeover of lower-tier occupied beds with free-room release disabled, protected resident tiers and isolated displacement planning from calculator 77202b0209bcea85dc46efb05dd2965cc494ed9c."
+    },
+    "scheduler/mowerDormAdmissions.spec.ts": {
+      "sha256": "c996b18eafd4e72bf3ccd809c81d5131526e37963ce22c4ab2a008810b770270",
+      "reason": "Synchronize priority recovery takeover of lower-tier occupied beds with free-room release disabled, protected resident tiers and isolated displacement planning from calculator 77202b0209bcea85dc46efb05dd2965cc494ed9c."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
@@ -619,7 +629,8 @@
       "observed recovery, traced backup vetoes and concrete bed reservations retain original tasks until relevant observations or arrangements release them",
       "explicit primary-to-cover backup departures include required recovery beds and preserve intentional partial group staffing during recovery",
       "already assigned legal covers remain at their working slots while displaced primaries enter recovery",
-      "observation-derived unstarted corrections refresh after relevant failures or recovery waits without preserving obsolete staffing reservations"
+      "observation-derived unstarted corrections refresh after relevant failures or recovery waits without preserving obsolete staffing reservations",
+      "priority recovery candidates may take over lower-tier occupied beds with free-room release disabled while protecting resident tiers, reservations and actual observations; displacement planning preserves live beds and existing tasks"
     ],
     "limitations": [
       "ideal run orders do not simulate maintenance runner replacement acceleration or physical restoration",
@@ -632,7 +643,7 @@
       "maintenance-primary run-order pause",
       "additional facility-level export changes"
     ],
-    "calculatorRevision": "4448dd3916b681e4c2ff08a80e851ae9256215a0",
+    "calculatorRevision": "77202b0209bcea85dc46efb05dd2965cc494ed9c",
     "mowerRevision": "890fb2e8cc5c845f748ec55636a2abcbcba48a54",
     "exhaustSupportMowerRevision": "acd54324d549eec34ef1a0bb9910de4c92cfb7d1",
     "exhaustSupportCalculatorRevision": "c2b50182da1bcd83dd3da1ce6f2da58f0f66efb8",
@@ -652,6 +663,7 @@
     "backupDepartureMowerRevision": "99887004b53479d1681f290f6ef7cf55be8d28b2",
     "sameSlotObservationMowerRevision": "2871b5037b690fcf88e3da29040e5398915ec004",
     "derivedCorrectionCalculatorRevision": "4448dd3916b681e4c2ff08a80e851ae9256215a0",
-    "derivedCorrectionMowerRevision": "890fb2e8cc5c845f748ec55636a2abcbcba48a54"
+    "derivedCorrectionMowerRevision": "890fb2e8cc5c845f748ec55636a2abcbcba48a54",
+    "priorityDormTakeoverCalculatorRevision": "77202b0209bcea85dc46efb05dd2965cc494ed9c"
   }
 }
