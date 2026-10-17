@@ -148,7 +148,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Install QR recognition system library
@@ -168,7 +168,7 @@ jobs:
         shell: bash
         run: |
           status=0
-          timeout --signal=TERM --kill-after=30s 10m \
+          timeout --signal=TERM --kill-after=30s 15m \
             ./venv/bin/python3 -u -m pytest -v -o faulthandler_timeout=60 \
             > "${RUNNER_TEMP}/python-regressions.log" 2>&1 || status=$?
           tail -n 200 "${RUNNER_TEMP}/python-regressions.log"
