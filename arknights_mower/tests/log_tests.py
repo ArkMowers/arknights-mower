@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from logging.handlers import QueueListener
 from pathlib import Path
 from queue import Queue
 from unittest.mock import Mock, patch
@@ -250,3 +251,167 @@ class MultiProcessLoggingTest(MultiProcessLogTestBase):
         log.logger.info("forwarded-msg")
         record = q.get(timeout=2)
         self.assertEqual(record.getMessage(), "forwarded-msg")
+
+
+class LiveLogTruncationTest(MultiProcessLogTestBase):
+    """实时日志先并入归档说明，再对合并整行做最终截断。"""
+
+    @staticmethod
+    def _record(source, message, level=logging.ERROR, archive_screenshots=None):
+        record = logging.LogRecord(
+            log.logger.name,
+            level,
+            f"/project/arknights_mower/{source}",
+            12,
+            message,
+            (),
+            None,
+        )
+        record.asctime = "2026-10-17 12:00:00"
+        if archive_screenshots is not None:
+            record.archive_screenshots = archive_screenshots
+        return record
+
+    def _emit(self, record):
+        queue = log.LatestLogQueue(maxsize=4, drop_warning_interval=None)
+        store = Mock()
+        store.mark_error.return_value = "123"
+        with (
+            patch.object(log, "get_screenshot_store", return_value=store),
+            patch.object(log, "frontend_log_queue", queue),
+        ):
+            log.whlr.emit(record)
+        message = queue.get_nowait()
+        queue.task_done()
+        return message
+
+    def test_archive_notice_survives_merged_line_truncation(self):
+        record = self._record(
+            "solvers/base_schedule.py", "长" * (2 * log.LIVE_LOG_MESSAGE_LIMIT)
+        )
+        message = self._emit(record)
+        self.assertLessEqual(len(message), log.LIVE_LOG_MESSAGE_LIMIT)
+        self.assertTrue(message.startswith("2026-10-17 12:00:00 ERROR "))
+        # 截断标记与归档编号都必须留在行尾；编号被尾部切掉时这条断言失败。
+        self.assertTrue(
+            message.endswith(
+                log.LIVE_LOG_TRUNCATION_SUFFIX + "（已保存前后截图，记录编号 123）"
+            )
+        )
+        self.assertEqual(message.count(log.LIVE_LOG_TRUNCATION_SUFFIX), 1)
+
+    def test_archive_notice_survives_prepare_then_final_truncation(self):
+        handler = log.LiveQueueHandler(
+            log.LatestLogQueue(maxsize=4, drop_warning_interval=None)
+        )
+        prepared = handler.prepare(
+            self._record(
+                "solvers/base_schedule.py", "长" * (2 * log.LIVE_LOG_MESSAGE_LIMIT)
+            )
+        )
+        # 入队前那条消息已被 prepare 截到上限，最终整行仍要多留归档编号。
+        self.assertEqual(len(prepared.message), log.LIVE_LOG_MESSAGE_LIMIT)
+        message = self._emit(prepared)
+        self.assertLessEqual(len(message), log.LIVE_LOG_MESSAGE_LIMIT)
+        self.assertTrue(
+            message.endswith(
+                log.LIVE_LOG_TRUNCATION_SUFFIX + "（已保存前后截图，记录编号 123）"
+            )
+        )
+        self.assertEqual(message.count(log.LIVE_LOG_TRUNCATION_SUFFIX), 1)
+
+    def test_short_archived_warning_keeps_notice_at_line_end(self):
+        record = self._record(
+            "solvers/base_schedule.py",
+            "运行失败",
+            level=logging.WARNING,
+            archive_screenshots=True,
+        )
+        message = self._emit(record)
+        self.assertEqual(
+            message,
+            "2026-10-17 12:00:00 WARNING 运行失败（已保存前后截图，记录编号 123）",
+        )
+
+
+class RuntimeLogRetentionTest(MultiProcessLogTestBase):
+    def test_runtime_log_keeps_full_message_while_live_line_is_truncated(self):
+        log.init_file_logging()
+        full = "完整内容" * (log.LIVE_LOG_MESSAGE_LIMIT // 4 + 10)
+        log.logger.info(full)
+        log.fhlr.flush()
+        runtime_log = path.get_path("@app/log") / "runtime.log"
+        self.assertIn(full, runtime_log.read_text(encoding="utf-8"))
+
+
+class LatestLogQueueTest(MultiProcessLogTestBase):
+    """非阻塞淘汰语义、可读 dropped 状态与限频告警。"""
+
+    def test_put_has_no_ignored_block_or_timeout_arguments(self):
+        queue = log.LatestLogQueue(maxsize=1, drop_warning_interval=None)
+        with self.assertRaises(TypeError):
+            queue.put("item", block=False)
+        with self.assertRaises(TypeError):
+            queue.put("item", block=True, timeout=1)
+        queue.put("item")
+        self.assertEqual(queue.get_nowait(), "item")
+        queue.task_done()
+
+    def test_put_nowait_remains_the_non_blocking_entry_point(self):
+        queue = log.LatestLogQueue(maxsize=1, drop_warning_interval=None)
+        queue.put_nowait("first")
+        queue.put_nowait("second")
+        self.assertEqual(queue.dropped, 1)
+        self.assertEqual(queue.get_nowait(), "second")
+        queue.task_done()
+
+    def test_full_queue_evicts_oldest_without_raising_full(self):
+        queue = log.LatestLogQueue(maxsize=2, drop_warning_interval=None)
+        for message in ("first", "second", "third", "fourth"):
+            queue.put(message)
+        self.assertEqual(queue.qsize(), 2)
+        self.assertEqual(queue.dropped, 2)
+        self.assertEqual(queue.get_nowait(), "third")
+        queue.task_done()
+        self.assertEqual(queue.get_nowait(), "fourth")
+        queue.task_done()
+
+    def test_full_queue_accepts_listener_sentinel(self):
+        queue = log.LatestLogQueue(maxsize=1, drop_warning_interval=None)
+        queue.put_nowait("live")
+        listener = QueueListener(queue)
+        listener.enqueue_sentinel()
+        self.assertIs(queue.get_nowait(), listener._sentinel)
+        queue.task_done()
+        self.assertEqual(queue.dropped, 1)
+
+    def test_dropped_state_is_readable_and_warning_is_rate_limited(self):
+        now = [1000.0]
+        queue = log.LatestLogQueue(maxsize=1)
+        with (
+            patch.object(log, "monotonic", lambda: now[0]),
+            patch.object(log.logger, "warning") as warning,
+        ):
+            queue.put("first")
+            self.assertEqual(warning.call_count, 0)
+            queue.put("second")
+            self.assertEqual(warning.call_count, 1)
+            self.assertEqual(
+                warning.call_args.args[0], log.LIVE_LOG_DROP_WARNING_FORMAT
+            )
+            # 第一次告警：自上次告警以来 1 条，累计 1 条。
+            self.assertEqual(warning.call_args.args[1:], (1, 1))
+            now[0] += log.LIVE_LOG_DROP_WARNING_INTERVAL / 2
+            for index in range(100):
+                queue.put(str(index))
+            # 同一间隔内只允许一条告警，不随淘汰次数增加高频日志。
+            self.assertEqual(warning.call_count, 1)
+            self.assertEqual(queue.dropped, 101)
+            self.assertEqual(queue.dropped_since_warning, 100)
+            now[0] += log.LIVE_LOG_DROP_WARNING_INTERVAL
+            queue.put("last")
+            self.assertEqual(warning.call_count, 2)
+            # 第二次告警：自上次告警以来 101 条，累计 102 条。
+            self.assertEqual(warning.call_args.args[1:], (102, 101))
+        self.assertEqual(queue.dropped, 102)
+        self.assertEqual(queue.dropped_since_warning, 0)

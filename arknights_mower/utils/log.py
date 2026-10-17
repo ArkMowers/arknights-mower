@@ -7,6 +7,7 @@ from logging.handlers import QueueHandler, QueueListener, TimedRotatingFileHandl
 from pathlib import Path
 from queue import Queue
 from threading import Lock, Thread
+from time import monotonic
 
 import colorlog
 
@@ -23,39 +24,102 @@ basic_formatter = logging.Formatter(BASIC_FORMAT, DATE_FORMAT)
 color_formatter = colorlog.ColoredFormatter(COLOR_FORMAT, DATE_FORMAT)
 LIVE_LOG_CAPACITY = 256
 LIVE_LOG_MESSAGE_LIMIT = 16 * 1024
+LIVE_LOG_TRUNCATION_SUFFIX = "\n[实时日志已截断，完整内容见 runtime.log]"
+LIVE_LOG_DROP_WARNING_INTERVAL = 60.0
+LIVE_LOG_DROP_WARNING_FORMAT = (
+    "实时日志队列淘汰了 %d 条记录（自上次告警以来 %d 条），"
+    "消费停滞时只保留最新记录，完整内容仍写入 runtime.log"
+)
 
 
-def _live_message(message):
+def _live_message(message, keep_tail=""):
+    """把实时日志整行限制在 LIVE_LOG_MESSAGE_LIMIT 字符内。
+
+    ``keep_tail`` 由调用方拼在 ``message`` 末尾（例如截图归档说明）。超长时保留
+    正文前缀，并在截断标记后重新接上 ``keep_tail``，因此行尾的归档编号不会被截掉；
+    ``runtime.log`` 仍保存完整原文。
+    """
     if len(message) <= LIVE_LOG_MESSAGE_LIMIT:
         return message
-    suffix = "\n[实时日志已截断，完整内容见 runtime.log]"
-    return message[: LIVE_LOG_MESSAGE_LIMIT - len(suffix)] + suffix
+    suffix = LIVE_LOG_TRUNCATION_SUFFIX + keep_tail
+    budget = LIVE_LOG_MESSAGE_LIMIT - len(suffix)
+    if budget <= 0:
+        return suffix[-LIVE_LOG_MESSAGE_LIMIT:]
+    return message[:budget] + suffix
 
 
 class LatestLogQueue(Queue):
-    """消费停滞时淘汰最旧记录，生产者和退出标记不等待空位。"""
+    """消费停滞时淘汰最旧记录，生产者和退出标记不等待空位。
 
-    def __init__(self, maxsize=LIVE_LOG_CAPACITY):
+    ``put(item)`` 没有 ``block``/``timeout`` 参数：队列满时先淘汰最旧一条再入队，
+    不会抛 ``queue.Full``。淘汰条数累计在 ``dropped``，“自上次告警以来的条数”见
+    ``dropped_since_warning``；两者都是线程安全的可读状态。每次淘汰按
+    ``drop_warning_interval`` 限频输出一条警告（同一间隔最多一条），让现场能判断
+    实时日志缺失；传入 ``None`` 可关闭警告（测试用）。
+    """
+
+    def __init__(
+        self,
+        maxsize=LIVE_LOG_CAPACITY,
+        *,
+        drop_warning_interval=LIVE_LOG_DROP_WARNING_INTERVAL,
+    ):
         if maxsize <= 0:
             raise ValueError("日志队列容量必须大于 0")
         super().__init__(maxsize=maxsize)
         self.dropped = 0
+        self.dropped_since_warning = 0
+        self._drop_warning_interval = drop_warning_interval
+        self._last_drop_warning = None
+        self._drop_lock = Lock()
 
-    def put(self, item, block=True, timeout=None):
+    def put(self, item):
+        """入队一条记录或消息；不等待空位，队列满时淘汰最旧一条。"""
         if isinstance(item, str):
             item = _live_message(item)
+        dropped = False
         with self.not_full:
             if self._qsize() >= self.maxsize:
                 self._get()
                 self.unfinished_tasks -= 1
-                self.dropped += 1
+                dropped = True
             self._put(item)
             self.unfinished_tasks += 1
             self.not_empty.notify()
+        if dropped:
+            self._report_dropped()
+
+    def put_nowait(self, item):
+        """QueueHandler 与 QueueListener 使用的非阻塞入口。"""
+        self.put(item)
+
+    def _report_dropped(self):
+        with self._drop_lock:
+            self.dropped += 1
+            self.dropped_since_warning += 1
+            interval = self._drop_warning_interval
+            if interval is None:
+                return
+            now = monotonic()
+            if (
+                self._last_drop_warning is not None
+                and now - self._last_drop_warning < interval
+            ):
+                return
+            since_last = self.dropped_since_warning
+            self.dropped_since_warning = 0
+            self._last_drop_warning = now
+            total = self.dropped
+        logger.warning(LIVE_LOG_DROP_WARNING_FORMAT, total, since_last)
 
 
 class LiveQueueHandler(QueueHandler):
     def prepare(self, record):
+        """限制入队记录的消息长度，作为队列内容的第一道内存界限。
+
+        整行（时间、级别、消息和截图归档说明）的最终截断在 Handler.emit 完成；
+        文件日志 handler 直接接收原始记录，不受这里影响。
+        """
         prepared = super().prepare(record)
         prepared.msg = prepared.message = _live_message(prepared.message)
         return prepared
@@ -125,6 +189,7 @@ class Handler(logging.StreamHandler):
         if record.levelno >= logging.ERROR:
             if summary.startswith(("Error", "Exception")) or summary == str(record.msg):
                 summary = f"运行时发生错误：{summary}"
+        archive_notice = ""
         if should_archive_record(record):
             try:
                 store = get_screenshot_store() or (
@@ -139,12 +204,15 @@ class Handler(logging.StreamHandler):
                     archive_id = store.mark_error(
                         int(record.created * 10**9), archive_summary
                     )
-                    summary += f"（已保存前后截图，记录编号 {archive_id}）"
+                    archive_notice = f"（已保存前后截图，记录编号 {archive_id}）"
             except Exception:
                 pass  # 日志输出不能因归档失败而中断。
         msg = f"{record.asctime} {record.levelname} {summary}"
         if record.exc_info and record.levelno < logging.ERROR:
             msg += "\n" + "".join(traceback.format_exception(*record.exc_info))
+        # 归档说明先并入整行，再对合并结果做最终截断：截断标记和编号一起留在行尾，
+        # 实时日志页面看到的整行不会只保留被尾部切掉的编号。
+        msg = _live_message(msg + archive_notice, archive_notice)
         frontend_log_queue.put(msg)
 
 
@@ -165,6 +233,28 @@ listener.start()
 # 抛 PermissionError [WinError 32]，且失败后该进程之后所有日志都会重复失败、全部丢失。
 # 因此文件日志交由主进程显式 init_file_logging() 建立，子进程不调用。
 fhlr = None
+_stderr_handler = None
+_stderr_handler_lock = Lock()
+
+
+def init_stderr_logging(stream=None) -> None:
+    """同步保存独立服务的诊断，不建立实例文件日志或读取配置。
+
+    服务工作进程可能通过 os._exit 退出，不能依赖异步队列完成输出。
+    调用方可以传入自己的 stderr；重复初始化复用同一个 handler。
+    """
+    global _stderr_handler
+    stream = sys.stderr if stream is None else stream
+    if stream is None:
+        return
+    with _stderr_handler_lock:
+        if _stderr_handler is None:
+            _stderr_handler = logging.StreamHandler(stream)
+            _stderr_handler.setFormatter(basic_formatter)
+            _stderr_handler.addFilter(filter)
+            logger.addHandler(_stderr_handler)
+        elif _stderr_handler.stream is not stream:
+            _stderr_handler.setStream(stream)
 
 
 def init_file_logging() -> None:
@@ -256,7 +346,7 @@ def close_mp_logging():
 
 def close_logging():
     """Release only mower's listeners and file handler, after other resources."""
-    global fhlr
+    global fhlr, _stderr_handler
     close_mp_logging()
     logger.removeHandler(queue_handler)
     if mp_queue_handler is not None:
@@ -266,6 +356,11 @@ def close_logging():
     if current is not None:
         logger.removeHandler(current)
         current.close()
+    with _stderr_handler_lock:
+        current, _stderr_handler = _stderr_handler, None
+        if current is not None:
+            logger.removeHandler(current)
+            current.close()
 
 
 _store_instance: ScreenshotStore | None = None

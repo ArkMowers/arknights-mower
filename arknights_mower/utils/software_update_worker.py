@@ -1383,7 +1383,9 @@ class Worker:
             ) from error
 
     def stop_instances(self):
-        self.report("stopping", "保存任务状态并关闭同一安装目录下的 Mower 实例")
+        self.report(
+            "stopping", "保存任务状态并关闭同一安装目录下的 Mower 实例与共享 OCR 进程"
+        )
         self.original = instances(self.state)
         if not any(r["kind"] == "instance" for r in self.original):
             raise ValueError("未找到可恢复的实例，请从桌面启动器打开 Mower 后重试")
@@ -1402,7 +1404,8 @@ class Worker:
                 return
             time.sleep(0.5)
         raise RuntimeError(
-            "部分实例未能在 90 秒内退出，已取消安装。请检查正在执行的任务后重试"
+            "部分 Mower 实例或共享 OCR 进程未能在 90 秒内退出，已取消安装。"
+            "请检查正在执行的任务后重试"
         )
 
     def install_source(self):
