@@ -92,23 +92,21 @@ def test_multi_hop_cover_handoff_uses_complete_matching(solver):
     assert plan_replacement_handoff(data, ["机械师"], lambda _: False) is None
 
 
-def test_failed_ordinary_request_waits_for_observation_without_duplication(solver):
+def test_ordinary_mutex_creates_no_request_or_error_and_replans_after_release(
+    solver, caplog
+):
     solver.op_data.operators["苍苔"].replacement = ["槐琥"]
     solver.task = None
-    solver._schedule_group_coordination(["机械师"])
-    (request,) = solver.tasks
-    at = request.time
     for _ in range(3):
-        solver._resume_failed_tasks()
         solver._schedule_group_coordination(["机械师"])
-    assert solver.tasks == [request]
-    assert request.execution_failure
-    assert request.time == at
-    # 由实际岗位变化释放，而非时间流逝重试。
+        solver._resume_failed_tasks()
+    assert solver.tasks == []
+    assert not [record for record in caplog.records if record.levelno >= 30]
+    # 实际回班释放替班后，正常规划可以取得完整下班安排。
     solver.op_data = solver.op_data.project_arrangements([{"room_2_2": ["苍苔"]}])
-    solver._resume_failed_tasks()
-    assert not hasattr(request, "execution_failure")
-    assert request.time == at
+    plan = {}
+    assert solver.get_resting_plan(["机械师"], [], plan, 0)
+    assert plan["room_3_3"] == ["槐琥"]
 
 
 def test_unknown_recall_forecast_requires_work_and_recovery_estimates(solver):

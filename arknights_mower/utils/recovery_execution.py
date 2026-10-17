@@ -87,3 +87,30 @@ def required_recovery_members(data, task, *, now=None):
         if op.rest_in_full and not op.workaholic or name in group_required:
             required.add(name)
     return required
+
+
+def pending_recovery_observations(data, names, *, now, sampled_after=None):
+    """已实读且有未来恢复期限时，返回正常等待所依据的观测。"""
+    observations = {}
+    for name in names:
+        op = data.operators.get(name)
+        if (
+            op is None
+            or op.time_stamp is None
+            or sampled_after is not None
+            and op.time_stamp < sampled_after
+            or getattr(op, "mood_is_prediction", False)
+            or not 0 <= op.mood < op.upper_limit
+            or not op.is_resting()
+        ):
+            return None
+        _, bed = data.get_dorm_by_name(name)
+        if (
+            bed is None
+            or bed.position != (op.current_room, op.current_index)
+            or bed.time is None
+            or bed.time <= now
+        ):
+            return None
+        observations[name] = op.time_stamp
+    return observations
