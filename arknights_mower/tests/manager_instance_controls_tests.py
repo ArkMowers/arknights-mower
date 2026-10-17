@@ -54,11 +54,26 @@ def batch_changes(manager, settings):
     ]
 
 
+def test_unset_permissions_allow_updates_and_disable_ai_without_writing(manager):
+    item = manager.get_instances()[0]
+    assert item["updates_enabled"] is True
+    assert item["ai_assistant_enabled"] is False
+    assert not (Path(item["path"]) / "config/conf.yml").exists()
+    manager.update_settings(0, {"token": "keep", "port": 58001})
+    reopened = Api(manager._storage_path)
+    item = reopened.get_instances()[0]
+    assert item["updates_enabled"] is True
+    assert item["ai_assistant_enabled"] is False
+    saved = read_conf(reopened)
+    assert "updates_enabled" not in saved
+    assert "ai_assistant_enabled" not in saved
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 def test_update_permission_is_persisted_without_changing_other_settings(
     manager, enabled
 ):
-    assert manager.get_instances()[0]["updates_enabled"] is False
+    assert manager.get_instances()[0]["updates_enabled"] is True
     manager.update_settings(
         0, {"token": "keep", "port": 58001, "ai_assistant_enabled": True}
     )

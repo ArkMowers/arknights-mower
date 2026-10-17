@@ -7,7 +7,7 @@
 <a id="managed-update-authorization"></a>
 ### Managed Update Authorization
 
-Each instance stores `updates_enabled` as a strict boolean in `config/conf.yml`. Standalone launches retain update access regardless of this saved manager choice. Managed launches (`MOWER_MANAGED=1`) deny updates unless the saved choice is explicitly true; a missing choice defaults to false. Effective permission is captured once at startup and exposed through `/status`, independently of later configuration reloads or manager termination.
+Each instance stores `updates_enabled` as a strict boolean in `config/conf.yml`. Standalone launches retain update access regardless of this saved manager choice. Managed launches (`MOWER_MANAGED=1`) allow updates by default when the choice is missing, without persisting a choice; saved true and false choices remain effective. AI assistant chat authorization is independent and still defaults to disabled for managed launches. Effective update permission is captured once at startup and exposed through `/status`, independently of later configuration reloads or manager termination.
 
 The manager edits this choice only after the instance process exits. Individual settings and the batch table use the existing stopped-instance checks, captured targets, changed-cell submission and atomic YAML writes. Update All On and All Off affect only editable rows' drafts, without changing AI authorization or starting an update; Save commits the choices. No AI risk-reading notice applies to this independent permission.
 

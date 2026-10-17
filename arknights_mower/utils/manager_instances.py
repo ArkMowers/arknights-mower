@@ -52,7 +52,7 @@ def read_webview(space):
     token = settings.get("token", "")
     port = settings.get("port", 0)
     assistant = raw.get("ai_assistant_enabled")
-    updates = raw.get("updates_enabled", False)
+    updates = raw.get("updates_enabled", True)
     if not isinstance(token, str):
         raise ValueError("Token 必须是文本")
     if type(port) is not int or not 0 <= port <= 65535:
@@ -223,7 +223,7 @@ class InstanceController:
                     token="",
                     port=None,
                     ai_assistant_enabled=False,
-                    updates_enabled=False,
+                    updates_enabled=True,
                     editable=False,
                     can_start=False,
                     can_stop=False,
