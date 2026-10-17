@@ -8849,9 +8849,7 @@ class BaseSchedulerSolver(
         skip_enter=False,
     ):
         logger.info("基建：无人机加速" if not adjust_time else "开始调整订单时间")
-        all_in = 0
-        if not not_customize:
-            all_in = len(self.op_data.run_order_rooms)
+        retain_reserve = not not_customize and bool(self.op_data.run_order_rooms)
         # 点击进入该房间
         if not skip_enter:
             self.enter_room(room)
@@ -8866,19 +8864,22 @@ class BaseSchedulerSolver(
             self._cache_facility_state_from_current_page(room, "manufacture")
             drone_count = self.digit_reader.get_drone(self.recog.gray)
             logger.info(f"当前无人机数量为：{drone_count}")
-            if drone_count < config.conf.drone_count_limit:
-                logger.info(f"无人机数量小于{config.conf.drone_count_limit}->停止")
+            if drone_count < config.conf.drone_count_limit or (
+                retain_reserve and drone_count == config.conf.drone_count_limit
+            ):
+                logger.info(
+                    f"无人机数量{drone_count}未满足加速条件，阈值为{config.conf.drone_count_limit}->停止"
+                )
                 return
             logger.info("制造站加速")
             all_in_scope = self._tap_drone_accelerate(
                 "manufacture_accelerate", "all_in"
             )
-            self.tap(all_in_scope)
-            # 有跑单时从最大选量减去预留数量。
-            if all_in > 0:
-                for _count in range(config.conf.drone_count_limit):
-                    self.tap((self.recog.w * 0.7, self.recog.h * 0.5), interval=0.1)
-            self.tap(accelerate, y_rate=1)
+            if retain_reserve:
+                self._confirm_drone_count(drone_count - config.conf.drone_count_limit)
+            else:
+                self.tap(all_in_scope)
+                self.tap(accelerate, y_rate=1)
         else:
             accelerate = self.find("bill_accelerate")
             while accelerate and not adjust_time:

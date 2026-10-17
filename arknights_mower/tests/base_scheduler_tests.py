@@ -2734,15 +2734,16 @@ class TestDroneAccelerate(unittest.TestCase):
     持续失败则抛异常，上层据此保留任务并按既有策略退避。
     """
 
-    def test_factory_reserves_threshold_after_selecting_maximum(self):
+    def test_factory_reserves_threshold_without_selecting_maximum(self):
         cases = [
-            ("reserve", 250, 20, 250, True, False, 230, 20),
-            ("partial_selection", 250, 20, 7, True, False, 230, 20),
-            ("at_threshold", 20, 20, 20, True, False, 0, 20),
-            ("below_threshold", 19, 20, 19, True, False, None, 0),
-            ("zero_threshold", 250, 0, 7, True, False, 250, 0),
-            ("no_run_orders", 250, 20, 7, False, False, 250, 0),
-            ("not_customize", 250, 20, 7, True, True, 250, 0),
+            ("reserve", 250, 20, 0, True, False, 230),
+            ("surplus", 71, 30, 0, True, False, 41),
+            ("at_threshold", 20, 20, 0, True, False, None),
+            ("below_threshold", 19, 20, 0, True, False, None),
+            ("zero_threshold", 250, 0, 0, True, False, 250),
+            ("no_run_orders", 250, 20, 7, False, False, 250),
+            ("not_customize", 250, 20, 7, True, True, 250),
+            ("all_in_at_threshold", 20, 20, 7, False, False, 20),
         ]
         for (
             name,
@@ -2752,7 +2753,6 @@ class TestDroneAccelerate(unittest.TestCase):
             has_run_orders,
             not_customize,
             expected_spend,
-            expected_reductions,
         ) in cases:
             with self.subTest(name=name):
                 solver = object.__new__(BaseSchedulerSolver)
@@ -2773,10 +2773,10 @@ class TestDroneAccelerate(unittest.TestCase):
                     if poly == maximum_scope:
                         selected = available
                         operations.append("maximum")
-                    elif poly == (1920 * 0.7, 1080 * 0.5):
-                        selected = max(0, selected - 1)
-                        operations.append("reduce")
-                    elif poly == accelerate_scope:
+                    elif poly in ((1320, 502), (1920 * 0.7, 1080 * 0.5)):
+                        selected = min(available, selected + 1)
+                        operations.append("increase")
+                    elif poly == (1440, 864) or poly == accelerate_scope:
                         spent = selected
                         operations.append("confirm")
 
@@ -2791,6 +2791,7 @@ class TestDroneAccelerate(unittest.TestCase):
                     patch.object(solver, "_cache_facility_state_from_current_page"),
                     patch.object(solver, "find", return_value=accelerate_scope),
                     patch.object(solver, "tap", side_effect=tap),
+                    patch.object(solver, "scene", return_value=Scene.INFRA_DETAILS),
                     patch.object(
                         solver, "_tap_drone_accelerate", return_value=maximum_scope
                     ) as open_panel,
@@ -2806,7 +2807,12 @@ class TestDroneAccelerate(unittest.TestCase):
                 else:
                     self.assertEqual(
                         operations,
-                        ["maximum"] + ["reduce"] * expected_reductions + ["confirm"],
+                        (
+                            ["increase"] * expected_spend
+                            if has_run_orders and not not_customize
+                            else ["maximum"]
+                        )
+                        + ["confirm"],
                     )
                     open_panel.assert_called_once_with(
                         "manufacture_accelerate", "all_in"
