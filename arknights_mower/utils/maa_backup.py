@@ -27,16 +27,26 @@ def update_transaction(function):
     return locked
 
 
+def _instance_alive(instance):
+    return not (
+        getattr(type(instance._asst), "_mower_process_isolated", False)
+        and instance._asst._closed
+    )
+
+
 def maa_in_use():
     """返回是否有 Mower 管理的 MAA 实例已连接或正在执行任务。"""
     with _update_lock:
-        return any(instance._active for instance in list(_verified_instances))
+        return any(
+            instance._active and _instance_alive(instance)
+            for instance in list(_verified_instances)
+        )
 
 
 def maa_instances_alive():
     """Include idle instances whose native handles or callbacks still exist."""
     with _update_lock:
-        return bool(_verified_instances)
+        return any(_instance_alive(instance) for instance in list(_verified_instances))
 
 
 def identity(path):
@@ -70,34 +80,38 @@ class BackupCheckpoint:
         self.target = Path(target).expanduser().absolute()
         with _update_lock:
             self.installation = installation_identity(self.target)
-            self.backups = {
-                path: identity(path)
-                for path in (
-                    self.target.with_name(self.target.name + ".old"),
-                    self.target / "resource.old",
-                )
-            }
+            self.backups = {path: identity(path) for path in (self.target / ".old",)}
 
     def retire(self):
         if not _update_lock.acquire(blocking=False):
             return False
+        lease = None
         try:
+            from arknights_mower.utils.maa_process import (
+                installation_lease,
+                maa_client_guard,
+            )
+
+            lease = installation_lease(self.target, exclusive=True)
             if self.installation != installation_identity(self.target):
                 return False
-            for path, expected in self.backups.items():
-                if expected is None or expected != identity(path):
-                    continue
-                if path.is_symlink():
-                    path.unlink()
-                elif path.is_dir():
-                    shutil.rmtree(path)
+            with maa_client_guard(self.target):
+                for path, expected in self.backups.items():
+                    if expected is None or expected != identity(path):
+                        continue
+                    if path.is_symlink():
+                        path.unlink()
+                    elif path.is_dir():
+                        shutil.rmtree(path)
             return True
-        except OSError:
+        except (OSError, RuntimeError):
             from arknights_mower.utils.log import logger
 
             logger.warning("MAA 任务已完成，旧备份暂无法清理")
             return False
         finally:
+            if lease is not None:
+                lease.close()
             _update_lock.release()
 
 
@@ -150,6 +164,7 @@ class MaaCallError(RuntimeError):
         self.operation = operation
         self.task_type = task_type
         self.stage = stage
+        self.detail = detail
         label = {
             "load": "资源加载失败",
             "append_task": "任务提交失败",
@@ -245,6 +260,11 @@ class VerifiedAsst:
         self._verified = self._verified or verified or self._outcome.successful
         if self._retired or not self._verified:
             return
+        if (
+            getattr(type(self._asst), "_mower_process_isolated", False)
+            and not self._asst._closed
+        ):
+            return
         with self._cleanup_lock:
             if self._cleanup_thread is not None and self._cleanup_thread.is_alive():
                 return
@@ -280,3 +300,15 @@ class VerifiedAsst:
         self._active = False
         self._cleanup(verified=verified)
         return result
+
+    def close(self):
+        """Release a desktop worker; Android retains its host-owned lifecycle."""
+        with _update_lock:
+            try:
+                close = getattr(self._asst, "close", None)
+                if close is not None:
+                    close()
+            finally:
+                self._active = False
+                _verified_instances.discard(self)
+        self._cleanup()

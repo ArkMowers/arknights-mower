@@ -65,7 +65,7 @@ Cancellation and timeout terminate only the owned command tree. Successful root-
 
 `/maa-resource-update/info` reports support for installed MAA on Windows, macOS and Linux. `MaaBasic` displays its independent resource controls from that response. `/maa-resource-update/check` uses the selected GitHub or Mirror酱 source; `/maa-resource-update/start` follows the [MAA update admission policy](maa-integration.md#29-independent-update-policies), including unknown local versions. Both resource and core updates share the maintenance lock and reject active MAA use.
 
-`install_maa_resource_update` stages an incremental resource merge, preserves core and Python files, and replaces only `resource`. The previous resource tree remains in `resource.old`; failed replacement or version verification restores the original tree and previous backup.
+`install_maa_resource_update` stages an incremental resource merge, preserves core and Python files, and replaces only `resource`. The previous resource tree remains in the installation's `.old/resource`; failed replacement or version verification restores the original tree and previous backup. A merged resource tree must satisfy the installed package's file list before replacement. Core updates follow the [MAA package validation and backup boundary](#17-maa-package-validation-and-backups).
 
 The update worker follows the [MAA runtime activation boundary](maa-runtime.md#3-explicit-update-completion) after installation.
 
@@ -145,3 +145,11 @@ Startup instances and verified update workers share the existing nonblocking `ba
 `retry_backup_cleanup` treats a busy lock during acquisition as a completed skipped attempt, without warnings, tracebacks, waiting or record mutation. The lock owner continues cleanup; pending `cleanup.json` records remain available for subsequent startup attempts. Other acquisition failures and cleanup failures retain application logger or detached updater diagnostics. Successful acquisition retains verified-restart, permitted-path and recorded-file-identity checks, with lock release on completion or error. The lock file remains in place.
 
 [Backup cleanup contention](../../.agents/notes/implemented/bug-fix/2026-10-12-backup-cleanup-contention.md) records the decision and focused verification.
+
+## 17. MAA Package Validation and Backups
+
+Windows MAA installations use the client's `filelist.txt` resource-presence check when that file exists. Each listed non-DLL, non-EXE and non-Python file must exist; old packages without a list retain compatibility. Unreadable, malformed or oversized lists fail validation. A damaged Windows installation or `pending-update-failure.txt` requests a full package without submitting an installed version, permitting repair at the same version through GitHub or Mirror酱. An OTA response cannot repair that installation. Full extraction, OTA merging and resource merging validate their resulting files before switching the installation. OTA processing retains both `removelist.txt` and `changes.json.deleted` semantics.
+
+Desktop core replacement stages the complete installation and retains its predecessor in `<MAA>/.old`. Desktop resource replacement uses `<MAA>/.old/resource`. OTA preparation excludes the top-level `.old` tree. Failed switching restores the prior installation and prior backup; successful tasks retire backups only through the [runtime ownership and occupancy checks](maa-runtime.md#2-reload-and-failure-boundary). Legacy desktop sibling `maa.old` and `resource.old` directories are preserved and receive no new automatic cleanup. Android retains the host's existing component backup and `resource.old` layout, cleanup hook and service restart.
+
+Mower keeps its staged directory replacement rather than launching `MAA.Updater.exe`. It shares the Windows client's installation mutex protocol, resource validation and repair selection, and `.old` backup location. The [parity tests](../../arknights_mower/tests/maa_update_parity_tests.py) cover damaged installations, same-version repairs, backup restoration and occupied-client admission.

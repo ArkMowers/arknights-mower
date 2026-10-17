@@ -41,10 +41,10 @@ class MaaBackupTests(unittest.TestCase):
         (self.target / "resource").mkdir(parents=True)
         (self.target / "resource/version.json").write_text("new")
         (self.target / "libMaaCore.so").write_text("new core")
-        self.old = self.root / "maa.old"
+        self.old = self.target / ".old"
         self.old.mkdir()
         (self.old / "old.bin").write_text("old core")
-        self.old_resource = self.target / "resource.old"
+        self.old_resource = self.old / "resource"
         self.old_resource.mkdir()
         (self.old_resource / "old.bin").write_text("old resource")
         self.settings = self.target / "config.json"
@@ -161,7 +161,7 @@ class MaaBackupTests(unittest.TestCase):
         self.target.mkdir()
         (self.target / "resource").mkdir()
         self.finish(instance)
-        self.assertTrue(self.old.exists())
+        self.assertTrue((self.root / "previous-running/.old").exists())
 
     def test_update_in_progress_defers_cleanup_without_blocking_callbacks(self):
         instance = self.asst()
@@ -261,7 +261,9 @@ class MaaBackupTests(unittest.TestCase):
         instance._cleanup_thread.join(3)
         self.assertFalse(self.old.exists())
 
-    def test_configured_symlink_does_not_select_another_paths_sibling_backup(self):
+    def test_configured_symlink_retires_internal_backup_and_preserves_legacy_sibling(
+        self,
+    ):
         alias = self.root / "configured-maa"
         try:
             alias.symlink_to(self.target, target_is_directory=True)
@@ -272,8 +274,8 @@ class MaaBackupTests(unittest.TestCase):
         instance = backup.VerifiedAsst(FakeAsst, alias, Mock())
         instance.start()
         self.finish(instance)
-        self.assertFalse(saved.exists())
-        self.assertTrue(self.old.exists())
+        self.assertTrue(saved.exists())
+        self.assertFalse(self.old.exists())
         self.assertTrue(self.settings.exists())
 
     def test_slow_cleanup_never_blocks_task_status_or_stop(self):

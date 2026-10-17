@@ -4,7 +4,6 @@ import math
 import os
 import pathlib
 import re
-import sys
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 from time import monotonic
@@ -12378,12 +12377,12 @@ class BaseSchedulerSolver(
 
     def update_maa_navigation(self, path):
         """Download navigation atomically, falling back to an intact local cache."""
+        from arknights_mower.utils.maa_runtime import navigation_cache_path
         from arknights_mower.utils.update_runtime import read_json, write_json
 
-        tasks_dir = path / "cache" / "resource"
-        if os.environ.get("MOWER_ANDROID") != "1":
-            tasks_dir = tasks_dir / "tasks"
-        ota_tasks_path = tasks_dir / "tasks.json"
+        ota_tasks_path = navigation_cache_path(
+            path, android=os.environ.get("MOWER_ANDROID") == "1"
+        )
         try:
             logger.debug("开始更新MAA活动关卡导航……")
             ota_tasks_url = (
@@ -12451,34 +12450,16 @@ class BaseSchedulerSolver(
             if not self.MAA.connect():
                 raise RuntimeError("安卓 MAA 引擎未连接")
             return
-        from arknights_mower.utils.maa_runtime import load_verified_maa
+        from arknights_mower.utils.maa_runtime import load_maa_with_navigation
 
         config.stop_maa.clear()
         conf = config.conf
         path = pathlib.Path(resolve_config_path(conf.maa_path))
-        asst_path = os.path.dirname(path / "Python" / "asst")
-        if asst_path not in sys.path:
-            sys.path.append(asst_path)
-
-        try:
-            from asst.asst import Asst
-            from asst.utils import InstanceOptionType
-
-            logger.info("MAA Python模块导入成功")
-        except Exception as e:
-            save_exception(e)
-            logger.exception(
-                f"MAA Python模块导入失败：{str(e)}",
-                extra={"archive_screenshots": False},
-            )
-            raise Exception("MAA Python模块导入失败")
-
-        self.update_maa_navigation(path)
-
         self.maa_callback = MaaCallbackLog()
-        self.MAA = load_verified_maa(Asst, path, self.on_maa_callback)
-        # A core reload replaces the SDK modules as well as the native image.
-        from asst.utils import InstanceOptionType
+        self.MAA = load_maa_with_navigation(
+            path, self.on_maa_callback, self.update_maa_navigation
+        )
+        InstanceOptionType = self.MAA.instance_options
 
         resource = read_json(path / "resource" / "version.json", {})
         resource_version = (
@@ -12639,6 +12620,17 @@ class BaseSchedulerSolver(
                 "MAA停止",
             )
             self.drop_send = True
+
+    def release_maa(self):
+        """关闭本轮桌面工作进程，Android 核心继续由宿主管理。"""
+        if getattr(self, "MAA", None) is not None:
+            try:
+                close = getattr(self.MAA, "close", None)
+                if close is not None:
+                    close()
+            except Exception:
+                logger.exception("关闭 MAA 工作进程失败")
+        self.MAA = None
 
     def restore_maa_theme(self):
         """本轮 MAA 任务收尾时恢复指定主题，为下次调度预留时间。"""
@@ -12880,7 +12872,7 @@ class BaseSchedulerSolver(
                 send_message("启动 肉鸽/保全/盐酸")
                 while True:
                     restore_theme = False
-                    self.MAA = None
+                    self.release_maa()
                     self.initialize_maa()
                     self.recog.reset_after_external_control()
                     self.back_to_index()
@@ -13071,11 +13063,14 @@ class BaseSchedulerSolver(
 
             if restore_theme:
                 self.restore_maa_theme()
-            self.MAA = None
+            self.release_maa()
         except (MowerExit, DeviceRecoveryError, SharedADBError):
-            if self.MAA is not None:
-                self.maa_stop()
-                logger.info("停止MAA")
+            try:
+                if getattr(self, "MAA", None) is not None:
+                    self.maa_stop()
+                    logger.info("停止MAA")
+            finally:
+                self.release_maa()
             raise
         except Exception as e:
             save_exception(e)
@@ -13087,7 +13082,7 @@ class BaseSchedulerSolver(
                     raise
                 except Exception:
                     logger.exception("MAA 异常后的任务清理失败，保留原始调用错误")
-            self.MAA = None
+            self.release_maa()
             battle_inventory_active.clear()
             send_message(str(e), "MAA调用出错！", level="ERROR")
             remaining_time = (self.tasks[0].time - datetime.now()).total_seconds()
@@ -13104,6 +13099,7 @@ class BaseSchedulerSolver(
             battle_inventory_active.clear()
             self.rest_until_next_task()
         finally:
+            self.release_maa()
             battle_inventory_active.clear()
 
     def skland_plan_solver(self):

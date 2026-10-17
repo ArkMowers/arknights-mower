@@ -299,7 +299,7 @@ with patch.object(windows_frameless, 'is_windows', return_value=True), patch.obj
 
 target = Path(log.get_path('@app/MAA'))
 target.mkdir()
-target.with_name('MAA.old').mkdir()
+(target / '.old').mkdir()
 checkpoint = maa_backup.BackupCheckpoint(target)
 with patch.object(maa_backup.shutil, 'rmtree', side_effect=OSError('backup')):
     assert checkpoint.retire() is False

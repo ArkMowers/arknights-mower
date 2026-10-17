@@ -5,6 +5,12 @@ import platform
 import sys
 from urllib.parse import quote
 
+if __name__ == "__main__" and sys.argv[1:2] == ["--maa-runtime-worker"]:
+    from arknights_mower.utils.maa_process import worker_main
+
+    worker_main()
+    sys.exit()
+
 if __name__ == "__main__" and sys.argv[1:2] == ["--jpeg-encode-worker"]:
     from arknights_mower.utils.jpeg_worker import worker_main
 
