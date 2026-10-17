@@ -149,5 +149,14 @@ export function planMowerCorrection(data:MowerSchedulingData,queue:MowerTaskQueu
  if(!force&&next&&Object.keys(plan).length*toMowerMicros(45/3600)>next.timeMicros-data.nowMicros||off&&!(force&&off===currentTask)){onSkip?.();return undefined}
  const duplicate=queue.tasks.find(task=>task!==currentTask&&task.type===T.SELF_CORRECTION&&Object.keys(task.plan).length===Object.keys(plan).length&&Object.entries(plan).every(([room,row])=>task.plan[room]?.length===row.length&&row.every((name,index)=>task.plan[room]![index]===name)))
  if(duplicate)return duplicate
- const task=new MowerTask({plan,type:T.SELF_CORRECTION,time:fromMowerMicros(data.nowMicros)});queue.tasks.push(task);return task
+ const task=new MowerTask({plan,type:T.SELF_CORRECTION,time:fromMowerMicros(data.nowMicros)});task.derivedCorrection=true;task.correctionSkipDorm=skipDorm;queue.tasks.push(task);return task
+}
+
+/** New observations invalidate a derived correction, but never an explicit or started arrangement. */
+export function refreshMowerDerivedCorrection(data:MowerSchedulingData,task:MowerTask,pending:readonly MowerTask[]):boolean {
+ if(!task.derivedCorrection||task.type!==T.SELF_CORRECTION||task.arrangementStarted||task.backupShiftActive||task.backupShiftIntent||task.backupShiftConditions||task.backupRefreshRules||task.backupExplicitSlots.size||task.productShiftLocked||task.productLockNames.size||task.productLockSlots.size||task.exhaustSupport||task.ordinaryCoordination||task.preferredReplacementRestore||task.dormRecoveryRestore.length||task.coordinationRequestNames.length||task.strictMoodLimit||task.advanceSupportSwap||task.arrangementRetryDueMicros!==undefined||task.arrangementRetryRoom!==undefined||task.arrangementRetryCount!==undefined||task.metadata)return false
+ task.plan=mowerCorrectionPlan(data,task.correctionSkipDorm,new Set(),pending,task)
+ task.groupShiftTransitions={};task.dormFillPlan={}
+ delete task.previewReturnVeto
+ return true
 }

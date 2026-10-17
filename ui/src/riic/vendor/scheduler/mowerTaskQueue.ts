@@ -31,6 +31,9 @@ export class MowerTask {
  observedOrderDueMicros?:number;wakeOnlyCompletion=false
  executionFailure?:{reason:string;rooms:string[];snapshot:MowerTaskFailureSnapshot}
  executionRetained=false
+ /** Only observation-derived corrections may be rebuilt before physical execution. */
+ derivedCorrection=false
+ correctionSkipDorm=false
  get retainsExecution():boolean{return !!this.executionFailure||this.executionRetained}
  previewReturnVeto?:{conditions:number[];names:string[]}
  groupShiftTransitions:Record<string,boolean>={}

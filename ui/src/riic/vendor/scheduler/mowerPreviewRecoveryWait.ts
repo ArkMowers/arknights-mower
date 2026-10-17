@@ -1,3 +1,4 @@
+import {refreshMowerDerivedCorrection} from './mowerCorrection'
 import type {MowerBackupRecoveryBlocked} from './mowerBackupDepartureRecovery'
 import {projectMowerArrangements} from './mowerObservations'
 import {mowerAssignDormGroup} from './mowerDormAssignment'
@@ -67,6 +68,7 @@ export function resumeMowerPreviewRecovery(source:RecoveryWaitState):boolean {
  for(const wait of resumed)if(!source.queue.tasks.includes(wait.task)){wait.task.executionRetained=true;source.queue.tasks.push(wait.task)}
  source.waitingRecovery=source.waitingRecovery?.filter(wait=>!resumed.includes(wait))
  names(source)
+ for(const wait of resumed)refreshMowerDerivedCorrection(source.data,wait.task,source.queue.tasks)
  return resumed.length>0
 }
 export function nextMowerPreviewRecoveryObservation(source:RecoveryWaitState):number {

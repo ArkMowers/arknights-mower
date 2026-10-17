@@ -269,8 +269,8 @@
       "reason": "Keep retained arrangement tasks when rebuilding derived shift plans. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning. Preserve ordinary request provenance through queued departures and backup previews; cancel only ordinary departures blocked by effective exhaustion rules, retain real exhaustion and explicit or started arrangements, and deduplicate retained exhaustion requests. Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions."
     },
     "scheduler/mowerTaskQueue.ts": {
-      "sha256": "020d0ec4064cf3ce4b2e8b3bf4ef7fea461f66ba5380208223aa106c1017adaf",
-      "reason": "Separate pending failures from eligible dispatch without replacing task identity, remaining plan or deadline. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Preserve ordinary request provenance through queued departures and backup previews; cancel only ordinary departures blocked by effective exhaustion rules, retain real exhaustion and explicit or started arrangements, and deduplicate retained exhaustion requests. Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions."
+      "sha256": "dafe1b2a26369a12aff6cf7e62fc38a3707ca4439878b338c6e67c1c8a90857d",
+      "reason": "Separate pending failures from eligible dispatch without replacing task identity, remaining plan or deadline. Preserve exhaustion-support prerequisite identity and exclude ordinary recovery expansion or coalescing before exhausted-shift replanning. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Preserve ordinary request provenance through queued departures and backup previews; cancel only ordinary departures blocked by effective exhaustion rules, retain real exhaustion and explicit or started arrangements, and deduplicate retained exhaustion requests. Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions. Refresh only explicitly observation-derived, unstarted corrections after related observations or group/dependency changes; preserve original task identity and time and explicit or started remaining work, synchronized from calculator 4448dd3916b681e4c2ff08a80e851ae9256215a0."
     },
     "scheduler/mowerTaskScheduling.ts": {
       "sha256": "69553cf8c8a453d15c23bc0aeed30cc0869ba462b5574a158371a362bcd3ed07",
@@ -437,8 +437,8 @@
       "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Retain the bundled runtime suite and verify one retry after new observations, followed by no retries in unchanged state; the source keeps these cases in a separate suite. Verify an already due exhausted shift departs while observed mood remains above zero, preserving the established exhaustion lead time. Restore the configurable extra-wait cap for spread-triggered group recovery, preserving explicit full recovery, completed-member idle release, and cycle-scoped timing across replanning and projections. Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch. Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions."
     },
     "scheduler/mowerTaskFailure.ts": {
-      "sha256": "a9602121c0af8da2d6e3dcd3227bb7cfe176876c6ed60ed4b943de6471d60469",
-      "reason": "Synchronize retained incidental dorm moves and shared replacement dependency observations from calculator e7e8966330d351539684b1daba82e9ccead48fa1; preserve explicit staffing and the original failed request."
+      "sha256": "130498336c26c2d938d644f40354a7a5b24376138b86c3e2623c1525ed80a676",
+      "reason": "Synchronize retained incidental dorm moves and shared replacement dependency observations from calculator e7e8966330d351539684b1daba82e9ccead48fa1; preserve explicit staffing and the original failed request. Refresh only explicitly observation-derived, unstarted corrections after related observations or group/dependency changes; preserve original task identity and time and explicit or started remaining work, synchronized from calculator 4448dd3916b681e4c2ff08a80e851ae9256215a0."
     },
     "simulator/mowerCoordinationRates.spec.ts": {
       "sha256": "b99547690d7c686b20ba41cf9ae737b214a88c1e4a382fbe76a4e2076aeca720",
@@ -545,8 +545,8 @@
       "reason": "Import this scheduler module or focused regression from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a for backup shift intent and recovery continuity."
     },
     "scheduler/mowerCorrection.ts": {
-      "sha256": "cfc6f390f6da67ff7b902be462ffdb8ad1b028e5d49df794c77f3ddc4987cdba",
-      "reason": "Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions. Verify departure-bed dependencies against the failed effective projection and retain same-slot mood rereads without recalling resting peers, from calculator 0b40f8bed3e8c07df848bed7eb1338ed9214c663."
+      "sha256": "2220b27ac4520c84b0051898d9a4428358525e5246a056c3c87fc5a15504e471",
+      "reason": "Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions. Verify departure-bed dependencies against the failed effective projection and retain same-slot mood rereads without recalling resting peers, from calculator 0b40f8bed3e8c07df848bed7eb1338ed9214c663. Refresh only explicitly observation-derived, unstarted corrections after related observations or group/dependency changes; preserve original task identity and time and explicit or started remaining work, synchronized from calculator 4448dd3916b681e4c2ff08a80e851ae9256215a0."
     },
     "scheduler/mowerExplicitCorrectionCycle.spec.ts": {
       "sha256": "df3f677660ef5e3916c8734615b52c3796edbd5ce5988f956399ce247415f89b",
@@ -561,8 +561,8 @@
       "reason": "Import this scheduler module or focused regression from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a for backup shift intent and recovery continuity."
     },
     "scheduler/mowerPreviewRecoveryWait.ts": {
-      "sha256": "9ffd1c1460f096ee4d916ae453b8ed8a0b6920851ce4f6d6e1ec6b976452bfbf",
-      "reason": "Import this scheduler module or focused regression from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a for backup shift intent and recovery continuity. Verify departure-bed dependencies against the failed effective projection and retain same-slot mood rereads without recalling resting peers, from calculator 0b40f8bed3e8c07df848bed7eb1338ed9214c663."
+      "sha256": "417ece57f084ba96efa9f8b5bf3975be1efbef1773d1c1eb29653e303ba261c6",
+      "reason": "Import this scheduler module or focused regression from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a for backup shift intent and recovery continuity. Verify departure-bed dependencies against the failed effective projection and retain same-slot mood rereads without recalling resting peers, from calculator 0b40f8bed3e8c07df848bed7eb1338ed9214c663. Refresh only explicitly observation-derived, unstarted corrections after related observations or group/dependency changes; preserve original task identity and time and explicit or started remaining work, synchronized from calculator 4448dd3916b681e4c2ff08a80e851ae9256215a0."
     },
     "scheduler/mowerRecoveryDependency.spec.ts": {
       "sha256": "70ccdc6d59c8e2d0da3f400d2408e3fe8f6059d38e0dc488b7c17e512c988f11",
@@ -587,10 +587,14 @@
     "scheduler/mowerTaskExecutor.ts": {
       "sha256": "eb5385ad4472870acaa26364b2eb21206e517b1b49bb8bd70fcdc19510615fc3",
       "reason": "Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions."
+    },
+    "scheduler/mowerTaskFailure.spec.ts": {
+      "sha256": "6148371f988d8bde7cff09cbd36fd1ab0b15367d145819ac707100858cb8dc1a",
+      "reason": "Refresh only explicitly observation-derived, unstarted corrections after related observations or group/dependency changes; preserve original task identity and time and explicit or started remaining work, synchronized from calculator 4448dd3916b681e4c2ff08a80e851ae9256215a0."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
-  "mowerCheckedRevision": "2871b5037b690fcf88e3da29040e5398915ec004",
+  "mowerCheckedRevision": "890fb2e8cc5c845f748ec55636a2abcbcba48a54",
   "schedulingSync": {
     "date": "2026-10-18",
     "behaviors": [
@@ -614,7 +618,8 @@
       "complete shift previews retain triggered explicit departures through self-deactivation and derive group transitions from final working arrangements",
       "observed recovery, traced backup vetoes and concrete bed reservations retain original tasks until relevant observations or arrangements release them",
       "explicit primary-to-cover backup departures include required recovery beds and preserve intentional partial group staffing during recovery",
-      "already assigned legal covers remain at their working slots while displaced primaries enter recovery"
+      "already assigned legal covers remain at their working slots while displaced primaries enter recovery",
+      "observation-derived unstarted corrections refresh after relevant failures or recovery waits without preserving obsolete staffing reservations"
     ],
     "limitations": [
       "ideal run orders do not simulate maintenance runner replacement acceleration or physical restoration",
@@ -627,8 +632,8 @@
       "maintenance-primary run-order pause",
       "additional facility-level export changes"
     ],
-    "calculatorRevision": "0b40f8bed3e8c07df848bed7eb1338ed9214c663",
-    "mowerRevision": "2871b5037b690fcf88e3da29040e5398915ec004",
+    "calculatorRevision": "4448dd3916b681e4c2ff08a80e851ae9256215a0",
+    "mowerRevision": "890fb2e8cc5c845f748ec55636a2abcbcba48a54",
     "exhaustSupportMowerRevision": "acd54324d549eec34ef1a0bb9910de4c92cfb7d1",
     "exhaustSupportCalculatorRevision": "c2b50182da1bcd83dd3da1ce6f2da58f0f66efb8",
     "dormRecoveryMowerRevision": "ed6f10d9dae4a5ce1a992308582a0b13d240b6f5",
@@ -645,6 +650,8 @@
     "suiConsumptionCalculatorRevision": "79790582f377ef0be15ad2ba93dba8f5aaaeba35",
     "backupDepartureCalculatorRevision": "0b40f8bed3e8c07df848bed7eb1338ed9214c663",
     "backupDepartureMowerRevision": "99887004b53479d1681f290f6ef7cf55be8d28b2",
-    "sameSlotObservationMowerRevision": "2871b5037b690fcf88e3da29040e5398915ec004"
+    "sameSlotObservationMowerRevision": "2871b5037b690fcf88e3da29040e5398915ec004",
+    "derivedCorrectionCalculatorRevision": "4448dd3916b681e4c2ff08a80e851ae9256215a0",
+    "derivedCorrectionMowerRevision": "890fb2e8cc5c845f748ec55636a2abcbcba48a54"
   }
 }
