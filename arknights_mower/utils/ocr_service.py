@@ -116,23 +116,65 @@ def _serve(listener, control, token, idle_timeout, factory, max_requests):
                 return
 
 
-def _worker(listener, control, token, directory, idle_timeout, factory, max_requests):
+def _register(kind, state, model_directory):
+    state = Path(state).resolve()
+    with runtime.submission_lock(state):
+        owner = runtime.read_json(state / "active/owner.json", {})
+        if runtime.active_job(state) and owner.get("id") != os.environ.get(
+            "MOWER_RESTART_JOB"
+        ):
+            raise RuntimeError("更新或进程操作期间不能启动共享 OCR")
+        registration = runtime.RuntimeRegistration(
+            kind, directory=state, maintenance=False
+        )
+        registration.record["supervision_directory"] = str(model_directory)
+        registration.publish()
+    return registration
+
+
+def _worker(
+    listener,
+    control,
+    token,
+    directory,
+    idle_timeout,
+    factory,
+    max_requests,
+    state_directory,
+):
     def parent_eof():
         try:
             control.recv()
         except (EOFError, OSError):
             os._exit(0)
 
-    Thread(target=parent_eof, name="ocr-parent-channel", daemon=True).start()
+    exitcode = 1
     try:
+        Thread(target=parent_eof, name="ocr-parent-channel", daemon=True).start()
+        # 独立登记先于模型加载，并与更新提交共用准入锁。
+        registration = _register(
+            "ocr-worker", Path(state_directory), Path(directory) / "model"
+        )
+
+        def shutdown():
+            while not registration.closed.wait(0.05):
+                if registration.shutdown_requested():
+                    os._exit(0)
+
+        Thread(target=shutdown, name="ocr-worker-shutdown", daemon=True).start()
         # 协调进程突然退出后，旧模型未释放前不允许构造替代模型。
         with runtime.supervision_lock(Path(directory) / "model", timeout=0):
             _serve(listener, control, token, idle_timeout, factory, max_requests)
+        exitcode = 0
     finally:
-        listener.close()
-        control.close()
-    # 原生推理会话随进程释放，避免解释器终结时的线程析构顺序。
-    os._exit(0)
+        try:
+            listener.close()
+        finally:
+            try:
+                control.close()
+            finally:
+                # 保留登记直至进程退出，原生会话也随进程释放。
+                os._exit(exitcode)
 
 
 def serve(
@@ -150,17 +192,7 @@ def serve(
             if state_directory is not None
             else runtime.state_dir()
         )
-        with runtime.submission_lock(state):
-            owner = runtime.read_json(state / "active/owner.json", {})
-            if runtime.active_job(state) and owner.get("id") != os.environ.get(
-                "MOWER_RESTART_JOB"
-            ):
-                raise RuntimeError("更新或进程操作期间不能启动共享 OCR")
-            registration = runtime.RuntimeRegistration(
-                "ocr-service", directory=state, maintenance=False
-            )
-            registration.record["supervision_directory"] = str(directory / "model")
-            registration.publish()
+        registration = _register("ocr-service", state, directory / "model")
         try:
             _coordinate(directory, registration, idle_timeout, factory, max_requests)
         finally:
@@ -207,7 +239,16 @@ def _generation(
     parent, child = context.Pipe()
     process = context.Process(
         target=_worker,
-        args=(listener, child, token, directory, idle_timeout, factory, max_requests),
+        args=(
+            listener,
+            child,
+            token,
+            directory,
+            idle_timeout,
+            factory,
+            max_requests,
+            registration.directory,
+        ),
         daemon=True,
     )
     recycle = False
@@ -248,6 +289,7 @@ def _generation(
         parent.close()
         child.close()
         close_process(process, os.getpid(), timeout=0.5)
+        runtime.instances(registration.directory, timeout=0, strict=False)
     return recycle
 
 

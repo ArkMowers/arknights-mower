@@ -317,8 +317,10 @@ def test_update_shutdown_releases_worker_before_service_registration(tmp_path):
         client = ocr_shared.SharedOCREngine(directory=tmp_path)
         pid = client(np.zeros((1, 1), np.uint8))[0][0][0]
         records = runtime.instances(tmp_path / "updates")
-        assert len(records) == 1 and records[0]["kind"] == "ocr-service"
-        record = records[0]
+        by_kind = {record["kind"]: record for record in records}
+        assert set(by_kind) == {"ocr-service", "ocr-worker"}
+        assert by_kind["ocr-worker"]["pid"] == pid
+        record = by_kind["ocr-service"]
         runtime.write_json(tmp_path / "updates/shutdown" / f"{record['id']}.json", {})
         process.join(4)
         assert not process.is_alive()
@@ -401,6 +403,92 @@ def test_source_service_survives_first_instance_exit_and_reuses_model(tmp_path):
         if endpoint:
             wait_for(lambda: not runtime.process_alive(endpoint["worker_pid"]))
             wait_for(lambda: not (directory / "endpoint.json").exists())
+
+
+@pytest.mark.parametrize("active_update", [False, True])
+def test_source_cold_start_preserves_resolved_data_root_and_update_admission(
+    tmp_path, active_update
+):
+    import subprocess
+
+    installation = runtime.installation_root()
+    try:
+        relative_data = Path(os.path.relpath(tmp_path / "service-data", installation))
+    except ValueError:
+        pytest.skip("相对数据根目录检查需要源码与临时目录位于同一磁盘")
+    # 将调用目录与安装目录解析出的数据根都限制在此测试的临时目录内。
+    levels = next(
+        (index for index, part in enumerate(relative_data.parts) if part != ".."),
+        0,
+    )
+    caller = tmp_path.joinpath(*(["caller"] * max(1, levels)))
+    caller.mkdir(parents=True)
+    expected_data = (caller / relative_data).resolve()
+    assert expected_data.is_relative_to(tmp_path)
+    assert expected_data != tmp_path / "service-data"
+    environment = {
+        **os.environ,
+        "MOWER_DATA_DIR": str(relative_data),
+        "PYTHONPATH": os.pathsep.join(
+            filter(None, (str(installation), os.environ.get("PYTHONPATH")))
+        ),
+    }
+    environment.pop("MOWER_RESTART_JOB", None)
+    source = """
+import os, sys, time
+from pathlib import Path
+from arknights_mower.utils import update_runtime as runtime
+from arknights_mower.utils.ocr_shared import open_service, shared_directory
+
+expected_data, wrong_data = map(Path, sys.argv[1:3])
+active_update = sys.argv[3] == "True"
+state = runtime.state_dir()
+assert state.is_relative_to(expected_data)
+directory = shared_directory()
+if active_update:
+    runtime.write_json(state / "active/owner.json", {"pid": os.getpid(), "id": "fixture"})
+try:
+    try:
+        channel, token = open_service(directory, time.monotonic() + 10)
+    except RuntimeError:
+        assert active_update, "cold start failed without an active update"
+    else:
+        channel.close()
+        assert not active_update, "shared OCR ignored the caller's active update"
+        records = runtime.instances(state)
+        assert any(record["kind"] == "ocr-service" for record in records), (
+            "shared OCR registration escaped the caller's resolved data root"
+        )
+    if active_update:
+        assert not (directory / "endpoint.json").exists()
+        assert runtime.instances(state) == []
+finally:
+    # 断言失败时也关闭意外数据根内由此测试创建的服务。
+    for data_root in (expected_data, wrong_data):
+        for service_state in (data_root / "tmp/updates").glob("*"):
+            for record in runtime.instances(service_state):
+                runtime.write_json(service_state / "shutdown" / f"{record['id']}.json", {})
+    deadline = time.monotonic() + 5
+    while (directory / "endpoint.json").exists() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert not (directory / "endpoint.json").exists(), "test service did not stop"
+"""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            source,
+            str(expected_data),
+            str(tmp_path / "service-data"),
+            str(active_update),
+        ],
+        cwd=caller,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_recycling_preserves_waiting_requests_and_never_overlaps_models(tmp_path):
@@ -492,6 +580,7 @@ def test_generation_channel_close_preserves_recycle_and_cleans_worker(
     cleanup = Mock()
     monkeypatch.setattr(owned, "close_process", cleanup)
     registration = Mock()
+    registration.directory = tmp_path / "updates"
     registration.shutdown_requested.return_value = False
     listener = Mock()
     listener.getsockname.return_value = ("127.0.0.1", 12345)

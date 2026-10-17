@@ -90,6 +90,7 @@ def service_command(directory):
 
 def start_service(directory):
     from arknights_mower.utils import update_runtime as runtime
+    from arknights_mower.utils.path import get_path
 
     options = (
         {
@@ -100,6 +101,7 @@ def start_service(directory):
         else {"start_new_session": True}
     )
     environment = os.environ.copy()
+    environment["MOWER_DATA_DIR"] = str(get_path("@app", space="").resolve())
     environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     process = subprocess.Popen(
         service_command(directory),

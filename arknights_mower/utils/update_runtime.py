@@ -268,6 +268,10 @@ def instances(directory=None, *, timeout=5, strict=True):
                     result.append(record)
                 else:
                     path.unlink(missing_ok=True)
+                    if record.get("kind") == "ocr-worker":
+                        (directory.parent / "shutdown" / path.name).unlink(
+                            missing_ok=True
+                        )
             except FileNotFoundError:
                 pass  # The instance may have removed its registration on exit.
             except (OSError, ValueError) as exc:
