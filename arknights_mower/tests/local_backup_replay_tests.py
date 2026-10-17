@@ -78,6 +78,30 @@ def replay(monkeypatch):
     return solver
 
 
+def assert_only_stale_mood_reads(solver):
+    correction = solver.agent_get_mood(read_rooms=False, return_plan=True)
+    positions = {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+    groups = dict(solver.op_data.group_shift_state)
+    for room, row in correction.items():
+        for index, name in enumerate(row):
+            if name == "Current":
+                continue
+            op = solver.op_data.operators[name]
+            assert positions[name] == (room, index)
+            assert op.need_to_refresh(2.5)
+            # 设备读取以冻结时刻的心情更新缓存，不能借重读搬动同组成员。
+            op.mood, op.time_stamp = op.current_mood(), base.datetime.now()
+    assert not solver.agent_get_mood(read_rooms=False, return_plan=True)
+    assert positions == {
+        name: (op.current_room, op.current_index)
+        for name, op in solver.op_data.operators.items()
+    }
+    assert solver.op_data.group_shift_state == groups
+
+
 def execute(solver, task):
     base.datetime.current = max(base.datetime.now(), task.time)
     solver.tasks = [task]
@@ -121,7 +145,7 @@ def test_full_plan_return_goes_directly_to_main_posts(replay, group, kind):
     execute(replay, SchedulerTask(task_type=TaskTypes.SHIFT_OFF, task_plan=rest))
     backup_index = 3 if group == "感知" else 2
     assert replay.op_data.plan_condition[backup_index]
-    assert not replay.agent_get_mood(read_rooms=False, return_plan=True)
+    assert_only_stale_mood_reads(replay)
     for bed in replay.op_data.dorm:
         if bed.name in names:
             # 只推进到回班，不把无关干员的心情缓存推进到过期。
@@ -153,7 +177,7 @@ def test_full_plan_return_goes_directly_to_main_posts(replay, group, kind):
         for name in returning
     )
     assert not any(t.meta_data == "副表内存收敛" and t.plan for t in replay.tasks)
-    assert not replay.agent_get_mood(read_rooms=False, return_plan=True)
+    assert_only_stale_mood_reads(replay)
 
 
 def test_full_plan_real_correction_after_recovery_skips_backup_posts(replay):
@@ -186,4 +210,4 @@ def test_full_plan_real_correction_after_recovery_skips_backup_posts(replay):
         assert (op.current_room, op.current_index) == (op.room, op.index)
     assert not replay.op_data.plan_condition[3]
     assert not any(t.meta_data == "副表内存收敛" and t.plan for t in replay.tasks)
-    assert not replay.agent_get_mood(read_rooms=False, return_plan=True)
+    assert_only_stale_mood_reads(replay)
