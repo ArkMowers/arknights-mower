@@ -23,7 +23,8 @@ backup_solver = backup_rest_schedule_tests.solver
 shared_solver = multi_group_shift_tests.solver
 
 
-def test_handoff_retains_request_then_restores_first_cover(solver):
+def test_handoff_retains_request_then_restores_first_cover(solver, caplog):
+    caplog.set_level("INFO")
     original = solver.task
     original.time = datetime.now() - timedelta(minutes=30)
     at = original.time
@@ -34,6 +35,13 @@ def test_handoff_retains_request_then_restores_first_cover(solver):
     assert pending.execution_failure
     solver._resume_failed_tasks()
     assert pending.execution_failure
+    solver.overtake_room()
+    assert solver.tasks == [support, pending]
+    assert pending.time == at
+    waits = [record for record in caplog.records if "等待" in record.message]
+    assert len(waits) == 2
+    assert all(record.levelname == "INFO" for record in waits)
+    assert not [record for record in caplog.records if record.levelno >= 30]
     before = [(bed.name, bed.time) for bed in solver.op_data.dorm]
     solver.op_data = solver.op_data.project_arrangements([support.plan])
     solver.tasks.remove(support)
@@ -743,3 +751,15 @@ def test_recall_requires_each_selected_member_within_operation_window(
     else:
         assert support is None
     assert data.operators["苍苔"].mood == data.operators["絮雨"].mood == 23.9
+
+
+def test_failed_arrangement_retains_error_logging(solver, caplog):
+    original = solver.task
+    at = original.time
+    solver._retain_failed_task(original, "宿舍换人失败", ["dormitory_1"])
+    assert original.time == at
+    assert original.execution_failure["reason"] == "宿舍换人失败"
+    assert any(
+        record.levelname == "ERROR" and "宿舍换人失败" in record.message
+        for record in caplog.records
+    )

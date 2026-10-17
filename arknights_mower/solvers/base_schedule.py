@@ -598,14 +598,15 @@ class BaseSchedulerSolver(
             }
         )
 
-    def _retain_failed_task(self, task, reason, rooms):
+    def _retain_failed_task(self, task, reason, rooms, *, dependency=False):
         rooms = tuple(rooms)
         task.execution_failure = {
             "reason": reason,
             "rooms": rooms,
             "snapshot": self._task_failure_snapshot(task, rooms),
         }
-        logger.error("%s；保留原任务及时间，相关实测或安排更新后复核", reason)
+        log = logger.info if dependency else logger.error
+        log("%s；保留原任务及时间，相关实测或安排更新后复核", reason)
 
     def _refresh_derived_correction(self, task):
         """相关观测更新后，只重算尚未执行的普通派生纠错。"""
@@ -935,7 +936,7 @@ class BaseSchedulerSolver(
                 self.tasks.append(self.task)
             self.task.coordination_request_names = list(candidates)
             self._retain_failed_task(
-                self.task, "等待已排定的替班交接", list(support.plan)
+                self.task, "等待已排定的替班交接", list(support.plan), dependency=True
             )
             self.skip()
             return
@@ -996,7 +997,9 @@ class BaseSchedulerSolver(
                 if not any(queued is self.task for queued in self.tasks):
                     self.tasks.append(self.task)
                 self.task.coordination_request_names = list(candidates)
-                self._retain_failed_task(self.task, "等待替班交接完成", list(support))
+                self._retain_failed_task(
+                    self.task, "等待替班交接完成", list(support), dependency=True
+                )
             else:
                 msg = f"无法完成 {self.task.meta_data} 的排班：没有同时满足替班和床位的方案"
                 logger.warning(msg)

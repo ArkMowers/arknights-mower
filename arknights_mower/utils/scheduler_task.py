@@ -3510,7 +3510,8 @@ class SchedulerTask:
         return res
 
     def __str__(self):
-        return f"SchedulerTask(time='{self.time}',task_plan={self.plan},task_type={self.type},meta_data='{self.meta_data}',adjusted={self.adjusted})"
+        label = self.display_name if isinstance(self.type, TaskTypes) else self.type
+        return f"{label}: SchedulerTask(time='{self.time}',task_plan={self.plan},task_type={self.type},meta_data='{self.meta_data}',adjusted={self.adjusted})"
 
     def __eq__(self, other):
         if isinstance(other, SchedulerTask):
