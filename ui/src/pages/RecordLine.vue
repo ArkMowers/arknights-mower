@@ -325,7 +325,8 @@ async function refreshSeries() {
 }
 watch(
   () => JSON.stringify(board.views.map((view) => view.operators)),
-  () => refreshSeries()
+  () => refreshSeries(),
+  { immediate: true }
 )
 
 onMounted(async () => {
@@ -341,7 +342,6 @@ onMounted(async () => {
   } catch {
     historyLimited.value = true
   }
-  await refreshSeries()
 })
 
 function getMoodInterval(points, index) {
