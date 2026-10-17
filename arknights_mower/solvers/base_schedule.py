@@ -216,6 +216,9 @@ def _merge_plan_overlay(plan: dict, overlay: dict, op_data: Operators) -> None:
             if room not in op_data.plan:
                 continue
             target = plan.setdefault(room, ["Current"] * len(op_data.plan[room]))
+            target.extend(
+                ["Current"] * (min(len(names), len(op_data.plan[room])) - len(target))
+            )
         for index, name in enumerate(names[: len(target)]):
             if name != "Current":
                 target[index] = name
@@ -359,12 +362,15 @@ class ProductSwitchFailed(RuntimeError):
 
 
 class GroupShiftBlocked(ProductSwitchDeferred):
-    def __init__(self, groups=(), *, predecessors=()):
+    def __init__(self, groups=(), *, predecessors=(), recovery_names=()):
         self.groups = set(groups)
         self.predecessors = tuple(predecessors)
+        self.recovery_names = tuple(recovery_names)
         waiting = (
             "前置换班确认"
             if self.predecessors
+            else "离岗成员的恢复床位"
+            if self.recovery_names
             else "、".join(sorted(groups)) + "回班"
             if groups
             else "替班可用"
@@ -2442,7 +2448,10 @@ class BaseSchedulerSolver(
                 self.skip()
             except GroupShiftBlocked as e:
                 self._suspend_group_shift(
-                    self.task, e.groups, predecessors=e.predecessors
+                    self.task,
+                    e.groups,
+                    predecessors=e.predecessors,
+                    recovery_names=e.recovery_names,
                 )
                 logger.debug(str(e))
                 # Suspended arrangements must not occupy the dispatch queue or
@@ -3161,8 +3170,16 @@ class BaseSchedulerSolver(
                         fix_plan.setdefault(moved_room, ["Current"] * len(moved_slots))[
                             moved_index
                         ] = moved_slots[moved_index].agent
-        # 还要确保同一组在同时上班
+        from arknights_mower.utils.resting_correction import covered_recovery_members
+
+        intentional_resting_groups = {
+            self.op_data.operators[name].group
+            for name in covered_recovery_members(self.op_data)
+        }
+        # 副表明确部分离岗后，同组仍有人在岗不等于需要提前召回恢复成员。
         for g in self.op_data.groups:
+            if g in intentional_resting_groups:
+                continue
             g_agents = [
                 name
                 for name in self.op_data.groups[g]
@@ -3253,6 +3270,15 @@ class BaseSchedulerSolver(
 
             reconsider_low_mood_replacements(self.op_data, fix_plan, _is_mastery_busy)
         suppress_completed_dorm_returns(self.op_data, fix_plan)
+        departed = covered_recovery_members(self.op_data) - protected_training
+        # 组内部分显式下班不授权纠错召回仍在恢复的成员。
+        for room, row in fix_plan.items():
+            for index, name in enumerate(row):
+                if name in departed and not room.startswith("dorm"):
+                    row[index] = "Current"
+        self._complete_departed_recovery(
+            fix_plan, departed, reserved_slots=explicit_slots
+        )
         explicit = {}
         for room, index in explicit_slots:
             if room in plan and 0 <= index < len(plan[room]):
@@ -4593,10 +4619,63 @@ class BaseSchedulerSolver(
             logger.info("副表产物先切换%s：%s", self.translate_room(room), target)
         return not waiting
 
+    def _complete_departed_recovery(self, plan, names, *, reserved_slots=()):
+        """在隔离投影中补齐离岗者的床位；不足时不提交部分换班。"""
+        projected = self.op_data.project_arrangements([plan])
+        missing = [
+            name
+            for name in names
+            if not (op := projected.operators[name]).workaholic
+            and not op.room.startswith("dorm")
+            and not op.current_room
+            and not projected.rest_mood_complete(name)
+            and (op.time_stamp is None or op.current_mood() < op.upper_limit)
+        ]
+        if not missing:
+            return True
+        reserved_names, occupied = dorm_task_reservations(
+            projected,
+            [task for task in self.tasks if task is not getattr(self, "task", None)],
+        )
+        if reserved_names.intersection(missing):
+            return False
+        occupied.update(reserved_slots)
+        occupied.update(
+            (room, index)
+            for room, row in plan.items()
+            if room.startswith("dorm")
+            for index, name in enumerate(row)
+            if name != "Current"
+        )
+        previous = dorm_residents(projected)
+        beds = projected.assign_dorm_group(
+            missing,
+            active_groups={projected.operators[name].group for name in missing},
+            plan=plan,
+            reserved_slots=occupied,
+        )
+        if beds is None:
+            return False
+        for bed in beds:
+            room, index = bed.position
+            plan.setdefault(room, ["Current"] * len(projected.plan[room]))[index] = (
+                bed.name
+            )
+        restore_displaced_resting(
+            projected,
+            previous,
+            plan,
+            copy.deepcopy(self.tasks),
+            admitted={bed.position: bed.name for bed in beds},
+            group_transitions=projected.arrangement_group_transitions(plan),
+        )
+        return True
+
     def _backup_transition_plan(
         self, previous_plan, original, conditions, previous_dorms, previous_dorm_layout
     ):
         """普通切表与换班推演共用最终岗位、显式任务和宿舍迁移规则。"""
+        self._backup_departure_waiting_names = ()
         transition_plan = {}
         deactivated_slots = {}
         # 退出副表时恢复其任务写过的槽位；切入任务在最后覆盖，确保多个
@@ -4651,6 +4730,28 @@ class BaseSchedulerSolver(
                 )
 
         self._suppress_train_arrangement(transition_plan)
+        departing = {
+            owner.name
+            for bp_index, bp in enumerate(self.op_data.backup_plans)
+            if not original[bp_index] and conditions[bp_index]
+            for room, names in (bp.task or {}).items()
+            if not room.startswith("dorm")
+            for index, name in enumerate(names)
+            if index < len(self.op_data.plan.get(room, ()))
+            and (
+                owner := self.op_data.operators.get(
+                    self.op_data.plan[room][index].agent
+                )
+            )
+            is not None
+            and name in self.op_data.replacement_candidates(owner)
+            and name not in TRADE_ORDER_AGENTS
+            and transition_plan.get(room, [])[index : index + 1] == [name]
+            and owner.name not in self._protected_training_names()
+        }
+        if not self._complete_departed_recovery(transition_plan, departing):
+            self._backup_departure_waiting_names = tuple(sorted(departing))
+            return None
 
         from arknights_mower.utils.resting_correction import (
             preserve_backup_replacements,
@@ -5622,7 +5723,7 @@ class BaseSchedulerSolver(
                     )
                 ):
                     return False
-                if self.op_data.replacement_exhausted(obj, operator=x):
+                if not in_slot and self.op_data.replacement_exhausted(obj, operator=x):
                     return False
                 return (
                     obj not in TRADE_ORDER_AGENTS
@@ -6220,8 +6321,44 @@ class BaseSchedulerSolver(
             )
         return groups
 
-    def _suspend_group_shift(self, task, groups, *, predecessors=()):
+    def _departure_recovery_signature(self, names, *, current_task=None):
+        members = set(names)
+        members.update(
+            cover
+            for name in names
+            if name in self.op_data.operators
+            for cover in self.op_data.replacement_candidates(
+                self.op_data.operators[name]
+            )
+        )
+        members.update(
+            op.name for op in self.op_data.operators.values() if op.is_resting()
+        )
+        reserved_names, reserved_slots = dorm_task_reservations(
+            self.op_data, [task for task in self.tasks if task is not current_task]
+        )
+        return (
+            tuple(self.op_data.plan_condition),
+            tuple(sorted(reserved_names & members)),
+            tuple(sorted(reserved_slots)),
+            tuple(sorted(self.op_data.reserved_product_beds.items())),
+            tuple(
+                (name, op.current_room, op.current_index, op.time_stamp, op.mood)
+                for name in sorted(members)
+                if (op := self.op_data.operators.get(name)) is not None
+            ),
+            tuple(
+                (bed.position, bed.name, bed.time) for bed in self.op_data.all_dorms()
+            ),
+        )
+
+    def _suspend_group_shift(self, task, groups, *, predecessors=(), recovery_names=()):
         task.group_shift_waiting = set(groups)
+        if recovery_names:
+            task.departure_recovery_names = tuple(recovery_names)
+            task.departure_recovery_observation = self._departure_recovery_signature(
+                recovery_names, current_task=task
+            )
         task.group_shift_predecessors = tuple(predecessors)
         waiting = getattr(self, "waiting_group_shifts", [])
         if all(pending is not task for pending in waiting):
@@ -6238,6 +6375,13 @@ class BaseSchedulerSolver(
         if self._initial_mood_read_pending() or self._emergency_frozen():
             return
         for task in list(getattr(self, "waiting_group_shifts", ())):
+            departure_names = getattr(task, "departure_recovery_names", ())
+            if departure_names and getattr(
+                task, "departure_recovery_observation", None
+            ) == (
+                self._departure_recovery_signature(departure_names, current_task=task)
+            ):
+                continue
             recovery_wait = getattr(task, "recovery_waiting_observations", None)
             if recovery_wait is not None:
                 from arknights_mower.utils.recovery_execution import (
@@ -6271,11 +6415,24 @@ class BaseSchedulerSolver(
             ):
                 continue
             try:
+                if departure_names:
+                    self._prepare_shift_backup(task)
+                    task.__dict__.pop("departure_recovery_names", None)
+                    task.__dict__.pop("departure_recovery_observation", None)
                 self._prepare_group_shift(task)
             except GroupShiftBlocked as error:
                 task.group_shift_waiting = error.groups
                 task.group_shift_predecessors = error.predecessors
+                if error.recovery_names:
+                    task.departure_recovery_names = error.recovery_names
+                    task.departure_recovery_observation = (
+                        self._departure_recovery_signature(
+                            error.recovery_names, current_task=task
+                        )
+                    )
                 continue
+            task.__dict__.pop("departure_recovery_names", None)
+            task.__dict__.pop("departure_recovery_observation", None)
             del task.group_shift_waiting
             task.__dict__.pop("recovery_waiting_observations", None)
             task.__dict__.pop("group_shift_predecessors", None)
@@ -6883,6 +7040,10 @@ class BaseSchedulerSolver(
                 dorm_rebalance_signature(seed),
             )
             if transition is None:
+                if simulation._backup_departure_waiting_names:
+                    raise GroupShiftBlocked(
+                        recovery_names=simulation._backup_departure_waiting_names
+                    )
                 raise ProductSwitchDeferred(
                     "副表替班暂不可用，保留原换班安排", minutes=1
                 )
@@ -6892,6 +7053,27 @@ class BaseSchedulerSolver(
                 if index < len(transition.get(room, ()))
                 and transition[room][index] != "Current"
             }
+            departing_names = {
+                owner.name
+                for room, index in entry_slots
+                if not room.startswith("dorm")
+                and index < len(simulation.op_data.plan.get(room, ()))
+                and (
+                    owner := simulation.op_data.operators.get(
+                        simulation.op_data.plan[room][index].agent
+                    )
+                )
+                is not None
+                and transition[room][index]
+                in simulation.op_data.replacement_candidates(owner)
+            }
+            entry_slots.update(
+                (room, index)
+                for room, names in transition.items()
+                if room.startswith("dorm")
+                for index, name in enumerate(names)
+                if name in departing_names
+            )
             entry = self._plan_for_slots(transition, entry_slots)
             if entry:
                 # 本次显式任务撤销自身触发条件后，仍保留已触发的岗位安排。

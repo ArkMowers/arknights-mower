@@ -113,7 +113,7 @@ def test_same_post_check_preserves_resting_group_and_requested_read(solver, unkn
     solver.enter_room.assert_not_called()
 
 
-def test_new_explicit_slot_allows_same_positions_to_finish_convergence(solver):
+def test_covered_departure_converges_without_recalling_primary(solver):
     task = SchedulerTask(task_type=TaskTypes.SHIFT_ON, task_plan={"meeting": ["跃跃"]})
     solver.task, solver.tasks = task, [task]
     before = positions(solver.op_data), copy.deepcopy(solver.op_data.group_shift_state)
@@ -121,7 +121,8 @@ def test_new_explicit_slot_allows_same_positions_to_finish_convergence(solver):
     assert task.plan["meeting"] == ["跃跃"]
     assert "central" not in task.plan
     assert task.plan.get("dormitory_1", ["Current"])[0] == "Current"
-    assert ("central", 0) in task.backup_explicit_slots
+    assert not task.backup_explicit_slots
+    assert "歌蕾蒂娅" in task.plan["dormitory_1"]
     assert "深海" not in task.group_shift_transitions
     assert (positions(solver.op_data), solver.op_data.group_shift_state) == before
     assert solver.tasks == [task]
@@ -163,7 +164,8 @@ def test_explicit_departure_survives_its_own_condition_deactivation(solver):
     solver._prepare_shift_backup(task)
     assert task.plan["central"] == ["夕"]
     assert task.plan["dormitory_1"][0] == "Current"
-    assert task.backup_explicit_slots == {("central", 0)}
+    assert task.backup_explicit_slots == {("central", 0), ("dormitory_1", 2)}
+    assert task.plan["dormitory_1"][2] == "歌蕾蒂娅"
     assert getattr(task, "backup_shift_conditions", [False]) == [False]
     assert solver.op_data.plan_condition == [False]
     assert (positions(solver.op_data), solver.op_data.group_shift_state) == before
