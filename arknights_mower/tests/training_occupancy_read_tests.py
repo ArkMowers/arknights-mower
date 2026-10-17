@@ -1,24 +1,21 @@
 """训练室读回只有两槽身份与详情场景可信时才提交实际驻员。"""
 
 import copy
-import sys
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 
-sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
-
-from arknights_mower.solvers import base_schedule as base  # noqa: E402
-from arknights_mower.solvers import mastery_reader, record  # noqa: E402
-from arknights_mower.tests import shift_backup_convergence_tests as backup  # noqa: E402
-from arknights_mower.utils import config, mastery_db, resting_priority  # noqa: E402
-from arknights_mower.utils.dorm_candidates import dorm_candidates  # noqa: E402
-from arknights_mower.utils.operators import Operator, Operators  # noqa: E402
-from arknights_mower.utils.recognize import RecognizeError  # noqa: E402
-from arknights_mower.utils.scene import Scene  # noqa: E402
-from arknights_mower.utils.scheduler_task import (  # noqa: E402
+from arknights_mower.solvers import base_schedule as base
+from arknights_mower.solvers import mastery_reader, record
+from arknights_mower.tests import shift_backup_convergence_tests as backup
+from arknights_mower.utils import config, mastery_db, resting_priority
+from arknights_mower.utils.dorm_candidates import dorm_candidates
+from arknights_mower.utils.operators import Operator, Operators
+from arknights_mower.utils.recognize import RecognizeError
+from arknights_mower.utils.scene import Scene
+from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
     try_add_release_dorm,
