@@ -279,8 +279,8 @@
       "reason": "Exclude suspended failures from active scheduling mutations while retaining them in the pending task list."
     },
     "scheduler/mowerExhaustSupportDispatch.spec.ts": {
-      "sha256": "3f6960401fdb68141e072c1d14b7da6c2641b9cf7e317790cfc61f831006e7fa",
-      "reason": "Verify runtime exhaustion-support generation, recovery capacity, required backups, task cloning and coalescing boundaries. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Apply due exhaustion priority while preserving explicit full recovery, validate final backup admission and retain failed support identities."
+      "sha256": "7dae8f9632f33b81c73a83f9c2205b9740900b5af2a7064484892270a16a2ab8",
+      "reason": "Verify runtime exhaustion-support generation, recovery capacity, required backups, task cloning and coalescing boundaries. Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline. Apply due exhaustion priority while preserving explicit full recovery, validate final backup admission and retain failed support identities. Synchronize shared-follower recall normalization and same-slot dorm cover retention from calculator 5473efd934db64d4a8c34fe321d6a7732da7cba0; retain explicit group recovery requirements and original pending tasks."
     },
     "engine/dormitoryRecovery.ts": {
       "sha256": "88594b24e38610b68c77315f1131a0b96fb9fe982fdb4da6c2229639aba13821",
@@ -395,8 +395,8 @@
       "reason": "Synchronize replacement coordination, preferred-cover restoration, dependency release and single-recovery eligibility and bed routing from calculator aa5f7e46377eb5446708e150ff9fdacdfbb606d6; preserve the bundled scheduling baseline."
     },
     "scheduler/mowerAlphaExhaustSupport.ts": {
-      "sha256": "455e858dbb167c9b82061a8863a7c547cb70cb2da2b00cdd4f392468b8020667",
-      "reason": "Synchronize personal recovery through one empty binding from calculator e7e8966330d351539684b1daba82e9ccead48fa1, following the working-primary behavior in Mower alpha 9995754f702d05b0661c9214d7abc62585366027; retain existing bundled recovery and replacement coordination. Preserve personal-limit departure lead time and observed mood; admit required recovery within the current room operation allowance without redefining measured full mood, and pass room timing through replacement recall guards. Apply due exhaustion priority while preserving explicit full recovery, validate final backup admission and retain failed support identities. Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions."
+      "sha256": "5a622c43efd4612f11d445e789cdd1a8ab96e75c6a57786983c5f37640561784",
+      "reason": "Synchronize personal recovery through one empty binding from calculator e7e8966330d351539684b1daba82e9ccead48fa1, following the working-primary behavior in Mower alpha 9995754f702d05b0661c9214d7abc62585366027; retain existing bundled recovery and replacement coordination. Preserve personal-limit departure lead time and observed mood; admit required recovery within the current room operation allowance without redefining measured full mood, and pass room timing through replacement recall guards. Apply due exhaustion priority while preserving explicit full recovery, validate final backup admission and retain failed support identities. Synchronize final backup shift intent, observed recovery dependencies and departed-primary dorm admission from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a; retain the bundled scheduling baseline and existing source-specific exclusions. Synchronize shared-follower recall normalization and same-slot dorm cover retention from calculator 5473efd934db64d4a8c34fe321d6a7732da7cba0; retain explicit group recovery requirements and original pending tasks."
     },
     "scheduler/mowerCoordinationRunBoundary.spec.ts": {
       "sha256": "bd41c788658e554814ba07e3c9897787bc7631c23f55af876eb1cf08f7450e27",
@@ -604,7 +604,7 @@
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",
-  "mowerCheckedRevision": "890fb2e8cc5c845f748ec55636a2abcbcba48a54",
+  "mowerCheckedRevision": "af37816f5c67225180f933fd7ce6ccd222dc1dc2",
   "schedulingSync": {
     "date": "2026-10-18",
     "behaviors": [
@@ -630,7 +630,8 @@
       "explicit primary-to-cover backup departures include required recovery beds and preserve intentional partial group staffing during recovery",
       "already assigned legal covers remain at their working slots while displaced primaries enter recovery",
       "observation-derived unstarted corrections refresh after relevant failures or recovery waits without preserving obsolete staffing reservations",
-      "priority recovery candidates may take over lower-tier occupied beds with free-room release disabled while protecting resident tiers, reservations and actual observations; displacement planning preserves live beds and existing tasks"
+      "priority recovery candidates may take over lower-tier occupied beds with free-room release disabled while protecting resident tiers, reservations and actual observations; displacement planning preserves live beds and existing tasks",
+      "exhausted-shift support normalizes shared follower staffing before checking actual recalls; another resting binding retains its cover and the pending exhausted request keeps its original identity and time"
     ],
     "limitations": [
       "ideal run orders do not simulate maintenance runner replacement acceleration or physical restoration",
@@ -643,8 +644,8 @@
       "maintenance-primary run-order pause",
       "additional facility-level export changes"
     ],
-    "calculatorRevision": "77202b0209bcea85dc46efb05dd2965cc494ed9c",
-    "mowerRevision": "890fb2e8cc5c845f748ec55636a2abcbcba48a54",
+    "calculatorRevision": "5473efd934db64d4a8c34fe321d6a7732da7cba0",
+    "mowerRevision": "af37816f5c67225180f933fd7ce6ccd222dc1dc2",
     "exhaustSupportMowerRevision": "acd54324d549eec34ef1a0bb9910de4c92cfb7d1",
     "exhaustSupportCalculatorRevision": "c2b50182da1bcd83dd3da1ce6f2da58f0f66efb8",
     "dormRecoveryMowerRevision": "ed6f10d9dae4a5ce1a992308582a0b13d240b6f5",
@@ -664,6 +665,8 @@
     "sameSlotObservationMowerRevision": "2871b5037b690fcf88e3da29040e5398915ec004",
     "derivedCorrectionCalculatorRevision": "4448dd3916b681e4c2ff08a80e851ae9256215a0",
     "derivedCorrectionMowerRevision": "890fb2e8cc5c845f748ec55636a2abcbcba48a54",
-    "priorityDormTakeoverCalculatorRevision": "77202b0209bcea85dc46efb05dd2965cc494ed9c"
+    "priorityDormTakeoverCalculatorRevision": "77202b0209bcea85dc46efb05dd2965cc494ed9c",
+    "sharedUrgentRecallCalculatorRevision": "5473efd934db64d4a8c34fe321d6a7732da7cba0",
+    "sharedUrgentRecallMowerRevision": "af37816f5c67225180f933fd7ce6ccd222dc1dc2"
   }
 }

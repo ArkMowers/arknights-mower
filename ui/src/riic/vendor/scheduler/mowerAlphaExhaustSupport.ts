@@ -7,7 +7,7 @@ import {projectMowerArrangements} from './mowerObservations'
 import {mowerGetRestingPlan,mowerTryReorder,type MowerRestingOptions} from './mowerOrdinaryPlanning'
 import {alphaRebalanceClosingDorms,mowerMatchReplacements} from './mowerAlphaDorm'
 import type {MowerTaskPlan} from './mowerTaskQueue'
-import {mowerRestingBindingGroups,mowerSharedReplacements} from './mowerSharedGroups'
+import {mowerRestingBindingGroups,mowerSharedReplacements,normalizeMowerSharedArrangement} from './mowerSharedGroups'
 
 export function planMowerAlphaExhaustSupport(original:MowerSchedulingData,candidates:string[],options:MowerRestingOptions={}):MowerTaskPlan|undefined {
  const protectedNames=new Set([...original.busyRestingNames,...original.reservedProductReplacements,...options.reservedNames??[]]),required=new Set(candidates)
@@ -20,7 +20,7 @@ export function planMowerAlphaExhaustSupport(original:MowerSchedulingData,candid
  const autoFree=(op:MowerOperatorState)=>op.room.startsWith('dorm')&&!!op.group&&op.nativeName!=='菲亚梅塔'&&replacements(data,op).includes('Free')
  const eligible=(state:MowerSchedulingData,name:string,target:MowerOperatorState)=>{
   const op=state.operators[name],sameGroup=mowerCoordinationPrimaryReplacement(state,target,name,required)
-  return !!op&&(!op.isHigh()||sameGroup)&&!protectedNames.has(name)&&!options.reservedSlots?.has(op.currentRoom+'\0'+op.currentIndex)&&!selected.has(name)&&(!required.has(name)||sameGroup)&&!state.excludedCandidates.has(name)&&!state.dormReplacementForSlot(name,op.currentRoom,op.currentIndex)&&(target.room.startsWith('dorm')||!state.replacementExhausted(name,target))&&!options.isMasteryBusy?.(name)
+  return !!op&&(!op.isHigh()||sameGroup)&&!protectedNames.has(name)&&!options.reservedSlots?.has(op.currentRoom+'\0'+op.currentIndex)&&!selected.has(name)&&(!required.has(name)||sameGroup)&&!state.excludedCandidates.has(name)&&(op.currentRoom===target.room&&op.currentIndex===target.index||!state.dormReplacementForSlot(name,op.currentRoom,op.currentIndex))&&(target.room.startsWith('dorm')||!state.replacementExhausted(name,target))&&!options.isMasteryBusy?.(name)
  }
  const available=(state:MowerSchedulingData,name:string,target:MowerOperatorState)=>{const op=state.operators[name];return !!op&&eligible(state,name,target)&&(!op.currentRoom||op.isResting()||required.has(name)&&mowerCoordinationPrimaryReplacement(state,target,name,required)&&op.currentRoom===op.room&&op.currentIndex===op.index)}
  const protectedRest=(state:MowerSchedulingData,name:string)=>{
@@ -31,13 +31,28 @@ export function planMowerAlphaExhaustSupport(original:MowerSchedulingData,candid
   return !!recovery?.requiredNames.length&&(recovery.requiredNames.some(member=>(!options.urgentExhaust||state.operators[member]!.restInFull)&&!mowerRecoveryReady(state,state.operators[member],options.priorityScheduling)))
  }
  const recall=(state:MowerSchedulingData,previous:MowerTaskPlan,name:string):[MowerTaskPlan,MowerSchedulingData]|undefined=>{
-  const op=state.operators[name]!,members=new Set(op.group?state.group(op.group):[name])
+  const op=state.operators[name]!,members=new Set(op.group?state.shiftGroupMembers(op.group):[name])
   if(op.independentRest&&mowerRestingBindingGroups(state,op).length)return
-  if([...members].some(n=>required.has(n)||protectedNames.has(n)||options.reservedSlots?.has(state.operators[n]!.room+'\0'+state.operators[n]!.index)||options.isMasteryBusy?.(n)||protectedRest(state,n)))return
   const trial=structuredClone(previous)
-  for(const member of members){const worker=state.operators[member]!;if(working(worker)&&worker.currentRoom!==worker.room)return;if(worker.currentRoom!==worker.room||worker.currentIndex!==worker.index)(trial[worker.room]??=Array(state.plan[worker.room]!.length).fill('Current'))[worker.index]=member}
-  const shadow=projectMowerArrangements(state,[]),recalled=alphaRebalanceClosingDorms(shadow,trial,members)
-  if([...recalled].some(n=>required.has(n)||protectedNames.has(n)||options.reservedSlots?.has(state.operators[n]!.room+'\0'+state.operators[n]!.index)||options.isMasteryBusy?.(n)||protectedRest(state,n)))return
+  for(const member of members){
+   const worker=state.operators[member]!
+   if(worker.independentRest&&(member!==name||mowerRestingBindingGroups(state,worker).length))continue
+   if(worker.currentRoom!==worker.room||worker.currentIndex!==worker.index)(trial[worker.room]??=Array(state.plan[worker.room]!.length).fill('Current'))[worker.index]=member
+  }
+  if(!normalizeMowerSharedArrangement(state,trial))return
+  const actualReturns=()=>new Set(Object.values(state.operators).filter(worker=>worker.isHigh()&&trial[worker.room]?.[worker.index]===worker.name&&(worker.currentRoom!==worker.room||worker.currentIndex!==worker.index)).map(worker=>worker.name))
+  const returning=actualReturns()
+  const blocked=(n:string)=>{
+   const worker=state.operators[n]!
+   const followingRequest=worker.multiGroup&&!worker.independentRest&&candidates.some(other=>other!==n&&state.isGroupShiftAnchor(state.operators[other]!)&&worker.groupBindings.some(binding=>binding.group===state.operators[other]!.group))
+   return required.has(n)&&!followingRequest||protectedNames.has(n)||options.reservedSlots?.has(worker.room+'\0'+worker.index)||options.isMasteryBusy?.(n)||protectedRest(state,n)||working(worker)&&worker.currentRoom!==worker.room
+  }
+  if([...returning].some(blocked))return
+  const shadow=projectMowerArrangements(state,[])
+  alphaRebalanceClosingDorms(shadow,trial,returning)
+  if(!normalizeMowerSharedArrangement(state,trial))return
+  const recalled=actualReturns()
+  if([...recalled].some(blocked))return
   const projected=projectMowerArrangements(original,[trial])
   if(Object.values(state.operators).some(worker=>worker.isHigh()&&worker.isResting()&&!projected.operators[worker.name]!.currentRoom&&!recalled.has(worker.name)))return
   return [trial,projected]

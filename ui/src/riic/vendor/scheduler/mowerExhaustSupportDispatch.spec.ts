@@ -140,3 +140,134 @@ describe('urgent support backup dependencies',()=>{
   expect(activations).toContainEqual([true])
  })
 })
+
+function sharedManagerRecall({ explicitFull = false, managerFull = false, workingFollower = false, otherResting = false, alternate = false } = {}) {
+ const rows:NonNullable<RuntimeConfig['mowerSourcePlan']>={
+  room_1_1:[{agent:'A',group:'request',replacement:['X']}],
+  room_1_2:[{agent:'B',group:'recovering',replacement:alternate?['X','Y']:['X']}],
+  dormitory_1:[{agent:'M',group:'recovering',replacement:['L'],groupBindings:[
+   {group:'recovering',replacement:['L','L2']},{group:'request',replacement:['L2']},
+   ...(otherResting?[{group:'third',replacement:['L2']}]:[])
+  ]},{agent:'K',group:'',replacement:[]},...[2,3,4].map(()=>({agent:'Free',group:'',replacement:[]}))]
+ }
+ if(workingFollower){rows.room_1_3=[rows.dormitory_1![0]!];rows.dormitory_1![0]={agent:'Fixed',group:'',replacement:[]}}
+ const config:RuntimeConfig={mowerAlpha:true,mowerSourcePlan:rows,
+  positions:Object.entries(rows).flatMap(([room,row])=>row.flatMap((slot,index)=>slot.agent==='Free'?[]:[{id:`${room}_${index}`,roomId:room,primary:slot.agent,candidates:slot.replacement,group:slot.group,permanent:room.startsWith('dorm'),dormitory:room.startsWith('dorm')}])),
+  beds:[2,3,4].map(index=>({id:`dormitory_1_${index}`,roomId:'dormitory_1',vip:index===2})),
+  initialMorale:{A:0,B:8,M:24,K:24,Fixed:24,X:24,Y:24,L:24,L2:24},idleOperators:['Y','L2'],
+  mowerPolicy:{restingThreshold:.65,powerPlantCount:2,opeRestingPriority:[]},
+  mowerSourceRules:{workaholic:[],exhaustRequire:['A'],restInFull:[...(explicitFull?['B']:[]),...(managerFull?['M']:[])],lowPriority:[],refreshDrained:[],lingMode:0},
+  mowerRunLoopClock:{minimumClockStepMicros:1,notificationSleepMicros:1_000_000}}
+ const state=createRosterRuntime(config),source=getMowerSourceRuntime(state),data=source.data
+ source.initial=false;source.firstInit=false
+ state.occupants={room_1_1_0:'A',room_1_2_0:'X',dormitory_1_0:workingFollower?'Fixed':otherResting?'L2':'L',dormitory_1_1:'K'}
+ if(workingFollower)state.occupants.room_1_3_0=otherResting?'L2':'L'
+ state.bedOccupants={dormitory_1_2:'B'}
+ for(const op of Object.values(data.operators))Object.assign(op,{currentRoom:'',currentIndex:-1,mood:state.morale[op.name]??24,timeStampMicros:0})
+ for(const [slot,name] of Object.entries({...state.occupants,...state.bedOccupants})){const index=slot.lastIndexOf('_');Object.assign(data.operators[name]!,{currentRoom:slot.slice(0,index),currentIndex:Number(slot.slice(index+1))})}
+ data.dorms=[new MowerDormState(['dormitory_1',2],'B',toMowerMicros(4)),new MowerDormState(['dormitory_1',3]),new MowerDormState(['dormitory_1',4])]
+ if(managerFull){state.morale.M=8;state.bedOccupants.dormitory_1_3='M';Object.assign(data.operators.M!,{currentRoom:'dormitory_1',currentIndex:3,mood:8});data.dorms[1]=new MowerDormState(['dormitory_1',3],'M',toMowerMicros(4))}
+ data.groupShiftState={recovering:true,request:false,...(otherResting?{third:true}:{})}
+ const exhausted=new MowerTask({type:T.EXHAUST_OFF,metadata:'A'})
+ source.queue.tasks=[exhausted]
+ return {state,source,data,exhausted}
+}
+
+describe('urgent recall with a shared dormitory manager',()=>{
+ it.each([false,true])('releases a shared cover without requiring the shared manager to recall (other resting=%s)',otherResting=>{
+  const {state,source,data,exhausted}=sharedManagerRecall({otherResting})
+  settleMowerSource(state,rates)
+  const support=source.queue.tasks.find(task=>task.exhaustSupport)
+  expect(support).toBeDefined()
+  expect(support?.plan.room_1_2).toEqual(['B'])
+  expect(data.groupShiftState).toMatchObject({recovering:true,request:false})
+  expect(source.queue.tasks).toContain(exhausted)
+  expect(exhausted.timeMicros).toBe(0)
+  for(let n=0;n<40&&!Object.values(state.bedOccupants).includes('A');n++){
+   settleMowerSource(state,rates)
+   if(!Object.values(state.bedOccupants).includes('A'))advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+  }
+  expect(state.occupants.room_1_1_0).toBe('X')
+  expect(state.occupants.room_1_2_0).toBe('B')
+  expect(state.occupants.dormitory_1_0).toBe('L2')
+  expect(Object.values(state.bedOccupants)).toContain('A')
+  expect(new Set(Object.values({...state.occupants,...state.bedOccupants})).size).toBe(Object.keys({...state.occupants,...state.bedOccupants}).length)
+  expect(source.data.groupShiftState).toMatchObject({recovering:false,request:true})
+ })
+ it.each([false,true])('protects explicit full recovery only when the shared manager actually returns (other resting=%s)',otherResting=>{
+  const {state,source}=sharedManagerRecall({otherResting,managerFull:true})
+  settleMowerSource(state,rates)
+  const support=source.queue.tasks.find(task=>task.exhaustSupport)
+  if(otherResting){expect(support).toBeDefined();expect(support?.plan.dormitory_1?.[0]).not.toBe('M')}
+  else expect(support).toBeUndefined()
+  expect(Object.values(state.bedOccupants)).toContain('M')
+ })
+ it('tries an available later replacement before recalling its owner or shared manager',()=>{
+  const {state,source}=sharedManagerRecall({alternate:true})
+  settleMowerSource(state,rates)
+  expect(source.queue.tasks.find(task=>task.exhaustSupport)?.plan).toEqual({room_1_2:['Y']})
+  expect(Object.values(state.bedOccupants)).toContain('B')
+ })
+ it('retains the due request without redispatch until explicit full recovery is observed',()=>{
+  const {state,source,data,exhausted}=sharedManagerRecall({explicitFull:true})
+  settleMowerSource(state,rates)
+  expect(source.queue.tasks.some(task=>task.exhaustSupport)).toBe(false)
+  const failure=exhausted.executionFailure
+  const dispatches=source.trace.filter(item=>item.type==='EXHAUST_OFF'&&item.metadata==='A').length
+  for(let n=0;n<10;n++)settleMowerSource(state,rates)
+  expect(source.trace.filter(item=>item.type==='EXHAUST_OFF'&&item.metadata==='A')).toHaveLength(dispatches)
+  expect(source.queue.tasks).toContain(exhausted)
+  expect(exhausted.executionFailure).toBe(failure)
+  expect(exhausted.timeMicros).toBe(0)
+  state.morale.B=24
+  Object.assign(data.operators.B!,{mood:24,timeStampMicros:data.nowMicros+1})
+  data.dorms[0]!.timeMicros=data.nowMicros
+  for(let n=0;n<40&&!Object.values(state.bedOccupants).includes('A');n++){
+   settleMowerSource(state,rates)
+   if(!Object.values(state.bedOccupants).includes('A'))advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+  }
+  expect(Object.values(state.bedOccupants)).toContain('A')
+  expect(state.occupants.room_1_2_0).toBe('B')
+ })
+
+ it('finishes the urgent departure after recall changes the effective backup work stations',()=>{
+  const {state,source,exhausted}=sharedManagerRecall()
+  source.data.planConditions=[true]
+  const activeRooms={A:'room_1_1',B:'room_1_2'},inactiveRooms={A:'room_1_2',B:'room_1_1'}
+  const backup:MowerShiftModel={count:1,evaluate:data=>[data.operators.B!.isResting()],
+   swap:(data,conditions)=>{
+    const next=projectMowerArrangements(data,[]),rooms=conditions[0]?activeRooms:inactiveRooms
+    next.planConditions=[...conditions]
+    for(const name of ['A','B'] as const){next.operators[name]!.room=rooms[name];next.plan[rooms[name]]=[name]}
+    return next
+   },
+   transition:(_before,_after,original,conditions):MowerTaskPlan=>original[0]===conditions[0]?{}:
+    conditions[0]?{room_1_1:['A'],room_1_2:['X']}:{room_1_1:['B'],room_1_2:['A']},
+   activate:conditions=>{source.data=backup.swap(source.data,conditions)}
+  }
+  state.mowerShiftModel=backup
+  const deadline=exhausted.timeMicros
+  for(let n=0;n<60&&!Object.values(state.bedOccupants).includes('A');n++){
+   settleMowerSource(state,rates)
+   if(!Object.values(state.bedOccupants).includes('A'))advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+  }
+  expect(Object.values(state.bedOccupants)).toContain('A')
+  expect(state.occupants.room_1_1_0).toBe('B')
+  expect(state.occupants.room_1_2_0).toBe('X')
+  expect(state.occupants.dormitory_1_0).toBe('L2')
+  expect(source.data.planConditions).toEqual([false])
+  expect(exhausted.timeMicros).toBe(deadline)
+  expect(source.queue.tasks.filter(task=>task.executionFailure&&task.coordinationRequestNames.includes('A'))).toEqual([])
+ })
+
+ it.each([false,true])('retains explicit group full recovery for a shared work primary (other resting=%s)',otherResting=>{
+  const {state,source,exhausted}=sharedManagerRecall({otherResting,managerFull:true,workingFollower:true})
+  settleMowerSource(state,rates)
+  expect(source.queue.tasks.some(task=>task.exhaustSupport)).toBe(false)
+  expect(source.queue.tasks).toContain(exhausted)
+  expect(exhausted.timeMicros).toBe(0)
+  expect(state.occupants.room_1_2_0).toBe('X')
+  expect(Object.values(state.bedOccupants)).toEqual(expect.arrayContaining(['B','M']))
+ })
+
+})
