@@ -90,7 +90,10 @@ def plan_exhaust_support(
                 name not in required
                 or state.is_same_group_primary_replacement(target, name)
             )
-            and not state.is_dorm_replacement(name)
+            and (
+                not state.is_dorm_replacement(name)
+                or (op.current_room, op.current_index) == (target.room, target.index)
+            )
             and not state.replacement_exhausted(name, operator=target)
             and not is_busy(name)
         )
@@ -137,11 +140,31 @@ def plan_exhaust_support(
 
     def recall(state, previous, name):
         op = state.operators[name]
-        members = set(state.groups[op.group]) if op.group else {name}
-        if members & (required | protected) or any(
-            is_busy(member) or protected_rest(state, member) for member in members
-        ):
-            return None
+        transitions = state.arrangement_group_transitions(previous)
+        if op.group:
+            transitions[op.group] = False
+        members = {
+            member
+            for member in (state.shift_group_members(op.group) if op.group else [name])
+            if not state.operators[member].multi_group
+            or not state.resting_binding_groups(state.operators[member], transitions)
+        }
+        required_anchors = {
+            member
+            for member in required
+            if not (
+                state.operators[member].multi_group
+                and not state.operators[member].independent_rest
+                and any(
+                    state.is_group_shift_anchor(state.operators[other])
+                    and any(
+                        binding["group"] == state.operators[other].group
+                        for binding in state.operators[member].group_bindings
+                    )
+                    for other in required - {member}
+                )
+            )
+        }
         trial = deepcopy(previous)
         for member in members:
             worker = state.operators[member]
@@ -165,11 +188,51 @@ def plan_exhaust_support(
                 trial.setdefault(
                     worker.room, ["Current"] * len(state.plan[worker.room])
                 )[worker.index] = member
+        if not state.normalize_shared_arrangement(
+            trial, transitions, reserved_replacements=protected
+        ):
+            return None
+
+        def actual_returns():
+            return {
+                worker.name
+                for worker in state.operators.values()
+                if worker.is_high()
+                and trial.get(worker.room, [])[worker.index : worker.index + 1]
+                == [worker.name]
+                and (worker.current_room, worker.current_index)
+                != (worker.room, worker.index)
+            }
+
+        members = actual_returns()
+        if members & (required_anchors | protected) or any(
+            is_busy(member) or protected_rest(state, member) for member in members
+        ):
+            return None
         # 绑组宿舍回班可能关闭临时床位，复用已有迁移逻辑，不能挤丢入住者。
         simulation = state.project_arrangements([])
-        recalled = rebalance_closing_dorm_slots(simulation, trial, members)
-        if recalled & (required | protected) or any(
-            is_busy(member) or protected_rest(state, member) for member in recalled
+        rebalance_closing_dorm_slots(simulation, trial, members)
+        if not state.normalize_shared_arrangement(
+            trial, reserved_replacements=protected
+        ):
+            return None
+        recalled = actual_returns()
+        moved = {
+            member
+            for room, row in trial.items()
+            for index, member in enumerate(row)
+            if member in state.operators
+            and (
+                state.operators[member].current_room,
+                state.operators[member].current_index,
+            )
+            != (room, index)
+        }
+        if (
+            recalled & moved & required_anchors
+            or moved & protected
+            or any(is_busy(member) for member in moved)
+            or any(protected_rest(state, member) for member in recalled & moved)
         ):
             return None
         projected = op_data.project_arrangements([trial])

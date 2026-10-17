@@ -643,9 +643,12 @@ def test_failed_exhaust_preview_retains_original_ordinary_request(
     task.group_shift_transitions = {}
     s.tasks, s.task = [task], task
     original = deepcopy(task.__dict__)
-    monkeypatch.setattr(
-        BaseSchedulerSolver, "_backup_transition_plan", lambda *args: None
-    )
+
+    def failed_preview(solver, *args):
+        solver._backup_departure_waiting_names = set()
+        return None
+
+    monkeypatch.setattr(BaseSchedulerSolver, "_backup_transition_plan", failed_preview)
 
     with pytest.raises(ProductSwitchDeferred):
         s._prepare_shift_backup(task)
