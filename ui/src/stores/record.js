@@ -5,8 +5,10 @@ const moodApi = import.meta.env.VITE_MOOD_HISTORY_API || import.meta.env.VITE_HT
 const mainApi = import.meta.env.VITE_HTTP_URL || ''
 
 export const useRecordStore = defineStore('record', () => {
-  async function getMoodRatios() {
-    const response = await axios.get(`${mainApi}/record/getMoodRatios`)
+  async function getMoodRatios({ includeWorkRest = true } = {}) {
+    const response = await axios.get(`${mainApi}/record/getMoodRatios`, {
+      params: { include_work_rest: includeWorkRest }
+    })
     return response.data
   }
 

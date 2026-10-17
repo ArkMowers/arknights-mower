@@ -3183,7 +3183,10 @@ def get_maa_conn_presets():
 def get_mood_ratios():
     from arknights_mower.solvers import record
 
-    return record.get_mood_ratios()
+    return record.get_mood_ratios(
+        include_work_rest=request.args.get("include_work_rest", "true").lower()
+        != "false"
+    )
 
 
 @app.route("/record/mood-available-operators")
