@@ -543,10 +543,28 @@ class BaseSchedulerSolver(
                 )
             )
         reserved, slots = coordination_reservations(data, self.tasks, task)
+        correction_groups = set()
+        if getattr(task, "derived_correction", False):
+            owners = names | {
+                data.plan[room][index].agent
+                for room, row in task.plan.items()
+                for index, name in enumerate(row)
+                if name != "Current" and index < len(data.plan.get(room, ()))
+            }
+            correction_groups = {
+                binding["group"]
+                for name in owners
+                if (op := data.operators.get(name)) is not None
+                for binding in op.group_bindings
+                if binding["group"]
+            }
         return copy.deepcopy(
             {
                 "plan": task.plan,
                 "meta_data": task.meta_data,
+                "correction_groups": {
+                    group: data.group_is_resting(group) for group in correction_groups
+                },
                 "reservations": (
                     sorted(names & reserved),
                     sorted(slot for slot in slots if slot[0] in rooms),
@@ -589,6 +607,50 @@ class BaseSchedulerSolver(
         }
         logger.error("%s；保留原任务及时间，相关实测或安排更新后复核", reason)
 
+    def _refresh_derived_correction(self, task):
+        """相关观测更新后，只重算尚未执行的普通派生纠错。"""
+        if (
+            task.type != TaskTypes.SELF_CORRECTION
+            or not getattr(task, "derived_correction", False)
+            or task.meta_data
+            or any(
+                getattr(task, name, False)
+                for name in (
+                    "derived_correction_started",
+                    "group_shift_expected",
+                    "backup_shift_active",
+                    "backup_explicit_slots",
+                    "backup_refresh_rules",
+                    "product_shift_locked",
+                    "product_switched_before_arrangement",
+                    "exhaust_support",
+                    "ordinary_coordination",
+                    "preferred_replacement_restore",
+                    "dorm_recovery_restore",
+                    "emergency_staffing",
+                    "arrangement_retry_room",
+                    "strict_mood_limit",
+                )
+            )
+            or hasattr(task, "backup_shift_intent")
+            or hasattr(task, "backup_shift_conditions")
+        ):
+            return False
+        simulation = copy.copy(self)
+        simulation.op_data = self.op_data.project_arrangements([])
+        simulation.tasks = [pending for pending in self.tasks if pending is not task]
+        simulation.task = task
+        plan = simulation.agent_get_mood(
+            skip_dorm=getattr(task, "correction_skip_dorm", False),
+            read_rooms=False,
+            return_plan=True,
+        )
+        task.plan = plan or {}
+        for name in ("group_shift_transitions", "dorm_fill_plan"):
+            task.__dict__.pop(name, None)
+        logger.debug("相关观测已更新，重新计算原纠错任务：%s", task.plan)
+        return True
+
     def _resume_failed_tasks(self):
         self._discard_legacy_ordinary_requests()
         for task in list(self.tasks):
@@ -629,6 +691,7 @@ class BaseSchedulerSolver(
                 ):
                     continue
             if failure:
+                failure["snapshot"].setdefault("correction_groups", {})
                 failure["snapshot"].setdefault(
                     "reservations",
                     self._task_failure_snapshot(task, failure["rooms"])["reservations"],
@@ -653,9 +716,11 @@ class BaseSchedulerSolver(
                     reconcile_retained_recovery,
                 )
 
-                reconcile_retained_recovery(self.op_data, task)
-                # 解除派发暂停后，剩余执行仍免于普通过期清理。
-                task.execution_retained = True
+                refreshed = self._refresh_derived_correction(task)
+                if not refreshed:
+                    reconcile_retained_recovery(self.op_data, task)
+                # 已开始的剩余执行继续保留；普通派生纠错重新经过完整预演。
+                task.execution_retained = not refreshed
                 del task.execution_failure
                 task.__dict__.pop("process_recovery_fia_wait", None)
                 logger.info("相关实测或安排已更新，恢复原任务：%s", task)
@@ -3335,6 +3400,8 @@ class BaseSchedulerSolver(
                 correction = SchedulerTask(
                     task_plan=fix_plan, task_type=TaskTypes.SELF_CORRECTION
                 )
+                correction.derived_correction = True
+                correction.correction_skip_dorm = skip_dorm
                 current_task = getattr(self, "task", None)
                 duplicate = next(
                     (
@@ -5073,6 +5140,8 @@ class BaseSchedulerSolver(
                 op.refresh_drained, op.refresh_order_room = self._merge_refresh_rules(
                     old, current
                 )
+            if getattr(task, "derived_correction", False):
+                task.derived_correction_started = True
             return self.agent_arrange(task.plan, get_time)
         finally:
             for name in rules:
@@ -6424,6 +6493,7 @@ class BaseSchedulerSolver(
                     self._prepare_shift_backup(task)
                     task.__dict__.pop("departure_recovery_names", None)
                     task.__dict__.pop("departure_recovery_observation", None)
+                self._refresh_derived_correction(task)
                 self._prepare_group_shift(task)
             except GroupShiftBlocked as error:
                 task.group_shift_waiting = error.groups
