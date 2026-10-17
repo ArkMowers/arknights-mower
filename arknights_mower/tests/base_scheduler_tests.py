@@ -3760,10 +3760,9 @@ class TestClueProductCompleteWait(unittest.TestCase):
 
     def test_live_party_time_read_from_adb_screenshot(self):
         """实机截图：展开交流详情后读取真实倒计时。"""
-        from rapidocr_onnxruntime import RapidOCR
-
         from arknights_mower.utils import rapidocr
         from arknights_mower.utils.image import bytes2img
+        from arknights_mower.utils.rapidocr import create_engine
 
         fixtures_dir = Path(__file__).parent / "fixtures" / "clue"
         before_data = (fixtures_dir / "clue_live_party_before.png").read_bytes()
@@ -3778,7 +3777,7 @@ class TestClueProductCompleteWait(unittest.TestCase):
             bytes2img(time_data, True),
         )
         solver = BaseSchedulerSolver(device=device, recog=Recognizer(device, time_data))
-        with patch.object(rapidocr, "engine", RapidOCR(text_score=0.3)):
+        with patch.object(rapidocr, "engine", create_engine()):
             start = datetime.now()
             end = solver.read_party_time()
 

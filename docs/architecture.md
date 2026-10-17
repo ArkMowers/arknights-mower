@@ -84,7 +84,7 @@ Arknights Mower consists of four decoupled layers:
 - **[Device Control Subsystem](subsystems/device-control.md)**: Manages emulator discovery, socket-level transport, standard canvas frame acquisition, readiness verdicts, and bounded crash recovery.
 - **[Base Infrastructure & Scheduling Subsystem](subsystems/base-scheduler.md)**: Drives automated base operations: operator mood evaluation, empirical depletion rate calculation, dormitory recovery ordering, dynamic shift transitions, clue party management, and drone acceleration.
 - **[MAA Integration Subsystem](subsystems/maa-integration.md)**: Consumes MAA core callbacks across a MAA run boundary, translating task-chain transitions and whitelisted milestones into runtime-log lines while recurring telemetry stays at DEBUG.
-- **Recognition Subsystem**: Performs template matching and neural OCR over immutable 1920×1080 canvas frames.
+- **[Recognition Subsystem](subsystems/recognition.md)**: Performs template matching and neural OCR over immutable 1920×1080 canvas frames, with bounded OCR detector inputs.
 
 ### 1.4 Persistence & Storage Layer
 - Stores explicit user configuration in `conf.yml` via [`DeviceProfile`](../arknights_mower/utils/config/device_profile.py).

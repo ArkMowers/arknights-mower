@@ -41,6 +41,7 @@ _STATUS_FIELDS = (
     "preview_replaced",
     "preview_failed",
     "archive_dropped",
+    "archive_buffer_dropped",
 )
 
 
@@ -174,6 +175,8 @@ class ScreenshotStore:
         self._archive_queue: deque[
             tuple[int, int, str, str, int, deque[Screenshot]]
         ] = deque()
+        self._archive_buffer_bytes = 0
+        self._archive_buffer_dropped = 0
         self._log_archive_queue: list[tuple[int, str]] = []
 
     def start(self):
@@ -280,6 +283,8 @@ class ScreenshotStore:
             self._shutdown_archive_dropped += len(self._archive_queue) + len(
                 self._log_archive_queue
             )
+            for task in self._archive_queue:
+                self._archive_buffer_bytes -= sum(frame.size for frame in task[5])
             self._archive_queue.clear()
             self._log_archive_queue.clear()
             self._error_windows.clear()
@@ -660,6 +665,14 @@ class ScreenshotStore:
                     <= timestamp_ns + _ERROR_WINDOW_NS
                 ]
                 buffered = deque((*before, *after))
+            # 已接收的归档画面保留至处理结束；容量不足时仅省略新任务的
+            # 缓存画面，错误记录和后续截图仍沿用原有归档流程。
+            buffered_bytes = sum(frame.size for frame in buffered)
+            if self._archive_buffer_bytes + buffered_bytes > self.max_recent_bytes:
+                self._archive_buffer_dropped += len(buffered)
+                buffered.clear()
+                buffered_bytes = 0
+            self._archive_buffer_bytes += buffered_bytes
             self._archive_queue.append(
                 (scan_start, timestamp_ns, archive_id, message[:4096], 1, buffered)
             )
@@ -694,9 +707,15 @@ class ScreenshotStore:
                 self._error_windows = [
                     window for window in self._error_windows if window[2] != archive_id
                 ]
-                self._archive_queue = deque(
-                    item for item in self._archive_queue if item[2] != archive_id
-                )
+                retained = deque()
+                for item in self._archive_queue:
+                    if item[2] == archive_id:
+                        self._archive_buffer_bytes -= sum(
+                            frame.size for frame in item[5]
+                        )
+                    else:
+                        retained.append(item)
+                self._archive_queue = retained
                 self._log_archive_queue = [
                     item for item in self._log_archive_queue if item[1] != archive_id
                 ]
@@ -872,6 +891,7 @@ class ScreenshotStore:
                 self._save_error_logs(archive_id)
                 continue
             destination = self.folder / "errors" / archive_id
+            buffered_bytes = sum(frame.size for frame in buffered)
             try:
                 with self._archive_lock:
                     if self._flush_expired():
@@ -969,6 +989,10 @@ class ScreenshotStore:
                             continue
             except (OSError, ValueError, TypeError, AttributeError) as exc:
                 self._report_error("归档报错截图失败", exc)
+            finally:
+                with self._lock:
+                    buffered.clear()
+                    self._archive_buffer_bytes -= buffered_bytes
 
     def _save_error_logs(self, archive_id: str):
         from arknights_mower.utils.diagnostics import timeline
@@ -1043,6 +1067,8 @@ class ScreenshotStore:
                 "archive_log_pending_count": len(self._log_archive_queue),
                 "archive_window_count": len(self._error_windows),
                 "archive_dropped": self._archive_dropped,
+                "archive_buffer_bytes": self._archive_buffer_bytes,
+                "archive_buffer_dropped": self._archive_buffer_dropped,
                 "preview_active_count": int(self._preview_active is not None),
                 "preview_pending_bytes": (
                     self._preview_pending.size if self._preview_pending else 0

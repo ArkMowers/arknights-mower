@@ -139,9 +139,9 @@ def test_unvalued_material_never_becomes_zero_value():
 
 @pytest.fixture(scope="module")
 def real_ocr():
-    from rapidocr_onnxruntime import RapidOCR
+    from arknights_mower.utils.rapidocr import create_engine
 
-    return RapidOCR(text_score=0.3)
+    return create_engine()
 
 
 def reward_frame():

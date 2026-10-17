@@ -1565,6 +1565,12 @@ class Worker:
         )
 
     def restart(self, records, verify=True, *, recovery=False):
+        # 按需计算服务参与更新前关闭；由恢复后的实例按需重建。
+        records = [
+            record
+            for record in records
+            if record.get("kind") not in ("ocr-service", "ocr-worker")
+        ]
         self.report(
             "restarting",
             "恢复原版本实例，等待网页服务就绪"

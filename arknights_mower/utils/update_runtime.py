@@ -268,6 +268,10 @@ def instances(directory=None, *, timeout=5, strict=True):
                     result.append(record)
                 else:
                     path.unlink(missing_ok=True)
+                    if record.get("kind") == "ocr-worker":
+                        (directory.parent / "shutdown" / path.name).unlink(
+                            missing_ok=True
+                        )
             except FileNotFoundError:
                 pass  # The instance may have removed its registration on exit.
             except (OSError, ValueError) as exc:
@@ -322,8 +326,18 @@ def send_instance_command(record, action, directory=None):
 
 
 class RuntimeRegistration:
-    def __init__(self, kind, *, space="", name="", port=None, running=None):
-        self.directory = state_dir()
+    def __init__(
+        self,
+        kind,
+        *,
+        space="",
+        name="",
+        port=None,
+        running=None,
+        directory=None,
+        maintenance=True,
+    ):
+        self.directory = Path(directory) if directory is not None else state_dir()
         launch_id = (
             os.environ.pop("MOWER_LAUNCH_ID", "")
             if kind == "instance" and os.environ.get("MOWER_MANAGED") == "1"
@@ -363,9 +377,10 @@ class RuntimeRegistration:
         atexit.register(self.close)
         self.thread = threading.Thread(target=self._heartbeat, daemon=True)
         self.thread.start()
-        threading.Thread(
-            target=self._retry_backups, name="mower-backup-cleanup", daemon=True
-        ).start()
+        if maintenance:
+            threading.Thread(
+                target=self._retry_backups, name="mower-backup-cleanup", daemon=True
+            ).start()
 
     def _retry_backups(self):
         # A copied stdlib runtime has no application backup-cleanup service.

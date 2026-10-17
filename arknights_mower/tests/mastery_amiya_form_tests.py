@@ -280,11 +280,12 @@ def test_real_ocr_reads_rendered_amiya_skill_names(case, monkeypatch):
     from pathlib import Path
 
     from PIL import Image, ImageDraw, ImageFont
-    from rapidocr_onnxruntime import RapidOCR
+
+    from arknights_mower.utils.rapidocr import create_engine
 
     solver, candidate, _, _, _, _ = case
     solver.train_scene.return_value = Scene.TRAIN_SKILL_SELECT
-    monkeypatch.setattr(rapidocr, "engine", RapidOCR(text_score=0.3))
+    monkeypatch.setattr(rapidocr, "engine", create_engine())
     font = ImageFont.truetype(
         str(Path(__file__).parents[1] / "fonts/SourceHanSansCN-Medium-mastery.ttf"), 32
     )

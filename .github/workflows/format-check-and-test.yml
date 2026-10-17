@@ -46,6 +46,8 @@ jobs:
               - 'arknights_mower/{solvers,utils,tests}/furniture*.py'
               - 'arknights_mower/solvers/base_schedule.py'
               - 'arknights_mower/utils/{screenshot,workshop_ui,rapidocr,scheduler_task}.py'
+              - 'arknights_mower/utils/{ocr_shared,ocr_service}.py'
+              - 'arknights_mower/tests/shared_ocr_tests.py'
               - 'arknights_mower/views/task.py'
               - 'arknights_mower/tests/{scheduler_wakeup,screenshot,workshop_inflight}_tests.py'
               - 'arknights_mower/utils/device/{application.py,adb_client/**}'
@@ -279,6 +281,8 @@ jobs:
             arknights_mower/tests/furniture_tests.py \
             arknights_mower/tests/furniture_data_tests.py \
             arknights_mower/tests/furniture_ocr_tests.py \
+            arknights_mower/tests/shared_ocr_tests.py \
+            arknights_mower/tests/shared_ocr_update_lifecycle_tests.py \
             arknights_mower/tests/scheduler_wakeup_tests.py \
             arknights_mower/tests/scheduler_recovery_preservation_tests.py \
             arknights_mower/tests/adb_shared_server_tests.py \

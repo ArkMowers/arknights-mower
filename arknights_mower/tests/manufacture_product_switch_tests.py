@@ -2763,9 +2763,9 @@ def test_product_switch_retry_verifies_queue_when_recipe_already_matches(verifie
 
 @pytest.fixture(scope="module")
 def queue_ocr_engine():
-    from rapidocr_onnxruntime import RapidOCR
+    from arknights_mower.utils.rapidocr import create_engine
 
-    return RapidOCR(text_score=0.3)
+    return create_engine()
 
 
 @pytest.mark.parametrize("name, expected", [("queue_one", 1), ("queue_max", 99)])

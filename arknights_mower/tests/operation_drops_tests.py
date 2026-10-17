@@ -17,9 +17,9 @@ def templates():
 
 @pytest.fixture(scope="module")
 def ocr():
-    from rapidocr_onnxruntime import RapidOCR
+    from arknights_mower.utils.rapidocr import create_engine
 
-    return RapidOCR(text_score=0.3)
+    return create_engine()
 
 
 def frame(name):

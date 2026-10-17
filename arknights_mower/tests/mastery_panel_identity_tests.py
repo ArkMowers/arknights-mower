@@ -241,7 +241,7 @@ def test_real_incident_panel_replays_production_ocr(monkeypatch, incident_solver
     from arknights_mower.utils import rapidocr
 
     with patch.object(rapidocr, "engine", None):
-        rapidocr.initialize_ocr()
+        rapidocr.engine = rapidocr.create_engine()
         incident_solver.read_screen.side_effect = lambda *args, **kwargs: (
             BaseMixin.read_screen(incident_solver, *args, **kwargs)
         )

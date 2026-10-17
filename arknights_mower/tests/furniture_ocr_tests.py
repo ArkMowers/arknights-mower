@@ -6,15 +6,24 @@ import cv2
 import pytest
 
 from arknights_mower.solvers import furniture
+from arknights_mower.utils.image import bytes2img
 
 
-@pytest.fixture(scope="module")
-def ocr():
+@pytest.fixture(scope="module", params=("local", "shared"))
+def ocr(request, tmp_path_factory):
     from unittest.mock import patch
 
-    with patch.object(furniture.rapidocr, "engine", None):
-        furniture.rapidocr.initialize_ocr()
-        yield furniture.rapidocr.engine
+    if request.param == "shared":
+        from arknights_mower.tests.shared_ocr_tests import service
+        from arknights_mower.utils import ocr_service, ocr_shared
+
+        directory = tmp_path_factory.mktemp("furniture-shared-ocr")
+        with service(directory, factory=ocr_service._engine):
+            yield ocr_shared.SharedOCREngine(directory=directory)
+    else:
+        with patch.object(furniture.rapidocr, "engine", None):
+            furniture.rapidocr.engine = furniture.rapidocr.create_engine()
+            yield furniture.rapidocr.engine
 
 
 @pytest.mark.parametrize(
@@ -35,7 +44,7 @@ def ocr():
 def test_real_panel_ocr(monkeypatch, ocr, fixture, name, stock, batch):
     monkeypatch.setattr(furniture.rapidocr, "engine", ocr)
     path = Path(__file__).parent / "fixtures/furniture" / f"{fixture}.png"
-    img = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+    img = bytes2img(path.read_bytes())
     assert furniture.furniture_details(img, stock, batch) == (name, stock)
     if batch is not None:
         assert furniture.furniture_batch(img) == batch
@@ -44,7 +53,7 @@ def test_real_panel_ocr(monkeypatch, ocr, fixture, name, stock, batch):
 def test_real_list_quantities_and_row_order(monkeypatch, ocr):
     monkeypatch.setattr(furniture.rapidocr, "engine", ocr)
     path = Path(__file__).parent / "fixtures/furniture/list_quantity.png"
-    img = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+    img = bytes2img(path.read_bytes())
     cards = furniture.furniture_cards(img)
     assert [count for _, count in cards] == [1, 1, 1, 1]
     assert cards[0][0][0] < cards[1][0][0]
@@ -63,7 +72,7 @@ def test_full_panel_geometry_and_keep_switch(
 ):
     monkeypatch.setattr(furniture.rapidocr, "engine", ocr)
     path = Path(__file__).parent / "fixtures/furniture" / f"{fixture}.png"
-    img = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+    img = bytes2img(path.read_bytes())
     assert furniture.furniture_details(img, stock, batch) == (name, stock)
     assert furniture.furniture_batch(img) == batch
     assert furniture.keep_one_enabled(img) is enabled
@@ -74,7 +83,7 @@ def test_wrong_switch_ocr_cannot_override_slider_pixels(monkeypatch, fixture, st
     from arknights_mower.tests.furniture_tests import title
 
     path = Path(__file__).parent / "fixtures/furniture" / f"{fixture}.png"
-    img = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+    img = bytes2img(path.read_bytes())
     monkeypatch.setattr(
         furniture.rapidocr,
         "engine",
@@ -91,6 +100,6 @@ def test_wrong_switch_ocr_cannot_override_slider_pixels(monkeypatch, fixture, st
 @pytest.mark.parametrize("fixture,enabled", [("panel_on", True), ("panel_off", False)])
 def test_visual_switch_state_scales_with_game_frame(width, fixture, enabled):
     path = Path(__file__).parent / "fixtures/furniture" / f"{fixture}.png"
-    img = cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+    img = bytes2img(path.read_bytes())
     img = cv2.resize(img, (width, round(width * 9 / 16)))
     assert furniture.keep_switch_visual_state(img) is enabled
