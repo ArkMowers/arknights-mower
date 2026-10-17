@@ -33,6 +33,12 @@ def dorm_candidate_mood(op_data, name, now=None, *, estimates=None):
     op = op_data.operators.get(name)
     if has_resting_mood(op, now):
         return resting_mood(op, now)
+    return card_mood_estimate(op_data, name, now, estimates=estimates)
+
+
+def card_mood_estimate(op_data, name, now=None, *, estimates=None):
+    """返回一小时内的卡牌预估，不创建或修改实读心情。"""
+    now = now or datetime.now()
     estimate = (
         getattr(op_data, "dorm_mood_estimates", {}) if estimates is None else estimates
     ).get(name)

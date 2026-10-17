@@ -1700,6 +1700,7 @@ class BaseSchedulerSolver(
             logger.info("加工配置已更新，跳过旧的自动加工任务")
             return
         from arknights_mower.utils.workshop_limits import (
+            workshop_candidate_mood,
             workshop_material_block_reason,
             workshop_operator_block_reason,
         )
@@ -1715,11 +1716,7 @@ class BaseSchedulerSolver(
             logger.info(f"{task.meta_data}加工站任务被禁用，调人前跳过")
             return
         operator = self.op_data.operators.get(task.meta_data)
-        mood = (
-            operator.current_mood()
-            if operator is not None and hasattr(operator, "current_mood")
-            else getattr(operator, "mood", None)
-        )
+        mood = workshop_candidate_mood(self.op_data, task.meta_data)
         reason = workshop_operator_block_reason(
             self.op_data,
             task.meta_data,

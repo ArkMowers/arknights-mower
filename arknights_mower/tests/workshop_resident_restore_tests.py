@@ -1,4 +1,5 @@
 from copy import deepcopy
+from datetime import datetime
 from types import MethodType, SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -16,8 +17,9 @@ BaseSchedulerSolver = base_scheduler_tests.BaseSchedulerSolver
 @pytest.mark.parametrize("factory_plan", [None, []])
 @pytest.mark.parametrize("cached", [True, False])
 @pytest.mark.parametrize("resident", ["特克诺", ""])
+@pytest.mark.parametrize("card_only", [False, True])
 def test_batch_reads_actual_resident_before_selection_and_restores_positions(
-    batch, factory_plan, cached, resident
+    batch, factory_plan, cached, resident, card_only
 ):
     solver = batch.solver
     if factory_plan is None:
@@ -46,6 +48,19 @@ def test_batch_reads_actual_resident_before_selection_and_restores_positions(
         operator.room = operator.current_room
         operator.need_to_refresh = lambda **kwargs: True
         operator.depletion_rate = 0
+    if card_only:
+        solver.op_data.dorm_mood_estimates = {
+            name: (24, datetime.now()) for name in ("蜜莓", "年", "空爆")
+        }
+        for name in solver.op_data.dorm_mood_estimates:
+            solver.op_data.operators[name].mood = -1
+    craft = solver.generate_product.side_effect
+
+    def craft_with_observed_mood(name, snapshot):
+        assert solver.op_data.operators[name].mood == 24
+        return craft(name, snapshot)
+
+    solver.generate_product.side_effect = craft_with_observed_mood
     solver.op_data.get_current_room = MethodType(
         Operators.get_current_room, solver.op_data
     )
