@@ -244,7 +244,7 @@ def test_shared_leases_allow_instances_and_reject_concurrent_installation(instal
         stdout=subprocess.PIPE,
     )
     try:
-        assert child.stdout.readline() == b"ready\n"
+        assert child.stdout.readline().rstrip(b"\r\n") == b"ready"
         with processes.installation_lease(installation):
             with pytest.raises(maa_update.MaaUpdateError, match="其他实例"):
                 with processes.maa_installation_transaction(installation):
