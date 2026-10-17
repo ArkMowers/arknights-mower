@@ -486,7 +486,6 @@ class TestBaseScheduler(unittest.TestCase):
             )
         }
         start_time = datetime(2026, 5, 2, 15, 19, 33)
-        detected_exhaust_time = start_time + timedelta(minutes=10)
 
         class FixedDateTime(datetime):
             now_value = start_time
@@ -505,7 +504,14 @@ class TestBaseScheduler(unittest.TestCase):
             patch.object(
                 BaseSchedulerSolver,
                 "get_agent_from_room",
-                return_value=[{"time": detected_exhaust_time}],
+                return_value=[
+                    {
+                        "agent": "伊内丝",
+                        "time": FixedDateTime.fromtimestamp(
+                            (start_time + timedelta(minutes=10)).timestamp()
+                        ),
+                    }
+                ],
             ),
             patch.object(BaseSchedulerSolver, "back"),
         ):

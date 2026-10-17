@@ -632,10 +632,13 @@ def test_zero_mood_without_working_exhaustion_semantics_keeps_countdown(
 def test_exhaust_task_uses_custom_lower_limit_with_original_preparation_margin(
     monkeypatch, rest_in_full, lower, mood
 ):
-    now = datetime(2026, 9, 26, 12)
-    clock = MagicMock()
-    clock.now.return_value = now
-    monkeypatch.setattr(base, "datetime", clock)
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 9, 26, 12)
+
+    now = Clock.now()
+    monkeypatch.setattr(base, "datetime", Clock)
     op = Operator("银灰", "room_1_1", operator_type="high")
     op.current_room, op.current_index = "room_1_1", 0
     op.time_stamp, op.mood = now, mood

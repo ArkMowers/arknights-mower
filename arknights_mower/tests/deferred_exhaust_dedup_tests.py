@@ -60,7 +60,10 @@ def solver(monkeypatch):
     instance.enter_room = MagicMock()
     instance.back = MagicMock()
     instance.get_agent_from_room = MagicMock(
-        return_value=[{"time": None}, {"time": None}]
+        return_value=[
+            {"agent": "歌蕾蒂娅", "time": Clock.now()},
+            {"agent": "幽灵鲨", "time": Clock.now()},
+        ]
     )
     instance.get_resting_plan = MagicMock(
         side_effect=lambda candidates, replacements, plan, count: plan.update(

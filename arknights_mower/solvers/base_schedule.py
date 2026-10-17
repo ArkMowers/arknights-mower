@@ -4036,17 +4036,27 @@ class BaseSchedulerSolver(
                     )
                     is None
                 ):
-                    self.enter_room(op.current_room)
-                    result = self.get_agent_from_room(
-                        op.current_room, [op.current_index]
+                    observed_room, observed_index = op.current_room, op.current_index
+                    self.enter_room(observed_room)
+                    result = self.get_agent_from_room(observed_room, [observed_index])
+                    observed = (
+                        result[observed_index]
+                        if 0 <= observed_index < len(result)
+                        else {}
                     )
+                    observed_time = observed.get("time")
+                    if (
+                        observed.get("observed") is False
+                        or observed.get("agent") != name
+                        or not isinstance(observed_time, datetime)
+                    ):
+                        logger.warning(f"干员 {name} 的用尽时间未核实，跳过本次预约")
+                        self.back()
+                        continue
                     _time = datetime.now()
                     margin = 20 if name not in self.op_data.rest_in_full_group else 0
-                    if (
-                        result[op.current_index]["time"] is not None
-                        and result[op.current_index]["time"] > _time
-                    ):
-                        zero_time = result[op.current_index]["time"]
+                    if observed_time > _time:
+                        zero_time = observed_time
                         zero_time = Operator.exhaust_time_at_lower_limit(
                             op, zero_time, _time
                         )

@@ -112,7 +112,7 @@ def future_exhaust(solver, monkeypatch):
     monkeypatch.setattr(
         solver,
         "get_agent_from_room",
-        MagicMock(return_value=[{"time": now + timedelta(hours=2)}]),
+        MagicMock(return_value=[{"agent": "机械师", "time": now + timedelta(hours=2)}]),
     )
     before = {
         name: (op.current_room, op.current_index)
