@@ -473,3 +473,77 @@ def test_protected_shared_slot_does_not_suppress_generated_return(
     assert all("train" not in t.plan for t in returns)
     assert data.get_current_operator("train", 0).name == "讯使"
     assert data.group_is_resting("甲")
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("restart", [False, True])
+@pytest.mark.parametrize("entry", ["prepare", "choose_retry"])
+def test_restored_dorm_targets_keep_training_protection(
+    training_group, monkeypatch, enabled, restart, entry
+):
+    import pickle
+
+    s = training_group
+    config.conf.enable_mastery = False
+    for op in s.op_data.operators.values():
+        op.mood = 5
+    room = "dormitory_1"
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "meeting": ["陈", "Current"],
+            "train": ["望", "余"],
+            room: ["塑心", *["Current"] * 4],
+        },
+    )
+    s.task, s.tasks = task, [task]
+    s._prepare_group_shift(task, remember_targets=True)
+    target_slot = next(
+        slot for slot, name in task.group_shift_expected.items() if name == A
+    )
+    before = task.time
+    task.arrangement_retry_room = room
+    task.execution_retained = True
+    if restart:
+        task = pickle.loads(pickle.dumps(task))
+        s.task, s.tasks = task, [task]
+
+    previous = s.op_data.get_current_operator("train", 0)
+    previous._current_room, previous.current_index = "", -1
+    source = s.op_data.operators[A]
+    source._current_room, source.current_index = "train", 0
+    s.train_room_state = mastery_reader.RoomState("training")
+    config.conf.enable_mastery = enabled
+    s._prepare_group_shift(task, remember_targets=True)
+    # A retained confirmation survives preparation until observed completion.
+    assert task.group_shift_expected[target_slot] == A
+    names = task.plan[room]
+    names[0] = ""
+    names[target_slot[1]] = "Current"
+    monkeypatch.setattr(base_schedule, "save_current_state", lambda: True)
+
+    if entry == "prepare":
+        s.prepare_dorm_selection(names, room)
+    else:
+
+        class SelectionBoundaryReached(BaseException):
+            pass
+
+        s.last_room = ""
+        s.profession_filter = MagicMock(side_effect=SelectionBoundaryReached())
+        with pytest.raises(SelectionBoundaryReached):
+            s.choose_agent(
+                names,
+                room,
+                fast_mode=False,
+                choose_error=1,
+                dorm_mood_candidates=[],
+            )
+    assert (A in names) is not enabled
+    assert names[target_slot[1]] == ("Current" if enabled else A)
+    assert names[0] == "塑心"
+    assert task.group_shift_expected[target_slot] == A
+    assert task.plan["meeting"] == ["陈", "Current"]
+    assert task.time == before
+    assert s.tasks == [task]
+    assert (source.current_room, source.current_index) == ("train", 0)
