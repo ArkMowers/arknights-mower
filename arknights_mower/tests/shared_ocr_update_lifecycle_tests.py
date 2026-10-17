@@ -55,8 +55,13 @@ def empty_engine():
     return EmptyEngine()
 
 
+def recording_engine():
+    Path(os.environ["OCR_MODEL_CONSTRUCTED"]).write_text(str(os.getpid()))
+    return EmptyEngine()
+
+
 @contextmanager
-def standalone_worker(directory):
+def standalone_worker(directory, *, factory=empty_engine):
     state = directory / "updates"
     context = mp.get_context("spawn")
     parent, child = context.Pipe()
@@ -66,7 +71,7 @@ def standalone_worker(directory):
         token = "a" * 64
         process = context.Process(
             target=ocr_service._worker,
-            args=(listener, child, token, directory, 10, empty_engine, 256, state),
+            args=(listener, child, token, directory, 10, factory, 256, state),
         )
         process.start()
         child.close()
@@ -183,6 +188,8 @@ def test_worker_start_after_update_snapshot_is_rejected_before_model_loading(
     tmp_path, monkeypatch, gate
 ):
     monkeypatch.delenv("MOWER_RESTART_JOB", raising=False)
+    constructed = tmp_path / "model-constructed"
+    monkeypatch.setenv("OCR_MODEL_CONSTRUCTED", str(constructed))
     state = tmp_path / "updates"
     if gate == "active-job":
         runtime.write_json(
@@ -193,10 +200,17 @@ def test_worker_start_after_update_snapshot_is_rejected_before_model_loading(
     admission = (
         runtime.submission_lock(state) if gate == "submission-lock" else nullcontext()
     )
-    with admission, standalone_worker(tmp_path) as (process, state):
+    with (
+        admission,
+        standalone_worker(tmp_path, factory=recording_engine) as (process, state),
+    ):
+        with pytest.raises((OSError, RuntimeError)):
+            ocr_shared.SharedOCREngine(directory=tmp_path, timeout=2)(
+                np.zeros((1, 1), np.uint8)
+            )
         process.join(3)
         assert not process.is_alive()
-        assert process.exitcode != 0
+        assert not constructed.exists()
         assert runtime.instances(state) == []
         with runtime.supervision_lock(tmp_path / "model", timeout=0):
             pass
