@@ -13,11 +13,21 @@ class DormRecoveryPaddingUnavailable(Exception):
 
 def active_recovery_position(op):
     """旧缓存没有床位记录，或实际换过位置，都不能沿用原单回标记。"""
+    if op.name == "菲亚梅塔" or dorm_skills.is_single_recovery_manager(op.name):
+        return None
     room = getattr(op, "dorm_recovery_room", "")
     index = getattr(op, "dorm_recovery_index", -1)
     if room and index >= 0 and (op.current_room, op.current_index) == (room, index):
         return room, index
     return None
+
+
+def single_recovery_bed_cost(bed, beds):
+    """普通床和单 Free 宿舍同价；多 Free 宿舍的首床留给普通恢复者。"""
+    peers = [other for other in beds if other.position[0] == bed.position[0]]
+    return int(
+        len(peers) > 1 and bed.position[1] == min(other.position[1] for other in peers)
+    )
 
 
 def recovery_managers(op_data, room, agents, *, update_cache=True):
@@ -67,7 +77,13 @@ def recovery_target(
     if index is None:
         return None
     target = op_data.operators.get(agents[index])
-    if target is None or target.mood >= 24 or target.room.startswith("dorm"):
+    if (
+        target is None
+        or target.mood >= 24
+        or target.room.startswith("dorm")
+        or target.name == "菲亚梅塔"
+        or dorm_skills.is_single_recovery_manager(target.name)
+    ):
         return None
     return target
 

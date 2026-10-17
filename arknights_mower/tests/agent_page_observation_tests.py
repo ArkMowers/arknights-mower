@@ -100,6 +100,67 @@ def test_swipe_result_needs_one_fresh_frame_before_selecting(
     assert observed.image is None and not observed.page
 
 
+@pytest.mark.parametrize("mode", ["high", "xhigh"])
+@pytest.mark.parametrize("train", [False, True])
+def test_fast_swipe_rechecks_unchanged_held_frame_before_another_swipe(
+    monkeypatch, mode, train
+):
+    monkeypatch.setattr(config.conf, "performance_mode", mode)
+    before = page(("杜林", "芬", "香草", "炎熔"))
+    after = page()
+    solver = solver_for(monkeypatch, [before, before, before] + [after] * 4)
+
+    def held_swipe(*_args, **_kwargs):
+        solver.recog.update()
+        solver.recog.img
+
+    solver.swipe_noinertia.side_effect = held_swipe
+    moved, observed = solver.swipe_agent_page(
+        before, ["砾"], train=train, return_page=True
+    )
+    selected, actual = solver.scan_agent(["砾"], train=train, observation=observed)
+
+    assert moved == 1
+    assert selected == ["砾"]
+    assert tuple(actual) == after
+    solver.swipe_noinertia.assert_called_once()
+    solver.tap.assert_called_once()
+    assert solver.tap.call_args.args == (after[0][1],)
+    assert observed.before is None
+
+
+def test_fast_swipe_keeps_filled_changed_held_frame_without_extra_capture(monkeypatch):
+    monkeypatch.setattr(config.conf, "performance_mode", "xhigh")
+    before, after = page(("杜林", "芬", "香草", "炎熔")), page()
+    solver = solver_for(monkeypatch, [after])
+    solver.swipe_noinertia.side_effect = lambda *_args, **_kw: solver.recog.img
+    _, observed = solver.swipe_agent_page(before, ["砾"], return_page=True)
+    assert solver.scan_agent(["砾"], observation=observed)[0] == ["砾"]
+    assert solver.recog.captures == 1
+
+
+@pytest.mark.parametrize("invalidate", [False, True])
+def test_unchanged_held_observation_is_bounded_and_expires_after_input(
+    monkeypatch, invalidate
+):
+    monkeypatch.setattr(config.conf, "performance_mode", "xhigh")
+    before = page(("杜林", "芬", "香草", "炎熔"))
+    solver = solver_for(monkeypatch, [before] * 12)
+    solver.swipe_noinertia.side_effect = lambda *_args, **_kw: solver.recog.img
+    _, observed = solver.swipe_agent_page(before, ["砾"], return_page=True)
+    if invalidate:
+        solver.tap((100, 100))
+        solver.tap.reset_mock()
+
+    selected, actual = solver.scan_agent(["砾"], observation=observed)
+
+    assert selected == [] and tuple(actual) == before
+    assert solver.recog.captures == (2 if invalidate else 7)
+    solver.swipe_noinertia.assert_called_once()
+    solver.tap.assert_not_called()
+    assert observed.before is None
+
+
 @pytest.mark.parametrize("changed_name_pixels", [False, True])
 def test_fresh_frame_reuses_confirmed_names_only_when_name_pixels_match(
     monkeypatch, changed_name_pixels

@@ -45,12 +45,23 @@ class RecognitionPersistenceTests(unittest.TestCase):
     def test_explicit_bytes_encode_current_frame_once_without_recapture(self):
         recog = Recognizer(self.device)
         self.assertIs(recog.img, self.rgb)
-        encoded = np.frombuffer(b"jpeg", dtype=np.uint8)
-        with patch("cv2.imencode", return_value=(True, encoded)) as encode:
+        with patch(
+            "arknights_mower.utils.image.encode_jpeg", return_value=b"jpeg"
+        ) as encode:
             self.assertEqual(recog.screencap, b"jpeg")
             self.assertEqual(recog.screencap, b"jpeg")
         encode.assert_called_once()
         self.capture.assert_called_once()
+
+    def test_diagnostic_snapshot_memory_error_keeps_successful_rgb_and_gray(self):
+        self.store.submit_frame.side_effect = MemoryError("offline snapshot failure")
+        recog = Recognizer(self.device)
+        self.assertIs(recog.img, self.rgb)
+        self.assertEqual(int(recog.gray[0, 0]), 76)
+        self.capture.assert_called_once()
+        self.store._report_error.assert_called_once_with(
+            "截图快照内存不足，本帧不保存", "offline snapshot failure"
+        )
 
     def test_recognition_continues_while_background_encoder_or_disk_is_blocked(self):
         for blocked_stage in ("encode", "write"):

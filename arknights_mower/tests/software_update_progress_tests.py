@@ -455,6 +455,52 @@ class ProgressTests(unittest.TestCase):
                         handler.rfile.read.assert_not_called()
                         handler.connection.settimeout.assert_not_called()
 
+    def test_managed_progress_service_preserves_update_authorization(self):
+        for choice in (None, False, True):
+            with self.subTest(choice=choice):
+                with socket.socket() as probe:
+                    probe.bind(("127.0.0.1", 0))
+                    port = probe.getsockname()[1]
+                token = "permission-fixture"
+                record = {
+                    "kind": "instance",
+                    "port": port,
+                    "listen_host": "127.0.0.1",
+                    "token_hash": hashlib.sha256(token.encode()).hexdigest(),
+                    "managed": True,
+                }
+                if choice is not None:
+                    record["updates_enabled"] = choice
+                servers = ProgressServers(self.state, [record])
+                self.addCleanup(servers.close)
+                servers.start()
+                self.assertEqual(len(servers.servers), 1)
+                opener = build_opener(ProxyHandler({}))
+                url = f"http://127.0.0.1:{port}/software-update"
+                headers = {"token": token, "X-Mower-Update": "1"}
+                with opener.open(
+                    Request(url + "/status", headers=headers), timeout=3
+                ) as response:
+                    status = json.load(response)
+                self.assertEqual(status["updates_enabled"], choice is True)
+                if choice is not True:
+                    self.assertFalse(status["cancellable"])
+                request = Request(
+                    url + "/cancel",
+                    data=json.dumps({"id": self.job["id"]}).encode(),
+                    headers=headers,
+                )
+                if choice is True:
+                    with opener.open(request, timeout=3) as response:
+                        self.assertTrue(json.load(response)["ok"])
+                else:
+                    with self.assertRaises(HTTPError) as error:
+                        opener.open(request, timeout=3)
+                    with error.exception:
+                        self.assertEqual(error.exception.code, 403)
+                    self.assertFalse((self.state / "active/cancel.json").exists())
+                servers.close()
+
     def test_older_records_do_not_create_unauthenticated_listeners(self):
         servers = ProgressServers(self.state, [{"kind": "instance", "port": 58000}])
         servers.start()

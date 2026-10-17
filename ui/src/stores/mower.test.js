@@ -52,6 +52,19 @@ describe('worker status', () => {
     )
   })
 
+  it.each([true, false, null, undefined])(
+    'reads the assistant authorization snapshot %s without saving it',
+    async (enabled) => {
+      axios.get.mockResolvedValue({
+        data: { status: 'stopped', plan_condition: [], ai_assistant_enabled: enabled }
+      })
+      await store.get_running()
+      expect(store.ai_assistant_enabled).toBe(typeof enabled === 'boolean' ? enabled : null)
+      expect(axios.get).toHaveBeenCalledOnce()
+      expect(vi.getTimerCount()).toBe(0)
+    }
+  )
+
   it('keeps task polling through startup and recovery and clears it only after exit', async () => {
     for (const value of ['starting', 'recovering', 'working', 'sleeping']) {
       status = value
@@ -75,6 +88,17 @@ describe('worker status', () => {
     store.running = false
     expect(store.status_label).toBe('已停止')
   })
+
+  it.each([true, false, null, undefined, 'true', 1])(
+    'reads update authorization %s without accepting non-booleans',
+    async (enabled) => {
+      axios.get.mockResolvedValue({
+        data: { status: 'stopped', plan_condition: [], updates_enabled: enabled }
+      })
+      await store.get_running()
+      expect(store.updates_enabled).toBe(typeof enabled === 'boolean' ? enabled : null)
+    }
+  )
 
   it('reads desktop startup ownership while stopped without starting tasks', async () => {
     axios.get.mockResolvedValue({

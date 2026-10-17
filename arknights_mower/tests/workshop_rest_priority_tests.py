@@ -245,8 +245,10 @@ def test_crafting_order_preserves_existing_targets_and_global_order(crafting, oc
     assert projected.get_current_operator(room, 3).name == (
         "年" if occupied else "九色鹿"
     )
-    assert projected.get_current_operator(other, 0).name == "芬"
+    # 新单回归属触发全宿舍重排，加工名单仍按九色鹿、年、赫拉格排序。
+    assert projected.get_current_operator(other, 0).name == ("芬" if occupied else "年")
     assert projected.get_current_operator(other, 1).name == (
-        "九色鹿" if occupied else "赫拉格"
+        "九色鹿" if occupied else "芬"
     )
+    assert projected.get_current_operator(room, 4).name == "赫拉格"
     assert set(result) == ({room} if occupied else {room, other})

@@ -161,6 +161,7 @@ class AgentPageObservation:
     image: object
     full_scan: bool
     train: bool
+    before: tuple | None = None
 
     def consume(self, recognizer, *, full_scan, train):
         valid = (
@@ -174,6 +175,7 @@ class AgentPageObservation:
         # 包括模式不符在内，尝试消费即失效，不跨输入或房间保留坐标。
         self.page = ()
         self.recognizer = self.image = None
+        self.before = None
         return page
 
 
@@ -569,7 +571,7 @@ class BaseMixin:
 
         return read
 
-    def observe_agent_page(self, page, *, full_scan=True, train=False):
+    def observe_agent_page(self, page, *, full_scan=True, train=False, before=None):
         return AgentPageObservation(
             tuple(
                 (name, tuple(tuple(point) for point in scope)) for name, scope in page
@@ -578,6 +580,11 @@ class BaseMixin:
             getattr(self.recog, "_img", None),
             full_scan,
             train,
+            None
+            if before is None
+            else tuple(
+                (name, tuple(tuple(point) for point in scope)) for name, scope in before
+            ),
         )
 
     def require_agent_selection_page(self):
@@ -720,7 +727,12 @@ class BaseMixin:
                 capture=True,
             )
             return (
-                (1, self.observe_agent_page((), full_scan=full_scan, train=train))
+                (
+                    1,
+                    self.observe_agent_page(
+                        (), full_scan=full_scan, train=train, before=page
+                    ),
+                )
                 if return_page
                 else 1
             )
@@ -845,6 +857,7 @@ class BaseMixin:
     ):
         """普通设备沿用单帧批量选人及缩小扫描区域的识别重试。"""
         try:
+            before = observation.before if observation is not None else None
             held_page = (
                 observation.consume(self.recog, full_scan=full_scan, train=train)
                 if observation is not None
@@ -877,11 +890,19 @@ class BaseMixin:
                 skip_full_mood,
                 require_full_mood=require_full_mood,
             )
-        if held_page == () and self.agent_page_has_right_gap(
-            self.recog.img, ret, train=train
+        unchanged_held_page = before is not None and self.same_agent_page(
+            ret, before, allow_unknown=True
+        )
+        if held_page == () and (
+            unchanged_held_page
+            or self.agent_page_has_right_gap(self.recog.img, ret, train=train)
         ):
-            logger.debug("选人末页右侧空白，抬手后重新确认卡片位置")
-            ret = self.wait_for_agent_page(full_scan=full_scan, train=train)
+            logger.debug("按住画面未推进或末页右侧空白，抬手后重新确认卡片位置")
+            ret = self.wait_for_agent_page(
+                full_scan=full_scan,
+                train=train,
+                before=before if unchanged_held_page else None,
+            )
         eligible = self.observe_agent_moods(
             ret,
             agent,
@@ -1165,9 +1186,6 @@ class BaseMixin:
         普通位筛选关	1724			1732 0.7
         普通位筛选开	1609			not
         """
-        retry = 0
-        open_threshold = 1650
-        poll_interval, max_attempts = self.selection_transition_timing()
         if profession:
             if config.stop_mower.is_set():
                 raise MowerExit
@@ -1180,20 +1198,7 @@ class BaseMixin:
         x = 1918
         label_pos = [(x, 135 + i * 110) for i in range(9)]
         label_pos_map = dict(zip(self.profession_labels, label_pos))
-        while (
-            (confirm_btn := self.find("confirm_blue")) is not None
-            and confirm_btn[0][0] > open_threshold
-        ) or (
-            (confirm_btn := self.find("confirm_train")) is not None
-            and confirm_btn[0][0] > open_threshold
-        ):
-            if retry >= max_attempts:
-                raise AgentSelectionNotReady("打开职业筛选失败")
-            if retry:
-                self.sleep(poll_interval)
-            else:
-                self.tap((1860, 60), interval=0.1)
-            retry += 1
+        self._set_profession_filter_open(True)
         # ALL 已高亮时无需重复点击；真正切换到 ALL 后仍须确认生效，
         # 不能用切换前的目标职业高亮提前返回。
         if self.get_color(label_pos_map["ALL"])[2] < 240:
@@ -1216,23 +1221,47 @@ class BaseMixin:
 
     def _close_profession_filter(self):
         """仅收起筛选侧栏，保留当前职业。"""
-        retry = 0
-        open_threshold = 1650
+        self._set_profession_filter_open(False)
+
+    def _set_profession_filter_open(self, opened):
+        """按确认按钮位置开关侧栏，原位置持续不变时有限补点。"""
         poll_interval, max_attempts = self.selection_transition_timing()
-        while (
-            (confirm_btn := self.find("confirm_blue")) is not None
-            and confirm_btn[0][0] < open_threshold
-        ) or (
-            (confirm_btn := self.find("confirm_train")) is not None
-            and confirm_btn[0][0] < open_threshold
-        ):
-            if retry >= max_attempts:
-                raise AgentSelectionNotReady("关闭职业筛选失败")
-            if retry:
-                self.sleep(poll_interval)
-            else:
+        retry_interval = max(1.0, 3 * poll_interval)
+        previous = None
+        stable_since = perf_counter()
+        taps = 0
+        for attempt in range(max_attempts + 1):
+            if config.stop_mower.is_set():
+                raise MowerExit
+            buttons = tuple(
+                (resource, button[0][0], button[0][1])
+                for resource in ("confirm_blue", "confirm_train")
+                if (button := self.find(resource)) is not None
+            )
+            state = None
+            if buttons and all(x < 1650 for _, x, _ in buttons):
+                state = True
+            elif buttons and all(x > 1650 for _, x, _ in buttons):
+                state = False
+            if state is opened:
+                return
+            if attempt == max_attempts:
+                break
+            now = perf_counter()
+            # 缺失、冲突或移动中的按钮不能证明上一次点击未生效。
+            if state is None or buttons != previous:
+                stable_since = now
+            previous = buttons
+            if state is not None and (
+                taps == 0 or (taps < 3 and now - stable_since >= retry_interval)
+            ):
                 self.tap((1860, 60), interval=0.1)
-            retry += 1
+                taps += 1
+                stable_since = perf_counter()
+            else:
+                self.sleep(poll_interval)
+        action = "打开" if opened else "关闭"
+        raise AgentSelectionNotReady(f"{action}职业筛选失败")
 
     def detect_room_number(self, img) -> int:
         score = []
@@ -1379,6 +1408,7 @@ class BaseMixin:
 
         for enter_times in range(max_attempts):
             pending = False
+            entry_source = False
             actions = 0
             for retry_times in range(9):
                 if self.find("connecting"):
@@ -1408,6 +1438,9 @@ class BaseMixin:
                     if visible_room is not None:
                         self.tap(visible_room, interval=0.2)
                         pending = True
+                        entry_source = True
+                elif entry_source and self._handle_room_entry_reward(room):
+                    pending = False
                 elif self.detect_room() == room:
                     return
                 else:
@@ -1422,6 +1455,8 @@ class BaseMixin:
                     else:
                         self.sleep()
             # 最后一次点击也可能成功，检查其刷新后的画面再决定是否重试。
+            if entry_source:
+                self._handle_room_entry_reward(room)
             if (
                 not self.find("connecting")
                 and not self.find("control_central")
@@ -1438,6 +1473,10 @@ class BaseMixin:
                 self.back_to_infrastructure()
         raise RuntimeError(f"未成功进入房间 {room}：重新定位后仍未确认房间画面")
 
+    def _handle_room_entry_reward(self, room):
+        """仅处理本次房间点击产生的领取页，由收取记录的拥有者确认来源。"""
+        return False
+
     def double_read_time(self, cord, upperLimit=None, use_digit_reader=False):
         self.recog.update()
         time_in_seconds = self.read_time(
@@ -1448,7 +1487,11 @@ class BaseMixin:
                 "贸易站订单倒计时识别失败，回退为当前时间；不能据此确认实际订单完成时间"
             )
             return datetime.now()
-        execute_time = datetime.now() + timedelta(seconds=(time_in_seconds))
+        # 倒计时属于该帧，不能把截图传输与识别耗时加到生产截止时间。
+        observed_at = getattr(self.recog, "capture_started_at", None)
+        if not isinstance(observed_at, datetime):
+            observed_at = datetime.now()
+        execute_time = observed_at + timedelta(seconds=time_in_seconds)
         return execute_time
 
     def read_accurate_mood(self, img):

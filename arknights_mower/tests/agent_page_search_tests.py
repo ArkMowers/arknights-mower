@@ -222,7 +222,11 @@ def test_training_free_search_checks_next_page_when_first_page_has_no_target():
 
     solver = object.__new__(BaseSchedulerSolver)
     solver.profession_filter = MagicMock()
-    solver.find = MagicMock(return_value=None)
+    solver.find = MagicMock(
+        side_effect=lambda name: (
+            ((1669, 990), (1758, 1041)) if name == "confirm_train" else None
+        )
+    )
     solver.get_free_list = MagicMock(return_value=["砾"])
     solver.scan_agent = MagicMock(side_effect=[([], page()), (["砾"], page())])
     solver.swipe_agent_page = MagicMock(return_value=(1, None))

@@ -1,5 +1,6 @@
 # 用于记录Mower操作行为
 import collections
+import copy
 import json
 import pickle
 import sqlite3
@@ -248,7 +249,11 @@ def save_action_to_sqlite_decorator(func):
 def current_state():
     from arknights_mower.__main__ import base_scheduler
 
-    if base_scheduler is None or base_scheduler.op_data is None:
+    if (
+        base_scheduler is None
+        or base_scheduler.op_data is None
+        or not getattr(base_scheduler, "_state_restore_complete", True)
+    ):
         return None
     data, tasks = base_scheduler.op_data, base_scheduler.tasks
     return {
@@ -259,7 +264,13 @@ def current_state():
         "operators": data.operators,
         "facility_states": getattr(data, "facility_states", {}),
         "room_observations": getattr(data, "room_observations", {}),
+        "recall_recovery_rates": copy.deepcopy(
+            getattr(data, "recall_recovery_rates", {})
+        ),
         "group_shift_state": dict(getattr(data, "group_shift_state", {})),
+        "group_recovery_full_members": copy.deepcopy(
+            getattr(data, "group_recovery_full_members", {})
+        ),
         "automatic_rescue_state": getattr(base_scheduler, "emergency_state", None),
         "backup_plan_names": [backup.name for backup in data.backup_plans],
         "idle_dorm_search_exhausted": getattr(
@@ -267,6 +278,9 @@ def current_state():
         ),
         "idle_dorm_search_stopped_at": getattr(
             data, "idle_dorm_search_stopped_at", None
+        ),
+        "initial_staffing_pending": bool(
+            getattr(base_scheduler, "_initial_staffing_pending", False)
         ),
         "initial_mood_pending": bool(
             getattr(base_scheduler, "defer_backup_plan_until_mood_read", False)
@@ -334,15 +348,18 @@ def save_current_state():
 
 def save_state(func):
     def save_wrapper(*args, **kwargs):
+        from arknights_mower.__main__ import base_scheduler
+
         saved_state = current_state()
         result = func(*args, **kwargs)
-        save_state_to_db(saved_state)
+        if getattr(base_scheduler, "_state_restore_complete", True):
+            save_state_to_db(saved_state)
         return result
 
     return save_wrapper
 
 
-def load_state():
+def load_state(*, strict=False):
     # Initialize an empty variable to hold the loaded state
     loaded_state = None
 
@@ -355,10 +372,32 @@ def load_state():
 
         if row is not None:
             loaded_state = pickle.loads(row[0])  # Deserialize the state
+            if strict:
+                required = {
+                    "tasks",
+                    "operators",
+                    "dorm",
+                    "party_time",
+                    "daily_visit_friend",
+                    "daily_report",
+                    "daily_skland",
+                    "daily_mail",
+                    "task_count",
+                }
+                if not isinstance(loaded_state, dict) or required - set(loaded_state):
+                    raise ValueError("保存的调度状态缺少必要字段，不能核实待办与补偿")
+                if (
+                    not isinstance(loaded_state["tasks"], list)
+                    or not isinstance(loaded_state["operators"], dict)
+                    or not isinstance(loaded_state["dorm"], list)
+                ):
+                    raise ValueError("保存的任务、驻员或宿舍状态格式无效")
         else:
             logger.debug("No saved state found in the database")
 
     except sqlite3.Error as e:
+        if strict:
+            raise
         logger.error(f"SQLite error: {e}")
 
     return loaded_state

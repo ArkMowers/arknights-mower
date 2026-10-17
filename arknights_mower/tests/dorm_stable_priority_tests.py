@@ -171,7 +171,7 @@ def test_explicit_ordinary_group_can_precede_single_targets(residents):
     result = prioritize_new_dorm_recovery(data, {}, configuration_changed=True)
     projected = data.project_arrangements([result])
     assert "令" in projected.get_current_room("dormitory_3", True)[3:]
-    assert occupant(projected, "dormitory_3", 2) == "夕"
+    assert occupant(projected, "dormitory_3", 2) == "乌有"
     assert prioritize_new_dorm_recovery(projected, {}, configuration_changed=True) == {}
 
 

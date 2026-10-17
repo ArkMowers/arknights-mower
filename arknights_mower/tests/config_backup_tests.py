@@ -61,6 +61,23 @@ def incoming(**files):
     return archive({**backup.read_archive(backup.export_archive()), **files})
 
 
+@pytest.mark.parametrize("saved", [False, True])
+@pytest.mark.parametrize("archived", [None, False, True])
+def test_restore_preserves_current_update_authorization(storage, saved, archived):
+    config.conf.updates_enabled = saved
+    config.save_conf()
+    uploaded = {} if archived is None else {"updates_enabled": archived}
+    raw = incoming(**{"conf.yml": json.dumps(uploaded)})
+    backup.import_configuration(raw)
+    assert config.conf.updates_enabled is saved
+    assert (
+        backup._object_file(backup.read_archive(backup.export_archive()), "conf.yml")[
+            "updates_enabled"
+        ]
+        is saved
+    )
+
+
 @pytest.fixture
 def populated_plan():
     return config.PlanModel(
@@ -761,6 +778,7 @@ def test_recycling_plan_json_and_image_round_trip(
         pytest.skip(f"二维码依赖不可用：{error}")
 
     value = populated_plan.model_dump(exclude_none=True)
+    value["facility_levels"] = {"dormitory_1": 2, "contact": 1, "recycle": 3}
     value["plan1"]["recycle"] = {
         "plans": [
             {
@@ -819,6 +837,7 @@ def test_recycling_plan_json_and_image_round_trip(
     )
     assert imported.get_data(as_text=True) == "排班已加载"
     restored = config.conf.automatic_rescue_plan if rescue else config.plan
+    assert restored.facility_levels == schedule.facility_levels
     assert restored.plan1.recycle == schedule.plan1.recycle
     assert (
         restored.backup_plans[0].plan.recycle == schedule.backup_plans[0].plan.recycle
@@ -962,3 +981,115 @@ def test_imported_plan_encoding_survives_reload_without_rewriting_original(
         config.load_plan()
         assert config.plan == populated_plan
         assert config.plan_path.read_bytes() == original
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("output_format", ["PNG", "JPEG"])
+def test_income_image_keeps_snapshot_after_live_plan_changes(
+    plan_client, populated_plan, theme, output_format
+):
+    from PIL import Image, ImageDraw
+
+    from arknights_mower.utils import qrcode
+    from arknights_mower.utils.config.plan import parse_plan_document
+
+    snapshot = populated_plan.model_dump(exclude_none=True)
+    snapshot["advanced_settings"] = {"resting_threshold": 0.7, "fia_fool": False}
+    expected = parse_plan_document(snapshot).model_dump(exclude_none=True)
+    live_before = config.plan.model_dump()
+    conf_before = config.conf.model_dump()
+    source = Image.new("RGB", (2940, 1248), "black" if theme == "dark" else "white")
+    upload = BytesIO()
+    source.save(upload, "PNG")
+    upload.seek(0)
+    response = plan_client.post(
+        "/dialog/save/img",
+        headers={"token": "test-token"},
+        data={
+            "img": (upload, "plan.png", "image/png"),
+            "plan": json.dumps(snapshot),
+            "theme": theme,
+        },
+    )
+    assert response.status_code == 200
+    assert config.plan.model_dump() == live_before
+    assert config.conf.model_dump() == conf_before
+    original = Image.open(BytesIO(response.data))
+    image = Image.new("RGB", (2940, 4200), "black" if theme == "dark" else "white")
+    image.paste(original, (0, 435))
+    ImageDraw.Draw(image).text(
+        (80, 80), "Income: 28 days after 3 days warmup", fill="gray"
+    )
+    output = BytesIO()
+    image.save(output, output_format, quality=95)
+    assert qrcode.decode(Image.open(BytesIO(output.getvalue()))) == expected
+    result = plan_client.post(
+        "/import",
+        headers={"token": "test-token"},
+        data={
+            "img": (
+                BytesIO(output.getvalue()),
+                "mower-income.jpg" if output_format == "JPEG" else "mower-income.png",
+                "image/jpeg" if output_format == "JPEG" else "image/png",
+            )
+        },
+    )
+    assert result.get_data(as_text=True) == "排班已加载"
+    assert config.plan.plan1 == populated_plan.plan1
+    assert config.plan.backup_plans == populated_plan.backup_plans
+    assert config.conf.resting_threshold == 0.7
+    assert config.conf.fia_fool is False
+
+
+def test_income_export_rejects_invalid_snapshot_without_mutation(plan_client):
+    from PIL import Image
+
+    before = config.plan.model_dump()
+    upload = BytesIO()
+    Image.new("RGB", (20, 20), "white").save(upload, "PNG")
+    upload.seek(0)
+    response = plan_client.post(
+        "/dialog/save/img",
+        headers={"token": "test-token"},
+        data={"img": (upload, "plan.png", "image/png"), "plan": "null"},
+    )
+    assert response.status_code == 400
+    assert config.plan.model_dump() == before
+
+
+def test_income_cache_endpoint_requires_token_and_does_not_save(
+    plan_client, monkeypatch
+):
+    from arknights_mower.utils import building_skills
+
+    monkeypatch.setattr(building_skills, "get_cultivate_snapshot", lambda: None)
+    before = config.conf.model_dump()
+    assert plan_client.get("/riic/income-cache").status_code in (401, 403)
+    response = plan_client.get("/riic/income-cache", headers={"token": "test-token"})
+    assert response.status_code == 200
+    assert response.json == {
+        "has_roster": False,
+        "operators": [],
+        "has_inventory": False,
+        "inventory": {},
+        "observed_at": None,
+    }
+    assert config.conf.model_dump() == before
+
+
+@pytest.mark.parametrize(
+    "room,level",
+    [
+        ("contact", 4),
+        ("central", 6),
+        ("dormitory_1", -1),
+        ("room_1_1", 1.5),
+        ("train", "2"),
+        ("gaming_1", 1),
+        ("unknown", 1),
+        ("contact", True),
+    ],
+)
+def test_plan_rejects_invalid_facility_levels(room, level):
+    with pytest.raises(ValueError):
+        config.PlanModel(facility_levels={room: level})

@@ -6,6 +6,7 @@ import numpy as np
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils import typealias as tp
+from arknights_mower.utils.jpeg_codec import encode_jpeg
 from arknights_mower.utils.log import save_screenshot_frame
 from arknights_mower.utils.path import get_path
 
@@ -21,13 +22,9 @@ def bytes2img(data: bytes, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:
         )
 
 
-def img2bytes(img: tp.Image) -> bytes:
-    """image -> bytes"""
-    return cv2.imencode(
-        ".jpg",
-        cv2.cvtColor(img, cv2.COLOR_RGB2BGR),
-        [int(cv2.IMWRITE_JPEG_QUALITY), 75],
-    )[1]
+def img2bytes(img: tp.Image) -> np.ndarray:
+    """Encode RGB as JPEG; retain ndarray attachment compatibility."""
+    return np.frombuffer(encode_jpeg(img), dtype=np.uint8)
 
 
 def loadres(res: tp.Res, gray: bool = False) -> Union[tp.Image, tp.GrayImage]:

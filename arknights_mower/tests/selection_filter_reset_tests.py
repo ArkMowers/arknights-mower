@@ -248,10 +248,12 @@ def test_unknown_or_conflicting_panel_state_is_not_guessed(buttons):
 
 @pytest.mark.parametrize("opened", [False, True])
 @pytest.mark.parametrize("low_frame_rate", [False, True])
-def test_stuck_filter_panel_raises_domain_error_without_repeated_taps(
+def test_stuck_filter_panel_raises_domain_error_after_bounded_retries(
     monkeypatch, opened, low_frame_rate
 ):
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", low_frame_rate)
+    monkeypatch.setattr(config.conf, "selection_transition_timeout", 6.0)
+    monkeypatch.setattr(config.conf, "selection_poll_interval", 0.5)
     monkeypatch.setattr(config, "stop_mower", MagicMock(is_set=lambda: False))
     solver = BaseMixin()
     x = 1609 if opened else 1724
@@ -260,11 +262,26 @@ def test_stuck_filter_panel_raises_domain_error_without_repeated_taps(
             ((x, 990), (x + 89, 1041)) if name == "confirm_blue" else None
         )
     )
-    solver.tap = MagicMock()
-    solver.sleep = MagicMock()
+    clock = [0.0]
+    taps = []
+    monkeypatch.setattr(
+        "arknights_mower.solvers.base_mixin.perf_counter", lambda: clock[0]
+    )
+
+    def sleep(interval):
+        clock[0] += interval
+
+    def tap(position, interval):
+        taps.append(clock[0])
+        sleep(interval)
+
+    solver.tap = MagicMock(side_effect=tap)
+    solver.sleep = MagicMock(side_effect=sleep)
     with pytest.raises(AgentSelectionNotReady, match="职业筛选失败"):
         if opened:
             solver._close_profession_filter()
         else:
             solver.profession_filter("ALL")
-    solver.tap.assert_called_once_with((1860, 60), interval=0.1)
+    assert solver.tap.call_args_list == [call((1860, 60), interval=0.1)] * 3
+    assert all(later - earlier >= 1.5 for earlier, later in zip(taps, taps[1:]))
+    assert clock[0] <= 6.1

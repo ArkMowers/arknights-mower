@@ -676,7 +676,11 @@ class Device:
         """detect current focus app"""
         command = "dumpsys window | grep mCurrentFocus"
         line = self.run(command).decode("utf8")
-        return line.strip()[:-1].split(" ")[-1]
+        focus = line.strip().removesuffix("}")
+        _, anr_marker, package = focus.partition("Application Not Responding: ")
+        if anr_marker:
+            return anr_marker + package
+        return focus.split(" ")[-1]
 
     def display_frames(self) -> tuple[int, int, int]:
         """get display frames if in compatibility mode"""
@@ -1045,6 +1049,10 @@ class Device:
         def check() -> bool:
             nonlocal update
             focus = self.current_focus()
+            if focus == "Application Not Responding: com.mumu.acc":
+                logger.warning("MuMu 加速服务没有响应，关闭该服务后恢复游戏前台")
+                self.run("am force-stop com.mumu.acc")
+                update = True
             # 前台判定：package 前缀匹配（游戏包下任何界面都算前台，免疫新 activity）
             if focus.startswith(self.game_package + "/"):
                 return update

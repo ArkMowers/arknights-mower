@@ -11,6 +11,7 @@ import pytest
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
+from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.image import loadres  # noqa: E402
 from arknights_mower.utils.recognize import Recognizer  # noqa: E402
 from arknights_mower.utils.scene import Scene  # noqa: E402
@@ -84,7 +85,8 @@ def test_training_readback_waits_for_submission_before_reselecting(monkeypatch):
     solver.tap_confirm.assert_not_called()
 
 
-def test_confirmation_waits_for_occluded_submission_without_reclicking():
+def test_confirmation_waits_for_occluded_submission_without_reclicking(monkeypatch):
+    monkeypatch.setattr(config.conf.waiting_scene, "CONNECTING", (1, 10))
     solver = object.__new__(BaseSchedulerSolver)
     solver.task = SchedulerTask()
     solver.op_data = SimpleNamespace(run_order_rooms={})
@@ -109,7 +111,7 @@ def test_confirmation_waits_for_occluded_submission_without_reclicking():
     solver.tap_confirm("train")
 
     assert solver.tap.call_count == 1
-    solver.sleep.assert_called_once_with()
+    solver.sleep.assert_called_once_with(1)
     assert solver.recog.get_scene() == Scene.INFRA_DETAILS
     device.screencap.assert_not_called()
 

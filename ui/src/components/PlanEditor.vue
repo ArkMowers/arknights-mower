@@ -1,4 +1,5 @@
 <script setup>
+import PlanFacilityLevels from './PlanFacilityLevels.vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
@@ -254,6 +255,7 @@ function set_facility(e) {
           <div
             v-for="r in [`room_${row}_1`, `room_${row}_2`, `room_${row}_3`]"
             :key="r"
+            :data-income-room="r"
             @click="set_facility(r)"
             :class="[button_type[current_plan[r].name], r === facility ? 'true' : 'false']"
           >
@@ -553,6 +555,9 @@ function set_facility(e) {
       <table class="facility-actions">
         <tbody>
           <tr>
+            <td v-if="!facility.startsWith('gaming_')">
+              <PlanFacilityLevels mode="level" :facility="facility" :locked="edit_locked" />
+            </td>
             <td>设施类别：</td>
             <td>
               <n-select
@@ -650,12 +655,15 @@ function set_facility(e) {
               <span>组</span>
               <help-text>
                 <p>同组一起上下班。宿舍成员随组由替班接岗，不额外占床。</p>
-                <p>点击加号新增绑组，每列分别设置替班；组名不能为空或重复。</p>
+                <p>点击加号新增绑组，每列分别设置替班；组名不能重复，允许一列空绑组。</p>
                 <p>
                   未绑组的0心情工作干员、整组均为0心情工作干员时可不填普通替班；混合组仍需为每位成员填写替班。
                 </p>
-                <p>多绑组干员跟随最近触发换班的组，使用对应替班，不参与组内心情和回班时间计算。</p>
-                <p>参与轮休的多绑组至少需要一名参与心情计算的非宿舍干员。</p>
+                <p>多绑组干员使用所有在休绑组均兼容的替班，不参与组内心情和回班时间计算。</p>
+                <p>
+                  工作主班可填写一列空绑组，按自身心情独立轮休；其他绑组下班时优先使用对应替班，已在休息的干员继续恢复。宿舍候补仍可被更高优先级主班腾床。
+                </p>
+                <p>参与轮休的具名绑组至少需要一名参与心情计算的非宿舍干员。</p>
                 <p>宿舍替班按已知心情从低到高选择，已在岗者保留。</p>
                 <p>宿舍替换填 Free 可在下班时开放休息床位；具体替班可填写同组工作主班或非主班。</p>
               </help-text>

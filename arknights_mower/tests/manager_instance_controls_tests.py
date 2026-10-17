@@ -47,6 +47,105 @@ def read_conf(manager):
     return yaml.load(path.read_text(encoding="utf-8"), Loader=CoreLoader)
 
 
+def batch_changes(manager, settings):
+    return [
+        {"idx": idx, "settings": dict(settings)}
+        for idx in range(len(manager.instances))
+    ]
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_update_permission_is_persisted_without_changing_other_settings(
+    manager, enabled
+):
+    assert manager.get_instances()[0]["updates_enabled"] is False
+    manager.update_settings(
+        0, {"token": "keep", "port": 58001, "ai_assistant_enabled": True}
+    )
+    manager.update_all_settings(
+        batch_changes(manager, {"updates_enabled": enabled}), manager.instances.copy()
+    )
+    reopened = Api(manager._storage_path)
+    assert reopened.get_instances()[0]["updates_enabled"] is enabled
+    saved = read_conf(reopened)
+    assert saved["updates_enabled"] is enabled
+    assert saved["ai_assistant_enabled"] is True
+    assert saved["webview"] == {"token": "keep", "port": 58001}
+
+
+@pytest.mark.parametrize("enabled", [None, 0, 1, "true", "false"])
+def test_manager_rejects_invalid_update_permission_without_writing(manager, enabled):
+    with pytest.raises(ValueError, match="布尔值"):
+        manager.update_settings(
+            0, {"token": "", "port": None, "updates_enabled": enabled}
+        )
+    assert not (Path(manager.instances[0]["path"]) / "config/conf.yml").exists()
+
+
+def test_manager_skips_live_update_permission_edits(manager, monkeypatch):
+    monkeypatch.setattr(runtime, "instances", lambda **kwargs: [record(manager)])
+    with pytest.raises(ValueError):
+        manager.update_settings(0, {"token": "", "port": None, "updates_enabled": True})
+    result = manager.update_all_settings(
+        batch_changes(manager, {"updates_enabled": True}), manager.instances.copy()
+    )
+    assert result["results"][0]["status"] == "skipped"
+    assert not (Path(manager.instances[0]["path"]) / "config/conf.yml").exists()
+
+
+@pytest.mark.parametrize("change", ["renamed", "moved", "removed", "replaced"])
+def test_single_settings_reject_changed_target_without_touching_either_config(
+    manager, change
+):
+    manager.update_settings(0, {"token": "first", "port": 58001})
+    first = Path(manager.instances[0]["path"]) / "config/conf.yml"
+    target = dict(manager.instances[0])
+    manager.add("second", str(first.parent.parent.parent / "second"))
+    manager.update_settings(1, {"token": "second", "port": 58002})
+    second = Path(manager.instances[1]["path"]) / "config/conf.yml"
+    before = {path: path.read_bytes() for path in (first, second)}
+    other = Api(manager._storage_path)
+    if change == "renamed":
+        other.rename(0, "renamed")
+    elif change == "moved":
+        other._update(0, {"path": other.instances[1]["path"]})
+    elif change == "removed":
+        other.remove(1)
+        other.remove(0)
+    else:
+        other.remove(0)
+    assert manager.instances[0] == target
+    with pytest.raises(ValueError, match="实例已变化"):
+        manager.update_settings(
+            0,
+            {"token": "stale", "port": None, "ai_assistant_enabled": True},
+            target,
+        )
+    assert {path: path.read_bytes() for path in (first, second)} == before
+
+
+def test_single_settings_accept_matching_target_after_an_unrelated_list_change(manager):
+    target = dict(manager.instances[0])
+    manager.add("unrelated", str(Path(target["path"]).parent / "other"))
+    manager.update_settings(
+        0, {"token": "new", "port": None, "ai_assistant_enabled": True}, target
+    )
+    assert read_conf(manager)["webview"] == {"token": "new", "port": 0}
+    assert read_conf(manager)["ai_assistant_enabled"] is True
+
+
+def test_single_settings_matching_target_still_rejects_running_process(
+    manager, monkeypatch
+):
+    target = dict(manager.instances[0])
+    monkeypatch.setattr(runtime, "instances", lambda **kwargs: [record(manager)])
+    with pytest.raises(ValueError, match="实例进程运行期间"):
+        manager.update_settings(
+            0, {"token": "new", "port": None, "ai_assistant_enabled": True}, target
+        )
+    assert not Path(target["path"]).exists()
+
+
 def test_duplicate_launch_is_blocked_before_registration_and_after_window_reopen(
     manager,
 ):
@@ -185,6 +284,318 @@ def test_settings_preserve_legacy_and_unknown_configuration(manager):
     manager.update_settings(0, {"token": "", "port": None})
     assert read_conf(manager)["webview"]["port"] == 0
     assert manager.get_instances()[0]["port"] is None
+
+
+def test_assistant_defaults_off_and_saved_choices_survive_manager_recreation(manager):
+    assert manager.get_instances()[0]["ai_assistant_enabled"] is False
+    for enabled in (True, False):
+        manager.update_settings(
+            0, {"token": "", "port": None, "ai_assistant_enabled": enabled}
+        )
+        reopened = Api(manager._storage_path)
+        assert reopened.get_instances()[0]["ai_assistant_enabled"] is enabled
+        assert read_conf(reopened)["ai_assistant_enabled"] is enabled
+        reopened.update_settings(0, {"token": "changed", "port": None})
+        assert read_conf(reopened)["ai_assistant_enabled"] is enabled
+
+
+def test_running_process_cannot_change_assistant_and_failed_write_preserves_choice(
+    manager, monkeypatch
+):
+    settings = {"token": "", "port": None, "ai_assistant_enabled": True}
+    manager.update_settings(0, settings)
+    target = Path(manager.instances[0]["path"]) / "config/conf.yml"
+    before = target.read_bytes()
+    monkeypatch.setattr(runtime, "instances", lambda **kwargs: [record(manager)])
+    with pytest.raises(ValueError, match="进程运行"):
+        manager.update_settings(0, {**settings, "ai_assistant_enabled": False})
+    assert target.read_bytes() == before
+    monkeypatch.setattr(runtime, "instances", lambda **kwargs: [])
+    monkeypatch.setattr(
+        runtime, "replace_with_retry", Mock(side_effect=PermissionError("locked"))
+    )
+    with pytest.raises(PermissionError):
+        manager.update_settings(0, {**settings, "ai_assistant_enabled": False})
+    assert target.read_bytes() == before
+
+
+def test_assistant_choices_are_per_instance_and_preserve_unknown_yaml_fields(manager):
+    root = Path(manager.instances[0]["path"])
+    root.mkdir()
+    (root / "conf.yml").write_text(
+        "private_payload: encrypted-text\ncustom: {flag: true}\n", encoding="utf-8"
+    )
+    manager.add("second", str(root.parent / "second"))
+    manager.update_settings(
+        0, {"token": "", "port": None, "ai_assistant_enabled": True}
+    )
+    assert read_conf(manager)["private_payload"] == "encrypted-text"
+    assert read_conf(manager)["custom"] == {"flag": True}
+    assert [
+        row["ai_assistant_enabled"]
+        for row in Api(manager._storage_path).get_instances()
+    ] == [True, False]
+
+
+@pytest.mark.parametrize("enabled", [1, 0, "true", "false", None])
+def test_invalid_assistant_choice_never_writes(manager, enabled):
+    with pytest.raises(ValueError):
+        manager.update_settings(
+            0, {"token": "", "port": None, "ai_assistant_enabled": enabled}
+        )
+    assert not Path(manager.instances[0]["path"]).exists()
+
+
+def test_batch_ai_only_preserves_each_connection_and_private_configuration(manager):
+    first = Path(manager.instances[0]["path"])
+    first.mkdir()
+    (first / "conf.yml").write_text(
+        "webview: {token: first-secret, port: 58001}\nprivate_payload: encrypted\n",
+        encoding="utf-8",
+    )
+    manager.add("second", str(first.parent / "second"))
+    manager.update_settings(1, {"token": "second-secret", "port": 58002})
+    targets = manager.instances.copy()
+    result = manager.update_all_settings(
+        batch_changes(manager, {"ai_assistant_enabled": True}), targets
+    )
+    assert [item["status"] for item in result["results"]] == ["updated", "updated"]
+    for idx, token, port in ((0, "first-secret", 58001), (1, "second-secret", 58002)):
+        _, raw = controls.read_instance_config(manager.instances[idx]["path"])
+        assert raw["ai_assistant_enabled"] is True
+        assert raw["webview"] == {"token": token, "port": port}
+    assert read_conf(manager)["private_payload"] == "encrypted"
+    result = manager.update_all_settings(
+        batch_changes(manager, {"ai_assistant_enabled": False}), targets
+    )
+    assert all(item["status"] == "updated" for item in result["results"])
+    assert all(
+        not row["ai_assistant_enabled"]
+        for row in Api(manager._storage_path).get_instances()
+    )
+
+
+def test_batch_table_saves_different_cells_and_leaves_unedited_rows_untouched(manager):
+    root = Path(manager.instances[0]["path"])
+    manager.update_settings(0, {"token": "first", "port": 58000})
+    manager.add("second", str(root.parent / "second"))
+    manager.update_settings(1, {"token": "second", "port": 58001})
+    manager.add("third", str(root.parent / "third"))
+    result = manager.update_all_settings(
+        [
+            {"idx": 0, "settings": {"ai_assistant_enabled": True}},
+            {"idx": 1, "settings": {"token": "new-second", "port": 59002}},
+        ],
+        manager.instances.copy(),
+    )
+    assert [row["idx"] for row in result["results"]] == [0, 1]
+    assert read_conf(manager)["webview"] == {"token": "first", "port": 58000}
+    assert read_conf(manager)["ai_assistant_enabled"] is True
+    _, second = controls.read_instance_config(manager.instances[1]["path"])
+    assert second["webview"] == {"token": "new-second", "port": 59002}
+    assert "ai_assistant_enabled" not in second
+    assert not Path(manager.instances[2]["path"]).exists()
+
+
+def test_batch_settings_skip_live_missing_and_alias_directories(manager, monkeypatch):
+    root = Path(manager.instances[0]["path"])
+    manager.update_settings(0, {"token": "keep", "port": 59000})
+    manager.add("second", str(root.parent / "second"))
+    manager.add("missing", "")
+    manager.add("alias", str(root.parent / "second" / ".." / "second"))
+    monkeypatch.setattr(runtime, "instances", lambda **kwargs: [record(manager)])
+    before = read_conf(manager)
+    result = manager.update_all_settings(
+        batch_changes(manager, {"token": "shared", "port": 58001}),
+        manager.instances.copy(),
+    )
+    assert [item["status"] for item in result["results"]] == [
+        "skipped",
+        "updated",
+        "skipped",
+        "skipped",
+    ]
+    assert read_conf(manager) == before
+    _, second = controls.read_instance_config(manager.instances[1]["path"])
+    assert second["webview"] == {"token": "shared", "port": 58001}
+    assert "ai_assistant_enabled" not in second
+
+
+def test_batch_random_ports_clear_token_only_when_selected(manager):
+    manager.update_settings(
+        0, {"token": "keep", "port": 58001, "ai_assistant_enabled": True}
+    )
+    targets = manager.instances.copy()
+    manager.update_all_settings(batch_changes(manager, {"port": None}), targets)
+    assert read_conf(manager)["webview"] == {"token": "keep", "port": 0}
+    assert read_conf(manager)["ai_assistant_enabled"] is True
+    manager.update_all_settings(batch_changes(manager, {"token": ""}), targets)
+    assert read_conf(manager)["webview"] == {"token": "", "port": 0}
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {},
+        [],
+        [{"idx": 0, "settings": {}}],
+        [{"idx": True, "settings": {"token": "new"}}],
+        [{"idx": -1, "settings": {"token": "new"}}],
+        [{"idx": 2, "settings": {"token": "new"}}],
+        [{"idx": 0}],
+        [{"idx": 0, "settings": {"name": "same"}}],
+        [{"idx": 0, "settings": {"token": 1}}],
+        [{"idx": 0, "settings": {"ai_assistant_enabled": 1}}],
+        [{"idx": 0, "settings": {"port": True}}],
+        [{"idx": 0, "settings": {"port": 65536}}],
+        [
+            {"idx": 0, "settings": {"token": "a"}},
+            {"idx": 0, "settings": {"token": "b"}},
+        ],
+        [
+            {"idx": 0, "settings": {"token": "new"}},
+            {"idx": 1, "settings": {"port": 65536}},
+        ],
+    ],
+)
+def test_invalid_batch_payloads_do_not_write_any_instance(manager, changes):
+    manager.add("second", str(Path(manager.instances[0]["path"]).parent / "second"))
+    with pytest.raises(ValueError):
+        manager.update_all_settings(changes, manager.instances.copy())
+    assert all(not Path(row["path"]).exists() for row in manager.instances)
+
+
+def test_batch_rejects_changed_target_list_before_writing(manager):
+    targets = manager.instances.copy()
+    manager.rename(0, "changed")
+    with pytest.raises(ValueError, match="实例列表已变化"):
+        manager.update_all_settings(
+            batch_changes(manager, {"ai_assistant_enabled": True}), targets
+        )
+    assert not Path(manager.instances[0]["path"]).exists()
+
+
+def test_batch_failed_file_retains_previous_bytes_and_other_files_can_succeed(
+    manager, monkeypatch
+):
+    manager.update_settings(0, {"token": "old", "port": None})
+    manager.add("second", str(Path(manager.instances[0]["path"]).parent / "second"))
+    first = Path(manager.instances[0]["path"]) / "config/conf.yml"
+    before = first.read_bytes()
+    replace = runtime.replace_with_retry
+
+    def fail_first(source, destination):
+        if Path(destination) == first:
+            raise PermissionError("locked")
+        return replace(source, destination)
+
+    monkeypatch.setattr(runtime, "replace_with_retry", fail_first)
+    result = manager.update_all_settings(
+        batch_changes(manager, {"token": "new"}), manager.instances.copy()
+    )
+    assert [item["status"] for item in result["results"]] == ["failed", "updated"]
+    assert result["results"][0]["message"] == "locked"
+    assert first.read_bytes() == before
+    assert list(first.parent.iterdir()) == [first]
+    _, second = controls.read_instance_config(manager.instances[1]["path"])
+    assert second["webview"]["token"] == "new"
+
+
+def test_batch_does_not_replace_unreadable_yaml_and_still_updates_other_instances(
+    manager,
+):
+    root = Path(manager.instances[0]["path"])
+    root.mkdir()
+    broken = root / "conf.yml"
+    broken.write_text("[invalid", encoding="utf-8")
+    manager.add("second", str(root.parent / "second"))
+    result = manager.update_all_settings(
+        batch_changes(manager, {"ai_assistant_enabled": True}), manager.instances.copy()
+    )
+    assert [item["status"] for item in result["results"]] == ["failed", "updated"]
+    assert broken.read_text(encoding="utf-8") == "[invalid"
+
+
+def test_batch_rechecks_process_state_before_each_write(manager, monkeypatch):
+    manager.add("second", str(Path(manager.instances[0]["path"]).parent / "second"))
+    records = [[], [record(manager)]]
+    records[1][0]["space"] = manager.instances[1]["path"]
+    monkeypatch.setattr(runtime, "instances", Mock(side_effect=records))
+    result = manager.update_all_settings(
+        batch_changes(manager, {"ai_assistant_enabled": True}), manager.instances.copy()
+    )
+    assert [item["status"] for item in result["results"]] == ["updated", "skipped"]
+    assert not Path(manager.instances[1]["path"]).exists()
+
+
+@pytest.mark.parametrize("late", [False, True])
+def test_batch_scan_failure_stops_unverified_writes(manager, monkeypatch, late):
+    manager.add("second", str(Path(manager.instances[0]["path"]).parent / "second"))
+    failure = runtime.InstanceScanError("unreadable")
+    monkeypatch.setattr(
+        runtime, "instances", Mock(side_effect=[[], failure] if late else failure)
+    )
+    if late:
+        result = manager.update_all_settings(
+            batch_changes(manager, {"ai_assistant_enabled": True}),
+            manager.instances.copy(),
+        )
+        assert [item["status"] for item in result["results"]] == ["updated", "failed"]
+    else:
+        with pytest.raises(runtime.InstanceScanError):
+            manager.update_all_settings(
+                batch_changes(manager, {"ai_assistant_enabled": True}),
+                manager.instances.copy(),
+            )
+        assert not Path(manager.instances[0]["path"]).exists()
+    assert not Path(manager.instances[1]["path"]).exists()
+
+
+def test_batch_stops_before_next_file_when_time_budget_expires(manager, monkeypatch):
+    manager.add("second", str(Path(manager.instances[0]["path"]).parent / "second"))
+    monkeypatch.setattr(controls, "monotonic", Mock(side_effect=[0, 0, 0, 11]))
+    result = manager.update_all_settings(
+        batch_changes(manager, {"ai_assistant_enabled": True}), manager.instances.copy()
+    )
+    assert [item["status"] for item in result["results"]] == ["updated", "failed"]
+    assert "时间上限" in result["results"][1]["message"]
+    assert not Path(manager.instances[1]["path"]).exists()
+
+
+def test_batch_retry_skips_rewriting_completed_files_and_can_reach_remaining_work(
+    manager, monkeypatch
+):
+    manager.add("second", str(Path(manager.instances[0]["path"]).parent / "second"))
+    clock = [0]
+    replace = runtime.replace_with_retry
+
+    def slow_replace(source, destination):
+        replace(source, destination)
+        clock[0] += 11
+
+    writer = Mock(side_effect=slow_replace)
+    monkeypatch.setattr(runtime, "replace_with_retry", writer)
+    monkeypatch.setattr(controls, "monotonic", lambda: clock[0])
+    changes = batch_changes(manager, {"ai_assistant_enabled": True})
+    targets = manager.instances.copy()
+    first = manager.update_all_settings(changes, targets)
+    assert [row["status"] for row in first["results"]] == ["updated", "failed"]
+    second = manager.update_all_settings(changes, targets)
+    assert [row["status"] for row in second["results"]] == ["updated", "updated"]
+    assert second["results"][0]["message"] == "已符合设置"
+    assert writer.call_count == 2
+
+
+def test_batch_update_guard_skips_every_instance_during_software_operations(
+    manager, monkeypatch
+):
+    monkeypatch.setattr(runtime, "active_job", lambda: True)
+    result = manager.update_all_settings(
+        batch_changes(manager, {"ai_assistant_enabled": True}), manager.instances.copy()
+    )
+    assert result["results"][0]["status"] == "skipped"
+    assert "软件更新" in result["results"][0]["message"]
+    assert not Path(manager.instances[0]["path"]).exists()
 
 
 def test_settings_can_repair_invalid_connection_values_without_losing_other_fields(

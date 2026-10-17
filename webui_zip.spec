@@ -50,7 +50,12 @@ mower_a = Analysis(
         (f"{site_packages}/pyzbar/libiconv.dll", "."),
     ]
     + add_data,
-    hiddenimports=[],
+    hiddenimports=[
+        "arknights_mower.utils.instance_supervisor",
+        "arknights_mower.utils.crash_recovery",
+        "arknights_mower.utils.jpeg_worker",
+        "arknights_mower.utils.jpeg_codec",
+    ],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
@@ -97,7 +102,7 @@ mower_exe = EXE(
     [],
     exclude_binaries=True,
     name="mower",
-    uac_admin=True,
+    uac_admin=False,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -152,7 +157,7 @@ manager_exe = EXE(
     [],
     exclude_binaries=True,
     name="多开管理器",
-    uac_admin=True,
+    uac_admin=False,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

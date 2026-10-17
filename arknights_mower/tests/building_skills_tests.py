@@ -274,3 +274,130 @@ def test_conditions_share_the_roster_file_cache(snapshot_path, monkeypatch):
     )
     assert mastery.get_cultivate_characters()["char_108_silent"]["level"] == 1
     assert len(loads) == 1
+
+
+@pytest.mark.parametrize(
+    "name,char_id",
+    [
+        ("德·托莱多", "char_393_toledo"),
+        ("克莱门莎", "char_4231_clemnt"),
+        ("旅骨", "char_4232_hbound"),
+    ],
+)
+def test_v078_supplement_resolves_box_without_general_map(
+    snapshot_path, monkeypatch, name, char_id
+):
+    write_snapshot(snapshot_path, {"id": char_id, "evolvePhase": 2, "level": 1})
+    monkeypatch.setattr(module, "_operator_ids_by_name", lambda: {})
+    entry = operator(module.load_skill_snapshot(), name)
+    assert entry["owned"] is True
+    assert entry["phase"] == 2
+    assert entry["active_skills"]
+
+
+def test_installed_operator_record_precedes_supplement(tmp_path, monkeypatch):
+    path = tmp_path / "skills.json"
+    path.write_text(
+        json.dumps([{"name": "旅骨", "child_skill": [{"skillname": "updated"}]}])
+    )
+    monkeypatch.setattr(module, "resource_pkg_path", lambda _: path)
+    module.skill_index.cache_clear()
+    try:
+        assert module.skill_index()["旅骨"] == [{"skillname": "updated"}]
+        assert "克莱门莎" in module.skill_index()
+    finally:
+        module.skill_index.cache_clear()
+
+
+def test_income_cache_preserves_actual_growth_and_only_exposes_simulation_fields(
+    snapshot_path,
+):
+    payload = {
+        "code": 0,
+        "_mower_player": {"uid": "private-user"},
+        "_mower_inventory_observed_at": 123456,
+        "data": {
+            "characters": [{"id": "char_108_silent", "evolvePhase": 0, "level": 25}],
+            "items": [
+                {"id": "3003", "count": "12"},
+                {"id": "4001", "count": 1234567},
+                {"id": "2001", "count": 2},
+                {"id": "2004", "count": 3},
+            ],
+        },
+    }
+    snapshot_path.write_text(json.dumps(payload), encoding="utf-8")
+    before = snapshot_path.read_bytes()
+    cache = module.load_income_cache()
+    assert cache["has_roster"] and cache["has_inventory"]
+    assert next(op for op in cache["operators"] if op["name"] == "赫默") == {
+        "name": "赫默",
+        "owned": True,
+        "phase": 0,
+        "level": 25,
+    }
+    assert cache["inventory"] == {
+        "gold": 12,
+        "fragment": 0,
+        "orirock": 0,
+        "device": 0,
+        "lmd": 1234567,
+        "exp": 6400,
+    }
+    assert cache["observed_at"] == 123456
+    assert "private-user" not in json.dumps(cache)
+    assert snapshot_path.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "items", [None, [{"id": "3003", "count": -1}], [{"id": "3003", "count": True}]]
+)
+def test_income_cache_does_not_replace_unavailable_inventory_with_zero(
+    snapshot_path, items
+):
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                "code": 0,
+                "data": {
+                    "characters": [
+                        {"id": "char_108_silent", "evolvePhase": 0, "level": 25}
+                    ],
+                    "items": items,
+                },
+            }
+        )
+    )
+    cache = module.load_income_cache()
+    assert not cache["has_inventory"]
+    assert cache["inventory"] == {}
+
+
+def test_income_cache_missing_file_preserves_unknown(snapshot_path):
+    cache = module.load_income_cache()
+    assert not cache["has_roster"]
+    assert not cache["has_inventory"]
+    assert cache["operators"] == []
+
+
+def test_income_cache_valid_empty_items_default_all_resources_to_zero(snapshot_path):
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                "code": 0,
+                "data": {
+                    "characters": [
+                        {"id": "char_108_silent", "evolvePhase": 0, "level": 25}
+                    ],
+                    "items": [],
+                },
+            }
+        )
+    )
+    before = snapshot_path.read_bytes()
+    cache = module.load_income_cache()
+    assert cache["has_inventory"]
+    assert cache["inventory"] == dict.fromkeys(
+        ("gold", "fragment", "orirock", "device", "lmd", "exp"), 0
+    )
+    assert snapshot_path.read_bytes() == before

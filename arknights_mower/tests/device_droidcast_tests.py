@@ -74,6 +74,7 @@ class Android:
         self.spawned = []
         self.spawn_error = None
         self.transport_error = None
+        self.whitelist_error = None
 
     def run(self, argv, **kwargs):
         assert argv[0] == self.adb_path, argv
@@ -97,6 +98,18 @@ class Android:
             output = self.install_output
             if output.strip() == b"Success":
                 self.version = "1.3.0"
+        elif args == [
+            "shell",
+            "dumpsys",
+            "deviceidle",
+            "whitelist",
+            "+com.rayworks.droidcast",
+        ]:
+            if self.whitelist_error:
+                raise subprocess.CalledProcessError(
+                    1, argv, stderr=self.whitelist_error
+                )
+            output = b"Added: com.rayworks.droidcast\n"
         elif args[:2] == ["forward", "--no-rebind"]:
             if args[2] in self.forwards:
                 raise subprocess.CalledProcessError(1, argv, b"cannot rebind")
@@ -286,6 +299,52 @@ class DroidCastTests(unittest.TestCase):
         self.assertTrue(self.control.capture().ok)
         self.assertFalse(any(args[0] == "install" for args in self.android.commands))
 
+    def test_install_and_existing_package_receive_idle_exemption_before_helper_start(
+        self,
+    ):
+        for version in ("1.2.1", "1.3.0"):
+            with self.subTest(version=version):
+                self.android.version = version
+                self.android.commands.clear()
+                self.assertTrue(self.control.capture().ok)
+                self.device.rebuild_screenshot()
+                commands = self.android.commands
+                exemption = [
+                    "shell",
+                    "dumpsys",
+                    "deviceidle",
+                    "whitelist",
+                    "+com.rayworks.droidcast",
+                ]
+                index = commands.index(exemption)
+                forward = next(
+                    i
+                    for i, cmd in enumerate(commands)
+                    if cmd[:2] == ["forward", "--no-rebind"]
+                )
+                self.assertLess(index, forward)
+                installs = [i for i, cmd in enumerate(commands) if cmd[0] == "install"]
+                if version == "1.2.1":
+                    self.assertEqual(len(installs), 1)
+                    self.assertLess(installs[0], index)
+                else:
+                    self.assertEqual(installs, [])
+
+    def test_idle_exemption_failure_does_not_spawn_helper_or_change_profile(self):
+        self.android.whitelist_error = b"Permission denied"
+        result = self.control.capture()
+        self.assert_adb_degraded(
+            result, "droidcast_whitelist_failed", "Permission denied"
+        )
+        self.assertEqual(self.android.spawned, [])
+        self.assertEqual(self.android.forwards, {})
+
+    def test_read_only_version_check_does_not_change_idle_exemption(self):
+        self.android.version = "1.3.0"
+        capture = droidcast.DroidCastSession("chosen-adb", "USB-A")
+        capture.ensure_version()
+        self.assertFalse(any("deviceidle" in args for args in self.android.commands))
+
     def test_signature_conflict_is_actionable_and_never_uninstalls(self):
         self.android.install_output = b"Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE]"
         result = self.control.capture()
@@ -322,6 +381,11 @@ class DroidCastTests(unittest.TestCase):
         self.assertEqual(self.simulator.actions, [])
         self.assertEqual(self.conf.device.screenshot_backend, "droidcast")
         self.assertFalse(self.http.trust_env)
+        detail = self.control.settings_status()["error"]["message"]
+        self.assertIn("phase=headers", detail)
+        self.assertIn("startup=True", detail)
+        self.assertIn("received_bytes=0", detail)
+        self.assertIn("cause=ReadTimeout: read stalled", detail)
         self.assertTrue(
             all(
                 call[1]["timeout"][0] <= 2 and call[1]["timeout"][1] <= 3
@@ -761,6 +825,31 @@ class DroidCastTests(unittest.TestCase):
         self.http.get = response
         result = self.control.capture()
         self.assert_adb_degraded(result, "droidcast_http_timeout", "超时")
+        detail = self.control.settings_status()["error"]["message"]
+        self.assertIn("phase=body", detail)
+        self.assertIn("received_bytes=0", detail)
+        self.assertIn("body stalled", detail)
+
+    def test_body_deadline_retains_partial_byte_count_and_timeout_context(self):
+        def response(*args, **kwargs):
+            def slow_chunk(size):
+                self.clock.sleep(droidcast.START_TIMEOUT + 1)
+                return b"partial"
+
+            return SimpleNamespace(
+                status_code=200,
+                raw=SimpleNamespace(read1=slow_chunk),
+                close=Mock(),
+            )
+
+        self.http.get = response
+        result = self.control.capture()
+        self.assert_adb_degraded(result, "droidcast_http_timeout", "超时")
+        detail = self.control.settings_status()["error"]["message"]
+        self.assertIn("phase=body", detail)
+        self.assertIn("received_bytes=7", detail)
+        self.assertIn("helper_exit=None", detail)
+        self.assertIn("cause=TimeoutError", detail)
 
     def test_adb_install_timeout_and_install_failure_do_not_start_helpers(self):
         run = self.android.run

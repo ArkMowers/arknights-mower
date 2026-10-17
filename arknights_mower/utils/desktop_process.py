@@ -153,6 +153,12 @@ def watch_parent():
     Thread(target=monitor, daemon=True).start()
 
 
+def run_with_parent_watch(target, *args):
+    """Use the same parent lifetime for multiprocessing GUI helpers."""
+    watch_parent()
+    return target(*args)
+
+
 def run_worker(target, descriptor, log_descriptor=None):
     channel = Channel(Connection(int(descriptor)))
     log_queue = (

@@ -16,6 +16,9 @@ flowchart TD
         DeviceRouter["Device Routes (/device)"]
     end
 
+    Supervisor["Windows Desktop Supervisor (independent process)"]
+    JPEG["Preview / History JPEG Workers (independent processes)"]
+
     subgraph Subsystems ["Core Domain Subsystems"]
         subgraph DeviceSubsystem ["Device Control Subsystem"]
             Profile["DeviceProfile (Conf.device)"]
@@ -48,6 +51,9 @@ flowchart TD
     end
 
     UI -->|REST / WebSocket| Service
+    Supervisor -->|Own Instance Lifetime| Service
+    Service -->|Bounded RGB Snapshot| JPEG
+    JPEG -->|Encoded Diagnostic Frame| RingBuffer
     Service --> Subsystems
     DeviceSubsystem --> Persistence
     BaseSubsystem --> Persistence
@@ -72,6 +78,7 @@ Arknights Mower consists of four decoupled layers:
 - Provides RESTful JSON endpoints and real-time WebSocket feeds.
 - Implements `GET /conf` on-the-fly migration, `PATCH /conf` partial updates, and `POST /conf` backward compatibility.
 - Dispatches scheduling runs and orchestrates graceful shutdown across threads and child processes.
+- The Windows desktop entry keeps its supervisor outside this process; [Main Instance Process Recovery](subsystems/process-recovery.md) defines ownership and safe dispatch recovery.
 
 ### 1.3 Core Subsystems (`arknights_mower/`)
 - **[Device Control Subsystem](subsystems/device-control.md)**: Manages emulator discovery, socket-level transport, standard canvas frame acquisition, readiness verdicts, and bounded crash recovery.
@@ -96,6 +103,7 @@ Start with the affected user operation. The linked contracts provide current beh
 | Change plan validation, shift projection or confirmed staffing | [`BaseSchedulerSolver`](../arknights_mower/solvers/base_schedule.py), [`Operators`](../arknights_mower/utils/operators.py) | [Base Scheduling task entry](subsystems/base-scheduler.md#start-with-the-affected-operation) |
 | Change the settings or plan editor UI | [`ui/src/components/`](../ui/src/components/), [`ui/src/stores/`](../ui/src/stores/) | [Frontend development and focused tests](../ui/README.md), [UI contract](../ui/AGENTS.md) |
 | Change shipped files or software/resource updates | [`scripts/`](../scripts/), [`software_update.py`](../arknights_mower/utils/software_update.py), [`resource_update_job.py`](../arknights_mower/utils/resource_update_job.py) | [Packaging](cookbook/packaging.md), [software update](subsystems/software-update.md), [resource update](subsystems/resource-update.md) |
+| Change MAA core activation or worker lifetime | [`maa_runtime.py`](../arknights_mower/utils/maa_runtime.py), [`maa_process.py`](../arknights_mower/utils/maa_process.py), [`maa_backup.py`](../arknights_mower/utils/maa_backup.py) | [MAA runtime](subsystems/maa-runtime.md), focused worker and scheduler suites under `arknights_mower/tests/maa_*tests.py` |
 | Change documentation or agent instructions | [`scripts/verify_governance.py`](../scripts/verify_governance.py) | [Task selection and verification](../.agents/AGENTS.md), [documentation routing](../.agents/skills/mower-doc/references/doc-hierarchy.md#routing-rules) |
 
 Run focused Python checks from the repository root and frontend checks from `ui/`, as specified by the linked procedure. Offline tests verify the behavior exercised by their fixtures; document checks verify structure and links. Neither establishes a successful game operation. Report observed device results and remaining uncertainty separately.

@@ -334,6 +334,73 @@ def test_resting_operator_tail_search_retains_wait_before_scan(
         solver.sleep.assert_called_once_with(tail_wait)
 
 
+@pytest.mark.parametrize("mode", ["high", "xhigh"])
+@pytest.mark.parametrize("target_page", [1, 2, None], ids=["middle", "tail", "absent"])
+@pytest.mark.parametrize("tail_companion", [False, True])
+def test_resting_operator_tail_miss_searches_from_first_page(
+    monkeypatch, mode, target_page, tail_companion
+):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", mode)
+    solver, selected = selection_solver(monkeypatch, residents=[])
+    solver.op_data.operators["伊芙利特"] = SimpleNamespace(
+        mood=10, upper_limit=24, room="dormitory_1", is_resting=lambda: True
+    )
+    state = {"page": 0}
+    observed_pages = []
+    scan = solver.scan_agent.side_effect
+
+    def scan_page(names, **kwargs):
+        page_index = state["page"]
+        observed_pages.append(page_index)
+        found, _ = scan(
+            [
+                name
+                for name in names
+                if (name == "伊芙利特" and page_index == target_page)
+                or (name == "特米米" and page_index == 2)
+            ],
+            **kwargs,
+        )
+        for name in found:
+            names.remove(name)
+        return found, [
+            (["杜林", "妮芙", "特米米"][page_index], ((630, 488), (818, 520)))
+        ]
+
+    def rewind(*args, **kwargs):
+        state["page"] = 0
+        return (0, None) if kwargs.get("return_page") else 0
+
+    def next_page(*args, **kwargs):
+        state["page"] = min(state["page"] + 1, 2)
+        return (1, None)
+
+    solver.scan_agent.side_effect = scan_page
+    solver.swipe_left.side_effect = rewind
+    solver.swipe_agent_page.side_effect = next_page
+    solver.swipe_noinertia.side_effect = lambda *args, **kwargs: state.update(page=2)
+
+    expected = ["伊芙利特"] + (["特米米"] if tail_companion else [])
+    agents = expected.copy()
+    if target_page is None:
+        with pytest.raises(base_mixin.AgentSelectionNotReady, match="末尾"):
+            solver.choose_agent(agents, "dormitory_1")
+        assert selected == (["特米米"] if tail_companion else [])
+    else:
+        solver.choose_agent(agents, "dormitory_1")
+        assert selected == agents == expected
+
+    assert solver.swipe_noinertia.call_count == 3
+    solver.sleep.assert_called_once_with(0.5 if mode == "high" else 1)
+    if target_page == 2:
+        assert observed_pages == [0, 2]
+        solver.swipe_agent_page.assert_not_called()
+    else:
+        assert observed_pages[:4] == [0, 2, 0, 1]
+        assert any(call.args[0] > 0 for call in solver.swipe_left.call_args_list)
+        assert len(observed_pages) <= 6
+
+
 @pytest.mark.parametrize("targets", [[], ["伊芙利特"], ["Free"]])
 def test_high_clear_wait_applies_to_empty_fixed_and_free_selection(
     monkeypatch, targets

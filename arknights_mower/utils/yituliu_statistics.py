@@ -16,6 +16,7 @@ from arknights_mower.utils.update_runtime import (
 
 SOURCE_URL = "https://auth.yituliu.cn/open/ak-operator-statistics/result"
 CACHE_TTL = 24 * 60 * 60
+CACHE_VERSION = 2
 REQUEST_TIMEOUT = (3, 8)
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 RETRY_COOLDOWN = 5 * 60
@@ -78,10 +79,17 @@ def _operators(rows):
                 or sum(histogram.values()) > own
             ):
                 raise ValueError("干员调查分布无效")
-            # The provider can mix mastery stages with raw skill levels. Keep the
-            # affected rate unknown instead of guessing or rejecting other metrics.
-            if any(level not in levels for level in histogram):
-                continue
+            if key.startswith("skill"):
+                if any(int(level) > 10 for level in histogram):
+                    continue
+                # Canonical 0–3 are mastery stages. Legacy 4–7 have no mastery;
+                # legacy 8–10 combine basic level seven with mastery one–three.
+                normalized = {}
+                for level, count in histogram.items():
+                    rank = int(level)
+                    stage = str(rank if rank <= 3 else max(0, rank - 7))
+                    normalized[stage] = normalized.get(stage, 0) + count
+                histogram = normalized
             clean[key] = dict(histogram)
         result.append(clean)
         seen.add(cid)
@@ -94,7 +102,11 @@ def _read_cache(path):
         timestamp = saved["fetched_at"]
         if type(timestamp) not in (float, int) or not 0 < timestamp <= time():
             return None
-        return {"operators": _operators(saved["operators"]), "fetched_at": timestamp}
+        return {
+            "operators": _operators(saved["operators"]),
+            "fetched_at": timestamp,
+            "version": saved.get("version"),
+        }
     except (OSError, ValueError, TypeError, KeyError):
         return None
 
@@ -104,7 +116,9 @@ def _result(cache):
     return {
         "operators": cache["operators"] if cache else [],
         "fetched_at": fetched_at,
-        "stale": fetched_at is None or time() - fetched_at >= CACHE_TTL,
+        "stale": fetched_at is None
+        or time() - fetched_at >= CACHE_TTL
+        or cache.get("version") != CACHE_VERSION,
         "error": None,
         "source_url": SOURCE_URL,
     }
@@ -114,7 +128,10 @@ def _save_cache(path, result):
     atomic_write(
         path,
         lambda stream: json.dump(
-            {key: result[key] for key in ("operators", "fetched_at")},
+            {
+                **{key: result[key] for key in ("operators", "fetched_at")},
+                "version": CACHE_VERSION,
+            },
             stream,
             ensure_ascii=False,
         ),

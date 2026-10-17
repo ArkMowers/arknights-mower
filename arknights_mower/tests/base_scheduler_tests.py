@@ -78,6 +78,7 @@ class TestIdleSimulatorWake(unittest.TestCase):
         self.solver = object.__new__(BaseSchedulerSolver)
         self.solver._simulator_closed_for_idle = False
         self.solver.device = MagicMock()
+        self.solver.device.session_control = None
         self.solver.recog = MagicMock()
         self.now = datetime(2026, 9, 5, 13, 0)
         self.wake = Event()
@@ -275,6 +276,7 @@ class TestMoodInitialization(unittest.TestCase):
         self.initialize.return_value = scheduler
         self.main.simulate(None)
         self.assertTrue(scheduler.defer_backup_plan_until_mood_read)
+        self.assertTrue(scheduler._initial_staffing_pending)
 
     def test_saved_state_does_not_defer_backup_plan(self):
         scheduler = MagicMock()
@@ -282,6 +284,19 @@ class TestMoodInitialization(unittest.TestCase):
         self.initialize.return_value = scheduler
         self.main.simulate({"tasks": []})
         self.assertFalse(scheduler.defer_backup_plan_until_mood_read)
+        self.assertFalse(scheduler._initial_staffing_pending)
+
+    def test_crash_without_snapshot_reconciles_as_fresh_start(self):
+        from arknights_mower.utils.crash_recovery import prepare_resume
+
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = "测试完成"
+        self.initialize.return_value = scheduler
+        with patch("arknights_mower.utils.crash_recovery.status", return_value={}):
+            saved = prepare_resume(None)
+        self.main.simulate(saved)
+        self.assertTrue(scheduler.defer_backup_plan_until_mood_read)
+        self.assertTrue(scheduler._initial_staffing_pending)
 
     def test_saved_unfinished_mood_read_still_defers_backup_plan(self):
         scheduler = MagicMock()
@@ -297,6 +312,14 @@ class TestMoodInitialization(unittest.TestCase):
         )
         self.assertTrue(scheduler.defer_backup_plan_until_mood_read)
         self.assertEqual(scheduler._initial_mood_refresh_rooms, set(layout))
+
+    def test_saved_initial_staffing_is_resumed_without_resetting_observations(self):
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = "测试完成"
+        self.initialize.return_value = scheduler
+        self.main.simulate({"tasks": [], "initial_staffing_pending": True})
+        self.assertTrue(scheduler._initial_staffing_pending)
+        self.assertFalse(scheduler.defer_backup_plan_until_mood_read)
 
     def test_unified_initialization_never_requests_mood_reload(self):
         scheduler = MagicMock()
@@ -463,7 +486,6 @@ class TestBaseScheduler(unittest.TestCase):
             )
         }
         start_time = datetime(2026, 5, 2, 15, 19, 33)
-        detected_exhaust_time = start_time + timedelta(minutes=10)
 
         class FixedDateTime(datetime):
             now_value = start_time
@@ -482,7 +504,14 @@ class TestBaseScheduler(unittest.TestCase):
             patch.object(
                 BaseSchedulerSolver,
                 "get_agent_from_room",
-                return_value=[{"time": detected_exhaust_time}],
+                return_value=[
+                    {
+                        "agent": "伊内丝",
+                        "time": FixedDateTime.fromtimestamp(
+                            (start_time + timedelta(minutes=10)).timestamp()
+                        ),
+                    }
+                ],
             ),
             patch.object(BaseSchedulerSolver, "back"),
         ):
@@ -2705,6 +2734,93 @@ class TestDroneAccelerate(unittest.TestCase):
     持续失败则抛异常，上层据此保留任务并按既有策略退避。
     """
 
+    def test_factory_reserves_threshold_without_selecting_maximum(self):
+        cases = [
+            ("reserve", 250, 20, 0, True, False, 230),
+            ("surplus", 71, 30, 0, True, False, 41),
+            ("at_threshold", 20, 20, 0, True, False, None),
+            ("below_threshold", 19, 20, 0, True, False, None),
+            ("zero_threshold", 250, 0, 0, True, False, 250),
+            ("no_run_orders", 250, 20, 0, False, False, 230),
+            ("no_run_orders_surplus", 71, 30, 0, False, False, 41),
+            ("no_run_orders_below", 29, 30, 0, False, False, None),
+            ("not_customize", 250, 20, 7, True, True, 250),
+            ("no_run_orders_at_threshold", 20, 20, 0, False, False, None),
+            ("specialized_at_threshold", 20, 20, 7, False, True, 20),
+        ]
+        for (
+            name,
+            available,
+            threshold,
+            initial_selected,
+            has_run_orders,
+            not_customize,
+            expected_spend,
+        ) in cases:
+            with self.subTest(name=name):
+                solver = object.__new__(BaseSchedulerSolver)
+                solver.recog = SimpleNamespace(w=1920, h=1080, gray="gray")
+                solver.op_data = SimpleNamespace(
+                    run_order_rooms=["room_1_1"] if has_run_orders else []
+                )
+                solver.digit_reader = MagicMock()
+                solver.digit_reader.get_drone.return_value = available
+                accelerate_scope = ((100, 100), (200, 200))
+                maximum_scope = ((300, 300), (400, 400))
+                selected = initial_selected
+                spent = None
+                operations = []
+
+                def tap(poly, **kwargs):
+                    nonlocal selected, spent
+                    if poly == maximum_scope:
+                        selected = available
+                        operations.append("maximum")
+                    elif poly in ((1320, 502), (1920 * 0.7, 1080 * 0.5)):
+                        selected = min(available, selected + 1)
+                        operations.append("increase")
+                    elif poly == (1440, 864) or poly == accelerate_scope:
+                        spent = selected
+                        operations.append("confirm")
+
+                with (
+                    patch.object(
+                        base_schedule.config,
+                        "conf",
+                        SimpleNamespace(drone_count_limit=threshold),
+                    ),
+                    patch.object(solver, "enter_room"),
+                    patch.object(solver, "_wait_drone_interface"),
+                    patch.object(solver, "_cache_facility_state_from_current_page"),
+                    patch.object(solver, "find", return_value=accelerate_scope),
+                    patch.object(solver, "tap", side_effect=tap),
+                    patch.object(solver, "scene", return_value=Scene.INFRA_DETAILS),
+                    patch.object(
+                        solver, "_tap_drone_accelerate", return_value=maximum_scope
+                    ) as open_panel,
+                ):
+                    solver.drone(
+                        "room_1_2", not_customize=not_customize, not_return=True
+                    )
+
+                self.assertEqual(spent, expected_spend)
+                if expected_spend is None:
+                    self.assertEqual(operations, [])
+                    open_panel.assert_not_called()
+                else:
+                    self.assertEqual(
+                        operations,
+                        (
+                            ["increase"] * expected_spend
+                            if not not_customize
+                            else ["maximum"]
+                        )
+                        + ["confirm"],
+                    )
+                    open_panel.assert_called_once_with(
+                        "manufacture_accelerate", "all_in"
+                    )
+
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
     def test_tap_drone_accelerate_retries_when_first_attempt_fails(self):
         """首次点击 bill_accelerate 未打开面板时，重试后成功。"""
@@ -3033,6 +3149,9 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         self.conf_patch = patch.object(base_schedule.config, "conf", self.conf)
         self.conf_patch.start()
         self.addCleanup(self.conf_patch.stop)
+        self.capture_patch = patch.object(base_schedule.config, "screenshot_avg", None)
+        self.capture_patch.start()
+        self.addCleanup(self.capture_patch.stop)
 
     def make_solver(self, target="但书"):
         room = "room_1_1"
@@ -3149,6 +3268,53 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
                 solver.recog.update.assert_not_called()
                 solver.get_order_remaining_time.assert_not_called()
 
+    def test_slow_confirmation_capture_preserves_configured_advance(self):
+        solver, room, _ = self.make_solver()
+
+        class Clock(datetime):
+            @classmethod
+            def now(cls):
+                return cls.current
+
+        Clock.current = Clock(2026, 10, 15, 9, 20)
+        confirm_at = Clock.current + timedelta(seconds=90)
+        solver.task.time = Clock.current + timedelta(seconds=60)
+        state = {"captured": False, "confirmed": False}
+        taps = []
+
+        def invalidate():
+            state["captured"] = False
+
+        def find(name, **_kwargs):
+            if not state["captured"]:
+                Clock.current += timedelta(seconds=2)
+                state["captured"] = True
+            if name == ("room_detail" if state["confirmed"] else "confirm_blue"):
+                return (100, 100)
+            return None
+
+        def sleep(seconds):
+            Clock.current += timedelta(seconds=seconds)
+            invalidate()
+
+        def tap(*_args, **_kwargs):
+            taps.append(Clock.current)
+            state["confirmed"] = True
+            invalidate()
+
+        solver.recog.update.side_effect = invalidate
+        solver.find.side_effect = find
+        solver.sleep = MagicMock(side_effect=sleep)
+        solver.tap = MagicMock(side_effect=tap)
+        with (
+            patch.object(base_schedule, "datetime", Clock),
+            patch.object(base_schedule.config, "screenshot_avg", 2000),
+        ):
+            BaseSchedulerSolver.tap_confirm(solver, room, {room: ["旧干员"]})
+
+        self.assertEqual(taps, [confirm_at])
+        solver.sleep.assert_called_once_with(88.0)
+
     def test_two_slot_task_runs_after_extra_target_is_removed(self):
         solver, room, _ = self.make_solver(target="乌尔比安")
         solver.task.type = TaskTypes.SHIFT_ON
@@ -3192,22 +3358,29 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
                 solver.back.assert_called_once()
                 self.assertIn(room, solver.task.plan)
 
-    def test_invalid_countdown_uses_original_missed_order_path(self):
+    def test_invalid_countdown_retains_order_without_claiming_a_miss(self):
         for remaining in (0, -1, 660, 900):
             with self.subTest(remaining=remaining):
                 solver, room, _ = self.make_solver()
                 solver.get_order_remaining_time.side_effect = None
                 solver.get_order_remaining_time.return_value = remaining
+                original_time = solver.task.time
+                original_plan = {
+                    name: list(row) for name, row in solver.task.plan.items()
+                }
                 with (
                     patch.object(base_schedule, "send_message") as notify,
                     patch.object(base_schedule, "save_exception"),
                 ):
-                    result = solver.agent_arrange_room({}, room, solver.task.plan)
-                self.assertEqual(result, {})
+                    with self.assertRaises(base_schedule.RoomArrangementDeferred):
+                        solver.agent_arrange_room({}, room, solver.task.plan)
+                self.assertEqual(solver.task.time, original_time)
+                self.assertEqual(solver.task.plan, original_plan)
+                self.assertEqual(solver.tasks, [solver.task])
                 solver.choose_agent.assert_not_called()
                 solver.tap_confirm.assert_not_called()
-                solver.reset_room_time.assert_called_once_with(room)
-                notify.assert_called_once_with("检测到漏单！", level="WARNING")
+                solver.reset_room_time.assert_not_called()
+                notify.assert_not_called()
 
     def test_adjusted_order_can_continue_with_out_of_range_countdown(self):
         solver, room, events = self.make_solver()
@@ -3220,6 +3393,18 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         solver.get_order_remaining_time.assert_not_called()
         self.assertEqual(solver.turn_on_room_detail.call_count, 1)
         solver.reset_room_time.assert_not_called()
+
+    def test_resumed_window_failure_rechecks_countdown_before_selection(self):
+        solver, room, events = self.make_solver()
+        solver.task.arrangement_retry_room = room
+        solver.task.arrangement_retry_count = 1
+        original = solver.task.time
+        result = solver.agent_arrange_room({}, room, solver.task.plan)
+        self.assertEqual(result, {room: ["旧干员"]})
+        self.assertIn("countdown", events)
+        self.assertLess(events.index("countdown"), events.index("choose"))
+        self.assertGreater(solver.task.time, original)
+        solver.get_order_remaining_time.assert_called_once_with()
 
     def test_maintenance_order_keeps_advanced_time_with_nearby_countdown(self):
         solver, room, _ = self.make_solver()
@@ -3434,7 +3619,7 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         solver.get_order_remaining_time.assert_called_once_with()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_missed_order_emits_archivable_error(self):
+    def test_changed_countdown_checks_actual_order_without_claiming_a_miss(self):
         room = "room_1_1"
         task = SchedulerTask(
             time=datetime.now(),
@@ -3462,9 +3647,11 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         ):
             solver.agent_arrange(task.plan)
 
-        error.assert_called_once_with("检测到漏单", extra={"archive_screenshots": True})
-        save_exception.assert_called_once()
-        send_message.assert_called_once_with("检测到漏单！", level="WARNING")
+        error.assert_not_called()
+        save_exception.assert_not_called()
+        send_message.assert_not_called()
+        solver.accept_order.assert_called_once_with()
+        self.assertEqual(solver.agent_arrange_room.call_count, 2)
 
 
 class TestClueProductCompleteWait(unittest.TestCase):
@@ -3614,39 +3801,79 @@ class TestClueProductCompleteWait(unittest.TestCase):
         solver.scene_graph_navigation = MagicMock()
         solver.enter_room = MagicMock()
         solver.recog = MagicMock()
-        solver.tap = MagicMock()
-        solver.ctap = MagicMock()
         solver.tap_element = MagicMock()
-        solver.back = MagicMock()
         solver.sleep = MagicMock()
         solver.backup_plan_solver = MagicMock()
-        solver.read_party_time = MagicMock(return_value=None)
         solver.set_detected_party_time = MagicMock()
+        solver._read_placed_clue_numbers = MagicMock(return_value=frozenset())
+        solver._clue_credit_enabled = MagicMock(return_value=False)
+        solver._clue_access_record_visible = MagicMock(return_value=False)
 
-        scenes = [
-            Scene.INFRA_DETAILS,
-            Scene.INFRA_CONFIDENTIAL,
-            Scene.INFRA_CONFIDENTIAL,
-            Scene.INFRA_CONFIDENTIAL,
-            Scene.INFRA_CONFIDENTIAL,
-            Scene.CLUE_GIVE_AWAY,
-            Scene.INFRA_CONFIDENTIAL,
-            Scene.INFRA_DETAILS,
-        ]
-        solver.scene = MagicMock(
-            side_effect=lambda: scenes.pop(0) if scenes else Scene.INDEX
+        # 画面随点击切换；重复识别当前画面不能推进流程。
+        ui = SimpleNamespace(scene=Scene.INFRA_DETAILS, entry_visible=False)
+        board_pos = (500, 500)
+        solver.scene = MagicMock(side_effect=lambda: ui.scene)
+        events = []
+
+        def mock_find(name, **kwargs):
+            if (
+                name == "clue/message_board"
+                and ui.scene == Scene.INFRA_DETAILS
+                and ui.entry_visible
+            ):
+                return board_pos
+            return None
+
+        def mock_tap(pos, **kwargs):
+            if pos == (680, 1000):
+                self.assertEqual(ui.scene, Scene.INFRA_DETAILS)
+                ui.entry_visible = True
+            elif pos == board_pos:
+                self.assertEqual(ui.scene, Scene.INFRA_DETAILS)
+                self.assertTrue(ui.entry_visible)
+                events.append("open_message_board")
+                ui.scene = Scene.CLUE_MESSAGE_BOARD
+            elif pos == (330, 1000):
+                ui.scene = Scene.INFRA_CONFIDENTIAL
+            elif pos == (1799, 578):
+                ui.scene = Scene.CLUE_GIVE_AWAY
+            elif pos == (1868, 54):
+                ui.scene = Scene.INFRA_CONFIDENTIAL
+            else:
+                self.fail(f"出现未预期的点击：{pos}")
+
+        solver.find = MagicMock(side_effect=mock_find)
+        solver.tap = MagicMock(side_effect=mock_tap)
+        solver.ctap = MagicMock(side_effect=mock_tap)
+        solver.back = MagicMock(
+            side_effect=lambda: setattr(ui, "scene", Scene.INFRA_DETAILS)
+        )
+        solver.read_party_time = MagicMock(
+            side_effect=lambda: events.append("read_party_time")
         )
 
         wait_calls = []
 
         def mock_wait_product():
             wait_calls.append("wait_product_complete")
+            events.append("wait_product_complete")
             return True
 
         solver.wait_product_complete = MagicMock(side_effect=mock_wait_product)
-        solver.find = MagicMock(return_value=None)
 
-        solver.clue_new()
+        with patch.object(base_schedule, "save_exception") as save_exception:
+            solver.clue_new()
 
         # 验证在 message_board 与 party_time 阶段均调用了 wait_product_complete
+        save_exception.assert_not_called()
         self.assertEqual(len(wait_calls), 2)
+        self.assertEqual(
+            events,
+            [
+                "wait_product_complete",
+                "open_message_board",
+                "wait_product_complete",
+                "read_party_time",
+            ],
+        )
+        solver._run_clue_shop.assert_called_once_with()

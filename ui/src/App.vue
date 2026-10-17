@@ -115,10 +115,11 @@
                   >
                 </template>
               </n-alert>
+              <CrashRecoveryNotice v-if="loaded" />
               <router-view v-if="loaded" />
               <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
               <Feedback />
-              <GlobalUpdateDrop v-if="loaded" />
+              <GlobalUpdateDrop v-if="loaded && updates_enabled === true" />
               <n-modal
                 v-model:show="showUpdateNoticeModal"
                 preset="card"
@@ -331,6 +332,7 @@ import {
 } from 'vue'
 import Feedback from '@/components/Feedback.vue'
 import GlobalUpdateDrop from '@/components/GlobalUpdateDrop.vue'
+import CrashRecoveryNotice from '@/components/CrashRecoveryNotice.vue'
 import WindowTitlebar from '@/components/WindowTitlebar.vue'
 import {
   mowerDarkCssVariables,
@@ -645,7 +647,7 @@ const { operators } = storeToRefs(plan_store)
 const { load_plan, load_operators } = plan_store
 
 const mower_store = useMowerStore()
-const { ws, running, log_lines, auto_start_handled, desktop_startup_handled } =
+const { ws, running, log_lines, auto_start_handled, desktop_startup_handled, updates_enabled } =
   storeToRefs(mower_store)
 const { get_running, listen_ws } = mower_store
 
@@ -874,15 +876,16 @@ onMounted(async () => {
       ? `${simulator.value.name} - arknights-mower`
       : 'arknights-mower'
 
-  axios
-    .post(
-      `${import.meta.env.VITE_HTTP_URL || ''}/software-update/auto-check`,
-      {},
-      {
-        headers: { 'X-Mower-Update': '1' }
-      }
-    )
-    .catch((error) => console.error('failed to request automatic software check', error))
+  if (updates_enabled.value === true)
+    axios
+      .post(
+        `${import.meta.env.VITE_HTTP_URL || ''}/software-update/auto-check`,
+        {},
+        {
+          headers: { 'X-Mower-Update': '1' }
+        }
+      )
+      .catch((error) => console.error('failed to request automatic software check', error))
 
   await load_plan()
 
@@ -899,11 +902,11 @@ onMounted(async () => {
   // Desktop startup owns automatic installation and task admission.
   const resourceUpdateRequest = (async () => {
     try {
-      if (await loadResourceJob()) {
+      if (updates_enabled.value === true && (await loadResourceJob())) {
         await Promise.all([load_shop(), load_item(), load_operators()])
       }
       await loadResourceVersionLocal()
-      if (resource_update_enable.value) {
+      if (updates_enabled.value === true && resource_update_enable.value) {
         const resourceInfo = await loadResourceVersion()
         if (
           !desktop_startup_handled.value &&

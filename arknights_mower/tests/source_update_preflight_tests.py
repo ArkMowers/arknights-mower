@@ -241,6 +241,38 @@ class SourceCheckoutTests(unittest.TestCase):
             worker.restart([{"kind": "instance", "name": "fixture"}], verify=False)
         self.assertEqual(start.call_args.kwargs["env"]["PATH"], worker.env["PATH"])
 
+    def test_source_update_restart_honors_autostart_and_restores_running_tasks(self):
+        from arknights_mower.tests.desktop_lifecycle_tests import DesktopStartupTests
+
+        desktop = DesktopStartupTests()
+        worker = self.worker()
+        worker.command_for = Mock(return_value=[sys.executable, "webview_ui.py"])
+        for background in (False, True):
+            worker.job["background"] = background
+            for running, automatic, expected in (
+                (False, False, []),
+                (False, True, [("start", "0")]),
+                (True, False, [("start", "0")]),
+                (True, True, [("start", "0")]),
+            ):
+                with self.subTest(
+                    background=background, running=running, automatic=automatic
+                ):
+                    with patch.object(subprocess, "Popen") as start:
+                        worker.restart(
+                            [{"kind": "instance", "running": running}], verify=False
+                        )
+                    env = start.call_args.kwargs["env"]
+                    events, server = desktop.launch(
+                        automatic=automatic,
+                        background=env["MOWER_BACKGROUND"] == "1",
+                        restart=bool(env["MOWER_RESTART_JOB"]),
+                        resume_run=env["MOWER_RESUME_RUN"],
+                        resume_mode=env.get("MOWER_RESUME_MODE", ""),
+                    )
+                    self.assertEqual(events, expected)
+                    self.assertEqual(server.start.call_count, int(bool(expected)))
+
     def lockfile_fixture(self):
         (self.root / "ui").mkdir()
         self.lockfile = self.root / "ui/package-lock.json"

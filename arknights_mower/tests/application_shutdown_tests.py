@@ -206,6 +206,7 @@ class DesktopExitTests(unittest.TestCase):
                 stopped = Event()
                 events = []
                 conf = SimpleNamespace(
+                    updates_enabled=True,
                     conf=SimpleNamespace(
                         webview=SimpleNamespace(
                             tray=entry != "window", token="", port=58111
@@ -267,7 +268,7 @@ class DesktopExitTests(unittest.TestCase):
                     patch.dict(sys.modules, {"server": server}),
                     patch.object(sys, "argv", ["mower"]),
                     patch.object(sys, "platform", "win32"),
-                    patch.object(utils, "config", conf),
+                    patch.object(utils, "config", conf, create=True),
                     patch.object(path, "global_space", ""),
                     patch.object(runtime, "read_json", return_value={}),
                     patch.object(runtime, "active_job", return_value=False),

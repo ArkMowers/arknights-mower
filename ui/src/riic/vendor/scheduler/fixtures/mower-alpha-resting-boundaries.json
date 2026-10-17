@@ -1,0 +1,66 @@
+{
+  "scope": "Unmodified alpha resting on explicit cached mood, card estimates and reservation inputs.",
+  "revision": "b2d9ac85fe070e805aadf0d5f44fc095c1e95253",
+  "cases": [
+    {
+      "kind": "observed",
+      "plan": {
+        "room_1_1": [
+          "R"
+        ]
+      },
+      "bedNames": [
+        "A"
+      ],
+      "standbyLow": false
+    },
+    {
+      "kind": "unknown",
+      "plan": {},
+      "bedNames": [
+        ""
+      ],
+      "standbyLow": false
+    },
+    {
+      "kind": "estimated",
+      "plan": {
+        "room_1_1": [
+          "R"
+        ]
+      },
+      "bedNames": [
+        "A"
+      ],
+      "standbyLow": false
+    },
+    {
+      "kind": "reserved-primary",
+      "plan": {},
+      "bedNames": [
+        ""
+      ],
+      "standbyLow": false
+    },
+    {
+      "kind": "reserved-cover",
+      "plan": {},
+      "bedNames": [
+        ""
+      ],
+      "standbyLow": false
+    },
+    {
+      "kind": "standby",
+      "plan": {
+        "room_1_1": [
+          "R"
+        ]
+      },
+      "bedNames": [
+        "A"
+      ],
+      "standbyLow": true
+    }
+  ]
+}

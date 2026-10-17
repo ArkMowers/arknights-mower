@@ -1,7 +1,8 @@
 <script setup>
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useMessage } from 'naive-ui'
+import { useDialog, useMessage } from 'naive-ui'
+import { useMowerStore } from '@/stores/mower'
 import {
   AddOutline,
   ArrowDownOutline,
@@ -23,6 +24,8 @@ const emit = defineEmits(['update:show'])
 const show = computed({ get: () => props.show, set: (value) => emit('update:show', value) })
 const router = useRouter()
 const notice = useMessage()
+const dialog = useDialog()
+const mower = useMowerStore()
 const showFeedback = inject('show_feedback', null)
 const feedbackAvailable = showFeedback !== null
 const md = markdownit({ html: false, breaks: true })
@@ -86,7 +89,11 @@ const statusLabel = computed(() =>
 )
 const suggestions = [
   { title: '排查连接', description: '设备连接失败，应该先检查什么？', icon: DocumentTextOutline },
-  { title: '理解排班', description: '干员到心情阈值还不下班，怎么排查？', icon: GridOutline },
+  {
+    title: '尝试排班',
+    description: '结合我的森空岛干员练度和基建组合，尝试安排基建主班。',
+    icon: GridOutline
+  },
   { title: '查看专精', description: '帮我查看当前专精计划的状态。', icon: SchoolOutline },
   { title: '整理反馈', description: '帮我整理一份问题反馈，先不要发送。', icon: MailOutline }
 ]
@@ -157,6 +164,11 @@ function connectWS(text) {
       return
     }
     if (!activeReply) return
+    if (data.code === 'ai_assistant_disabled') {
+      failReply(data.error || '管理员未开启')
+      showAssistantUnavailable()
+      return
+    }
     if (typeof data.reply === 'string') activeReply.content += data.reply
     if (data.error) {
       failReply(`回复失败：${data.error}`)
@@ -181,6 +193,7 @@ function connectWS(text) {
 }
 function sendMessage() {
   if (!canSend.value) return
+  if (!assistantAllowed()) return
   const text = userInput.value.trim()
   if (text.length > 4000) return
   chatHistory.value.push({ role: 'user', content: text })
@@ -229,6 +242,24 @@ function openSettings() {
   show.value = false
   router.push('/mowersettings')
 }
+function assistantAllowed() {
+  if (mower.ai_assistant_enabled === true) return true
+  if (mower.ai_assistant_enabled === false) {
+    failReply('管理员未开启')
+    showAssistantUnavailable()
+  } else {
+    notice.warning('尚未取得助手授权状态，请稍后重试。')
+  }
+  return false
+}
+function showAssistantUnavailable() {
+  dialog.warning({
+    title: '管理员未开启',
+    content: '当前实例暂未开启该功能，请联系管理员。',
+    positiveText: '知道了'
+  })
+  show.value = false
+}
 watch(
   [chatHistory, loading],
   async () => {
@@ -238,8 +269,13 @@ watch(
   { deep: true }
 )
 watch(
-  () => props.show,
-  async (value) => {
+  [() => props.show, () => mower.ai_assistant_enabled],
+  async ([value, enabled]) => {
+    if (enabled === false) {
+      if (value) assistantAllowed()
+      else failReply('管理员未开启')
+      return
+    }
     if (!value) return
     await nextTick()
     inputRef.value?.focus()

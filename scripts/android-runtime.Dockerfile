@@ -9,6 +9,6 @@ text = '\n'.join(line for line in text.splitlines() if not line.startswith(('pyw
 text = text.replace('opencv-python==', 'opencv-python-headless==').replace('ddddocr>=1.4.7', 'ddddocr==1.5.6')
 Path('/tmp/android-requirements.txt').write_text(text)
 PY
-RUN pip install --no-cache-dir -r /tmp/android-requirements.txt && pip uninstall -y opencv-python && pip install --no-cache-dir --force-reinstall --no-deps opencv-python-headless==4.9.0.80 && pip install --no-cache-dir --no-deps pnnx==20260526
+RUN pip install --no-cache-dir -r /tmp/android-requirements.txt && pip uninstall -y opencv-python && pip install --no-cache-dir --force-reinstall --no-deps opencv-python-headless==4.11.0.86 && pip install --no-cache-dir --no-deps pnnx==20260526
 RUN mkdir -p /mower /mower-data /bridge /host-dev /host-proc && chmod 1777 /tmp
 WORKDIR /mower

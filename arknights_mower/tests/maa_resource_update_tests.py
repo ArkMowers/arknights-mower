@@ -1,4 +1,5 @@
 import json
+import os
 import stat
 import tempfile
 import unittest
@@ -346,8 +347,8 @@ class TestInstallMaaResource(unittest.TestCase):
             )
 
     def test_update_keeps_incremental_files_and_creates_backup(self):
-        old_backup = self.target / "resource.old"
-        old_backup.mkdir()
+        old_backup = self.target / ".old/resource"
+        old_backup.mkdir(parents=True)
         (old_backup / "older.txt").write_text("older", encoding="utf-8")
 
         result = self._install()
@@ -384,8 +385,8 @@ class TestInstallMaaResource(unittest.TestCase):
         )
 
     def test_post_swap_validation_failure_restores_resource_and_previous_backup(self):
-        old_backup = self.target / "resource.old"
-        old_backup.mkdir()
+        old_backup = self.target / ".old/resource"
+        old_backup.mkdir(parents=True)
         (old_backup / "older.txt").write_text("older", encoding="utf-8")
         release = mru.MaaResourceRelease(
             version="2026-09-04 01:07:54.000",
@@ -417,6 +418,36 @@ class TestInstallMaaResource(unittest.TestCase):
 
         self.assertEqual((self.resource / "old.txt").read_text(), "current")
         self.assertEqual((old_backup / "older.txt").read_text(), "older")
+        self.assertFalse((self.resource / "new.txt").exists())
+
+    def test_android_resource_update_retains_host_backup_layout_and_coordination(self):
+        from arknights_mower.utils import maa_process
+
+        with (
+            patch.dict(os.environ, {"MOWER_ANDROID": "1"}),
+            patch.object(maa_process, "installation_lease") as lease,
+        ):
+            result = self._install(system="linux")
+            self.assertEqual(result["backup"], str(self.target / "resource.old"))
+            self.assertEqual(
+                mru.resource_backup_path(self.target), self.target / "resource.old"
+            )
+        lease.assert_not_called()
+        self.assertEqual((self.target / "resource.old/old.txt").read_text(), "current")
+        self.assertEqual((self.resource / "new.txt").read_text(), "new")
+        self.assertFalse((self.target / ".old").exists())
+
+    def test_incomplete_resource_merge_preserves_installation_and_prior_backup(self):
+        (self.target / "filelist.txt").write_text(
+            "resource/Arknights-Tile-Pos/missing.json\n"
+        )
+        backup = self.target / ".old/resource"
+        backup.mkdir(parents=True)
+        (backup / "older.txt").write_text("prior backup")
+        with self.assertRaisesRegex(mru.MaaUpdateError, "资源不完整"):
+            self._install(system="windows")
+        self.assertEqual((backup / "older.txt").read_text(), "prior backup")
+        self.assertEqual((self.resource / "old.txt").read_text(), "current")
         self.assertFalse((self.resource / "new.txt").exists())
 
     def test_windows_resource_update_preserves_core_python_and_backup(self):
@@ -462,8 +493,8 @@ class TestInstallMaaResource(unittest.TestCase):
         release.assert_not_called()
 
     def test_windows_locked_resource_preserves_current_and_previous_backup(self):
-        backup = self.target / "resource.old"
-        backup.mkdir()
+        backup = self.target / ".old/resource"
+        backup.mkdir(parents=True)
         (backup / "older.txt").write_text("older", encoding="utf-8")
         original_replace = mru.os.replace
 

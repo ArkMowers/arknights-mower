@@ -109,11 +109,11 @@ def test_payload_matches_documented_fields_and_potential_index(sync_case):
             "id": "char_test",
             "level": 90,
             "evolvePhase": 2,
-            "potentialRank": 5,
+            "potentialRank": 6,
             "rarity": 6,
             "mainSkillLevel": 7,
-            "skill1": 8,
-            "skill2": 10,
+            "skill1": 1,
+            "skill2": 3,
             "skill3": 0,
             "equipX": 2,
             "equipY": 0,
@@ -516,9 +516,9 @@ def test_only_bound_uid_is_required_and_untransmitted_identity_does_not_upload(
 
 @pytest.mark.parametrize(
     "basic, mastery, expected",
-    [(1, 0, 1), (6, 0, 6), (7, 0, 7), (7, 1, 8), (7, 2, 9), (7, 3, 10)],
+    [(1, 0, 0), (3, 0, 0), (6, 0, 0), (7, 0, 0), (7, 1, 1), (7, 2, 2), (7, 3, 3)],
 )
-def test_oauth_skill_levels_and_zero_based_potential(
+def test_oauth_mastery_stages_and_one_based_potential(
     sync_case, basic, mastery, expected
 ):
     _, _, _, snapshot, definitions = sync_case
@@ -529,7 +529,8 @@ def test_oauth_skill_levels_and_zero_based_potential(
     row = sync.build_upload_payload(snapshot, definitions)["operators"][0]
     assert row["skill1"] == expected
     assert row["skill2"] == row["skill3"] == 0
-    assert row["potentialRank"] == 0
+    assert row["potentialRank"] == 1
+    assert row["mainSkillLevel"] == basic
 
 
 @pytest.mark.parametrize("cid", ["", "a" * 65, "char test", "char_中文", "char_\n"])
@@ -604,3 +605,73 @@ def test_manual_sync_without_oauth_token_does_not_start_refresh(sync_case, monke
     with pytest.raises(ValueError, match="先保存"):
         sync.refresh_and_sync_operators()
     factory.assert_not_called()
+
+
+def test_corrected_progression_replaces_legacy_digest_then_skips(sync_case):
+    from hashlib import sha256
+
+    paths, session, _, snapshot, definitions = sync_case
+    sync.save_token(TOKEN)
+    old_payload = sync.build_upload_payload(snapshot, definitions)
+    old_payload["operators"][0].update(skill1=8, skill2=10, potentialRank=5)
+    saved = json.loads(paths["@app/config/yituliu_sync.json"].read_text())
+    saved.update(
+        last_synced_fingerprint=sha256(
+            json.dumps(old_payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
+        last_synced_at=123,
+        last_synced_count=1,
+    )
+    paths["@app/config/yituliu_sync.json"].write_text(json.dumps(saved))
+    result = sync.sync_after_cultivate(snapshot)
+    assert result["success"] and not result.get("skipped")
+    uploaded = session.post.call_args.kwargs["json"]["operators"][0]
+    assert uploaded["mainSkillLevel"] == 7
+    assert (uploaded["skill1"], uploaded["skill2"], uploaded["skill3"]) == (1, 3, 0)
+    assert uploaded["potentialRank"] == 6
+    assert sync.sync_after_cultivate(snapshot)["skipped"]
+    session.post.assert_called_once()
+
+
+def test_upload_preserves_three_masteries_and_all_module_branches(sync_case):
+    _, session, _, snapshot, definitions = sync_case
+    char = snapshot["data"]["characters"][0]
+    char["skills"] = [
+        {"id": "skill_1", "level": 0},
+        {"id": "skill_2", "level": 2},
+        {"id": "skill_3", "level": 3},
+    ]
+    char["equips"] = [
+        {"id": "module_x", "level": 1},
+        {"id": "module_y", "level": 2},
+        {"id": "module_d", "level": 3},
+        {"id": "module_a", "level": 2},
+        {"id": "module_b", "level": 1},
+    ]
+    definitions["char_test"]["modules"] = [
+        {"id": "module_x", "type": "DRE-X"},
+        {"id": "module_y", "type": "DRE-Y"},
+        {"id": "module_d", "type": "DRE-D"},
+        {"id": "module_a", "type": "DRE-A"},
+        {"id": "module_b", "type": "DRE-B"},
+    ]
+    sync.save_token(TOKEN)
+    assert sync.sync_after_cultivate(snapshot)["success"]
+    row = session.post.call_args.kwargs["json"]["operators"][0]
+    assert row == {
+        "id": "char_test",
+        "level": 90,
+        "evolvePhase": 2,
+        "potentialRank": 6,
+        "rarity": 6,
+        "mainSkillLevel": 7,
+        "skill1": 0,
+        "skill2": 2,
+        "skill3": 3,
+        "equipX": 1,
+        "equipY": 2,
+        "equipD": 3,
+        "equipA": 2,
+        "equipB": 1,
+    }
+    session.post.assert_called_once()

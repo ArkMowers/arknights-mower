@@ -74,6 +74,10 @@ mimetypes.add_type("image/webp", ".webp")
 app = Flask(__name__, static_folder="ui/dist", static_url_path="")
 app.config["SOCK_SERVER_OPTIONS"] = {"ping_interval": 25, "max_message_size": 64 * 1024}
 app.config["WEBVIEW_LOCAL_ONLY_NO_TOKEN"] = False
+app.config["UPDATES_ENABLED"] = config.updates_enabled
+app.config["AI_ASSISTANT_ENABLED"] = config.conf.assistant_enabled_for_launch(
+    managed=os.environ.get("MOWER_MANAGED") == "1"
+)
 sock = Sock(app)
 CORS(app)
 network_settings.start_proxy_sync()
@@ -822,6 +826,29 @@ def vary_frontend_response(response):
 
 
 @app.before_request
+def authorize_instance_updates():
+    if app.config["UPDATES_ENABLED"]:
+        return None
+    if (
+        request.path.startswith(
+            (
+                "/software-update/",
+                "/maa-update/",
+                "/maa-resource-update/",
+                "/resource-update/",
+            )
+        )
+        or request.path in {"/resource/install", "/resource/status"}
+        or (request.path == "/resource-version" and request.args.get("local") != "1")
+    ):
+        return {
+            "ok": False,
+            "error": "updates_disabled",
+            "message": "管理员未开启更新功能",
+        }, 403
+
+
+@app.before_request
 def serialize_configuration_requests():
     # Export/restore must not interleave with form saves, plan edits or startup.
     if (
@@ -1293,6 +1320,20 @@ def load_config():
                 "message": "配置必须是 JSON 对象",
             }, 400
         req = dict(payload)
+        if "updates_enabled" in req:
+            if req["updates_enabled"] != config.conf.updates_enabled:
+                return {
+                    "error": "manager_owned_setting",
+                    "message": "请在实例退出后通过多开管理器修改允许更新开关",
+                }, 403
+            req.pop("updates_enabled")
+        if "ai_assistant_enabled" in req:
+            if req["ai_assistant_enabled"] != config.conf.ai_assistant_enabled:
+                return {
+                    "error": "manager_owned_setting",
+                    "message": "请在实例停止后通过多开管理器修改 Mower AI 助手开关",
+                }, 403
+            req.pop("ai_assistant_enabled")
         from arknights_mower.__main__ import device_control
 
         if _performance_test_status()["status"] == "running" and set(req) & {
@@ -1639,14 +1680,22 @@ def stage_inventory_rules():
 
 @app.route("/status")
 def get_status():
+    from arknights_mower.utils import crash_recovery
+
+    crash_notice = crash_recovery.status()
     with scheduled_start_lock:
         start_at = scheduled_start_at.isoformat() if scheduled_start_at else None
     response = {
+        "updates_enabled": app.config["UPDATES_ENABLED"],
+        "ai_assistant_enabled": app.config["AI_ASSISTANT_ENABLED"],
         "desktop_startup_handled": bool(app.config.get("DESKTOP_STARTUP_HANDLED")),
         "auto_start_handled": bool(
             app.config.get("DESKTOP_STARTUP_HANDLED")
             or os.environ.get("MOWER_RESTART_JOB")
+            or crash_notice["active"]
+            or crash_recovery.cancelled()
         ),
+        "crash_recovery": crash_notice,
         "plan_condition": [],
         "status": "stopped",
         "scheduled_start_at": start_at,
@@ -1694,9 +1743,10 @@ def get_status():
 
 @app.route("/start/<start_type>", methods=["GET", "POST"])
 @require_token
-def start(start_type):
+def start(start_type, *, automatic=False):
+    options = {"automatic": True} if automatic else {}
     if request.method == "GET":
-        return str(_start_mower(start_type)).lower()
+        return str(_start_mower(start_type, **options)).lower()
     payload = request.get_json(silent=True)
     if (
         not isinstance(payload, dict)
@@ -1707,7 +1757,9 @@ def start(start_type):
             "error": "invalid_preparation_consent",
             "message": "临时整备必须明确授权当前配置的实体设备 serial，且只用于本次启动。",
         }, 400
-    return str(_start_mower(start_type, payload["preparation_serial"])).lower()
+    return str(
+        _start_mower(start_type, payload["preparation_serial"], **options)
+    ).lower()
 
 
 def _valid_preparation_serial(serial):
@@ -1720,14 +1772,10 @@ def _valid_preparation_serial(serial):
 
 
 def _run_mower_worker(saved_state, preparation_serial=None):
-    """The worker thread reports a device verdict instead of dying with it.
-
-    ``main`` restores its own resources and then propagates a fatal device
-    error; nothing above the thread can act on that exception, so its reason is
-    reported and the run ends while the application keeps serving the UI.
-    """
+    """Report a failed worker and retain automatic high-level recovery intent."""
     from arknights_mower.__main__ import main
-    from arknights_mower.utils.device.recovery import DeviceRecoveryError
+    from arknights_mower.utils import crash_recovery
+    from arknights_mower.utils.csleep import MowerExit
 
     try:
         if preparation_serial is None:
@@ -1737,18 +1785,44 @@ def _run_mower_worker(saved_state, preparation_serial=None):
                 saved_state,
                 preparation_serial=preparation_serial,
             )
-    except DeviceRecoveryError as exc:
-        logger.error(f"设备连接恢复失败，本次运行已停止：{exc}")
+    except MowerExit:
+        return
+    except Exception as exc:
+        logger.exception("工作线程暂未完成，正在等待自动恢复")
+        if not shutdown.closing and not config.stop_mower.is_set():
+            crash_recovery.activate(
+                f"工作线程发生异常：{exc}；后台退避后自动重新观察并接续任务。"
+            )
+    finally:
+        if saved_state.get("_process_crash_recovery"):
+            from arknights_mower.utils import crash_recovery
+
+            crash_recovery.failed()
 
 
-def _start_mower(start_type, preparation_serial=None):
+def _start_mower(
+    start_type, preparation_serial=None, *, recovery_state=None, automatic=False
+):
     global mower_thread
+    from arknights_mower.utils import crash_recovery
+    from arknights_mower.utils.instance_supervisor import task_intent
+
+    automatic = automatic or recovery_state is not None
+    if automatic and crash_recovery.cancelled():
+        return False
+
+    if recovery_state is not None and not crash_recovery.status().get("automatic"):
+        return False
 
     if shutdown.closing or active_job():
         return False
 
     with maa_maintenance_lock:
-        if shutdown.closing:
+        if shutdown.closing or active_job():
+            return False
+        if automatic and crash_recovery.cancelled():
+            return False
+        if recovery_state is not None and not crash_recovery.status().get("automatic"):
             return False
         if preparation_serial is not None and not _valid_preparation_serial(
             preparation_serial
@@ -1762,13 +1836,25 @@ def _start_mower(start_type, preparation_serial=None):
             or resource_update.running()
         ):
             return False
+        if crash_recovery.status()["active"] and recovery_state is None:
+            if automatic:
+                if not crash_recovery.status().get("automatic"):
+                    return False
+            else:
+                crash_recovery.request_resume(start_type)
+                task_intent(True)
+            return _retry_after_process_crash(preparation_serial=preparation_serial)
         # 创建 tmp 文件夹
         tmp_dir = get_path("@app/tmp")
         tmp_dir.mkdir(exist_ok=True)
 
         config.stop_mower.clear()
         # Reset starts must not deserialize a snapshot from an older version.
-        saved_state = {} if start_type == "2" else (load_state() or {})
+        saved_state = (
+            recovery_state
+            if recovery_state is not None
+            else ({} if start_type == "2" else (load_state() or {}))
+        )
         if start_type == "1":
             saved_state["tasks"] = []
         mower_thread = Thread(
@@ -1782,10 +1868,73 @@ def _start_mower(start_type, preparation_serial=None):
         # /task 路由（views/task.py）独立判定「mower 正在运行」，须与本模块同步
         set_mower_thread(mower_thread)
         log_stream.clear()
-        mower_thread.start()
+        try:
+            if not automatic:
+                crash_recovery.request_resume()
+            task_intent(True, automatic=automatic)
+            if recovery_state is not None and not crash_recovery.status().get(
+                "automatic"
+            ):
+                raise RuntimeError("用户已停止任务，取消自动启动")
+            mower_thread.start()
+        except BaseException:
+            mower_thread = None
+            set_mower_thread(None)
+            config.stop_mower.set()
+            try:
+                wanted = automatic and not crash_recovery.cancelled()
+                if wanted and not crash_recovery.status()["active"]:
+                    crash_recovery.activate("启动工作线程暂未成功，后台稍后自动重试。")
+                task_intent(wanted, automatic=wanted)
+            except Exception:
+                logger.exception("记录任务停止意图失败，工作线程未启动")
+            raise
         _cancel_scheduled_start()
 
         return True
+
+
+@app.route("/crash-recovery/status")
+@require_token
+def crash_recovery_status():
+    from arknights_mower.utils import crash_recovery
+
+    return crash_recovery.status()
+
+
+def _retry_after_process_crash(*, preparation_serial=None):
+    """Reuse ordinary startup with the saved queue after an automatic boundary."""
+    from arknights_mower.utils import crash_recovery
+
+    with maa_maintenance_lock:
+        if (
+            (mower_thread and mower_thread.is_alive())
+            or shutdown.closing
+            or active_job()
+            or not crash_recovery.status().get("automatic")
+        ):
+            return False
+        start_type = crash_recovery.status().get("start_type", "0")
+        try:
+            snapshot = None if start_type == "2" else load_state(strict=True)
+        except Exception:
+            crash_recovery.snapshot_failed()
+            raise
+        if shutdown.closing or not crash_recovery.status().get("automatic"):
+            return False
+        saved = crash_recovery.prepare_resume(snapshot)
+        crash_recovery.begin()
+        try:
+            options = {"recovery_state": saved}
+            if preparation_serial is not None:
+                options["preparation_serial"] = preparation_serial
+            accepted = _start_mower(start_type, **options)
+        except Exception:
+            crash_recovery.failed()
+            raise
+        if not accepted:
+            crash_recovery.failed()
+    return accepted
 
 
 @app.route("/scheduled-start", methods=["PUT", "DELETE"])
@@ -1821,16 +1970,42 @@ def stop():
     return str(_stop_mower()).lower()
 
 
-def _stop_mower(timeout=10):
+def _stop_mower(timeout=10, *, preserve_run_intent=False):
     """Let the worker's run boundary restore preparation before it exits."""
     global mower_thread
 
-    config.stop_mower.set()
+    from arknights_mower.utils import crash_recovery
+    from arknights_mower.utils.instance_supervisor import task_intent
+
+    try:
+        if not preserve_run_intent:
+            task_intent(False)
+    except Exception:
+        logger.exception("记录任务停止意图失败，继续取消工作线程")
+    finally:
+        config.stop_mower.set()
+        if not preserve_run_intent:
+            try:
+                crash_recovery.cancel()
+            except Exception:
+                logger.exception("记录自动恢复取消失败，当前进程已停止后台重试")
     deadline = time.monotonic() + timeout
     if not maa_maintenance_lock.acquire(timeout=timeout):
         logger.error("等待任务状态锁超时，保留未完成的设备恢复记录")
         return False
     try:
+        config.stop_mower.set()
+        try:
+            if not preserve_run_intent:
+                task_intent(False)
+        except Exception:
+            logger.exception("再次记录任务停止意图失败，继续取消工作线程")
+        finally:
+            if not preserve_run_intent:
+                try:
+                    crash_recovery.cancel()
+                except Exception:
+                    logger.exception("再次记录自动恢复取消失败，当前进程已停止后台重试")
         if mower_thread is None:
             return True
         mower_thread.join(max(0, deadline - time.monotonic()))
@@ -1854,7 +2029,14 @@ def register_shutdown(lifecycle):
     from arknights_mower.utils.log import close_logging, close_screenshot_store
 
     def wait_worker():
-        if not _stop_mower(timeout=10):
+        reason = getattr(lifecycle, "reason", "")
+        internal_fault = isinstance(reason, str) and reason.startswith("device_")
+        stopped = (
+            _stop_mower(timeout=10, preserve_run_intent=True)
+            if internal_fault
+            else _stop_mower(timeout=10)
+        )
+        if not stopped:
             raise TimeoutError("Mower 工作线程未在退出预算内结束")
 
     lifecycle.own(
@@ -2255,12 +2437,24 @@ def save_file_dialog():
 
     upper = Image.open(img)
 
-    if request.args.get("rescue") == "1":
+    if "plan" in request.form:
+        from arknights_mower.utils.config.plan import parse_plan_document
+
+        try:
+            plan_data = parse_plan_document(
+                json.loads(request.form["plan"])
+            ).model_dump(exclude_none=True)
+        except (ValueError, TypeError):
+            return {"error": "导出排班快照格式无效"}, 400
+    elif request.args.get("rescue") == "1":
         plan_data = config.conf.automatic_rescue_plan.model_dump(exclude_none=True)
     else:
         plan_data = config.plan.model_dump(exclude_none=True)
         plan_data["advanced_settings"] = export_advanced_settings(config.conf)
-    img = qrcode.export(plan_data, upper, config.conf.theme)
+    theme = request.form.get("theme", config.conf.theme)
+    if theme not in ("light", "dark"):
+        return {"error": "导出主题无效"}, 400
+    img = qrcode.export(plan_data, upper, theme)
     buffer = BytesIO()
     img.save(buffer, format="JPEG")
     buffer.seek(0)
@@ -2283,6 +2477,34 @@ def export_json():
 @require_token
 def validate_backup_plans_route():
     try:
+        body = request.get_json(silent=True) or {}
+        if "plan" in body:
+            from arknights_mower.utils.config.plan import parse_plan_document
+            from arknights_mower.utils.config.plan_advanced import (
+                apply_advanced_settings,
+            )
+
+            mode = body.get("operatorMode")
+            if mode not in ("cache", "custom", "maximum"):
+                return {
+                    "success": False,
+                    "status": "failed",
+                    "message": "干员练度选项无效",
+                }, 400
+            document = parse_plan_document(body["plan"])
+            conf = apply_advanced_settings(
+                config.conf.model_copy(deep=True), document.advanced_settings
+            )
+            global_plan = build_global_plan(plan_model=document, conf_model=conf)
+            op = Operators(global_plan, runtime_conf=conf)
+            result = op.validate_backup_plans(
+                check_owned=mode == "cache", refresh_roster=False
+            )
+            if result.get("status") == "incomplete":
+                result["message"] = "排班组合校验未完成，尚未开始演算。" + result.get(
+                    "reason", "请检查副表条件后重试。"
+                )
+            return result
         global_plan = build_global_plan()
         op = Operators(global_plan)
         result = op.validate_backup_plans()
@@ -3727,6 +3949,14 @@ def basement_skill_operators():
     return load_skill_snapshot()
 
 
+@app.route("/riic/income-cache", methods=["GET"])
+@require_token
+def riic_income_cache():
+    from arknights_mower.utils.building_skills import load_income_cache
+
+    return load_income_cache()
+
+
 @app.route("/cultivate-fetch")
 @require_token
 def cultivate_fetch():
@@ -3899,6 +4129,17 @@ def submit_feedback():
 @sock.route("/ws/chat")
 def ws_chat(ws):
     if not _authorize_websocket(ws):
+        return
+    if not app.config["AI_ASSISTANT_ENABLED"]:
+        ws.send(
+            json.dumps(
+                {
+                    "error": "当前实例暂未开启该功能，请联系管理员。",
+                    "code": "ai_assistant_disabled",
+                }
+            )
+        )
+        ws.close(reason=4403, message="AI assistant disabled")
         return
     context = []
     while True:

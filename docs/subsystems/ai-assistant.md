@@ -24,6 +24,22 @@ Hiding the panel retains the draft and current connection. Starting a new conver
 
 Replies render Markdown with HTML disabled and omit embedded missed-order state from display and copy. Copy reports clipboard failures. Completed replies expose resolved/feedback actions; feedback opens the existing modal without sending. Scrolling follows new content only near the bottom and provides an explicit jump to the latest message otherwise. The panel and model settings use existing Mower theme colors. The desktop panel is at most 440 by 560 pixels and its header supports pointer dragging with capture; header controls do not initiate a drag. CSS clamps its position to the viewport when moving or resizing. Its position remains transient across hiding and reopening. Narrow screens use a full-height panel without dragging. Model configuration remains in Mower settings; the AI navigation entry opens the assistant directly.
 
+### Managed Assistant Authorization
+
+`ai_assistant_enabled` in each instance's `config/conf.yml` records the manager's explicit choice for assistant chat. An absent or null value leaves that choice unset. Standalone launches always permit assistant chat, including when the saved value is false, and expose no switch. A launch with `MOWER_MANAGED=1` permits chat only when the saved value is true; an unset choice defaults to disabled. This rule controls conversation requests only, not model-provider settings, diagnostic analysis, navigation or captcha handling.
+
+The server fixes the effective authorization when the process starts and returns it as `ai_assistant_enabled` in `/status`; subsequent configuration loads do not hot-switch the running process. Ordinary `/conf` submissions may echo the unchanged saved choice but cannot alter it. File edits or configuration restoration take effect at the next launch. The manager uses the existing stopped-process configuration guard, not automation status, and edits the switch in the same instance settings dialog as Token and port. Writes preserve unrelated YAML fields and the last saved choice across manager recreation or abnormal termination.
+
+Turning the switch on immediately opens a separate risk dialog while leaving the draft off. Its confirmation requires acknowledgement and at least five seconds measured with a monotonic clock after rendering, then enables only the draft. Turning the switch off changes the draft without a reading dialog. Neither gesture writes configuration: Save commits Token, port and the changed switch together without another risk dialog. Cancelling the reading dialog leaves the switch off and retains other drafts; cancelling instance settings discards all drafts. Failed writes retain the previous saved data. Each attempt to turn the switch on starts a fresh reading interval. A state refresh cancels confirmation when the instance becomes non-editable, its row changes or its saved authorization changes. Closing the manager clears the temporary confirmation and its timer without saving. The notice explains model-service data transfer, possible disclosure of sensitive information across instances, model-call costs and supported configuration operations; it does not claim that multiple instances provide a security isolation boundary.
+
+The existing assistant entry remains visible. A disabled instance displays “管理员未开启” with “当前实例暂未开启该功能，请联系管理员。” without creating a chat WebSocket. An unknown status blocks sending until authorization is available, without reporting an administrator refusal. The backend retains credential checks and rejects disabled chat with `code=ai_assistant_disabled`, then closes with code 4403 before reading a user message or dispatching the model. The frontend also handles this refusal after a backend restart. Provider configuration and unrelated AI consumers retain their existing behavior.
+
+If a status refresh reports disabled authorization during connection or a reply, the frontend ends the active turn before closing the socket, clears its loading state and connection timer, and retains any partial reply with a failure indication. This cleanup also applies while the panel is hidden; only a visible panel displays the refusal dialog. A later enabled status permits a new request and a new conversation without reloading the page. Single-instance saves follow the [captured-target and opening-choice rules](web-access.md#7-desktop-instance-manager), so unrelated connection edits do not restore an externally changed authorization or apply a confirmed choice to a replacement instance.
+
+The [manager-owned assistant decision](../../.agents/notes/implemented/feature/2026-10-13-managed-ai-assistant-switch.md) explains the scope and stopped-instance choice. Focused offline checks use `managed_ai_assistant_tests.py`, `manager_instance_controls_tests.py` and the `WebSocketSecurityTests` class in `ai_security_tests.py`; frontend checks use `manager/MowerManager.test.js`, `src/components/ChatBot.test.js` and `src/stores/mower.test.js` from `ui/`.
+
+The batch table reuses this risk notice once for the captured instance list: the first attempt to enable an individual AI cell or use All On requires five seconds and acknowledgement. Confirmation enables only the requested draft cell or rows; subsequent AI edits in that same table session share the acknowledgement. All Off requires no reading notice. Save Changes submits only edited cells for eligible stopped instances. The [batch settings rules](web-access.md#batch-instance-settings) define target validation, partial field updates and per-instance failure results; running instances remain unchanged. Cancelling or reopening the batch editor discards its temporary acknowledgement and requires a fresh notice before enabling.
+
 ## 2. Tool Argument Contract
 
 Database examples use the schema in `solvers.record._DB_TABLE_STMTS`, explicit ordering and bounded SELECT results. `agent_current_room` records the previous position; `current_room` records the updated position. Unix-second timestamps are converted with SQLite local-time expressions. The published instructions do not depend on an unregistered time-conversion tool.
@@ -36,6 +52,36 @@ Feedback sends email through `submit_issue`. Instructions require an explicit se
 
 ## 3. Subsystem Invariants
 
+- <a id="owned-read-only-staffing"></a>**Owned Read-Only Staffing**: AI staffing trials require confirmed ownership and growth, select only the current unlocked skill version per slot, reject duplicate primary occupancy and excess configured slots, and never mutate saved BOX, configuration or Scheduling Plans.
+
 - <a id="tool-instruction-alignment"></a>**Tool Instruction Alignment**: Published assistant instructions reference registered tools, describe actual argument formats and mutation scopes, and agree on response formatting.
+- <a id="managed-assistant-chat-admission"></a>**Managed Assistant Authorization**: Chat admission uses the process-owned launch decision described in [Managed Assistant Authorization](#managed-assistant-authorization); manager edits require a stopped process, and enabling the draft requires acknowledged, timed confirmation before an explicit save.
 
 The [assistant instruction decision](../../.agents/notes/implemented/bug-fix/2026-10-09-ai-assistant-prompts.md) records the scope and offline verification.
+
+<a id="riic-tools"></a>
+
+## 4. RIIC Tools
+
+`get_riic_context` reads the saved BOX and primary Scheduling Plan, returns owned operator names and growth, configured facility capacity and current assignments, and joins the curated base combinations with owned, missing and unknown members. Combination membership alone does not establish skill eligibility or simultaneous placement. Full credentials, configuration and backup trigger expressions are excluded.
+
+`get_riic_knowledge` queries at most twelve formal operator names and one fixed mechanics topic. It reads the shared catalog and term resource, expands nested term references, and selects the highest unlocked version of each independent skill slot. All catalog skill stages remain visible with their status, including when BOX data is absent. Missing or unowned operators never receive assumed maximum skills. External mechanics provenance and resource coverage remain separate.
+
+`try_riic_plan` accepts at most twenty-four room assignments, overlays a detached primary-plan copy, and validates all primary occupants including preserved rooms. Capacity follows the configured number of positions within the facility's physical maximum; no facility or position is created. Modified rooms clear their old group and replacement bindings. Missing occupants and occupants without a matching facility skill produce warnings; facility skills that exist but remain locked produce errors. The response contains the draft, structured errors, warnings and unchecked conditions. `valid` means primary staffing checks passed; it does not assert a complete, executable or optimal Scheduling Plan. Nothing is saved.
+
+All three tools accept at most sixty-four explicit `roster_overrides` containing a formal name, ownership and optional elite phase and level. Overrides take precedence in that call, report `source=user`, and never update BOX. The AI uses them only for roster facts explicitly stated by the user. An ownership override without complete growth keeps growth unknown.
+
+## 5. Mechanics Boundary
+
+The compact guide adapts the fixed external mechanics skill and retains its version and freshness result. Duplicate full skill catalogs, term exports, HTML browser assets and Node query scripts are omitted. The shared catalog adds only the three absent operators from the fixed snapshot; installed resource records take precedence as soon as they contain those operators. Supplemental character IDs resolve BOX ownership when the general operator map predates them. The frontend and AI read the same twenty curated combination definitions. Runtime skills and nested terms use Mower resources; their coverage can differ from the external guide. Unknown operators and missing terms are explicit. Trials do not calculate global interactions, power, current Operator Mood, Dormitory Recovery, replacement matching, backup activation, Drone Acceleration or long-term yield. Primary staffing success never establishes those properties.
+
+The existing `/ws/chat` credential and model configuration boundaries apply. Both model workflows register the same tools. Tool output is reference data, not instructions.
+
+
+The [RIIC planning decision](../../.agents/notes/implemented/feature/2026-10-13-riic-ai-planning.md) records source reuse and offline verification.
+
+### RIIC Topic Routing and Income Estimates
+
+`get_riic_knowledge` additionally exposes `taxonomy`, `mower_plan`, `new_operators`, `income_export` and `freshness`. These topics explain identity and skill-category matching, fixed Mower format compatibility, the supplemental operators' conditions, the income-export user flow and separate source-version checks. They reuse the shared current skill and term lookup; each query still returns only one topic with bounded operator detail. Tool declarations enumerate every supported topic.
+
+For numeric income requests, the AI reads `income_export` and directs the user to the [income export dialog](plan-editor.md#income-export). Existing AI tools do not execute that browser Worker, and the assistant must not claim to have run it or invent results. Full-development estimates cannot be represented as actual BOX observations. Interpreting a supplied result requires its warmup/sample windows, inventory mode, development assumptions and fixed engine version. The general mechanics guide's freshness, Mower resources, calculator source and native scheduler reference remain separately identified; none implies that the others are current.

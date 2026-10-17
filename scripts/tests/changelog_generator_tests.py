@@ -129,6 +129,102 @@ class PrependChangelogTests(unittest.TestCase):
             self.assertFalse(inserted)
 
 
+class CommitDescriptionTests(unittest.TestCase):
+    def collect(self, commits):
+        records = "".join(
+            changelog_generator.SEP.join(
+                [commit_hash, "Author", "author@example.com", subject, body, "base"]
+            )
+            + changelog_generator.REC
+            for commit_hash, subject, body in commits
+        )
+        with mock.patch.object(changelog_generator, "git", return_value=records):
+            return changelog_generator.collect_commits("")
+
+    def test_mixed_history_prefers_marked_body_and_keeps_legacy_titles(self):
+        description = "调整公招开包时的结果识别，连续失败后结束本次公招。"
+        commits = self.collect(
+            [
+                (
+                    "new",
+                    "perf(recruit): 调整公招结果识别重试",
+                    f"Changelog: {description}\n\n验证：离线测试通过。",
+                ),
+                (
+                    "old",
+                    "fix: 修复导出窗口无法关闭的问题",
+                    "离线测试通过。\n\n移除旧事件监听器。",
+                ),
+            ]
+        )
+        self.assertEqual(
+            [(commit["category"], commit["desc"]) for commit in commits],
+            [
+                ("perf", description),
+                ("fix", "修复导出窗口无法关闭的问题"),
+            ],
+        )
+        with (
+            mock.patch.object(
+                changelog_generator, "release_date", return_value="2026-10-13"
+            ),
+            mock.patch.object(changelog_generator, "resolve_logins", return_value=[]),
+        ):
+            rendered = changelog_generator.render_release_body(
+                "v4.1.6-alpha.2", "owner/repo", "", commits
+            )
+        self.assertIn(f"- {description}", rendered)
+        self.assertIn("- 修复导出窗口无法关闭的问题", rendered)
+        self.assertNotIn("Changelog:", rendered)
+        self.assertNotIn("验证", rendered)
+        self.assertNotIn("旧事件监听器", rendered)
+
+    def test_empty_marker_keeps_title_and_does_not_take_verification_text(self):
+        for marker in ("Changelog:", "Changelog: \t"):
+            with self.subTest(marker=marker):
+                commits = self.collect(
+                    [
+                        (
+                            "empty",
+                            "fix: 修复预览内容未更新的问题",
+                            marker + "\n验证：通过。",
+                        )
+                    ]
+                )
+                self.assertEqual(commits[0]["desc"], "修复预览内容未更新的问题")
+
+    def test_wrapped_crlf_entry_stops_before_coauthor_metadata(self):
+        commits = self.collect(
+            [
+                (
+                    "wrapped",
+                    "feat: 新增授权同步入口",
+                    "Changelog: 增加 OAuth\r\n"
+                    "授权的同步入口。\r\n"
+                    "Co-authored-by: Collaborator <collaborator@example.com>\r\n",
+                )
+            ]
+        )
+        self.assertEqual(commits[0]["desc"], "增加 OAuth 授权的同步入口。")
+        self.assertEqual(
+            commits[0]["authors"],
+            [
+                ("Author", "author@example.com"),
+                ("Collaborator", "collaborator@example.com"),
+            ],
+        )
+
+    def test_marked_body_does_not_override_existing_skip_rules(self):
+        commits = self.collect(
+            [
+                ("skip", "fix: 修复预览", "Changelog: 修复预览。\n\n[skip changelog]"),
+                ("build", "build: 调整构建步骤", "Changelog: 调整构建步骤。"),
+                ("ci", "ci: 调整流水线", "Changelog: 调整流水线。"),
+            ]
+        )
+        self.assertEqual(commits, [])
+
+
 class ContributorLoginTests(unittest.TestCase):
     def setUp(self):
         changelog_generator._login_cache.clear()
@@ -137,10 +233,10 @@ class ContributorLoginTests(unittest.TestCase):
         records = (
             f"aaa{changelog_generator.SEP}同名作者{changelog_generator.SEP}"
             f"first@example.com{changelog_generator.SEP}fix: 第一个提交"
-            f"{changelog_generator.SEP}{changelog_generator.REC}"
+            f"{changelog_generator.SEP}{changelog_generator.SEP}base{changelog_generator.REC}"
             f"bbb{changelog_generator.SEP}同名作者{changelog_generator.SEP}"
             f"second@example.com{changelog_generator.SEP}fix: 第二个提交"
-            f"{changelog_generator.SEP}{changelog_generator.REC}"
+            f"{changelog_generator.SEP}{changelog_generator.SEP}base{changelog_generator.REC}"
         )
 
         def api_response(url):
@@ -269,7 +365,7 @@ class ContributorLoginTests(unittest.TestCase):
             f"primary@example.com{changelog_generator.SEP}fix: 修复贡献者"
             f"{changelog_generator.SEP}"
             "Co-authored-by: Shared Name <shared@example.com>\n"
-            f"{changelog_generator.REC}"
+            f"{changelog_generator.SEP}base{changelog_generator.REC}"
         )
         with mock.patch.object(changelog_generator, "git", return_value=record):
             commits = changelog_generator.collect_commits("")

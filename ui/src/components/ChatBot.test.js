@@ -1,15 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, nextTick, ref } from 'vue'
+import { effectScope, nextTick, reactive, ref } from 'vue'
 import ChatBot from './ChatBot.vue'
 
-const state = vi.hoisted(() => ({ feedback: null, cleanup: null, notice: null, push: null }))
+const state = vi.hoisted(() => ({
+  feedback: null,
+  cleanup: null,
+  notice: null,
+  push: null,
+  mower: null,
+  dialog: null
+}))
 vi.mock('vue', async (original) => ({
   ...(await original()),
   useSSRContext: () => ({ modules: new Set() }),
   inject: () => state.feedback,
   onBeforeUnmount: (callback) => (state.cleanup = callback)
 }))
-vi.mock('naive-ui', () => ({ useMessage: () => state.notice }))
+vi.mock('naive-ui', () => ({ useMessage: () => state.notice, useDialog: () => state.dialog }))
+vi.mock('@/stores/mower', () => ({ useMowerStore: () => state.mower }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: state.push }) }))
 
 class FakeSocket {
@@ -35,6 +43,7 @@ class FakeSocket {
 let scope
 let component
 let emit
+let props
 async function flush() {
   await nextTick()
   await nextTick()
@@ -42,7 +51,9 @@ async function flush() {
 
 beforeEach(() => {
   state.feedback = ref(false)
-  state.notice = { success: vi.fn(), error: vi.fn() }
+  state.notice = { success: vi.fn(), error: vi.fn(), warning: vi.fn() }
+  state.dialog = { warning: vi.fn() }
+  state.mower = reactive({ ai_assistant_enabled: true })
   state.push = vi.fn()
   FakeSocket.instances = []
   vi.useFakeTimers()
@@ -51,7 +62,8 @@ beforeEach(() => {
   vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockResolvedValue() } })
   scope = effectScope()
   emit = vi.fn()
-  component = scope.run(() => ChatBot.setup({ show: true }, { expose: vi.fn(), emit }))
+  props = reactive({ show: true })
+  component = scope.run(() => ChatBot.setup(props, { expose: vi.fn(), emit }))
 })
 afterEach(() => {
   state.cleanup?.()
@@ -66,6 +78,102 @@ function send(text = '检查日志') {
 }
 
 describe('AI chat interactions', () => {
+  it('shows the refusal on lazy mount when authorization is already disabled', async () => {
+    await flush()
+    state.cleanup?.()
+    scope.stop()
+    state.mower.ai_assistant_enabled = false
+    scope = effectScope()
+    component = scope.run(() => ChatBot.setup({ show: true }, { expose: vi.fn(), emit }))
+    expect(state.dialog.warning).toHaveBeenCalledOnce()
+    expect(emit).toHaveBeenCalledWith('update:show', false)
+    expect(FakeSocket.instances).toHaveLength(0)
+  })
+
+  it('keeps the entry usable but refuses disabled chat before opening a socket', async () => {
+    state.mower.ai_assistant_enabled = false
+    await flush()
+    expect(state.dialog.warning).toHaveBeenCalledWith({
+      title: '管理员未开启',
+      content: '当前实例暂未开启该功能，请联系管理员。',
+      positiveText: '知道了'
+    })
+    expect(emit).toHaveBeenCalledWith('update:show', false)
+    component.userInput.value = '保留草稿'
+    component.sendMessage()
+    expect(FakeSocket.instances).toHaveLength(0)
+    expect(component.chatHistory.value).toEqual([])
+    expect(component.userInput.value).toBe('保留草稿')
+  })
+
+  it('does not establish chat while the server authorization snapshot is unknown', () => {
+    state.mower.ai_assistant_enabled = null
+    send()
+    expect(FakeSocket.instances).toHaveLength(0)
+    expect(component.chatHistory.value).toEqual([])
+    expect(state.notice.warning).toHaveBeenCalledOnce()
+    expect(state.dialog.warning).not.toHaveBeenCalled()
+  })
+
+  it('shows the administrator notice if a restarted backend refuses an existing authorization snapshot', () => {
+    const socket = send()
+    socket.open()
+    socket.receive({
+      code: 'ai_assistant_disabled',
+      error: '当前实例暂未开启该功能，请联系管理员。'
+    })
+    expect(socket.close).toHaveBeenCalledOnce()
+    expect(component.loading.value).toBe(false)
+    expect(state.dialog.warning).toHaveBeenCalledOnce()
+    expect(emit).toHaveBeenCalledWith('update:show', false)
+  })
+
+  it.each([
+    ['connecting', true],
+    ['streaming', true],
+    ['connecting', false],
+    ['streaming', false]
+  ])(
+    'ends a %s reply when authorization is disabled with panel visible=%s',
+    async (phase, visible) => {
+      const first = send()
+      if (phase === 'streaming') {
+        first.open()
+        first.receive({ reply: '已收到的部分回复' })
+      }
+      const partial = component.chatHistory.value.at(-1)
+      props.show = visible
+      await flush()
+      expect(component.loading.value).toBe(true)
+      state.mower.ai_assistant_enabled = false
+      await flush()
+      expect(component.loading.value).toBe(false)
+      expect(component.connecting.value).toBe(false)
+      expect(vi.getTimerCount()).toBe(0)
+      expect(first.close).toHaveBeenCalledOnce()
+      expect(first.onclose).toBeNull()
+      expect(first.onmessage).toBeNull()
+      expect(partial.error).toBe(true)
+      expect(partial.content).toContain('管理员未开启')
+      if (phase === 'streaming') expect(partial.content).toContain('已收到的部分回复')
+      expect(state.dialog.warning).toHaveBeenCalledTimes(visible ? 1 : 0)
+      const retained = partial.content
+      state.mower.ai_assistant_enabled = true
+      props.show = true
+      await flush()
+      const second = send('恢复后重新查询')
+      expect(second).not.toBe(first)
+      expect(FakeSocket.instances).toHaveLength(2)
+      second.open()
+      second.receive({ reply: '新的回复' })
+      second.receive({ done: true })
+      expect(component.chatHistory.value.at(-1).content).toBe('新的回复')
+      expect(partial.content).toBe(retained)
+      component.newConversation()
+      expect(component.chatHistory.value).toEqual([])
+    }
+  )
+
   it('drags by the header with pointer capture and stops after cancellation', () => {
     component.panelRef.value = { getBoundingClientRect: () => ({ left: 800, top: 300 }) }
     const handle = {

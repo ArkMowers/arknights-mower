@@ -45,6 +45,7 @@ class Recognizer:
         self.last_scene_time = datetime.now()
 
     def clear(self):
+        self.capture_started_at = None
         self._screencap = None
         self._img = None
         self._gray = None
@@ -84,12 +85,15 @@ class Recognizer:
         retry_times = config.MAX_RETRYTIME
         while retry_times > 0:
             try:
+                capture_started_at = None
                 if screencap is not None:
                     self._screencap = screencap
                     self._img = bytes2img(screencap)
                     self._gray = bytes2img(screencap, True)
                 else:
+                    capture_started_at = datetime.now()
                     self._screencap, self._img, self._gray = self.device.screencap()
+                self.capture_started_at = capture_started_at
                 return
             except cv2.error as e:
                 logger.warning(e)
@@ -795,7 +799,6 @@ class Recognizer:
             "infra_overview_in": (64, 705),
             # "infra_todo": (13, 1013),
             "loading2": (630, 240),
-            "loading7": (106, 635),
             "login_account": (622, 703),
             # "login_awake": (888, 743),
             "login_connecting": (760, 881),
@@ -918,6 +921,8 @@ class Recognizer:
             "loading2": (630, 240),
             "loading3": (1681, 1000),
             "loading4": (828, 429),
+            # 启动画面的健康提示随 Logo 淡入淡出，按固定位置匹配文字形状。
+            "loading7": (106, 635),
             "main_theme": (283, 945),
             "main_theme_small": (321, 973),
             "materiel_ico": (892, 61),

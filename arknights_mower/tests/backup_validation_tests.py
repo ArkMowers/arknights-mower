@@ -711,6 +711,7 @@ def test_manual_route_checks_baseline_only_once(monkeypatch, valid):
     namespace = {
         "build_global_plan": lambda: plan,
         "Operators": Operators,
+        "request": MagicMock(get_json=MagicMock(return_value={})),
         "logger": MagicMock(),
     }
     exec(

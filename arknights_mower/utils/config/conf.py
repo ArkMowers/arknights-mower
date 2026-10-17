@@ -3,7 +3,14 @@ import sys
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    field_validator,
+    model_validator,
+)
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils.config.device_profile import (
@@ -79,6 +86,10 @@ class CluePart(ConfModel):
     "信用商店购物处理方式：maa / mower"
     clue_credit_on_demand: bool = False
     "仅在 Mower 访友及购物均启用时按需领取信息板信用"
+    credit_shop_by_value: bool = False
+    "按性价比购物开关，仅在 Mower 访问好友及购物均启用时适用"
+    credit_shop_value_threshold: float = Field(default=0.045, ge=0, allow_inf_nan=False)
+    "购物性价比阈值，单位为理智/信用"
     maa_mall_blacklist: str = "加急许可,碳,碳素,家具零件"
     "黑名单"
     maa_mall_buy: str = "招聘许可,技巧概要·卷2"
@@ -601,7 +612,7 @@ class RIICPart(ConfModel):
 
     group_rest_in_full_on_mood_gap: bool = True
     "组内高优先干员预计恢复时间差过大时，等待整组回满"
-    group_mood_gap_threshold_minutes: int = Field(default=60, ge=1, le=1440)
+    group_mood_gap_threshold_minutes: int = Field(default=75, ge=1, le=1440)
     "组内预计恢复时间差触发延后回班的阈值（分钟）"
     group_mood_gap_max_extra_wait_hours: float = Field(default=0, ge=0, le=24)
     "组内恢复时间差过大时最多额外等待的小时数；0 表示不限时"
@@ -785,6 +796,12 @@ class SKLandPart(ConfModel):
 
 
 class AIAgentPart(ConfModel):
+    ai_assistant_enabled: StrictBool | None = None
+    "多开管理器保存的助手授权；未设置时采用启动模式默认值"
+
+    def assistant_enabled_for_launch(self, *, managed: bool) -> bool:
+        return not managed or self.ai_assistant_enabled is True
+
     ai_type: str = ""
     "名称"
     ai_key: str = ""
@@ -862,6 +879,12 @@ class Conf(
     MaaRewardPart,
     AIAgentPart,
 ):
+    updates_enabled: StrictBool = False
+    "多开管理器保存的更新授权；单开不受此设置限制"
+
+    def updates_enabled_for_launch(self, *, managed: bool) -> bool:
+        return not managed or self.updates_enabled
+
     @model_validator(mode="after")
     def migrate_device_profile(self):
         if "device" not in self.model_fields_set:
@@ -1095,12 +1118,25 @@ class Conf(
         )
 
     @property
+    def should_use_credit_shop_value(self) -> bool:
+        return bool(
+            self.credit_shop_by_value
+            and self.should_run_mower_mall
+            and self.visit_friend_enable
+            and self.visit_friend_mode == "mower"
+        )
+
+    @property
     def should_run_maa_visit_friend(self) -> bool:
         return bool(self.visit_friend_enable and self.visit_friend_mode == "maa")
 
     @property
     def should_run_maa_mall_task(self) -> bool:
-        return self.should_run_maa_mall or self.should_run_maa_visit_friend
+        return (
+            self.maa_credit_fight
+            or self.should_run_maa_mall
+            or self.should_run_maa_visit_friend
+        )
 
     @property
     def has_maa_daily_tasks(self) -> bool:

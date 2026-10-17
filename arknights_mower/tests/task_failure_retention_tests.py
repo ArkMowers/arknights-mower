@@ -27,6 +27,30 @@ native_solver = native.solver
 ROOM = "room_1_1"
 
 
+def test_recovery_depot_completion_does_not_schedule_unchanged_stock_retry(
+    scheduler, monkeypatch
+):
+    from arknights_mower.solvers import record
+    from arknights_mower.utils import crash_recovery
+
+    monkeypatch.setattr(crash_recovery, "workshop_inventory_names", lambda: {"碳"})
+    monkeypatch.setattr(record, "get_inventory_counts", lambda: {})
+    solver = scheduler.solver
+    task = SchedulerTask(scheduler.clock.now(), task_type=TaskTypes.DEPOT)
+    # A queued scan from the previous version still completes only once.
+    task.process_recovery_inventory = ["碳"]
+    independent = SchedulerTask(
+        scheduler.clock.now() + timedelta(hours=1), task_type=TaskTypes.WORKSHOP
+    )
+    solver.tasks, solver.task = [task, independent], task
+    solver.仓库扫描 = Mock(return_value=False)
+    solver.infra_main()
+    solver.仓库扫描.assert_called_once()
+    assert solver.tasks == [independent]
+    assert not recovery.config.stop_mower.is_set()
+    scheduler.io.assert_not_called()
+
+
 @pytest.fixture
 def failed_arrangement(scheduler):
     solver = scheduler.solver

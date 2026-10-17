@@ -242,6 +242,7 @@ class DesktopStartupTests(unittest.TestCase):
         *,
         automatic=True,
         resource=False,
+        background=False,
         restart=False,
         resume_run="0",
         resume_mode="",
@@ -251,6 +252,7 @@ class DesktopStartupTests(unittest.TestCase):
         token="",
         manager_port="0",
         restart_port="58100",
+        updates_enabled=True,
     ):
         import server as task_server
         import webview_ui
@@ -262,6 +264,7 @@ class DesktopStartupTests(unittest.TestCase):
             config.conf.start_automatically = automatic
             config.conf.resource_update.enable = resource
             config.conf.resource_update.auto_update = resource
+            config.updates_enabled = updates_enabled
             config.stop_mower = threading.Event()
             server = Mock(app=Flask(__name__))
             server.http_start = Mock()
@@ -302,7 +305,8 @@ class DesktopStartupTests(unittest.TestCase):
             server.get_resource_version.side_effect = check_resource
             server.install_resource.side_effect = install_resource
 
-            def start_worker(mode):
+            def start_worker(mode, *, automatic=False):
+                self.assertTrue(automatic)
                 events.append(("start", mode))
                 return True
 
@@ -320,7 +324,7 @@ class DesktopStartupTests(unittest.TestCase):
                 patch.dict(
                     os.environ,
                     {
-                        "MOWER_BACKGROUND": "0",
+                        "MOWER_BACKGROUND": "1" if background else "0",
                         "MOWER_MANAGED": "1",
                         "MOWER_RESTART_JOB": "fixture" if restart else "",
                         "MOWER_RESTART_PORT": restart_port,
@@ -375,7 +379,7 @@ class DesktopStartupTests(unittest.TestCase):
     def test_normal_autostart_admits_task_through_the_start_route(self):
         events, server = self.launch()
         self.assertEqual(events, [("start", "0")])
-        server.start.assert_called_once_with("0")
+        server.start.assert_called_once_with("0", automatic=True)
 
     def test_managed_desktop_honors_explicit_and_random_ports_with_or_without_token(
         self,
@@ -401,7 +405,7 @@ class DesktopStartupTests(unittest.TestCase):
                 self.assertEqual(
                     events, ["check resource", "install resource", ("start", "0")]
                 )
-                server.start.assert_called_once_with("0")
+                server.start.assert_called_once_with("0", automatic=True)
 
     def test_resource_check_error_keeps_existing_resources_and_starts(self):
         events, server = self.launch(resource=True, resource_result=OSError("offline"))
@@ -421,7 +425,7 @@ class DesktopStartupTests(unittest.TestCase):
                 ("start", "0"),
             ],
         )
-        server.start.assert_called_once_with("0")
+        server.start.assert_called_once_with("0", automatic=True)
 
     def test_stop_or_shutdown_during_resource_install_cancels_pending_start(self):
         for cancel in ("stop", "shutdown"):
@@ -435,10 +439,19 @@ class DesktopStartupTests(unittest.TestCase):
         self.assertEqual(events, ["check resource", "install resource"])
         server.start.assert_not_called()
 
+    def test_disabled_updates_preserve_automatic_task_start_without_resource_maintenance(
+        self,
+    ):
+        events, server = self.launch(resource=True, updates_enabled=False)
+        self.assertEqual(events, [("start", "0")])
+        server.get_resource_version.assert_not_called()
+        server.install_resource.assert_not_called()
+
     def test_restart_policy_overrides_the_saved_autostart_option(self):
         for automatic in (False, True):
             for resume_run, mode, expected in (
-                ("0", "", None),
+                ("0", "preserve", None),
+                ("1", "preserve", "2"),
                 ("1", "", "2"),
                 ("0", "0", "0"),
                 ("0", "1", "1"),
@@ -456,3 +469,17 @@ class DesktopStartupTests(unittest.TestCase):
                         events, [] if expected is None else [("start", expected)]
                     )
                     self.assertEqual(server.start.call_count, int(expected is not None))
+
+    def test_software_update_autostart_uses_the_saved_option_and_normal_mode(self):
+        for automatic in (False, True):
+            with self.subTest(automatic=automatic):
+                events, server = self.launch(
+                    automatic=automatic,
+                    restart=True,
+                    resource=True,
+                )
+                expected = ["check resource", "install resource"]
+                if automatic:
+                    expected.append(("start", "0"))
+                self.assertEqual(events, expected)
+                self.assertEqual(server.start.call_count, int(automatic))

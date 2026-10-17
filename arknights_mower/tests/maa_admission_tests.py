@@ -10,12 +10,14 @@ import pytest
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 import arknights_mower.solvers.base_schedule as base_schedule  # noqa: E402
+from arknights_mower.tests.maa_process_helpers import fake_sdk_worker  # noqa: E402
 from arknights_mower.utils import maa_backup  # noqa: E402
 from arknights_mower.utils.config.conf import Conf  # noqa: E402
 
 
 @pytest.fixture
 def desktop(monkeypatch, tmp_path):
+    monkeypatch.setattr("arknights_mower.utils.maa_process.MaaProcess", fake_sdk_worker)
     monkeypatch.setenv("MOWER_ANDROID", "0")
     monkeypatch.syspath_prepend(str(tmp_path))
     native = Mock()
@@ -58,6 +60,7 @@ def desktop(monkeypatch, tmp_path):
     monkeypatch.setattr(base_schedule.requests, "get", Mock(return_value=response))
     resource = tmp_path / "resource"
     resource.mkdir()
+    (resource / "tasks").mkdir()
     (resource / "version.json").write_text(
         json.dumps({"last_updated": "2026-10-10 01:00:00.000"})
     )
@@ -147,23 +150,18 @@ def test_download_is_loaded_before_success_is_reported(desktop):
 def test_external_core_reload_uses_new_sdk_and_instance_options(desktop, monkeypatch):
     desktop.scheduler.initialize_maa()
     desktop.scheduler.MAA.stop()
-    desktop.scheduler.MAA = None
+    desktop.scheduler.release_maa()
     (desktop.root / "MaaCore.dll").write_bytes(b"updated offline core")
     native = Mock()
     native.get_version.return_value = "v6.test"
     new_asst = Mock(return_value=native)
     new_asst.load.return_value = True
 
-    def clear(target):
-        monkeypatch.setitem(sys.modules, "asst.asst", SimpleNamespace(Asst=new_asst))
-        monkeypatch.setitem(
-            sys.modules,
-            "asst.utils",
-            SimpleNamespace(InstanceOptionType=SimpleNamespace(touch_type=99)),
-        )
-
-    monkeypatch.setattr(
-        "arknights_mower.utils.maa_runtime.clear_loaded_maa_cache", clear
+    monkeypatch.setitem(sys.modules, "asst.asst", SimpleNamespace(Asst=new_asst))
+    monkeypatch.setitem(
+        sys.modules,
+        "asst.utils",
+        SimpleNamespace(InstanceOptionType=SimpleNamespace(touch_type=99)),
     )
     desktop.scheduler.initialize_maa()
     desktop.asst.load.assert_called_once()
@@ -262,6 +260,7 @@ def run(monkeypatch, tmp_path):
     monkeypatch.setenv("MOWER_ANDROID", "0")
     conf = Conf(
         maa_stage_inventory_enable=False,
+        maa_credit_fight=False,
         maa_mall_enable=False,
         visit_friend_enable=False,
     )

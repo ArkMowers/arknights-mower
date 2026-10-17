@@ -4,6 +4,17 @@
 
 `Worker.run_command` executes fixed argument lists without a shell. Each command has a monotonic deadline and respects preparation cancellation. POSIX commands own a process group; Windows commands enter a dedicated Job before execution and keep their descendants inside that Job. The installer uses the standard library.
 
+<a id="managed-update-authorization"></a>
+### Managed Update Authorization
+
+Each instance stores `updates_enabled` as a strict boolean in `config/conf.yml`. Standalone launches retain update access regardless of this saved manager choice. Managed launches (`MOWER_MANAGED=1`) deny updates unless the saved choice is explicitly true; a missing choice defaults to false. Effective permission is captured once at startup and exposed through `/status`, independently of later configuration reloads or manager termination.
+
+The manager edits this choice only after the instance process exits. Individual settings and the batch table use the existing stopped-instance checks, captured targets, changed-cell submission and atomic YAML writes. Update All On and All Off affect only editable rows' drafts, without changing AI authorization or starting an update; Save commits the choices. No AI risk-reading notice applies to this independent permission.
+
+Disabled instances hide software, resource and MAA update controls and the global update-package drop interface. Their backend rejects software-update, MAA core/resource-update and manual/online resource-install requests with HTTP 403 and `updates_disabled`, before reading uploads or starting workers. Remote resource-version checks are denied; local version reads remain available. Desktop and page-start automatic update checks and installations are suppressed without changing the user's saved automatic-update preferences. Ordinary configuration saves cannot change manager authorization, and configuration backup imports preserve the current instance's authorization instead of adopting the archive's choice.
+
+During a shared software update, the temporary progress service preserves each instance's permission: unauthorized instances can read progress but cannot cancel the update, and their cancellation control is hidden. Authorization controls who can initiate or cancel maintenance, not which version an instance uses. Authorized updates can still replace a shared installation or shared resources used by unauthorized instances. This boundary does not restrict users who can directly edit host files or launch a separate standalone process.
+
 ## 2. Global Update Drop
 
 `GlobalUpdateDrop` excludes local upload targets, editable controls, draggable elements and elements marked `data-no-update-drop`, including their descendants. The Scheduling Plan facility layout carries one marker covering every card, background and gap, including fixed facilities and cards locked during import. The marker does not cover the surrounding page or the editing section below the layout. Entering or hovering over an excluded target clears the update drag hint, including when a local handler consumes the event. Other page regions accept update packages through the existing confirmation flow.
@@ -15,7 +26,7 @@
 - <a id="cleanup-contention-isolation"></a>**Cleanup Contention Isolation**: The [backup cleanup boundary](#16-backup-cleanup-contention) distinguishes routine lock contention from failed maintenance and preserves pending records.
 - <a id="local-update-cache"></a>**Local Update Cache**: Software update coordination, uploads, downloaded packages and job workspaces reside under shared `@app/tmp/updates/`, with installation identity isolation; package-inspection temporary directories use the same tree instead of system cache or temporary directories.
 
-- <a id="elevated-windows-desktop-launch"></a>**Elevated Windows Desktop Launch**: Both packaged Windows desktop executables require administrator elevation before application startup; manager-launched instances inherit the manager's elevated token through ordinary process creation.
+- <a id="elevated-windows-desktop-launch"></a><a id="windows-desktop-launch-permissions"></a>**Windows Desktop Launch Permissions**: Both packaged Windows desktop executables inherit the launcher's permissions without requesting elevation; manager-launched instances inherit the manager's token through ordinary process creation.
 
 - <a id="cross-channel-upgrade-selection"></a>**Cross-Channel Upgrade Selection**: Installed development and beta channels admit newer installable releases from more stable channels, preserve the selected channel and use only a verified OTA from the exact installed version to the selected target.
 
@@ -54,7 +65,7 @@ Cancellation and timeout terminate only the owned command tree. Successful root-
 
 `/maa-resource-update/info` reports support for installed MAA on Windows, macOS and Linux. `MaaBasic` displays its independent resource controls from that response. `/maa-resource-update/check` uses the selected GitHub or Mirror酱 source; `/maa-resource-update/start` follows the [MAA update admission policy](maa-integration.md#29-independent-update-policies), including unknown local versions. Both resource and core updates share the maintenance lock and reject active MAA use.
 
-`install_maa_resource_update` stages an incremental resource merge, preserves core and Python files, and replaces only `resource`. The previous resource tree remains in `resource.old`; failed replacement or version verification restores the original tree and previous backup.
+`install_maa_resource_update` stages an incremental resource merge, preserves core and Python files, and replaces only `resource`. The previous resource tree remains in the installation's `.old/resource`; failed replacement or version verification restores the original tree and previous backup. A merged resource tree must satisfy the installed package's file list before replacement. Core updates follow the [MAA package validation and backup boundary](#17-maa-package-validation-and-backups).
 
 The update worker follows the [MAA runtime activation boundary](maa-runtime.md#3-explicit-update-completion) after installation.
 
@@ -104,15 +115,20 @@ OTA starting-file reads follow the [bundled reconstruction contract](resource-up
 
 `ProgressServers` reuses registered instance ports and credentials while the application is replaced. Its POST handler reads supported request bodies within the existing 1024-byte limit and five-second socket timeout before returning a rejection, preventing unread POST data from aborting the response on Windows. Invalid credentials, update headers or origins retain HTTP 403 precedence; an authenticated unknown path returns HTTP 404. Only an authorized cancellation request with a valid body reaches `cancel_update`; body-reading failures retain the applicable rejection or return HTTP 400. Closing the service releases its registered ports for the restarted application.
 
-## 14. Windows Desktop Elevation
+<a id="14-windows-desktop-elevation"></a>
+## 14. Windows Desktop Launch Permissions
 
-The Windows package embeds `requireAdministrator` with `uiAccess=false` in both `mower.exe` and `多开管理器.exe`. Windows requests elevation before application startup; cancelling consent leaves that application stopped. The elevated manager starts instances through ordinary `Popen`, so they inherit its token without separate elevation requests. Existing desktop children, maintenance workers and restarts retain their parent's permissions. Starting the manager independently from a non-elevated shell still requires its own authorization.
+The Windows package embeds `asInvoker` with `uiAccess=false` in both `mower.exe` and `多开管理器.exe`. A standard Windows account can launch either executable without administrator credentials or a UAC elevation request. The manager starts instances through ordinary `Popen`, so they inherit its token. Desktop children, maintenance workers and restarts retain their parent's permissions. A user can explicitly choose Run as administrator when needed and authorized; Mower does not automatically request elevation on failure.
 
-The release workflow verifies both built executable manifests before creating the archive. Source deployments inherit the Python process permissions and require an elevated terminal for administrator access. Elevation does not repair missing or malformed resources or guarantee access through every file ACL.
+Desktop startup does not generate launch shortcuts or batch scripts. Users who need elevated permissions can right-click the installed EXE and choose Run as administrator; only that explicit action requests elevation. Existing user-side shortcuts are left untouched and are no longer refreshed after moving the installation.
 
-The first upgrade from an older non-elevated package requires restarting that old application as administrator before updating. Its existing updater uses ordinary process creation and cannot restart the new administrator-required executable from a non-elevated token.
+The existing single-manager reuse rule still applies. To replace an already running standard-permission manager with an elevated one, exit that manager before launching the manager EXE with Run as administrator.
 
-[Windows desktop elevation](../../.agents/notes/implemented/feature/2026-10-11-windows-desktop-elevation.md) records the startup decision and verification limits.
+The release workflow verifies both built executable manifests before creating the archive. Source deployments inherit the Python process permissions. Windows retains the portable installation and data layout: standard accounts require write access to the installation for software updates and to the configured data and MAA directories for their writes. `MOWER_DATA_DIR` redirects application data but does not make a protected installation writable. Permission failures remain subject to Windows file ACLs and emulator access restrictions.
+
+An already elevated old package and its updater remain elevated until they exit. Users without administrator credentials can install the new full package in a writable directory and launch it directly; changing Python sources alone does not replace the manifest in an old executable.
+
+[Windows desktop launcher permissions](../../.agents/notes/implemented/feature/2026-10-16-windows-desktop-launcher-permissions.md) records the startup decision and verification limits.
 
 ## 15. Update Cache Storage
 
@@ -129,3 +145,11 @@ Startup instances and verified update workers share the existing nonblocking `ba
 `retry_backup_cleanup` treats a busy lock during acquisition as a completed skipped attempt, without warnings, tracebacks, waiting or record mutation. The lock owner continues cleanup; pending `cleanup.json` records remain available for subsequent startup attempts. Other acquisition failures and cleanup failures retain application logger or detached updater diagnostics. Successful acquisition retains verified-restart, permitted-path and recorded-file-identity checks, with lock release on completion or error. The lock file remains in place.
 
 [Backup cleanup contention](../../.agents/notes/implemented/bug-fix/2026-10-12-backup-cleanup-contention.md) records the decision and focused verification.
+
+## 17. MAA Package Validation and Backups
+
+Windows MAA installations use the client's `filelist.txt` resource-presence check when that file exists. Each listed non-DLL, non-EXE and non-Python file must exist; old packages without a list retain compatibility. Unreadable, malformed or oversized lists fail validation. A damaged Windows installation or `pending-update-failure.txt` requests a full package without submitting an installed version, permitting repair at the same version through GitHub or Mirror酱. An OTA response cannot repair that installation. Full extraction, OTA merging and resource merging validate their resulting files before switching the installation. OTA processing retains both `removelist.txt` and `changes.json.deleted` semantics.
+
+Desktop core replacement stages the complete installation and retains its predecessor in `<MAA>/.old`. Desktop resource replacement uses `<MAA>/.old/resource`. OTA preparation excludes the top-level `.old` tree. Failed switching restores the prior installation and prior backup; successful tasks retire backups only through the [runtime ownership and occupancy checks](maa-runtime.md#2-reload-and-failure-boundary). Legacy desktop sibling `maa.old` and `resource.old` directories are preserved and receive no new automatic cleanup. Android retains the host's existing component backup and `resource.old` layout, cleanup hook and service restart.
+
+Mower keeps its staged directory replacement rather than launching `MAA.Updater.exe`. It shares the Windows client's installation mutex protocol, resource validation and repair selection, and `.old` backup location. The [parity tests](../../arknights_mower/tests/maa_update_parity_tests.py) cover damaged installations, same-version repairs, backup restoration and occupied-client admission.

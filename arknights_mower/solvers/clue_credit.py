@@ -46,12 +46,20 @@ class ClueCreditMixin:
         shop.run(on_demand=True)
         if self._needs_clue_credit(shop):
             if settlement_checked is None:
+                logger.info(
+                    "购物还差 %s 信用，准备打开信息板尝试领取上周结算，本次不领取本周信用",
+                    shop.credit_deficit,
+                )
                 settlement_checked = self._visit_clue_message_board(
                     collect_current=False
                 )
                 # 打开板子可能已自动到账；页面未确认时也读取真实余额。
                 shop.run(on_demand=True)
             if settlement_checked and self._needs_clue_credit(shop):
+                logger.info(
+                    "购物仍差 %s 信用，准备打开信息板领取本周信用",
+                    shop.credit_deficit,
+                )
                 self._visit_clue_message_board(collect_current=True)
                 shop.run(on_demand=True)
         self.scene_graph_navigation(Scene.INFRA_MAIN)
@@ -81,6 +89,47 @@ class ClueCreditMixin:
             self.tap_element("clue/title_party")
         # 关闭提示后重新取帧，避免后续匹配仍使用关闭前的画面。
         self.recog.update()
+
+    def _open_clue_message_board(self):
+        """唤出家具交互入口后打开信息板，仅在确认仍在房间时补救一次。"""
+        self.recog.update()
+        if self.scene() == Scene.CLUE_MESSAGE_BOARD:
+            return self._wait_clue_message_board()
+        if self.scene() != Scene.INFRA_DETAILS:
+            return False
+        self._prepare_clue_room()
+        for attempt in range(2):
+            self.recog.update()
+            scene = self.scene()
+            # 结算弹窗可能透出房间特征，不能在弹窗上点击家具交互。
+            if self.find("materiel_ico") or self._clue_access_record_visible():
+                return False
+            if scene == Scene.CLUE_MESSAGE_BOARD:
+                return True
+            if scene != Scene.INFRA_DETAILS:
+                return False
+            was_visible = self.find("clue/message_board") is not None
+            if attempt:
+                logger.info("仍在会客室，重新唤出信息板入口后补救一次")
+            # 入口可能处于进房动画或即将消失，不能仅凭可见就直接点击。
+            self.tap((680, 1000))
+            if self.scene() != Scene.INFRA_DETAILS or self.find("materiel_ico"):
+                return False
+            if board_pos := self.find("clue/message_board"):
+                # 家具交互提示只短暂显示，使用当前帧的位置及时点击。
+                logger.info("点击会客室信息板入口")
+                self.tap(board_pos)
+                if self._wait_clue_message_board():
+                    logger.info("已确认打开会客室信息板")
+                    return True
+            elif not was_visible:
+                # 唤出前后均无入口，没有状态变化时不重复点击。
+                break
+            # 原来可见的提示可能已过期；下一轮先核实房间，再重新唤出。
+        logger.warning(
+            "信息板未打开，结束本次打开尝试", extra={"archive_screenshots": True}
+        )
+        return False
 
     def _clue_access_record_visible(self):
         """联合识别访问记录标题和上周结算正文，排除普通信息板。"""
@@ -155,7 +204,7 @@ class ClueCreditMixin:
                 record_frames = 0
             self.sleep(0.5)
         logger.warning(
-            "信息板%s，保留现场截图，本次不再尝试领取",
+            "信息板%s，保留现场截图",
             "领取未确认" if confirm_collection else "页面未确认",
             extra={"archive_screenshots": True},
         )
@@ -163,29 +212,7 @@ class ClueCreditMixin:
 
     def _collect_clue_message_board(self, *, collect_current=True):
         """打开信息板并按需领取本周信用，确认页面处理和返回结果。"""
-        self._prepare_clue_room()
-
-        # 信息板入口被进驻面板遮住时，点击左下角收起面板。
-        bottom_left = (680, 1000)
-
-        board_pos = self.find("clue/message_board")
-
-        if board_pos is None:
-            # 入口没露出来：按左下角把它唤出，再匹配几次等动画走完
-            self.tap(bottom_left)
-            for _ in range(3):
-                self.recog.update()
-                board_pos = self.find("clue/message_board")
-                if board_pos:
-                    break
-                self.sleep(0.5)
-
-        if board_pos:
-            logger.info("打开会客室信息板")
-            self.tap(board_pos)
-            # 上周结算在打开时自动领取，可能先显示奖励页。
-            if not self._wait_clue_message_board():
-                return False
+        if self._open_clue_message_board():
             completed = True
             if collect_current and (collect := self.find("clue/message_board_collect")):
                 logger.info("领取信息板信用")
@@ -203,10 +230,6 @@ class ClueCreditMixin:
             logger.warning(
                 "信息板未返回会客室，结束本次信用领取",
                 extra={"archive_screenshots": True},
-            )
-        else:
-            logger.warning(
-                "未找到信息板入口，跳过", extra={"archive_screenshots": True}
             )
         return False
 
