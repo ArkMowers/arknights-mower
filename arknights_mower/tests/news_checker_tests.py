@@ -504,7 +504,7 @@ class NewsCheckerTests(unittest.TestCase):
 
 class DailyResetSchedulingTests(unittest.TestCase):
     def setUp(self):
-        conf = Conf(enable_mastery=True)
+        conf = Conf(enable_mastery=True, run_order_delay=5)
         conf.run_order_grandet_mode.enable = False
         for replacement in (
             patch.object(config, "conf", conf),
@@ -553,21 +553,27 @@ class DailyResetSchedulingTests(unittest.TestCase):
 
     def test_scheduling_advances_orders_and_preserves_restoration(self):
         now = self.local_time(3)
-        before = SchedulerTask(self.local_time(3, 55), task_type=TaskTypes.RUN_ORDER)
+        before = SchedulerTask(self.local_time(3, 52), task_type=TaskTypes.RUN_ORDER)
+        crossing = SchedulerTask(self.local_time(3, 58), task_type=TaskTypes.RUN_ORDER)
+        later = SchedulerTask(self.local_time(3, 59), task_type=TaskTypes.RUN_ORDER)
         after = SchedulerTask(self.local_time(4, 5), task_type=TaskTypes.RUN_ORDER)
         outside = SchedulerTask(self.local_time(4, 10), task_type=TaskTypes.RUN_ORDER)
-        restore = SchedulerTask(self.local_time(4), task_type=TaskTypes.RUN_ORDER)
+        restore = SchedulerTask(self.local_time(3, 59), task_type=TaskTypes.RUN_ORDER)
         restore.run_order_restore_pending = True
         ordinary = SchedulerTask(self.local_time(5))
-        tasks = [before, after, outside, restore, ordinary]
+        tasks = [before, crossing, later, after, outside, restore, ordinary]
 
         scheduling(tasks, time_now=now)
 
-        self.assertEqual(before.time, self.local_time(3, 49, 59))
-        self.assertEqual(after.time, self.local_time(3, 49, 58))
+        self.assertEqual(before.time, self.local_time(3, 52))
+        self.assertEqual(crossing.time, self.local_time(3, 55))
+        self.assertEqual(later.time, self.local_time(3, 55))
         self.assertTrue(before.adjusted)
-        self.assertTrue(after.adjusted)
-        self.assertEqual(restore.time, self.local_time(4))
+        self.assertTrue(crossing.adjusted)
+        self.assertTrue(later.adjusted)
+        self.assertEqual(after.time, self.local_time(4, 5))
+        self.assertFalse(after.adjusted)
+        self.assertEqual(restore.time, self.local_time(3, 59))
         self.assertFalse(restore.adjusted)
         self.assertEqual(outside.time, self.local_time(4, 10))
         self.assertEqual(ordinary.time, self.local_time(5))
@@ -575,12 +581,67 @@ class DailyResetSchedulingTests(unittest.TestCase):
         scheduling(tasks, time_now=now)
         self.assertEqual([task.time for task in tasks], times)
 
-    def test_configured_order_buffer_is_reused(self):
-        task = SchedulerTask(self.local_time(4, 15), task_type=TaskTypes.RUN_ORDER)
-        adjust_run_order_for_maintenance(
-            [task], run_order_delay=8, now=self.local_time(3)
+    def test_daily_orders_use_configured_entry_delay_and_exact_boundaries(self):
+        cases = (
+            (5, (3, 49, 59), (3, 49, 59), False),
+            (5, (3, 50, 0), (3, 50, 0), True),
+            (5, (3, 54, 59), (3, 54, 59), True),
+            (5, (3, 55, 0), (3, 55, 0), True),
+            (5, (3, 59, 59), (3, 55, 0), True),
+            (5, (4, 0, 0), (4, 0, 0), False),
+            (5, (4, 5, 0), (4, 5, 0), False),
+            (10, (3, 39, 59), (3, 39, 59), False),
+            (10, (3, 40, 0), (3, 40, 0), True),
+            (10, (3, 49, 59), (3, 49, 59), True),
+            (10, (3, 50, 0), (3, 50, 0), True),
+            (10, (3, 59, 59), (3, 50, 0), True),
+            (10, (4, 0, 0), (4, 0, 0), False),
+            (3, (3, 51, 59), (3, 51, 59), False),
+            (3, (3, 52, 0), (3, 52, 0), True),
+            (3, (3, 56, 59), (3, 56, 59), True),
+            (3, (3, 57, 0), (3, 55, 0), True),
+            (7.5, (3, 44, 59), (3, 44, 59), False),
+            (7.5, (3, 45, 0), (3, 45, 0), True),
+            (7.5, (3, 52, 30), (3, 52, 30), True),
+            (7.5, (3, 59, 59), (3, 52, 30), True),
         )
-        self.assertEqual(task.time, self.local_time(3, 43, 59))
+        config.conf.run_order_grandet_mode.enable = True
+        config.conf.run_order_grandet_mode.buffer_time = 30
+        for delay, start, expected, adjusted in cases:
+            with self.subTest(delay=delay, start=start):
+                config.conf.run_order_delay = delay
+                task = SchedulerTask(
+                    self.local_time(*start), task_type=TaskTypes.RUN_ORDER
+                )
+                for _ in range(2):
+                    scheduling([task], time_now=self.local_time(3))
+                    self.assertEqual(task.time, self.local_time(*expected))
+                    self.assertEqual(task.adjusted, adjusted)
+
+    def test_daily_adjustment_is_idempotent_and_keeps_retained_work(self):
+        task = SchedulerTask(self.local_time(3, 58), task_type=TaskTypes.RUN_ORDER)
+        retained = SchedulerTask(self.local_time(3, 59), task_type=TaskTypes.RUN_ORDER)
+        retained.execution_retained = True
+        tasks = [task, retained]
+        self.assertEqual(
+            adjust_run_order_for_maintenance(tasks, now=self.local_time(3)), [task]
+        )
+        for now in (self.local_time(3), self.local_time(3, 59), self.local_time(4)):
+            self.assertEqual(adjust_run_order_for_maintenance(tasks, now=now), [])
+            self.assertEqual(task.time, self.local_time(3, 55))
+            self.assertTrue(task.adjusted)
+            self.assertEqual(retained.time, self.local_time(3, 59))
+            self.assertFalse(retained.adjusted)
+
+    def test_after_reset_does_not_adjust_unplanned_orders_retroactively(self):
+        before = SchedulerTask(self.local_time(3, 59), task_type=TaskTypes.RUN_ORDER)
+        after = SchedulerTask(self.local_time(4, 1), task_type=TaskTypes.RUN_ORDER)
+        tasks = [before, after]
+        scheduling(tasks, time_now=self.local_time(4))
+        self.assertEqual(before.time, self.local_time(3, 59))
+        self.assertEqual(after.time, self.local_time(4, 1))
+        self.assertFalse(before.adjusted)
+        self.assertFalse(after.adjusted)
 
     def test_announced_maintenance_and_daily_reset_both_advance_orders(self):
         announcement = MaintenanceInfo(
@@ -591,7 +652,9 @@ class DailyResetSchedulingTests(unittest.TestCase):
             url="https://example.test/news/major",
             announcement_id="major",
         )
-        reset_order = SchedulerTask(self.local_time(4), task_type=TaskTypes.RUN_ORDER)
+        reset_order = SchedulerTask(
+            self.local_time(3, 58), task_type=TaskTypes.RUN_ORDER
+        )
         maintenance_order = SchedulerTask(
             self.local_time(8), task_type=TaskTypes.RUN_ORDER
         )
@@ -601,18 +664,36 @@ class DailyResetSchedulingTests(unittest.TestCase):
             )
             self.assertIs(NewsChecker.get_maintenance(), announcement)
         self.assertCountEqual(adjusted, [reset_order, maintenance_order])
-        self.assertEqual(reset_order.time, self.local_time(3, 49, 59))
+        self.assertEqual(reset_order.time, self.local_time(3, 55))
         self.assertEqual(maintenance_order.time, self.local_time(5, 49, 59))
 
     def test_overlapping_windows_converge_in_one_pass(self):
-        start, end = self.local_time(4, 5), self.local_time(4, 15)
-        task = SchedulerTask(self.local_time(4, 10), task_type=TaskTypes.RUN_ORDER)
-        with patch.object(NewsChecker, "get_update_time", return_value=(start, end)):
-            adjusted = adjust_run_order_for_maintenance([task], now=self.local_time(3))
-            self.assertEqual(adjusted, [task])
-            self.assertEqual(task.time, self.local_time(3, 49, 59))
-            adjust_run_order_for_maintenance([task], now=self.local_time(3))
-            self.assertEqual(task.time, self.local_time(3, 49, 59))
+        for start, end, original, expected in (
+            ((4, 5), (4, 15), (4, 10), (3, 54, 59)),
+            ((4, 8), (4, 15), (4, 10), (3, 55, 0)),
+            ((3, 58), (4, 10), (3, 59), (3, 47, 59)),
+        ):
+            with self.subTest(start=start):
+                task = SchedulerTask(
+                    self.local_time(*original), task_type=TaskTypes.RUN_ORDER
+                )
+                with patch.object(
+                    NewsChecker,
+                    "get_update_time",
+                    return_value=(self.local_time(*start), self.local_time(*end)),
+                ):
+                    adjusted = adjust_run_order_for_maintenance(
+                        [task], now=self.local_time(3)
+                    )
+                    self.assertEqual(adjusted, [task])
+                    self.assertEqual(task.time, self.local_time(*expected))
+                    self.assertEqual(
+                        adjust_run_order_for_maintenance(
+                            [task], now=self.local_time(3)
+                        ),
+                        [],
+                    )
+                    self.assertEqual(task.time, self.local_time(*expected))
 
     def test_daily_reset_advances_handoffs_through_both_dispatch_entries(self):
         for entry in (scheduling, protect_priority_tasks):

@@ -1130,34 +1130,61 @@ def adjust_run_order_for_maintenance(
     tasks, run_order_delay=5, advance_time=None, now=None
 ):
     """
-    将维护期附近的 RUN_ORDER 任务提前到维护前，避免维护期冲突。
+    将公告维护附近的跑单提前，并按用户前置延时保护每日四点刷新。
     :param tasks: 任务列表
-    :param run_order_delay: 跑单间隔（分钟）
+    :param run_order_delay: 公告维护使用的跑单间隔（分钟）
     :param advance_time: 维护副表要求更早执行时使用的截止时间
     :param now: 本轮调度时间，未提供时使用本地当前时间
     """
     time_gap = max(run_order_delay * 2, 10)  # 确保最小间隔为10分钟操作时间
     reset = NewsChecker.get_daily_reset(now or datetime.now())
-    windows = [NewsChecker.get_update_time(), (reset.start, reset.end)]
+    windows = [
+        (*NewsChecker.get_update_time(), False),
+        (reset.start, reset.end, True),
+    ]
     blocked_orders = blocked_run_order_ids(tasks)
+    orders = [
+        task
+        for task in task_view(tasks, TaskScope.REPLAN)
+        if task.type == TaskTypes.RUN_ORDER
+        and not getattr(task, "run_order_restore_pending", False)
+        and id(task) not in blocked_orders
+    ]
     adjusted = {}
-    for st, ed in sorted(
-        ((st, ed) for st, ed in windows if st is not None and ed is not None),
+    for st, ed, daily_reset in sorted(
+        (
+            window
+            for window in windows
+            if window[0] is not None and window[1] is not None
+        ),
         reverse=True,
     ):
+        if daily_reset:
+            entry_delay = timedelta(minutes=config.conf.run_order_delay)
+            deadline = st - timedelta(minutes=max(config.conf.run_order_delay, 5))
+            for task in orders:
+                expected_end = task.time + entry_delay
+                if task.time >= st or expected_end < deadline:
+                    continue
+                new_time = deadline if expected_end >= st else task.time
+                if task.adjusted and task.time == new_time:
+                    continue
+                logger.info(
+                    f"每日四点刷新附近的跑单改用无人机，开始时间 {task.time} -> {new_time}"
+                    f"（预计订单完成 {expected_end}）"
+                )
+                task.time = new_time
+                task.adjusted = True
+                adjusted[id(task)] = task
+            continue
         window_start = st - timedelta(minutes=time_gap)
         window_end = ed + timedelta(minutes=time_gap)
         run_order_tasks = [
             t
-            for t in task_view(tasks, TaskScope.REPLAN)
-            if t.type == TaskTypes.RUN_ORDER
-            and not getattr(t, "run_order_restore_pending", False)
-            and id(t) not in blocked_orders
-            and (
-                window_start < t.time < window_end
-                or advance_time is not None
-                and getattr(t, "maintenance_start", None) == st
-            )
+            for t in orders
+            if window_start < t.time < window_end
+            or advance_time is not None
+            and getattr(t, "maintenance_start", None) == st
         ]
         run_order_tasks.sort(key=lambda t: t.time)
         for i, t in enumerate(run_order_tasks, 1):
