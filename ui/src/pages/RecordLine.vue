@@ -63,7 +63,7 @@
             :style="{ width: (expandChart[group.boardKey] ?? 100) + '%' }"
           >
             <Line
-              :key="group.boardKey + ':' + (hiddenLines[group.boardKey] || []).join('|')"
+              :key="group.boardKey"
               :ref="(instance) => setChartRef(group.boardKey, instance)"
               :data="group.moodData"
               :options="chartOptions"
