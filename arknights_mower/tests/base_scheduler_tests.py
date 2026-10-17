@@ -2741,9 +2741,12 @@ class TestDroneAccelerate(unittest.TestCase):
             ("at_threshold", 20, 20, 0, True, False, None),
             ("below_threshold", 19, 20, 0, True, False, None),
             ("zero_threshold", 250, 0, 0, True, False, 250),
-            ("no_run_orders", 250, 20, 7, False, False, 250),
+            ("no_run_orders", 250, 20, 0, False, False, 230),
+            ("no_run_orders_surplus", 71, 30, 0, False, False, 41),
+            ("no_run_orders_below", 29, 30, 0, False, False, None),
             ("not_customize", 250, 20, 7, True, True, 250),
-            ("all_in_at_threshold", 20, 20, 7, False, False, 20),
+            ("no_run_orders_at_threshold", 20, 20, 0, False, False, None),
+            ("specialized_at_threshold", 20, 20, 7, False, True, 20),
         ]
         for (
             name,
@@ -2809,7 +2812,7 @@ class TestDroneAccelerate(unittest.TestCase):
                         operations,
                         (
                             ["increase"] * expected_spend
-                            if has_run_orders and not not_customize
+                            if not not_customize
                             else ["maximum"]
                         )
                         + ["confirm"],

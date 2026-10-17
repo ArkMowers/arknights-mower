@@ -9,12 +9,13 @@ import {createProductionTimeline,type ProductionFrame} from './productionTimelin
 import {createMowerProductionIO} from './mowerNativeProductionIO'
 
 const targetRoom='room_2_1'
-function fixture(stock:number,reserve:number,runOrder=true,initialSelection?:number|'max'){
+function fixture(stock:number,reserve:number,runOrder=true,initialSelection?:number|'max',productSwitching=false){
  const ws=createDefaultWorkspace()
  for(const room of Object.values(ws.mainPlan.facilities))room.slots=[]
  ws.mainPlan.facilities[targetRoom].product='exp'
  ws.mainPlan.facilities[targetRoom].slots=[{occupant:{kind:'operator',operatorId:'芬'},groupId:null,replacements:[]}]
  if(runOrder)ws.mainPlan.facilities.room_3_1.slots=[{occupant:{kind:'operator',operatorId:'砾'},groupId:null,replacements:['但书']}]
+ if(productSwitching)ws.compatibility.unrecognizedFields.advanced_settings={product_switching:{enable:true}}
  const schedule=compileRosterSchedule(ws),state=createRosterRuntime(compiledScheduleToRuntimeConfig(schedule))
  state.config.mowerDroneCountLimit=reserve
  if(initialSelection!==undefined)state.config.mowerDeviceObservations={initialManufactureDroneSelection:initialSelection}
@@ -89,10 +90,33 @@ describe('native manufacture drone reserve',()=>{
   expect(remaining).toBeGreaterThanOrEqual(Math.min(stock,reserve))
   expect(remaining).toBeLessThan(Math.min(stock,reserve)+1)
  })
- it('uses all available drones without a run-order room',()=>{
-  const test=fixture(250,20,false)
+ it.each([
+  {stock:71,reserve:30,spent:41,runOrder:false},
+  {stock:30,reserve:30,spent:0,runOrder:false},
+  {stock:29,reserve:30,spent:0,runOrder:false},
+  {stock:71,reserve:0,spent:71,runOrder:false},
+  {stock:71,reserve:30,spent:41,runOrder:true},
+ ])('reserves $reserve for product switching with stock $stock and runOrder=$runOrder',({stock,reserve,spent,runOrder})=>{
+  const test=fixture(stock,reserve,runOrder,undefined,true)
   test.accelerate()
-  assertAccounting(test,250,1)
+  assertAccounting(test,spent,spent>0?1:0)
+  const remaining=test.production.report().drones.stock
+  expect(remaining).toBeGreaterThanOrEqual(Math.min(stock,reserve))
+  expect(remaining).toBeLessThan(Math.min(stock,reserve)+1)
+ })
+ it.each([
+  {stock:250,reserve:20,spent:230},
+  {stock:71,reserve:30,spent:41},
+  {stock:30,reserve:30,spent:0},
+  {stock:29,reserve:30,spent:0},
+  {stock:71,reserve:0,spent:71},
+ ])('retains $reserve without run-order rooms or product switching from stock $stock',({stock,reserve,spent})=>{
+  const test=fixture(stock,reserve,false)
+  test.accelerate()
+  assertAccounting(test,spent,spent>0?1:0)
+  const remaining=test.production.report().drones.stock
+  expect(remaining).toBeGreaterThanOrEqual(Math.min(stock,reserve))
+  expect(remaining).toBeLessThan(Math.min(stock,reserve)+1)
  })
  it.each([0,120,'max'] as const)('selects the maximum before reserving, regardless of initial selection %s',initial=>{
   const test=fixture(150,100,true,initial)
