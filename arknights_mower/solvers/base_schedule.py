@@ -2450,7 +2450,7 @@ class BaseSchedulerSolver(
                     f"{e}，未完成的切换任务推迟至 {retry_time.strftime('%H:%M:%S')}"
                 )
                 self.skip()
-            except (MowerExit, DeviceRecoveryError):
+            except (MowerExit, DeviceRecoveryError, SharedADBError):
                 raise
             except Exception as e:
                 save_exception(e)
@@ -13729,8 +13729,11 @@ class BaseSchedulerSolver(
             if not cultivateDepotSolver().start(force_inventory=True):
                 logger.warning("仓库扫描: 森空岛同步未成功，保留现有库存并跳过本次扫描")
                 return False
-            DepotSolver(self.device, self.recog).run()
+            if not DepotSolver(self.device, self.recog).run():
+                return False
             self._auto_schedule_mastery_after_scan()
+        except (MowerExit, DeviceRecoveryError, SharedADBError):
+            raise
         except Exception as e:
             save_exception(e)
             logger.exception(f"先不运行 出bug了 : {e}")
