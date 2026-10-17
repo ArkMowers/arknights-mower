@@ -1761,12 +1761,8 @@ class BaseSchedulerSolver(
             try_workshop_tasks(self.op_data, self.tasks, minimum_mood=0)
         return task.meta_data
 
-    def plan_metadata(self):
-        if self._emergency_frozen():
-            self._emergency_filter_tasks()
-            self._emergency_replan_releases()
-            return
-        waiting_names = {
+    def _waiting_recovery_names(self):
+        return {
             name
             for task in getattr(self, "waiting_group_shifts", ())
             if hasattr(task, "recovery_waiting_observations")
@@ -1774,10 +1770,17 @@ class BaseSchedulerSolver(
             for name in names
             if name in self.op_data.operators
         }
+
+    def plan_metadata(self):
+        if self._emergency_frozen():
+            self._emergency_filter_tasks()
+            self._emergency_replan_releases()
+            return
         self.tasks = plan_metadata(
             self.op_data,
             self.tasks,
-            excluded_names=self._protected_training_names() | waiting_names,
+            excluded_names=self._protected_training_names()
+            | self._waiting_recovery_names(),
         )
         self._resume_waiting_group_shifts()
 
@@ -1870,16 +1873,28 @@ class BaseSchedulerSolver(
             _, bed = self.op_data.get_dorm_by_name(name)
             due = recovery_observation_deadline(self.op_data, name, now=now)
             if bed is not None and due is not None and due > now:
-                deadlines.setdefault(due, set()).add(bed.position[0])
-        for deadline, pending_rooms in deadlines.items():
-            if any(
-                getattr(pending, "recovery_observation_rooms", set()) == pending_rooms
-                and pending.time == deadline
-                for pending in self.tasks
-            ):
+                deadlines.setdefault(due, {})[name] = bed.position[0]
+        for deadline, targets in deadlines.items():
+            pending_rooms = set(targets.values())
+            existing = next(
+                (
+                    pending
+                    for pending in self.tasks
+                    if getattr(pending, "recovery_observation_rooms", set())
+                    == pending_rooms
+                    and pending.time == deadline
+                ),
+                None,
+            )
+            if existing is not None:
+                existing.recovery_observation_targets = {
+                    **getattr(existing, "recovery_observation_targets", {}),
+                    **targets,
+                }
                 continue
             observation = SchedulerTask(time=deadline, task_type=TaskTypes.REFRESH_TIME)
             observation.recovery_observation_rooms = pending_rooms
+            observation.recovery_observation_targets = targets
             self.tasks.append(observation)
 
     def prepare_release_dorm(self, task):
@@ -2285,6 +2300,8 @@ class BaseSchedulerSolver(
                         self._prepare_shift_cycle(self.task)
                         self._defer_conflicting_product_shift_slots(self.task)
                         if not self._verify_required_recovery(self.task):
+                            if hasattr(self.task, "recovery_waiting_observations"):
+                                self._queue_missing_run_order_reads()
                             self.skip()
                             return True
                         if (
@@ -3874,6 +3891,17 @@ class BaseSchedulerSolver(
         self.tasks.append(
             SchedulerTask(task_type=TaskTypes.REFRESH_TIME, meta_data=room)
         )
+
+    def _queue_missing_run_order_reads(self):
+        """换班等待让出调度后，保留尚未读取订单的独立责任。"""
+        if getattr(self, "maintenance_entry_pending", False) or any(
+            getattr(task, "maintenance_replacement_run", False) for task in self.tasks
+        ):
+            return
+        self._sync_run_order_tasks()
+        for room in self.op_data.run_order_rooms:
+            if self._emergency_run_order_available(room):
+                self._queue_order_refresh(room)
 
     def plan_run_order(self, room):
         if any(
@@ -6339,6 +6367,7 @@ class BaseSchedulerSolver(
                 if not resting
             ],
         )
+        names.update(self._waiting_recovery_names())
         for room, row in list(plan.items()):
             for index, name in enumerate(row):
                 current = self.op_data.get_current_operator(room, index)

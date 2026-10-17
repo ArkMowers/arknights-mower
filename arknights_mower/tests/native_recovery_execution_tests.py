@@ -77,6 +77,28 @@ def test_all_required_members_are_checked_before_any_arrangement(resting, monkey
     arrange.assert_not_called()
 
 
+def test_recovery_observation_keeps_targets_when_reusing_same_deadline(resting):
+    scheduler, _ = resting
+    now = datetime.now()
+    deadline = now + timedelta(hours=1)
+    scheduler.tasks = []
+    for name in ("伊内丝", "银灰"):
+        op = scheduler.op_data.operators[name]
+        op.mood, op.time_stamp, op.mood_is_prediction = 10, now, False
+        scheduler.op_data.get_dorm_by_name(name)[1].time = deadline
+        scheduler._schedule_recovery_observations({name}, now)
+    assert len(scheduler.tasks) == 1
+    task = scheduler.tasks[0]
+    assert task.time == deadline
+    assert task.type == TaskTypes.REFRESH_TIME and task.plan == {}
+    assert task.recovery_observation_rooms == {"dormitory_1"}
+    assert task.recovery_observation_targets == {
+        "伊内丝": "dormitory_1",
+        "银灰": "dormitory_1",
+    }
+    assert task.display_name == "复查宿舍心情：宿舍1（伊内丝、银灰）"
+
+
 def test_unknown_recovery_time_does_not_create_retry_timer(resting, monkeypatch):
     scheduler, _ = resting
     data = scheduler.op_data

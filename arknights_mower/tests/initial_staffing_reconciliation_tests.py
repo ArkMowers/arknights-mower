@@ -126,7 +126,16 @@ def test_task_api_exposes_ordinary_name_and_preserves_dispatch_type(
     ordinary = SchedulerTask(task_type=TaskTypes.EXHAUST_OFF)
     ordinary.ordinary_coordination = True
     exhausted = SchedulerTask(task_type=TaskTypes.EXHAUST_OFF)
-    solver.tasks = [ordinary, exhausted]
+    recovery = SchedulerTask(task_type=TaskTypes.REFRESH_TIME)
+    recovery.recovery_observation_rooms = {"dormitory_3", "dormitory_1"}
+    recovery.recovery_observation_targets = {
+        "温蒂": "dormitory_3",
+        "图耶": "dormitory_1",
+    }
+    legacy_recovery = SchedulerTask(task_type=TaskTypes.REFRESH_TIME)
+    legacy_recovery.recovery_observation_rooms = {"dormitory_2"}
+    order = SchedulerTask(task_type=TaskTypes.REFRESH_TIME, meta_data="room_1_1")
+    solver.tasks = [ordinary, exhausted, recovery, legacy_recovery, order]
     monkeypatch.setattr(main, "base_scheduler", solver)
     monkeypatch.setattr(
         task_view, "mower_thread", SimpleNamespace(is_alive=lambda: True)
@@ -136,8 +145,17 @@ def test_task_api_exposes_ordinary_name_and_preserves_dispatch_type(
     response = app.test_client().get("/task")
     assert response.status_code == 200
     rows = response.get_json()
-    assert [row["display_name"] for row in rows] == ["轮休协调", "用尽下班"]
+    assert [row["display_name"] for row in rows] == [
+        "轮休协调",
+        "用尽下班",
+        "复查宿舍心情：宿舍1（图耶）、宿舍3（温蒂）",
+        "复查宿舍心情：宿舍2",
+        "刷新跑单时间",
+    ]
     assert ordinary.type == exhausted.type == TaskTypes.EXHAUST_OFF
+    assert recovery.type == legacy_recovery.type == order.type == TaskTypes.REFRESH_TIME
+    assert order.meta_data == "room_1_1"
+    assert recovery.format().type == rows[2]["display_name"]
 
 
 def test_reset_preserves_observed_low_mood_group_recovery(solver):
