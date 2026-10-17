@@ -636,6 +636,11 @@ def simulate(saved):
         from arknights_mower.utils.crash_recovery import reconcile_scheduler
 
         reconcile_scheduler(base_scheduler)
+    else:
+        from arknights_mower.utils import crash_recovery
+
+        if crash_recovery.reset_observation_pending():
+            crash_recovery.checkpoint_reset(base_scheduler)
     base_scheduler._state_restore_complete = True
     while True:
         try:

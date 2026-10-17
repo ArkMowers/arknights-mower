@@ -323,8 +323,12 @@ def supervise(
             }
             if wanted is not None:
                 notice["resume_requested"] = wanted
-            if isinstance(previous, dict) and previous.get("active") is True:
-                notice["start_type"] = previous.get("start_type", "0")
+            if isinstance(previous, dict):
+                if previous.get("reset_observation_pending"):
+                    notice["start_type"] = "2"
+                    notice["reset_observation_pending"] = True
+                elif previous.get("active") is True:
+                    notice["start_type"] = previous.get("start_type", "0")
             runtime.write_json(recovery_path, notice, sync=True)
         if wanted is None:
             base_environment.pop("MOWER_RECOVERY_RUN", None)

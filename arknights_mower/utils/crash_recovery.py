@@ -146,13 +146,37 @@ def request_resume(start_type="0"):
     global _cancelled
     with _lock:
         _cancelled = False
+        if reset_observation_pending():
+            start_type = "2"
         if status()["active"]:
             _update(
                 resume_requested=True,
                 start_type=start_type,
+                reset_observation_pending=start_type == "2",
                 phase="waiting",
                 message="正在重新观察设备、驻员和心情，按所选启动方式继续调度。",
             )
+        else:
+            path = notice_path()
+            if path is not None:
+                raw = runtime.read_json(path) or {"active": False, "phase": "resolved"}
+                raw["reset_observation_pending"] = start_type == "2"
+                runtime.write_json(path, raw, sync=True)
+
+
+def reset_observation_pending():
+    return bool(status().get("reset_observation_pending"))
+
+
+def checkpoint_reset(scheduler):
+    """Persist fresh observations before ending an explicit cache reset."""
+    observe_scheduler(scheduler)
+    with _lock:
+        path = notice_path()
+        raw = runtime.read_json(path) if path is not None else None
+        if isinstance(raw, dict) and raw.get("reset_observation_pending"):
+            raw["reset_observation_pending"] = False
+            runtime.write_json(path, raw, sync=True)
 
 
 def activate(message):
@@ -172,9 +196,16 @@ def activate(message):
                 "active": True,
                 "phase": "waiting",
                 "resume_requested": True,
-                "start_type": raw.get("start_type", "0")
-                if isinstance(raw, dict) and raw.get("active")
-                else "0",
+                "start_type": (
+                    "2"
+                    if isinstance(raw, dict) and raw.get("reset_observation_pending")
+                    else raw.get("start_type", "0")
+                    if isinstance(raw, dict) and raw.get("active")
+                    else "0"
+                ),
+                "reset_observation_pending": bool(
+                    isinstance(raw, dict) and raw.get("reset_observation_pending")
+                ),
                 "occurred_at": datetime.now(timezone.utc).isoformat(),
                 "message": message,
                 "reason": "worker_exception",
@@ -196,6 +227,7 @@ def complete():
             raise MowerExit
         _update(
             active=False,
+            reset_observation_pending=False,
             phase="resolved",
             next_retry_at=None,
             message="设备实际状态已重新观察并保存，正在自动接续调度。",

@@ -836,3 +836,197 @@ def test_stop_snapshot_captured_before_observation_cannot_save_partial_mutations
             == original
         )
     offline.io.assert_not_called()
+
+
+def test_initial_reset_failure_cannot_reload_previous_urgent_handoff(
+    offline, notice, observed_scheduler, monkeypatch, tmp_path
+):
+    runtime.write_json(notice, {"active": False, "phase": "resolved"})
+    handoff = SchedulerTask(datetime.now(), {}, TaskTypes.EXHAUST_OFF)
+    handoff.urgent_recovery_request_names = ["夕"]
+    handoff.urgent_recovery_support_names = ["絮雨"]
+    handoff.urgent_recovery_reserved_names = ["斥罪"]
+    handoff.urgent_recovery_reserved_slots = [("dormitory_1", 1)]
+    observed_scheduler.tasks = [handoff]
+    observed_scheduler.waiting_group_shifts = [handoff]
+    observed_scheduler.op_data.urgent_recovery_supporters = {"夕": ["絮雨"]}
+    assert offline.record.save_current_state()
+    with offline.record._conn() as connection:
+        original = connection.execute("SELECT state FROM saved_state").fetchone()[0]
+    worker = Mock()
+    worker.is_alive.return_value = False
+    create = Mock(return_value=worker)
+    monkeypatch.setattr(offline.server, "Thread", create)
+    monkeypatch.setattr(offline.server, "get_path", lambda value: tmp_path)
+    monkeypatch.setattr(offline.server.resource_update, "running", lambda: False)
+    monkeypatch.setattr(supervisor, "task_intent", Mock())
+    response = offline.server.app.test_client().get(
+        "/start/2", headers={"token": "crash-test"}
+    )
+    assert response.data == b"true"
+    saved = create.call_args.kwargs["args"][0]
+    assert saved == {}
+    monkeypatch.setattr(
+        offline.main, "main", Mock(side_effect=RuntimeError("observation unavailable"))
+    )
+    offline.server._run_mower_worker(saved)
+    assert offline.server._retry_after_process_crash()
+    retried = create.call_args.kwargs["args"][0]
+    assert retried["_process_crash_no_snapshot"]
+    assert retried["tasks"] == []
+    assert "urgent_recovery_supporters" not in retried
+    assert "waiting_group_shifts" not in retried
+    with offline.record._conn() as connection:
+        assert (
+            connection.execute("SELECT state FROM saved_state").fetchone()[0]
+            == original
+        )
+    offline.io.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "mode,failure",
+    [("0", None), ("2", None), ("2", "observation"), ("2", "checkpoint")],
+)
+def test_start_entry_resets_or_restores_urgent_handoff_and_protection(
+    offline, notice, observed_scheduler, monkeypatch, tmp_path, mode, failure
+):
+    import copy
+
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    from arknights_mower.utils.urgent_recovery import pending_urgent_reservations
+
+    runtime.write_json(notice, {"active": False, "phase": "resolved"})
+    old = observed_scheduler
+    handoff = SchedulerTask(datetime.now(), {}, TaskTypes.EXHAUST_OFF)
+    handoff.urgent_recovery_request_names = ["夕"]
+    handoff.urgent_recovery_support_names = ["絮雨"]
+    handoff.urgent_recovery_reserved_names = ["斥罪"]
+    handoff.urgent_recovery_reserved_slots = [("dormitory_1", 1)]
+    old.tasks = [handoff]
+    old.waiting_group_shifts = [handoff]
+    old.op_data.urgent_recovery_supporters = {"夕": ["絮雨"]}
+    assert offline.record.save_current_state()
+    with offline.record._conn() as connection:
+        original = connection.execute("SELECT state FROM saved_state").fetchone()[0]
+    fresh = object.__new__(BaseSchedulerSolver)
+    fresh.__dict__.update(old.__dict__)
+    fresh.global_plan = copy.deepcopy(old.global_plan)
+    fresh.tasks, fresh.task, fresh.waiting_group_shifts = [], None, []
+    fresh.op_data = None
+    monkeypatch.setattr(offline.main, "initialize", lambda *a, **kw: fresh)
+    monkeypatch.setattr(offline.main.NewsChecker, "get_maintenance", lambda: None)
+    monkeypatch.setattr(
+        offline.main, "_apply_version_update_resting_threshold", lambda *a: None
+    )
+    monkeypatch.setattr(
+        offline.main, "refresh_resource_at_boundary", Mock(side_effect=MowerExit)
+    )
+    reads = []
+
+    def read(room, **kwargs):
+        reads.append(room)
+        for index, planned in enumerate(fresh.op_data.plan[room]):
+            if planned.agent in fresh.op_data.operators:
+                op = fresh.op_data.operators[planned.agent]
+                op.current_room, op.current_index = room, index
+                op.time_stamp, op.mood = datetime.now(), 17
+
+    fresh._read_room_mood = (
+        Mock(side_effect=RuntimeError("observation failed"))
+        if failure == "observation"
+        else read
+    )
+    if failure == "checkpoint":
+        monkeypatch.setattr(offline.record, "save_current_state", lambda: False)
+    worker = Mock()
+    worker.is_alive.return_value = False
+    create = Mock(return_value=worker)
+    monkeypatch.setattr(offline.server, "Thread", create)
+    monkeypatch.setattr(offline.server, "get_path", lambda value: tmp_path)
+    monkeypatch.setattr(offline.server.resource_update, "running", lambda: False)
+    monkeypatch.setattr(supervisor, "task_intent", Mock())
+    response = offline.server.app.test_client().get(
+        f"/start/{mode}", headers={"token": "crash-test"}
+    )
+    assert response.data == b"true"
+    saved = create.call_args.kwargs["args"][0]
+    if failure:
+        with pytest.raises(RuntimeError):
+            offline.main.simulate(saved)
+        assert crash_recovery.reset_observation_pending()
+        assert not fresh._state_restore_complete
+        with offline.record._conn() as connection:
+            assert (
+                connection.execute("SELECT state FROM saved_state").fetchone()[0]
+                == original
+            )
+        crash_recovery.activate("initial reset failure")
+        assert crash_recovery.status()["start_type"] == "2"
+        offline.io.assert_not_called()
+        return
+    offline.main.simulate(saved)
+    assert fresh.op_data is not old.op_data
+    assert {
+        room: [(slot.agent, slot.group, slot.replacement) for slot in slots]
+        for room, slots in fresh.op_data.plan.items()
+    } == {
+        room: [(slot.agent, slot.group, slot.replacement) for slot in slots]
+        for room, slots in old.op_data.plan.items()
+    }
+    if mode == "2":
+        assert fresh.op_data.urgent_recovery_supporters == {}
+        assert fresh.waiting_group_shifts == []
+        assert pending_urgent_reservations(fresh.tasks) == (set(), set())
+        assert set(reads) == set(fresh.op_data.plan)
+        assert fresh.op_data.operators["夕"].mood == 17
+        assert not crash_recovery.reset_observation_pending()
+        checkpoint = offline.record.load_state(strict=True)
+        assert checkpoint["urgent_recovery_supporters"] == {}
+        assert checkpoint["waiting_group_shifts"] == []
+        crash_recovery.activate("later unrelated worker failure")
+        assert crash_recovery.status()["start_type"] == "0"
+    else:
+        assert fresh.op_data.urgent_recovery_supporters == {"夕": ["絮雨"]}
+        assert len(fresh.waiting_group_shifts) == 1
+        assert pending_urgent_reservations(fresh.tasks) == (
+            {"斥罪"},
+            {("dormitory_1", 1)},
+        )
+        assert not reads
+    offline.io.assert_not_called()
+
+
+@pytest.mark.parametrize("failed_before_stop", [False, True])
+def test_stopped_reset_still_skips_old_snapshot_on_ordinary_start(
+    offline, notice, monkeypatch, tmp_path, failed_before_stop
+):
+    runtime.write_json(notice, {"active": False, "phase": "resolved"})
+    worker = Mock()
+    worker.is_alive.return_value = False
+    create = Mock(return_value=worker)
+    monkeypatch.setattr(offline.server, "Thread", create)
+    monkeypatch.setattr(offline.server, "get_path", lambda value: tmp_path)
+    monkeypatch.setattr(offline.server.resource_update, "running", lambda: False)
+    monkeypatch.setattr(supervisor, "task_intent", Mock())
+    read = Mock(side_effect=AssertionError("pre-reset snapshot must stay unused"))
+    monkeypatch.setattr(offline.server, "load_state", read)
+    client = offline.server.app.test_client()
+    assert client.get("/start/2", headers={"token": "crash-test"}).data == b"true"
+    if failed_before_stop:
+        monkeypatch.setattr(
+            offline.main, "main", Mock(side_effect=RuntimeError("observation failed"))
+        )
+        offline.server._run_mower_worker(create.call_args.kwargs["args"][0])
+    assert offline.server._stop_mower()
+    assert crash_recovery.reset_observation_pending()
+    assert client.get("/start/0", headers={"token": "crash-test"}).data == b"true"
+    read.assert_not_called()
+    assert crash_recovery.reset_observation_pending()
+    saved = create.call_args.kwargs["args"][0]
+    assert not saved.get("tasks")
+    if failed_before_stop:
+        assert saved["_process_crash_no_snapshot"]
+    else:
+        assert saved == {}
+    offline.io.assert_not_called()

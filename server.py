@@ -1836,6 +1836,8 @@ def _start_mower(
             or resource_update.running()
         ):
             return False
+        if crash_recovery.reset_observation_pending():
+            start_type = "2"
         if crash_recovery.status()["active"] and recovery_state is None:
             if automatic:
                 if not crash_recovery.status().get("automatic"):
@@ -1870,7 +1872,7 @@ def _start_mower(
         log_stream.clear()
         try:
             if not automatic:
-                crash_recovery.request_resume()
+                crash_recovery.request_resume(start_type)
             task_intent(True, automatic=automatic)
             if recovery_state is not None and not crash_recovery.status().get(
                 "automatic"
