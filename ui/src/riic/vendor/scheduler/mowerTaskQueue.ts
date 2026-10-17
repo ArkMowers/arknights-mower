@@ -32,7 +32,10 @@ export class MowerTask {
  executionFailure?:{reason:string;rooms:string[];snapshot:MowerTaskFailureSnapshot}
  executionRetained=false
  get retainsExecution():boolean{return !!this.executionFailure||this.executionRetained}
+ previewReturnVeto?:{conditions:number[];names:string[]}
  groupShiftTransitions:Record<string,boolean>={}
+ /** Once room execution begins, remaining rooms retain the confirmed shift intent. */
+ arrangementStarted=false
  productShiftLocked=false
  ordinaryCoordination=false
  exhaustSupport=false

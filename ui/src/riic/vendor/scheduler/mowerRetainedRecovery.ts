@@ -4,7 +4,7 @@ import {alphaPosition} from './mowerAlphaDorm'
 
 /** A failed preview's incidental bed moves do not own another group's completed recovery. */
 export function mowerRetainedRecoveryMayReturn(data:MowerSchedulingData,task:MowerTask,group:string):boolean {
- if(!task.executionFailure||task.backupShiftActive||task.productShiftLocked||task.dormRecoveryRestore.length)return false
+ if(!task.executionFailure||task.backupShiftActive||task.arrangementStarted||task.productShiftLocked||task.dormRecoveryRestore.length)return false
  const intent=task.backupShiftIntent??task.plan,members=new Set(data.shiftGroupMembers(group))
  for(const [room,row] of Object.entries(intent))for(const [index,name] of row.entries()){
   if(['Current',''].includes(name))continue

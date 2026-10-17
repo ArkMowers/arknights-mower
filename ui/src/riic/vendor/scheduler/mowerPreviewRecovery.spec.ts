@@ -31,6 +31,25 @@ describe('recoverable Mower preview failure',()=>{
   expect(state.occupants).toEqual(before)
  })
 
+ it('ignores virtual order wakes after an empty preview and waits for a real mood boundary',()=>{
+  const {state,source,task}=previewFixture(),before={...state.occupants}
+  state.config.mowerTaskScheduling={...state.config.mowerTaskScheduling,adjustForRunOrders:false}
+  const order=new MowerTask({type:T.RUN_ORDER,metadata:'room_1_1'})
+  source.queue.tasks.push(order)
+  source.runFlags={planned:true,todoTask:true,collectNotification:true}
+  source.phaseExecution={steps:(function*(){})(),wakeMicros:0,skipPlanning:false,previewNoop:true}
+  const boundaryRates={...rates,thresholds:()=>[23.9]}
+  settleRoster(state,boundaryRates)
+  expect(nextRosterActionHours(state,boundaryRates)).toBeCloseTo(.1,8)
+  const traceLength=source.trace.length
+  settleRoster(state,boundaryRates)
+  expect(source.trace).toHaveLength(traceLength)
+  expect(source.queue.tasks).toEqual(expect.arrayContaining([task,order]))
+  expect(task.timeMicros).toBe(0)
+  expect(order.timeMicros).toBe(0)
+  expect(state.occupants).toEqual(before)
+ })
+
  it('retains an exhausted preview at its original deadline and dispatches independent due work',()=>{
   const {state,source,task}=previewFixture()
   let calls=0

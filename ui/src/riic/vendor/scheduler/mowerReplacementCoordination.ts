@@ -19,7 +19,7 @@ export function mowerCoordinationPrimaryReplacement(data:MowerSchedulingData,own
 }
 function eligible(data:MowerSchedulingData,name:string,owner:MowerOperatorState,options:MowerRestingOptions,required:ReadonlySet<string>=new Set()):boolean {
  const cover=data.operators[name]
- return !!cover&&(!cover.isHigh()||mowerCoordinationPrimaryReplacement(data,owner,name,required))&&!data.busyRestingNames.has(name)&&!options.reservedNames?.has(name)&&!data.reservedProductReplacements.has(name)&&!data.excludedCandidates.has(name)&&!options.isMasteryBusy?.(name)&&!data.dormReplacementForSlot(name,cover.currentRoom,cover.currentIndex)&&!options.reservedSlots?.has(alphaPosition(cover.currentRoom,cover.currentIndex))&&(owner.room.startsWith('dorm')||!data.replacementExhausted(name))
+ return !!cover&&(!cover.isHigh()||mowerCoordinationPrimaryReplacement(data,owner,name,required))&&!data.busyRestingNames.has(name)&&!options.reservedNames?.has(name)&&!data.reservedProductReplacements.has(name)&&!data.excludedCandidates.has(name)&&!options.isMasteryBusy?.(name)&&!data.dormReplacementForSlot(name,cover.currentRoom,cover.currentIndex)&&!options.reservedSlots?.has(alphaPosition(cover.currentRoom,cover.currentIndex))&&(owner.room.startsWith('dorm')||!data.replacementExhausted(name,owner))
 }
 function coveredOwner(data:MowerSchedulingData,name:string):MowerOperatorState|undefined {
  const cover=data.operators[name]

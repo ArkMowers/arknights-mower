@@ -64,6 +64,7 @@ export function* executeMowerTaskArrangementSteps(task:MowerTask,queue:MowerTask
   if(room.startsWith('dormitory_')&&!beforeDorm){beforeDorm=true;if(enterPhase('BEFORE_DORM',task,queue,hooks)){if(!Object.keys(task.plan).length)queue.consume(task);return false}}
   const names=task.plan[room];if(!names)continue
   if(hooks.alpha&&hooks.deferRoom?.(room,task)){retainedLock=true;return false}
+  task.arrangementStarted=true
   const arrangement=hooks.arrangeRoom(room,names,getTime,task,restoration)
   const additional=arrangement&&'next' in arrangement&&typeof arrangement.next==='function'?yield* (arrangement as Generator<MowerRoomReturn,MowerTaskPlan|void,void>):arrangement
   if(additional)Object.assign(restoration,additional)

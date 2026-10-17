@@ -2,7 +2,9 @@ import {describe,it,expect} from 'vitest'
 import {MowerOperatorState} from './mowerOperatorState'
 import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {mowerGetRestingPlan} from './mowerOrdinaryPlanning'
-import type {MowerTaskPlan} from './mowerTaskQueue'
+import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros,type MowerTaskPlan} from './mowerTaskQueue'
+import {planMowerMetadata} from './mowerMetadata'
+import {projectMowerArrangements} from './mowerObservations'
 
 function fixture(){
  const operators={
@@ -32,5 +34,27 @@ describe('shared follower resting group prediction',()=>{
   expect(plan).toEqual({});expect(data.dorms[0]!.name).toBe('')
   expect(data.groupShiftState).toBe(state);expect(state).toEqual({a:false,b:false})
   expect(data.operators.S!.group).toBe('b');expect(data.operators.S!.replacement).toBe(replacement)
+ })
+})
+
+
+describe('independent shared returns use confirmed group state',()=>{
+ it('waits for a future group return to execute before deriving its independent return',()=>{
+  const data=fixture(),a=data.operators.A!,s=data.operators.S!
+  data.plan.dormitory_1=['Free','Free']
+  Object.assign(a,{currentRoom:'dormitory_1',currentIndex:0,mood:12})
+  Object.assign(s,{currentRoom:'dormitory_1',currentIndex:1,mood:24,group:'',groupBindings:[{group:'',replacement:['C']},{group:'a',replacement:['C']}]})
+  Object.assign(data.operators.X!,{currentRoom:'room_1_1',currentIndex:0})
+  Object.assign(data.operators.C!,{currentRoom:'room_1_3',currentIndex:0})
+  data.groupShiftState={a:true,b:false}
+  data.dorms=[new MowerDormState(['dormitory_1',0],'A',toMowerMicros(2)),new MowerDormState(['dormitory_1',1],'S',0)]
+  const future=new MowerTask({type:T.SELF_CORRECTION,time:2,plan:{room_1_1:['A']}}),queue=new MowerTaskQueue();queue.tasks=[future]
+  planMowerMetadata(data,queue)
+  expect(queue.tasks.some(task=>task.type===T.SHIFT_ON&&task.timeMicros<data.nowMicros+toMowerMicros(2)&&task.plan.room_1_3?.includes('S'))).toBe(false)
+  expect(queue.tasks).toContain(future)
+  expect(s.currentRoom).toBe('dormitory_1')
+  const returned=projectMowerArrangements(data,[future.plan]);queue.tasks=[]
+  planMowerMetadata(returned,queue)
+  expect(queue.tasks.some(task=>task.type===T.SHIFT_ON&&task.plan.room_1_3?.includes('S'))).toBe(true)
  })
 })

@@ -20,7 +20,7 @@ export function planMowerAlphaExhaustSupport(original:MowerSchedulingData,candid
  const autoFree=(op:MowerOperatorState)=>op.room.startsWith('dorm')&&!!op.group&&op.nativeName!=='菲亚梅塔'&&replacements(data,op).includes('Free')
  const eligible=(state:MowerSchedulingData,name:string,target:MowerOperatorState)=>{
   const op=state.operators[name],sameGroup=mowerCoordinationPrimaryReplacement(state,target,name,required)
-  return !!op&&(!op.isHigh()||sameGroup)&&!protectedNames.has(name)&&!options.reservedSlots?.has(op.currentRoom+'\0'+op.currentIndex)&&!selected.has(name)&&(!required.has(name)||sameGroup)&&!state.excludedCandidates.has(name)&&!state.dormReplacementForSlot(name,op.currentRoom,op.currentIndex)&&(target.room.startsWith('dorm')||!state.replacementExhausted(name))&&!options.isMasteryBusy?.(name)
+  return !!op&&(!op.isHigh()||sameGroup)&&!protectedNames.has(name)&&!options.reservedSlots?.has(op.currentRoom+'\0'+op.currentIndex)&&!selected.has(name)&&(!required.has(name)||sameGroup)&&!state.excludedCandidates.has(name)&&!state.dormReplacementForSlot(name,op.currentRoom,op.currentIndex)&&(target.room.startsWith('dorm')||!state.replacementExhausted(name,target))&&!options.isMasteryBusy?.(name)
  }
  const available=(state:MowerSchedulingData,name:string,target:MowerOperatorState)=>{const op=state.operators[name];return !!op&&eligible(state,name,target)&&(!op.currentRoom||op.isResting()||required.has(name)&&mowerCoordinationPrimaryReplacement(state,target,name,required)&&op.currentRoom===op.room&&op.currentIndex===op.index)}
  const protectedRest=(state:MowerSchedulingData,name:string)=>{

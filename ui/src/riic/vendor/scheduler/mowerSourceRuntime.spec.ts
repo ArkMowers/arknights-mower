@@ -116,6 +116,36 @@ describe('integrated Mower source scheduler',()=>{
   expect(phases.some(p=>p.phase==='BEFORE_DORM')).toBe(false)
   expect(phases.find(p=>p.phase==='BEFORE_PLANNING')?.time).toBeCloseTo(startedAt+1_000_000/3_600_000_000,12)
  })
+ it('preserves the actual working departure observation while waiting for a dorm room',()=>{
+  const c=fixture();c.mowerAlpha=true;c.mowerDeviceTiming={roomReturnMicros:500_000}
+  const s=createRosterRuntime(c);settleRoster(s,rates)
+  advanceRoster(s,nextRosterActionHours(s,rates),rates);settleRoster(s,rates)
+  const source=getMowerSourceRuntime(s),op=source.data.operators.A!
+  s.morale.A=5;op.mood=16;op.timeStampMicros=0;op.depletionRate=1
+  source.queue.tasks=[new MowerTask({time:s.time,type:T.SHIFT_OFF,plan:{room_1_1:['R'],dormitory_1:['K1','K2','K3','K4','A']}})]
+  settleRoster(s,rates)
+  expect(s.occupants.room_1_1_0).toBe('R')
+  expect(op.currentRoom).toBe('')
+  expect(op.mood).toBe(5)
+  expect(op.timeStampMicros).toBe(source.data.nowMicros)
+  expect(op.moodIsPrediction).toBe(false)
+  expect(op.depletionRate).toBe(0)
+  expect(op.currentMood(source.data.nowMicros+3_600_000_000)).toBe(5)
+ })
+ it.each([undefined,0])('does not promote an unread working departure with timestamp %s',stamp=>{
+  const c=fixture();c.mowerAlpha=true;c.mowerDeviceTiming={roomReturnMicros:500_000}
+  const s=createRosterRuntime(c);settleRoster(s,rates)
+  advanceRoster(s,nextRosterActionHours(s,rates),rates);settleRoster(s,rates)
+  const source=getMowerSourceRuntime(s),op=source.data.operators.A!
+  s.morale.A=5;op.mood=16;op.timeStampMicros=stamp;op.depletionRate=1
+  // A Fiammetta restoration does not read the departing work-room operator.
+  source.queue.tasks=[new MowerTask({time:s.time,type:T.FIAMMETTA,plan:{room_1_1:['R']}})]
+  settleRoster(s,rates)
+  expect(s.occupants.room_1_1_0).toBe('R')
+  expect(op.currentRoom).toBe('')
+  expect(op.mood).toBe(16)
+  expect(op.timeStampMicros).toBeUndefined()
+ })
  it('establishes recovery before an exact dorm no-op and preserves the final list',()=>{
   const c=fixture(),s=createRosterRuntime(c);settleRoster(s,rates)
   const source=getMowerSourceRuntime(s),data=source.data
