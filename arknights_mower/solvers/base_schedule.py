@@ -8924,7 +8924,7 @@ class BaseSchedulerSolver(
             (self.recog.w * 1415 // 1920, self.recog.h * 530 // 1080),
         )
         text = self._product_ocr_text(scope)
-        if re.fullmatch(r"[0-9]{1,2}", text) and 1 <= int(text) <= 99:
+        if re.fullmatch(r"[0-9]{1,2}", text) and 0 <= int(text) <= 99:
             return int(text)
         raise RecognizeError(f"无法识别制造站生产份数：{text or 'OCR 无结果'}")
 
