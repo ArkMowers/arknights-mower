@@ -599,6 +599,7 @@ class ScreenshotEncodingTests(unittest.TestCase):
         bank, _ = self.bank(mode="hang", timeout=5)
         rgb = np.full((1080, 1920, 3), (255, 0, 0), np.uint8)
         device = object.__new__(Device)
+        device.check_current_focus = Mock(return_value=False)
         device.session_control = SimpleNamespace(
             capture=lambda: SimpleNamespace(unwrap=lambda: rgb)
         )
