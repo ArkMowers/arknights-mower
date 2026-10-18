@@ -108,7 +108,12 @@ def test_support_swap_dispatch_confirms_room_before_consuming_task(
         mastery_reader,
         mastery_support_swap,
     )
-    from arknights_mower.utils import config, mastery_db, mastery_recommendation
+    from arknights_mower.utils import (
+        config,
+        mastery_db,
+        mastery_recommendation,
+        skill_label,
+    )
     from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
     now = datetime.now()
@@ -178,6 +183,7 @@ def test_support_swap_dispatch_confirms_room_before_consuming_task(
     monkeypatch.setattr(mastery_db, "should_notify", lambda *args: False)
     monkeypatch.setattr(mastery, "get_route_config", lambda *args: dict(route))
     monkeypatch.setattr(mastery_recommendation, "get_skill_data", lambda: {})
+    monkeypatch.setattr(skill_label, "_name_to_char_id_cache", None)
     for module in (mastery, mastery_reader):
         monkeypatch.setattr(module, "read_main_panel", read_panel)
         monkeypatch.setattr(module, "_read_slots_checked", read_slots)
