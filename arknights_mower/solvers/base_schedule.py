@@ -4216,7 +4216,12 @@ class BaseSchedulerSolver(
                         self.back()
                         continue
                     _time = datetime.now()
-                    margin = 20 if name not in self.op_data.rest_in_full_group else 0
+                    margin = (
+                        0
+                        if op.rest_in_full
+                        or op.group in self.op_data.rest_in_full_group
+                        else 20
+                    )
                     if observed_time > _time:
                         zero_time = observed_time
                         zero_time = Operator.exhaust_time_at_lower_limit(
