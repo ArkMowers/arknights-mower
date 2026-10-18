@@ -156,6 +156,19 @@ describe('log page', () => {
     expect(state.client.get).toHaveBeenCalledWith('/stop-maa')
   })
 
+  it('mounts the task form on first opening and retains it after closing', async () => {
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    expect(component.task_dialog_loaded.value).toBe(false)
+
+    component.show_task.value = true
+    await nextTick()
+    expect(component.task_dialog_loaded.value).toBe(true)
+
+    component.show_task.value = false
+    await nextTick()
+    expect(component.task_dialog_loaded.value).toBe(true)
+  })
+
   it('reclamps panes when plan conditions appear after the initial layout pass', async () => {
     let conditionHeight = 0
     const setProperty = vi.fn()

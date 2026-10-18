@@ -1,4 +1,4 @@
-import { swap } from '@/utils/common'
+import { swap } from '@/utils/swap'
 import { planReplacements } from './plan_bindings'
 
 // 排班表里的干员名单 conf 字段（主表 conf 与副表 conf 同构；ling_xi 是枚举不是名单）

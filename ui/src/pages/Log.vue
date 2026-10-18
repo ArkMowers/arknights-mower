@@ -1,6 +1,15 @@
 <script setup>
 import { storeToRefs } from 'pinia'
-import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import {
+  computed,
+  defineAsyncComponent,
+  inject,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch
+} from 'vue'
 import { useDialog, useMessage } from 'naive-ui'
 
 import { useMowerStore } from '@/stores/mower'
@@ -211,6 +220,11 @@ import ExpandIcon from '@vicons/fluent/PanelTopExpand20Regular'
 
 const show_task_table = ref(true)
 const show_task = ref(false)
+const TaskDialog = defineAsyncComponent(() => import('@/components/TaskDialog.vue'))
+const task_dialog_loaded = ref(false)
+watch(show_task, (show) => {
+  if (show) task_dialog_loaded.value = true
+})
 const add_task = ref(true)
 provide('show_task', show_task)
 provide('show_feedback', show_feedback)
@@ -475,7 +489,7 @@ async function db_delete(keys) {
         :waiting="waiting"
       />
       <ProcessControl ref="process_control" compact :running="running" />
-      <task-dialog />
+      <task-dialog v-if="task_dialog_loaded" />
       <n-button type="warning" @click="show_task = true">
         <template #icon>
           <n-icon>
