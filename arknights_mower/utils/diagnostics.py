@@ -3,6 +3,7 @@
 import bisect
 import json
 import re
+from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import SpooledTemporaryFile
@@ -70,9 +71,10 @@ def timeline(
     if images is None:
         images = screenshots_between(screenshot_folder, start, end)
     timestamps = [item[0] for item in images]
-    rows = []
+    bounded = limit is not None and limit > 0
+    rows = deque(maxlen=limit) if bounded else []
     if not log_folder.exists():
-        return rows
+        return []
     suffixes = set()
     hour = start.replace(minute=0, second=0, microsecond=0)
     while hour <= end:
@@ -97,7 +99,7 @@ def timeline(
                     continue
                 current_row = None
                 try:
-                    when = datetime.strptime(line[:19], "%Y-%m-%d %H:%M:%S")
+                    when = datetime.fromisoformat(line[:19])
                 except ValueError:
                     continue
                 if not start <= when <= end:
@@ -116,6 +118,8 @@ def timeline(
                     }
                 )
                 current_row = rows[-1]
+    if bounded:
+        return list(rows)
     return rows[-limit:] if limit is not None else rows
 
 
