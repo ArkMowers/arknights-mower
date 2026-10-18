@@ -978,6 +978,7 @@ class TouchTests(unittest.TestCase):
             with self.subTest(command=expected):
                 self.control.close()
                 device, channel, _ = self.start_mumu_input()
+                device.current_focus = MagicMock(return_value="com.example.home/.Home")
                 self.conf.tap_to_launch_game.mode = "tap"
                 self.conf.tap_to_launch_game.x = 20
                 self.conf.tap_to_launch_game.y = 30
