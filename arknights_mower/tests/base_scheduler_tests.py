@@ -1037,6 +1037,8 @@ class TestBaseScheduler(unittest.TestCase):
     def test_get_agent_from_room_uses_train_slots_without_train_plan(self):
         solver = self._create_no_train_plan_solver()
         solver.task = None
+        solver.train_scene = MagicMock(return_value=base_schedule.Scene.INFRA_DETAILS)
+        solver.detect_room = MagicMock(return_value="train")
 
         with (
             patch.object(BaseSchedulerSolver, "turn_on_room_detail"),
@@ -1669,6 +1671,7 @@ class TestBaseScheduler(unittest.TestCase):
             state="training",
             panel=mastery_reader.RoomPanel(countdown_state="active"),
             read_failed=False,
+            slots_reliable=True,
             locked=True,
             support_slot="艾丽妮",
             train_slot="真言",
