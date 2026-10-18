@@ -1,15 +1,6 @@
 <script setup>
 import { storeToRefs } from 'pinia'
-import {
-  computed,
-  defineAsyncComponent,
-  inject,
-  nextTick,
-  onMounted,
-  onUnmounted,
-  ref,
-  watch
-} from 'vue'
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useDialog, useMessage } from 'naive-ui'
 
 import { useMowerStore } from '@/stores/mower'
@@ -184,6 +175,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  task_dialog_active = false
   stop_task_polling()
   clearInterval(runningTimer)
   document.removeEventListener('visibilitychange', updateScreenshotPreview)
@@ -220,11 +212,27 @@ import ExpandIcon from '@vicons/fluent/PanelTopExpand20Regular'
 
 const show_task_table = ref(true)
 const show_task = ref(false)
-const TaskDialog = defineAsyncComponent(() => import('@/components/TaskDialog.vue'))
-const task_dialog_loaded = ref(false)
-watch(show_task, (show) => {
-  if (show) task_dialog_loaded.value = true
-})
+const TaskDialog = shallowRef(null)
+const task_dialog_loading = ref(false)
+let task_dialog_active = true
+async function openTaskDialog() {
+  if (task_dialog_loading.value) return
+  if (TaskDialog.value) {
+    show_task.value = true
+    return
+  }
+  task_dialog_loading.value = true
+  try {
+    const { default: component } = await import('@/components/TaskDialog.vue')
+    if (!task_dialog_active) return
+    TaskDialog.value = component
+    show_task.value = true
+  } catch {
+    if (task_dialog_active) db_message.error('新增任务表单加载失败，请点击「新增任务」重试')
+  } finally {
+    if (task_dialog_active) task_dialog_loading.value = false
+  }
+}
 const add_task = ref(true)
 provide('show_task', show_task)
 provide('show_feedback', show_feedback)
@@ -489,8 +497,8 @@ async function db_delete(keys) {
         :waiting="waiting"
       />
       <ProcessControl ref="process_control" compact :running="running" />
-      <task-dialog v-if="task_dialog_loaded" />
-      <n-button type="warning" @click="show_task = true">
+      <component :is="TaskDialog" v-if="TaskDialog" />
+      <n-button type="warning" :loading="task_dialog_loading" @click="openTaskDialog">
         <template #icon>
           <n-icon>
             <add-icon />
