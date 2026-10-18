@@ -763,3 +763,187 @@ def test_failed_arrangement_retains_error_logging(solver, caplog):
         record.levelname == "ERROR" and "宿舍换人失败" in record.message
         for record in caplog.records
     )
+
+
+@pytest.fixture
+def ordinary_recall(solver, monkeypatch):
+    from unittest.mock import Mock
+
+    from arknights_mower.utils import config, recall_estimates
+
+    data = solver.op_data
+    data.config.resting_threshold = 0.65
+    config.conf.rescue_threshold = 0.5
+    data.exhaust_agent = []
+    data.operators["机械师"].exhaust_require = False
+    data.operators["苍苔"].replacement = ["槐琥"]
+    data.plan["room_2_2"][0].replacement = ["槐琥"]
+    for op in data.operators.values():
+        op.depletion_rate = 0
+        op.time_stamp = datetime.now() - timedelta(seconds=1)
+    solver.check_fia = Mock(return_value=([], None))
+    solver.task = None
+    rates = (
+        {name: 0.1 for name in data.operators},
+        {name: 4 for name in data.operators},
+    )
+    monkeypatch.setattr(
+        recall_estimates, "estimated_recall_rates", lambda *a, **k: rates
+    )
+    return solver, rates
+
+
+@pytest.mark.parametrize("request_mood,allowed", [(7.81, False), (7.8, True)])
+def test_ordinary_recall_requires_request_at_rescue_line(
+    ordinary_recall, request_mood, allowed
+):
+    s, _ = ordinary_recall
+    s.op_data.operators["机械师"].mood = request_mood
+    before = [(op.name, op.current_room) for op in s.op_data.operators.values()]
+    plan = s._plan_exhaust_support(["机械师"])
+    assert bool(plan) == allowed
+    if allowed:
+        assert plan["room_2_2"] == ["苍苔"]
+    assert before == [(op.name, op.current_room) for op in s.op_data.operators.values()]
+
+
+@pytest.mark.parametrize("target_mood,allowed", [(7.8, True), (7.79, True), (0, False)])
+def test_ordinary_rescue_checks_low_group_endurance(
+    ordinary_recall, target_mood, allowed
+):
+    s, _ = ordinary_recall
+    s.op_data.operators["机械师"].mood = 7
+    # 急救线以下也按整组续航决定，不能漏查另一名组员。
+    s.op_data.operators["絮雨"].mood = target_mood
+    assert bool(s._plan_exhaust_support(["机械师"])) == allowed
+
+
+@pytest.mark.parametrize("request_mood", [7, 0])
+def test_ordinary_rescue_and_floor_recall_keep_endurance_check(
+    ordinary_recall, request_mood
+):
+    s, rates = ordinary_recall
+    s.op_data.operators["机械师"].mood = request_mood
+    s.op_data.operators["苍苔"].mood = 3
+    s.op_data.operators["絮雨"].mood = 3
+    assert s._plan_exhaust_support(["机械师"])
+    rates[0]["絮雨"] = 2
+    assert s._plan_exhaust_support(["机械师"]) is None
+    # 真正用尽继续沿用独立强制召回规则。
+    assert s._plan_exhaust_support(["机械师"], urgent=True)
+
+
+def test_ordinary_handoff_above_rescue_does_not_recall(ordinary_recall):
+    s, _ = ordinary_recall
+    s.op_data.operators["机械师"].mood = 15
+    s.op_data.operators["苍苔"].replacement.append("引星棘刺")
+    assert s._plan_exhaust_support(["机械师"]) == {"room_2_2": ["引星棘刺"]}
+
+
+def test_ordinary_recall_revalidates_changed_request_and_target(ordinary_recall):
+    from arknights_mower.utils.scheduler_task import SchedulerTask
+
+    s, _ = ordinary_recall
+    s.op_data.operators["机械师"].mood = 7
+    plan = s._plan_exhaust_support(["机械师"])
+    assert plan
+    s.task = SchedulerTask(task_plan=plan, task_type=TaskTypes.SELF_CORRECTION)
+    s.task.exhaust_support = True
+    s.task.ordinary_coordination = True
+    assert s._coordination_support_valid(plan, ["机械师"])
+    s.op_data.operators["机械师"].mood = 20
+    assert not s._coordination_support_valid(plan, ["机械师"])
+    s.op_data.operators["机械师"].mood = 7
+    s.op_data.operators["絮雨"].mood = 0
+    assert not s._coordination_support_valid(plan, ["机械师"])
+
+
+@pytest.mark.parametrize("name", ["机械师", "苍苔"])
+@pytest.mark.parametrize("invalid", ["missing", "prediction", "nan", "future"])
+def test_ordinary_recall_rejects_unknown_observations(ordinary_recall, name, invalid):
+    s, _ = ordinary_recall
+    s.op_data.operators["机械师"].mood = 7
+    op = s.op_data.operators[name]
+    if invalid == "missing":
+        op.time_stamp = None
+    elif invalid == "prediction":
+        op.mood_is_prediction = True
+    elif invalid == "nan":
+        op.mood = float("nan")
+    else:
+        op.time_stamp = datetime.now() + timedelta(hours=1)
+    assert s._plan_exhaust_support(["机械师"]) is None
+
+
+def test_failed_rescue_reassesses_at_floor_after_recovery_changes(
+    ordinary_recall, caplog
+):
+    s, rates = ordinary_recall
+    data = s.op_data
+    data.operators["机械师"].mood = 7
+    data.operators["苍苔"].mood = data.operators["絮雨"].mood = 3
+    rates[0]["絮雨"] = 2
+    for _ in range(3):
+        s._schedule_group_coordination(["机械师"])
+    assert s.tasks == []
+    # 其他组实际恢复后，新观测允许到下限的原请求重新评估。
+    data.operators["机械师"].mood = 0
+    data.operators["苍苔"].mood = data.operators["絮雨"].mood = 16
+    for op in data.operators.values():
+        op.time_stamp = datetime.now()
+    s._schedule_group_coordination(["机械师"])
+    s._schedule_group_coordination(["机械师"])
+    assert len(s.tasks) == 1
+    assert s.tasks[0].ordinary_coordination
+    assert s.tasks[0].plan["room_2_2"] == ["苍苔"]
+    assert not [record for record in caplog.records if record.levelno >= 30]
+
+
+@pytest.mark.parametrize("first_mood,expected", [(4, "meeting"), (12, "room_2_2")])
+def test_ordinary_recall_tries_next_owner_after_complete_unsafe_admission(
+    ordinary_recall, first_mood, expected
+):
+    s, rates = ordinary_recall
+    data = s.op_data
+    data.operators["机械师"].mood = 7
+    data.operators["机械师"].replacement = ["槐琥", "陈"]
+    data.plan["room_3_3"][0].replacement = ["槐琥", "陈"]
+    for name in ("苍苔", "絮雨"):
+        data.operators[name].mood = first_mood
+    data.operators["能天使"].mood = 20
+    s.op_data = data.project_arrangements(
+        [{"meeting": ["陈"], "dormitory_1": ["冰酿", "闪灵", "苍苔", "絮雨", "能天使"]}]
+    )
+    for bed in s.op_data.dorm:
+        if bed.name:
+            bed.time = datetime.now() + timedelta(hours=4)
+    rates[0].update({name: 1 for name in data.operators})
+    before = [(op.name, op.current_room) for op in s.op_data.operators.values()]
+    plan = s._plan_exhaust_support(["机械师"])
+    assert plan
+    assert expected in plan
+    assert ("room_2_2" in plan) == (expected == "room_2_2")
+    assert before == [(op.name, op.current_room) for op in s.op_data.operators.values()]
+
+
+def test_ordinary_recall_preserves_prerequisite_until_all_covers_are_released(
+    ordinary_recall,
+):
+    s, rates = ordinary_recall
+    data = s.op_data
+    for name in ("机械师", "能天使"):
+        data.operators[name].group = "工作组"
+        data.operators[name].mood = 7
+    data.groups["工作组"] = ["机械师", "能天使"]
+    data.operators["能天使"].replacement = ["斥罪"]
+    data.plan["meeting"][0].replacement = ["斥罪"]
+    data.groups.pop("感知")
+    for name in ("苍苔", "絮雨"):
+        data.operators[name].group = ""
+        data.operators[name].mood = 20
+    rates[0].update({name: 1 for name in data.operators})
+    # 只召回苍苔时，能天使尚无替班；不能把不完整准入当作续航失败。
+    after_first = data.project_arrangements([{"room_2_2": ["苍苔"]}])
+    assert s._coordination_admission(after_first, ["机械师", "能天使"]) is None
+    plan = s._plan_exhaust_support(["机械师", "能天使"])
+    assert plan == {"room_2_2": ["苍苔"], "contact": ["絮雨"]}

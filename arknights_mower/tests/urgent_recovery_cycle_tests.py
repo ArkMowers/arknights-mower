@@ -4,6 +4,8 @@ from copy import deepcopy
 from datetime import datetime
 from unittest.mock import MagicMock
 
+import pytest
+
 from arknights_mower.tests.exhaust_replacement_tests import solver as solver
 from arknights_mower.utils.dorm_candidates import retained_task_reservations
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
@@ -365,3 +367,191 @@ def test_unstarted_support_replans_without_preserving_abandoned_returns(solver):
     assert support.urgent_recovery_support_names == ["絮雨"]
     assert support.urgent_recovery_reserved_slots == [("dormitory_1", 3)]
     assert solver.op_data.operators["苍苔"].is_resting()
+
+
+def start_ordinary_handoff(solver):
+    data = solver.op_data
+    data.operators["机械师"].exhaust_require = False
+    data.operators["机械师"].rest_in_full = False
+    data.operators["苍苔"].replacement = ["槐琥"]
+    data.plan["room_2_2"][0].replacement = ["槐琥"]
+    for op in data.operators.values():
+        op.depletion_rate = 1
+        op.recall_work_rate = (1, op.time_stamp)
+    data.recall_recovery_rates = {
+        ("dormitory_1", role): (4, datetime.now()) for role in ("single", "ordinary")
+    }
+    for name in ("苍苔", "絮雨"):
+        data.operators[name].mood = 20
+    solver.check_fia = MagicMock(return_value=([], None))
+    solver._schedule_group_coordination(["机械师"])
+    assert len(solver.tasks) == 1
+    support = solver.tasks[0]
+    assert support.ordinary_coordination and support.exhaust_support
+    assert support.type == TaskTypes.SELF_CORRECTION
+    assert data.urgent_recovery_supporters == {}
+    return support
+
+
+def test_ordinary_recall_creates_concrete_admission_and_prevents_reversal(solver):
+    import pickle
+
+    support = start_ordinary_handoff(solver)
+    solver.task = support
+    solver._prepare_group_shift(support, remember_targets=True)
+    assert support.coordination_admission_plan["room_3_3"] == ["槐琥"]
+    support = pickle.loads(pickle.dumps(support))
+    solver.tasks, solver.task = [support], support
+    support_time = support.time
+    confirm_arrangement(solver, support)
+    assert solver._complete_group_shift(support)
+    assert len(solver.tasks) == 1
+    departure = solver.tasks[0]
+    assert departure.type == TaskTypes.SHIFT_OFF
+    assert departure.time == support_time
+    assert departure.plan["room_3_3"] == ["槐琥"]
+    assert "机械师" in departure.plan["dormitory_1"]
+    assert set(departure.urgent_recovery_support_names) == {"苍苔", "絮雨"}
+    assert solver.op_data.urgent_recovery_supporters == {}
+    assert not any(task.type == TaskTypes.EXHAUST_OFF for task in solver.tasks)
+    names, slots = retained_task_reservations(solver.op_data, solver.tasks)
+    assert "槐琥" in names
+    assert ("dormitory_1", 2) in slots
+    solver.task = SchedulerTask(task_type=TaskTypes.EXHAUST_OFF, meta_data="苍苔")
+    assert solver._plan_exhaust_support(["苍苔", "絮雨"], urgent=True) is None
+    confirm_arrangement(solver, departure)
+    assert set(solver.op_data.urgent_recovery_supporters["机械师"]) == {"苍苔", "絮雨"}
+    assert solver._plan_exhaust_support(["苍苔", "絮雨"], urgent=True) is None
+    returning = SchedulerTask(
+        task_type=TaskTypes.SHIFT_ON, task_plan={"room_3_3": ["机械师"]}
+    )
+    confirm_arrangement(solver, returning)
+    assert solver.op_data.urgent_recovery_supporters == {}
+    assert retained_task_reservations(solver.op_data, solver.tasks) == (set(), set())
+
+
+def test_rejected_ordinary_support_does_not_create_recovery_ownership(solver):
+    from arknights_mower.utils.urgent_recovery import prepare_urgent_support
+
+    task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION)
+    task.ordinary_coordination = True
+    task.exhaust_support = True
+    task.coordination_request_names = ["机械师"]
+    task.coordination_admission_plan = {"room_3_3": ["槐琥"]}
+    prepare_urgent_support(solver.op_data, task, ["机械师"])
+    solver._queue_ordinary_coordination_admission(task)
+    assert solver.tasks == []
+    assert solver.op_data.urgent_recovery_supporters == {}
+
+
+def test_completed_ordinary_support_keeps_validated_admission_when_dependency_changes(
+    solver,
+):
+    support = start_ordinary_handoff(solver)
+    solver.task = support
+    solver._prepare_group_shift(support, remember_targets=True)
+    saved = deepcopy(support.coordination_admission_plan)
+    solver.op_data = solver.op_data.project_arrangements([support.plan])
+    cover = solver.op_data.operators["槐琥"]
+    cover.current_room, cover.current_index = "train", 0
+    assert solver._coordination_admission_plan(solver.op_data, ["机械师"]) is None
+    assert solver._complete_group_shift(support)
+    solver.tasks.remove(support)
+    (departure,) = solver.tasks
+    assert departure.type == TaskTypes.SHIFT_OFF
+    assert departure.plan == saved
+    assert departure.time == support.time
+    assert solver.op_data.urgent_recovery_supporters == {}
+    assert set(departure.urgent_recovery_support_names) == {"苍苔", "絮雨"}
+    assert "槐琥" in retained_task_reservations(solver.op_data, solver.tasks)[0]
+    solver.backup_plan_solver = MagicMock()
+    solver.op_data.operators["机械师"].mood = 24
+    assert not solver._prepare_ordinary_departure(departure)
+    solver.tasks.remove(departure)
+    assert retained_task_reservations(solver.op_data, solver.tasks) == (set(), set())
+    assert solver.op_data.urgent_recovery_supporters == {}
+
+
+def test_partial_ordinary_support_prevents_supporter_recalling_another_group(solver):
+    from arknights_mower.utils.urgent_recovery import urgent_support_blocked
+
+    support = start_ordinary_handoff(solver)
+    solver.task = support
+    solver._prepare_group_shift(support, remember_targets=True)
+    solver.op_data = solver.op_data.project_arrangements([{"room_2_2": ["苍苔"]}])
+    assert urgent_support_blocked(solver.op_data, ["苍苔"], solver.tasks)
+    assert solver.op_data.urgent_recovery_supporters == {}
+    assert not any(task.type == TaskTypes.SHIFT_OFF for task in solver.tasks)
+
+
+@pytest.mark.parametrize("cover_available", [False, True])
+@pytest.mark.parametrize("expired", [False, True])
+def test_ordinary_correction_keeps_recall_beneficiary_with_unknown_idle_peer(
+    solver, cover_available, expired
+):
+    from datetime import timedelta
+
+    data = solver.op_data
+    data.config.rest_in_full = []
+    solver.global_plan["default_plan"].config.rest_in_full = []
+    for op in data.operators.values():
+        op.rest_in_full = False
+    unknown = data.operators["絮雨"]
+    unknown.current_room, unknown.current_index, unknown.time_stamp = "", -1, None
+    data.commit_group_shifts({"感知": True})
+    data.urgent_recovery_supporters = {"苍苔": ["机械师"]}
+    bed = data.get_dorm_by_name("苍苔")[1]
+    bed.time = datetime.now() + (
+        timedelta(seconds=-1) if expired else timedelta(hours=4)
+    )
+    if not cover_available:
+        for name in ("槐琥", "引星棘刺", "结城理", "斥罪"):
+            data.operators[name].current_room = "train"
+            data.operators[name].current_index = 0
+    independent = data.operators["能天使"]
+    independent.current_room, independent.current_index = "", -1
+    independent.mood = 24
+    solver.find_next_task = MagicMock(return_value=None)
+    solver._suppress_train_correction = lambda plan: None
+    for _ in range(3):
+        plan = solver.agent_get_mood(skip_dorm=True, read_rooms=False, return_plan=True)
+        assert plan.get("meeting") == ["能天使"]
+        assert "苍苔" not in plan.get("room_2_2", [])
+        assert "絮雨" not in plan.get("contact", [])
+        assert data.urgent_recovery_supporters == {"苍苔": ["机械师"]}
+        assert solver.tasks == []
+    assert solver.agent_get_mood(skip_dorm=True, read_rooms=False) == "self_correction"
+    (task,) = solver.tasks
+    solver.task = task
+    solver._read_recovery_rooms = lambda rooms: None
+    solver._prepare_group_shift(task)
+    solver._prepare_shift_cycle(task)
+    assert solver._verify_required_recovery(task)
+    assert task.plan.get("meeting") == ["能天使"]
+    assert "苍苔" not in task.plan.get("room_2_2", [])
+    assert "絮雨" not in task.plan.get("contact", [])
+    assert data.operators["苍苔"].is_resting()
+    solver.tasks, solver.task = [], None
+    recovered = data.operators["苍苔"]
+    recovered.mood, recovered.time_stamp = 24, datetime.now()
+    plan = solver.agent_get_mood(skip_dorm=True, read_rooms=False, return_plan=True)
+    assert plan.get("room_2_2") == ["苍苔"]
+    assert plan.get("contact") == ["絮雨"]
+
+
+def test_independent_shared_recall_recovery_does_not_hold_other_group_members(solver):
+    data = solver.op_data
+    worker = data.operators["苍苔"]
+    worker.group_bindings = [
+        {"group": "", "replacement": ["槐琥"]},
+        {"group": "感知", "replacement": ["槐琥"]},
+        {"group": "另一组", "replacement": ["槐琥"]},
+    ]
+    assert worker.independent_rest
+    data.urgent_recovery_supporters = {"苍苔": ["机械师"]}
+    peer = data.operators["絮雨"]
+    peer.current_room, peer.current_index, peer.time_stamp = "", -1, None
+    solver._suppress_train_correction = lambda plan: None
+    plan = solver.agent_get_mood(skip_dorm=True, read_rooms=False, return_plan=True)
+    assert "苍苔" not in plan.get("room_2_2", [])
+    assert plan.get("contact") == ["絮雨"]

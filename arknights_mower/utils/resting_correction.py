@@ -3,6 +3,11 @@
 from datetime import datetime
 from functools import cache
 
+from arknights_mower.utils.group_recovery import (
+    completed_mood_limit_release,
+    group_recovery_workers,
+    observed_full_mood,
+)
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.operators import TRADE_ORDER_AGENTS
 
@@ -63,7 +68,7 @@ def covered_recovery_members(op_data):
 def _resting_members(op_data):
     ends = {d.name: d.time for d in op_data.all_dorms() if d.name}
     covered = covered_recovery_members(op_data)
-    resting, groups = set(covered), set()
+    resting, groups, recovery_groups = set(covered), set(), set()
     now = datetime.now()
     for name, op in op_data.operators.items():
         if (
@@ -79,14 +84,23 @@ def _resting_members(op_data):
             resting.add(name)
             if op.group and op_data.is_group_shift_anchor(op):
                 groups.add(op.group)
-    for group in groups:
+    for group in op_data.groups:
+        workers = group_recovery_workers(op_data, group)
+        if any(op.is_resting() for op in workers) and any(
+            op.rest_in_full
+            and not observed_full_mood(op)
+            and not completed_mood_limit_release(op_data, op)
+            for op in workers
+        ):
+            recovery_groups.add(group)
+    for group in groups | recovery_groups:
         members = [
             op_data.operators[name]
             for name in op_data.shift_group_members(group)
             if not op_data.operators[name].room.startswith("dorm")
             and not op_data.operators[name].workaholic
         ]
-        if any(
+        if group not in recovery_groups and any(
             not op.is_resting()
             and not (
                 not op.current_room
@@ -100,12 +114,12 @@ def _resting_members(op_data):
             for op in members
             if op_data.is_group_shift_anchor(op)
         ):
-            # 半组在岗、或成员离岗却没有有效满心情记录，不能当作整组
-            # 正常轮休。让原有整组纠错完成回班，而不是逐人保留休息。
+            # 没有未完成回满要求时，半组在岗或离岗成员缺少有效满心情
+            # 记录，仍由原有整组纠错完成回班。
             resting.difference_update(set(op_data.groups[group]) - covered)
         else:
             resting.update(op.name for op in members)
-    return resting
+    return resting, recovery_groups
 
 
 def _requested(plan, room, index):
@@ -205,11 +219,30 @@ def reconsider_low_mood_replacements(op_data, fix_plan, is_busy):
                 break
 
 
+def _recall_recovery_members(op_data):
+    """受援恢复尚未完成时，普通纠错保留该主班及同组的休息安排。"""
+    from arknights_mower.utils.urgent_recovery import active_urgent_recovery
+
+    protected = set(active_urgent_recovery(op_data))
+    for name in tuple(protected):
+        op = op_data.operators[name]
+        if op.group and op_data.is_group_shift_anchor(op):
+            protected.update(
+                member
+                for member in op_data.shift_group_members(op.group)
+                if not op_data.operators[member].room.startswith("dorm")
+                and not op_data.operators[member].workaholic
+            )
+    return protected
+
+
 def prefer_resting_replacements(op_data, fix_plan, is_busy):
-    """完整轮休组优先维持替班；任一岗位无法替班时整组回班。"""
+    """轮休组优先维持替班，保留未完成回满要求及受援恢复的成员。"""
     if not fix_plan:
         return
-    resting = _resting_members(op_data)
+    resting, recovery_groups = _resting_members(op_data)
+    protected = _recall_recovery_members(op_data)
+    resting.update(protected)
     if not resting:
         return
     requested = {room: slots.copy() for room, slots in fix_plan.items()}
@@ -250,8 +283,19 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
                 reserved.add(candidate)
                 break
             else:
-                if (not op.group) and op.exhaust_require and op.rest_in_full:
-                    # 独立暖机干员继续本轮恢复；正常规划按床位时间重建回班任务。
+                if (
+                    name in protected
+                    or op.group in recovery_groups
+                    or any(
+                        binding["group"] in recovery_groups
+                        for binding in op.group_bindings
+                    )
+                    or not op.group
+                    and op.exhaust_require
+                    and op.rest_in_full
+                ):
+                    # 普通纠错保留回满要求和受援恢复，独立纠错继续；
+                    # 正常回班及专门召回仍由各自规划检查。
                     slots[index] = "Current"
                     continue
                 if op.group and op_data.is_group_shift_anchor(op):

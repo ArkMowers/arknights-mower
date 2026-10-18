@@ -347,6 +347,11 @@ def start_observed_correction(solver, clock, *, recovery_wait=False):
     primary = solver.op_data.operators["歌蕾蒂娅"]
     primary.current_room, primary.current_index = "", -1
     if recovery_wait:
+        default = solver.op_data.global_plan["default_plan"]
+        default.plan["central"] = [Room("歌蕾蒂娅", "感知", ["陈"])]
+        default.config.rest_in_full = ["黑键"]
+        solver.op_data.plan["central"] = copy.deepcopy(default.plan["central"])
+        solver.op_data.config.rest_in_full = ["黑键"]
         primary.group = "感知"
         solver.op_data.groups["感知"].append(primary.name)
         solver.op_data.operators["黑键"].rest_in_full = True
@@ -385,9 +390,35 @@ def test_observed_correction_completion_keeps_order_planning(replay):
     solver.get_run_order_time.assert_called_once_with("room_1_1")
 
 
-def test_recovery_wait_reads_orders_without_recreating_correction(replay):
+def start_pending_group_return(solver, clock):
+    correction = start_observed_correction(solver, clock, recovery_wait=True)
+    assert "歌蕾蒂娅" not in correction.plan.get("central", [])
+    assert "黑键" not in correction.plan.get("contact", [])
+    # 普通纠错保留未回满组；中断后保留的明确回班任务仍须核验实际恢复。
+    correction.plan = {"central": ["歌蕾蒂娅"], "contact": ["黑键"]}
+    correction.derived_correction_started = True
+    correction.execution_retained = True
+    return correction
+
+
+def test_full_recovery_correction_keeps_order_planning(replay):
     solver, clock = replay
     correction = start_observed_correction(solver, clock, recovery_wait=True)
+    assert "歌蕾蒂娅" not in correction.plan.get("central", [])
+    assert "黑键" not in correction.plan.get("contact", [])
+    deadline = solver.op_data.get_dorm_by_name("黑键")[1].time
+    dispatch(solver, clock)
+    assert correction not in solver.tasks
+    assert not getattr(solver, "waiting_group_shifts", [])
+    assert solver.op_data.operators["黑键"].is_resting()
+    assert solver.op_data.get_dorm_by_name("黑键")[1].time >= deadline
+    dispatch(solver, clock)
+    solver.get_run_order_time.assert_called_once_with("room_1_1")
+
+
+def test_recovery_wait_reads_orders_without_recreating_correction(replay):
+    solver, clock = replay
+    correction = start_pending_group_return(solver, clock)
     original_time = correction.time
     dispatch(solver, clock)
     assert solver.waiting_group_shifts == [correction]
@@ -411,6 +442,15 @@ def test_recovery_wait_reads_orders_without_recreating_correction(replay):
     assert solver.waiting_group_shifts == [correction]
     assert correction.plan == waiting_plan
     assert correction.time == original_time
+    independent_corrections = [
+        task for task in solver.tasks if task.type == TaskTypes.SELF_CORRECTION
+    ]
+    for task in independent_corrections:
+        assert "歌蕾蒂娅" not in task.plan.get("central", [])
+        assert "黑键" not in task.plan.get("contact", [])
+        dispatch(solver, clock, observe_failures=False)
+        assert task not in solver.tasks
+    assert solver.waiting_group_shifts == [correction]
     assert not any(task.type == TaskTypes.SELF_CORRECTION for task in solver.tasks)
     assert solver.agent_get_mood(skip_dorm=True, read_rooms=False) is None
     solver._queue_missing_run_order_reads()
@@ -419,7 +459,11 @@ def test_recovery_wait_reads_orders_without_recreating_correction(replay):
         task.type == TaskTypes.REFRESH_TIME and task.meta_data == "room_1_1"
         for task in solver.tasks
     )
-    assert all(task in solver.tasks for task in recovery_checks)
+    # 独立纠错改变宿舍阵容后可重建读房任务，原回班意图与时间仍保留。
+    recovery_checks = [
+        task for task in solver.tasks if getattr(task, "recovery_observation_rooms", ())
+    ]
+    assert recovery_checks and all(task.time > clock.now() for task in recovery_checks)
     for _ in range(3):
         solver._queue_missing_run_order_reads()
         assert solver.agent_get_mood(skip_dorm=True, read_rooms=False) is None
@@ -457,7 +501,7 @@ def test_recovery_wait_reads_orders_without_recreating_correction(replay):
 @pytest.mark.parametrize("kind", ["order", "refresh", "original", "restoration"])
 def test_recovery_wait_preserves_existing_order_responsibility(replay, kind):
     solver, clock = replay
-    correction = start_observed_correction(solver, clock, recovery_wait=True)
+    correction = start_pending_group_return(solver, clock)
     pending = SchedulerTask(
         clock.now() + timedelta(minutes=30),
         {} if kind == "refresh" else {"room_1_1": ["鸿雪"]},
