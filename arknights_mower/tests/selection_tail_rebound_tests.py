@@ -69,7 +69,10 @@ def solver_for(monkeypatch, mode, train=False, frames=None):
         return None, frame, frame[:, :, 0]
 
     solver = BaseMixin()
-    solver.device = SimpleNamespace(screencap=MagicMock(side_effect=capture))
+    solver.device = SimpleNamespace(
+        screencap=MagicMock(side_effect=capture),
+        check_current_focus=MagicMock(return_value=False),
+    )
     solver.recog = Recognizer(solver.device)
     solver.recog.set_frame((None, held, held[:, :, 0]))
     solver.find = MagicMock(
@@ -205,7 +208,8 @@ def test_original_training_tail_discards_target_hidden_after_release(monkeypatch
     returned = image("training_tail_returned_20261010.jpg")
     solver = BaseMixin()
     solver.device = SimpleNamespace(
-        screencap=MagicMock(return_value=(None, returned, returned[:, :, 0]))
+        screencap=MagicMock(return_value=(None, returned, returned[:, :, 0])),
+        check_current_focus=MagicMock(return_value=False),
     )
     solver.recog = Recognizer(solver.device)
     solver.recog.set_frame((None, held, held[:, :, 0]))
