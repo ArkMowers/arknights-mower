@@ -4,6 +4,7 @@ import json
 import logging
 import sys
 import tempfile
+import tracemalloc
 import unittest
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -20,6 +21,101 @@ from arknights_mower.utils.diagnostics import (
 
 
 class DiagnosticTimelineTests(unittest.TestCase):
+    def test_positive_limit_bounds_memory_while_reading_large_window(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            center = datetime(2026, 10, 18, 12, 30)
+            path = root / "runtime.log"
+            with path.open("w", encoding="utf-8") as stream:
+                for number in range(6000):
+                    stream.write(
+                        f"2026-10-18 12:30:00 task.py:1 DEBUG {number}: "
+                        + "x" * 1024
+                        + "\n"
+                    )
+            tracemalloc.start()
+            try:
+                rows = timeline(root, root, center, limit=3, images=[])
+                _, peak = tracemalloc.get_traced_memory()
+            finally:
+                tracemalloc.stop()
+            self.assertEqual(
+                [row["message"].split(": ", 1)[0] for row in rows],
+                [
+                    f"2026-10-18 12:30:00 task.py:1 DEBUG {number}"
+                    for number in (5997, 5998, 5999)
+                ],
+            )
+            self.assertLess(peak, 1024**2)
+
+    def test_limits_keep_multiline_hour_order_and_legacy_slices(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            center = datetime(2026, 3, 1)
+            (root / "runtime.log.2026-02-28_23").write_text(
+                "2026-02-28 23:59:58 task.py:1 INFO first\n"
+                "  first detail\n"
+                "2026-02-28 23:59:59 task.py:2 INFO second\n",
+                encoding="utf-8",
+            )
+            (root / "runtime.log").write_text(
+                "orphan detail\n"
+                "2026-03-01 00:00:00 task.py:3 INFO third\n"
+                "  third detail\n"
+                "2026-03-01 00:00:01 task.py:4 INFO fourth\n"
+                "  fourth detail\n",
+                encoding="utf-8",
+            )
+            expected = [
+                "2026-02-28 23:59:58 task.py:1 INFO first\n  first detail",
+                "2026-02-28 23:59:59 task.py:2 INFO second",
+                "2026-03-01 00:00:00 task.py:3 INFO third\n  third detail",
+                "2026-03-01 00:00:01 task.py:4 INFO fourth\n  fourth detail",
+            ]
+            for limit, retained in (
+                (1, expected[-1:]),
+                (2, expected[-2:]),
+                (1001, expected),
+                (None, expected),
+                (0, expected),
+                (-2, expected[2:]),
+            ):
+                with self.subTest(limit=limit):
+                    rows = timeline(root, root, center, limit=limit, images=[])
+                    self.assertIsInstance(rows, list)
+                    self.assertEqual([row["message"] for row in rows], retained)
+
+    def test_invalid_dates_and_outside_window_details_are_not_attached(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            center = datetime(2024, 2, 29, 12)
+            first = "2024-02-29 12:00:00,123 task.py:1 CRITICAL valid leap day"
+            second = "2024-02-29 12:00:01 task.py:2 INFO next"
+            (root / "runtime.log").write_text(
+                first + "\n  retained detail\n"
+                "2023-02-29 12:00:00 task.py:2 ERROR invalid day\n"
+                "  invalid day detail\n"
+                "0000-02-29 12:00:00 task.py:2 ERROR invalid year\n"
+                "2024-02-29 24:00:00 task.py:2 ERROR invalid hour\n"
+                "2024-02-29 12:06:00 task.py:2 ERROR outside\n"
+                "  outside detail\n" + second + "\n",
+                encoding="utf-8",
+            )
+            rows = timeline(root, root, center, images=[])
+            self.assertEqual(
+                [row["message"] for row in rows],
+                [first + "\n  retained detail", second],
+            )
+
+    def test_missing_log_folder_returns_list_for_each_limit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            missing = Path(temporary) / "missing"
+            for limit in (None, 3, 0, -2):
+                with self.subTest(limit=limit):
+                    self.assertEqual(
+                        timeline(missing, missing, datetime.now(), limit=limit), []
+                    )
+
     def test_formatted_multiline_logs_preserve_newlines_and_exception_details(self):
         from arknights_mower.utils import log
 
