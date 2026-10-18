@@ -166,7 +166,7 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 - **Code Mapping**: [`vacant_dorm_slots`](arknights_mower/utils/dorm_candidates.py)
 
 ### Valid Mood Cache and Default Mood
-- **Definition**: A valid mood cache requires a measured value, timestamp, and usable prediction. Without it, candidate screening, ordering, and primary shift selection use selection-card estimates for up to one hour: green faces map to 24, red faces to 0, and yellow faces use approximate bar values strictly between 0 and 24. Unreadable cards remain unknown. Estimates do not establish measured full recovery, sample timestamps, depletion rates, recovery deadlines, or completion at mandatory personal limits.
+- **Definition**: A valid mood cache requires a measured value, timestamp, and usable prediction. Without it, candidate screening, ordering, and primary shift selection use selection-card estimates for up to one hour: green faces map to 24, red faces to 0, and yellow faces use approximate bar values strictly between 0 and 24. Unreadable cards remain unknown. Estimates do not establish measured full recovery, sample timestamps, depletion rates, recovery deadlines, or completion at mandatory personal limits. A primary outside dormitories without a valid measured mood may use a full-mood selection-card estimate valid for up to one hour to pass the full-recovery check for an ordinary return to work. This estimate does not become a measured observation and does not establish rescue exit or mandatory personal-limit departure.
 - **Code Mapping**: [`has_resting_mood`](arknights_mower/utils/resting_priority.py)
 
 ### Initial Mood Observation

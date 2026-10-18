@@ -9,6 +9,30 @@ from arknights_mower.utils.group_recovery import (
     observed_full_mood,
 )
 from arknights_mower.utils.operation_timing import estimate_dorm_minutes
+from arknights_mower.utils.resting_priority import has_resting_mood
+
+
+def allows_card_return(task):
+    """卡牌预估只供普通上班与纠错，不用于救急、支援或离宿。"""
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
+    return task.type in (TaskTypes.SHIFT_ON, TaskTypes.SELF_CORRECTION) and not any(
+        getattr(task, flag, False)
+        for flag in ("emergency_staffing", "exhaust_support", "strict_mood_limit")
+    )
+
+
+def needs_return_mood_estimate(op, now):
+    """已离宿且没有有效实读时，普通回班才可读取卡牌预估。"""
+    return (
+        op is not None
+        and not op.current_room
+        and (
+            not has_resting_mood(op, now)
+            or getattr(op, "mood_is_prediction", False)
+            or op.time_stamp > now
+        )
+    )
 
 
 def recovery_ready_for_arrangement(data, name, *, sampled_after, now):
