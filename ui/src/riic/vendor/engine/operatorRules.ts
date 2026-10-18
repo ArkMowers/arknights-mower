@@ -1,5 +1,5 @@
 import { operatorFor, hasOperatorSkill } from '../domain/operatorContext'
-import { temporalSkillBonus, type TimeContext } from './timeDependentSkills'
+import { temporalSkillBonus, temporalTradeQuality, type TimeContext } from './timeDependentSkills'
 import { evaluateHighestPhaseJaye } from './jayeRules'
 import { matchesRiicIdentity } from '../domain/riicIdentity'
 import { evaluateTradeConditionalSkill, evaluateAigisPowerSkill, snowsantCopiedTradeBonus } from './tradeConditionalRules'
@@ -38,6 +38,7 @@ export interface OperatorEfficiencyResult {
   details: string[]
   unquantifiedSkills: string[]
   quality: QualityRule
+  qualityWarmup?: number
   specialOrder: SpecialOrder
   operatorContributions: OperatorContribution[]
   roomContributions: RoomBonusItem[]
@@ -240,15 +241,6 @@ function classLinkBonus(skill: OperatorSkill, counts: SkillClassCounts): number 
   )
   if (!match) return null
   return (counts[match[1]!] ?? 0) * Number(match[2])
-}
-
-function inferQuality(operators: OperatorRecord[], fallback: QualityRule): QualityRule {
-  const names = operators.flatMap((operator) => operator.skills.map((skill) => skill.name))
-  if (names.some((name) => /裁缝·β|手工艺品·β|鉴定师的手段/.test(name))) return 'beta'
-  if (names.some((name) => /裁缝·α|手工艺品·α|鉴定师的眼光|懂行|千金的眼光/.test(name))) {
-    return 'alpha'
-  }
-  return fallback
 }
 
 function inferSpecialOrder(operators: OperatorRecord[], fallback: SpecialOrder): SpecialOrder {
@@ -1143,7 +1135,9 @@ export function evaluateOperators(
   if (global.unquantifiedSkills.length) {
     unquantifiedSkills.push(...global.unquantifiedSkills)
   }
-  const quality = room.type === 'trading' ? inferQuality(activeOperators, room.quality) : room.quality
+  const {quality,qualityWarmup} = room.type === 'trading'
+    ? temporalTradeQuality(activeOperators.map(operator=>operator.charId),room.quality,config,timeContext,room.level)
+    : {quality:room.quality,qualityWarmup:1}
   const specialOrder =
     room.type === 'trading' ? inferSpecialOrder(activeOperators, room.specialOrder) : room.specialOrder
   if (room.type === 'trading' && quality !== room.quality) {
@@ -1168,6 +1162,7 @@ export function evaluateOperators(
     details,
     unquantifiedSkills,
     quality,
+    qualityWarmup,
     specialOrder,
     operatorContributions,
     roomContributions,
