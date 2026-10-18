@@ -1,6 +1,7 @@
 """副表条件复用已校验的编译结果，每次读取当前预演状态。"""
 
 import copy
+import ctypes
 import gc
 import weakref
 from concurrent.futures import ThreadPoolExecutor
@@ -54,10 +55,22 @@ def test_reuses_compilation_while_reading_current_and_projected_mood(data, monke
 
 @pytest.mark.parametrize("permission", ["nodes", "attributes"])
 def test_cached_expression_obeys_each_models_current_permissions(data, permission):
+    create_capsule = ctypes.pythonapi.PyCapsule_New
+    create_capsule.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_void_p]
+    create_capsule.restype = ctypes.py_object
+    capsule = create_capsule(ctypes.c_void_p(42), None, None)
+    data.eval_model.imported_functions["__builtins__"] = {"runtime_handle": capsule}
     expression = "op_data.party_time is None"
     assert data.evaluate_expression(expression) is True
     restricted = copy.copy(data)
-    restricted.eval_model = data.eval_model.clone()
+    restricted.eval_model = copy.copy(data.eval_model)
+    setattr(
+        restricted.eval_model, permission, list(getattr(data.eval_model, permission))
+    )
+    assert (
+        restricted.eval_model.imported_functions["__builtins__"]["runtime_handle"]
+        is capsule
+    )
     removed = "Is" if permission == "nodes" else "party_time"
     getattr(restricted.eval_model, permission).remove(removed)
 
