@@ -57,6 +57,7 @@ def plan_exhaust_support(
     *,
     urgent=False,
     recall_blocked=False,
+    recall_viability=None,
 ):
     """先保留既有换替班方案，再联合召回实际阻塞的休息组。"""
     pending, visited = deque([()]), {()}
@@ -72,6 +73,7 @@ def plan_exhaust_support(
             reserved_slots,
             urgent=urgent,
             recall_blocked=recall_blocked,
+            recall_viability=recall_viability,
             seeds=seeds,
             dependency=dependencies.add,
         )
@@ -100,6 +102,7 @@ def _plan_exhaust_support_attempt(
     *,
     urgent=False,
     recall_blocked=False,
+    recall_viability=None,
     seeds=(),
     dependency=lambda name: None,
 ):
@@ -359,6 +362,13 @@ def _plan_exhaust_support_attempt(
             shared_dependencies(state, trial)
             return None
         recalled = actual_returns()
+        if not urgent:
+            from arknights_mower.utils.replacement_coordination import (
+                ordinary_recall_mood_admissible,
+            )
+
+            if not ordinary_recall_mood_admissible(op_data, recalled, candidates):
+                return None
         moved = {
             member
             for room, row in trial.items()
@@ -384,6 +394,13 @@ def _plan_exhaust_support_attempt(
             and not projected.operators[worker.name].current_room
             and worker.name not in recalled
             for worker in state.operators.values()
+        ):
+            return None
+        # 未凑齐整组准入时保留前置召回；已完整但续航不足则尝试下个候选。
+        if (
+            not urgent
+            and recall_viability is not None
+            and recall_viability(projected) is False
         ):
             return None
         return trial, projected

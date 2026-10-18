@@ -1,7 +1,7 @@
 import {mowerUrgentRecallBlocked} from './mowerUrgentRecovery'
 import {alphaPosition,mowerMatchReplacements} from './mowerAlphaDorm'
 import {mowerGroupRecoveryDeadline,mowerRecoveryReady} from './mowerGroupRecovery'
-import {hasObservedFullMood,mowerReplacementCandidates,MowerOperatorState} from './mowerOperatorState'
+import {hasObservedFullMood,mowerReplacementCandidates,rescueMoodThreshold,MowerOperatorState} from './mowerOperatorState'
 import {projectMowerArrangements} from './mowerObservations'
 import type {MowerRestingOptions} from './mowerOrdinaryPlanning'
 import type {MowerSchedulingData} from './mowerSchedulingData'
@@ -91,6 +91,23 @@ export function mowerReplacementDependencyNames(data:MowerSchedulingData,seeds:I
  }
  return names
 }
+function recallMood(data:MowerSchedulingData,op:MowerOperatorState):number|undefined {
+ if(op.timeStampMicros===undefined||!Number.isFinite(op.timeStampMicros)||op.timeStampMicros>data.nowMicros||op.moodIsPrediction||!Number.isFinite(op.mood)||op.mood<0||op.mood>24||!Number.isFinite(op.depletionRate))return
+ return Math.max(0,Math.min(24,op.mood-op.depletionRate*fromMowerMicros(data.nowMicros-op.timeStampMicros)))
+}
+/** Ordinary recall starts at the requester's rescue line and requires observed target mood for its endurance forecast. */
+export function mowerRecallMoodAdmissible(data:MowerSchedulingData,recalled:ReadonlySet<string>,candidates:readonly string[]):boolean {
+ const anchor=(op:MowerOperatorState)=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&!data.canStandby(op)&&(!op.multiGroup||candidates.length===1&&op.independentRest)
+ const requesters=candidates.map(name=>data.operators[name]).filter((op):op is MowerOperatorState=>!!op&&anchor(op)&&!!op.currentRoom&&!op.isResting())
+ const reached=(op:MowerOperatorState,limit:number)=>{const mood=recallMood(data,op);return mood!==undefined&&mood<=limit}
+ if(!requesters.some(op=>reached(op,rescueMoodThreshold(op,data.policy))))return false
+ return [...recalled].map(name=>data.operators[name]).every(op=>{
+  if(!op)return false
+  if(!anchor(op))return true
+  const mood=recallMood(data,op)
+  return mood!==undefined
+ })
+}
 /** Recall is admitted only with a complete post-admission recovery/depletion forecast. */
 export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:MowerSchedulingData,recalled:ReadonlySet<string>,candidates:readonly string[],options:MowerRestingOptions):boolean {
  if(recalled.size&&(mowerUrgentRecallBlocked(original,candidates,options.urgentRecoveryPendingSupporters)||[...recalled].some(name=>name in original.urgentRecoverySupporters)))return false
@@ -100,6 +117,7 @@ export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:Mowe
   if(op.group){const recovery=mowerGroupRecoveryDeadline(projectMowerArrangements(original,[]),op.group);if(recovery.requiredNames.length&&(recovery.requiredNames.some(member=>(!options.urgentExhaust||original.operators[member]!.restInFull)&&!mowerRecoveryReady(original,original.operators[member],options.priorityScheduling))))return false}
  }
  if(options.urgentExhaust)return true
+ if(!mowerRecallMoodAdmissible(original,recalled,candidates))return false
  if(!options.coordinationRates)return false
  let connected=mowerReplacementDependencyNames(original,[...candidates,...recalled])
  // Beds are shared resources too; do not assume an unrelated resident releases a bed early.

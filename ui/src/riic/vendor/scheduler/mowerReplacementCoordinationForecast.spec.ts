@@ -1,10 +1,11 @@
 import {describe,expect,it} from 'vitest'
-import {MowerOperatorState} from './mowerOperatorState'
+import {MowerOperatorState,rescueMoodThreshold} from './mowerOperatorState'
 import {MowerDormState,MowerSchedulingData} from './mowerSchedulingData'
 import {projectMowerArrangements} from './mowerObservations'
 import {mowerRecallCanSustain,type MowerCoordinationRates} from './mowerReplacementCoordination'
 import {toMowerMicros} from './mowerTaskQueue'
 import {planMowerExhaustSupport} from './mowerExhaustPlanning'
+import {validateMowerCoordinationSupport} from './mowerAlphaExhaustSupport'
 
 function fixture(mood=20){
  const original=new MowerSchedulingData({alpha:true,nowMicros:0,plan:{room_1_1:['A'],room_1_2:['B'],dormitory_1:['Free','Free','Free']},operators:{
@@ -88,5 +89,123 @@ describe('recall uses the recovering room operation allowance',()=>{
   expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B'],options)).toBe(true)
   expect(planMowerExhaustSupport(original,['B'],options)?.room_1_1).toEqual(['A'])
   expect(JSON.stringify(original)).toBe(before)
+ })
+})
+
+
+describe('ordinary recall rescue admission',()=>{
+ it.each([
+  {request:7.8001,target:20,expected:false},
+  {request:7.8,target:20,expected:true},
+  {request:7,target:7.8,expected:true},
+  {request:7,target:7,expected:true},
+  {request:7,target:4,expected:false},
+  {request:0,target:7,expected:true},
+  {request:0,target:4,expected:false},
+ ])('admits requester $request and target $target only with rescue evidence and endurance',({request,target,expected})=>{
+  const {original,admit}=fixture(target)
+  original.policy.rescueThreshold=.5;original.operators.B!.mood=request
+  expect(allowed(original,admit(),fixed)).toBe(expected)
+  expect(!!planMowerExhaustSupport(original,['B'],{coordinationRates:fixed})).toBe(expected)
+ })
+ it('uses the requester personal rescue limit and the target personal endurance limit',()=>{
+  const {original,admit}=fixture(20),request=original.operators.B!,target=original.operators.A!
+  request.lowerLimit=12;request.upperLimit=24;request.mood=rescueMoodThreshold(request,original.policy)
+  expect(allowed(original,admit(),fixed)).toBe(true)
+  target.lowerLimit=12;target.mood=rescueMoodThreshold(target,original.policy)
+  expect(allowed(original,admit(),fixed)).toBe(true)
+  target.mood=12.5
+  expect(allowed(original,admit(),fixed)).toBe(false)
+  request.mood=request.lowerLimit;target.mood=16
+  expect(allowed(original,admit(),fixed)).toBe(true)
+ })
+ it.each(['unknown','prediction','invalid'] as const)('rejects %s requesting mood as recall authorization',kind=>{
+  const {original,admit}=fixture(),request=original.operators.B!
+  if(kind==='unknown')request.timeStampMicros=undefined
+  if(kind==='prediction')request.moodIsPrediction=true
+  if(kind==='invalid')request.mood=-1
+  expect(allowed(original,admit(),fixed)).toBe(false)
+  expect(planMowerExhaustSupport(original,['B'],{coordinationRates:fixed})).toBeUndefined()
+ })
+ it.each(['unknown','prediction','invalid','future','infinite'] as const)('rejects %s target mood even when the requester reaches its lower limit',kind=>{
+  const {original,admit}=fixture(),target=original.operators.A!
+  if(kind==='unknown')target.timeStampMicros=undefined
+  if(kind==='prediction')target.moodIsPrediction=true
+  if(kind==='invalid')target.mood=-1
+  if(kind==='future')target.timeStampMicros=toMowerMicros(1)
+  if(kind==='infinite')target.timeStampMicros=Infinity
+  expect(allowed(original,admit(),fixed)).toBe(false)
+  expect(planMowerExhaustSupport(original,['B'],{coordinationRates:fixed})).toBeUndefined()
+ })
+ it('does not let a dormant, standby or shared follower authorize another group recall',()=>{
+  const {original,admit}=fixture(),request=original.operators.B!
+  request.currentRoom='dormitory_1'
+  expect(allowed(original,admit(),fixed)).toBe(false)
+  request.currentRoom=request.room;request.restingPriority='standby'
+  expect(allowed(original,admit(),fixed)).toBe(false)
+  request.restingPriority='high';request.groupBindings=[{group:'a',replacement:['X']},{group:'b',replacement:['X']}]
+  expect(allowed(original,admit(),fixed)).toBe(false)
+  request.groupBindings.push({group:'',replacement:['X']})
+  expect(allowed(original,admit(),fixed)).toBe(true)
+  expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B','X'],{coordinationRates:fixed})).toBe(false)
+ })
+ it('checks all working primary members of the recalled group',()=>{
+  const {original}=fixture(),target=original.operators.A!
+  original.policy.rescueThreshold=.5;original.operators.B!.mood=7;target.group='a'
+  original.plan.room_1_3=['C'];original.operators.C=new MowerOperatorState({name:'C',group:'a',room:'room_1_3',index:0,currentRoom:'dormitory_1',currentIndex:2,operatorType:'high',mood:4,timeStampMicros:0,replacement:['Y']})
+  original.operators.Y=new MowerOperatorState({name:'Y',currentRoom:'room_1_3',currentIndex:0,mood:24,timeStampMicros:0})
+  original.dorms[2]=new MowerDormState(['dormitory_1',2],'C',toMowerMicros(4))
+  expect(planMowerExhaustSupport(original,['B'],{coordinationRates:fixed})).toBeUndefined()
+  original.operators.C!.mood=7
+  expect(planMowerExhaustSupport(original,['B'],{coordinationRates:fixed})?.room_1_3).toEqual(['C'])
+ })
+ it.each([{mood:4,room:'room_1_3',name:'C'},{mood:7,room:'room_1_1',name:'A'}])('selects the first complete sustainable recall with first mood $mood',({mood,room,name})=>{
+  const {original}=fixture(mood)
+  original.policy.rescueThreshold=.5;original.operators.B!.mood=7;original.operators.B!.replacement=['X','Y']
+  original.plan.room_1_3=['C'];original.operators.C=new MowerOperatorState({name:'C',room:'room_1_3',index:0,currentRoom:'dormitory_1',currentIndex:2,operatorType:'high',mood:20,timeStampMicros:0,replacement:['Y']})
+  original.operators.Y=new MowerOperatorState({name:'Y',currentRoom:'room_1_3',currentIndex:0,mood:24,timeStampMicros:0})
+  original.dorms[2]=new MowerDormState(['dormitory_1',2],'C',toMowerMicros(1))
+  expect(planMowerExhaustSupport(original,['B'],{coordinationRates:fixed})).toEqual({[room]:[name]})
+ })
+ it('preserves a prerequisite recall until every requesting member has a replacement',()=>{
+  const {original}=fixture(20)
+  original.policy.rescueThreshold=.5;original.operators.B!.mood=7;original.operators.B!.group='b'
+  original.plan.room_1_3=['C'];original.operators.C=new MowerOperatorState({name:'C',room:'room_1_3',index:0,currentRoom:'dormitory_1',currentIndex:2,operatorType:'high',mood:20,timeStampMicros:0,replacement:['Y']})
+  original.operators.Y=new MowerOperatorState({name:'Y',currentRoom:'room_1_3',currentIndex:0,mood:24,timeStampMicros:0})
+  original.dorms[2]=new MowerDormState(['dormitory_1',2],'C',toMowerMicros(1))
+  original.plan.room_1_4=['B2'];original.operators.B2=new MowerOperatorState({name:'B2',group:'b',room:'room_1_4',index:0,currentRoom:'room_1_4',currentIndex:0,operatorType:'high',mood:7,timeStampMicros:0,replacement:['Y']})
+  expect(validateMowerCoordinationSupport(original,{room_1_1:['A']},['B','B2'],{coordinationRates:fixed})).toBe(false)
+  expect(planMowerExhaustSupport(original,['B','B2'],{coordinationRates:fixed})).toEqual({room_1_1:['A'],room_1_3:['C']})
+ })
+ it('keeps alternate replacement handoff available above the rescue line',()=>{
+  const {original}=fixture(4)
+  original.operators.B!.mood=14;original.operators.A!.replacement=['X','Y']
+  original.operators.Y=new MowerOperatorState({name:'Y',mood:24,timeStampMicros:0})
+  expect(planMowerExhaustSupport(original,['B'])).toEqual({room_1_1:['Y']})
+ })
+ it('does not bypass explicit full recovery or missing forecast at the request lower limit',()=>{
+  const {original,admit}=fixture(7)
+  expect(allowed(original,admit())).toBe(false)
+  original.operators.A!.restInFull=true
+  expect(allowed(original,admit(),fixed)).toBe(false)
+ })
+ it('revalidates the rescue phase when executing a previously planned support',()=>{
+  const {original}=fixture(20),options={coordinationRates:fixed}
+  original.policy.rescueThreshold=.5;original.operators.B!.mood=7
+  const plan=planMowerExhaustSupport(original,['B'],options)!
+  expect(plan).toEqual({room_1_1:['A']})
+  original.operators.B!.mood=14
+  expect(validateMowerCoordinationSupport(original,plan,['B'],options)).toBe(false)
+  original.operators.B!.mood=7;original.operators.A!.mood=4
+  expect(validateMowerCoordinationSupport(original,plan,['B'],options)).toBe(false)
+  original.operators.A!.mood=7
+  expect(validateMowerCoordinationSupport(original,plan,['B'],options)).toBe(true)
+  original.operators.B!.mood=0
+  expect(validateMowerCoordinationSupport(original,plan,['B'],options)).toBe(true)
+ })
+ it('keeps genuine use-up support independent from ordinary rescue admission',()=>{
+  const {original,admit}=fixture(4)
+  original.operators.B!.mood=14
+  expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B'],{urgentExhaust:true})).toBe(true)
  })
 })

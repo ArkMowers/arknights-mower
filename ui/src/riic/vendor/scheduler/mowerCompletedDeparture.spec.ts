@@ -473,3 +473,38 @@ it.each([{ mood: 23.95, history: false, ready: true }, { mood: 23, history: fals
     expect(f.source.queue.tasks).toContain(task)
   }
 })
+
+
+describe('ordinary correction preserves an unfinished recall beneficiary', () => {
+  it('keeps independent shared recovery without holding another group member', () => {
+    const { source } = fixture(4, 24), data = source.data
+    Object.assign(data.operators.A!, { groupBindings: [{ group: '', replacement: ['R'] }, { group: 'g', replacement: ['R'] }, { group: 'other', replacement: ['R'] }] })
+    Object.assign(data.operators.B!, { currentRoom: '', currentIndex: -1, timeStampMicros: undefined })
+    data.dorms[1]!.reset()
+    data.urgentRecoverySupporters = { A: ['Incoming'] }
+    const plan = mowerCorrectionPlan(data, true)
+    expect(plan.room_1_1 ?? []).not.toContain('A')
+    expect(plan.room_1_2).toEqual(['B'])
+  })
+  it.each([false, true])('keeps its group during unknown idle recovery, cover available=%s', available => {
+    const { source } = fixture(4, 24), data = source.data
+    Object.assign(data.operators.A!, { currentRoom: '', currentIndex: -1, timeStampMicros: undefined })
+    data.dorms[0]!.reset()
+    data.urgentRecoverySupporters = { B: ['Incoming'] }
+    if (!available) Object.assign(data.operators.R!, { currentRoom: 'meeting', currentIndex: 0 })
+    for (const due of [toMowerMicros(5), 0]) {
+      data.dorms[1]!.timeMicros = due
+      for (let n = 0; n < 3; n++) {
+        const plan = mowerCorrectionPlan(data, true)
+        expect(plan.room_1_1 ?? []).not.toContain('A')
+        expect(plan.room_1_2 ?? []).not.toContain('B')
+        expect(data.urgentRecoverySupporters).toEqual({ B: ['Incoming'] })
+        expect(data.operators.B!.isResting()).toBe(true)
+      }
+    }
+    Object.assign(data.operators.B!, { mood: 24, timeStampMicros: data.nowMicros, moodIsPrediction: false })
+    const released = mowerCorrectionPlan(data, true)
+    expect(released.room_1_1).toEqual(['A'])
+    expect(released.room_1_2).toEqual(['B'])
+  })
+})

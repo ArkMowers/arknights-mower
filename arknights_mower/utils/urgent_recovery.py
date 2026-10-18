@@ -1,4 +1,4 @@
-"""用尽交接后保留受援者本轮恢复，避免反向或连续强制召回。"""
+"""召回交接后保留受援者本轮恢复，避免反向或连续强制召回。"""
 
 from arknights_mower.utils.group_recovery import (
     completed_mood_limit_release,
@@ -39,7 +39,7 @@ def active_urgent_recovery(data):
 
 
 def pending_urgent_reservations(tasks, current=None):
-    """前置交接释放的替班和床位归原用尽请求使用，直到实际入宿。"""
+    """前置交接释放的替班和床位归原下班请求使用，直到实际入宿。"""
     names, slots = set(), set()
     own = set(getattr(current, "urgent_recovery_request_names", ()))
     for task in tasks:
@@ -57,7 +57,7 @@ def urgent_support_blocked(data, candidates, tasks=(), current=None):
         name for names in active_urgent_recovery(data).values() for name in names
     }
     for task in tasks:
-        if task is not current and not getattr(task, "exhaust_support", False):
+        if task is not current:
             supporters.update(getattr(task, "urgent_recovery_support_names", ()))
     return bool(supporters.intersection(candidates))
 
@@ -132,7 +132,9 @@ def complete_urgent_recovery(data, task, tasks):
                 if (
                     pending is task
                     or getattr(getattr(pending, "type", None), "name", "")
-                    != "EXHAUST_OFF"
+                    not in ("EXHAUST_OFF", "SHIFT_OFF")
+                    or bool(getattr(pending, "ordinary_coordination", False))
+                    != bool(getattr(task, "ordinary_coordination", False))
                     or requested
                     != set(getattr(pending, "coordination_request_names", ()))
                 ):

@@ -1112,7 +1112,7 @@ class BaseSchedulerSolver(
                 return True
         return False
 
-    def _coordination_admission(self, data, candidates):
+    def _coordination_admission_plan(self, data, candidates):
         simulation = copy.copy(self)
         simulation.op_data = data.project_arrangements([])
         simulation._coordination_projection = True
@@ -1130,7 +1130,41 @@ class BaseSchedulerSolver(
         reorder = try_reorder(simulation.op_data, result, tasks=simulation.tasks)
         if reorder:
             _merge_dorm_arrangement(result, reorder)
-        return data.project_arrangements([result])
+        return result
+
+    def _coordination_admission(self, data, candidates):
+        result = self._coordination_admission_plan(data, candidates)
+        return data.project_arrangements([result]) if result else None
+
+    def _queue_ordinary_coordination_admission(self, task):
+        """召回已确认后接续具名下班安排，由实际入宿登记恢复保护。"""
+        saved = getattr(task, "coordination_admission_plan", None)
+        if not saved or not getattr(task, "ordinary_coordination", False):
+            return
+        names = list(getattr(task, "urgent_recovery_request_names", ()))
+        if not names or not getattr(task, "urgent_recovery_support_names", ()):
+            task.__dict__.pop("coordination_admission_plan", None)
+            return
+        if any(
+            pending.type == TaskTypes.SHIFT_OFF
+            and set(getattr(pending, "urgent_recovery_request_names", ())) == set(names)
+            for pending in self.tasks
+        ):
+            task.__dict__.pop("coordination_admission_plan", None)
+            return
+        plan = self._coordination_admission_plan(self.op_data, names) or saved
+        departure = SchedulerTask(
+            time=task.time, task_plan=plan, task_type=TaskTypes.SHIFT_OFF
+        )
+        departure.ordinary_coordination = True
+        departure.coordination_request_names = names
+        from arknights_mower.utils.urgent_recovery import PENDING_FIELDS
+
+        for field in PENDING_FIELDS:
+            if hasattr(task, field):
+                setattr(departure, field, copy.deepcopy(getattr(task, field)))
+        self.tasks.append(departure)
+        task.__dict__.pop("coordination_admission_plan", None)
 
     def _coordination_support_valid(self, plan, candidates):
         from arknights_mower.utils.replacement_coordination import (
@@ -1190,7 +1224,7 @@ class BaseSchedulerSolver(
         def can_rest(data):
             admitted = self._coordination_admission(data, candidates)
             if admitted is None:
-                return False
+                return None
             from arknights_mower.utils.replacement_coordination import (
                 recall_can_sustain,
             )
@@ -1222,6 +1256,7 @@ class BaseSchedulerSolver(
             slots,
             urgent=urgent,
             recall_blocked=recall_blocked,
+            recall_viability=can_rest,
         )
 
     def _schedule_group_coordination(self, candidates):
@@ -1446,10 +1481,11 @@ class BaseSchedulerSolver(
                 )
                 or {}
             )
-        if not getattr(task, "ordinary_coordination", False):
-            from arknights_mower.utils.urgent_recovery import prepare_urgent_support
+        from arknights_mower.utils.urgent_recovery import prepare_urgent_support
 
-            prepare_urgent_support(self.op_data, task, names)
+        prepare_urgent_support(self.op_data, task, names)
+        if not task.plan:
+            task.__dict__.pop("coordination_admission_plan", None)
         if hasattr(task, "backup_shift_intent"):
             task.backup_shift_intent = copy.deepcopy(task.plan)
 
@@ -6337,12 +6373,19 @@ class BaseSchedulerSolver(
             raise GroupShiftBlocked(predecessors=predecessors)
         task.plan = proposed
         task.group_shift_transitions = transitions
-        if getattr(task, "exhaust_support", False) and not getattr(
-            task, "ordinary_coordination", False
-        ):
+        if getattr(task, "exhaust_support", False):
             from arknights_mower.utils.urgent_recovery import prepare_urgent_support
 
             prepare_urgent_support(self.op_data, task, task.coordination_request_names)
+            if getattr(task, "ordinary_coordination", False) and getattr(
+                task, "urgent_recovery_support_names", ()
+            ):
+                admission = self._coordination_admission_plan(
+                    self.op_data.project_arrangements([task.plan]),
+                    task.coordination_request_names,
+                )
+                if admission:
+                    task.coordination_admission_plan = admission
         if remember_targets and transitions:
             expected = getattr(task, "group_shift_expected", {})
             for room, names in proposed.items():
@@ -6703,6 +6746,7 @@ class BaseSchedulerSolver(
             task.__dict__.pop("backup_refresh_rules", None)
             from arknights_mower.utils.urgent_recovery import complete_urgent_recovery
 
+            self._queue_ordinary_coordination_admission(task)
             complete_urgent_recovery(self.op_data, task, self.tasks)
             return True
         expected_plan = {}
@@ -6765,6 +6809,7 @@ class BaseSchedulerSolver(
         self.op_data.commit_group_shifts(transitions)
         from arknights_mower.utils.urgent_recovery import complete_urgent_recovery
 
+        self._queue_ordinary_coordination_admission(task)
         complete_urgent_recovery(self.op_data, task, self.tasks)
         if changes:
             logger.info("绑组换班确认完成：%s", changes)

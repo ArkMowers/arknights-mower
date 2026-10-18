@@ -219,11 +219,30 @@ def reconsider_low_mood_replacements(op_data, fix_plan, is_busy):
                 break
 
 
+def _recall_recovery_members(op_data):
+    """受援恢复尚未完成时，普通纠错保留该主班及同组的休息安排。"""
+    from arknights_mower.utils.urgent_recovery import active_urgent_recovery
+
+    protected = set(active_urgent_recovery(op_data))
+    for name in tuple(protected):
+        op = op_data.operators[name]
+        if op.group and op_data.is_group_shift_anchor(op):
+            protected.update(
+                member
+                for member in op_data.shift_group_members(op.group)
+                if not op_data.operators[member].room.startswith("dorm")
+                and not op_data.operators[member].workaholic
+            )
+    return protected
+
+
 def prefer_resting_replacements(op_data, fix_plan, is_busy):
-    """优先维持轮休替班，缺少替班时仅召回没有未完成回满要求的组。"""
+    """轮休组优先维持替班，保留未完成回满要求及受援恢复的成员。"""
     if not fix_plan:
         return
     resting, recovery_groups = _resting_members(op_data)
+    protected = _recall_recovery_members(op_data)
+    resting.update(protected)
     if not resting:
         return
     requested = {room: slots.copy() for room, slots in fix_plan.items()}
@@ -265,7 +284,8 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
                 break
             else:
                 if (
-                    op.group in recovery_groups
+                    name in protected
+                    or op.group in recovery_groups
                     or any(
                         binding["group"] in recovery_groups
                         for binding in op.group_bindings
@@ -274,8 +294,8 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
                     and op.exhaust_require
                     and op.rest_in_full
                 ):
-                    # 回满前不生成无法执行的召回，独立纠错继续；
-                    # 正常规划仍按已有恢复期限安排回班。
+                    # 普通纠错保留回满要求和受援恢复，独立纠错继续；
+                    # 正常回班及专门召回仍由各自规划检查。
                     slots[index] = "Current"
                     continue
                 if op.group and op_data.is_group_shift_anchor(op):
