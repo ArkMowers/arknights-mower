@@ -1873,11 +1873,17 @@ class BaseSchedulerSolver(
             self._emergency_filter_tasks()
             self._emergency_replan_releases()
             return
+        waiting_names = set()
+        for task in getattr(self, "waiting_group_shifts", ()):
+            if task.type == TaskTypes.SHIFT_ON:
+                waiting_names.update(name for row in task.plan.values() for name in row)
+                waiting_names.update(getattr(task, "group_shift_expected", {}).values())
         self.tasks = plan_metadata(
             self.op_data,
             self.tasks,
             excluded_names=self._protected_training_names()
-            | self._waiting_recovery_names(),
+            | self._waiting_recovery_names()
+            | waiting_names,
         )
         self._resume_waiting_group_shifts()
 

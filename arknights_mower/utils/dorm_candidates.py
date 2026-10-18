@@ -103,6 +103,11 @@ def retained_task_reservations(
                     slots.add((room, index))
                 if name not in ("", "Current", "Free"):
                     names.add(name)
+        for position, name in getattr(task, "group_shift_expected", {}).items():
+            if name != "Current":
+                slots.add(position)
+            if name not in ("", "Current", "Free"):
+                names.add(name)
         names.update(task.release_dorm_targets())
     from arknights_mower.utils.urgent_recovery import pending_urgent_reservations
 
