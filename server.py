@@ -4169,7 +4169,9 @@ def ws_chat(ws):
                 from arknights_mower.agent.agent import ask_llm
 
                 for reply in ask_llm(
-                    user_input, context=context, api_key=config.conf.resolved_ai_key
+                    user_input,
+                    context=context[:-1],
+                    api_key=config.conf.resolved_ai_key,
                 ):
                     ws.send(json.dumps({"reply": reply}))
                     last_reply = reply

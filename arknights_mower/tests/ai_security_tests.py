@@ -147,6 +147,74 @@ class WebSocketSecurityTests(unittest.TestCase):
                     server.app.view_functions["ws_chat"].__wrapped__(ws)
                 self.assertEqual(ws.sent, expected)
 
+    def test_chat_context_sends_each_request_once_and_retains_repeated_turns(self):
+        from arknights_mower.agent import agent
+
+        requests = ["hello", "hello", "third"]
+        ws = FakeSocket(
+            json.dumps({"token": "test-secret"}),
+            *(json.dumps({"message": text}) for text in requests),
+        )
+        model_inputs = []
+
+        def ask(user_input, context, api_key):
+            messages = agent._build_messages(user_input, context)
+            model_inputs.append(
+                [(message.type, message.content) for message in messages[1:]]
+            )
+            yield f"reply-{len(model_inputs)}"
+
+        with (
+            server.app.test_request_context(
+                "/ws/chat", headers={"Host": "localhost", "Origin": "http://localhost"}
+            ),
+            patch.object(agent, "ask_llm", side_effect=ask),
+        ):
+            server.app.view_functions["ws_chat"].__wrapped__(ws)
+
+        assert model_inputs == [
+            [("human", "hello")],
+            [("human", "hello"), ("ai", "reply-1"), ("human", "hello")],
+            [
+                ("human", "hello"),
+                ("ai", "reply-1"),
+                ("human", "hello"),
+                ("ai", "reply-2"),
+                ("human", "third"),
+            ],
+        ]
+        assert ws.sent[-1] == {"done": True}
+
+    def test_chat_context_keeps_the_existing_twenty_message_limit(self):
+        from arknights_mower.agent import agent
+
+        ws = FakeSocket(
+            json.dumps({"token": "test-secret"}),
+            *(json.dumps({"message": str(index)}) for index in range(25)),
+        )
+        model_inputs = []
+
+        def ask(user_input, context, api_key):
+            messages = agent._build_messages(user_input, context)
+            model_inputs.append([message.content for message in messages[1:]])
+            yield "reply"
+
+        with (
+            server.app.test_request_context(
+                "/ws/chat", headers={"Host": "localhost", "Origin": "http://localhost"}
+            ),
+            patch.object(agent, "ask_llm", side_effect=ask),
+        ):
+            server.app.view_functions["ws_chat"].__wrapped__(ws)
+
+        assert len(model_inputs) == 25
+        assert all(len(messages) <= 20 for messages in model_inputs)
+        assert model_inputs[-1] == [
+            "reply",
+            *[part for index in range(15, 24) for part in (str(index), "reply")],
+            "24",
+        ]
+
 
 class SourceSnippetSecurityTests(unittest.TestCase):
     def test_source_allowlist_blocks_secrets_traversal_and_symlinks(self):
