@@ -620,7 +620,7 @@ def _dorm_deadline(task, tasks, start, minutes, now, op_data=None):
 
 def defer_dorm_before_priority_task(task, tasks, room, time_now=None, op_data=None):
     """逐房复核剩余时间；不足时保留未完成计划，关键任务结束后续行。"""
-    if not room.startswith("dormitory_"):
+    if not room.startswith("dormitory_") or not _is_dorm_only_task(task):
         return False
     now = time_now or datetime.now()
     deadline = _dorm_deadline(

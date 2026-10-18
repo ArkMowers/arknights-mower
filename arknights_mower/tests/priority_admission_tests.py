@@ -731,6 +731,62 @@ def test_reopened_execution_yields_by_order_without_rewriting(kind, dispatch, ro
 
 
 @pytest.mark.parametrize("kind", CRITICAL_TYPES)
+def test_runtime_dorm_recheck_resumes_only_unfinished_rooms(monkeypatch, kind):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "arknights_mower.utils.skland", MagicMock())
+    from arknights_mower.solvers import base_schedule
+
+    class Clock(datetime):
+        current = NOW
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current
+
+    monkeypatch.setattr(base_schedule, "datetime", Clock)
+    data = room_fixtures.TestSchedulingRoomPlans().make_op_data(
+        {"dormitory_1": ["A"], "dormitory_2": ["B"]}, targets=("C", "D")
+    )
+    dorm = task(
+        TaskTypes.RE_ORDER,
+        plan={"dormitory_1": ["C"], "dormitory_2": ["D"]},
+    )
+    critical = task(kind, 180)
+    solver = object.__new__(base_schedule.BaseSchedulerSolver)
+    solver.task, solver.tasks, solver.op_data = dorm, [dorm, critical], data
+    solver._emergency_frozen = MagicMock(return_value=False)
+    solver._track_idle_dorm_shift = MagicMock()
+    solver._finish_idle_dorm_shift = MagicMock()
+    solver.preserve_resting_crafters = MagicMock()
+    arranged = []
+
+    def arrange(new_plan, room, plan, **kwargs):
+        arranged.append((room, plan[room].copy()))
+        del plan[room]
+        Clock.current += timedelta(minutes=2)
+        return new_plan
+
+    solver.agent_arrange_room = MagicMock(side_effect=arrange)
+
+    assert solver.agent_arrange(dorm.plan) is False
+    assert arranged == [("dormitory_1", ["C"])]
+    assert dorm.plan == {"dormitory_2": ["D"]}
+    assert solver.tasks[0] is critical and solver.tasks[1] is dorm
+    assert dorm.time == critical.time + timedelta(seconds=1)
+    assert critical.time == NOW + timedelta(seconds=180)
+
+    solver.tasks.remove(critical)
+    Clock.current = dorm.time
+
+    assert solver.agent_arrange(dorm.plan) is not False
+    assert arranged == [("dormitory_1", ["C"]), ("dormitory_2", ["D"])]
+    assert dorm.plan == {}
+    assert solver.task is dorm and solver.tasks == [dorm]
+    assert dorm.time == NOW + timedelta(seconds=181)
+
+
+@pytest.mark.parametrize("kind", CRITICAL_TYPES)
 def test_reopened_dorm_runtime_guard_preserves_time_and_releases_dependency(kind):
     work = task(TaskTypes.SHIFT_ON, -600, {"dormitory_1": ["A"]})
     work.execution_retained = True
