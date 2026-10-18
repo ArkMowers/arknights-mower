@@ -5403,6 +5403,8 @@ class BaseSchedulerSolver(
                     return False
 
             original = list(self.op_data.plan_condition)
+            if initial_conditions == original:
+                return False
             previous_data = self.op_data.project_arrangements([])
             previous_exhaust = self._exhaust_task_signatures()
             previous_plan = copy.deepcopy(self.op_data.plan)
