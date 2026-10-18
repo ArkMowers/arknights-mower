@@ -13,18 +13,9 @@ import {
 import { createScreenshotPreview } from '@/utils/screenshotPreview'
 import StartSchedule from '@/components/StartSchedule.vue'
 const mower_store = useMowerStore()
-const {
-  log,
-  log_mobile,
-  running,
-  status_label,
-  plan_condition,
-  log_lines,
-  task_list,
-  waiting,
-  get_task_id
-} = storeToRefs(mower_store)
-const { get_tasks, get_running } = mower_store
+const { log, log_mobile, running, status_label, plan_condition, log_lines, task_list, waiting } =
+  storeToRefs(mower_store)
+const { get_tasks, get_running, start_task_polling, stop_task_polling } = mower_store
 const axios = inject('axios')
 const mobile = inject('mobile')
 
@@ -168,7 +159,7 @@ watch(
 
 let runningTimer
 onMounted(() => {
-  get_tasks()
+  start_task_polling()
   get_running()
   runningTimer = setInterval(get_running, 5000)
   const savedPreviewState = localStorage.getItem('sc_preview')
@@ -184,7 +175,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  clearTimeout(get_task_id.value)
+  stop_task_polling()
   clearInterval(runningTimer)
   document.removeEventListener('visibilitychange', updateScreenshotPreview)
   layoutObserver?.disconnect()

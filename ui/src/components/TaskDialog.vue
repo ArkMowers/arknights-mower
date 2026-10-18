@@ -20,7 +20,6 @@ const masterySchedule = computed(() => masteryScheduleContext(plan_store.plan, b
 
 import { useMowerStore } from '@/stores/mower'
 const mower_store = useMowerStore()
-const { get_task_id } = storeToRefs(mower_store)
 const { get_tasks } = mower_store
 const { workshop_settings } = storeToRefs(config_store)
 const task_list = ref([])
@@ -161,7 +160,6 @@ async function saveTasks() {
     error.value = true
   } else {
     error.value = false
-    clearTimeout(get_task_id.value)
     get_tasks()
   }
 }
