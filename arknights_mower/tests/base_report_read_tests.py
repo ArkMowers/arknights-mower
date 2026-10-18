@@ -182,6 +182,58 @@ def test_native_report_png_reads_all_fields():
     }
 
 
+def test_connected_order_count_is_read_and_stored(recording_solver):
+    """The supplied JPEG shows 44 orders whose lower strokes touch."""
+    panel = cv2.imread(
+        str(ROOT / "arknights_mower/tests/fixtures/base_report_panel_20261018.png")
+    )
+    image = np.zeros((1080, 1920, 3), np.uint8)
+    image[120:630, 1300:1900] = cv2.cvtColor(panel, cv2.COLOR_BGR2RGB)
+    solver = recording_solver
+    solver.recog = _solver_for(image).recog
+
+    assert solver.read_report() is True
+
+    row = read_dicts(solver.record_path, encoding="gbk")[0]
+    assert parse_cell_num(row["龙门币订单数"]) == 44
+    assert parse_cell_num(row["龙门币订单"]) == 101000
+    assert parse_cell_num(row["合成玉订单数量"]) == 0
+
+
+@pytest.mark.parametrize(
+    "number,gap",
+    [
+        (44, 2),
+        (444, 2),
+        (41, 2),
+        (14, 2),
+        (88, 2),
+        (18, 2),
+        (111, 2),
+        (604, 3),
+        (100, 4),
+    ],
+)
+def test_connected_digits_keep_every_digit(number, gap):
+    templates = [noto_sans[int(digit)] for digit in str(number)]
+    image = np.zeros(
+        (35, sum(template.shape[1] + gap for template in templates)), np.uint8
+    )
+    x = 0
+    for template in templates:
+        height, width = template.shape
+        image[2 : 2 + height, x : x + width] = template
+        x += width + gap
+    # Join the glyphs at a row with ink in each digit, as capture noise can do.
+    columns = np.flatnonzero(image[17])
+    image[17, columns[0] : columns[-1] + 1] = 255
+
+    solver = _detached_solver()
+    assert (
+        solver.get_number(image, ((0, 0), (image.shape[1], 35)), height=None) == number
+    )
+
+
 def test_degenerate_contour_does_not_abort_the_whole_read():
     """A 4x4 speck used to raise cv2.error out of crop_report."""
     img = _report_frame()
