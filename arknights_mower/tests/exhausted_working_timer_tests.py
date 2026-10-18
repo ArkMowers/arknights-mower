@@ -15,6 +15,7 @@ from arknights_mower.solvers import record  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.operators import Operator, Operators  # noqa: E402
+from arknights_mower.utils.scene import Scene  # noqa: E402
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
 
 
@@ -68,6 +69,7 @@ def room_reader():
         solver.turn_on_room_detail = MagicMock()
         solver.detect_product_complete = MagicMock(return_value=None)
         solver.detect_room = MagicMock(return_value=room)
+        solver.train_scene = MagicMock(return_value=Scene.INFRA_DETAILS)
 
         def find(resource, scope=None):
             if resource == "room_detail":

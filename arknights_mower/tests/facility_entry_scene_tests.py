@@ -181,7 +181,7 @@ def test_support_swap_dispatch_confirms_room_before_consuming_task(
     for module in (mastery, mastery_reader):
         monkeypatch.setattr(module, "read_main_panel", read_panel)
         monkeypatch.setattr(module, "_read_slots_checked", read_slots)
-    monkeypatch.setattr(mastery, "_read_train_countdown", lambda *_: ends)
+    monkeypatch.setattr(mastery, "_read_train_countdown3", lambda *_: ("active", ends))
     options = {
         "夜半": {2: {"name": "夜半", "efficiency": 75, "halves": False}},
         "艾丽妮": {2: {"name": "艾丽妮", "efficiency": 30, "halves": True}},
