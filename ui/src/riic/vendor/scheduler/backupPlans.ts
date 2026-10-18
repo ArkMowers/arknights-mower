@@ -1,3 +1,4 @@
+import {readBackupGroups,selectBackupPlans} from './backupGroups'
 import {mowerPrimaryJoinsRestingGroup,preserveMowerBackupRestingJoins} from './mowerBackupRestingJoin'
 import {validateMowerRosterRules} from '../domain/mowerRosterRules'
 import {assertMowerBackupRoomOwners, assertMowerBackupTaskRooms, mowerBackupRoomCapacity, prepareMowerBackupRoom} from '../domain/mowerBackupFacilities'
@@ -43,6 +44,8 @@ export function evaluateBackupExpression(source: unknown, state: RuntimeState) {
 }
 export interface BackupDiagnostic { code: string; message: string }
 interface BackupPlan {
+  groupIds:string[]
+  backupType:'global'|'exclusive'
   rooms: Partial<Record<MowerRoomId, number>>
   conf:Record<string,unknown>
   conditionNames:string[]
@@ -59,12 +62,28 @@ interface BackupPlan {
 }
 function parsePlans(workspace: RosterWorkspace, participants: Set<string>, diagnostics: BackupDiagnostic[] = []): BackupPlan[] {
   const known = (value: unknown) => { const id = operator(value); participants.add(id); return id }
+  const groups = readBackupGroups(workspace)
+  const groupConditions = new Map(groups.filter(group=>group.id!=='default').map(group=>[group.id,compileBackupExpression(group.trigger, participants)]))
   return workspace.compatibility.backupPlans.map((raw, index) => {
     if (!record(raw)) return fail(`#${index + 1} 格式错误`)
     const name = typeof raw.name === 'string' ? raw.name : `#${index + 1}`
+    const groupIds = raw.group_ids ?? ['default']
+    const backupType = raw.type ?? 'global'
+    if (!Array.isArray(groupIds) || !groupIds.length || new Set(groupIds).size!==groupIds.length || !groupIds.every(id=>typeof id==='string'&&groups.some(group=>group.id===id)) || !['global','exclusive'].includes(String(backupType))) return fail(`${name}：副表分组或类型无效`)
+    const selectionFields = { groupIds: groupIds as string[], backupType: backupType as 'global'|'exclusive' }
     try {
       const conditionParticipants=new Set<string>()
-      const compiledCondition = compileBackupExpression(raw.trigger, conditionParticipants)
+      const ownCondition = compileBackupExpression(raw.trigger, conditionParticipants)
+      const groupConditionsForPlan = groupIds.flatMap(id=>groupConditions.has(id)?[groupConditions.get(id)!]:[])
+      for(const group of groups)if(group.id!=='default'&&groupIds.includes(group.id))compileBackupExpression(group.trigger,conditionParticipants)
+      const compiledCondition = { ...ownCondition,
+        observedOperatorDependenciesOnly: ownCondition.observedOperatorDependenciesOnly && groupConditionsForPlan.every(condition=>condition.observedOperatorDependenciesOnly),
+        usesCurrentMood: ownCondition.usesCurrentMood || groupConditionsForPlan.some(condition=>condition.usesCurrentMood),
+        usesMajorMaintenance: ownCondition.usesMajorMaintenance || groupConditionsForPlan.some(condition=>condition.usesMajorMaintenance),
+        usesMasteryPlan: ownCondition.usesMasteryPlan || groupConditionsForPlan.some(condition=>condition.usesMasteryPlan),
+        usesInventory: ownCondition.usesInventory || groupConditionsForPlan.some(condition=>condition.usesInventory),
+        usesFacilityProduct: ownCondition.usesFacilityProduct || groupConditionsForPlan.some(condition=>condition.usesFacilityProduct),
+      }
       conditionParticipants.forEach(name=>participants.add(name))
       const conditionNames=[...conditionParticipants],conditionWaitable=compiledCondition.observedOperatorDependenciesOnly
       const condition = compiledCondition.evaluate
@@ -75,7 +94,7 @@ function parsePlans(workspace: RosterWorkspace, participants: Set<string>, diagn
       const usesFacilityProduct = compiledCondition.usesFacilityProduct
       if (compiledCondition.skipped) {
         diagnostics.push({ code: 'BACKUP_EXTERNAL_CONDITION_SKIPPED', message: `副表 ${name}（#${index + 1}）：跳过依赖 ${compiledCondition.skipped} 的整张副表；未执行其岗位、策略与任务` })
-        return { name, timing: 'AFTER_PLANNING' as const, exitTiming: 'AFTER_PLANNING' as const, condition, conditionNames, conditionWaitable, usesCurrentMood, usesMajorMaintenance, usesMasteryPlan, usesInventory, usesFacilityProduct, rooms: {}, slots: [], products: {}, task: {},conf:{} }
+        return { ...selectionFields, name, timing: 'AFTER_PLANNING' as const, exitTiming: 'AFTER_PLANNING' as const, condition, conditionNames, conditionWaitable, usesCurrentMood, usesMajorMaintenance, usesMasteryPlan, usesInventory, usesFacilityProduct, rooms: {}, slots: [], products: {}, task: {},conf:{} }
       }
       const timing = typeof raw.trigger_timing === 'string' ? raw.trigger_timing.toUpperCase() : ''
       const slots: BackupPlan['slots'] = [], task: BackupPlan['task'] = {}, products: BackupPlan['products'] = {}, rooms: BackupPlan['rooms'] = {}
@@ -112,7 +131,7 @@ function parsePlans(workspace: RosterWorkspace, participants: Set<string>, diagn
       }
       const entry = timing in BACKUP_TIMINGS ? timing as BackupTiming : 'AFTER_PLANNING'
       const exit = typeof raw.exit_trigger_timing === 'string' && raw.exit_trigger_timing ? raw.exit_trigger_timing.toUpperCase() : undefined
-      return { name, timing: entry, exitTiming: exit ? exit in BACKUP_TIMINGS ? exit as BackupTiming : 'AFTER_PLANNING' : entry, condition, conditionNames, conditionWaitable, usesCurrentMood, usesMajorMaintenance, usesMasteryPlan, usesInventory, usesFacilityProduct, rooms, slots, products, task,conf:record(raw.conf)?raw.conf:{} }
+      return { ...selectionFields, name, timing: entry, exitTiming: exit ? exit in BACKUP_TIMINGS ? exit as BackupTiming : 'AFTER_PLANNING' : entry, condition, conditionNames, conditionWaitable, usesCurrentMood, usesMajorMaintenance, usesMasteryPlan, usesInventory, usesFacilityProduct, rooms, slots, products, task,conf:record(raw.conf)?raw.conf:{} }
     } catch (error) { return fail(`${name}：${error instanceof Error ? error.message : String(error)}`) }
   })
 }
@@ -128,7 +147,12 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
   const participants = new Set<string>(), plans = parsePlans(base.sourceWorkspace, participants, diagnostics)
   if(plans.some(plan=>plan.usesMajorMaintenance)&&base.assumptions.majorMaintenanceStartHours===undefined)diagnostics.push({code:'MOWER_MAINTENANCE_ASSUMPTION',message:'未提供维护时间，本次模拟没有停服窗口'})
   if(plans.some(plan=>plan.usesMasteryPlan))diagnostics.push({code:'MOWER_MASTERY_PLAN_ASSUMPTION',message:'本次模拟固定为无未完成的训练计划，不模拟训练进度或计划完成时刻'})
-  const observedPlans = plans.filter(plan=>plan.usesInventory||plan.usesFacilityProduct)
+  const groups = readBackupGroups(base.sourceWorkspace).filter(group=>group.id!=='default').map(group=>{const names=new Set<string>(),compiled=compileBackupExpression(group.trigger,names);names.forEach(name=>participants.add(name));return {...group,...compiled,conditionNames:[...names]}})
+  let activeGroup = 'default'
+  function selectionFor(currentState:RuntimeState,groupId:string,current:boolean[]){
+    return selectBackupPlans(plans,groups.filter(group=>group.evaluate(currentState)).map(group=>group.id),index=>Boolean(plans[index]!.condition(currentState)),groupId,current)
+  }
+  const observedPlans = [...plans,...groups.map(group=>({...group,condition:group.evaluate}))].filter(plan=>plan.usesInventory||plan.usesFacilityProduct)
   let observedConditions: string | undefined
   const observationSignature = () => JSON.stringify(observedPlans.map(plan=>Boolean(plan.condition(state))))
   const observationBlocked = () => {
@@ -189,16 +213,17 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
   }
   const alphaModel:MowerShiftModel={
     count:plans.length,
-    observationNames:[...new Set(plans.flatMap(plan=>plan.conditionNames))],
-    conditionObservationNames:plans.map(plan=>plan.conditionWaitable?plan.conditionNames:[]),
+    observationNames:[...new Set([...plans,...groups].flatMap(plan=>plan.conditionNames))],
+    conditionObservationNames:plans.map(plan=>plan.conditionWaitable&&groups.every(group=>group.observedOperatorDependenciesOnly)?[...new Set([...plan.conditionNames,...groups.flatMap(group=>group.conditionNames)])]:[]),
     explicitTasks:plans.map(plan=>plan.task),
     explicitSlots:(original,conditions)=>new Set(plans.flatMap((plan,i)=>!original[i]&&conditions[i]?Object.entries(plan.task).flatMap(([room,row])=>row.flatMap((name,index)=>name!=='Current'?[alphaPosition(room,index)]:[])):[])),
     // This preserves the source's one-second observation capability; it does
     // not claim exact roots for arbitrary imported comparison expressions.
-    nextConditionWakeMicros:data=>plans.some(plan=>plan.usesCurrentMood||plan.usesMajorMaintenance&&base.assumptions.majorMaintenanceStartHours!==undefined)?data.nowMicros+1_000_000:undefined,
-    nextIdleConditionWakeMicros:data=>plans.some(plan=>plan.usesMajorMaintenance)&&base.assumptions.majorMaintenanceStartHours!==undefined&&data.nowMicros<=base.assumptions.majorMaintenanceStartHours*3_600_000_000?data.nowMicros+1_000_000:undefined,
-    evaluate(data){return plans.map(p=>Boolean(p.condition({...state,time:data.nowMicros/3_600_000_000,mowerSource:{...getMowerSourceRuntime(state),data}})))},
-    swap(data,conditions){const {config}=alphaConfiguration(conditions);const next=makeMowerSchedulingData({...state,config,morale:{...state.morale},initialMorale:{...state.initialMorale}},{data});next.planConditions=[...conditions];return next},
+    nextConditionWakeMicros:data=>[...plans,...groups].some(plan=>plan.usesCurrentMood||plan.usesMajorMaintenance&&base.assumptions.majorMaintenanceStartHours!==undefined)?data.nowMicros+1_000_000:undefined,
+    nextIdleConditionWakeMicros:data=>[...plans,...groups].some(plan=>plan.usesMajorMaintenance)&&base.assumptions.majorMaintenanceStartHours!==undefined&&data.nowMicros<=base.assumptions.majorMaintenanceStartHours*3_600_000_000?data.nowMicros+1_000_000:undefined,
+    select(data){return selectionFor({...state,time:data.nowMicros/3_600_000_000,mowerSource:{...getMowerSourceRuntime(state),data}},data.backupGroup,data.planConditions)},
+    evaluate(data){return alphaModel.select!(data).conditions},
+    swap(data,conditions,groupId){const {config}=alphaConfiguration(conditions);const next=makeMowerSchedulingData({...state,config,morale:{...state.morale},initialMorale:{...state.initialMorale}},{data});next.planConditions=[...conditions];next.backupGroup=groupId??data.backupGroup;return next},
     transition(previous,next,original,conditions,recovery=previous,pendingTasks){
       const transition:Record<string,string[]>={},groupPositions=new Set<string>(),replacementPositions:[string,number][]=[],restored=new Set<string>(),joiningResting=new Set<string>()
       const protectedTraining=new Set([...previous.busyRestingNames,...next.busyRestingNames])
@@ -237,8 +262,9 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
     activate(conditions,task){
       const previous=getMowerSourceRuntime(state).data,oldDrained=state.config.mowerSourceRules?.refreshDrained??[]
       const snapshot=alphaConfiguration(conditions)
+      activeGroup=task?.backupGroup??activeGroup
       conditions.forEach((value,i)=>{if(value!==active[i])state.events.push({time:state.time,type:'backup-plan',operators:[],backupIndex:i,backupName:plans[i]!.name,active:value,timing:'END'});active[i]=value})
-      state.config=snapshot.config;effective=snapshot.compiled;getMowerSourceRuntime(state).data.planConditions=[...active]
+      state.config=snapshot.config;effective=snapshot.compiled;getMowerSourceRuntime(state).data.planConditions=[...active];getMowerSourceRuntime(state).data.backupGroup=activeGroup
       captureMowerBackupRefreshRules(task,previous,getMowerSourceRuntime(state).data,oldDrained,state.config.mowerSourceRules?.refreshDrained??[])
     },
   }
@@ -246,10 +272,10 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
   function evaluateAlpha(timing:BackupTiming):boolean{
     const source=getMowerSourceRuntime(state),queue=source.queue,data=source.data
     if(queue.tasks.some(t=>t.backupShiftActive||t.type===T.FIAMMETTA&&t.timeMicros<=data.nowMicros)||source.activeTask?.type===T.FIAMMETTA)return false
-    const original=[...active],seen=new Set([JSON.stringify(original)]);let current=data,conditions=alphaModel.evaluate(data)
+    const original=[...active],seen=new Set([JSON.stringify(original)]);let current=data,selection=alphaModel.select!(data),conditions=selection.conditions
     for(let pass=0;pass<64;pass++){
       if(conditions.every((v,i)=>v===current.planConditions[i])){
-        if(conditions.every((v,i)=>v===original[i]))return false
+        if(conditions.every((v,i)=>v===original[i])){data.backupGroup=selection.groupId;activeGroup=selection.groupId;return false}
         let transition:Record<string,string[]>
         try{transition=alphaModel.transition(data,current,original,conditions)}catch(error){if(!(error instanceof MowerShiftPreviewError))throw error;state.diagnostics.push({code:'mower-backup-deferred',message:error.message});return false}
         const merged=coalesceMowerBackupTransition(current,transition,queue.tasks)
@@ -261,7 +287,8 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
           inheritMowerBackupRefreshRules(generated[0],merged.consumed)
           generated[0].backupExplicitSlots=new Set([...(alphaModel.explicitSlots?.(original,conditions)??[]),...merged.consumed.flatMap(task=>[...task.backupExplicitSlots].filter(slot=>{const [room,index]=slot.split('\0');return merged.plan[room!]?.[Number(index)]===task.plan[room!]?.[Number(index)]}))])
         }
-        alphaModel.activate(conditions,generated[0]);getMowerSourceRuntime(state).data.dorms=current.dorms
+        const activation=generated[0]??new MowerTask({time:state.time});activation.backupGroup=selection.groupId
+        alphaModel.activate(conditions,activation);getMowerSourceRuntime(state).data.dorms=current.dorms
         for(const event of state.events.slice(-plans.length))if(event.type==='backup-plan'&&event.time===state.time)event.timing=timing
         const followup=new MowerTask({time:state.time});if(state.mowerBackupContext?.customTimeMicros!==undefined)followup.timeMicros=state.mowerBackupContext.customTimeMicros;generated.push(followup)
         state.mowerBackupGenerated=generated
@@ -269,7 +296,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
       }
       const key=JSON.stringify(conditions)
       if(seen.has(key)){state.diagnostics.push({code:'mower-backup-cycle',message:'副表条件在内存演算中出现循环，保持切换前状态'});return false}
-      seen.add(key);current=alphaModel.swap(current,conditions);conditions=alphaModel.evaluate(current)
+      seen.add(key);current=alphaModel.swap(current,conditions,selection.groupId);selection=alphaModel.select!(current);conditions=selection.conditions
     }
     state.diagnostics.push({code:'mower-backup-cycle',message:'副表条件在 64 次演算内未收敛，保持切换前状态'});return false
   }
@@ -286,11 +313,14 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
     if(observedPlans.length){if(observationBlocked())return false;observedConditions=observationSignature()}
     if(state.config.mowerAlpha)return evaluateAlpha(timing)
     if(state.mowerSource?.queue.tasks.some(task=>task.backupShiftActive))return false
+    const selected = selectionFor(state,activeGroup,active)
+    const grouped = groups.length>0 || plans.some(plan=>plan.backupType==='exclusive')
     const next = plans.map((p, i) => {
-      const enabled = Boolean(p.condition(state))
+      const enabled = selected.conditions[i]!
+      if(grouped)return enabled
       return BACKUP_TIMINGS[enabled ? p.timing : p.exitTiming] <= BACKUP_TIMINGS[timing] ? enabled : active[i]!
     })
-    if (next.every((value, i) => value === active[i])) return false
+    if (next.every((value, i) => value === active[i])) {activeGroup=selected.groupId;return false}
     const workspace = structuredClone(base.sourceWorkspace)
     workspace.compatibility.backupPlans = []
     next.forEach((enabled, i) => {
@@ -334,9 +364,9 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
     const primaries = config.positions.map(p => p.primary)
     if (new Set(primaries).size !== primaries.length) fail(`激活组合 ${next.map((v, i) => v ? plans[i]!.name : '').filter(Boolean).join('、')} 重复主班`)
     // alpha init validates the full group's effective Free-bed capacity.
-    const groups = new Map<string, number>()
-    for (const p of config.positions) if (p.group && !p.dormitory && !p.permanent) groups.set(p.group,(groups.get(p.group) ?? 0)+1)
-    for (const [group,count] of groups) if (count > config.beds.filter(b => b.managedRecovery !== false).length) fail(group+' 分组需要 '+count+' 个休息床位，副表仅提供 '+config.beds.filter(b => b.managedRecovery !== false).length+' 个')
+    const restingGroups = new Map<string, number>()
+    for (const p of config.positions) if (p.group && !p.dormitory && !p.permanent) restingGroups.set(p.group,(restingGroups.get(p.group) ?? 0)+1)
+    for (const [group,count] of restingGroups) if (count > config.beds.filter(b => b.managedRecovery !== false).length) fail(group+' 分组需要 '+count+' 个休息床位，副表仅提供 '+config.beds.filter(b => b.managedRecovery !== false).length+' 个')
     if(state.config.mowerSourcePlan){
       const generated:MowerTask[]=[],context=state.mowerBackupContext??{appendEmptyTask:true,restoreOnDeactivate:false}
       const restored:Record<string,Set<number>>={}
@@ -357,7 +387,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
         if(names.some(name=>name!=='Current'))restore[room]=names
       }
       if(Object.keys(restore).length){const task=new MowerTask({time:state.time,plan:restore});if(context.customTimeMicros!==undefined)task.timeMicros=context.customTimeMicros;generated.push(task)}
-      state.config=config;effective=compiled
+      state.config=config;effective=compiled;activeGroup=selected.groupId
       next.forEach((value,i)=>{
         if(value!==active[i])state.events.push({time:state.time,type:'backup-plan',operators:[],backupIndex:i,backupName:plans[i]!.name,active:value,timing})
         active[i]=value
@@ -438,6 +468,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
     state.config = config; state.occupants = occupants; state.bedOccupants = beds; state.pendingRest = pendingRest
     state.returnDeadlines = {}; state.timingSignature = undefined
     effective = compiled
+    activeGroup=selected.groupId
     next.forEach((value, i) => {
       if (value !== active[i]) state.events.push({ time: state.time, type: 'backup-plan', operators: [], backupIndex: i, backupName: plans[i]!.name, active: value, timing })
       active[i] = value

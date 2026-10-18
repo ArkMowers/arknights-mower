@@ -274,6 +274,9 @@ class Plan:
         task: Optional[dict[str, list[str]]] = None,
         name: Optional[str] = "",
         products: Optional[dict[str, str]] = None,
+        group_ids: Optional[list[str]] = None,
+        backup_type: str = "global",
+        group_triggers=None,
     ):
         """
         Args:
@@ -285,18 +288,26 @@ class Plan:
         self.plan = plan
         self.config = config
         self.trigger = trigger
+        self.group_ids = list(group_ids or ["default"])
+        self.backup_type = backup_type
+        self.group_triggers = group_triggers or {}
         self.task = task
         self.name = name
         self.products = products or {}
+
+    def condition_source(self, group_id=None):
+        groups = getattr(self, "group_triggers", {})
+        triggers = groups.values() if group_id is None else [groups.get(group_id)]
+        return " or ".join(f"({trigger})" for trigger in [self.trigger, *triggers])
 
     @property
     def uses_major_maintenance_condition(self) -> bool:
         return self.uses_condition("major_maintenance_remaining_hours")
 
-    def uses_condition(self, method: str) -> bool:
+    def uses_condition(self, method: str, group_id=None) -> bool:
         """识别条件中的实际调用；字符串常量不授予副表能力。"""
         try:
-            expression = ast.parse(str(self.trigger), mode="eval")
+            expression = ast.parse(self.condition_source(group_id), mode="eval")
         except SyntaxError:
             return False
         return any(
@@ -311,8 +322,12 @@ class Plan:
     @property
     def major_maintenance_thresholds(self) -> list[float]:
         """读取定时条件的提前小时数，兼容嵌套条件中的原有比较式。"""
+        return self.maintenance_thresholds(self.condition_source())
+
+    @staticmethod
+    def maintenance_thresholds(trigger) -> list[float]:
         try:
-            expression = ast.parse(str(self.trigger), mode="eval")
+            expression = ast.parse(str(trigger), mode="eval")
         except SyntaxError:
             return []
         thresholds = []

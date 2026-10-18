@@ -43,7 +43,7 @@ function fixture(explicitReturn=false,trigger?:string,precedingReturn=false){
 describe('observed recovery behind an empty return preview',()=>{
  it('parks the original return without a failure reservation, blocks duplicate returns and later completes it',()=>{
   const {state,source,data,task,controller}=fixture(),original=structuredClone(task.plan),time=task.timeMicros
-  const evaluate=vi.spyOn(state.mowerShiftModel!,'evaluate')
+  const evaluate=vi.spyOn(state.mowerShiftModel!,'select')
   settleRoster(state,rates,0,controller.evaluate)
   expect(source.waitingRecovery?.map(wait=>wait.task)).toContain(task)
   expect(source.queue.tasks).not.toContain(task)

@@ -5410,10 +5410,22 @@ class BaseSchedulerSolver(
             logger.info("副表生效后移除 %s 条配置已改变的动态用尽预约", len(invalid))
         return bool(invalid)
 
-    def _advance_orders_before_maintenance(self, conditions):
+    def _advance_orders_before_maintenance(self, conditions, backup_group=None):
         """先完成维护主班的跑单替班任务，或原有停服前跑单批次。"""
         entering = any(
-            active and not previous and backup.uses_major_maintenance_condition
+            active
+            and (
+                not previous
+                or backup_group is not None
+                and backup_group != self.op_data.backup_group
+                and not backup.uses_condition(
+                    "major_maintenance_remaining_hours", self.op_data.backup_group
+                )
+            )
+            and backup.uses_condition(
+                "major_maintenance_remaining_hours",
+                backup_group or self.op_data.backup_group,
+            )
             for active, previous, backup in zip(
                 conditions, self.op_data.plan_condition, self.op_data.backup_plans
             )
@@ -5424,7 +5436,7 @@ class BaseSchedulerSolver(
         projected = copy.deepcopy(
             self.op_data, {id(self.op_data.eval_model): self.op_data.eval_model}
         )
-        if error := projected.swap_plan(conditions):
+        if error := projected.swap_plan(conditions, backup_group=backup_group):
             raise ValueError(f"维护副表预演失败：{error}")
         if projected.run_order_paused:
             pending = [
@@ -5564,16 +5576,18 @@ class BaseSchedulerSolver(
         ):
             logger.debug("换班最终安排尚未完成，避免用中间驻员状态重新切表")
             return False
+        previous_data = None
         try:
             if not self.op_data.backup_plans:
                 self.maintenance_entry_pending = False
                 return False
 
-            initial_conditions = [
-                bool(self.op_data.evaluate_expression(str(backup.trigger)))
-                for backup in self.op_data.backup_plans
-            ]
-            if self._advance_orders_before_maintenance(initial_conditions):
+            selection = self.op_data.evaluate_backup_selection()
+            initial_conditions = selection.conditions
+            original_group = self.op_data.backup_group
+            if self._advance_orders_before_maintenance(
+                initial_conditions, selection.group_id
+            ):
                 return False
 
             if any(
@@ -5584,6 +5598,12 @@ class BaseSchedulerSolver(
 
             original = list(self.op_data.plan_condition)
             if initial_conditions == original:
+                if selection.group_id != original_group:
+                    if error := self.op_data.swap_plan(
+                        original, backup_group=selection.group_id
+                    ):
+                        raise ValueError(f"副表分组切换失败：{error}")
+                    self._sync_run_order_tasks()
                 return False
             previous_data = self.op_data.project_arrangements([])
             previous_exhaust = self._exhaust_task_signatures()
@@ -5597,11 +5617,14 @@ class BaseSchedulerSolver(
                 for bp in self.op_data.backup_plans:
                     logger.debug(str(bp.trigger))
                 if conditions == current:
+                    self.op_data.backup_group = selection.group_id
                     break
                 if current != original and self._advance_orders_before_maintenance(
-                    conditions
+                    conditions, selection.group_id
                 ):
-                    self.op_data.swap_plan(original, refresh=True)
+                    self.op_data.swap_plan(
+                        original, refresh=True, backup_group=original_group
+                    )
                     return False
                 key = tuple(conditions)
                 if key in seen:
@@ -5611,19 +5634,23 @@ class BaseSchedulerSolver(
                         conditions,
                     )
                     if current != original:
-                        self.op_data.swap_plan(original, refresh=True)
+                        self.op_data.swap_plan(
+                            original, refresh=True, backup_group=original_group
+                        )
                     return False
                 seen.add(key)
-                error = self.op_data.swap_plan(conditions, refresh=True)
+                error = self.op_data.swap_plan(
+                    conditions, refresh=True, backup_group=selection.group_id
+                )
                 if error:
                     logger.error("副表内存演算失败：%s", error)
-                    self.op_data.swap_plan(original, refresh=True)
+                    self.op_data.swap_plan(
+                        original, refresh=True, backup_group=original_group
+                    )
                     return False
                 current = conditions
-                conditions = [
-                    bool(self.op_data.evaluate_expression(str(bp.trigger)))
-                    for bp in self.op_data.backup_plans
-                ]
+                selection = self.op_data.evaluate_backup_selection()
+                conditions = selection.conditions
 
             if current == original:
                 return False
@@ -5715,6 +5742,8 @@ class BaseSchedulerSolver(
         except MowerExit:
             raise
         except Exception as e:
+            if previous_data is not None:
+                self.op_data = previous_data
             save_exception(e)
             logger.exception(e)
         return False
@@ -6289,17 +6318,17 @@ class BaseSchedulerSolver(
 
         seen = {tuple(projected.plan_condition)}
         while projected.backup_plans:
-            conditions = [
-                bool(projected.evaluate_expression(str(bp.trigger)))
-                for bp in projected.backup_plans
-            ]
+            selection = projected.evaluate_backup_selection()
+            conditions = selection.conditions
             if conditions == projected.plan_condition:
                 break
             if tuple(conditions) in seen:
                 logger.warning("换班前副表产物推演出现循环，维持当前目标")
                 break
             seen.add(tuple(conditions))
-            if error := projected.swap_plan(conditions):
+            if error := projected.swap_plan(
+                conditions, backup_group=selection.group_id
+            ):
                 raise ValueError(f"换班前副表产物推演失败：{error}")
         return projected.products, projected.plan
 
@@ -7046,7 +7075,11 @@ class BaseSchedulerSolver(
             conditions = getattr(
                 step, "backup_shift_conditions", simulation.op_data.plan_condition
             )
-            if error := simulation.op_data.swap_plan(conditions, refresh=True):
+            if error := simulation.op_data.swap_plan(
+                conditions,
+                refresh=True,
+                backup_group=getattr(step, "backup_group", None),
+            ):
                 raise ValueError(f"完整换班预演失败：{error}")
             reserved_names, reserved_slots = dorm_task_reservations(
                 simulation.op_data,
@@ -7210,6 +7243,7 @@ class BaseSchedulerSolver(
             task.coordination_request_names = list(dict.fromkeys(ordinary_requests))
             task.backup_explicit_slots = explicit_slots
             task.backup_shift_conditions = list(conditions)
+            task.backup_group = simulation.op_data.backup_group
             task.plan = final
             task.dorm_fill_plan = {
                 room: [
@@ -7272,6 +7306,7 @@ class BaseSchedulerSolver(
             # 跑单等待原班释放或新实测时，先按原表完成纠错，不能提前切入维护主班。
             task.plan = copy.deepcopy(getattr(task, "backup_shift_intent", task.plan))
             task.backup_shift_conditions = list(self.op_data.plan_condition)
+            task.backup_group = self.op_data.backup_group
             return
         if any(
             t.type == TaskTypes.FIAMMETTA and t.time <= datetime.now()
@@ -7301,13 +7336,13 @@ class BaseSchedulerSolver(
         self._suppress_train_arrangement(intent)
         seed = self.op_data.project_arrangements([intent])
         seed.commit_group_shifts(getattr(task, "group_shift_transitions", {}))
-        conditions = [
-            bool(seed.evaluate_expression(str(bp.trigger))) for bp in seed.backup_plans
-        ]
+        selection = seed.evaluate_backup_selection()
+        conditions = selection.conditions
         seen = set()
         for _ in range(64):
             key = (
                 tuple(conditions),
+                selection.group_id,
                 tuple(sorted((room, tuple(names)) for room, names in intent.items())),
                 tuple(sorted(explicit_slots)),
             )
@@ -7316,7 +7351,9 @@ class BaseSchedulerSolver(
             seen.add(key)
             simulation = copy.copy(self)
             simulation.op_data = seed.project_arrangements([])
-            if error := simulation.op_data.swap_plan(conditions, refresh=True):
+            if error := simulation.op_data.swap_plan(
+                conditions, refresh=True, backup_group=selection.group_id
+            ):
                 raise ValueError(f"上下班副表推演失败：{error}")
             if self._filter_ordinary_exhaust_departures(
                 ordinary_policy, intent, simulation.op_data
@@ -7332,10 +7369,8 @@ class BaseSchedulerSolver(
                         for group in ordinary_policy.ordinary_exhaust_blocked_groups
                     }
                 )
-                conditions = [
-                    bool(seed.evaluate_expression(str(bp.trigger)))
-                    for bp in seed.backup_plans
-                ]
+                selection = seed.evaluate_backup_selection()
+                conditions = selection.conditions
                 seen.clear()
                 continue
             transition = simulation._backup_transition_plan(
@@ -7412,14 +7447,18 @@ class BaseSchedulerSolver(
             self._suppress_train_arrangement(merged)
             # 从真实驻员重新投影，不能把上一轮的中间换人累积到下一轮。
             projected = self.op_data.project_arrangements([])
-            if error := projected.swap_plan(conditions, refresh=True):
+            if error := projected.swap_plan(
+                conditions, refresh=True, backup_group=selection.group_id
+            ):
                 raise ValueError(f"上下班副表推演失败：{error}")
             projected = projected.project_arrangements([merged])
-            next_conditions = [
-                bool(projected.evaluate_expression(str(bp.trigger)))
-                for bp in projected.backup_plans
-            ]
-            if next_conditions == conditions:
+            next_selection = projected.evaluate_backup_selection()
+            next_conditions = next_selection.conditions
+            if (
+                next_conditions == conditions
+                and next_selection.group_id == selection.group_id
+            ):
+                task.backup_group = selection.group_id
                 if ordinary_policy_changed:
                     for attr in (
                         "coordination_request_names",
@@ -7430,7 +7469,11 @@ class BaseSchedulerSolver(
                             task, attr, copy.deepcopy(getattr(ordinary_policy, attr))
                         )
                 task.backup_explicit_slots = explicit_slots
-                if conditions == original and merged == intent:
+                if (
+                    conditions == original
+                    and merged == intent
+                    and selection.group_id == self.op_data.backup_group
+                ):
                     task.plan = intent
                     for attr in ("backup_shift_intent", "backup_shift_conditions"):
                         if hasattr(task, attr):
@@ -7463,6 +7506,7 @@ class BaseSchedulerSolver(
                 )
                 return
             conditions = next_conditions
+            selection = next_selection
         raise ValueError("上下班副表推演未收敛，保留原任务，暂不执行换人")
 
     def _activate_shift_backup(self, task):
@@ -7473,20 +7517,27 @@ class BaseSchedulerSolver(
         if conditions is None or (
             getattr(task, "backup_shift_active", False)
             and self.op_data.plan_condition == conditions
+            and self.op_data.backup_group
+            == getattr(task, "backup_group", self.op_data.backup_group)
         ):
             return
-        if self._advance_orders_before_maintenance(conditions):
+        if self._advance_orders_before_maintenance(
+            conditions, getattr(task, "backup_group", None)
+        ):
             raise ProductSwitchDeferred(
                 "等待停服前提前跑单及原班恢复完成后再换班", minutes=1
             )
         previous = list(self.op_data.plan_condition)
+        previous_group = self.op_data.backup_group
         previous_refresh = {
             name: (op.refresh_drained, op.refresh_order_room)
             for name, op in self.op_data.operators.items()
         }
         previous_exhaust = self._exhaust_task_signatures()
-        if error := self.op_data.swap_plan(conditions, refresh=True):
-            self.op_data.swap_plan(previous, refresh=True)
+        if error := self.op_data.swap_plan(
+            conditions, refresh=True, backup_group=getattr(task, "backup_group", None)
+        ):
+            self.op_data.swap_plan(previous, refresh=True, backup_group=previous_group)
             raise ValueError(f"上下班最终排班生效失败：{error}")
         task.backup_shift_active = True
         self._capture_shift_refresh_rules(task, previous_refresh)

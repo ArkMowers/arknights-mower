@@ -185,9 +185,28 @@ def effective_rescue_plan(data, schedule):
     validate_rescue_schedule(data, schedule)
     worker_config = recovery_config(schedule.conf)
     facilities = schedule.plan1.model_dump(exclude_none=True)
-    for backup in schedule.backup_plans:
+    from types import SimpleNamespace
+
+    from arknights_mower.utils.backup_groups import select_backup_plans
+
+    backups = [
+        SimpleNamespace(
+            group_ids=backup.group_ids,
+            backup_type=backup.type,
+            trigger=get_logic_exp(backup.trigger.model_dump()),
+        )
+        for backup in schedule.backup_plans
+    ]
+    groups = [
+        {"id": group.id, "trigger": get_logic_exp(group.trigger.model_dump())}
+        for group in schedule.backup_groups
+    ]
+    selection = select_backup_plans(
+        backups, groups, lambda trigger: bool(data.evaluate_expression(str(trigger)))
+    )
+    for backup, active in zip(schedule.backup_plans, selection.conditions):
         definition = backup.model_dump(exclude_none=True)
-        if not data.evaluate_expression(str(get_logic_exp(definition["trigger"]))):
+        if not active:
             continue
         worker_config = worker_config.merge_config(recovery_config(backup.conf))
         for room, facility in definition["plan"].items():

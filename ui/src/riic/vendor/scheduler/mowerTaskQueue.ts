@@ -54,7 +54,7 @@ export class MowerTask {
  /** Old rules remain available only while this physical backup arrangement is unfinished. */
  backupRefreshRules?:Record<string,MowerBackupRefreshRule>
  backupExplicitSlots:Set<string>=new Set()
- backupShiftIntent?:MowerTaskPlan;backupShiftConditions?:boolean[];dormFillPlan:MowerTaskPlan={};simpleDormFill=false;arrangementRetryDueMicros?:number
+ backupGroup?:string;backupShiftIntent?:MowerTaskPlan;backupShiftConditions?:boolean[];dormFillPlan:MowerTaskPlan={};simpleDormFill=false;arrangementRetryDueMicros?:number
  dormRecoveryRestore:string[]=[]
  arrangementRetryRoom?:string;arrangementRetryCount?:number
  dormMoodResidents:string[]=[];idleDormSearchNames:Record<string,string[]>={};idleDormShiftGroups?:Record<string,string[]>

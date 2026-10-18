@@ -34,6 +34,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
     const facility_levels = ref({})
 
     const backup_plans = ref([])
+    const backup_groups = ref([{ id: 'default', name: '默认分组', trigger: {} }])
 
     const operators = ref([])
 
@@ -213,8 +214,15 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       facility_levels.value = deepcopy(response.data.facility_levels ?? {})
       plan.value = fill_empty(response.data.plan1)
 
+      backup_groups.value = deepcopy(response.data.backup_groups ?? [])
+      if (!backup_groups.value.some((group) => group.id === 'default')) {
+        backup_groups.value.unshift({ id: 'default', name: '默认分组', trigger: {} })
+      }
+      backup_groups.value.sort((a, b) => Number(b.id === 'default') - Number(a.id === 'default'))
       backup_plans.value = response.data.backup_plans ?? []
       for (let b of backup_plans.value) {
+        b.group_ids ??= ['default']
+        b.type ??= 'global'
         b.conf.mood_limits ??= null
         b.conf.operator_mood_limits ??= {}
         b.conf.removed_operators = Object.fromEntries(
@@ -294,6 +302,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
           refresh_trading: list2str(refresh_trading.value),
           refresh_drained: list2str(refresh_drained.value)
         },
+        backup_groups: deepcopy(backup_groups.value),
         backup_plans: deepcopy(backup_plans.value)
       }
       if (!rescue && advancedSettingsSource) result.advanced_settings = advancedSettingsSource()
@@ -367,6 +376,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
           plan.value,
           facility_levels.value,
           backup_plans.value,
+          backup_groups.value,
           ling_xi.value,
           mood_limits.value,
           operator_mood_limits.value,
@@ -480,6 +490,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
       all_groups,
       group_colors,
       backup_plans,
+      backup_groups,
       sub_plan,
       current_plan,
       fill_empty
