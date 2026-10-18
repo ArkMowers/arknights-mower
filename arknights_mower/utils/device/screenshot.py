@@ -17,6 +17,26 @@ MAX_COMPRESSED_BYTES = MAX_RAW_BYTES + 64 * 1024
 CAPTURE_TIMEOUT = 10
 
 
+class ADBCaptureSession:
+    """Reuse a verified header layout only for this bound capture session."""
+
+    def __init__(self, adb_path: str, serial: str):
+        self.adb_path = adb_path
+        self.serial = serial
+        self._header_size = None
+
+    def capture_frame(self) -> np.ndarray:
+        try:
+            frame, header_size = _capture_adb_frame(
+                self.adb_path, self.serial, header_size=self._header_size
+            )
+        except BaseException:
+            self._header_size = None
+            raise
+        self._header_size = header_size
+        return frame
+
+
 def decode_adb_frame(compressed: bytes, *, header_size: int) -> np.ndarray:
     """Return RGB from an Android raw screencap gzip member, never crop it.
 
@@ -127,6 +147,10 @@ def capture_adb_frame(adb_path: str, serial: str) -> np.ndarray:
     Android 8.1 (SDK 27); Android 8.0 still writes the legacy three words.
     The existing shared server is only observed, never started or restarted.
     """
+    return _capture_adb_frame(adb_path, serial)[0]
+
+
+def _capture_adb_frame(adb_path, serial, *, header_size=None):
     if not serial.strip():
         raise ValueError("ADB 截图必须明确指定设备 serial")
     capture_timeout = io_timeout(CAPTURE_TIMEOUT)
@@ -139,14 +163,15 @@ def capture_adb_frame(adb_path: str, serial: str) -> np.ndarray:
         return timeout
 
     guard_adb(adb_path, timeout=remaining())
-    sdk_output = _adb_output(serial, "getprop ro.build.version.sdk", 64, remaining)
-    if re.fullmatch(rb"[1-9][0-9]{0,3}\s*", sdk_output) is None:
-        raise ValueError("ADB 无法确认 Android SDK 版本，不能验证截图帧头")
-    header_size = 16 if int(sdk_output) >= 27 else 12
+    if header_size is None:
+        sdk_output = _adb_output(serial, "getprop ro.build.version.sdk", 64, remaining)
+        if re.fullmatch(rb"[1-9][0-9]{0,3}\s*", sdk_output) is None:
+            raise ValueError("ADB 无法确认 Android SDK 版本，不能验证截图帧头")
+        header_size = 16 if int(sdk_output) >= 27 else 12
     compressed = _adb_output(
         serial, "screencap 2>/dev/null | gzip -1", MAX_COMPRESSED_BYTES, remaining
     )
     remaining()
     frame = decode_adb_frame(compressed, header_size=header_size)
     remaining()
-    return frame
+    return frame, header_size
