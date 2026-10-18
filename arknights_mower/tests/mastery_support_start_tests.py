@@ -57,7 +57,7 @@ def scene_solver(transient, readable, support_name="艾丽妮"):
         assert solver.choose_train.call_count == solver.ctap.call_count == 0
         events.append("read")
         current[0] = Scene.INFRA_DETAILS if readable else Scene.TRAIN_MAIN
-        return [{"agent": support_name}, {"agent": "能天使"}]
+        return [{"agent": support_name}, {"agent": "能天使"}] if readable else []
 
     def select_skill(*args):
         assert current[0] == Scene.TRAIN_SKILL_SELECT

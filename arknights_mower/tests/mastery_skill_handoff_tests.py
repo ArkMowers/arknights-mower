@@ -170,6 +170,9 @@ def test_basic_successor_replaces_even_the_fastest_reducer(
     assert solver.tasks[0].type == TaskTypes.SWAP_SUPPORT
     monkeypatch.setattr(swap, "candidates", lambda *a, **kw: (options, 0))
     monkeypatch.setattr(swap, "confirm_training_panel", lambda *a: panel)
+    monkeypatch.setattr(
+        mastery, "_read_countdown_with_retry", lambda _: panel.countdown
+    )
     replacement = MagicMock(return_value=panel)
     monkeypatch.setattr(swap, "place_support", replacement)
     swap.perform_swap(solver, current, panel, "逻各斯")
@@ -218,6 +221,9 @@ def test_removed_basic_successor_restores_reducer_protection(
     }
     monkeypatch.setattr(swap, "candidates", lambda *a, **kw: (options, 0))
     monkeypatch.setattr(swap, "confirm_training_panel", lambda *a: panel)
+    monkeypatch.setattr(
+        mastery, "_read_countdown_with_retry", lambda _: panel.countdown
+    )
     replacement = MagicMock(return_value=panel)
     monkeypatch.setattr(swap, "place_support", replacement)
     swap.perform_swap(solver, current, panel, "逻各斯")

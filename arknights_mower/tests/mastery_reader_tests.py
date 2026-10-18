@@ -714,9 +714,8 @@ class TestReadRoomState(unittest.TestCase):
     ):
         """fake solver：场景默认 TRAIN_MAIN。
 
-        开进驻浮窗（`get_agent_from_room`）之后紧接着的那次 `train_scene` 返回
-        INFRA_DETAILS——`_read_slots_checked` 读后要确认浮窗确实开了（205），否则槽位
-        被当不可靠清空。这样按「事件」而不是按下标喂场景，重试次数变化不会打乱它。
+        公共读取返回已校验槽位后，详情浮窗仍开着，关闭按钮可见。
+        场景按事件推进，避免重试次数变化打乱后续面板观察。
 
         scenes 可预先安排前几次 `train_scene` 的返回值（画面漂移用）。
         """
@@ -745,7 +744,9 @@ class TestReadRoomState(unittest.TestCase):
         name_patch.start()
         self.addCleanup(name_patch.stop)
         # 默认没有「空闲中」标记（面板可读的训练/待收取房）；training_completed 也没有
-        solver.find.side_effect = lambda res, *a, **k: None
+        solver.find.side_effect = lambda res, *a, **k: (
+            ((1, 1), (2, 2)) if res == "arrange_check_in_on" else None
+        )
         solver.enter_room = MagicMock()
 
         def _open_slots(*args, **kwargs):
@@ -804,9 +805,12 @@ class TestReadRoomState(unittest.TestCase):
         def fake_find(res, *a, **k):
             if res == "training_idle":
                 return ((658, 976), (758, 1016))
+            if res == "arrange_check_in_on":
+                return ((1, 1), (2, 2))
             return None
 
         solver.find.side_effect = fake_find
+        solver.get_agent_from_room.return_value = [{"agent": ""}, {"agent": ""}]
         return solver
 
     def test_idle_marker_skips_countdown_retry(self):
@@ -1923,8 +1927,7 @@ class TestReconcileMatrix(unittest.TestCase):
         self.assertIsNone(plan)
 
     def test_training_unreadable_panel_no_adoption(self):
-        # B8：面板干员名不可读 → 不采纳倒计时（不刷新、不改写状态），也不判「假记录」、
-        # 不排重检——让排班系统下次自然进房重读（用户 08-15 定案）
+        # 面板身份未知时保留原训练状态，仅恢复尚未入队的换人核验。
         solver = MagicMock()
         solver.tasks = []
         room = make_room("training", operator_name="")
@@ -1933,6 +1936,10 @@ class TestReconcileMatrix(unittest.TestCase):
             patch.object(reader, "_reset_fake") as rf,
             patch.object(reader, "_update_expiry") as ue,
             patch.object(reader, "_notify_blocked") as nb,
+            patch(
+                "arknights_mower.solvers.mastery._get_plan_route",
+                return_value={"operator": "夜半", "swap_target": "逻各斯"},
+            ),
         ):
             start, arrange_support = reader._reconcile(solver, room, active, [active])
         rf.assert_not_called()
@@ -1940,11 +1947,13 @@ class TestReconcileMatrix(unittest.TestCase):
         nb.assert_not_called()
         self.assertIsNone(start)
         self.assertTrue(arrange_support)
-        self.assertEqual(solver.tasks, [], "不可读不排重检，等排班自然重读")
+        self.assertEqual(len(solver.tasks), 1)
+        self.assertEqual(solver.tasks[0].type, reader.TaskTypes.SWAP_SUPPORT)
+        self.assertEqual(solver.tasks[0].plan_key, str(active["id"]))
+        self.assertTrue(solver.tasks[0].mastery_swap_verify_only)
 
     def test_training_skill_unreadable_panel_no_adoption(self):
-        # B8：干员名可读且匹配、但技能名不可读 → 不采纳（不认不可读技能）、
-        # 不判假记录（干员对得上）、不排重检
+        # 技能未知不授权更新进度；换人意图仍保留到实读确认。
         solver = MagicMock()
         solver.tasks = []
         room = make_room("training", skill_name="")
@@ -1952,13 +1961,20 @@ class TestReconcileMatrix(unittest.TestCase):
         with (
             patch.object(reader, "_reset_fake") as rf,
             patch.object(reader, "_update_expiry") as ue,
+            patch(
+                "arknights_mower.solvers.mastery._get_plan_route",
+                return_value={"operator": "夜半", "swap_target": "逻各斯"},
+            ),
         ):
             start, arrange_support = reader._reconcile(solver, room, active, [active])
         rf.assert_not_called()
         ue.assert_not_called()
         self.assertIsNone(start)
         self.assertTrue(arrange_support)
-        self.assertEqual(solver.tasks, [], "技能不可读不排重检")
+        self.assertEqual(len(solver.tasks), 1)
+        self.assertEqual(solver.tasks[0].type, reader.TaskTypes.SWAP_SUPPORT)
+        self.assertEqual(solver.tasks[0].plan_key, str(active["id"]))
+        self.assertTrue(solver.tasks[0].mastery_swap_verify_only)
 
     def test_training_unreadable_no_downgrade_waiting_collect(self):
         # B8：DB 计划 status=waiting_collect + 面板干员名不可读 → 不被无校验刷新降回
@@ -2859,12 +2875,9 @@ class TestReadSlotsCheckedCloseFloatingWindow(unittest.TestCase):
         solver.back.assert_not_called()
 
     def test_no_double_back_when_popup_not_confirmed(self):
-        # 读后场景非 205（浮窗没开/开错）→ 槽位不消费，也不补一次 back
+        # 公共读房入口拒绝未确认的浮窗，不返回空槽，也不补一次 back。
         solver = MagicMock()
-        solver.get_agent_from_room.return_value = [
-            {"agent": "逻各斯"},
-            {"agent": "能天使"},
-        ]
+        solver.get_agent_from_room.side_effect = reader.RecognizeError("浮窗未确认")
         solver.train_scene.return_value = Scene.TRAIN_MAIN
         support, train, _, reliable = reader._read_slots_checked(solver)
         self.assertFalse(reliable)
@@ -2879,6 +2892,60 @@ class TestReadSlotsCheckedCloseFloatingWindow(unittest.TestCase):
         support, train, _, reliable = reader._read_slots_checked(solver)
         self.assertFalse(reliable)
         self.assertEqual((support, train), ("", ""))
+        solver.back.assert_not_called()
+
+    def _failed_popup_solver(self):
+        solver = MagicMock()
+        solver.train_scene.return_value = Scene.INFRA_DETAILS
+        solver.detect_room.return_value = "train"
+        solver.get_agent_from_room.side_effect = reader.RecognizeError("姓名未识别")
+
+        def close_popup(*args, **kwargs):
+            solver.train_scene.return_value = Scene.TRAIN_MAIN
+
+        solver.tap.side_effect = close_popup
+        return solver
+
+    def test_failed_slot_read_closes_its_popup_before_reporting_unreliable(self):
+        solver = self._failed_popup_solver()
+        position = ((1, 1), (2, 2))
+        solver.find.side_effect = [None, None, position]
+
+        result = reader._read_slots_checked(solver)
+
+        self.assertEqual(result, ("", "", [], False))
+        self.assertEqual(solver.train_scene(), Scene.TRAIN_MAIN)
+        self.assertEqual(
+            solver.find.call_args_list,
+            [call("arrange_check_in_on")] * 3,
+        )
+        self.assertEqual(solver.sleep.call_args_list, [call(0.5)] * 2)
+        solver.tap.assert_called_once_with(position, interval=0.5)
+        solver.back.assert_not_called()
+
+    def test_failed_slot_read_close_budget_exhaustion_raises_navigation_error(self):
+        solver = self._failed_popup_solver()
+        solver.find.return_value = None
+
+        with self.assertRaises(reader.RecognizeError):
+            reader._read_slots_checked(solver)
+
+        self.assertEqual(solver.train_scene(), Scene.INFRA_DETAILS)
+        self.assertEqual(solver.find.call_count, 3)
+        self.assertEqual(solver.sleep.call_args_list, [call(0.5)] * 3)
+        solver.tap.assert_not_called()
+        solver.back.assert_not_called()
+
+    def test_failed_slot_read_does_not_hide_a_close_exception(self):
+        solver = self._failed_popup_solver()
+        failure = RuntimeError("关闭训练室详情失败")
+        solver.find.side_effect = failure
+
+        with self.assertRaises(RuntimeError) as caught:
+            reader._read_slots_checked(solver)
+
+        self.assertIs(caught.exception, failure)
+        solver.tap.assert_not_called()
         solver.back.assert_not_called()
 
 
@@ -2913,12 +2980,61 @@ class TestReadSlotsSceneGate(unittest.TestCase):
         solver.get_agent_from_room.assert_not_called()
 
     def test_skips_when_popup_did_not_open(self):
-        # 读后场景非 205（turn_on_room_detail 未确认浮窗开）→ 槽位数据不消费
+        # 未打开详情时，公共读取在提交缓存前失败。
         solver = self._solver([Scene.TRAIN_MAIN, Scene.TRAIN_MAIN])
+        solver.get_agent_from_room.side_effect = reader.RecognizeError("详情未打开")
         support, train, scan, reliable = reader._read_slots_checked(solver)
         self.assertFalse(reliable)
         self.assertEqual((support, train), ("", ""))
         solver.get_agent_from_room.assert_called_once_with("train")
+
+    def test_trusted_read_survives_detail_closing_before_return(self):
+        solver = self._solver([Scene.TRAIN_MAIN, Scene.TRAIN_MAIN])
+        support, train, scan, reliable = reader._read_slots_checked(solver)
+        self.assertTrue(reliable)
+        self.assertEqual((support, train), ("支援干员", "训练干员"))
+        solver.tap.assert_not_called()
+
+    def test_close_failure_is_navigation_error_not_unknown_slots(self):
+        solver = self._solver([Scene.TRAIN_MAIN, Scene.INFRA_DETAILS])
+        with patch.object(
+            reader, "_close_room_detail", side_effect=RuntimeError("close")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "close"):
+                reader._read_slots_checked(solver)
+
+    def test_close_retry_exhaustion_is_navigation_error(self):
+        solver = self._solver([Scene.TRAIN_MAIN, Scene.INFRA_DETAILS])
+        with patch.object(reader, "_close_room_detail", return_value=False):
+            with self.assertRaises(reader.RecognizeError):
+                reader._read_slots_checked(solver)
+
+    def test_slot_read_cancellation_propagates(self):
+        for error_type in (reader.MowerExit, reader.DeviceRecoveryError):
+            for scene in (Scene.TRAIN_MAIN, Scene.INFRA_DETAILS):
+                with self.subTest(error_type=error_type, scene=scene):
+                    solver = self._solver([scene])
+                    solver.detect_room.return_value = "train"
+                    failure = error_type()
+                    solver.get_agent_from_room.side_effect = failure
+                    with patch.object(reader, "_close_room_detail") as close:
+                        with self.assertRaises(error_type) as caught:
+                            reader._read_slots_checked(solver)
+                    self.assertIs(caught.exception, failure)
+                    close.assert_not_called()
+                    solver.tap.assert_not_called()
+                    solver.back.assert_not_called()
+
+    def test_title_read_interruption_does_not_close_unverified_room(self):
+        for error_type in (reader.MowerExit, reader.DeviceRecoveryError):
+            with self.subTest(error_type=error_type):
+                solver = self._solver([Scene.INFRA_DETAILS])
+                solver.detect_room.side_effect = error_type()
+                with patch.object(reader, "_close_room_detail") as close:
+                    with self.assertRaises(error_type):
+                        reader._read_slots_checked(solver)
+                close.assert_not_called()
+                solver.get_agent_from_room.assert_not_called()
 
     def test_closes_open_popup_then_reads(self):
         # 前置浮窗已开（205）→ 先关回 217 再读；读后确认 205 关回
@@ -2996,7 +3112,9 @@ class TestFillSlotsReliability(unittest.TestCase):
         solver = MagicMock()
         it = iter(scenes)
         solver.train_scene.side_effect = lambda: next(it, Scene.TRAIN_MAIN)
-        solver.find.return_value = None  # _close_room_detail 不点任何东西
+        solver.find.side_effect = lambda name, *args, **kwargs: (
+            ((1, 1), (2, 2)) if name == "arrange_check_in_on" else None
+        )
         return solver
 
     @staticmethod
@@ -3030,8 +3148,9 @@ class TestFillSlotsReliability(unittest.TestCase):
         self.assertFalse(room.slots_reliable, "槽位没读全不能报「可靠地空着」")
 
     def test_popup_not_confirmed_is_not_reliable(self):
-        # 读后场景非 205（浮窗没开/开错）→ 槽位数据不消费
+        # 公共入口未确认浮窗，可靠性不能来自空姓名结果。
         solver = self._solver([Scene.TRAIN_MAIN, Scene.TRAIN_MAIN])
+        solver.get_agent_from_room.side_effect = reader.RecognizeError("详情未确认")
         room = self._fill(solver, [{"agent": ""}, {"agent": ""}])
         self.assertFalse(room.slots_reliable)
 

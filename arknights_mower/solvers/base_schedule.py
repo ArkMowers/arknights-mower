@@ -109,6 +109,7 @@ from arknights_mower.utils.manufacture_product import (
     parse_product_task_meta,
     product_task_meta,
 )
+from arknights_mower.utils.mastery_support_types import TrainingObservationError
 from arknights_mower.utils.operation_timing import (
     estimate_dorm_minutes,
     record_dorm_recovery,
@@ -558,45 +559,88 @@ class BaseSchedulerSolver(
                 for binding in op.group_bindings
                 if binding["group"]
             }
-        return copy.deepcopy(
-            {
-                "plan": task.plan,
-                "meta_data": task.meta_data,
-                "correction_groups": {
-                    group: data.group_is_resting(group) for group in correction_groups
-                },
-                "reservations": (
-                    sorted(names & reserved),
-                    sorted(slot for slot in slots if slot[0] in rooms),
-                ),
-                "effective_plan": {
-                    room: [vars(slot) for slot in data.plan.get(room, [])]
-                    for room in rooms
-                },
-                "products": {
-                    room: getattr(data, "products", {}).get(room) for room in rooms
-                },
-                "observations": {
-                    name: (
-                        op.current_room,
-                        op.current_index,
-                        None
-                        if getattr(op, "mood_is_prediction", False)
-                        else op.time_stamp,
-                    )
-                    for name, op in data.operators.items()
-                    if name in names or op.current_room in rooms
-                },
-                "facilities": {
-                    room: getattr(data, "facility_states", {}).get(room)
-                    for room in rooms
-                },
-                "room_observations": {
-                    room: getattr(data, "room_observations", {}).get(room)
-                    for room in rooms
-                },
+        snapshot = {
+            "plan": task.plan,
+            "meta_data": task.meta_data,
+            "correction_groups": {
+                group: data.group_is_resting(group) for group in correction_groups
+            },
+            "reservations": (
+                sorted(names & reserved),
+                sorted(slot for slot in slots if slot[0] in rooms),
+            ),
+            "effective_plan": {
+                room: [vars(slot) for slot in data.plan.get(room, [])] for room in rooms
+            },
+            "products": {
+                room: getattr(data, "products", {}).get(room) for room in rooms
+            },
+            "observations": {
+                name: (
+                    op.current_room,
+                    op.current_index,
+                    None if getattr(op, "mood_is_prediction", False) else op.time_stamp,
+                )
+                for name, op in data.operators.items()
+                if name in names or op.current_room in rooms
+            },
+            "facilities": {
+                room: getattr(data, "facility_states", {}).get(room) for room in rooms
+            },
+            "room_observations": {
+                room: getattr(data, "room_observations", {}).get(room) for room in rooms
+            },
+        }
+        if getattr(task, "mastery_observation_pending", False):
+            from arknights_mower.solvers.mastery import PROF_MAP
+            from arknights_mower.utils.mastery_db import (
+                get_active_plan,
+                get_all_plans,
+                get_plan_by_id,
+                get_route,
+                get_route_settings,
+            )
+            from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+            plan_key = getattr(task, "plan_key", None)
+            plan = get_plan_by_id(plan_key) if plan_key else get_active_plan()
+            try:
+                character = (
+                    get_skill_data()
+                    .get("characters", {})
+                    .get((plan or {}).get("char_id"), {})
+                )
+                profession = PROF_MAP.get(character.get("profession"))
+            except Exception:
+                # 静态资源读取失败也不能阻止保留原任务。
+                profession = None
+            snapshot["mastery"] = {
+                "observation": getattr(self, "last_mastery_observation", None),
+                "enabled": config.conf.enable_mastery,
+                "assistant_follows_schedule": config.conf.assistant_follows_schedule,
+                "plan": plan,
+                "route": get_route(profession) if profession else None,
+                "successors": [
+                    item
+                    for item in get_all_plans()
+                    if plan and item["char_id"] == plan.get("char_id")
+                ],
+                "settings": get_route_settings(),
             }
-        )
+        return copy.deepcopy(snapshot)
+
+    def _run_mastery_with_recovery(self, action):
+        """本次执行内有限复核，耗尽后交给原任务的失败保留边界。"""
+        for attempt in range(3):
+            try:
+                return action(self)
+            except TrainingObservationError:
+                if attempt == 2:
+                    raise
+                logger.warning(
+                    "训练状态未确认，本次执行重新进房复核（%s/3）", attempt + 2
+                )
+                self.back_to_infrastructure()
 
     def _retain_failed_task(self, task, reason, rooms, *, dependency=False):
         rooms = tuple(rooms)
@@ -700,6 +744,10 @@ class BaseSchedulerSolver(
                 failure["snapshot"].setdefault(
                     "room_observations", {room: None for room in failure["rooms"]}
                 )
+                mastery = failure["snapshot"].get("mastery")
+                if mastery and getattr(self, "last_mastery_observation", None) is None:
+                    # 重启丢失进程内观测时间不构成新的训练实测。
+                    mastery["observation"] = None
                 # 旧快照中的预测时间也不构成实测证据；预测失效不解除失败。
                 for name, observation in failure["snapshot"]["observations"].items():
                     op = self.op_data.operators.get(name)
@@ -2293,7 +2341,7 @@ class BaseSchedulerSolver(
                 elif self.task.type == TaskTypes.SKILL_UPGRADE:
                     from arknights_mower.solvers.mastery import run_mastery_task
 
-                    run_mastery_task(self)
+                    self._run_mastery_with_recovery(run_mastery_task)
                     from arknights_mower.utils.workshop_automation import (
                         restore_if_no_plans,
                     )
@@ -2302,7 +2350,7 @@ class BaseSchedulerSolver(
                 elif self.task.type == TaskTypes.SWAP_SUPPORT:
                     from arknights_mower.solvers.mastery import run_swap_support
 
-                    run_swap_support(self)
+                    self._run_mastery_with_recovery(run_swap_support)
                 elif self.task.type == TaskTypes.FURNITURE:
                     from arknights_mower.solvers.furniture import FurnitureDismantler
                     from arknights_mower.utils.furniture_task import (
@@ -2505,6 +2553,11 @@ class BaseSchedulerSolver(
                     and self.tasks[0].type in [TaskTypes.SHIFT_ON]
                 ):
                     self.backup_plan_solver()
+            except TrainingObservationError as e:
+                self.task.mastery_observation_pending = True
+                self._retain_failed_task(self.task, str(e), ["train"])
+                self.skip()
+                self.back_to_infrastructure()
             except RoomArrangementDeferred as e:
                 task = self.task
                 attempts = (
@@ -2778,7 +2831,17 @@ class BaseSchedulerSolver(
                 if _training_room_scan_disabled:
                     force_rooms.discard(room)
                     continue
-                last_read = getattr(self, "last_train_mood_read", None)
+                last_read = max(
+                    (
+                        observed_at
+                        for observed_at in (
+                            getattr(self, "last_train_mood_read", None),
+                            getattr(self, "last_train_mood_attempt", None),
+                        )
+                        if isinstance(observed_at, datetime)
+                    ),
+                    default=None,
+                )
                 if (
                     room not in force_rooms
                     and last_read
@@ -2786,8 +2849,7 @@ class BaseSchedulerSolver(
                 ):
                     continue
             error_count = 0
-            # 近期读过的房内干员无需重复扫描。训练室为空或识别失败时，上面的
-            # 房间级时间同样限频，避免没有固定干员的训练室每轮被强制读取。
+            # 近期可信读过的房内干员无需重复扫描；训练室保持原有巡检间隔。
             current_working = [
                 value
                 for key, value in self.op_data.operators.items()
@@ -2818,8 +2880,6 @@ class BaseSchedulerSolver(
             ):
                 self.back_to_infrastructure()
                 return False
-            if room == "train":
-                self.last_train_mood_read = datetime.now()
             skip_room_exit = False
             room_entered = False
             while True:
@@ -2845,6 +2905,8 @@ class BaseSchedulerSolver(
                                     self, enter=False, want_mood=True
                                 )
                                 self.train_room_state = room_state
+                                if room_state.slots_reliable is True:
+                                    self.last_train_mood_read = datetime.now()
                                 if room_state.read_failed or room_state.state not in (
                                     "empty",
                                     "training",
@@ -2878,7 +2940,7 @@ class BaseSchedulerSolver(
                                     reconcile_short(
                                         self, room_state, defer_collect=False
                                     )
-                            except MowerExit:
+                            except (MowerExit, DeviceRecoveryError):
                                 raise
                             except Exception as e:
                                 logger.warning(f"训练室顺路更新状态失败: {e}")
@@ -2892,6 +2954,8 @@ class BaseSchedulerSolver(
                             self.train_room_state = None
                             manual_room_state = read_room_state(self, enter=False)
                             _mood_data = self.get_agent_from_room(room, None)
+                            if len(_mood_data) == 2:
+                                self.last_train_mood_read = datetime.now()
                             trainee = (
                                 _mood_data[1].get("agent", "")
                                 if len(_mood_data) > 1
@@ -2909,23 +2973,29 @@ class BaseSchedulerSolver(
                                 logger.info(
                                     f"房间 {self.translate_room(room)}  {mood_info}"
                                 )
+                        self.last_train_mood_attempt = datetime.now()
                     else:
                         self._read_room_mood(room, force_mood=room in force_rooms)
                     break
-                except MowerExit:
+                except (MowerExit, DeviceRecoveryError):
                     raise
                 except Exception as e:
                     if room == "train":
                         # 巡检不要求账号已建造训练室。进房本身已有有限重试，
                         # 失败后不能再由心情读取／纠错重复进入同一未建造房间。
-                        self.train_room_state = None
                         if not room_entered:
                             _training_room_scan_disabled = True
                             logger.warning(
                                 f"训练室未建造或进房失败，本次进程停用训练室巡检，继续其他房间：{e}"
                             )
                         else:
+                            from arknights_mower.solvers.mastery_reader import RoomState
+
+                            self.train_room_state = RoomState(
+                                "unknown", read_failed=True
+                            )
                             logger.warning(f"训练室本次读取失败，跳过本轮巡检：{e}")
+                        self.last_train_mood_attempt = datetime.now()
                         self.back_to_infrastructure()
                         skip_room_exit = True
                         break
@@ -10072,6 +10142,17 @@ class BaseSchedulerSolver(
             for (target_room, index), name in expected.items()
             if target_room == room
         }
+        if required:
+            targets = ["Current"] * (max(required) + 1)
+            for index, name in required.items():
+                targets[index] = name
+            protected_plan = {room: targets}
+            self._suppress_train_arrangement(protected_plan)
+            required = {
+                index: name
+                for index, name in enumerate(protected_plan.get(room, ()))
+                if name != "Current"
+            }
         conflicts = []
         for index, name in required.items():
             selected = agents[index] if index < len(agents) else ""
@@ -10831,6 +10912,101 @@ class BaseSchedulerSolver(
             )
         raise RecognizeError("房间名单滚动六次仍未到达边界，返回房间重试")
 
+    def _require_training_detail(self):
+        if self.train_scene() != Scene.INFRA_DETAILS or self.detect_room() != "train":
+            raise RecognizeError("未确认训练室进驻详情，不更新驻员缓存")
+
+    def _observe_training_room(self, read_time_index, departing_plan, force_mood):
+        """暂存两槽观察；未知姓名和错误场景不产生实际驻员副作用。"""
+        for _ in range(6):
+            scene = self.train_scene()
+            if scene == Scene.INFRA_DETAILS:
+                BaseSchedulerSolver._require_training_detail(self)
+                break
+            if scene == Scene.TRAIN_MAIN:
+                self._open_check_in_detail()
+            elif scene in (Scene.CONNECTING, Scene.UNKNOWN):
+                self.sleep(0.25)
+            else:
+                raise RecognizeError("读取训练室驻员时场景不符")
+        else:
+            raise RecognizeError("训练室进驻详情未在有限重试内打开")
+        self.wait_product_complete()
+        observed = []
+        names = set()
+        for index in range(RIGHT_SIDE_ROOM_CAPACITY["train"]):
+            top = 135 + 209 * index
+            slot_scope = ((1288, top), (1869, top + 191))
+            name_scope = ((1460, top + 25), (1785, top + 80))
+            for attempt in range(3):
+                BaseSchedulerSolver._require_training_detail(self)
+                if self.find("infra_no_operator", scope=slot_scope):
+                    name = ""
+                    break
+                name = self.read_screen(
+                    cropimg(self.recog.gray, name_scope), type="name"
+                )
+                if name in agent_list:
+                    break
+                if attempt < 2:
+                    self.sleep(0.25)
+            else:
+                raise RecognizeError(f"训练室第 {index + 1} 槽位姓名未识别，保留原驻员")
+            if name and name in names:
+                raise RecognizeError("训练室两槽读到重复姓名，保留原驻员")
+            names.add(name)
+            data = {"agent": name, "mood": -1, "update_time": False}
+            if name:
+                agent = self.op_data.operators.get(name)
+                update_time = (
+                    agent is None
+                    or force_mood
+                    or agent.need_to_refresh(r="train")
+                    or (self.tasks and self.tasks[0].type == TaskTypes.SHIFT_ON)
+                    or index in read_time_index
+                    or (
+                        departing_plan is not None
+                        and index < len(departing_plan)
+                        and departing_plan[index] != "Current"
+                        and name not in departing_plan
+                    )
+                    or (agent.current_room, agent.current_index) != ("train", index)
+                )
+                mood = (
+                    self.read_accurate_mood(
+                        cropimg(
+                            self.recog.gray,
+                            ((1470, 219 + 209 * index), (1780, 220 + 209 * index)),
+                        )
+                    )
+                    if update_time
+                    else agent.current_mood()
+                )
+                if (
+                    not isinstance(mood, (int, float))
+                    or not math.isfinite(mood)
+                    or not 0 <= mood <= 24
+                ):
+                    raise RecognizeError(f"训练室第 {index + 1} 槽位心情未核实")
+                data.update(
+                    mood=mood,
+                    update_time=update_time,
+                    sample_mood=mood if update_time else agent.mood,
+                )
+                if index in read_time_index:
+                    data["time"] = (
+                        datetime.now()
+                        if mood == 24
+                        else self.read_operator_time(
+                            "train",
+                            index,
+                            ((1650, 270 + 210 * index), (1780, 305 + 210 * index)),
+                        )
+                    )
+            observed.append(data)
+        BaseSchedulerSolver._require_training_detail(self)
+        return observed
+
     def get_agent_from_room(
         self,
         room,
@@ -10842,6 +11018,11 @@ class BaseSchedulerSolver(
         strict_observation=False,
     ):
         """读取实际驻员；姓名未决槽位标记 observed=False，不据此确认离岗。"""
+        training_observation = None
+        if room == "train":
+            training_observation = BaseSchedulerSolver._observe_training_room(
+                self, read_time_index or [], departing_plan, force_mood
+            )
         # 只观察真实读房；初始化试住和肥鸭临时换位不产生新的休息周期。
         released_support = None
         if self._can_refresh_idle_dorm_search():
@@ -10885,7 +11066,8 @@ class BaseSchedulerSolver(
                 self.clue_count = clue_res
                 logger.info(f"当前拥有线索数量为{self.clue_count}")
         self.refresh_facility_state(room)
-        self.turn_on_room_detail(room)
+        if training_observation is None:
+            self.turn_on_room_detail(room)
         # 如果是宿舍则全读取
         if room.startswith("dorm"):
             if self.task is not None and self.task.type == TaskTypes.FIAMMETTA:
@@ -10902,7 +11084,8 @@ class BaseSchedulerSolver(
                 read_time_index = list(
                     dict.fromkeys([*read_time_index, *dorm_read_time_index])
                 )
-        self.wait_product_complete()
+        if training_observation is None:
+            self.wait_product_complete()
         if room in RIGHT_SIDE_ROOM_CAPACITY:
             length = RIGHT_SIDE_ROOM_CAPACITY[room]
         else:
@@ -10933,23 +11116,27 @@ class BaseSchedulerSolver(
             data = {}
             _name = ""
             slot_observed = False
-            for read_try in range(3):
-                if self.find("infra_no_operator", scope=slot_p[i]):
-                    _name = ""
-                    slot_observed = True
-                    break
-                _name = self.read_screen(
-                    cropimg(self.recog.gray, name_p[i]), type="name"
-                )
-                if _name != "":
-                    slot_observed = True
-                    break
-                if read_try < 2:
-                    logger.debug(
-                        f"房间 {room} 第 {i + 1} 槽位干员未识别或置信度过低，等待 0.25s 原地重试 ({read_try + 1}/2)"
+            if training_observation is not None:
+                _name = training_observation[i]["agent"]
+                slot_observed = True
+            else:
+                for read_try in range(3):
+                    if self.find("infra_no_operator", scope=slot_p[i]):
+                        _name = ""
+                        slot_observed = True
+                        break
+                    _name = self.read_screen(
+                        cropimg(self.recog.gray, name_p[i]), type="name"
                     )
-                    self.sleep(0.25)
-                    self.recog.update()
+                    if _name != "":
+                        slot_observed = True
+                        break
+                    if read_try < 2:
+                        logger.debug(
+                            f"房间 {room} 第 {i + 1} 槽位干员未识别或置信度过低，等待 0.25s 原地重试 ({read_try + 1}/2)"
+                        )
+                        self.sleep(0.25)
+                        self.recog.update()
             observation_complete = observation_complete and slot_observed
             if not slot_observed:
                 data["observed"] = False
@@ -10996,7 +11183,10 @@ class BaseSchedulerSolver(
                     should_read_mood = True
                     if i not in read_time_index:
                         read_time_index.append(i)
-                if should_read_mood:
+                if training_observation is not None:
+                    _mood = training_observation[i]["mood"]
+                    update_time = training_observation[i]["update_time"]
+                elif should_read_mood:
                     _mood = self.read_accurate_mood(cropimg(self.recog.gray, mood_p[i]))
                     if strict_observation and (
                         not isinstance(_mood, (int, float))
@@ -11008,9 +11198,12 @@ class BaseSchedulerSolver(
                 else:
                     _mood = self.op_data.operators[_name].current_mood()
                 # 估算值只用于本次读数，保留与原采样时间配对的心情，避免重复扣减。
+                sample_mood = _mood if update_time else agent.mood
+                if training_observation is not None:
+                    sample_mood = training_observation[i]["sample_mood"]
                 update_args = (
                     _name,
-                    _mood if update_time else agent.mood,
+                    sample_mood,
                     room,
                     i,
                     update_time,
@@ -11070,7 +11263,11 @@ class BaseSchedulerSolver(
                     if _mood >= agent.upper_limit:
                         self.op_data.stop_idle_dorm_search()
                 data["depletion_rate"] = agent.depletion_rate
-                if high_no_time is not None and high_no_time not in read_time_index:
+                if (
+                    training_observation is None
+                    and high_no_time is not None
+                    and high_no_time not in read_time_index
+                ):
                     logger.debug(
                         f"检测到高效组休息时间数据不存在:{room},{high_no_time}"
                     )
@@ -11114,7 +11311,9 @@ class BaseSchedulerSolver(
                         and self.read_accurate_mood(cropimg(self.recog.gray, mood_p[i]))
                         == 0
                     )
-                if exhausted_working:
+                if training_observation is not None:
+                    data["time"] = training_observation[i]["time"]
+                elif exhausted_working:
                     data["time"] = datetime.now()
                     logger.debug(f"中枢干员 {_name} 已复核心情耗尽，无需读取倒计时")
                 elif _mood == 24 or room in ["meeting", "factory"] and not update_time:
@@ -11164,6 +11363,8 @@ class BaseSchedulerSolver(
             self.op_data.refresh_idle_dorm_search(
                 reason="专精协助位干员已释放", names=[released_support.name]
             )
+        if training_observation is not None:
+            self.last_train_mood_read = datetime.now()
         return result
 
     def _reconcile_room_observation(self, room, observed, *, group_transitions=None):
