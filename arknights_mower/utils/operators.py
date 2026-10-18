@@ -3,10 +3,11 @@ import copy
 import json
 from collections import defaultdict
 from datetime import datetime, timedelta
+from functools import lru_cache
 from time import monotonic
 from typing import Any, Literal, overload
 
-from evalidate import Expr, base_eval_model
+from evalidate import EvalModel, ExecutionException, Expr, base_eval_model
 
 from arknights_mower.utils import config
 from arknights_mower.utils.config.plan_advanced import export_advanced_settings
@@ -50,6 +51,7 @@ _MAX_INTEGER_LITERAL_BITS = 256
 _MAX_STRING_LITERAL_LENGTH = 512
 _MAX_POWER_EXPONENT = 64
 _MAX_NUMERIC_RESULT_BITS = 4096
+_MAX_COMPILED_EXPRESSIONS = 256
 _NUMERIC_EXPRESSION_CALLS = {
     "current_mood",
     "facility_operator_count",
@@ -154,6 +156,21 @@ def _validate_expression_resources(expression: str) -> None:
                 )
             if result_bits is None or result_bits > _MAX_NUMERIC_RESULT_BITS:
                 raise ValueError("幂运算结果过大")
+
+
+@lru_cache(maxsize=_MAX_COMPILED_EXPRESSIONS)
+def _compile_expression(
+    expression, nodes, attributes, allowed_functions, imported_names
+):
+    """最多保留 256 条已校验代码；许可变化另行校验，旧项按 LRU 淘汰。"""
+    _validate_expression_resources(expression)
+    permissions = EvalModel(
+        nodes=list(nodes),
+        attributes=list(attributes),
+        allowed_functions=list(allowed_functions),
+        imported_functions=dict.fromkeys(imported_names),
+    )
+    return Expr(expression, permissions).code
 
 
 @overload
@@ -988,13 +1005,22 @@ class Operators:
 
     def evaluate_expression(self, expression):
         try:
-            _validate_expression_resources(expression)
+            code = _compile_expression(
+                expression,
+                tuple(self.eval_model.nodes),
+                tuple(self.eval_model.attributes),
+                tuple(self.eval_model.allowed_functions),
+                tuple(self.eval_model.imported_functions),
+            )
             model = {e: e for e in base_room_list}
             model.update({e: e for e in MANUFACTURE_PRODUCTS | TRADE_PRODUCTS})
             model.update({e: e for e in FACILITY_TYPE_IDS.values()})
             model["op_data"] = self
-            result = Expr(expression, self.eval_model).eval(model)
-            return result
+            # 代码缓存不保留运行时对象；每次从当前模型和驻员状态求值。
+            try:
+                return eval(code, self.eval_model.imported_functions, model)
+            except Exception as e:
+                raise ExecutionException(e) from e
         except Exception as e:
             logger.exception(f"附表格式出错: {e}")
             return None
