@@ -100,8 +100,8 @@ def test_unchanged_backup_runs_maintenance_and_product_checks_first(
     data.backup_plans[0].products = {"room_1_1": "gold"}
     events = []
 
-    def maintenance(conditions):
-        events.append(("maintenance", conditions))
+    def maintenance(conditions, backup_group):
+        events.append(("maintenance", conditions, backup_group))
         return False
 
     def products():
@@ -114,7 +114,7 @@ def test_unchanged_backup_runs_maintenance_and_product_checks_first(
         data, "project_arrangements", wraps=data.project_arrangements
     ) as project:
         assert solver.backup_plan_solver() is False
-    assert events == [("maintenance", [False]), ("products", None)]
+    assert events == [("maintenance", [False], "default"), ("products", None)]
     project.assert_not_called()
     assert data.plan_condition == [False]
 

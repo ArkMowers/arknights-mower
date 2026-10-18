@@ -235,10 +235,13 @@ def test_unchanged_backup_preserves_dynamic_exhaust_deadline(solver, path):
 def test_failed_backup_commit_preserves_dynamic_exhaust_deadline(solver, path):
     old = SchedulerTask(task_type=TaskTypes.EXHAUST_OFF, meta_data="歌蕾蒂娅")
     solver.tasks = [old]
+    deadline = old.time
     swap = solver.op_data.swap_plan
     solver.op_data.swap_plan = MagicMock(
-        side_effect=lambda conditions, refresh=False: (
-            "invalid merged plan" if conditions == [True] else swap(conditions, refresh)
+        side_effect=lambda conditions, refresh=False, *, backup_group=None: (
+            "invalid merged plan"
+            if conditions == [True]
+            else swap(conditions, refresh, backup_group=backup_group)
         )
     )
     if path == "cached":
@@ -249,6 +252,14 @@ def test_failed_backup_commit_preserves_dynamic_exhaust_deadline(solver, path):
         with pytest.raises(ValueError, match="最终排班生效失败"):
             solver._activate_shift_backup(task)
     assert solver.tasks == [old]
+    solver.op_data.swap_plan.assert_any_call(
+        [True], refresh=True, backup_group="default" if path == "cached" else None
+    )
+    solver.op_data.swap_plan.assert_any_call(
+        [False], refresh=True, backup_group="default"
+    )
+    assert old.time == deadline
+    assert solver.op_data.backup_group == "default"
     assert solver.op_data.plan_condition == [False]
 
 
