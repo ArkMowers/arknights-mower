@@ -1,12 +1,12 @@
 ---
 name: mower-commit
-description: 为 Arknights Mower 编写中文 Git commit 说明，并按已有授权提交指定改动。编写 commit 说明、提交改动或准备 squash 合并时使用；不用于代码修复、代码评审或单独编写 PR 说明。
+description: 为 Arknights Mower 编写中文 Git commit 说明，并按已有授权提交改动或合并 PR。编写普通 commit 说明、创建提交或执行 PR 合并时使用；不用于代码修复、代码评审或单独编写 PR 说明。
 compatibility: Requires an Arknights Mower checkout and its repository contracts; this is a repository-local skill, not a standalone distribution.
 ---
 
 # Mower Commit
 
-输入是用户需求、目标范围的完整 diff 和已有检查记录，输出是中文 commit 标题、必要正文及已授权创建 commit 的结果。[Arknights Mower Agent 工作流程](../../AGENTS.md#1-task-selection)规定任务范围与完成条件；[项目文风规范](../mower-prose-standard/SKILL.md)规定表达和术语核对方法。
+输入是用户需求、目标范围的完整 diff 和已有检查记录。普通提交输出中文标题、必要正文及已授权创建 commit 的结果；PR 合并直接执行[合并流程](#pr-merge)，保留平台默认说明。[Arknights Mower Agent 工作流程](../../AGENTS.md#1-task-selection)规定任务范围与完成条件；[项目文风规范](../mower-prose-standard/SKILL.md)规定表达和术语核对方法。
 
 ## 1. 确认 commit 范围
 
@@ -25,7 +25,7 @@ compatibility: Requires an Arknights Mower checkout and its repository contracts
 <a id="title-rules"></a>
 ## 3. 标题规则
 
-本节供 commit 与 `mower-pr` 共用：commit 标题依据一次 commit 的完整 diff，PR 标题依据整个 PR 的最终 diff。PR 写作只复用本节和发布说明规则，执行范围由 `mower-pr` 确定。
+本节规范 Agent 撰写的普通 commit 标题，并供 `mower-pr` 共用：commit 标题依据一次 commit 的完整 diff，PR 标题依据整个 PR 的最终 diff。PR 写作只复用本节和发布说明规则，执行范围由 `mower-pr` 确定。
 
 标题供维护者在 commit 历史或 PR 列表中辨认主要改动。先从需求和两版事实确定主要动作及其直接支配的宾语，中文描述用这一动宾结构起笔，再补足辨认变化所需的内容，选择 type 和 scope。仅引出后续动作的变化提示不能代替主要动作。所有类型都按同一标准确认实际变化，类型名称不代替中文描述。
 
@@ -45,7 +45,7 @@ scope 按主要维护对象优先采用项目已有英文范围名称；多个�
 <a id="commit-body"></a>
 ## 4. 必要正文
 
-标题之外没有理解变化或判断后果必需的信息时，只交付标题。需要正文时，补充具体问题与原因、主要取舍、重要使用或兼容条件，承接标题展开，篇幅由信息决定，不逐项复述完整 diff 或 PR 正文。准备 squash 合并的 commit 说明时，按整个 PR 的最终 diff 编写，不直接复制 PR Summary。
+标题之外没有理解变化或判断后果必需的信息时，只交付标题。需要正文时，补充具体问题与原因、主要取舍、重要使用或兼容条件，承接标题展开，篇幅由信息决定，不逐项复述完整 diff 或 PR 正文。用户明确要求自定义 PR 合并说明时，按整个 PR 的最终 diff 编写；默认合并使用[平台说明](#pr-merge)。
 
 验证只使用真实执行记录，区分历史记录与本次执行。常规检查、测试数量和开发经过放在交付记录或 PR 中；实际失败或未验证范围影响理解改动或判断后果时才写入正文，并保留影响结论的条件。正文首次出现的简称、类别和指代说明其对象，共同范围只覆盖实际共用规则的步骤。
 
@@ -70,7 +70,15 @@ Changelog 面向使用或维护改动对象的读者。先完成必要正文及�
 
 1. 只请求 commit 文案时，交付标题和必要正文。历史 commit 或多份草稿在文案之外标明来源；演练案例与当前目标分别展示。
 2. 请求创建 commit 时，按已有授权暂存本次改动，读取实际使用的完整暂存 diff，重新核对标题、正文和范围。
-3. 按[项目验证要求](../../AGENTS.md#4-verification-and-reporting)完成相关检查并记录实际结果。创建 commit 或执行 squash 合并前，回读将实际写入的标题和完整正文，按[必要正文](#commit-body)核对信息取舍；格式与术语检查不能替代这一步。多行说明写入临时文件，通过 `git commit --file` 或合并命令的说明参数显式传入，保留原有换行。
+3. 按[项目验证要求](../../AGENTS.md#4-verification-and-reporting)完成相关检查并记录实际结果。创建普通 commit 前，回读将实际写入的标题和完整正文，按[必要正文](#commit-body)核对信息取舍；格式与术语检查不能替代这一步。多行说明写入临时文件，通过 `git commit --file` 显式传入，保留原有换行。PR 合并另按[合并流程](#pr-merge)执行。
 4. 创建 commit 后回读生成的说明和 diff，确认内容符合范围、其他修改的暂存状态得到保留。交付实际 commit、主要变化和检查结果；推送或发布 PR 沿用对应任务的授权。
+
+<a id="pr-merge"></a>
+## 7. PR 合并
+
+1. 沿用用户已有的合并授权，核对目标 PR、最终 diff 和当前 head。当前 head 的必要检查全部成功，并完成未解决评审的核对后，再执行合并；检查尚未完成或失败时保留具体状态。
+2. 使用 GitHub 按仓库配置生成的默认合并标题和正文，保留平台附带的 PR 关联编号。普通 commit 的中文写作、编号限制和隔离撰写流程不用于重写平台默认合并说明；只有用户明确要求自定义说明时才另行撰写。
+3. 使用默认说明合并时，CLI/API 省略说明覆盖参数：不传 `--subject`、`--body`、`--body-file`，REST 请求省略 `commit_title` 和 `commit_message`，也不以空字符串替代省略。合并方式沿用用户选择或仓库要求，并用 head SHA 固定本次已核验的提交。
+4. 合并后回读 PR 状态、合并提交 SHA 及实际标题正文，报告实际结果。平台默认说明的核对不要求重新生成说明，也不改写历史提交。
 
 [评估用例](evals/evals.json)在相同请求和原始材料下比较新旧版本。程序检查格式和指定术语，对照材料核验事实覆盖，用户判断文案是否清楚；分别报告结论。
