@@ -67,6 +67,25 @@ def test_cached_expression_obeys_each_models_current_permissions(data, permissio
     assert data.evaluate_expression(expression) is None
 
 
+def test_evaluation_keeps_permission_model_unchanged_and_cache_key_stable():
+    model = Operators(
+        {
+            "default_plan": Plan({}, PlanConfig("", "", "")),
+            "backup_plans": [],
+        }
+    )
+    imported_functions = model.eval_model.imported_functions.copy()
+    before = operators._compile_expression.cache_info()
+
+    assert model.evaluate_expression("True") is True
+    assert model.eval_model.imported_functions == imported_functions
+    assert model.evaluate_expression("True") is True
+    after = operators._compile_expression.cache_info()
+    assert after.misses - before.misses == 1
+    assert after.hits - before.hits == 1
+    assert model.eval_model.clone() == model.eval_model
+
+
 def test_cached_builtin_call_obeys_allowed_function_changes(data):
     expression = "len('abc') == 3"
     data.eval_model.allowed_functions.append("len")

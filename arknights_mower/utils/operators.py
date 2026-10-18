@@ -1018,7 +1018,7 @@ class Operators:
             model["op_data"] = self
             # 代码缓存不保留运行时对象；每次从当前模型和驻员状态求值。
             try:
-                return eval(code, self.eval_model.imported_functions, model)
+                return eval(code, self.eval_model.imported_functions.copy(), model)
             except Exception as e:
                 raise ExecutionException(e) from e
         except Exception as e:
