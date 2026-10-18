@@ -786,7 +786,7 @@ class Recognizer:
             "confirm": (0, 683),
             "control_central_assistants": (39, 560),
             "credit_shop_countdown": (1511, 1017),
-            "depot": (0, 955),
+            "depot": (0, 1000),
             "double_confirm/exit": (940, 464),
             "double_confirm/friend": (978, 465),
             "double_confirm/give_up": (574, 716),
@@ -874,6 +874,9 @@ class Recognizer:
 
         if not force_feature_match and res in color:
             res_img = loadres(res)
+            if res == "depot":
+                # 限时物品标签会遮住旧模板上沿，只匹配下方固定背景，兼容现有资源包。
+                res_img = res_img[45:]
             h, w, _ = res_img.shape
 
             pos_list = color[res]
