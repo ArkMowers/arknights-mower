@@ -448,6 +448,7 @@ async function validate_plan() {
   try {
     await nextTick()
     await plan_store.save_plan()
+    await plan_store.wait_for_plan_save()
     const { data } = await axios.post(
       `${import.meta.env.VITE_HTTP_URL}/${rescue ? 'rescue-plan/validate' : 'validate-plan'}`,
       {},
