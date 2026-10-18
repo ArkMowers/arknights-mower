@@ -1,3 +1,4 @@
+import type { QualityRule } from '../domain/types'
 import { operatorFor, type OperatorContext } from '../domain/operatorContext'
 /** Continuous/hourly are explicit modelling choices: tooltips do not establish sub-hour ticks. */
 export interface TimeContext { workHoursByOperator: ReadonlyMap<string, number>; warmupModel?: 'continuous' | 'hourly' }
@@ -20,10 +21,31 @@ export function temporalSkillBonus(buffId:string, operatorId:string, context?:Ti
 }
 export function getTemporalSkillBoundaries(operatorId:string,context:OperatorContext={}):number[] {
  const events=new Set<number>()
+ for(let hour=1;hour<=qualitySkillWarmupHours(operatorId,context);hour++)events.add(hour)
  for(const skill of operatorFor(context,operatorId)?.skills??[]) {
   if(skill.buffId==='manu_prod_cost_min[001]')events.add(12)
   const curve=CURVES[skill.buffId]
   if(curve)for(let hour=1;hour<=(curve[2]-curve[0])/curve[1];hour++)events.add(hour)
  }
  return [...events].sort((a,b)=>a-b)
+}
+
+/** PRTS verifies peak probabilities after 3/5 hours, not the intermediate curve. */
+export function qualitySkillWarmupHours(operatorId:string,context:OperatorContext={}):number {
+ const names=(operatorFor(context,operatorId)?.skills??[]).map(skill=>skill.name)
+ if(names.some(name=>/裁缝·β|手工艺品·β|鉴定师的手段/.test(name)))return 5
+ if(names.some(name=>/裁缝·α|手工艺品·α|鉴定师的眼光|懂行|千金的眼光/.test(name)))return 3
+ return 0
+}
+/** Linear approximation; keep the strongest current effect without inventing stacking. */
+export function temporalTradeQuality(ids:readonly string[],fallback:QualityRule,operators:OperatorContext,time?:TimeContext,level=3):{quality:QualityRule;qualityWarmup:number} {
+ let quality:QualityRule='normal',qualityWarmup=1,best=-1
+ for(const id of ids){
+  const cap=qualitySkillWarmupHours(id,operators)
+  if(!cap)continue
+  const progress=time?Math.max(0,Math.min(1,(time.workHoursByOperator.get(id)??0)/cap)):1
+  const strength=((cap===5?.85:.55)-(level===3?.2:0))*progress
+  if(strength>best){best=strength;quality=cap===5?'beta':'alpha';qualityWarmup=progress}
+ }
+ return best<0?{quality:fallback,qualityWarmup:1}:{quality,qualityWarmup}
 }

@@ -123,6 +123,7 @@ export function createClueObservation(warmupHours, inventory = fullCatalogIdleIn
     compiled.operators.map((operator) => [operator.charId, operator.elitePhase])
   )
   const tenure = new Map()
+  let positions = new Map()
   let progress = 0
   let warmupCompleted = 0
   const completed = () => Math.floor(progress + 1e-9)
@@ -146,7 +147,15 @@ export function createClueObservation(warmupHours, inventory = fullCatalogIdleIn
     for (const id of awake) tenure.set(id, (tenure.get(id) ?? 0) + duration)
   }
   return {
-    observe(config, start, end) {
+    observe(config, start, end, workHours) {
+      const current = new Map(config.facilityOperatorIds.reception.map((id, index) => [id, index]))
+      for (const id of tenure.keys()) {
+        if (!current.has(id) || positions.get(id) !== current.get(id)) tenure.delete(id)
+      }
+      positions = current
+      if (workHours) {
+        for (const id of current.keys()) tenure.set(id, workHours.get(id) ?? 0)
+      }
       const split = Math.min(end, warmupHours)
       if (start < warmupHours) {
         advance(config, start, split)

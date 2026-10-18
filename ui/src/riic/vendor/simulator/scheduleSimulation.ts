@@ -20,7 +20,7 @@ import {evaluateRecycleEfficiency} from '../engine/supportFacilitySkills'
 import {evaluateDormitoryRecovery} from '../engine/dormitoryRecovery'
 import {evaluateOperators} from '../engine/operatorRules'
 import {buildRiicGlobalContext} from '../engine/globalContext'
-import {getTemporalSkillBoundaries} from '../engine/timeDependentSkills'
+import {getTemporalSkillBoundaries,qualitySkillWarmupHours} from '../engine/timeDependentSkills'
 import type {CompiledSchedule} from '../scheduler/types'
 import {compiledScheduleToRuntimeConfig} from '../scheduler/scheduleAdapter'
 import {normalizeMowerRecoveryBeds} from '../scheduler/mowerRecoveryBeds'
@@ -32,7 +32,7 @@ export interface ScheduleSimulationProgress {
 }
 export interface ScheduleSimulationOptions {
  /** Read-only observation of each resolved interval, including warmup. */
- observeInterval?:(config:AppConfig,start:number,end:number)=>void
+ observeInterval?:(config:AppConfig,start:number,end:number,workHours:ReadonlyMap<string,number>)=>void
  /** The complete-preview alpha scheduler requires an explicit opt-in. */
  schedulingModel?:'mower-default'|'mower-alpha'
  productionWeights?:import('../domain/productionWeights').ProductionWeights
@@ -180,20 +180,26 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
   for(const d of backups.diagnostics)diagnostic(d.code,d.message)
  }catch(error){diagnostic('INVALID_RUNTIME',String(error));return report}
  const total=warmupHours+sampleHours,initial=state.initialMorale??{...state.morale}
- const entered=new Map<string,{room:string;time:number}>()
+ const entered=new Map<string,{position:string;revision:number;time:number}>()
+ let sessionsInitialized=false
  let hasActiveTemporalSkills=false,hasActiveContinuousWarmup=false
  const checkTemporalSkills=()=>{
   hasActiveTemporalSkills=[...entered.keys()].some(id=>getTemporalSkillBoundaries(id,{operatorRecords}).length>0)
-  hasActiveContinuousWarmup=warmupModel==='continuous'&&hasActiveTemporalSkills
+  hasActiveContinuousWarmup=hasActiveTemporalSkills&&(warmupModel==='continuous'||[...entered].some(([id,session])=>qualitySkillWarmupHours(id,{operatorRecords})>state.time-session.time))
  }
  const refreshSessions=(newEvents:RuntimeEvent[]=[])=>{
   const reset=new Set(newEvents.filter(e=>e.type==='fiammetta').map(e=>e.operators[1]))
-  const working=new Map(state.config.positions.filter(p=>!p.dormitory&&state.occupants[p.id]).map(p=>[state.occupants[p.id]!,p.roomId]))
+  const working=new Map(state.config.positions.filter(p=>!p.dormitory&&state.occupants[p.id]).map(p=>[state.occupants[p.id]!,p.id]))
   for(const id of entered.keys())if(!working.has(id))entered.delete(id)
-  for(const [id,room] of working)if(entered.get(id)?.room!==room||reset.has(id))entered.set(id,{room,time:state.time-(state.time===0&&!reset.has(id)?(options.initialWorkHours?.[id]??0):0)})
+  for(const [id,position] of working){
+   const revision=state.workPositionChanges?.[id]??0,previous=entered.get(id)
+   if(previous?.position!==position||previous.revision!==revision||reset.has(id))entered.set(id,{position,revision,time:state.time-(!sessionsInitialized&&!reset.has(id)?(options.initialWorkHours?.[id]??0):0)})
+  }
+  sessionsInitialized=true
   checkTemporalSkills()
  }
  refreshSessions()
+ if([...entered.keys()].some(id=>qualitySkillWarmupHours(id,{operatorRecords})>0)||Object.keys(schedule.operators).some(id=>qualitySkillWarmupHours(id,{operatorRecords})>0))diagnostic('TRADE_QUALITY_WARMUP_MODEL','裁缝类订单概率采用线性近似：α／β分别在原工位连续工作 3／5 小时达到峰值；移动工位或离岗后重新计时。同类效果不叠加，取当前四赤金概率最高者；中间曲线和叠加机制未经实测核验。')
  const stats=new Map(Object.keys(state.morale).map(id=>[id,{operatorId:id,operatorName:OPERATOR_MAP.get(id)?.name??id,mainWorkHours:0,substituteWorkHours:0,workHours:0,exhaustedHours:0,restHours:0,idleHours:0,permanentPrimaryOccupancyHours:0,workFraction:0,workRestRatio:null,initialMorale:initial[id]!,finalMorale:initial[id]!} as SimulatedOperator]))
  const roomStats=new Map(projectScheduleState(schedule,state).rooms.map(r=>[r.id,{roomId:r.id,roomType:r.type,averageEfficiencyPercent:0,efficiencyPercentHours:0,occupiedHours:0,teams:[]} as SimulatedRoom]))
  if(schedule.rooms.some(r=>r.type==='recycle'))roomStats.set('recycle',{roomId:'recycle',roomType:'recycle',averageEfficiencyPercent:0,efficiencyPercentHours:0,occupiedHours:0,teams:[]})
@@ -476,7 +482,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
    }))
    moraleStep={end:state.time+dt,morale,actionAt:state.time+action}
   }
-  const hasActiveContinuousWarmup=warmupModel==='continuous'&&[...entered.keys()].some(id=>getTemporalSkillBoundaries(id,{operatorRecords}).length>0)
+  checkTemporalSkills()
   const frames=new Map<number,ProductionFrame>()
   let zeroFrame:ProductionFrame|undefined
   const frame=(offset:number)=>{
@@ -518,7 +524,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
    report.observedHours+=dt
    if(options.recordSegments)report.segments.push({start:state.time,end:state.time+dt,occupants:{...state.occupants},bedOccupants:{...state.bedOccupants},morale:{...state.morale},efficiencyPercent:eff})
   }
-  options.observeInterval?.(frame(dt/2).config,state.time,state.time+dt)
+  options.observeInterval?.(frame(dt/2).config,state.time,state.time+dt,new Map([...entered].map(([id,session])=>[id,Math.max(0,state.time-session.time)])))
   production?.advance(dt,frame(dt/2))
   advanceRoster(state,dt,rates,derivativeRates())
   if(moraleStep&&Math.abs(state.time-moraleStep.end)<=EPS){

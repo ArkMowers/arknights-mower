@@ -294,6 +294,7 @@ function projectPublicState(s:RuntimeState):void {
 }
 /** Concrete game confirmation seam: a partial list leaves trailing slots empty. */
 function confirmPhysicalRoom(s:RuntimeState,room:string,names:string[]):void {
+ const previousPositions=new Map(Object.entries(s.occupants).filter(([slot])=>s.config.positions.some(p=>p.id===slot&&!p.dormitory)).map(([slot,name])=>[name,slot]))
  const explicit=new Set(names.filter(n=>!['Free','Current',''].includes(n)))
  for(const [slot,name] of Object.entries(s.occupants))if(explicit.has(name))delete s.occupants[slot]
  for(const [slot,name] of Object.entries(s.bedOccupants))if(explicit.has(name))delete s.bedOccupants[slot]
@@ -306,7 +307,11 @@ function confirmPhysicalRoom(s:RuntimeState,room:string,names:string[]):void {
    else s.occupants[slot]=name
   }
  }
-
+ const currentPositions=new Map(Object.entries(s.occupants).filter(([slot])=>s.config.positions.some(p=>p.id===slot&&!p.dormitory)).map(([slot,name])=>[name,slot]))
+ for(const [name,slot] of previousPositions)if(currentPositions.get(name)!==slot){
+  s.workPositionChanges??={}
+  s.workPositionChanges[name]=(s.workPositionChanges[name]??0)+1
+ }
 }
 /** Native get_free_list includes both registered idle operators and unregistered catalog cards. */
 function freeCandidateNames(s:RuntimeState,data:MowerSchedulingData,forbidden:Set<string>):string[]{
