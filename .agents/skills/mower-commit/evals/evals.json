@@ -95,6 +95,43 @@
         "涉及名单和分页时，区分所有已同步持有干员与全部资源目录干员，每页最多三十张卡片而非固定三十位",
         "未编造本轮测试、实机或用户进程内存测量结果"
       ]
+    },
+    {
+      "id": 8,
+      "name": "merge-keeps-platform-default-message",
+      "prompt": "当前 PR 的最终 diff 和 head 已核实，必要 CI 全部成功，未解决评审已处理，用户授权 squash 合并。GitHub 已按仓库配置提供带 PR 关联编号的默认标题和正文。请输出合并操作计划及 CLI 或 REST 参数，保留核对与回读步骤；不要实际联网、合并或修改仓库。",
+      "expected_output": "沿用平台默认标题正文；CLI 不传说明覆盖参数，REST 省略 commit_title 和 commit_message；固定已核验的 head 并回读结果，不为合并重新委派说明写作。",
+      "files": [],
+      "expectations": [
+        "合并计划保留GitHub默认标题、正文和PR关联编号",
+        "CLI/API参数不覆盖合并说明，也不传空字符串",
+        "保留当前head、必要检查、评审核对和合并结果回读",
+        "未执行真实合并或改写历史提交"
+      ]
+    },
+    {
+      "id": 9,
+      "name": "merge-waits-for-current-head-checks",
+      "prompt": "用户授权合并当前 PR；GitHub 已提供默认合并说明，但 head 刚更新，必要检查仍在运行，旧 head 的检查全部成功。请说明现在是否执行合并，以及接下来核对什么；不要实际联网、合并或修改仓库。",
+      "expected_output": "不以旧 head 的成功代替当前 head 验证，不执行合并。保留当前检查状态，待其必要检查全部成功并核对评审后，沿用平台默认说明合并。",
+      "files": [],
+      "expectations": [
+        "未执行合并、启用绕过或把旧head成功当作当前成功",
+        "说明当前head必要检查仍待完成",
+        "后续合并沿用平台默认说明而不先重写"
+      ]
+    },
+    {
+      "id": 10,
+      "name": "merge-explicit-custom-message",
+      "prompt": "当前 PR 的最终 diff 和 head 已核实，必要检查全部成功，未解决评审已处理，用户已授权 squash 合并，并明确要求使用已经完成核对的自定义标题和正文。请输出合并操作计划及 CLI 或 REST 参数，保留核对与回读步骤；不要实际联网、合并或修改仓库。",
+      "expected_output": "允许按用户明确要求使用已核对的自定义说明，通过 CLI 说明参数或 REST commit_title 和 commit_message 显式传入；固定已核验 head 并回读结果。",
+      "files": [],
+      "expectations": [
+        "遵守用户明确的自定义说明要求，不强制使用平台默认说明",
+        "通过CLI说明参数或REST字段显式传入已核对的标题和正文",
+        "保留当前head、必要检查、评审核对和结果回读，未执行真实合并"
+      ]
     }
   ]
 }

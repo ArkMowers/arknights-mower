@@ -60,7 +60,7 @@ AI primary staffing follows [Owned Read-Only Staffing](docs/subsystems/ai-assist
 ## 4. Code Cleanliness & Smells
 
 - **Single Source of Truth**: Every domain concept must have a single authoritative definition and storage location.
-- **No Issue References**: Commit messages, code comments, and technical documentation must not contain issue tracker numbers (`#xxx`).
+- **No Issue References**: Agent-authored commit messages, code comments and technical documentation must not contain issue tracker numbers (`#xxx`). GitHub-generated default PR merge messages follow [PR merge defaults](.agents/skills/mower-commit/SKILL.md#pr-merge).
 - **Bounded Collections**: In-memory logs, frame queues, and discovery results must have explicit capacity limits and eviction policies.
 - **Explicit Imports**: Avoid wildcard imports (`from module import *`). Use explicit symbol imports.
 - **Evidence for Scheduling Waits**: A runtime mismatch alone does not justify a new timer, repeated polling or stopping automation. Apply the [runtime task failure contract](docs/subsystems/base-scheduler.md#211-runtime-task-failure), retain unfinished work and verify progress with unchanged-state and dependency-release cases.
