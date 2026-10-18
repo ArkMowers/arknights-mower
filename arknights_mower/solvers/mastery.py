@@ -1968,13 +1968,15 @@ def _try_swap(solver, plan, swap_target, step_level=None) -> bool:
         task.mastery_collect_pending = True
         task.mastery_collect_level = step_level
     try:
-        update_plan_status(plan["id"], "training", swap_frozen=1)
+        saved = update_plan_status(plan["id"], "training", swap_frozen=1)
     except (MowerExit, DeviceRecoveryError):
         raise
     except Exception as exc:
         raise TrainingObservationError(
             "换人已完成，协助位记录保存失败，保留收取规划"
         ) from exc
+    if saved is False:
+        raise TrainingObservationError("换人已完成，协助位记录保存失败，保留收取规划")
     logger.info("换人完成，协助位已冻结")
     logger.debug(f"[mastery] 协助位判定 id={plan['id']} 结果=ok")
     return True

@@ -128,13 +128,22 @@ def test_successful_swap_retains_collection_then_resumes_without_another_swap(ha
     assert task.time == due
 
 
-def test_completed_swap_record_failure_does_not_repeat_the_arrangement(handoff):
+@pytest.mark.parametrize("save_failure", ["exception", "rejected"])
+def test_completed_swap_record_failure_does_not_repeat_the_arrangement(
+    handoff, save_failure
+):
     solver, task = handoff.solver, handoff.solver.task
-    mastery_db.update_plan_status.side_effect = RuntimeError("database unavailable")
+    due = task.time
+    if save_failure == "exception":
+        mastery_db.update_plan_status.side_effect = RuntimeError("database unavailable")
+    else:
+        mastery_db.update_plan_status.side_effect = None
+        mastery_db.update_plan_status.return_value = False
     with pytest.raises(mastery.TrainingObservationError):
         mastery.run_swap_support(solver)
     assert task.mastery_collect_pending is True
     assert solver.tasks == [task]
+    assert task.time == due
     mastery.run_swap_support(solver)
     solver.choose_train.assert_called_once_with(["逻各斯", "Current"])
     assert len([t for t in solver.tasks if t.type == TaskTypes.SKILL_UPGRADE]) == 1
