@@ -28,7 +28,7 @@ const gold = (probability: number, goldCost: number, lmdReward: number, baseMinu
   efficiencyAffected: true, mode: 'gold',
 })
 
-export function getOrderDistribution(level: number, quality: QualityRule = 'normal', mode: OrderMode = 'gold'): BaseOrderChoice[] {
+export function getOrderDistribution(level: number, quality: QualityRule = 'normal', mode: OrderMode = 'gold', qualityWarmup = 1): BaseOrderChoice[] {
   if (![1, 2, 3].includes(level)) throw new Error('Invalid trading level')
   if (mode === 'orundum') {
     if (level !== 3) throw new Error('Orundum orders require level 3')
@@ -36,6 +36,11 @@ export function getOrderDistribution(level: number, quality: QualityRule = 'norm
   }
   if (mode === 'closure') return [{ ...gold(1, 2, 1200, 144), mode }]
   if (mode === 'pepe') return [{ ...gold(1, 0, 1000, 270), efficiencyAffected: false, mode }]
+  if(quality!=='normal'&&qualityWarmup<1){
+    if(!Number.isFinite(qualityWarmup)||qualityWarmup<0)throw new Error('Invalid quality warmup')
+    const base=getOrderDistribution(level,'normal',mode),peak=getOrderDistribution(level,quality,mode)
+    return peak.map(order=>({...order,probability:(base.find(value=>value.goldCost===order.goldCost)?.probability??0)*(1-qualityWarmup)+order.probability*qualityWarmup}))
+  }
   // Fixed quality model: the user requests the L3 alpha/beta probabilities at
   // L1/L2 too. PRTS only verifies these values for L3; this is a model extension.
   if (quality === 'normal' && level === 1) return [gold(1, 2, 1000, 144)]

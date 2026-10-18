@@ -13,9 +13,9 @@ export function calculateIncome(plan, settings, onProgress) {
     settings.warmupDays * 24,
     options.simulationOptions.operatorInventory
   )
-  options.simulationOptions.observeInterval = (config, start, end) => {
+  options.simulationOptions.observeInterval = (config, start, end, workHours) => {
     recruitment.observe(config, start, end)
-    clues.observe(config, start, end)
+    clues.observe(config, start, end, workHours)
   }
   const result = runCalculationBridge(workspace, options, (p) =>
     onProgress?.({
