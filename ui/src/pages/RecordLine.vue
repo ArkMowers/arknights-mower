@@ -331,7 +331,7 @@ watch(
 onMounted(async () => {
   board.load()
   try {
-    reportData.value = await getMoodRatios()
+    reportData.value = await getMoodRatios({ includeWorkRest: false })
   } catch {
     loadError.value = '心情报表读取失败，请检查本地 Mower 后端。'
     return

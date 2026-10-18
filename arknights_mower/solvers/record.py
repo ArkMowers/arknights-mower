@@ -531,7 +531,7 @@ def get_work_rest_ratios():
 
 
 # 整理心情曲线
-def get_mood_ratios():
+def get_mood_ratios(*, include_work_rest=True):
     bindings = _mood_report_bindings()
     favorite = [] if config.conf.favorite == "" else config.conf.favorite.split(",")
     favorite = list(dict.fromkeys([*favorite, *bindings]))
@@ -572,7 +572,7 @@ def get_mood_ratios():
     except sqlite3.Error:
         data = []
 
-    work_rest_data_ratios = get_work_rest_ratios()
+    work_rest_data_ratios = get_work_rest_ratios() if include_work_rest else None
     grouped_data = {}
     grouped_work_rest_data = {}
     for row in data:
@@ -596,9 +596,10 @@ def get_mood_ratios():
             mood_data = grouped_data.setdefault(
                 group_name, {"labels": [], "datasets": []}
             )
-            grouped_work_rest_data.setdefault(
-                group_name, work_rest_data_ratios[mood_label]
-            )
+            if include_work_rest:
+                grouped_work_rest_data.setdefault(
+                    group_name, work_rest_data_ratios[mood_label]
+                )
             mood_data["labels"].append(current_time)
             for dataset in mood_data["datasets"]:
                 if dataset["label"] == mood_label:
@@ -616,13 +617,10 @@ def get_mood_ratios():
         mood_data["labels"].sort()
         for dataset in mood_data["datasets"]:
             dataset["data"].sort(key=lambda point: point["x"])
-        formatted_data.append(
-            {
-                "groupName": group_name,
-                "moodData": mood_data,
-                "workRestData": grouped_work_rest_data[group_name],
-            }
-        )
+        group = {"groupName": group_name, "moodData": mood_data}
+        if include_work_rest:
+            group["workRestData"] = grouped_work_rest_data[group_name]
+        formatted_data.append(group)
     return formatted_data
 
 
