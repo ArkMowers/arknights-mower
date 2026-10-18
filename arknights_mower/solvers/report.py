@@ -291,8 +291,32 @@ class ReportSolver(SceneGraphSolver):
                 )
             else:
                 groups.append((x, y, w, h))
-        value = 0
+        # A single glyph is narrower than its standard height. Split connected
+        # digits at the least ink within the shipped templates' width range.
+        widths = [
+            template.shape[1]
+            for template in noto_sans.values()
+            if template.shape[1] <= default_height
+        ]
+        digits = []
         for x, y, w, h in groups:
+            while w > default_height:
+                if not widths:
+                    return None
+                split = min(
+                    range(min(widths), max(widths) + 1),
+                    key=lambda offset: (
+                        cv2.countNonZero(img[y : y + h, x + offset : x + offset + 1]),
+                        -offset,
+                    ),
+                )
+                digits.append((x, y, split, h))
+                x += split
+                w -= split
+            digits.append((x, y, w, h))
+
+        value = 0
+        for x, y, w, h in digits:
             digit = cropimg(img, ((x, y), (x + w, y + h)))
             digit = cv2.copyMakeBorder(
                 digit, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,)
