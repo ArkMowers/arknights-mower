@@ -1,5 +1,6 @@
 import time
 from datetime import datetime
+from functools import partial
 from typing import List, Optional, Tuple
 
 import cv2
@@ -18,7 +19,7 @@ from arknights_mower.utils.image import (
     thres2,
 )
 from arknights_mower.utils.log import logger, save_screenshot_frame
-from arknights_mower.utils.matcher import Matcher
+from arknights_mower.utils.matcher import Matcher, resource_template_features
 from arknights_mower.utils.operation_timing import timed_step
 from arknights_mower.utils.scene import Scene, SceneComment
 from arknights_mower.utils.vector import va
@@ -1074,6 +1075,13 @@ class Recognizer:
             judge=judge,
             prescore=threshold,
             dpi_aware=dpi_aware,
+            query_features=partial(
+                resource_template_features,
+                res,
+                res_img,
+                thres=thres,
+                dpi_aware=dpi_aware,
+            ),
         )
         if strict and ret is None:
             raise RecognizeError(f"Can't find '{res}'")
@@ -1122,7 +1130,15 @@ class Recognizer:
             matcher = Matcher(thres2(gray_img, thres))
         else:
             matcher = self.matcher
-        score = matcher.score(res_img, draw=draw, scope=scope, only_score=True)
+        score = matcher.score(
+            res_img,
+            draw=draw,
+            scope=scope,
+            only_score=True,
+            query_features=partial(
+                resource_template_features, res, res_img, thres=thres
+            ),
+        )
         return score
 
     def template_match(

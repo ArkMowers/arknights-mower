@@ -1,5 +1,9 @@
+import hashlib
 import lzma
 import pickle
+import struct
+from collections import OrderedDict
+from threading import Lock
 from typing import Optional, Tuple
 
 import cv2
@@ -10,6 +14,7 @@ from arknights_mower.utils import typealias as tp
 from arknights_mower.utils import vision_np
 from arknights_mower.utils.image import cropimg
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.resource_pkg import register_resource_reload
 
 GOOD_DISTANCE_LIMIT = 0.7
 
@@ -23,6 +28,72 @@ def keypoints_scale_invariant(img: tp.GrayImage):
 
 def keypoints(img: tp.GrayImage):
     return ORB_no_pyramid.detectAndCompute(img, None)
+
+
+TEMPLATE_FEATURE_CAPACITY = 128
+TEMPLATE_FEATURE_BYTES = 4 * 1024**2
+_KEYPOINT = struct.Struct("=5f2i")
+_template_features = OrderedDict()
+_template_feature_bytes = 0
+_template_generation = 0
+_template_lock = Lock()
+
+
+@register_resource_reload
+def clear_template_feature_cache():
+    global _template_feature_bytes, _template_generation
+    with _template_lock:
+        _template_features.clear()
+        _template_feature_bytes = 0
+        _template_generation += 1
+
+
+def resource_template_features(resource, image, *, thres=None, dpi_aware=False):
+    """只复用资源模板；缓存不持有图像、可变 KeyPoint 或描述符数组。"""
+    global _template_feature_bytes
+    digest = hashlib.sha256(np.ascontiguousarray(image)).digest()
+    with _template_lock:
+        key = (_template_generation, resource, thres, dpi_aware, image.shape, digest)
+        value = _template_features.get(key)
+        if value is None:
+            points, descriptors = (
+                keypoints_scale_invariant(image) if dpi_aware else keypoints(image)
+            )
+            packed = b"".join(
+                _KEYPOINT.pack(
+                    *point.pt,
+                    point.size,
+                    point.angle,
+                    point.response,
+                    point.octave,
+                    point.class_id,
+                )
+                for point in points
+            )
+            value = (
+                packed,
+                None if descriptors is None else descriptors.shape,
+                b"" if descriptors is None else descriptors.tobytes(),
+            )
+            size = len(value[0]) + len(value[2])
+            if size <= TEMPLATE_FEATURE_BYTES:
+                while _template_features and (
+                    len(_template_features) >= TEMPLATE_FEATURE_CAPACITY
+                    or _template_feature_bytes + size > TEMPLATE_FEATURE_BYTES
+                ):
+                    _, retired = _template_features.popitem(last=False)
+                    _template_feature_bytes -= len(retired[0]) + len(retired[2])
+                _template_features[key] = value
+                _template_feature_bytes += size
+        else:
+            _template_features.move_to_end(key)
+    points = [cv2.KeyPoint(*fields) for fields in _KEYPOINT.iter_unpack(value[0])]
+    descriptors = (
+        None
+        if value[1] is None
+        else np.frombuffer(value[2], dtype=np.uint8).reshape(value[1])
+    )
+    return points, descriptors
 
 
 with lzma.open(f"{__rootdir__}/models/svm.model", "rb") as f:
@@ -79,6 +150,8 @@ class Matcher:
         dpi_aware: bool = False,
         prescore: float = 0.0,
         judge: bool = True,
+        *,
+        query_features=None,
     ) -> Optional[tp.Scope]:
         """check if the image can be matched"""
         rect_score = self.score(
@@ -87,6 +160,7 @@ class Matcher:
             scope,
             only_score=False,
             dpi_aware=dpi_aware,
+            query_features=query_features,
         )  # get matching score
         if rect_score is None:
             return None  # failed in matching
@@ -115,6 +189,8 @@ class Matcher:
         scope: tp.Scope = None,
         only_score: bool = False,
         dpi_aware: bool = False,
+        *,
+        query_features=None,
     ) -> Optional[Tuple[tp.Scope, tp.Score]]:
         """scoring of image matching"""
         try:
@@ -148,7 +224,9 @@ class Matcher:
             h, w = query.shape
 
             # the feature point of query image
-            if dpi_aware:
+            if query_features is not None:
+                qry_kp, qry_des = query_features()
+            elif dpi_aware:
                 qry_kp, qry_des = keypoints_scale_invariant(query)
             else:
                 qry_kp, qry_des = keypoints(query)
