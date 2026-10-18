@@ -83,6 +83,7 @@ from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.dorm_candidates import (
+    card_mood_estimate,
     dorm_candidate_mood,
     dorm_candidates,
     dorm_task_reservations,
@@ -512,7 +513,7 @@ class BaseSchedulerSolver(
         return datetime.now() + timedelta(seconds=remaining)
 
     def _task_failure_snapshot(self, task, rooms):
-        """失败任务仅由新实测或相关安排变化重新准入，不使用时钟计时。"""
+        """失败任务仅由新观测或相关安排变化重新准入，不使用时钟计时。"""
         data = self.op_data
         names = {name for row in task.plan.values() for name in row}
         from arknights_mower.utils.replacement_coordination import (
@@ -597,6 +598,15 @@ class BaseSchedulerSolver(
                 room: getattr(data, "room_observations", {}).get(room) for room in rooms
             },
         }
+        from arknights_mower.utils.recovery_execution import allows_card_return
+
+        if allows_card_return(task):
+            snapshot["card_moods"] = {
+                name: getattr(data, "dorm_mood_estimates", {}).get(name)
+                for name in names
+                if (op := data.operators.get(name)) is not None
+                and (getattr(op, "rest_in_full", False) or getattr(op, "group", ""))
+            }
         if getattr(task, "mastery_observation_pending", False):
             from arknights_mower.solvers.mastery import PROF_MAP
             from arknights_mower.utils.mastery_db import (
@@ -658,7 +668,7 @@ class BaseSchedulerSolver(
             "snapshot": self._task_failure_snapshot(task, rooms),
         }
         log = logger.info if dependency else logger.error
-        log("%s；保留原任务及时间，相关实测或安排更新后复核", reason)
+        log("%s；保留原任务及时间，相关观测或安排更新后复核", reason)
 
     def _refresh_derived_correction(self, task):
         """相关观测更新后，只重算尚未执行的普通派生纠错。"""
@@ -744,10 +754,32 @@ class BaseSchedulerSolver(
                 ):
                     continue
             if failure:
+                from arknights_mower.utils.recovery_execution import (
+                    needs_return_mood_estimate,
+                )
+
+                current_snapshot = self._task_failure_snapshot(task, failure["rooms"])
+                current_cards = current_snapshot.get("card_moods", {})
+                now = datetime.now()
+                saved_cards = failure["snapshot"].setdefault(
+                    "card_moods", current_cards
+                )
+                for name, estimate in current_cards.items():
+                    # 预估失效或丢失不构成新观测，也不能按时钟重新准入。
+                    if (
+                        card_mood_estimate(self.op_data, name, now) != 24
+                        or self._emergency_frozen()
+                        or not needs_return_mood_estimate(
+                            self.op_data.operators[name], now
+                        )
+                    ):
+                        saved_cards[name] = estimate
+                if "card_moods" not in current_snapshot:
+                    failure["snapshot"].pop("card_moods", None)
                 failure["snapshot"].setdefault("correction_groups", {})
                 failure["snapshot"].setdefault(
                     "reservations",
-                    self._task_failure_snapshot(task, failure["rooms"])["reservations"],
+                    current_snapshot["reservations"],
                 )
                 failure["snapshot"].setdefault(
                     "room_observations", {room: None for room in failure["rooms"]}
@@ -764,11 +796,7 @@ class BaseSchedulerSolver(
                             *observation[:2],
                             None,
                         )
-            if (
-                failure
-                and self._task_failure_snapshot(task, failure["rooms"])
-                != failure["snapshot"]
-            ):
+            if failure and current_snapshot != failure["snapshot"]:
                 from arknights_mower.utils.retained_recovery import (
                     reconcile_retained_recovery,
                 )
@@ -780,7 +808,7 @@ class BaseSchedulerSolver(
                 task.execution_retained = not refreshed
                 del task.execution_failure
                 task.__dict__.pop("process_recovery_fia_wait", None)
-                logger.info("相关实测或安排已更新，恢复原任务：%s", task)
+                logger.info("相关观测或安排已更新，恢复原任务：%s", task)
 
     def run(self) -> None:
         """
@@ -801,6 +829,8 @@ class BaseSchedulerSolver(
             if config.maintenance_recheck.is_set():
                 return
             self._sync_run_order_tasks()
+            if any(getattr(task, "execution_failure", None) for task in self.tasks):
+                self._queue_missing_run_order_reads()
             self._resume_waiting_group_shifts()
             self._fill_empty_dorms()
             scheduling(self.tasks, op_data=getattr(self, "op_data", None))
@@ -1995,6 +2025,8 @@ class BaseSchedulerSolver(
 
     def _verify_required_recovery(self, task):
         from arknights_mower.utils.recovery_execution import (
+            allows_card_return,
+            needs_return_mood_estimate,
             pending_recovery_observations,
             recovery_ready_for_arrangement,
             required_recovery_members,
@@ -2023,6 +2055,21 @@ class BaseSchedulerSolver(
             )
         now = datetime.now()
         names = required_recovery_members(self.op_data, task, now=now)
+        estimate_candidates = (
+            {
+                name
+                for name in names
+                if needs_return_mood_estimate(self.op_data.operators[name], now)
+            }
+            if allows_card_return(task) and not self._emergency_frozen()
+            else set()
+        )
+        if any(
+            card_mood_estimate(self.op_data, name, now) is None
+            for name in estimate_candidates
+        ):
+            self._scan_card_moods(current_task=task)
+            now = datetime.now()
         ready = {
             name
             for name in names
@@ -2034,6 +2081,8 @@ class BaseSchedulerSolver(
                 ),
                 now=now,
             )
+            or name in estimate_candidates
+            and card_mood_estimate(self.op_data, name, now) == 24
         }
         if ready == names:
             return True
@@ -2546,8 +2595,7 @@ class BaseSchedulerSolver(
                         self._prepare_shift_cycle(self.task)
                         self._defer_conflicting_product_shift_slots(self.task)
                         if not self._verify_required_recovery(self.task):
-                            if hasattr(self.task, "recovery_waiting_observations"):
-                                self._queue_missing_run_order_reads()
+                            self._queue_missing_run_order_reads()
                             self.skip()
                             return True
                         if (
@@ -3165,10 +3213,22 @@ class BaseSchedulerSolver(
             self._scan_card_moods()
 
     @fixed_selection_profile
-    def _scan_card_moods(self):
+    def _scan_card_moods(self, *, current_task=None):
         """每轮真实规划共用一次升序扫描，首个绿色后的姓名按 24 预估。"""
         if getattr(self, "_card_moods_scanned_this_run", False):
             return
+
+        def can_scan():
+            if current_task is None:
+                return self.no_pending_task(1)
+            return (
+                find_next_task(
+                    [task for task in self.tasks if task is not current_task],
+                    datetime.now() + timedelta(minutes=1),
+                )
+                is None
+            )
+
         room = next(
             (
                 room
@@ -3179,7 +3239,7 @@ class BaseSchedulerSolver(
             ),
             None,
         )
-        if room is None or not self.no_pending_task(1):
+        if room is None or not can_scan():
             return
         self._card_moods_scanned_this_run = True
         deadline = monotonic() + 45
@@ -3204,7 +3264,7 @@ class BaseSchedulerSolver(
             observation = None
             observed_names = set()
             for page_index in range(20):
-                if monotonic() >= deadline or not self.no_pending_task(1):
+                if monotonic() >= deadline or not can_scan():
                     break
                 page = self.wait_for_agent_page(
                     before=previous, observation=observation
@@ -4199,7 +4259,11 @@ class BaseSchedulerSolver(
         )
 
     def _queue_missing_run_order_reads(self):
-        """换班等待让出调度后，保留尚未读取订单的独立责任。"""
+        """换班等待或失败让出调度后，保留尚未读取订单的独立责任。"""
+        if self._initial_mood_read_pending() or getattr(
+            self, "_initial_staffing_pending", False
+        ):
+            return
         if getattr(self, "maintenance_entry_pending", False) or any(
             getattr(task, "maintenance_replacement_run", False) for task in self.tasks
         ):
@@ -14710,6 +14774,11 @@ class BaseSchedulerSolver(
         working 的根因。现在全部收口到这里，只有 `_idle_sleep` 一个状态写入点。
         """
         self._refresh_workshop_inventory()
+        if any(getattr(task, "execution_failure", None) for task in self.tasks):
+            # 本轮末尾可能已有新观测，或刚完成最后一单；休眠前恢复派发责任。
+            self._resume_failed_tasks()
+            self._queue_missing_run_order_reads()
+            scheduling(self.tasks, op_data=getattr(self, "op_data", None))
         self._schedule_maintenance_backup_check()
         if any(
             getattr(task, "strict_mood_limit", False)
@@ -14723,6 +14792,16 @@ class BaseSchedulerSolver(
         if first is None:
             return
         remaining_time = (first.time - datetime.now()).total_seconds()
+        if remaining_time <= 0:
+            return
+        for pending in self.tasks:
+            if failure := getattr(pending, "execution_failure", None):
+                logger.warning(
+                    "未完成任务暂停派发：原时间=%s，任务=%s，原因=%s",
+                    pending.time,
+                    pending.display_name,
+                    failure["reason"],
+                )
         self.handle_idle_action(remaining_time)
         timezone_offset = config.conf.timezone_offset
         subject = (

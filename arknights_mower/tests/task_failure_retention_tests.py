@@ -58,6 +58,7 @@ def failed_arrangement(scheduler):
     solver.op_data.plan = {ROOM: [Room("陈", "", [])]}
     solver.op_data.products = {}
     solver.op_data.facility_states = {}
+    solver.op_data.run_order_rooms = {}
     solver.op_data.operators = {
         "陈": SimpleNamespace(current_room=ROOM, current_index=0, time_stamp=now)
     }

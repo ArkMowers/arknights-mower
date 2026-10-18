@@ -666,3 +666,263 @@ def test_new_required_members_receive_one_supplemental_room_read(
         assert len(scheduler.tasks) == 1
         assert scheduler.tasks[0].recovery_observation_rooms == {"dormitory_2"}
         assert scheduler.tasks[0].time == bed.time
+
+
+@pytest.fixture
+def idle_return(resting, monkeypatch):
+    scheduler, _ = resting
+    data = scheduler.op_data
+    op = data.operators["讯使"]
+    op.rest_in_full, op.time_stamp = True, None
+    _, bed = data.get_dorm_by_name(op.name)
+    bed.name, bed.time = "", None
+    op.current_room, op.current_index = "", -1
+    task = returning_task()
+    scheduler.tasks, scheduler.task = [task], task
+    scheduler._scan_card_moods = Mock()
+    monkeypatch.setattr(scheduler, "_read_recovery_rooms", Mock())
+    return scheduler, task, op
+
+
+@pytest.mark.parametrize("inferred", [False, True])
+def test_idle_primary_returns_with_full_card_without_fabricating_measurement(
+    idle_return, inferred
+):
+    scheduler, task, op = idle_return
+    data = scheduler.op_data
+    before = deepcopy(vars(op))
+    original_time, original_plan = task.time, deepcopy(task.plan)
+    estimate = (24, datetime.now())
+    if inferred:
+        estimate += (False,)
+    data.dorm_mood_estimates[op.name] = estimate
+    assert scheduler._verify_required_recovery(task)
+    assert vars(op) == before
+    assert task.plan == original_plan and task.time == original_time
+    assert scheduler.tasks == [task]
+    scheduler._scan_card_moods.assert_not_called()
+    scheduler._read_recovery_rooms.assert_not_called()
+
+
+def test_idle_unknown_return_observes_cards_before_checking_recovery(idle_return):
+    scheduler, task, op = idle_return
+
+    def scan(**kwargs):
+        scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
+
+    scheduler._scan_card_moods.side_effect = scan
+    assert scheduler._verify_required_recovery(task)
+    scheduler._scan_card_moods.assert_called_once_with(current_task=task)
+    assert op.time_stamp is None
+    assert not getattr(task, "execution_failure", None)
+
+
+@pytest.mark.parametrize("mood,age", [(0, 0), (23.9, 0), (24, 3600), (24, -1)])
+def test_unconfirmed_card_keeps_idle_return_and_original_time(idle_return, mood, age):
+    scheduler, task, op = idle_return
+    scheduler.op_data.dorm_mood_estimates[op.name] = (
+        mood,
+        datetime.now() - timedelta(seconds=age),
+    )
+    original_time, original_plan = task.time, deepcopy(task.plan)
+    assert not scheduler._verify_required_recovery(task)
+    assert task.execution_failure
+    assert task.plan == original_plan and task.time == original_time
+    assert scheduler.tasks == [task]
+    assert op.time_stamp is None
+
+
+def test_valid_low_measurement_cannot_be_overridden_by_green_card(idle_return):
+    scheduler, task, op = idle_return
+    op.mood, op.time_stamp = 3.8, datetime.now()
+    scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
+    assert not scheduler._verify_required_recovery(task)
+    scheduler._scan_card_moods.assert_not_called()
+    assert op.mood == 3.8
+
+
+def test_resting_primary_still_requires_room_observation(idle_return):
+    scheduler, task, op = idle_return
+    op.current_room, op.current_index = "dormitory_1", 4
+    scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
+    assert not scheduler._verify_required_recovery(task)
+    scheduler._read_recovery_rooms.assert_called_once_with({"dormitory_1"})
+    scheduler._scan_card_moods.assert_not_called()
+
+
+def test_card_observation_releases_same_failed_idle_return(idle_return):
+    scheduler, task, op = idle_return
+    original_time = task.time
+    assert not scheduler._verify_required_recovery(task)
+    original_failure = deepcopy(task.execution_failure)
+    for _ in range(3):
+        scheduler._resume_failed_tasks()
+        assert task.execution_failure == original_failure
+        assert scheduler.tasks == [task]
+    scheduler.op_data.dorm_mood_estimates["无关干员"] = (24, datetime.now())
+    scheduler._resume_failed_tasks()
+    assert task.execution_failure == original_failure
+    scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
+    scheduler._resume_failed_tasks()
+    assert not getattr(task, "execution_failure", None)
+    assert scheduler.tasks == [task]
+    assert scheduler._verify_required_recovery(task)
+    assert task.time == original_time
+    assert op.time_stamp is None
+
+
+@pytest.mark.parametrize("mode", ["rescue", "support", "strict", "release"])
+def test_green_card_cannot_satisfy_special_recovery_checks(idle_return, mode):
+    scheduler, task, op = idle_return
+    scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
+    if mode == "rescue":
+        scheduler.emergency_state = {"phase": "recovering"}
+    elif mode == "support":
+        task.exhaust_support = True
+    elif mode == "strict":
+        task.strict_mood_limit = True
+    else:
+        task.type = TaskTypes.RELEASE_DORM
+    assert not scheduler._verify_required_recovery(task)
+    assert task.execution_failure
+    assert op.time_stamp is None
+    scheduler._scan_card_moods.assert_not_called()
+
+
+@pytest.mark.parametrize("change", ["expired", "removed", "yellow", "old-snapshot"])
+def test_card_cache_changes_do_not_poll_failed_return(idle_return, change):
+    scheduler, task, op = idle_return
+    now = datetime.now()
+    scheduler.op_data.dorm_mood_estimates[op.name] = (0, now)
+    assert not scheduler._verify_required_recovery(task)
+    original_time = task.time
+    if change == "expired":
+        scheduler.op_data.dorm_mood_estimates[op.name] = (24, now - timedelta(hours=1))
+    elif change == "removed":
+        scheduler.op_data.dorm_mood_estimates.clear()
+    elif change == "yellow":
+        scheduler.op_data.dorm_mood_estimates[op.name] = (12, now)
+    else:
+        task.execution_failure["snapshot"].pop("card_moods")
+        scheduler.op_data.dorm_mood_estimates[op.name] = (24, now)
+    for _ in range(3):
+        scheduler._resume_failed_tasks()
+        assert task.execution_failure
+        assert task.time == original_time
+        assert scheduler.tasks == [task]
+
+
+def test_failed_return_releases_dependent_product_task_after_card_and_readback(
+    idle_return, monkeypatch
+):
+    from arknights_mower.tests.dorm_group_tests import apply_plan
+    from arknights_mower.utils import config
+
+    scheduler, task, op = idle_return
+    config.conf.product_switching.enable = True
+    assert not scheduler._verify_required_recovery(task)
+    product = SchedulerTask(
+        task.time + timedelta(seconds=1),
+        task_type=TaskTypes.SWITCH_PRODUCT,
+        meta_data="room_2_1,exp3",
+    )
+    scheduler.tasks.append(product)
+    scheduler.task = product
+    monkeypatch.setattr(scheduler, "find", Mock(return_value=True))
+    original_plan, original_time = deepcopy(task.plan), task.time
+    product_time = product.time
+    scheduler.infra_main()
+    assert product.execution_failure["reason"] == "等待到期换班确认最终产物"
+    for _ in range(3):
+        scheduler._resume_failed_tasks()
+        assert task.execution_failure and product.execution_failure
+        assert task.plan == original_plan and task.time == original_time
+        assert product.time == product_time
+
+    scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
+    scheduler._resume_failed_tasks()
+    assert not getattr(task, "execution_failure", None)
+    assert scheduler._verify_required_recovery(task)
+    assert op.time_stamp is None
+    assert product.execution_failure
+    # 模拟换人后的真实驻员读回；预估本身不提交驻员与产物依赖。
+    apply_plan(scheduler, original_plan)
+    scheduler._resume_failed_tasks()
+    assert not getattr(product, "execution_failure", None)
+    assert task.time == original_time and product.time == product_time
+    assert any(pending is product for pending in scheduler.tasks)
+
+    scheduler._survey_manufacture_switch = Mock(
+        return_value={
+            "room": "room_2_1",
+            "facility": "manufacture",
+            "target_product": "exp3",
+            "needs_switch": False,
+        }
+    )
+    scheduler._change_manufacture_product = Mock()
+    scheduler.switch_base_products([product])
+    scheduler._change_manufacture_product.assert_called_once()
+    assert all(pending is not product for pending in scheduler.tasks)
+
+
+def test_new_green_observation_rearms_overdue_return_before_three_hour_idle(
+    idle_return, monkeypatch
+):
+    from arknights_mower.solvers import base_schedule as base
+
+    scheduler, task, op = idle_return
+    assert not scheduler._verify_required_recovery(task)
+    future = SchedulerTask(
+        datetime.now() + timedelta(hours=3), task_type=TaskTypes.REFRESH_TIME
+    )
+    scheduler.tasks = [future, task]
+    scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
+    for method in (
+        "_refresh_workshop_inventory",
+        "_schedule_maintenance_backup_check",
+        "handle_idle_action",
+        "_idle_sleep",
+        "check_current_focus",
+    ):
+        monkeypatch.setattr(scheduler, method, Mock())
+    scheduler.task_count = 0
+    monkeypatch.setattr(base, "send_message", Mock())
+    monkeypatch.setattr(base.task_template, "render", Mock(return_value=""))
+    original_time = task.time
+    scheduler.rest_until_next_task()
+    scheduler._idle_sleep.assert_not_called()
+    assert not getattr(task, "execution_failure", None)
+    assert scheduler.tasks[0] is task
+    assert task.time == original_time
+
+
+def test_unresolved_return_idle_reports_why_original_task_is_not_dispatched(
+    idle_return, monkeypatch, caplog
+):
+    from arknights_mower.solvers import base_schedule as base
+
+    scheduler, task, _ = idle_return
+    assert not scheduler._verify_required_recovery(task)
+    original_time, original_plan = task.time, deepcopy(task.plan)
+    future = SchedulerTask(
+        datetime.now() + timedelta(hours=3), task_type=TaskTypes.REFRESH_TIME
+    )
+    scheduler.tasks = [future, task]
+    for method in (
+        "_refresh_workshop_inventory",
+        "_schedule_maintenance_backup_check",
+        "handle_idle_action",
+        "_idle_sleep",
+        "check_current_focus",
+    ):
+        monkeypatch.setattr(scheduler, method, Mock())
+    scheduler.task_count = 0
+    monkeypatch.setattr(base, "send_message", Mock())
+    monkeypatch.setattr(base.task_template, "render", Mock(return_value=""))
+    scheduler.rest_until_next_task()
+    assert task.execution_failure
+    assert task.time == original_time and task.plan == original_plan
+    scheduler._idle_sleep.assert_called_once()
+    assert "未完成任务暂停派发：原时间=" in caplog.text
+    assert "原因=需要回满的主班尚未实读确认恢复完成" in caplog.text
