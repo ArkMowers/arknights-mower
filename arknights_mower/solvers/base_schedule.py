@@ -2348,7 +2348,7 @@ class BaseSchedulerSolver(
                     self.planned = False
                 elif getattr(self.task, "replacement_check", None):
                     remove_current_task = run_replacement_check(self, self.task)
-                    self.skip()
+                    self.skip(["todo_task", "collect_notification"])
                 elif self.task.meta_data == RESUME_META or getattr(
                     self.task, "emergency_recovery_release", False
                 ):

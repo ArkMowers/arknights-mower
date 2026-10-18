@@ -216,8 +216,17 @@ def test_completed_ordinary_handoff_wakes_normal_planning(solver, monkeypatch):
     )
     assert (
         sum(
-            t.type == TaskTypes.NOT_SPECIFIC and t.time <= datetime.now()
+            t.type == TaskTypes.NOT_SPECIFIC
+            and not getattr(t, "replacement_check", None)
+            and t.time <= datetime.now()
             for t in solver.tasks
         )
         == 1
     )
+    (check,) = [t for t in solver.tasks if getattr(t, "replacement_check", None)]
+    assert check.replacement_check == {
+        "owner": "苍苔",
+        "cover": "引星棘刺",
+        "room": "room_2_2",
+        "index": 0,
+    }
