@@ -6,7 +6,7 @@ import sys
 from datetime import datetime, timedelta
 from threading import Event
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -180,11 +180,11 @@ def test_unrelated_waiting_work_preserves_order_and_identity():
 
 
 @pytest.fixture
-def mower_module():
-    with patch.dict(sys.modules, {"arknights_mower.utils.skland": MagicMock()}):
-        from arknights_mower import __main__ as mower
+def mower_module(monkeypatch):
+    monkeypatch.setitem(sys.modules, "arknights_mower.utils.skland", MagicMock())
+    from arknights_mower import __main__ as mower
 
-        yield mower
+    return mower
 
 
 def test_simulate_restoration_coalesces_waiting_before_dispatch(
