@@ -32,8 +32,11 @@ const selected_group = computed(() =>
 const new_group_name = ref('')
 function create_group() {
   if (edit_locked.value || !new_group_name.value.trim()) return
+  const used_ids = new Set(backup_groups.value.map((group) => group.id))
+  let number = 1
+  while (used_ids.has(`group-${number}`)) number += 1
   const group = {
-    id: crypto.randomUUID(),
+    id: `group-${number}`,
     name: new_group_name.value.trim(),
     trigger: { left: '', operator: '', right: '' }
   }
@@ -100,9 +103,9 @@ function update_trigger(data) {
         :disabled="edit_locked"
         label-placement="left"
         label-width="80"
-        style="min-width: 420px"
+        style="min-width: 420px; display: grid; gap: 8px; margin-bottom: 8px"
       >
-        <n-form-item label="副表分组">
+        <n-form-item label="副表分组" :show-feedback="false">
           <n-select
             :value="current_backup.group_ids"
             :options="group_options"
@@ -110,7 +113,7 @@ function update_trigger(data) {
             @update:value="update_memberships"
           />
         </n-form-item>
-        <n-form-item label="副表类型">
+        <n-form-item label="副表类型" :show-feedback="false">
           <n-radio-group v-model:value="current_backup.type">
             <n-radio-button value="global">全局副表</n-radio-button>
             <n-radio-button value="exclusive">互斥副表</n-radio-button>
