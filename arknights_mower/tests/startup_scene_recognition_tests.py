@@ -41,7 +41,7 @@ def test_startup_logo_remains_loading_during_fade(brightness):
     recognizer = Recognizer(device)
 
     assert recognizer.get_scene() == Scene.LOADING
-    device.check_current_focus.assert_not_called()
+    device.check_current_focus.assert_called_once_with()
 
 
 @pytest.mark.parametrize("variant", ["blank", "misplaced", "mirrored"])

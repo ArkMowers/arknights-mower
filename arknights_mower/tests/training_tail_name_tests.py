@@ -138,7 +138,8 @@ def test_held_scan_selects_relocated_chestnut_after_release(monkeypatch, mode):
     held, settled = archived_frame("held"), archived_frame()
     solver = BaseMixin()
     solver.device = SimpleNamespace(
-        screencap=MagicMock(return_value=(None, settled, settled[:, :, 0]))
+        screencap=MagicMock(return_value=(None, settled, settled[:, :, 0])),
+        check_current_focus=MagicMock(return_value=False),
     )
     solver.recog = Recognizer(solver.device)
     solver.recog.set_frame((None, held, held[:, :, 0]))

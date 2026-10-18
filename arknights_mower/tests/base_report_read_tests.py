@@ -74,6 +74,9 @@ class _StubCapture:
     def __init__(self, img):
         self.img = img
 
+    def check_current_focus(self):
+        return False
+
     def screencap(self):
         from arknights_mower.utils.image import img2bytes
 

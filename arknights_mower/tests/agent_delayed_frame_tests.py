@@ -51,6 +51,9 @@ class DelayedFrameDevice:
         self.captures = []
         self.taps = []
 
+    def check_current_focus(self):
+        return False
+
     def screencap(self):
         remaining = self.last_capture + self.interval - self.clock.now
         self.clock.now += max(0.0, remaining) + 0.1

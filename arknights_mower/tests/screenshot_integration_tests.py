@@ -22,6 +22,7 @@ class RecognitionPersistenceTests(unittest.TestCase):
         self.rgb = np.full((1080, 1920, 3), (255, 0, 0), dtype=np.uint8)
         self.capture = Mock(return_value=SimpleNamespace(unwrap=lambda: self.rgb))
         self.device = object.__new__(Device)
+        self.device.check_current_focus = Mock(return_value=False)
         self.device.session_control = SimpleNamespace(capture=self.capture)
         self.store = Mock()
         self.store.submit_frame.return_value = "frame.jpg"

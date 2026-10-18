@@ -76,9 +76,11 @@ def test_current_focus_preserves_anr_title_and_normal_activity(window_title):
 def test_other_windows_do_not_stop_mumu_acceleration_service(window_title):
     device = object.__new__(Device)
     device.client = MagicMock()
-    device.client.run.return_value = (
-        f"  mCurrentFocus=Window{{13b999 u0 {window_title}}}\n".encode()
-    )
+    game_focus = f"{device.game_package}/{config.APP_ACTIVITY_NAME}"
+    device.client.run.side_effect = [
+        f"  mCurrentFocus=Window{{13b999 u0 {window_title}}}\n".encode(),
+        f"  mCurrentFocus=Window{{13b999 u0 {game_focus}}}\n".encode(),
+    ]
     device.is_app_running_in_background = MagicMock(return_value=True)
     device.bring_to_foreground = MagicMock()
     with (
@@ -87,7 +89,10 @@ def test_other_windows_do_not_stop_mumu_acceleration_service(window_title):
     ):
         assert device.check_current_focus() is True
 
-    device.client.run.assert_called_once_with("dumpsys window | grep mCurrentFocus")
+    assert [call.args[0] for call in device.client.run.call_args_list] == [
+        "dumpsys window | grep mCurrentFocus",
+        "dumpsys window | grep mCurrentFocus",
+    ]
     device.bring_to_foreground.assert_called_once_with()
 
 
