@@ -35,6 +35,8 @@ describe('worker status', () => {
     }))
   })
 
+  afterEach(() => store.$dispose())
+
   it.each([
     ['starting', true, '启动中'],
     ['recovering', true, '等待设备恢复'],
@@ -42,6 +44,7 @@ describe('worker status', () => {
     ['sleeping', true, '休眠中'],
     ['stopped', false, '已停止']
   ])('maps %s to worker activity and display', async (value, running, label) => {
+    store.start_task_polling()
     status = value
     await store.get_running()
     expect(store.status).toBe(value)
@@ -66,6 +69,7 @@ describe('worker status', () => {
   )
 
   it('keeps task polling through startup and recovery and clears it only after exit', async () => {
+    store.start_task_polling()
     for (const value of ['starting', 'recovering', 'working', 'sleeping']) {
       status = value
       await store.get_running()
@@ -78,8 +82,19 @@ describe('worker status', () => {
     await store.get_running()
     expect(store.running).toBe(false)
     expect(store.task_list).toEqual([])
-    expect(store.get_task_id).toBe(0)
     expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('keeps one task poll when app status and repeated page refreshes overlap', async () => {
+    status = 'working'
+    await store.get_running()
+    await Promise.all([store.start_task_polling(), store.start_task_polling()])
+
+    expect(axios.get.mock.calls.filter(([url]) => url.endsWith('/task'))).toHaveLength(1)
+    expect(vi.getTimerCount()).toBe(1)
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(axios.get.mock.calls.filter(([url]) => url.endsWith('/task'))).toHaveLength(2)
+    expect(vi.getTimerCount()).toBe(1)
   })
 
   it('shows stopped immediately after Stop succeeds before the next status poll', async () => {
@@ -87,6 +102,166 @@ describe('worker status', () => {
     await store.get_running()
     store.running = false
     expect(store.status_label).toBe('已停止')
+  })
+
+  it('does not undo a successful Stop when an older status response arrives', async () => {
+    status = 'working'
+    await store.get_running()
+    await store.start_task_polling()
+    let resolveStatus
+    axios.get.mockImplementationOnce(() => new Promise((resolve) => (resolveStatus = resolve)))
+    const request = store.get_running()
+
+    store.running = false
+    resolveStatus({ data: { status: 'working', plan_condition: [] } })
+    await request
+
+    expect(store.running).toBe(false)
+    expect(store.status_label).toBe('已停止')
+    expect(store.task_list).toEqual([])
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('does not read tasks without a visible task table subscription', async () => {
+    status = 'working'
+    await store.get_running()
+    await store.get_tasks()
+    expect(axios.get).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBe(0)
+
+    await store.start_task_polling()
+    store.stop_task_polling()
+    status = 'recovering'
+    await store.get_running()
+    await store.get_tasks()
+    expect(axios.get.mock.calls.filter(([url]) => url.endsWith('/task'))).toHaveLength(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('shares an active task refresh and replaces the pending poll after a manual refresh', async () => {
+    status = 'working'
+    await store.get_running()
+    await store.start_task_polling()
+    let resolveTasks
+    axios.get.mockImplementationOnce(() => new Promise((resolve) => (resolveTasks = resolve)))
+    const first = store.get_tasks()
+    const second = store.get_tasks()
+    await vi.advanceTimersByTimeAsync(9000)
+    expect(axios.get.mock.calls.filter(([url]) => url.endsWith('/task'))).toHaveLength(2)
+    expect(vi.getTimerCount()).toBe(0)
+
+    const tasks = [{ time: '2026-10-18T12:00:00', plan: {} }]
+    resolveTasks({ data: tasks })
+    await Promise.all([first, second])
+    expect(store.task_list).toEqual(tasks)
+    expect(vi.getTimerCount()).toBe(1)
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(axios.get.mock.calls.filter(([url]) => url.endsWith('/task'))).toHaveLength(3)
+    expect(vi.getTimerCount()).toBe(1)
+  })
+
+  it('clears stopped tasks and rejects a response from the previous worker run', async () => {
+    status = 'working'
+    await store.get_running()
+    let resolveTasks
+    axios.get.mockImplementationOnce(() => new Promise((resolve) => (resolveTasks = resolve)))
+    const request = store.start_task_polling()
+    const { signal } = axios.get.mock.lastCall[1]
+    store.task_list = [{ time: 'old', plan: {} }]
+    store.running = false
+    expect(signal.aborted).toBe(true)
+    expect(store.task_list).toEqual([])
+
+    resolveTasks({ data: [{ time: 'late', plan: {} }] })
+    await request
+    expect(store.task_list).toEqual([])
+    expect(vi.getTimerCount()).toBe(0)
+
+    status = 'starting'
+    await store.get_running()
+    await store.get_tasks()
+    expect(store.task_list).toHaveLength(1)
+    expect(vi.getTimerCount()).toBe(1)
+  })
+
+  it('keeps a reentered task table independent of the previous pending response', async () => {
+    status = 'working'
+    await store.get_running()
+    let resolveOld
+    let resolveCurrent
+    axios.get.mockImplementationOnce(() => new Promise((resolve) => (resolveOld = resolve)))
+    const old = store.start_task_polling()
+    const oldSignal = axios.get.mock.lastCall[1].signal
+    store.stop_task_polling()
+    expect(oldSignal.aborted).toBe(true)
+    axios.get.mockImplementationOnce(() => new Promise((resolve) => (resolveCurrent = resolve)))
+    const current = store.start_task_polling()
+    resolveOld({ data: [{ time: 'old', plan: {} }] })
+    await old
+    expect(store.task_list).toEqual([])
+    expect(vi.getTimerCount()).toBe(0)
+
+    const tasks = [{ time: 'current', plan: {} }]
+    resolveCurrent({ data: tasks })
+    await current
+    expect(store.task_list).toEqual(tasks)
+    expect(vi.getTimerCount()).toBe(1)
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(axios.get.mock.calls.filter(([url]) => url.endsWith('/task'))).toHaveLength(3)
+    expect(vi.getTimerCount()).toBe(1)
+  })
+
+  it('releases pending task reads when the store is disposed', async () => {
+    store.running = true
+    let resolveTasks
+    axios.get.mockImplementationOnce(() => new Promise((resolve) => (resolveTasks = resolve)))
+    const request = store.start_task_polling()
+    const { signal } = axios.get.mock.lastCall[1]
+    store.$dispose()
+    expect(signal.aborted).toBe(true)
+    resolveTasks({ data: [{ time: 'late', plan: {} }] })
+    await request
+    expect(store.task_list).toEqual([])
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('retains the last task list and one bounded retry after a failed read', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      store.running = true
+      const previous = [{ time: 'previous', plan: {} }]
+      store.task_list = previous
+      axios.get.mockRejectedValueOnce(new Error('offline'))
+      await store.start_task_polling()
+      expect(axios.get.mock.lastCall[1].timeout).toBe(10000)
+      expect(store.task_list).toEqual(previous)
+      expect(vi.getTimerCount()).toBe(1)
+      expect(errorLog).toHaveBeenCalledOnce()
+      await vi.advanceTimersByTimeAsync(3000)
+      expect(store.task_list[0].time).toBe('2026-10-01T12:00:00')
+      expect(vi.getTimerCount()).toBe(1)
+      store.stop_task_polling()
+      await vi.advanceTimersByTimeAsync(6000)
+      expect(axios.get).toHaveBeenCalledTimes(2)
+    } finally {
+      errorLog.mockRestore()
+    }
+  })
+
+  it('shares concurrent status reads and releases the request after failure', async () => {
+    let rejectStatus
+    axios.get.mockImplementationOnce(() => new Promise((_, reject) => (rejectStatus = reject)))
+    const requests = Promise.all([store.get_running(), store.get_running()])
+    expect(axios.get).toHaveBeenCalledOnce()
+    expect(axios.get.mock.lastCall[1].timeout).toBe(10000)
+    rejectStatus(new Error('offline'))
+    await expect(requests).rejects.toThrow('offline')
+
+    status = 'recovering'
+    await store.get_running()
+    expect(store.status).toBe('recovering')
+    expect(axios.get).toHaveBeenCalledTimes(2)
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it.each([true, false, null, undefined, 'true', 1])(

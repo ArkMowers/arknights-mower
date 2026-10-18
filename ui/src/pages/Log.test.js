@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, nextTick, ref } from 'vue'
+import { effectScope, nextTick, onMounted, onUnmounted, ref } from 'vue'
 
 import LogPage from './Log.vue'
 
@@ -36,6 +36,9 @@ describe('log page', () => {
   let scope
 
   beforeEach(() => {
+    vi.useFakeTimers()
+    onMounted.mockClear()
+    onUnmounted.mockClear()
     state.client = { get: vi.fn(), post: vi.fn() }
     state.warning = vi.fn()
     state.mower = {
@@ -47,14 +50,15 @@ describe('log page', () => {
         plan_condition: ref([]),
         log_lines: ref([]),
         task_list: ref([]),
-        waiting: ref(false),
-        get_task_id: ref(0)
+        waiting: ref(false)
       },
       get_tasks: vi.fn(),
-      get_running: vi.fn()
+      get_running: vi.fn(),
+      start_task_polling: vi.fn(),
+      stop_task_polling: vi.fn()
     }
     state.config = { refs: { theme: ref('light') } }
-    vi.stubGlobal('localStorage', { setItem: vi.fn(), getItem: vi.fn() })
+    vi.stubGlobal('localStorage', { setItem: vi.fn(), getItem: vi.fn(() => null) })
     vi.stubGlobal('document', {
       hidden: false,
       querySelector: vi.fn(),
@@ -66,7 +70,32 @@ describe('log page', () => {
 
   afterEach(() => {
     scope.stop()
+    vi.clearAllTimers()
+    vi.useRealTimers()
     vi.unstubAllGlobals()
+  })
+
+  it('subscribes to task updates only while the log page is mounted', async () => {
+    state.client.get.mockResolvedValue({ data: {} })
+    vi.stubGlobal(
+      'ResizeObserver',
+      vi.fn(function () {
+        this.observe = vi.fn()
+        this.disconnect = vi.fn()
+      })
+    )
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    onMounted.mock.lastCall[0]()
+    expect(state.mower.start_task_polling).toHaveBeenCalledOnce()
+    expect(state.mower.get_tasks).not.toHaveBeenCalled()
+    expect(vi.getTimerCount()).toBe(1)
+
+    component.start()
+    expect(state.mower.get_tasks).toHaveBeenCalledOnce()
+    onUnmounted.mock.lastCall[0]()
+    expect(state.mower.stop_task_polling).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBe(0)
+    await nextTick()
   })
 
   it.each(['启动中', '等待设备恢复'])(
