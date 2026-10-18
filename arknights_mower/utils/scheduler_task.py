@@ -87,6 +87,85 @@ def task_view(tasks, scope):
     raise ValueError(f"未知任务查询用途：{scope}")
 
 
+def merge_restored_waiting_shifts(waiting):
+    """旧缓存中的重复派生上班保留最早原任务；未知执行状态保持原样。"""
+    planning_fields = {
+        "time",
+        "type",
+        "plan",
+        "meta_data",
+        "adjusted",
+        "strict_mood_limit",
+        "mood_limit",
+        "initial_fia",
+        "return_windows",
+        "group_shift_waiting",
+        "group_shift_predecessors",
+        "group_shift_transitions",
+    }
+    result, buckets = [], defaultdict(list)
+    for task in waiting:
+        predecessors = getattr(task, "group_shift_predecessors", ())
+        if (
+            type(task) is not SchedulerTask
+            or task.type != TaskTypes.SHIFT_ON
+            or task.meta_data
+            or task.adjusted
+            or task.strict_mood_limit
+            or task.initial_fia
+            or task.mood_limit is not None
+            or not task.plan
+            or not any(
+                name not in ("Current", "Free", "")
+                for row in task.plan.values()
+                for name in row
+            )
+            or not hasattr(task, "group_shift_waiting")
+            or not (predecessors or task.group_shift_waiting)
+            or set(vars(task)) - planning_fields
+        ):
+            result.append(task)
+            continue
+        # 执行、补偿、副表或未知字段不在白名单内，即使数值相同也不合并。
+        metadata = {
+            name: value
+            for name, value in vars(task).items()
+            if name not in ("time", "group_shift_predecessors", "return_windows")
+        }
+        windows = getattr(task, "return_windows", {})
+        key = (
+            tuple((room, tuple(row)) for room, row in sorted(task.plan.items())),
+            tuple(id(previous) for previous in predecessors),
+            frozenset(task.group_shift_waiting),
+            tuple(sorted(getattr(task, "group_shift_transitions", {}).items())),
+            "return_windows" in vars(task),
+            tuple((name, identity) for name, (identity, _) in sorted(windows.items())),
+        )
+        for index, previous_metadata in buckets[key]:
+            if metadata == previous_metadata:
+                earlier, later = (
+                    (task, result[index])
+                    if task.time < result[index].time
+                    else (result[index], task)
+                )
+                earlier_windows = getattr(earlier, "return_windows", {})
+                later_windows = getattr(later, "return_windows", {})
+                # 同轮等待沿用首次起点；原任务时间与窗口起点不一致时不推断责任。
+                if all(
+                    earlier_windows[name][1] <= later_windows[name][1]
+                    for name in earlier_windows
+                ):
+                    result[index] = earlier
+                    break
+        else:
+            buckets[key].append((len(result), metadata))
+            result.append(task)
+    removed = len(waiting) - len(result)
+    if removed:
+        logger.info("恢复等待换班时合并 %d 份重复安排，保留最早任务与原时间", removed)
+    return result
+
+
 def find_next_task(
     tasks,
     compare_time: datetime | None = None,

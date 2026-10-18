@@ -113,4 +113,14 @@ def reconcile_retained_recovery(op_data, task):
                     changed = True
             if changed and all(name == "Current" for name in row):
                 del plan[room]
+    expected = getattr(task, "group_shift_expected", None)
+    if expected is not None:
+        task.group_shift_expected = {
+            position: name
+            for position, name in expected.items()
+            if not (position[0].startswith("dorm") and name in returned)
+        }
+    transitions = getattr(task, "group_shift_transitions", {})
+    for group in returned_groups:
+        transitions.pop(group, None)
     return returned_groups
