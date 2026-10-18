@@ -33,7 +33,7 @@ export function mowerVerifiedRecoveryDependencyReturn(data:MowerSchedulingData,r
   next.groupShiftTransitions=mowerArrangementGroupTransitions(original,next.plan)
   prepareMowerShiftCycle(original,next,queue,model)
   const conditions=next.backupShiftConditions??original.planConditions
-  let projected=model.swap(projectMowerArrangements(original,[]),conditions)
+  let projected=model.swap(projectMowerArrangements(original,[]),conditions,next.backupGroup)
   projected=projectMowerArrangements(projected,[next.plan]);commitMowerGroupShifts(projected,next.groupShiftTransitions)
   failed.groupShiftTransitions=mowerArrangementGroupTransitions(projected,failed.plan)
   const changedOwners=JSON.stringify(conditions)!==JSON.stringify(original.planConditions)&&blockedSlots.length>0&&blockedSlots.every(([room,index])=>projected.plan[room]?.[index]!==data.plan[room]?.[index])
@@ -47,7 +47,7 @@ export function mowerVerifiedRecoveryDependencyReturn(data:MowerSchedulingData,r
   if(!normalizeMowerSharedArrangement(projected,failed.plan,failed.groupShiftTransitions,failed.backupExplicitSlots))return false
   queue.tasks=queue.tasks.filter(task=>task!==next);queue.tasks.push(failed)
   prepareMowerShiftCycle(projected,failed,queue,model)
-  const finalRules=model.swap(projectMowerArrangements(projected,[]),failed.backupShiftConditions??projected.planConditions)
+  const finalRules=model.swap(projectMowerArrangements(projected,[]),failed.backupShiftConditions??projected.planConditions,failed.backupGroup)
   return normalizeMowerSharedArrangement(finalRules,failed.plan,failed.groupShiftTransitions,failed.backupExplicitSlots)
  }catch(error){if(error instanceof MowerShiftPreviewError)return false;throw error}
 }

@@ -299,6 +299,8 @@ const sub_plan_options = computed(() => {
 function create_sub_plan() {
   if (!requireEditing()) return
   backup_plans.value.push({
+    group_ids: ['default'],
+    type: 'global',
     conf: {
       exhaust_require: [],
       free_blacklist: [],

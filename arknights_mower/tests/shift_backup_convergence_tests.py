@@ -460,3 +460,60 @@ def test_due_fiammetta_defers_convergence_until_finished(solver):
     solver.tasks.pop()
     solver._prepare_shift_backup(task)
     assert hasattr(task, "backup_shift_conditions")
+
+
+def test_group_selection_is_committed_only_with_final_shift(solver):
+    backup = solver.op_data.backup_plans[0]
+    backup.group_ids = ["rest"]
+    solver.op_data.backup_groups = [
+        {
+            "id": "rest",
+            "name": "休息",
+            "trigger": {
+                "left": "op_data.operators['薇薇安娜'].is_resting()",
+                "operator": "==",
+                "right": "True",
+            },
+        }
+    ]
+    task = downshift(solver)
+    solver._prepare_shift_backup(task)
+    assert task.backup_shift_conditions == [True]
+    assert task.backup_group == "rest"
+    assert solver.op_data.backup_group == "default"
+    assert solver.op_data.plan_condition == [False]
+    solver._activate_shift_backup(task)
+    assert solver.op_data.backup_group == "rest"
+    assert solver.op_data.plan_condition == [True]
+
+
+def test_failed_group_transition_restores_selection_and_flags(solver):
+    solver.op_data.backup_groups = [
+        {
+            "id": "new",
+            "name": "新分组",
+            "trigger": {"left": "True", "operator": "==", "right": "True"},
+        }
+    ]
+    backup = solver.op_data.backup_plans[0]
+    backup.group_ids = ["new"]
+    backup.trigger = LogicExpression("True", "==", "True")
+    solver._backup_transition_plan = MagicMock(
+        side_effect=ValueError("injected transition failure")
+    )
+    assert not solver.backup_plan_solver()
+    assert solver.op_data.backup_group == "default"
+    assert solver.op_data.plan_condition == [False]
+
+
+def test_direct_selection_remembers_group_with_no_active_backup(solver):
+    solver.op_data.backup_groups = [
+        {
+            "id": "empty",
+            "name": "空分组",
+            "trigger": {"left": "True", "operator": "==", "right": "True"},
+        }
+    ]
+    assert not solver.backup_plan_solver()
+    assert solver.op_data.backup_group == "empty"
+    assert solver.op_data.plan_condition == [False]

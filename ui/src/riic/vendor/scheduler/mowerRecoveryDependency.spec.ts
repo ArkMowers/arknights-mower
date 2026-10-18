@@ -113,7 +113,7 @@ describe('verified normal return releases a failed backup arrangement',()=>{
   if(kind==='product-lock')retained.productShiftLocked=true
   if(kind==='restoration')retained.dormRecoveryRestore=['芬']
   if(kind==='unchanged-owner')retained.plan.room_1_3=[id('安德切尔')]
-  if(kind==='unchanged-backup')model.evaluate=()=>[true]
+  if(kind==='unchanged-backup')model.select=data=>({groupId:data.backupGroup,conditions:[true]})
   expect(mowerVerifiedRecoveryDependencyReturn(data,retained,candidate,queue.tasks,model)).toBe(false)
  })
  it('does not retain an exemption after another retained task trims the proven return',()=>{

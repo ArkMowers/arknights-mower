@@ -252,11 +252,27 @@ class Trigger(BaseModel):
     right: str | Trigger = ""
 
 
+class BackupGroup(BaseModel):
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    trigger: Trigger = Field(default_factory=Trigger)
+
+
 class BackupPlan(BaseModel):
-    conf: BackupPlanConf = {}
-    plan: Plan1 = {}
-    task: Task = {}
-    trigger: Trigger = {}
+    group_ids: list[str] = Field(default_factory=lambda: ["default"], min_length=1)
+
+    @field_validator("group_ids")
+    @classmethod
+    def unique_groups(cls, value):
+        if len(value) != len(set(value)):
+            raise ValueError("副表归属分组不能重复")
+        return value
+
+    type: Literal["global", "exclusive"] = "global"
+    conf: BackupPlanConf = Field(default_factory=BackupPlanConf)
+    plan: Plan1 = Field(default_factory=Plan1)
+    task: Task = Field(default_factory=Task)
+    trigger: Trigger = Field(default_factory=Trigger)
     name: str = "plan"
 
 
@@ -278,6 +294,25 @@ class PlanModel(BaseModel):
     plan1: Plan1 = Plan1()
     conf: PlanConf = PlanConf()
     backup_plans: list[BackupPlan] = []
+    backup_groups: list[BackupGroup] = Field(
+        default_factory=lambda: [BackupGroup(id="default", name="默认分组")]
+    )
+
+    @model_validator(mode="after")
+    def validate_backup_groups(self):
+        ids = [group.id for group in self.backup_groups]
+        if len(ids) != len(set(ids)):
+            raise ValueError("副表分组标识不能重复")
+        if "default" not in ids:
+            self.backup_groups.insert(0, BackupGroup(id="default", name="默认分组"))
+            ids.append("default")
+        self.backup_groups.sort(key=lambda group: group.id != "default")
+        for backup in self.backup_plans:
+            for group_id in backup.group_ids:
+                if group_id not in ids:
+                    raise ValueError(f"副表 {backup.name} 的分组不存在：{group_id}")
+        return self
+
     # 全局运行设置随排班导出；旧排班没有此字段时保留本机现有设置。
     advanced_settings: Optional[dict[str, Any]] = None
 

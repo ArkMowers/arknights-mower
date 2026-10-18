@@ -1,6 +1,7 @@
 """从共享条件状态生成副表开关组合；未知条件保留独立的真假可能。"""
 
 import ast
+import copy
 from itertools import product
 from time import monotonic
 
@@ -147,7 +148,87 @@ def _returns_boolean(node, known_operators):
 
 
 def possible_backup_conditions(
-    backups, combination_limit, *, known_operators=None, deadline=None
+    backups, combination_limit, *, known_operators=None, deadline=None, groups=()
+):
+    """Analyze only combinations admitted by the selected group and backup types."""
+    from types import SimpleNamespace
+
+    from arknights_mower.utils.backup_groups import backup_group_ids
+    from arknights_mower.utils.logic_expression import get_logic_exp
+
+    if not any(group["id"] != "default" for group in groups) and all(
+        getattr(backup, "backup_type", "global") == "global"
+        and backup_group_ids(backup) == ["default"]
+        for backup in backups
+    ):
+        return _ungrouped_backup_conditions(
+            backups,
+            combination_limit,
+            known_operators=known_operators,
+            deadline=deadline,
+        )
+    custom = {
+        group["id"]: str(get_logic_exp(copy.deepcopy(group["trigger"])))
+        for group in groups
+        if group["id"] != "default"
+    }
+    branches = {
+        "default": "not (" + " or ".join(custom.values()) + ")" if custom else "True",
+        **custom,
+    }
+    combinations = set()
+    for group_id, group_trigger in branches.items():
+        check_validation_deadline(deadline)
+        globals_ = [
+            index
+            for index, backup in enumerate(backups)
+            if getattr(backup, "backup_type", "global") == "global"
+            and group_id in backup_group_ids(backup)
+        ]
+        exclusives = [
+            index
+            for index, backup in enumerate(backups)
+            if getattr(backup, "backup_type", "global") == "exclusive"
+            and group_id in backup_group_ids(backup)
+        ]
+        for selected in [None, *exclusives]:
+            indexes = globals_ + ([] if selected is None else [selected])
+            gate = group_trigger
+            if selected is None and exclusives:
+                gate = (
+                    f"({gate}) and not ("
+                    + " or ".join(str(backups[index].trigger) for index in exclusives)
+                    + ")"
+                )
+            candidates = [backups[index] for index in indexes] + [
+                SimpleNamespace(trigger=gate)
+            ]
+            states = _ungrouped_backup_conditions(
+                candidates,
+                combination_limit,
+                known_operators=known_operators,
+                deadline=deadline,
+                required={
+                    len(candidates) - 1: True,
+                    **({len(candidates) - 2: True} if selected is not None else {}),
+                },
+            )
+            for state in states:
+                if not state[-1] or selected is not None and not state[-2]:
+                    continue
+                flags = [False] * len(backups)
+                for index, active in zip(indexes, state):
+                    flags[index] = active
+                combinations.add(tuple(flags))
+                if len(combinations) > combination_limit:
+                    raise BackupValidationLimitExceeded(
+                        f"验证未完成：可能生效的副表组合数量超过校验上限 {combination_limit}"
+                    )
+    return sorted(combinations, key=lambda flags: (sum(flags), flags))
+
+
+def _ungrouped_backup_conditions(
+    backups, combination_limit, *, known_operators=None, deadline=None, required=None
 ):
     """仅删除条件逻辑能证明不成立的组合，不读取驻员或执行导入表达式。"""
     domains = {}
@@ -269,16 +350,49 @@ def possible_backup_conditions(
             # 未列出的房间或产物统一保留一个代表值，不限制实际状态。
             domain = [*sorted(literals), object()]
         state_count *= len(domain)
-        if state_count > MAX_CONDITION_STATES:
+        if not required and state_count > MAX_CONDITION_STATES:
             raise BackupValidationLimitExceeded(
                 "验证未完成：触发条件状态数量超过分析上限"
             )
         values.append(domain)
 
+    def admissible_states():
+        if not required:
+            for assignment in product(*values):
+                yield dict(zip(domains, assignment))
+            return
+        keys = list(domains)
+        state = {}
+        visited = 0
+
+        def visit(index):
+            nonlocal visited
+            check_validation_deadline(deadline)
+            visited += 1
+            if visited > MAX_CONDITION_STATES:
+                raise BackupValidationLimitExceeded(
+                    "验证未完成：触发条件状态数量超过分析上限"
+                )
+            for condition, expected in required.items():
+                try:
+                    if bool(conditions[condition](state)) != expected:
+                        return
+                except KeyError:
+                    pass
+            if index == len(keys):
+                yield state
+                return
+            key = keys[index]
+            for value in values[index]:
+                state[key] = value
+                yield from visit(index + 1)
+            del state[key]
+
+        yield from visit(0)
+
     combinations = set()
-    for assignment in product(*values):
+    for state in admissible_states():
         check_validation_deadline(deadline)
-        state = dict(zip(domains, assignment))
         flags = tuple(bool(condition(state)) for condition in conditions)
         combinations.add(flags)
         if len(combinations) > combination_limit:

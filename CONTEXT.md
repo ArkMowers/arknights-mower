@@ -60,6 +60,9 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 - **Code Mapping**: [`PlanModel`](arknights_mower/utils/config/plan.py), [`Plan1`](arknights_mower/utils/config/plan.py), [`BackupPlan`](arknights_mower/utils/config/plan.py)
 - **_Avoid_**: `Task script`, `Macro`, `Work plan`
 
+### Backup Plan Group and Type
+- **Definition**: A backup plan group supplies a shared activation condition for its backup plans. Custom groups are mutually exclusive, with the default group as fallback. A backup can belong to multiple groups and participates only when the selected group is among them. Global backups activate on their own conditions; at most one exclusive backup is active in the selected group. An eligible current group or exclusive backup remains selected; otherwise selection follows list order.
+
 ### Trust Rotation
 - **Definition**: Periodic inspection of base assistants and built activity-room occupants during daily tasks. Incumbents remain until 200% by default. With the threshold enabled, an incumbent at or above X% yields to an eligible same-kind candidate below X%; otherwise it remains until 200%. Assistant and activity-room rosters each exclude their own incumbents, permit cross-kind overlap and preserve ordinary working or resting state. Replacements prefer operators below the enabled threshold, then the lowest trust below 200%. When an ascending-trust roster confirms that all operators have 200% trust, current assignments remain and the remaining facilities are skipped for that inspection.
 

@@ -248,6 +248,10 @@ def build_global_plan(
     # 默认任务
     plan["default_plan"] = Plan(plan1, plan_config, products=default_products)
     # 备用自定义任务
+    groups = {
+        group["id"]: get_logic_exp(copy.deepcopy(group["trigger"]))
+        for group in plan["backup_groups"]
+    }
     backup_plans: list[Plan] = []
 
     for i in plan["backup_plans"]:
@@ -300,6 +304,11 @@ def build_global_plan(
                 task=backup_task,
                 name=i.get("name"),
                 products=backup_products,
+                group_ids=i["group_ids"],
+                backup_type=i["type"],
+                group_triggers={
+                    key: groups[key] for key in i["group_ids"] if key != "default"
+                },
             )
         )
     plan["backup_plans"] = backup_plans
@@ -316,6 +325,8 @@ class Operators:
 
     global_plan = None
     plan_condition = []
+    backup_group = "default"
+    backup_groups = ()
     shadow_copy = {}
     current_room_changed_callback = None
     first_init = True
@@ -344,6 +355,8 @@ class Operators:
         self.free_blacklist = []
         self.global_plan = plan
         self.backup_plans = plan["backup_plans"]
+        self.backup_groups = plan.get("backup_groups", [])
+        self.backup_group = "default"
         # 切换默认排班
         self.swap_plan([False] * (len(self.backup_plans)))
         self.run_order_rooms = {}
@@ -392,7 +405,23 @@ class Operators:
             self.maintenance_primary_slots
         )
 
-    def swap_plan(self, condition, refresh=False):
+    def evaluate_backup_selection(self):
+        from arknights_mower.utils.backup_groups import select_backup_plans
+        from arknights_mower.utils.logic_expression import get_logic_exp
+
+        groups = [
+            {**group, "trigger": get_logic_exp(copy.deepcopy(group["trigger"]))}
+            for group in self.backup_groups
+        ]
+        return select_backup_plans(
+            self.backup_plans,
+            groups,
+            lambda trigger: bool(self.evaluate_expression(str(trigger))),
+            current_group=self.backup_group,
+            current=self.plan_condition,
+        )
+
+    def swap_plan(self, condition, refresh=False, *, backup_group=None):
         from arknights_mower.utils.backup_validation import validate_backup_facilities
 
         if error := validate_backup_facilities(
@@ -420,7 +449,10 @@ class Operators:
                 self.plan, self.config = self.merge_plan(index, self.config, self.plan)
                 backup = self.global_plan["backup_plans"][index]
                 self.products.update(backup.products)
-                maintenance = backup.uses_major_maintenance_condition
+                maintenance = backup.uses_condition(
+                    "major_maintenance_remaining_hours",
+                    backup_group or self.backup_group,
+                )
                 for room, slots in backup.plan.items():
                     if room not in self.plan:
                         continue
@@ -431,6 +463,8 @@ class Operators:
                         if maintenance and slot.agent in TRADE_ORDER_AGENTS:
                             self.maintenance_primary_slots.add((room, slot_index))
         self.plan_condition = condition
+        if backup_group is not None:
+            self.backup_group = backup_group
         if refresh:
             self.first_init = True
             error = self.init_and_validate(True)
@@ -1058,6 +1092,17 @@ class Operators:
             for backup in self.backup_plans
             for hours in backup.major_maintenance_thresholds
         ]
+        from arknights_mower.utils.logic_expression import get_logic_exp
+        from arknights_mower.utils.plan import Plan
+
+        thresholds.extend(
+            hours
+            for group in self.backup_groups
+            if group["id"] != "default"
+            for hours in Plan.maintenance_thresholds(
+                get_logic_exp(copy.deepcopy(group["trigger"]))
+            )
+        )
         if not thresholds:
             return None
         info = NewsChecker.get_maintenance()
@@ -3005,6 +3050,7 @@ class Operators:
                 MAX_BACKUP_VALIDATION_COMBINATIONS,
                 known_operators=baseline.operators,
                 deadline=deadline,
+                groups=self.backup_groups,
             )
             for flags in combinations:
                 check_validation_deadline(deadline)
