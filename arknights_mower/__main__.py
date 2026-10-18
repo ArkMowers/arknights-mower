@@ -26,7 +26,11 @@ from arknights_mower.utils.resource_pkg import (
     refresh_resource_at_boundary,
     resource_task_session,
 )
-from arknights_mower.utils.scheduler_task import find_next_task, protect_priority_tasks
+from arknights_mower.utils.scheduler_task import (
+    find_next_task,
+    merge_restored_waiting_shifts,
+    protect_priority_tasks,
+)
 
 base_scheduler = None
 device_control = create_device_control()
@@ -536,21 +540,38 @@ def simulate(saved):
             base_scheduler.op_data.urgent_recovery_supporters = copy.deepcopy(
                 saved.get("urgent_recovery_supporters", {})
             )
-            base_scheduler.waiting_group_shifts = saved.get("waiting_group_shifts", [])
+            base_scheduler.waiting_group_shifts = merge_restored_waiting_shifts(
+                saved.get("waiting_group_shifts", [])
+            )
             from arknights_mower.utils.config.plan import migrate_backup_tasks
 
-            base_scheduler.tasks = migrate_backup_tasks(
-                tasks,
-                saved.get("backup_plan_names", []),
-                [backup.name for backup in base_scheduler.op_data.backup_plans],
-                config.retired_backup_indices,
-                retired=bool(saved.get("rescue_state"))
+            retired_backups = (
+                bool(saved.get("rescue_state"))
                 or config.retired_backup_migrated
                 or bool(
                     set(saved.get("backup_plan_names", []))
                     - {backup.name for backup in base_scheduler.op_data.backup_plans}
-                ),
+                )
             )
+            restored_tasks, restored_predecessors = [], {}
+            for task in tasks:
+                migrated = migrate_backup_tasks(
+                    [task],
+                    saved.get("backup_plan_names", []),
+                    [backup.name for backup in base_scheduler.op_data.backup_plans],
+                    config.retired_backup_indices,
+                    retired=retired_backups,
+                )
+                if migrated:
+                    restored_predecessors[id(task)] = migrated[0]
+                    restored_tasks.extend(migrated)
+            base_scheduler.tasks = restored_tasks
+            for task in base_scheduler.waiting_group_shifts:
+                if hasattr(task, "group_shift_predecessors"):
+                    task.group_shift_predecessors = tuple(
+                        restored_predecessors.get(id(previous), previous)
+                        for previous in task.group_shift_predecessors
+                    )
             base_scheduler.op_data.restore_dorm_state(
                 saved["dorm"],
                 group_transitions=base_scheduler._pending_group_transitions(),
