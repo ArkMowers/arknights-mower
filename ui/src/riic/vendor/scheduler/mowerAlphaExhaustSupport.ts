@@ -1,6 +1,6 @@
 // Mower alpha b2d9ac8 exhaust_replacement.plan_exhaust_support (MIT).
 import {mowerUrgentRecallBlocked} from './mowerUrgentRecovery'
-import {planMowerReplacementHandoff,mowerRecallCanSustain,mowerCoordinationPrimaryReplacement} from './mowerReplacementCoordination'
+import {planMowerReplacementHandoff,mowerRecallCanSustain,mowerRecallMoodAdmissible,mowerCoordinationPrimaryReplacement} from './mowerReplacementCoordination'
 import {mowerGroupRecoveryDeadline,mowerRecoveryReady} from './mowerGroupRecovery'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {mowerReplacementCandidates,MowerOperatorState} from './mowerOperatorState'
@@ -97,9 +97,10 @@ function planMowerAlphaExhaustAttempt(original:MowerSchedulingData,candidates:st
   alphaRebalanceClosingDorms(shadow,trial,returning)
   if(!normalizeMowerSharedArrangement(state,trial)){sharedDependencies(state,trial);return}
   const recalled=actualReturns()
-  if([...recalled].some(blocked))return
+  if([...recalled].some(blocked)||!options.urgentExhaust&&!mowerRecallMoodAdmissible(original,recalled,candidates))return
   const projected=projectMowerArrangements(original,[trial])
   if(Object.values(state.operators).some(worker=>worker.isHigh()&&worker.isResting()&&!projected.operators[worker.name]!.currentRoom&&!recalled.has(worker.name)))return
+  if(!options.urgentExhaust&&mowerCoordinationSupportOutcome(original,trial,candidates,options)===false)return
   return [trial,projected]
  }
  if(seeds.length){const seeded=recall(data,plan,seeds);if(!seeded)return;[plan,data]=seeded}
@@ -132,6 +133,10 @@ function planMowerAlphaExhaustAttempt(original:MowerSchedulingData,candidates:st
 
 /** Recheck the final support after backup convergence, before any physical arrangement. */
 export function validateMowerCoordinationSupport(original:MowerSchedulingData,plan:MowerTaskPlan,candidates:readonly string[],options:MowerRestingOptions={}):boolean {
+ return mowerCoordinationSupportOutcome(original,plan,candidates,options)===true
+}
+/** Incomplete admission may still need another recall; completed unsafe admission must try another candidate. */
+function mowerCoordinationSupportOutcome(original:MowerSchedulingData,plan:MowerTaskPlan,candidates:readonly string[],options:MowerRestingOptions):boolean|undefined {
  const state=projectMowerArrangements(original,[plan]),trial=projectMowerArrangements(state,[]),result:MowerTaskPlan={}
  if(candidates.some(name=>!state.operators[name]))return false
  mowerGetRestingPlan(trial,[...candidates],[],result,{...options,onBlocked:undefined,isDormReplacement:name=>{
@@ -140,7 +145,7 @@ export function validateMowerCoordinationSupport(original:MowerSchedulingData,pl
   const projected=trial.dormReplacementForSlot(name,after.currentRoom,after.currentIndex)
   return before&&(before.currentRoom!==after.currentRoom||before.currentIndex!==after.currentIndex)?projected:options.isDormReplacement?.(name)??projected
  }})
- if(!Object.keys(result).length)return false
+ if(!Object.keys(result).length)return
  const reorder=mowerTryReorder(trial,result);if(reorder)Object.assign(result,reorder)
  const protectedNames=new Set([...original.busyRestingNames,...original.reservedProductReplacements,...options.reservedNames??[]])
  for(const proposal of [plan,result])for(const [room,row] of Object.entries(proposal))if(row.some((name,index)=>name!=='Current'&&(options.reservedSlots?.has(room+'\0'+index)||protectedNames.has(name))))return false

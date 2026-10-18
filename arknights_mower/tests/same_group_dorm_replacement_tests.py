@@ -639,8 +639,13 @@ def test_normal_rotation_uses_fixed_bed_with_all_dynamic_beds_occupied(monkeypat
     assert {bed.name for bed in data.dorm} == {"陈", "银灰", "能天使"}
 
 
-def test_exhaust_support_recalls_rotated_group_without_splitting_reciprocal_pair(
-    monkeypatch,
+@pytest.mark.parametrize(
+    "urgent,request_mood,allowed",
+    [(True, 0, True), (False, 0, True), (False, 24, False)],
+    ids=["exhausted", "ordinary-at-floor", "ordinary-above-rescue"],
+)
+def test_recall_preserves_rotated_group_reciprocal_pair(
+    monkeypatch, urgent, request_mood, allowed
 ):
     from arknights_mower.utils.exhaust_replacement import plan_exhaust_support
 
@@ -659,15 +664,21 @@ def test_exhaust_support_recalls_rotated_group_without_splitting_reciprocal_pair
         ]
     )
     data = solver.op_data
+    data.operators["能天使"].mood = request_mood
     support = plan_exhaust_support(
         data,
         ["能天使"],
         lambda state: state.operators["黑角"].current_room == "",
         lambda name: False,
+        urgent=urgent,
     )
-    assert support["contact"] == [WORKER]
-    assert support["meeting"] == ["银灰"]
-    assert support[ROOM][0] == RESIDENT
+    if allowed:
+        assert support is not None
+        assert support["contact"] == [WORKER]
+        assert support["meeting"] == ["银灰"]
+        assert support[ROOM][0] == RESIDENT
+    else:
+        assert support is None
     assert data.operators[WORKER].is_resting()
     assert data.operators[RESIDENT].current_room == "contact"
 

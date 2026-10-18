@@ -2,6 +2,7 @@ import {describe,expect,it} from 'vitest'
 import {advanceRoster,createRosterRuntime,nextRosterActionHours,settleRoster,type RuntimeConfig,type RuntimeState} from './rosterRuntime'
 import {getMowerSourceRuntime,settleMowerSource} from './mowerSourceRuntime'
 import {MowerDormState} from './mowerSchedulingData'
+import {mowerUrgentRecallBlocked} from './mowerUrgentRecovery'
 import {MowerTask,MOWER_TASK_TYPES as T,toMowerMicros} from './mowerTaskQueue'
 
 const rates={workRate:()=>1,recoveryRate:(name:string)=>name==='A'?1:4,forecastRates:(state:RuntimeState)=>({work:Object.fromEntries(Object.keys(state.morale).map(name=>[name,1])),recovery:Object.fromEntries(Object.keys(state.morale).map(name=>[name,name==='A'?1:4]))})}
@@ -48,7 +49,11 @@ describe('replacement coordination through source runtime',()=>{
   if(allowed){
    expect(support?.plan).toEqual({room_1_1:['A']})
    dispatchUntil(state,()=>state.occupants.room_1_1_0==='A'&&state.occupants.room_1_2_0==='X'&&Object.values(state.bedOccupants).includes('B'))
+   expect(source.data.urgentRecoverySupporters.B).toEqual(['A'])
+   expect(mowerUrgentRecallBlocked(source.data,['A'])).toBe(true)
    dispatchUntil(state,()=>state.occupants.room_1_2_0==='B',100)
+   expect(source.data.urgentRecoverySupporters.B).toBeUndefined()
+   expect(mowerUrgentRecallBlocked(source.data,['A'])).toBe(false)
    if(ordinary)expect(state.morale.A).toBeGreaterThan(0)
   }else{
    expect(support).toBeUndefined()

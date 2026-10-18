@@ -3,11 +3,15 @@ import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,type MowerTask} from './mowerTaskQueue'
 
 /** Observed returns and completed recovery release this round's recall dependency. */
-export function reconcileMowerUrgentRecovery(data:MowerSchedulingData):void {
- for(const name of Object.keys(data.urgentRecoverySupporters)){
+export function mowerActiveUrgentRecoveryNames(data:MowerSchedulingData):Set<string> {
+ return new Set(Object.keys(data.urgentRecoverySupporters).filter(name=>{
   const op=data.operators[name]
-  if(!op||!op.moodIsPrediction&&(hasObservedFullMood(op)||!op.currentRoom&&data.restMoodComplete(name)||op.currentRoom===op.room&&op.currentIndex===op.index))delete data.urgentRecoverySupporters[name]
- }
+  return !!op&&(op.moodIsPrediction||!(hasObservedFullMood(op)||!op.currentRoom&&data.restMoodComplete(name)||op.currentRoom===op.room&&op.currentIndex===op.index))
+ }))
+}
+export function reconcileMowerUrgentRecovery(data:MowerSchedulingData):void {
+ const active=mowerActiveUrgentRecoveryNames(data)
+ for(const name of Object.keys(data.urgentRecoverySupporters))if(!active.has(name))delete data.urgentRecoverySupporters[name]
 }
 export function mowerUrgentRecallBlocked(data:MowerSchedulingData,candidates:readonly string[],pending:ReadonlySet<string>=new Set()):boolean {
  const supporters=new Set(Object.values(data.urgentRecoverySupporters).flat())
@@ -18,10 +22,10 @@ export function mowerUrgentPendingSupporters(tasks:readonly MowerTask[]):Set<str
 }
 /** Reserve resources only after a real support return, until its requester enters a dorm. */
 export function recordMowerUrgentSupport(data:MowerSchedulingData,task:MowerTask,pending:readonly MowerTask[],positions:Record<string,[string,number]>):void {
- if(!task.exhaustSupport||task.ordinaryCoordination||!task.coordinationRequestNames.length)return
+ if(!task.exhaustSupport||!task.coordinationRequestNames.length)return
  const supporters=Object.values(data.operators).filter(op=>(data.isGroupShiftAnchor(op)||op.independentRest&&!data.canStandby(op))&&!op.room.startsWith('dorm')&&positions[op.name]?.[0].startsWith('dorm')&&op.currentRoom===op.room&&op.currentIndex===op.index).map(op=>op.name)
  if(!supporters.length)return
- const owner=pending.find(request=>request.type===T.EXHAUST_OFF&&!request.ordinaryCoordination&&request.metadata.split(',').some(name=>task.coordinationRequestNames.includes(name)))
+ const owner=pending.find(request=>request.type===T.EXHAUST_OFF&&request.ordinaryCoordination===task.ordinaryCoordination&&request.metadata.split(',').some(name=>task.coordinationRequestNames.includes(name)))
  if(!owner)return
  const explicit=new Set(owner.metadata.split(','))
  owner.urgentRecoveryRequestNames=task.coordinationRequestNames.filter(name=>{const op=data.operators[name];return !!op&&(data.isGroupShiftAnchor(op)||op.independentRest&&explicit.has(name))})

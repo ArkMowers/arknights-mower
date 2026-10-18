@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { advanceRoster, createRosterRuntime, settleRoster, type RuntimeConfig } from './rosterRuntime'
 import { getMowerSourceRuntime } from './mowerSourceRuntime'
-import { mowerCorrectionPlan } from './mowerCorrection'
+import { mowerCorrectionPlan, planMowerCorrection } from './mowerCorrection'
 import { mowerGroupRecoveryDeadline } from './mowerGroupRecovery'
 import { mowerHasMeasuredDormDeparture, projectMowerArrangements } from './mowerObservations'
+import { MowerOperatorState } from './mowerOperatorState'
 import { MowerTask, MOWER_TASK_TYPES as T, toMowerMicros } from './mowerTaskQueue'
 
 const room = 'dormitory_1'
@@ -472,4 +473,126 @@ it.each([{ mood: 23.95, history: false, ready: true }, { mood: 23, history: fals
     expect(f.source.data.operators.B!.isResting()).toBe(true)
     expect(f.source.queue.tasks).toContain(task)
   }
+})
+
+
+describe('ordinary correction preserves an unfinished recall beneficiary', () => {
+  it('keeps independent shared recovery without holding another group member', () => {
+    const { source } = fixture(4, 24), data = source.data
+    Object.assign(data.operators.A!, { groupBindings: [{ group: '', replacement: ['R'] }, { group: 'g', replacement: ['R'] }, { group: 'other', replacement: ['R'] }] })
+    Object.assign(data.operators.B!, { currentRoom: '', currentIndex: -1, timeStampMicros: undefined })
+    data.dorms[1]!.reset()
+    data.urgentRecoverySupporters = { A: ['Incoming'] }
+    const plan = mowerCorrectionPlan(data, true)
+    expect(plan.room_1_1 ?? []).not.toContain('A')
+    expect(plan.room_1_2).toEqual(['B'])
+  })
+  it.each([false, true])('keeps its group during unknown idle recovery, cover available=%s', available => {
+    const { source } = fixture(4, 24), data = source.data
+    Object.assign(data.operators.A!, { currentRoom: '', currentIndex: -1, timeStampMicros: undefined })
+    data.dorms[0]!.reset()
+    data.urgentRecoverySupporters = { B: ['Incoming'] }
+    if (!available) Object.assign(data.operators.R!, { currentRoom: 'meeting', currentIndex: 0 })
+    for (const due of [toMowerMicros(5), 0]) {
+      data.dorms[1]!.timeMicros = due
+      for (let n = 0; n < 3; n++) {
+        const plan = mowerCorrectionPlan(data, true)
+        expect(plan.room_1_1 ?? []).not.toContain('A')
+        expect(plan.room_1_2 ?? []).not.toContain('B')
+        expect(data.urgentRecoverySupporters).toEqual({ B: ['Incoming'] })
+        expect(data.operators.B!.isResting()).toBe(true)
+      }
+    }
+    Object.assign(data.operators.B!, { mood: 24, timeStampMicros: data.nowMicros, moodIsPrediction: false })
+    const released = mowerCorrectionPlan(data, true)
+    expect(released.room_1_1).toEqual(['A'])
+    expect(released.room_1_2).toEqual(['B'])
+  })
+})
+
+describe('ordinary correction preserves explicit group recovery', () => {
+  function recoveringGroup(available = true, shared = false) {
+    const f = fixture(4, 24), { data } = f.source
+    f.source.queue.tasks = []
+    Object.assign(data.operators.A!, { currentRoom: '', currentIndex: -1, timeStampMicros: undefined })
+    delete f.state.bedOccupants[room + '_3']; data.dorms[0]!.reset()
+    Object.assign(data.operators.B!, { restInFull: true, mood: 2.4, timeStampMicros: data.nowMicros })
+    f.state.morale.B = 2.4; f.state.config.mowerSourceRules!.restInFull.push('B')
+    if (!available) {
+      Object.assign(data.operators.R!, { currentRoom: 'meeting', currentIndex: 0 })
+      delete f.state.occupants.room_1_1_0
+    }
+    if (shared) {
+      Object.assign(data.operators.B!, { group: 'other', groupBindings: [{ group: 'g', replacement: ['S'] }, { group: 'other', replacement: ['S'] }] })
+      data.groupShiftState.other = false
+    }
+    data.plan.central = ['C']
+    data.operators.C = new MowerOperatorState({ name: 'C', room: 'central', index: 0, operatorType: 'high', currentRoom: room, currentIndex: 3, mood: 24, timeStampMicros: data.nowMicros, replacement: ['CR'], alpha: true })
+    data.operators.CR = new MowerOperatorState({ name: 'CR', currentRoom: 'central', currentIndex: 0, mood: 24, timeStampMicros: data.nowMicros, alpha: true })
+    data.dorms[0]!.name = 'C'; data.dorms[0]!.timeMicros = data.nowMicros
+    f.state.morale.C = 24; f.state.morale.CR = 24
+    f.state.occupants.central_0 = 'CR'; f.state.bedOccupants[room + '_3'] = 'C'
+    f.state.config.mowerSourcePlan!.central = [{ agent: 'C', group: '', replacement: ['CR'] }]
+    f.state.config.positions.push({ id: 'central_0', roomId: 'central', primary: 'C', candidates: ['CR'] })
+    return f
+  }
+
+  it.each((['future', 'expired', 'unknown'] as const).flatMap(recovery => [false, true].flatMap(available => [false, true].map(shared => ({ recovery, available, shared })))))('keeps an independent return with recovery=$recovery, cover=$available and shared=$shared', ({ recovery, available, shared }) => {
+    const f = recoveringGroup(available, shared), data = f.source.data
+    const deadline = data.dorms[1]!.timeMicros = recovery === 'unknown' ? undefined : recovery === 'expired' ? data.nowMicros - 1 : toMowerMicros(8)
+    for (let n = 0; n < 3; n++) {
+      const plan = mowerCorrectionPlan(data, true)
+      expect(plan.central).toEqual(['C'])
+      expect(plan.room_1_1 ?? []).not.toContain('A')
+      expect(plan.room_1_2 ?? []).not.toContain('B')
+      expect(data.dorms[1]!.timeMicros).toBe(deadline)
+      expect(data.operators.B!.isResting()).toBe(true)
+      expect(data.operators.B!.group).toBe(shared ? 'other' : 'g')
+      expect(data.operators.A!.timeStampMicros).toBeUndefined()
+      expect(data.urgentRecoverySupporters).toEqual({})
+    }
+  })
+
+  it('does not turn predicted completion into measured recovery', () => {
+    const f = recoveringGroup(), data = f.source.data
+    Object.assign(data.operators.B!, { mood: 24, moodIsPrediction: true })
+    data.dorms[1]!.timeMicros = data.nowMicros - 1
+    const plan = mowerCorrectionPlan(data, true)
+    expect(plan.central).toEqual(['C'])
+    expect(plan.room_1_1 ?? []).not.toContain('A')
+    expect(plan.room_1_2 ?? []).not.toContain('B')
+  })
+
+  it.each([12, 24])('releases the group after measured recovery reaches its personal limit %s', upperLimit => {
+    const f = recoveringGroup(), data = f.source.data
+    Object.assign(data.operators.B!, { upperLimit, mood: upperLimit, moodIsPrediction: false })
+    const plan = mowerCorrectionPlan(data, true)
+    expect(plan.room_1_1).toEqual(['A'])
+    expect(plan.room_1_2).toEqual(['B'])
+    expect(plan.central).toEqual(['C'])
+  })
+
+  it('does not protect a group with no working primary actually recovering in a dormitory', () => {
+    const f = recoveringGroup(), data = f.source.data
+    Object.assign(data.operators.B!, { currentRoom: '', currentIndex: -1, timeStampMicros: undefined })
+    data.dorms[1]!.reset()
+    const plan = mowerCorrectionPlan(data, true)
+    expect(plan.room_1_1).toEqual(['A'])
+    expect(plan.room_1_2).toEqual(['B'])
+    expect(plan.central).toEqual(['C'])
+  })
+
+  it('executes the independent correction without inheriting another group recovery deadline', () => {
+    const f = recoveringGroup(), task = planMowerCorrection(f.source.data, f.source.queue, true, undefined, true)!
+    const originalTime = task.timeMicros
+    for (let n = 0; n < 12 && f.state.occupants.central_0 !== 'C'; n++) {
+      finish(f)
+      advanceRoster(f.state, 1 / 3600, rates)
+    }
+    expect(f.state.occupants.central_0).toBe('C')
+    expect(task.timeMicros).toBe(originalTime)
+    expect(task.executionFailure).toBeUndefined()
+    expect(f.state.bedOccupants[room + '_4']).toBe('B')
+    expect(f.source.data.groupShiftState.g).toBe(true)
+  })
 })

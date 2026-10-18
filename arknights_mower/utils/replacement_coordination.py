@@ -212,6 +212,57 @@ def preferred_replacement_restore(data, is_busy, protected=(), slots=()):
             return plan
 
 
+def ordinary_recall_mood_admissible(data, recalled, candidates, *, now=None):
+    """普通请求到急救线后才评估召回，双方必须有有效心情读数。"""
+    now = now or datetime.now()
+
+    def anchor(op):
+        return data.is_group_shift_anchor(op) or (
+            len(candidates) == 1
+            and op.is_high()
+            and op.independent_rest
+            and not op.workaholic
+            and not op.room.startswith("dorm")
+            and not data._can_standby(op)
+        )
+
+    def mood(op):
+        if (
+            op.time_stamp is None
+            or op.time_stamp > now
+            or getattr(op, "mood_is_prediction", False)
+            or not isfinite(op.mood)
+            or not 0 <= op.mood <= 24
+            or not isfinite(op.depletion_rate)
+        ):
+            return None
+        if op.is_resting():
+            return op.mood
+        elapsed = (now - op.time_stamp).total_seconds() / 3600
+        return max(0, min(24, op.mood - max(0, op.depletion_rate) * elapsed))
+
+    request_moods = [
+        (op, value)
+        for name in candidates
+        if (op := data.operators.get(name)) is not None
+        and anchor(op)
+        and op.is_working()
+        and (value := mood(op)) is not None
+    ]
+    if not any(value <= data.rescue_mood_threshold(op) for op, value in request_moods):
+        return False
+    for name in recalled:
+        op = data.operators.get(name)
+        if op is None:
+            return False
+        if not anchor(op):
+            continue
+        value = mood(op)
+        if value is None:
+            return False
+    return True
+
+
 def recall_can_sustain(
     original, admitted, recalled, candidates, *, rates=None, now=None, urgent=False
 ):
@@ -252,6 +303,8 @@ def recall_can_sustain(
     if urgent:
         # 用尽急救不能被普通回班等待和未来续航预测阻挡。
         return True
+    if not ordinary_recall_mood_admissible(original, recalled, candidates, now=now):
+        return False
     if rates is None:
         from arknights_mower.utils.recall_estimates import estimated_recall_rates
 
