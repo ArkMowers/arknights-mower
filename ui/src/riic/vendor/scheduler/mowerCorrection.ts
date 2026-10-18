@@ -3,9 +3,10 @@ import {mowerDormTaskReservations} from './mowerAlphaCandidates'
 import {normalizeMowerSharedArrangement,mowerSameGroupPrimaryReplacement,mowerArrangementGroupTransitions} from './mowerSharedGroups'
 import {admitMowerDerivedTasks} from './mowerTaskDerivation'
 import {mowerActiveUrgentRecoveryNames} from './mowerUrgentRecovery'
+import {mowerGroupRecoveryWorkers} from './mowerGroupRecovery'
 // Port of default agent_get_mood correction and prefer_resting_replacements.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
-import {mowerReplacementCandidates,type MowerOperatorState} from './mowerOperatorState'
+import {hasObservedFullMood,mowerReplacementCandidates,type MowerOperatorState} from './mowerOperatorState'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import type {MowerTaskSchedulingOptions} from './mowerTaskScheduling'
 import {alphaCorrectGroupDorms,alphaPosition} from './mowerAlphaDorm'
@@ -39,6 +40,13 @@ export function preferMowerRestingReplacements(data:MowerSchedulingData,plan:Mow
   else members.forEach(op=>resting.add(op.name))
  }
  const protectedRecovery=data.alpha?mowerActiveUrgentRecoveryNames(data):new Set<string>()
+ if(data.alpha)for(const group of new Set(Object.values(data.operators).flatMap(op=>op.multiGroup?op.groupBindings.map(binding=>binding.group):[op.group]).filter(Boolean))){
+  const workers=mowerGroupRecoveryWorkers(data,group)
+  if(workers.some(op=>op.isResting())&&workers.some(op=>op.restInFull&&(op.moodIsPrediction||!hasObservedFullMood(op)&&!(!op.currentRoom&&data.restMoodComplete(op.name)))))for(const member of data.shiftGroupMembers(group)){
+   const op=data.operators[member]!
+   if(!op.room.startsWith('dorm')&&!op.workaholic)protectedRecovery.add(member)
+  }
+ }
  for(const name of [...protectedRecovery]){
   const op=data.operators[name]!
   if(op.group&&data.isGroupShiftAnchor(op))for(const member of data.shiftGroupMembers(op.group))if(!data.operators[member]!.room.startsWith('dorm')&&!data.operators[member]!.workaholic)protectedRecovery.add(member)
