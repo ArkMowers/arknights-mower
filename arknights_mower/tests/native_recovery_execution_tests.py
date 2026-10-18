@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 from unittest.mock import Mock
 
+import jsonpickle
 import pytest
 
 from arknights_mower.tests import native_group_recovery_sync_tests
@@ -97,6 +98,229 @@ def test_recovery_observation_keeps_targets_when_reusing_same_deadline(resting):
         "银灰": "dormitory_1",
     }
     assert task.display_name == "复查宿舍心情：宿舍1（伊内丝、银灰）"
+
+
+@pytest.mark.parametrize("seconds", [-3, 3])
+def test_recovery_observation_replaces_superseded_deadlines(resting, seconds):
+    scheduler, now = resting
+    data = scheduler.op_data
+    name = "伊内丝"
+    op = data.operators[name]
+    op.rest_in_full, op.mood_is_prediction = True, False
+    scheduler.tasks = []
+    bed = data.get_dorm_by_name(name)[1]
+    original_deadline = now + timedelta(hours=2)
+
+    for revision in range(5):
+        op.time_stamp = now + timedelta(seconds=revision)
+        bed.time = original_deadline + timedelta(seconds=seconds * revision)
+        scheduler._schedule_recovery_observations({name}, now)
+        assert len(scheduler.tasks) == 1
+        observation = scheduler.tasks[0]
+        assert observation.time == bed.time
+        assert observation.recovery_observation_targets == {name: "dormitory_1"}
+        assert observation.recovery_observation_rooms == {"dormitory_1"}
+
+
+def test_selected_future_recovery_observation_replaces_old_deadline(resting):
+    scheduler, now = resting
+    data = scheduler.op_data
+    name = "伊内丝"
+    op = data.operators[name]
+    op.rest_in_full, op.mood_is_prediction = True, False
+    scheduler.tasks = []
+    scheduler._schedule_recovery_observations({name}, now)
+    selected = scheduler.task = scheduler.tasks[0]
+    bed = data.get_dorm_by_name(name)[1]
+    op.time_stamp = now + timedelta(seconds=1)
+    bed.time = selected.time + timedelta(seconds=3)
+
+    scheduler._schedule_recovery_observations({name}, now + timedelta(seconds=1))
+
+    assert len(scheduler.tasks) == 1
+    observation = scheduler.tasks[0]
+    assert observation.time == bed.time
+    assert observation.recovery_observation_targets == {name: "dormitory_1"}
+    assert observation.recovery_observation_rooms == {"dormitory_1"}
+
+
+def test_recovery_observation_move_keeps_other_targets_and_deadlines(resting):
+    scheduler, now = resting
+    data = scheduler.op_data
+    for room in ("dormitory_2", "dormitory_3"):
+        data.plan[room] = deepcopy(data.plan["dormitory_1"])
+    shared_deadline = now + timedelta(hours=2)
+    for name, room, deadline in (
+        ("伊内丝", "dormitory_1", shared_deadline),
+        ("银灰", "dormitory_2", shared_deadline),
+        ("讯使", "dormitory_1", shared_deadline + timedelta(hours=1)),
+    ):
+        op = data.operators[name]
+        bed = data.get_dorm_by_name(name)[1]
+        op.current_room = room
+        bed.position = (room, op.current_index)
+        op.rest_in_full, op.mood_is_prediction = True, False
+        op.time_stamp, bed.time = now, deadline
+    scheduler.tasks = []
+    scheduler._schedule_recovery_observations({"伊内丝", "银灰", "讯使"}, now)
+    shared = next(
+        t for t in scheduler.tasks if "银灰" in t.recovery_observation_targets
+    )
+    other = next(t for t in scheduler.tasks if "讯使" in t.recovery_observation_targets)
+
+    moved = data.operators["伊内丝"]
+    bed = data.get_dorm_by_name(moved.name)[1]
+    moved.current_room = "dormitory_3"
+    bed.position = (moved.current_room, moved.current_index)
+    moved.time_stamp = now + timedelta(seconds=1)
+    bed.time = shared_deadline + timedelta(minutes=5)
+    scheduler._schedule_recovery_observations({moved.name}, now)
+
+    assert len(scheduler.tasks) == 3
+    assert any(t is shared for t in scheduler.tasks) and shared.time == shared_deadline
+    assert shared.recovery_observation_targets == {"银灰": "dormitory_2"}
+    assert shared.recovery_observation_rooms == {"dormitory_2"}
+    assert any(t is other for t in scheduler.tasks)
+    assert other.time == shared_deadline + timedelta(hours=1)
+    assert other.recovery_observation_targets == {"讯使": "dormitory_1"}
+    assert other.recovery_observation_rooms == {"dormitory_1"}
+    current = next(
+        t for t in scheduler.tasks if moved.name in t.recovery_observation_targets
+    )
+    assert current.time == bed.time
+    assert current.recovery_observation_targets == {moved.name: "dormitory_3"}
+    assert current.recovery_observation_rooms == {"dormitory_3"}
+
+
+def test_recovery_observation_reuses_unchanged_task_and_cleans_restored_duplicates(
+    resting,
+):
+    scheduler, now = resting
+    name = "伊内丝"
+    scheduler.op_data.operators[name].rest_in_full = True
+    scheduler.tasks = []
+    scheduler._schedule_recovery_observations({name}, now)
+    original = scheduler.tasks[0]
+    scheduler._schedule_recovery_observations({name}, now)
+    assert len(scheduler.tasks) == 1 and scheduler.tasks[0] is original
+
+    scheduler.tasks = jsonpickle.decode(
+        jsonpickle.encode([original, deepcopy(original)])
+    )
+    restored = scheduler.tasks[0]
+    scheduler._schedule_recovery_observations({name}, now)
+    assert len(scheduler.tasks) == 1 and scheduler.tasks[0] is restored
+    assert restored.time == original.time
+    assert restored.recovery_observation_targets == {name: "dormitory_1"}
+    assert restored.recovery_observation_rooms == {"dormitory_1"}
+
+
+def test_recovery_observation_preserves_other_refresh_and_retained_tasks(resting):
+    scheduler, now = resting
+    name = "伊内丝"
+    scheduler.op_data.operators[name].rest_in_full = True
+    scheduler.tasks = []
+    scheduler._schedule_recovery_observations({name}, now)
+    retained = scheduler.tasks[0]
+    retained.execution_retained = True
+    old_deadline = retained.time
+    deadline = old_deadline + timedelta(seconds=3)
+    scheduler.op_data.get_dorm_by_name(name)[1].time = deadline
+    order = SchedulerTask(
+        time=deadline, task_type=TaskTypes.REFRESH_TIME, meta_data="room_1_1"
+    )
+    legacy = SchedulerTask(time=deadline, task_type=TaskTypes.REFRESH_TIME)
+    legacy.recovery_observation_rooms = {"dormitory_1"}
+    scheduler.tasks.extend([order, legacy])
+
+    scheduler._schedule_recovery_observations({name}, now)
+
+    assert len(scheduler.tasks) == 4
+    assert any(t is order for t in scheduler.tasks) and order.time == deadline
+    assert order.meta_data == "room_1_1"
+    assert not hasattr(order, "recovery_observation_targets")
+    assert any(t is legacy for t in scheduler.tasks) and legacy.time == deadline
+    assert legacy.recovery_observation_rooms == {"dormitory_1"}
+    assert not hasattr(legacy, "recovery_observation_targets")
+    assert any(t is retained for t in scheduler.tasks) and retained.time == old_deadline
+    assert retained.recovery_observation_targets == {name: "dormitory_1"}
+    current = next(
+        t
+        for t in scheduler.tasks
+        if all(t is not old for old in (order, legacy, retained))
+    )
+    assert current.time == deadline
+    assert current.recovery_observation_targets == {name: "dormitory_1"}
+
+
+@pytest.mark.parametrize("invalid", ["unknown_deadline", "stale_sample", "predicted"])
+def test_recovery_observation_without_valid_new_sample_keeps_old_task(resting, invalid):
+    scheduler, now = resting
+    data = scheduler.op_data
+    name = "伊内丝"
+    op = data.operators[name]
+    op.rest_in_full = True
+    scheduler.tasks = []
+    scheduler._schedule_recovery_observations({name}, now)
+    observation = scheduler.tasks[0]
+    deadline = observation.time
+    if invalid == "unknown_deadline":
+        data.get_dorm_by_name(name)[1].time = None
+    elif invalid == "stale_sample":
+        op.time_stamp = now - timedelta(seconds=1)
+    else:
+        op.mood_is_prediction = True
+
+    scheduler._schedule_recovery_observations({name}, now, sampled_after=now)
+
+    assert len(scheduler.tasks) == 1 and scheduler.tasks[0] is observation
+    assert observation.time == deadline
+    assert observation.recovery_observation_targets == {name: "dormitory_1"}
+    assert observation.recovery_observation_rooms == {"dormitory_1"}
+
+
+def test_executing_recovery_observation_keeps_its_replacement_after_completion(
+    resting, monkeypatch
+):
+    scheduler, _ = resting
+    data = scheduler.op_data
+    name = "伊内丝"
+    op = data.operators[name]
+    op.rest_in_full = True
+    task = returning_task()
+    scheduler.tasks = [task]
+    original_time, original_plan = task.time, deepcopy(task.plan)
+    monkeypatch.setattr(scheduler, "find", Mock(return_value=True))
+    monkeypatch.setattr(scheduler, "skip", Mock())
+    monkeypatch.setattr(scheduler, "_product_switching_enabled", lambda: True)
+    observed = []
+
+    def read(rooms):
+        assert rooms == {"dormitory_1"}
+        observed.append(datetime.now())
+        op.mood, op.time_stamp, op.mood_is_prediction = 10, observed[-1], False
+        data.get_dorm_by_name(name)[1].time = observed[-1] + timedelta(hours=2)
+
+    monkeypatch.setattr(scheduler, "_read_recovery_rooms", read)
+    assert not scheduler._verify_required_recovery(task)
+    executing = scheduler.tasks[0]
+    executing.time = datetime.now() - timedelta(seconds=1)
+    scheduler.task = executing
+
+    scheduler.infra_main()
+
+    assert len(observed) == 2
+    assert all(t is not executing for t in scheduler.tasks)
+    assert len(scheduler.tasks) == 1
+    replacement = scheduler.tasks[0]
+    assert replacement is not executing
+    assert replacement.time == data.get_dorm_by_name(name)[1].time
+    assert replacement.recovery_observation_targets == {name: "dormitory_1"}
+    assert replacement.recovery_observation_rooms == {"dormitory_1"}
+    assert len(scheduler.waiting_group_shifts) == 1
+    assert scheduler.waiting_group_shifts[0] is task
+    assert task.time == original_time and task.plan == original_plan
+    assert scheduler.task is None
 
 
 def test_unknown_recovery_time_does_not_create_retry_timer(resting, monkeypatch):

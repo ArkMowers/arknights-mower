@@ -2037,13 +2037,56 @@ class BaseSchedulerSolver(
             due = recovery_observation_deadline(self.op_data, name, now=now)
             if bed is not None and due is not None and due > now:
                 deadlines.setdefault(due, {})[name] = bed.position[0]
+
+        updated = {
+            name: (deadline, room)
+            for deadline, targets in deadlines.items()
+            for name, room in targets.items()
+        }
+        executing = getattr(self, "task", None)
+        if executing is not None and executing.time > now:
+            executing = None
+        retained = set()
+        obsolete = set()
+        for pending in self.tasks:
+            targets = getattr(pending, "recovery_observation_targets", None)
+            if (
+                pending.type != TaskTypes.REFRESH_TIME
+                or not targets
+                or pending is executing
+                or pending.retains_execution
+            ):
+                continue
+            remaining = {}
+            for name, room in targets.items():
+                if name not in updated:
+                    remaining[name] = room
+                elif updated[name] == (pending.time, room) and name not in retained:
+                    remaining[name] = room
+                    retained.add(name)
+            if remaining:
+                pending.recovery_observation_targets = remaining
+                pending.recovery_observation_rooms = set(remaining.values())
+            else:
+                obsolete.add(id(pending))
+        self.tasks[:] = [task for task in self.tasks if id(task) not in obsolete]
+
         for deadline, targets in deadlines.items():
+            targets = {
+                name: room for name, room in targets.items() if name not in retained
+            }
+            if not targets:
+                continue
             pending_rooms = set(targets.values())
             existing = next(
                 (
                     pending
                     for pending in self.tasks
-                    if getattr(pending, "recovery_observation_rooms", set())
+                    if pending.type == TaskTypes.REFRESH_TIME
+                    and pending is not executing
+                    and not pending.retains_execution
+                    and getattr(pending, "recovery_observation_targets", None)
+                    and getattr(pending, "recovery_observation_rooms", set())
                     == pending_rooms
                     and pending.time == deadline
                 ),
