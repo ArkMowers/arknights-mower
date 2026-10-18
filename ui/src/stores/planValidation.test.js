@@ -25,7 +25,8 @@ afterEach(() => {
 function setup(rescue) {
   const app = createApp({})
   app.use(createPinia())
-  app.provide('loaded', ref(false))
+  const loaded = ref(false)
+  app.provide('loaded', loaded)
   store = app.runWithContext(() => (rescue ? useRescuePlanStore() : usePlanStore()))
   store.plan = store.fill_empty({})
   const message = { success: vi.fn(), error: vi.fn(), warning: vi.fn() }
@@ -40,10 +41,45 @@ function setup(rescue) {
     'validating_plan',
     `${handlerCode}; return validate_plan`
   )(store, nextTick, axios, rescue, 'fixture-token', message, validating_plan)
-  return { validate, message, validating_plan }
+  return { validate, message, validating_plan, loaded }
 }
 
 describe('manual schedule validation', () => {
+  it('waits for edits made while the validation save is already in flight', async () => {
+    const { validate, message, loaded } = setup(false)
+    let finishSave
+    let finishLatestSave
+    axios.post
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishSave = resolve
+          })
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishLatestSave = resolve
+          })
+      )
+      .mockResolvedValue({ data: { success: true, message: '验证通过' } })
+    const validation = validate()
+    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(1))
+    loaded.value = true
+    store.workaholic = ['银灰']
+    await nextTick()
+    finishSave({ data: {} })
+    await vi.waitFor(() => expect(axios.post).toHaveBeenCalledTimes(2))
+    expect(axios.post.mock.lastCall[0]).toBe(`${import.meta.env.VITE_HTTP_URL}/plan`)
+    expect(axios.post.mock.lastCall[1].conf.workaholic).toBe('银灰')
+    expect(message.success).not.toHaveBeenCalled()
+
+    finishLatestSave({ data: {} })
+    await validation
+    expect(axios.post.mock.lastCall[0]).toBe(`${import.meta.env.VITE_HTTP_URL}/validate-plan`)
+    expect(message.success).toHaveBeenCalledWith('验证通过')
+  })
+
   it.each([false, true])(
     'saves the latest zero-mood edit after pending saves (rescue=%s)',
     async (rescue) => {

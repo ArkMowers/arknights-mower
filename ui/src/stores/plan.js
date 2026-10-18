@@ -1,7 +1,7 @@
 import { planBindings, planReplacements } from '@/utils/plan_bindings'
 import { OPERATOR_CONF_FIELDS } from '@/utils/plan_edit'
 import { defineStore } from 'pinia'
-import { ref, watchEffect, computed, inject } from 'vue'
+import { ref, watch, computed, inject } from 'vue'
 import axios from 'axios'
 import { deepcopy } from '@/utils/deepcopy'
 import { factory_product_ids } from '@/utils/base_products'
@@ -318,20 +318,82 @@ const createPlanStore = (id, endpoint, rescue = false) =>
     const loaded = inject('loaded')
     const autosave_paused = ref(false)
     let planSaveRequest = Promise.resolve()
+    let planSaveActive = false
+    let pendingPlanSave = null
+    let autosaveRequest = null
+
+    async function send_pending_plan() {
+      const request = pendingPlanSave
+      pendingPlanSave = null
+      try {
+        const payload = JSON.parse(JSON.stringify(build_plan()))
+        request.resolve(await axios.post(`${import.meta.env.VITE_HTTP_URL}/${endpoint}`, payload))
+      } catch (error) {
+        request.reject(error)
+      } finally {
+        if (pendingPlanSave) void send_pending_plan()
+        else planSaveActive = false
+      }
+    }
 
     function save_plan() {
-      const payload = JSON.parse(JSON.stringify(build_plan()))
-      planSaveRequest = planSaveRequest
-        .catch(() => {})
-        .then(() => axios.post(`${import.meta.env.VITE_HTTP_URL}/${endpoint}`, payload))
+      if (!pendingPlanSave) {
+        planSaveRequest = new Promise((resolve, reject) => {
+          pendingPlanSave = { resolve, reject }
+        })
+      }
+      if (!planSaveActive) {
+        planSaveActive = true
+        void Promise.resolve().then(send_pending_plan)
+      }
       return planSaveRequest
     }
 
-    watchEffect(() => {
-      if ((rescue ? initialized.value : loaded.value) && !autosave_paused.value) {
-        save_plan().catch((error) => console.error('排班保存失败', error))
-      }
-    })
+    async function wait_for_plan_save() {
+      let request
+      let response
+      do {
+        request = planSaveRequest
+        response = await request
+      } while (request !== planSaveRequest)
+      return response
+    }
+
+    // Track nested edits independently of when the next payload is serialized.
+    watch(
+      () => {
+        if (!(rescue ? initialized.value : loaded.value) || autosave_paused.value) return
+        return [
+          plan.value,
+          facility_levels.value,
+          backup_plans.value,
+          ling_xi.value,
+          mood_limits.value,
+          operator_mood_limits.value,
+          exhaust_require.value,
+          rest_in_full.value,
+          ope_resting_priority.value,
+          dorm_order.value,
+          resting_priority.value,
+          resting_priority_replacement.value,
+          free_room_exclusions.value,
+          resting_standby.value,
+          workaholic.value,
+          ...(rescue ? [rescue_free_blacklist.value] : []),
+          refresh_trading.value,
+          refresh_drained.value,
+          ...(!rescue && advancedSettingsSource ? [advancedSettingsSource()] : [])
+        ]
+      },
+      (draft) => {
+        if (!draft) return
+        const request = save_plan()
+        if (request === autosaveRequest) return
+        autosaveRequest = request
+        request.catch((error) => console.error('排班保存失败', error))
+      },
+      { deep: true, immediate: true }
+    )
 
     const groups = computed(() => {
       const result = []
@@ -386,7 +448,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
     return {
       import_main_facility,
       autosave_paused,
-      wait_for_plan_save: () => planSaveRequest,
+      wait_for_plan_save,
       save_plan,
       set_advanced_settings_source,
       load_plan,
