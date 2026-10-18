@@ -473,7 +473,7 @@ def get_work_rest_ratios():
                         JOIN (
                             SELECT DISTINCT b.name
                             FROM agent_action b
-                            WHERE DATE(b.current_time) >= DATE('now', '-7 day', 'localtime')
+                            WHERE b.current_time >= DATE('now', '-7 day', 'localtime')
                             AND b.is_high = 1 AND b.current_room NOT LIKE 'dormitory%'
                             UNION
                             SELECT '菲亚梅塔' AS name
@@ -481,7 +481,7 @@ def get_work_rest_ratios():
             + sel
             + """
                         ) AS subquery ON a.name = subquery.name
-                        WHERE DATE(a.current_time) >= DATE('now', '-1 month', 'localtime')
+                        WHERE a.current_time >= DATE('now', '-1 month', 'localtime')
                         ORDER BY a.current_time;
                        """,
             *favorite,
@@ -551,7 +551,7 @@ def get_mood_ratios():
                         JOIN (
                             SELECT DISTINCT b.name
                             FROM agent_action b
-                            WHERE DATE(b.current_time) >= DATE('now', '-7 day', 'localtime')
+                            WHERE b.current_time >= DATE('now', '-7 day', 'localtime')
                             AND b.is_high = 1 AND b.current_room NOT LIKE 'dormitory%'
                             UNION
                             SELECT '菲亚梅塔' AS name
@@ -559,7 +559,7 @@ def get_mood_ratios():
             + sel
             + """
                         ) AS subquery ON a.name = subquery.name
-                        WHERE DATE(a.current_time) >= DATE('now', '-7 day', 'localtime')
+                        WHERE a.current_time >= DATE('now', '-7 day', 'localtime')
                         AND
             """
             + FIAMMETTA_CURVE_FILTER
