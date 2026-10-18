@@ -1,5 +1,6 @@
 import sys
 from datetime import datetime, timedelta
+from itertools import cycle
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -1193,7 +1194,10 @@ def reload_test_solver(op_data):
     solver.tap = MagicMock()
     solver.scene = MagicMock(return_value=base.Scene.INFRA_MAIN)
     solver.waiting_scene = []
-    solver.recog = SimpleNamespace(w=1920, h=1080)
+    solver.recog = SimpleNamespace(w=1920, h=1080, update=MagicMock())
+    solver.find = MagicMock(return_value=False)
+    solver._wait_product_resource = MagicMock()
+    solver._read_manufacture_queue_count = MagicMock(side_effect=cycle([1, 99, 99]))
     solver.reload_time = None
     return solver
 
@@ -2783,3 +2787,133 @@ def test_read_manufacture_queue_count_from_capture(
     monkeypatch.setattr(base.rapidocr, "engine", queue_ocr_engine)
 
     assert solver._read_manufacture_queue_count() == expected
+
+
+@pytest.mark.parametrize("product", ["orirock", "orirock_device"])
+@pytest.mark.parametrize("quantity", [2, 54, 98, 99])
+def test_shard_switch_confirms_material_limited_maximum(product, quantity):
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(update=MagicMock())
+    solver.sleep = MagicMock()
+    solver._tap_product_point = MagicMock()
+    solver._wait_product_resource = MagicMock()
+    solver.find = MagicMock(return_value=True)
+    readings = [1, quantity, quantity]
+    solver._read_manufacture_queue_count = MagicMock(side_effect=cycle(readings))
+
+    solver._select_manufacture_product(product)
+
+    taps = [c.args[0] for c in solver._tap_product_point.call_args_list]
+    assert taps.count((1450, 305)) == 1
+    assert taps.count((1295, 305)) == 0
+    assert taps.count((1425, 895)) == 2
+    assert solver._read_manufacture_queue_count.call_count == len(readings)
+
+
+@pytest.mark.parametrize("failure", ["missed_max", "uncommitted", "unknown"])
+def test_shard_switch_retries_unverified_material_limit(failure):
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(update=MagicMock())
+    solver.sleep = MagicMock()
+    solver._tap_product_point = MagicMock()
+    solver._wait_product_resource = MagicMock()
+    solver.find = MagicMock(return_value=True)
+    first = {
+        "missed_max": [1, 1],
+        "uncommitted": [1, 54, 1],
+        "unknown": [1, base.RecognizeError("未知份数")],
+    }[failure]
+    solver._read_manufacture_queue_count = MagicMock(side_effect=first + [1, 54, 54])
+
+    solver._select_manufacture_product("orirock")
+
+    taps = [c.args[0] for c in solver._tap_product_point.call_args_list]
+    assert taps.count((1450, 305)) == 2
+
+
+@pytest.mark.parametrize("product", ["orirock", "orirock_device"])
+@pytest.mark.parametrize("quantity", [2, 54])
+def test_shard_switch_retry_with_matching_recipe_verifies_material_limit(
+    product, quantity
+):
+    solver = object.__new__(base.BaseSchedulerSolver)
+    task = SchedulerTask(
+        task_type=TaskTypes.SWITCH_PRODUCT,
+        meta_data=product_task_meta("room_3_1", product),
+    )
+    solver.tasks = [task]
+    solver.op_data = SimpleNamespace()
+    solver.recog = SimpleNamespace(update=MagicMock())
+    solver._open_manufacture_product_detail = MagicMock()
+    solver.read_manufacture_product = MagicMock(return_value=product)
+    solver._cache_facility_state = MagicMock()
+    solver._select_manufacture_product = MagicMock()
+    solver.sleep = MagicMock()
+    solver.find = MagicMock(return_value=False)
+    solver._tap_product_point = MagicMock()
+    solver._read_manufacture_queue_count = MagicMock(return_value=quantity)
+
+    solver.switch_base_products([task])
+
+    assert solver.tasks == []
+    solver._select_manufacture_product.assert_not_called()
+    assert [c.args[0] for c in solver._tap_product_point.call_args_list] == [
+        (1450, 305),
+    ]
+
+
+@pytest.mark.parametrize("product", ["orirock", "orirock_device"])
+@pytest.mark.parametrize("quantity", [2, 54, 99])
+def test_reload_verifies_material_limited_quantity(product, quantity):
+    solver = reload_test_solver(SimpleNamespace(products={"room_1_2": product}))
+    solver._read_manufacture_queue_count = MagicMock(return_value=quantity)
+
+    solver.reload()
+
+    assert solver.reload_time is not None
+    solver.read_manufacture_product.assert_not_called()
+    assert solver._read_manufacture_queue_count.call_count == 3
+    assert [c.args[0] for c in solver.tap.call_args_list] == [(1450, 305)]
+
+
+@pytest.mark.parametrize(
+    "product, quantity",
+    [("orirock", 1), ("orirock_device", 1), ("gold", 54), ("exp3", 54)],
+)
+def test_manufacture_switch_rejects_unverified_queue(product, quantity):
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(update=MagicMock())
+    solver.sleep = MagicMock()
+    solver._tap_product_point = MagicMock()
+    solver._wait_product_resource = MagicMock()
+    solver.find = MagicMock(return_value=True)
+    solver._read_manufacture_queue_count = MagicMock(return_value=quantity)
+
+    with pytest.raises(base.RecognizeError, match="制造站生产份数验证失败"):
+        solver._select_manufacture_product(product)
+
+    taps = [c.args[0] for c in solver._tap_product_point.call_args_list]
+    assert taps.count((1450, 305)) == 3
+    assert taps.count((1425, 895)) == 1
+
+
+def test_reload_preserves_failure_time_and_continues_other_rooms(monkeypatch):
+    solver = reload_test_solver(
+        SimpleNamespace(products={"room_1_2": "orirock", "room_1_3": "orirock_device"})
+    )
+    solver.sleep = MagicMock()
+    original_time = datetime(2026, 10, 18, 8)
+    solver.reload_time = original_time
+    solver._read_manufacture_queue_count = MagicMock(
+        side_effect=[base.RecognizeError("未知份数")] * 3 + [1, 54, 54]
+    )
+    monkeypatch.setattr(base, "save_exception", MagicMock())
+
+    solver.reload()
+
+    assert solver.reload_time == original_time
+    assert [c.args[0] for c in solver.enter_room.call_args_list] == [
+        "room_1_2",
+        "room_1_3",
+    ]
+    assert solver._read_manufacture_queue_count.call_count == 6

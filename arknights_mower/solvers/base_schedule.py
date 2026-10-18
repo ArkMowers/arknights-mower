@@ -8719,17 +8719,23 @@ class BaseSchedulerSolver(
         self._tap_product_point((1440, 742))
         self._wait_product_resource("manufacture_product_cancel_confirm", present=False)
 
-        self._fill_manufacture_queue()
+        self._fill_manufacture_queue(
+            material_limited=target_product in {"orirock", "orirock_device"}
+        )
 
-    def _fill_manufacture_queue(self):
+    def _fill_manufacture_queue(self, *, material_limited=False):
         # 新配方默认只排一份；MAX 和数量确认都需要画面读数验证。
         for attempt in range(3):
             try:
+                self.recog.update()
                 previous_count = self._read_manufacture_queue_count()
                 self._tap_product_point((1450, 305), interval=1)
                 selected_count = self._read_manufacture_queue_count()
-                if selected_count != 99:
-                    raise RecognizeError(f"MAX 后生产份数为{selected_count}，期望99")
+                minimum_count = 2 if material_limited else 99
+                if selected_count < minimum_count:
+                    raise RecognizeError(
+                        f"MAX 后生产份数为{selected_count}，期望至少{minimum_count}"
+                    )
                 if previous_count != selected_count or self.find(
                     "manufacture_product_change_confirm"
                 ):
@@ -8740,8 +8746,10 @@ class BaseSchedulerSolver(
                     )
                 self.recog.update()
                 actual_count = self._read_manufacture_queue_count()
-                if actual_count != 99:
-                    raise RecognizeError(f"确认后生产份数为{actual_count}，期望99")
+                if actual_count != selected_count:
+                    raise RecognizeError(
+                        f"确认后生产份数为{actual_count}，期望{selected_count}"
+                    )
                 logger.info("制造站 MAX 补货验证通过：生产份数=%d", actual_count)
                 return
             except RecognizeError as error:
@@ -9018,7 +9026,9 @@ class BaseSchedulerSolver(
         current_product = self.read_manufacture_product()
         self._cache_facility_state(observation["room"], "manufacture", current_product)
         if current_product == observation["target_product"]:
-            self._fill_manufacture_queue()
+            self._fill_manufacture_queue(
+                material_limited=current_product in {"orirock", "orirock_device"}
+            )
             return
         confirm_after = None
         if (not direct) and not self._manufacture_is_idle():
@@ -12974,12 +12984,7 @@ class BaseSchedulerSolver(
                 logger.info(
                     f"开始搓玉补货:{room}（{MANUFACTURE_PRODUCTS[product].name}）"
                 )
-                # 补货
-                self.tap((self.recog.w * 0.75, self.recog.h * 0.3), interval=0.5)
-                self.tap((self.recog.w * 0.75, self.recog.h * 0.9), interval=0.5)
-                if self.scene() in self.waiting_scene:
-                    if not self.waiting_solver():
-                        return
+                self._fill_manufacture_queue(material_limited=True)
                 self.scene_graph_navigation(Scene.INFRA_MAIN)
             except MowerExit:
                 raise
