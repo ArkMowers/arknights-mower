@@ -1168,8 +1168,12 @@ def test_rescue_readback_updates_compensation_only_after_confirmed_takeover(
     assert restored[1].run_order_original_roster == expected
 
 
+@pytest.mark.parametrize(
+    "product, quantity",
+    [("gold", 99), ("orirock", 54), ("orirock_device", 2)],
+)
 def test_unverified_manufacture_max_retains_task_until_new_observation(
-    scheduler, monkeypatch
+    scheduler, monkeypatch, product, quantity
 ):
     monkeypatch.setattr(recovery.config.conf.product_switching, "enable", True)
     monkeypatch.setattr(scheduler.module, "save_exception", Mock())
@@ -1179,12 +1183,12 @@ def test_unverified_manufacture_max_retains_task_until_new_observation(
     solver.op_data.room_observations = {}
     original_time = scheduler.clock.now()
     task = SchedulerTask(
-        original_time, task_type=TaskTypes.SWITCH_PRODUCT, meta_data=f"{ROOM},gold"
+        original_time, task_type=TaskTypes.SWITCH_PRODUCT, meta_data=f"{ROOM},{product}"
     )
     solver.tasks, solver.task = [task], task
     solver.back_to_infrastructure = Mock()
     solver._open_manufacture_product_detail = Mock()
-    solver.read_manufacture_product = Mock(return_value="gold")
+    solver.read_manufacture_product = Mock(return_value=product)
     solver._cache_facility_state = Mock()
     solver._read_manufacture_queue_count = Mock(return_value=1)
     solver._tap_product_point = Mock()
@@ -1205,7 +1209,7 @@ def test_unverified_manufacture_max_retains_task_until_new_observation(
     assert find_next_task(solver.tasks) is None
 
     solver.op_data.room_observations[ROOM] = original_time + timedelta(seconds=1)
-    solver._read_manufacture_queue_count.return_value = 99
+    solver._read_manufacture_queue_count.return_value = quantity
     solver._resume_failed_tasks()
     assert find_next_task(solver.tasks) is task
     solver.task = task
