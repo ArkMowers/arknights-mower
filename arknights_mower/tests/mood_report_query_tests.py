@@ -10,19 +10,22 @@ from arknights_mower.utils import config
 from arknights_mower.utils.config.plan import PlanModel
 
 
-@pytest.fixture
-def report_history(monkeypatch):
+@pytest.fixture(params=[7, 9], ids=["legacy-seven-columns", "nine-columns"])
+def report_history(monkeypatch, request):
     connection = sqlite3.connect(":memory:")
+    event_columns = (
+        ", related_operator TEXT, mood_event TEXT" if request.param == 9 else ""
+    )
     connection.execute(
         """CREATE TABLE agent_action (
             name TEXT, agent_current_room TEXT, current_room TEXT,
-            is_high INTEGER, agent_group TEXT, mood REAL, current_time TEXT,
-            related_operator TEXT, mood_event TEXT
-        )"""
+            is_high INTEGER, agent_group TEXT, mood REAL, current_time TEXT
+        """
+        + event_columns
+        + ")"
     )
-    connection.execute(
-        'CREATE INDEX agent_action_name_time ON agent_action(name, "current_time")'
-    )
+    monkeypatch.setattr(record, "_tables_created", False)
+    record._ensure_tables(connection)
     queries = []
 
     def fetch(sql, *params):
@@ -43,7 +46,9 @@ def report_history(monkeypatch):
 
     def add(name, timestamp, mood):
         connection.execute(
-            "INSERT INTO agent_action VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO agent_action (name, agent_current_room, current_room, "
+            "is_high, agent_group, mood, current_time, related_operator, mood_event) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 name,
                 "room_1_1",
@@ -88,6 +93,22 @@ def test_report_samples_use_the_existing_name_time_index(report_history, operati
         plan = connection.execute("EXPLAIN QUERY PLAN " + sql, params).fetchall()
         assert any(
             "SEARCH a USING INDEX agent_action_name_time" in row[3]
+            and "current_time>?" in row[3]
+            for row in plan
+        ), plan
+
+
+@pytest.mark.parametrize("operation", ["get_mood_ratios", "get_work_rest_ratios"])
+def test_report_membership_searches_only_recent_working_history(
+    report_history, operation
+):
+    connection, queries, _, _ = report_history
+    getattr(record, operation)()
+    assert queries
+    for sql, params in queries:
+        plan = connection.execute("EXPLAIN QUERY PLAN " + sql, params).fetchall()
+        assert any(
+            "SEARCH b USING INDEX agent_action_working_time" in row[3]
             and "current_time>?" in row[3]
             for row in plan
         ), plan

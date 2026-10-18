@@ -3,6 +3,7 @@
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from arknights_mower.solvers.mood_history_query import (
@@ -78,7 +79,7 @@ class MoodHistoryQueryTests(unittest.TestCase):
 
     def test_legacy_fiammetta_history_without_events_keeps_ordinary_points(self):
         self.create_data()
-        with sqlite3.connect(self.database) as connection:
+        with closing(sqlite3.connect(self.database)) as connection, connection:
             connection.execute("UPDATE agent_action SET name = '菲亚梅塔'")
 
         result = selected_mood_series(self.database, ["菲亚梅塔"])
