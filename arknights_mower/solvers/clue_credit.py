@@ -108,6 +108,22 @@ class ClueCreditMixin:
                 return True
             if scene != Scene.INFRA_DETAILS:
                 return False
+            if self.find("room_detail"):
+                # 侧栏打开时，点击家具交互按钮只会关闭侧栏，不会唤出入口。
+                logger.info("关闭会客室入住信息侧栏，再唤出信息板入口")
+                self.tap((680, 1000))
+                self.recog.update()
+                if (
+                    self.scene() != Scene.INFRA_DETAILS
+                    or self.find("room_detail")
+                    or self.find("materiel_ico")
+                    or self._clue_access_record_visible()
+                ):
+                    logger.warning(
+                        "会客室入住信息侧栏关闭后未确认房间画面，结束本次打开尝试",
+                        extra={"archive_screenshots": True},
+                    )
+                    return False
             was_visible = self.find("clue/message_board") is not None
             if attempt:
                 logger.info("仍在会客室，重新唤出信息板入口后补救一次")

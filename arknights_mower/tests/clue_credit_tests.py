@@ -23,6 +23,7 @@ from arknights_mower.utils import datetime as server_datetime
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.image import bytes2img
+from arknights_mower.utils.recognize import Recognizer
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
@@ -1222,6 +1223,61 @@ def test_missing_entry_without_change_does_not_repeat_activation(board_navigatio
     assert scheduler._collect_clue_message_board(collect_current=False) is False
     assert ui.entry_actions == ["activate"]
     assert ui.events == []
+
+
+@pytest.mark.parametrize("stuck", [False, True])
+@pytest.mark.parametrize("collect_current", [False, True])
+def test_residence_panel_closes_before_furniture_activation(
+    board_navigation, stuck, collect_current
+):
+    scheduler, _, state, ui, warning = board_navigation
+    # captain 在 2026-10-19 15:44:44 和 15:44:46 保存的侧栏关闭前后原始截图。
+    frames = Path(__file__).parent / "fixtures" / "clue"
+    panels = {
+        True: Recognizer(
+            None, (frames / "clue_reception_residents_20261019.jpg").read_bytes()
+        ),
+        False: Recognizer(
+            None, (frames / "clue_reception_room_20261019.jpg").read_bytes()
+        ),
+    }
+    assert panels[True].find("room_detail") is not None
+    assert panels[False].find("room_detail") is None
+    ui.residents = True
+    ui.entry_visible = False
+    original_find = scheduler.find
+    original_tap = scheduler.tap.side_effect
+
+    def find(name):
+        if name == "room_detail" and ui.panel == "room":
+            return panels[ui.residents].find(name)
+        return original_find(name)
+
+    def tap(position):
+        if position == (680, 1000) and ui.residents:
+            ui.entry_actions.append("close_residents")
+            if not stuck:
+                ui.residents = False
+            return
+        original_tap(position)
+
+    scheduler.find = find
+    scheduler.tap.side_effect = tap
+
+    assert scheduler._collect_clue_message_board(collect_current=collect_current) is (
+        not stuck
+    )
+    assert ui.entry_actions == ["close_residents"] + (
+        [] if stuck else ["activate", "open"]
+    )
+    assert state.current == (0 if collect_current and not stuck else 300)
+    assert ui.events == (
+        []
+        if stuck
+        else ["open"] + (["claim", "dismiss"] if collect_current else []) + ["back"]
+    )
+    if stuck:
+        assert warning.call_args.kwargs["extra"]["archive_screenshots"] is True
 
 
 @pytest.mark.parametrize("scene", [Scene.UNKNOWN, Scene.MATERIEL, Scene.INFRA_MAIN])
