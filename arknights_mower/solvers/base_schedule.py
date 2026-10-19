@@ -6248,13 +6248,26 @@ class BaseSchedulerSolver(
                 ]
                 # 先按配置首选验证整组分床；床位不足时，完整匹配优先
                 # 保留可恢复工作替班，不把固定宿舍位开放为普通 Free。
-                dorms = self.op_data.assign_dorm_group(
+                cover_plan = copy.deepcopy(allocation_plan)
+                for agent, replacement in assignments.items():
+                    owner = self.op_data.operators[agent]
+                    cover_plan.setdefault(
+                        owner.room, ["Current"] * len(self.op_data.plan[owner.room])
+                    )[owner.index] = replacement
+                # 接岗替班先在副本离宿，分床才能使用同次换班腾出的床位。
+                projected = self.op_data.project_arrangements([cover_plan])
+                dorms = projected.assign_dorm_group(
                     resting_agents,
                     active_groups=active_groups,
                     plan=allocation_plan,
                     reserved_slots=retained_slots | queued_slots,
                 )
                 if dorms is not None:
+                    actual_beds = {bed.position: bed for bed in self.op_data.dorm}
+                    for bed in dorms:
+                        actual_beds[bed.position].name = bed.name
+                        actual_beds[bed.position].time = bed.time
+                    dorms = [actual_beds[bed.position] for bed in dorms]
                     break
             else:
                 return
