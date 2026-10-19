@@ -71,6 +71,8 @@
 </template>
 
 <script setup>
+defineOptions({ name: 'BaseReportPage' })
+
 import { registerTheme, use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart, LineChart } from 'echarts/charts'

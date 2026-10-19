@@ -67,7 +67,7 @@ async function browsePath(key) {
     if (selected) {
       edit(key, selected)
     }
-  } catch (error) {
+  } catch {
     // ignore dialog cancel
   }
 }

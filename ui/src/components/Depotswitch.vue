@@ -1,4 +1,6 @@
 <script setup>
+defineOptions({ name: 'DepotScanSettings' })
+
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
 const store = useConfigStore()

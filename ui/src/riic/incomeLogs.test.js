@@ -61,6 +61,9 @@ it('names JPG exports with the chosen title and completed run income', () => {
   const result = { summary: { totalScore82: 103475.123 }, observedHours: 672 }
   expect(incomeImageFilename(' 我的排班 ', result)).toBe('我的排班_日均收益103475.12_28天.jpg')
   expect(incomeImageFilename('A/B:*', result)).toBe('A_B___日均收益103475.12_28天.jpg')
+  expect(incomeImageFilename('A\u0000\u001f\u007f😀. ', result)).toBe(
+    'A__\u007f😀_日均收益103475.12_28天.jpg'
+  )
 })
 
 it('keeps signed daily values compact without hiding small recycling counts', () => {

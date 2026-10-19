@@ -296,6 +296,23 @@ describe('worker status', () => {
 })
 
 describe('log WebSocket access', () => {
+  it('appends log text when a message carries obsolete screenshot metadata', () => {
+    vi.stubGlobal('window', { location: { search: '' } })
+    vi.stubGlobal('location', { origin: 'http://127.0.0.1:58000' })
+    setActivePinia(createPinia())
+    const store = useMowerStore()
+    store.listen_ws()
+
+    expect(() =>
+      store.ws.onmessage({
+        data: JSON.stringify({ type: 'log', data: 'first\nsecond', screenshot: 'legacy-frame' })
+      })
+    ).not.toThrow()
+    expect(store.log_lines).toEqual(['first', 'second'])
+    expect(store.log).toBe('first\nsecond')
+    store.$dispose()
+  })
+
   it.each([
     ['http://mower.example:18000', 'ws://mower.example:18000/log'],
     ['https://mower.example', 'wss://mower.example/log'],

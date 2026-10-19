@@ -248,11 +248,10 @@ async function save() {
     await sleep(500)
   }
   const browser = Bowser.getParser(window.navigator.userAgent)
-  let blob
   if (browser.getEngine().name == 'WebKit') {
-    blob = await toBlob(plan_editor.value.outer)
+    await toBlob(plan_editor.value.outer)
   }
-  blob = await toBlob(plan_editor.value.outer, {
+  const blob = await toBlob(plan_editor.value.outer, {
     pixelRatio: 3,
     backgroundColor: theme.value == 'light' ? '#ffffff' : '#000000',
     style: { margin: 0, padding: '8px 0' }

@@ -1,6 +1,18 @@
 <script setup>
+defineOptions({ name: 'MowerLogPage' })
+
 import { storeToRefs } from 'pinia'
-import { computed, inject, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import {
+  computed,
+  inject,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  provide,
+  ref,
+  shallowRef,
+  watch
+} from 'vue'
 import { useDialog, useMessage } from 'naive-ui'
 
 import { useMowerStore } from '@/stores/mower'
@@ -70,7 +82,9 @@ async function restore_log_layout() {
     const { data } = await axios.get(`${import.meta.env.VITE_HTTP_URL}/ui-state/log-layout`)
     layout_preference.screenshot_height = data?.screenshot_height ?? null
     layout_preference.task_height = data?.task_height ?? null
-  } catch {}
+  } catch {
+    // Keep the default layout when saved preferences are unavailable.
+  }
   await nextTick()
   apply_log_layout()
 }
@@ -427,9 +441,9 @@ async function db_delete(keys) {
           </tr>
         </thead>
         <tbody v-show="!mobile || show_task_table">
-          <template v-for="task in task_list">
+          <template v-for="(task, task_index) in task_list" :key="task_index">
             <template v-if="Object.keys(task.plan).length">
-              <tr v-for="(value, key, idx) in task.plan">
+              <tr v-for="(value, key, idx) in task.plan" :key="key">
                 <td v-if="idx == 0" :rowspan="Object.keys(task.plan).length">
                   {{ task.time.split('T')[1].split('.')[0] }}
                   <div v-if="task.emergency_recovery_release">自动救急</div>

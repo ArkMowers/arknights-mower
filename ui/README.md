@@ -39,11 +39,11 @@ npm run dev
 
 ## 修改入口与定向验证
 
-| 任务 | 源码入口 | 离线验证入口 |
-| :--- | :--- | :--- |
+| 任务                     | 源码入口                                                                                                  | 离线验证入口                                                                                                                |
+| :----------------------- | :-------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------- |
 | 设备选择、检测与设置保存 | [DeviceSettings.vue](src/components/DeviceSettings.vue)、[deviceSettings.js](src/utils/deviceSettings.js) | [deviceSettings.test.js](src/utils/deviceSettings.test.js)、[DeviceSettings.test.js](src/components/DeviceSettings.test.js) |
-| 配置差量保存 | [config.js](src/stores/config.js) | [configPartial.test.js](src/stores/configPartial.test.js) |
-| 排班验证 | [plan.js](src/stores/plan.js) | [planValidation.test.js](src/stores/planValidation.test.js) |
+| 配置差量保存             | [config.js](src/stores/config.js)                                                                         | [configPartial.test.js](src/stores/configPartial.test.js)                                                                   |
+| 排班验证                 | [plan.js](src/stores/plan.js)                                                                             | [planValidation.test.js](src/stores/planValidation.test.js)                                                                 |
 
 从 `ui/` 执行与改动有关的测试，例如：
 
@@ -52,6 +52,20 @@ npm test -- src/utils/deviceSettings.test.js src/components/DeviceSettings.test.
 ```
 
 这些测试使用离线输入与替代的请求或组件依赖，验证界面状态和请求行为；通过不代表后端或真实设备完成操作。跨越配置、设备或调度边界时，沿[设备规范](../docs/subsystems/device-control.md#start-with-the-affected-operation)或[调度规范](../docs/subsystems/base-scheduler.md#start-with-the-affected-operation)选择对应后端测试。[UI 规范](AGENTS.md)规定配置与状态边界。
+
+## 代码检查
+
+在 `ui/` 中执行只读检查：
+
+```bash
+npm run lint:check
+```
+
+[ESLint 配置](eslint.config.js)检查 `.vue`、`.js`、`.jsx`、`.cjs` 和 `.mjs` 文件，使用 JavaScript recommended 与 Vue essential 规则。配置继续读取 [.gitignore](.gitignore) 中的忽略规则，并忽略隐藏文件和目录；浏览器源码与 Node 构建脚本分别使用对应的全局变量。
+
+Vue 文件中的 TypeScript 脚本使用 TypeScript 解析器，未使用变量由对应的 TypeScript 规则检查；独立 `.ts` 文件仍不在本次检查范围内。
+
+需要自动修复时执行 `npm run lint`，完成后审阅文件差异并运行受影响组件或工具的定向测试。格式检查和整理继续使用 Prettier。
 
 ## 构建与打包
 

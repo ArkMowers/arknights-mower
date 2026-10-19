@@ -55,7 +55,7 @@ export const useResourceVersionStore = defineStore('resourceVersion', () => {
           error: response.data.error || null
         }
         loaded.value = true
-      } catch (error) {
+      } catch {
         info.value = {
           ...info.value,
           remote_version: '',
@@ -94,7 +94,7 @@ export const useResourceVersionStore = defineStore('resourceVersion', () => {
         update_available: null,
         error: null
       }
-    } catch (error) {
+    } catch {
       // 本地读取失败保持「未安装」，不打扰用户
     }
   }

@@ -300,7 +300,7 @@ const cycleOptions = computed<CycleOption[]>(() => {
     const s = i * dur
     const e = Math.min(total, s + dur)
     const isDayUnit = Math.abs(dur - 24) < 0.1
-    let label = ''
+    let label
     if (isDayUnit) {
       label = `第 ${i + 1} 天 (T+${s.toFixed(0)}h ~ T+${e.toFixed(0)}h)`
     } else {
@@ -451,7 +451,7 @@ const exportRulerTicks = computed<RulerTick[]>(() => {
     const isMajor = t % 24 === 0
     const day = Math.floor(t / 24) + 1
     const hourInDay = t % 24
-    let label = `${t}h`
+    let label
     if (isMajor) {
       label = `D${day} 00:00`
     } else {
@@ -621,7 +621,7 @@ const rulerTicks = computed<RulerTick[]>(() => {
   const end = customWindowEnd.value
   const ticks: RulerTick[] = []
 
-  let step = 6
+  let step
   if (dur <= 6) step = 1
   else if (dur <= 12) step = 2
   else if (dur <= 24) step = 3
@@ -634,7 +634,7 @@ const rulerTicks = computed<RulerTick[]>(() => {
     const isMajor = t % 24 === 0
     const day = Math.floor(t / 24) + 1
     const hourInDay = t % 24
-    let label = `${t}h`
+    let label
     if (isMajor) {
       label = `D${day} 00:00`
     } else {

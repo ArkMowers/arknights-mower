@@ -316,8 +316,8 @@
       "reason": "Pass named task reservations into recovery allocation before dorm isolation. Synchronize priority recovery takeover of lower-tier occupied beds with free-room release disabled, protected resident tiers and isolated displacement planning from calculator 77202b0209bcea85dc46efb05dd2965cc494ed9c. Synchronize combined exhaustion dependency recalls, resource ownership through partial handoff, and observed recovery protection against reverse or chained recalls from calculator 38bc4f61310f7301988ae573563044b44801a040. Preserve existing bundled adaptations. Use the newest valid mood observation for thresholds while retaining independent recovery countdowns and rate evidence; preserve recovering fixed-slot occupants during correction. Future ordinary named releases no longer reserve beds against current priority allocation; due and protected releases remain reserved."
     },
     "components/workbench/ScheduleTimelineGantt.vue": {
-      "sha256": "c5e8ee4f76e81c2b74ff59e0f2c60ce7f199a262371e3b73e3e38c88d32fe397",
-      "reason": "Allow the Mower wrapper to host the existing overview scrubber at the bottom without changing time-window state. Release overview drag listeners on collapse and unmount. Keep operator and event inspectors beside the pointer within viewport bounds under CSS zoom, and reserve cursor-info space to avoid hover-induced layout shifts."
+      "sha256": "923d163b04b55bdbf2389cfe967e9dbe227ade93e71b53206512f737d4573df7",
+      "reason": "Allow the Mower wrapper to host the existing overview scrubber at the bottom without changing time-window state. Release overview drag listeners on collapse and unmount. Keep operator and event inspectors beside the pointer within viewport bounds under CSS zoom, and reserve cursor-info space to avoid hover-induced layout shifts. Remove four initial assignments whose values are replaced in every branch before use; retain the existing cycle labels and ruler steps."
     },
     "scheduler/compileRosterSchedule.ts": {
       "sha256": "5acccbf09704c7c42afd438b52d303334432502cb72dfd61c91ee87fa374edd0",

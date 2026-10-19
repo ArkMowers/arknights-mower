@@ -1,4 +1,6 @@
 <script setup>
+defineOptions({ name: 'MowerFeedback' })
+
 import { inject, ref, computed } from 'vue'
 import axios from 'axios'
 const show = inject('show_feedback')

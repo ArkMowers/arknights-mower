@@ -1733,7 +1733,7 @@ async function loadSurvey() {
       timeout: 30000
     })
     survey.value = response.data
-  } catch (error) {
+  } catch {
     survey.value = {
       ...survey.value,
       stale: Boolean(survey.value.operators?.length),
