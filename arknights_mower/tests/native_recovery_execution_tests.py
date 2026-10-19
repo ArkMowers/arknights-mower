@@ -144,6 +144,70 @@ def test_overdue_initial_idle_primary_without_full_setting_dispatches(
     solver._read_recovery_rooms.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "changed", ["resting", "resting_group", "unknown", "low", "return", "unadmitted"]
+)
+def test_retained_first_assignment_rechecks_recovery_dependencies(solver, changed):
+    from arknights_mower.utils.recovery_execution import required_recovery_members
+
+    data = solver.op_data
+    op = data.operators["讯使"]
+    op.rest_in_full = False
+    op.current_room, op.current_index, op.time_stamp = "", -1, None
+    data.group_recovery_full_members[op.group] = [op.name]
+    data.dorm_mood_estimates[op.name] = (18, datetime.now())
+    task = SchedulerTask(
+        task_type=TaskTypes.SELF_CORRECTION, task_plan={"contact": [op.name]}
+    )
+    task.initial_staffing = task.derived_correction_started = True
+    task.initial_staffing_idle_members = {op.name}
+    assert op.name not in required_recovery_members(data, task)
+
+    if changed == "resting":
+        op.current_room, op.current_index = "dormitory_1", 2
+    elif changed == "resting_group":
+        data.commit_group_shifts({op.group: True})
+        data.group_recovery_full_members[op.group] = [op.name]
+    elif changed == "unknown":
+        data.dorm_mood_estimates.clear()
+    elif changed == "low":
+        data.dorm_mood_estimates[op.name] = (op.lower_limit, datetime.now())
+    elif changed == "return":
+        task.initial_staffing_returns = {op.name}
+    else:
+        task.initial_staffing_idle_members.clear()
+
+    assert op.name in required_recovery_members(data, task)
+
+
+@pytest.mark.parametrize("restart", [False, True])
+@pytest.mark.parametrize("started", [False, True])
+def test_saved_first_assignment_does_not_bypass_explicit_full_recovery(
+    solver, restart, started
+):
+    from arknights_mower.utils.recovery_execution import (
+        initial_idle_staffing_members,
+        required_recovery_members,
+    )
+
+    data = solver.op_data
+    op = data.operators["讯使"]
+    op.rest_in_full = True
+    op.current_room, op.current_index, op.time_stamp = "", -1, None
+    data.dorm_mood_estimates[op.name] = (18, datetime.now())
+    task = SchedulerTask(
+        task_type=TaskTypes.SELF_CORRECTION, task_plan={"contact": [op.name]}
+    )
+    task.initial_staffing = True
+    task.derived_correction_started = started
+    task.initial_staffing_idle_members = {op.name}
+    if restart:
+        task = pickle.loads(pickle.dumps(task))
+
+    assert not initial_idle_staffing_members(data, task)
+    assert op.name in required_recovery_members(data, task)
+
+
 def test_initial_explicit_return_survives_complete_cycle(solver):
     op = solver.op_data.operators["讯使"]
     for member in solver.op_data.operators.values():

@@ -45,8 +45,34 @@ def recovery_ready_for_arrangement(data, name, *, sampled_after, now):
     )
 
 
+def initial_idle_staffing_members(data, task, *, now=None):
+    """查询仍可首次上岗的初始化主班，续行只沿用已保存的首次准入。"""
+    if not getattr(task, "initial_staffing", False):
+        return set()
+    started = getattr(task, "derived_correction_started", False)
+    expected = getattr(task, "group_shift_expected", {})
+    admitted = getattr(task, "initial_staffing_idle_members", ())
+    returns = getattr(task, "initial_staffing_returns", ())
+    return {
+        name
+        for room, row in task.plan.items()
+        if not room.startswith("dorm")
+        for index, name in enumerate(row)
+        if (op := data.operators.get(name)) is not None
+        and (op.room, op.index) == (room, index)
+        and not op.rest_in_full
+        and (not started and not expected or name in admitted)
+        and name not in returns
+        and not op.current_room
+        and not data.group_is_resting(op.group)
+        and (mood := dorm_candidate_mood(data, name, now)) is not None
+        and mood > op.lower_limit
+    }
+
+
 def required_recovery_members(data, task, *, now=None):
     required = set()
+    initial_idle = initial_idle_staffing_members(data, task, now=now)
     urgent = getattr(task, "exhaust_support", False) and not getattr(
         task, "ordinary_coordination", False
     )
@@ -62,17 +88,7 @@ def required_recovery_members(data, task, *, now=None):
                 continue
             if (op.room, op.index) != (room, index) or op.is_working():
                 continue
-            if (
-                getattr(task, "initial_staffing", False)
-                and not op.rest_in_full
-                and not getattr(task, "derived_correction_started", False)
-                and not getattr(task, "group_shift_expected", {})
-                and name not in getattr(task, "initial_staffing_returns", ())
-                and not op.current_room
-                and not data.group_is_resting(op.group)
-                and (mood := dorm_candidate_mood(data, name, now)) is not None
-                and mood > op.lower_limit
-            ):
+            if name in initial_idle:
                 # 初始化空闲主班首次上岗不等于休息后的回班。
                 continue
             if op.rest_in_full and not op.workaholic:

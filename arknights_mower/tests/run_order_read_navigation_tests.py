@@ -1,4 +1,5 @@
 import copy
+import pickle
 from datetime import timedelta
 from unittest.mock import MagicMock
 
@@ -10,6 +11,93 @@ from arknights_mower.tests.run_order_staffing_admission_tests import staffed_ord
 @pytest.fixture
 def order_navigation(monkeypatch):
     return staffed_order.__wrapped__(monkeypatch)
+
+
+@pytest.mark.parametrize("restart", [False, True])
+@pytest.mark.parametrize("first_room_grouped", [False, True])
+def test_initial_idle_primary_keeps_first_assignment_after_priority_yield(
+    order_navigation, restart, first_room_grouped
+):
+    from arknights_mower.tests.run_order_staffing_admission_tests import correction
+    from arknights_mower.utils.recovery_execution import initial_idle_staffing_members
+
+    ui = order_navigation
+    solver = ui.solver
+    ui.config.conf.enable_mastery = True
+    solver.op_data.backup_plans = []
+    solver.op_data.global_plan["backup_plans"] = []
+    solver.op_data.plan_condition = []
+    start = ui.clock.now()
+    primary = solver.op_data.operators["图耶"]
+    primary.rest_in_full = False
+    primary.group = ""
+    primary.current_room, primary.current_index, primary.time_stamp = "", -1, None
+    assert 18 > primary.lower_limit
+    solver.op_data.dorm_mood_estimates[primary.name] = (18, start)
+    if first_room_grouped:
+        first = solver.op_data.operators["鸿雪"]
+        first.group = "首房"
+        solver.op_data.groups[first.group] = [first.name]
+        solver.op_data.group_shift_state[first.group] = False
+        solver.op_data.plan["room_1_1"][0].group = first.group
+        configured = solver.op_data.global_plan["default_plan"].plan
+        configured["room_1_1"][0].group = first.group
+    arrangement = correction(ui, {"room_1_1", "room_2_2"})
+    arrangement.derived_correction = True
+    arrangement.initial_staffing = True
+    priority = ui.task(
+        time=start + timedelta(seconds=180),
+        task_type=ui.task_type.SWAP_SUPPORT,
+        task_plan={"train": ["Current", "Current"]},
+    )
+    solver.tasks.append(priority)
+    ui.durations["room_1_1"] = 120
+
+    solver.infra_main()
+
+    assert arrangement in solver.tasks and arrangement.time == start
+    assert arrangement.plan == {"room_2_2": [primary.name]}
+    assert arrangement.derived_correction_started
+    if first_room_grouped:
+        assert arrangement.group_shift_expected
+    assert primary.name in arrangement.initial_staffing_idle_members
+    assert not getattr(arrangement, "execution_failure", None)
+    assert ui.clock.now() < priority.time
+    solver.tasks.remove(priority)
+    if restart:
+        restored = pickle.loads(pickle.dumps(arrangement))
+        solver.tasks[solver.tasks.index(arrangement)] = restored
+        arrangement = restored
+    ui.clock.current = priority.time + timedelta(seconds=1)
+    solver.task = arrangement
+
+    assert primary.name in arrangement.initial_staffing_idle_members
+    assert initial_idle_staffing_members(
+        solver.op_data, arrangement, now=ui.clock.now()
+    ) == {primary.name}
+    without_admission = copy.copy(arrangement)
+    without_admission.initial_staffing_idle_members = set()
+    assert not initial_idle_staffing_members(
+        solver.op_data, without_admission, now=ui.clock.now()
+    )
+    solver.op_data.dorm_mood_estimates[primary.name] = (
+        primary.lower_limit,
+        ui.clock.now(),
+    )
+    assert not initial_idle_staffing_members(
+        solver.op_data, arrangement, now=ui.clock.now()
+    )
+    solver.op_data.dorm_mood_estimates[primary.name] = (18, ui.clock.now())
+
+    solver.infra_main()
+
+    assert solver.op_data.operators[primary.name].current_room == "room_2_2"
+    assert arrangement.time == start and arrangement.plan == {}
+    assert arrangement not in solver.tasks
+    assert [event[1] for event in ui.events if event[0] == "staffed"] == [
+        "room_1_1",
+        "room_2_2",
+    ]
 
 
 def test_new_order_reserves_mastery_handoff_before_another_inline_read(

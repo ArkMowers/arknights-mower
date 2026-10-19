@@ -2700,6 +2700,22 @@ class BaseSchedulerSolver(
                             self.skip()
                             return True
                         if (
+                            getattr(self.task, "initial_staffing", False)
+                            and not getattr(
+                                self.task, "derived_correction_started", False
+                            )
+                            and not hasattr(self.task, "initial_staffing_idle_members")
+                        ):
+                            from arknights_mower.utils.recovery_execution import (
+                                initial_idle_staffing_members,
+                            )
+
+                            self.task.initial_staffing_idle_members = (
+                                initial_idle_staffing_members(
+                                    self.op_data, self.task, now=datetime.now()
+                                )
+                            )
+                        if (
                             self.task.plan
                             and getattr(self.task, "exhaust_support", False)
                             and not self._coordination_support_valid(
