@@ -10,7 +10,8 @@ const state = vi.hoisted(() => ({
   mower: null,
   plan: null,
   resource: null,
-  loaded: null
+  loaded: null,
+  loadUpdateNotice: vi.fn()
 }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
@@ -34,8 +35,8 @@ vi.mock('@/stores/plan', () => ({ usePlanStore: () => state.plan }))
 vi.mock('@/stores/resourceVersion', () => ({ useResourceVersionStore: () => state.resource }))
 vi.mock('@/stores/updateNotice', () => ({
   useUpdateNoticeStore: () => ({
-    notice: {},
-    loadUpdateNotice: vi.fn(async () => ({ should_show: false })),
+    notice: { changelog: '' },
+    loadUpdateNotice: state.loadUpdateNotice,
     ackUpdateNotice: vi.fn()
   })
 }))
@@ -61,11 +62,13 @@ vi.mock('@/components/WindowTitlebar.vue', () => ({ default: {} }))
 
 describe('desktop page startup', () => {
   let scope
+  let component
   beforeEach(() => {
     vi.clearAllMocks()
     state.mounted = []
     state.unmounted = []
     state.loaded = ref(false)
+    state.loadUpdateNotice.mockResolvedValue({ should_show: false })
     state.client.post.mockResolvedValue({ data: {} })
     state.config = reactive({
       start_automatically: true,
@@ -134,7 +137,7 @@ describe('desktop page startup', () => {
   async function mount() {
     state.mounted = []
     scope = effectScope()
-    scope.run(() => App.setup({}, { expose: () => {} }))
+    component = scope.run(() => App.setup({}, { expose: () => {} }))
     for (const callback of state.mounted) await callback()
   }
 
@@ -156,6 +159,12 @@ describe('desktop page startup', () => {
     await mount()
     expect(state.client.get).toHaveBeenCalledWith(expect.stringContaining('/start/0'))
     expect(state.resource.installResource).toHaveBeenCalledOnce()
+  })
+
+  it('still opens the existing update-completion modal automatically', async () => {
+    state.loadUpdateNotice.mockResolvedValue({ should_show: true })
+    await mount()
+    expect(component.showUpdateNoticeModal.value).toBe(true)
   })
 
   it('preserves resource automation on non-desktop update restarts', async () => {
