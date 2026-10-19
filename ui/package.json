@@ -44,7 +44,7 @@
     "vue-echarts": "^8.3.2",
     "vue-router": "^5.4.0",
     "vue-slicksort": "^2.0.5",
-    "vuedraggable": "^4.1.0"
+    "vuedraggable": "4.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
