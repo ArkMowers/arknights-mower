@@ -9019,7 +9019,6 @@ class BaseSchedulerSolver(
         for attempt in range(3):
             try:
                 self.recog.update()
-                previous_count = self._read_manufacture_queue_count()
                 self._tap_product_point((1450, 305), interval=1)
                 selected_count = self._read_manufacture_queue_count()
                 minimum_count = 2 if material_limited else 99
@@ -9027,9 +9026,7 @@ class BaseSchedulerSolver(
                     raise RecognizeError(
                         f"MAX 后生产份数为{selected_count}，期望至少{minimum_count}"
                     )
-                if previous_count != selected_count or self.find(
-                    "manufacture_product_change_confirm"
-                ):
+                if self.find("manufacture_product_change_confirm"):
                     self._wait_product_resource("manufacture_product_change_confirm")
                     self._tap_product_point((1425, 895))
                     self._wait_product_resource(
@@ -9055,8 +9052,9 @@ class BaseSchedulerSolver(
             (self.recog.w * 1415 // 1920, self.recog.h * 530 // 1080),
         )
         text = self._product_ocr_text(scope)
-        if re.fullmatch(r"[0-9]{1,2}", text) and 0 <= int(text) <= 99:
-            return int(text)
+        digits = re.sub(r"[^0-9]", "", text)
+        if re.fullmatch(r"[0-9]{1,2}", digits):
+            return int(digits)
         raise RecognizeError(f"无法识别制造站生产份数：{text or 'OCR 无结果'}")
 
     def _open_manufacture_product_detail(self, room: str):
