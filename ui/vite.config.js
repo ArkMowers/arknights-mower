@@ -1,4 +1,5 @@
 import { fileURLToPath, URL } from 'node:url'
+import { createRequire } from 'node:module'
 import process from 'node:process'
 import { resolve } from 'path'
 import { defineConfig } from 'vite'
@@ -14,6 +15,7 @@ import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
 // 生成的 import 语句会因引号提前闭合而无法解析。这里把组件路径换成 `@/` 别名，
 // 输出与绝对路径构建一致，也避免依赖目录名。
 const srcRoot = fileURLToPath(new URL('./src', import.meta.url)).replace(/\\/g, '/')
+const require = createRequire(import.meta.url)
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command }) => ({
@@ -43,9 +45,15 @@ export default defineConfig(({ command }) => ({
     })
   ],
   resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url))
-    }
+    alias: [
+      { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
+      // vuedraggable 4.1.0 的默认入口是 UMD；使用随包发布的 ESM 源码，减少兼容代码。
+      // 升级该依赖时需重新核对源码入口及两处排序组件的拖动行为。
+      {
+        find: /^vuedraggable$/,
+        replacement: require.resolve('vuedraggable/src/vuedraggable.js')
+      }
+    ]
   },
   build: {
     rollupOptions: {
