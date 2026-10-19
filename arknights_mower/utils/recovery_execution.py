@@ -13,10 +13,14 @@ from arknights_mower.utils.resting_priority import has_resting_mood
 
 
 def allows_card_return(task):
-    """卡牌预估只供普通上班与纠错，不用于救急、支援或离宿。"""
+    """选人页面的心情判断可用于普通回班，不用于救急、支援或离宿。"""
     from arknights_mower.utils.scheduler_task import TaskTypes
 
-    return task.type in (TaskTypes.SHIFT_ON, TaskTypes.SELF_CORRECTION) and not any(
+    return task.type in (
+        TaskTypes.SHIFT_ON,
+        TaskTypes.SELF_CORRECTION,
+        TaskTypes.RE_ORDER,
+    ) and not any(
         getattr(task, flag, False)
         for flag in ("emergency_staffing", "exhaust_support", "strict_mood_limit")
     )
