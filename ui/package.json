@@ -3,6 +3,9 @@
   "type": "module",
   "version": "0.0.0",
   "private": true,
+  "engines": {
+    "node": "^22.18.0 || ^24.11.0 || >=26.0.0"
+  },
   "scripts": {
     "dev": "vite  --profile --open",
     "build": "vite build && node copy.js",
@@ -38,7 +41,7 @@
     "vue-axios": "^3.5.2",
     "vue-chartjs": "^5.3.4",
     "vue-echarts": "^8.3.2",
-    "vue-router": "^4.3.0",
+    "vue-router": "^5.4.0",
     "vue-slicksort": "^2.0.5",
     "vuedraggable": "^4.1.0"
   },
@@ -58,7 +61,7 @@
     "unplugin-vue-components": "^32.1.0",
     "vite": "^8.3.4",
     "vite-plugin-inspect": "^12.0.2",
-    "vitest": "^4.1.12",
+    "vitest": "^5.0.5",
     "vue-eslint-parser": "~10.2.0"
   }
 }

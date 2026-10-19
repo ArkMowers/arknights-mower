@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # 构建 webui
-FROM node:20-bookworm-slim AS ui-builder
+FROM node:24-bookworm-slim AS ui-builder
 WORKDIR /app/ui
 COPY ui/package.json ui/package-lock.json ./
 RUN npm ci
