@@ -44,6 +44,7 @@ export function mowerUpdateDetail(data:MowerSchedulingData,name:string,mood:numb
  if(op.currentRoom!==room){op.currentRoom=room;onRoomChanged?.(op,!working&&!!room&&!room.startsWith('dorm'))}
  op.currentIndex=index;op.mood=mood
  if(data.alpha){
+  if(returned&&!room.startsWith('dorm'))for(const [group,names] of Object.entries(data.groupRecoveryFullMembers))data.groupRecoveryFullMembers[group]=names.filter(member=>member!==name)
   if(updateTime){if(room===op.dormMoodFallback&&mood>=0&&mood<=24)for(const [name,stamp] of Object.entries(op.dormMoodPeers)){const peer=data.operators[name];if(peer&&!peer.currentRoom&&peer.timeStampMicros===stamp&&mood>=peer.upperLimit)peer.idleRestCheck=[peer.upperLimit,peer.mood,peer.timeStampMicros]}op.dormMoodPeers={}}
   if(updateTime&&mood>=0&&mood<op.upperLimit)op.dormMoodFallback=''
   data.updateStandbyLowPriority(op,returned)

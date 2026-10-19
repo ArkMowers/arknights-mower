@@ -1,9 +1,8 @@
-import {projectMowerArrangements} from './mowerObservations'
 import {mowerDormIsolationCost,planMowerDormIsolation} from './mowerDormIsolation'
 // Shared dorm candidates and observed-card estimates, Mower alpha b2d9ac8 (MIT).
 import {orderMowerAlphaDormIndices} from './mowerDormOrder'
 import {hasRestingMood,restingMood} from './mowerOperatorState'
-import {alphaRestingTier,compareAlphaKeys,alphaPosition,alphaSlotTakable,alphaPrioritizeRecovery,alphaRestoreDisplaced,alphaDormResidents} from './mowerAlphaDorm'
+import {alphaRestingTier,compareAlphaKeys,alphaPosition,alphaSlotTakable,alphaPrioritizeRecovery} from './mowerAlphaDorm'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {toMowerMicros,MowerTask,MOWER_TASK_TYPES as T,type MowerTaskPlan,type MowerTaskQueue} from './mowerTaskQueue'
 import {simplifyMowerAlphaDormFill} from './mowerAlphaTaskProtection'
@@ -93,10 +92,6 @@ function alphaFill(data:MowerSchedulingData,pending:MowerTask[],emptyOnly:boolea
    if(!recoveryNames.has(incoming)&&data.operators[incoming])data.operators[incoming]!.dormMoodFallback=selected.position[0]
   }
   ;(plan[selected.position[0]]??=Array(data.plan[selected.position[0]]!.length).fill('Current'))[selected.position[1]]=incoming
- }
- if(Object.keys(plan).length){
-  const projected=projectMowerArrangements(data,[])
-  alphaRestoreDisplaced(projected,alphaDormResidents(projected),plan,pending.map(task=>Object.assign(new MowerTask({type:task.type}),task,{plan:structuredClone(task.plan)})))
  }
  return {plan,residents,vacancies}
 }

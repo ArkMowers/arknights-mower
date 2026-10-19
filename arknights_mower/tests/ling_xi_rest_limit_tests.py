@@ -390,3 +390,35 @@ def test_near_limit_member_can_dispatch_at_reserved_operation_start(
         for pending in solver.tasks
         if getattr(pending, "recovery_observation_rooms", None)
     ]
+
+
+def test_early_limit_release_does_not_recall_unfinished_group(solver, monkeypatch):
+    name = limited_name(solver)
+    data = solver.op_data
+    data.operators[name].mood = 11.46
+    solver.plan_metadata()
+    task = release(solver)
+    original = {room: list(row) for room, row in task.plan.items()}
+    returning = next(t for t in solver.tasks if t.type == TaskTypes.SHIFT_ON)
+    return_time = returning.time
+    solver.task = task
+
+    class BeforeDeviceInput(Exception):
+        pass
+
+    def stop_before_input(*args, **kwargs):
+        raise BeforeDeviceInput
+
+    monkeypatch.setattr(base, "defer_dorm_before_priority_task", stop_before_input)
+    with pytest.raises(BeforeDeviceInput):
+        solver.arrange_release_dorm()
+    assert task.plan == original
+    assert returning in solver.tasks and returning.time == return_time
+    assert returning.plan["central"] == [name]
+    assert returning.plan["contact"] == ["絮雨"]
+    assert data.operators["絮雨"].is_resting()
+    assert not [
+        pending
+        for pending in solver.tasks
+        if getattr(pending, "recovery_observation_rooms", None)
+    ]

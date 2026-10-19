@@ -11,9 +11,7 @@ from arknights_mower.tests.group_resting_capacity_tests import (
     shift_off,
 )
 from arknights_mower.utils.scheduler_task import (
-    dorm_residents,
     plan_metadata,
-    restore_displaced_resting,
     try_add_release_dorm,
     try_reorder,
 )
@@ -203,43 +201,3 @@ def test_idle_explicit_priority_keeps_required_low_main_group_resting(solver, re
     assert tasks == []
     assert all(data.operators[name].is_resting() for name in DEEP)
     assert not data.operators[newcomer].is_resting()
-
-
-def test_uncached_required_resident_still_gets_explicit_return_compensation(solver):
-    shift_off(solver)
-    data = solver.op_data
-    name = DEEP[0]
-    _, bed = data.get_dorm_by_name(name)
-    position = bed.position
-    bed.name = ""
-    previous = dorm_residents(data)
-    assert previous[position] == name
-    bed.name = OTHERS[0]
-    plan = {}
-    restore_displaced_resting(data, previous, plan, [], admitted={position: OTHERS[0]})
-    assert set(DEEP) <= {name for names in plan.values() for name in names}
-    assert bed.name == OTHERS[0]
-
-
-def test_free_opening_keeps_new_required_anchor_and_does_not_recall_standby(solver):
-    shift_off(solver)
-    data = solver.op_data
-    previous = dorm_residents(data)
-    _, anchor_bed = data.get_dorm_by_name(DEEP[0])
-    _, standby_bed = data.get_dorm_by_name(DEEP[1])
-    previous[anchor_bed.position] = ""
-    standby_bed.name = OTHERS[0]
-    room, index = anchor_bed.position
-    plan = {room: ["Current"] * 5}
-    plan[room][index] = "Free"
-    restore_displaced_resting(
-        data,
-        previous,
-        plan,
-        [],
-        admitted={anchor_bed.position: DEEP[0], standby_bed.position: OTHERS[0]},
-    )
-    assert all(
-        name not in {name for names in plan.values() for name in names} for name in DEEP
-    )
-    assert anchor_bed.name == DEEP[0]

@@ -95,7 +95,11 @@ def group_recovery_deadline(data, group, *, now=None):
         latches.pop(group, None)
         anchors.pop(group, None)
     elif group in latches:
-        latches[group] = [op.name for op in gap_workers]
+        latches[group] = [
+            op.name
+            for op in gap_workers
+            if op.is_resting() or op.name in latches[group]
+        ]
     elif config.conf.group_rest_in_full_on_mood_gap:
         times = [at for op in gap_workers if (at := completed_at(op)) is not None]
         limit = timedelta(minutes=config.conf.group_mood_gap_threshold_minutes)

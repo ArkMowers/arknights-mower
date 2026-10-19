@@ -1,9 +1,9 @@
 import {MowerShiftPreviewError} from './mowerNativeErrors'
 import {mowerDormIsolationCost} from './mowerDormIsolation'
 import { orderMowerAlphaDormIndices } from './mowerDormOrder'
-import {mowerRestingBindingGroups,mowerSharedReplacements,mowerSameGroupPrimaryReplacement,mowerArrangementGroupTransitions} from './mowerSharedGroups'
+import {mowerRestingBindingGroups,mowerSharedReplacements,mowerSameGroupPrimaryReplacement} from './mowerSharedGroups'
 // October 3 alpha b2d9ac85fe070e805aadf0d5f44fc095c1e95253 (Mower, MIT).
-// Shared identity, takeover and displacement rules; actual room I/O stays in the adapter.
+// Shared identity and takeover rules; actual room I/O stays in the adapter.
 import {mowerReplacementCandidates,restingMood,hasRestingMood} from './mowerOperatorState'
 import type {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {projectMowerArrangements} from './mowerObservations'
@@ -35,50 +35,6 @@ export function mowerMatchReplacements(options:Record<string,string[]>,allowPart
  }
  for(const name of Object.keys(options))if(!reserve(name,new Set())&&!allowPartial)return undefined
  return Object.fromEntries([...owners].map(([cover,name])=>[name,cover]))
-}
-export function alphaDormResidents(data:MowerSchedulingData):Map<string,string>{return new Map(data.dorms.map(b=>{
- const op=data.currentOperator(...b.position)
- return [alphaPosition(...b.position),b.name||(op&&data.recoveryDorm(b,op.name)?op.name:'')]
-}))}
-/** Mandatory members losing a bed recall their whole group; standby retains its anchor. */
-export function alphaRestoreDisplaced(data:MowerSchedulingData,previous:Map<string,string>,plan:MowerTaskPlan,tasks:MowerTask[],admissions:ReadonlyMap<string,string>=new Map()):Set<string>{
- const current=alphaDormResidents(data)
- for(const bed of data.dorms){
-  const key=alphaPosition(...bed.position),name=plan[bed.position[0]]?.[bed.position[1]]
-  if(name!==undefined&&name!=='Current'&&!(['Free',''].includes(name)&&bed.name!==previous.get(key)&&bed.name))current.set(key,['Free',''].includes(name)?'':name)
- }
- for(const [position,name] of admissions)current.set(position,name)
- const retained=new Set(current.values()),recalled=new Set<string>()
- for(const [position,name] of previous){
-  if(!name||name===current.get(position)||retained.has(name))continue
-  const op=data.operators[name];if(!op?.isHigh()||!data.plan[op.room])continue
-  if(op.multiGroup&&!op.independentRest||op.group&&!data.isGroupShiftAnchor(op))continue
-  const members=op.group?data.shiftGroupMembers(op.group):[name],completed=!!op.group&&hasRestingMood(op,data.nowMicros)&&restingMood(op,data.nowMicros)>=op.upperLimit
-  if((completed||data.canStandby(op))&&Object.values(data.operators).some(anchor=>retained.has(anchor.name)&&data.isGroupShiftAnchor(anchor)&&(data.canStandby(op)&&alphaRestingTier(data,anchor.name)<=3||!data.canStandby(anchor)&&!(hasRestingMood(anchor,data.nowMicros)&&restingMood(anchor,data.nowMicros)>=anchor.upperLimit))&&(!op.group||members.includes(anchor.name))))continue
-  for(const member of members)if(member===name||!data.operators[member]!.independentRest)recalled.add(member)
- }
- const transitions=mowerArrangementGroupTransitions(data,plan)
- for(const name of recalled){const op=data.operators[name]!;if(op.group&&!op.multiGroup)transitions[op.group]=false}
- for(const name of [...recalled]){const op=data.operators[name]!;if(op.multiGroup&&mowerRestingBindingGroups(data,op,transitions).length)recalled.delete(name)}
- for(const name of [...recalled]){
-  const op=data.operators[name]!,target=plan[op.room]?.[op.index]
-  if(target&&!['Current','Free','',name].includes(target)||Object.entries(plan).some(([room,row])=>row.some((target,index)=>target===name&&(room!==op.room||index!==op.index)))){recalled.delete(name);continue}
-  ;(plan[op.room]??=Array(data.plan[op.room]!.length).fill('Current'))[op.index]=name
- }
- for(const bed of data.dorms)if(recalled.has(bed.name)){
-  if(recalled.has(current.get(alphaPosition(...bed.position))??''))(plan[bed.position[0]]??=Array(data.plan[bed.position[0]]!.length).fill('Current'))[bed.position[1]]='Free'
-  bed.reset()
- }
- const changed=new Set(data.dorms.filter(b=>previous.get(alphaPosition(...b.position))!==current.get(alphaPosition(...b.position))).map(b=>alphaPosition(...b.position)))
- for(const task of [...tasks]){
-  if(task.plan===plan||![T.SHIFT_ON,T.RELEASE_DORM].includes(task.type))continue
-  for(const [room,names] of Object.entries(task.plan)){
-   names.forEach((name,index)=>{if(task.type===T.SHIFT_ON&&recalled.has(name)||task.type===T.RELEASE_DORM&&changed.has(alphaPosition(room,index)))names[index]='Current'})
-   if(names.every(name=>name==='Current'))delete task.plan[room]
-  }
-  if(!Object.keys(task.plan).length)tasks.splice(tasks.indexOf(task),1)
- }
- return recalled
 }
 function alphaSlotEffective(data:MowerSchedulingData,bed:MowerDormState,activeGroups?:Set<string>):boolean{
  const owner=data.operators[data.plan[bed.position[0]]?.[bed.position[1]]??''],groups=owner?.multiGroup?mowerRestingBindingGroups(data,owner,Object.fromEntries([...(activeGroups??[])].map(group=>[group,true]))):[]

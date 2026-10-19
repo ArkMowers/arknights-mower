@@ -17,8 +17,6 @@ from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
-    dorm_residents,
-    restore_displaced_resting,
 )
 
 DORM = "dormitory_3"
@@ -110,31 +108,6 @@ def shift_plan():
     }
 
 
-@pytest.mark.parametrize("binding", ["公招", "sees"])
-def test_displaced_group_preserves_shared_beds_needed_by_another_group(
-    shared_solver, binding
-):
-    data = shared_solver.op_data
-    data.commit_group_shifts({binding: True})
-    previous = dorm_residents(data)
-    plan = {DORM: ["Current", "Current", INCOMING, "Free", "Current"]}
-    before_state = deepcopy(data.group_shift_state)
-    before_positions = {
-        name: (op.current_room, op.current_index) for name, op in data.operators.items()
-    }
-
-    restore_displaced_resting(data, previous, plan, [])
-
-    assert plan[DORM][2] == INCOMING
-    assert plan[DORM][3] == "Free"
-    assert plan["meeting"] == ["诗怀雅"]
-    assert plan["factory"] == ["至简"]
-    assert data.group_shift_state == before_state
-    assert before_positions == {
-        name: (op.current_room, op.current_index) for name, op in data.operators.items()
-    }
-
-
 @pytest.mark.parametrize("consumed_work", [False, True])
 def test_arrangement_preserves_pending_off_group_and_confirms_named_dorm_target(
     shared_solver, monkeypatch, consumed_work
@@ -189,77 +162,9 @@ def test_arrangement_preserves_pending_off_group_and_confirms_named_dorm_target(
     assert not data.group_is_resting("sees")
 
 
-def test_final_displaced_group_return_restores_shared_primaries(shared_solver):
-    data = shared_solver.op_data
-    previous = dorm_residents(data)
-    plan = {DORM: ["Current", "Current", "Free", "Free", "Current"]}
-
-    restore_displaced_resting(data, previous, plan, [])
-
-    assert plan[DORM][2:4] == list(SHARED)
-    assert plan["meeting"] == ["诗怀雅"]
-    assert plan["factory"] == ["至简"]
-    assert data.group_is_resting("赤金线")
-
-
-def test_simultaneous_displaced_group_returns_restore_shared_primaries(shared_solver):
-    data = shared_solver.op_data
-    data.commit_group_shifts({"公招": True})
-    data.operators[INCOMING]._current_room = "dormitory_1"
-    data.operators[INCOMING].current_index = 2
-    for bed in data.all_dorms():
-        if bed.position == ("dormitory_1", 2):
-            bed.name, bed.time = INCOMING, datetime.now() + timedelta(hours=2)
-    previous = dorm_residents(data)
-    plan = {
-        DORM: ["Current", "Current", "Free", "Free", "Current"],
-        "dormitory_1": ["Current", "Current", "Free", "Current", "Current"],
-    }
-
-    restore_displaced_resting(data, previous, plan, [])
-
-    assert plan[DORM][2:4] == list(SHARED)
-    assert plan["meeting"] == ["诗怀雅"]
-    assert plan["contact"] == [INCOMING]
-    assert data.group_is_resting("公招")
-    assert data.group_is_resting("赤金线")
-
-
-def test_displaced_return_retains_shared_worker_recovery_and_queued_return(solver):
-    solver.op_data.operators[WORKER].group_bindings[1]["replacement"] = ["红"]
-    assert shift_off(solver, "甲")[0]
-    assert shift_off(solver, "乙")[0]
-    data = solver.op_data
-    for name in (A, B, WORKER):
-        data.operators[name].mood = 8
-    worker_bed = data.get_dorm_by_name(WORKER)[1]
-    worker_bed.time = datetime.now() + timedelta(hours=2)
-    recovery = worker_bed.name, worker_bed.time
-    return_task = SchedulerTask(
-        time=worker_bed.time,
-        task_type=TaskTypes.SHIFT_ON,
-        task_plan={"meeting": ["Current", B], "contact": [WORKER]},
-    )
-    tasks = [return_task]
-    queued = deepcopy(return_task.plan)
-    previous = dorm_residents(data)
-    room, index = data.get_dorm_by_name(A)[1].position
-    plan = {room: ["Current"] * 5}
-    plan[room][index] = "黑角"
-
-    restore_displaced_resting(data, previous, plan, tasks)
-
-    assert plan["meeting"][0] == A
-    assert "contact" not in plan
-    assert data.get_current_operator("contact", 0).name == "红"
-    assert (worker_bed.name, worker_bed.time) == recovery
-    assert tasks == [return_task] and return_task.plan == queued
-    assert data.group_is_resting("甲") and data.group_is_resting("乙")
-
-
 @pytest.mark.parametrize("role", ["worker", "dorm"])
 @pytest.mark.parametrize("first,second", [("甲", "乙"), ("乙", "甲")])
-def test_exclusive_covers_wait_for_displaced_group_return(request, role, first, second):
+def test_exclusive_covers_wait_for_group_return(request, role, first, second):
     solver = request.getfixturevalue("solver" if role == "worker" else "dorm_solver")
     follower = WORKER if role == "worker" else "塑心"
     room = "contact" if role == "worker" else "dormitory_1"
@@ -280,11 +185,14 @@ def test_exclusive_covers_wait_for_displaced_group_return(request, role, first, 
     assert data.operators[follower].group == before_binding
     assert data.get_current_operator(room, 0).name == covers[first]
     anchor = A if first == "甲" else B
-    bed_room, index = data.get_dorm_by_name(anchor)[1].position
-    recall = {bed_room: ["Current"] * len(data.plan[bed_room])}
-    recall[bed_room][index] = "Free"
-
-    restore_displaced_resting(data, dorm_residents(data), recall, [])
+    recall = {
+        data.operators[anchor].room: ["Current"]
+        * len(data.plan[data.operators[anchor].room])
+    }
+    recall[data.operators[anchor].room][data.operators[anchor].index] = anchor
+    task = SchedulerTask(task_type=TaskTypes.SHIFT_ON, task_plan=recall)
+    solver._prepare_group_shift(task)
+    recall = task.plan
 
     assert recall[room][0] == follower
     assert data.group_shift_state == before_state
@@ -297,7 +205,7 @@ def test_exclusive_covers_wait_for_displaced_group_return(request, role, first, 
 
 
 @pytest.mark.parametrize("first,second", [("甲", "乙"), ("乙", "甲")])
-def test_overlapping_covers_keep_common_candidate_through_displaced_return(
+def test_overlapping_covers_keep_common_candidate_through_group_return(
     solver, first, second
 ):
     slot = solver.global_plan["default_plan"].plan["contact"][0]
@@ -315,11 +223,14 @@ def test_overlapping_covers_keep_common_candidate_through_displaced_return(
     bed.time = datetime.now() + timedelta(hours=2)
     recovery = bed.position, bed.name, bed.time
     anchor = A if first == "甲" else B
-    bed_room, index = data.get_dorm_by_name(anchor)[1].position
-    recall = {bed_room: ["Current"] * len(data.plan[bed_room])}
-    recall[bed_room][index] = "Free"
-
-    restore_displaced_resting(data, dorm_residents(data), recall, [])
+    recall = {
+        data.operators[anchor].room: ["Current"]
+        * len(data.plan[data.operators[anchor].room])
+    }
+    recall[data.operators[anchor].room][data.operators[anchor].index] = anchor
+    task = SchedulerTask(task_type=TaskTypes.SHIFT_ON, task_plan=recall)
+    solver._prepare_group_shift(task)
+    recall = task.plan
 
     assert "contact" not in recall
     assert (bed.position, bed.name, bed.time) == recovery

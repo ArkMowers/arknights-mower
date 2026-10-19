@@ -31,6 +31,46 @@ def returns(data):
     return [t for t in plan_metadata(data, []) if t.type == TaskTypes.SHIFT_ON]
 
 
+def test_gap_wait_does_not_reappear_after_confirmed_return_and_temporary_regroup(
+    resting, monkeypatch
+):
+    from arknights_mower.solvers import record
+    from arknights_mower.utils.group_recovery import group_recovery_deadline
+
+    solver, now = resting
+    data = solver.op_data
+    config.conf.group_rest_in_full_on_mood_gap = True
+    returns(data)
+    assert "讯使" in data.group_recovery_full_members["联动"]
+    monkeypatch.setattr(record, "save_agent_action", lambda *a, **kw: None)
+    member = data.operators["讯使"]
+    data.update_detail(member.name, 14.09, member.room, member.index, True)
+    # 临时副表改变组别并设为工作狂，随后离岗，再恢复原表。
+    member.group, member.workaholic = "临时", True
+    member.current_room, member.current_index = "", -1
+    member.group, member.workaholic = "联动", False
+    required, due = group_recovery_deadline(data, "联动", now=now)
+    assert "讯使" not in required
+    assert set(required) == {"伊内丝", "银灰"}
+    assert due == now + timedelta(hours=3)
+    # 显式回满仍独立生效，不能随旧组等待一起取消。
+    member.rest_in_full = True
+    assert "讯使" in group_recovery_deadline(data, "联动", now=now)[0]
+
+
+def test_empty_gap_wait_does_not_add_idle_members_again(resting):
+    from arknights_mower.utils.group_recovery import group_recovery_deadline
+
+    solver, now = resting
+    data = solver.op_data
+    data.group_recovery_full_members["联动"] = []
+    for name in ("伊内丝", "银灰", "讯使"):
+        data.get_dorm_by_name(name)[1].reset()
+        member = data.operators[name]
+        member.current_room, member.current_index = "", -1
+    assert group_recovery_deadline(data, "联动", now=now) == ([], None)
+
+
 def test_low_priority_explicit_full_member_sets_group_deadline(resting):
     solver, now = resting
     data = solver.op_data

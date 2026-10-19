@@ -19,10 +19,8 @@ from arknights_mower.utils.resting_priority import RestingTier, resting_tier
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
-    dorm_residents,
     generate_plan_by_drom,
     plan_metadata,
-    restore_displaced_resting,
 )
 
 
@@ -177,7 +175,6 @@ def test_standby_can_lose_bed_without_recalling_bound_group(individual):
     shared.mood = 10
     assert shift_off(s, "甲")[0]
     data = s.op_data
-    before = dorm_residents(data)
     bed = data.get_dorm_by_name(SHARED)[1]
     assert resting_tier(data, SHARED) == RestingTier.STANDBY
     assert data._slot_takable(bed, requester="银灰")
@@ -189,7 +186,6 @@ def test_standby_can_lose_bed_without_recalling_bound_group(individual):
         )
     ]
     state = deepcopy(data.group_shift_state)
-    restore_displaced_resting(data, before, plan, returns)
     assert set(plan) == {bed.position[0]}
     apply(s, plan)
     assert s.op_data.operators[SHARED].current_room == ""

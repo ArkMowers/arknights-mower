@@ -29,7 +29,7 @@ function completedAt(data:MowerSchedulingData,op:MowerOperatorState):number|unde
 export function mowerGroupRecoveryDeadline(data:MowerSchedulingData,group:string):{requiredNames:string[];timeMicros:number|undefined}{
  const workers=mowerGroupRecoveryWorkers(data,group),gapWorkers=workers.filter(op=>!op.multiGroup)
  if(data.groupMoodGapExclusions.includes(group)){delete data.groupRecoveryFullMembers[group];delete data.groupRecoveryReturnMicros[group]}
- else if(data.groupRecoveryFullMembers[group])data.groupRecoveryFullMembers[group]=gapWorkers.map(op=>op.name)
+ else if(data.groupRecoveryFullMembers[group])data.groupRecoveryFullMembers[group]=gapWorkers.filter(op=>op.isResting()||data.groupRecoveryFullMembers[group]!.includes(op.name)).map(op=>op.name)
  if(data.groupRestInFullOnMoodGap&&!data.groupMoodGapExclusions.includes(group)&&!data.groupRecoveryFullMembers[group]){
   const times=gapWorkers.flatMap(op=>{const time=completedAt(data,op);return time===undefined?[]:[time]})
   if(times.length>1&&Math.max(...times)-Math.min(...times)>toMowerMicros(data.groupMoodGapThresholdMinutes/60))data.groupRecoveryFullMembers[group]=gapWorkers.map(op=>op.name)

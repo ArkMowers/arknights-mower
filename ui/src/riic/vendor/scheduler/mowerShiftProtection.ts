@@ -4,7 +4,6 @@
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {mowerFindDormSlot} from './mowerDormAssignment'
 import {projectMowerArrangements} from './mowerObservations'
-import {alphaDormResidents,alphaRestoreDisplaced} from './mowerAlphaDorm'
 import {MOWER_TASK_TYPES as T,toMowerMicros,type MowerTask,type MowerTaskPlan} from './mowerTaskQueue'
 
 export function mowerProtectedShift(task:MowerTask):boolean {
@@ -18,7 +17,7 @@ export type MowerShiftBedPreparation=
  * The physical adapter still owns every room commit and recovery observation. */
 export function prepareMowerShiftBeds(data:MowerSchedulingData,task:MowerTask,pending:MowerTask[]):MowerShiftBedPreparation {
  const plan=structuredClone(task.plan)
- if(data.alpha){const copy=projectMowerArrangements(data,[]);alphaRestoreDisplaced(copy,alphaDormResidents(copy),plan,pending.filter(t=>t!==task).map(t=>Object.assign(Object.create(Object.getPrototypeOf(t)),t,{plan:structuredClone(t.plan)})));return {ready:true,plan,relocated:[]}}
+ if(data.alpha)return {ready:true,plan,relocated:[]}
  if(!Object.keys(plan).some(room=>room.startsWith('dorm')))return {ready:true,plan,relocated:[]}
  // A partial physical arrangement vacates trailing slots; do not project them as Current.
  const projection=Object.fromEntries(Object.entries(plan).map(([room,names])=>[room,room.startsWith('dorm')?[...names,...Array(Math.max(0,(data.plan[room]?.length??names.length)-names.length)).fill('Free')]:names]))

@@ -3,7 +3,7 @@ import {MowerOperatorState,type MowerOperatorOptions} from './mowerOperatorState
 import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {planMowerAlphaMetadata} from './mowerAlphaMetadata'
 import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros} from './mowerTaskQueue'
-import {projectMowerArrangements,mowerRefreshDormTime,invalidateMowerDormTime} from './mowerObservations'
+import {projectMowerArrangements,mowerRefreshDormTime,invalidateMowerDormTime,mowerUpdateDetail} from './mowerObservations'
 import {commitMowerGroupShifts} from './mowerSharedGroups'
 import {mowerGroupRecoveryDeadline,mowerGroupRecoveryWorkers,splitMowerRecoveryTask} from './mowerGroupRecovery'
 
@@ -16,6 +16,24 @@ function returnTask(data:MowerSchedulingData){const queue=new MowerTaskQueue();p
 function releaseFull(data:MowerSchedulingData,name:string){const op=data.operators[name]!;data.dorms.find(b=>b.name===name)!.reset();op.currentRoom='';op.currentIndex=-1;op.mood=op.upperLimit;op.timeStampMicros=data.nowMicros;op.depletionRate=0}
 
 describe('strict grouped recovery in the alpha simulator',()=>{
+ it('does not restore an old gap requirement after actual return and temporary regrouping',()=>{
+  const data=fixture([{name:'A',hours:1},{name:'B',hours:4}],true)
+  expect(mowerGroupRecoveryDeadline(data,'G').requiredNames).toEqual(['A','B'])
+  const op=data.operators.A!
+  mowerUpdateDetail(data,'A',14.09,op.room,op.index,true)
+  op.group='temporary';op.workaholic=true;op.currentRoom='';op.currentIndex=-1
+  op.group='G';op.workaholic=false
+  expect(mowerGroupRecoveryDeadline(data,'G')).toEqual({requiredNames:['B'],timeMicros:toMowerMicros(4)})
+  op.restInFull=true
+  expect(mowerGroupRecoveryDeadline(data,'G').requiredNames).toContain('A')
+ })
+ it('does not add idle members to an emptied gap wait',()=>{
+  const data=fixture([{name:'A',hours:1},{name:'B',hours:4}],true)
+  data.groupRecoveryFullMembers.G=[]
+  for(const op of Object.values(data.operators)){op.currentRoom='';op.currentIndex=-1}
+  for(const bed of data.dorms)bed.reset()
+  expect(mowerGroupRecoveryDeadline(data,'G')).toEqual({requiredNames:[],timeMicros:undefined})
+ })
  it('waits for every explicitly full-rest member without either lead time',()=>{
   const data=fixture([{name:'迷迭香',hours:1},{name:'黑键',hours:2,options:{restInFull:true}},{name:'绮良',hours:4,options:{restInFull:true}}])
   const task=returnTask(data)!
