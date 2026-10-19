@@ -312,7 +312,11 @@ def test_worker_idle_uses_next_dispatchable_task(
 def test_confirmed_production_wait_retains_its_existing_timer(scheduler, monkeypatch):
     monkeypatch.setattr(recovery.config.conf.product_switching, "enable", True)
     solver = scheduler.solver
-    task = SchedulerTask(scheduler.clock.now(), task_type=TaskTypes.SWITCH_PRODUCT)
+    task = SchedulerTask(
+        scheduler.clock.now(),
+        task_type=TaskTypes.SWITCH_PRODUCT,
+        meta_data=f"{ROOM},gold",
+    )
     solver.tasks = [task]
     solver.task = task
     solver.switch_base_products = Mock(
@@ -321,6 +325,8 @@ def test_confirmed_production_wait_retains_its_existing_timer(scheduler, monkeyp
         )
     )
     solver.infra_main()
+    solver.switch_base_products.assert_called_once()
+    assert solver.tasks == [task]
     assert task.time == scheduler.clock.now() + timedelta(minutes=2)
     assert not hasattr(task, "execution_failure")
     assert find_next_task(solver.tasks) is task
