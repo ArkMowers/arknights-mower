@@ -8218,20 +8218,11 @@ class BaseSchedulerSolver(
         return names
 
     def _finish_recycling_collection(self):
-        from arknights_mower.utils.recycling import (
-            read_recycling_materials,
-            recycling_notifications_visible,
-        )
+        from arknights_mower.utils.recycling import read_recycling_materials
 
         event = self._recycling_pending
         if not event.get("recorded"):
             event.setdefault("at", datetime.now().timestamp())
-            # 右侧收取提示可能干扰圆形和材料名检测；等待其消失后再核对奖励。
-            # 等待只属于本次奖励读取，最多五秒，不新增排班任务。
-            for _ in range(10):
-                if not recycling_notifications_visible(self.recog.img):
-                    break
-                self.sleep(0.5)
             previous = None
             materials = None
             for attempt in range(3):

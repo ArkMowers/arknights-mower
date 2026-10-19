@@ -205,32 +205,33 @@ def notification_reward_frame():
 
 def test_archived_collection_notifications_require_gold_stripe_and_dark_panel():
     image = notification_reward_frame()
-    assert recycling.recycling_notifications_visible(image)
+    assert recycling._collection_notifications(image) == [
+        (90, 245),
+        (275, 430),
+        (460, 615),
+        (645, 800),
+    ]
     without_stripe = image.copy()
     without_stripe[:, 1412:1430] = 0
-    assert not recycling.recycling_notifications_visible(without_stripe)
+    assert recycling._collection_notifications(without_stripe) == []
     without_panel = image.copy()
     without_panel[:, 1560:] = 255
-    assert not recycling.recycling_notifications_visible(without_panel)
+    assert recycling._collection_notifications(without_panel) == []
 
 
-def test_collection_waits_for_notifications_then_records_matching_rewards(
+def test_collection_ignores_persistent_notifications_and_records_matching_rewards(
     db, real_ocr, monkeypatch
 ):
     monkeypatch.setattr(recycling.rapidocr, "engine", real_ocr)
     solver = collection_solver()
     image = notification_reward_frame()
     solver.recog.img = image.copy()
-    solver._recycling_pending = {"id": "notification-disappears", "at": at(18, 19)}
+    solver._recycling_pending = {"id": "notification-ignored", "at": at(18, 19)}
     solver.scene = Mock(side_effect=[Scene.MATERIEL, Scene.INFRA_MAIN])
-
-    def next_frame(interval):
-        if solver.sleep.call_count == 2:
-            solver.recog.img[:, 1410:] = 0
-
-    solver.sleep.side_effect = next_frame
-    reader = Mock(wraps=recycling.read_recycling_materials)
-    monkeypatch.setattr(recycling, "read_recycling_materials", reader)
+    ocr = Mock(wraps=recycling._ocr)
+    circles = Mock(wraps=recycling.cv2.HoughCircles)
+    monkeypatch.setattr(recycling, "_ocr", ocr)
+    monkeypatch.setattr(recycling.cv2, "HoughCircles", circles)
 
     def dismiss(_position):
         result = record.get_recycling_history("2026-10-18", "2026-10-18")
@@ -240,12 +241,11 @@ def test_collection_waits_for_notifications_then_records_matching_rewards(
     solver.tap.side_effect = dismiss
     solver._finish_recycling_collection()
 
-    assert reader.call_count == 2
-    assert all(
-        not recycling.recycling_notifications_visible(c.args[0])
-        for c in reader.call_args_list
-    )
-    assert solver.sleep.call_args_list == [call(0.5), call(0.5), call(0.3)]
+    assert circles.call_count == 2
+    assert not np.any(ocr.call_args_list[0].args[0][5:, 1410:])
+    assert not np.any(circles.call_args_list[0].args[0][180:335, 1410:])
+    assert np.array_equal(solver.recog.img, image)
+    solver.sleep.assert_called_once_with(0.3)
     solver.tap.assert_called_once_with((960, 960))
     solver.recog.save_screencap.assert_not_called()
     result = record.get_recycling_history("2026-10-18", "2026-10-18")
@@ -254,8 +254,37 @@ def test_collection_waits_for_notifications_then_records_matching_rewards(
     assert solver._recycling_pending is None
 
 
+def multiple_reward_frame(centers):
+    image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    crop = reward_frame()[415:705, 820:1100]
+    for center in centers:
+        image[415:705, center - 140 : center + 140] = crop
+    return image
+
+
+def test_multiple_rewards_remain_complete_beside_notifications(real_ocr, monkeypatch):
+    monkeypatch.setattr(recycling.rapidocr, "engine", real_ocr)
+    image = multiple_reward_frame((780, 1140))
+    image[:, 1410:] = notification_reward_frame()[:, 1410:]
+    assert recycling.read_recycling_materials(image) == {"装置": 2}
+    image[640:705, 1000:1280] = 0
+    assert recycling.read_recycling_materials(image) is None
+
+
+@pytest.mark.parametrize("centers", [(600, 1320), (360, 1560), (420, 780, 1140, 1500)])
+def test_notifications_covering_real_rewards_never_record_only_visible_materials(
+    real_ocr, monkeypatch, centers
+):
+    monkeypatch.setattr(recycling.rapidocr, "engine", real_ocr)
+    image = multiple_reward_frame(centers)
+    assert recycling._collection_notifications(image) == []
+    assert recycling.read_recycling_materials(image) == {"装置": len(centers)}
+    image[:, 1410:] = notification_reward_frame()[:, 1410:]
+    assert recycling.read_recycling_materials(image) is None
+
+
 @pytest.mark.parametrize("readable", [True, False])
-def test_notification_wait_is_bounded_and_keeps_uncertain_materials_unknown(
+def test_persistent_notifications_add_no_wait_or_duplicate_collection(
     db, monkeypatch, readable
 ):
     solver = collection_solver()
@@ -267,9 +296,7 @@ def test_notification_wait_is_bounded_and_keeps_uncertain_materials_unknown(
 
     solver._finish_recycling_collection()
     assert solver._recycling_pending["recorded"]
-    assert solver.sleep.call_args_list == [call(0.5)] * 10 + [call(0.3)] * (
-        1 if readable else 2
-    )
+    assert solver.sleep.call_args_list == [call(0.3)] * (1 if readable else 2)
     assert reader.call_count == (2 if readable else 3)
     solver.sleep.reset_mock()
     solver._finish_recycling_collection()
@@ -279,19 +306,25 @@ def test_notification_wait_is_bounded_and_keeps_uncertain_materials_unknown(
     assert result["records"][0]["materials"] == ({"凝胶": 1} if readable else None)
 
 
-def test_cancellation_during_notification_wait_preserves_pending_collection(db):
+def test_cancellation_during_reward_confirmation_preserves_pending_collection(
+    db, monkeypatch
+):
     from arknights_mower.utils.csleep import MowerExit
 
     solver = collection_solver()
     solver.recog.img = notification_reward_frame()
-    event = {"id": "cancelled-notification", "at": at(18, 19)}
+    event = {"id": "cancelled-confirmation", "at": at(18, 19)}
     solver._recycling_pending = event.copy()
     solver.sleep.side_effect = MowerExit
+    monkeypatch.setattr(
+        recycling, "read_recycling_materials", Mock(return_value={"凝胶": 1})
+    )
 
     with pytest.raises(MowerExit):
         solver._finish_recycling_collection()
 
     assert solver._recycling_pending == event
+    solver.sleep.assert_called_once_with(0.3)
     solver.tap.assert_not_called()
     assert record.get_recycling_history("2026-10-18", "2026-10-18")["total"] == 0
 
@@ -331,8 +364,7 @@ def test_archived_borderline_quantity_is_recorded_after_two_matching_frames(
     assert result["materials"] == [{"name": "装置", "count": 1, "rarity": 2}]
     assert result["comparison"]["unknown_collections"] == 0
     assert result["records"][0]["materials"] == {"装置": 1}
-    assert recycling.recycling_notifications_visible(solver.recog.img)
-    assert solver.sleep.call_args_list == [call(0.5)] * 10 + [call(0.3)]
+    solver.sleep.assert_called_once_with(0.3)
     solver.recog.save_screencap.assert_not_called()
 
 
@@ -364,8 +396,7 @@ def test_windows_unicode_icon_failure_still_records_archived_reward(
     assert result["total"] == 1
     assert result["records"][0]["materials"] == {"固源岩组": 1}
     assert result["comparison"]["unknown_collections"] == 0
-    assert recycling.recycling_notifications_visible(solver.recog.img)
-    assert solver.sleep.call_args_list == [call(0.5)] * 10 + [call(0.3)]
+    solver.sleep.assert_called_once_with(0.3)
     solver.recog.save_screencap.assert_not_called()
 
 

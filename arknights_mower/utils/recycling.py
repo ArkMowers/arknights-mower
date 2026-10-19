@@ -33,24 +33,19 @@ def _material_icon(directory, name):
     return icon[:, :, :3], (icon[:, :, 3] > 240).astype(np.uint8) * 255
 
 
-def recycling_notifications_visible(image):
-    """Detect the gold checkerboard and dark panel of right-side collection tips."""
-    if (
-        not isinstance(image, np.ndarray)
-        or image.shape != (1080, 1920, 3)
-        or image.dtype != np.uint8
-    ):
-        return False
+def _collection_notifications(image):
+    """Locate right-side collection tips by their gold stripe and dark panel."""
     # 收取截图中的提示从 y=90 开始，每项间隔 185 像素。
     # 只看左侧金色格纹和右侧黑底，避开随产物变化的图标及文字。
     right = cv2.cvtColor(image[90:785, 1412:], cv2.COLOR_RGB2HSV)
+    regions = []
     for top in (0, 185, 370, 555):
         stripe = right[top + 5 : top + 140, :18]
         gold = cv2.inRange(stripe, (20, 100, 60), (40, 255, 255))
         dark = right[top + 5 : top + 140, 148:, 2] < 60
         if np.mean(gold > 0) >= 0.20 and np.mean(dark) >= 0.65:
-            return True
-    return False
+            regions.append((top + 90, top + 245))
+    return regions
 
 
 def read_recycling_materials(image):
@@ -66,6 +61,11 @@ def read_recycling_materials(image):
         or image.dtype != np.uint8
     ):
         return None
+    notifications = _collection_notifications(image)
+    if notifications:
+        image = image.copy()
+        for top, bottom in notifications:
+            image[top:bottom, 1410:] = 0
     labels = _ocr(image[640:705])
     if not 1 <= len(labels) <= 8:
         return None
@@ -82,6 +82,11 @@ def read_recycling_materials(image):
     if circles is None or len(circles[0]) != len(labels):
         return None
     centers = sorted(float(circle[0]) for circle in circles[0])
+    # 提示遮住奖励行时，可见材料仍须围绕屏幕中央排列；只剩左侧几件时
+    # 不能据此确认整批材料，避免屏蔽提示时也漏掉其后方的真实奖励。
+    row_occluded = any(top < 705 and bottom > 415 for top, bottom in notifications)
+    if row_occluded and abs((centers[0] + centers[-1]) / 2 - 960) > 15:
+        return None
     if any(not 515 <= circle[1] + 280 <= 545 for circle in circles[0]):
         return None
     materials = {}
@@ -100,6 +105,8 @@ def read_recycling_materials(image):
             (min(point[0] for point in box) + max(point[0] for point in box)) / 2
         )
         if center < 140 or center > 1780:
+            return None
+        if row_occluded and center + 140 > 1410:
             return None
         nearest = min(centers, key=lambda value: abs(value - center))
         if abs(nearest - center) > 15 or nearest in matched_centers:
