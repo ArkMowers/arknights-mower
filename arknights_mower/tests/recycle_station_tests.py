@@ -220,7 +220,7 @@ def test_arrangement_uses_residence_list_and_reads_actual_mood(staff, initial):
         BaseSchedulerSolver.turn_on_room_detail, solver
     )
     solver.tap_confirm.side_effect = lambda *args: state.__setitem__(0, "room")
-    names = iter(("芬", "香草"))
+    names = iter(("香草", "芬", "芬", "香草"))
 
     def read_name(*args, **kwargs):
         assert state[0] == "detail"
@@ -237,10 +237,12 @@ def test_arrangement_uses_residence_list_and_reads_actual_mood(staff, initial):
     plan = {"recycle": ["芬", "香草"]}
     assert BaseSchedulerSolver.agent_arrange_room(solver, {}, "recycle", plan) == {}
     assert state[0] == "room"
-    assert solver.turn_on_room_detail.call_count == 2
+    assert solver.turn_on_room_detail.call_count == 3
     assert solver.op_data.plan == original_plan
-    assert solver.read_accurate_mood.call_count == 2
+    assert solver.read_accurate_mood.call_count == 4
     assert [call.args[1] for call in solver.op_data.update_detail.call_args_list] == [
+        20,
+        20,
         20,
         20,
     ]
