@@ -1593,7 +1593,12 @@ class Operators:
             if v.current_room == room
         }
         if room in RIGHT_SIDE_ROOM_CAPACITY:
-            res = [""] * RIGHT_SIDE_ROOM_CAPACITY[room]
+            capacity = (
+                1
+                if room == "recycle" and getattr(self, "recycle_capacity", 2) == 1
+                else RIGHT_SIDE_ROOM_CAPACITY[room]
+            )
+            res = [""] * capacity
         else:
             res = [obj.agent for obj in self.plan[room]]
         not_found = False

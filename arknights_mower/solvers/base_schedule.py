@@ -1280,7 +1280,7 @@ class BaseSchedulerSolver(
         protected, slots = coordination_reservations(
             self.op_data, self.tasks, getattr(self, "task", None)
         )
-        protected.update(self._protected_training_names())
+        protected.update(self._protected_facility_names())
         fia, _ = self.check_fia()
         return plan_exhaust_support(
             self.op_data,
@@ -1337,7 +1337,7 @@ class BaseSchedulerSolver(
             self.tasks.append(SchedulerTask())
 
     def _ordinary_coordination_needed(self, names):
-        protected = self._protected_training_names()
+        protected = self._protected_facility_names()
         for name in names:
             op = self.op_data.operators.get(name)
             if (
@@ -1536,7 +1536,7 @@ class BaseSchedulerSolver(
         protected, slots = coordination_reservations(
             self.op_data, self.tasks, getattr(self, "task", None)
         )
-        protected.update(self._protected_training_names())
+        protected.update(self._protected_facility_names())
         for task in self.tasks:
             if task.type == TaskTypes.EXHAUST_OFF and task.time <= datetime.now():
                 protected.update(
@@ -2014,7 +2014,7 @@ class BaseSchedulerSolver(
         self.tasks = plan_metadata(
             self.op_data,
             self.tasks,
-            excluded_names=self._protected_training_names()
+            excluded_names=self._protected_facility_names()
             | self._waiting_recovery_names()
             | waiting_names,
         )
@@ -2601,7 +2601,7 @@ class BaseSchedulerSolver(
                             protected, slots = coordination_reservations(
                                 self.op_data, self.tasks, self.task
                             )
-                            protected.update(self._protected_training_names())
+                            protected.update(self._protected_facility_names())
                             for pending in self.tasks:
                                 if (
                                     pending is not self.task
@@ -3012,6 +3012,12 @@ class BaseSchedulerSolver(
         need_read.add("train")
 
         for room in sorted(need_read):
+            if (
+                room == "recycle"
+                and getattr(self, "_recycle_unavailable", False) is True
+            ):
+                force_rooms.discard(room)
+                continue
             if room == "train":
                 if _training_room_scan_disabled:
                     force_rooms.discard(room)
@@ -3203,6 +3209,8 @@ class BaseSchedulerSolver(
 
     def _read_room_mood(self, room, *, force_mood=False, strict_observation=False):
         """实读普通房间的驻员与心情，清除已离开房间的缓存驻员。"""
+        if room == "recycle" and getattr(self, "_recycle_unavailable", False) is True:
+            return
         mood_data = self.get_agent_from_room(
             room,
             list(range(len(self.op_data.plan[room])))
@@ -3372,7 +3380,7 @@ class BaseSchedulerSolver(
             for task in pending
         ):
             return {}
-        protected_training = self._protected_training_names()
+        protected_training = self._protected_facility_names()
         plan = {}
         for group, resting in self.op_data.group_shift_state.items():
             if not resting:
@@ -3477,7 +3485,7 @@ class BaseSchedulerSolver(
             and getattr(self, "train_room_state", None) is not None
         ):
             self.train_room_state = None
-        protected_training = self._protected_training_names()
+        protected_training = self._protected_facility_names()
         miss_list = {
             k: v
             for k, v in self.op_data.operators.items()
@@ -3690,7 +3698,7 @@ class BaseSchedulerSolver(
             fix_plan,
             transitions=self.op_data.arrangement_group_transitions(changed_plan),
             explicit_slots=explicit_slots,
-            excluded_names=self._protected_training_names(),
+            excluded_names=self._protected_facility_names(),
         ):
             logger.debug("多绑组纠错替班暂不可用，保留当前安排")
             return {} if return_plan else None
@@ -3785,7 +3793,7 @@ class BaseSchedulerSolver(
             and not config.conf.enable_mastery
         ):
             self.train_room_state = None
-        if self._suppress_train_arrangement(fix_plan):
+        if self._suppress_facility_arrangement(fix_plan):
             self._notify_train_correction_skipped()
 
     def _train_scheduling_protected(self) -> bool:
@@ -3817,6 +3825,49 @@ class BaseSchedulerSolver(
             if op.room == "train" or op.current_room == "train"
         }
         return names if names and self._train_scheduling_protected() else set()
+
+    def _protected_facility_names(self):
+        """训练室保护及本轮停用的回收站驻员不参与其他房间换人。"""
+        names = self._protected_training_names()
+        if getattr(self, "_recycle_unavailable", False) is True:
+            names.update(
+                op.name
+                for op in self.op_data.operators.values()
+                if op.room == "recycle" or op.current_room == "recycle"
+            )
+        return names
+
+    def _disable_recycling(self):
+        """一级回收站的两人安排只告警一次，本轮运行不再操作该设施。"""
+        if getattr(self, "_recycle_unavailable", False) is True:
+            return
+        self._recycle_unavailable = True
+        logger.warning(
+            "一级回收站仅有一个岗位，但排班配置了两名干员；"
+            "本轮运行跳过回收站的读取、收取和换人，其他设施继续调度。"
+            "请将回收站排班改为一人或升级设施，重新启动后再检查。"
+        )
+
+    def _suppress_facility_arrangement(self, plan: dict) -> bool:
+        """排除受保护设施及相关驻员，保留其他房间的安排。"""
+        notify_training = self._suppress_train_arrangement(plan)
+        if (
+            getattr(self.op_data, "recycle_capacity", 2) == 1
+            and len(plan.get("recycle", ())) > 1
+        ):
+            self._disable_recycling()
+        if getattr(self, "_recycle_unavailable", False) is not True:
+            return notify_training
+        plan.pop("recycle", None)
+        protected = self._protected_facility_names()
+        for room, names in list(plan.items()):
+            for index, name in enumerate(names):
+                actual = self.op_data.get_current_operator(room, index)
+                if name in protected or actual is not None and actual.name in protected:
+                    names[index] = "Current"
+            if all(name == "Current" for name in names):
+                del plan[room]
+        return notify_training
 
     def _suppress_train_arrangement(self, fix_plan: dict) -> bool:
         """保护生效时排除整房及相关驻员，其他岗位继续安排和确认。"""
@@ -4888,7 +4939,7 @@ class BaseSchedulerSolver(
             else effective_dorm_count
         )
         logger.debug(f"当前理想休息人数是{self.ideal_resting_count}")
-        protected_training = self._protected_training_names()
+        protected_training = self._protected_facility_names()
         _replacement = []
         _plan = {}
         dorm_admissions = {}
@@ -5049,7 +5100,7 @@ class BaseSchedulerSolver(
                     and self.op_data.is_group_shift_anchor(owner)
                     and self.op_data.group_is_resting(slot.group)
                     and (not owner.current_room or owner.is_resting())
-                    and owner.name not in self._protected_training_names()
+                    and owner.name not in self._protected_facility_names()
                     and not (room == "train" and _training_room_scan_disabled)
                 ):
                     # 切表恢复的离岗成员跟随组内休息，不能以新岗位召回整组。
@@ -5257,7 +5308,7 @@ class BaseSchedulerSolver(
                     if name != "Current"
                 )
 
-        self._suppress_train_arrangement(transition_plan)
+        self._suppress_facility_arrangement(transition_plan)
         departing = {
             owner.name
             for bp_index, bp in enumerate(self.op_data.backup_plans)
@@ -5275,7 +5326,7 @@ class BaseSchedulerSolver(
             and name in self.op_data.replacement_candidates(owner)
             and name not in TRADE_ORDER_AGENTS
             and transition_plan.get(room, [])[index : index + 1] == [name]
-            and owner.name not in self._protected_training_names()
+            and owner.name not in self._protected_facility_names()
         }
         if not self._complete_departed_recovery(transition_plan, departing):
             self._backup_departure_waiting_names = tuple(sorted(departing))
@@ -6047,7 +6098,7 @@ class BaseSchedulerSolver(
         *,
         dorm_admissions=None,
     ):
-        excluded = self._protected_training_names()
+        excluded = self._protected_facility_names()
         if excluded:
             agents = [name for name in agents if name not in excluded]
         groups = list(
@@ -6156,7 +6207,7 @@ class BaseSchedulerSolver(
     ):
         from arknights_mower.utils.exhaust_replacement import match_replacements
 
-        protected_training = self._protected_training_names()
+        protected_training = self._protected_facility_names()
         if protected_training:
             agents = [name for name in agents if name not in protected_training]
         if not agents:
@@ -6615,7 +6666,7 @@ class BaseSchedulerSolver(
         """Complete group targets and admit only independent unconfirmed shifts."""
         self.op_data.commit_group_shifts({})
         proposed = copy.deepcopy(task.plan)
-        self._suppress_train_arrangement(proposed)
+        self._suppress_facility_arrangement(proposed)
         transitions = dict(getattr(task, "group_shift_transitions", {}))
         transitions.update(self.op_data.arrangement_group_transitions(proposed))
         predecessors = self._group_shift_predecessors(task, proposed, transitions)
@@ -6635,7 +6686,7 @@ class BaseSchedulerSolver(
                 transitions,
                 reserved_replacements=reserved,
                 explicit_slots=getattr(task, "backup_explicit_slots", ()),
-                excluded_names=self._protected_training_names(),
+                excluded_names=self._protected_facility_names(),
             ):
                 raise GroupShiftBlocked(self._shared_shift_blockers(task, transitions))
             self._complete_ordinary_group_targets(task, proposed, transitions)
@@ -6646,7 +6697,7 @@ class BaseSchedulerSolver(
                 transitions,
                 reserved_replacements=reserved,
                 explicit_slots=getattr(task, "backup_explicit_slots", ()),
-                excluded_names=self._protected_training_names(),
+                excluded_names=self._protected_facility_names(),
             )
             or task.retains_execution
             and any(
@@ -6708,8 +6759,8 @@ class BaseSchedulerSolver(
         training_targets = {
             "train": [slot.agent for slot in self.op_data.plan.get("train", [])]
         }
-        self._suppress_train_arrangement(training_targets)
-        protected_training = self._protected_training_names()
+        self._suppress_facility_arrangement(training_targets)
+        protected_training = self._protected_facility_names()
         skipped_training = set(getattr(task, "training_skipped_slots", ()))
         missing = set()
         returns = {}
@@ -6788,19 +6839,19 @@ class BaseSchedulerSolver(
                     index
                 ] = name
         before_training = self.op_data.arrangement_group_transitions(plan)
-        self._suppress_train_arrangement(plan)
+        self._suppress_facility_arrangement(plan)
         after_training = self.op_data.arrangement_group_transitions(plan)
         for group in before_training.keys() - after_training.keys():
             transitions.pop(group, None)
 
     def _group_shift_predecessors(self, task, plan, transitions):
         """Started shifts own their group, shared bindings, named slots and occupants."""
-        protected_training = self._protected_training_names()
+        protected_training = self._protected_facility_names()
 
         def footprint(arrangement, shifts):
             arrangement = copy.deepcopy(arrangement)
             original = self.op_data.arrangement_group_transitions(arrangement)
-            self._suppress_train_arrangement(arrangement)
+            self._suppress_facility_arrangement(arrangement)
             remaining = self.op_data.arrangement_group_transitions(arrangement)
             if not arrangement:
                 return set(), set(), set()
@@ -6882,7 +6933,7 @@ class BaseSchedulerSolver(
 
     def _shared_shift_blockers(self, task, transitions):
         """Identify confirmed resting dependencies without guessing return times."""
-        protected_training = self._protected_training_names()
+        protected_training = self._protected_facility_names()
         groups = self.op_data.working_replacement_blockers(
             {
                 name
@@ -7269,7 +7320,7 @@ class BaseSchedulerSolver(
                 if not self.op_data.normalize_shared_arrangement(
                     combined,
                     explicit_slots=combined_explicit,
-                    excluded_names=self._protected_training_names(),
+                    excluded_names=self._protected_facility_names(),
                 ):
                     continue
                 intent = combined
@@ -7626,7 +7677,7 @@ class BaseSchedulerSolver(
         explicit_slots = set(getattr(task, "backup_explicit_slots", ()))
         ordinary_policy = copy.copy(task)
         ordinary_policy_changed = False
-        self._suppress_train_arrangement(intent)
+        self._suppress_facility_arrangement(intent)
         seed = self.op_data.project_arrangements([intent])
         seed.commit_group_shifts(getattr(task, "group_shift_transitions", {}))
         selection = seed.evaluate_backup_selection()
@@ -7737,7 +7788,7 @@ class BaseSchedulerSolver(
                 )
             merged = copy.deepcopy(intent)
             _merge_shift_transition(merged, transition, simulation.op_data)
-            self._suppress_train_arrangement(merged)
+            self._suppress_facility_arrangement(merged)
             # 从真实驻员重新投影，不能把上一轮的中间换人累积到下一轮。
             projected = self.op_data.project_arrangements([])
             if error := projected.swap_plan(
@@ -8217,6 +8268,8 @@ class BaseSchedulerSolver(
 
     def collect_recycling(self):
         """Collect only a visible ready marker in the recycling facility."""
+        if getattr(self, "_recycle_unavailable", False) is True:
+            return False
         central = self.find("control_central")
         if central is None:
             return False
@@ -8250,6 +8303,8 @@ class BaseSchedulerSolver(
         return True
 
     def _tap_recycling_collection(self, pos):
+        if getattr(self, "_recycle_unavailable", False) is True:
+            return
         self._recycling_pending = {"id": str(uuid4())}
         self.tap(pos)
         for attempt in range(3):
@@ -8262,6 +8317,8 @@ class BaseSchedulerSolver(
         return False
 
     def _read_recycling_operators(self):
+        if getattr(self, "_recycle_unavailable", False) is True:
+            return None
         self.scene_graph_navigation(Scene.INFRA_MAIN)
         self.enter_room("recycle", max_attempts=1)
         if self.detect_room() != "recycle":
@@ -8294,7 +8351,10 @@ class BaseSchedulerSolver(
                 # 进驻按钮也会在展开动画中命中，再次点击会把已打开的面板关闭。
                 self.sleep(0.2)
         names = []
-        for top in (135, 344):
+        tops = (
+            (135,) if getattr(self.op_data, "recycle_capacity", 2) == 1 else (135, 344)
+        )
+        for top in tops:
             if self.find("infra_no_operator", scope=((1288, top), (1869, top + 191))):
                 continue
             name = self.read_screen(
@@ -8377,6 +8437,11 @@ class BaseSchedulerSolver(
             "todo"
         ] <= datetime.now() - timedelta(minutes=15):
             for res, name in collect.items():
+                if (
+                    res == "recycle"
+                    and getattr(self, "_recycle_unavailable", False) is True
+                ):
+                    continue
                 if pos := self.find(f"infra_collect_{res}"):
                     logger.info(f"收取{name}")
                     if res == "recycle":
@@ -10639,7 +10704,7 @@ class BaseSchedulerSolver(
             for index, name in required.items():
                 targets[index] = name
             protected_plan = {room: targets}
-            self._suppress_train_arrangement(protected_plan)
+            self._suppress_facility_arrangement(protected_plan)
             required = {
                 index: name
                 for index, name in enumerate(protected_plan.get(room, ()))
@@ -11511,6 +11576,8 @@ class BaseSchedulerSolver(
         force_working_time=False,
     ):
         """读取实际驻员；姓名未决槽位标记 observed=False，不据此确认离岗。"""
+        if room == "recycle" and getattr(self, "_recycle_unavailable", False) is True:
+            return []
         training_observation = None
         if room == "train":
             training_observation = BaseSchedulerSolver._observe_training_room(
@@ -11580,7 +11647,12 @@ class BaseSchedulerSolver(
         if training_observation is None:
             self.wait_product_complete()
         if room in RIGHT_SIDE_ROOM_CAPACITY:
-            length = RIGHT_SIDE_ROOM_CAPACITY[room]
+            length = (
+                1
+                if room == "recycle"
+                and getattr(self.op_data, "recycle_capacity", 2) == 1
+                else RIGHT_SIDE_ROOM_CAPACITY[room]
+            )
         else:
             length = len(self.op_data.plan[room])
         if length > 3:
@@ -11630,6 +11702,11 @@ class BaseSchedulerSolver(
                         )
                         self.sleep(0.25)
                         self.recog.update()
+            if room == "recycle" and i == 1 and not slot_observed:
+                self.op_data.recycle_capacity = 1
+                if len(self.op_data.plan.get(room, ())) > 1:
+                    self._disable_recycling()
+                break
             observation_complete = observation_complete and slot_observed
             if not slot_observed:
                 data["observed"] = False
@@ -12290,7 +12367,7 @@ class BaseSchedulerSolver(
         skip_enter=False,
         get_time=False,
     ):
-        self._suppress_train_arrangement(plan)
+        self._suppress_facility_arrangement(plan)
         if room not in plan:
             return new_plan
         finished = False
@@ -12347,7 +12424,7 @@ class BaseSchedulerSolver(
                                 self.task.training_skipped_slots.update(
                                     range(len(plan[room]))
                                 )
-                                self._suppress_train_arrangement(plan)
+                                self._suppress_facility_arrangement(plan)
                                 self.back()
                                 return new_plan
                         if getattr(room_state, "amiya_form_waiting", False) is True:
@@ -12417,6 +12494,12 @@ class BaseSchedulerSolver(
                                 self.back()
                                 return new_plan
                 self.turn_on_room_detail(room)
+                if room == "recycle":
+                    self.get_agent_from_room(room)
+                    self._suppress_facility_arrangement(plan)
+                    if room not in plan:
+                        self.back()
+                        return new_plan
                 if reconcile_after_confirmation:
                     refresh_indexes = []
                     if (
@@ -13029,7 +13112,7 @@ class BaseSchedulerSolver(
                 )
             ):
                 raise RuntimeError("救急期间暂停普通工作站换班")
-        self._suppress_train_arrangement(plan)
+        self._suppress_facility_arrangement(plan)
         if any(
             name in self.op_data.operators
             and self.op_data.operators[name].current_room == "train"
@@ -13054,7 +13137,7 @@ class BaseSchedulerSolver(
                 room_state = None
             if config.conf.enable_mastery:
                 self.train_room_state = room_state or RoomState(read_failed=True)
-                self._suppress_train_arrangement(plan)
+                self._suppress_facility_arrangement(plan)
             if getattr(self.task, "emergency_staffing", False):
                 self._emergency_protect_training(plan, room_state)
                 self._emergency_protect_training(

@@ -186,6 +186,7 @@ def test_unknown_name_and_inexact_quantity_reject(monkeypatch):
 
 def collection_solver():
     solver = BaseSchedulerSolver.__new__(BaseSchedulerSolver)
+    solver.op_data = SimpleNamespace(recycle_capacity=2)
     solver.recog = SimpleNamespace(
         img=np.zeros((1080, 1920, 3), dtype=np.uint8), save_screencap=Mock()
     )

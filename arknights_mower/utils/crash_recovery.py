@@ -252,6 +252,11 @@ def observe_scheduler(scheduler):
     scheduler.task = None
     scheduler.defer_backup_plan_until_mood_read = True
     for operator in scheduler.op_data.operators.values():
+        if (
+            getattr(scheduler, "_recycle_unavailable", False) is True
+            and operator.current_room == "recycle"
+        ):
+            continue
         operator.current_room, operator.current_index, operator.time_stamp = (
             "",
             -1,
@@ -278,6 +283,11 @@ def observe_scheduler(scheduler):
         )
     for room in (room for room in rooms if room in base_room_list):
         check_cancel()
+        if (
+            room == "recycle"
+            and getattr(scheduler, "_recycle_unavailable", False) is True
+        ):
+            continue
         scheduler.enter_room(room)
         if room == "train":
             from arknights_mower.solvers.mastery_reader import read_room_state

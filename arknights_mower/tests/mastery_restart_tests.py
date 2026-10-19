@@ -13,11 +13,14 @@ from arknights_mower.solvers import mastery_reader as reader
 from arknights_mower.utils import mastery_db, mastery_support_data
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
+from arknights_mower.utils.news_checker import NewsChecker
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
 class MasteryRestartTests(unittest.TestCase):
     def setUp(self):
+        for method in ("get_maintenance", "get_daily_reset"):
+            self.enterContext(patch.object(NewsChecker, method, return_value=None))
         self.enterContext(
             patch.object(base_schedule, "_training_room_scan_disabled", False)
         )

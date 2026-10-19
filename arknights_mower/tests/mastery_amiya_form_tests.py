@@ -210,6 +210,7 @@ def test_arrangement_gate_blocks_both_slots_only_for_current_observation(
         "_train_scheduling_protected",
         "_protected_training_names",
         "_suppress_train_arrangement",
+        "_suppress_facility_arrangement",
     ):
         setattr(solver, method, getattr(BaseSchedulerSolver, method).__get__(solver))
     room = reader.RoomState("empty", amiya_form_waiting=True)
