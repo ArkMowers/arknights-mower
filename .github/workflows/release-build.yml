@@ -175,10 +175,10 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements.txt
-      - name: Set up Node 20
+      - name: Set up Node 24
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
           cache-dependency-path: ui/package-lock.json
       - name: Inject release version
@@ -261,6 +261,13 @@ jobs:
 
           $upx.Directory.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           & $upx.FullName --version
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
 
       - name: Build frontend
         working-directory: ui
@@ -376,6 +383,13 @@ jobs:
 
       - name: Prune unused OpenCV assets
         run: python scripts/prune_opencv.py
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
 
       - name: Build frontend
         working-directory: ui
@@ -528,6 +542,13 @@ jobs:
       - name: Prune unused OpenCV assets
         run: python scripts/prune_opencv.py
 
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
       - name: Build frontend
         working-directory: ui
         run: npm ci
@@ -651,7 +672,7 @@ jobs:
           python-version: "3.12"
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
           cache-dependency-path: ui/package-lock.json
       - name: Inject version from tag

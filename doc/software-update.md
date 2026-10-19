@@ -22,7 +22,7 @@
 
 ## 源码部署
 
-使用源码 Python 启动 `manager.py` 或 `webview_ui.py`，Windows、macOS、Linux 均可识别，不通过系统名称或 `python.exe` 后缀判断部署类型。需要 Git、Node.js/npm。源码版本管理支持填写公开的个人 fork 地址，或选择自己此前填写的仓库；无需修改 `origin`。仅当目标提交的 `.gitattributes` 使用 LFS 时才要求 Git LFS；普通 Git 仓库不依赖它。macOS 桌面启动会补充 Homebrew/MacPorts 的常见工具目录，更新命令和恢复实例沿用检测到的 PATH。支持普通 Git 检出和 Git worktree。
+使用源码 Python 启动 `manager.py` 或 `webview_ui.py`，Windows、macOS、Linux 均可识别，不通过系统名称或 `python.exe` 后缀判断部署类型。需要 Git 和符合[源码部署要求](../README.md#源码部署)的 Node.js/npm。更新沿用本机 Node.js/npm，不会自动安装或升级；版本不符合要求时，请先升级再更新。源码版本管理支持填写公开的个人 fork 地址，或选择自己此前填写的仓库；无需修改 `origin`。仅当目标提交的 `.gitattributes` 使用 LFS 时才要求 Git LFS；普通 Git 仓库不依赖它。macOS 桌面启动会补充 Homebrew/MacPorts 的常见工具目录，更新命令和恢复实例沿用检测到的 PATH。支持普通 Git 检出和 Git worktree。
 
 正式版、公测版继续从官方 Release 的 tag 获取提交；开发版跟随源码版本管理中应用的仓库和分支，未选择时使用 `origin` / `alpha`。分支检查会固定仓库 URL 和提交 SHA，Git 与 Git LFS 使用同一来源。PR 更新为单次手动操作，不改变后续检查使用的仓库、分支或渠道。
 
@@ -226,7 +226,7 @@ MAA 核心及资源备份在更新后的首次任务正常完成后自动清理�
 
 ## CI 验证
 
-- 前端文件、Node 配置或检查工作流变更时，在 Ubuntu / Node.js 20 上执行 `npm ci`、全部前端测试和生产构建，覆盖包内容分流、全局拖拽、离线安装确认等回归；前端测试不重复加入三端矩阵。
+- 前端文件、Node 配置或检查工作流变更时，在 Ubuntu / Node.js 24 上执行 `npm ci`、全部前端测试和生产构建，覆盖包内容分流、全局拖拽、离线安装确认等回归；前端测试不重复加入三端矩阵。
 - 更新后端、运行环境、资源或安装依赖等相关路径变更时，沿用 Windows、macOS、Linux 更新兼容专项，验证文件操作、更新失败恢复和实例重启等平台行为。
 - 纯文档变更跳过检查；手动运行或无法确定变更范围时执行检查。自动化组件测试不能代替原生 WebView 的实际文件拖放验证。
 
