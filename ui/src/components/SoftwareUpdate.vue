@@ -165,7 +165,11 @@ async function poll() {
       ['succeeded', 'failed', 'cancelled'].includes(data.status)
     ) {
       sessionStorage.removeItem(pendingKey)
-      if (data.status === 'succeeded' && showProgress.value) {
+      if (
+        data.status === 'succeeded' &&
+        showProgress.value &&
+        (info.value?.capabilities?.silent_restart !== false || data.restarted === true)
+      ) {
         window.location.reload()
         return
       }

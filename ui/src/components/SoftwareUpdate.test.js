@@ -81,6 +81,42 @@ describe('offline software package installation', () => {
     await nextTick()
   }
 
+  it.each([
+    { silentRestart: false, restarted: false, reload: false },
+    { silentRestart: false, restarted: true, reload: true },
+    { silentRestart: true, restarted: false, reload: true },
+    { silentRestart: undefined, restarted: false, reload: true }
+  ])(
+    'handles successful installation with host capabilities %j',
+    async ({ silentRestart, restarted, reload }) => {
+      const storage = new Map()
+      vi.stubGlobal('sessionStorage', {
+        getItem: (key) => storage.get(key),
+        setItem: (key, value) => storage.set(key, value),
+        removeItem: (key) => storage.delete(key)
+      })
+      const refresh = vi.fn()
+      vi.stubGlobal('window', { location: { reload: refresh } })
+      await mount(new File(['offline'], 'package.zip'))
+      component.info.value.capabilities = { silent_restart: silentRestart }
+      const installed = {
+        ok: true,
+        id: 'offline-job',
+        status: 'succeeded',
+        restarted,
+        message: restarted ? 'Mower 已更新并重新启动' : '停止并重新启动手机服务后生效。'
+      }
+      state.client.get.mockImplementation(async (url) => ({
+        data: url.endsWith('/status') ? installed : component.info.value
+      }))
+      await component.install(false, null, { check_id: 'preview' })
+      expect(refresh).toHaveBeenCalledTimes(reload ? 1 : 0)
+      expect(component.showProgress.value).toBe(true)
+      expect(component.job.value.message).toBe(installed.message)
+      expect(storage.size).toBe(0)
+    }
+  )
+
   it('consumes a global drop before mounting without triggering an online check or install', async () => {
     const file = new File(['offline'], '任意改名 (1).bin')
     pendingSoftwarePackage.value = file
@@ -96,6 +132,35 @@ describe('offline software package installation', () => {
     expect(component.packageFiles.value[0].file).toBe(replacement)
     expect(pendingSoftwarePackage.value).toBeNull()
     expect(state.client.post).not.toHaveBeenCalled()
+  })
+
+  it('waits through service disconnection and reloads after the restarted server is ready', async () => {
+    const storage = new Map()
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key) => storage.get(key),
+      setItem: (key, value) => storage.set(key, value),
+      removeItem: (key) => storage.delete(key)
+    })
+    const refresh = vi.fn()
+    vi.stubGlobal('window', { location: { reload: refresh } })
+    await mount(new File(['offline'], 'package.zip'))
+    component.info.value.capabilities = { silent_restart: false }
+    state.client.get
+      .mockResolvedValueOnce({
+        data: { ok: true, id: 'offline-job', status: 'running', phase: 'restarting' }
+      })
+      .mockRejectedValueOnce(new Error('Service stopped'))
+      .mockResolvedValueOnce({
+        data: { ok: true, id: 'offline-job', status: 'succeeded', restarted: true }
+      })
+    await component.install(false, null, { check_id: 'preview' })
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(component.disconnected.value).toBe(true)
+    expect(refresh).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(component.disconnected.value).toBe(false)
+    expect(refresh).toHaveBeenCalledOnce()
+    expect(storage.size).toBe(0)
   })
 
   it('keeps the default update channel after a manual PR installation', async () => {
