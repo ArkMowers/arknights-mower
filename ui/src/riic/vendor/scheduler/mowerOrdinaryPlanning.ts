@@ -11,7 +11,7 @@ import {MowerDormState,type MowerSchedulingData} from './mowerSchedulingData'
 import {mowerActiveHighRestingCount,mowerAvailableFree,mowerAssignDorm,mowerAssignDormGroup,mowerAverageMood,mowerStandbyCandidates} from './mowerDormAssignment'
 import {planMowerMetadata} from './mowerMetadata'
 import {mowerDormCandidateMood} from './mowerAlphaCandidates'
-import {alphaPosition,alphaDormResidents,alphaRestoreDisplaced,alphaRestingTier,alphaSlotTakable,mowerMatchReplacements,alphaPrioritizeRecovery} from './mowerAlphaDorm'
+import {alphaPosition,alphaRestingTier,alphaSlotTakable,mowerMatchReplacements,alphaPrioritizeRecovery} from './mowerAlphaDorm'
 import {MowerTask,MOWER_TASK_TYPES as T,type MowerTaskPlan,type MowerTaskQueue,fromMowerMicros,toMowerMicros} from './mowerTaskQueue'
 export interface MowerRestingOptions {
  urgentExhaust?:boolean
@@ -107,7 +107,7 @@ function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:st
   if(Object.values(data.operators).some(op=>op.multiGroup))Object.assign(next,combined)
   const assignedCovers=new Set(Object.values(next).flat())
   const reservedResting=new Set(options.dormAdmissions?.values())
-  const previous=alphaDormResidents(data),resting=agents.filter(name=>!data.operators[name]!.workaholic&&!data.operators[name]!.room.startsWith('dorm')&&!assignedCovers.has(name)&&!data.getDormByName(name)&&!reservedResting.has(name))
+  const resting=agents.filter(name=>!data.operators[name]!.workaholic&&!data.operators[name]!.room.startsWith('dorm')&&!assignedCovers.has(name)&&!data.getDormByName(name)&&!reservedResting.has(name))
   // Apply selected covers in isolation so their departing beds are available in this shift.
   const allocation=structuredClone(combined)
   for(const [position,name] of options.dormAdmissions??[]){
@@ -124,7 +124,6 @@ function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:st
   })
   const confirmed=new Map(options.dormAdmissions)
   for(const bed of admissions)confirmed.set(alphaPosition(...bed.position),bed.name)
-  alphaRestoreDisplaced(data,previous,next,options.tasks??[],confirmed)
   if(options.dormAdmissions)for(const [position,name] of confirmed)options.dormAdmissions.set(position,name)
   existing.splice(0,existing.length,...new Set([...existing.filter(name=>!supersededCovers.has(name)),...Object.values(match)]))
   for(const [room,names] of Object.entries(next)){if(!plan[room])plan[room]=names;else names.forEach((name,index)=>{if(name!=='Current'&&(plan[room]![index]==='Current'||data.operators[data.plan[room]?.[index]??'']?.multiGroup))plan[room]![index]=name})}

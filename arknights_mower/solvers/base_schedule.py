@@ -149,7 +149,6 @@ from arknights_mower.utils.scheduler_task import (
     blocked_run_order_ids,
     defer_dorm_before_priority_task,
     dorm_rebalance_signature,
-    dorm_residents,
     estimate_task_duration,
     find_next_task,
     plan_dorm_isolation,
@@ -157,7 +156,6 @@ from arknights_mower.utils.scheduler_task import (
     prioritize_new_dorm_recovery,
     protect_priority_tasks,
     rebalance_plan_swap_dorms,
-    restore_displaced_resting,
     scheduling,
     simplify_dorm_fill,
     task_view,
@@ -3693,6 +3691,8 @@ class BaseSchedulerSolver(
                     current.name if current else "Free"
                 )
         _merge_shift_transition(fix_plan, explicit, self.op_data)
+        # 先移除仍在等待恢复的回班动作，再由剩余意图解析共享宿舍岗位。
+        self._suppress_retained_arrangements(fix_plan)
         changed_plan = copy.deepcopy(fix_plan)
         for room, names in changed_plan.items():
             for index, name in enumerate(names):
@@ -5231,7 +5231,6 @@ class BaseSchedulerSolver(
             for index, name in enumerate(row)
             if name != "Current"
         )
-        previous = dorm_residents(projected)
         beds = projected.assign_dorm_group(
             missing,
             active_groups={projected.operators[name].group for name in missing},
@@ -5245,14 +5244,6 @@ class BaseSchedulerSolver(
             plan.setdefault(room, ["Current"] * len(projected.plan[room]))[index] = (
                 bed.name
             )
-        restore_displaced_resting(
-            projected,
-            previous,
-            plan,
-            copy.deepcopy(self.tasks),
-            admitted={bed.position: bed.name for bed in beds},
-            group_transitions=projected.arrangement_group_transitions(plan),
-        )
         return True
 
     def _backup_transition_plan(
@@ -6392,7 +6383,6 @@ class BaseSchedulerSolver(
                 if not self.op_data.operators[name].room.startswith("dorm")
                 and not self.op_data.operators[name].workaholic
             )
-            previous = dorm_residents(self.op_data)
             allocation_plan = copy.deepcopy({**plan, **__plan})
             admissions = {}
             for task in sorted(self.tasks, key=lambda task: task.time):
@@ -6475,14 +6465,6 @@ class BaseSchedulerSolver(
                 __plan.setdefault(x.room, ["Current"] * len(self.op_data.plan[x.room]))[
                     x.index
                 ] = replacement
-            restore_displaced_resting(
-                self.op_data,
-                previous,
-                __plan,
-                self.tasks,
-                admitted={bed.position: bed.name for bed in dorms},
-                group_transitions=self._execution_group_transitions(plan),
-            )
             logger.debug(f"当前替换{__replacement}")
             exist_replacement.extend(__replacement)
             logger.debug(dorms)
@@ -13261,17 +13243,9 @@ class BaseSchedulerSolver(
                 self.task.plan.update(remaining)
             plan = self.task.plan
         if self.task.type != TaskTypes.FIAMMETTA and not self._emergency_frozen():
-            previous = dorm_residents(self.op_data)
             for dorm_room in list(plan):
                 if dorm_room.startswith("dorm"):
                     self.preserve_resting_crafters(plan[dorm_room], dorm_room)
-            restore_displaced_resting(
-                self.op_data,
-                previous,
-                plan,
-                self.tasks,
-                group_transitions=self._execution_group_transitions(plan),
-            )
         rooms = list(plan.keys())
         # 救急跑单失败沿用换入意图；普通跑单由实测原班补偿接续。
         original_plan = (

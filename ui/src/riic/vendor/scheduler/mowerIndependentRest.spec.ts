@@ -5,7 +5,7 @@ import {mowerResting,mowerGetRestingPlan} from './mowerOrdinaryPlanning'
 import {commitMowerGroupShifts,normalizeMowerSharedArrangement,mowerRestingBindingGroups} from './mowerSharedGroups'
 import {generateMowerDormTasks} from './mowerDormTasks'
 import {planMowerAlphaMetadata} from './mowerAlphaMetadata'
-import {alphaDormResidents,alphaRestoreDisplaced} from './mowerAlphaDorm'
+import {prepareMowerShiftBeds} from './mowerShiftProtection'
 import {projectMowerArrangements} from './mowerObservations'
 import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros,type MowerTaskPlan} from './mowerTaskQueue'
 import {createRosterRuntime,settleRoster,advanceRoster,nextRosterActionHours,type RuntimeConfig} from './rosterRuntime'
@@ -132,10 +132,9 @@ describe('shared working primary with one empty binding',()=>{
   const data=fixture();data.dorms=data.dorms.slice(0,1);data.plan.dormitory_1=['Free'];data.operators.F!.restingPriority='standby'
   resting(data,'F',0,8);data.operators.A!.mood=5
   data.operators.P!.currentRoom='room_1_3';data.operators.P!.currentIndex=0
-  const previous=alphaDormResidents(data),plan:MowerTaskPlan={}
+  const plan:MowerTaskPlan={}
   expect(mowerGetRestingPlan(data,data.shiftGroupMembers('a'),[],plan)).toBe(true)
   expect(data.dorms[0]!.name).toBe('A');expect(plan).toEqual({room_1_1:['X'],room_1_3:['C']})
-  expect(alphaRestoreDisplaced(data,previous,plan,[])).toEqual(new Set())
   const projected=projectMowerArrangements(data,[{...plan,dormitory_1:['A']}])
   expect(projected.operators.F!.currentRoom).toBe('');expect(projected.groupIsResting('a')).toBe(true)
  })
@@ -148,10 +147,10 @@ describe('shared working primary with one empty binding',()=>{
  })
  it.each(['standby','low'] as const)('does not recall a displaced %s shared primary or its named groups while a binding remains resting',priority=>{
   const data=fixture();data.operators.F!.restingPriority=priority;resting(data,'F',0,8)
-  const previous=alphaDormResidents(data);data.dorms[0]!.name='A'
+  data.dorms[0]!.name='A'
   commitMowerGroupShifts(data,{a:true})
   const plan:MowerTaskPlan={dormitory_1:['A','Current','Current']}
-  expect(alphaRestoreDisplaced(data,previous,plan,[])).toEqual(new Set())
+  expect(prepareMowerShiftBeds(data,new MowerTask({type:T.RE_ORDER,plan}),[])).toEqual({ready:true,plan,relocated:[]})
   expect(plan).toEqual({dormitory_1:['A','Current','Current']})
   expect(data.groupShiftState).toEqual({a:true,b:false})
  })

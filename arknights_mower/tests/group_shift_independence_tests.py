@@ -1,6 +1,5 @@
 """候补和多绑组成员的个人恢复事件不产生绑组上下班。"""
 
-from copy import deepcopy
 from datetime import datetime, timedelta
 
 import pytest
@@ -10,13 +9,10 @@ from arknights_mower.utils.operators import Dormitory
 from arknights_mower.utils.resting_correction import correct_group_dorms
 from arknights_mower.utils.resting_priority import RestingTier, resting_tier
 from arknights_mower.utils.scheduler_task import (
-    SchedulerTask,
     TaskTypes,
-    dorm_residents,
     plan_metadata,
     rebalance_closing_dorm_slots,
     rebalance_plan_swap_dorms,
-    restore_displaced_resting,
 )
 
 solver = mass_mood_recovery_tests.solver
@@ -44,35 +40,6 @@ def prepare_follower(solver, role, mood):
     )
     data.group_shift_state = {"轮休": True, "其他": False}
     return data, data.operators[anchor], op
-
-
-@pytest.mark.parametrize("role", ["standby", "promoted", "shared"])
-@pytest.mark.parametrize("mood", [0, 12, 24, None])
-def test_displaced_follower_never_recalls_group_without_retained_anchor(
-    solver, role, mood
-):
-    data, anchor, follower = prepare_follower(solver, role, mood)
-    anchor._current_room, anchor.current_index = "", -1
-    anchor.mood = 10
-    bed = data.dorm[0]
-    follower._current_room, follower.current_index = bed.position
-    bed.name = follower.name
-    before = dorm_residents(data)
-    returning = SchedulerTask(
-        time=mass_mood_recovery_tests.NOW + timedelta(hours=3),
-        task_type=TaskTypes.SHIFT_ON,
-        task_plan={anchor.room: [anchor.name]},
-    )
-    tasks = [returning]
-    plan = {bed.position[0]: ["Current", "Current", "陈", "Current", "Current"]}
-    state, return_plan = deepcopy(data.group_shift_state), deepcopy(returning.plan)
-
-    restore_displaced_resting(data, before, plan, tasks)
-
-    assert set(plan) == {bed.position[0]}
-    assert tasks == [returning] and returning.plan == return_plan
-    assert data.group_shift_state == state
-    assert data.project_arrangements([plan]).group_shift_state == state
 
 
 @pytest.mark.parametrize("role", ["standby", "promoted", "shared"])

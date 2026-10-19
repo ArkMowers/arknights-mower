@@ -1771,6 +1771,12 @@ class Operators:
         agent.current_room = current_room
         agent.current_index = current_index
         agent.mood = mood
+        if returned_to_post and not to_dorm and not preserve_depletion_rate:
+            # 实际回班结束本人的本轮恢复；临时换组后离岗不能重新加入旧等待。
+            for group, names in self.group_recovery_full_members.items():
+                self.group_recovery_full_members[group] = [
+                    member for member in names if member != name
+                ]
         if update_time:
             agent.idle_rest_check = None
             if (
