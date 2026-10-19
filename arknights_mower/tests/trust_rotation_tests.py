@@ -38,6 +38,7 @@ def card(value, x=570, y=120, **flags):
         ("1200%", None),
         ("?%", None),
         ("200", None),
+        ("%69", None),
         ("", None),
     ],
 )
@@ -95,6 +96,82 @@ def solver():
     result._prepare_selection = Mock()
     result.assistant_names = {}
     return result
+
+
+@pytest.fixture(scope="module")
+def local_trust_ocr():
+    return trust.rapidocr.create_engine(threads=1)
+
+
+@pytest.fixture
+def activity_69_frame():
+    image = cv2.imread(
+        str(Path(__file__).parent / "fixtures" / "trust_activity_b106_69.jpg")
+    )
+    return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+
+def test_logged_activity_trust_is_read_in_its_upright_orientation(
+    activity_69_frame, local_trust_ocr, monkeypatch
+):
+    obj = solver()
+    obj.recog.img = activity_69_frame
+    monkeypatch.setattr(trust.rapidocr, "engine", local_trust_ocr)
+    scope = ((1480, 705), (1660, 775))
+    assert obj._assignment_trust(scope, ((1430, 245), (1705, 775))) == 69
+    assert obj._trust(scope) == 69
+    obj.tap.assert_not_called()
+
+
+@pytest.mark.parametrize("prefer_low", [False, True])
+def test_logged_activity_trust_allows_inspecting_all_remaining_rooms(
+    activity_69_frame, local_trust_ocr, prefer_low, monkeypatch
+):
+    obj = solver()
+    obj.prefer = prefer_low
+    obj.recog.img = activity_69_frame
+    monkeypatch.setattr(trust.rapidocr, "engine", local_trust_ocr)
+    read_ocr = obj._ocr
+
+    def observe(scope):
+        if scope == ((360, 360), (1900, 1020)):
+            return [
+                (
+                    [[x, y], [x + 90, y], [x + 90, y + 35], [x, y + 35]],
+                    "活动室",
+                    0.99,
+                )
+                for y in (50, 210, 370, 530)
+                for x in (680, 1160)
+            ]
+        # Each simulated room replays the original occupied 69% panel.
+        return read_ocr(scope)
+
+    obj._ocr = observe
+    obj._assignment_trust = Mock(wraps=obj._assignment_trust)
+    obj._replace = Mock(side_effect=AssertionError("Retain the 69% incumbent"))
+    obj._activity_rooms()
+
+    assert obj._assignment_trust.call_count == 8
+    obj._replace.assert_not_called()
+    assert [call.args[0] for call in obj.tap.call_args_list] == [
+        (1140, 465),
+        (65, 55),
+        (1620, 465),
+        (65, 55),
+        (1140, 625),
+        (65, 55),
+        (1620, 625),
+        (65, 55),
+        (1140, 785),
+        (65, 55),
+        (1620, 785),
+        (65, 55),
+        (1140, 945),
+        (65, 55),
+        (1620, 945),
+        (65, 55),
+    ]
 
 
 @pytest.fixture

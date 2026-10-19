@@ -173,7 +173,8 @@ class TrustRotationSolver(SceneGraphSolver):
 
     def _ocr(self, scope):
         self._check_budget()
-        result, _ = rapidocr.engine(cropimg(self.recog.img, scope))
+        # These game fields are upright; classification can rotate 69% into %69.
+        result, _ = rapidocr.engine(cropimg(self.recog.img, scope), use_cls=False)
         self._check_budget()
         return [(box, text, score) for box, text, score in result or [] if score >= 0.8]
 
