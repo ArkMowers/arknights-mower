@@ -150,6 +150,7 @@ from arknights_mower.utils.scheduler_task import (
     defer_dorm_before_priority_task,
     dorm_rebalance_signature,
     dorm_residents,
+    estimate_task_duration,
     find_next_task,
     plan_dorm_isolation,
     plan_metadata,
@@ -1371,6 +1372,7 @@ class BaseSchedulerSolver(
         """普通下班先应用真实状态触发的副表，再复核每个请求。"""
         if (
             task.type != TaskTypes.SHIFT_OFF
+            or task.retains_execution
             or not getattr(task, "ordinary_coordination", False)
             or getattr(task, "backup_shift_active", False)
             or getattr(task, "group_shift_expected", {})
@@ -4407,7 +4409,7 @@ class BaseSchedulerSolver(
             else:
                 # 让出缺员等待或消费本次读取后，继续普通规划。
                 self.planned = False
-            return
+            return True
         if room not in self.op_data.run_order_rooms:
             return
         self.tasks.append(
@@ -4418,6 +4420,93 @@ class BaseSchedulerSolver(
                 meta_data=room,
             )
         )
+        return True
+
+    def _read_arrangement_order_times(self, room):
+        """在房间确认后消费到期读单责任，失败不重做已经完成的入驻。"""
+        self._resume_failed_tasks()
+        refreshes = [
+            refresh
+            for refresh in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
+            if refresh.type == TaskTypes.REFRESH_TIME
+            and refresh.meta_data in self.op_data.run_order_rooms
+            and refresh.time <= datetime.now()
+        ]
+        if not refreshes:
+            return
+        refreshes.sort(key=lambda refresh: refresh.meta_data != room)
+        self.task.execution_retained = True
+        observed_any = False
+        for refresh in refreshes:
+            observed = False
+            try:
+                observed = self.plan_run_order(refresh.meta_data)
+            except (MowerExit, DeviceRecoveryError, SharedADBError):
+                raise
+            except Exception as e:
+                logger.warning("入驻后读取订单失败，保留独立刷新任务：%s", e)
+                self._retain_failed_task(refresh, str(e), [refresh.meta_data])
+                self.back_to_infrastructure()
+            if observed and not getattr(refresh, "execution_failure", None):
+                self.tasks[:] = [task for task in self.tasks if task is not refresh]
+            observed_any |= bool(observed)
+            if any(
+                pending.type == TaskTypes.RUN_ORDER
+                and pending.meta_data
+                and not getattr(pending, "run_order_restore_pending", False)
+                and pending.time <= datetime.now() + timedelta(minutes=1)
+                for pending in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
+            ):
+                break
+        if observed_any:
+            scheduling(self.tasks, op_data=self.op_data)
+
+    def _defer_arrangement_for_run_order(self, room, plan):
+        """下一房操作可能跨过跑单时刻时，保留原纠错安排并让出调度。"""
+        task = self.task
+        if (
+            task.type
+            not in (
+                TaskTypes.SELF_CORRECTION,
+                TaskTypes.RE_ORDER,
+                TaskTypes.SHIFT_ON,
+                TaskTypes.SHIFT_OFF,
+                TaskTypes.EXHAUST_OFF,
+                TaskTypes.NOT_SPECIFIC,
+                TaskTypes.FILL_DORM,
+            )
+            or getattr(task, "strict_mood_limit", False)
+            or getattr(task, "dorm_recovery_restore", [])
+        ):
+            return False
+        now = datetime.now()
+        operation = SchedulerTask(
+            time=now, task_plan={room: plan[room]}, task_type=task.type
+        )
+        has_dorm = room.startswith("dormitory_")
+        finish = now + estimate_task_duration(operation, op_data=self.op_data)
+        finish += timedelta(seconds=60 if has_dorm else 15)
+        deadline = next(
+            (
+                pending
+                for pending in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
+                if pending.type == TaskTypes.RUN_ORDER
+                and pending.meta_data
+                and not getattr(pending, "run_order_restore_pending", False)
+                and (finish >= pending.time if has_dorm else finish > pending.time)
+            ),
+            None,
+        )
+        if deadline is None:
+            return False
+        task.execution_retained = True
+        protect_priority_tasks(self.tasks, op_data=self.op_data)
+        logger.info(
+            "保留 %s 的剩余安排，先执行 %s 跑单",
+            task.type.display_value,
+            deadline.meta_data,
+        )
+        return True
 
     def run_order_solver(self):
         self._sync_run_order_tasks()
@@ -12021,46 +12110,24 @@ class BaseSchedulerSolver(
 
     def refresh_run_order_time(self, room):
         logger.debug("检测到插拔房间人员变动！")
-        limit = 15
-        if run_order_task := self.find_next_task(
-            datetime.now() + timedelta(minutes=limit),
-            task_type=TaskTypes.RUN_ORDER,
-            meta_data=room,
-            compare_type=">",
-            scope=TaskScope.REPLAN,
-        ):
-            if getattr(run_order_task, "run_order_restore_pending", False):
-                return
-            logger.info(f"移除超过{limit}分钟的跑单任务以刷新时间")
-            self.tasks.remove(run_order_task)
-        run_order_task = self.find_next_task(
-            datetime.now() + timedelta(minutes=limit),
-            task_type=TaskTypes.RUN_ORDER,
-            meta_data=room,
-            compare_type="<",
-            scope=TaskScope.REPLAN,
-        )
-        if run_order_task and getattr(
-            run_order_task, "run_order_restore_pending", False
-        ):
-            return
-        if run_order_task and run_order_task.time > datetime.now():
-            task_time = datetime.now()
-            if len(self.tasks) > 0 and self.tasks[0].type != TaskTypes.FIAMMETTA:
-                task_time = self.tasks[0].time - timedelta(seconds=1)
-            logger.info(f"移除{limit}分钟以内的跑单任务以强X刷新时间")
-            self.tasks.remove(run_order_task)
-            logger.info("新增强X刷新跑单时间任务")
-            self.tasks.append(
-                (
-                    SchedulerTask(
-                        time=task_time,
-                        task_plan={},
-                        task_type=TaskTypes.REFRESH_TIME,
-                        meta_data=room,
-                    )
+        for pending in task_view(self.tasks, TaskScope.REPLAN):
+            if pending.type != TaskTypes.RUN_ORDER or pending.meta_data != room:
+                continue
+            if pending is self.task or any(
+                getattr(pending, field, False)
+                for field in (
+                    "run_order_original_roster",
+                    "run_order_restore_pending",
+                    "emergency_original_roster",
+                    "maintenance_replacement_run",
+                    "maintenance_advance_before_backup",
                 )
-            )
+            ):
+                return
+            self.tasks.remove(pending)
+            self._queue_order_refresh(room)
+            logger.info("实际驻员变化，重新读取 %s 的跑单时间", room)
+            return
 
     def ensure_dorm_recovery_order(self, room, agents, fast_mode=True):
         """先确认单回目标的入驻顺序，再由原任务恢复完整阵容。
@@ -13099,6 +13166,10 @@ class BaseSchedulerSolver(
 
         central_before = central_training_occupants(self)
         for room in rooms:
+            if not new_plan and self._defer_arrangement_for_run_order(room, plan):
+                self._finish_idle_dorm_shift()
+                refresh_after_central_change(self, central_before)
+                return False
             if (not new_plan) and defer_dorm_before_priority_task(
                 self.task, self.tasks, room, datetime.now(), self.op_data
             ):
@@ -13119,6 +13190,8 @@ class BaseSchedulerSolver(
                 return False
             if self.task.type != TaskTypes.RUN_ORDER and room not in plan:
                 self._queue_order_refresh(room)
+                if not new_plan and self.task.type != TaskTypes.FIAMMETTA:
+                    self._read_arrangement_order_times(room)
         self._finish_idle_dorm_shift()
         if restoring_order:
             del self.task.run_order_original_roster

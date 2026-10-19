@@ -505,10 +505,11 @@ def test_paused_order_reconciles_empty_room_despite_recent_occupancy_cache(
     )
     assert not solver.error
 
-    # 通过真实房间安排执行纠错，再执行其生成的订单时间刷新任务。
+    # 通过真实房间安排执行纠错，确认入驻后立即读取订单。
     correction = corrections[0]
     solver.task = correction
     solver.waiting_scene = []
+    order_find = solver.find
     with monkeypatch.context() as arrangement:
         for name in (
             "turn_on_room_detail",
@@ -523,36 +524,32 @@ def test_paused_order_reconciles_empty_room_despite_recent_occupancy_cache(
         arrangement.setattr(
             solver, "_can_refresh_idle_dorm_search", MagicMock(return_value=False)
         )
-        arrangement.setattr(solver, "find", MagicMock(return_value=True))
-        arrangement.setattr(solver, "scene", MagicMock(return_value=Scene.INFRA_MAIN))
-        arrangement.setattr(solver, "choose_agent", MagicMock())
         arrangement.setattr(
             solver,
-            "tap_confirm",
+            "find",
             MagicMock(
-                side_effect=lambda room, new_plan: occupants.update(
-                    {room: solver.choose_agent.call_args.args[0].copy()}
+                side_effect=lambda resource: (
+                    True if resource == "confirm_blue" else order_find(resource)
                 )
             ),
+        )
+        arrangement.setattr(solver, "scene", MagicMock(return_value=Scene.INFRA_MAIN))
+        arrangement.setattr(solver, "choose_agent", MagicMock())
+
+        def confirm_staffing(room, new_plan):
+            occupants[room] = solver.choose_agent.call_args.args[0].copy()
+            states[room] = "active"
+
+        arrangement.setattr(
+            solver, "tap_confirm", MagicMock(side_effect=confirm_staffing)
         )
         solver.agent_arrange(correction.plan)
 
     assert solver.op_data.get_current_room("room_1_1", True) == ["鸿雪"]
     assert correction.plan == {}
     solver.tasks.remove(correction)
-    refresh = next(
-        task
-        for task in solver.tasks
-        if task.type == TaskTypes.REFRESH_TIME and task.meta_data == "room_1_1"
-    )
-    assert refresh is waiting and refresh.time == original_time
-    states["room_1_1"] = "active"
-    solver.scene_graph_navigation(Scene.INFRA_MAIN)
-    solver.task = refresh
-
-    solver.infra_main()
-
-    assert refresh not in solver.tasks
+    assert waiting.time == original_time
+    assert waiting not in solver.tasks
     assert any(
         task.type == TaskTypes.RUN_ORDER and task.meta_data == "room_1_1"
         for task in solver.tasks
