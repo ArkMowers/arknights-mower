@@ -3,7 +3,10 @@
 from datetime import timedelta
 
 from arknights_mower.utils import config
-from arknights_mower.utils.dorm_candidates import scheduling_mood_observation
+from arknights_mower.utils.dorm_candidates import (
+    dorm_candidate_mood,
+    scheduling_mood_observation,
+)
 from arknights_mower.utils.group_recovery import (
     completed_mood_limit_release,
     group_recovery_deadline,
@@ -58,6 +61,18 @@ def required_recovery_members(data, task, *, now=None):
             if not getattr(op, "rest_in_full", False) and not getattr(op, "group", ""):
                 continue
             if (op.room, op.index) != (room, index) or op.is_working():
+                continue
+            if (
+                getattr(task, "initial_staffing", False)
+                and not getattr(task, "derived_correction_started", False)
+                and not getattr(task, "group_shift_expected", {})
+                and name not in getattr(task, "initial_staffing_returns", ())
+                and not op.current_room
+                and not data.group_is_resting(op.group)
+                and (mood := dorm_candidate_mood(data, name, now)) is not None
+                and mood > op.lower_limit
+            ):
+                # 初始化空闲主班首次上岗不等于休息后的回班。
                 continue
             if op.rest_in_full and not op.workaholic:
                 required.add(name)

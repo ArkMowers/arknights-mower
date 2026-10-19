@@ -58,6 +58,89 @@ def assert_pending_restoration(task):
     assert task.run_order_restore_pending
 
 
+@pytest.mark.parametrize("row", [["但书"], ["但书", COVERS[1]], ["Current", "但书"]])
+@pytest.mark.parametrize("adjusted,buffer", [(False, 1), (True, 1), (False, 0)])
+def test_observed_order_roster_runs_without_selection_or_restoration(
+    solver, monkeypatch, row, adjusted, buffer
+):
+    actual = [COVERS[0] if name == "Current" else name for name in row]
+    task, _ = prepare_order(
+        solver, monkeypatch, actual, adjusted=adjusted, buffer=buffer
+    )
+    solver.op_data.plan[ROOM] = solver.op_data.plan[ROOM][: len(row)]
+    task.plan = {ROOM: row.copy()}
+    original_time = task.time
+
+    solver.agent_arrange(task.plan)
+
+    assert task.plan == {}
+    assert task.time == original_time
+    assert solver.op_data.get_current_room(ROOM, True) == actual
+    solver.choose_agent.assert_not_called()
+    solver.tap_confirm.assert_not_called()
+    solver.tap.assert_not_called()
+    assert not getattr(task, "run_order_restore_pending", False)
+    assert not hasattr(task, "run_order_original_roster")
+    assert not any(t.type == TaskTypes.NOT_SPECIFIC for t in solver.tasks)
+    if adjusted or not buffer:
+        solver.drone.assert_called_once_with(ROOM, not_customize=True)
+        solver.sleep.assert_not_called()
+    else:
+        solver.sleep.assert_called_once_with(60)
+        solver.accept_order.assert_called_once()
+        solver.drone.assert_not_called()
+
+
+@pytest.mark.parametrize("failure", ["countdown", "collection", "drone", "waiting"])
+def test_observed_order_roster_retains_order_on_failure(solver, monkeypatch, failure):
+    task, _ = prepare_order(
+        solver, monkeypatch, ["但书", COVERS[1]], adjusted=failure == "drone"
+    )
+    original_plan = copy.deepcopy(task.plan)
+    original_time = task.time
+    monkeypatch.setattr(solver, "waiting_solver", MagicMock())
+    operation = {
+        "countdown": solver.get_order_remaining_time,
+        "collection": solver.accept_order,
+        "drone": solver.drone,
+        "waiting": solver.waiting_solver,
+    }[failure]
+    if failure == "waiting":
+        solver.waiting_scene = [solver.scene()]
+        operation.return_value = False
+        assert solver.agent_arrange(task.plan) is False
+    else:
+        operation.side_effect = RuntimeError("订单处理失败")
+        with pytest.raises(RuntimeError, match="订单处理失败"):
+            solver.agent_arrange(task.plan)
+
+    assert task.plan == original_plan
+    assert task.time == original_time
+    assert any(queued is task for queued in solver.tasks)
+    assert not getattr(task, "run_order_restore_pending", False)
+    solver.choose_agent.assert_not_called()
+
+    operation.reset_mock(side_effect=True)
+    solver.waiting_scene = []
+    solver.get_order_remaining_time.return_value = 60
+    solver.agent_arrange(task.plan)
+
+    assert task.plan == {}
+    solver.choose_agent.assert_not_called()
+
+
+def test_different_trade_roster_still_requires_ordinary_correction(solver, monkeypatch):
+    task, _ = prepare_order(solver, monkeypatch, ["但书", COVERS[1]])
+    task.plan = {ROOM: ["但书", COVERS[0]]}
+
+    assert solver.agent_arrange(task.plan) is False
+
+    solver.choose_agent.assert_not_called()
+    solver.sleep.assert_not_called()
+    solver.drone.assert_not_called()
+    assert any(t.type == TaskTypes.NOT_SPECIFIC for t in solver.tasks)
+
+
 @pytest.mark.parametrize("start_minutes,expected_minutes", [(8, 8), (2, 5)])
 def test_daily_reset_uses_drones_and_restores_original_roster(
     solver, monkeypatch, start_minutes, expected_minutes
