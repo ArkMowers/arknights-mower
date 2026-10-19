@@ -8218,15 +8218,34 @@ class BaseSchedulerSolver(
         return names
 
     def _finish_recycling_collection(self):
-        from arknights_mower.utils.recycling import read_recycling_materials
+        from arknights_mower.utils.recycling import (
+            read_recycling_materials,
+            recycling_notifications_overlap_reward_row,
+        )
 
         event = self._recycling_pending
         if not event.get("recorded"):
             event.setdefault("at", datetime.now().timestamp())
             previous = None
             materials = None
+            notification_deadline = None
+            notification_waits = 0
             for attempt in range(3):
                 observed = read_recycling_materials(self.recog.img)
+                # 读不全且提示可能遮住奖励时，等待提示消失；整次确认共用五秒预算。
+                while (
+                    observed is None
+                    and notification_waits < 10
+                    and recycling_notifications_overlap_reward_row(self.recog.img)
+                ):
+                    if notification_deadline is None:
+                        notification_deadline = monotonic() + 5
+                    remaining = notification_deadline - monotonic()
+                    if remaining <= 0:
+                        break
+                    self.sleep(min(0.5, remaining))
+                    notification_waits += 1
+                    observed = read_recycling_materials(self.recog.img)
                 if observed and observed == previous:
                     materials = observed
                     break

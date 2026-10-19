@@ -48,6 +48,19 @@ def _collection_notifications(image):
     return regions
 
 
+def recycling_notifications_overlap_reward_row(image):
+    """Return whether collection tips could hide rewards on a standard frame."""
+    if (
+        not isinstance(image, np.ndarray)
+        or image.shape != (1080, 1920, 3)
+        or image.dtype != np.uint8
+    ):
+        return False
+    return any(
+        top < 705 and bottom > 415 for top, bottom in _collection_notifications(image)
+    )
+
+
 def read_recycling_materials(image):
     """Return complete name/count observations, or None on uncertainty.
 
