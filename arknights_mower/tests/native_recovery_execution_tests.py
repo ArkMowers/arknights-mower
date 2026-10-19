@@ -26,6 +26,151 @@ def returning_task():
     )
 
 
+@pytest.mark.parametrize("saved_failure", [False, True])
+@pytest.mark.parametrize("grouped", [False, True])
+def test_initial_idle_staffing_does_not_require_an_unstarted_recovery(
+    solver, monkeypatch, saved_failure, grouped
+):
+    scheduler = solver
+    data = scheduler.op_data
+    op = data.operators["讯使"]
+    op.rest_in_full = True
+    if not grouped:
+        op.group = ""
+    op.current_room, op.current_index, op.time_stamp = "", -1, None
+    data.dorm_mood_estimates[op.name] = (18, datetime.now())
+    task = SchedulerTask(
+        time=datetime.now() - timedelta(minutes=20),
+        task_type=TaskTypes.SELF_CORRECTION,
+        task_plan={"contact": [op.name]},
+    )
+    task.initial_staffing = True
+    scheduler.tasks = [task]
+    before = task.time
+    if saved_failure:
+        scheduler._retain_failed_task(
+            task, "需要回满的主班心情尚未满足要求，且缺少有效恢复期限", []
+        )
+        task = pickle.loads(pickle.dumps(task))
+        scheduler.tasks = [task]
+        scheduler._resume_failed_tasks()
+        assert not getattr(task, "execution_failure", None)
+    scheduler._scan_card_moods = Mock()
+    scheduler._read_recovery_rooms = Mock()
+
+    assert scheduler._verify_required_recovery(task)
+
+    assert task.time == before
+    assert task.plan == {"contact": [op.name]}
+    assert op.time_stamp is None and op.mood == 5
+    scheduler._scan_card_moods.assert_not_called()
+    scheduler._read_recovery_rooms.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "protected", ["return", "resting_group", "unknown", "low", "started"]
+)
+def test_initial_staffing_preserves_real_recovery_requirements(
+    solver, monkeypatch, protected
+):
+    scheduler = solver
+    data = scheduler.op_data
+    op = data.operators["讯使"]
+    op.rest_in_full = True
+    op.current_room, op.current_index, op.time_stamp = "", -1, None
+    data.dorm_mood_estimates[op.name] = (18, datetime.now())
+    task = SchedulerTask(
+        task_type=TaskTypes.SELF_CORRECTION, task_plan={"contact": [op.name]}
+    )
+    task.initial_staffing = True
+    if protected == "return":
+        task.initial_staffing_returns = {op.name}
+    elif protected == "resting_group":
+        data.commit_group_shifts({op.group: True})
+    elif protected == "unknown":
+        data.dorm_mood_estimates.clear()
+    elif protected == "started":
+        task.derived_correction_started = True
+    else:
+        data.dorm_mood_estimates[op.name] = (op.lower_limit, datetime.now())
+    scheduler.tasks = [task]
+    scheduler._scan_card_moods = Mock()
+    scheduler._read_recovery_rooms = Mock()
+
+    assert not scheduler._verify_required_recovery(task)
+    assert task.execution_failure
+
+
+def test_overdue_initial_idle_primary_dispatches_through_complete_cycle(
+    solver, monkeypatch
+):
+    from arknights_mower.tests.dorm_group_tests import apply_plan
+
+    data = solver.op_data
+    for op in data.operators.values():
+        op.mood = 24
+    name = "芬"
+    room = "room_1_1"
+    op = Operator(name, room, index=0, mood=24, operator_type="high")
+    op.rest_in_full = True
+    data.operators[name] = op
+    data.plan[room] = [Room(name, "", ["年"])]
+    solver.global_plan["default_plan"].plan[room] = data.plan[room]
+    data.dorm_mood_estimates[name] = (18, datetime.now())
+    task = SchedulerTask(
+        time=datetime.now() - timedelta(minutes=20),
+        task_type=TaskTypes.SELF_CORRECTION,
+        task_plan={room: [name]},
+    )
+    task.initial_staffing = True
+    solver.tasks, solver.task = [task], task
+    before = task.time
+    monkeypatch.setattr(solver, "find", Mock(return_value=True))
+    monkeypatch.setattr(solver, "skip", Mock())
+    monkeypatch.setattr(solver, "_scan_card_moods", Mock())
+    monkeypatch.setattr(solver, "_read_recovery_rooms", Mock())
+    monkeypatch.setattr(
+        solver,
+        "agent_arrange",
+        Mock(side_effect=lambda plan, *a, **kw: (apply_plan(solver, plan), True)[1]),
+    )
+
+    solver.infra_main()
+
+    assert solver.op_data.operators[name].current_room == room
+    assert task.time == before
+    assert task not in solver.tasks
+    solver.agent_arrange.assert_called_once()
+    solver._read_recovery_rooms.assert_not_called()
+
+
+def test_initial_explicit_return_survives_complete_cycle(solver):
+    op = solver.op_data.operators["讯使"]
+    for member in solver.op_data.operators.values():
+        member.mood = 24
+    op.rest_in_full = True
+    op.current_room, op.current_index, op.time_stamp = "", -1, None
+    solver.op_data.dorm_mood_estimates[op.name] = (18, datetime.now())
+    task = SchedulerTask(
+        task_type=TaskTypes.SELF_CORRECTION, task_plan={"contact": [op.name]}
+    )
+    task.initial_staffing = True
+    due = SchedulerTask(task_type=TaskTypes.SHIFT_ON, task_plan=task.plan.copy())
+    solver.tasks, solver.task = [task, due], task
+
+    solver._prepare_shift_cycle(task)
+
+    assert op.name in task.initial_staffing_returns
+    from arknights_mower.utils.recovery_execution import required_recovery_members
+
+    assert op.name in required_recovery_members(solver.op_data, task)
+    task = pickle.loads(pickle.dumps(task))
+    solver.tasks, solver.task = [task], task
+    solver._prepare_shift_cycle(task)
+
+    assert op.name in required_recovery_members(solver.op_data, task)
+
+
 def test_predicted_full_is_rechecked_and_keeps_original_request(resting, monkeypatch):
     scheduler, _ = resting
     data = scheduler.op_data

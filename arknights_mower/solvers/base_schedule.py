@@ -751,6 +751,11 @@ class BaseSchedulerSolver(
                         self.op_data, name, sampled_after=None, now=now
                     )
                 }
+                if not pending and getattr(task, "initial_staffing", False):
+                    task.execution_retained = True
+                    del task.execution_failure
+                    logger.info("初始化驻员无需等待恢复，继续原任务：%s", task)
+                    continue
                 observations = pending_recovery_observations(
                     self.op_data, pending, now=now
                 )
@@ -7441,6 +7446,9 @@ class BaseSchedulerSolver(
                         _merge_shift_transition(
                             return_plan, queued.plan, simulation.op_data
                         )
+                task.initial_staffing_returns = set(
+                    getattr(task, "initial_staffing_returns", ())
+                ) | _assigned_operator_names(return_plan)
                 returning_groups.update(
                     group
                     for group, resting in simulation.op_data.arrangement_group_transitions(
@@ -12555,6 +12563,24 @@ class BaseSchedulerSolver(
                         actual = [
                             item["agent"] for item in self.get_agent_from_room(room)
                         ]
+                        if (
+                            normal_order
+                            and not getattr(
+                                self.task, "run_order_restore_pending", False
+                            )
+                            and len(actual) == len(roster) == len(plan[room])
+                            and actual
+                            and len(set(actual)) == len(actual)
+                            and all(
+                                name not in ("", "Free", "Current") for name in actual
+                            )
+                            and all(
+                                target == "Current" or target == current
+                                for target, current in zip(plan[room], actual)
+                            )
+                        ):
+                            logger.info("%s 实际驻员已符合跑单目标，直接处理订单", room)
+                            return new_plan
                         if normal_order and (
                             len(actual) != len(roster)
                             or not actual
@@ -13301,9 +13327,15 @@ class BaseSchedulerSolver(
             if getattr(self.task, "maintenance_replacement_run", False):
                 self.maintenance_entry_pending = True
         if (
-            len(new_plan) == 1
+            rooms
             and room != "train"
             and self.task.type == TaskTypes.RUN_ORDER
+            and (
+                len(new_plan) == 1
+                or not restoring_order
+                and len(rooms) == 1
+                and self.task.meta_data == room
+            )
         ):
             try:
                 if config.conf.run_order_buffer_time <= 0 or self.task.adjusted:
@@ -13360,6 +13392,11 @@ class BaseSchedulerSolver(
                     else:
                         self.back(interval=0.5)
                         self.back(interval=0.5)
+                if not new_plan:
+                    del plan[room]
+                    if getattr(self.task, "maintenance_replacement_run", False):
+                        self.maintenance_entry_pending = True
+                    return True
                 # 防止由于意外导致的死循环
                 run_order_room = next(iter(new_plan))
                 if getattr(self.task, "run_order_restore_pending", False):
