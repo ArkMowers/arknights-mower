@@ -753,8 +753,9 @@ def test_unconfirmed_card_keeps_idle_return_and_original_time(
 
 def test_newer_green_card_overrides_older_low_measurement(ordinary_idle_return):
     scheduler, task, op = ordinary_idle_return
-    op.mood, op.time_stamp = 3.8, datetime.now()
-    scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
+    now = datetime.now()
+    op.mood, op.time_stamp = 3.8, now - timedelta(seconds=1)
+    scheduler.op_data.dorm_mood_estimates[op.name] = (24, now)
     assert scheduler._verify_required_recovery(task)
     scheduler._scan_card_moods.assert_not_called()
     assert op.mood == 3.8
@@ -976,6 +977,7 @@ def test_unresolved_return_idle_reports_why_original_task_is_not_dispatched(
     from arknights_mower.solvers import base_schedule as base
 
     scheduler, task, _ = idle_return
+    monkeypatch.delattr(scheduler, "find_next_task")
     assert not scheduler._verify_required_recovery(task)
     original_time, original_plan = task.time, deepcopy(task.plan)
     future = SchedulerTask(

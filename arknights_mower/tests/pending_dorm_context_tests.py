@@ -17,6 +17,8 @@ from arknights_mower.utils.scheduler_task import SchedulerTask
 
 
 def prepare_scheduler_entry(instance, monkeypatch):
+    # 调度入口使用真实任务查询，局部规划夹具的固定空结果不适用于派发。
+    monkeypatch.delattr(instance, "find_next_task")
     monkeypatch.setattr(config, "maintenance_recheck", Event())
     for name in (
         "handle_error",

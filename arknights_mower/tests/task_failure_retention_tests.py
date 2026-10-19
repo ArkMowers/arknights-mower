@@ -107,6 +107,153 @@ def test_elapsed_time_does_not_rearm_failed_work(scheduler, failed_arrangement):
     solver.agent_arrange.assert_called_once()
 
 
+@pytest.mark.parametrize("persisted", [False, True])
+def test_reopened_arrangement_yields_after_navigation(
+    scheduler, failed_arrangement, persisted, monkeypatch
+):
+    from arknights_mower.utils import operation_timing
+
+    solver, task, _ = failed_arrangement
+    monkeypatch.setattr(operation_timing, "_work_durations", {ROOM: [300]})
+    original_time = task.time
+    solver.op_data.operators["陈"].time_stamp += timedelta(seconds=1)
+    solver._resume_failed_tasks()
+    if persisted:
+        task = jsonpickle.decode(jsonpickle.encode(task))
+    critical = SchedulerTask(
+        scheduler.clock.now() + timedelta(seconds=90),
+        task_type=TaskTypes.RUN_ORDER,
+    )
+    solver.tasks = [task, critical]
+    solver.agent_arrange.reset_mock()
+    solver.agent_arrange.side_effect = None
+    # 进入基建页面后才发现预算不足，仍须让路给尚未到点的跑单。
+    for _ in range(3):
+        solver.task = task
+        solver.infra_main()
+        assert solver.task is None
+        assert solver.tasks == [critical, task]
+        assert task.time == original_time
+        assert task.plan == {ROOM: ["陈"]}
+    solver.agent_arrange.assert_not_called()
+
+    independent = SchedulerTask(
+        scheduler.clock.now() - timedelta(seconds=1), task_type=TaskTypes.DEPOT
+    )
+    solver.tasks.append(independent)
+    scheduling(solver.tasks, time_now=scheduler.clock.now(), op_data=solver.op_data)
+    assert find_next_task(solver.tasks) is independent
+    solver.仓库扫描 = Mock()
+    solver.task = independent
+    solver.infra_main()
+    solver.仓库扫描.assert_called_once()
+    solver.tasks.remove(critical)
+    solver.task = task
+    solver.infra_main()
+    solver.agent_arrange.assert_called_once()
+    assert all(queued is not task for queued in solver.tasks)
+    assert task.time == original_time
+    scheduler.io.assert_not_called()
+
+
+@pytest.mark.parametrize("critical_seconds", [120, 720])
+@pytest.mark.parametrize("entry", ["worker", "idle"])
+def test_worker_idle_preserves_reopened_priority_order(
+    scheduler, failed_arrangement, monkeypatch, critical_seconds, entry
+):
+    from arknights_mower.utils import operation_timing
+
+    solver, task, _ = failed_arrangement
+    main = scheduler.main
+    now = scheduler.clock.now()
+    solver.op_data.operators["陈"].time_stamp += timedelta(seconds=1)
+    solver._resume_failed_tasks()
+    task.type = TaskTypes.RE_ORDER
+    monkeypatch.setattr(operation_timing, "_work_durations", {ROOM: [1200]})
+    critical = SchedulerTask(
+        now + timedelta(seconds=critical_seconds), task_type=TaskTypes.RUN_ORDER
+    )
+    solver.tasks = [task, critical]
+    monkeypatch.setattr(recovery.config, "conf", recovery.config.Conf())
+    monkeypatch.setattr(main, "datetime", scheduler.clock)
+    monkeypatch.setattr(main, "get_server_time", scheduler.clock.now)
+    monkeypatch.setattr(main, "initialize", Mock(return_value=solver))
+    monkeypatch.setattr(main, "refresh_resource_at_boundary", Mock())
+    monkeypatch.setattr(main.NewsChecker, "get_maintenance", Mock(return_value=None))
+    monkeypatch.setattr(main, "_apply_version_update_resting_threshold", Mock())
+    for daily in ("daily_visit_friend", "daily_report", "daily_skland", "daily_mail"):
+        setattr(solver, daily, now.date())
+    solver.recruit_plan_solver = Mock()
+    solver.mower_plan_solver = Mock()
+    solver.has_maa_tasks = Mock(return_value=False)
+    solver.run = Mock(side_effect=scheduler.module.MowerExit)
+    solver._refresh_workshop_inventory = Mock()
+    solver.handle_idle_action = Mock()
+    solver._idle_sleep = Mock(side_effect=scheduler.module.MowerExit)
+    solver.task_count = 0
+    monkeypatch.setattr(scheduler.module.task_template, "render", Mock(return_value=""))
+    monkeypatch.setattr(scheduler.module, "send_message", Mock())
+
+    if entry == "worker":
+        main.simulate(None)
+    else:
+        with pytest.raises(scheduler.module.MowerExit):
+            solver.rest_until_next_task()
+
+    solver.run.assert_not_called()
+    solver._idle_sleep.assert_called_once_with(critical_seconds)
+    assert solver.tasks == [critical, task]
+    assert task.time == now
+    assert task.plan == {ROOM: ["陈"]}
+    scheduler.io.assert_not_called()
+
+
+@pytest.mark.parametrize("persisted", [False, True])
+def test_failed_restoration_keeps_shared_insertion_waiting_without_starving_work(
+    scheduler, failed_arrangement, persisted
+):
+    solver, _, _ = failed_arrangement
+    now = scheduler.clock.now()
+    solver.op_data.operators = {
+        "陈": SimpleNamespace(
+            current_room=ROOM, current_index=0, time_stamp=now, is_working=lambda: True
+        ),
+        "但书": SimpleNamespace(
+            current_room=ROOM, current_index=1, time_stamp=now, is_working=lambda: True
+        ),
+    }
+    restore = SchedulerTask(
+        now - timedelta(minutes=1), {ROOM: ["陈"]}, TaskTypes.RUN_ORDER
+    )
+    restore.run_order_original_roster = copy.deepcopy(restore.plan)
+    restore.run_order_restore_pending = True
+    insertion = SchedulerTask(
+        now, {"room_2_1": ["但书"]}, TaskTypes.RUN_ORDER, "room_2_1"
+    )
+    solver.tasks = [restore, insertion]
+    solver._retain_failed_task(restore, "原班恢复失败", [ROOM])
+    if persisted:
+        restore = jsonpickle.decode(jsonpickle.encode(restore))
+    solver.tasks = [restore, insertion]
+    original = copy.deepcopy([vars(restore), vars(insertion)])
+    solver.agent_arrange = Mock()
+    for _ in range(4):
+        work = SchedulerTask(now, {"room_1_2": ["银灰"]}, TaskTypes.SELF_CORRECTION)
+        solver.tasks.append(work)
+        solver._resume_failed_tasks()
+        scheduling(solver.tasks, time_now=scheduler.clock.now(), op_data=solver.op_data)
+        assert solver.find_next_task() is work
+        assert work.time == now
+        solver.task = work
+        solver.infra_main()
+        assert work not in solver.tasks
+        assert solver.find_next_task() is None
+        assert [vars(restore), vars(insertion)] == original
+        scheduler.clock.current += timedelta(minutes=1)
+    assert solver.agent_arrange.call_count == 4
+    scheduler.io.assert_not_called()
+
+
 @pytest.mark.parametrize("failure_type", ["recognition", "room"])
 def test_interrupted_insertion_dispatches_restoration_once(
     scheduler, monkeypatch, failure_type

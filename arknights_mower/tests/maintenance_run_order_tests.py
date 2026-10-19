@@ -403,8 +403,9 @@ def test_maintenance_entry_rechecks_daily_refresh_orders(
 
 
 @pytest.mark.parametrize("entry", ["adjustment", "backup"])
-def test_maintenance_entry_preserves_insertions_waiting_on_normal_restoration(
-    solver, monkeypatch, entry
+@pytest.mark.parametrize("conflicting_room", [True, False])
+def test_maintenance_entry_respects_normal_restoration_dependencies(
+    solver, monkeypatch, entry, conflicting_room
 ):
     solver.op_data.backup_plans[0].plan = {}
     info = maintenance_info(datetime.now() + timedelta(minutes=20))
@@ -415,29 +416,38 @@ def test_maintenance_entry_preserves_insertions_waiting_on_normal_restoration(
     )
     restoration.run_order_original_roster = copy.deepcopy(restoration.plan)
     restoration.run_order_restore_pending = True
+    room = "room_1_1" if conflicting_room else "room_2_2"
     insertion = SchedulerTask(
         time=info.start + timedelta(hours=1),
         task_type=TaskTypes.RUN_ORDER,
-        meta_data="room_2_2",
-        task_plan={"room_2_2": ["龙舌兰"]},
+        meta_data=room,
+        task_plan={room: ["龙舌兰"]},
     )
     solver.tasks = [restoration, insertion]
     original_states = [copy.deepcopy(vars(t)) for t in solver.tasks]
 
     if entry == "adjustment":
-        assert adjust_run_order_for_maintenance(solver.tasks) == []
+        assert adjust_run_order_for_maintenance(
+            solver.tasks, op_data=solver.op_data
+        ) == ([] if conflicting_room else [insertion])
     else:
         solver.backup_plan_solver()
-        assert solver.op_data.plan_condition == [True]
-        assert not solver.maintenance_entry_pending
+        assert solver.op_data.plan_condition == [conflicting_room]
+        assert solver.maintenance_entry_pending == (not conflicting_room)
 
     for task, original in zip((restoration, insertion), original_states):
         assert any(queued is task for queued in solver.tasks)
-        assert vars(task) == original
+        if task is restoration or conflicting_room:
+            assert vars(task) == original
+    if not conflicting_room:
+        assert insertion.adjusted
+        assert insertion.time < original_states[1]["time"]
 
-    if entry == "adjustment":
+    if entry == "adjustment" and conflicting_room:
         solver.tasks.remove(restoration)
-        assert adjust_run_order_for_maintenance(solver.tasks) == [insertion]
+        assert adjust_run_order_for_maintenance(
+            solver.tasks, op_data=solver.op_data
+        ) == [insertion]
         assert insertion.adjusted
         assert insertion.time < original_states[1]["time"]
 

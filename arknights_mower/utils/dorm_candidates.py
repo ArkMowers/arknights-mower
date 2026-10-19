@@ -173,12 +173,25 @@ def retained_task_reservations(
         for group in groups
         for name in getattr(op_data, "groups", {}).get(group, ())
     )
+    # 原班仍在其他工作站时，预约其姓名与恢复目标，不冻结释放它的源岗位。
+    restoration_sources = {
+        (name, op.current_room, op.current_index)
+        for task in tasks
+        if task is not current_task
+        and getattr(task, "run_order_restore_pending", False)
+        for room, row in task.run_order_original_roster.items()
+        for name in row
+        if (op := op_data.operators.get(name)) is not None
+        and op.is_working()
+        and op.current_room != room
+    }
     slots.update(
         (op.current_room, op.current_index)
         for name in names
         if (op := op_data.operators.get(name)) is not None
         and op.current_room
         and op.current_index >= 0
+        and (name, op.current_room, op.current_index) not in restoration_sources
     )
     return names, slots
 

@@ -673,14 +673,20 @@ def simulate(saved):
                 _arm_maintenance_timer(maintenance)
                 if _handle_maintenance(maintenance, base_scheduler):
                     return
-            if find_next_task(base_scheduler.tasks) is not None:
+            if (
+                find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data)
+                is not None
+            ):
                 # 维护避让先于日常任务和等待预算，包含从存档恢复的专精换人。
                 protect_priority_tasks(
                     base_scheduler.tasks,
                     op_data=getattr(base_scheduler, "op_data", None),
                 )
                 remaining_time = (
-                    find_next_task(base_scheduler.tasks).time - datetime.now()
+                    find_next_task(
+                        base_scheduler.tasks, op_data=base_scheduler.op_data
+                    ).time
+                    - datetime.now()
                 ).total_seconds()
                 if remaining_time > 540:
                     from arknights_mower.solvers.trust_rotation import (
@@ -690,7 +696,9 @@ def simulate(saved):
                     run_trust_rotation(
                         base_scheduler.device,
                         base_scheduler.recog,
-                        find_next_task(base_scheduler.tasks).time,
+                        find_next_task(
+                            base_scheduler.tasks, op_data=base_scheduler.op_data
+                        ).time,
                     )
                     if base_scheduler.daily_visit_friend < get_server_time().date():
                         visit_day = (
@@ -772,15 +780,21 @@ def simulate(saved):
                             base_scheduler.tasks,
                             op_data=base_scheduler.op_data,
                         )
-                    if find_next_task(base_scheduler.tasks) is not None:
-                        base_scheduler.tasks.sort(
-                            key=lambda task: (
-                                bool(getattr(task, "execution_failure", None)),
-                                task.time,
-                            )
+                    if (
+                        find_next_task(
+                            base_scheduler.tasks, op_data=base_scheduler.op_data
+                        )
+                        is not None
+                    ):
+                        protect_priority_tasks(
+                            base_scheduler.tasks,
+                            op_data=getattr(base_scheduler, "op_data", None),
                         )
                         remaining_time = (
-                            find_next_task(base_scheduler.tasks).time - datetime.now()
+                            find_next_task(
+                                base_scheduler.tasks, op_data=base_scheduler.op_data
+                            ).time
+                            - datetime.now()
                         ).total_seconds()
                     else:
                         remaining_time = 0
@@ -788,37 +802,45 @@ def simulate(saved):
                     if remaining_time > 0 and config.conf.should_run_mower_stage_plan:
                         base_scheduler.mower_plan_solver()
 
-                    if find_next_task(base_scheduler.tasks) is not None:
-                        base_scheduler.tasks.sort(
-                            key=lambda task: (
-                                bool(getattr(task, "execution_failure", None)),
-                                task.time,
-                            )
+                    if (
+                        find_next_task(
+                            base_scheduler.tasks, op_data=base_scheduler.op_data
+                        )
+                        is not None
+                    ):
+                        protect_priority_tasks(
+                            base_scheduler.tasks,
+                            op_data=getattr(base_scheduler, "op_data", None),
                         )
                         remaining_time = (
-                            find_next_task(base_scheduler.tasks).time - datetime.now()
+                            find_next_task(
+                                base_scheduler.tasks, op_data=base_scheduler.op_data
+                            ).time
+                            - datetime.now()
                         ).total_seconds()
                     else:
                         remaining_time = 0
 
                     if remaining_time >= 540 and base_scheduler.has_maa_tasks():
-                        subject = f"下次任务在{find_next_task(base_scheduler.tasks).time.strftime('%H:%M:%S')}"
-                        context = (
-                            f"下一次任务:{find_next_task(base_scheduler.tasks).plan}"
-                        )
+                        subject = f"下次任务在{find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data).time.strftime('%H:%M:%S')}"
+                        context = f"下一次任务:{find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data).plan}"
                         logger.info(context)
                         logger.info(subject)
                         base_scheduler.maa_plan_solver()
 
-                if find_next_task(base_scheduler.tasks) is not None:
-                    base_scheduler.tasks.sort(
-                        key=lambda task: (
-                            bool(getattr(task, "execution_failure", None)),
-                            task.time,
-                        )
+                if (
+                    find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data)
+                    is not None
+                ):
+                    protect_priority_tasks(
+                        base_scheduler.tasks,
+                        op_data=getattr(base_scheduler, "op_data", None),
                     )
                     remaining_time = (
-                        find_next_task(base_scheduler.tasks).time - datetime.now()
+                        find_next_task(
+                            base_scheduler.tasks, op_data=base_scheduler.op_data
+                        ).time
+                        - datetime.now()
                     ).total_seconds()
                 else:
                     remaining_time = 0
@@ -847,11 +869,15 @@ def simulate(saved):
                                 base_scheduler.device, base_scheduler.recog
                             )
                             ra_solver.run(
-                                find_next_task(base_scheduler.tasks).time
+                                find_next_task(
+                                    base_scheduler.tasks, op_data=base_scheduler.op_data
+                                ).time
                                 - datetime.now()
                             )
                             remaining_time = (
-                                find_next_task(base_scheduler.tasks).time
+                                find_next_task(
+                                    base_scheduler.tasks, op_data=base_scheduler.op_data
+                                ).time
                                 - datetime.now()
                             ).total_seconds()
                         elif config.conf.SF:
@@ -861,11 +887,15 @@ def simulate(saved):
                                 base_scheduler.device, base_scheduler.recog
                             )
                             sf_solver.run(
-                                find_next_task(base_scheduler.tasks).time
+                                find_next_task(
+                                    base_scheduler.tasks, op_data=base_scheduler.op_data
+                                ).time
                                 - datetime.now()
                             )
                             remaining_time = (
-                                find_next_task(base_scheduler.tasks).time
+                                find_next_task(
+                                    base_scheduler.tasks, op_data=base_scheduler.op_data
+                                ).time
                                 - datetime.now()
                             ).total_seconds()
 
