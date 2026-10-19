@@ -25,7 +25,7 @@ from arknights_mower.utils.operation_timing import (
     estimate_dorm_minutes,
     estimate_work_minutes,
 )
-from arknights_mower.utils.operators import Operator, Operators
+from arknights_mower.utils.operators import TRADE_ORDER_AGENTS, Operator, Operators
 from arknights_mower.utils.resting_priority import (
     RestingTier,
     bed_takeover_allowed,
@@ -76,12 +76,17 @@ class TaskScope(Enum):
     REPLAN = "replan"
 
 
-def task_view(tasks, scope):
+def task_view(tasks, scope, op_data=None):
     """按用途读取同一队列；返回原任务引用，不复制执行状态。"""
     if scope == TaskScope.PENDING:
         return list(tasks)
     if scope == TaskScope.DISPATCH:
-        return [task for task in tasks if not getattr(task, "execution_failure", None)]
+        blocked = blocked_run_order_ids(tasks, op_data)
+        return [
+            task
+            for task in tasks
+            if not getattr(task, "execution_failure", None) and id(task) not in blocked
+        ]
     if scope == TaskScope.REPLAN:
         return [task for task in tasks if not task.retains_execution]
     raise ValueError(f"未知任务查询用途：{scope}")
@@ -174,6 +179,7 @@ def find_next_task(
     meta_data="",
     *,
     scope=TaskScope.DISPATCH,
+    op_data=None,
 ):
     """找符合条件的下一个任务
 
@@ -182,7 +188,7 @@ def find_next_task(
         compare_time: 截止时间
         scope: 派发、普通重规划或全部未完成任务（去重／预约）
     """
-    tasks = task_view(tasks, scope)
+    tasks = task_view(tasks, scope, op_data)
     if compare_type == "=":
         return next(
             (
@@ -221,12 +227,6 @@ def find_next_task(
 def scheduling(
     tasks, run_order_delay=5, execution_time=None, time_now=None, op_data=None
 ):
-    retained = [task for task in tasks if getattr(task, "execution_failure", None)]
-    if retained:
-        active = task_view(tasks, TaskScope.DISPATCH)
-        result = scheduling(active, run_order_delay, execution_time, time_now, op_data)
-        tasks[:] = active + retained
-        return result
     time_now = time_now or datetime.now()
     merge_release_dorm(tasks, config.conf.merge_interval)
     enabled = config.conf.enable_mastery
@@ -240,7 +240,7 @@ def scheduling(
             <= time_now
             + _support_swap_duration(t, execution_time, op_data)
             + timedelta(minutes=1)
-            for t in tasks
+            for t in task_view(tasks, TaskScope.DISPATCH, op_data)
         ):
             return None
     return conflict
@@ -250,25 +250,22 @@ def protect_priority_tasks(
     tasks, run_order_delay=5, execution_time=None, time_now=None, op_data=None
 ):
     """按操作耗时保护关键任务，跑单冲突时提前专精换人。"""
-    retained = [task for task in tasks if getattr(task, "execution_failure", None)]
-    if retained:
-        active = task_view(tasks, TaskScope.DISPATCH)
-        protect_priority_tasks(
-            active, run_order_delay, execution_time, time_now, op_data
-        )
-        tasks[:] = active + retained
-        return
     now = time_now or datetime.now()
+    # 依赖用完整队列判断；失败与等待任务保留原状，不参加操作预算。
+    dispatch_queue = tasks
+    active = task_view(tasks, TaskScope.DISPATCH, op_data)
+    active_ids = {id(task) for task in active}
+    waiting = [task for task in tasks if id(task) not in active_ids]
     if any(
         getattr(task, "emergency_takeover", False) and task.time <= now
-        for task in tasks
+        for task in active
     ):
-        _sort_dispatch_tasks(tasks, now, op_data)
+        _sort_dispatch_tasks(active, now, op_data)
+        dispatch_queue[:] = active + waiting
         return
     # 保留任务只在临时副本上计算避让时间，派发队列仍使用原任务和原时间。
-    dispatch_queue = tasks
     originals = {}
-    tasks = list(tasks)
+    tasks = active
     for index, task in enumerate(tasks):
         if task.retains_execution:
             projected = copy.copy(task)
@@ -299,7 +296,7 @@ def protect_priority_tasks(
         op_data,
     )
     _sort_dispatch_tasks(tasks, now, op_data)
-    dispatch_queue[:] = [originals.get(id(task), task) for task in tasks]
+    dispatch_queue[:] = [originals.get(id(task), task) for task in tasks] + waiting
 
 
 def _advance_support_swaps_for_maintenance(
@@ -536,6 +533,35 @@ def blocked_run_order_ids(tasks, op_data=None):
         if task.type == TaskTypes.RUN_ORDER
         and getattr(task, "run_order_restore_pending", False)
     ]
+    if not restorations:
+        return set()
+    rooms = {room for task in restorations for room in task.run_order_original_roster}
+    reserved = {
+        name
+        for task in restorations
+        for row in task.run_order_original_roster.values()
+        for name in row
+        if name not in ("", "Free", "Current")
+    }
+    conflicting_rooms = set(rooms)
+    if op_data is not None:
+        conflicting_rooms.update(
+            op.current_room
+            for name in reserved
+            if (op := op_data.operators.get(name)) is not None and op.is_working()
+        )
+        reserved.update(
+            name for name, op in op_data.operators.items() if op.current_room in rooms
+        )
+        # 首次选人可能尚未确认；配置中的实际换入人选仍归这次补偿占用。
+        reserved.update(
+            next(
+                (name for name in slot.all_replacements if name in TRADE_ORDER_AGENTS),
+                "",
+            )
+            for room in rooms
+            for slot in op_data.plan.get(room, [])
+        )
     blocked = {
         id(task)
         for task in tasks
@@ -543,6 +569,16 @@ def blocked_run_order_ids(tasks, op_data=None):
         and task.type == TaskTypes.RUN_ORDER
         and task.meta_data
         and not getattr(task, "run_order_restore_pending", False)
+        and (
+            op_data is None
+            or conflicting_rooms.intersection(task.plan)
+            or any(
+                name in reserved
+                for row in task.plan.values()
+                for name in row
+                if name not in ("", "Free", "Current")
+            )
+        )
     }
     if op_data is not None:
         blocked.update(
@@ -561,13 +597,11 @@ def blocked_run_order_ids(tasks, op_data=None):
 
 
 def _priority_tasks(tasks, op_data=None):
-    blocked_orders = blocked_run_order_ids(tasks, op_data)
     return sorted(
         (
             task
-            for task in task_view(tasks, TaskScope.DISPATCH)
+            for task in task_view(tasks, TaskScope.DISPATCH, op_data)
             if task.type == TaskTypes.RUN_ORDER
-            and id(task) not in blocked_orders
             or config.conf.enable_mastery
             and task.type == TaskTypes.SWAP_SUPPORT
         ),
@@ -905,19 +939,13 @@ def _find_run_order_conflict(tasks, run_order_delay=5, time_now=None, op_data=No
     now = time_now or datetime.now()
     if not tasks:
         return None
-    blocked_orders = blocked_run_order_ids(tasks, op_data)
-    adjust_run_order_for_maintenance(
-        [task for task in tasks if id(task) not in blocked_orders],
-        run_order_delay,
-        now=now,
-    )
-    tasks.sort(key=lambda task: task.time)
+    active = task_view(tasks, TaskScope.DISPATCH, op_data)
+    adjust_run_order_for_maintenance(active, run_order_delay, now=now, op_data=op_data)
+    active.sort(key=lambda task: task.time)
     previous_order = None
-    for task in tasks:
-        if (
-            task.type != TaskTypes.RUN_ORDER
-            or getattr(task, "run_order_restore_pending", False)
-            or id(task) in blocked_orders
+    for task in active:
+        if task.type != TaskTypes.RUN_ORDER or getattr(
+            task, "run_order_restore_pending", False
         ):
             continue
         if (
@@ -1006,14 +1034,12 @@ def _future_dorm_deferrals(task, following, op_data):
 def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=None):
     now = time_now or datetime.now()
     tasks.sort(key=lambda task: task.time)
-    blocked_orders = blocked_run_order_ids(tasks, op_data)
     priority_ids = {id(task) for task in _priority_tasks(tasks, op_data)}
     # 严格上限保留离宿截止；补位任务可以延期，但不参加宿舍合成。
     fixed = {id(task) for task in tasks if task.strict_mood_limit}
     adjusted = {id(task) for task in tasks if task.adjusted}
     # Each queued operation advances the cursor once, including scheduled waiting.
-    waiting = [task for task in tasks if id(task) in blocked_orders]
-    ordered = [task for task in tasks if id(task) not in blocked_orders]
+    ordered = list(tasks)
     deferred_dorm_tail = {}
     projected = op_data if isinstance(op_data, Operators) else None
     cursor = now
@@ -1202,11 +1228,11 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
         )
         if before_plan:
             index += 1
-    tasks[:] = sorted(ordered + waiting, key=lambda task: task.time)
+    tasks[:] = sorted(ordered, key=lambda task: task.time)
 
 
 def adjust_run_order_for_maintenance(
-    tasks, run_order_delay=5, advance_time=None, now=None
+    tasks, run_order_delay=5, advance_time=None, now=None, op_data=None
 ):
     """
     将公告维护附近的跑单提前，并按用户前置延时保护每日四点刷新。
@@ -1221,7 +1247,7 @@ def adjust_run_order_for_maintenance(
         (*NewsChecker.get_update_time(), False),
         (reset.start, reset.end, True),
     ]
-    blocked_orders = blocked_run_order_ids(tasks)
+    blocked_orders = blocked_run_order_ids(tasks, op_data)
     orders = [
         task
         for task in task_view(tasks, TaskScope.REPLAN)

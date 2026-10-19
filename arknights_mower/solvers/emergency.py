@@ -111,7 +111,7 @@ class EmergencyRecoveryMixin:
         start = min(
             (
                 task.time
-                for task in task_view(self.tasks, TaskScope.DISPATCH)
+                for task in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
                 if getattr(task, "strict_mood_limit", False) and task.plan
             ),
             default=datetime.max,
@@ -1101,13 +1101,13 @@ class EmergencyRecoveryMixin:
                 for task in self.tasks
                 if getattr(task, "emergency_staffing", False)
             ]
-            if not pending or task_view(pending, TaskScope.DISPATCH):
+            if not pending or task_view(pending, TaskScope.DISPATCH, self.op_data):
                 return
         self.plan_metadata()
         protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         pending_staffing = [
             task
-            for task in task_view(self.tasks, TaskScope.DISPATCH)
+            for task in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
             if getattr(task, "emergency_staffing", False)
         ]
         if pending_staffing:
@@ -1122,7 +1122,7 @@ class EmergencyRecoveryMixin:
         read_due = datetime.now() >= state.get("next_read", datetime.now()) or any(
             getattr(task, "emergency_recovery_release", False)
             and task.time <= datetime.now()
-            for task in task_view(self.tasks, TaskScope.DISPATCH)
+            for task in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
         )
         read_due = read_due or (
             not any(
@@ -1334,7 +1334,7 @@ class EmergencyRecoveryMixin:
                 or task.plan
                 and task.type in (TaskTypes.FIAMMETTA, TaskTypes.RUN_ORDER)
                 and task.time <= datetime.now()
-                for task in task_view(self.tasks, TaskScope.DISPATCH)
+                for task in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
             )
         ):
             return False

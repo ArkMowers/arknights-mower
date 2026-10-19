@@ -465,6 +465,7 @@ class BaseSchedulerSolver(
             compare_type,
             meta_data,
             scope=scope,
+            op_data=getattr(self, "op_data", None),
         )
 
     @property
@@ -838,7 +839,7 @@ class BaseSchedulerSolver(
             self._resume_waiting_group_shifts()
             self._fill_empty_dorms()
             scheduling(self.tasks, op_data=getattr(self, "op_data", None))
-            self.task = find_next_task(self.tasks)
+            self.task = self.find_next_task()
             if self.task is None:
                 break
             reschedule_time = (self.task.time - datetime.now()).total_seconds()
@@ -922,7 +923,7 @@ class BaseSchedulerSolver(
                 )
                 or task.type == TaskTypes.NOT_SPECIFIC
                 and any(room.startswith("dorm") for room in task.plan)
-                for task in task_view(self.tasks, TaskScope.DISPATCH)
+                for task in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
             ):
                 return False
             # 延期补位到期后先释放其预约，给新出现的主班轮休需求让床。
@@ -942,7 +943,7 @@ class BaseSchedulerSolver(
                         task.type in (TaskTypes.SHIFT_ON, TaskTypes.SHIFT_OFF)
                         or any(room.startswith("dorm") for room in task.plan)
                     )
-                    for task in task_view(self.tasks, TaskScope.DISPATCH)
+                    for task in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
                 ):
                     superseded = True
                     return False
@@ -1901,7 +1902,7 @@ class BaseSchedulerSolver(
         pending = sorted(
             (
                 task
-                for task in task_view(tasks, TaskScope.DISPATCH)
+                for task in task_view(tasks, TaskScope.DISPATCH, self.op_data)
                 if task is not first_task
             ),
             key=lambda task: task.time,
@@ -2456,6 +2457,7 @@ class BaseSchedulerSolver(
             )
             if (
                 self.task.time > datetime.now()
+                or id(self.task) in blocked_orders
                 or not any(task is self.task for task in self.tasks)
                 or (
                     self.tasks
@@ -2471,7 +2473,10 @@ class BaseSchedulerSolver(
                             and self.tasks[0].type == TaskTypes.SWAP_SUPPORT
                         )
                     )
-                    and self.tasks[0].time <= datetime.now()
+                    and (
+                        self.task.retains_execution
+                        or self.tasks[0].time <= datetime.now()
+                    )
                 )
             ):
                 self.task = None
@@ -4666,7 +4671,7 @@ class BaseSchedulerSolver(
         """共用主班轮休规划；普通补位和加工随后安排。"""
         if any(
             task.type == TaskTypes.FIAMMETTA and task.time <= datetime.now()
-            for task in task_view(self.tasks, TaskScope.DISPATCH)
+            for task in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
         ):
             logger.info("肥鸭任务已到期，充能回岗后再规划下班")
             return
@@ -5650,13 +5655,16 @@ class BaseSchedulerSolver(
         blocked_orders = blocked_run_order_ids(self.tasks, self.op_data)
         pending = [
             task
-            for task in task_view(self.tasks, TaskScope.DISPATCH)
+            for task in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
             if getattr(task, "maintenance_advance_before_backup", False)
             and id(task) not in blocked_orders
         ]
         if not pending and not getattr(self, "maintenance_entry_pending", False):
             pending = adjust_run_order_for_maintenance(
-                self.tasks, config.conf.run_order_delay, advance_time=datetime.now()
+                self.tasks,
+                config.conf.run_order_delay,
+                advance_time=datetime.now(),
+                op_data=self.op_data,
             )
             for task in pending:
                 task.maintenance_advance_before_backup = True
@@ -7037,16 +7045,16 @@ class BaseSchedulerSolver(
                 if not resting
             ],
         )
-        names.update(self._waiting_recovery_names())
+        waiting = self._waiting_recovery_names()
+        names.update(waiting)
+        slots.update(
+            (op.current_room, op.current_index)
+            for name in waiting
+            if (op := self.op_data.operators.get(name)) is not None and op.current_room
+        )
         for room, row in list(plan.items()):
             for index, name in enumerate(row):
-                current = self.op_data.get_current_operator(room, index)
-                if (
-                    (room, index) in slots
-                    or name in names
-                    or current is not None
-                    and current.name in names
-                ):
+                if (room, index) in slots or name in names:
                     row[index] = "Current"
             if all(name == "Current" for name in row):
                 del plan[room]
@@ -7089,7 +7097,7 @@ class BaseSchedulerSolver(
                 and t.time <= datetime.now()
                 or getattr(t, "backup_shift_active", False)
                 or getattr(t, "product_shift_locked", False)
-                for t in task_view(self.tasks, TaskScope.DISPATCH)
+                for t in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
                 if t is not task
             )
             or getattr(task, "product_shift_locked", False)
@@ -12906,17 +12914,8 @@ class BaseSchedulerSolver(
         if restoring_order:
             self.task.prepare_run_order_restoration()
             plan = self.task.plan
-            if not self._emergency_compensation_available(plan):
-                self.task.time = datetime.now() + timedelta(minutes=1)
-                return False
-        elif self.task.type == TaskTypes.RUN_ORDER and self.task.meta_data:
-            if any(
-                task is not self.task
-                and getattr(task, "run_order_restore_pending", False)
-                for task in self.tasks
-            ):
-                self.task.time = datetime.now() + timedelta(minutes=1)
-                return False
+        if id(self.task) in blocked_run_order_ids(self.tasks, self.op_data):
+            return False
         if self._emergency_frozen():
             if (
                 self.task.type == TaskTypes.RUN_ORDER
@@ -14909,15 +14908,9 @@ class BaseSchedulerSolver(
             self._queue_missing_run_order_reads()
             scheduling(self.tasks, op_data=getattr(self, "op_data", None))
         self._schedule_maintenance_backup_check()
-        if any(
-            getattr(task, "strict_mood_limit", False)
-            or config.conf.enable_mastery
-            and task.type == TaskTypes.SWAP_SUPPORT
-            for task in self.tasks
-        ):
-            # 睡眠前计算清退与专精换人的提前量，避免等到原任务时间才避让。
-            protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
-        first = find_next_task(self.tasks)
+        # 保留任务的原时间不代表当前可执行；休眠预算沿用关键任务避让顺序。
+        protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
+        first = self.find_next_task()
         if first is None:
             return
         remaining_time = (first.time - datetime.now()).total_seconds()

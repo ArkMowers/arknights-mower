@@ -323,11 +323,19 @@ def test_repeated_restore_verification_failure_is_bounded_and_retryable(
     solver.get_free_list.assert_not_called()
 
 
+@pytest.mark.parametrize("selection_failed", [False, True])
 def test_shared_proviso_cannot_start_another_room_during_pending_restore(
-    solver, monkeypatch
+    solver, monkeypatch, selection_failed
 ):
     original, _ = prepare_order(solver, monkeypatch, buffer=0)
-    solver.agent_arrange(original.plan)
+    solver.op_data.plan[ROOM][0].replacement.insert(0, "但书")
+    if selection_failed:
+        solver.choose_agent.side_effect = RuntimeError("首次选人未确认")
+        with pytest.raises(RuntimeError, match="首次选人未确认"):
+            solver.agent_arrange(original.plan)
+        solver.choose_agent.reset_mock(side_effect=True)
+    else:
+        solver.agent_arrange(original.plan)
     assert_pending_restoration(original)
     second = SchedulerTask(
         time=NOW,
@@ -340,12 +348,14 @@ def test_shared_proviso_cannot_start_another_room_during_pending_restore(
     solver.choose_agent.reset_mock()
     solver.drone.reset_mock()
 
-    assert solver.agent_arrange(second.plan) is False
-
-    assert second.time == NOW + timedelta(minutes=1)
+    for _ in range(3):
+        assert solver.agent_arrange(second.plan) is False
+        assert second.time == NOW
     assert second.plan == {"room_1_2": ["但书"]}
     assert_pending_restoration(original)
-    assert solver.op_data.operators["但书"].current_room == ROOM
+    assert solver.op_data.operators["但书"].current_room == (
+        "" if selection_failed else ROOM
+    )
     solver.choose_agent.assert_not_called()
     solver.drone.assert_not_called()
 
@@ -375,18 +385,49 @@ def test_restore_waits_for_original_worker_in_foreign_working_facility(
 
     assert_pending_restoration(task)
     assert worker.current_room == "room_1_2"
-    assert task.time == NOW + timedelta(minutes=1)
+    assert task.time == NOW
     solver.choose_agent.assert_not_called()
     worker._current_room, worker.current_index = "", -1
     solver.agent_arrange(task.plan)
     assert solver.op_data.get_current_room(ROOM, True) == ORIGINAL
 
 
+def test_restoration_source_release_keeps_another_started_handoff_protected(
+    solver, monkeypatch
+):
+    task, _ = prepare_order(solver, monkeypatch, buffer=0)
+    solver.agent_arrange(task.plan)
+    worker = solver.op_data.operators[ORIGINAL[0]]
+    worker._current_room, worker.current_index = "room_1_2", 0
+    task.execution_retained = True
+    handoff = SchedulerTask(
+        time=NOW,
+        task_plan={"room_1_2": [PRIMARY[1]]},
+        task_type=TaskTypes.SHIFT_ON,
+    )
+    handoff.execution_retained = True
+    solver.tasks.append(handoff)
+    correction = {"room_1_2": ["Free"]}
+    solver.task = None
+
+    solver._suppress_retained_arrangements(correction)
+
+    assert correction == {}
+    assert handoff.plan == {"room_1_2": [PRIMARY[1]]}
+    assert task.plan == {ROOM: ORIGINAL}
+
+
 @pytest.mark.parametrize("queued_order", [False, True])
 @pytest.mark.parametrize("saved_plan", ["restoration", "insertion", "empty"])
 @pytest.mark.parametrize("release_read_failure", [False, True])
+@pytest.mark.parametrize("failed_restoration", [False, True])
 def test_blocked_restoration_dispatches_source_room_release(
-    solver, monkeypatch, queued_order, saved_plan, release_read_failure
+    solver,
+    monkeypatch,
+    queued_order,
+    saved_plan,
+    release_read_failure,
+    failed_restoration,
 ):
     monkeypatch.setattr(
         scheduler_task.NewsChecker,
@@ -478,12 +519,18 @@ def test_blocked_restoration_dispatches_source_room_release(
             operator._current_room, operator.current_index = room, index
 
     solver.tap_confirm.side_effect = confirm
+    original_time = task.time
+    if failed_restoration:
+        task.prepare_run_order_restoration()
+        solver._retain_failed_task(task, "原班恢复失败", [ROOM])
     trace = []
     for _ in range(6):
+        solver._resume_failed_tasks()
         scheduler_task.scheduling(
             solver.tasks, time_now=current_time[0], op_data=solver.op_data
         )
-        selected = solver.tasks[0]
+        selected = solver.find_next_task()
+        assert selected is not None, trace
         current_time[0] = max(current_time[0], selected.time)
         solver.task = selected
         solver.infra_main()
@@ -498,6 +545,7 @@ def test_blocked_restoration_dispatches_source_room_release(
 
     assert release not in solver.tasks, trace
     assert task not in solver.tasks, trace
+    assert task.time == original_time
     assert solver.op_data.get_current_room(ROOM, True) == ORIGINAL
     assert solver.op_data.get_current_room(source_room, True) == [primary.name]
     assert failed_read == release_read_failure
@@ -506,6 +554,56 @@ def test_blocked_restoration_dispatches_source_room_release(
         "但书" not in call.args[0] for call in solver.choose_agent.call_args_list
     )
     solver.drone.assert_not_called()
+
+
+@pytest.mark.parametrize("persisted", [False, True])
+def test_unrelated_trade_agent_runs_while_another_restoration_is_failed(
+    solver, monkeypatch, persisted
+):
+    original, _ = prepare_order(solver, monkeypatch, buffer=0)
+    solver.agent_arrange(original.plan)
+    solver._retain_failed_task(original, "原班恢复失败", [ROOM])
+    if persisted:
+        original = pickle.loads(pickle.dumps(original))
+    original_state = copy.deepcopy(vars(original))
+    other_room = "room_1_2"
+    primary = solver.op_data.operators[PRIMARY[1]]
+    primary._current_room, primary.current_index = other_room, 0
+    solver.op_data.add(Operator("龙舌兰", ""))
+    second = SchedulerTask(
+        time=NOW,
+        task_plan={other_room: ["龙舌兰"]},
+        task_type=TaskTypes.RUN_ORDER,
+        meta_data=other_room,
+        adjusted=True,
+    )
+    solver.tasks = [original, second]
+    solver.choose_agent.reset_mock()
+    solver.drone.reset_mock()
+
+    def confirm(room, new_plan):
+        for operator in solver.op_data.operators.values():
+            if operator.current_room == room:
+                operator._current_room, operator.current_index = "", -1
+        for index, name in enumerate(solver.choose_agent.call_args.args[0]):
+            operator = solver.op_data.operators[name]
+            operator._current_room, operator.current_index = room, index
+
+    solver.tap_confirm.side_effect = confirm
+    scheduler_task.scheduling(solver.tasks, time_now=NOW, op_data=solver.op_data)
+    assert solver.find_next_task() is second
+    solver.task = second
+    assert solver.agent_arrange(second.plan) is False
+    assert solver.op_data.get_current_room(other_room, True) == ["龙舌兰"]
+    solver.agent_arrange(second.plan)
+    assert solver.op_data.get_current_room(other_room, True) == [primary.name]
+    assert [call.args[0] for call in solver.choose_agent.call_args_list] == [
+        ["龙舌兰"],
+        [primary.name],
+    ]
+    solver.drone.assert_called_once_with(other_room, not_customize=True)
+    assert vars(original) == original_state
+    assert solver.op_data.operators["但书"].current_room == ROOM
 
 
 def test_restoration_confirm_does_not_repeat_order_buffer_wait(solver, monkeypatch):
