@@ -130,3 +130,81 @@ def recovery_observation_deadline(data, name, *, now):
         if group_due is not None:
             due = min(due, group_due) if due is not None else group_due
     return due
+
+
+def independent_recovery_plan(data, task, unfinished):
+    """分离不共享干员或绑组的整房安排，已开始和副表整体安排保持原样。"""
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
+    if task.type not in (
+        TaskTypes.SHIFT_ON,
+        TaskTypes.SELF_CORRECTION,
+        TaskTypes.RE_ORDER,
+    ):
+        return {}
+    if (
+        task.meta_data
+        or any(
+            getattr(task, flag, False)
+            for flag in (
+                "derived_correction_started",
+                "group_shift_expected",
+                "backup_shift_active",
+                "backup_explicit_slots",
+                "backup_refresh_rules",
+                "product_shift_locked",
+                "exhaust_support",
+                "ordinary_coordination",
+                "preferred_replacement_restore",
+                "dorm_recovery_restore",
+                "emergency_staffing",
+                "arrangement_retry_room",
+            )
+        )
+        or hasattr(task, "backup_shift_intent")
+        or hasattr(task, "backup_shift_conditions")
+    ):
+        return {}
+
+    def resources(names):
+        result = set()
+        for name in names:
+            op = data.operators.get(name)
+            if op is None:
+                continue
+            result.add(("operator", name))
+            groups = (
+                [binding["group"] for binding in op.group_bindings]
+                if op.multi_group
+                else [op.group]
+            )
+            result.update(("group", group) for group in groups if group)
+        return result
+
+    involved = {}
+    for room, row in task.plan.items():
+        names = set()
+        for index, name in enumerate(row):
+            if name == "Current":
+                continue
+            names.add(name)
+            occupant = data.get_current_operator(room, index)
+            if occupant is not None:
+                names.add(occupant.name)
+            slots = data.plan.get(room, [])
+            if index < len(slots):
+                names.add(slots[index].agent)
+        involved[room] = resources(names)
+    blocked, related = set(), resources(unfinished)
+    while True:
+        connected = {
+            room for room, names in involved.items() if names & related
+        } - blocked
+        if not connected:
+            break
+        blocked.update(connected)
+        for room in connected:
+            related.update(involved[room])
+    if not blocked:
+        return {}
+    return {room: list(row) for room, row in task.plan.items() if room not in blocked}

@@ -2,10 +2,10 @@ import {describe,it,expect} from 'vitest'
 import {MowerOperatorState,type MowerOperatorOptions} from './mowerOperatorState'
 import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {planMowerAlphaMetadata} from './mowerAlphaMetadata'
-import {MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros} from './mowerTaskQueue'
+import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros} from './mowerTaskQueue'
 import {projectMowerArrangements,mowerRefreshDormTime,invalidateMowerDormTime} from './mowerObservations'
 import {commitMowerGroupShifts} from './mowerSharedGroups'
-import {mowerGroupRecoveryDeadline,mowerGroupRecoveryWorkers} from './mowerGroupRecovery'
+import {mowerGroupRecoveryDeadline,mowerGroupRecoveryWorkers,splitMowerRecoveryTask} from './mowerGroupRecovery'
 
 type Resident={name:string;hours?:number;options?:Partial<MowerOperatorOptions>}
 function fixture(rows:Resident[],gap=false,maxWait=0){
@@ -283,5 +283,22 @@ describe('latest mood and independent recovery deadlines',()=>{
   expect(mowerGroupRecoveryDeadline(data,'G').timeMicros).toBe(toMowerMicros(4))
   invalidateMowerDormTime(data,'dormitory_1')
   expect(mowerGroupRecoveryDeadline(data,'G').timeMicros).toBeUndefined()
+ })
+})
+
+
+describe('recovery partition dependencies',()=>{
+ it.each(['same-group','shared-cover','started','backup'] as const)('keeps %s work together',dependency=>{
+  const data=fixture([{name:'A',hours:4,options:{restInFull:true}}])
+  data.operators.B=new MowerOperatorState({name:'B',room:'central',index:0,operatorType:'high',mood:24,timeStampMicros:0})
+  data.plan.central=['B']
+  const task=new MowerTask({time:0,type:T.SHIFT_ON,plan:{room_1_1:['A'],central:['B']}}),pending:MowerTask[]=[]
+  if(dependency==='same-group')data.operators.B.group='G'
+  if(dependency==='shared-cover'){data.operators.B.currentRoom='room_1_1';data.operators.B.currentIndex=0}
+  if(dependency==='started')task.arrangementStarted=true
+  if(dependency==='backup'){task.backupShiftIntent=structuredClone(task.plan);task.backupShiftConditions=[true]}
+  const before=structuredClone(task.plan)
+  splitMowerRecoveryTask(data,task,pending,['A'])
+  expect(task.plan).toEqual(before);expect(task.time).toBe(0);expect(pending).toEqual([])
  })
 })

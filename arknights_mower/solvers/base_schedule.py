@@ -2030,6 +2030,7 @@ class BaseSchedulerSolver(
     def _verify_required_recovery(self, task):
         from arknights_mower.utils.group_recovery import recovery_mood_complete
         from arknights_mower.utils.recovery_execution import (
+            independent_recovery_plan,
             pending_recovery_observations,
             recovery_ready_for_arrangement,
             required_recovery_members,
@@ -2083,6 +2084,22 @@ class BaseSchedulerSolver(
         if ready == names:
             return True
         unfinished = names - ready
+        independent = independent_recovery_plan(self.op_data, task, unfinished)
+        if independent:
+            sibling = SchedulerTask(
+                task.time, task_plan=independent, task_type=task.type
+            )
+            task.plan = {
+                room: row for room, row in task.plan.items() if room not in independent
+            }
+            task.group_shift_transitions = self.op_data.arrangement_group_transitions(
+                task.plan
+            )
+            for attr in ("derived_correction", "correction_skip_dorm"):
+                if hasattr(task, attr):
+                    setattr(sibling, attr, getattr(task, attr))
+            self.tasks.append(sibling)
+            logger.info("部分干员等待恢复，其余独立房间继续：%s", list(independent))
         observations = pending_recovery_observations(
             self.op_data, unfinished, now=now, sampled_after=sampled_after
         )
@@ -2239,7 +2256,7 @@ class BaseSchedulerSolver(
             task.plan = {}
             return False
         now = datetime.now()
-        mood = dorm_candidate_mood(self.op_data, operator.name, now)
+        mood = None if strict else dorm_candidate_mood(self.op_data, operator.name, now)
         if not strict and (mood is None or mood < operator.upper_limit):
             _, bed = self.op_data.get_dorm_by_name(operator.name)
             if bed is None or bed.time is None:
@@ -2338,6 +2355,7 @@ class BaseSchedulerSolver(
         if self.task is not None and self.task.type == TaskTypes.SWITCH_PRODUCT:
             # 到期换班先收敛最终阵容，再由该任务执行前置切产物。
             # 独立切换仍留在队列，收敛或换班失败不能丢失其执行责任。
+            product_room = parse_product_task_meta(self.task.meta_data)[0]
             due = [
                 task
                 for task in self.tasks
@@ -2355,6 +2373,11 @@ class BaseSchedulerSolver(
                 and not getattr(task, "exhaust_support", False)
                 and not getattr(task, "product_shift_locked", False)
                 and not getattr(task, "backup_shift_active", False)
+                and (
+                    product_room in task.plan
+                    or self._products_after_arrangement(task.plan)[0].get(product_room)
+                    != self.op_data.products.get(product_room)
+                )
             ]
             ready = [
                 task for task in due if not getattr(task, "execution_failure", None)
@@ -2587,6 +2610,10 @@ class BaseSchedulerSolver(
                             )
                         self._refresh_coordination_support(self.task)
                         self._prepare_group_shift(self.task)
+                        if not self._verify_required_recovery(self.task):
+                            self._queue_missing_run_order_reads()
+                            self.skip()
+                            return True
                         self._prepare_shift_cycle(self.task)
                         self._defer_conflicting_product_shift_slots(self.task)
                         if not self._verify_required_recovery(self.task):
@@ -3601,7 +3628,8 @@ class BaseSchedulerSolver(
         displaced_recovery = {
             name
             for name, op in self.op_data.operators.items()
-            if op.is_resting()
+            if op.is_high()
+            and op.is_resting()
             and not op.room.startswith("dorm")
             and not op.workaholic
             and name not in protected_training

@@ -42,7 +42,7 @@ function tokenize(text: string): Token[] {
   for (let rest = text.trim(); rest; rest = rest.trimStart()) {
     if (tokens.length >= 1024) return fail('条件文本超过限制')
     const worker = /^op_data\.operators\[['"]([^'"\[\]]+)['"]\]\.(is_resting\(\)|is_working\(\)|current_mood\(\)|current_room|current_index|room|index|mood|upper_limit|lower_limit|group|workaholic|exhaust_require|rest_in_full|operator_type|resting_priority)\b/.exec(rest) ?? /^op_data\.operators\[['"]([^'"\[\]]+)['"]\]\.(is_resting\(\)|is_working\(\)|current_mood\(\))/.exec(rest)
-    const query = /^op_data\.(group_min_mood|facility_has_mastery_plan|inventory_count|facility_product_count|facility_product_type_count|facility_product)\b/.exec(rest)
+    const query = /^op_data\.(group_min_mood|group_max_mood|facility_has_mastery_plan|inventory_count|facility_product_count|facility_product_type_count|facility_product)\b/.exec(rest)
     const external = /^op_data\.(?:party_time\b|major_maintenance_remaining_hours\(\))/.exec(rest)
     const quoted = /^(['"])((?:\\.|(?!\1)[^\\])*)\1/.exec(rest)
     const number = /^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/.exec(rest)
@@ -164,7 +164,8 @@ export function compileBackupExpression(source: unknown, participants: Set<strin
           if (!members.length) return fail(`不存在的绑组：${name}`)
           const anchors = members.map(member => data.operators[member]!).filter(op => data.isGroupShiftAnchor(op))
           if (!anchors.length) return fail(`绑组内没有可统计心情的干员：${name}`)
-          return Math.min(...anchors.map(op => op.currentMood(toMowerMicros(state.time))))
+          const moods = anchors.map(op => op.currentMood(toMowerMicros(state.time)))
+          return token.member === 'group_max_mood' ? Math.max(...moods) : Math.min(...moods)
         }
       }
       if (token?.kind === 'external') {
@@ -246,6 +247,6 @@ export function compileBackupExpression(source: unknown, participants: Set<strin
     usesInventory: tokens.some(token=>token.kind==='query'&&token.member==='inventory_count'),
     usesFacilityProduct: tokens.some(token=>token.kind==='query'&&['facility_product','facility_product_count','facility_product_type_count'].includes(token.member!)),
     usesMasteryPlan: tokens.some(token=>token.kind==='query'&&token.member==='facility_has_mastery_plan'),
-    usesCurrentMood: tokens.some(token=>token.kind==='worker'&&token.member==='current_mood()'||token.kind==='query'&&token.member==='group_min_mood'),
+    usesCurrentMood: tokens.some(token=>token.kind==='worker'&&token.member==='current_mood()'||token.kind==='query'&&['group_min_mood','group_max_mood'].includes(token.member!)),
   }
 }

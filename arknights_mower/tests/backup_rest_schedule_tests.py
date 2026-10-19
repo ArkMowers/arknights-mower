@@ -567,7 +567,10 @@ def test_pending_migration_release_uses_destination_and_preserves_other_returns(
     solver.tasks.append(migration)
     solver.plan_metadata()
 
-    assert not any(t.type == TaskTypes.RELEASE_DORM for t in solver.tasks)
+    assert not any(
+        t.type == TaskTypes.RELEASE_DORM and t.meta_data == "九色鹿"
+        for t in solver.tasks
+    )
     assert return_task(solver).plan == {"central": ["歌蕾蒂娅"]}
     assert return_task(solver).time < migration.time
     assert data.dorm[2].name == "九色鹿"
@@ -580,7 +583,11 @@ def test_pending_migration_release_uses_destination_and_preserves_other_returns(
         {"agent": bed.name, "time": migration.time + timedelta(hours=1)},
     )
     solver.plan_metadata()
-    release = next(t for t in solver.tasks if t.type == TaskTypes.RELEASE_DORM)
+    release = next(
+        t
+        for t in solver.tasks
+        if t.type == TaskTypes.RELEASE_DORM and t.meta_data == "九色鹿"
+    )
     assert release.meta_data == "九色鹿"
     assert release.plan == {
         "dormitory_1": ["Current", "Current", "Free", "Current", "Current"]

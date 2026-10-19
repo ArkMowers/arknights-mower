@@ -206,7 +206,26 @@ def dorm_task_reservations(op_data, tasks, excluded=()):
             for name in row
             if name not in ("", "Current", "Free")
         )
-        returning = getattr(getattr(task, "type", None), "name", "") == "SHIFT_ON"
+        task_type = getattr(getattr(task, "type", None), "name", "")
+        if (
+            task_type == "RELEASE_DORM"
+            and task.time > datetime.now()
+            and not task.retains_execution
+            and not getattr(task, "strict_mood_limit", False)
+            and not getattr(task, "product_shift_locked", False)
+            and not getattr(task, "emergency_recovery_release", False)
+            and len(task.plan) == 1
+            and (targets := task.release_dorm_targets())
+            and all(
+                name in ("Current", "Free")
+                for row in task.plan.values()
+                for name in row
+            )
+            and len(targets) == sum(row.count("Free") for row in task.plan.values())
+        ):
+            # 普通未来清退随换床后的实读重建，不为旧床预约整间宿舍。
+            continue
+        returning = task_type == "SHIFT_ON"
         for room, row in task.plan.items():
             for index, name in enumerate(row):
                 if room.startswith("dorm") and name != "Current":

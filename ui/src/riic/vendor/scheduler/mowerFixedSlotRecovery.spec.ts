@@ -44,3 +44,15 @@ it('does not let an old near-full countdown override newer low mood',()=>{
  expect(mowerRecoveryReady(data,op)).toBe(false)
  expect(op.mood).toBe(23.9)
 })
+
+
+it.each([true,false])('restores a fixed manager occupied by an ordinary replacement (vacancy=%s)',vacancy=>{
+ const operators={A:new MowerOperatorState({name:'A',operatorType:'high',room:'room_1_1',index:0,replacement:['R'],currentRoom:'room_1_1',currentIndex:0,mood:20,timeStampMicros:0}),
+  R:new MowerOperatorState({name:'R',currentRoom:'dormitory_1',currentIndex:0,mood:3,timeStampMicros:0}),
+  manager:new MowerOperatorState({name:'manager',operatorType:'high',room:'dormitory_1',index:0,mood:24,timeStampMicros:0})}
+ const data=new MowerSchedulingData({alpha:true,operators,nowMicros:0,plan:{room_1_1:['A'],dormitory_1:vacancy?['manager','Free']:['manager']},dorms:vacancy?[new MowerDormState(['dormitory_1',1])]:[]})
+ const plan=mowerCorrectionPlan(data),projected=projectMowerArrangements(data,[plan])
+ expect(projected.currentOperator('dormitory_1',0)?.name).toBe('manager')
+ expect(projected.operators.A!.currentRoom).toBe('room_1_1')
+ expect(operators.R.currentIndex).toBe(0)
+})

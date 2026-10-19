@@ -132,7 +132,7 @@ export function mowerCorrectionPlan(data:MowerSchedulingData,skipDorm=false,expl
   const moving=Object.fromEntries(Object.entries(plan).map(([room,row])=>[room,row.map((name,index)=>data.currentOperator(room,index)?.name===name?'Current':name)]))
   if(!normalizeMowerSharedArrangement(data,plan,mowerArrangementGroupTransitions(data,moving),explicitSlots))return {}
   for(const [room,names] of Object.entries(plan))if(names.every(n=>n==='Current'))delete plan[room]
-  const displaced=Object.values(data.operators).filter(op=>op.isResting()&&!op.room.startsWith('dorm')&&!op.workaholic&&!data.busyRestingNames.has(op.name)&&!data.getDormByName(op.name)&&mowerDormCandidateMood(data,op.name)!==undefined&&mowerDormCandidateMood(data,op.name)!<op.upperLimit&&![undefined,'Current',op.name].includes(plan[op.currentRoom]?.[op.currentIndex]))
+  const displaced=Object.values(data.operators).filter(op=>op.isHigh()&&op.isResting()&&!op.room.startsWith('dorm')&&!op.workaholic&&!data.busyRestingNames.has(op.name)&&!data.getDormByName(op.name)&&mowerDormCandidateMood(data,op.name)!==undefined&&mowerDormCandidateMood(data,op.name)!<op.upperLimit&&![undefined,'Current',op.name].includes(plan[op.currentRoom]?.[op.currentIndex]))
   for(const [room,row] of Object.entries(plan))if(!room.startsWith('dorm'))row.forEach((name,index)=>{if(displaced.some(op=>op.name===name))row[index]='Current'})
   const reserved=mowerDormTaskReservations(data,pending.filter(task=>task!==currentTask))
   const completed=completeMowerBackupDepartureRecovery(data,plan,explicitSlots,reserved.slots,pending,true,false,displaced.map(op=>op.name))

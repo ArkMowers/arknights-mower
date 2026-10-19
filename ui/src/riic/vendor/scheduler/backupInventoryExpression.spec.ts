@@ -1,5 +1,7 @@
 import {describe,it,expect} from 'vitest'
 import {compileBackupExpression} from './backupExpression'
+import {MowerOperatorState} from './mowerOperatorState'
+import {getMowerSourceRuntime} from './mowerSourceRuntime'
 import {createRosterRuntime} from './rosterRuntime'
 
 const compile=(source:unknown)=>compileBackupExpression(source,new Set())
@@ -131,4 +133,25 @@ describe('effective facility-product counts',()=>{
   "op_data.facility_product_count('gold')()", "op_data.facility_product_type_count('gold')",
   'op_data.facility_product_type_count(1)', 'op_data.facility_product_type_count().constructor',
  ])('rejects unsupported count syntax %s',source=>expect(()=>compile(source)).toThrow('副表：'))
+})
+
+
+describe('group mood extrema',()=>{
+ it('reads the live fixed work anchors and wakes on mood changes',()=>{
+  const state=createRosterRuntime({positions:[],beds:[],mowerPolicy:{restingThreshold:.65,powerPlantCount:2,opeRestingPriority:[]},mowerSourcePlan:{},mowerSourceRules:{workaholic:[],exhaustRequire:[],restInFull:[],lowPriority:[],refreshDrained:[],lingMode:0}}),data=getMowerSourceRuntime(state).data
+  for(const [name,mood,workaholic] of [['A',3,false],['B',18,false],['W',24,true]] as const){
+   data.operators[name]=new MowerOperatorState({name,room:'room_1_1',index:Object.keys(data.operators).length,group:'骑士',operatorType:'high',mood,timeStampMicros:0,currentRoom:'room_1_1',depletionRate:1,workaholic})
+  }
+  const max=compile("op_data.group_max_mood('骑士')"),min=compile("op_data.group_min_mood('骑士')")
+  expect(max.usesCurrentMood).toBe(true);expect(min.usesCurrentMood).toBe(true)
+  expect(max.evaluate(state)).toBe(18);expect(min.evaluate(state)).toBe(3)
+  state.time=1
+  expect(max.evaluate(state)).toBe(17);expect(min.evaluate(state)).toBe(2)
+  expect(compile({left:"op_data.group_max_mood('骑士')",operator:'<=',right:17}).evaluate(state)).toBe(true)
+  data.operators.B!.mood=24
+  expect(max.evaluate(state)).toBe(23)
+  expect(()=>compile("op_data.group_max_mood('missing')").evaluate(state)).toThrow('不存在的绑组')
+  data.operators.A!.workaholic=true;data.operators.B!.workaholic=true
+  expect(()=>max.evaluate(state)).toThrow('绑组内没有可统计心情')
+ })
 })

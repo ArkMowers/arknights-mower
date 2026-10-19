@@ -897,6 +897,11 @@ def test_failed_return_releases_dependent_product_task_after_card_and_readback(
     scheduler.tasks.append(product)
     scheduler.task = product
     monkeypatch.setattr(scheduler, "find", Mock(return_value=True))
+    monkeypatch.setattr(
+        scheduler,
+        "_products_after_arrangement",
+        Mock(return_value=({"room_2_1": "gold"}, scheduler.op_data.plan)),
+    )
     original_plan, original_time = deepcopy(task.plan), task.time
     product_time = product.time
     scheduler.infra_main()
@@ -1101,3 +1106,122 @@ def test_newer_low_card_cannot_use_an_older_near_full_countdown(resting):
         data, op.name, sampled_after=None, now=now
     )
     assert op.mood == 23.9
+
+
+@pytest.mark.parametrize("unknown", [False, True])
+def test_unfinished_recovery_keeps_independent_room_executable(
+    resting, monkeypatch, unknown
+):
+    scheduler, _ = resting
+    data = scheduler.op_data
+    op = data.operators["讯使"]
+    op.rest_in_full = True
+    independent = Operator("芬", "room_1_1", index=0, mood=24, operator_type="high")
+    independent.time_stamp = datetime.now()
+    data.operators[independent.name] = independent
+    data.plan["room_1_1"] = [Room("芬", "", [])]
+    task = returning_task()
+    task.plan["room_1_1"] = ["芬"]
+    scheduler.tasks = [task]
+    original_time = task.time
+    if unknown:
+        bed = data.get_dorm_by_name(op.name)[1]
+        bed.name, bed.time = "", None
+        op.current_room, op.current_index, op.time_stamp = "", -1, None
+    monkeypatch.setattr(scheduler, "_scan_card_moods", Mock())
+    monkeypatch.setattr(scheduler, "_read_recovery_rooms", lambda rooms: None)
+    for _ in range(3):
+        assert not scheduler._verify_required_recovery(task)
+    siblings = [t for t in scheduler.tasks if t is not task and t.plan]
+    assert len(siblings) == 1
+    ready = siblings[0]
+    assert ready.plan == {"room_1_1": ["芬"]}
+    assert ready.time == task.time == original_time
+    assert "room_1_1" not in task.plan
+    assert scheduler._verify_required_recovery(ready)
+    assert data.operators["芬"].current_room == ""
+    from arknights_mower.tests.dorm_group_tests import apply_plan
+
+    apply_plan(scheduler, ready.plan)
+    assert data.operators["芬"].is_working()
+    task = pickle.loads(pickle.dumps(task))
+    scheduler.tasks = [task]
+    data.dorm_mood_estimates[op.name] = (24, datetime.now())
+    scheduler._resume_failed_tasks()
+    scheduler._resume_waiting_group_shifts()
+    assert scheduler._verify_required_recovery(task)
+    assert task.time == original_time
+
+
+@pytest.mark.parametrize(
+    "dependency", ["same_group", "shared_cover", "started", "backup"]
+)
+def test_recovery_partition_preserves_connected_and_atomic_work(
+    resting, monkeypatch, dependency
+):
+    scheduler, _ = resting
+    data = scheduler.op_data
+    data.operators["讯使"].rest_in_full = True
+    other = Operator("芬", "room_1_1", index=0, mood=24, operator_type="high")
+    other.time_stamp = datetime.now()
+    data.operators[other.name] = other
+    data.plan["room_1_1"] = [Room("芬", "", [])]
+    task = returning_task()
+    task.plan["room_1_1"] = ["芬"]
+    if dependency == "same_group":
+        other.group = "联动"
+    elif dependency == "shared_cover":
+        data.get_current_operator("contact", 0).current_room = ""
+        other.current_room, other.current_index = "contact", 0
+    elif dependency == "started":
+        task.group_shift_expected = {("meeting", 0): "伊内丝"}
+    else:
+        task.backup_shift_intent = deepcopy(task.plan)
+        task.backup_shift_conditions = [True]
+    scheduler.tasks = [task]
+    original_plan, original_time = deepcopy(task.plan), task.time
+    monkeypatch.setattr(scheduler, "_read_recovery_rooms", Mock())
+    assert not scheduler._verify_required_recovery(task)
+    assert task.plan == original_plan and task.time == original_time
+    assert not any(t is not task and t.plan for t in scheduler.tasks)
+
+
+def test_dispatch_releases_independent_return_before_cycle_coalescing(
+    resting, monkeypatch
+):
+    from arknights_mower.tests.dorm_group_tests import apply_plan
+
+    scheduler, _ = resting
+    data = scheduler.op_data
+    data.operators["讯使"].rest_in_full = True
+    other = Operator(
+        "芬", "room_1_1", index=0, mood=24, operator_type="high", replacement=["年"]
+    )
+    other.time_stamp = datetime.now()
+    data.operators[other.name] = other
+    data.plan["room_1_1"] = [Room("芬", "", ["年"])]
+    scheduler.global_plan["default_plan"].plan["room_1_1"] = [Room("芬", "", ["年"])]
+    task = returning_task()
+    task.plan["room_1_1"] = ["芬"]
+    task.time -= timedelta(minutes=1)
+    scheduler.tasks, scheduler.task = [task], task
+    original_time = task.time
+    monkeypatch.setattr(scheduler, "find", Mock(return_value=True))
+    monkeypatch.setattr(scheduler, "skip", Mock())
+    monkeypatch.setattr(scheduler, "_read_recovery_rooms", Mock())
+    monkeypatch.setattr(scheduler, "_scan_card_moods", Mock())
+    monkeypatch.setattr(
+        scheduler,
+        "agent_arrange",
+        Mock(side_effect=lambda plan, *a, **kw: (apply_plan(scheduler, plan), True)[1]),
+    )
+    scheduler.infra_main()
+    scheduler.agent_arrange.assert_not_called()
+    sibling = next(t for t in scheduler.tasks if t is not task and "room_1_1" in t.plan)
+    assert task.time == sibling.time == original_time
+    assert sibling.plan == {"room_1_1": ["芬"]}
+    scheduler.task = sibling
+    scheduler.infra_main()
+    assert data.operators["芬"].is_working()
+    assert data.operators["讯使"].is_resting()
+    assert task.plan["contact"] == ["讯使"] and task.time == original_time

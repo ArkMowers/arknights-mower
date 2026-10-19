@@ -1,3 +1,5 @@
+import { projectMowerArrangements } from './mowerObservations'
+import { prepareMowerRelease } from './mowerRelease'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mowerAlphaDormCandidates, mowerAlphaFillPlan, planMowerAlphaDormFill } from './mowerAlphaCandidates'
 import * as dorm from './mowerAlphaDorm'
@@ -172,5 +174,46 @@ describe('native priority replacement bed takeover', () => {
     data.operators.S!.currentRoom = 'room_1_2'
     data.priorityReplacement = []
     expect(planMowerAlphaDormFill(data, new MowerTaskQueue(), true)?.plan.dormitory_1).toEqual(['R'])
+  })
+})
+
+describe('future releases and recovery priority', () => {
+  function dataWithVacancy() {
+    const data = takeoverData()
+    data.operators.S!.restingPriority = 'high'
+    data.operators.S!.mood = 5
+    data.operators.S!.currentRoom = 'dormitory_2'
+    data.standbyNames = []
+    data.priorityReplacement = []
+    data.plan.dormitory_2 = ['Free']
+    data.dorms = [new MowerDormState(['dormitory_1', 0]), new MowerDormState(['dormitory_2', 0], 'S', toMowerMicros(4))]
+    return data
+  }
+  it('moves the high priority resident before admitting the lower priority replacement', () => {
+    const data = dataWithVacancy(), queue = new MowerTaskQueue()
+    const release = new MowerTask({ type: T.RELEASE_DORM, time: 4, plan: { dormitory_2: ['Free'] }, metadata: 'S' })
+    queue.tasks.push(release)
+    const fill = planMowerAlphaDormFill(data, queue, true)
+    expect(fill?.plan).toEqual({ dormitory_1: ['S'], dormitory_2: ['R'] })
+    expect(queue.tasks).toContain(release)
+    expect(release.time).toBe(4)
+    expect(release.plan).toEqual({ dormitory_2: ['Free'] })
+    expect(data.operators.S!.currentRoom).toBe('dormitory_2')
+    expect(planMowerAlphaDormFill(data, queue, true)).toBeUndefined()
+    const moved = projectMowerArrangements(data, [fill!.plan])
+    moved.nowMicros = release.timeMicros
+    expect(prepareMowerRelease(moved, queue, release)).toBe(false)
+    expect(release.plan).toEqual({})
+    expect(moved.currentOperator('dormitory_2', 0)?.name).toBe('R')
+  })
+  it.each(['due', 'strict', 'retained', 'product', 'unnamed'] as const)('keeps %s releases reserved', kind => {
+    const data = dataWithVacancy(), queue = new MowerTaskQueue()
+    const release = new MowerTask({ type: T.RELEASE_DORM, time: kind === 'due' ? 0 : 4, plan: { dormitory_2: ['Free'] }, metadata: kind === 'unnamed' ? '' : 'S' })
+    release.strictMoodLimit = kind === 'strict'
+    release.executionRetained = kind === 'retained'
+    release.productShiftLocked = kind === 'product'
+    queue.tasks.push(release)
+    const fill = planMowerAlphaDormFill(data, queue, true)
+    expect(fill?.plan.dormitory_2).toBeUndefined()
   })
 })

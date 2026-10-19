@@ -612,3 +612,25 @@ describe('ordinary correction preserves explicit group recovery', () => {
     expect(f.source.data.groupShiftState.g).toBe(true)
   })
 })
+
+
+describe('independent rooms in a combined recovery task',()=>{
+ it.each([false,true])('executes an independent return while keeping the required group off work, unknown=%s',unknown=>{
+  const f=fixture(5,24),data=f.source.data
+  data.operators.B!.restInFull=true
+  if(unknown){data.operators.B!.currentRoom='';data.operators.B!.currentIndex=-1;data.operators.B!.timeStampMicros=undefined;data.dorms[1]!.reset();delete f.state.bedOccupants[room+'_4']}
+  data.operators.C=new MowerOperatorState({name:'C',room:'central',index:0,operatorType:'high',mood:24,timeStampMicros:data.nowMicros,currentRoom:'',currentIndex:-1})
+  data.plan.central=['C']
+  f.state.config.positions.push({id:'central_0',roomId:'central',primary:'C',candidates:[]})
+  f.state.config.mowerSourcePlan!.central=[{agent:'C',group:'',replacement:[]}]
+  f.state.morale.C=24;f.state.occupants.central_0=''
+  const task=new MowerTask({time:1,type:T.SHIFT_ON,plan:{room_1_1:['A'],room_1_2:['B'],central:['C']}})
+  f.source.queue.tasks=[task]
+  for(let n=0;n<20&&f.state.occupants.central_0!=='C';n++){finish(f);advanceRoster(f.state,1/3600,rates)}
+  expect(f.state.occupants.central_0).toBe('C')
+  expect(data.operators.B!.isResting()).toBe(!unknown)
+  expect(f.state.occupants.room_1_1_0).toBe('R')
+  expect(f.state.occupants.room_1_2_0).toBe('S')
+  expect(f.source.queue.tasks.filter(t=>t.plan.central?.includes('C'))).toHaveLength(0)
+ })
+})
