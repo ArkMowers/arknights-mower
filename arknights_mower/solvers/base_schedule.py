@@ -645,6 +645,22 @@ class BaseSchedulerSolver(
             }
         if getattr(task, "replacement_check", None):
             snapshot["replacement_check"] = replacement_check_snapshot(self, task)
+        if getattr(task, "run_order_staffing_wait", False):
+            # 缺员订单等待实际驻员或安排变化，同一空房的新读数不重启读取。
+            snapshot["reservations"] = ([], [])
+            snapshot["observations"] = {}
+            snapshot["room_observations"] = {}
+            snapshot["facilities"] = {
+                room: {
+                    key: getattr(data, "facility_states", {}).get(room, {}).get(key)
+                    for key in ("facility", "product")
+                }
+                for room in rooms
+            }
+            snapshot["staffing"] = {
+                room: data.get_current_room(room, bypass=True) for room in rooms
+            }
+            snapshot["run_order_eligible"] = data.is_run_order_room(task.meta_data)
         return copy.deepcopy(snapshot)
 
     def _run_mastery_with_recovery(self, action):
@@ -4219,6 +4235,15 @@ class BaseSchedulerSolver(
         op_data.refresh_run_order_rooms()
         if self._emergency_frozen():
             self._emergency_filter_tasks()
+        # 缺员等待没有插拔或恢复副作用，失去跑单资格时结束这份读取责任。
+        self.tasks[:] = [
+            task
+            for task in self.tasks
+            if not (
+                getattr(task, "run_order_staffing_wait", False)
+                and task.meta_data not in op_data.run_order_rooms
+            )
+        ]
         invalid_rooms = {
             task.meta_data
             for task in task_view(self.tasks, TaskScope.REPLAN)
@@ -4243,20 +4268,31 @@ class BaseSchedulerSolver(
 
     def _queue_order_refresh(self, room):
         """每个跑单房间只保留一份未完成的订单读取或执行责任。"""
-        if room not in self.op_data.run_order_rooms or any(
-            task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
-            and (
-                task.meta_data == room
-                or room in task.plan
-                or room in getattr(task, "run_order_original_roster", {})
-                or room in getattr(task, "emergency_original_roster", {})
-            )
-            for task in task_view(self.tasks, TaskScope.PENDING)
-        ):
+        if room not in self.op_data.run_order_rooms:
             return
-        self.tasks.append(
-            SchedulerTask(task_type=TaskTypes.REFRESH_TIME, meta_data=room)
+        pending = next(
+            (
+                task
+                for task in task_view(self.tasks, TaskScope.PENDING)
+                if task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
+                and (
+                    task.meta_data == room
+                    or room in task.plan
+                    or room in getattr(task, "run_order_original_roster", {})
+                    or room in getattr(task, "emergency_original_roster", {})
+                )
+            ),
+            None,
         )
+        if pending is not None:
+            return (
+                pending
+                if pending.type == TaskTypes.REFRESH_TIME and pending.meta_data == room
+                else None
+            )
+        refresh = SchedulerTask(task_type=TaskTypes.REFRESH_TIME, meta_data=room)
+        self.tasks.append(refresh)
+        return refresh
 
     def _queue_missing_run_order_reads(self):
         """换班等待或失败让出调度后，保留尚未读取订单的独立责任。"""
@@ -4293,6 +4329,11 @@ class BaseSchedulerSolver(
             meta_data=room, task_type=TaskTypes.RUN_ORDER, scope=TaskScope.PENDING
         ):
             return
+        refresh = self.find_next_task(
+            meta_data=room, task_type=TaskTypes.REFRESH_TIME, scope=TaskScope.PENDING
+        )
+        if refresh is not None and getattr(refresh, "execution_failure", None):
+            return
         in_out_plan = {room: ["Current"] * len(replacements)}
         for idx, choices in enumerate(replacements):
             in_out_plan[room][idx] = next(
@@ -4305,13 +4346,19 @@ class BaseSchedulerSolver(
             # 暂停订单已实读驻员，空岗位由普通纠错接管，不等待有效倒计时。
             current = self.op_data.get_current_room(room, bypass=True)
             if current and "" in current:
-                logger.info(
-                    f"房间 {self.translate_room(room)} 缺少进驻干员，重新安排干员进驻"
-                )
+                refresh = self._queue_order_refresh(room)
+                if refresh is not None:
+                    refresh.run_order_staffing_wait = True
+                    self._retain_failed_task(
+                        refresh,
+                        f"房间 {self.translate_room(room)} 缺少进驻干员，等待进驻后读取订单",
+                        [room],
+                        dependency=True,
+                    )
             if self.task is None:
                 self.agent_get_mood(skip_dorm=True, read_rooms=False)
             else:
-                # 当前刷新任务消费后继续普通规划，不能把它自身当成纠错阻挡。
+                # 让出缺员等待或消费本次读取后，继续普通规划。
                 self.planned = False
             return
         if room not in self.op_data.run_order_rooms:

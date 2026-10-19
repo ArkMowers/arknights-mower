@@ -10,6 +10,8 @@ import pytest
 from arknights_mower.tests import native_group_recovery_sync_tests
 from arknights_mower.utils import operation_timing
 from arknights_mower.utils.group_recovery import group_recovery_deadline
+from arknights_mower.utils.operators import Operator
+from arknights_mower.utils.plan import Room
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 resting = native_group_recovery_sync_tests.resting
@@ -684,11 +686,23 @@ def idle_return(resting, monkeypatch):
     return scheduler, task, op
 
 
+@pytest.fixture(
+    params=[TaskTypes.SHIFT_ON, TaskTypes.SELF_CORRECTION, TaskTypes.RE_ORDER],
+    ids=["shift_on", "self_correction", "re_order"],
+)
+def ordinary_idle_return(idle_return, request):
+    scheduler, task, op = idle_return
+    task.type = request.param
+    if task.type == TaskTypes.RE_ORDER:
+        task.meta_data = "副表内存收敛"
+    return scheduler, task, op
+
+
 @pytest.mark.parametrize("inferred", [False, True])
 def test_idle_primary_returns_with_full_card_without_fabricating_measurement(
-    idle_return, inferred
+    ordinary_idle_return, inferred
 ):
-    scheduler, task, op = idle_return
+    scheduler, task, op = ordinary_idle_return
     data = scheduler.op_data
     before = deepcopy(vars(op))
     original_time, original_plan = task.time, deepcopy(task.plan)
@@ -704,8 +718,10 @@ def test_idle_primary_returns_with_full_card_without_fabricating_measurement(
     scheduler._read_recovery_rooms.assert_not_called()
 
 
-def test_idle_unknown_return_observes_cards_before_checking_recovery(idle_return):
-    scheduler, task, op = idle_return
+def test_idle_unknown_return_observes_cards_before_checking_recovery(
+    ordinary_idle_return,
+):
+    scheduler, task, op = ordinary_idle_return
 
     def scan(**kwargs):
         scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
@@ -718,8 +734,10 @@ def test_idle_unknown_return_observes_cards_before_checking_recovery(idle_return
 
 
 @pytest.mark.parametrize("mood,age", [(0, 0), (23.9, 0), (24, 3600), (24, -1)])
-def test_unconfirmed_card_keeps_idle_return_and_original_time(idle_return, mood, age):
-    scheduler, task, op = idle_return
+def test_unconfirmed_card_keeps_idle_return_and_original_time(
+    ordinary_idle_return, mood, age
+):
+    scheduler, task, op = ordinary_idle_return
     scheduler.op_data.dorm_mood_estimates[op.name] = (
         mood,
         datetime.now() - timedelta(seconds=age),
@@ -732,8 +750,8 @@ def test_unconfirmed_card_keeps_idle_return_and_original_time(idle_return, mood,
     assert op.time_stamp is None
 
 
-def test_valid_low_measurement_cannot_be_overridden_by_green_card(idle_return):
-    scheduler, task, op = idle_return
+def test_valid_low_measurement_cannot_be_overridden_by_green_card(ordinary_idle_return):
+    scheduler, task, op = ordinary_idle_return
     op.mood, op.time_stamp = 3.8, datetime.now()
     scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
     assert not scheduler._verify_required_recovery(task)
@@ -741,8 +759,8 @@ def test_valid_low_measurement_cannot_be_overridden_by_green_card(idle_return):
     assert op.mood == 3.8
 
 
-def test_resting_primary_still_requires_room_observation(idle_return):
-    scheduler, task, op = idle_return
+def test_resting_primary_still_requires_room_observation(ordinary_idle_return):
+    scheduler, task, op = ordinary_idle_return
     op.current_room, op.current_index = "dormitory_1", 4
     scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
     assert not scheduler._verify_required_recovery(task)
@@ -750,8 +768,8 @@ def test_resting_primary_still_requires_room_observation(idle_return):
     scheduler._scan_card_moods.assert_not_called()
 
 
-def test_card_observation_releases_same_failed_idle_return(idle_return):
-    scheduler, task, op = idle_return
+def test_card_observation_releases_same_failed_idle_return(ordinary_idle_return):
+    scheduler, task, op = ordinary_idle_return
     original_time = task.time
     assert not scheduler._verify_required_recovery(task)
     original_failure = deepcopy(task.execution_failure)
@@ -771,18 +789,28 @@ def test_card_observation_releases_same_failed_idle_return(idle_return):
     assert op.time_stamp is None
 
 
-@pytest.mark.parametrize("mode", ["rescue", "support", "strict", "release"])
-def test_green_card_cannot_satisfy_special_recovery_checks(idle_return, mode):
-    scheduler, task, op = idle_return
+@pytest.mark.parametrize("mode", ["rescue", "emergency_task", "support", "strict"])
+def test_green_card_cannot_satisfy_special_recovery_checks(ordinary_idle_return, mode):
+    scheduler, task, op = ordinary_idle_return
     scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
     if mode == "rescue":
         scheduler.emergency_state = {"phase": "recovering"}
+    elif mode == "emergency_task":
+        task.emergency_staffing = True
     elif mode == "support":
         task.exhaust_support = True
-    elif mode == "strict":
-        task.strict_mood_limit = True
     else:
-        task.type = TaskTypes.RELEASE_DORM
+        task.strict_mood_limit = True
+    assert not scheduler._verify_required_recovery(task)
+    assert task.execution_failure
+    assert op.time_stamp is None
+    scheduler._scan_card_moods.assert_not_called()
+
+
+def test_green_card_cannot_satisfy_dorm_release(idle_return):
+    scheduler, task, op = idle_return
+    scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
+    task.type = TaskTypes.RELEASE_DORM
     assert not scheduler._verify_required_recovery(task)
     assert task.execution_failure
     assert op.time_stamp is None
@@ -790,8 +818,8 @@ def test_green_card_cannot_satisfy_special_recovery_checks(idle_return, mode):
 
 
 @pytest.mark.parametrize("change", ["expired", "removed", "yellow", "old-snapshot"])
-def test_card_cache_changes_do_not_poll_failed_return(idle_return, change):
-    scheduler, task, op = idle_return
+def test_card_cache_changes_do_not_poll_failed_return(ordinary_idle_return, change):
+    scheduler, task, op = ordinary_idle_return
     now = datetime.now()
     scheduler.op_data.dorm_mood_estimates[op.name] = (0, now)
     assert not scheduler._verify_required_recovery(task)
@@ -803,13 +831,50 @@ def test_card_cache_changes_do_not_poll_failed_return(idle_return, change):
     elif change == "yellow":
         scheduler.op_data.dorm_mood_estimates[op.name] = (12, now)
     else:
-        task.execution_failure["snapshot"].pop("card_moods")
+        task.execution_failure["snapshot"].pop("card_moods", None)
         scheduler.op_data.dorm_mood_estimates[op.name] = (24, now)
     for _ in range(3):
         scheduler._resume_failed_tasks()
         assert task.execution_failure
         assert task.time == original_time
         assert scheduler.tasks == [task]
+
+
+@pytest.mark.parametrize("full_card", [False, True])
+def test_explicit_backup_slot_does_not_exempt_ordinary_return(
+    ordinary_idle_return, full_card
+):
+    scheduler, task, op = ordinary_idle_return
+    data = scheduler.op_data
+    explicit = Operator(
+        "阿罗玛",
+        "factory",
+        index=0,
+        operator_type="high",
+        rest_in_full=True,
+        mood=3,
+        time_stamp=datetime.now(),
+    )
+    data.add(explicit)
+    data.plan[explicit.room] = [Room(explicit.name, "", [])]
+    task.plan[explicit.room] = [explicit.name]
+    task.backup_explicit_slots = {(explicit.room, explicit.index)}
+    if full_card:
+        data.dorm_mood_estimates[op.name] = (24, datetime.now())
+    original_time, original_plan = task.time, deepcopy(task.plan)
+    before = {
+        name: deepcopy(vars(member))
+        for name, member in ((op.name, op), (explicit.name, explicit))
+    }
+
+    assert scheduler._verify_required_recovery(task) is full_card
+
+    assert task.time == original_time and task.plan == original_plan
+    assert scheduler.tasks == [task]
+    assert vars(op) == before[op.name]
+    assert vars(explicit) == before[explicit.name]
+    assert bool(getattr(task, "execution_failure", None)) is not full_card
+    scheduler._read_recovery_rooms.assert_not_called()
 
 
 def test_failed_return_releases_dependent_product_task_after_card_and_readback(

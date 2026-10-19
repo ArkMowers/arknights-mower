@@ -472,12 +472,14 @@ def test_paused_order_reconciles_empty_room_despite_recent_occupancy_cache(
     assert solver.op_data.get_current_room("room_1_1", True) == ["鸿雪"]
     assert not solver.op_data.operators["鸿雪"].need_to_refresh()
 
+    refresh = None
     if trigger == "refresh":
         refresh = SchedulerTask(task_type=TaskTypes.REFRESH_TIME, meta_data="room_1_1")
         solver.tasks = [refresh]
         solver.task = refresh
         solver.infra_main()
-        assert refresh not in solver.tasks
+        assert any(task is refresh for task in solver.tasks)
+        assert refresh.execution_failure
         assert not solver.planned
 
     solver.infra_main()
@@ -488,6 +490,15 @@ def test_paused_order_reconciles_empty_room_despite_recent_occupancy_cache(
     ]
     assert len(corrections) == 1
     assert corrections[0].plan["room_1_1"] == ["鸿雪"]
+    waiting = next(
+        task
+        for task in solver.tasks
+        if task.type == TaskTypes.REFRESH_TIME and task.meta_data == "room_1_1"
+    )
+    assert waiting.execution_failure
+    if refresh is not None:
+        assert waiting is refresh
+    original_time = waiting.time
     assert not any(
         task.type == TaskTypes.RUN_ORDER and task.meta_data == "room_1_1"
         for task in solver.tasks
@@ -534,6 +545,7 @@ def test_paused_order_reconciles_empty_room_despite_recent_occupancy_cache(
         for task in solver.tasks
         if task.type == TaskTypes.REFRESH_TIME and task.meta_data == "room_1_1"
     )
+    assert refresh is waiting and refresh.time == original_time
     states["room_1_1"] = "active"
     solver.scene_graph_navigation(Scene.INFRA_MAIN)
     solver.task = refresh
@@ -579,3 +591,33 @@ def test_failed_paused_room_read_preserves_cache_and_existing_tasks(solver):
     assert solver.tasks == [shift]
     assert solver.op_data.get_current_room("room_1_1", True) == ["鸿雪"]
     assert solver.op_data.operators["鸿雪"].time_stamp == timestamp
+
+
+def test_two_paused_empty_rooms_keep_independent_refresh_responsibilities(
+    solver, monkeypatch
+):
+    rooms = ("room_1_1", "room_2_2")
+    use_order_pages(solver, dict.fromkeys(rooms, "paused"))
+    use_mood_pages(solver, monkeypatch, {room: [""] for room in rooms})
+    for room in rooms:
+        solver.plan_run_order(room)
+    waiting = {
+        task.meta_data: task
+        for task in solver.tasks
+        if task.type == TaskTypes.REFRESH_TIME
+    }
+    assert set(waiting) == set(rooms)
+    original_times = {room: task.time for room, task in waiting.items()}
+    assert all(task.execution_failure for task in waiting.values())
+    assert any(task.type == TaskTypes.SELF_CORRECTION for task in solver.tasks)
+    for _ in range(3):
+        solver._resume_failed_tasks()
+        solver._queue_missing_run_order_reads()
+        for room in rooms:
+            solver.plan_run_order(room)
+        pending = [task for task in solver.tasks if task.type == TaskTypes.REFRESH_TIME]
+        assert len(pending) == 2
+        assert all(task is waiting[task.meta_data] for task in pending)
+        assert all(task.time == original_times[task.meta_data] for task in pending)
+        assert all(task.execution_failure for task in pending)
+    assert solver.read_time.call_count == 2
