@@ -445,7 +445,7 @@ def test_remaining_work_room_uses_same_margin_as_dispatch(
 
     assert task.plan == {} and task.time == original_time
     assert len(reads(ui)) == 1
-    assert len(reads(ui, "room_2_2")) == 1
+    assert not reads(ui, "room_2_2")
     order = next(
         queued
         for queued in ui.solver.tasks
@@ -453,6 +453,21 @@ def test_remaining_work_room_uses_same_margin_as_dispatch(
     )
     assert order.time == original_time + timedelta(seconds=run_start_seconds)
     assert ui.clock.now() < order.time
+    refresh = next(
+        queued for queued in ui.solver.tasks if queued.type == ui.task_type.REFRESH_TIME
+    )
+    refresh_time = refresh.time
+    for _ in range(3):
+        ui.solver._read_arrangement_order_times("room_2_2")
+    assert not reads(ui, "room_2_2")
+    assert refresh in ui.solver.tasks and refresh.time == refresh_time
+
+    ui.solver.tasks.remove(order)
+    ui.solver._read_arrangement_order_times("room_2_2")
+
+    assert len(reads(ui, "room_2_2")) == 1
+    assert refresh not in ui.solver.tasks
+    assert task.time == original_time
 
 
 def test_failed_inline_read_keeps_independent_refresh_and_finishes_other_rooms(
