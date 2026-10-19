@@ -159,13 +159,18 @@ def test_completed_warmup_can_return_after_restart(solver, upper):
 
 
 @pytest.mark.parametrize("setting", ["exhaust", "full"])
-def test_other_correction_rules_are_unchanged(solver, setting):
+def test_correction_uses_full_setting_independently_of_exhaust(solver, setting):
     lose_tasks(solver, False)
     op = solver.op_data.operators["阿罗玛"]
     if setting == "exhaust":
         op.exhaust_require = False
     else:
         op.rest_in_full = False
+    plan = solver.agent_get_mood(skip_dorm=True, read_rooms=False, return_plan=True)
+    assert plan == ({} if setting == "exhaust" else {"contact": ["阿罗玛"]})
+    assert op.is_resting()
+    op.mood = op.upper_limit
+    solver.op_data.get_dorm_by_name(op.name)[1].time = None
     assert solver.agent_get_mood(
         skip_dorm=True, read_rooms=False, return_plan=True
-    ) == {"contact": ["阿罗玛"]}
+    ) == {"contact": [op.name]}
