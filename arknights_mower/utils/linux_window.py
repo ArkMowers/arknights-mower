@@ -231,6 +231,15 @@ class GtkWindow:
     def get_state(self):
         return self._call(self._state_gui)
 
+    def get_normal_size(self):
+        def sample_gui():
+            if self._state_gui() != "normal":
+                return None
+            width, height = self._native.get_size()
+            return int(width), int(height)
+
+        return self._call(sample_gui)
+
     def maximize(self):
         def maximize_gui():
             self._native.maximize()
@@ -470,6 +479,14 @@ class QtWindow:
 
     def get_state(self):
         return self._call(self._state_gui)
+
+    def get_normal_size(self):
+        def sample_gui():
+            if self._state_gui() != "normal":
+                return None
+            return self._native.width(), self._native.height()
+
+        return self._call(sample_gui)
 
     def maximize(self):
         def maximize_gui():

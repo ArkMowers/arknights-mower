@@ -8,6 +8,7 @@ from arknights_mower.utils.window_regions import WindowHitRegions
 
 WINDOW_SHELL_PROTOCOL = "mower-window-shell-v1"
 WINDOW_SHELL_EVENT = "mower-window-state"
+WINDOW_SHELL_CLOSE_EVENT = "mower-window-close-request"
 
 
 class WindowSize(NamedTuple):
@@ -220,6 +221,9 @@ class WindowShellBridge:
             self._ready_event.set()
         self._disposed = False
         self._pending_state = Event()
+        self._pending_close = Event()
+        self._direct_close = False
+        self._page_loaded = False
         self._worker = None
         self.on_mode_changed = None
         self.on_ready = None
@@ -301,6 +305,14 @@ class WindowShellBridge:
             if self._disposed:
                 return
             try:
+                if self._pending_close.is_set() and (
+                    self._page_loaded or self._window.events.loaded.is_set()
+                ):
+                    self._pending_close.clear()
+                    event = json.dumps(WINDOW_SHELL_CLOSE_EVENT)
+                    self._window.evaluate_js(
+                        f"window.dispatchEvent(new CustomEvent({event}));"
+                    )
                 self._publish_state()
             except Exception:
                 logger.exception("Native window state could not be published")
@@ -336,10 +348,33 @@ class WindowShellBridge:
         return self._regions.update(payload)
 
     def close(self) -> bool:
-        # The custom titlebar follows direct-close behavior for this iteration;
-        # the existing tray lifecycle remains owned by webview_ui.
+        self._direct_close = True
         self._window.confirm_close = False
-        return self._call_window("destroy")
+        if self._call_window("destroy"):
+            return True
+        self._direct_close = False
+        return False
+
+    def request_native_close(self) -> bool:
+        if self._disposed or self._direct_close or self._backend != "cocoa":
+            return False
+        self._pending_close.set()
+        self._pending_state.set()
+        return True
+
+    def get_normal_size(self) -> WindowSize | None:
+        if self._native is None:
+            return None
+        try:
+            size = self._native.get_normal_size()
+            return WindowSize(*size) if size is not None else None
+        except Exception:
+            logger.debug("Native window size probe unavailable", exc_info=True)
+            return None
+
+    def _on_loaded(self):
+        self._page_loaded = True
+        self._request_publish()
 
     def get_close_preference(self) -> dict:
         from arknights_mower.utils.config.gui import load_close_preference
@@ -458,6 +493,7 @@ class WindowShellBridge:
         return {
             "protocol": WINDOW_SHELL_PROTOCOL,
             "event": WINDOW_SHELL_EVENT,
+            "close_event": WINDOW_SHELL_CLOSE_EVENT,
             "platform": self._platform,
             "capabilities": self._capabilities(),
         }
@@ -504,7 +540,9 @@ class WindowShellBridge:
     def _publish_state(self) -> None:
         if self._disposed:
             return
-        if self._backend != "winforms" and not self._window.events.loaded.is_set():
+        if self._backend != "winforms" and not (
+            self._page_loaded or self._window.events.loaded.is_set()
+        ):
             return
         state = self.get_window_state()
         mode = state["state"]
@@ -565,5 +603,6 @@ def attach_window_shell(
     window.events.restored += bridge._on_restored
     window.events.resized += bridge._on_resized
     window.events.shown += bridge.initialize_native
+    window.events.loaded += bridge._on_loaded
     window.events.closed += bridge.dispose
     return bridge

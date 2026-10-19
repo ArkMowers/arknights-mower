@@ -3,7 +3,7 @@
 import ctypes
 import json
 from queue import Queue
-from threading import Event, Thread, get_ident
+from threading import Event, Thread, current_thread, get_ident
 from time import monotonic
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -14,15 +14,18 @@ from arknights_mower.utils import window_backend, window_shell
 
 
 class Signal:
-    def __init__(self):
+    def __init__(self, before_fire=None):
         self.handlers = []
         self.flag = Event()
+        self.before_fire = before_fire
 
     def __iadd__(self, handler):
         self.handlers.append(handler)
         return self
 
     def fire(self, *args):
+        if self.before_fire is not None:
+            self.before_fire(*args)
         self.flag.set()
         for handler in tuple(self.handlers):
             handler(*args)
@@ -51,7 +54,10 @@ class DesktopWindow:
             }
         )
         self.exposed = {}
+        self.current_size = (1000, 600)
+        self.events.resized.before_fire = self._resize
         self.evaluations = Queue()
+        self.close_requests = Queue()
         self.evaluation_threads = []
         self.confirm_close = True
         self.minimize = Mock()
@@ -62,7 +68,13 @@ class DesktopWindow:
     def expose(self, *methods):
         self.exposed.update((method.__name__, method) for method in methods)
 
+    def _resize(self, width, height):
+        self.current_size = (width, height)
+
     def evaluate_js(self, script):
+        if window_shell.WINDOW_SHELL_CLOSE_EVENT in script:
+            self.close_requests.put(get_ident())
+            return
         state, _ = json.JSONDecoder().raw_decode(script.split("detail: ", 1)[1])
         self.evaluation_threads.append(get_ident())
         self.evaluations.put(state)
@@ -81,7 +93,7 @@ class DesktopWindow:
 
 
 class NativeWindow:
-    def __init__(self, backend, regions, changed):
+    def __init__(self, backend, regions, changed, window):
         self.backend = backend
         self.regions = regions
         self.changed = changed
@@ -94,6 +106,11 @@ class NativeWindow:
         self.install = Mock(return_value=True)
         self.dispose = Mock()
         self.get_state = Mock(side_effect=lambda: self.state)
+        self.get_normal_size = Mock(
+            side_effect=lambda: (
+                window.current_size if self.get_state() == "normal" else None
+            )
+        )
         self.maximize = Mock(side_effect=lambda: self.change_state("maximized"))
         self.restore = Mock(side_effect=lambda: self.change_state("normal"))
         self.fallback_decorations = Mock(side_effect=self._decorate)
@@ -113,7 +130,7 @@ def native_factory(monkeypatch):
     adapters = []
 
     def create(backend, window, regions, changed):
-        adapter = NativeWindow(backend, regions, changed)
+        adapter = NativeWindow(backend, regions, changed, window)
         adapters.append(adapter)
         return adapter
 
@@ -537,4 +554,73 @@ def test_real_desktop_window_saves_normal_size_when_startup_modes_are_coalesced(
         )
     finally:
         can_publish.set()
+    saved.assert_called_once_with(window_shell.WindowRatio(0.6, 0.7))
+
+
+@pytest.mark.parametrize("backend", ["cocoa", "gtk", "qt"])
+def test_delayed_maximize_resize_reads_current_normal_geometry(
+    monkeypatch, native_factory, backend
+):
+    def scenario(window, adapter, save_mode):
+        window.events.resized.fire(1200, 700)
+        window.wait_for_state("normal")
+        probing, resume = Event(), Event()
+
+        def state():
+            if current_thread().name == "delayed-size-sample":
+                probing.set()
+                assert resume.wait(2)
+            return adapter.state
+
+        adapter.get_state.side_effect = state
+        adapter.state = "maximized"
+        old = Thread(
+            name="delayed-size-sample",
+            target=lambda: window.events.resized.fire(2000, 1000),
+        )
+        old.start()
+        try:
+            assert probing.wait(2)
+            adapter.state = "normal"
+            window.current_size = (1200, 700)
+        finally:
+            resume.set()
+            old.join(2)
+        assert not old.is_alive()
+        window.events.closing.fire()
+        window.events.closed.fire()
+
+    saved = run_desktop_window(monkeypatch, native_factory, backend, "normal", scenario)
+    saved.assert_called_once_with(window_shell.WindowRatio(0.6, 0.7))
+
+
+def test_native_close_waits_for_the_frontend_close_choice(native_factory):
+    window = DesktopWindow("cocoa")
+    bridge = window_shell.attach_window_shell(window, system="Darwin", backend="cocoa")
+    try:
+        window.events.shown.fire()
+        assert bridge.request_native_close() is True
+        assert window.close_requests.empty()
+        window.events.loaded.fire()
+        assert window.close_requests.get(timeout=2) != get_ident()
+        window.destroy.assert_not_called()
+        assert bridge.close() is True
+        assert bridge.request_native_close() is False
+        window.destroy.assert_called_once_with()
+    finally:
+        bridge.dispose()
+
+
+def test_native_red_button_keeps_size_tracking_until_close_is_confirmed(
+    monkeypatch, native_factory
+):
+    def scenario(window, adapter, save_mode):
+        closing_handler = window.events.closing.handlers[0]
+        assert closing_handler() is False
+        window.close_requests.get(timeout=2)
+        window.events.resized.fire(1200, 700)
+        window.wait_for_state("normal")
+        assert window.exposed["close"]() is True
+
+    saved = run_desktop_window(monkeypatch, native_factory, "cocoa", "normal", scenario)
     saved.assert_called_once_with(window_shell.WindowRatio(0.6, 0.7))

@@ -12,6 +12,12 @@
     data-window-shell
   >
     <div
+      v-if="nativeControls"
+      class="window-titlebar__native-controls"
+      data-window-controls
+      aria-hidden="true"
+    ></div>
+    <div
       class="window-titlebar__brand"
       data-window-drag-region
       aria-hidden="true"
@@ -41,7 +47,7 @@
       </span>
     </div>
 
-    <div class="window-titlebar__controls" data-window-controls>
+    <div v-if="!nativeControls" class="window-titlebar__controls" data-window-controls>
       <button
         v-for="control in controls"
         :key="control.id"
@@ -108,7 +114,8 @@ const props = defineProps({
   resizable: { type: Boolean, required: true },
   onResize: { type: Function, required: true },
   onMove: { type: Function, required: true },
-  nativeInteractions: { type: Boolean, default: false }
+  nativeInteractions: { type: Boolean, default: false },
+  nativeControls: { type: Boolean, default: false }
 })
 
 // A press on the title bar is handed to the shell only once the pointer actually
@@ -244,6 +251,11 @@ onBeforeUnmount(stopWatchingDrag)
 .window-titlebar__controls {
   display: flex;
   flex: 0 0 auto;
+  height: 100%;
+}
+
+.window-titlebar__native-controls {
+  flex: 0 0 80px;
   height: 100%;
 }
 

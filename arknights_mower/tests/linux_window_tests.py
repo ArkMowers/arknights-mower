@@ -44,6 +44,7 @@ def gtk(monkeypatch):
         begin_resize_drag_for_device=Mock(),
     )
     native.get_window = lambda: handle
+    native.get_size = lambda: (1234, 678)
     native.get_settings = lambda: SimpleNamespace(
         get_property=lambda name: 400 if name.endswith("time") else 5
     )
@@ -270,6 +271,8 @@ def qt(monkeypatch):
     native.isMaximized = lambda: native.state == "maximized"
     native.isMinimized = lambda: native.state == "minimized"
     native.isFullScreen = lambda: native.state == "fullscreen"
+    native.width = lambda: 1234
+    native.height = lambda: 678
     native.setWindowFlag = Mock()
     native.show = Mock()
     view = SimpleNamespace(
@@ -412,6 +415,19 @@ def test_native_work_area_queries_allow_an_unavailable_monitor(gtk, qt):
     qt.handle.screen = lambda: None
     assert gtk.adapter.work_area() is None
     assert qt.adapter.work_area() is None
+
+
+def test_native_size_samples_query_current_geometry_only_in_normal_state(gtk, qt):
+    assert gtk.adapter.get_normal_size() == (1234, 678)
+    assert qt.adapter.get_normal_size() == (1234, 678)
+    gtk.native.state = 2
+    qt.native.state = "maximized"
+    assert gtk.adapter.get_normal_size() is None
+    assert qt.adapter.get_normal_size() is None
+    gtk.native.state = 1
+    qt.native.state = "minimized"
+    assert gtk.adapter.get_normal_size() is None
+    assert qt.adapter.get_normal_size() is None
 
 
 def test_qt_rejects_old_qt_and_restores_native_window_decorations(qt):

@@ -102,7 +102,8 @@ export function createWindowHitRegionSync({ windowObject, send }) {
         const serialized = JSON.stringify(payload)
         if (serialized === lastPayload) continue
         try {
-          if ((await send(payload)) === true && !disposed) lastPayload = serialized
+          const accepted = await send(payload)
+          if (!disposed) lastPayload = accepted === true ? serialized : null
         } catch {
           lastPayload = null
         }

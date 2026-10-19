@@ -65,7 +65,8 @@ function readCapabilities(platformResult) {
   if (
     typeof capabilities?.enabled !== 'boolean' ||
     !['bridge', 'native'].includes(capabilities.move) ||
-    !['html', 'native'].includes(capabilities.resize)
+    !['html', 'native'].includes(capabilities.resize) ||
+    (capabilities.controls !== undefined && !['html', 'native'].includes(capabilities.controls))
   ) {
     return null
   }
@@ -133,7 +134,8 @@ export function formatEmulatorLabel({ name = '', instanceName = '' } = {}) {
 export function createWindowShellAdapter({
   windowObject = window,
   readyTimeoutMs = 1200,
-  callTimeoutMs = 1000
+  callTimeoutMs = 1000,
+  onCloseRequested = null
 } = {}) {
   const metadata = readWindowShellMetadata(windowObject?.location)
   // A frameless desktop window draws its own title bar, so the bar is active
@@ -154,6 +156,7 @@ export function createWindowShellAdapter({
   let bridge = null
   let activeProtocol = null
   let listeningEvent = null
+  let listeningCloseEvent = null
   let initialSyncTimer = null
   let disposed = false
   let pollTimer = null
@@ -196,7 +199,7 @@ export function createWindowShellAdapter({
     { flush: 'post' }
   )
   const controls = computed(() => {
-    if (!active.value) return []
+    if (!active.value || capabilities.value.controls === 'native') return []
     const maximizeControl = state.value.maximized
       ? makeControl('restore', '还原')
       : makeControl('maximize', '最大化')
@@ -225,6 +228,13 @@ export function createWindowShellAdapter({
 
   const onNativeState = (event) => {
     applyState(event?.detail)
+  }
+
+  const onNativeClose = () => {
+    if (disposed) return
+    void Promise.resolve()
+      .then(() => (onCloseRequested ? onCloseRequested() : close()))
+      .catch((error) => warnOnce('window shell close request failed:', error))
   }
 
   // A bridge problem is worth saying once: the polling that follows would repeat
@@ -296,6 +306,10 @@ export function createWindowShellAdapter({
       disposeListener()
       windowObject?.addEventListener?.(event, onNativeState)
       listeningEvent = event
+      if (typeof platformResult.close_event === 'string' && platformResult.close_event) {
+        listeningCloseEvent = platformResult.close_event
+        windowObject?.addEventListener?.(listeningCloseEvent, onNativeClose)
+      }
 
       stopPolling()
       if (initialSyncTimer) clearTimeout(initialSyncTimer)
@@ -489,9 +503,12 @@ export function createWindowShellAdapter({
   }
 
   function disposeListener() {
-    if (!listeningEvent) return
-    windowObject?.removeEventListener?.(listeningEvent, onNativeState)
+    if (listeningEvent) windowObject?.removeEventListener?.(listeningEvent, onNativeState)
+    if (listeningCloseEvent) {
+      windowObject?.removeEventListener?.(listeningCloseEvent, onNativeClose)
+    }
     listeningEvent = null
+    listeningCloseEvent = null
   }
 
   function dispose() {

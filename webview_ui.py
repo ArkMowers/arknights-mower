@@ -288,7 +288,7 @@ def webview_window(
     child_conn, global_space, instance_name, host, port, url, tray, log_queue=None
 ):
     import sys
-    from threading import Thread
+    from threading import Lock, Thread
 
     import webview
 
@@ -358,6 +358,7 @@ def webview_window(
     # validate every size against current native state, so a coalesced state
     # notification cannot leave their normal-size persistence blocked.
     startup_maximize_pending = windows_native and startup_mode == "maximized"
+    normal_size_lock = Lock()
 
     url = append_query_param(url, "window_shell", "1") if shell_enabled else url
     url = append_query_param(url, "window_theme", theme)
@@ -387,9 +388,17 @@ def webview_window(
         if shell_enabled and not windows_native:
             if not bridge.wait_until_ready():
                 return
-            state = bridge.get_window_state()
-            if not state["native_state_confirmed"] or state["state"] != "normal":
-                return
+            # Event arguments can belong to an older maximize/restore cycle.
+            # Read the current geometry and normal state together on the GUI
+            # thread, then serialize writes across pywebview event threads.
+            with normal_size_lock:
+                sample = bridge.get_normal_size()
+                if closing or sample is None:
+                    return
+                logical = sanitize_window_size(*sample)
+                if logical is not None:
+                    width, height = logical
+            return
         if windows_native:
             try:
                 import ctypes
@@ -435,6 +444,8 @@ def webview_window(
 
     def on_closing():
         nonlocal closing
+        if bridge.request_native_close():
+            return False
         closing = True
 
     def remember_mode(mode: str):
@@ -484,15 +495,15 @@ def webview_window(
     bridge.on_ready = restore_startup_mode
 
     def recv_msg():
+        nonlocal closing
         while True:
             try:
                 msg = child_conn.recv()
             except (EOFError, OSError):
                 return
             if msg == "exit":
-                on_closing()
-                window.confirm_close = False
-                window.destroy()
+                closing = True
+                bridge.close()
                 return
             if isinstance(msg, tuple) and len(msg) == 2 and msg[0] == "title":
                 window.set_title(window_title(instance_name, port, msg[1]))

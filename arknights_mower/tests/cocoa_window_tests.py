@@ -18,10 +18,18 @@ class NativeWindow:
         self.geometry = rectangle(40, 70, 900, 600)
         self.display = SimpleNamespace(visibleFrame=lambda: rectangle(0, 60, 1440, 800))
         self.minimized = False
+        self.zoomed = False
         self.moves = []
         self.frames = []
         self.mask = (1 << 15) | 8
-        self.buttons = {name: Mock() for name in (0, 1, 2)}
+        self.buttons = {}
+        self.titlebar_container = Mock()
+        self.titlebar_container.frame.return_value = rectangle(0, 572, 900, 28)
+        parent = SimpleNamespace(superview=lambda: self.titlebar_container)
+        for name in (0, 1, 2):
+            button = Mock()
+            button.superview.return_value = parent
+            self.buttons[name] = button
         self.setTitlebarAppearsTransparent_ = Mock()
         self.setTitleVisibility_ = Mock()
         self.toggleFullScreen_ = Mock()
@@ -35,6 +43,12 @@ class NativeWindow:
 
     def isMiniaturized(self):
         return self.minimized
+
+    def isZoomed(self):
+        return self.zoomed
+
+    def zoom_(self, _sender):
+        self.zoomed = not self.zoomed
 
     def deminiaturize_(self, _sender):
         self.minimized = False
@@ -174,6 +188,53 @@ class CocoaWindowTests(unittest.TestCase):
         self.assertEqual(len(self.monitors), 1)
         self.assertEqual(self.monitors[0][0], 7)
         self.assertEqual(self.adapter.work_area(), (1440, 800))
+
+    def test_install_keeps_the_system_traffic_lights_and_their_native_actions(self):
+        self.adapter.install()
+        self.assertEqual(self.adapter.capabilities["controls"], "native")
+        self.native.titlebar_container.setFrameOrigin_.assert_called_with((4, 566))
+        for button in self.native.buttons.values():
+            button.setFrameOrigin_.assert_not_called()
+            button.setFrameSize_.assert_not_called()
+            button.setHidden_.assert_called_once_with(False)
+            button.setAction_.assert_not_called()
+            button.setTarget_.assert_not_called()
+
+    def test_resize_places_controls_after_appkit_layout_and_coalesces_notifications(
+        self,
+    ):
+        self.adapter.install()
+        container = self.native.titlebar_container
+        container.setFrameOrigin_.reset_mock()
+        self.emit("resize")
+        self.emit("move")
+        container.setFrameOrigin_.assert_not_called()
+        self.assertEqual(len(self.pending), 1)
+        # AppKit can change the titlebar container during its layout pass.
+        container.frame.return_value = rectangle(0, 570, 900, 30)
+        self.drain()
+        container.setFrameOrigin_.assert_called_once_with((4, 564))
+
+    def test_native_zoom_is_maximized_and_restore_uses_the_system_zoom_action(self):
+        self.adapter.install()
+        self.native.zoomed = True
+        self.assertEqual(self.adapter.get_state(), "maximized")
+        self.assertIsNone(self.adapter.get_normal_size())
+        self.assertTrue(self.adapter.restore())
+        self.assertFalse(self.native.zoomed)
+        self.assertEqual(self.adapter.get_normal_size(), (900, 600))
+        self.assertEqual(self.native.frames, [])
+
+    def test_normal_size_samples_current_geometry_and_propagates_probe_failure(self):
+        self.adapter.install()
+        self.native.geometry = rectangle(10, 20, 1234, 678)
+        self.assertEqual(self.adapter.get_normal_size(), (1234, 678))
+        self.native.minimized = True
+        self.assertIsNone(self.adapter.get_normal_size())
+        self.native.minimized = False
+        self.native.frame = Mock(side_effect=RuntimeError("No geometry"))
+        with self.assertRaisesRegex(RuntimeError, "No geometry"):
+            self.adapter.get_normal_size()
 
     def test_controls_other_windows_and_system_resize_edges_keep_their_events(self):
         self.adapter.install()
@@ -370,12 +431,13 @@ class CocoaWindowTests(unittest.TestCase):
         self.adapter.install()
         self.adapter.dispose()
         self.adapter.fallback_decorations()
+        self.native.titlebar_container.setFrameOrigin_.assert_called_with((0, 572))
         self.assertFalse(self.native.mask & (1 << 15))
         self.assertEqual(self.native.mask & 15, 15)
         self.native.setTitlebarAppearsTransparent_.assert_called_once_with(False)
         self.native.setTitleVisibility_.assert_called_once_with(0)
         for button in self.native.buttons.values():
-            button.setHidden_.assert_called_once_with(False)
+            button.setHidden_.assert_called_with(False)
         self.assertFalse(self.browser.frameless)
         self.assertFalse(self.adapter.capabilities["enabled"])
         self.assertEqual(self.adapter.capabilities["move"], "native")
@@ -399,7 +461,12 @@ class CocoaWindowTests(unittest.TestCase):
         self.assertFalse(self.browser.frameless)
         self.assertEqual(
             self.adapter.capabilities,
-            {"enabled": False, "move": "native", "resize": "native"},
+            {
+                "enabled": False,
+                "move": "native",
+                "resize": "native",
+                "controls": "native",
+            },
         )
         self.callback.assert_called_once_with()
 

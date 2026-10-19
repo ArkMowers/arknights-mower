@@ -188,4 +188,27 @@ describe('native window hit regions', () => {
     expect(send).not.toHaveBeenCalled()
     expect(observer.disconnect).toHaveBeenCalledOnce()
   })
+
+  it('resends an earlier layout after a later update loses its acknowledgement', async () => {
+    const windowObject = makeWindow([makeElement()])
+    let nativeWidth
+    const send = vi.fn(async (payload) => {
+      nativeWidth = payload.width
+      return send.mock.calls.length !== 2
+    })
+    const sync = createWindowHitRegionSync({ windowObject, send })
+    sync.setEnabled(true)
+    await flushLayout()
+    windowObject.document.documentElement.clientWidth = 400
+    sync.schedule()
+    await flushLayout()
+    expect(nativeWidth).toBe(400)
+
+    windowObject.document.documentElement.clientWidth = 300
+    sync.schedule()
+    await flushLayout()
+    expect(send).toHaveBeenCalledTimes(3)
+    expect(nativeWidth).toBe(300)
+    sync.dispose()
+  })
 })

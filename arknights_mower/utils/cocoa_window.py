@@ -25,7 +25,12 @@ def _rectangle(frame):
 
 
 class CocoaWindow:
-    capabilities = {"enabled": True, "move": "native", "resize": "native"}
+    capabilities = {
+        "enabled": True,
+        "move": "native",
+        "resize": "native",
+        "controls": "native",
+    }
 
     def __init__(self, window, regions, on_state_changed):
         self.window = window
@@ -43,6 +48,9 @@ class CocoaWindow:
         self._normal_frame = None
         self._state = "normal"
         self._changing_frame = False
+        self._maximized_by_bridge = False
+        self._controls_layout_pending = False
+        self._titlebar_origin = None
 
     def _on_ui(self, operation, *, cleanup=False):
         if self._dependencies is None:
@@ -125,16 +133,51 @@ class CocoaWindow:
                     )
                     self._observers.append(observer)
                 self._state = self._get_state_on_ui()
+                self._layout_native_controls()
+                for button in (
+                    appkit.NSWindowCloseButton,
+                    appkit.NSWindowMiniaturizeButton,
+                    appkit.NSWindowZoomButton,
+                ):
+                    self._native.standardWindowButton_(button).setHidden_(False)
             except Exception:
                 self._cleanup_on_ui()
                 raise
 
         self._on_ui(install_on_ui)
 
+    def _layout_native_controls(self):
+        if (
+            self._disposed
+            or not self.capabilities["enabled"]
+            or self._native.styleMask() & (1 << 14)
+        ):
+            return
+        appkit, _, _, _ = self._dependencies
+        button = self._native.standardWindowButton_(appkit.NSWindowCloseButton)
+        container = button.superview().superview()
+        frame = container.frame()
+        # Move the native titlebar as a group. Keep standard button geometry
+        # intact so AppKit retains its drawing and tracking behavior.
+        height = self._native.frame().size.height
+        if self._titlebar_origin is None:
+            self._titlebar_origin = (
+                container,
+                frame.origin.x,
+                height - frame.origin.y - frame.size.height,
+                frame.origin.y,
+            )
+        _, left, top, _ = self._titlebar_origin
+        restore_y = height - frame.size.height - top
+        container.setFrameOrigin_((left + 4, restore_y - 6))
+        self._titlebar_origin = container, left, top, restore_y
+
     def _get_state_on_ui(self):
         if self._native.isMiniaturized():
             return "minimized"
         if self._native.styleMask() & (1 << 14):  # NSFullScreenWindowMask
+            return "maximized"
+        if self._native.isZoomed():
             return "maximized"
         screen = self._native.screen()
         if screen is not None:
@@ -149,13 +192,35 @@ class CocoaWindow:
     def get_state(self):
         return self._on_ui(self._get_state_on_ui)
 
+    def get_normal_size(self):
+        def sample_on_ui():
+            if self._disposed or self._get_state_on_ui() != "normal":
+                return None
+            frame = self._native.frame().size
+            return round(frame.width), round(frame.height)
+
+        return self._on_ui(sample_on_ui)
+
     def _native_state_changed(self, _notification=None):
         if self._disposed:
             return
         try:
+            if not self._controls_layout_pending:
+                self._controls_layout_pending = True
+
+                def after_layout():
+                    self._controls_layout_pending = False
+                    try:
+                        self._layout_native_controls()
+                    except Exception:
+                        logger.exception("Unable to position Cocoa window controls")
+                        self._recover_native_decorations()
+
+                self._dependencies[2].callAfter(after_layout)
             state = self._get_state_on_ui()
             if state == "normal" and not self._changing_frame:
                 self._normal_frame = _rectangle(self._native.frame())
+                self._maximized_by_bridge = False
         except Exception:
             logger.exception("Unable to read Cocoa window state")
             self._recover_native_decorations()
@@ -208,6 +273,7 @@ class CocoaWindow:
             if screen is None:
                 return False
             self._normal_frame = _rectangle(self._native.frame())
+            self._maximized_by_bridge = True
             self._set_frame(_rectangle(screen.visibleFrame()))
             return True
 
@@ -224,11 +290,16 @@ class CocoaWindow:
             if self._native.styleMask() & (1 << 14):
                 self._native.toggleFullScreen_(None)
                 return True
+            if self._native.isZoomed() and not self._maximized_by_bridge:
+                self._native.zoom_(None)
+                self._native_state_changed()
+                return True
             if self._get_state_on_ui() != "maximized":
                 return True
             if self._normal_frame is None:
                 return False
             self._set_frame(self._normal_frame)
+            self._maximized_by_bridge = False
             return True
 
         return self._on_ui(restore_on_ui)
@@ -336,6 +407,10 @@ class CocoaWindow:
                 | appkit.NSClosableWindowMask
                 | appkit.NSMiniaturizableWindowMask
             )
+            if self._titlebar_origin is not None:
+                container, left, _, restore_y = self._titlebar_origin
+                container.setFrameOrigin_((left, restore_y))
+                self._titlebar_origin = None
             self._native.setStyleMask_(mask)
             self._native.setTitlebarAppearsTransparent_(False)
             self._native.setTitleVisibility_(0)

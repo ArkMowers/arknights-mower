@@ -104,6 +104,35 @@ describe('window shell adapter', () => {
     ])
   })
 
+  it('reserves macOS buttons for Cocoa and forwards native close through the close choice', async () => {
+    const desktopWindow = makeWindow()
+    const bridge = makeNativeBridge('macos', 'native')
+    bridge.get_platform.mockResolvedValue({
+      protocol: PROTOCOL,
+      event: EVENT,
+      close_event: 'mower-window-close-request',
+      platform: 'macos',
+      capabilities: { enabled: true, move: 'native', resize: 'native', controls: 'native' }
+    })
+    desktopWindow.pywebview = { api: bridge }
+    const chooseClose = vi.fn(async () => true)
+    const adapter = createWindowShellAdapter({
+      windowObject: desktopWindow,
+      onCloseRequested: chooseClose
+    })
+    await adapter.initialize()
+    expect(adapter.controls.value).toEqual([])
+    expect(adapter.capabilities.value.controls).toBe('native')
+    desktopWindow.dispatchEvent(new Event('mower-window-close-request'))
+    await Promise.resolve()
+    expect(chooseClose).toHaveBeenCalledOnce()
+    expect(bridge.close).not.toHaveBeenCalled()
+    adapter.dispose()
+    desktopWindow.dispatchEvent(new Event('mower-window-close-request'))
+    await Promise.resolve()
+    expect(chooseClose).toHaveBeenCalledOnce()
+  })
+
   it('keeps old Windows bridge gestures and native non-Windows resize defaults', async () => {
     for (const platform of ['windows', 'macos', 'linux']) {
       const desktopWindow = makeWindow()
