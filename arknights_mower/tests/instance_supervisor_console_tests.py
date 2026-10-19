@@ -107,9 +107,12 @@ def test_supervised_console_output_and_window_visibility(
         | subprocess.CREATE_NEW_PROCESS_GROUP
         | subprocess.CREATE_NO_WINDOW,
     }[launch_mode]
+    # A Windows venv redirector can allocate a console after DETACHED_PROCESS.
+    # Launch the real interpreter to establish the detached supervisor condition.
+    launcher = sys._base_executable if launch_mode == "detached" else sys.executable
     subprocess.run(
         [
-            sys.executable,
+            launcher,
             str(script),
             "frozen" if frozen else "source",
             str(tmp_path),
