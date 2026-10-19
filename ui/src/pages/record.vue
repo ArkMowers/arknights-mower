@@ -20,6 +20,8 @@
 </template>
 
 <script setup>
+defineOptions({ name: 'MoodRecordPage' })
+
 import { ref, onMounted } from 'vue'
 import { Line, Pie } from 'vue-chartjs'
 import 'chartjs-adapter-luxon'

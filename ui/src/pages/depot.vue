@@ -983,6 +983,8 @@
 </template>
 
 <script setup>
+defineOptions({ name: 'DepotPage' })
+
 import { computed, inject, nextTick, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'

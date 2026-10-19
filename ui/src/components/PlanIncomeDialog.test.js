@@ -99,6 +99,18 @@ it('saves the selected shared algorithm and preserves recycling efficiency', asy
   })
   expect(page.settings.mowerWeights.exp).toBe(1)
 })
+it('retains the settings request failure as the cause of the displayed error', async () => {
+  const failure = new Error('offline')
+  io.client.get.mockRejectedValueOnce(failure)
+
+  await expect(page.readWeights()).rejects.toMatchObject({
+    message: 'Mower 收益设置读取失败，可重试或选择本次自定义',
+    cause: failure
+  })
+  expect(page.weightsError.value).toBe('Mower 收益设置读取失败，可重试或选择本次自定义')
+  expect(page.weightsBusy.value).toBe(false)
+  expect(workers).toHaveLength(0)
+})
 it('rereads Mower settings before starting and freezes the worker input', async () => {
   await page.readCache()
   await page.readWeights()

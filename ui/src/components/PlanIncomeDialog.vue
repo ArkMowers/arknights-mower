@@ -55,7 +55,7 @@ async function readCache() {
       signal: controller.signal
     })
     if (alive) applyIncomeCache(settings, data)
-  } catch (error) {
+  } catch {
     if (alive) cacheError.value = '森空岛缓存读取失败，可重新读取或选择手动输入'
   } finally {
     if (alive) cacheLoading.value = false
@@ -75,7 +75,7 @@ async function readWeights() {
     }
   } catch (error) {
     if (alive) weightsError.value = 'Mower 收益设置读取失败，可重试或选择本次自定义'
-    throw new Error('Mower 收益设置读取失败，可重试或选择本次自定义')
+    throw new Error('Mower 收益设置读取失败，可重试或选择本次自定义', { cause: error })
   } finally {
     if (alive) weightsBusy.value = false
   }
@@ -103,7 +103,7 @@ async function selectAlgorithm(value) {
       applyMowerIncomeSettings(settings, data)
       sharedRatios = data.ratios
     }
-  } catch (error) {
+  } catch {
     if (alive) weightsError.value = '算法保存失败，请重新读取 Mower 设置确认'
   } finally {
     if (alive) weightsBusy.value = false

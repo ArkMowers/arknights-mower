@@ -1,3 +1,7 @@
+<script setup>
+defineOptions({ name: 'ResourceLinksPage' })
+</script>
+
 <template>
   <div class="home-container readme">
     <!-- <h2>更新日志</h2> -->

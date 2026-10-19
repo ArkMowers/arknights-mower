@@ -338,8 +338,10 @@ export function compactIncomeNumber(value) {
 }
 export function incomeImageFilename(name, result) {
   const safe =
-    (name?.trim() || '排班')
-      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+    Array.from(name?.trim() || '排班', (character) =>
+      character.charCodeAt(0) < 32 || /[<>:"/\\|?*]/.test(character) ? '_' : character
+    )
+      .join('')
       .replace(/[. ]+$/g, '')
       .slice(0, 60) || '排班'
   const score = Number(result.summary.totalScore82.toFixed(2))

@@ -7,7 +7,7 @@ import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 
 import { storeToRefs } from 'pinia'
-const { skland_enable, skland_info } = storeToRefs(store)
+const { skland_info } = storeToRefs(store)
 
 function add_account() {
   return {

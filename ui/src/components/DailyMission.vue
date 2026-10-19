@@ -6,7 +6,7 @@ const axios = inject('axios')
 
 const store = useConfigStore()
 
-const { check_mail_enable, report_enable, sign_in, skland_info, skland_enable } = storeToRefs(store)
+const { check_mail_enable, report_enable, skland_info, skland_enable } = storeToRefs(store)
 
 const sign_msg = ref('')
 

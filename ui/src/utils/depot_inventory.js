@@ -712,8 +712,8 @@ const pinyinCache = new Map()
 
 function getPinyinData(name) {
   if (pinyinCache.has(name)) return pinyinCache.get(name)
-  let initials = ''
-  let full = ''
+  let initials
+  let full
   try {
     initials = pinyin(name, { pattern: 'first', toneType: 'none', type: 'array' })
       .join('')

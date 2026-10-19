@@ -63,6 +63,8 @@ npm run lint:check
 
 [ESLint 配置](eslint.config.js)检查 `.vue`、`.js`、`.jsx`、`.cjs` 和 `.mjs` 文件，使用 JavaScript recommended 与 Vue essential 规则。配置继续读取 [.gitignore](.gitignore) 中的忽略规则，并忽略隐藏文件和目录；浏览器源码与 Node 构建脚本分别使用对应的全局变量。
 
+Vue 文件中的 TypeScript 脚本使用 TypeScript 解析器，未使用变量由对应的 TypeScript 规则检查；独立 `.ts` 文件仍不在本次检查范围内。
+
 需要自动修复时执行 `npm run lint`，完成后审阅文件差异并运行受影响组件或工具的定向测试。格式检查和整理继续使用 Prettier。
 
 ## 构建与打包

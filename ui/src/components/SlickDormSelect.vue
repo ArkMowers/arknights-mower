@@ -24,7 +24,7 @@
 </template>
 
 <script setup>
-import { ref, h, computed } from 'vue'
+import { h, computed } from 'vue'
 import { SlickList, SlickItem } from 'vue-slicksort'
 import { NTag } from 'naive-ui'
 

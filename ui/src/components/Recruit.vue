@@ -1,4 +1,6 @@
 <script setup>
+defineOptions({ name: 'RecruitSettings' })
+
 import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 import { storeToRefs } from 'pinia'

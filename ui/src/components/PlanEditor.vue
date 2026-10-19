@@ -11,10 +11,10 @@ import {
 } from '@/utils/plan_bindings'
 import { swapPlanFacilities } from '@/utils/plan_edit'
 import { plan_facility_type_options } from '@/utils/base_facilities'
-import { ref, computed, watch, inject } from 'vue'
+import { ref, computed, h, watch, inject } from 'vue'
 const config_store = useConfigStore()
 const plan_store = inject('planStore', null) || usePlanStore()
-const { operators, groups, group_colors, current_plan, plan, workaholic, sub_plan, backup_plans } =
+const { operators, group_colors, current_plan, plan, workaholic, sub_plan, backup_plans } =
   storeToRefs(plan_store)
 const { facility_operator_limit } = plan_store
 const { theme, right_side_room_order } = storeToRefs(config_store)
@@ -76,10 +76,6 @@ watch(
 
 const operators_with_none = computed(() => {
   return [{ value: '', label: '（无）' }].concat(operators.value)
-})
-
-const operators_with_free = computed(() => {
-  return [{ value: 'Free', label: 'Free' }].concat(operators.value)
 })
 
 const operators_with_none_free = computed(() => {
@@ -178,7 +174,7 @@ defineExpose({
   outer
 })
 
-import { render_op_option, render_op_label, render_op_tag } from '@/utils/op_select'
+import { render_op_option, render_op_label } from '@/utils/op_select'
 import { pinyin_match } from '@/utils/common'
 import { factory_product_options } from '@/utils/base_products'
 
@@ -251,7 +247,7 @@ function set_facility(e) {
     <div class="outer" data-no-update-drop>
       <!-- 左 -->
       <div class="left_box">
-        <div class="left_contain" v-for="row in 3">
+        <div class="left_contain" v-for="row in 3" :key="row">
           <div
             v-for="r in [`room_${row}_1`, `room_${row}_2`, `room_${row}_3`]"
             :key="r"
@@ -279,7 +275,7 @@ function set_facility(e) {
                 {{ current_plan[r].name }}
               </div>
               <div class="avatars">
-                <template v-for="i in current_plan[r].plans">
+                <template v-for="(i, slot) in current_plan[r].plans" :key="slot">
                   <div class="avatar-wrapper" v-if="i.agent">
                     <img
                       :src="`avatar/${i.agent}.webp`"
@@ -314,7 +310,8 @@ function set_facility(e) {
               <div class="facility-name">控制中枢</div>
               <div class="avatars">
                 <img
-                  v-for="i in current_plan.central.plans"
+                  v-for="(i, slot) in current_plan.central.plans"
+                  :key="slot"
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
@@ -334,7 +331,8 @@ function set_facility(e) {
               <div class="facility-name">宿舍1</div>
               <div class="avatars">
                 <img
-                  v-for="i in current_plan.dormitory_1.plans"
+                  v-for="(i, slot) in current_plan.dormitory_1.plans"
+                  :key="slot"
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
@@ -354,7 +352,8 @@ function set_facility(e) {
               <div class="facility-name">宿舍2</div>
               <div class="avatars">
                 <img
-                  v-for="i in current_plan.dormitory_2.plans"
+                  v-for="(i, slot) in current_plan.dormitory_2.plans"
+                  :key="slot"
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
@@ -374,7 +373,8 @@ function set_facility(e) {
               <div class="facility-name">宿舍3</div>
               <div class="avatars">
                 <img
-                  v-for="i in current_plan.dormitory_3.plans"
+                  v-for="(i, slot) in current_plan.dormitory_3.plans"
+                  :key="slot"
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
@@ -394,7 +394,8 @@ function set_facility(e) {
               <div class="facility-name">宿舍4</div>
               <div class="avatars">
                 <img
-                  v-for="i in current_plan.dormitory_4.plans"
+                  v-for="(i, slot) in current_plan.dormitory_4.plans"
+                  :key="slot"
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
@@ -417,7 +418,8 @@ function set_facility(e) {
               <div class="facility-name">会客室</div>
               <div class="avatars">
                 <img
-                  v-for="i in current_plan.meeting.plans"
+                  v-for="(i, slot) in current_plan.meeting.plans"
+                  :key="slot"
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"
@@ -437,7 +439,8 @@ function set_facility(e) {
               <div class="facility-name">加工站</div>
               <div class="avatars">
                 <img
-                  v-for="i in current_plan.factory.plans"
+                  v-for="(i, slot) in current_plan.factory.plans"
+                  :key="slot"
                   :src="`avatar/${i.agent}.webp`"
                   width="45"
                   height="45"

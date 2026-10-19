@@ -1,6 +1,7 @@
 <script setup>
+defineOptions({ name: 'ClueSettings' })
+
 import { useConfigStore } from '@/stores/config'
-import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
 
 const config_store = useConfigStore()
@@ -22,10 +23,7 @@ const {
   visit_friend_mode
 } = storeToRefs(config_store)
 
-const plan_store = usePlanStore()
-const { operators } = storeToRefs(plan_store)
-
-import { computed, h, inject, ref } from 'vue'
+import { computed, h, inject } from 'vue'
 
 const mobile = inject('mobile')
 const mower_visit_enabled = computed(
@@ -73,24 +71,12 @@ function render_label(option) {
   )
 }
 
-import { pinyin_match } from '@/utils/common'
-import { render_op_option, render_op_label } from '@/utils/op_select'
-
-const deploy_directions = [
-  { label: '向上', value: 'Up' },
-  { label: '向下', value: 'Down' },
-  { label: '向左', value: 'Left' },
-  { label: '向右', value: 'Right' }
-]
-
 const squads = [
   { label: '第一编队', value: 1 },
   { label: '第二编队', value: 2 },
   { label: '第三编队', value: 3 },
   { label: '第四编队', value: 4 }
 ]
-
-const show_map = ref(false)
 </script>
 
 <template>
