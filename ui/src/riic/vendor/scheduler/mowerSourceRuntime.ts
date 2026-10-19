@@ -35,7 +35,7 @@ import {hasObservedFullMood,MowerOperatorState,type MowerGroupBinding} from './m
 import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros,fromMowerMicros,isMowerRunOrderTask,type MowerTaskPlan} from './mowerTaskQueue'
 import {executeMowerTaskArrangementSteps,type MowerRoomReturn,type MowerBackupResult} from './mowerTaskExecutor'
-import {projectMowerArrangements,mowerUpdateDetail,mowerRefreshDormTime,mowerCorrectDorm,mowerRoomReadIndexes,shouldMowerReadMood,mowerHasMeasuredDormDeparture} from './mowerObservations'
+import {projectMowerArrangements,invalidateMowerDormTime,mowerUpdateDetail,mowerRefreshDormTime,mowerCorrectDorm,mowerRoomReadIndexes,shouldMowerReadMood,mowerHasMeasuredDormDeparture} from './mowerObservations'
 import {mowerIsDormReplacement,planMowerCorrection} from './mowerCorrection'
 import {planMowerOrdinary,mowerGetRestingPlan,mowerTryReorder,mowerPlanningHasNearTask} from './mowerOrdinaryPlanning'
 import {planMowerMetadata,mowerRestUnitKey} from './mowerMetadata'
@@ -49,7 +49,7 @@ import {cloneMowerShiftTask,prepareMowerShiftCycle,recordMowerDormAdmissions,typ
 import {prepareMowerRunEntry,nextMowerRunRecoveryMicros} from './mowerRunLifecycle'
 import {ensureMowerDormRecovery} from './mowerDormRecovery'
 import {normalizeMowerRecoveryBeds} from './mowerRecoveryBeds'
-import {mowerGroupRecoveryDeadline,mowerGroupRecoveryWorkers,mowerRecoveryReady} from './mowerGroupRecovery'
+import {mowerGroupRecoveryDeadline,mowerGroupRecoveryWorkers,mowerRecoveryMoodComplete,mowerObservedRecoveryDeadline,mowerRecoveryReady} from './mowerGroupRecovery'
 import {mowerMandatoryReleaseNames,prepareMowerRelease} from './mowerRelease'
 import {nextMowerMoodPlanningWake,type MowerPlanningWake} from './mowerPlanningWake'
 import {mowerProtectedShift,prepareMowerShiftBeds} from './mowerShiftProtection'
@@ -241,13 +241,13 @@ function confirmMowerGroupReturn(s:RuntimeState,rates:RuntimeRates,task:MowerTas
  const relevant=groups.filter(group=>!explicitGroups.has(group)&&(!data.groupMoodGapExclusions.includes(group)&&(data.groupRestInFullOnMoodGap||data.groupRecoveryFullMembers[group]?.length)||mowerGroupRecoveryWorkers(data,group).some(op=>op.restInFull)))
  if(!relevant.length)return undefined
  const rooms=new Map<string,number[]>()
- for(const group of relevant)for(const op of mowerGroupRecoveryWorkers(data,group))if(op.isResting()){
+ for(const group of relevant)for(const op of mowerGroupRecoveryWorkers(data,group))if(op.isResting()&&!mowerRecoveryMoodComplete(data,op)){
   const indexes=rooms.get(op.currentRoom)??[];indexes.push(op.currentIndex);rooms.set(op.currentRoom,indexes)
  }
  // Recovery targets may have changed since the task was generated. Re-read the
  // actual room and its displayed recovery deadline instead of trusting old timers.
  for(const [room,indexes] of rooms){
-  for(const bed of data.allDorms())if(bed.position[0]===room)bed.timeMicros=undefined
+  invalidateMowerDormTime(data,room)
   observeRoom(s,rates,room,task,indexes)
  }
  let deadline=data.nowMicros
@@ -257,7 +257,7 @@ function confirmMowerGroupReturn(s:RuntimeState,rates:RuntimeRates,task:MowerTas
   for(const name of required){
    const op=data.operators[name]
    if(mowerRecoveryReady(data,op,s.config.mowerTaskScheduling))continue
-   const due=op?.isResting()?data.getDormByName(name)?.[1].timeMicros:undefined
+   const due=op?.isResting()?mowerObservedRecoveryDeadline(data,op):undefined
    if(due===undefined||due<=data.nowMicros){
     if(!op?.restInFull&&recovery.timeMicros!==undefined&&recovery.timeMicros>data.nowMicros){deadline=Math.max(deadline,recovery.timeMicros);continue}
     throw new MowerShiftPreviewError('组员尚未确认回满心情，保留回班任务并等待有效恢复观察：'+(op?.nativeName??name))
@@ -368,7 +368,7 @@ function* arrangeRoom(s:RuntimeState,rates:RuntimeRates,room:string,names:string
  const fiaArrangement=task.type===T.FIAMMETTA&&!!fia&&resolved.includes(fia)
  const refreshDormIndexes=()=>{
   const beds=data.allDorms().filter(bed=>bed.position[0]===room)
-  for(const bed of beds)bed.timeMicros=undefined
+  invalidateMowerDormTime(data,room)
   return beds.filter(bed=>{const name=resolved[bed.position[1]];return !!name&&data.recoveryDorm(bed,name)}).map(bed=>bed.position[1])
  }
  // Native admission resolves the final roster before recovery ordering and no-op detection.
@@ -590,7 +590,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
  if(!source.execution&&!source.phaseExecution){
   if(nextMowerPreviewRecoveryObservation(source)<=source.data.nowMicros){
    const rooms=new Set(source.waitingRecovery?.flatMap(wait=>Object.entries(wait.deadlines).filter(([,due])=>due<=source.data.nowMicros).map(([room])=>room)))
-   for(const room of rooms){for(const bed of source.data.allDorms())if(bed.position[0]===room)bed.timeMicros=undefined;observeRoom(s,rates,room,undefined,source.data.plan[room]?.map((_,i)=>i)??[])}
+   for(const room of rooms){invalidateMowerDormTime(source.data,room);observeRoom(s,rates,room,undefined,source.data.plan[room]?.map((_,i)=>i)??[])}
   }
   if(resumeMowerPreviewRecovery(source)){delete source.runReturn;source.queue.sort()}
  }

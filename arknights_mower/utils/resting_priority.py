@@ -82,8 +82,11 @@ def bed_takeover_allowed(op_data, requester, resident):
         return False
     if requester_tier <= RestingTier.PRIORITY_REPLACEMENT:
         return True
+    from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+
     op = op_data.operators.get(requester)
-    return has_resting_mood(op) and resting_mood(op) <= op.upper_limit * 0.8
+    mood = dorm_candidate_mood(op_data, requester)
+    return op is not None and mood is not None and mood <= op.upper_limit * 0.8
 
 
 def has_resting_mood(op, now=None):
@@ -102,8 +105,11 @@ def resting_mood(op, now=None):
 
 
 def resting_key(op_data, name, now=None):
+    from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+
     op = op_data.operators.get(name)
-    mood = resting_mood(op, now)
+    mood = dorm_candidate_mood(op_data, name, now)
+    mood = 24 if mood is None else mood
     # 同级按尚需恢复的心情点数降序；恢复速度不按个人上下限成比例。
     mood -= op.upper_limit if op is not None else 24
     return resting_tier(op_data, name), mood

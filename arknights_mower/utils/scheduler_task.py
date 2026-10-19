@@ -1735,6 +1735,7 @@ def generate_plan_by_drom(
     ordered = sorted(batches, key=lambda batch: batch[0])
     result = []
     planned = set()
+    release_positions = {bed.name: bed.position for bed in op_data.dorm if bed.name}
     current_time = datetime.now()
     pending_resources = [
         (task.time, *_arrangement_resources(task.plan)) for task in pending_arrangements
@@ -1746,7 +1747,10 @@ def generate_plan_by_drom(
             if not room.name or room.name not in op_data.operators:
                 logger.debug(f"跳过已失效的宿舍回班项：{room}")
                 continue
-            if room.name in planned or room.name in excluded_names:
+            # 回班可能因副表依赖延后，不能因此省略个人清退。
+            if (
+                rest_in_full is not None and room.name in planned
+            ) or room.name in excluded_names:
                 continue
             op = op_data.operators[room.name]
             if (
@@ -1773,10 +1777,15 @@ def generate_plan_by_drom(
                 projected_bed = next(
                     (bed for bed in op_data.dorm if bed.name == op.name), None
                 )
-                if projected_bed is None:
+                # 未来回班可能关闭临时 Free 位，个人清退仍核验原来的床位。
+                position = projected_bed.position if projected_bed is not None else None
+                if position is None and rest_in_full is None:
+                    position = release_positions.get(op.name)
+                if position is None:
                     continue
-                target_room, target_index = projected_bed.position
-                projected_bed.reset()
+                target_room, target_index = position
+                if projected_bed is not None:
+                    projected_bed.reset()
                 if rest_in_full is None:
                     # 执行端按姓名和床位双重校验；同刻回满也分别记录身份，
                     # 避免空身份被跳过，或旧任务误清后来入住的人。

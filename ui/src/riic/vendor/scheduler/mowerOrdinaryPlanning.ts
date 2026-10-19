@@ -1,4 +1,5 @@
 import type {MowerDependencyReturnAdmission} from './mowerTaskDerivation'
+import {projectMowerArrangements} from './mowerObservations'
 import {mowerExhaustGroups} from './mowerExhaustPolicy'
 import {mowerWorkingReplacementBlocked,mowerSameGroupPrimaryReplacement,mowerRestingBindingGroups,mowerSharedReplacements,normalizeMowerSharedArrangement,mowerArrangementGroupTransitions,commitMowerGroupShifts} from './mowerSharedGroups'
 // Port of default plan_solver/resting/_get_resting_plan_legacy/try_reorder.
@@ -107,8 +108,20 @@ function alphaGetRestingPlan(data:MowerSchedulingData,names:string[],existing:st
   const assignedCovers=new Set(Object.values(next).flat())
   const reservedResting=new Set(options.dormAdmissions?.values())
   const previous=alphaDormResidents(data),resting=agents.filter(name=>!data.operators[name]!.workaholic&&!data.operators[name]!.room.startsWith('dorm')&&!assignedCovers.has(name)&&!data.getDormByName(name)&&!reservedResting.has(name))
-  const admissions=mowerAssignDormGroup(data,resting,new Set(Object.keys(transitions).filter(group=>transitions[group])),undefined,combined,options.reservedSlots)
-  if(admissions===undefined)return false
+  // Apply selected covers in isolation so their departing beds are available in this shift.
+  const allocation=structuredClone(combined)
+  for(const [position,name] of options.dormAdmissions??[]){
+   const [room,index]=position.split('\0'),row=allocation[room!]??=Array(data.plan[room!]!.length).fill('Current')
+   if(['Current','Free'].includes(row[Number(index)]!))row[Number(index)]=name
+  }
+  const projected=projectMowerArrangements(data,[allocation])
+  const projectedAdmissions=mowerAssignDormGroup(projected,resting,new Set(Object.keys(transitions).filter(group=>transitions[group])),undefined,allocation,options.reservedSlots)
+  if(projectedAdmissions===undefined)return false
+  const admissions=projectedAdmissions.map(bed=>{
+   const actual=data.dorms.find(value=>alphaPosition(...value.position)===alphaPosition(...bed.position))!
+   actual.name=bed.name;actual.timeMicros=bed.timeMicros
+   return actual
+  })
   const confirmed=new Map(options.dormAdmissions)
   for(const bed of admissions)confirmed.set(alphaPosition(...bed.position),bed.name)
   alphaRestoreDisplaced(data,previous,next,options.tasks??[],confirmed)

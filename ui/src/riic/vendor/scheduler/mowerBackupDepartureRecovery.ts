@@ -22,7 +22,7 @@ export function mowerCoveredRecoveryPending(data:MowerSchedulingData,op:MowerOpe
 }
 
 /** Complete only concrete primary-to-cover departures; transfers and untouched group members retain their own intent. */
-export function completeMowerBackupDepartureRecovery(data:MowerSchedulingData,plan:MowerTaskPlan,explicitSlots:ReadonlySet<string>=new Set(),reservedSlots:ReadonlySet<string>=new Set(),pending:readonly MowerTask[]=[],repairIdle=false,blockOnMissingBed=false):MowerTaskPlan|undefined {
+export function completeMowerBackupDepartureRecovery(data:MowerSchedulingData,plan:MowerTaskPlan,explicitSlots:ReadonlySet<string>=new Set(),reservedSlots:ReadonlySet<string>=new Set(),pending:readonly MowerTask[]=[],repairIdle=false,blockOnMissingBed=false,displaced:readonly string[]=[]):MowerTaskPlan|undefined {
  if(!data.alpha)return structuredClone(plan)
  const projected=projectMowerArrangements(data,[plan]),required=new Set<string>()
  for(const slot of explicitSlots){
@@ -33,6 +33,7 @@ export function completeMowerBackupDepartureRecovery(data:MowerSchedulingData,pl
   if(primary.currentRoom===room&&primary.currentIndex===index||mowerCoveredRecoveryPending(data,primary))required.add(primary.name)
  }
  if(repairIdle)for(const op of Object.values(data.operators))if(!op.currentRoom&&mowerCoveredRecoveryPending(data,op)&&!projected.operators[op.name]!.currentRoom)required.add(op.name)
+ for(const name of displaced)if(!projected.operators[name]?.currentRoom)required.add(name)
  if(!required.size)return structuredClone(plan)
  const previous=alphaDormResidents(projected),combined=structuredClone(plan)
  const admissions=mowerAssignDormGroup(projected,[...required],new Set([...required].map(name=>projected.operators[name]!.group).filter(Boolean)),undefined,{},new Set([...reservedSlots,...explicitSlots]))

@@ -279,7 +279,8 @@ def test_room_readback_overrides_estimate_and_new_search_clears_it(solver):
     data.update_detail("红", 8, "", -1, True)
     assert "红" not in data.dorm_mood_estimates
     data.dorm_mood_estimates["红"] = (24, datetime.now())
-    assert dorm_candidate_mood(data, "红") == 8
+    assert dorm_candidate_mood(data, "红") == 24
+    assert data.operators["红"].mood == 8
     data.refresh_idle_dorm_search(reason="干员下班")
     assert data.dorm_mood_estimates == {}
 
@@ -454,3 +455,13 @@ def test_multi_bed_retention_never_selects_the_same_resident_twice(solver):
 @pytest.mark.parametrize("invalid", [None, np.empty((0, 310), dtype=np.uint8)])
 def test_failed_detail_read_does_not_become_full(invalid):
     assert BaseMixin.read_accurate_mood(object.__new__(BaseMixin), invalid) == -1
+
+
+@pytest.mark.parametrize("estimate", [float("nan"), float("inf"), -1, 25])
+def test_invalid_estimate_cannot_override_numeric_mood(solver, estimate):
+    instance, _ = solver
+    data = instance.op_data
+    op = data.operators["红"]
+    op.mood, op.time_stamp, op.depletion_rate = 6, datetime.now(), 0
+    data.dorm_mood_estimates[op.name] = (estimate, datetime.now())
+    assert dorm_candidate_mood(data, op.name) == 6

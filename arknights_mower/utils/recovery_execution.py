@@ -1,47 +1,23 @@
-"""实际换人前需要实读确认的恢复成员。"""
+"""实际换人前的心情要求及独立恢复期限。"""
 
 from datetime import timedelta
 
 from arknights_mower.utils import config
+from arknights_mower.utils.dorm_candidates import scheduling_mood_observation
 from arknights_mower.utils.group_recovery import (
     completed_mood_limit_release,
     group_recovery_deadline,
-    observed_full_mood,
+    observed_recovery_deadline,
+    recovery_mood_complete,
 )
 from arknights_mower.utils.operation_timing import estimate_dorm_minutes
-from arknights_mower.utils.resting_priority import has_resting_mood
-
-
-def allows_card_return(task):
-    """选人页面的心情判断可用于普通回班，不用于救急、支援或离宿。"""
-    from arknights_mower.utils.scheduler_task import TaskTypes
-
-    return task.type in (
-        TaskTypes.SHIFT_ON,
-        TaskTypes.SELF_CORRECTION,
-        TaskTypes.RE_ORDER,
-    ) and not any(
-        getattr(task, flag, False)
-        for flag in ("emergency_staffing", "exhaust_support", "strict_mood_limit")
-    )
-
-
-def needs_return_mood_estimate(op, now):
-    """已离宿且没有有效实读时，普通回班才可读取卡牌预估。"""
-    return (
-        op is not None
-        and not op.current_room
-        and (
-            not has_resting_mood(op, now)
-            or getattr(op, "mood_is_prediction", False)
-            or op.time_stamp > now
-        )
-    )
 
 
 def recovery_ready_for_arrangement(data, name, *, sampled_after, now):
-    """实读已满或将在本房操作时间内回满，不改写实际心情。"""
+    """有效心情已满或实读期限落在操作提前量内，不改写实际心情。"""
     op = data.operators.get(name)
+    if recovery_mood_complete(data, op, now):
+        return True
     if (
         op is None
         or op.time_stamp is None
@@ -51,16 +27,17 @@ def recovery_ready_for_arrangement(data, name, *, sampled_after, now):
         and op.time_stamp < sampled_after
     ):
         return False
-    if observed_full_mood(op) or completed_mood_limit_release(data, op):
+    observation = scheduling_mood_observation(data, name, now)
+    if observation is not None and observation[1] > op.time_stamp:
+        return False
+    if completed_mood_limit_release(data, op):
         return True
-    _, bed = data.get_dorm_by_name(name)
+    due = observed_recovery_deadline(data, name)
     return (
         op.is_resting()
-        and bed is not None
-        and bed.position == (op.current_room, op.current_index)
-        and bed.time is not None
+        and due is not None
         and now
-        < bed.time
+        < due
         <= now + timedelta(minutes=estimate_dorm_minutes(op.current_room, 1.5))
     )
 
@@ -133,10 +110,7 @@ def pending_recovery_observations(data, names, *, now, sampled_after=None):
             or not op.is_resting()
         ):
             return None
-        _, bed = data.get_dorm_by_name(name)
         due = recovery_observation_deadline(data, name, now=now)
-        if bed is None or bed.position != (op.current_room, op.current_index):
-            return None
         if due is None or due <= now:
             return None
         observations[name] = op.time_stamp
@@ -146,8 +120,7 @@ def pending_recovery_observations(data, names, *, now, sampled_after=None):
 def recovery_observation_deadline(data, name, *, now):
     """下一次核验不晚于已确认的组内等待上限，不延长原任务。"""
     op = data.operators[name]
-    _, bed = data.get_dorm_by_name(name)
-    due = bed.time if bed is not None else None
+    due = observed_recovery_deadline(data, name)
     if (
         not op.rest_in_full
         and config.conf.group_mood_gap_max_extra_wait_hours > 0

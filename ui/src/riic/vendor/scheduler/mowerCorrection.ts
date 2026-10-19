@@ -1,12 +1,12 @@
 import {completeMowerBackupDepartureRecovery,mowerCoveredRecoveryPending} from './mowerBackupDepartureRecovery'
-import {mowerDormTaskReservations} from './mowerAlphaCandidates'
+import {mowerDormTaskReservations,mowerDormCandidateMood} from './mowerAlphaCandidates'
 import {normalizeMowerSharedArrangement,mowerSameGroupPrimaryReplacement,mowerArrangementGroupTransitions} from './mowerSharedGroups'
 import {admitMowerDerivedTasks} from './mowerTaskDerivation'
 import {mowerActiveUrgentRecoveryNames} from './mowerUrgentRecovery'
-import {mowerGroupRecoveryWorkers} from './mowerGroupRecovery'
+import {mowerGroupRecoveryWorkers,mowerRecoveryMoodComplete} from './mowerGroupRecovery'
 // Port of default agent_get_mood correction and prefer_resting_replacements.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
-import {hasObservedFullMood,mowerReplacementCandidates,type MowerOperatorState} from './mowerOperatorState'
+import {mowerReplacementCandidates,type MowerOperatorState} from './mowerOperatorState'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import type {MowerTaskSchedulingOptions} from './mowerTaskScheduling'
 import {alphaCorrectGroupDorms,alphaPosition} from './mowerAlphaDorm'
@@ -42,7 +42,7 @@ export function preferMowerRestingReplacements(data:MowerSchedulingData,plan:Mow
  const protectedRecovery=data.alpha?mowerActiveUrgentRecoveryNames(data):new Set<string>()
  if(data.alpha)for(const group of new Set(Object.values(data.operators).flatMap(op=>op.multiGroup?op.groupBindings.map(binding=>binding.group):[op.group]).filter(Boolean))){
   const workers=mowerGroupRecoveryWorkers(data,group)
-  if(workers.some(op=>op.isResting())&&workers.some(op=>op.restInFull&&(op.moodIsPrediction||!hasObservedFullMood(op)&&!(!op.currentRoom&&data.restMoodComplete(op.name)))))for(const member of data.shiftGroupMembers(group)){
+  if(workers.some(op=>op.isResting())&&workers.some(op=>op.restInFull&&(op.moodIsPrediction||!mowerRecoveryMoodComplete(data,op)&&!(!op.currentRoom&&data.restMoodComplete(op.name)))))for(const member of data.shiftGroupMembers(group)){
    const op=data.operators[member]!
    if(!op.room.startsWith('dorm')&&!op.workaholic)protectedRecovery.add(member)
   }
@@ -132,9 +132,12 @@ export function mowerCorrectionPlan(data:MowerSchedulingData,skipDorm=false,expl
   const moving=Object.fromEntries(Object.entries(plan).map(([room,row])=>[room,row.map((name,index)=>data.currentOperator(room,index)?.name===name?'Current':name)]))
   if(!normalizeMowerSharedArrangement(data,plan,mowerArrangementGroupTransitions(data,moving),explicitSlots))return {}
   for(const [room,names] of Object.entries(plan))if(names.every(n=>n==='Current'))delete plan[room]
+  const displaced=Object.values(data.operators).filter(op=>op.isResting()&&!op.room.startsWith('dorm')&&!op.workaholic&&!data.busyRestingNames.has(op.name)&&!data.getDormByName(op.name)&&mowerDormCandidateMood(data,op.name)!==undefined&&mowerDormCandidateMood(data,op.name)!<op.upperLimit&&![undefined,'Current',op.name].includes(plan[op.currentRoom]?.[op.currentIndex]))
+  for(const [room,row] of Object.entries(plan))if(!room.startsWith('dorm'))row.forEach((name,index)=>{if(displaced.some(op=>op.name===name))row[index]='Current'})
   const reserved=mowerDormTaskReservations(data,pending.filter(task=>task!==currentTask))
-  const completed=completeMowerBackupDepartureRecovery(data,plan,explicitSlots,reserved.slots,pending,true)
+  const completed=completeMowerBackupDepartureRecovery(data,plan,explicitSlots,reserved.slots,pending,true,false,displaced.map(op=>op.name))
   if(completed){for(const room of Object.keys(plan))delete plan[room];Object.assign(plan,completed)}
+  else for(const op of displaced)set(op.currentRoom,op.currentIndex,'Current')
   return admitted()
  }
  for(const group of groups){

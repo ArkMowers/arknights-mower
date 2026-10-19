@@ -3,7 +3,7 @@ import {MowerOperatorState,type MowerOperatorOptions} from './mowerOperatorState
 import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {planMowerAlphaMetadata} from './mowerAlphaMetadata'
 import {MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros} from './mowerTaskQueue'
-import {projectMowerArrangements} from './mowerObservations'
+import {projectMowerArrangements,mowerRefreshDormTime,invalidateMowerDormTime} from './mowerObservations'
 import {commitMowerGroupShifts} from './mowerSharedGroups'
 import {mowerGroupRecoveryDeadline,mowerGroupRecoveryWorkers} from './mowerGroupRecovery'
 
@@ -255,4 +255,33 @@ it('applies multiple exclusions independently when two groups rest together',()=
  data.groupMoodGapExclusions=['G','H']
  expect(times()).toEqual([toMowerMicros(1-8/60),toMowerMicros(2-8/60)])
  expect(data.groupRecoveryFullMembers).toEqual({})
+})
+
+describe('latest mood and independent recovery deadlines',()=>{
+ it('accepts a newer full card without replacing the observed mood or deadline',()=>{
+  const data=fixture([{name:'A',hours:3,options:{restInFull:true}}]),op=data.operators.A!
+  data.nowMicros=toMowerMicros(1/60)
+  data.dormMoodEstimates.set('A',[24,data.nowMicros])
+  expect(mowerGroupRecoveryDeadline(data,'G').timeMicros).toBe(data.nowMicros)
+  expect(op.mood).toBe(12);expect(op.timeStampMicros).toBe(0);expect(op.depletionRate).toBe(0)
+  expect(data.dorms[0]!.timeMicros).toBe(toMowerMicros(3))
+ })
+ it('does not infer a recovery deadline from a low card',()=>{
+  const data=fixture([{name:'A',options:{restInFull:true,timeStampMicros:undefined}}])
+  data.dormMoodEstimates.set('A',[12,0])
+  expect(mowerGroupRecoveryDeadline(data,'G').timeMicros).toBeUndefined()
+ })
+ it('keeps a fixed-slot countdown across isolated projections and clears it on movement',()=>{
+  const data=fixture([{name:'A',options:{restInFull:true}}]),op=data.operators.A!
+  data.dorms=[];data.plan.dormitory_1=['manager']
+  mowerRefreshDormTime(data,'dormitory_1',0,'A',toMowerMicros(4))
+  expect(mowerGroupRecoveryDeadline(data,'G').timeMicros).toBe(toMowerMicros(4))
+  const projected=projectMowerArrangements(data,[])
+  expect(mowerGroupRecoveryDeadline(projected,'G').timeMicros).toBe(toMowerMicros(4))
+  projected.operators.A!.currentIndex=1
+  expect(mowerGroupRecoveryDeadline(projected,'G').timeMicros).toBeUndefined()
+  expect(mowerGroupRecoveryDeadline(data,'G').timeMicros).toBe(toMowerMicros(4))
+  invalidateMowerDormTime(data,'dormitory_1')
+  expect(mowerGroupRecoveryDeadline(data,'G').timeMicros).toBeUndefined()
+ })
 })

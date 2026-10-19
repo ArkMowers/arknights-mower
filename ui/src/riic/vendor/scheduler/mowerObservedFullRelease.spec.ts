@@ -73,12 +73,12 @@ describe('observed full morale across alpha metadata and physical release prepar
     expect(operators.A!.upperLimit).toBe(12)
   })
 
-  it('preserves strict personal-limit release timing and its individual limit', () => {
+  it('uses the personal-limit observation despite an old working depletion rate', () => {
     const { data, queue, task, operators } = fixture([{ mood: 12, upperLimit: 12, restMoodLimit: true }])
     expect(operators.A!.currentMood(now)).toBeLessThan(12)
     expect(task.strictMoodLimit).toBe(true)
     expect(task.moodLimit).toBe(12)
-    expect(task.timeMicros).toBe(deadline)
+    expect(task.timeMicros).toBe(now)
     data.nowMicros = deadline
     expect(prepareMowerRelease(data, queue, task)).toBe(true)
     expect(operators.A!.mood).toBe(12)
@@ -191,4 +191,37 @@ it('still requires measured full recovery for an explicitly configured shared re
   expect(() => prepareMowerRelease(data, queue, task)).toThrow('尚未确认回满心情')
   operators.A!.mood = 24; operators.A!.timeStampMicros = now
   expect(prepareMowerRelease(data, queue, task)).toBe(true)
+})
+
+describe('personal release alongside a group return', () => {
+  it.each([[true, false], [false, false], [true, true], [false, true]])('keeps release independent with freeRoom=%s and closingBed=%s', (freeRoom, closingBed) => {
+    const { data, operators } = fixture()
+    data.freeRoom = freeRoom
+    data.plan.room_1_1 = ['A']
+    Object.assign(operators.A!, { operatorType: 'high', room: 'room_1_1', index: 0, group: 'g', restInFull: true, depletionRate: 0 })
+    data.groupShiftState.g = true
+    if (closingBed) {
+      data.operators.K1 = new MowerOperatorState({ name: 'K1', operatorType: 'high', room: 'dormitory_1', index: 0, group: 'g', replacement: ['Free'] })
+      operators.A!.currentIndex = 0
+      data.dorms[0]!.position = ['dormitory_1', 0]
+      data.dorms[0]!.autoFree = true
+    }
+    data.dorms[0]!.timeMicros = now
+    const queue = new MowerTaskQueue()
+    planMowerMetadata(data, queue)
+    const returning = queue.tasks.find(task => task.type === T.SHIFT_ON)!
+    expect(returning.plan.room_1_1).toEqual(['A'])
+    // A later backup dependency may postpone returning without postponing recovery completion.
+    returning.timeMicros = toMowerMicros(5)
+    const releases = queue.tasks.filter(task => task.type === T.RELEASE_DORM)
+    expect(releases).toHaveLength(freeRoom ? 1 : 0)
+    if (freeRoom) {
+      expect(releases[0]!.timeMicros).toBe(now)
+      expect(prepareMowerRelease(data, queue, releases[0]!)).toBe(true)
+      expect(releases[0]!.releaseDormTargets()).toEqual({ A: ['dormitory_1', closingBed ? 0 : 2] })
+    }
+    expect(queue.tasks).toContain(returning)
+    expect(returning.timeMicros).toBe(toMowerMicros(5))
+    expect(returning.plan.room_1_1).toEqual(['A'])
+  })
 })

@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from math import isfinite
 
 from arknights_mower.utils.resting_priority import (
     RestingTier,
@@ -28,12 +29,39 @@ class DormCandidates:
 
 
 def dorm_candidate_mood(op_data, name, now=None, *, estimates=None):
-    """候选筛选先用实读，缺失时用短期卡片预估；计时仍只用实读。"""
+    """调度使用较新的有效心情；卡片预估不生成速率或恢复期限。"""
+    observation = scheduling_mood_observation(op_data, name, now, estimates=estimates)
+    return observation[0] if observation is not None else None
+
+
+def scheduling_mood_reaches(op_data, name, limit, now=None):
+    """只比较心情，不据此生成恢复计时或速率。"""
+    mood = dorm_candidate_mood(op_data, name, now)
+    return mood is not None and mood >= limit
+
+
+def scheduling_mood_observation(op_data, name, now=None, *, estimates=None):
+    """返回决策值及来源时间，实读字段和预估缓存分别保留。"""
     now = now or datetime.now()
     op = op_data.operators.get(name)
-    if has_resting_mood(op, now):
-        return resting_mood(op, now)
-    return card_mood_estimate(op_data, name, now, estimates=estimates)
+    measured = (
+        (op.mood if op.is_resting() else resting_mood(op, now), op.time_stamp)
+        if has_resting_mood(op, now)
+        and not getattr(op, "mood_is_prediction", False)
+        and op.time_stamp <= now
+        else None
+    )
+    mood = card_mood_estimate(op_data, name, now, estimates=estimates)
+    if mood is not None:
+        values = (
+            getattr(op_data, "dorm_mood_estimates", {})
+            if estimates is None
+            else estimates
+        )
+        observed_at = values[name][1]
+        if measured is None or observed_at > measured[1]:
+            return mood, observed_at
+    return measured
 
 
 def card_mood_estimate(op_data, name, now=None, *, estimates=None):
@@ -42,13 +70,21 @@ def card_mood_estimate(op_data, name, now=None, *, estimates=None):
     estimate = (
         getattr(op_data, "dorm_mood_estimates", {}) if estimates is None else estimates
     ).get(name)
-    if estimate is not None and timedelta() <= now - estimate[1] < timedelta(hours=1):
+    if (
+        isinstance(estimate, (tuple, list))
+        and len(estimate) >= 2
+        and isinstance(estimate[1], datetime)
+        and isinstance(estimate[0], (int, float))
+        and isfinite(estimate[0])
+        and 0 <= estimate[0] <= 24
+        and timedelta() <= now - estimate[1] < timedelta(hours=1)
+    ):
         return estimate[0]
     return None
 
 
 def full_dorm_candidate(op_data, name, *, estimates=None, now=None):
-    """单回满心情判断沿用实读优先，缺失时接受有效卡片观测或排序推断。"""
+    """单回满心情判断使用较新的有效实读、卡片观测或排序推断。"""
     mood = dorm_candidate_mood(op_data, name, now, estimates=estimates)
     return mood is not None and mood >= 24
 
@@ -213,13 +249,15 @@ def dorm_candidates(
             or resting_tier(op_data, name) == RestingTier.EXCLUDED
         ):
             continue
+        mood = dorm_candidate_mood(op_data, name, now)
         if not has_resting_mood(op, now):
             if not op.is_high() and not op_data.has_rest_mood_limit(name):
                 unknown.append(name)
             continue
         if (
             not op_data.idle_rest_checked(name)
-            and resting_mood(op, now) < op.upper_limit
+            and mood is not None
+            and mood < op.upper_limit
         ):
             recovering.append(name)
         elif not op.is_high() and not op_data.has_rest_mood_limit(name):

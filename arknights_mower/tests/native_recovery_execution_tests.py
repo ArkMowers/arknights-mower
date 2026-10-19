@@ -1,5 +1,6 @@
 """恢复实读失败保留原任务，真实恢复期限唤醒不制造轮询。"""
 
+import pickle
 from copy import deepcopy
 from datetime import datetime, timedelta
 from unittest.mock import Mock
@@ -361,7 +362,7 @@ def test_fresh_full_read_allows_return_without_new_tasks(resting, monkeypatch):
     assert not getattr(task, "execution_failure", None)
 
 
-def test_old_full_sample_does_not_replace_current_observation(resting, monkeypatch):
+def test_valid_full_sample_does_not_require_redundant_observation(resting, monkeypatch):
     scheduler, _ = resting
     op = scheduler.op_data.operators["讯使"]
     op.rest_in_full, op.mood, op.mood_is_prediction = True, 24, False
@@ -369,8 +370,8 @@ def test_old_full_sample_does_not_replace_current_observation(resting, monkeypat
     task = returning_task()
     scheduler.tasks = [task]
     monkeypatch.setattr(scheduler, "_read_recovery_rooms", lambda rooms: None)
-    assert not scheduler._verify_required_recovery(task)
-    assert task.execution_failure and scheduler.tasks == [task]
+    assert scheduler._verify_required_recovery(task)
+    assert not getattr(task, "execution_failure", None) and scheduler.tasks == [task]
 
 
 def test_infra_main_blocks_physical_arrangement_until_every_required_member_is_full(
@@ -750,21 +751,23 @@ def test_unconfirmed_card_keeps_idle_return_and_original_time(
     assert op.time_stamp is None
 
 
-def test_valid_low_measurement_cannot_be_overridden_by_green_card(ordinary_idle_return):
+def test_newer_green_card_overrides_older_low_measurement(ordinary_idle_return):
     scheduler, task, op = ordinary_idle_return
     op.mood, op.time_stamp = 3.8, datetime.now()
     scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
-    assert not scheduler._verify_required_recovery(task)
+    assert scheduler._verify_required_recovery(task)
     scheduler._scan_card_moods.assert_not_called()
     assert op.mood == 3.8
 
 
-def test_resting_primary_still_requires_room_observation(ordinary_idle_return):
+def test_resting_primary_accepts_newer_card_without_room_observation(
+    ordinary_idle_return,
+):
     scheduler, task, op = ordinary_idle_return
     op.current_room, op.current_index = "dormitory_1", 4
     scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
-    assert not scheduler._verify_required_recovery(task)
-    scheduler._read_recovery_rooms.assert_called_once_with({"dormitory_1"})
+    assert scheduler._verify_required_recovery(task)
+    scheduler._read_recovery_rooms.assert_not_called()
     scheduler._scan_card_moods.assert_not_called()
 
 
@@ -790,7 +793,7 @@ def test_card_observation_releases_same_failed_idle_return(ordinary_idle_return)
 
 
 @pytest.mark.parametrize("mode", ["rescue", "emergency_task", "support", "strict"])
-def test_green_card_cannot_satisfy_special_recovery_checks(ordinary_idle_return, mode):
+def test_green_card_satisfies_special_recovery_mood_checks(ordinary_idle_return, mode):
     scheduler, task, op = ordinary_idle_return
     scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
     if mode == "rescue":
@@ -801,18 +804,18 @@ def test_green_card_cannot_satisfy_special_recovery_checks(ordinary_idle_return,
         task.exhaust_support = True
     else:
         task.strict_mood_limit = True
-    assert not scheduler._verify_required_recovery(task)
-    assert task.execution_failure
+    assert scheduler._verify_required_recovery(task)
+    assert not getattr(task, "execution_failure", None)
     assert op.time_stamp is None
     scheduler._scan_card_moods.assert_not_called()
 
 
-def test_green_card_cannot_satisfy_dorm_release(idle_return):
+def test_green_card_satisfies_dorm_release_mood(idle_return):
     scheduler, task, op = idle_return
     scheduler.op_data.dorm_mood_estimates[op.name] = (24, datetime.now())
     task.type = TaskTypes.RELEASE_DORM
-    assert not scheduler._verify_required_recovery(task)
-    assert task.execution_failure
+    assert scheduler._verify_required_recovery(task)
+    assert not getattr(task, "execution_failure", None)
     assert op.time_stamp is None
     scheduler._scan_card_moods.assert_not_called()
 
@@ -990,4 +993,111 @@ def test_unresolved_return_idle_reports_why_original_task_is_not_dispatched(
     assert task.time == original_time and task.plan == original_plan
     scheduler._idle_sleep.assert_called_once()
     assert "未完成任务暂停派发：原时间=" in caplog.text
-    assert "原因=需要回满的主班尚未实读确认恢复完成" in caplog.text
+    assert "原因=需要回满的主班心情尚未满足要求，且缺少有效恢复期限" in caplog.text
+
+
+@pytest.mark.parametrize("newer_card", [False, True])
+def test_latest_mood_decides_return_without_changing_time_evidence(
+    ordinary_idle_return, newer_card
+):
+    scheduler, task, op = ordinary_idle_return
+    now = datetime.now()
+    op.mood, op.time_stamp, op.depletion_rate = 3.8, now, 0.75
+    op.exhaust_time = now + timedelta(hours=3)
+    scheduler.op_data.dorm_mood_estimates[op.name] = (
+        24,
+        now + timedelta(seconds=-1 if not newer_card else 0),
+    )
+    if newer_card:
+        op.time_stamp = now - timedelta(seconds=1)
+    before = deepcopy(vars(op))
+    assert scheduler._verify_required_recovery(task) is newer_card
+    assert vars(op) == before
+    assert not any(
+        getattr(t, "recovery_observation_targets", None) for t in scheduler.tasks
+    )
+
+
+def test_fixed_slot_countdown_survives_restart_and_wakes_original_task(
+    resting, monkeypatch
+):
+    scheduler, _ = resting
+    data = scheduler.op_data
+    op = data.operators["讯使"]
+    old_bed = data.get_dorm_by_name(op.name)[1]
+    old_bed.name, old_bed.time = "", None
+    data.get_current_operator("dormitory_1", 1).current_room = ""
+    op.current_room, op.current_index = "dormitory_1", 1
+    op.rest_in_full = True
+    task = returning_task()
+    scheduler.tasks = [task]
+    original_time, original_plan = task.time, deepcopy(task.plan)
+    deadline = datetime.now() + timedelta(hours=3)
+
+    def read(rooms):
+        assert rooms == {"dormitory_1"}
+        op.mood, op.time_stamp, op.mood_is_prediction = 12, datetime.now(), False
+        data.refresh_dorm_time(op.current_room, 1, {"agent": op.name, "time": deadline})
+
+    monkeypatch.setattr(scheduler, "_read_recovery_rooms", read)
+    assert not scheduler._verify_required_recovery(task)
+    assert data.get_dorm_by_name(op.name)[1] is None
+    assert not getattr(task, "execution_failure", None)
+    assert scheduler.waiting_group_shifts == [task]
+    assert scheduler.tasks[0].time == deadline
+    observation = deepcopy(op.dorm_recovery_observation)
+    restored = pickle.loads(pickle.dumps(op))
+    assert restored.dorm_recovery_observation == observation
+    for _ in range(3):
+        scheduler._resume_waiting_group_shifts()
+        assert scheduler.waiting_group_shifts == [task]
+        assert len(scheduler.tasks) == 1
+    data.dorm_mood_estimates[op.name] = (24, datetime.now())
+    scheduler._resume_waiting_group_shifts()
+    assert not scheduler.waiting_group_shifts and task in scheduler.tasks
+    assert task.time == original_time
+    assert all(task.plan[room] == row for room, row in original_plan.items())
+    assert op.mood == 12 and op.dorm_recovery_observation == observation
+    data.invalidate_dorm_time(op.current_room)
+    assert op.dorm_recovery_observation is None
+    read({"dormitory_1"})
+    op.current_index = 0
+    assert op.dorm_recovery_observation is None
+
+
+def test_unchanged_low_observation_does_not_resume_on_clock_alone(resting):
+    scheduler, _ = resting
+    data = scheduler.op_data
+    op = data.operators["讯使"]
+    op.rest_in_full, op.mood = True, 23.9
+    op.time_stamp = datetime.now() - timedelta(minutes=10)
+    data.get_dorm_by_name(op.name)[1].time = datetime.now() + timedelta(seconds=60)
+    task = returning_task()
+    scheduler.tasks = [task]
+    task.recovery_waiting_observations = {op.name: op.time_stamp}
+    scheduler._suspend_group_shift(task, set())
+    original_time = task.time
+    for _ in range(3):
+        scheduler._resume_waiting_group_shifts()
+        assert scheduler.waiting_group_shifts == [task]
+        assert task not in scheduler.tasks
+    data.dorm_mood_estimates[op.name] = (24, datetime.now())
+    scheduler._resume_waiting_group_shifts()
+    assert not scheduler.waiting_group_shifts and task in scheduler.tasks
+    assert task.time == original_time and op.mood == 23.9
+
+
+def test_newer_low_card_cannot_use_an_older_near_full_countdown(resting):
+    from arknights_mower.utils.recovery_execution import recovery_ready_for_arrangement
+
+    scheduler, _ = resting
+    data = scheduler.op_data
+    op = data.operators["讯使"]
+    now = datetime.now()
+    op.mood, op.time_stamp = 23.9, now - timedelta(minutes=1)
+    data.get_dorm_by_name(op.name)[1].time = now + timedelta(seconds=60)
+    data.dorm_mood_estimates[op.name] = (6, now)
+    assert not recovery_ready_for_arrangement(
+        data, op.name, sampled_after=None, now=now
+    )
+    assert op.mood == 23.9

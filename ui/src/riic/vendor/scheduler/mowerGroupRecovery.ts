@@ -1,16 +1,28 @@
-import {hasObservedFullMood,type MowerOperatorState} from './mowerOperatorState'
+import {mowerDormCandidateMood,mowerSchedulingMoodObservation} from './mowerAlphaCandidates'
+import {type MowerOperatorState} from './mowerOperatorState'
 import type {MowerSchedulingData} from './mowerSchedulingData'
-import {toMowerMicros} from './mowerTaskQueue'
+import {toMowerMicros,roundMowerMicros} from './mowerTaskQueue'
 import {alphaDormMinutes} from './mowerAlphaTaskProtection'
 import type {MowerTaskSchedulingOptions} from './mowerTaskScheduling'
 
+export function mowerRecoveryMoodComplete(data:MowerSchedulingData,op:MowerOperatorState|undefined):boolean {
+ const mood=op?mowerDormCandidateMood(data,op.name):undefined
+ return !!op&&mood!==undefined&&mood>=op.upperLimit
+}
+export function mowerObservedRecoveryDeadline(data:MowerSchedulingData,op:MowerOperatorState):number|undefined {
+ const bed=data.getDormByName(op.name)?.[1]
+ if(bed)return bed.timeMicros
+ const observed=op.dormRecoveryObservation
+ if(!observed||op.moodIsPrediction||observed[0]!==op.currentRoom||observed[1]!==op.currentIndex||observed[2]!==op.timeStampMicros)return undefined
+ return op.mood<24?observed[2]+roundMowerMicros((op.upperLimit-op.mood)*(observed[3]-observed[2])/(24-op.mood)):observed[3]
+}
 /** Work primaries participating in group recovery, excluding standby and personal rest. */
 export function mowerGroupRecoveryWorkers(data:MowerSchedulingData,group:string):MowerOperatorState[]{
  return data.shiftGroupMembers(group).map(name=>data.operators[name]!).filter(op=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&!op.independentRest&&!data.canStandby(op)&&(op.isResting()||!op.currentRoom))
 }
 function completedAt(data:MowerSchedulingData,op:MowerOperatorState):number|undefined {
- if(hasObservedFullMood(op)||!op.currentRoom&&!op.moodIsPrediction&&data.restMoodComplete(op.name))return data.nowMicros
- return data.getDormByName(op.name)?.[1].timeMicros
+ if(mowerRecoveryMoodComplete(data,op)||!op.currentRoom&&!op.moodIsPrediction&&data.restMoodComplete(op.name))return data.nowMicros
+ return mowerObservedRecoveryDeadline(data,op)
 }
 /** The extra-wait cap limits only the gap wait; explicit full recovery remains binding. */
 export function mowerGroupRecoveryDeadline(data:MowerSchedulingData,group:string):{requiredNames:string[];timeMicros:number|undefined}{
@@ -50,9 +62,12 @@ export function mowerGroupRecoveryDeadline(data:MowerSchedulingData,group:string
 /** Actual recovery may finish within the existing room-operation allowance. */
 export function mowerRecoveryReady(data:MowerSchedulingData,op:MowerOperatorState|undefined,options:MowerTaskSchedulingOptions={}):boolean {
  if(!op)return false
+ if(mowerRecoveryMoodComplete(data,op))return true
  if(op.moodIsPrediction||op.timeStampMicros===undefined||!Number.isFinite(op.mood)||op.mood<0||op.mood>24)return false
- if(hasObservedFullMood(op)||!op.currentRoom&&data.restMoodComplete(op.name))return true
+ const observation=mowerSchedulingMoodObservation(data,op.name)
+ if(observation&&observation[1]>op.timeStampMicros)return false
+ if(!op.currentRoom&&data.restMoodComplete(op.name))return true
  if(!op.isResting())return false
- const bed=data.getDormByName(op.name)?.[1],due=bed?.timeMicros
- return bed?.position[0]===op.currentRoom&&bed.position[1]===op.currentIndex&&due!==undefined&&due>data.nowMicros&&due-data.nowMicros<=toMowerMicros(alphaDormMinutes(op.currentRoom,options)/60)
+ const due=mowerObservedRecoveryDeadline(data,op)
+ return due!==undefined&&due>data.nowMicros&&due-data.nowMicros<=toMowerMicros(alphaDormMinutes(op.currentRoom,options)/60)
 }

@@ -226,20 +226,10 @@ def ordinary_recall_mood_admissible(data, recalled, candidates, *, now=None):
             and not data._can_standby(op)
         )
 
+    from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+
     def mood(op):
-        if (
-            op.time_stamp is None
-            or op.time_stamp > now
-            or getattr(op, "mood_is_prediction", False)
-            or not isfinite(op.mood)
-            or not 0 <= op.mood <= 24
-            or not isfinite(op.depletion_rate)
-        ):
-            return None
-        if op.is_resting():
-            return op.mood
-        elapsed = (now - op.time_stamp).total_seconds() / 3600
-        return max(0, min(24, op.mood - max(0, op.depletion_rate) * elapsed))
+        return dorm_candidate_mood(data, op.name, now)
 
     request_moods = [
         (op, value)
@@ -311,12 +301,10 @@ def recall_can_sustain(
         rates = estimated_recall_rates(original, admitted, now=now)
     work, recovery = rates
 
+    from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+
     def mood_at_check(op):
-        # 休息期间保守沿用实读心情，不把旧工作掉率套在恢复阶段。
-        if op.is_resting():
-            return op.mood
-        elapsed = max(0, (now - op.time_stamp).total_seconds() / 3600)
-        return max(0, min(24, op.mood - max(0, op.depletion_rate) * elapsed))
+        return dorm_candidate_mood(original, op.name, now)
 
     connected = replacement_dependencies(
         original,
@@ -332,14 +320,7 @@ def recall_can_sustain(
         observed = original.operators.get(name)
         if op is None or not op.current_room:
             continue
-        if (
-            observed is None
-            or observed.time_stamp is None
-            or getattr(observed, "mood_is_prediction", False)
-            or observed.time_stamp > now
-            or not isfinite(observed.mood)
-            or not 0 <= observed.mood <= 24
-        ):
+        if observed is None or mood_at_check(observed) is None:
             return False
         if (
             op.is_resting()

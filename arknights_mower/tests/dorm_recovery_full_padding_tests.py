@@ -99,7 +99,9 @@ def test_low_fixed_cover_and_priority_target_arriving_together_confirm_in_two_st
 
 
 @pytest.mark.parametrize("measured", [None, 5])
-def test_green_card_padding_respects_numeric_mood(solver, measured):
+def test_newer_green_card_can_supply_padding_without_overwriting_numeric_mood(
+    solver, measured
+):
     data = solver.op_data
     op = data.operators["黑角"]
     op.mood = measured or 24
@@ -116,12 +118,8 @@ def test_green_card_padding_respects_numeric_mood(solver, measured):
 
     solver.get_agent_from_room.side_effect = read_roster
     arrange(solver)
-    if measured is None:
-        assert solver.confirms == [["杜林", "琴柳", "黑角", "银灰", ""], FINAL]
-        assert data.operators["银灰"].dorm_recovery_index == 3
-    else:
-        assert solver.confirms == [FINAL]
-        assert not data.operators["银灰"].dorm_recovery_room
+    assert solver.confirms == [["杜林", "琴柳", "黑角", "银灰", ""], FINAL]
+    assert data.operators["银灰"].dorm_recovery_index == 3
     assert op.mood == (measured or 24)
     assert (op.time_stamp is None) == (measured is None)
 
@@ -138,12 +136,13 @@ def test_invalid_green_card_cache_cannot_supply_padding(solver, age, inferred):
     assert not data.operators["银灰"].dorm_recovery_room
 
 
-def test_new_yellow_card_preserves_valid_full_measurement(solver):
+def test_new_yellow_card_excludes_padding_without_overwriting_measurement(solver):
     data = solver.op_data
     data.dorm_mood_estimates["黑角"] = (23.9, datetime.now())
     arrange(solver)
-    assert solver.confirms == [["杜林", "琴柳", "黑角", "银灰", ""], FINAL]
-    assert data.operators["银灰"].dorm_recovery_index == 3
+    assert solver.confirms == [FINAL]
+    assert not data.operators["银灰"].dorm_recovery_room
+    assert data.operators["黑角"].mood == 24
 
 
 def test_green_card_single_provider_cannot_supply_padding(solver):
@@ -171,7 +170,7 @@ def test_inferred_full_padding_confirms_without_numeric_mood(solver):
 @pytest.mark.parametrize("measured", [None, -1, 5, 23, 24])
 @pytest.mark.parametrize("snapshot", [False, True])
 @pytest.mark.parametrize("inferred", [False, True])
-def test_full_candidate_uses_valid_measurement_before_estimate(
+def test_full_candidate_uses_newer_estimate_without_mutating_measurement(
     solver, measured, snapshot, inferred
 ):
     data = solver.op_data
@@ -183,9 +182,12 @@ def test_full_candidate_uses_valid_measurement_before_estimate(
     if not snapshot:
         data.dorm_mood_estimates.update(estimates)
 
-    assert full_dorm_candidate(
-        data, op.name, estimates=estimates if snapshot else None, now=now
-    ) is (measured in (None, -1, 24))
+    assert (
+        full_dorm_candidate(
+            data, op.name, estimates=estimates if snapshot else None, now=now
+        )
+        is True
+    )
     assert op.mood == (24 if measured is None else measured)
     assert op.time_stamp == (None if measured is None else now - timedelta(minutes=10))
 
