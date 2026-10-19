@@ -37,264 +37,279 @@
       :on-resize="windowShell.startResize"
       :on-move="windowShell.startMove"
     />
-    <n-dialog-provider>
-      <n-modal
-        v-model:show="closeModal"
-        preset="card"
-        title="关闭 Mower"
-        style="max-width: 430px"
-        :mask-closable="!closeBusy"
-        :closable="!closeBusy"
-      >
-        <n-space vertical :size="16">
-          <n-text depth="3">关闭窗口不一定会停止后台调度。请选择本次操作：</n-text>
-          <n-radio-group v-model:value="closeChoice" :disabled="closeBusy">
-            <n-space vertical>
-              <n-radio v-if="closeTrayAvailable" value="tray">收起到托盘（继续运行）</n-radio>
-              <n-radio value="exit">停止任务并彻底退出</n-radio>
-            </n-space>
-          </n-radio-group>
-          <n-checkbox v-model:checked="closeRemember" :disabled="closeBusy">
-            记住我的选择（可在「界面缩放」中更改）
-          </n-checkbox>
-          <n-alert v-if="closeError" type="error">{{ closeError }}</n-alert>
-          <n-text v-if="closeStatus" depth="3">{{ closeStatus }}</n-text>
-          <n-space justify="end">
-            <n-button :disabled="closeBusy" @click="closeModal = false">取消</n-button>
-            <n-button
-              type="primary"
-              :loading="closeBusy"
-              @click="performWindowClose(closeChoice, closeRemember)"
-              >确定</n-button
-            >
-          </n-space>
-        </n-space>
-      </n-modal>
-      <n-message-provider>
-        <n-loading-bar-provider>
-          <n-watermark
-            :content="watermarkData"
-            cross
-            fullscreen
-            :font-size="16"
-            :line-height="32"
-            :width="400"
-            :height="384"
-            :x-offset="12"
-            :y-offset="60"
-            :rotate="-15"
-          />
-          <n-layout
-            :has-sider="!isMobileNav"
-            class="outer-layout"
-            :class="{ 'outer-layout--collapsed': sidebarCollapsed }"
-          >
-            <n-layout-sider
-              v-if="!isMobileNav"
-              :bordered="!windowShellActive"
-              collapse-mode="width"
-              :collapsed-width="64"
-              :width="210"
-              v-model:collapsed="sidebarCollapsed"
-              :show-trigger="!windowShellActive"
-            >
-              <n-menu
-                :indent="24"
-                :collapsed-width="64"
-                :collapsed-icon-size="22"
-                :options="menuOptions"
-                @update:value="handleMenuClick"
-              />
-            </n-layout-sider>
-            <n-layout-content class="layout-content-container">
-              <n-alert v-if="config_save_error" type="error" title="配置保存失败" role="alert">
-                {{ config_save_error }}。修改仍保留在当前页面。
-                <template #action>
-                  <n-button
-                    :loading="config_saving"
-                    @click="config_store.save_config().catch(() => {})"
-                    >重试保存</n-button
-                  >
-                </template>
-              </n-alert>
-              <CrashRecoveryNotice v-if="loaded" />
-              <router-view v-if="loaded" />
-              <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
-              <Feedback />
-              <GlobalUpdateDrop v-if="loaded && updates_enabled === true" />
-              <n-modal
-                v-model:show="showUpdateNoticeModal"
-                preset="card"
-                style="width: min(720px, calc(100vw - 32px))"
-                title="版本更新"
-                :mask-closable="false"
-                :close-on-esc="false"
-                closable
-                @close="handleUpdateNoticeAck"
+    <n-notification-provider
+      placement="top-right"
+      :container-style="windowShellActive ? { top: '48px' } : undefined"
+    >
+      <n-dialog-provider>
+        <n-modal
+          v-model:show="closeModal"
+          preset="card"
+          title="关闭 Mower"
+          style="max-width: 430px"
+          :mask-closable="!closeBusy"
+          :closable="!closeBusy"
+        >
+          <n-space vertical :size="16">
+            <n-text depth="3">关闭窗口不一定会停止后台调度。请选择本次操作：</n-text>
+            <n-radio-group v-model:value="closeChoice" :disabled="closeBusy">
+              <n-space vertical>
+                <n-radio v-if="closeTrayAvailable" value="tray">收起到托盘（继续运行）</n-radio>
+                <n-radio value="exit">停止任务并彻底退出</n-radio>
+              </n-space>
+            </n-radio-group>
+            <n-checkbox v-model:checked="closeRemember" :disabled="closeBusy">
+              记住我的选择（可在「界面缩放」中更改）
+            </n-checkbox>
+            <n-alert v-if="closeError" type="error">{{ closeError }}</n-alert>
+            <n-text v-if="closeStatus" depth="3">{{ closeStatus }}</n-text>
+            <n-space justify="end">
+              <n-button :disabled="closeBusy" @click="closeModal = false">取消</n-button>
+              <n-button
+                type="primary"
+                :loading="closeBusy"
+                @click="performWindowClose(closeChoice, closeRemember)"
+                >确定</n-button
               >
-                <div style="font-size: 18px; font-weight: 600">
-                  {{ `已更新到 ${updateNotice.current_version}` }}
-                </div>
-                <div
-                  v-if="updateNotice.previous_version"
-                  style="margin-top: 8px; color: var(--n-text-color-3)"
+            </n-space>
+          </n-space>
+        </n-modal>
+        <n-message-provider>
+          <n-loading-bar-provider>
+            <n-watermark
+              :content="watermarkData"
+              cross
+              fullscreen
+              :font-size="16"
+              :line-height="32"
+              :width="400"
+              :height="384"
+              :x-offset="12"
+              :y-offset="60"
+              :rotate="-15"
+            />
+            <n-layout
+              :has-sider="!isMobileNav"
+              class="outer-layout"
+              :class="{ 'outer-layout--collapsed': sidebarCollapsed }"
+            >
+              <n-layout-sider
+                v-if="!isMobileNav"
+                :bordered="!windowShellActive"
+                collapse-mode="width"
+                :collapsed-width="64"
+                :width="210"
+                v-model:collapsed="sidebarCollapsed"
+                :show-trigger="!windowShellActive"
+              >
+                <n-menu
+                  :indent="24"
+                  :collapsed-width="64"
+                  :collapsed-icon-size="22"
+                  :options="menuOptions"
+                  @update:value="handleMenuClick"
+                />
+              </n-layout-sider>
+              <n-layout-content class="layout-content-container">
+                <ConfigSaveNotice v-if="$route.name === 'log'" />
+                <n-alert
+                  v-if="config_save_error && $route.name !== 'log'"
+                  type="error"
+                  title="配置保存失败"
+                  role="alert"
                 >
-                  {{ `从 ${updateNotice.previous_version} 更新` }}
-                </div>
-                <div
-                  style="margin-top: 16px; max-height: 50vh; overflow: auto; line-height: 1.6"
-                  v-html="renderedChangelog"
-                ></div>
-                <div style="margin-top: 20px; display: flex; justify-content: flex-end">
-                  <n-button type="primary" @click="handleUpdateNoticeAck">我知道了</n-button>
-                </div>
-              </n-modal>
-            </n-layout-content>
-            <template v-if="windowShellActive && !isMobileNav">
-              <div class="sider-fade-zone" @mousedown.stop @click="toggleSidebar">
-                <div
-                  class="sider-fade-btn"
-                  :class="{ 'sider-fade-btn--collapsed': sidebarCollapsed }"
-                  aria-hidden="true"
+                  {{ config_save_error }}。修改仍保留在当前页面。
+                  <template #action>
+                    <n-button
+                      :loading="config_saving"
+                      @click="config_store.save_config().catch(() => {})"
+                      >重试保存</n-button
+                    >
+                  </template>
+                </n-alert>
+                <CrashRecoveryNotice v-if="loaded" :floating="$route.name === 'log'" />
+                <router-view v-if="loaded" />
+                <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
+                <Feedback />
+                <GlobalUpdateDrop v-if="loaded && updates_enabled === true" />
+                <n-modal
+                  v-model:show="showUpdateNoticeModal"
+                  preset="card"
+                  style="width: min(720px, calc(100vw - 32px))"
+                  title="版本更新"
+                  :mask-closable="false"
+                  :close-on-esc="false"
+                  closable
+                  @close="handleUpdateNoticeAck"
                 >
-                  <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path
-                      d="M5.64645 3.14645C5.45118 3.34171 5.45118 3.65829 5.64645 3.85355L9.79289 8L5.64645 12.1464C5.45118 12.3417 5.45118 12.6583 5.64645 12.8536C5.84171 13.0488 6.15829 13.0488 6.35355 12.8536L10.8536 8.35355C11.0488 8.15829 11.0488 7.84171 10.8536 7.64645L6.35355 3.14645C6.15829 2.95118 5.84171 2.95118 5.64645 3.14645Z"
-                      fill="currentColor"
-                    />
-                  </svg>
+                  <div style="font-size: 18px; font-weight: 600">
+                    {{ `已更新到 ${updateNotice.current_version}` }}
+                  </div>
+                  <div
+                    v-if="updateNotice.previous_version"
+                    style="margin-top: 8px; color: var(--n-text-color-3)"
+                  >
+                    {{ `从 ${updateNotice.previous_version} 更新` }}
+                  </div>
+                  <div
+                    style="margin-top: 16px; max-height: 50vh; overflow: auto; line-height: 1.6"
+                    v-html="renderedChangelog"
+                  ></div>
+                  <div style="margin-top: 20px; display: flex; justify-content: flex-end">
+                    <n-button type="primary" @click="handleUpdateNoticeAck">我知道了</n-button>
+                  </div>
+                </n-modal>
+              </n-layout-content>
+              <template v-if="windowShellActive && !isMobileNav">
+                <div class="sider-fade-zone" @mousedown.stop @click="toggleSidebar">
+                  <div
+                    class="sider-fade-btn"
+                    :class="{ 'sider-fade-btn--collapsed': sidebarCollapsed }"
+                    aria-hidden="true"
+                  >
+                    <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path
+                        d="M5.64645 3.14645C5.45118 3.34171 5.45118 3.65829 5.64645 3.85355L9.79289 8L5.64645 12.1464C5.45118 12.3417 5.45118 12.6583 5.64645 12.8536C5.84171 13.0488 6.15829 13.0488 6.35355 12.8536L10.8536 8.35355C11.0488 8.15829 11.0488 7.84171 10.8536 7.64645L6.35355 3.14645C6.15829 2.95118 5.84171 2.95118 5.64645 3.14645Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                  </div>
                 </div>
-              </div>
-            </template>
-            <n-layout-footer v-if="isMobileNav">
-              <n-tabs type="line" justify-content="space-evenly" size="small">
-                <n-tab name="日志" @click="$router.push('/')">
-                  <div style="display: flex; flex-direction: column; align-items: center">
-                    <n-icon size="20" style="margin-bottom: -1px" :component="BookOutline" />
-                    日志
-                  </div>
-                </n-tab>
-                <n-tab name="设置" @click="showModal2 = true">
-                  <div style="display: flex; flex-direction: column; align-items: center">
-                    <n-icon size="20" style="margin-bottom: -1px" :component="Settings" />
-                    设置
-                  </div>
-                  <n-modal v-model:show="showModal2">
-                    <n-card
-                      style="width: 300px"
-                      title="全部设置"
-                      :bordered="false"
-                      size="huge"
-                      role="dialog"
-                      aria-modal="true"
-                    >
-                      <div>
-                        <n-button @click=";((showModal2 = false), $router.push('/mowersettings'))">
-                          mower设置
-                        </n-button>
-                      </div>
-                      <div>
-                        <n-button @click=";((showModal2 = false), $router.push('/maasettings'))">
-                          日常设置
-                        </n-button>
-                      </div>
-                    </n-card>
-                  </n-modal>
-                </n-tab>
-                <n-tab name="排班" @click="$router.push('/plan-editor')">
-                  <div style="display: flex; flex-direction: column; align-items: center">
-                    <n-icon size="20" style="margin-bottom: -1px" :component="Home" />
-                    排班
-                  </div>
-                </n-tab>
-                <n-tab name="养成规划" @click="$router.push('/mastery-recommendation')">
-                  <div style="display: flex; flex-direction: column; align-items: center">
-                    <n-icon size="20" style="margin-bottom: -1px" :component="TrendingUp" />
-                    养成
-                  </div>
-                </n-tab>
-                <n-tab name="数据图表" @click="showModal = true">
-                  <div style="display: flex; flex-direction: column; align-items: center">
-                    <n-icon size="20" style="margin-bottom: -1px" :component="StatsChart" />
-                    图表
-                  </div>
-                  <n-modal v-model:show="showModal">
-                    <n-card
-                      style="width: 300px"
-                      title="数据图表"
-                      :bordered="false"
-                      size="huge"
-                      role="dialog"
-                      aria-modal="true"
-                    >
-                      <div>
-                        <n-button @click=";((showModal = false), $router.push('/record/line'))">
-                          心情曲线
-                        </n-button>
-                      </div>
-                      <div>
-                        <n-button @click=";((showModal = false), $router.push('/record/pie'))">
-                          心情饼图
-                        </n-button>
-                      </div>
-                      <div>
-                        <n-button @click=";((showModal = false), $router.push('/record/depot'))">
-                          仓库
-                        </n-button>
-                      </div>
-                      <div>
-                        <n-button @click=";((showModal = false), $router.push('/record/report'))">
-                          基建报告
-                        </n-button>
-                      </div>
-                      <div>
-                        <n-button
-                          @click=";((showModal = false), $router.push('/record/trading_analysis'))"
-                        >
-                          贸易订单分析
-                        </n-button>
-                      </div>
-                      <div>
-                        <n-button
-                          @click=";((showModal = false), $router.push('/record/recycling'))"
-                        >
-                          回收站材料统计
-                        </n-button>
-                      </div>
-                      <div>
-                        <n-button
-                          @click=";((showModal = false), $router.push('/record/log-schedule'))"
-                        >
-                          日志调度
-                        </n-button>
-                      </div>
-                    </n-card>
-                  </n-modal>
-                </n-tab>
-                <n-tab name="帮助" @click="$router.push('/doc')">
-                  <div style="display: flex; flex-direction: column; align-items: center">
-                    <n-icon size="20" style="margin-bottom: -1px" :component="HelpCircle" />
-                    帮助
-                  </div>
-                </n-tab>
-                <n-tab name="资源" @click="$router.push('/readme')">
-                  <div style="display: flex; flex-direction: column; align-items: center">
-                    <n-icon size="20" style="margin-bottom: -1px" :component="Bag" />
-                    资源
-                  </div>
-                </n-tab>
-                <n-tab name="Mower AI 助手" @click="handleMenuClick('chatbot')">
-                  <div style="display: flex; flex-direction: column; align-items: center">
-                    <n-icon size="20" style="margin-bottom: -1px" :component="MowerAIIcon" />
-                    AI助手
-                  </div>
-                </n-tab>
-              </n-tabs>
-            </n-layout-footer>
-          </n-layout>
-        </n-loading-bar-provider>
-      </n-message-provider>
-    </n-dialog-provider>
+              </template>
+              <n-layout-footer v-if="isMobileNav">
+                <n-tabs type="line" justify-content="space-evenly" size="small">
+                  <n-tab name="日志" @click="$router.push('/')">
+                    <div style="display: flex; flex-direction: column; align-items: center">
+                      <n-icon size="20" style="margin-bottom: -1px" :component="BookOutline" />
+                      日志
+                    </div>
+                  </n-tab>
+                  <n-tab name="设置" @click="showModal2 = true">
+                    <div style="display: flex; flex-direction: column; align-items: center">
+                      <n-icon size="20" style="margin-bottom: -1px" :component="Settings" />
+                      设置
+                    </div>
+                    <n-modal v-model:show="showModal2">
+                      <n-card
+                        style="width: 300px"
+                        title="全部设置"
+                        :bordered="false"
+                        size="huge"
+                        role="dialog"
+                        aria-modal="true"
+                      >
+                        <div>
+                          <n-button
+                            @click=";((showModal2 = false), $router.push('/mowersettings'))"
+                          >
+                            mower设置
+                          </n-button>
+                        </div>
+                        <div>
+                          <n-button @click=";((showModal2 = false), $router.push('/maasettings'))">
+                            日常设置
+                          </n-button>
+                        </div>
+                      </n-card>
+                    </n-modal>
+                  </n-tab>
+                  <n-tab name="排班" @click="$router.push('/plan-editor')">
+                    <div style="display: flex; flex-direction: column; align-items: center">
+                      <n-icon size="20" style="margin-bottom: -1px" :component="Home" />
+                      排班
+                    </div>
+                  </n-tab>
+                  <n-tab name="养成规划" @click="$router.push('/mastery-recommendation')">
+                    <div style="display: flex; flex-direction: column; align-items: center">
+                      <n-icon size="20" style="margin-bottom: -1px" :component="TrendingUp" />
+                      养成
+                    </div>
+                  </n-tab>
+                  <n-tab name="数据图表" @click="showModal = true">
+                    <div style="display: flex; flex-direction: column; align-items: center">
+                      <n-icon size="20" style="margin-bottom: -1px" :component="StatsChart" />
+                      图表
+                    </div>
+                    <n-modal v-model:show="showModal">
+                      <n-card
+                        style="width: 300px"
+                        title="数据图表"
+                        :bordered="false"
+                        size="huge"
+                        role="dialog"
+                        aria-modal="true"
+                      >
+                        <div>
+                          <n-button @click=";((showModal = false), $router.push('/record/line'))">
+                            心情曲线
+                          </n-button>
+                        </div>
+                        <div>
+                          <n-button @click=";((showModal = false), $router.push('/record/pie'))">
+                            心情饼图
+                          </n-button>
+                        </div>
+                        <div>
+                          <n-button @click=";((showModal = false), $router.push('/record/depot'))">
+                            仓库
+                          </n-button>
+                        </div>
+                        <div>
+                          <n-button @click=";((showModal = false), $router.push('/record/report'))">
+                            基建报告
+                          </n-button>
+                        </div>
+                        <div>
+                          <n-button
+                            @click="
+                              ;((showModal = false), $router.push('/record/trading_analysis'))
+                            "
+                          >
+                            贸易订单分析
+                          </n-button>
+                        </div>
+                        <div>
+                          <n-button
+                            @click=";((showModal = false), $router.push('/record/recycling'))"
+                          >
+                            回收站材料统计
+                          </n-button>
+                        </div>
+                        <div>
+                          <n-button
+                            @click=";((showModal = false), $router.push('/record/log-schedule'))"
+                          >
+                            日志调度
+                          </n-button>
+                        </div>
+                      </n-card>
+                    </n-modal>
+                  </n-tab>
+                  <n-tab name="帮助" @click="$router.push('/doc')">
+                    <div style="display: flex; flex-direction: column; align-items: center">
+                      <n-icon size="20" style="margin-bottom: -1px" :component="HelpCircle" />
+                      帮助
+                    </div>
+                  </n-tab>
+                  <n-tab name="资源" @click="$router.push('/readme')">
+                    <div style="display: flex; flex-direction: column; align-items: center">
+                      <n-icon size="20" style="margin-bottom: -1px" :component="Bag" />
+                      资源
+                    </div>
+                  </n-tab>
+                  <n-tab name="Mower AI 助手" @click="handleMenuClick('chatbot')">
+                    <div style="display: flex; flex-direction: column; align-items: center">
+                      <n-icon size="20" style="margin-bottom: -1px" :component="MowerAIIcon" />
+                      AI助手
+                    </div>
+                  </n-tab>
+                </n-tabs>
+              </n-layout-footer>
+            </n-layout>
+          </n-loading-bar-provider>
+        </n-message-provider>
+      </n-dialog-provider>
+    </n-notification-provider>
   </n-config-provider>
 </template>
 
@@ -335,6 +350,7 @@ import {
 import Feedback from '@/components/Feedback.vue'
 import GlobalUpdateDrop from '@/components/GlobalUpdateDrop.vue'
 import CrashRecoveryNotice from '@/components/CrashRecoveryNotice.vue'
+import ConfigSaveNotice from '@/components/ConfigSaveNotice.vue'
 import WindowTitlebar from '@/components/WindowTitlebar.vue'
 import {
   mowerDarkCssVariables,

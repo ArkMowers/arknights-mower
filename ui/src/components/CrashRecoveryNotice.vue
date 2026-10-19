@@ -1,6 +1,9 @@
 <script setup>
 import { inject, onMounted, onUnmounted } from 'vue'
 import { createCrashRecovery } from '@/utils/crashRecovery'
+import StatusNotification from '@/components/StatusNotification.vue'
+
+defineProps({ floating: { type: Boolean, default: false } })
 
 const recovery = createCrashRecovery({
   axios: inject('axios'),
@@ -25,7 +28,7 @@ onUnmounted(() => {
 
 <template>
   <n-alert
-    v-if="status.active"
+    v-if="!floating && status.active"
     type="info"
     :title="status.automatic === false ? '自动恢复已停止' : '正在自动恢复'"
     role="status"
@@ -40,4 +43,22 @@ onUnmounted(() => {
       <n-text v-if="error" type="error">{{ error }}</n-text>
     </n-space>
   </n-alert>
+  <StatusNotification
+    v-if="floating"
+    :show="status.active"
+    :type="status.automatic === false ? 'warning' : 'info'"
+    :title="status.automatic === false ? '自动恢复已停止' : '正在自动恢复'"
+  >
+    <n-space vertical :size="8">
+      <n-text v-if="status.automatic !== false">
+        程序发生异常后会自动重新读取设备、驻员和心情，再继续调度；暂时失败时会等待并重试。
+      </n-text>
+      <n-text v-else>任务已停止。需要继续时，可使用原有的开始按钮。</n-text>
+      <n-text v-if="status.message" depth="3">{{ status.message }}</n-text>
+      <n-text v-if="error" type="error">{{ error }}</n-text>
+    </n-space>
+    <template #action>
+      <n-button size="small" :loading="busy" @click="recovery.refresh">刷新状态</n-button>
+    </template>
+  </StatusNotification>
 </template>
