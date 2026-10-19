@@ -11,6 +11,7 @@ from arknights_mower.utils.dorm_candidates import (
     dorm_candidate_mood,
     dorm_task_reservations,
     retained_task_reservations,
+    scheduling_mood_reaches,
 )
 from arknights_mower.utils.dorm_recovery import compact_dorm_vacancies
 from arknights_mower.utils.dorm_skills import (
@@ -695,7 +696,7 @@ class EmergencyRecoveryMixin:
             if name not in state.get("ready_members", ())
             and (op := data.operators.get(name)) is not None
             and not data._can_standby(op)
-            and (not has_resting_mood(op) or op.mood_is_prediction or op.mood < target)
+            and (not scheduling_mood_reaches(self.op_data, name, target))
         }
         capacity = sum(len(row) for row in layout.values())
         spare = max(0, capacity - len(need))
@@ -1052,7 +1053,7 @@ class EmergencyRecoveryMixin:
             for name, target in state["targets"].items()
             if (op := self.op_data.operators.get(name)) is not None
             and op.is_resting()
-            and (not has_resting_mood(op) or op.mood_is_prediction or op.mood < target)
+            and (not scheduling_mood_reaches(self.op_data, name, target))
             and (
                 op.current_room in rotation_rooms
                 or op.need_to_refresh()
@@ -1170,9 +1171,7 @@ class EmergencyRecoveryMixin:
                 for name in state.get("ready_members", [])
                 if (op := self.op_data.operators.get(name)) is not None
                 and not op.is_working()
-                and has_resting_mood(op)
-                and not op.mood_is_prediction
-                and op.mood >= state["targets"][name]
+                and scheduling_mood_reaches(self.op_data, name, state["targets"][name])
             ]
             self._emergency_update_targets()
             self._emergency_release_ready()
@@ -1350,9 +1349,7 @@ class EmergencyRecoveryMixin:
                 or name in reserved_names
                 or (op.current_room, op.current_index) in reserved_slots
                 or op.is_working()
-                or not has_resting_mood(op)
-                or op.mood_is_prediction
-                or op.mood < target
+                or not scheduling_mood_reaches(self.op_data, name, target)
             ):
                 continue
             if not op.current_room:
@@ -1452,11 +1449,8 @@ class EmergencyRecoveryMixin:
             self.task = previous_task
         for name in members:
             op = self.op_data.operators[name]
-            if (
-                not op.current_room
-                and has_resting_mood(op)
-                and not op.mood_is_prediction
-                and op.mood >= state["targets"][name]
+            if not op.current_room and scheduling_mood_reaches(
+                self.op_data, name, state["targets"][name]
             ):
                 ready.add(name)
                 op.depletion_rate = 0
@@ -1549,7 +1543,8 @@ class EmergencyRecoveryMixin:
             op = data.operators[name]
             if data._can_standby(op):
                 continue
-            if not has_resting_mood(op) or op.mood_is_prediction:
+            mood = dorm_candidate_mood(data, name)
+            if mood is None:
                 return None
             target = (
                 op.upper_limit
@@ -1558,7 +1553,7 @@ class EmergencyRecoveryMixin:
                     name, recovery_target(data, name)[0]
                 )
             )
-            if op.mood < target:
+            if mood < target:
                 groups[op.group or name] = data.groups.get(op.group, [name])
         if not groups:
             return plan

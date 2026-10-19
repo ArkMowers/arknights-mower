@@ -427,7 +427,7 @@ def test_idle_release_of_main_keeps_later_group_return(solver, priority):
     member.current_room, member.current_index = "", -1
     bed.reset()
     regenerated = plan_metadata(data, tasks)
-    assert not any(task.type == TaskTypes.RELEASE_DORM for task in regenerated)
+    assert not any(member.name in task.release_dorm_targets() for task in regenerated)
     assert next(task for task in regenerated if task.type == TaskTypes.SHIFT_ON).plan[
         "meeting"
     ] == ["伊内丝", "银灰"]
@@ -473,9 +473,11 @@ def test_main_idle_releases_keep_ten_minute_merge(solver):
     tasks = plan_metadata(data, [])
 
     releases = [task for task in tasks if task.type == TaskTypes.RELEASE_DORM]
-    assert len(releases) == 1
+    assert len(releases) == 2
     assert set(releases[0].release_dorm_targets()) == {"银灰", "讯使"}
     assert releases[0].time == now + timedelta(minutes=15)
+    assert set(releases[1].release_dorm_targets()) == {"伊内丝"}
+    assert releases[1].time == now + timedelta(minutes=300)
     assert next(task for task in tasks if task.type == TaskTypes.SHIFT_ON).plan[
         "meeting"
     ] == ["伊内丝", "银灰"]
@@ -2379,3 +2381,46 @@ def test_priority_reorder_keeps_named_group_cover_in_fixed_bed(solver):
     assert plan["dormitory_1"][3] == "银灰"
     assert (fixed.name, fixed.time) == before
     assert all(bed.name != "伊内丝" for bed in data.dorm)
+
+
+@pytest.mark.parametrize("free_room", [True, False])
+@pytest.mark.parametrize("closing_bed", [True, False])
+def test_completed_group_keeps_personal_release_when_return_is_deferred(
+    solver, free_room, closing_bed
+):
+    if closing_bed:
+        configure_explicit_free_bed(solver)
+    shift_off(solver)
+    data = solver.op_data
+    data.config.free_room = free_room
+    config.conf.group_rest_in_full_on_mood_gap = False
+    now = datetime.now()
+    for bed in data.dorm:
+        if not bed.name:
+            continue
+        bed.time = now
+        member = data.operators[bed.name]
+        member.mood = member.upper_limit
+        member.time_stamp = now
+        member.depletion_rate = 0
+    data.operators["银灰"].rest_in_full = True
+
+    tasks = plan_metadata(data, [])
+    returning = next(task for task in tasks if task.type == TaskTypes.SHIFT_ON)
+    returning.time = now + timedelta(hours=5)
+    releases = [task for task in tasks if task.type == TaskTypes.RELEASE_DORM]
+    targets = {name for task in releases for name in task.release_dorm_targets()}
+    if free_room:
+        assert {"伊内丝", "银灰", "讯使"} <= targets
+    else:
+        assert not targets
+    if free_room:
+        release = next(
+            task for task in releases if "银灰" in task.release_dorm_targets()
+        )
+        solver.tasks = tasks
+        assert solver.prepare_release_dorm(release)
+        assert returning in solver.tasks
+    assert returning.time == now + timedelta(hours=5)
+    assert returning.plan["meeting"] == ["伊内丝", "银灰"]
+    assert returning.plan["contact"] == ["讯使"]

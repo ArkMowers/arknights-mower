@@ -439,6 +439,7 @@ def emergency_dorm_plan(
         dorm_candidate_mood,
         dorm_candidates,
         dorm_task_reservations,
+        scheduling_mood_reaches,
     )
 
     reserved, slots = dorm_task_reservations(data, tasks)
@@ -458,9 +459,7 @@ def emergency_dorm_plan(
         and name not in reserved | ready
         and (op := data.operators.get(name)) is not None
         and not op.room.startswith("dorm")
-        and (
-            not has_resting_mood(op) or op.mood_is_prediction or op.mood < targets[name]
-        )
+        and (not scheduling_mood_reaches(data, name, targets[name]))
         and not data.rest_mood_complete(name)
         and not op.is_working()
         and resting_tier(data, name) != RestingTier.EXCLUDED
@@ -475,7 +474,7 @@ def emergency_dorm_plan(
         and not data._can_standby(op)
         and not data.rest_mood_complete(name)
         and resting_tier(data, name) != RestingTier.EXCLUDED
-        and (not has_resting_mood(op) or op.mood_is_prediction or op.mood < target)
+        and (not scheduling_mood_reaches(data, name, target))
         for name, target in targets.items()
     )
     if members is None and not waiting_primary:
@@ -495,7 +494,7 @@ def emergency_dorm_plan(
         if name not in ready
         and (op := data.operators.get(name)) is not None
         and op.is_resting()
-        and (not has_resting_mood(op) or op.mood_is_prediction or op.mood < target)
+        and (not scheduling_mood_reaches(data, name, target))
     }
     beds = [
         bed

@@ -291,3 +291,37 @@ it('admits an idle priority replacement through the real runtime with free room 
   expect(state.occupants.room_1_1_0).toBe('A')
   expect(data.freeRoom).toBe(false)
 })
+
+it.each([false, true])('uses a selected priority cover’s bed without moving actual residents (freeRoom=%s)', freeRoom => {
+  const data = fixture()
+  data.freeRoom = freeRoom
+  data.dorms = [new MowerDormState(['dormitory_1', 1], 'X')]
+  data.operators.X!.currentRoom = 'dormitory_1'
+  data.operators.X!.currentIndex = 1
+  data.operators.X!.mood = 10
+  data.priorityReplacement = ['X']
+  data.restingPriorityNames = ['X']
+  delete data.operators.F
+  data.plan.dormitory_1 = ['Free', 'Free', 'Free']
+  const before = JSON.stringify(data.operators), plan:MowerTaskPlan = {}, covers:string[] = []
+  expect(mowerGetRestingPlan(data, ['A'], covers, plan)).toBe(true)
+  expect(plan).toEqual({ room_1_1: ['X'] })
+  expect(covers).toEqual(['X'])
+  expect(data.dorms[0]!.name).toBe('A')
+  expect(JSON.stringify(data.operators)).toEqual(before)
+})
+
+it('keeps beds and observations unchanged when departing covers cannot fit the entire group', () => {
+  const data = fixture()
+  data.dorms = [new MowerDormState(['dormitory_1', 1], 'X')]
+  Object.assign(data.operators.X!, { currentRoom: 'dormitory_1', currentIndex: 1, mood: 10 })
+  data.priorityReplacement = ['X']
+  data.restingPriorityNames = ['X']
+  delete data.operators.F
+  data.plan.dormitory_1 = ['Free', 'Free', 'Free']
+  const before = JSON.stringify({ operators: data.operators, dorms: data.dorms }), plan:MowerTaskPlan = {}, covers:string[] = []
+  expect(mowerGetRestingPlan(data, ['A', 'B'], covers, plan)).toBe(false)
+  expect(plan).toEqual({})
+  expect(covers).toEqual([])
+  expect(JSON.stringify({ operators: data.operators, dorms: data.dorms })).toEqual(before)
+})

@@ -149,7 +149,7 @@ def test_deadline_preserves_partial_estimates(solver):
     assert dorm_candidate_mood(solver.op_data, "银灰") == 3
 
 
-def test_actual_mood_overrides_card_and_estimate_expiry_keeps_unknown(solver):
+def test_latest_mood_wins_and_estimate_expiry_keeps_unknown(solver):
     data = solver.op_data
     solver._read_initial_card_mood()
     op = data.operators["银灰"]
@@ -158,7 +158,11 @@ def test_actual_mood_overrides_card_and_estimate_expiry_keeps_unknown(solver):
     assert dorm_candidate_mood(data, "银灰") is None
     data.update_detail("银灰", 12, "meeting", 0, True)
     data.dorm_mood_estimates["银灰"] = (3, datetime.now())
-    assert dorm_candidate_mood(data, "银灰") == pytest.approx(12)
+    assert dorm_candidate_mood(data, "银灰") == 3
+    assert op.mood == 12
+    for observed_at in (op.time_stamp, op.time_stamp - timedelta(seconds=1)):
+        data.dorm_mood_estimates["银灰"] = (3, observed_at)
+        assert dorm_candidate_mood(data, "银灰") == pytest.approx(12)
 
 
 def test_legacy_probe_room_is_really_read_despite_recent_cache(solver, monkeypatch):

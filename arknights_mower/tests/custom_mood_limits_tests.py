@@ -381,7 +381,7 @@ def test_idle_predicted_completion_reopens_recovery_for_measured_confirmation(
     limited = data.operators["银灰"]
     limited.rest_mood_release_limit = limited.upper_limit
     assert limited.mood_is_prediction and limited.time_stamp is not None
-    assert data.rest_mood_complete(limited.name)
+    assert not data.rest_mood_complete(limited.name)
     assert not solver._emergency_ready()
     solver.back_to_infrastructure = MagicMock()
 

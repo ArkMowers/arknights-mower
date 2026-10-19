@@ -67,16 +67,21 @@ function generateAlphaDormTasks(batches:MowerDormBatch[],data:MowerSchedulingDat
  if(!batches.length)return []
  const shadow=projectMowerArrangements(data,[]),ordered=batches.map(b=>({...b,dorms:b.dorms.map(d=>({...d,position:[...d.position] as [string,number]}))})).sort((a,b)=>a.timeMicros-b.timeMicros)
  const result:MowerTask[]=[],planned=new Set<string>(),now=data.nowMicros
+ const releasePositions=new Map(data.dorms.filter(b=>b.name).map(b=>[b.name,b.position]))
  const add=(plan:MowerTaskPlan,type:typeof T.SHIFT_ON,time:number,metadata='')=>{const task=new MowerTask({plan,type,metadata});task.timeMicros=time;result.push(task)}
  for(const batch of ordered){
   const plan:MowerTaskPlan={}
   for(const bed of batch.dorms){
-   const op=shadow.operators[bed.name];if(!bed.name||!op||planned.has(op.name))continue
+   // A return can be postponed by backup dependencies after personal recovery completes.
+   const op=shadow.operators[bed.name];if(!bed.name||!op||batch.restInFull!==null&&planned.has(op.name))continue
    if(!op.isHigh()||batch.restInFull===null){
     if(batch.restInFull===null&&shadow.skipIdleDormRelease(op.name))continue
     if(!shadow.plan[op.currentRoom]||op.currentIndex<0||op.currentIndex>=shadow.plan[op.currentRoom]!.length)continue
-    const projected=shadow.dorms.find(d=>d.name===op.name);if(!projected)continue
-    const [room,index]=projected.position;projected.reset()
+    const projected=shadow.dorms.find(d=>d.name===op.name)
+    // A projected return can close a temporary bed before the physical return succeeds.
+    const position=projected?.position??(batch.restInFull===null?releasePositions.get(op.name):undefined)
+    if(!position)continue
+    const [room,index]=position;projected?.reset()
     const row=Array(shadow.plan[room]!.length).fill('Current');row[index]='Free'
     if(batch.restInFull===null){
      if(shadow.freeRoom){const releasePlan={[room]:row};add(releasePlan,T.RELEASE_DORM,Math.max(batch.timeMicros,now-1_000_000,mowerAfterPendingArrangements(releasePlan,pending)),op.name);if(!op.isHigh())planned.add(op.name)}

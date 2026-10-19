@@ -1,3 +1,4 @@
+import {mowerDormCandidateMood} from './mowerAlphaCandidates'
 import {mowerUrgentRecallBlocked} from './mowerUrgentRecovery'
 import {alphaPosition,mowerMatchReplacements} from './mowerAlphaDorm'
 import {mowerGroupRecoveryDeadline,mowerRecoveryReady} from './mowerGroupRecovery'
@@ -92,8 +93,7 @@ export function mowerReplacementDependencyNames(data:MowerSchedulingData,seeds:I
  return names
 }
 function recallMood(data:MowerSchedulingData,op:MowerOperatorState):number|undefined {
- if(op.timeStampMicros===undefined||!Number.isFinite(op.timeStampMicros)||op.timeStampMicros>data.nowMicros||op.moodIsPrediction||!Number.isFinite(op.mood)||op.mood<0||op.mood>24||!Number.isFinite(op.depletionRate))return
- return Math.max(0,Math.min(24,op.mood-op.depletionRate*fromMowerMicros(data.nowMicros-op.timeStampMicros)))
+ return mowerDormCandidateMood(data,op.name)
 }
 /** Ordinary recall starts at the requester's rescue line and requires observed target mood for its endurance forecast. */
 export function mowerRecallMoodAdmissible(data:MowerSchedulingData,recalled:ReadonlySet<string>,candidates:readonly string[]):boolean {
@@ -126,8 +126,9 @@ export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:Mowe
  const shadow=projectMowerArrangements(admitted,[])
  for(const op of Object.values(shadow.operators)){
   const source=original.operators[op.name]
-  if(op.currentRoom&&(!source||source.timeStampMicros===undefined||source.moodIsPrediction))return false
-  op.mood=source?Math.max(0,Math.min(24,source.mood-source.depletionRate*fromMowerMicros(original.nowMicros-(source.timeStampMicros??original.nowMicros)))):op.mood;op.timeStampMicros=shadow.nowMicros;op.depletionRate=0
+  const mood=source?mowerDormCandidateMood(original,source.name):undefined
+  if(op.currentRoom&&mood===undefined)return false
+  op.mood=mood??op.mood;op.timeStampMicros=shadow.nowMicros;op.depletionRate=0
  }
  const waiting=[...connected].map(name=>shadow.operators[name]).filter((op):op is MowerOperatorState=>!!op?.isHigh()&&op.isResting()&&!op.workaholic&&!op.room.startsWith('dorm'))
  if(!waiting.length)return false

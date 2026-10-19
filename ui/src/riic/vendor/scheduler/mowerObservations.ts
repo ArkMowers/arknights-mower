@@ -58,8 +58,13 @@ export function mowerUpdateDetail(data:MowerSchedulingData,name:string,mood:numb
  if(op.nativeName==='菲亚梅塔'&&(op.timeStampMicros===undefined||op.timeStampMicros<data.nowMicros))return updateTime?index:undefined
  return undefined
 }
+export function invalidateMowerDormTime(data:MowerSchedulingData,room:string):void {
+ for(const bed of data.allDorms())if(bed.position[0]===room)bed.timeMicros=undefined
+ for(const op of Object.values(data.operators))if(op.currentRoom===room)op.dormRecoveryObservation=undefined
+}
 export function mowerRefreshDormTime(data:MowerSchedulingData,room:string,index:number,name:string,timeMicros:number,trueExhaustRooms=new Set<string>()):void {
  const op=data.operators[name];if(!op)return
+ if(data.alpha&&room.startsWith('dorm')&&op.currentRoom===room&&op.currentIndex===index&&op.timeStampMicros!==undefined&&!op.moodIsPrediction&&op.mood>=0&&op.mood<=24&&Number.isFinite(timeMicros))op.dormRecoveryObservation=[room,index,op.timeStampMicros,timeMicros]
  const bed=data.allDorms().find(b=>b.position[0]===room&&b.position[1]===index&&data.recoveryDorm(b,name))
  if(bed){
   if(data.alpha&&bed.name===name&&bed.timeMicros!==undefined)return

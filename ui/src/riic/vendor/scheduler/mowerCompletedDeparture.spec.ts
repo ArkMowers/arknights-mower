@@ -72,11 +72,26 @@ describe('confirmed ordinary dorm departure keeps measured morale', () => {
   it('replaces a predicted full mood with the departure observation', () => {
     const f = fixture(), op = f.source.data.operators.A!
     op.moodIsPrediction = true
+    f.source.data.dorms[0]!.timeMicros = toMowerMicros(1)
     finish(f)
     expect(op.currentRoom).toBe('')
     expect(op.timeStampMicros).toBe(toMowerMicros(1))
     expect(op.moodIsPrediction).toBe(false)
     expect(op.depletionRate).toBe(0)
+  })
+
+  it.each([false, true])('keeps an early release from treating projected recovery as measured mood, predicted=%s', predicted => {
+    const f = fixture(predicted ? 12 : 11), op = f.source.data.operators.A!
+    op.moodIsPrediction = predicted
+    const originalMood = op.mood
+    finish(f)
+    expect(op.currentRoom).toBe(room)
+    expect(f.state.bedOccupants[room + '_3']).toBe('A')
+    expect(op.mood).toBe(originalMood)
+    expect(op.timeStampMicros).toBe(0)
+    expect(op.moodIsPrediction).toBe(predicted)
+    expect(f.source.data.getDormByName('A')?.[1].timeMicros).toBe(toMowerMicros(2))
+    expect(f.state.completedRest).not.toContain('A')
   })
 
   it.each([12, 24])('retains completed departure through temporary single recovery ordering at limit %s', upperLimit => {
@@ -122,6 +137,7 @@ describe('confirmed ordinary dorm departure keeps measured morale', () => {
 
   it('invalidates below-limit morale after the physical departure', () => {
     const f = fixture(11), op = f.source.data.operators.A!
+    f.source.data.dorms[0]!.timeMicros = toMowerMicros(1)
     finish(f)
     expect(op.currentRoom).toBe('')
     expect(op.timeStampMicros).toBeUndefined()
@@ -595,4 +611,26 @@ describe('ordinary correction preserves explicit group recovery', () => {
     expect(f.state.bedOccupants[room + '_4']).toBe('B')
     expect(f.source.data.groupShiftState.g).toBe(true)
   })
+})
+
+
+describe('independent rooms in a combined recovery task',()=>{
+ it.each([false,true])('executes an independent return while keeping the required group off work, unknown=%s',unknown=>{
+  const f=fixture(5,24),data=f.source.data
+  data.operators.B!.restInFull=true
+  if(unknown){data.operators.B!.currentRoom='';data.operators.B!.currentIndex=-1;data.operators.B!.timeStampMicros=undefined;data.dorms[1]!.reset();delete f.state.bedOccupants[room+'_4']}
+  data.operators.C=new MowerOperatorState({name:'C',room:'central',index:0,operatorType:'high',mood:24,timeStampMicros:data.nowMicros,currentRoom:'',currentIndex:-1})
+  data.plan.central=['C']
+  f.state.config.positions.push({id:'central_0',roomId:'central',primary:'C',candidates:[]})
+  f.state.config.mowerSourcePlan!.central=[{agent:'C',group:'',replacement:[]}]
+  f.state.morale.C=24;f.state.occupants.central_0=''
+  const task=new MowerTask({time:1,type:T.SHIFT_ON,plan:{room_1_1:['A'],room_1_2:['B'],central:['C']}})
+  f.source.queue.tasks=[task]
+  for(let n=0;n<20&&f.state.occupants.central_0!=='C';n++){finish(f);advanceRoster(f.state,1/3600,rates)}
+  expect(f.state.occupants.central_0).toBe('C')
+  expect(data.operators.B!.isResting()).toBe(!unknown)
+  expect(f.state.occupants.room_1_1_0).toBe('R')
+  expect(f.state.occupants.room_1_2_0).toBe('S')
+  expect(f.source.queue.tasks.filter(t=>t.plan.central?.includes('C'))).toHaveLength(0)
+ })
 })

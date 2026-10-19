@@ -641,7 +641,9 @@ def test_grouped_candidate_fills_vacancy_without_changing_return_time(solver):
     return_tasks = [task for task in tasks if task.type == TaskTypes.SHIFT_ON]
     assert return_tasks
     solver.tasks = tasks
-    assert all(task.type == TaskTypes.SHIFT_ON for task in tasks)
+    assert all(
+        task.type in (TaskTypes.SHIFT_ON, TaskTypes.RELEASE_DORM) for task in tasks
+    )
     assert solver._fill_empty_dorms()
     assert not solver._fill_empty_dorms()
     fill_tasks = [

@@ -83,7 +83,6 @@ from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.dorm_candidates import (
-    card_mood_estimate,
     dorm_candidate_mood,
     dorm_candidates,
     dorm_task_reservations,
@@ -598,9 +597,7 @@ class BaseSchedulerSolver(
                 room: getattr(data, "room_observations", {}).get(room) for room in rooms
             },
         }
-        from arknights_mower.utils.recovery_execution import allows_card_return
-
-        if allows_card_return(task):
+        if task.plan:
             snapshot["card_moods"] = {
                 name: getattr(data, "dorm_mood_estimates", {}).get(name)
                 for name in names
@@ -734,9 +731,9 @@ class BaseSchedulerSolver(
         self._discard_legacy_ordinary_requests()
         for task in list(self.tasks):
             failure = getattr(task, "execution_failure", None)
-            if (
-                failure
-                and failure.get("reason") == "需要回满的主班尚未实读确认恢复完成"
+            if failure and failure.get("reason") in (
+                "需要回满的主班尚未实读确认恢复完成",
+                "需要回满的主班心情尚未满足要求，且缺少有效恢复期限",
             ):
                 from arknights_mower.utils.recovery_execution import (
                     pending_recovery_observations,
@@ -764,16 +761,11 @@ class BaseSchedulerSolver(
             if failure and getattr(task, "process_recovery_fia_wait", False):
                 fia = self.op_data.operators.get("菲亚梅塔")
                 if (
-                    not has_resting_mood(fia)
-                    or fia.mood < 24
-                    or getattr(fia, "mood_is_prediction", False)
+                    fia is None
+                    or (dorm_candidate_mood(self.op_data, fia.name) or 0) < 24
                 ):
                     continue
             if failure:
-                from arknights_mower.utils.recovery_execution import (
-                    needs_return_mood_estimate,
-                )
-
                 current_snapshot = self._task_failure_snapshot(task, failure["rooms"])
                 current_cards = current_snapshot.get("card_moods", {})
                 now = datetime.now()
@@ -783,12 +775,8 @@ class BaseSchedulerSolver(
                 for name, estimate in current_cards.items():
                     # 预估失效或丢失不构成新观测，也不能按时钟重新准入。
                     if (
-                        card_mood_estimate(self.op_data, name, now) != 24
-                        or self._emergency_frozen()
-                        or not needs_return_mood_estimate(
-                            self.op_data.operators[name], now
-                        )
-                    ):
+                        dorm_candidate_mood(self.op_data, name, now) or 0
+                    ) < self.op_data.operators[name].upper_limit:
                         saved_cards[name] = estimate
                 if "card_moods" not in current_snapshot:
                     failure["snapshot"].pop("card_moods", None)
@@ -1795,8 +1783,8 @@ class BaseSchedulerSolver(
         if (
             not targets
             or not room
-            or not has_resting_mood(fia)
-            or fia.mood < 24
+            or fia is None
+            or (dorm_candidate_mood(self.op_data, fia.name) or 0) < 24
             or not fia.current_room.startswith("dorm")
             or fia.current_index < 0
         ):
@@ -2040,9 +2028,9 @@ class BaseSchedulerSolver(
             self.back()
 
     def _verify_required_recovery(self, task):
+        from arknights_mower.utils.group_recovery import recovery_mood_complete
         from arknights_mower.utils.recovery_execution import (
-            allows_card_return,
-            needs_return_mood_estimate,
+            independent_recovery_plan,
             pending_recovery_observations,
             recovery_ready_for_arrangement,
             required_recovery_members,
@@ -2059,6 +2047,9 @@ class BaseSchedulerSolver(
                 self.op_data.operators[name].current_room
                 for name in names
                 if self.op_data.operators[name].is_resting()
+                and not recovery_mood_complete(
+                    self.op_data, self.op_data.operators[name]
+                )
             }
             pending_rooms = rooms & dorm_rooms - observed_rooms
             if not pending_rooms:
@@ -2071,18 +2062,10 @@ class BaseSchedulerSolver(
             )
         now = datetime.now()
         names = required_recovery_members(self.op_data, task, now=now)
-        estimate_candidates = (
-            {
-                name
-                for name in names
-                if needs_return_mood_estimate(self.op_data.operators[name], now)
-            }
-            if allows_card_return(task) and not self._emergency_frozen()
-            else set()
-        )
         if any(
-            card_mood_estimate(self.op_data, name, now) is None
-            for name in estimate_candidates
+            not self.op_data.operators[name].is_resting()
+            and dorm_candidate_mood(self.op_data, name, now) is None
+            for name in names
         ):
             self._scan_card_moods(current_task=task)
             now = datetime.now()
@@ -2097,12 +2080,26 @@ class BaseSchedulerSolver(
                 ),
                 now=now,
             )
-            or name in estimate_candidates
-            and card_mood_estimate(self.op_data, name, now) == 24
         }
         if ready == names:
             return True
         unfinished = names - ready
+        independent = independent_recovery_plan(self.op_data, task, unfinished)
+        if independent:
+            sibling = SchedulerTask(
+                task.time, task_plan=independent, task_type=task.type
+            )
+            task.plan = {
+                room: row for room, row in task.plan.items() if room not in independent
+            }
+            task.group_shift_transitions = self.op_data.arrangement_group_transitions(
+                task.plan
+            )
+            for attr in ("derived_correction", "correction_skip_dorm"):
+                if hasattr(task, attr):
+                    setattr(sibling, attr, getattr(task, attr))
+            self.tasks.append(sibling)
+            logger.info("部分干员等待恢复，其余独立房间继续：%s", list(independent))
         observations = pending_recovery_observations(
             self.op_data, unfinished, now=now, sampled_after=sampled_after
         )
@@ -2112,7 +2109,9 @@ class BaseSchedulerSolver(
             self._suspend_group_shift(task, set())
         else:
             self._retain_failed_task(
-                task, "需要回满的主班尚未实读确认恢复完成", rooms | observed_rooms
+                task,
+                "需要回满的主班心情尚未满足要求，且缺少有效恢复期限",
+                rooms | observed_rooms,
             )
         self._schedule_recovery_observations(unfinished, now, sampled_after)
         return False
@@ -2134,10 +2133,9 @@ class BaseSchedulerSolver(
                 or getattr(op, "mood_is_prediction", False)
             ):
                 continue
-            _, bed = self.op_data.get_dorm_by_name(name)
             due = recovery_observation_deadline(self.op_data, name, now=now)
-            if bed is not None and due is not None and due > now:
-                deadlines.setdefault(due, {})[name] = bed.position[0]
+            if op.is_resting() and due is not None and due > now:
+                deadlines.setdefault(due, {})[name] = op.current_room
 
         updated = {
             name: (deadline, room)
@@ -2258,10 +2256,8 @@ class BaseSchedulerSolver(
             task.plan = {}
             return False
         now = datetime.now()
-        if not strict and (
-            not has_resting_mood(operator, now)
-            or resting_mood(operator, now) < operator.upper_limit
-        ):
+        mood = None if strict else dorm_candidate_mood(self.op_data, operator.name, now)
+        if not strict and (mood is None or mood < operator.upper_limit):
             _, bed = self.op_data.get_dorm_by_name(operator.name)
             if bed is None or bed.time is None:
                 # 未知心情和未读到的恢复时刻不能证明已经回满。
@@ -2359,6 +2355,7 @@ class BaseSchedulerSolver(
         if self.task is not None and self.task.type == TaskTypes.SWITCH_PRODUCT:
             # 到期换班先收敛最终阵容，再由该任务执行前置切产物。
             # 独立切换仍留在队列，收敛或换班失败不能丢失其执行责任。
+            product_room = parse_product_task_meta(self.task.meta_data)[0]
             due = [
                 task
                 for task in self.tasks
@@ -2376,6 +2373,11 @@ class BaseSchedulerSolver(
                 and not getattr(task, "exhaust_support", False)
                 and not getattr(task, "product_shift_locked", False)
                 and not getattr(task, "backup_shift_active", False)
+                and (
+                    product_room in task.plan
+                    or self._products_after_arrangement(task.plan)[0].get(product_room)
+                    != self.op_data.products.get(product_room)
+                )
             ]
             ready = [
                 task for task in due if not getattr(task, "execution_failure", None)
@@ -2608,6 +2610,10 @@ class BaseSchedulerSolver(
                             )
                         self._refresh_coordination_support(self.task)
                         self._prepare_group_shift(self.task)
+                        if not self._verify_required_recovery(self.task):
+                            self._queue_missing_run_order_reads()
+                            self.skip()
+                            return True
                         self._prepare_shift_cycle(self.task)
                         self._defer_conflicting_product_shift_slots(self.task)
                         if not self._verify_required_recovery(self.task):
@@ -3618,14 +3624,38 @@ class BaseSchedulerSolver(
             reconsider_low_mood_replacements(self.op_data, fix_plan, _is_mastery_busy)
         suppress_completed_dorm_returns(self.op_data, fix_plan)
         departed = covered_recovery_members(self.op_data) - protected_training
+        # 固定宿管位上的恢复成员也必须先迁入合法床位，不能在纠错中丢失。
+        displaced_recovery = {
+            name
+            for name, op in self.op_data.operators.items()
+            if op.is_high()
+            and op.is_resting()
+            and not op.room.startswith("dorm")
+            and not op.workaholic
+            and name not in protected_training
+            and self.op_data.get_dorm_by_name(name)[1] is None
+            and (mood := dorm_candidate_mood(self.op_data, name)) is not None
+            and mood < op.upper_limit
+            and fix_plan.get(op.current_room, [])[
+                op.current_index : op.current_index + 1
+            ]
+            not in ([], ["Current"], [name])
+        }
+        departed.update(displaced_recovery)
         # 组内部分显式下班不授权纠错召回仍在恢复的成员。
         for room, row in fix_plan.items():
             for index, name in enumerate(row):
                 if name in departed and not room.startswith("dorm"):
                     row[index] = "Current"
-        self._complete_departed_recovery(
-            fix_plan, departed, reserved_slots=explicit_slots
-        )
+        recovery_plan = copy.deepcopy(fix_plan)
+        if self._complete_departed_recovery(
+            recovery_plan, departed, reserved_slots=explicit_slots
+        ):
+            fix_plan = recovery_plan
+        else:
+            for name in displaced_recovery:
+                op = self.op_data.operators[name]
+                fix_plan[op.current_room][op.current_index] = "Current"
         explicit = {}
         for room, index in explicit_slots:
             if room in plan and 0 <= index < len(plan[room]):
@@ -5018,7 +5048,10 @@ class BaseSchedulerSolver(
             and not op.room.startswith("dorm")
             and not op.current_room
             and not projected.rest_mood_complete(name)
-            and (op.time_stamp is None or op.current_mood() < op.upper_limit)
+            and (
+                (mood := dorm_candidate_mood(projected, name)) is None
+                or mood < op.upper_limit
+            )
         ]
         if not missing:
             return True
@@ -6833,6 +6866,7 @@ class BaseSchedulerSolver(
                 continue
             recovery_wait = getattr(task, "recovery_waiting_observations", None)
             if recovery_wait is not None:
+                from arknights_mower.utils.group_recovery import recovery_mood_complete
                 from arknights_mower.utils.recovery_execution import (
                     recovery_ready_for_arrangement,
                     required_recovery_members,
@@ -6848,6 +6882,9 @@ class BaseSchedulerSolver(
                     )
                     or name in recovery_wait
                     and self.op_data.operators[name].time_stamp == recovery_wait[name]
+                    and not recovery_mood_complete(
+                        self.op_data, self.op_data.operators[name], now
+                    )
                 }
                 if unfinished:
                     self._schedule_recovery_observations(unfinished, now)

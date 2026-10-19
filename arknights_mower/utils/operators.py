@@ -856,14 +856,17 @@ class Operators:
         )
 
     def rest_mood_complete(self, name):
+        from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+
         op = self.operators.get(name)
+        mood = dorm_candidate_mood(self, name)
         return (
             self.has_rest_mood_limit(name)
             and op is not None
-            and has_resting_mood(op)
+            and mood is not None
             and (
-                resting_mood(op) >= op.upper_limit
-                or (not op.current_room)
+                mood >= op.upper_limit
+                or not op.current_room
                 and getattr(op, "rest_mood_release_limit", None) == op.upper_limit
             )
         )
@@ -1812,9 +1815,31 @@ class Operators:
         for bed in self.all_dorms():
             if bed.position[0] == room:
                 bed.time = None
+        for op in self.operators.values():
+            if op.current_room == room:
+                op.dorm_recovery_observation = None
 
     def refresh_dorm_time(self, room, index, agent, *, group_transitions=None):
         _name = agent["agent"]
+        operator = self.operators.get(_name)
+        if (
+            room.startswith("dorm")
+            and operator is not None
+            and (
+                getattr(operator, "current_room", None),
+                getattr(operator, "current_index", None),
+            )
+            == (room, index)
+            and operator.time_stamp is not None
+            and not getattr(operator, "mood_is_prediction", False)
+            and 0 <= operator.mood <= 24
+            and isinstance(agent.get("time"), datetime)
+        ):
+            operator.dorm_recovery_observation = (
+                (room, index),
+                operator.time_stamp,
+                agent["time"],
+            )
         # 此方法也会作为无界函数绑定到轻量读房测试对象，避免依赖对象上存在
         # all_dorms 方法；旧对象没有 group_dorm 时按普通 Free 床位处理。
         dorms = [*self.dorm, *getattr(self, "group_dorm", [])]
@@ -1969,6 +1994,9 @@ class Operators:
             operator.dorm_position_version = getattr(exist, "dorm_position_version", 0)
             operator.dorm_recovery_room = getattr(exist, "dorm_recovery_room", "")
             operator.dorm_recovery_index = getattr(exist, "dorm_recovery_index", -1)
+            operator.dorm_recovery_observation = getattr(
+                exist, "dorm_recovery_observation", None
+            )
             operator.resting_from_train = getattr(exist, "resting_from_train", False)
             operator.dorm_recovery_fixed = getattr(exist, "dorm_recovery_fixed", ())
             operator.dorm_mood_fallback = getattr(exist, "dorm_mood_fallback", "")
@@ -2391,12 +2419,12 @@ class Operators:
             }
             if ordinary == {name}:
                 return False
+        from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+
         candidate = self.operators.get(name)
+        mood = dorm_candidate_mood(self, name, now)
         return (
-            candidate is not None
-            and candidate.time_stamp is not None
-            and 0 <= candidate.mood <= 24
-            and candidate.current_mood(now) <= candidate.lower_limit
+            candidate is not None and mood is not None and mood <= candidate.lower_limit
         )
 
     def replacement_candidates(self, operator, *, replacement_override=None):
@@ -3259,6 +3287,7 @@ class Operator:
         self.dorm_recovery_room = ""
         self.dorm_recovery_index = -1
         self.dorm_recovery_fixed = ()
+        self.dorm_recovery_observation = None
 
     def is_high(self):
         # 是否为高效组

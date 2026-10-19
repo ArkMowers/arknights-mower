@@ -1,8 +1,8 @@
+import {mowerRecoveryMoodComplete} from './mowerGroupRecovery'
 // Port of default prepare_release_dorm; mandatory full recovery rechecks measured mood.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,MowerTask,type MowerTaskQueue} from './mowerTaskQueue'
-import {hasObservedFullMood,hasRestingMood} from './mowerOperatorState'
 import {MowerShiftPreviewError} from './mowerNativeErrors'
 import {mowerGroupRecoveryDeadline,mowerRecoveryReady} from './mowerGroupRecovery'
 import type {MowerTaskSchedulingOptions} from './mowerTaskScheduling'
@@ -63,7 +63,7 @@ function prepareAlphaMember(data:MowerSchedulingData,queue:MowerTaskQueue,task:M
  if(!room||index<0||!op||op.currentRoom!==room||op.currentIndex!==index)return reject()
  // A saved full dorm observation takes precedence over a retained working depletion rate.
  const mandatory=mowerMandatoryReleaseNames(data,task).includes(op.name)
- if(mandatory?!(hasObservedFullMood(op)&&!op.moodIsPrediction):!strict&&!hasObservedFullMood(op)&&(!hasRestingMood(op,data.nowMicros)||op.currentMood(data.nowMicros)<op.upperLimit)){
+ if((mandatory||!strict)&&!mowerRecoveryMoodComplete(data,op)){
   const bed=data.getDormByName(op.name)?.[1]
   if(bed?.timeMicros===undefined)return reject()
   if(bed.timeMicros>data.nowMicros){const pending=new MowerTask({type:task.type,plan:structuredClone(task.plan),metadata:task.metadata,strictMoodLimit:strict,moodLimit:task.moodLimit});pending.timeMicros=bed.timeMicros;queue.tasks.push(pending);return reject()}

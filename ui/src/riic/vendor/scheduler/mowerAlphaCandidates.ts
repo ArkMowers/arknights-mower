@@ -9,9 +9,13 @@ import {toMowerMicros,MowerTask,MOWER_TASK_TYPES as T,type MowerTaskPlan,type Mo
 import {simplifyMowerAlphaDormFill} from './mowerAlphaTaskProtection'
 import type {MowerTaskSchedulingOptions} from './mowerTaskScheduling'
 export function mowerDormCandidateMood(data:MowerSchedulingData,name:string):number|undefined {
- const op=data.operators[name];if(hasRestingMood(op,data.nowMicros))return restingMood(op,data.nowMicros)
- const estimate=data.dormMoodEstimates.get(name),elapsed=estimate?data.nowMicros-estimate[1]:-1
- return estimate&&elapsed>=0&&elapsed<toMowerMicros(1)?estimate[0]:undefined
+ return mowerSchedulingMoodObservation(data,name)?.[0]
+}
+export function mowerSchedulingMoodObservation(data:MowerSchedulingData,name:string):[number,number]|undefined {
+ const op=data.operators[name],estimate=data.dormMoodEstimates.get(name),elapsed=estimate?data.nowMicros-estimate[1]:-1
+ const measured=hasRestingMood(op,data.nowMicros)&&!op!.moodIsPrediction&&op!.timeStampMicros!<=data.nowMicros
+ if(estimate&&Number.isFinite(estimate[0])&&estimate[0]>=0&&estimate[0]<=24&&elapsed>=0&&elapsed<toMowerMicros(1)&&(!measured||estimate[1]>op!.timeStampMicros!))return [estimate[0],estimate[1]]
+ return measured?[op!.isResting()?op!.mood:restingMood(op,data.nowMicros),op!.timeStampMicros!]:undefined
 }
 export function mowerAlphaDormCandidates(data:MowerSchedulingData,excluded=new Set<string>(),currentResidents=new Set<string>()){
  // Candidate state is fixed during this synchronous pass; rebuild keys on every call.
@@ -21,14 +25,15 @@ export function mowerAlphaDormCandidates(data:MowerSchedulingData,excluded=new S
  const eligible=Object.values(data.operators).filter(op=>!excluded.has(op.name)&&!data.busyRestingNames.has(op.name)&&op.name!==support&&(!op.isHigh()||data.isStandby(op.name))&&(!op.currentRoom||currentResidents.has(op.name)&&op.isResting())&&!data.restMoodComplete(op.name)&&tier(op.name)!==7)
  const recovering:string[]=[],full:string[]=[],unknown:string[]=[]
  for(const op of eligible){
+  const mood=mowerDormCandidateMood(data,op.name)
   if(!hasRestingMood(op,data.nowMicros)){if(!op.isHigh()&&!op.restMoodLimit)unknown.push(op.name)}
-  else if(!data.idleRestChecked(op.name)&&restingMood(op,data.nowMicros)<op.upperLimit)recovering.push(op.name)
+  else if(!data.idleRestChecked(op.name)&&mood!==undefined&&mood<op.upperLimit)recovering.push(op.name)
   else if(!op.isHigh()&&!op.restMoodLimit)full.push(op.name)
  }
  unknown.push(...data.unregisteredIdleNames.filter(n=>!data.operators[n]&&!excluded.has(n)&&!data.freeBlacklist.includes(n)&&!data.busyRestingNames.has(n)))
  const estimates=new Map<string,[number,number]>(),recoveryKeys=new Map<string,[number,number]>()
  const estimateKey=(name:string):[number,number]=>{let key=estimates.get(name);if(!key){key=[mowerDormCandidateMood(data,name)??24,tier(name)];estimates.set(name,key)}return key}
- const recoveryKey=(name:string):[number,number]=>{let key=recoveryKeys.get(name);if(!key){key=[tier(name),restingMood(data.operators[name],data.nowMicros)-(data.operators[name]?.upperLimit??24)];recoveryKeys.set(name,key)}return key}
+ const recoveryKey=(name:string):[number,number]=>{let key=recoveryKeys.get(name);if(!key){key=[tier(name),(mowerDormCandidateMood(data,name)??24)-(data.operators[name]?.upperLimit??24)];recoveryKeys.set(name,key)}return key}
  const compare=(a:string,b:string)=>compareAlphaKeys(estimateKey(a),estimateKey(b))
  recovering.sort((a,b)=>compareAlphaKeys(recoveryKey(a),recoveryKey(b)));full.sort(compare);unknown.sort(compare)
  const filling=[...recovering,...full,...unknown].sort(compare),searchUnknown=unknown.filter(n=>(mowerDormCandidateMood(data,n)??0)<24)
@@ -37,10 +42,16 @@ export function mowerAlphaDormCandidates(data:MowerSchedulingData,excluded=new S
 export function mowerDormTaskReservations(data:MowerSchedulingData,pending:MowerTask[]){
  const names=new Set<string>(),slots=new Set<string>()
  for(const task of pending){task.urgentRecoveryReservedNames.forEach(name=>names.add(name));task.urgentRecoveryReservedSlots.forEach(slot=>slots.add(slot))}
- for(const task of pending)for(const [room,row] of Object.entries(task.plan))row.forEach((name,index)=>{
-  if(room.startsWith('dorm')&&name!=='Current')slots.add(alphaPosition(room,index))
-  if(!['Current','Free',''].includes(name)&&!(task.type===T.SHIFT_ON&&data.isStandby(name)))names.add(name)
- })
+ for(const task of pending){
+  const rows=Object.values(task.plan),targets=Object.keys(task.releaseDormTargets())
+  // Future ordinary releases are rebuilt from observed beds after a move.
+  if(task.type===T.RELEASE_DORM&&task.timeMicros>data.nowMicros&&!task.retainsExecution&&!task.strictMoodLimit&&!task.productShiftLocked
+   &&rows.length===1&&targets.length>0&&rows.flat().every(name=>name==='Current'||name==='Free')&&targets.length===rows.flat().filter(name=>name==='Free').length)continue
+  for(const [room,row] of Object.entries(task.plan))row.forEach((name,index)=>{
+   if(room.startsWith('dorm')&&name!=='Current')slots.add(alphaPosition(room,index))
+   if(!['Current','Free',''].includes(name)&&!(task.type===T.SHIFT_ON&&data.isStandby(name)))names.add(name)
+  })
+ }
  return {names,slots}
 }
 function alphaFill(data:MowerSchedulingData,pending:MowerTask[],emptyOnly:boolean){

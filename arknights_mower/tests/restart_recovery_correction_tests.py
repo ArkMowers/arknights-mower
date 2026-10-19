@@ -235,3 +235,44 @@ def test_derived_correction_preparation_keeps_independent_return_executable(
         for name, op in solver.op_data.operators.items()
     }
     solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize("solver", [False], indirect=True)
+@pytest.mark.parametrize("capacity", [False, True])
+def test_correction_moves_unfinished_primary_out_of_fixed_manager_slot(
+    solver, capacity
+):
+    data = solver.op_data
+    primary = data.operators["阿罗玛"]
+    primary.group = ""
+    primary.exhaust_require = primary.rest_in_full = True
+    primary.current_room, primary.current_index = "dormitory_1", 0
+    primary.mood, primary.time_stamp = 18.7, datetime.now()
+    data.operators["杜林"].current_room = ""
+    data.operators["杜林"].current_index = -1
+    if not capacity:
+        data.dorm = []
+    plan = solver.agent_get_mood(read_rooms=False, return_plan=True)
+    projected = data.project_arrangements([plan])
+    assert projected.operators[primary.name].is_resting()
+    assert (projected.get_dorm_by_name(primary.name)[1] is not None) is capacity
+    assert (
+        projected.operators[primary.name].current_index != 0
+        if capacity
+        else projected.operators[primary.name].current_index == 0
+    )
+    assert projected.operators["杜林"].current_index == (0 if capacity else -1)
+    assert "阿罗玛" not in plan.get("room_3_2", [])
+    assert primary.current_index == 0
+    assert primary.mood == 18.7
+    task = base_schedule.SchedulerTask(
+        task_plan=plan, task_type=TaskTypes.SELF_CORRECTION
+    )
+    task.derived_correction = True
+    solver.tasks, solver.task = [task], task
+    solver._prepare_group_shift(task)
+    solver._prepare_shift_cycle(task)
+    final = data.project_arrangements([task.plan])
+    assert final.operators[primary.name].is_resting()
+    assert (final.get_dorm_by_name(primary.name)[1] is not None) is capacity
+    assert primary.name not in task.plan.get("room_3_2", [])

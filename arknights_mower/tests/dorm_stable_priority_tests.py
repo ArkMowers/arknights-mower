@@ -355,3 +355,47 @@ def test_backup_order_only_change_reorders_ordinary_beds_and_keeps_equal_targets
         name: (op.current_room, op.current_index)
         for name, op in solver.op_data.operators.items()
     } == before
+
+
+@pytest.mark.parametrize(
+    "kind", ["ordinary", "due", "strict", "retained", "product", "emergency", "unnamed"]
+)
+def test_future_release_does_not_reserve_priority_reallocation(residents, kind):
+    from arknights_mower.utils.dorm_candidates import dorm_task_reservations
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    data = residents
+    task = SchedulerTask(
+        time=datetime.now() + timedelta(hours=2),
+        task_type=TaskTypes.RELEASE_DORM,
+        task_plan={"dormitory_3": ["Current"] * 4 + ["Free"]},
+        meta_data="令",
+    )
+    if kind == "due":
+        task.time = datetime.now() - timedelta(seconds=1)
+    elif kind == "strict":
+        task.strict_mood_limit = True
+    elif kind == "retained":
+        task.execution_retained = True
+    elif kind == "product":
+        task.product_shift_locked = True
+    elif kind == "emergency":
+        task.emergency_recovery_release = True
+    elif kind == "unnamed":
+        task.meta_data = ""
+    before = copy.deepcopy(task.__dict__)
+    names, slots = dorm_task_reservations(data, [task])
+    assert (("dormitory_3", 4) in slots) == (kind != "ordinary")
+    # 新入住触发重排时，高优主班应先于普通替班使用前排床位。
+    plan = {"dormitory_4": ["Current"] * 4 + ["絮雨"]}
+    result = prioritize_new_dorm_recovery(data, plan, slots, reserved_names=names)
+    projected = data.project_arrangements([result])
+    if kind == "ordinary":
+        assert projected.operators["令"].current_room == "dormitory_4"
+        assert prioritize_new_dorm_recovery(projected, {}) == {}
+    else:
+        assert (
+            projected.operators["令"].current_room,
+            projected.operators["令"].current_index,
+        ) == ("dormitory_3", 4)
+    assert task.__dict__ == before

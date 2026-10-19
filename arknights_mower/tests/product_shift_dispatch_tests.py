@@ -182,3 +182,21 @@ def test_unconverged_staffing_retains_product_until_new_observation(pending_retu
     solver.infra_main()
     assert not [item for item in changes if item[0] == "product"]
     assert solver.op_data.operators["陈"].is_working()
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_unrelated_staffing_does_not_block_product_switch(pending_return, failed):
+    solver, product, returning, changes = pending_return
+    solver.op_data.backup_plans = []
+    solver.op_data.plan_condition = []
+    original_time = returning.time
+    if failed:
+        solver._retain_failed_task(returning, "恢复观测尚未完成", list(returning.plan))
+    for _ in range(3):
+        solver._resume_failed_tasks()
+    solver.infra_main()
+    assert changes == [("product", "room_1_2", "exp3")]
+    assert product not in solver.tasks
+    assert returning in solver.tasks and returning.time == original_time
+    assert solver.op_data.operators["陈"].is_resting()
+    assert bool(getattr(returning, "execution_failure", None)) is failed

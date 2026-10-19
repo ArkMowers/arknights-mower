@@ -2,7 +2,7 @@
 
 from arknights_mower.utils.group_recovery import (
     completed_mood_limit_release,
-    observed_full_mood,
+    recovery_mood_complete,
 )
 
 PENDING_FIELDS = (
@@ -32,7 +32,7 @@ def active_urgent_recovery(data):
         and not (
             (op.current_room, op.current_index) == (op.room, op.index)
             and not op.room.startswith("dorm")
-            or observed_full_mood(op)
+            or recovery_mood_complete(data, op)
             or completed_mood_limit_release(data, op)
         )
     }
