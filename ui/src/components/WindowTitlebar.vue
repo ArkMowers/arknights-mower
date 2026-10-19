@@ -16,7 +16,7 @@
       data-window-drag-region
       aria-hidden="true"
       @mousedown.left="onDragStart"
-      @dblclick.stop="onToggleMaximize"
+      @dblclick.stop="onTitlebarDoubleClick"
     >
       <img class="window-titlebar__brand-mark" :src="'/favicon.ico'" alt="" />
     </div>
@@ -25,7 +25,7 @@
       class="window-titlebar__drag-region"
       data-window-drag-region
       @mousedown.left="onDragStart"
-      @dblclick.stop="onToggleMaximize"
+      @dblclick.stop="onTitlebarDoubleClick"
     >
       <span class="window-titlebar__identity" :title="title">
         <span class="window-titlebar__product">Mower</span>
@@ -78,7 +78,7 @@
         class="window-titlebar__resize-grip"
         :data-window-resize-edge="edge"
         aria-hidden="true"
-        @mousedown.left.prevent.stop="onResize(edge)"
+        @mousedown.left.prevent.stop="onResizeStart(edge)"
       ></div>
     </template>
   </header>
@@ -107,7 +107,8 @@ const props = defineProps({
   onToggleMaximize: { type: Function, required: true },
   resizable: { type: Boolean, required: true },
   onResize: { type: Function, required: true },
-  onMove: { type: Function, required: true }
+  onMove: { type: Function, required: true },
+  nativeInteractions: { type: Boolean, default: false }
 })
 
 // A press on the title bar is handed to the shell only once the pointer actually
@@ -143,12 +144,21 @@ function watchDrag(event) {
 }
 
 function onDragStart(event) {
+  if (props.nativeInteractions) return
   dragOriginX = event.screenX
   dragOriginY = event.screenY
   dragArmed = true
   window.addEventListener('mousemove', watchDrag)
   window.addEventListener('mouseup', stopWatchingDrag)
   window.addEventListener('blur', stopWatchingDrag)
+}
+
+function onTitlebarDoubleClick() {
+  if (!props.nativeInteractions) props.onToggleMaximize()
+}
+
+function onResizeStart(edge) {
+  if (!props.nativeInteractions) props.onResize(edge)
 }
 
 onBeforeUnmount(stopWatchingDrag)

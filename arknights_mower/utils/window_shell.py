@@ -1,9 +1,10 @@
 import json
 import platform
-from threading import Lock
+from threading import Event, Lock, Thread, current_thread
 from typing import Any, NamedTuple
 
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.window_regions import WindowHitRegions
 
 WINDOW_SHELL_PROTOCOL = "mower-window-shell-v1"
 WINDOW_SHELL_EVENT = "mower-window-state"
@@ -85,6 +86,14 @@ def _screen_work_area() -> WindowSize | None:
     if _WORK_AREA_CACHE is not None:
         return _WORK_AREA_CACHE
     try:
+        from arknights_mower.utils.window_backend import screen_work_area
+
+        area = screen_work_area()
+        if area is not None:
+            width, height = area
+            if width > 0 and height > 0:
+                _WORK_AREA_CACHE = WindowSize(width, height)
+                return _WORK_AREA_CACHE
         if is_windows():
             import ctypes
             from ctypes import wintypes
@@ -98,19 +107,6 @@ def _screen_work_area() -> WindowSize | None:
                 if width > 0 and height > 0:
                     _WORK_AREA_CACHE = WindowSize(width, height)
                     return _WORK_AREA_CACHE
-        else:
-            import tkinter as tk
-
-            root = tk.Tk()
-            try:
-                root.withdraw()
-                width = root.winfo_screenwidth()
-                height = root.winfo_screenheight()
-            finally:
-                root.destroy()
-            if width > 0 and height > 0:
-                _WORK_AREA_CACHE = WindowSize(width, height)
-                return _WORK_AREA_CACHE
     except Exception:
         pass
     return None
@@ -206,10 +202,28 @@ class WindowShellBridge:
             DESKTOP_WINDOW_WIDTH, DESKTOP_WINDOW_HEIGHT
         ),
         tray_enabled: bool = True,
+        backend: str | None = None,
     ):
         self._window = window
         self._tray_enabled = tray_enabled
         self._platform = normalize_platform(system)
+        self._backend = backend or {
+            "windows": "winforms",
+            "macos": "cocoa",
+            "linux": "gtk",
+        }.get(self._platform)
+        self._native = None
+        self._regions = WindowHitRegions()
+        self._ready = self._backend == "winforms" or self._backend is None
+        self._ready_event = Event()
+        if self._ready:
+            self._ready_event.set()
+        self._disposed = False
+        self._pending_state = Event()
+        self._worker = None
+        self.on_mode_changed = None
+        self.on_ready = None
+        self._last_mode = None
         self._lock = Lock()
         self._state = {
             "state": "normal",
@@ -220,13 +234,106 @@ class WindowShellBridge:
         }
 
     def minimize(self) -> bool:
+        if self._native is not None and hasattr(self._native, "minimize"):
+            return self._call_native("minimize")
         return self._call_window("minimize")
 
     def maximize(self) -> bool:
+        if self._native is not None:
+            return self._call_native("maximize")
         return self._call_window("maximize")
 
     def restore(self) -> bool:
+        if self._native is not None:
+            return self._call_native("restore")
         return self._call_window("restore")
+
+    def initialize_native(self):
+        """Attach input handlers after pywebview has created its native window."""
+        if self._ready or self._disposed:
+            return
+        actual = getattr(getattr(self._window, "gui", None), "__name__", "")
+        backend = actual.rsplit(".", 1)[-1] if actual else self._backend
+        self._backend = backend
+        from arknights_mower.utils.window_backend import create_native_window
+
+        try:
+            self._native = create_native_window(
+                backend, self._window, self._regions, self._pending_state.set
+            )
+            if self._native.install() is False:
+                raise RuntimeError("Native title bar installation failed")
+        except Exception:
+            logger.exception("Native title bar support could not be installed")
+            if self._native is not None:
+                # Each adapter releases a partially installed input handler.
+                # Closing the whole adapter here would also retire controls
+                # that are still needed if restoring decorations fails.
+                if self._native.capabilities["enabled"]:
+                    try:
+                        self._native.fallback_decorations()
+                    except Exception:
+                        logger.exception(
+                            "Native window decorations could not be restored"
+                        )
+        finally:
+            self._ready = True
+            self._ready_event.set()
+        if self._disposed:
+            if self._native is not None:
+                self._native.dispose()
+            return
+        self._worker = Thread(target=self._publish_native_changes, daemon=True)
+        self._worker.start()
+        self._pending_state.set()
+        if self.on_ready is not None and self._window.events.loaded.is_set():
+            self.on_ready()
+
+    def wait_until_ready(self, timeout=5):
+        return self._ready_event.wait(timeout)
+
+    def _publish_native_changes(self):
+        # Native GUI callbacks only set this event. A single worker coalesces
+        # changes so evaluate_js never waits for its own GUI thread.
+        while True:
+            self._pending_state.wait()
+            self._pending_state.clear()
+            if self._disposed:
+                return
+            try:
+                self._publish_state()
+            except Exception:
+                logger.exception("Native window state could not be published")
+
+    def dispose(self):
+        self._disposed = True
+        self._pending_state.set()
+        self._regions.update({"width": 1, "height": 1, "regions": []})
+        if self._native is not None:
+            self._native.dispose()
+        if self._worker is not None and self._worker is not current_thread():
+            self._worker.join(timeout=1)
+
+    def _call_native(self, operation):
+        try:
+            return getattr(self._native, operation)() is True
+        except Exception:
+            logger.exception("Native desktop window command failed: %s", operation)
+            return False
+
+    def _capabilities(self):
+        if self._native is not None:
+            return dict(self._native.capabilities)
+        return {
+            "enabled": self._backend is not None,
+            "move": "bridge" if self._backend == "winforms" else "native",
+            "resize": "native" if self._backend == "cocoa" else "html",
+        }
+
+    def set_hit_regions(self, payload):
+        if self._disposed:
+            return False
+        return self._regions.update(payload)
 
     def close(self) -> bool:
         # The custom titlebar follows direct-close behavior for this iteration;
@@ -262,7 +369,7 @@ class WindowShellBridge:
         The call returns only once the user lets go of the button, because the
         shell's move loop owns the mouse for the whole drag.
         """
-        if self._platform != "windows":
+        if self._backend != "winforms":
             return False
         try:
             from arknights_mower.utils.windows_frameless import (
@@ -275,7 +382,7 @@ class WindowShellBridge:
             return False
 
     def start_resize(self, edge: str) -> bool:
-        if self._platform != "windows":
+        if self._backend != "winforms":
             return False
         try:
             from arknights_mower.utils.windows_frameless import (
@@ -291,7 +398,21 @@ class WindowShellBridge:
         # The initial maximize event can arrive before Vue registers its
         # listener. A query must reflect the actual native window, not that
         # potentially stale event cache.
-        if self._platform == "windows":
+        native_state_confirmed = False
+        if self._native is not None:
+            try:
+                state = self._native.get_state()
+                if state in ("normal", "maximized", "minimized"):
+                    native_state_confirmed = True
+                    with self._lock:
+                        self._state.update(
+                            state=state,
+                            maximized=state == "maximized",
+                            minimized=state == "minimized",
+                        )
+            except Exception:
+                logger.debug("Native window state probe unavailable", exc_info=True)
+        elif self._backend == "winforms":
             try:
                 import ctypes
                 from ctypes import wintypes
@@ -307,6 +428,7 @@ class WindowShellBridge:
                 user32.IsZoomed.argtypes = [wintypes.HWND]
                 user32.IsZoomed.restype = wintypes.BOOL
                 if user32.IsWindow(handle):
+                    native_state_confirmed = True
                     state = (
                         "minimized"
                         if user32.IsIconic(handle)
@@ -323,13 +445,21 @@ class WindowShellBridge:
             except Exception:
                 logger.debug("Native window state probe unavailable", exc_info=True)
         with self._lock:
-            return {"protocol": WINDOW_SHELL_PROTOCOL, **self._state}
+            return {
+                "protocol": WINDOW_SHELL_PROTOCOL,
+                **self._state,
+                "capabilities": self._capabilities(),
+                "native_state_confirmed": native_state_confirmed,
+            }
 
-    def get_platform(self) -> dict[str, str]:
+    def get_platform(self) -> dict[str, Any]:
+        if not self._ready:
+            raise RuntimeError("Native window is still initializing")
         return {
             "protocol": WINDOW_SHELL_PROTOCOL,
             "event": WINDOW_SHELL_EVENT,
             "platform": self._platform,
+            "capabilities": self._capabilities(),
         }
 
     def _call_window(self, method_name: str) -> bool:
@@ -347,7 +477,7 @@ class WindowShellBridge:
                 maximized=state == "maximized",
                 minimized=state == "minimized",
             )
-        self._publish_state()
+        self._request_publish()
 
     def _on_maximized(self) -> None:
         self._set_native_state("maximized")
@@ -361,10 +491,35 @@ class WindowShellBridge:
     def _on_resized(self, width: int, height: int) -> None:
         with self._lock:
             self._state.update(width=int(width), height=int(height))
-        self._publish_state()
+        self._request_publish()
+
+    def _request_publish(self):
+        if self._disposed:
+            return
+        if self._backend != "winforms":
+            self._pending_state.set()
+        else:
+            self._publish_state()
 
     def _publish_state(self) -> None:
-        payload = json.dumps(self.get_window_state(), ensure_ascii=False)
+        if self._disposed:
+            return
+        if self._backend != "winforms" and not self._window.events.loaded.is_set():
+            return
+        state = self.get_window_state()
+        mode = state["state"]
+        if (
+            state["native_state_confirmed"]
+            and mode in ("normal", "maximized")
+            and mode != self._last_mode
+        ):
+            self._last_mode = mode
+            if self.on_mode_changed is not None:
+                try:
+                    self.on_mode_changed(mode)
+                except Exception:
+                    logger.exception("Desktop window mode could not be saved")
+        payload = json.dumps(state, ensure_ascii=False)
         event_name = json.dumps(WINDOW_SHELL_EVENT)
         script = (
             f"window.dispatchEvent(new CustomEvent({event_name}, "
@@ -383,8 +538,9 @@ def attach_window_shell(
     system: str | None = None,
     initial_size: WindowSize = WindowSize(DESKTOP_WINDOW_WIDTH, DESKTOP_WINDOW_HEIGHT),
     tray_enabled: bool = True,
+    backend: str | None = None,
 ) -> WindowShellBridge:
-    bridge = WindowShellBridge(window, system, initial_size, tray_enabled)
+    bridge = WindowShellBridge(window, system, initial_size, tray_enabled, backend)
 
     # pywebview 5.1 Window.expose only serializes the functions passed here.
     # Never pass the bridge or Window object itself to js_api.
@@ -397,6 +553,7 @@ def attach_window_shell(
         bridge.start_resize,
         bridge.get_window_state,
         bridge.get_platform,
+        bridge.set_hit_regions,
         bridge.get_close_preference,
         bridge.set_close_preference,
         bridge.get_window_launch_mode,
@@ -407,4 +564,6 @@ def attach_window_shell(
     window.events.minimized += bridge._on_minimized
     window.events.restored += bridge._on_restored
     window.events.resized += bridge._on_resized
+    window.events.shown += bridge.initialize_native
+    window.events.closed += bridge.dispose
     return bridge

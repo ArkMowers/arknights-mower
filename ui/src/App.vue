@@ -31,7 +31,8 @@
       :adb-port="adbPort"
       :on-control="handleWindowControl"
       :on-toggle-maximize="windowShell.toggleMaximize"
-      :resizable="windowShellPlatform === 'windows' && !windowShellState.maximized"
+      :resizable="windowShellCapabilities.resize === 'html' && !windowShellState.maximized"
+      :native-interactions="windowShellCapabilities.move === 'native'"
       :on-resize="windowShell.startResize"
       :on-move="windowShell.startMove"
     />
@@ -366,7 +367,7 @@ const {
   busy: windowShellBusy,
   controls: windowShellControls,
   controlSide: windowShellControlSide,
-  platform: windowShellPlatform,
+  capabilities: windowShellCapabilities,
   state: windowShellState
 } = windowShell
 
