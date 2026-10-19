@@ -95,7 +95,8 @@ def _serve(mapping_path, port, token):
                 size = width * height * channels
                 if not 0 < size <= MAX_RAW_BYTES:
                     raise ValueError("截图共享输入超过单帧上限")
-                data = encode_packed(width, height, channels, shared[:size])
+                with memoryview(shared) as mapped, mapped[:size] as pixels:
+                    data = encode_packed(width, height, channels, pixels)
                 if not 0 < len(data) <= MAX_JPEG_BYTES:
                     raise ValueError("JPEG 编码结果为空或超过单帧上限")
                 shared[MAX_RAW_BYTES : MAX_RAW_BYTES + len(data)] = data

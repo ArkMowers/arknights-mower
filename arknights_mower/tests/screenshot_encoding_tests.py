@@ -126,14 +126,20 @@ class ScreenshotEncodingTests(unittest.TestCase):
     def rgb():
         return np.full((32, 48, 3), (255, 0, 0), np.uint8)
 
-    def test_real_lean_worker_reuses_one_child_and_encodes_readonly_strided_rgb(self):
+    def test_real_lean_worker_reuses_one_child_for_rgb_strided_and_gray(self):
         bank, commands = self.bank()
         rgb = self.rgb()
         rgb.flags.writeable = False
-        for source in (rgb, rgb[:, ::2]):
-            with Image.open(BytesIO(bank.encode(source))) as image:
+        gray = np.full((32, 48), 127, np.uint8)
+        for source in (rgb, rgb[:, ::2], gray, rgb):
+            encoded = bank.encode(source)
+            self.assertEqual(encoded, encode_jpeg(source))
+            with Image.open(BytesIO(encoded)) as image:
                 self.assertEqual(image.size, (source.shape[1], source.shape[0]))
-                self.assertGreater(image.getpixel((5, 5))[0], 250)
+                if source.ndim == 2:
+                    self.assertEqual(image.getpixel((5, 5)), 127)
+                else:
+                    self.assertGreater(image.getpixel((5, 5))[0], 250)
         self.assertEqual(commands.calls, 1)
         self.assertEqual(len(self.children), 1)
         bank.close()
