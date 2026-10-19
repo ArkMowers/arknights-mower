@@ -160,7 +160,11 @@ class AIPromptContractTests(unittest.TestCase):
             self.assertIsNotNone(match)
             values[key] = match.group(1)
         with (
-            patch.object(submit_issue, "get_log_by_time", return_value=["sample.log"]),
+            patch.object(
+                submit_issue,
+                "collect_evidence",
+                return_value=["sample.log", "evidence.json"],
+            ),
             patch.object(submit_issue, "Email") as email,
         ):
             result = submit_issue.submit_issue("实际无法启动，期望正常启动", **values)
