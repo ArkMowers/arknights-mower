@@ -72,11 +72,26 @@ describe('confirmed ordinary dorm departure keeps measured morale', () => {
   it('replaces a predicted full mood with the departure observation', () => {
     const f = fixture(), op = f.source.data.operators.A!
     op.moodIsPrediction = true
+    f.source.data.dorms[0]!.timeMicros = toMowerMicros(1)
     finish(f)
     expect(op.currentRoom).toBe('')
     expect(op.timeStampMicros).toBe(toMowerMicros(1))
     expect(op.moodIsPrediction).toBe(false)
     expect(op.depletionRate).toBe(0)
+  })
+
+  it.each([false, true])('keeps an early release from treating projected recovery as measured mood, predicted=%s', predicted => {
+    const f = fixture(predicted ? 12 : 11), op = f.source.data.operators.A!
+    op.moodIsPrediction = predicted
+    const originalMood = op.mood
+    finish(f)
+    expect(op.currentRoom).toBe(room)
+    expect(f.state.bedOccupants[room + '_3']).toBe('A')
+    expect(op.mood).toBe(originalMood)
+    expect(op.timeStampMicros).toBe(0)
+    expect(op.moodIsPrediction).toBe(predicted)
+    expect(f.source.data.getDormByName('A')?.[1].timeMicros).toBe(toMowerMicros(2))
+    expect(f.state.completedRest).not.toContain('A')
   })
 
   it.each([12, 24])('retains completed departure through temporary single recovery ordering at limit %s', upperLimit => {
@@ -122,6 +137,7 @@ describe('confirmed ordinary dorm departure keeps measured morale', () => {
 
   it('invalidates below-limit morale after the physical departure', () => {
     const f = fixture(11), op = f.source.data.operators.A!
+    f.source.data.dorms[0]!.timeMicros = toMowerMicros(1)
     finish(f)
     expect(op.currentRoom).toBe('')
     expect(op.timeStampMicros).toBeUndefined()
