@@ -860,3 +860,36 @@ def test_paused_refresh_is_removed_when_room_stops_running_orders(
     solver._sync_run_order_tasks()
     assert "room_1_1" not in solver.op_data.run_order_rooms
     assert not any(task is refresh for task in solver.tasks)
+
+
+def test_initial_correction_projects_before_checking_provisional_full_return(replay):
+    solver, clock = replay
+    data = solver.op_data
+    data.backup_plans = []
+    data.plan_condition = []
+    worker = data.operators["歌蕾蒂娅"]
+    worker.current_room, worker.current_index = "dormitory_1", 3
+    worker.mood, worker.rest_in_full = 3, True
+    cover = data.operators["陈"]
+    cover.current_room, cover.current_index = "central", 0
+    data.dorm[1].name, data.dorm[1].time = worker.name, clock.now() + timedelta(hours=5)
+    task = SchedulerTask(
+        time=clock.now(),
+        task_type=TaskTypes.SELF_CORRECTION,
+        task_plan={"central": ["歌蕾蒂娅"]},
+    )
+    task.initial_staffing = task.derived_correction = True
+    solver.tasks, solver.task = [task], None
+    # 最终方案的心情检查仍真实执行；临时回班建议不应先读房或进入恢复等待。
+    solver._read_recovery_rooms = MagicMock(
+        side_effect=AssertionError("provisional read")
+    )
+    rooms = simulate_room_io(solver, clock)
+    dispatch(solver, clock)
+    assert not any(queued is task for queued in solver.tasks)
+    assert not getattr(task, "execution_failure", None)
+    assert not getattr(solver, "waiting_group_shifts", [])
+    assert solver.op_data.operators["歌蕾蒂娅"].is_resting()
+    assert solver.op_data.operators["陈"].current_room == "central"
+    solver._read_recovery_rooms.assert_not_called()
+    assert all(call.args[1] != "central" for call in rooms.call_args_list)
