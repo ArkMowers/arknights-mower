@@ -3,6 +3,7 @@
 from datetime import datetime
 from functools import cache
 
+from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
 from arknights_mower.utils.group_recovery import (
     completed_mood_limit_release,
     group_recovery_workers,
@@ -79,7 +80,10 @@ def _resting_members(op_data):
         ):
             continue
         end = ends.get(name)
-        unfinished = end > now if end is not None else 0 <= op.mood < op.upper_limit
+        mood = dorm_candidate_mood(op_data, name, now)
+        unfinished = (
+            end > now if end is not None else mood is not None and mood < op.upper_limit
+        )
         if unfinished:
             resting.add(name)
             if op.group and op_data.is_group_shift_anchor(op):

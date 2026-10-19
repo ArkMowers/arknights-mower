@@ -2610,7 +2610,9 @@ class BaseSchedulerSolver(
                             )
                         self._refresh_coordination_support(self.task)
                         self._prepare_group_shift(self.task)
-                        if not self._verify_required_recovery(self.task):
+                        if not getattr(
+                            self.task, "initial_staffing", False
+                        ) and not self._verify_required_recovery(self.task):
                             self._queue_missing_run_order_reads()
                             self.skip()
                             return True
@@ -3472,6 +3474,12 @@ class BaseSchedulerSolver(
             k: v
             for k, v in self.op_data.operators.items()
             if v.not_valid()
+            # 列表预估已确认低心情时，不能按默认 24 将恢复成员清退回岗。
+            and not (
+                v.is_resting()
+                and (mood := dorm_candidate_mood(self.op_data, k)) is not None
+                and mood < v.upper_limit
+            )
             and not (v.room == "train" and _training_room_scan_disabled)
             and not (v.group and v.room.startswith("dorm"))
             and not v.multi_group
@@ -3708,6 +3716,9 @@ class BaseSchedulerSolver(
                     task_plan=fix_plan, task_type=TaskTypes.SELF_CORRECTION
                 )
                 correction.derived_correction = True
+                correction.initial_staffing = getattr(
+                    self, "_initial_staffing_pending", False
+                )
                 correction.correction_skip_dorm = skip_dorm
                 current_task = getattr(self, "task", None)
                 duplicate = next(
@@ -5423,7 +5434,7 @@ class BaseSchedulerSolver(
         return merged, merged_tasks
 
     def _reconcile_initial_staffing(self):
-        """清零启动实读后先纠正旧驻员，再规划轮休与补床。"""
+        """清零启动观测后生成驻员建议，与轮休和补床一起预演最终安排。"""
         if (
             not getattr(self, "_initial_staffing_pending", False)
             or self._initial_mood_read_pending()
@@ -7204,10 +7215,13 @@ class BaseSchedulerSolver(
         step.ordinary_coordination = bool(ordinary_requests)
         step.coordination_request_names = list(dict.fromkeys(ordinary_requests))
         step.dorm_fill_plan = copy.deepcopy(getattr(task, "dorm_fill_plan", {}))
+        initial_correction = getattr(task, "initial_staffing", False)
         returning_groups = {
             group
             for group, resting in getattr(task, "group_shift_transitions", {}).items()
-            if not resting and self.op_data.group_is_resting(group)
+            if not initial_correction
+            and not resting
+            and self.op_data.group_is_resting(group)
         }
         returning = set()
         seen = set()
@@ -7266,9 +7280,29 @@ class BaseSchedulerSolver(
             )
             simulation._suppress_train_arrangement(step.plan)
             simulation._suppress_retained_arrangements(step.plan)
+            return_plan = step.plan
+            if initial_correction:
+                # 初始化纠错只是驻员建议，允许低心情主班在本轮直接下班。
+                # 已到期的明确换班及副表岗位仍保留原有回班意图。
+                return_plan = self._plan_for_slots(step.plan, explicit_slots)
+                for queued in coalesced:
+                    if id(queued) in consumed and not getattr(
+                        queued, "initial_staffing", False
+                    ):
+                        _merge_shift_transition(
+                            return_plan, queued.plan, simulation.op_data
+                        )
+                returning_groups.update(
+                    group
+                    for group, resting in simulation.op_data.arrangement_group_transitions(
+                        return_plan
+                    ).items()
+                    if not resting
+                )
+                initial_correction = False
             returning.update(
                 name
-                for name in _assigned_operator_names(step.plan)
+                for name in _assigned_operator_names(return_plan)
                 if name in simulation.op_data.operators
                 and not simulation.op_data.operators[name].is_working()
             )
@@ -7279,7 +7313,7 @@ class BaseSchedulerSolver(
             returning_groups.update(
                 group
                 for group, resting in simulation.op_data.arrangement_group_transitions(
-                    step.plan
+                    return_plan
                 ).items()
                 if not resting and simulation.op_data.group_is_resting(group)
             )

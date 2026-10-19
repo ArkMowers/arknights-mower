@@ -203,3 +203,83 @@ def test_blocked_dependency_release_retries_once_without_changing_task(solver):
     correction = solver.tasks[-1]
     assert not solver._reconcile_initial_staffing()
     assert solver.tasks == [correction]
+
+
+@pytest.mark.parametrize("source", ["room", "selection"])
+def test_initial_correction_rotates_low_mood_group_before_any_device_change(
+    monkeypatch, source
+):
+    from arknights_mower.tests import shift_backup_convergence_tests as backup
+
+    solver = backup.solver.__wrapped__(monkeypatch)
+    data = solver.op_data
+    data.backup_plans = []
+    data.plan_condition = []
+    data.operators["薇薇安娜"]._current_room = "dormitory_1"
+    data.operators["薇薇安娜"].current_index = 2
+    data.operators["陈"]._current_room = "central"
+    data.operators["陈"].current_index = 0
+    data.dorm[0].name = "薇薇安娜"
+    data.dorm[0].time = datetime.now() + timedelta(hours=4)
+    for op in data.operators.values():
+        op.mood = 24
+    for name in data.groups["红松"]:
+        op = data.operators[name]
+        if source == "room":
+            op.mood = 3
+        else:
+            op.time_stamp = None
+            data.dorm_mood_estimates[name] = (3, datetime.now())
+    solver._initial_staffing_pending = True
+    solver.defer_backup_plan_until_mood_read = False
+    solver.find_next_task = MagicMock(return_value=None)
+    solver.enter_room = MagicMock(side_effect=AssertionError("device access"))
+    assert solver._reconcile_initial_staffing()
+    task = solver.tasks[-1]
+    solver.task = task
+    solver._prepare_group_shift(task)
+    solver._prepare_shift_cycle(task)
+    projected = data.project_arrangements([task.plan])
+    assert all(projected.operators[name].is_resting() for name in data.groups["红松"])
+    assert projected.operators["陈"].current_room == "central"
+    assert projected.operators["酒神"].current_room == "room_1_2"
+    assert projected.operators["食铁兽"].current_room == "room_1_2"
+    assert task.plan.get("central", ["Current"])[0] != "薇薇安娜"
+    assert data.operators["野鬃"].is_working()
+    if source == "selection":
+        assert all(
+            data.operators[name].time_stamp is None for name in data.groups["红松"]
+        )
+        assert all(data.operators[name].mood == 24 for name in data.groups["红松"])
+    solver.op_data = projected
+    solver.tasks = []
+    next_task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF)
+    solver._prepare_shift_cycle(next_task)
+    assert not next_task.plan
+    solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+def test_initial_correction_preserves_explicit_due_return(monkeypatch, explicit):
+    from arknights_mower.tests import shift_backup_convergence_tests as backup
+
+    solver = backup.solver.__wrapped__(monkeypatch)
+    task = backup.resting(solver)
+    solver.op_data.backup_plans = []
+    solver.op_data.plan_condition = []
+    task.type = TaskTypes.SELF_CORRECTION
+    task.initial_staffing = True
+    for name in solver.op_data.groups["红松"]:
+        solver.op_data.operators[name].mood = 3
+    for name in solver.op_data.groups["深海"]:
+        solver.op_data.operators[name].mood = 24
+    if explicit:
+        due = SchedulerTask(task_type=TaskTypes.SHIFT_ON, task_plan=task.plan.copy())
+        solver.tasks.append(due)
+    solver._prepare_group_shift(task)
+    solver._prepare_shift_cycle(task)
+    projected = solver.op_data.project_arrangements([task.plan])
+    assert all(
+        projected.operators[name].is_working() == explicit
+        for name in solver.op_data.groups["红松"]
+    )
