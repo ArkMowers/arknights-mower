@@ -391,7 +391,11 @@ def test_residual_exhaust_off_requeues_run_order_after_coordination(
     )
     solver.tasks, solver.task = [residual, old_run_order], residual
     solver.refresh_run_order_time("room_1_1")
-    assert solver.tasks == [residual]
+    (refresh,) = [task for task in solver.tasks if task is not residual]
+    assert refresh.type == TaskTypes.REFRESH_TIME
+    assert refresh.meta_data == "room_1_1"
+    assert old_run_order not in solver.tasks
+    refresh_time = refresh.time
     solver.planned = solver.todo_task = solver.collect_notification = False
     solver.find = MagicMock(return_value=True)
     solver._refresh_deferred_product_reservations = MagicMock()
@@ -403,7 +407,8 @@ def test_residual_exhaust_off_requeues_run_order_after_coordination(
     monkeypatch.setattr(base_schedule, "scheduling", MagicMock(return_value=None))
     solver.infra_main()
     assert solver.task is None
-    (replacement_check,) = solver.tasks
+    (replacement_check,) = [task for task in solver.tasks if task is not refresh]
+    assert refresh in solver.tasks and refresh.time == refresh_time
     assert replacement_check.replacement_check == {
         "owner": "苍苔",
         "cover": "引星棘刺",
@@ -427,7 +432,8 @@ def test_residual_exhaust_off_requeues_run_order_after_coordination(
     solver.task = replacement_check
     solver.infra_main()
     assert solver.task is None
-    assert solver.tasks == [replacement_check]
+    assert len(solver.tasks) == 2
+    assert refresh in solver.tasks and replacement_check in solver.tasks
     assert replacement_check.time > execute_time
     solver.get_agent_from_room.assert_called_once_with(
         "room_2_2",
@@ -437,6 +443,10 @@ def test_residual_exhaust_off_requeues_run_order_after_coordination(
         force_working_time=True,
     )
     assert not solver.planned
+    solver.task = refresh
+    solver.infra_main()
+    assert refresh not in solver.tasks
+    assert solver.task is None
     solver.infra_main()
     assert len(solver.tasks) == 2
     assert any(task is replacement_check for task in solver.tasks)

@@ -4446,12 +4446,14 @@ class BaseSchedulerSolver(
             except Exception as e:
                 logger.warning("入驻后读取订单失败，保留独立刷新任务：%s", e)
                 self._retain_failed_task(refresh, str(e), [refresh.meta_data])
+                self.back_to_infrastructure()
             if observed and not getattr(refresh, "execution_failure", None):
                 self.tasks[:] = [task for task in self.tasks if task is not refresh]
             observed_any |= bool(observed)
             if any(
                 pending.type == TaskTypes.RUN_ORDER
                 and pending.meta_data
+                and not getattr(pending, "run_order_restore_pending", False)
                 and pending.time <= datetime.now() + timedelta(minutes=1)
                 for pending in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
             ):
@@ -4490,6 +4492,7 @@ class BaseSchedulerSolver(
                 for pending in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
                 if pending.type == TaskTypes.RUN_ORDER
                 and pending.meta_data
+                and not getattr(pending, "run_order_restore_pending", False)
                 and (finish >= pending.time if has_dorm else finish > pending.time)
             ),
             None,

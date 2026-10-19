@@ -711,7 +711,7 @@ def test_backup_reorder_wakes_planning_even_with_existing_return(solver, monkeyp
     assert wakeups[0] in generated
 
 
-def test_backup_reorder_rebuilds_invalidated_run_order_on_next_planning_pass(
+def test_backup_reorder_preserves_and_consumes_invalidated_order_read(
     solver, monkeypatch
 ):
     solver.global_plan["default_plan"].plan["room_1_1"] = [
@@ -723,7 +723,7 @@ def test_backup_reorder_rebuilds_invalidated_run_order_on_next_planning_pass(
         solver.op_data.operators[name].current_room = "dormitory_1"
         solver.op_data.operators[name].current_index = index
     solver.plan_metadata()
-    # 时间较远的跑单仍沿用原版规则：换班时删除，常规规划负责重建。
+    # 换班作废旧估计后，独立刷新任务保留重新读取的责任。
     old_order = SchedulerTask(
         time=base.datetime.now() + timedelta(minutes=30),
         task_type=TaskTypes.RUN_ORDER,
@@ -733,7 +733,9 @@ def test_backup_reorder_rebuilds_invalidated_run_order_on_next_planning_pass(
     solver.tasks.append(old_order)
     solver.refresh_run_order_time("room_1_1")
     assert old_order not in solver.tasks
-    assert all(t.type != TaskTypes.REFRESH_TIME for t in solver.tasks)
+    (refresh,) = [t for t in solver.tasks if t.type == TaskTypes.REFRESH_TIME]
+    assert refresh.meta_data == "room_1_1"
+    refresh_time = refresh.time
 
     solver.op_data.backup_plans[0].config.dorm_order = ["dormitory_1"]
     monkeypatch.setattr(
@@ -759,6 +761,14 @@ def test_backup_reorder_rebuilds_invalidated_run_order_on_next_planning_pass(
     solver.skip = base.BaseSchedulerSolver.skip.__get__(solver)
     solver.infra_main()
     assert solver.planned  # 重排完成仍按原流程跳过本轮常规规划。
+    assert refresh in solver.tasks and refresh.time == refresh_time
+
+    solver.get_run_order_time = MagicMock(
+        return_value=base.datetime.now() + timedelta(hours=1)
+    )
+    solver.task = refresh
+    solver.infra_main()
+    assert refresh not in solver.tasks
 
     wakeup = next(t for t in solver.tasks if t.type == TaskTypes.NOT_SPECIFIC)
     # 下一次 run() 重置 planned；消费空任务后进入正常规划，无需等待回班。
@@ -768,9 +778,6 @@ def test_backup_reorder_rebuilds_invalidated_run_order_on_next_planning_pass(
     solver.plan_solver = MagicMock()
     solver.op_data.operators["歌蕾蒂娅"].mood = 24
     solver.op_data.operators["歌蕾蒂娅"].time_stamp = base.datetime.now()
-    solver.get_run_order_time = MagicMock(
-        return_value=base.datetime.now() + timedelta(hours=1)
-    )
     solver.infra_main()
 
     orders = [t for t in solver.tasks if t.type == TaskTypes.RUN_ORDER]
