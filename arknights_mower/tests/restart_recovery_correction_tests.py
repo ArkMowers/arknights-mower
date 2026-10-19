@@ -135,14 +135,14 @@ def test_confirmed_full_recovery_releases_group_return(solver):
     solver.enter_room.assert_not_called()
 
 
-def test_idle_group_without_resting_members_still_returns(solver):
+def test_idle_group_without_dorm_residents_keeps_unfinished_full_recovery(solver):
     solver.op_data = solver.op_data.project_arrangements(
         [{"dormitory_1": ["杜林", "桃金娘", "Free", "森蚺", "Free"]}]
     )
-
     plan = solver.agent_get_mood(skip_dorm=True, read_rooms=False, return_plan=True)
 
-    assert plan["room_3_2"] == ["阿罗玛", "槐琥"]
+    assert not {"阿罗玛", "槐琥"}.intersection(plan.get("room_3_2", []))
+    assert "槐琥" in plan["dormitory_1"]
     assert plan["central"] == ["森蚺"]
     solver.enter_room.assert_not_called()
 

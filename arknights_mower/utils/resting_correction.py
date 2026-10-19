@@ -66,10 +66,32 @@ def covered_recovery_members(op_data):
     return result
 
 
+def off_duty_full_recovery_members(op_data):
+    """已离岗且有效心情未满的回满主班按下班处理，不依赖恢复期限。"""
+    return {
+        name
+        for name, op in op_data.operators.items()
+        if op.is_high()
+        and op.rest_in_full
+        and not op.workaholic
+        and not op.room.startswith("dorm")
+        and not op.is_working()
+        and not op_data.rest_mood_complete(name)
+        and (mood := dorm_candidate_mood(op_data, name)) is not None
+        and mood < op.upper_limit
+    }
+
+
 def _resting_members(op_data):
     ends = {d.name: d.time for d in op_data.all_dorms() if d.name}
     covered = covered_recovery_members(op_data)
-    resting, groups, recovery_groups = set(covered), set(), set()
+    off_duty = off_duty_full_recovery_members(op_data)
+    resting, groups = set(covered) | off_duty, set()
+    recovery_groups = {
+        op_data.operators[name].group
+        for name in off_duty
+        if op_data.operators[name].group
+    }
     now = datetime.now()
     for name, op in op_data.operators.items():
         if (
@@ -245,7 +267,9 @@ def prefer_resting_replacements(op_data, fix_plan, is_busy):
     if not fix_plan:
         return
     resting, recovery_groups = _resting_members(op_data)
-    protected = _recall_recovery_members(op_data)
+    protected = _recall_recovery_members(op_data) | off_duty_full_recovery_members(
+        op_data
+    )
     resting.update(protected)
     if not resting:
         return

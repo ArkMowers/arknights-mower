@@ -64,6 +64,7 @@ def required_recovery_members(data, task, *, now=None):
                 continue
             if (
                 getattr(task, "initial_staffing", False)
+                and not op.rest_in_full
                 and not getattr(task, "derived_correction_started", False)
                 and not getattr(task, "group_shift_expected", {})
                 and name not in getattr(task, "initial_staffing_returns", ())
