@@ -81,6 +81,80 @@ def test_daily_reset_uses_drones_and_restores_original_roster(
     assert not hasattr(task, "run_order_original_roster")
 
 
+@pytest.mark.parametrize("restoration_mode", ["none", "independent", "shared"])
+def test_drone_adjustment_updates_independent_order_with_failed_restoration(
+    solver, restoration_mode
+):
+    config.conf.run_order_delay = 5
+    config.conf.run_order_grandet_mode.enable = True
+    for name in ("龙舌兰", "佩佩", "但书"):
+        solver.op_data.add(Operator(name, ""))
+    first_room, second_room = "room_1_2", "room_1_3"
+    first = SchedulerTask(
+        time=NOW + timedelta(minutes=20),
+        task_plan={first_room: ["龙舌兰"]},
+        task_type=TaskTypes.RUN_ORDER,
+        meta_data=first_room,
+    )
+    second = SchedulerTask(
+        time=NOW + timedelta(minutes=22),
+        task_plan={second_room: ["佩佩"]},
+        task_type=TaskTypes.RUN_ORDER,
+        meta_data=second_room,
+    )
+    solver.tasks = [first, second]
+    restoration = None
+    if restoration_mode != "none":
+        original = solver.op_data.operators[PRIMARY[0]]
+        original._current_room, original.current_index = "", -1
+        temporary = solver.op_data.operators[
+            "龙舌兰" if restoration_mode == "shared" else "但书"
+        ]
+        temporary._current_room, temporary.current_index = ROOM, 0
+        restoration = SchedulerTask(
+            time=NOW,
+            task_plan={ROOM: [PRIMARY[0]]},
+            task_type=TaskTypes.RUN_ORDER,
+        )
+        restoration.run_order_original_roster = copy.deepcopy(restoration.plan)
+        restoration.run_order_restore_pending = True
+        solver.tasks.append(restoration)
+        solver._retain_failed_task(restoration, "原班恢复失败", [ROOM])
+        restoration_state = copy.deepcopy(vars(restoration))
+    second_state = copy.deepcopy(vars(second))
+    shared = restoration_mode == "shared"
+    assert scheduler_task.scheduling(
+        solver.tasks, time_now=NOW, op_data=solver.op_data
+    ) == (None if shared else (first, second))
+    solver.drone_room = first_room
+    solver.recog = MagicMock(w=1920, h=1080)
+    solver.digit_reader = MagicMock()
+    solver.digit_reader.get_drone.return_value = 100
+    solver.tap = MagicMock()
+    solver.scene = MagicMock(return_value=Scene.INFRA_DETAILS)
+    solver.waiting_scene = []
+    solver._wait_drone_interface = MagicMock()
+    solver.double_read_time = MagicMock(return_value=NOW + timedelta(minutes=15))
+
+    for _ in range(3):
+        solver.adjust_order_time((100, 200), first_room)
+
+    assert first.time == NOW + timedelta(minutes=20 if shared else 10)
+    assert solver.tap.call_count == (0 if shared else 3)
+    assert solver.double_read_time.call_count == (0 if shared else 1)
+    assert (
+        scheduler_task.scheduling(solver.tasks, time_now=NOW, op_data=solver.op_data)
+        is None
+    )
+    assert vars(second) == second_state
+    assert all(
+        any(queued is task for queued in solver.tasks) for task in (first, second)
+    )
+    if restoration is not None:
+        assert any(queued is restoration for queued in solver.tasks)
+        assert vars(restoration) == restoration_state
+
+
 @pytest.mark.parametrize("original", [["", ""], [COVERS[0], ""]])
 def test_incomplete_observed_roster_prevents_temporary_selection(
     solver, monkeypatch, original

@@ -8800,8 +8800,8 @@ class BaseSchedulerSolver(
                 use_digit_reader=True,
             )
             task_time = _time - timedelta(minutes=config.conf.run_order_delay)
-            if task := find_next_task(
-                self.tasks, task_type=TaskTypes.RUN_ORDER, meta_data=room
+            if task := self.find_next_task(
+                task_type=TaskTypes.RUN_ORDER, meta_data=room
             ):
                 task.time = task_time
                 logger.info(
