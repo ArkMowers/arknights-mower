@@ -1,4 +1,5 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { createWindowHitRegionSync } from './hit-regions.js'
 
 export const WINDOW_RESIZE_EDGES = Object.freeze([
   'left',
@@ -17,7 +18,6 @@ const REQUIRED_METHODS = [
   'maximize',
   'restore',
   'close',
-  'start_resize',
   'get_window_state',
   'get_platform'
 ]
@@ -51,6 +51,26 @@ const NORMAL_STATE = Object.freeze({
 
 function hasBridgeContract(api) {
   return Boolean(api && REQUIRED_METHODS.every((method) => typeof api[method] === 'function'))
+}
+
+function readCapabilities(platformResult) {
+  const capabilities = platformResult.capabilities
+  if (capabilities === undefined) {
+    return {
+      enabled: true,
+      move: 'bridge',
+      resize: platformResult.platform === 'windows' ? 'html' : 'native'
+    }
+  }
+  if (
+    typeof capabilities?.enabled !== 'boolean' ||
+    !['bridge', 'native'].includes(capabilities.move) ||
+    !['html', 'native'].includes(capabilities.resize) ||
+    (capabilities.controls !== undefined && !['html', 'native'].includes(capabilities.controls))
+  ) {
+    return null
+  }
+  return { ...capabilities }
 }
 
 function validState(state, protocol) {
@@ -114,7 +134,8 @@ export function formatEmulatorLabel({ name = '', instanceName = '' } = {}) {
 export function createWindowShellAdapter({
   windowObject = window,
   readyTimeoutMs = 1200,
-  callTimeoutMs = 1000
+  callTimeoutMs = 1000,
+  onCloseRequested = null
 } = {}) {
   const metadata = readWindowShellMetadata(windowObject?.location)
   // A frameless desktop window draws its own title bar, so the bar is active
@@ -123,6 +144,7 @@ export function createWindowShellAdapter({
   const active = ref(Boolean(metadata.requested))
   const connected = ref(false)
   const platform = ref(null)
+  const capabilities = ref({ enabled: true, move: 'bridge', resize: 'native' })
   const state = ref({ ...NORMAL_STATE })
   const busy = ref({
     minimize: false,
@@ -134,6 +156,7 @@ export function createWindowShellAdapter({
   let bridge = null
   let activeProtocol = null
   let listeningEvent = null
+  let listeningCloseEvent = null
   let initialSyncTimer = null
   let disposed = false
   let pollTimer = null
@@ -143,6 +166,18 @@ export function createWindowShellAdapter({
   let rejectedCandidate = null
   let pendingReadiness = []
   let warnedMessages = new Set()
+  const hitRegionSync = createWindowHitRegionSync({
+    windowObject,
+    send: async (payload) => {
+      if (!bridge || disposed) return false
+      try {
+        return (await withTimeout(bridge.set_hit_regions(payload), callTimeoutMs)) === true
+      } catch (error) {
+        warnOnce('window shell failed to synchronize hit regions:', error)
+        return false
+      }
+    }
+  })
 
   const makeControl = (action, label) => ({
     id: action === 'restore' ? 'maximize' : action,
@@ -153,8 +188,18 @@ export function createWindowShellAdapter({
   })
 
   const controlSide = computed(() => (platform.value === 'macos' ? 'start' : 'end'))
+  const stopWatchingLayout = watch(
+    [active, connected, platform, controlSide, state, capabilities],
+    () => {
+      hitRegionSync.setEnabled(
+        active.value && connected.value && capabilities.value.move === 'native'
+      )
+      hitRegionSync.schedule()
+    },
+    { flush: 'post' }
+  )
   const controls = computed(() => {
-    if (!active.value) return []
+    if (!active.value || capabilities.value.controls === 'native') return []
     const maximizeControl = state.value.maximized
       ? makeControl('restore', '还原')
       : makeControl('maximize', '最大化')
@@ -166,8 +211,31 @@ export function createWindowShellAdapter({
     return platform.value === 'macos' ? [standard[2], standard[0], standard[1]] : standard
   })
 
+  const applyState = (current) => {
+    if (!validState(current, activeProtocol)) return
+    if (current.capabilities !== undefined) {
+      const currentCapabilities = readCapabilities({
+        platform: platform.value,
+        capabilities: current.capabilities
+      })
+      if (currentCapabilities) {
+        capabilities.value = currentCapabilities
+        active.value = currentCapabilities.enabled
+      }
+    }
+    state.value = { ...current }
+  }
+
   const onNativeState = (event) => {
-    if (validState(event?.detail, activeProtocol)) state.value = { ...event.detail }
+    applyState(event?.detail)
+  }
+
+  const onNativeClose = (event) => {
+    if (disposed) return
+    event?.preventDefault?.()
+    void Promise.resolve()
+      .then(() => (onCloseRequested ? onCloseRequested() : close()))
+      .catch((error) => warnOnce('window shell close request failed:', error))
   }
 
   // A bridge problem is worth saying once: the polling that follows would repeat
@@ -192,6 +260,7 @@ export function createWindowShellAdapter({
       ])
       const protocol = platformResult?.protocol
       const event = platformResult?.event
+      const candidateCapabilities = platformResult && readCapabilities(platformResult)
       // Two kinds of no. A bridge that does not speak this contract will never
       // start speaking it, so it is refused for good. A state that cannot be read
       // yet may be a window still coming up, and keeps the rest of the poll budget.
@@ -199,7 +268,14 @@ export function createWindowShellAdapter({
         !protocol ||
         !event ||
         !VALID_PLATFORMS.has(platformResult.platform) ||
-        protocol !== stateResult?.protocol
+        protocol !== stateResult?.protocol ||
+        !candidateCapabilities ||
+        (candidateCapabilities.enabled &&
+          ((candidateCapabilities.move === 'native' &&
+            typeof candidate.set_hit_regions !== 'function') ||
+            (candidateCapabilities.move === 'bridge' &&
+              candidateCapabilities.resize === 'html' &&
+              typeof candidate.start_resize !== 'function')))
       const unusableState = !validState(stateResult, protocol)
       if (wrongContract || unusableState) {
         warnOnce('window shell bridge validation failed:', platformResult, stateResult)
@@ -216,10 +292,12 @@ export function createWindowShellAdapter({
       activeProtocol = protocol
       bridge = candidate
       platform.value = platformResult.platform
-      state.value = { ...stateResult }
+      capabilities.value = candidateCapabilities
+      active.value = candidateCapabilities.enabled
+      applyState(stateResult)
       connected.value = true
 
-      if (typeof candidate.start_move !== 'function') {
+      if (candidateCapabilities.move === 'bridge' && typeof candidate.start_move !== 'function') {
         warnOnce('window shell cannot drag the window: start_move is missing')
       }
 
@@ -229,6 +307,18 @@ export function createWindowShellAdapter({
       disposeListener()
       windowObject?.addEventListener?.(event, onNativeState)
       listeningEvent = event
+      if (typeof platformResult.close_event === 'string' && platformResult.close_event) {
+        listeningCloseEvent = platformResult.close_event
+        windowObject?.addEventListener?.(listeningCloseEvent, onNativeClose)
+        if (typeof candidate.ready_for_native_close === 'function') {
+          try {
+            await withTimeout(candidate.ready_for_native_close(), callTimeoutMs)
+          } catch (error) {
+            warnOnce('window shell close listener readiness failed:', error)
+          }
+          if (disposed || bridge !== candidate) return false
+        }
+      }
 
       stopPolling()
       if (initialSyncTimer) clearTimeout(initialSyncTimer)
@@ -240,7 +330,7 @@ export function createWindowShellAdapter({
         try {
           const current = await withTimeout(candidate.get_window_state(), callTimeoutMs)
           if (bridge === candidate && validState(current, activeProtocol)) {
-            state.value = { ...current }
+            applyState(current)
           }
         } catch {
           // A closing WebView has no state to synchronize.
@@ -351,7 +441,8 @@ export function createWindowShellAdapter({
   }
 
   async function runControl(action) {
-    if (!active.value || !bridge || !CONTROL_METHODS.has(action)) return false
+    if (!bridge || !CONTROL_METHODS.has(action) || (!active.value && action !== 'close'))
+      return false
     busy.value = { ...busy.value, [action]: true }
     try {
       return (await withTimeout(bridge[action](), callTimeoutMs)) === true
@@ -372,7 +463,7 @@ export function createWindowShellAdapter({
     if (bridge) {
       try {
         const current = await withTimeout(bridge.get_window_state(), callTimeoutMs)
-        if (validState(current, activeProtocol)) state.value = { ...current }
+        applyState(current)
       } catch {
         // Fall back to the last native event if the window is already closing.
       }
@@ -381,7 +472,7 @@ export function createWindowShellAdapter({
   }
 
   async function startMove() {
-    if (!active.value || !bridge) return false
+    if (!active.value || !bridge || capabilities.value.move !== 'bridge') return false
     let handover
     try {
       handover = bridge.start_move()
@@ -404,7 +495,14 @@ export function createWindowShellAdapter({
   }
 
   async function startResize(edge) {
-    if (!active.value || !bridge || !RESIZE_EDGES.has(edge) || state.value.maximized) {
+    if (
+      !active.value ||
+      !bridge ||
+      capabilities.value.move === 'native' ||
+      capabilities.value.resize !== 'html' ||
+      !RESIZE_EDGES.has(edge) ||
+      state.value.maximized
+    ) {
       return false
     }
     try {
@@ -415,13 +513,18 @@ export function createWindowShellAdapter({
   }
 
   function disposeListener() {
-    if (!listeningEvent) return
-    windowObject?.removeEventListener?.(listeningEvent, onNativeState)
+    if (listeningEvent) windowObject?.removeEventListener?.(listeningEvent, onNativeState)
+    if (listeningCloseEvent) {
+      windowObject?.removeEventListener?.(listeningCloseEvent, onNativeClose)
+    }
     listeningEvent = null
+    listeningCloseEvent = null
   }
 
   function dispose() {
     disposed = true
+    stopWatchingLayout()
+    hitRegionSync.dispose()
     unwatchBridge()
     if (initialSyncTimer) clearTimeout(initialSyncTimer)
     initialSyncTimer = null
@@ -442,6 +545,7 @@ export function createWindowShellAdapter({
     active,
     connected,
     platform,
+    capabilities,
     state,
     busy,
     metadata,

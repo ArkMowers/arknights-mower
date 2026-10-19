@@ -6,17 +6,24 @@
       `window-titlebar--controls-${controlSide}`,
       {
         'window-titlebar--dark': theme === 'dark',
-        'window-titlebar--maximized': maximized
+        'window-titlebar--maximized': maximized,
+        'window-titlebar--native-controls': nativeControls
       }
     ]"
     data-window-shell
   >
     <div
+      v-if="nativeControls"
+      class="window-titlebar__native-controls"
+      data-window-controls
+      aria-hidden="true"
+    ></div>
+    <div
       class="window-titlebar__brand"
       data-window-drag-region
       aria-hidden="true"
       @mousedown.left="onDragStart"
-      @dblclick.stop="onToggleMaximize"
+      @dblclick.stop="onTitlebarDoubleClick"
     >
       <img class="window-titlebar__brand-mark" :src="'/favicon.ico'" alt="" />
     </div>
@@ -25,7 +32,7 @@
       class="window-titlebar__drag-region"
       data-window-drag-region
       @mousedown.left="onDragStart"
-      @dblclick.stop="onToggleMaximize"
+      @dblclick.stop="onTitlebarDoubleClick"
     >
       <span class="window-titlebar__identity" :title="title">
         <span class="window-titlebar__product">Mower</span>
@@ -41,7 +48,7 @@
       </span>
     </div>
 
-    <div class="window-titlebar__controls" data-window-controls>
+    <div v-if="!nativeControls" class="window-titlebar__controls" data-window-controls>
       <button
         v-for="control in controls"
         :key="control.id"
@@ -78,7 +85,7 @@
         class="window-titlebar__resize-grip"
         :data-window-resize-edge="edge"
         aria-hidden="true"
-        @mousedown.left.prevent.stop="onResize(edge)"
+        @mousedown.left.prevent.stop="onResizeStart(edge)"
       ></div>
     </template>
   </header>
@@ -107,7 +114,9 @@ const props = defineProps({
   onToggleMaximize: { type: Function, required: true },
   resizable: { type: Boolean, required: true },
   onResize: { type: Function, required: true },
-  onMove: { type: Function, required: true }
+  onMove: { type: Function, required: true },
+  nativeInteractions: { type: Boolean, default: false },
+  nativeControls: { type: Boolean, default: false }
 })
 
 // A press on the title bar is handed to the shell only once the pointer actually
@@ -143,12 +152,21 @@ function watchDrag(event) {
 }
 
 function onDragStart(event) {
+  if (props.nativeInteractions) return
   dragOriginX = event.screenX
   dragOriginY = event.screenY
   dragArmed = true
   window.addEventListener('mousemove', watchDrag)
   window.addEventListener('mouseup', stopWatchingDrag)
   window.addEventListener('blur', stopWatchingDrag)
+}
+
+function onTitlebarDoubleClick() {
+  if (!props.nativeInteractions) props.onToggleMaximize()
+}
+
+function onResizeStart(edge) {
+  if (!props.nativeInteractions) props.onResize(edge)
 }
 
 onBeforeUnmount(stopWatchingDrag)
@@ -173,6 +191,11 @@ onBeforeUnmount(stopWatchingDrag)
   border: 0;
   box-sizing: border-box;
   user-select: none;
+}
+
+.window-titlebar--native-controls {
+  /* Native buttons keep their system size when page content is zoomed. */
+  zoom: var(--mower-zoom-inverse, 1);
 }
 
 .window-titlebar--dark {
@@ -234,6 +257,11 @@ onBeforeUnmount(stopWatchingDrag)
 .window-titlebar__controls {
   display: flex;
   flex: 0 0 auto;
+  height: 100%;
+}
+
+.window-titlebar__native-controls {
+  flex: 0 0 80px;
   height: 100%;
 }
 

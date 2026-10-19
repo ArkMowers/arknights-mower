@@ -288,7 +288,7 @@ def webview_window(
     child_conn, global_space, instance_name, host, port, url, tray, log_queue=None
 ):
     import sys
-    from threading import Thread
+    from threading import Lock, Thread
 
     import webview
 
@@ -311,12 +311,15 @@ def webview_window(
         save_window_mode,
         save_window_ratio,
     )
+    from arknights_mower.utils.window_backend import (
+        SUPPORTED_BACKENDS,
+        prepare_window_backend,
+    )
     from arknights_mower.utils.window_shell import (
         WindowSize,
         attach_window_shell,
         default_desktop_window_size,
         desktop_window_min_size,
-        is_windows,
         ratio_from_window_size,
         window_background_color,
         window_dpi_scale,
@@ -327,23 +330,36 @@ def webview_window(
     global height
 
     config.load_conf()
+    try:
+        backend = prepare_window_backend()
+    except Exception:
+        from arknights_mower.utils.log import logger
+
+        logger.exception("WebView 窗口后端初始化失败，回退为浏览器打开")
+        import webbrowser
+
+        webbrowser.open(url)
+        return
+    windows_native = backend == "winforms"
+    shell_enabled = backend in SUPPORTED_BACKENDS
     theme = config.conf.theme
     ratio = load_window_ratio()
     if ratio:
         width, height = window_size_from_ratio(ratio)
     else:
         width, height = default_desktop_window_size()
-    launch_mode = load_window_launch_mode() if is_windows() else "normal"
+    launch_mode = load_window_launch_mode() if shell_enabled else "normal"
     startup_mode = load_window_mode() if launch_mode == "last" else launch_mode
     # Guard the initial window setup and teardown; pywebview can emit transient
     # resize/restore events in both phases.
     mode_ready = False
     closing = False
-    startup_maximize_pending = startup_mode == "maximized"
+    # WinForms preserves its native initialization barrier. Other backends
+    # validate every size against current native state, so a coalesced state
+    # notification cannot leave their normal-size persistence blocked.
+    startup_maximize_pending = windows_native and startup_mode == "maximized"
+    normal_size_lock = Lock()
 
-    # 无边框自绘标题栏是 Windows 专属：原生非客户区缩放/DPI 都依赖下面的 Win32
-    # hook，其余平台沿用原生窗口。否则会得到一个既不能拖拽也不能缩放的裸窗口。
-    shell_enabled = is_windows()
     url = append_query_param(url, "window_shell", "1") if shell_enabled else url
     url = append_query_param(url, "window_theme", theme)
     url = append_query_param(url, "mower_version", title_version())
@@ -352,7 +368,7 @@ def webview_window(
         # 窗口所在显示器 DPI 缩放（1.0 / 1.25 / 1.5 ...）。resized 回调给的是物理
         # 像素，存盘前要还原成逻辑值，否则物理值会被 create_window 当作逻辑再放大
         # 一次，越开越大。每次缩放时重新探测，窗口拖到不同 DPI 的显示器也能对上。
-        if not shell_enabled:
+        if not windows_native:
             return 1.0
         try:
             from webview.platforms import winforms
@@ -369,7 +385,21 @@ def webview_window(
         global height
         if closing or (shell_enabled and (not mode_ready or startup_maximize_pending)):
             return
-        if shell_enabled:
+        if shell_enabled and not windows_native:
+            if not bridge.wait_until_ready():
+                return
+            # Event arguments can belong to an older maximize/restore cycle.
+            # Read the current geometry and normal state together on the GUI
+            # thread, then serialize writes across pywebview event threads.
+            with normal_size_lock:
+                sample = bridge.get_normal_size()
+                if closing or sample is None:
+                    return
+                logical = sanitize_window_size(*sample)
+                if logical is not None:
+                    width, height = logical
+            return
+        if windows_native:
             try:
                 import ctypes
                 from ctypes import wintypes
@@ -406,11 +436,16 @@ def webview_window(
     )
     window.events.resized += window_size
     bridge = attach_window_shell(
-        window, initial_size=WindowSize(width, height), tray_enabled=tray
+        window,
+        initial_size=WindowSize(width, height),
+        tray_enabled=tray,
+        backend=backend,
     )
 
     def on_closing():
         nonlocal closing
+        if bridge.request_native_close():
+            return False
         closing = True
 
     def remember_mode(mode: str):
@@ -425,9 +460,12 @@ def webview_window(
     # instance running in the tray, and the application exits through the
     # supervisor loop instead of this event.
     window.events.closing += on_closing
-    window.events.maximized += lambda: remember_mode("maximized")
-    window.events.restored += lambda: remember_mode("normal")
-    if bridge.get_platform()["platform"] == "windows":
+    if windows_native:
+        window.events.maximized += lambda: remember_mode("maximized")
+        window.events.restored += lambda: remember_mode("normal")
+    else:
+        bridge.on_mode_changed = remember_mode
+    if windows_native:
         from arknights_mower.utils.windows_frameless import (
             install_windows_frameless_resize,
         )
@@ -438,30 +476,34 @@ def webview_window(
             min_size,
         )
 
-        def restore_startup_mode():
-            nonlocal mode_ready
-            if mode_ready:
-                return
-            # Registered after the native layout refresher: maximize after the
-            # corrected WebView client bounds, not before the sizing hook.
-            if startup_mode == "maximized":
-                window.maximize()
-            mode_ready = True
-
-        window.events.loaded += restore_startup_mode
-    else:
+    def restore_startup_mode():
+        nonlocal mode_ready, startup_maximize_pending
+        if mode_ready or closing:
+            return
+        if not bridge.wait_until_ready():
+            return
+        if mode_ready or closing:
+            return
+        # Windows registers this after its client-layout hook. Other backends
+        # wait for their native input and state adapter before applying the mode.
         mode_ready = True
+        if startup_mode == "maximized":
+            if not bridge.maximize():
+                startup_maximize_pending = False
+
+    window.events.loaded += restore_startup_mode
+    bridge.on_ready = restore_startup_mode
 
     def recv_msg():
+        nonlocal closing
         while True:
             try:
                 msg = child_conn.recv()
             except (EOFError, OSError):
                 return
             if msg == "exit":
-                on_closing()
-                window.confirm_close = False
-                window.destroy()
+                closing = True
+                bridge.close()
                 return
             if isinstance(msg, tuple) and len(msg) == 2 and msg[0] == "title":
                 window.set_title(window_title(instance_name, port, msg[1]))
@@ -495,7 +537,7 @@ def webview_window(
     Thread(target=recv_msg, daemon=True).start()
 
     try:
-        webview.start()
+        webview.start(gui=backend if backend in ("gtk", "qt") else None)
 
         size = sanitize_window_size(width, height)
         if size is not None:
@@ -510,6 +552,8 @@ def webview_window(
         import webbrowser
 
         webbrowser.open(url)
+    finally:
+        bridge.dispose()
 
 
 def close_child(process, connection=None):

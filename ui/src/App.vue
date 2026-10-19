@@ -31,7 +31,9 @@
       :adb-port="adbPort"
       :on-control="handleWindowControl"
       :on-toggle-maximize="windowShell.toggleMaximize"
-      :resizable="windowShellPlatform === 'windows' && !windowShellState.maximized"
+      :resizable="windowShellCapabilities.resize === 'html' && !windowShellState.maximized"
+      :native-interactions="windowShellCapabilities.move === 'native'"
+      :native-controls="windowShellCapabilities.controls === 'native'"
       :on-resize="windowShell.startResize"
       :on-move="windowShell.startMove"
     />
@@ -352,7 +354,9 @@ import { resolveCloseIntent } from '@/utils/closePreference'
 import { installModalDragging } from '@/utils/modal-drag.js'
 
 const ChatBot = defineAsyncComponent(() => import('@/components/ChatBot.vue'))
-const windowShell = createWindowShellAdapter()
+const windowShell = createWindowShellAdapter({
+  onCloseRequested: () => handleWindowControl('close')
+})
 const closeModal = ref(false)
 const closeBusy = ref(false)
 const closeTrayAvailable = ref(true)
@@ -366,7 +370,7 @@ const {
   busy: windowShellBusy,
   controls: windowShellControls,
   controlSide: windowShellControlSide,
-  platform: windowShellPlatform,
+  capabilities: windowShellCapabilities,
   state: windowShellState
 } = windowShell
 
