@@ -449,6 +449,75 @@ def test_different_compatible_binaries_share_healthy_server_without_actions(
     assert not service.options["lock_path"].exists()
 
 
+@pytest.mark.parametrize("running", [False, True])
+@pytest.mark.parametrize("phase", ["connect", "sendall", "recv"])
+def test_windows_socket_denial_reaches_device_status_without_restart(
+    service, shared_applications, running, phase
+):
+    application = shared_applications[0]
+    snapshot = application.conf.model_dump()
+    if running:
+        application.control.start().unwrap()
+    original_probe = service.probe.side_effect
+    factory = MagicMock()
+    connection = factory.return_value.__enter__.return_value
+    denial = PermissionError(13, "socket access denied")
+    denial.winerror = 10013
+    getattr(connection, phase).side_effect = denial
+    service.probe.side_effect = lambda timeout: probe_adb_server(
+        timeout, socket_factory=factory, monotonic=service.clock.monotonic
+    )
+
+    result = application.control.recover() if running else application.control.start()
+
+    assert not result.ok
+    assert "WinError 10013" in result.error.message
+    assert "网络访问权限" in result.error.message
+    assert "127.0.0.1:5037" in result.error.message
+    assert str(denial) in result.error.message
+    assert (
+        application.control.settings_status()["error"]["message"]
+        == result.error.message
+    )
+    assert application.conf.model_dump() == snapshot
+    assert application.simulator.actions == []
+    assert service.host.mutations == []
+    service.kill.assert_not_called()
+    application.adapter.rebind.assert_not_called()
+    factory.return_value.__exit__.assert_called_once()
+
+    service.probe.side_effect = original_probe
+    assert application.control.recover().ok
+    assert application.control.serial == application.conf.device.last_serial
+    assert application.conf.model_dump() == snapshot
+    assert service.host.mutations == []
+
+
+def test_socket_denial_at_final_start_check_keeps_original_reason(service):
+    factory = MagicMock()
+    connection = factory.return_value.__enter__.return_value
+    denial = PermissionError(13, "socket access denied")
+    denial.winerror = 10013
+    connection.connect.side_effect = denial
+
+    def probe(timeout):
+        if service.probe.call_count <= 3:
+            return None
+        return probe_adb_server(
+            timeout, socket_factory=factory, monotonic=service.clock.monotonic
+        )
+
+    service.probe.side_effect = probe
+    with pytest.raises(SharedADBError, match="启动前无法确认") as raised:
+        service.recovery.recover("selected-adb", timeout=5)
+
+    assert "WinError 10013" in str(raised.value)
+    assert "网络访问权限" in str(raised.value)
+    assert str(denial) in str(raised.value)
+    assert service.host.mutations == []
+    service.kill.assert_not_called()
+
+
 @pytest.mark.parametrize("starter", [0, 1])
 def test_different_binary_reuses_first_clients_started_server(
     service, different_adb_clients, starter

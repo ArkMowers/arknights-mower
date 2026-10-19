@@ -116,7 +116,9 @@ class SharedADBRecovery:
     def _require_host_timeout(self, error):
         if error is not None and not isinstance(error, SharedADBHandshakeTimeout):
             self._clear_failures()
-            raise SharedADBError("共享 ADB 握手无法验证，保留现有监听") from error
+            raise SharedADBError(
+                f"共享 ADB 握手无法验证，保留现有监听：{error}"
+            ) from error
 
     @contextmanager
     def _locked(self, deadline, cancelled):
@@ -230,7 +232,9 @@ class SharedADBRecovery:
     def _start(self, adb_path, client_version, deadline, cancelled):
         version, error = self._observe(deadline, cancelled)
         if error is not None:
-            raise SharedADBError("启动前无法确认共享 ADB server 状态") from error
+            raise SharedADBError(
+                f"启动前无法确认共享 ADB server 状态：{error}"
+            ) from error
         if version is not None:
             check_adb_version(client_version, version)
             return
