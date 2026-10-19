@@ -146,7 +146,7 @@ def test_idle_fill_waits_until_working_group_has_reserved_beds(solver):
 def test_newcomer_uses_vip_vacated_by_same_shift_replacement(solver):
     config.conf.rescue_threshold = 0
     data = solver.op_data
-    first, second = "dormitory_1", "dormitory_2"
+    first = "dormitory_1"
     # 首个宿舍只剩一个动态床位，正被本轮即将上岗的替班占用。
     for index, name in ((3, "红"), (4, "陈")):
         data.plan[first][index] = Room(name, "", [])
@@ -160,7 +160,8 @@ def test_newcomer_uses_vip_vacated_by_same_shift_replacement(solver):
     work_plan = solver.resting()
 
     assert work_plan["central"][0] == "Mon3tr"
-    assert next(bed for bed in data.dorm if bed.name == "黑键").position[0] == second
+    assert next(bed for bed in data.dorm if bed.name == "黑键").position == (first, 2)
+    assert (cover.current_room, cover.current_index) == (first, 2)
     dorm_plan = try_reorder(data, work_plan)
     assert dorm_plan[first] == ["Current", "Current", "黑键", "Current", "Current"]
     projected = data.project_arrangements([work_plan, dorm_plan])
