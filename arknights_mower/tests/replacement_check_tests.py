@@ -382,6 +382,145 @@ def test_new_observation_above_floor_keeps_deadline_after_pickle(
     assert solver.tasks[0] is restored and restored.time == deadline
 
 
+@pytest.mark.parametrize("previous_rate", [0, 6, 30, float("nan")])
+def test_new_measured_rate_rechecks_countdown_once(
+    replacement_solver, clock, previous_rate
+):
+    solver = replacement_solver
+    cover = solver.op_data.operators["薇薇安娜"]
+    cover.lower_limit = 6
+    cover.depletion_rate = previous_rate
+    task = _bootstrap(solver)
+    assert task.time == clock.now() + timedelta(hours=3)
+    solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
+    task = solver.tasks[0]
+    clock.current += timedelta(minutes=30)
+    solver.op_data.update_detail(cover.name, 12, "central", 0, True)
+    assert cover.depletion_rate == 24
+
+    replacement_check.sync_replacement_checks(solver)
+
+    assert solver.tasks == [task] and task.time == clock.now()
+    solver.get_agent_from_room.assert_called_once()
+    # 新速率只要求重读；下一期限仍由新实读的三十分钟归零倒计时确定。
+    solver.reading.update(mood=12, time=clock.now() + timedelta(minutes=30))
+    assert replacement_check.run_replacement_check(solver, task) is False
+    deadline = clock.now() + timedelta(minutes=15)
+    assert task.time == deadline
+    for _ in range(3):
+        clock.current += timedelta(seconds=6)
+        solver.op_data.update_detail(cover.name, 11.9, "central", 0, True)
+        replacement_check.sync_replacement_checks(solver)
+        assert solver.tasks == [task] and task.time == deadline
+    assert solver.get_agent_from_room.call_count == 2
+
+
+@pytest.mark.parametrize("count", [2, 3])
+def test_same_room_new_rates_recheck_once_without_reopening_peers(
+    replacement_solver, clock, count
+):
+    solver = replacement_solver
+    covers, _ = _prepare_same_room_reader(solver, clock, count)
+    for cover in covers:
+        cover.lower_limit = 6
+    replacement_check.sync_replacement_checks(solver)
+    checks = list(solver.tasks)
+    for task in checks:
+        clock.current += timedelta(seconds=6)
+        assert replacement_check.run_replacement_check(solver, task) is False
+        replacement_check.sync_replacement_checks(solver)
+    clock.current += timedelta(minutes=30)
+    solver.read_accurate_mood.side_effect = None
+    solver.read_accurate_mood.return_value = 12
+    solver.get_agent_from_room("central", [], force_mood=True)
+    assert all(cover.depletion_rate > 0 for cover in covers)
+
+    replacement_check.sync_replacement_checks(solver)
+
+    assert all(task.time == clock.now() for task in checks)
+    solver.read_operator_time.side_effect = lambda room, index, scope: (
+        clock.now() + timedelta(minutes=30)
+    )
+    for task in checks:
+        assert replacement_check.run_replacement_check(solver, task) is False
+        replacement_check.sync_replacement_checks(solver)
+    deadline = clock.now() + timedelta(minutes=15)
+    assert [task.time for task in checks] == [deadline] * count
+    reads = solver.read_operator_time.call_count
+    independent = SchedulerTask(clock.now(), task_type=TaskTypes.DEPOT)
+    solver.tasks.append(independent)
+    for _ in range(3):
+        clock.current += timedelta(seconds=6)
+        replacement_check.sync_replacement_checks(solver)
+        scheduling(solver.tasks, time_now=clock.now(), op_data=solver.op_data)
+        assert find_next_task(solver.tasks) is independent
+        assert [task.time for task in checks] == [deadline] * count
+    assert reads == count * 2
+    assert solver.read_operator_time.call_count == reads
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["prediction", "missing_time", "invalid_mood", "zero", "negative", "nan", "same"],
+)
+def test_unusable_or_unchanged_rate_keeps_existing_deadline(
+    replacement_solver, clock, change
+):
+    solver = replacement_solver
+    cover = solver.op_data.operators["薇薇安娜"]
+    cover.depletion_rate = 6
+    task = _bootstrap(solver)
+    deadline = task.time
+    clock.current += timedelta(minutes=30)
+    cover.mood, cover.time_stamp, cover.depletion_rate = 12, clock.now(), 24
+    if change == "prediction":
+        cover.mood_is_prediction = True
+    elif change == "missing_time":
+        cover.time_stamp = None
+    elif change == "invalid_mood":
+        cover.mood = -1
+    else:
+        cover.depletion_rate = {
+            "zero": 0,
+            "negative": -1,
+            "nan": float("nan"),
+            "same": 6,
+        }[change]
+
+    replacement_check.sync_replacement_checks(solver)
+
+    assert solver.tasks == [task] and task.time == deadline
+    solver.get_agent_from_room.assert_called_once()
+
+
+def test_new_rate_resumes_failed_check_without_moving_original_time(
+    replacement_solver, clock
+):
+    solver = replacement_solver
+    cover = solver.op_data.operators["薇薇安娜"]
+    cover.lower_limit = 6
+    task = _bootstrap(solver)
+    original_time = clock.current = task.time
+    solver.reading.update(mood=12, time=None)
+    assert replacement_check.run_replacement_check(solver, task) is False
+    failure = task.execution_failure
+    clock.current += timedelta(minutes=30)
+    solver.op_data.update_detail(cover.name, 8, "central", 0, True)
+    assert cover.depletion_rate == 8
+
+    replacement_check.sync_replacement_checks(solver)
+
+    assert task.time == original_time and task.execution_failure is failure
+    solver._resume_failed_tasks()
+    assert task.retains_execution and not getattr(task, "execution_failure", None)
+    assert task.time == original_time
+    solver.reading.update(mood=8, time=clock.now() + timedelta(hours=1))
+    assert replacement_check.run_replacement_check(solver, task) is True
+    assert task.time == original_time
+    successor = next(queued for queued in solver.tasks if queued is not task)
+    assert successor.time == clock.now() + timedelta(minutes=15)
+
+
 @pytest.mark.parametrize(
     "change", ["primary_returns", "cover_leaves", "removed", "sole", "zero_work"]
 )

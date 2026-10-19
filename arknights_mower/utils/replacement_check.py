@@ -222,19 +222,30 @@ def sync_replacement_checks(solver):
         snapshot = replacement_check_snapshot(solver, task)
         previous = getattr(task, "replacement_check_source", None)
         cover = data.operators[target["cover"]]
+        observation = snapshot["observations"][target["cover"]]
+        previous_observation = (
+            previous["observations"].get(target["cover"]) if previous else None
+        )
+        rate_changed = (
+            observation[4] is not None
+            and observation[4] > 0
+            and (
+                previous_observation is None
+                or previous_observation[4] != observation[4]
+            )
+        )
         # 候选恢复和预约释放只重新开放失败检查，不移动已有工作期限。
-        # 整房实读会更新同房替班的采样；未到下限时保留各自工作倒计时。
+        # 仅更新采样保留工作期限；达到下限或实测速率改变时重新核实倒计时。
         if (
             previous is not None
             and (
                 previous["environment"] != snapshot["environment"]
                 or (
-                    previous["observations"].get(target["cover"])
-                    != snapshot["observations"].get(target["cover"])
+                    previous_observation != observation
                     and cover.time_stamp is not None
                     and not getattr(cover, "mood_is_prediction", False)
                     and _finite_mood(cover.mood)
-                    and cover.mood <= cover.lower_limit
+                    and (cover.mood <= cover.lower_limit or rate_changed)
                 )
                 or previous["revision"] != snapshot["revision"]
             )
