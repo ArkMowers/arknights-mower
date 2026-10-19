@@ -1898,11 +1898,12 @@ class BaseSchedulerSolver(
     def _next_workshop_task(self, first_task):
         # 每次交接重新检查队列，兼容新增/删除任务和专精换人保护。
         tasks = getattr(self, "tasks", [])
-        protect_priority_tasks(tasks, op_data=getattr(self, "op_data", None))
+        op_data = getattr(self, "op_data", None)
+        protect_priority_tasks(tasks, op_data=op_data)
         pending = sorted(
             (
                 task
-                for task in task_view(tasks, TaskScope.DISPATCH, self.op_data)
+                for task in task_view(tasks, TaskScope.DISPATCH, op_data)
                 if task is not first_task
             ),
             key=lambda task: task.time,

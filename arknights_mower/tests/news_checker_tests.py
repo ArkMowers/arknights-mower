@@ -558,7 +558,12 @@ class DailyResetSchedulingTests(unittest.TestCase):
         later = SchedulerTask(self.local_time(3, 59), task_type=TaskTypes.RUN_ORDER)
         after = SchedulerTask(self.local_time(4, 5), task_type=TaskTypes.RUN_ORDER)
         outside = SchedulerTask(self.local_time(4, 10), task_type=TaskTypes.RUN_ORDER)
-        restore = SchedulerTask(self.local_time(3, 59), task_type=TaskTypes.RUN_ORDER)
+        restore = SchedulerTask(
+            self.local_time(3, 59),
+            task_type=TaskTypes.RUN_ORDER,
+            task_plan={"room_1_1": ["鸿雪"]},
+        )
+        restore.run_order_original_roster = {"room_1_1": ["鸿雪"]}
         restore.run_order_restore_pending = True
         ordinary = SchedulerTask(self.local_time(5))
         tasks = [before, crossing, later, after, outside, restore, ordinary]

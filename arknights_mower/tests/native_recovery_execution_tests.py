@@ -976,6 +976,7 @@ def test_unresolved_return_idle_reports_why_original_task_is_not_dispatched(
     from arknights_mower.solvers import base_schedule as base
 
     scheduler, task, _ = idle_return
+    monkeypatch.delattr(scheduler, "find_next_task")
     assert not scheduler._verify_required_recovery(task)
     original_time, original_plan = task.time, deepcopy(task.plan)
     future = SchedulerTask(
