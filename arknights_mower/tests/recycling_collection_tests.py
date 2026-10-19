@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 from zipfile import ZipFile
 
 import cv2
@@ -196,6 +196,106 @@ def collection_solver():
     return solver
 
 
+def notification_reward_frame():
+    path = (
+        Path(__file__).parent / "fixtures/recycling/reward_notifications_20261018.jpg"
+    )
+    return cv2.cvtColor(cv2.imread(str(path)), cv2.COLOR_BGR2RGB)
+
+
+def test_archived_collection_notifications_require_gold_stripe_and_dark_panel():
+    image = notification_reward_frame()
+    assert recycling.recycling_notifications_visible(image)
+    without_stripe = image.copy()
+    without_stripe[:, 1412:1430] = 0
+    assert not recycling.recycling_notifications_visible(without_stripe)
+    without_panel = image.copy()
+    without_panel[:, 1560:] = 255
+    assert not recycling.recycling_notifications_visible(without_panel)
+
+
+def test_collection_waits_for_notifications_then_records_matching_rewards(
+    db, real_ocr, monkeypatch
+):
+    monkeypatch.setattr(recycling.rapidocr, "engine", real_ocr)
+    solver = collection_solver()
+    image = notification_reward_frame()
+    solver.recog.img = image.copy()
+    solver._recycling_pending = {"id": "notification-disappears", "at": at(18, 19)}
+    solver.scene = Mock(side_effect=[Scene.MATERIEL, Scene.INFRA_MAIN])
+
+    def next_frame(interval):
+        if solver.sleep.call_count == 2:
+            solver.recog.img[:, 1410:] = 0
+
+    solver.sleep.side_effect = next_frame
+    reader = Mock(wraps=recycling.read_recycling_materials)
+    monkeypatch.setattr(recycling, "read_recycling_materials", reader)
+
+    def dismiss(_position):
+        result = record.get_recycling_history("2026-10-18", "2026-10-18")
+        assert result["records"][0]["materials"] == {"凝胶": 1}
+        assert result["records"][0]["collected_at"] == at(18, 19)
+
+    solver.tap.side_effect = dismiss
+    solver._finish_recycling_collection()
+
+    assert reader.call_count == 2
+    assert all(
+        not recycling.recycling_notifications_visible(c.args[0])
+        for c in reader.call_args_list
+    )
+    assert solver.sleep.call_args_list == [call(0.5), call(0.5), call(0.3)]
+    solver.tap.assert_called_once_with((960, 960))
+    solver.recog.save_screencap.assert_not_called()
+    result = record.get_recycling_history("2026-10-18", "2026-10-18")
+    assert result["total"] == 1
+    assert result["records"][0]["operators"] == ["旅骨"]
+    assert solver._recycling_pending is None
+
+
+@pytest.mark.parametrize("readable", [True, False])
+def test_notification_wait_is_bounded_and_keeps_uncertain_materials_unknown(
+    db, monkeypatch, readable
+):
+    solver = collection_solver()
+    solver.recog.img = notification_reward_frame()
+    solver._recycling_pending = {"id": "persistent-notification"}
+    solver.scene = Mock(side_effect=[Scene.MATERIEL, Scene.MATERIEL, Scene.INFRA_MAIN])
+    reader = Mock(return_value={"凝胶": 1} if readable else None)
+    monkeypatch.setattr(recycling, "read_recycling_materials", reader)
+
+    solver._finish_recycling_collection()
+    assert solver._recycling_pending["recorded"]
+    assert solver.sleep.call_args_list == [call(0.5)] * 10 + [call(0.3)] * (
+        1 if readable else 2
+    )
+    assert reader.call_count == (2 if readable else 3)
+    solver.sleep.reset_mock()
+    solver._finish_recycling_collection()
+    solver.sleep.assert_not_called()
+    result = record.get_recycling_history("2000-01-01", "2100-01-01")
+    assert result["total"] == 1
+    assert result["records"][0]["materials"] == ({"凝胶": 1} if readable else None)
+
+
+def test_cancellation_during_notification_wait_preserves_pending_collection(db):
+    from arknights_mower.utils.csleep import MowerExit
+
+    solver = collection_solver()
+    solver.recog.img = notification_reward_frame()
+    event = {"id": "cancelled-notification", "at": at(18, 19)}
+    solver._recycling_pending = event.copy()
+    solver.sleep.side_effect = MowerExit
+
+    with pytest.raises(MowerExit):
+        solver._finish_recycling_collection()
+
+    assert solver._recycling_pending == event
+    solver.tap.assert_not_called()
+    assert record.get_recycling_history("2026-10-18", "2026-10-18")["total"] == 0
+
+
 def test_popup_retry_records_once_before_dismissal_and_reads_actual_staff(
     db, monkeypatch
 ):
@@ -231,7 +331,8 @@ def test_archived_borderline_quantity_is_recorded_after_two_matching_frames(
     assert result["materials"] == [{"name": "装置", "count": 1, "rarity": 2}]
     assert result["comparison"]["unknown_collections"] == 0
     assert result["records"][0]["materials"] == {"装置": 1}
-    solver.sleep.assert_called_once_with(0.3)
+    assert recycling.recycling_notifications_visible(solver.recog.img)
+    assert solver.sleep.call_args_list == [call(0.5)] * 10 + [call(0.3)]
     solver.recog.save_screencap.assert_not_called()
 
 
@@ -263,7 +364,8 @@ def test_windows_unicode_icon_failure_still_records_archived_reward(
     assert result["total"] == 1
     assert result["records"][0]["materials"] == {"固源岩组": 1}
     assert result["comparison"]["unknown_collections"] == 0
-    solver.sleep.assert_called_once_with(0.3)
+    assert recycling.recycling_notifications_visible(solver.recog.img)
+    assert solver.sleep.call_args_list == [call(0.5)] * 10 + [call(0.3)]
     solver.recog.save_screencap.assert_not_called()
 
 

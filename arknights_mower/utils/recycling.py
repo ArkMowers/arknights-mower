@@ -33,6 +33,26 @@ def _material_icon(directory, name):
     return icon[:, :, :3], (icon[:, :, 3] > 240).astype(np.uint8) * 255
 
 
+def recycling_notifications_visible(image):
+    """Detect the gold checkerboard and dark panel of right-side collection tips."""
+    if (
+        not isinstance(image, np.ndarray)
+        or image.shape != (1080, 1920, 3)
+        or image.dtype != np.uint8
+    ):
+        return False
+    # 收取截图中的提示从 y=90 开始，每项间隔 185 像素。
+    # 只看左侧金色格纹和右侧黑底，避开随产物变化的图标及文字。
+    right = cv2.cvtColor(image[90:785, 1412:], cv2.COLOR_RGB2HSV)
+    for top in (0, 185, 370, 555):
+        stripe = right[top + 5 : top + 140, :18]
+        gold = cv2.inRange(stripe, (20, 100, 60), (40, 255, 255))
+        dark = right[top + 5 : top + 140, 148:, 2] < 60
+        if np.mean(gold > 0) >= 0.20 and np.mean(dark) >= 0.65:
+            return True
+    return False
+
+
 def read_recycling_materials(image):
     """Return complete name/count observations, or None on uncertainty.
 
