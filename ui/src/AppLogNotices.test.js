@@ -23,6 +23,42 @@ const render = new Function('Vue', code)({
 })
 const configNotice = { name: 'ConfigSaveNotice' }
 const recoveryNotice = { name: 'CrashRecoveryNotice' }
+const { descriptor: configDescriptor } = parse(
+  readFileSync(new URL('./components/ConfigSaveNotice.vue', import.meta.url), 'utf8')
+)
+const { bindings: configBindings } = compileScript(configDescriptor, {
+  id: 'config-save-notice-test'
+})
+const { code: configCode } = compile(configDescriptor.template.content, {
+  mode: 'function',
+  prefixIdentifiers: true,
+  bindingMetadata: configBindings
+})
+const renderConfigNotice = new Function('Vue', configCode)({
+  ...Vue,
+  resolveComponent: (name) => ({ name })
+})
+
+it('keeps save failures assertive when forwarding them to the floating notification', () => {
+  const notice = renderConfigNotice(
+    {},
+    [],
+    {},
+    {
+      StatusNotification: { name: 'StatusNotification' },
+      config_save_error: '保存失败',
+      config_saving: false,
+      config: { save_config: vi.fn(async () => {}) }
+    }
+  )
+  expect(notice.props).toMatchObject({
+    show: true,
+    role: 'alert',
+    type: 'error',
+    content: '保存失败。修改仍保留在当前页面。'
+  })
+})
+
 function notices(routeName) {
   const store = { save_config: vi.fn(async () => {}) }
   const setup = {

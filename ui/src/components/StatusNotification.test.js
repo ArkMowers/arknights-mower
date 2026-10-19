@@ -23,6 +23,7 @@ beforeEach(() => {
     show: false,
     title: '正在自动恢复',
     type: 'info',
+    role: 'status',
     content: '正在重新读取设备'
   })
   scope = effectScope()
@@ -34,6 +35,21 @@ function latest() {
   return state.create.mock.results.at(-1).value
 }
 
+it.each(['status', 'alert'])(
+  'preserves %s live-region semantics for plain notice content',
+  async (role) => {
+    props.role = role
+    props.show = true
+    await nextTick()
+    const entry = latest()
+    expect(typeof entry.content).toBe('function')
+    expect(entry.content()).toMatchObject({
+      props: { role },
+      children: '正在重新读取设备'
+    })
+  }
+)
+
 it('updates one notification during repeated progress and removes it when recovery ends', async () => {
   expect(state.create).not.toHaveBeenCalled()
   props.show = true
@@ -43,7 +59,7 @@ it('updates one notification during repeated progress and removes it when recove
   props.content = '已读取设备，正在读取驻员和心情'
   await nextTick()
   expect(state.create).toHaveBeenCalledOnce()
-  expect(entry.content).toBe('已读取设备，正在读取驻员和心情')
+  expect(entry.content().children).toBe('已读取设备，正在读取驻员和心情')
   props.show = false
   await nextTick()
   expect(entry.destroy).toHaveBeenCalledOnce()
@@ -79,7 +95,7 @@ it('ignores an old leave callback after a later recovery begins', async () => {
   props.content = '新一轮恢复正在读取设备'
   await nextTick()
   expect(state.create).toHaveBeenCalledTimes(2)
-  expect(current.content).toBe('新一轮恢复正在读取设备')
+  expect(current.content().children).toBe('新一轮恢复正在读取设备')
 })
 
 it('preserves rich content and retry actions when slot availability changes', async () => {
@@ -87,6 +103,7 @@ it('preserves rich content and retry actions when slot availability changes', as
   props.show = true
   await nextTick()
   const entry = latest()
+  expect(entry.content().props.role).toBe('status')
   expect(entry.content().children).toContain('服务暂时不可用，恢复状态稍后自动刷新')
   const retry = vi.fn()
   state.slots.action = () => [{ type: 'button', props: { onClick: retry } }]

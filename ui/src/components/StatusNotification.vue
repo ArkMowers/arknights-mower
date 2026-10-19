@@ -8,6 +8,7 @@ const props = defineProps({
   show: { type: Boolean, default: true },
   title: { type: String, default: '' },
   type: { type: String, default: 'info' },
+  role: { type: String, default: 'status' },
   content: { type: String, default: '' }
 })
 const emit = defineEmits(['close'])
@@ -32,7 +33,7 @@ function syncNotification() {
   const options = {
     title: props.title,
     type: props.type,
-    content: slots.default ? () => h('div', slots.default()) : props.content,
+    content: () => h('div', { role: props.role }, slots.default ? slots.default() : props.content),
     action: slots.action ? () => h('div', slots.action()) : undefined,
     duration: 0
   }
@@ -56,7 +57,7 @@ function syncNotification() {
   current = entry
 }
 
-watch(() => [props.show, props.title, props.type, props.content], syncNotification, {
+watch(() => [props.show, props.title, props.type, props.role, props.content], syncNotification, {
   immediate: true
 })
 

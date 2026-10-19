@@ -11,6 +11,7 @@ const { config_save_error, config_saving } = storeToRefs(config)
   <StatusNotification
     :show="!!config_save_error"
     type="error"
+    role="alert"
     title="配置保存失败"
     :content="`${config_save_error}。修改仍保留在当前页面。`"
   >
