@@ -62,6 +62,18 @@ print(f"ADB daemon protocol version: {version}")
 
 ---
 
+### Windows Socket Access Denied (WinError 10013)
+
+Windows reports `WinError 10013` when a socket operation is denied. The shared-server error names the attempted address, retains the original error and points to host network access permissions. This code alone does not identify which host setting caused the denial; see Microsoft's [Windows Sockets error codes](https://learn.microsoft.com/en-us/windows/win32/winsock/windows-sockets-error-codes-2).
+
+1. Save the complete file log around the failure using the [startup diagnosis](device-startup-stall.md). Check whether the same Mower process also reports this error for HTTPS requests. Record the affected operations and timestamps before attributing the failure to the emulator or ADB server.
+2. Review firewall and security-software network access rules for the running Mower executable and the selected ADB executable. Check their actual installation paths and any host network diagnostics for the denial. The error alone does not establish port exhaustion or a particular security product as the cause.
+3. After correcting a confirmed host problem, run `测试连接（只读）` for the original selected instance and retain its result. If the denial persists, preserve the logs and host diagnostics for further investigation. Increasing the boot timeout or changing capture and touch backends does not grant Windows network access.
+
+The offline `windows_socket_denial` and `socket_denial_at_final_start_check` cases in [shared ADB recovery tests](../../arknights_mower/tests/adb_shared_server_tests.py) verify error propagation and preservation of the shared service. They do not reproduce or repair the host configuration that denies access.
+
+---
+
 ## 3. Verify Canvas Frame Decoding
 
 ### LD Screenshot Enhancement

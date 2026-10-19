@@ -114,6 +114,13 @@ def probe_adb_server(
             "共享 ADB server 未完成主机握手：连接或应答超时", phase=phase
         ) from exc
     except OSError as exc:
+        if getattr(exc, "winerror", None) == 10013:
+            endpoint = address or ADB_SERVER_ADDRESS
+            raise SharedADBError(
+                f"Windows 拒绝访问共享 ADB 服务 {endpoint[0]}:{endpoint[1]}"
+                "（WinError 10013）。请检查安全软件或防火墙对 Mower 和所选 ADB 程序的"
+                f"网络访问权限，并检查 Windows 网络状态。原始错误：{exc}"
+            ) from exc
         raise SharedADBError(f"无法安全读取共享 ADB server 状态：{exc}") from exc
 
 
