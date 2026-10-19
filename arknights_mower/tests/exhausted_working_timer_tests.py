@@ -115,6 +115,17 @@ def test_zero_mood_outside_central_keeps_existing_countdown(room_reader, room):
     solver.recog.update.assert_not_called()
 
 
+@pytest.mark.parametrize("room", ["central", "train", "room_1_1", "contact", "factory"])
+def test_confirmed_zero_working_mood_without_countdown_is_due(room_reader, room):
+    solver, _, _ = room_reader(room=room)
+    solver.read_operator_time = BaseSchedulerSolver.read_operator_time.__get__(solver)
+    solver.read_time = MagicMock(return_value=None)
+    before = datetime.now()
+    result = solver.get_agent_from_room(room, [0])[0]
+    assert result["mood"] == 0
+    assert before <= result["time"] <= datetime.now()
+
+
 @pytest.mark.parametrize("room", ["central", "factory", "train"])
 @pytest.mark.parametrize("target", ["Current", "歌蕾蒂娅", "红", "Free"])
 def test_departure_reads_actual_mood_without_forcing_countdown(

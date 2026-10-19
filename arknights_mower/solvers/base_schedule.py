@@ -741,6 +741,11 @@ class BaseSchedulerSolver(
                     required_recovery_members,
                 )
 
+                if self._prepare_correction_recovery(task):
+                    task.execution_retained = False
+                    del task.execution_failure
+                    logger.info("按离岗回满主班重新安排替班和宿舍，继续原纠错")
+                    continue
                 now = datetime.now()
                 pending = {
                     name
@@ -2034,6 +2039,62 @@ class BaseSchedulerSolver(
             )
             self.back()
 
+    def _prepare_correction_recovery(self, task):
+        """普通纠错先补齐离岗回满主班的替班和床位，再核验真实回班。"""
+        if (
+            task.type != TaskTypes.SELF_CORRECTION
+            or task.meta_data
+            or not (
+                getattr(task, "derived_correction", False)
+                or getattr(task, "initial_staffing", False)
+            )
+            or any(
+                getattr(task, flag, False)
+                for flag in (
+                    "derived_correction_started",
+                    "group_shift_expected",
+                    "backup_shift_active",
+                    "backup_explicit_slots",
+                    "product_shift_locked",
+                    "exhaust_support",
+                    "ordinary_coordination",
+                    "preferred_replacement_restore",
+                    "dorm_recovery_restore",
+                    "emergency_staffing",
+                )
+            )
+        ):
+            return False
+        from arknights_mower.utils.resting_correction import (
+            off_duty_full_recovery_members,
+            prefer_resting_replacements,
+        )
+
+        names = {
+            name
+            for name in off_duty_full_recovery_members(self.op_data)
+            - self._protected_facility_names()
+            - set(getattr(task, "initial_staffing_returns", ()))
+            if (op := self.op_data.operators[name]).index
+            < len(task.plan.get(op.room, []))
+            and task.plan[op.room][op.index] != "Current"
+        }
+        if not names:
+            return False
+        previous = copy.deepcopy(task.plan)
+        prefer_resting_replacements(self.op_data, task.plan, _is_mastery_busy)
+        self._complete_departed_recovery(task.plan, names)
+        if task.plan == previous:
+            return False
+        for field in (
+            "backup_shift_intent",
+            "backup_shift_conditions",
+            "group_shift_transitions",
+            "dorm_fill_plan",
+        ):
+            task.__dict__.pop(field, None)
+        return True
+
     def _verify_required_recovery(self, task):
         from arknights_mower.utils.group_recovery import recovery_mood_complete
         from arknights_mower.utils.recovery_execution import (
@@ -2076,6 +2137,10 @@ class BaseSchedulerSolver(
         ):
             self._scan_card_moods(current_task=task)
             now = datetime.now()
+            if self._prepare_correction_recovery(task):
+                self._prepare_group_shift(task)
+                self._prepare_shift_cycle(task)
+            names = required_recovery_members(self.op_data, task, now=now)
         ready = {
             name
             for name in names
@@ -2620,6 +2685,7 @@ class BaseSchedulerSolver(
                                 self.op_data, _is_mastery_busy, protected, slots
                             )
                         self._refresh_coordination_support(self.task)
+                        self._prepare_correction_recovery(self.task)
                         self._prepare_group_shift(self.task)
                         if not getattr(
                             self.task, "initial_staffing", False
@@ -3550,7 +3616,10 @@ class BaseSchedulerSolver(
                         fix_plan.setdefault(moved_room, ["Current"] * len(moved_slots))[
                             moved_index
                         ] = moved_slots[moved_index].agent
-        from arknights_mower.utils.resting_correction import covered_recovery_members
+        from arknights_mower.utils.resting_correction import (
+            covered_recovery_members,
+            off_duty_full_recovery_members,
+        )
 
         intentional_resting_groups = {
             self.op_data.operators[name].group
@@ -3650,7 +3719,10 @@ class BaseSchedulerSolver(
 
             reconsider_low_mood_replacements(self.op_data, fix_plan, _is_mastery_busy)
         suppress_completed_dorm_returns(self.op_data, fix_plan)
-        departed = covered_recovery_members(self.op_data) - protected_training
+        departed = (
+            covered_recovery_members(self.op_data)
+            | off_duty_full_recovery_members(self.op_data)
+        ) - protected_training
         # 固定宿管位上的恢复成员也必须先迁入合法床位，不能在纠错中丢失。
         displaced_recovery = {
             name
@@ -12561,6 +12633,7 @@ class BaseSchedulerSolver(
                                 for target, current in zip(plan[room], actual)
                             )
                         ):
+                            self.task.__dict__.pop("run_order_staffing_wait", None)
                             logger.info("%s 实际驻员已符合跑单目标，直接处理订单", room)
                             return new_plan
                         if normal_order and (
@@ -12577,11 +12650,18 @@ class BaseSchedulerSolver(
                                 room,
                                 actual,
                             )
-                            self.reset_room_time(room)
-                            plan.clear()
-                            self.tasks.append(SchedulerTask())
+                            self.task.run_order_staffing_wait = True
+                            self._retain_failed_task(
+                                self.task,
+                                "跑单等待实际驻员纠正",
+                                [room],
+                                dependency=True,
+                            )
+                            self.planned = False
                             self.back_to_infrastructure()
                             return False
+                    if normal_order:
+                        self.task.__dict__.pop("run_order_staffing_wait", None)
                     if (
                         self.task.type == TaskTypes.RUN_ORDER
                         and not getattr(self.task, "run_order_restore_pending", False)

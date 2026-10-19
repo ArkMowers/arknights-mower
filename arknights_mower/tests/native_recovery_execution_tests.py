@@ -28,13 +28,13 @@ def returning_task():
 
 @pytest.mark.parametrize("saved_failure", [False, True])
 @pytest.mark.parametrize("grouped", [False, True])
-def test_initial_idle_staffing_does_not_require_an_unstarted_recovery(
+def test_initial_idle_staffing_without_full_setting_does_not_require_recovery(
     solver, monkeypatch, saved_failure, grouped
 ):
     scheduler = solver
     data = scheduler.op_data
     op = data.operators["讯使"]
-    op.rest_in_full = True
+    op.rest_in_full = False
     if not grouped:
         op.group = ""
     op.current_room, op.current_index, op.time_stamp = "", -1, None
@@ -101,7 +101,7 @@ def test_initial_staffing_preserves_real_recovery_requirements(
     assert task.execution_failure
 
 
-def test_overdue_initial_idle_primary_dispatches_through_complete_cycle(
+def test_overdue_initial_idle_primary_without_full_setting_dispatches(
     solver, monkeypatch
 ):
     from arknights_mower.tests.dorm_group_tests import apply_plan
@@ -112,7 +112,7 @@ def test_overdue_initial_idle_primary_dispatches_through_complete_cycle(
     name = "芬"
     room = "room_1_1"
     op = Operator(name, room, index=0, mood=24, operator_type="high")
-    op.rest_in_full = True
+    op.rest_in_full = False
     data.operators[name] = op
     data.plan[room] = [Room(name, "", ["年"])]
     solver.global_plan["default_plan"].plan[room] = data.plan[room]

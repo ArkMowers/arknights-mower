@@ -3505,10 +3505,10 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         solver.get_agent_from_room.return_value = [{"agent": "龙舌兰"}]
         result = solver.agent_arrange_room({}, room, solver.task.plan)
         self.assertIs(result, False)
-        self.assertEqual(solver.task.plan, {})
-        self.assertTrue(
-            any(task.type == TaskTypes.NOT_SPECIFIC for task in solver.tasks)
-        )
+        self.assertEqual(solver.task.plan, {room: ["但书"]})
+        self.assertTrue(solver.task.execution_failure)
+        self.assertTrue(solver.task.run_order_staffing_wait)
+        self.assertEqual(solver.tasks, [solver.task])
         solver.get_agent_from_room.assert_called_once_with(room)
         solver.choose_agent.assert_not_called()
         solver.get_order_remaining_time.assert_not_called()
