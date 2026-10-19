@@ -230,8 +230,9 @@ export function createWindowShellAdapter({
     applyState(event?.detail)
   }
 
-  const onNativeClose = () => {
+  const onNativeClose = (event) => {
     if (disposed) return
+    event?.preventDefault?.()
     void Promise.resolve()
       .then(() => (onCloseRequested ? onCloseRequested() : close()))
       .catch((error) => warnOnce('window shell close request failed:', error))
@@ -309,6 +310,14 @@ export function createWindowShellAdapter({
       if (typeof platformResult.close_event === 'string' && platformResult.close_event) {
         listeningCloseEvent = platformResult.close_event
         windowObject?.addEventListener?.(listeningCloseEvent, onNativeClose)
+        if (typeof candidate.ready_for_native_close === 'function') {
+          try {
+            await withTimeout(candidate.ready_for_native_close(), callTimeoutMs)
+          } catch (error) {
+            warnOnce('window shell close listener readiness failed:', error)
+          }
+          if (disposed || bridge !== candidate) return false
+        }
       }
 
       stopPolling()
@@ -432,7 +441,8 @@ export function createWindowShellAdapter({
   }
 
   async function runControl(action) {
-    if (!active.value || !bridge || !CONTROL_METHODS.has(action)) return false
+    if (!bridge || !CONTROL_METHODS.has(action) || (!active.value && action !== 'close'))
+      return false
     busy.value = { ...busy.value, [action]: true }
     try {
       return (await withTimeout(bridge[action](), callTimeoutMs)) === true

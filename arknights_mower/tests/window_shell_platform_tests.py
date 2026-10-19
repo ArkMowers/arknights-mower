@@ -58,6 +58,8 @@ class DesktopWindow:
         self.events.resized.before_fire = self._resize
         self.evaluations = Queue()
         self.close_requests = Queue()
+        self.close_dispatches = Queue()
+        self.close_listener_ready = False
         self.evaluation_threads = []
         self.confirm_close = True
         self.minimize = Mock()
@@ -73,8 +75,12 @@ class DesktopWindow:
 
     def evaluate_js(self, script):
         if window_shell.WINDOW_SHELL_CLOSE_EVENT in script:
+            assert "{cancelable: true}" in script
+            self.close_dispatches.put(self.close_listener_ready)
+            if not self.close_listener_ready:
+                return False
             self.close_requests.put(get_ident())
-            return
+            return True
         state, _ = json.JSONDecoder().raw_decode(script.split("detail: ", 1)[1])
         self.evaluation_threads.append(get_ident())
         self.evaluations.put(state)
@@ -156,6 +162,7 @@ def test_real_attach_exposes_functions_and_waits_for_native_initialization(
             "start_resize",
             "get_window_state",
             "get_platform",
+            "ready_for_native_close",
             "set_hit_regions",
             "get_close_preference",
             "set_close_preference",
@@ -602,6 +609,8 @@ def test_native_close_waits_for_the_frontend_close_choice(native_factory):
         assert bridge.request_native_close() is True
         assert window.close_requests.empty()
         window.events.loaded.fire()
+        window.close_listener_ready = True
+        assert window.exposed["ready_for_native_close"]() is True
         assert window.close_requests.get(timeout=2) != get_ident()
         window.destroy.assert_not_called()
         assert bridge.close() is True
@@ -611,10 +620,110 @@ def test_native_close_waits_for_the_frontend_close_choice(native_factory):
         bridge.dispose()
 
 
+def test_native_close_waits_for_listener_acknowledgement_after_page_load(
+    native_factory,
+):
+    window = DesktopWindow("cocoa")
+    bridge = window_shell.attach_window_shell(window, system="Darwin", backend="cocoa")
+    try:
+        window.events.shown.fire()
+        assert bridge.request_native_close() is True
+        window.events.loaded.fire()
+        window.wait_for_state("normal")
+        assert window.close_requests.empty()
+        assert window.close_dispatches.empty()
+        assert bridge._pending_close.is_set()
+        window.close_listener_ready = True
+        assert window.exposed["ready_for_native_close"]() is True
+        assert window.close_requests.get(timeout=2) != get_ident()
+        assert window.exposed["ready_for_native_close"]() is True
+    finally:
+        bridge.dispose()
+    assert window.close_requests.empty()
+    assert bridge.request_native_close() is False
+    assert window.exposed["ready_for_native_close"]() is False
+
+
+def test_native_close_survives_a_page_reload_without_a_listener(native_factory):
+    window = DesktopWindow("cocoa")
+    bridge = window_shell.attach_window_shell(window, system="Darwin", backend="cocoa")
+    try:
+        window.events.shown.fire()
+        window.events.loaded.fire()
+        window.close_listener_ready = True
+        assert bridge.ready_for_native_close() is True
+        window.wait_for_state("normal")
+        window.close_listener_ready = False
+        assert bridge.request_native_close() is True
+        assert window.close_dispatches.get(timeout=2) is False
+        assert window.close_requests.empty()
+        assert bridge._pending_close.is_set()
+        window.close_listener_ready = True
+        assert bridge.ready_for_native_close() is True
+        window.close_requests.get(timeout=2)
+    finally:
+        bridge.dispose()
+    assert window.close_requests.empty()
+
+
+def test_disposal_prevents_delivery_of_a_close_waiting_for_the_listener(native_factory):
+    window = DesktopWindow("cocoa")
+    bridge = window_shell.attach_window_shell(window, system="Darwin", backend="cocoa")
+    window.events.shown.fire()
+    assert bridge.request_native_close() is True
+    window.events.loaded.fire()
+    window.wait_for_state("normal")
+    bridge.dispose()
+    window.close_listener_ready = True
+    assert bridge.ready_for_native_close() is False
+    assert bridge.request_native_close() is False
+    bridge._on_loaded()
+    bridge._publish_state()
+    assert not bridge._worker.is_alive()
+    assert window.close_dispatches.empty()
+    assert window.close_requests.empty()
+
+
+def test_native_close_dispatch_failure_retains_request_until_next_handshake(
+    monkeypatch, native_factory
+):
+    window = DesktopWindow("cocoa")
+    bridge = window_shell.attach_window_shell(window, system="Darwin", backend="cocoa")
+    dispatched = Event()
+    evaluate = window.evaluate_js
+
+    def fail_first_close(script):
+        if window_shell.WINDOW_SHELL_CLOSE_EVENT in script and not dispatched.is_set():
+            dispatched.set()
+            raise RuntimeError("The page was replaced before dispatch")
+        return evaluate(script)
+
+    window.evaluate_js = fail_first_close
+    log = Mock()
+    monkeypatch.setattr(window_shell.logger, "exception", log)
+    try:
+        window.events.shown.fire()
+        window.events.loaded.fire()
+        window.close_listener_ready = True
+        assert bridge.ready_for_native_close() is True
+        assert bridge.request_native_close() is True
+        assert dispatched.wait(2)
+        assert bridge._pending_close.is_set()
+        assert window.close_requests.empty()
+        assert bridge.ready_for_native_close() is True
+        window.close_requests.get(timeout=2)
+    finally:
+        bridge.dispose()
+    assert window.close_requests.empty()
+    log.assert_called_once()
+
+
 def test_native_red_button_keeps_size_tracking_until_close_is_confirmed(
     monkeypatch, native_factory
 ):
     def scenario(window, adapter, save_mode):
+        window.close_listener_ready = True
+        assert window.exposed["ready_for_native_close"]() is True
         closing_handler = window.events.closing.handlers[0]
         assert closing_handler() is False
         window.close_requests.get(timeout=2)

@@ -6,7 +6,8 @@
       `window-titlebar--controls-${controlSide}`,
       {
         'window-titlebar--dark': theme === 'dark',
-        'window-titlebar--maximized': maximized
+        'window-titlebar--maximized': maximized,
+        'window-titlebar--native-controls': nativeControls
       }
     ]"
     data-window-shell
@@ -190,6 +191,11 @@ onBeforeUnmount(stopWatchingDrag)
   border: 0;
   box-sizing: border-box;
   user-select: none;
+}
+
+.window-titlebar--native-controls {
+  /* Native buttons keep their system size when page content is zoomed. */
+  zoom: var(--mower-zoom-inverse, 1);
 }
 
 .window-titlebar--dark {

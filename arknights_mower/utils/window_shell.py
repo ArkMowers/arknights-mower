@@ -222,6 +222,7 @@ class WindowShellBridge:
         self._disposed = False
         self._pending_state = Event()
         self._pending_close = Event()
+        self._close_listener_ready = False
         self._direct_close = False
         self._page_loaded = False
         self._worker = None
@@ -305,14 +306,20 @@ class WindowShellBridge:
             if self._disposed:
                 return
             try:
-                if self._pending_close.is_set() and (
-                    self._page_loaded or self._window.events.loaded.is_set()
+                if (
+                    self._close_listener_ready
+                    and self._pending_close.is_set()
+                    and (self._page_loaded or self._window.events.loaded.is_set())
                 ):
-                    self._pending_close.clear()
                     event = json.dumps(WINDOW_SHELL_CLOSE_EVENT)
-                    self._window.evaluate_js(
-                        f"window.dispatchEvent(new CustomEvent({event}));"
+                    accepted = self._window.evaluate_js(
+                        f"!window.dispatchEvent(new CustomEvent({event}, "
+                        "{cancelable: true}));"
                     )
+                    # A reloaded page may not have installed its listener yet.
+                    # Keep the request until that listener acknowledges delivery.
+                    if accepted is True:
+                        self._pending_close.clear()
                 self._publish_state()
             except Exception:
                 logger.exception("Native window state could not be published")
@@ -359,6 +366,13 @@ class WindowShellBridge:
         if self._disposed or self._direct_close or self._backend != "cocoa":
             return False
         self._pending_close.set()
+        self._pending_state.set()
+        return True
+
+    def ready_for_native_close(self) -> bool:
+        if self._disposed or self._backend != "cocoa":
+            return False
+        self._close_listener_ready = True
         self._pending_state.set()
         return True
 
@@ -591,6 +605,7 @@ def attach_window_shell(
         bridge.start_resize,
         bridge.get_window_state,
         bridge.get_platform,
+        bridge.ready_for_native_close,
         bridge.set_hit_regions,
         bridge.get_close_preference,
         bridge.set_close_preference,

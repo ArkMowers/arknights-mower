@@ -133,6 +133,129 @@ describe('window shell adapter', () => {
     expect(chooseClose).toHaveBeenCalledOnce()
   })
 
+  it('registers and acknowledges native close before releasing a queued request', async () => {
+    const desktopWindow = makeWindow()
+    const bridge = makeNativeBridge('macos', 'native')
+    bridge.get_platform.mockResolvedValue({
+      protocol: PROTOCOL,
+      event: EVENT,
+      close_event: 'mower-window-close-request',
+      platform: 'macos',
+      capabilities: { enabled: true, move: 'native', resize: 'native', controls: 'native' }
+    })
+    const chooseClose = vi.fn(async () => true)
+    bridge.ready_for_native_close = vi.fn(async () => {
+      const request = new Event('mower-window-close-request', { cancelable: true })
+      expect(desktopWindow.dispatchEvent(request)).toBe(false)
+      return true
+    })
+    desktopWindow.pywebview = { api: bridge }
+    const adapter = createWindowShellAdapter({
+      windowObject: desktopWindow,
+      onCloseRequested: chooseClose
+    })
+
+    try {
+      await expect(adapter.initialize()).resolves.toBe(true)
+      expect(bridge.ready_for_native_close).toHaveBeenCalledOnce()
+      expect(chooseClose).toHaveBeenCalledOnce()
+      expect(bridge.close).not.toHaveBeenCalled()
+    } finally {
+      adapter.dispose()
+    }
+  })
+
+  it('keeps confirmed closing available after native decorations replace the custom title bar', async () => {
+    const desktopWindow = makeWindow()
+    const bridge = makeNativeBridge('macos', 'native')
+    bridge.get_platform.mockResolvedValue({
+      protocol: PROTOCOL,
+      event: EVENT,
+      close_event: 'mower-window-close-request',
+      platform: 'macos',
+      capabilities: { enabled: false, move: 'native', resize: 'native' }
+    })
+    desktopWindow.pywebview = { api: bridge }
+    const adapter = createWindowShellAdapter({ windowObject: desktopWindow })
+
+    try {
+      await expect(adapter.initialize()).resolves.toBe(true)
+      expect(adapter.active.value).toBe(false)
+      desktopWindow.dispatchEvent(new Event('mower-window-close-request', { cancelable: true }))
+      await Promise.resolve()
+      expect(bridge.close).toHaveBeenCalledOnce()
+      await expect(adapter.close()).resolves.toBe(true)
+      expect(bridge.close).toHaveBeenCalledTimes(2)
+    } finally {
+      adapter.dispose()
+    }
+    await expect(adapter.close()).resolves.toBe(false)
+    expect(bridge.close).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the close listener usable when its readiness notification fails', async () => {
+    const desktopWindow = makeWindow()
+    const bridge = makeNativeBridge('macos', 'native')
+    bridge.get_platform.mockResolvedValue({
+      protocol: PROTOCOL,
+      event: EVENT,
+      close_event: 'mower-window-close-request',
+      platform: 'macos',
+      capabilities: { enabled: true, move: 'native', resize: 'native' }
+    })
+    bridge.ready_for_native_close = vi.fn(async () => {
+      throw new Error('The native publisher is not available')
+    })
+    desktopWindow.pywebview = { api: bridge }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const adapter = createWindowShellAdapter({ windowObject: desktopWindow })
+
+    try {
+      await expect(adapter.initialize()).resolves.toBe(true)
+      expect(warn).toHaveBeenCalledOnce()
+      const request = new Event('mower-window-close-request', { cancelable: true })
+      expect(desktopWindow.dispatchEvent(request)).toBe(false)
+      await Promise.resolve()
+      expect(bridge.close).toHaveBeenCalledOnce()
+    } finally {
+      adapter.dispose()
+      warn.mockRestore()
+    }
+  })
+
+  it('does not reconnect after disposal while native close readiness is pending', async () => {
+    const desktopWindow = makeWindow()
+    const bridge = makeNativeBridge('macos', 'native')
+    bridge.get_platform.mockResolvedValue({
+      protocol: PROTOCOL,
+      event: EVENT,
+      close_event: 'mower-window-close-request',
+      platform: 'macos',
+      capabilities: { enabled: true, move: 'native', resize: 'native' }
+    })
+    let finishReadiness
+    let notifyStarted
+    const started = new Promise((resolve) => (notifyStarted = resolve))
+    bridge.ready_for_native_close = vi.fn(() => {
+      notifyStarted()
+      return new Promise((resolve) => (finishReadiness = resolve))
+    })
+    desktopWindow.pywebview = { api: bridge }
+    const adapter = createWindowShellAdapter({ windowObject: desktopWindow })
+    const initializing = adapter.initialize()
+    await started
+    adapter.dispose()
+    finishReadiness(true)
+
+    await expect(initializing).resolves.toBe(false)
+    await nextTick()
+    expect(adapter.connected.value).toBe(false)
+    const request = new Event('mower-window-close-request', { cancelable: true })
+    expect(desktopWindow.dispatchEvent(request)).toBe(true)
+    await expect(adapter.close()).resolves.toBe(false)
+    expect(bridge.close).not.toHaveBeenCalled()
+  })
+
   it('keeps old Windows bridge gestures and native non-Windows resize defaults', async () => {
     for (const platform of ['windows', 'macos', 'linux']) {
       const desktopWindow = makeWindow()

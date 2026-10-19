@@ -31,6 +31,7 @@ async function renderTitlebar(nativeControls) {
 describe('desktop title bar controls', () => {
   it('leaves the Cocoa traffic lights outside draggable HTML and omits duplicate buttons', async () => {
     const html = await renderTitlebar(true)
+    expect(html).toContain('window-titlebar--native-controls')
     expect(html).toContain('window-titlebar__native-controls')
     expect(html.indexOf('window-titlebar__native-controls')).toBeLessThan(
       html.indexOf('data-window-drag-region')
@@ -40,6 +41,7 @@ describe('desktop title bar controls', () => {
 
   it('keeps the three HTML window controls for GTK, Qt and WinForms', async () => {
     const html = await renderTitlebar(false)
+    expect(html).not.toContain('window-titlebar--native-controls')
     expect(html).not.toContain('window-titlebar__native-controls')
     expect(html.match(/<button/g)).toHaveLength(3)
     expect(html).toContain('data-window-control="close"')
