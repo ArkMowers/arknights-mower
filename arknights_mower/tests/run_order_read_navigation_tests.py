@@ -12,6 +12,56 @@ def order_navigation(monkeypatch):
     return staffed_order.__wrapped__(monkeypatch)
 
 
+def test_new_order_reserves_mastery_handoff_before_another_inline_read(
+    order_navigation,
+):
+    from arknights_mower.tests.run_order_staffing_admission_tests import correction
+
+    ui = order_navigation
+    solver = ui.solver
+    ui.config.conf.enable_mastery = True
+    solver.op_data.backup_plans = []
+    solver.op_data.global_plan["backup_plans"] = []
+    solver.op_data.plan_condition = []
+    start = ui.clock.now()
+    ui.occupants.update({"room_1_1": ["孑"], "room_2_2": ["图耶"]})
+    ui.states.update({"room_1_1": "active", "room_2_2": "active"})
+    for room in ("room_1_1", "room_2_2"):
+        solver.get_agent_from_room(room)
+    ui.events.clear()
+    arrangement = correction(ui, {"room_1_1", "room_2_2"})
+    refreshes = [
+        ui.task(task_type=ui.task_type.REFRESH_TIME, meta_data=room)
+        for room in ("room_1_1", "room_2_2")
+    ]
+    swap = ui.task(
+        time=start + timedelta(seconds=400),
+        task_type=ui.task_type.SWAP_SUPPORT,
+        task_plan={"train": ["Current", "Current"]},
+    )
+    solver.tasks.extend([*refreshes, swap])
+    ui.deadlines["room_1_1"] = start + timedelta(seconds=340)
+    read_time = solver.read_time.side_effect
+
+    def read_with_navigation_cost(*args, **kwargs):
+        remaining = read_time(*args, **kwargs)
+        ui.clock.current += timedelta(seconds=50)
+        return max(0, remaining - 50) if remaining is not None else None
+
+    solver.read_time.side_effect = read_with_navigation_cost
+
+    solver.infra_main()
+
+    assert [event[1] for event in ui.events if event[0] == "read"] == ["room_1_1"]
+    assert ui.clock.now() == start + timedelta(seconds=70)
+    assert swap.time == start + timedelta(seconds=99)
+    assert arrangement in solver.tasks and arrangement.time == start
+    assert arrangement.plan == {"room_2_2": ["图耶"]}
+    assert refreshes[0] not in solver.tasks
+    assert refreshes[1] in solver.tasks
+    assert not getattr(refreshes[1], "execution_failure", None)
+
+
 @pytest.mark.parametrize("mastery_enabled", [False, True])
 @pytest.mark.parametrize("priority_kind", ["SWAP_SUPPORT", "RELEASE_DORM"])
 def test_inline_reads_respect_priority_after_refresh_operator_moves(

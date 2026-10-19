@@ -4582,6 +4582,8 @@ class BaseSchedulerSolver(
         self.task.execution_retained = True
         observed_any = False
         for refresh in refreshes:
+            if observed_any:
+                protect_priority_tasks(self.tasks, op_data=self.op_data)
             if any(
                 pending.time <= datetime.now() + timedelta(minutes=1)
                 for pending in self._arrangement_priority_tasks()
