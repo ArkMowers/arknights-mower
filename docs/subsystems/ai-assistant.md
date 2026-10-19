@@ -46,9 +46,19 @@ Database examples use the schema in `solvers.record._DB_TABLE_STMTS`, explicit o
 
 Mastery status filters use `idle`, `arranging`, `training`, `waiting_collect`, `completed` and `failed`. Retry resets all failed plans; its compatibility arguments do not filter the affected records. Instructions require clarification of batch scope when the user requests a single retry. Route saving replaces the selected profession's route.
 
-Feedback sends email through `submit_issue`. Instructions require an explicit sending request and describe Bug start/end arguments as local `YYYY-MM-DD HH:MM:SS` strings. They request a positive interval of at most fifteen minutes before invocation. These instructions guide model behavior; they do not implement runtime SQL restrictions, interval validation or a mutation authorization gate.
+Feedback sends email through `submit_issue`. Instructions require an explicit sending request and describe Bug start/end arguments as local `YYYY-MM-DD HH:MM:SS` strings. They request a positive interval of at most fifteen minutes before invocation. The feedback tool also validates this interval at runtime. Instructions do not implement runtime SQL restrictions or a mutation authorization gate.
 
 `/submit_feedback` and the assistant use the same email tool, sending feedback to `354013233@qq.com` and `1273725854@qq.com` through an explicit recipient list. A successful email send returns `邮件发送成功！`, which the feedback component recognizes before showing its success notice and copying the description. Tencent sheet writes are not part of submission.
+
+### Bounded Feedback Evidence
+
+Bug feedback through the assistant and `/submit_feedback` attaches a log excerpt and selected screenshots from the same local start/end interval. `submit_issue` accepts optional `screenshot_times`: at most four local datetime strings inside that interval. The assistant supplies these only when the user's description or queried records establish relevant moments. An empty list disables screenshot attachments. Without this argument, different ERROR/CRITICAL messages take priority over WARNING messages; repeated messages with differing numbers share a selection slot. Each moment uses the last capture in the same second or up to thirty seconds earlier. These are temporal associations, not visual diagnoses; unrelated errors can still be selected. No arbitrary screenshot is attached when there is no matching observation.
+
+Selection reuses the log schedule's timestamp lookup and includes retained error-archive screenshots and saved logs after ordinary history expires. It keeps at most four distinct image byte sequences, each at most 512 KiB and at most 2 MiB combined. Missing, oversized, duplicate and unreadable screenshots are omitted without blocking the log report. The first readable matching frame per error is preferred. The selected original JPEG bytes are copied into a temporary workspace; no capture, image re-encoding or complete screenshot archive is requested.
+
+The log excerpt retains at most the latest 1000 records and the first 1000 characters of each record. `evidence.json` records the interval, selected screenshot sources and selection reasons, truncation flags and omission rules. The email body states the screenshot count and directs readers to log schedule export for complete retained evidence. A missing log interval prevents sending. The complete MIME message must fit within 8 MiB, including attachment encoding and the description; an oversized message returns an explicit unsent result. SMTP providers may impose lower limits. Temporary attachments are removed after success or failure; existing history remains available under its normal retention policy. The successful response remains `邮件发送成功！` for the feedback form.
+
+Focused offline verification uses `issue_evidence_tests.py` and `ai_prompt_contract_tests.py`; SMTP delivery and the online model are not exercised.
 
 ## 3. Subsystem Invariants
 
