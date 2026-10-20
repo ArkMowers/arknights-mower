@@ -140,7 +140,7 @@ export function prepareMowerShiftBackup(data:MowerSchedulingData,task:MowerTask,
    }
    mergeMowerShiftTransition(intent,entry,simulation)
    cancelIncidentalGroupReturns(simulation,intent,entrySlots)
-   transitions=task.productShiftLocked?{...task.groupShiftTransitions,...mowerArrangementGroupTransitions(simulation,intent)}:mowerArrangementGroupTransitions(simulation,intent)
+   transitions={...(task.productShiftLocked?task.groupShiftTransitions:mowerArrangementGroupTransitions(data,intent)),...mowerArrangementGroupTransitions(simulation,intent)}
    seed=projectMowerArrangements(data,[intent]);commitMowerGroupShifts(seed,transitions)
   }
   const merged=structuredClone(intent)
@@ -158,7 +158,9 @@ export function prepareMowerShiftBackup(data:MowerSchedulingData,task:MowerTask,
   const projected=projectMowerArrangements(effective,[merged]),nextSelection=selectionFor(model,projected),next=nextSelection.conditions
   if(same(next,conditions)&&nextSelection.groupId===selection.groupId){
    task.backupGroup=selection.groupId
-   task.groupShiftTransitions=task.productShiftLocked?{...task.groupShiftTransitions,...mowerArrangementGroupTransitions(simulation,merged)}:mowerArrangementGroupTransitions(simulation,merged)
+   // A backup workaholic override removes anchors, not the group's scheduled return.
+   // Retain the original intent; final effective-rule departures still supersede returns.
+   task.groupShiftTransitions={...transitions,...mowerArrangementGroupTransitions(simulation,merged)}
    task.backupExplicitSlots=entrySlots
    if(same(conditions,original)&&selection.groupId===data.backupGroup&&JSON.stringify(merged)===JSON.stringify(intent)){task.plan=intent;delete task.backupShiftIntent;delete task.backupShiftConditions;return}
    task.backupShiftIntent=intent;task.backupShiftConditions=[...conditions];task.plan=stripMowerCurrent(merged);return

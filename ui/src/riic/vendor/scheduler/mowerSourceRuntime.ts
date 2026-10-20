@@ -36,7 +36,7 @@ import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros,fromMowerMicros,isMowerRunOrderTask,type MowerTaskPlan} from './mowerTaskQueue'
 import {executeMowerTaskArrangementSteps,type MowerRoomReturn,type MowerBackupResult} from './mowerTaskExecutor'
 import {projectMowerArrangements,invalidateMowerDormTime,mowerUpdateDetail,mowerRefreshDormTime,mowerCorrectDorm,mowerRoomReadIndexes,shouldMowerReadMood,mowerHasMeasuredDormDeparture} from './mowerObservations'
-import {mowerIsDormReplacement,planMowerCorrection} from './mowerCorrection'
+import {mowerIsDormReplacement,planMowerCorrection,prepareMowerCorrectionRecovery} from './mowerCorrection'
 import {planMowerOrdinary,mowerGetRestingPlan,mowerTryReorder,mowerPlanningHasNearTask} from './mowerOrdinaryPlanning'
 import {planMowerMetadata,mowerRestUnitKey} from './mowerMetadata'
 import {mowerReplacementDependencyNames,mowerReplacementReservations,planMowerPreferredReplacementRestore,mowerCoordinationRequestFulfilled} from './mowerReplacementCoordination'
@@ -648,7 +648,9 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
     }
     if(!running&&data.alpha&&[T.SHIFT_ON,T.SHIFT_OFF,T.EXHAUST_OFF,T.SELF_CORRECTION,T.RE_ORDER].includes(task.type)&&Object.keys(task.plan).length){
      const model:MowerShiftModel=s.mowerShiftModel??{count:0,evaluate:d=>d.planConditions,swap:d=>d,transition:()=>({}),activate:()=>{}}
+     prepareMowerCorrectionRecovery(data,task,queue.tasks)
      readMissingMowerReturnRecovery(s,rates,task)
+     prepareMowerCorrectionRecovery(data,task,queue.tasks)
      const independentTasks:MowerTask[]=[]
      splitMowerRecoveryTask(data,task,independentTasks,mowerUnfinishedReturnMembers(data,task,s.config.mowerTaskScheduling))
      const originalKeys=new Set(Object.keys(task)),original=cloneMowerShiftTask(task),pending=[...queue.tasks],fallbacks=new Map(Object.values(data.operators).map(op=>[op.name,op.dormMoodFallback]))
