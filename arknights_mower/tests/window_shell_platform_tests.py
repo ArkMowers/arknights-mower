@@ -2,6 +2,7 @@
 
 import ctypes
 import json
+import sys
 from queue import Queue
 from threading import Event, Thread, current_thread, get_ident
 from time import monotonic
@@ -359,12 +360,13 @@ def desktop_url_window(monkeypatch):
     import webview
 
     import webview_ui
-    from arknights_mower.utils import config, path, windows_frameless
+    from arknights_mower.utils import config, path
     from arknights_mower.utils.config import gui
 
     window = DesktopWindow("gtk")
     create_window = Mock(return_value=window)
     prepare_backend = Mock()
+    install_windows_resize = Mock()
     start = Mock()
     browser_open = Mock()
     instance_name = "测试实例 & + / ?"
@@ -381,7 +383,11 @@ def desktop_url_window(monkeypatch):
         window_shell, "_screen_work_area", lambda: window_shell.WindowSize(2000, 1000)
     )
     monkeypatch.setattr(window_backend, "prepare_window_backend", prepare_backend)
-    monkeypatch.setattr(windows_frameless, "install_windows_frameless_resize", Mock())
+    monkeypatch.setitem(
+        sys.modules,
+        "arknights_mower.utils.windows_frameless",
+        SimpleNamespace(install_windows_frameless_resize=install_windows_resize),
+    )
     monkeypatch.setattr(webview_ui, "title_version", lambda *args: "offline-version")
     monkeypatch.setattr(webview_ui, "width", 1450, raising=False)
     monkeypatch.setattr(webview_ui, "height", 850, raising=False)
@@ -406,6 +412,7 @@ def desktop_url_window(monkeypatch):
         launch=launch,
         create_window=create_window,
         prepare_backend=prepare_backend,
+        install_windows_resize=install_windows_resize,
         start=start,
         browser_open=browser_open,
         browser_url=browser_url,
@@ -444,6 +451,14 @@ def test_desktop_window_keeps_encoded_instance_name_in_its_own_url(
         query["window_shell"] = ["1"]
     assert parse_qs(urlsplit(args[1]).query) == query
     assert kwargs["frameless"] is shell_enabled
+    if backend == "winforms":
+        fixture.install_windows_resize.assert_called_once_with(
+            fixture.create_window.return_value,
+            window_shell.WindowSize(1000, 600),
+            window_shell.desktop_window_min_size(),
+        )
+    else:
+        fixture.install_windows_resize.assert_not_called()
     fixture.browser_open.assert_not_called()
 
 
