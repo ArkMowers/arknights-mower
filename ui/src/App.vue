@@ -414,10 +414,10 @@ function handleMenuClick(key) {
     showChatBot.value = true
   }
 }
-import { RouterLink } from 'vue-router'
+import SessionLink from '@/components/SessionLink.vue'
 const menuOptions = [
   {
-    label: () => h(RouterLink, { to: { path: '/' } }, { default: () => '运行日志' }),
+    label: () => h(SessionLink, { to: { path: '/' } }, { default: () => '运行日志' }),
     icon: renderIcon(BookOutline),
     key: 'go-to-log'
   },
@@ -428,25 +428,26 @@ const menuOptions = [
     children: [
       {
         label: () =>
-          h(RouterLink, { to: { path: '/mowersettings' } }, { default: () => 'mower设置' }),
+          h(SessionLink, { to: { path: '/mowersettings' } }, { default: () => 'mower设置' }),
         icon: renderIcon(Coffee),
         key: 'go-to-mowersetting'
       },
       {
-        label: () => h(RouterLink, { to: { path: '/maasettings' } }, { default: () => '日常设置' }),
+        label: () =>
+          h(SessionLink, { to: { path: '/maasettings' } }, { default: () => '日常设置' }),
         icon: renderIcon(RoseOutline),
         key: 'go-to-maasetting'
       }
     ]
   },
   {
-    label: () => h(RouterLink, { to: { path: '/plan-editor' } }, { default: () => '排班编辑' }),
+    label: () => h(SessionLink, { to: { path: '/plan-editor' } }, { default: () => '排班编辑' }),
     icon: renderIcon(Home),
     key: 'go-to-plan'
   },
   {
     label: () =>
-      h(RouterLink, { to: { path: '/mastery-recommendation' } }, { default: () => '养成规划' }),
+      h(SessionLink, { to: { path: '/mastery-recommendation' } }, { default: () => '养成规划' }),
     icon: renderIcon(TrendingUp),
     key: 'go-to-mastery-recommendation'
   },
@@ -457,31 +458,31 @@ const menuOptions = [
     children: [
       {
         label: () =>
-          h(RouterLink, { to: { path: '/record/line' } }, { default: () => '干员心情报表' }),
+          h(SessionLink, { to: { path: '/record/line' } }, { default: () => '干员心情报表' }),
         icon: renderIcon(BarChart),
         key: 'go-to-record-line'
       },
       {
         label: () =>
-          h(RouterLink, { to: { path: '/record/pie' } }, { default: () => '工休比报表' }),
+          h(SessionLink, { to: { path: '/record/pie' } }, { default: () => '工休比报表' }),
         icon: renderIcon(PieChart),
         key: 'go-to-record-pie'
       },
       {
-        label: () => h(RouterLink, { to: { path: '/record/depot' } }, { default: () => '仓库' }),
+        label: () => h(SessionLink, { to: { path: '/record/depot' } }, { default: () => '仓库' }),
         icon: renderIcon(Storefront),
         key: 'go-to-record-depot'
       },
       {
         label: () =>
-          h(RouterLink, { to: { path: '/record/report' } }, { default: () => '基建报表' }),
+          h(SessionLink, { to: { path: '/record/report' } }, { default: () => '基建报表' }),
         icon: renderIcon(ReaderOutline),
         key: 'go-to-record-report'
       },
       {
         label: () =>
           h(
-            RouterLink,
+            SessionLink,
             { to: { path: '/record/trading_analysis' } },
             { default: () => '贸易订单分析' }
           ),
@@ -490,30 +491,34 @@ const menuOptions = [
       },
       {
         label: () =>
-          h(RouterLink, { to: { path: '/record/recycling' } }, { default: () => '回收站材料统计' }),
+          h(
+            SessionLink,
+            { to: { path: '/record/recycling' } },
+            { default: () => '回收站材料统计' }
+          ),
         icon: renderIcon(PieChart),
         key: 'go-to-recycling'
       },
       {
         label: () =>
-          h(RouterLink, { to: { path: '/record/log-schedule' } }, { default: () => '日志调度' }),
+          h(SessionLink, { to: { path: '/record/log-schedule' } }, { default: () => '日志调度' }),
         icon: renderIcon(TimeOutline),
         key: 'go-to-log-schedule'
       }
     ]
   },
   {
-    label: () => h(RouterLink, { to: { path: '/doc' } }, { default: () => '帮助文档' }),
+    label: () => h(SessionLink, { to: { path: '/doc' } }, { default: () => '帮助文档' }),
     icon: renderIcon(HelpCircle),
     key: 'go-to-doc'
   },
   {
-    label: () => h(RouterLink, { to: { path: '/readme' } }, { default: () => '其他资源' }),
+    label: () => h(SessionLink, { to: { path: '/readme' } }, { default: () => '其他资源' }),
     icon: renderIcon(Bag),
     key: 'readme'
   },
   {
-    label: () => h(RouterLink, { to: { path: '/BasementSkill' } }, { default: () => '基建技能' }),
+    label: () => h(SessionLink, { to: { path: '/BasementSkill' } }, { default: () => '基建技能' }),
     icon: renderIcon(SkillLevelAdvanced),
     key: 'BasementSkill'
   },

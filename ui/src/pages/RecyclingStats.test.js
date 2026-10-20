@@ -1,5 +1,6 @@
 import { renderToString } from 'vue/server-renderer'
 import { createSSRApp, ref } from 'vue'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import { describe, expect, it, vi } from 'vitest'
 import RecyclingStats from './RecyclingStats.vue'
 
@@ -56,6 +57,12 @@ async function render(calculator) {
       return page
     }
   })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: ['/', '/mowersettings'].map((path) => ({ path, component: { render: () => null } }))
+  })
+  await router.push('/?token=session-token')
+  app.use(router)
   app.provide('axios', { get: vi.fn().mockResolvedValue({ data: response }) })
   return renderToString(app)
 }
@@ -85,6 +92,7 @@ describe('回收站两种机制对照', () => {
       expect(html).toContain(value)
     }
     expect(html).toContain('实际机制尚未确认')
+    expect(html).toContain('href="/mowersettings?token=session-token"')
   })
   it('旧接口没有对照数据时保留默认结果并隐藏对照区域', async () => {
     const html = await render(calculator)

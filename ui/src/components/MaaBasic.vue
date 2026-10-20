@@ -957,8 +957,8 @@ onUnmounted(() => {
         >设备连接与 MAA 路径由 Android 应用管理。</n-alert
       >
       <div v-if="runtime_platform === 'android'" style="margin-bottom: 16px">
-        <router-link to="/mowersettings#software-update"
-          >导入官方 Android MAA 核心 / 兼容 Python 接口包</router-link
+        <SessionLink to="/mowersettings#software-update"
+          >导入官方 Android MAA 核心 / 兼容 Python 接口包</SessionLink
         >
       </div>
       <template v-else>

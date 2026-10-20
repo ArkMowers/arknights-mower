@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, reactive, ref } from 'vue'
 import App from './App.vue'
+import SessionLink from './components/SessionLink.vue'
 
 const state = vi.hoisted(() => ({
   mounted: [],
@@ -140,6 +141,22 @@ describe('desktop page startup', () => {
     component = scope.run(() => App.setup({}, { expose: () => {} }))
     for (const callback of state.mounted) await callback()
   }
+
+  it('uses session navigation for all sidebar page links', async () => {
+    await mount()
+    function pageLinks(options) {
+      return options.flatMap((option) => {
+        if (option.children) return pageLinks(option.children)
+        const label = option.label()
+        return label?.props?.to ? [label] : []
+      })
+    }
+    const links = pageLinks(component.menuOptions)
+    expect(links.map((link) => link.props.to.path)).toEqual(
+      expect.arrayContaining(['/mowersettings', '/maasettings', '/plan-editor', '/record/report'])
+    )
+    expect(links.every((link) => link.type === SessionLink)).toBe(true)
+  })
 
   it('never restarts a stopped desktop task on mount, refresh or reopening', async () => {
     for (let i = 0; i < 3; i++) {
