@@ -14,6 +14,7 @@ from arknights_mower.tests.local_backup_replay_tests import assert_only_stale_mo
 from arknights_mower.utils import config, operators, scheduler_task
 from arknights_mower.utils.config.plan import PlanModel
 from arknights_mower.utils.operators import Operator, Operators, build_global_plan
+from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 solver = backup.solver
@@ -344,3 +345,130 @@ def test_vacancy_check_converges_eligible_rotation_before_idle_filling(
         for name in solver.op_data.groups["红松"]
     )
     assert not solver.agent_get_mood(read_rooms=False, return_plan=True)
+
+
+@pytest.mark.usefixtures("offline_maintenance")
+@pytest.mark.parametrize("unknown", [False, True])
+def test_recovery_wait_preserves_named_fill_and_unrelated_vacancies(
+    monkeypatch, unknown
+):
+    monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(Operators, "current_room_changed_callback", None)
+    rooms = {
+        "central": [
+            Room(name, "恢复组", [cover])
+            for name, cover in zip(
+                ["歌蕾蒂娅", "幽灵鲨", "安哲拉"], ["黑角", "米格鲁", "斑点"]
+            )
+        ],
+        "dormitory_1": [
+            Room(n, "", []) for n in ["杜林", "桃金娘", "闪灵", "爱丽丝", "Free"]
+        ],
+        "dormitory_2": [
+            Room(n, "", []) for n in ["梓兰", "安赛尔", "Free", "Free", "Free"]
+        ],
+        "dormitory_3": [
+            Room(n, "", []) for n in ["调香师", "末药", "Free", "Free", "Free"]
+        ],
+    }
+    data = Operators(
+        {
+            "default_plan": Plan(rooms, PlanConfig("歌蕾蒂娅,幽灵鲨,安哲拉", "", "")),
+            "backup_plans": [],
+        }
+    )
+    assert data.init_and_validate() is None
+    now = datetime.now()
+    for op in data.operators.values():
+        op._current_room, op.current_index = (
+            (op.room, op.index) if op.is_high() else ("", -1)
+        )
+        op.mood, op.time_stamp = 24, now
+    for index, name in enumerate(["黑角", "米格鲁", "斑点"]):
+        data.operators[name]._current_room, data.operators[name].current_index = (
+            "central",
+            index,
+        )
+    for name, room, index, mood in [
+        ("歌蕾蒂娅", "dormitory_1", 4, 24),
+        ("安哲拉", "dormitory_2", 2, 23),
+        ("幽灵鲨", "dormitory_3", 2, 20),
+        ("凯尔希·思衡托", "dormitory_3", 3, 8),
+        ("司霆惊蛰", "dormitory_3", 4, 14),
+        ("莱伊", "dormitory_2", 4, 16),
+        ("协律", "", -1, 5),
+    ]:
+        if name not in data.operators:
+            data.add(Operator(name, ""))
+        op = data.operators[name]
+        op._current_room, op.current_index = room, index
+        op.mood, op.time_stamp = mood, None if unknown and name == "协律" else now
+    for bed in data.dorm:
+        if occupant := data.get_current_operator(*bed.position):
+            bed.name = occupant.name
+    data.commit_group_shifts({"恢复组": True})
+    data.first_init = False
+    instance = object.__new__(base.BaseSchedulerSolver)
+    instance.op_data = data
+    instance.last_train_mood_read = now
+    instance._sync_run_order_tasks = MagicMock()
+    instance.queue_product_switches = MagicMock()
+    waiting = SchedulerTask(
+        time=now - timedelta(minutes=5),
+        task_type=TaskTypes.SHIFT_ON,
+        task_plan={"central": ["歌蕾蒂娅", "幽灵鲨", "安哲拉"]},
+    )
+    waiting.recovery_waiting_observations = {"幽灵鲨": now, "安哲拉": now}
+    waiting.group_shift_waiting = set()
+    instance.waiting_group_shifts = [waiting]
+    task = SchedulerTask(
+        task_type=TaskTypes.RE_ORDER,
+        task_plan={
+            "dormitory_2": [
+                "Current",
+                "Current",
+                "幽灵鲨",
+                "凯尔希·思衡托",
+                "司霆惊蛰",
+            ],
+            "dormitory_1": ["Current", "Current", "Current", "Current", "安哲拉"],
+            "dormitory_3": [
+                "Current",
+                "Current",
+                "协律" if not unknown else "Free",
+                "歌蕾蒂娅",
+                "Free",
+            ],
+        },
+    )
+    instance.task, instance.tasks = task, [task]
+    before = backup.positions(data), copy.deepcopy(waiting.__dict__)
+
+    instance._prepare_shift_cycle(task)
+
+    assert (backup.positions(data), waiting.__dict__) == before
+    assert instance.waiting_group_shifts == [waiting]
+    assert all("central" not in queued.plan for queued in instance.tasks)
+    projected = data.project_arrangements([task.plan])
+    for name in ["歌蕾蒂娅", "幽灵鲨", "安哲拉"]:
+        assert backup.positions(projected)[name] == before[0][name]
+    for name in ["凯尔希·思衡托", "司霆惊蛰", "莱伊"]:
+        assert projected.operators[name].is_resting()
+    if unknown:
+        assert "Free" in task.plan["dormitory_3"]
+        assert not projected.operators["协律"].current_room
+    else:
+        assert projected.operators["协律"].is_resting()
+
+    instance.op_data = projected
+    for _ in range(2):
+        instance._prepare_shift_cycle(SchedulerTask(task_type=TaskTypes.SHIFT_OFF))
+        assert instance.waiting_group_shifts == [waiting]
+        assert waiting.__dict__ == before[1]
+    for name in ["歌蕾蒂娅", "幽灵鲨", "安哲拉"]:
+        projected.operators[name].mood = 24
+        projected.operators[name].time_stamp = datetime.now()
+    instance._resume_waiting_group_shifts()
+    assert not instance.waiting_group_shifts
+    assert sum(queued is waiting for queued in instance.tasks) == 1
+    assert waiting.time == before[1]["time"]
