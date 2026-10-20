@@ -2033,6 +2033,15 @@ class BaseSchedulerSolver(
             if name in self.op_data.operators
         }
 
+    def _waiting_recovery_reservations(self):
+        names = self._waiting_recovery_names()
+        slots = {
+            (op.current_room, op.current_index)
+            for name in names
+            if (op := self.op_data.operators.get(name)) is not None and op.current_room
+        }
+        return names, slots
+
     def plan_metadata(self):
         if self._emergency_frozen():
             self._emergency_filter_tasks()
@@ -7375,13 +7384,9 @@ class BaseSchedulerSolver(
                 if not resting
             ],
         )
-        waiting = self._waiting_recovery_names()
+        waiting, waiting_slots = self._waiting_recovery_reservations()
         names.update(waiting)
-        slots.update(
-            (op.current_room, op.current_index)
-            for name in waiting
-            if (op := self.op_data.operators.get(name)) is not None and op.current_room
-        )
+        slots.update(waiting_slots)
         for room, row in list(plan.items()):
             for index, name in enumerate(row):
                 if (room, index) in slots or name in names:
@@ -7602,6 +7607,9 @@ class BaseSchedulerSolver(
                     if pending.type != TaskTypes.SHIFT_ON or pending.retains_execution
                 ],
             )
+            waiting_names, waiting_slots = simulation._waiting_recovery_reservations()
+            reserved_names.update(waiting_names)
+            reserved_slots.update(waiting_slots)
             step.plan = prioritize_new_dorm_recovery(
                 simulation.op_data,
                 step.plan,
@@ -7707,7 +7715,14 @@ class BaseSchedulerSolver(
             ]
             _merge_dorm_arrangement(
                 rest,
-                try_reorder(simulation.op_data, rest, tasks=simulation.tasks) or {},
+                try_reorder(
+                    simulation.op_data,
+                    rest,
+                    tasks=simulation.tasks,
+                    reserved_names=waiting_names,
+                    reserved_slots=waiting_slots,
+                )
+                or {},
             )
             ordinary_fill = {}
             if not rest:
@@ -7735,7 +7750,13 @@ class BaseSchedulerSolver(
                 simulation.tasks = copy.deepcopy(pending)
                 count = len(simulation.tasks)
                 try_add_release_dorm(
-                    {}, None, simulation.op_data, simulation.tasks, empty_only=True
+                    {},
+                    None,
+                    simulation.op_data,
+                    simulation.tasks,
+                    empty_only=True,
+                    reserved_names=waiting_names,
+                    reserved_slots=waiting_slots,
                 )
                 for fill in simulation.tasks[count:]:
                     _merge_shift_transition(rest, fill.plan, simulation.op_data)
