@@ -731,6 +731,22 @@ class BaseSchedulerSolver(
         self._discard_legacy_ordinary_requests()
         for task in list(self.tasks):
             failure = getattr(task, "execution_failure", None)
+            if (
+                failure
+                and task.type == TaskTypes.RUN_ORDER
+                and task.meta_data
+                and not hasattr(task, "emergency_original_roster")
+                and (
+                    legacy := re.match(
+                        r"订单倒计时 (\d+(?:\.\d+)?) 秒不在跑单窗口",
+                        failure["reason"],
+                    )
+                )
+                and float(legacy[1]) > 0
+                and not getattr(task, "run_order_window_wait", False)
+            ):
+                # 旧版本未保存生产期限；升级后只补一次实读，不按旧任务时间重试。
+                self._schedule_run_order_observation(task, datetime.now())
             if failure and failure.get("reason") in (
                 "需要回满的主班尚未实读确认恢复完成",
                 "需要回满的主班心情尚未满足要求，且缺少有效恢复期限",
@@ -2798,7 +2814,9 @@ class BaseSchedulerSolver(
                     # 手动触发的会客室任务，与定时触发走同一条路径
                     self._run_clue_flow()
                 elif self.task.type == TaskTypes.REFRESH_TIME:
-                    if getattr(self.task, "recovery_observation_rooms", None):
+                    if getattr(self.task, "run_order_window_observation", False):
+                        remove_current_task = self._observe_run_order_window(self.task)
+                    elif getattr(self.task, "recovery_observation_rooms", None):
                         self._read_recovery_rooms(self.task.recovery_observation_rooms)
                         self._resume_failed_tasks()
                         self._resume_waiting_group_shifts()
@@ -4430,13 +4448,25 @@ class BaseSchedulerSolver(
         op_data.refresh_run_order_rooms()
         if self._emergency_frozen():
             self._emergency_filter_tasks()
-        # 缺员等待没有插拔或恢复副作用，失去跑单资格时结束这份读取责任。
+        waiting_rooms = {
+            task.meta_data
+            for task in self.tasks
+            if task.type == TaskTypes.RUN_ORDER
+            and getattr(task, "run_order_window_wait", False)
+        }
+        # 尚未插拔的等待失去资格或已完成时，一并结束其读取责任。
         self.tasks[:] = [
             task
             for task in self.tasks
             if not (
-                getattr(task, "run_order_staffing_wait", False)
+                (
+                    getattr(task, "run_order_staffing_wait", False)
+                    or getattr(task, "run_order_window_wait", False)
+                    or getattr(task, "run_order_window_observation", False)
+                )
                 and task.meta_data not in op_data.run_order_rooms
+                or getattr(task, "run_order_window_observation", False)
+                and task.meta_data not in waiting_rooms
             )
         ]
         invalid_rooms = {
@@ -4488,6 +4518,67 @@ class BaseSchedulerSolver(
         refresh = SchedulerTask(task_type=TaskTypes.REFRESH_TIME, meta_data=room)
         self.tasks.append(refresh)
         return refresh
+
+    def _schedule_run_order_observation(self, order, deadline):
+        """按实测生产期限复核一次订单，原跑单对象、计划和时间不变。"""
+        order.run_order_window_wait = True
+        observation = next(
+            (
+                task
+                for task in self.tasks
+                if getattr(task, "run_order_window_observation", False)
+                and task.meta_data == order.meta_data
+            ),
+            None,
+        )
+        if observation is None:
+            observation = SchedulerTask(
+                task_type=TaskTypes.REFRESH_TIME, meta_data=order.meta_data
+            )
+            observation.run_order_window_observation = True
+            self.tasks.append(observation)
+        observation.time = deadline
+        observation.__dict__.pop("execution_failure", None)
+        observation.execution_retained = False
+
+    def _observe_run_order_window(self, observation):
+        order = next(
+            (
+                task
+                for task in self.tasks
+                if task.type == TaskTypes.RUN_ORDER
+                and task.meta_data == observation.meta_data
+                and getattr(task, "run_order_window_wait", False)
+                and getattr(task, "execution_failure", None)
+            ),
+            None,
+        )
+        if order is None:
+            return True
+        try:
+            self.enter_room(observation.meta_data)
+            remaining = self.get_order_remaining_time()
+            if remaining <= 0:
+                raise RecognizeError("订单生产复核未取得有效正倒计时")
+            deadline = datetime.now() + timedelta(
+                seconds=remaining - config.conf.run_order_delay * 60
+            )
+        except (MowerExit, DeviceRecoveryError, SharedADBError):
+            raise
+        except Exception as e:
+            self._retain_failed_task(observation, str(e), [observation.meta_data])
+            self.back_to_infrastructure()
+            return False
+        self.back_to_infrastructure()
+        if remaining >= (config.conf.run_order_delay + 10) * 60:
+            # 实际生产期限改变时，复用同一读取责任，不创建固定间隔轮询。
+            observation.time = deadline
+            return False
+        order.execution_retained = True
+        del order.execution_failure
+        del order.run_order_window_wait
+        logger.info("订单生产复核已进入跑单窗口，继续原任务：%s", order)
+        return True
 
     def _queue_missing_run_order_reads(self):
         """换班等待或失败让出调度后，保留尚未读取订单的独立责任。"""
@@ -4577,6 +4668,7 @@ class BaseSchedulerSolver(
                 pending.type == TaskTypes.RUN_ORDER
                 and pending.meta_data
                 and not getattr(pending, "run_order_restore_pending", False)
+                or getattr(pending, "run_order_window_observation", False)
                 or pending.type == TaskTypes.SWAP_SUPPORT
                 and config.conf.enable_mastery
                 or getattr(pending, "strict_mood_limit", False)
@@ -4591,6 +4683,7 @@ class BaseSchedulerSolver(
             refresh
             for refresh in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
             if refresh.type == TaskTypes.REFRESH_TIME
+            and not getattr(refresh, "run_order_window_observation", False)
             and refresh.meta_data in self.op_data.run_order_rooms
             and refresh.time <= datetime.now()
         ]
@@ -10143,7 +10236,10 @@ class BaseSchedulerSolver(
             capture_seconds = (config.screenshot_avg or 0) / 1000
             wait_confirm = round(
                 (
-                    (self.task.time - datetime.now()).total_seconds()
+                    (
+                        getattr(self.task, "run_order_calibrated_time", self.task.time)
+                        - datetime.now()
+                    ).total_seconds()
                     + config.conf.run_order_delay * 60
                     - config.conf.run_order_buffer_time
                     - capture_seconds
@@ -12682,6 +12778,7 @@ class BaseSchedulerSolver(
                                 actual,
                             )
                             self.task.run_order_staffing_wait = True
+                            self.task.__dict__.pop("run_order_window_wait", None)
                             self._retain_failed_task(
                                 self.task,
                                 "跑单等待实际驻员纠正",
@@ -12876,15 +12973,48 @@ class BaseSchedulerSolver(
                     ):
                         remaining_time = self.get_order_remaining_time()
                         if 0 < remaining_time < (config.conf.run_order_delay + 10) * 60:
-                            self.task.time = (
+                            calibrated = (
                                 datetime.now()
                                 + timedelta(seconds=remaining_time)
                                 - timedelta(minutes=config.conf.run_order_delay)
                             )
+                            if self.task.retains_execution:
+                                self.task.run_order_calibrated_time = calibrated
+                            else:
+                                self.task.time = calibrated
+                            self.task.__dict__.pop("run_order_window_wait", None)
+                            self.tasks[:] = [
+                                pending
+                                for pending in self.tasks
+                                if not (
+                                    getattr(
+                                        pending, "run_order_window_observation", False
+                                    )
+                                    and pending.meta_data == room
+                                )
+                            ]
                             logger.info(f"订单倒计时 {remaining_time}秒")
                             self.back()
                             self.turn_on_room_detail(room)
                         else:
+                            if remaining_time > 0 and normal_order:
+                                self._schedule_run_order_observation(
+                                    self.task,
+                                    datetime.now()
+                                    + timedelta(
+                                        seconds=remaining_time
+                                        - config.conf.run_order_delay * 60
+                                    ),
+                                )
+                                self._retain_failed_task(
+                                    self.task,
+                                    f"订单倒计时 {remaining_time} 秒尚未进入跑单窗口，"
+                                    "等待实测生产期限复核",
+                                    [room],
+                                    dependency=True,
+                                )
+                                self.back_to_infrastructure()
+                                return False
                             raise RoomArrangementDeferred(
                                 room,
                                 RecognizeError(

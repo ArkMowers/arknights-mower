@@ -103,6 +103,7 @@ def retained_task_reservations(
                 task is None
                 or task is current_task
                 or getattr(task, "run_order_staffing_wait", False)
+                or getattr(task, "run_order_window_wait", False)
                 or not getattr(task, "retains_execution", False)
             ):
                 continue
@@ -132,6 +133,7 @@ def retained_task_reservations(
             task is None
             or task is current_task
             or getattr(task, "run_order_staffing_wait", False)
+            or getattr(task, "run_order_window_wait", False)
             or not getattr(task, "retains_execution", False)
         ):
             continue
@@ -206,7 +208,11 @@ def dorm_task_reservations(op_data, tasks, excluded=()):
     names.update(getattr(op_data, "emergency_reserved_agents", ()))
     slots = {slot for slot in retained_slots if slot[0].startswith("dorm")}
     for task in tasks:
-        if task is None or getattr(task, "run_order_staffing_wait", False):
+        if (
+            task is None
+            or getattr(task, "run_order_staffing_wait", False)
+            or getattr(task, "run_order_window_wait", False)
+        ):
             continue
         names.update(getattr(task, "emergency_staffing_members", ()))
         names.update(

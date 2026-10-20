@@ -3362,7 +3362,7 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
                 self.assertIn(room, solver.task.plan)
 
     def test_invalid_countdown_retains_order_without_claiming_a_miss(self):
-        for remaining in (0, -1, 660, 900):
+        for remaining in (0, -1):
             with self.subTest(remaining=remaining):
                 solver, room, _ = self.make_solver()
                 solver.get_order_remaining_time.side_effect = None
