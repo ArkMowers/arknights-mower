@@ -4,8 +4,13 @@ import re
 import xml.etree.ElementTree as ET
 
 PACKAGE = "app.lawnchair"
-UI_DUMP_COMMAND = "uiautomator dump /proc/self/fd/1"
 MAX_UI_BYTES = 1024 * 1024
+UI_DUMP_COMMAND = (
+    "f=$(mktemp /data/local/tmp/mower-ui-XXXXXX) || exit 1; "
+    "trap 'rm -f \"$f\"' EXIT; trap 'exit 1' HUP INT TERM; "
+    'uiautomator dump "$f" >/dev/null 2>&1 && '
+    f'head -c {MAX_UI_BYTES + 1} "$f"'
+)
 
 
 def is_mumu_launcher(focus: str) -> bool:

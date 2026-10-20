@@ -1,5 +1,7 @@
+import subprocess
 from pathlib import Path
 from threading import Event
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 from xml.etree import ElementTree as ET
 
@@ -7,8 +9,11 @@ import pytest
 
 from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.device.adb_client.core import Client
 from arknights_mower.utils.device.device import Device
+from arknights_mower.utils.device.io_budget import device_io_budget, io_timeout
 from arknights_mower.utils.device.mumu_popup import (
+    UI_DUMP_COMMAND,
     is_mumu_launcher,
     startup_ad_close_point,
 )
@@ -16,7 +21,7 @@ from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.device.touch_backend import TouchFailure
 
 LAUNCHER = "app.lawnchair/app.lawnchair.LawnchairLauncher"
-DUMP_COMMAND = "uiautomator dump /proc/self/fd/1"
+DUMP_COMMAND = UI_DUMP_COMMAND
 CLOSE_COMMAND = "input tap 1655 162"
 ICON_COMMAND = "input tap 800 500"
 DESKTOP_XML = (
@@ -241,6 +246,19 @@ def android(monkeypatch, popup_xml):
     monkeypatch.setattr(config, "conf", conf)
     monkeypatch.setattr(config, "stop_mower", Event())
     monkeypatch.setattr("arknights_mower.utils.device.device.csleep", lambda _: None)
+    clock = [0.0]
+    monkeypatch.setattr(
+        "arknights_mower.utils.device.device.time",
+        SimpleNamespace(monotonic=lambda: clock[0]),
+    )
+
+    def budget_sleep(seconds):
+        clock[0] += seconds
+        io_timeout(0)
+
+    monkeypatch.setattr(
+        "arknights_mower.utils.device.device.budget_sleep", budget_sleep
+    )
     device = object.__new__(Device)
     device._profile = conf.device.model_copy(
         update={"game_package": "com.hypergryph.arknights", "recovery_timeout": 5}
@@ -250,9 +268,109 @@ def android(monkeypatch, popup_xml):
         side_effect=AssertionError("Offline popup tests must not reconnect a device")
     )
     responses = AndroidResponses(popup_xml, device)
+    responses.clock = clock
     device.client = MagicMock()
     device.client.run.side_effect = responses.run
+    device.client.cmd.side_effect = lambda args: device.client.run.side_effect(args[1])
     return device, responses, conf
+
+
+@pytest.fixture
+def ui_cli(android, monkeypatch):
+    from arknights_mower.utils.device.adb_client import utils
+
+    device, responses, _ = android
+    client = object.__new__(Client)
+    client.adb_bin, client.device_id = "offline-adb", "offline-device"
+    client._check_open = MagicMock()
+    client.run = MagicMock(side_effect=responses.run)
+    device.client = client
+    device.session_control = SimpleNamespace(executing=True)
+    calls = []
+
+    def guard(adb, *, timeout, run):
+        calls.append(("guard", adb, timeout))
+        responses.clock[0] += 0.25
+        return timeout - 0.25
+
+    def run(argv, **kwargs):
+        calls.append(("command", argv, kwargs))
+        if kwargs["timeout"] < 5.25:
+            responses.clock[0] += kwargs["timeout"]
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+        responses.clock[0] += 5.25
+        return SimpleNamespace(stdout=responses.run(DUMP_COMMAND))
+
+    monkeypatch.setattr(utils, "guard_adb", guard)
+    monkeypatch.setattr(utils, "run_command", run)
+    return device, responses, calls
+
+
+def test_ui_hierarchy_uses_guarded_cli_past_five_second_socket_limit(ui_cli):
+    device, responses, calls = ui_cli
+    responses.visible = False
+
+    device.launch()
+
+    assert responses.clock[0] == pytest.approx(5.5)
+    assert calls[0] == ("guard", "offline-adb", 10)
+    assert calls[1][1] == [
+        "offline-adb",
+        "-s",
+        "offline-device",
+        "shell",
+        DUMP_COMMAND,
+    ]
+    assert calls[1][2]["timeout"] == pytest.approx(9.75)
+    assert calls[1][2]["check"] is True
+    assert DUMP_COMMAND not in [
+        call.args[0] for call in device.client.run.call_args_list
+    ]
+    assert responses.commands.count(ICON_COMMAND) == 1
+
+
+def test_ui_cli_timeout_obeys_parent_budget_and_prevents_game_input(ui_cli):
+    device, responses, calls = ui_cli
+    responses.visible = False
+
+    def remaining():
+        seconds = 3 - responses.clock[0]
+        if seconds <= 0:
+            raise DeviceRecoveryError("parent budget exhausted")
+        return seconds
+
+    with pytest.raises(DeviceRecoveryError):
+        with device_io_budget(remaining):
+            device.launch()
+
+    assert responses.clock[0] == pytest.approx(3)
+    assert calls[0] == ("guard", "offline-adb", 3)
+    assert calls[1][2]["timeout"] == pytest.approx(2.75)
+    assert CLOSE_COMMAND not in responses.commands
+    assert ICON_COMMAND not in responses.commands
+
+
+def test_ui_cli_preserves_xml_bytes_for_existing_parsers(ui_cli):
+    device, responses, _ = ui_cli
+    data = DESKTOP_XML.replace(b"Arknights", "明日方舟".encode("utf8"))
+    responses.dump_override = data
+
+    result = device._read_ui_hierarchy()
+
+    assert isinstance(result, bytes)
+    assert result == data
+
+
+def test_ui_cli_second_read_shares_ten_second_ad_deadline(ui_cli):
+    device, responses, calls = ui_cli
+
+    with pytest.raises(DeviceRecoveryError):
+        device.launch()
+
+    assert responses.clock[0] == pytest.approx(10)
+    assert [call[2] for call in calls if call[0] == "guard"] == pytest.approx([10, 4.5])
+    assert responses.commands.count(CLOSE_COMMAND) == 1
+    assert ICON_COMMAND not in responses.commands
 
 
 def test_tap_launch_closes_real_popup_then_rechecks_before_icon_tap(android):

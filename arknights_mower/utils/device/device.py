@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import atexit
+import json
 import os
+import re
 import subprocess
 import time
 from contextlib import contextmanager, nullcontext
@@ -37,6 +39,7 @@ from arknights_mower.utils.device.mumu_popup import (
 )
 from arknights_mower.utils.device.recovery import (
     DeviceRecoveryError,
+    UIUnresponsiveError,
     recover_connection,
 )
 from arknights_mower.utils.device.scrcpy import Scrcpy
@@ -45,6 +48,10 @@ from arknights_mower.utils.device.screenshot_backend import (
     ScreenshotFailure,
     ScreenshotSession,
     validate_frame,
+)
+from arknights_mower.utils.device.system_ui import (
+    system_ui_error_close_point,
+    wallpaper_color_state,
 )
 from arknights_mower.utils.device.touch_backend import TouchFailure, touch_backends
 from arknights_mower.utils.image import bytes2img
@@ -438,6 +445,61 @@ class Device:
     def run(self, cmd: str) -> Optional[bytes]:
         return self.recover(lambda: self.client.run(cmd))
 
+    def _read_ui_hierarchy(self) -> bytes:
+        return self.recover(lambda: self.client.cmd(["shell", UI_DUMP_COMMAND]))
+
+    def check_ui_responsive(self) -> None:
+        self.recover(self._probe_ui_responsive)
+        control = getattr(self, "session_control", None)
+        confirm = getattr(control, "confirm_ui_responsive", None)
+        if confirm is not None:
+            confirm()
+
+    def _probe_ui_responsive(self) -> None:
+        def run(command, seconds):
+            csleep(0)
+            if io_timeout(seconds) < seconds:
+                raise DeviceRecoveryError("剩余设备预算不足，尚未确认 Android 输入响应")
+            deadline = time.monotonic() + seconds
+
+            def remaining():
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    raise TimeoutError("Android 输入响应检查超时")
+                return left
+
+            with device_io_budget(remaining):
+                return self.client.run(command)
+
+        try:
+            for attempt in range(2):
+                try:
+                    output = run("input keyevent 0", 3)
+                except TimeoutError as exc:
+                    if getattr(exc, "input_not_sent", False):
+                        raise DeviceRecoveryError(
+                            "输入检查命令尚未发送，不能据此重启模拟器"
+                        ) from exc
+                    stalled = True
+                else:
+                    text = (output or b"").decode("utf8", "replace").lower()
+                    stalled = "injection failed" in text or "failed to inject" in text
+                    if text.strip() and not stalled:
+                        raise DeviceRecoveryError(
+                            "Android 输入响应检查未成功，尚未确认设备卡死"
+                        )
+                csleep(0)
+                io_timeout(0)
+                if not stalled:
+                    return
+                if (run("echo mower-ui-probe", 1) or b"").strip() != b"mower-ui-probe":
+                    raise DeviceRecoveryError("ADB 响应尚未确认，不能据此重启模拟器")
+            raise UIUnresponsiveError("ADB 正常但 Android 输入分发连续失败")
+        except (MowerExit, DeviceRecoveryError):
+            raise
+        except Exception as exc:
+            raise DeviceRecoveryError("无法确认 Android 输入响应") from exc
+
     def launch(self) -> None:
         """launch the application"""
         logger.info("明日方舟，启动！")
@@ -483,7 +545,7 @@ class Device:
 
         def close_point():
             try:
-                return startup_ad_close_point(self.run(UI_DUMP_COMMAND))
+                return startup_ad_close_point(self._read_ui_hierarchy())
             except ValueError as exc:
                 raise DeviceRecoveryError(str(exc)) from exc
 
@@ -761,9 +823,10 @@ class Device:
         command = "dumpsys window | grep mCurrentFocus"
         line = self.run(command).decode("utf8")
         focus = line.strip().removesuffix("}")
-        _, anr_marker, package = focus.partition("Application Not Responding: ")
-        if anr_marker:
-            return anr_marker + package
+        for marker in ("Application Not Responding: ", "Application Error: "):
+            _, error_marker, package = focus.partition(marker)
+            if error_marker:
+                return error_marker + package
         return focus.split(" ")[-1]
 
     def display_frames(self) -> tuple[int, int, int]:
@@ -1129,6 +1192,276 @@ class Device:
                 restarts=0 if getattr(self, "strict_target", False) else restarts,
             )
 
+    def _close_system_ui_error(self) -> None:
+        started = time.monotonic()
+        profile = self.profile.model_copy()
+        client = self.client
+        serial = getattr(self, "device_id", None)
+        recovery_deadline = started + profile.recovery_timeout
+        deadline = min(started + 15, recovery_deadline)
+
+        def remaining():
+            csleep(0)
+            seconds = deadline - time.monotonic()
+            if seconds <= 0:
+                raise DeviceRecoveryError("等待系统界面重新启动超时，尚未恢复游戏前台")
+            return seconds
+
+        def process_ids():
+            values = self.run("pidof com.android.systemui").split()
+            if any(not value.isdigit() for value in values):
+                raise DeviceRecoveryError("无法确认系统界面进程，尚未恢复游戏前台")
+            return set(values)
+
+        pending_theme = set()
+
+        def assets_sequence():
+            output = self.run(
+                "dumpsys activity activities 2>/dev/null | grep mGlobalConfig"
+            ).decode("utf8")
+            configs = re.findall(
+                r"^\s*mGlobalConfig(?:uration)?=([^\r\n]*)$",
+                output,
+                re.M,
+            )
+            if len(configs) != 1:
+                return None
+            configuration = configs[0].strip()
+            if not configuration.startswith("{") or not configuration.endswith("}"):
+                return None
+            depth = 0
+            fields = []
+            for index, character in enumerate(configuration):
+                if character == "{":
+                    depth += 1
+                    fields.append(" ")
+                elif character == "}":
+                    depth -= 1
+                    if depth < 0 or (depth == 0 and index != len(configuration) - 1):
+                        return None
+                    fields.append(" ")
+                elif depth == 1:
+                    fields.append(character)
+            if depth != 0 or not "".join(fields).strip():
+                return None
+            tokens = [
+                token for token in "".join(fields).split() if token.startswith("as.")
+            ]
+            if not tokens:
+                return 0
+            if len(tokens) != 1 or not re.fullmatch(r"as\.[0-9]+", tokens[0]):
+                return None
+            return int(tokens[0][3:])
+
+        def theme_ready():
+            if sdk < 31:
+                return True
+            output = self.run(
+                "dumpsys activity service "
+                "com.android.systemui/.SystemUIService ThemeOverlayController"
+            ).decode("utf8")
+
+            def field(name):
+                values = re.findall(rf"^\s*{name}=(.+)$", output, re.M)
+                return values[0].strip() if len(values) == 1 else None
+
+            if field("mIsMonetEnabled") == "false":
+                return True
+            colors = (
+                wallpaper_color_state(field("mSystemColors"), current_user)
+                if sdk >= 32
+                else None
+            )
+            if colors == "unread":
+                pending_theme.add("mSystemColors")
+            elif colors in {"absent", "present"}:
+                pending_theme.discard("mSystemColors")
+            for name in ("mNeedsOverlayCreation", "mDeferredThemeEvaluation"):
+                value = field(name)
+                if value == "true":
+                    pending_theme.add(name)
+                elif value == "false":
+                    pending_theme.discard(name)
+            scheme = field("mColorScheme")
+            if sdk >= 32 and scheme == "null" and colors == "present":
+                pending_theme.add("mColorScheme")
+            elif (scheme is not None and scheme != "null") or colors == "absent":
+                pending_theme.discard("mColorScheme")
+            if (
+                default_palette
+                and field("mIsMonetEnabled") == "true"
+                and colors == "present"
+                and all(
+                    re.fullmatch(
+                        r"android\.content\.om\.FabricatedOverlay@[0-9a-fA-F]+",
+                        field(name) or "",
+                    )
+                    for name in ("mSecondaryOverlay", "mNeutralOverlay")
+                )
+            ):
+                pending_theme.add("assets_sequence")
+            if "assets_sequence" in pending_theme:
+                sequence = assets_sequence()
+                if previous_assets is None:
+                    raise DeviceRecoveryError(
+                        "无法确认主题应用前的系统资源配置，尚未恢复游戏前台"
+                    )
+                if sequence is not None and sequence > previous_assets:
+                    pending_theme.discard("assets_sequence")
+            return not pending_theme
+
+        try:
+            with device_io_budget(remaining):
+                error_focus = self.current_focus()
+                if error_focus not in {
+                    "Application Error: com.android.systemui",
+                    "Application Not Responding: com.android.systemui",
+                }:
+                    raise DeviceRecoveryError(
+                        "系统界面错误弹窗已变化，尚未发送关闭点击"
+                    )
+                old_pids = process_ids()
+                if not old_pids:
+                    raise DeviceRecoveryError("系统界面进程尚未确认，尚未关闭错误弹窗")
+                version = self.run("getprop ro.build.version.sdk").strip()
+                if not version.isdigit():
+                    raise DeviceRecoveryError("无法确认 Android 版本，尚未关闭错误弹窗")
+                sdk = int(version)
+                current_user = None
+                previous_assets = None
+                default_palette = False
+                if sdk >= 32:
+                    user = self.run("am get-current-user").strip()
+                    if not user.isdigit():
+                        raise DeviceRecoveryError(
+                            "无法确认 Android 当前用户，尚未关闭错误弹窗"
+                        )
+                    current_user = int(user)
+                    previous_assets = assets_sequence()
+                    value = (
+                        self.run(
+                            f"settings --user {current_user} get secure "
+                            "theme_customization_overlay_packages"
+                        )
+                        .decode("utf8")
+                        .strip()
+                    )
+                    try:
+                        settings = {} if value == "null" else json.loads(value)
+                    except ValueError:
+                        settings = None
+                    default_palette = isinstance(settings, dict) and not any(
+                        name in settings
+                        for name in (
+                            "android.theme.customization.system_palette",
+                            "android.theme.customization.accent_color",
+                        )
+                    )
+
+                def confirm_error_focus():
+                    if self.current_focus() != error_focus:
+                        raise DeviceRecoveryError(
+                            "系统界面错误弹窗已变化，尚未发送关闭点击"
+                        )
+
+                while True:
+                    confirm_error_focus()
+                    point = system_ui_error_close_point(
+                        self._read_ui_hierarchy(),
+                        anr=error_focus.startswith("Application Not Responding: "),
+                    )
+                    if point is not None:
+                        break
+                    budget_sleep(0.2)
+                logger.warning("系统界面异常，关闭错误弹窗并等待系统界面重新启动")
+                self._input_once(
+                    lambda _: self.client.run(f"input tap {point[0]} {point[1]}"),
+                    transport="adb",
+                    prepare=confirm_error_focus,
+                )
+                while True:
+                    new_pids = process_ids()
+                    if new_pids and new_pids.isdisjoint(old_pids):
+                        focus = self.current_focus()
+                        if (
+                            re.fullmatch(r"[A-Za-z0-9_.]+/[A-Za-z0-9_.$]+", focus)
+                            and theme_ready()
+                        ):
+                            return
+                        if focus.startswith(
+                            ("Application Error: ", "Application Not Responding: ")
+                        ) and focus not in {
+                            "Application Error: com.android.systemui",
+                            "Application Not Responding: com.android.systemui",
+                        }:
+                            raise DeviceRecoveryError(
+                                "系统界面恢复期间出现其他错误弹窗，尚未恢复游戏前台"
+                            )
+                    budget_sleep(0.2)
+        except (MowerExit, DeviceRecoveryError):
+            raise
+        except Exception as exc:
+            if isinstance(exc, (TimeoutError, subprocess.TimeoutExpired)):
+
+                def diagnosis_remaining():
+                    self._check_open()
+                    csleep(0)
+                    if (
+                        not serial
+                        or self.client is not client
+                        or self.device_id != serial
+                        or client.device_id != serial
+                        or self.profile != profile
+                    ):
+                        raise DeviceRecoveryError(
+                            "设备目标已变化，不能确认原设备界面故障"
+                        )
+                    seconds = recovery_deadline - time.monotonic()
+                    if seconds <= 0:
+                        raise DeviceRecoveryError("设备恢复预算不足，尚未确认界面失活")
+                    return seconds
+
+                try:
+                    # The UI deadline has ended; diagnosis retains the original
+                    # recovery deadline and the caller's enclosing I/O budget.
+                    with device_io_budget(diagnosis_remaining):
+                        self._probe_ui_responsive()
+                except (MowerExit, UIUnresponsiveError):
+                    raise
+                except Exception:
+                    pass
+            raise DeviceRecoveryError(
+                "系统界面错误弹窗恢复失败，尚未恢复游戏前台"
+            ) from exc
+
+    def _wait_game_foreground(self) -> None:
+        deadline = time.monotonic() + 30
+
+        def remaining():
+            csleep(0)
+            seconds = deadline - time.monotonic()
+            if seconds <= 0:
+                raise DeviceRecoveryError("等待游戏窗口恢复前台超时，停止本次画面识别")
+            return seconds
+
+        try:
+            with device_io_budget(remaining):
+                while True:
+                    focus = self.current_focus()
+                    if focus.startswith(self.game_package + "/"):
+                        return
+                    if focus.startswith(
+                        ("Application Error: ", "Application Not Responding: ")
+                    ):
+                        raise DeviceRecoveryError(
+                            "等待游戏前台期间出现错误弹窗，停止本次画面识别"
+                        )
+                    budget_sleep(0.2)
+        except (MowerExit, DeviceRecoveryError):
+            raise
+        except Exception as exc:
+            raise DeviceRecoveryError("等待游戏前台失败，停止本次画面识别") from exc
+
     def check_current_focus(self) -> bool:
         """检查游戏前台状态，设备故障交回所属应用会话。"""
         update = False
@@ -1136,6 +1469,19 @@ class Device:
         def check() -> bool:
             nonlocal update
             focus = self.current_focus()
+            if focus in {
+                "Application Not Responding: com.android.systemui",
+                "Application Error: com.android.systemui",
+            }:
+                self._close_system_ui_error()
+                update = True
+                focus = self.current_focus()
+                if focus.startswith(
+                    ("Application Error: ", "Application Not Responding: ")
+                ):
+                    raise DeviceRecoveryError(
+                        "系统界面恢复后出现错误弹窗，尚未恢复游戏前台"
+                    )
             if focus == "Application Not Responding: com.mumu.acc":
                 logger.warning("MuMu 加速服务没有响应，关闭该服务后恢复游戏前台")
                 self.run("am force-stop com.mumu.acc")
@@ -1156,13 +1502,10 @@ class Device:
             if self.is_app_running_in_background():
                 logger.info("游戏不在前台，正在把游戏调到前台...")
                 self.bring_to_foreground()
-                csleep(2)
             else:
                 # 游戏进程未运行，重新启动
                 self.launch()
-                csleep(10)
-            if not self.current_focus().startswith(self.game_package + "/"):
-                raise DeviceRecoveryError("恢复后尚未确认游戏前台，停止本次画面识别")
+            self._wait_game_foreground()
             update = True
             return update
 

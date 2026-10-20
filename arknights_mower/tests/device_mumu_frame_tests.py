@@ -2,13 +2,15 @@
 
 import ctypes
 import json
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 
+from arknights_mower.utils import config
 from arknights_mower.utils.device.mumu12ipc.core import MuMu12IPC, MuMuIpcError
 
 
@@ -149,6 +151,67 @@ class MuMuFrameTests(unittest.TestCase):
         with self.assertRaises(MuMuIpcError) as caught:
             ipc.capture_display()
         self.assertEqual(caught.exception.actual_size, (0, 0))
+
+
+class MuMuRendererSelectionTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.generic = self.root / "nx_main/sdk/external_renderer_ipc.dll"
+        self.generic.parent.mkdir(parents=True)
+        self.generic.touch()
+        self.legacy = self.root / "shell/sdk/external_renderer_ipc.dll"
+        self.legacy.parent.mkdir(parents=True)
+        self.legacy.touch()
+        self.sdk = self.root / "nx_device/12.0/shell/sdk/external_renderer_ipc.dll"
+        self.sdk.parent.mkdir(parents=True)
+        self.sdk.touch()
+        self.manager = self.root / "nx_main/MuMuManager.exe"
+        self.manager.touch()
+
+    def load(self, adb_path="", *, broken=None):
+        def load_library(path):
+            if Path(path) == broken or not Path(path).is_file():
+                raise OSError("Native library unavailable")
+            return MagicMock()
+
+        library = self.enterContext(patch("ctypes.CDLL", side_effect=load_library))
+        configuration = SimpleNamespace(
+            simulator=SimpleNamespace(simulator_folder=str(self.root), index="0"),
+            device=SimpleNamespace(
+                manager_path=str(self.manager), adb_path=str(adb_path)
+            ),
+        )
+        with patch.object(config, "conf", configuration):
+            MuMu12IPC(MagicMock())
+        return library
+
+    def test_android12_sdk_wins_for_default_generic_and_external_adb(self):
+        for adb_path in (
+            "",
+            self.root / "nx_main/adb.exe",
+            self.root.parent / "platform-tools/adb.exe",
+            self.root.parent / "other/nx_device/12.0/shell/adb.exe",
+        ):
+            with self.subTest(adb_path=adb_path):
+                library = self.load(adb_path)
+                self.assertEqual(
+                    [Path(call.args[0]) for call in library.call_args_list], [self.sdk]
+                )
+
+    def test_missing_android12_sdk_keeps_legacy_shell_sdk(self):
+        self.sdk.unlink()
+        library = self.load()
+        self.assertEqual(Path(library.call_args.args[0]), self.legacy)
+
+    def test_missing_device_and_legacy_sdks_keeps_generic_candidate_fallback(self):
+        self.sdk.unlink()
+        self.legacy.unlink()
+        library = self.load()
+        self.assertEqual(Path(library.call_args.args[0]), self.generic)
+
+    def test_unloadable_android12_sdk_does_not_fall_back_to_other_libraries(self):
+        with self.assertRaises(MuMuIpcError):
+            self.load(broken=self.sdk)
 
 
 if __name__ == "__main__":

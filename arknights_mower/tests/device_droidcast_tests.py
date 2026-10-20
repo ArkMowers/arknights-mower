@@ -28,12 +28,16 @@ from arknights_mower.tests.device_session_tests import (
 )
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import Conf
+from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device import droidcast
 from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.adb_client.server import run_adb as guarded_run_adb
 from arknights_mower.utils.device.application import DeviceControl
 from arknights_mower.utils.device.device import Device
-from arknights_mower.utils.device.recovery import DeviceRecoveryError
+from arknights_mower.utils.device.recovery import (
+    DeviceRecoveryError,
+    UIUnresponsiveError,
+)
 from arknights_mower.utils.device.session import DeviceSession, RecoveryPolicy
 from arknights_mower.utils.device.touch_backend import TouchFailure
 
@@ -564,6 +568,198 @@ class DroidCastTests(unittest.TestCase):
         self.assertEqual(recovered.status, "paused")
         self.assertIs(self.control._dispatch_pause, pause)
         self.assertEqual(self.conf.model_dump(), self.before)
+
+    def test_ui_recovery_reconnects_before_cleanup_and_restarts_after_release(self):
+        self.conf.device.preset_id = "windows.mumu12"
+        self.conf.device.instance_id = "0"
+        session = self.control._session
+        session.bind(self.conf.device)
+        session.policy = RecoveryPolicy(timeout=12, local_wait=0)
+        self.simulator.state, self.simulator.serial = "running", "USB-A"
+        self.assertTrue(self.control.capture().ok)
+        helper = self.device._droidcast
+        failure = UIUnresponsiveError()
+        self.assertFalse(self.control.execute(Mock(side_effect=failure)).ok)
+        pause = TouchFailure(
+            self.conf.device,
+            "windows",
+            ConnectionError("unverified input"),
+            delivery_unknown=True,
+        )
+        self.control.pause_dispatch(pause)
+        self.android.transport_error = b"adb: device offline\n"
+        self.adb.rows = [("USB-A", "offline")]
+        self.android.remote[456] = "foreign-process"
+        self.android.forwards["tcp:23456"] = ("OTHER", "tcp:12345")
+        events = []
+
+        def shared_recovery(*args, **kwargs):
+            events.append("shared")
+            self.assertFalse(failure.stop_requested)
+            self.assertTrue(helper._remote_cleanup_pending)
+            self.assertEqual(kwargs["timeout"], 12)
+            self.clock.sleep(1)
+
+        self.control._adb_recovery = SimpleNamespace(
+            generation=1, recover=shared_recovery
+        )
+
+        def reconnect():
+            events.append("reconnect")
+            self.assertTrue(helper._remote_cleanup_pending)
+            self.assertFalse(failure.stop_requested)
+            self.clock.sleep(4)
+            self.android.transport_error = None
+            self.adb.rows = [("USB-A", "device")]
+
+        self.adb.on_recover = reconnect
+        run = self.android.run
+
+        def cleanup(argv, **options):
+            if argv[3:5] == ["shell", "kill"]:
+                events.append("cleanup")
+                self.clock.sleep(3)
+            return run(argv, **options)
+
+        stop, start = self.simulator.stop, self.simulator.start
+
+        def stopping(profile, timeout):
+            self.assertFalse(helper._remote_cleanup_pending)
+            self.assertIsNone(helper.port)
+            self.assertEqual(self.android.remote, {456: "foreign-process"})
+            self.assertEqual(
+                self.android.forwards, {"tcp:23456": ("OTHER", "tcp:12345")}
+            )
+            self.assertEqual(self.http.closed, 1)
+            self.assertEqual(session.remaining(), 4)
+            events.append("stop")
+            return stop(profile, timeout)
+
+        def starting(profile, timeout):
+            events.append("start")
+            return start(profile, timeout)
+
+        def ready():
+            self.simulator.state = "running"
+
+        def rebind(device, result):
+            self.assertIs(device, self.device)
+            self.assertIsNone(self.control._cleanup_device)
+            self.assertIsNone(self.control._helper_cleanup_error)
+            events.append("rebind")
+
+            def probe(command):
+                self.assertEqual(command, "input keyevent 0")
+                events.append("probe")
+                return b""
+
+            device.client = SimpleNamespace(run=probe, close=Mock())
+            device.control = SimpleNamespace(input_alive=lambda: True, close=Mock())
+
+        self.simulator.stop, self.simulator.start = stopping, starting
+        self.simulator.on_start = ready
+        self.control._adapter = SimpleNamespace(rebind=rebind)
+        with patch(f"{MODULE}.run_adb", cleanup):
+            recovered = self.control.recover()
+
+        self.assertTrue(recovered.ok, recovered.error)
+        self.assertIs(recovered.value, self.device)
+        self.assertEqual(recovered.status, "paused")
+        self.assertIs(self.control._dispatch_pause, pause)
+        self.assertEqual(self.adb.actions, ["USB-A"])
+        self.assertEqual(self.simulator.actions, ["stop", "start"])
+        self.assertEqual(
+            events,
+            ["shared", "reconnect", "cleanup", "stop", "start", "rebind", "probe"],
+        )
+        self.assertIsNone(self.control._ui_unresponsive_failure)
+        self.assertEqual(self.control._bound_adb_generation, 1)
+
+    def test_ui_recovery_retains_offline_cleanup_across_recovery_budgets(self):
+        self.conf.device.preset_id = "windows.mumu12"
+        self.conf.device.instance_id = "0"
+        self.control._session.bind(self.conf.device)
+        self.simulator.state, self.simulator.serial = "running", "USB-A"
+        self.assertTrue(self.control.capture().ok)
+        helper = self.device._droidcast
+        failure = UIUnresponsiveError()
+        self.assertFalse(self.control.execute(Mock(side_effect=failure)).ok)
+        self.android.transport_error = b"adb: device offline\n"
+        self.adb.rows = [("USB-A", "offline")]
+        self.control._adapter = Mock()
+
+        for _ in range(2):
+            recovered = self.control.recover()
+            self.assertFalse(recovered.ok)
+            self.assertEqual(recovered.error.code, "close_failed")
+            self.assertIs(self.control._device, self.device)
+            self.assertIs(self.control._cleanup_device, self.device)
+            self.assertIs(self.control._ui_unresponsive_failure, failure)
+            self.assertTrue(helper._remote_cleanup_pending)
+            self.assertFalse(failure.stop_requested)
+            self.assertFalse(failure.start_requested)
+
+        self.assertEqual(self.adb.actions, ["USB-A", "USB-A"])
+        self.assertEqual(self.simulator.actions, [])
+        self.control._adapter.rebind.assert_not_called()
+
+    def test_ui_cleanup_reconnect_cancellation_never_restarts_or_replaces(self):
+        self.conf.device.preset_id = "windows.mumu12"
+        self.conf.device.instance_id = "0"
+        self.control._session.bind(self.conf.device)
+        self.simulator.state, self.simulator.serial = "running", "USB-A"
+        self.assertTrue(self.control.capture().ok)
+        helper = self.device._droidcast
+        failure = UIUnresponsiveError()
+        self.assertFalse(self.control.execute(Mock(side_effect=failure)).ok)
+        self.android.transport_error = b"adb: device offline\n"
+        self.adb.rows = [("USB-A", "offline")]
+        self.control._adapter = Mock()
+
+        def cancelled():
+            raise MowerExit("cancelled")
+
+        self.adb.on_recover = cancelled
+        recovered = self.control.recover()
+
+        self.assertFalse(recovered.ok)
+        self.assertEqual(recovered.error.code, "cancelled")
+        self.assertEqual(self.adb.actions, ["USB-A"])
+        self.assertEqual(self.simulator.actions, [])
+        self.assertIs(self.control._cleanup_device, self.device)
+        self.assertIs(self.control._ui_unresponsive_failure, failure)
+        self.assertTrue(helper._remote_cleanup_pending)
+        self.assertFalse(failure.stop_requested)
+        self.control._adapter.rebind.assert_not_called()
+
+    def test_ui_cleanup_reconnect_expiration_never_restarts_or_replaces(self):
+        self.conf.device.preset_id = "windows.mumu12"
+        self.conf.device.instance_id = "0"
+        session = self.control._session
+        session.bind(self.conf.device)
+        session.policy = RecoveryPolicy(timeout=3, local_wait=0)
+        self.simulator.state, self.simulator.serial = "running", "USB-A"
+        self.assertTrue(self.control.capture().ok)
+        helper = self.device._droidcast
+        failure = UIUnresponsiveError()
+        self.assertFalse(self.control.execute(Mock(side_effect=failure)).ok)
+        self.android.transport_error = b"adb: device offline\n"
+        self.adb.rows = [("USB-A", "offline")]
+        self.control._adapter = Mock()
+        self.adb.on_recover = lambda: self.clock.sleep(3)
+
+        recovered = self.control.recover()
+
+        self.assertFalse(recovered.ok)
+        self.assertEqual(self.clock.now, 3)
+        self.assertEqual(self.adb.actions, ["USB-A"])
+        self.assertEqual(self.simulator.actions, [])
+        self.assertIs(self.control._device, self.device)
+        self.assertIs(self.control._cleanup_device, self.device)
+        self.assertIs(self.control._ui_unresponsive_failure, failure)
+        self.assertTrue(helper._remote_cleanup_pending)
+        self.assertFalse(failure.stop_requested)
+        self.control._adapter.rebind.assert_not_called()
 
     def test_idle_stop_releases_helpers_before_transport_goes_offline(self):
         self.conf.device.preset_id = "windows.mumu12"

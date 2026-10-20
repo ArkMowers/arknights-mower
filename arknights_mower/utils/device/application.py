@@ -29,7 +29,10 @@ from arknights_mower.utils.device.preparation import (
     PreparationError,
     PreparationSession,
 )
-from arknights_mower.utils.device.recovery import DeviceRecoveryError
+from arknights_mower.utils.device.recovery import (
+    DeviceRecoveryError,
+    UIUnresponsiveError,
+)
 from arknights_mower.utils.device.redroid import redroid_repair
 from arknights_mower.utils.device.screenshot_backend import (
     ScreenshotFailure,
@@ -276,6 +279,7 @@ class DeviceControl(Generic[D]):
         self._run_active = False
         self._defer_cancel_close = False
         self._session_error: Exception | None = None
+        self._ui_unresponsive_failure: UIUnresponsiveError | None = None
         self._dispatch_pause: TouchFailure | None = None
         self._last_error: dict | None = None
         self._screenshot: ScreenshotSession | None = None
@@ -344,6 +348,11 @@ class DeviceControl(Generic[D]):
             self._dispatch_pause = failure
             self._state = "paused"
             self._last_error = failure.to_dict()
+
+    def confirm_ui_responsive(self) -> None:
+        """仅在真实输入投递探测成功后释放本次界面故障的重启记录。"""
+        with self._configuration():
+            self._ui_unresponsive_failure = None
 
     @property
     def _readiness(self) -> ReadinessResult | None:
@@ -1063,6 +1072,8 @@ class DeviceControl(Generic[D]):
         if self._adb_recovery is not None:
             self._bound_adb_generation = self._adb_recovery.generation
         self._serial = self._device.device_id
+        if not recovering:
+            self._ui_unresponsive_failure = None
         self._state = "paused" if self._dispatch_pause is not None else "connected"
         logger.info(f"设备初始化完成：{self._serial}")
         if self._dispatch_pause is not None:
@@ -1316,6 +1327,13 @@ class DeviceControl(Generic[D]):
             value = operation(self._device)
         except Exception as exc:
             if isinstance(exc, DeviceRecoveryError):
+                if (
+                    isinstance(exc, UIUnresponsiveError)
+                    and self._ui_unresponsive_failure is None
+                ):
+                    self._ui_unresponsive_failure = exc
+                    if self._session is not None:
+                        self._session.record_ui_failure(exc)
                 self._session_error = exc
                 self._state = "failed"
                 if (
@@ -1354,6 +1372,8 @@ class DeviceControl(Generic[D]):
                 or self._closing_count
             ):
                 return self._closing_failure()
+            if self._ui_unresponsive_failure is not None:
+                return self._recover_ui_unresponsive()
             deadline = None
             if self._helper_cleanup_error is not None:
                 if self._cleanup_device is None:
@@ -1572,6 +1592,104 @@ class DeviceControl(Generic[D]):
                     else "failed"
                 )
                 return self._failure("recovery_failed", exc)
+
+    def _recover_ui_unresponsive(self) -> DeviceResult[D]:
+        failure = self._ui_unresponsive_failure
+        try:
+            if self._session is None or self._device is None:
+                raise DeviceRecoveryError(
+                    "界面故障没有可受控重启的原设备会话，请手动恢复所选设备。"
+                )
+            if self._preparation is not None and self._preparation.prepared_size:
+                raise PreparationError(
+                    "preparation_interrupted",
+                    "完整重启需要结束临时整备，请重新授权启动。",
+                )
+            deadline = self._session.begin_budget()
+            with self._io_budget():
+                try:
+                    self._device.close()
+                except Exception as exc:
+                    if isinstance(exc, MowerExit):
+                        raise
+                    self._cleanup_device = self._device
+                    self._helper_cleanup_error = exc
+                    if self._adb_recovery is not None:
+                        self._recover_adb_server(deadline)
+                    self._session.recover_transport(
+                        failure, self.serial, deadline=deadline
+                    )
+                    self._device.close()
+                self._cleanup_device = None
+                self._helper_cleanup_error = None
+                self._screenshot = None
+                ready = self._session.restart(
+                    failure,
+                    deadline=deadline,
+                    frame_probe=getattr(self._session.adb, "standard_frame_size", None),
+                )
+                profile = self._session.profile.model_copy(
+                    update={"last_serial": ready.serial, "adb_path": ready.adb_path}
+                )
+                if self._preparation is not None and ready.serial != self.serial:
+                    self._preparation.close()
+                    self._preparation.begin(profile)
+                result = self._check_profile(profile)
+                self._last_preflight = result
+                if not result.ok:
+                    raise PreflightRejected(result.error.message, result.error.code)
+                self._adapter.rebind(self._device, result)
+                input_probe = getattr(self._device, "input_alive", None)
+                if input_probe is not None and not input_probe():
+                    raise TouchFailure(
+                        profile,
+                        __system__,
+                        ConnectionError("触控连接初始化后已断开，尚未发送输入"),
+                    )
+                probe = getattr(self._device, "_probe_ui_responsive", None)
+                if not callable(probe):
+                    raise DeviceRecoveryError("重建后的设备缺少界面输入响应检查")
+                resume_verified = getattr(self._device, "resume_verified", None)
+                if resume_verified is not None:
+                    resume_verified()
+                probe()
+                self.confirm_ui_responsive()
+            if self._adb_recovery is not None:
+                self._bound_adb_generation = self._adb_recovery.generation
+            self._session_error = None
+            self._state = "paused" if self._dispatch_pause is not None else "connected"
+            self._last_error = (
+                self._dispatch_pause.to_dict()
+                if self._dispatch_pause is not None
+                else None
+            )
+            return DeviceResult(
+                True,
+                self._state,
+                self.serial,
+                self._device,
+                readiness=ready,
+                helpers_rebuilt=True,
+            )
+        except Exception as exc:
+            if getattr(exc, "cleanup_failed", False):
+                self._cleanup_device = self._device
+                self._helper_cleanup_error = exc
+            if isinstance(exc, MowerExit) and not isinstance(exc, PreflightRejected):
+                self._close_failure(exc, "device_recovery_failed")
+            self._session_error = exc
+            self._state = (
+                "cancelled"
+                if isinstance(exc, MowerExit)
+                and not isinstance(exc, (PreflightRejected, PreparationError))
+                else "failed"
+            )
+            return self._failure(
+                "close_failed"
+                if self._helper_cleanup_error and not isinstance(exc, MowerExit)
+                else "recovery_failed",
+                exc,
+            )
 
     def _recover_adb_server(self, deadline):
         try:

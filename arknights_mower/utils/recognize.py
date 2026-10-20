@@ -141,6 +141,9 @@ class Recognizer:
 
     def check_current_focus(self) -> bool:
         if self.device.check_current_focus():
+            probe = getattr(self.device, "check_ui_responsive", None)
+            if probe is not None:
+                probe()
             self.reset_after_external_control()
             return True
         return False
@@ -175,6 +178,9 @@ class Recognizer:
             elapsed_time = (current_time - self.last_scene_time).total_seconds()
             if elapsed_time > config.conf.run_order_delay * 90:
                 logger.warning("相同场景等待超时 ")
+                probe = getattr(self.device, "check_ui_responsive", None)
+                if probe is not None:
+                    probe()
                 self.last_scene = None
                 self.last_scene_time = current_time
                 self.device.exit()

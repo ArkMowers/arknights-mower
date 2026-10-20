@@ -14,6 +14,16 @@ class DeviceRecoveryError(ConnectionError):
     """当前设备恢复预算耗尽；任务保留意图并在冷却后建立新的有限预算。"""
 
 
+class UIUnresponsiveError(DeviceRecoveryError):
+    """ADB 可读，但两次有界输入投递均未能完成。"""
+
+    def __init__(self, message="设备界面未响应输入投递"):
+        super().__init__(message)
+        self.restart_binding = None
+        self.stop_requested = False
+        self.start_requested = False
+
+
 _input_reconciliation = ContextVar("input_reconciliation", default="task")
 
 

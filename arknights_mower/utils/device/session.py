@@ -15,9 +15,12 @@ from arknights_mower.utils.device.endpoint_identity import (
     InstanceBindingError,
     InstanceEndpointPending,
 )
-from arknights_mower.utils.device.io_budget import device_io_budget
+from arknights_mower.utils.device.io_budget import device_io_budget, io_timeout
 from arknights_mower.utils.device.preflight import parse_display_size
-from arknights_mower.utils.device.recovery import DeviceRecoveryError
+from arknights_mower.utils.device.recovery import (
+    DeviceRecoveryError,
+    UIUnresponsiveError,
+)
 from arknights_mower.utils.log import logger
 
 # The decoded frame the 1920x1080 templates require.
@@ -209,6 +212,137 @@ class DeviceSession:
         self._deadline = deadline
         self.actions = 0
         return deadline
+
+    def _restart_binding(self):
+        if self.profile is None:
+            return None
+        return tuple(
+            getattr(self.profile, field)
+            for field in (
+                "preset_id",
+                "installation_path",
+                "manager_path",
+                "config_path",
+                "instance_id",
+                "instance_name",
+                "instance_uuid",
+                "topology_fingerprint",
+            )
+        )
+
+    def record_ui_failure(self, failure: UIUnresponsiveError) -> None:
+        if failure.restart_binding is None:
+            failure.restart_binding = self._restart_binding()
+
+    def recover_transport(
+        self, failure: UIUnresponsiveError, serial: str, *, deadline: float
+    ) -> None:
+        """仅重连故障原实例的端点，为保留的资源清理恢复 ADB。"""
+        with device_io_budget(lambda: self._remaining(deadline)):
+            if (
+                failure.restart_binding is None
+                or failure.restart_binding != self._restart_binding()
+            ):
+                raise SessionFailure(self.last, "设备绑定已改变，不能重连原故障端点。")
+            observation = self.observe(
+                deadline,
+                frame_probe=getattr(self.adb, "standard_frame_size", None),
+            )
+            self._check_observation(observation)
+            if (
+                observation.instance_state not in {"running", "starting"}
+                or not serial
+                or observation.serial != serial
+            ):
+                raise SessionFailure(
+                    self.last, "无法确认原实例端点，已拒绝清理前重连。"
+                )
+            if observation.state != "ready":
+                self._action(
+                    lambda timeout: self.adb.recover(self.adb_path, serial, timeout),
+                    deadline,
+                    required=False,
+                )
+
+    def restart(
+        self,
+        failure: UIUnresponsiveError,
+        *,
+        deadline: float,
+        frame_probe=None,
+    ) -> ReadinessResult:
+        """已确认的界面失活只允许对故障发生时绑定的实例发出一次关闭。"""
+        from arknights_mower.utils.device.session_io import MANAGED_INSTANCE_PRESETS
+
+        deadline = min(
+            deadline,
+            self.clock.monotonic() + io_timeout(self._remaining(deadline)),
+        )
+        self._deadline = deadline
+        self._remaining(deadline)
+        if (
+            self.profile is None
+            or failure.restart_binding is None
+            or failure.restart_binding != self._restart_binding()
+            or self.profile.preset_id not in MANAGED_INSTANCE_PRESETS
+            or self.profile.preset_id in CONFIRMED_START_PRESETS
+            or (
+                self.profile.preset_id == "macos.mumu_pro"
+                and not self.profile.topology_fingerprint
+            )
+        ):
+            raise SessionFailure(
+                self.last, "无法确认界面故障原实例的完整重启权限，请手动恢复所选设备。"
+            )
+
+        if not failure.stop_requested:
+            try:
+                with device_io_budget(lambda: self._remaining(deadline)):
+                    instance = self.simulator.inspect(
+                        self.profile, self._remaining(deadline)
+                    )
+            except (MowerExit, DeviceRecoveryError):
+                raise
+            except Exception as exc:
+                self.last = ReadinessResult(
+                    "offline",
+                    self.last.serial,
+                    self.adb_path,
+                    code=getattr(exc, "code", "manager_output"),
+                    message=str(exc),
+                )
+                raise SessionFailure(self.last, str(exc)) from exc
+            if instance.state not in {"running", "starting", "stopped"}:
+                raise SessionFailure(self.last, "无法确认原实例状态，已拒绝自动重启。")
+
+            def restart_once(timeout):
+                # A lost acknowledgement cannot authorize another stop.
+                failure.stop_requested = True
+                if instance.state != "stopped":
+                    logger.warning("设备界面无法响应输入，正在关闭已绑定的模拟器实例")
+                    if not self.simulator.stop(self.profile, timeout):
+                        return False
+                return self._restart_after_stop(failure, deadline)
+
+            self._action(restart_once, deadline)
+        elif not failure.start_requested:
+            self._action(
+                lambda timeout: self._restart_after_stop(failure, deadline), deadline
+            )
+
+        return self._wait_ready(deadline, connect=True, frame_probe=frame_probe)
+
+    def _restart_after_stop(self, failure, deadline):
+        if not self._await_stopped(deadline):
+            raise SessionFailure(
+                self.last,
+                f"实例关停未在 {self.policy.shutdown_wait:g} 秒内确认，"
+                "已取消本次自动重启。",
+            )
+        self._remaining(deadline)
+        failure.start_requested = True
+        logger.info("模拟器已完全退出，正在重新启动原实例")
+        return self._launch(self._remaining(deadline))
 
     def resolve_adb(self, deadline: float) -> str:
         """Resolve the bound transport once within the caller's Recovery Budget."""
