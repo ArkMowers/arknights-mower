@@ -13,7 +13,10 @@ from typing import Any, Callable, Optional
 import numpy as np
 
 from arknights_mower.utils import config
-from arknights_mower.utils.device.mumu12ipc.paths import resolve_mumu_paths
+from arknights_mower.utils.device.mumu12ipc.paths import (
+    renderer_candidates,
+    resolve_mumu_paths,
+)
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.update_runtime import hidden_console_options
 
@@ -144,42 +147,7 @@ class MuMu12IPC:
         """
         Load external_renderer_ipc.dll from typical MuMu 12 locations.
         """
-        candidates = [
-            os.path.join(self._emu_root, "shell", "sdk", "external_renderer_ipc.dll"),
-            os.path.join(self._emu_root, "nx_main", "sdk", "external_renderer_ipc.dll"),
-            os.path.join(self._emu_root, "sdk", "external_renderer_ipc.dll"),
-            os.path.join(
-                self._emu_root,
-                "nx_device",
-                "12.0",
-                "shell",
-                "sdk",
-                "external_renderer_ipc.dll",
-            ),
-            os.path.join(
-                self._emu_root,
-                "nx_device",
-                "15.0",
-                "shell",
-                "sdk",
-                "external_renderer_ipc.dll",
-            ),
-            os.path.join(
-                os.path.dirname(self._emu_root),
-                "shell",
-                "sdk",
-                "external_renderer_ipc.dll",
-            ),
-            os.path.join(
-                os.path.dirname(self._emu_root),
-                "nx_main",
-                "sdk",
-                "external_renderer_ipc.dll",
-            ),
-            os.path.join(
-                os.path.dirname(self._emu_root), "sdk", "external_renderer_ipc.dll"
-            ),
-        ]
+        candidates = renderer_candidates(self._emu_root)
         last_err = None
         for path in candidates:
             try:

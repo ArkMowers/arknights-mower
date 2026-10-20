@@ -1,14 +1,10 @@
 """Synthetic command retains inherited output until the test releases it."""
 
-import json
 import os
 import subprocess
 import sys
 import time
-from functools import partial
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import Mock
 
 
 def wait_for(path, timeout=15, *, cancel=None):
@@ -64,6 +60,11 @@ def main():
         elif outcome == "failure":
             sys.exit(7)
         return
+
+    import json
+    from functools import partial
+    from types import SimpleNamespace
+    from unittest.mock import Mock
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
     from arknights_mower.utils.config.device_profile import DeviceProfile

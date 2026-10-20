@@ -22,6 +22,7 @@ def observation(monkeypatch):
     frame = (b"fresh frame", image, image[:, :, 0])
     device = SimpleNamespace(
         check_current_focus=Mock(return_value=False),
+        check_ui_responsive=Mock(),
         screencap=Mock(return_value=frame),
     )
     return Recognizer(device), device, frame
