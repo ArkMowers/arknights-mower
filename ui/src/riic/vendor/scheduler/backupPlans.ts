@@ -146,7 +146,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
   const diagnostics: BackupDiagnostic[] = []
   const participants = new Set<string>(), plans = parsePlans(base.sourceWorkspace, participants, diagnostics)
   if(plans.some(plan=>plan.usesMajorMaintenance)&&base.assumptions.majorMaintenanceStartHours===undefined)diagnostics.push({code:'MOWER_MAINTENANCE_ASSUMPTION',message:'未提供维护时间，本次模拟没有停服窗口'})
-  if(plans.some(plan=>plan.usesMasteryPlan))diagnostics.push({code:'MOWER_MASTERY_PLAN_ASSUMPTION',message:'本次模拟固定为无未完成的训练计划，不模拟训练进度或计划完成时刻'})
+  if(plans.some(plan=>plan.usesMasteryPlan))diagnostics.push({code:'MOWER_MASTERY_PLAN_ASSUMPTION',message:'本次模拟固定为无未完成的训练计划且未在训练，不模拟训练进度或计划完成时刻'})
   const groups = readBackupGroups(base.sourceWorkspace).filter(group=>group.id!=='default').map(group=>{const names=new Set<string>(),compiled=compileBackupExpression(group.trigger,names);names.forEach(name=>participants.add(name));return {...group,...compiled,conditionNames:[...names]}})
   let activeGroup = 'default'
   function selectionFor(currentState:RuntimeState,groupId:string,current:boolean[]){
