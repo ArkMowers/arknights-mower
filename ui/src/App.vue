@@ -111,23 +111,8 @@
                 />
               </n-layout-sider>
               <n-layout-content class="layout-content-container">
-                <ConfigSaveNotice v-if="$route.name === 'log'" />
-                <n-alert
-                  v-if="config_save_error && $route.name !== 'log'"
-                  type="error"
-                  title="配置保存失败"
-                  role="alert"
-                >
-                  {{ config_save_error }}。修改仍保留在当前页面。
-                  <template #action>
-                    <n-button
-                      :loading="config_saving"
-                      @click="config_store.save_config().catch(() => {})"
-                      >重试保存</n-button
-                    >
-                  </template>
-                </n-alert>
-                <CrashRecoveryNotice v-if="loaded" :floating="$route.name === 'log'" />
+                <ConfigSaveNotice />
+                <CrashRecoveryNotice v-if="loaded" />
                 <router-view v-if="loaded" />
                 <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
                 <Feedback />
@@ -577,8 +562,6 @@ const { load_config, load_shop, load_item } = config_store
 const {
   resource_update_enable,
   resource_update_auto_update,
-  config_save_error,
-  config_saving,
   simulator,
   start_automatically,
   theme,

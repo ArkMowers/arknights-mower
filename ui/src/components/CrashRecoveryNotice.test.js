@@ -28,6 +28,32 @@ const { code } = compile(descriptor.template.content, {
 CrashRecoveryNotice.render = new Function('Vue', code)(Vue)
 StatusNotification.render = () => null
 
+const { descriptor: appDescriptor } = parse(
+  readFileSync(new URL('../App.vue', import.meta.url), 'utf8')
+)
+const { bindings: appBindings } = compileScript(appDescriptor, { id: 'recovery-app-test' })
+const noticesStart = appDescriptor.template.content.indexOf('<ConfigSaveNotice')
+const noticesEnd = appDescriptor.template.content.indexOf('<router-view', noticesStart)
+const { code: noticesCode } = compile(
+  appDescriptor.template.content.slice(noticesStart, noticesEnd),
+  { mode: 'function', prefixIdentifiers: true, bindingMetadata: appBindings }
+)
+const renderNotices = new Function('Vue', noticesCode)(Vue)
+const configNotice = { render: () => null }
+const firstOccurrence = '2026-10-20T01:00:00+00:00'
+const secondOccurrence = '2026-10-20T01:10:00+00:00'
+
+function recoveryStatus(values = {}) {
+  return {
+    active: true,
+    automatic: true,
+    phase: 'observing',
+    occurred_at: firstOccurrence,
+    message: '正在读取设备',
+    ...values
+  }
+}
+
 function element(type, text = '') {
   return { type, text, children: [], parent: null }
 }
@@ -77,12 +103,12 @@ async function settle() {
 
 let app
 let client
-let floating
+let route
 let container
 beforeEach(() => {
   vi.useFakeTimers()
   client = { get: vi.fn(), post: vi.fn() }
-  floating = Vue.ref(true)
+  route = Vue.ref('log')
   state.create.mockReset().mockImplementation((options) => ({ ...options, destroy: vi.fn() }))
 })
 afterEach(() => {
@@ -95,7 +121,20 @@ async function mount() {
   app = renderer.createApp({
     setup() {
       Vue.provide('axios', client)
-      return () => Vue.h(CrashRecoveryNotice, { floating: floating.value })
+      return () =>
+        renderNotices(
+          { $route: { name: route.value } },
+          [],
+          {},
+          {
+            ConfigSaveNotice: configNotice,
+            CrashRecoveryNotice,
+            loaded: true,
+            config_save_error: '',
+            config_saving: false,
+            config_store: { save_config: vi.fn() }
+          }
+        )
     }
   })
   for (const name of ['NAlert', 'NSpace', 'NText', 'NButton']) {
@@ -117,7 +156,7 @@ it('shows active recovery once, updates its content and refreshes through the no
   expect(state.create).not.toHaveBeenCalled()
 
   client.get.mockResolvedValue({
-    data: { active: true, automatic: true, phase: 'observing', message: '正在读取设备' }
+    data: recoveryStatus()
   })
   await vi.advanceTimersByTimeAsync(15000)
   await settle()
@@ -126,7 +165,7 @@ it('shows active recovery once, updates its content and refreshes through the no
   expect(contents(entry.content())).toContain('正在读取设备')
 
   client.get.mockResolvedValue({
-    data: { active: true, automatic: true, phase: 'waiting', message: '等待重新读取驻员和心情' }
+    data: recoveryStatus({ phase: 'waiting', message: '等待重新读取驻员和心情' })
   })
   await vi.advanceTimersByTimeAsync(3000)
   await settle()
@@ -143,7 +182,7 @@ it('shows active recovery once, updates its content and refreshes through the no
 
 it('retains recovery progress while disconnected and closes it after resolution', async () => {
   client.get.mockResolvedValueOnce({
-    data: { active: true, automatic: true, phase: 'observing', message: '正在重新读取驻员' }
+    data: recoveryStatus({ message: '正在重新读取驻员' })
   })
   await mount()
   const entry = state.create.mock.results[0].value
@@ -166,17 +205,50 @@ it('retains recovery progress while disconnected and closes it after resolution'
   expect(client.post).not.toHaveBeenCalled()
 })
 
-it('reports a stopped recovery without starting tasks and cleans up polling on unmount', async () => {
+it('does not announce a stopped historical recovery when loading or remounting the page', async () => {
   client.get.mockResolvedValue({
-    data: { active: true, automatic: false, phase: 'stopped', message: '已停止自动恢复' }
+    data: recoveryStatus({ automatic: false, phase: 'stopped', message: '已停止自动恢复' })
   })
   await mount()
+  expect(state.create).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(15000)
+  await settle()
+  expect(state.create).not.toHaveBeenCalled()
+
+  app.unmount()
+  app = undefined
+  expect(vi.getTimerCount()).toBe(0)
+  await mount()
+  expect(state.create).not.toHaveBeenCalled()
+  expect(client.post).not.toHaveBeenCalled()
+})
+
+it('announces a stop during observed recovery and keeps the closed stop dismissed', async () => {
+  client.get.mockResolvedValue({ data: recoveryStatus() })
+  await mount()
   const entry = state.create.mock.results[0].value
+
+  client.get.mockResolvedValue({
+    data: recoveryStatus({ automatic: false, phase: 'stopped', message: '已停止自动恢复' })
+  })
+  await vi.advanceTimersByTimeAsync(3000)
+  await settle()
+  expect(state.create).toHaveBeenCalledOnce()
   expect(entry).toMatchObject({ type: 'warning', title: '自动恢复已停止' })
   expect(contents(entry.content())).toContain('任务已停止。需要继续时，可使用原有的开始按钮。')
-  await findButton(entry.action()).props.onClick()
-  expect(client.get.mock.calls.every(([url]) => url.endsWith('/crash-recovery/status'))).toBe(true)
+  entry.onClose()
+  entry.onAfterLeave()
+
+  await vi.advanceTimersByTimeAsync(15000)
+  await settle()
+  expect(state.create).toHaveBeenCalledOnce()
   expect(client.post).not.toHaveBeenCalled()
+})
+
+it('cleans up its notification and polling on unmount', async () => {
+  client.get.mockResolvedValue({ data: recoveryStatus() })
+  await mount()
+  const entry = state.create.mock.results[0].value
 
   app.unmount()
   app = undefined
@@ -187,25 +259,90 @@ it('reports a stopped recovery without starting tasks and cleans up polling on u
   expect(vi.getTimerCount()).toBe(0)
 })
 
-it('keeps inline recovery on other pages and changes presentation without restarting polling', async () => {
-  floating.value = false
-  client.get.mockResolvedValue({
-    data: { active: true, automatic: true, phase: 'observing', message: '正在读取设备' }
-  })
+it('keeps a closed recovery dismissed across real App route changes without restarting polling', async () => {
+  client.get.mockResolvedValue({ data: recoveryStatus() })
   await mount()
-  expect(state.create).not.toHaveBeenCalled()
-  expect(contents(container)).toContain('正在读取设备')
+  const entry = state.create.mock.results[0].value
+  entry.onClose()
+  entry.onAfterLeave()
 
-  floating.value = true
+  for (const name of ['plan', 'mowersettings', 'record_line', 'log']) {
+    route.value = name
+    await settle()
+    expect(contents(container)).not.toContain('正在读取设备')
+    expect(client.get).toHaveBeenCalledOnce()
+    expect(state.create).toHaveBeenCalledOnce()
+  }
+
+  await vi.advanceTimersByTimeAsync(3000)
   await settle()
   expect(state.create).toHaveBeenCalledOnce()
-  expect(contents(container)).not.toContain('正在读取设备')
-  expect(client.get).toHaveBeenCalledOnce()
+  expect(client.post).not.toHaveBeenCalled()
+})
 
-  floating.value = false
+it('keeps the visible notification outside page content across settings navigation', async () => {
+  client.get.mockResolvedValue({ data: recoveryStatus() })
+  await mount()
+  const entry = state.create.mock.results[0].value
+
+  for (const name of ['mowersettings', 'log']) {
+    route.value = name
+    await settle()
+    expect(contents(container)).not.toContain('正在读取设备')
+    expect(state.create).toHaveBeenCalledOnce()
+    expect(state.create.mock.results[0].value).toBe(entry)
+    expect(entry.destroy).not.toHaveBeenCalled()
+    expect(contents(entry.content())).toContain('正在读取设备')
+    expect(client.get).toHaveBeenCalledOnce()
+  }
+  expect(client.post).not.toHaveBeenCalled()
+})
+
+it('shows refresh loading on the same notification and ignores repeated clicks while busy', async () => {
+  client.get.mockResolvedValue({ data: recoveryStatus() })
+  await mount()
+  const entry = state.create.mock.results[0].value
+  expect(findButton(entry.action()).props.loading).toBe(false)
+
+  let finishRefresh
+  client.get.mockReturnValueOnce(new Promise((resolve) => (finishRefresh = resolve)))
+  const refreshing = findButton(entry.action()).props.onClick()
   await settle()
-  expect(state.create.mock.results[0].value.destroy).toHaveBeenCalledOnce()
-  expect(contents(container)).toContain('正在读取设备')
-  expect(client.get).toHaveBeenCalledOnce()
+  expect(findButton(entry.action()).props.loading).toBe(true)
+  expect(state.create).toHaveBeenCalledOnce()
+  expect(entry.destroy).not.toHaveBeenCalled()
+  expect(client.get).toHaveBeenCalledTimes(2)
+
+  await findButton(entry.action()).props.onClick()
+  expect(client.get).toHaveBeenCalledTimes(2)
+  expect(findButton(entry.action()).props.loading).toBe(true)
+
+  finishRefresh({ data: recoveryStatus({ message: '刷新完成' }) })
+  await refreshing
+  await settle()
+  expect(findButton(entry.action()).props.loading).toBe(false)
+  expect(contents(entry.content())).toContain('刷新完成')
+  expect(state.create).toHaveBeenCalledOnce()
+  expect(state.create.mock.results[0].value).toBe(entry)
+  expect(entry.destroy).not.toHaveBeenCalled()
+  expect(client.post).not.toHaveBeenCalled()
+})
+
+it('announces a new recovery after dismissal even when polling never observed an inactive state', async () => {
+  client.get.mockResolvedValue({ data: recoveryStatus() })
+  await mount()
+  const first = state.create.mock.results[0].value
+  first.onClose()
+  first.onAfterLeave()
+
+  client.get.mockResolvedValue({
+    data: recoveryStatus({ occurred_at: secondOccurrence, message: '新的恢复事件' })
+  })
+  await vi.advanceTimersByTimeAsync(3000)
+  await settle()
+  expect(state.create).toHaveBeenCalledTimes(2)
+  const second = state.create.mock.results[1].value
+  expect(contents(second.content())).toContain('新的恢复事件')
+  expect(second).not.toBe(first)
   expect(client.post).not.toHaveBeenCalled()
 })
