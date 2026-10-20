@@ -3067,12 +3067,13 @@ def try_add_release_dorm(
     try:
         now = datetime.now()
         task_names, task_slots = dorm_task_reservations(op_data, tasks)
-        reserved_names = set(reserved_names) | task_names
+        reserved_names = set(reserved_names)
+        candidate_reserved_names = reserved_names | task_names
         reserved_slots = set(reserved_slots) | task_slots
         vacancies = vacant_dorm_slots(op_data, reserved_slots)
         priority_only = empty_only and not vacancies
         logger.info("检查宿舍空床与恢复接管")
-        candidates = dorm_candidates(op_data, reserved_names, now=now)
+        candidates = dorm_candidates(op_data, candidate_reserved_names, now=now)
         recovery_names = sorted(
             candidates.recovering
             + [
@@ -3221,7 +3222,7 @@ def try_add_release_dorm(
                 op_data, task.plan, reserved_slots, reserved_names=reserved_names
             )
         isolated = plan_dorm_isolation(
-            op_data, task.plan, reserved_slots, reserved_names=reserved_names
+            op_data, task.plan, reserved_slots, reserved_names=candidate_reserved_names
         )
         if isolated != task.plan:
             fill_names = {
