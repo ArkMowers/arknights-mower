@@ -73,7 +73,9 @@ def solver(monkeypatch):
     instance.selected = []
     instance.physical = ["杜林", "琴柳", "红", "陈", "银灰"]
 
-    def observe(room=ROOM, read_time_index=None, *, departing_plan=None):
+    def observe(
+        room=ROOM, read_time_index=None, *, departing_plan=None, expected_agents=None
+    ):
         instance.reads.append(list(read_time_index or []))
         for op in instance.op_data.operators.values():
             if op.current_room == room and op.name not in instance.physical:
@@ -283,7 +285,7 @@ def test_idle_departure_observation_precedes_selection(solver, enabled):
     choose = solver.choose_agent.side_effect
     events = []
 
-    def read(room, read_time_index=None, *, departing_plan=None):
+    def read(room, read_time_index=None, *, departing_plan=None, expected_agents=None):
         events.append("departure" if departing_plan is not None else "readback")
         if departing_plan is not None:
             assert departing_plan == target
@@ -365,7 +367,9 @@ def test_ordinary_replacement_refreshes_room_timing_without_repeating_single_tar
     read = solver.get_agent_from_room.side_effect
     observed = []
 
-    def observe(room, read_time_index=None, *, departing_plan=None):
+    def observe(
+        room, read_time_index=None, *, departing_plan=None, expected_agents=None
+    ):
         if departing_plan is None:
             observed.append(
                 ([bed.time for bed in solver.op_data.all_dorms()], read_time_index)

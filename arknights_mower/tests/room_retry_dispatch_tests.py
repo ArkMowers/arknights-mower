@@ -187,6 +187,7 @@ def test_single_recovery_submission_timeout_restarts_reads_and_restores_roster(
     original_plan = original_task.plan
     state = {"page": "infra"}
     temporary = ["杜林", "琴柳", "黑角", "银灰", ""]
+    initial = solver.physical.copy()
     observed = []
     solver.recog.w, solver.recog.h = 1920, 1080
     solver.device = MagicMock()
@@ -246,7 +247,7 @@ def test_single_recovery_submission_timeout_restarts_reads_and_restores_roster(
     solver.agent_arrange_room({}, ROOM, original_plan)
 
     assert solver.confirms == [temporary, dorm_recovery_tests.FINAL]
-    assert observed[0] == temporary
+    assert observed[:2] == [initial, temporary]
     assert observed[-1] == dorm_recovery_tests.FINAL
     assert solver.physical == dorm_recovery_tests.FINAL
     assert solver.op_data.operators["银灰"].dorm_recovery_room == ROOM

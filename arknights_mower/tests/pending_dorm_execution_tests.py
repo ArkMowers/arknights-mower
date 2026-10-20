@@ -82,7 +82,12 @@ def test_single_recovery_uses_pending_mixed_binding_through_readback(
     )
     solver.tap_confirm = MagicMock()
 
-    def read_temporary_room(room):
+    def read_temporary_room(room, *, departing_plan=None, expected_agents=None):
+        if departing_plan is not None:
+            assert not selected
+            assert departing_plan == [incoming, "琴柳", "", "", ""]
+            return [{"agent": name} for name in data.get_current_room(room, True)]
+        assert expected_agents == [incoming, "琴柳", "", "", ""]
         for op in data.operators.values():
             if op.current_room == room:
                 op.current_room, op.current_index = "", -1

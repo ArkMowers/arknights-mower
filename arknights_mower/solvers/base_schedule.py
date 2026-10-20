@@ -11788,8 +11788,12 @@ class BaseSchedulerSolver(
         force_mood=False,
         strict_observation=False,
         force_working_time=False,
+        expected_agents=None,
     ):
-        """读取实际驻员；姓名未决槽位标记 observed=False，不据此确认离岗。"""
+        """读取实际驻员；姓名未决槽位标记 observed=False，不据此确认离岗。
+
+        expected_agents 仅核验本次执行名单，不改写任务的最终名单。
+        """
         if room == "recycle" and getattr(self, "_recycle_unavailable", False) is True:
             return []
         training_observation = None
@@ -11802,6 +11806,10 @@ class BaseSchedulerSolver(
         if self._can_refresh_idle_dorm_search():
             released_support = self.op_data.get_current_operator("train", 0)
         retain_dorm_time = room.startswith("dorm")
+        if retain_dorm_time and departing_plan is not None:
+            departing_plan = departing_plan + [""] * (
+                len(self.op_data.plan[room]) - len(departing_plan)
+            )
         group_transitions = (
             self._execution_group_transitions() if retain_dorm_time else {}
         )
@@ -11956,6 +11964,7 @@ class BaseSchedulerSolver(
                     and self.task.type == TaskTypes.FIAMMETTA
                     and self.task.meta_data
                     and not force_mood
+                    and departing_plan is None
                 ):
                     fia_read_names = {"菲亚梅塔"}
                     if self.task.meta_data:
@@ -12145,7 +12154,9 @@ class BaseSchedulerSolver(
                 mood_event="fiammetta_charge",
                 current_time=swap_recorded_at,
             )
-        self._reconcile_room_observation(room, result, **recovery_context)
+        self._reconcile_room_observation(
+            room, result, expected_agents=expected_agents, **recovery_context
+        )
         if released_support is not None and (
             not released_support.current_room or released_support.is_resting()
         ):
@@ -12156,7 +12167,9 @@ class BaseSchedulerSolver(
             self.last_train_mood_read = datetime.now()
         return result
 
-    def _reconcile_room_observation(self, room, observed, *, group_transitions=None):
+    def _reconcile_room_observation(
+        self, room, observed, *, group_transitions=None, expected_agents=None
+    ):
         """提交已确认岗位的驻员归属、离宿结果及恢复责任。"""
         slots = {
             index: item["agent"]
@@ -12165,11 +12178,17 @@ class BaseSchedulerSolver(
         }
         complete = len(slots) == len(observed)
         task = self.task
+        if expected_agents is not None and room.startswith("dorm"):
+            # 两人充能等短名单会清空其余床位，读房仍返回完整宿舍。
+            expected_agents = expected_agents + [""] * (
+                len(self.op_data.plan[room]) - len(expected_agents)
+            )
         confirmed_release = (
             room.startswith("dorm")
             and complete
             and task is not None
-            and task.plan.get(room) == [item["agent"] for item in observed]
+            and (task.plan.get(room) if expected_agents is None else expected_agents)
+            == [item["agent"] for item in observed]
         )
         for name, operator in self.op_data.operators.items():
             if (
@@ -12500,6 +12519,8 @@ class BaseSchedulerSolver(
         current = self.op_data.get_current_room(room, True)
         expected = retained + [""] * (len(agents) - len(retained))
         if current != expected:
+            # 临时清房前先实读离开者，不能让预计回满代替离宿实测。
+            self.get_agent_from_room(room, departing_plan=expected)
             logger.info(f"宿舍单回排序：{room} 保留目标 {target.name}，暂留 {retained}")
             for attempt in range(5):
                 if self.find("confirm_blue") is not None:
@@ -12521,7 +12542,11 @@ class BaseSchedulerSolver(
                 expected = retained + [""] * (len(agents) - len(retained))
                 padding_estimates = self.op_data.dorm_mood_estimates.copy()
                 self.tap_confirm(room, {})
-                current = [item["agent"] for item in self.get_agent_from_room(room)]
+                # 临时名单确认也属于计划内离宿，不覆盖原任务的最终阵容。
+                current = [
+                    item["agent"]
+                    for item in self.get_agent_from_room(room, expected_agents=expected)
+                ]
                 if current != expected:
                     raise Exception("宿舍单回排序确认失败，保留原任务重试")
             except MowerExit:
@@ -12714,6 +12739,9 @@ class BaseSchedulerSolver(
                     if room not in plan:
                         self.back()
                         return new_plan
+                observation_context = (
+                    {"expected_agents": plan[room]} if room.startswith("dorm") else {}
+                )
                 if reconcile_after_confirmation:
                     refresh_indexes = []
                     if (
@@ -12728,7 +12756,9 @@ class BaseSchedulerSolver(
                         )
                     actual = [
                         item["agent"]
-                        for item in self.get_agent_from_room(room, refresh_indexes)
+                        for item in self.get_agent_from_room(
+                            room, refresh_indexes, **observation_context
+                        )
                     ]
                     reconcile_after_confirmation = False
                     selection_was_attempted = reconcile_after_selection
@@ -12950,10 +12980,15 @@ class BaseSchedulerSolver(
                         self.op_data.operators[plan[room][0]].time_stamp = None
                     if related_operators:
                         current = self.get_agent_from_room(
-                            room, read_time_index, related_operators
+                            room,
+                            read_time_index,
+                            related_operators,
+                            **observation_context,
                         )
                     else:
-                        current = self.get_agent_from_room(room, read_time_index)
+                        current = self.get_agent_from_room(
+                            room, read_time_index, **observation_context
+                        )
                     same = True
                     for idx, name in enumerate(plan[room]):
                         if current[idx]["agent"] != name and name not in (
@@ -12980,6 +13015,7 @@ class BaseSchedulerSolver(
                         or self._can_refresh_idle_dorm_search()
                         and self.task.type != TaskTypes.RUN_ORDER
                         and room != "train"
+                        or fia_arrangement
                     ):
                         # 换人前顺路读取离开者，不额外读取其工作／恢复倒计时。
                         self.get_agent_from_room(room, departing_plan=plan[room])
@@ -13105,10 +13141,15 @@ class BaseSchedulerSolver(
                         self.op_data.operators[plan[room][0]].time_stamp = None
                     if related_operators:
                         current = self.get_agent_from_room(
-                            room, read_time_index, related_operators
+                            room,
+                            read_time_index,
+                            related_operators,
+                            **observation_context,
                         )
                     else:
-                        current = self.get_agent_from_room(room, read_time_index)
+                        current = self.get_agent_from_room(
+                            room, read_time_index, **observation_context
+                        )
                     for idx, name in enumerate(plan[room]):
                         if current[idx]["agent"] != name and name not in (
                             "Free",
@@ -13121,7 +13162,9 @@ class BaseSchedulerSolver(
                 elif choose_error == 0:
                     if fia_arrangement:
                         # 失败重试或回岗名单恰好一致，也必须刷新充能后的计时。
-                        self.get_agent_from_room(room, read_time_index)
+                        self.get_agent_from_room(
+                            room, read_time_index, **observation_context
+                        )
                     elif room.startswith("dorm") and get_time:
                         # 跨房换人可能已从本房拉走住客，即使剩余名单相同也须复读。
                         self.op_data.invalidate_dorm_time(room)
@@ -13134,6 +13177,7 @@ class BaseSchedulerSolver(
                                     plan
                                 ),
                             ),
+                            **observation_context,
                         )
                     logger.info(f"任务与当前房间相同，跳过安排{room}人员")
                 if selection_attempted or choose_error > 0:

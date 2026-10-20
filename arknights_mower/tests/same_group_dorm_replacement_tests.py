@@ -343,7 +343,9 @@ def mock_arrangement(solver, monkeypatch, final, *, contact_cover=RESIDENT):
     solver.confirms, solver.reads = [], []
     solver.deadline = datetime.now() + timedelta(hours=2)
 
-    def observe(room=ROOM, read_time_index=None, *, departing_plan=None):
+    def observe(
+        room=ROOM, read_time_index=None, *, departing_plan=None, expected_agents=None
+    ):
         solver.reads.append(list(read_time_index or []))
         for op in solver.op_data.operators.values():
             if op.current_room == room and op.name not in solver.physical:

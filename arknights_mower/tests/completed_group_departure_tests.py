@@ -169,8 +169,9 @@ def test_ordinary_completed_departure_readback_preserves_group_return(
         "mismatch",
     ],
 )
+@pytest.mark.parametrize("temporary", [False, True])
 def test_unconfirmed_ordinary_departure_invalidates_old_measurement(
-    solver, unconfirmed
+    solver, unconfirmed, temporary
 ):
     data, names, _ = prepare_group(solver)
     operator = data.operators[names[0]]
@@ -189,13 +190,38 @@ def test_unconfirmed_ordinary_departure_invalidates_old_measurement(
         operator.time_stamp = None
     elif unconfirmed == "below_limit":
         operator.mood = operator.upper_limit - 0.1
-    elif unconfirmed == "mismatch":
+    expected = row.copy() if temporary and room in task.plan else None
+    if temporary and room in task.plan:
+        task.plan[room][operator.current_index] = "Free"
+    if unconfirmed == "mismatch":
         row[-1] = ""
     observed = [{"agent": name} for name in row]
     if unconfirmed == "partial":
         observed[-1]["observed"] = False
 
-    solver._reconcile_room_observation(room, observed)
+    solver._reconcile_room_observation(room, observed, expected_agents=expected)
 
     assert not operator.current_room
     assert operator.time_stamp is None
+
+
+@pytest.mark.parametrize("unconfirmed", ["occupied_tail", "partial"])
+def test_short_roster_requires_confirmed_empty_remaining_slots(solver, unconfirmed):
+    data, names, _ = prepare_group(solver)
+    operator = data.operators[names[0]]
+    room = operator.current_room
+    expected = data.get_current_room(room, True)[:2]
+    solver.task = SchedulerTask(
+        task_type=TaskTypes.FIAMMETTA, task_plan={room: expected.copy()}
+    )
+    observed = [{"agent": name} for name in expected + ["", "", ""]]
+    if unconfirmed == "occupied_tail":
+        observed[-1]["agent"] = "芬"
+    else:
+        observed[-1]["observed"] = False
+
+    solver._reconcile_room_observation(room, observed, expected_agents=expected)
+
+    assert not operator.current_room
+    assert operator.time_stamp is None
+    assert solver.task.plan == {room: expected}
