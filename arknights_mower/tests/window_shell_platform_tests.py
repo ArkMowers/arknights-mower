@@ -2,11 +2,13 @@
 
 import ctypes
 import json
+import sys
 from queue import Queue
 from threading import Event, Thread, current_thread, get_ident
 from time import monotonic
 from types import SimpleNamespace
 from unittest.mock import Mock
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -351,6 +353,135 @@ def test_unconfirmed_mode_keeps_display_state_and_saves_after_native_recovery(
         assert modes == ["normal"]
     finally:
         bridge.dispose()
+
+
+@pytest.fixture
+def desktop_url_window(monkeypatch):
+    import webview
+
+    import webview_ui
+    from arknights_mower.utils import config, path
+    from arknights_mower.utils.config import gui
+
+    window = DesktopWindow("gtk")
+    create_window = Mock(return_value=window)
+    prepare_backend = Mock()
+    install_windows_resize = Mock()
+    start = Mock()
+    browser_open = Mock()
+    instance_name = "测试实例 & + / ?"
+    browser_url = "http://127.0.0.1:18080?token=offline-session"
+    monkeypatch.setattr(config, "load_conf", Mock())
+    monkeypatch.setattr(config, "conf", SimpleNamespace(theme="dark"))
+    monkeypatch.setattr(path, "global_space", path.global_space)
+    monkeypatch.setattr(
+        gui, "load_window_ratio", lambda: window_shell.WindowRatio(0.5, 0.6)
+    )
+    monkeypatch.setattr(gui, "load_window_launch_mode", lambda: "normal")
+    monkeypatch.setattr(gui, "save_window_ratio", Mock())
+    monkeypatch.setattr(
+        window_shell, "_screen_work_area", lambda: window_shell.WindowSize(2000, 1000)
+    )
+    monkeypatch.setattr(window_backend, "prepare_window_backend", prepare_backend)
+    monkeypatch.setitem(
+        sys.modules,
+        "arknights_mower.utils.windows_frameless",
+        SimpleNamespace(install_windows_frameless_resize=install_windows_resize),
+    )
+    monkeypatch.setattr(webview_ui, "title_version", lambda *args: "offline-version")
+    monkeypatch.setattr(webview_ui, "width", 1450, raising=False)
+    monkeypatch.setattr(webview_ui, "height", 850, raising=False)
+    monkeypatch.setattr(webview, "create_window", create_window)
+    monkeypatch.setattr(webview, "start", start)
+    monkeypatch.setattr("webbrowser.open", browser_open)
+
+    def launch(backend):
+        prepare_backend.return_value = backend
+        window.gui.__name__ = "webview.platforms." + backend
+        webview_ui.webview_window(
+            SimpleNamespace(recv=Mock(side_effect=EOFError)),
+            path.global_space,
+            instance_name,
+            "127.0.0.1",
+            18080,
+            browser_url,
+            True,
+        )
+
+    return SimpleNamespace(
+        launch=launch,
+        create_window=create_window,
+        prepare_backend=prepare_backend,
+        install_windows_resize=install_windows_resize,
+        start=start,
+        browser_open=browser_open,
+        browser_url=browser_url,
+        instance_name=instance_name,
+    )
+
+
+@pytest.mark.parametrize(
+    "backend, shell_enabled",
+    [
+        ("winforms", True),
+        ("cocoa", True),
+        ("gtk", True),
+        ("qt", True),
+        ("unknown", False),
+    ],
+)
+def test_desktop_window_keeps_encoded_instance_name_in_its_own_url(
+    desktop_url_window, backend, shell_enabled
+):
+    fixture = desktop_url_window
+    with pytest.raises(SystemExit):
+        fixture.launch(backend)
+    args, kwargs = fixture.create_window.call_args
+    assert (
+        args[0]
+        == f"arknights-mower offline-version - mower@18080({fixture.instance_name})"
+    )
+    query = {
+        "token": ["offline-session"],
+        "instance_name": [fixture.instance_name],
+        "window_theme": ["dark"],
+        "mower_version": ["offline-version"],
+    }
+    if shell_enabled:
+        query["window_shell"] = ["1"]
+    assert parse_qs(urlsplit(args[1]).query) == query
+    assert kwargs["frameless"] is shell_enabled
+    if backend == "winforms":
+        fixture.install_windows_resize.assert_called_once_with(
+            fixture.create_window.return_value,
+            window_shell.WindowSize(1000, 600),
+            window_shell.desktop_window_min_size(),
+        )
+    else:
+        fixture.install_windows_resize.assert_not_called()
+    fixture.browser_open.assert_not_called()
+
+
+@pytest.mark.parametrize("backend", ["winforms", "cocoa", "gtk", "qt", "unknown"])
+def test_desktop_window_start_failure_opens_the_original_browser_url(
+    desktop_url_window, backend
+):
+    fixture = desktop_url_window
+    fixture.start.side_effect = RuntimeError("Window startup unavailable")
+    fixture.launch(backend)
+    fixture.create_window.assert_called_once()
+    fixture.browser_open.assert_called_once_with(fixture.browser_url)
+
+
+def test_desktop_backend_initialization_failure_opens_the_original_browser_url(
+    desktop_url_window,
+):
+    fixture = desktop_url_window
+    fixture.prepare_backend.side_effect = RuntimeError("Backend unavailable")
+    fixture.launch("gtk")
+    fixture.create_window.assert_not_called()
+    fixture.start.assert_not_called()
+    fixture.browser_open.assert_called_once_with(fixture.browser_url)
 
 
 def run_desktop_window(

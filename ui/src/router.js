@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { routes } from '@/routes'
+import { sessionLocation } from '@/utils/sessionNavigation'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -7,12 +8,8 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from) => {
-  if (from.query.token && !to.query.token) {
-    return {
-      path: to.path,
-      query: from.query
-    }
-  }
+  const destination = sessionLocation(to, from)
+  if (destination !== to) return destination
 })
 
 export default router

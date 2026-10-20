@@ -200,7 +200,7 @@ onMounted(() => {
     <n-alert v-if="exportError" type="error" class="notice">{{ exportError }}</n-alert>
     <section class="valuation-panel valuation-source">
       <span>{{ comparison?.valuation?.source || '材料价值未读取' }}</span>
-      <router-link to="/mowersettings">管理材料价值与基报算法</router-link>
+      <SessionLink to="/mowersettings">管理材料价值与基报算法</SessionLink>
     </section>
     <n-alert
       v-if="comparison?.unknown_collections || comparison?.unknown_materials.length"

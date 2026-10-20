@@ -51,6 +51,18 @@ describe('frontend navigation credentials', () => {
     })
   })
 
+  it('keeps destination query and fragment when inheriting the session token', async () => {
+    await router.push('/?token=session-token&window_shell=1')
+    await router.push('/mowersettings?view=details#software-update')
+
+    expect(router.currentRoute.value.query).toEqual({
+      token: 'session-token',
+      window_shell: '1',
+      view: 'details'
+    })
+    expect(router.currentRoute.value.hash).toBe('#software-update')
+  })
+
   it('does not add credentials to navigation that started without a token', async () => {
     await router.push('/')
     await router.push('/mowersettings?view=details#software-update')

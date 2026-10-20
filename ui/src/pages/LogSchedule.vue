@@ -351,7 +351,7 @@ onMounted(() => {
         <h1>日志调度</h1>
         <p>按时间查看日志与画面。发生错误时，前后各 5 分钟的截图会单独保存。</p>
       </div>
-      <router-link class="back-link" to="/">返回运行日志</router-link>
+      <SessionLink class="back-link" to="/">返回运行日志</SessionLink>
     </header>
 
     <div class="browse-tabs" role="tablist" aria-label="日志来源">

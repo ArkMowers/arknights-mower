@@ -4,6 +4,8 @@
 
 `webview_ui.run_desktop` binds the service to `127.0.0.1` when the Web UI token is empty. It generates a runtime credential for protected HTTP endpoints and AI WebSocket access. Configuring a Web UI token binds the service to `0.0.0.0` and requires that token for protected requests.
 
+Browser launch URLs carry the session token without the client instance name. The embedded desktop window adds its instance name only to its own URL for title display; browser fallbacks use the original browser URL.
+
 ## 2. Log Read Interface
 
 The local-only session accepts read-only log requests without a credential at `/log`, `/diagnostics/timeline`, `/diagnostics/errors`, and the diagnostic log and export routes. The request must arrive from a loopback address with a loopback Host. Browser origin and fetch metadata must identify the same local Web UI; the log WebSocket requires an Origin header. Cross-origin and remote requests fail. Sessions with a configured token require that credential.
@@ -52,6 +54,14 @@ For GET and HEAD requests, an explicit positive `text/html` Accept entry and a m
 JSON clients, wildcard Accept requests and non-read methods retain API dispatch and credential checks. Documentation files and directories retain their static responses. Unknown APIs and missing assets retain 404 responses; unknown extensionless page navigation outside API and resource prefixes retains Vue's missing-page display.
 
 The [navigation dispatch decision](../../.agents/notes/implemented/bug-fix/2026-10-12-frontend-navigation-dispatch.md) records the defect and focused verification.
+
+### Frontend Session Navigation
+
+Internal page links include the current session token in their rendered `href`, before any click. An explicit destination token takes precedence. Navigation preserves the destination's query parameters and fragment when inheriting the session query.
+
+In a desktop WebView, primary and middle-button clicks on internal page links navigate in the current window, including clicks carrying modifier keys. Links recognize the initial `window_shell=1` URL marker before the Python bridge is injected and continue to recognize an available bridge without that marker. Browser sessions retain native modified-click behavior with a credentialed destination. External links retain their configured targets.
+
+Focused offline verification: [`router.test.js`](../../ui/src/router.test.js) and [`SessionLink.test.js`](../../ui/src/components/SessionLink.test.js) cover session inheritance, rendered links and desktop click handling. These checks do not establish native Windows input delivery.
 
 ## 7. Desktop Instance Manager
 

@@ -360,9 +360,14 @@ def webview_window(
     startup_maximize_pending = windows_native and startup_mode == "maximized"
     normal_size_lock = Lock()
 
-    url = append_query_param(url, "window_shell", "1") if shell_enabled else url
-    url = append_query_param(url, "window_theme", theme)
-    url = append_query_param(url, "mower_version", title_version())
+    window_url = append_query_param(url, "instance_name", instance_name)
+    window_url = (
+        append_query_param(window_url, "window_shell", "1")
+        if shell_enabled
+        else window_url
+    )
+    window_url = append_query_param(window_url, "window_theme", theme)
+    window_url = append_query_param(window_url, "mower_version", title_version())
 
     def current_dpi_scale() -> float:
         # 窗口所在显示器 DPI 缩放（1.0 / 1.25 / 1.5 ...）。resized 回调给的是物理
@@ -422,7 +427,7 @@ def webview_window(
     min_size = desktop_window_min_size()
     window = webview.create_window(
         window_title(instance_name, port),
-        url,
+        window_url,
         text_select=True,
         confirm_close=not tray,
         width=width,
@@ -850,7 +855,6 @@ def _run_desktop():
     )
     url = f"http://127.0.0.1:{port}"
     url += f"?token={runtime_token}"
-    url = append_query_param(url, "instance_name", instance_name)
     start_http_server(server.app, host, port)
     ready_deadline = monotonic() + 15
     while not is_port_in_use(port):

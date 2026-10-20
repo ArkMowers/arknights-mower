@@ -21,7 +21,7 @@
         选择收益算法（当前：{{ incomeAlgorithmLabel(valuation?.base_algorithm) }}）
       </n-button>
     </n-dropdown>
-    <router-link to="/mowersettings">管理收益设置</router-link>
+    <SessionLink to="/mowersettings">管理收益设置</SessionLink>
   </n-space>
   <n-card v-if="showCustomAlgorithm" title="自定义收益系数" style="margin-bottom: 16px">
     <n-space align="center" wrap>
