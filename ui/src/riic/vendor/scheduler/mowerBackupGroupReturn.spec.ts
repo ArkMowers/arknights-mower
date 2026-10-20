@@ -104,4 +104,61 @@ describe('group return survives a backup workaholic override',()=>{
   commitMowerGroupShifts(projected,task.groupShiftTransitions)
   expect(projected.groupShiftState).toEqual({g:false,h:true})
  })
+
+ it.each([false,true])('drops an obsolete return after the backup replaces its primary, explicit=%s',explicit=>{
+  const {data,task,model}=fixture()
+  model.evaluate=()=>[true]
+  model.swap=(state,conditions)=>{
+   const next=projectMowerArrangements(state,[])
+   if(conditions[0]){
+    next.plan={...next.plan,central:['B']}
+    Object.assign(next.operators.A!,{room:'',index:-1,group:'',operatorType:'low'})
+    Object.assign(next.operators.B!,{room:'central',index:0,operatorType:'high'})
+   }
+   next.planConditions=[...conditions]
+   return next
+  }
+  model.explicitSlots=()=>new Set(explicit?['central\0'+'0']:[])
+  model.transition=()=>({central:['B']})
+  prepareMowerShiftBackup(data,task,model,[])
+  expect(task.plan.central).toEqual(['B'])
+  expect(task.groupShiftTransitions.g).toBeUndefined()
+  const projected=projectMowerArrangements(model.swap(data,[true]),[task.plan])
+  commitMowerGroupShifts(projected,task.groupShiftTransitions)
+  expect(projected.groupIsResting('g')).toBe(true)
+  expect(data.plan.central).toEqual(['A'])
+  expect(data.groupIsResting('g')).toBe(true)
+ })
+
+ it('preserves a planned departure when the same primary becomes workaholic',()=>{
+  const {data,task,model}=fixture()
+  data.operators.A!.setProjectedPosition('central',0)
+  data.operators.B!.setProjectedPosition('',-1)
+  data.operators.D!.setProjectedPosition('dormitory_1',0)
+  data.operators.R!.setProjectedPosition('',-1)
+  data.dorms[0]!.name=''
+  data.groupShiftState.g=false
+  task.type=T.SHIFT_OFF
+  task.plan={central:['B'],dormitory_1:['R','A','Current']}
+  task.groupShiftTransitions={g:true}
+  model.evaluate=()=>[true]
+  prepareMowerShiftBackup(data,task,model,[])
+  expect(task.groupShiftTransitions.g).toBe(true)
+  expect(data.groupIsResting('g')).toBe(false)
+ })
+
+ it('retains the original return when a backup changes the same primary group',()=>{
+  const {data,task,model}=fixture()
+  const swap=model.swap
+  model.swap=(state,conditions)=>{
+   const next=swap(state,conditions)
+   if(conditions[0])next.operators.A!.group='h'
+   return next
+  }
+  prepareMowerShiftBackup(data,task,model,[])
+  expect(task.groupShiftTransitions.g).toBe(false)
+  expect(task.plan.dormitory_1?.[0]).toBe('D')
+  expect(data.operators.A!.group).toBe('g')
+  expect(data.groupIsResting('g')).toBe(true)
+ })
 })
