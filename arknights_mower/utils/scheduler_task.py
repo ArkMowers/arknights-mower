@@ -370,6 +370,7 @@ def _sort_dispatch_tasks(tasks, now, op_data=None):
                 and getattr(task, "advance_support_swap", False)
                 and task.time <= now
             ),
+            not (getattr(task, "strict_mood_limit", False) and task.time <= now),
             task.time,
         )
     )
@@ -438,9 +439,10 @@ def _advance_mood_limit_releases(
                 minutes = sum(estimate_dorm_minutes(room, 1.5) for room in task.plan)
             else:
                 minutes = _ordinary_task_minutes(task, execution_time)
-            end = max(now, task.time) + timedelta(minutes=minutes)
-            if start <= end and max(now, start) + duration >= task.time:
-                start = min(start, task.time - duration - timedelta(seconds=1))
+            blocker_start = max(now, task.time)
+            end = blocker_start + timedelta(minutes=minutes)
+            if start <= end and max(now, start) + duration >= blocker_start:
+                start = min(start, blocker_start - duration - timedelta(seconds=1))
         if start < release.time:
             logger.info(
                 f"心情上限离宿提前至 {start:%H:%M:%S}，"

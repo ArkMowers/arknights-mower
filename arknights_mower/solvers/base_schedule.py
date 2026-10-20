@@ -1618,6 +1618,7 @@ class BaseSchedulerSolver(
             if any(
                 t.time < now - timedelta(minutes=15)
                 and t.type not in preserved
+                and not getattr(t, "strict_mood_limit", False)
                 and not hasattr(t, "emergency_original_roster")
                 and not getattr(t, "run_order_restore_pending", False)
                 and not getattr(t, "group_shift_expected", {})
@@ -1634,6 +1635,7 @@ class BaseSchedulerSolver(
                     t
                     for t in self.tasks
                     if t.type in preserved
+                    or getattr(t, "strict_mood_limit", False)
                     or (t.type in future_preserved and t.time > now)
                     or hasattr(t, "emergency_original_roster")
                     or getattr(t, "run_order_restore_pending", False)

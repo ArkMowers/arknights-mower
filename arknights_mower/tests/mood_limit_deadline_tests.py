@@ -248,3 +248,70 @@ def test_unchanged_release_reuses_advanced_task_and_logs_only_changes(caplog):
     tasks = plan_mood_limit_releases(data, previous_tasks=tasks)
     assert tasks[0] is not first
     assert tasks[0].release_dorm_targets() == {"令": ("dormitory_2", 3)}
+
+
+def test_overdue_refresh_reserves_release_window_from_now_not_old_timestamp():
+    now = datetime(2026, 10, 20, 6, 51, 16)
+    refresh = SchedulerTask(
+        time=now.replace(hour=2, minute=37, second=4),
+        task_type=TaskTypes.REFRESH_TIME,
+    )
+    release = release_at(now)
+    tasks = [refresh, release]
+
+    for _ in range(3):
+        scheduling(tasks, time_now=now)
+        assert tasks[0] is release
+        assert release.time == now - timedelta(minutes=1.5, seconds=1)
+        assert release.mood_limit_deadline == now
+        assert refresh.time == now.replace(hour=2, minute=37, second=4)
+
+
+@pytest.mark.parametrize("stale_ordinary", [False, True])
+def test_overdue_limit_release_survives_repeated_scheduler_cleanup(stale_ordinary):
+    from arknights_mower.utils.recognize import Scene
+
+    now = datetime.now()
+    release = release_at(now - timedelta(hours=4))
+    release.mood_limit_deadline = now
+    original = release.time
+    refresh = SchedulerTask(
+        time=now - timedelta(hours=3), task_type=TaskTypes.REFRESH_TIME
+    )
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.error = False
+    solver.op_data = SimpleNamespace(operators={})
+    solver.tasks = [refresh, release]
+    solver.scene = MagicMock(return_value=Scene.INFRA_MAIN)
+    solver._emergency_active = MagicMock(return_value=False)
+    expired = SchedulerTask(
+        time=now - timedelta(minutes=20), task_type=TaskTypes.SHIFT_ON
+    )
+    if stale_ordinary:
+        solver.tasks.append(expired)
+
+    for _ in range(3):
+        solver.handle_error(force=True)
+        scheduling(solver.tasks, time_now=now)
+        assert any(task is release for task in solver.tasks)
+        assert release.time == original
+        assert release.mood_limit_deadline == now
+        assert solver.find_next_task() is release
+        assert not any(task is expired for task in solver.tasks)
+
+    solver.find = MagicMock(return_value=True)
+    solver.skip = MagicMock()
+    solver._reconcile_initial_staffing = MagicMock()
+    solver._refresh_deferred_product_reservations = MagicMock()
+    solver._complete_group_shift = MagicMock(return_value=True)
+    solver.arrange_release_dorm = MagicMock(return_value=(True, False))
+    solver.plan_run_order = MagicMock()
+    solver.task = solver.find_next_task()
+    solver.infra_main()
+    solver.arrange_release_dorm.assert_called_once()
+    assert not any(task is release for task in solver.tasks)
+    assert solver.find_next_task() is refresh
+    solver.task = refresh
+    solver.infra_main()
+    solver.plan_run_order.assert_called_once_with("")
+    assert not any(task is refresh for task in solver.tasks)
