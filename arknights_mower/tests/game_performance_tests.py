@@ -40,6 +40,7 @@ def solver(monkeypatch):
     result.check_current_focus = MagicMock()
     result.sleep = MagicMock()
     result.checkpoint = MagicMock()
+    result.wait_for_cleared_selection = MagicMock()
     result.open_selection = MagicMock()
     result.prepare_round = MagicMock(return_value=([], ["安哲拉", "斯卡蒂"]))
     result.trial = MagicMock()
@@ -296,10 +297,11 @@ def test_prepared_targets_remain_reachable_after_three_production_swipes(
     # Exercise the actual page geometry and scanner, rather than scripting
     # matching preparation/trial pages that hide a distance mismatch.
     before, targets = SelectionPerformanceTest.prepare_round(solver, mode)
-    solver.wait_for_arranged_agents = MagicMock(return_value=targets)
+    solver.wait_for_arranged_agents = MagicMock(side_effect=lambda names, **_: names)
     with solver.profile(mode):
         SelectionPerformanceTest.trial(solver, before, targets)
-    assert selected == targets
+    assert len(targets) == 5
+    assert selected == targets[:3]
     assert solver.swipe_noinertia.call_count == 6
 
 
@@ -328,7 +330,7 @@ def test_preparation_finds_targets_beyond_all_three_swipes(solver, monkeypatch):
     pages = [
         page(names)
         for names in (
-            ("斯卡蒂", "安哲拉"),
+            ("斯卡蒂", "安哲拉", "巡林者"),
             ("巡林者", "夜刀"),
             ("芬", "香草"),
             ("香草", "翎羽", "玫兰莎"),
@@ -347,7 +349,7 @@ def test_preparation_finds_targets_beyond_all_three_swipes(solver, monkeypatch):
     monkeypatch.setattr(module, "agent_card_selected", lambda *_: False)
     before, targets = SelectionPerformanceTest.prepare_round(solver, "low")
     assert before == pages[0]
-    assert targets == ["翎羽", "玫兰莎"]
+    assert targets == ["斯卡蒂", "安哲拉", "巡林者", "翎羽", "玫兰莎"]
     assert [call.args[0] for call in solver.swipe_agent_page.call_args_list] == pages[
         :3
     ]
@@ -454,7 +456,7 @@ def test_preparation_requires_two_new_targets_and_a_restored_first_page(
             for index, name in enumerate(names)
         ]
 
-    before = page(["斯卡蒂", "安哲拉"])
+    before = page(["斯卡蒂", "安哲拉", "芬"])
     after = page(new_names)
     solver.checkpoint = MagicMock()
     solver.scene = MagicMock(return_value=Scene.INFRA_ARRANGE_ORDER)
@@ -529,3 +531,29 @@ def test_entry_opens_known_dormitory_and_cleanup_refuses_unknown_dialogs(solver)
     with pytest.raises(RuntimeError, match="暂选尚未取消"):
         SelectionPerformanceTest.cancel_selection(solver)
     solver.tap.assert_not_called()
+
+
+@pytest.mark.parametrize("mode", module.MODES)
+@pytest.mark.parametrize("partial_matches", [False, True])
+def test_full_trial_checks_five_to_three_roster(solver, mode, partial_matches):
+    targets = ["杜林", "流明", "斑点", "摩根", "杰西卡"]
+    solver.swipe_agent_page = MagicMock(return_value=(1, None))
+    solver.scan_agent = MagicMock(side_effect=complete_selection)
+    solver.switch_arrange_order = MagicMock()
+    solver.swipe_left = MagicMock(return_value=(0, None))
+    solver.reorder_selected_agents = MagicMock()
+    solver.clear_agent_selection = MagicMock()
+    solver.wait_for_arranged_agents = MagicMock(
+        side_effect=[targets, targets, targets[:3] if partial_matches else None]
+    )
+    with solver.profile(mode):
+        if partial_matches:
+            SelectionPerformanceTest.trial(solver, [], targets)
+        else:
+            with pytest.raises(AgentSelectionNotReady, match="五人缩减为三人"):
+                SelectionPerformanceTest.trial(solver, [], targets)
+    solver.clear_agent_selection.assert_called_once()
+    assert [
+        call.args[0] for call in solver.wait_for_arranged_agents.call_args_list
+    ] == [targets, targets, targets[:3]]
+    assert solver.swipe_agent_page.call_count == 3

@@ -25,6 +25,7 @@ def test_matching_names_still_rebuild_actual_selection(
 ):
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", enabled)
     solver = object.__new__(BaseSchedulerSolver)
+    solver.wait_for_cleared_selection = MagicMock()
     targets = ["鸿雪", "但书"]
     current = (
         ["鸿雪", "但书", "黑键"] if dropped_input == "deselect" else ["鸿雪", "黑键"]

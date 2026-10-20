@@ -146,6 +146,13 @@ def production_solver(
     solver.swipe_noinertia = MagicMock(side_effect=AssertionError("不应反向拖动"))
     solver.tap_confirm = MagicMock()
     monkeypatch.setattr(base_mixin, "operator_list", lambda img, **kwargs: tuple(img))
+    monkeypatch.setattr(
+        base_mixin,
+        "agent_card_selected",
+        lambda img, scope, **kwargs: (
+            next(name for name, box in img if box == scope) in selected
+        ),
+    )
     return solver, selected, events
 
 

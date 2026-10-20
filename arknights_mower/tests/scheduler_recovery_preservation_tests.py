@@ -232,10 +232,11 @@ def test_exact_fifteen_minute_boundary_does_not_rebuild_ordinary_queue(scheduler
     assert len(tasks) == 2
 
 
-def test_critical_overdue_task_does_not_trigger_ordinary_rebuild(scheduler):
+@pytest.mark.parametrize("task_type", CRITICAL_TYPES)
+def test_critical_overdue_task_does_not_trigger_ordinary_rebuild(scheduler, task_type):
     now = scheduler.clock.now()
     tasks = [
-        SchedulerTask(now - timedelta(minutes=20), task_type=TaskTypes.SWAP_SUPPORT),
+        SchedulerTask(now - timedelta(minutes=20), task_type=task_type),
         SchedulerTask(now + timedelta(hours=1), task_type=TaskTypes.SHIFT_ON),
     ]
     scheduler.solver.tasks = tasks
@@ -448,3 +449,19 @@ def test_original_target_conflict_completes_without_delaying_queue(
     assert solver.tasks == []
     assert not config.stop_mower.is_set()
     scheduler.io.assert_not_called()
+
+
+@pytest.mark.parametrize("entry", ["run", "handle_error"])
+def test_stopped_scheduler_preserves_queue_without_rebuilding(scheduler, entry):
+    solver = scheduler.solver
+    original = SchedulerTask(
+        time=scheduler.clock.now() - timedelta(hours=4),
+        task_type=TaskTypes.REFRESH_TIME,
+    )
+    solver.tasks = [original]
+    config.stop_mower.set()
+    with pytest.raises(MowerExit):
+        getattr(solver, entry)()
+    assert solver.tasks == [original]
+    solver.scene.assert_not_called()
+    solver.recog.update.assert_not_called()

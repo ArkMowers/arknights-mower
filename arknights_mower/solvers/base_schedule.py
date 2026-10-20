@@ -845,6 +845,8 @@ class BaseSchedulerSolver(
         :param clue_collect: bool, 是否收取线索
         """
 
+        if config.stop_mower.is_set():
+            raise MowerExit
         if config.maintenance_recheck.is_set():
             return
         self.error = False
@@ -856,6 +858,8 @@ class BaseSchedulerSolver(
         self._schedule_maintenance_backup_check()
 
         while True:
+            if config.stop_mower.is_set():
+                raise MowerExit
             if config.maintenance_recheck.is_set():
                 return
             self._sync_run_order_tasks()
@@ -1579,6 +1583,8 @@ class BaseSchedulerSolver(
             self.tasks.append(task)
 
     def handle_error(self, force=False):
+        if config.stop_mower.is_set():
+            raise MowerExit
         if self.scene() == Scene.UNKNOWN:
             for retry in range(5):
                 logger.warning(f"当前场景无法识别，尝试返回纠正，第{retry + 1}次")
@@ -11022,7 +11028,6 @@ class BaseSchedulerSolver(
         :param order: ArrangeOrder, 选择干员时右上角的排序功能
         """
         max_swipe = 50
-        clear_interval = 0.3 if self.performance_profile.mode == "high" else 0.5
         if getattr(getattr(self, "task", None), "emergency_staffing", False):
             fast_mode = False
         mood_fallback = (
@@ -11043,9 +11048,7 @@ class BaseSchedulerSolver(
             fast_mode = False
             agents = [item for item in agents if item != ""]
         if (not agents) and not fast_mode:
-            self.tap(
-                (self.recog.w * 0.38, self.recog.h * 0.95), interval=clear_interval
-            )
+            self.clear_agent_selection()
         agent = copy.deepcopy(agents)
         exists = []
         if fast_mode:
@@ -11054,9 +11057,14 @@ class BaseSchedulerSolver(
                 self.profession_filter()
                 # 缓存只提供名单，差量取消必须使用页面实际卡片顺序。
                 # 意外入住或缺人时完整重选，不能把错人当作原宿管保留。
-                current_room = self.wait_for_arranged_agents(
-                    [n for n in current_room if n], ordered=False
-                )
+                try:
+                    current_room = self.wait_for_arranged_agents(
+                        [n for n in current_room if n], ordered=False
+                    )
+                except AgentSelectionPageChanged:
+                    raise
+                except AgentSelectionNotReady:
+                    current_room = None
                 if current_room is None:
                     logger.info(f"{room} 实际已选名单与缓存不一致，改为完整选人")
                     fast_mode = False
@@ -11122,10 +11130,7 @@ class BaseSchedulerSolver(
                     self.switch_arrange_order("心情", room, "true")
                     pre_order = [3, "true"]
                 if not fast_mode:
-                    self.tap(
-                        (self.recog.w * 0.38, self.recog.h * 0.95),
-                        interval=clear_interval,
-                    )
+                    self.clear_agent_selection()
                 changed, ret = self.scan_agent(
                     agent,
                     full_scan=last_special_filter == "ALL",
@@ -11327,9 +11332,7 @@ class BaseSchedulerSolver(
         # 安排空闲干员
         if free_num:
             if free_num == len(agents):
-                self.tap(
-                    (self.recog.w * 0.38, self.recog.h * 0.95), interval=clear_interval
-                )
+                self.clear_agent_selection()
             if last_special_filter != "ALL":
                 # Free 搜索的目标就是 ALL；真实切换本身会复位列表，
                 # 无需先恢复原职业再切一次 ALL。
@@ -11638,7 +11641,8 @@ class BaseSchedulerSolver(
 
     def scroll_room_operators(self, *, bottom):
         """滚动房间详情名单；弹窗或滚动不生效时交回原有房间重试。"""
-        point = (1800, 930 if bottom else 138)
+        # 空槽底边在 JPEG 中会变亮；取卡片内部，避免已到边界后继续滑动。
+        point = (1800, 925 if bottom else 138)
         direction = -1 if bottom else 1
         self.recog.update()
         for attempt in range(7):

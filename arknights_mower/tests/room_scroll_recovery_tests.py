@@ -70,3 +70,27 @@ def test_user_stop_is_not_converted_to_recovery():
     with pytest.raises(MowerExit):
         result.scroll_room_operators(bottom=True)
     result.swipe.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "frame", ["room_empty_bottom_20261020.jpg", "room_empty_bottom_again_20261020.jpg"]
+)
+@pytest.mark.parametrize("starts_at_bottom", [False, True])
+def test_recorded_empty_slots_stop_at_first_bottom_frame(frame, starts_at_bottom):
+    from pathlib import Path
+
+    import numpy as np
+    from PIL import Image
+
+    result = solver()
+    image = np.array(Image.open(Path(__file__).parent / "fixtures/selection" / frame))
+    top = np.array(
+        Image.open(
+            Path(__file__).parent / "fixtures/selection/room_empty_top_20261020.jpg"
+        )
+    )
+    result.get_color.side_effect = lambda point: (
+        image if starts_at_bottom or result.swipe.call_count else top
+    )[point[1], point[0]]
+    result.scroll_room_operators(bottom=True)
+    assert result.swipe.call_count == (0 if starts_at_bottom else 1)

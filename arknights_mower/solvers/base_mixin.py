@@ -378,13 +378,56 @@ class BaseMixin:
         mode = self.performance_profile.mode
         interval = {"xhigh": 0, "high": 0.1}.get(mode, 0.2)
         logger.debug(f"选人重排清空：性能档位{mode}，页面已选{actual}，目标{agents}")
-        self.tap(
-            (self.recog.w * 0.38, self.recog.h * 0.95),
-            interval=0.3 if mode == "high" else 0.5,
-        )
+        self.clear_agent_selection()
         for index in click_order:
             x, y = self.agent_selection_positions[index]
             self.tap((self.recog.w * x, self.recog.h * y), interval=interval)
+
+    def clear_agent_selection(self):
+        """点击一次清空，确认可见卡片的旧蓝框消失后才继续选人。"""
+        self.tap(
+            (self.recog.w * 0.38, self.recog.h * 0.95),
+            interval=0.3 if self.performance_profile.mode == "high" else 0.5,
+        )
+        self.wait_for_cleared_selection()
+
+    def wait_for_cleared_selection(self):
+        read = self.agent_page_reader()
+        poll_interval, max_attempts = self.selection_observation_timing()
+        previous = None
+        matches = 0
+        capture_time = 0
+        for attempt in range(max_attempts):
+            if attempt:
+                self.wait_for_next_observation(capture_time, poll_interval)
+            else:
+                self.recog.update()
+            started = perf_counter()
+            connecting = self.find("connecting")
+            capture_time = perf_counter() - started
+            if connecting:
+                previous, matches = None, 0
+                continue
+            try:
+                page = read(self.recog.img)
+            except (MowerExit, AgentSelectionPageChanged):
+                raise
+            except Exception:
+                self.require_agent_selection_page()
+                previous, matches = None, 0
+                continue
+            self.check_agent_page(page)
+            if page and all(
+                name and agent_card_selected(self.recog.img, scope) is False
+                for name, scope in page
+            ):
+                matches = matches + 1 if self.same_agent_page(page, previous) else 1
+                if matches >= self.performance_profile.stable_page_matches:
+                    return
+                previous = page
+            else:
+                previous, matches = None, 0
+        raise AgentSelectionNotReady("清空选择后旧蓝框尚未消失，返回房间重试")
 
     profession_labels = [
         "ALL",
