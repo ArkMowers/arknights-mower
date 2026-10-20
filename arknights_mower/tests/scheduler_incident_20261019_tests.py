@@ -34,7 +34,7 @@ def incident(monkeypatch, request):
         Path(__file__)
         .with_name("fixtures")
         .joinpath(getattr(request, "param", "scheduler_incident_20261019_plan.json"))
-        .read_text()
+        .read_text(encoding="utf-8")
     )
     conf = apply_advanced_settings(
         config.Conf(enable_mastery=False), raw["advanced_settings"]

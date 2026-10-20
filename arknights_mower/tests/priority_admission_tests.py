@@ -752,7 +752,9 @@ def test_runtime_dorm_recheck_resumes_only_unfinished_rooms(monkeypatch, kind):
         TaskTypes.RE_ORDER,
         plan={"dormitory_1": ["C"], "dormitory_2": ["D"]},
     )
-    critical = task(kind, 180)
+    critical = task(
+        kind, 180, meta_data="room_1_1" if kind == TaskTypes.RUN_ORDER else ""
+    )
     solver = object.__new__(base_schedule.BaseSchedulerSolver)
     solver.task, solver.tasks, solver.op_data = dorm, [dorm, critical], data
     solver._emergency_frozen = MagicMock(return_value=False)
@@ -773,17 +775,17 @@ def test_runtime_dorm_recheck_resumes_only_unfinished_rooms(monkeypatch, kind):
     assert arranged == [("dormitory_1", ["C"])]
     assert dorm.plan == {"dormitory_2": ["D"]}
     assert solver.tasks[0] is critical and solver.tasks[1] is dorm
-    assert dorm.time == critical.time + timedelta(seconds=1)
+    assert dorm.time == NOW
     assert critical.time == NOW + timedelta(seconds=180)
 
     solver.tasks.remove(critical)
-    Clock.current = dorm.time
+    Clock.current = critical.time + timedelta(seconds=1)
 
     assert solver.agent_arrange(dorm.plan) is not False
     assert arranged == [("dormitory_1", ["C"]), ("dormitory_2", ["D"])]
     assert dorm.plan == {}
     assert solver.task is dorm and solver.tasks == [dorm]
-    assert dorm.time == NOW + timedelta(seconds=181)
+    assert dorm.time == NOW
 
 
 @pytest.mark.parametrize("kind", CRITICAL_TYPES)

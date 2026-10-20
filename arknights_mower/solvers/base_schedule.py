@@ -2700,6 +2700,22 @@ class BaseSchedulerSolver(
                             self.skip()
                             return True
                         if (
+                            getattr(self.task, "initial_staffing", False)
+                            and not getattr(
+                                self.task, "derived_correction_started", False
+                            )
+                            and not hasattr(self.task, "initial_staffing_idle_members")
+                        ):
+                            from arknights_mower.utils.recovery_execution import (
+                                initial_idle_staffing_members,
+                            )
+
+                            self.task.initial_staffing_idle_members = (
+                                initial_idle_staffing_members(
+                                    self.op_data, self.task, now=datetime.now()
+                                )
+                            )
+                        if (
                             self.task.plan
                             and getattr(self.task, "exhaust_support", False)
                             and not self._coordination_support_valid(
@@ -4550,6 +4566,22 @@ class BaseSchedulerSolver(
         )
         return True
 
+    def _arrangement_priority_tasks(self):
+        return [
+            pending
+            for pending in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
+            if pending is not self.task
+            and (
+                pending.type == TaskTypes.RUN_ORDER
+                and pending.meta_data
+                and not getattr(pending, "run_order_restore_pending", False)
+                or pending.type == TaskTypes.SWAP_SUPPORT
+                and config.conf.enable_mastery
+                or getattr(pending, "strict_mood_limit", False)
+                and pending.plan
+            )
+        ]
+
     def _read_arrangement_order_times(self, room):
         """在房间确认后消费到期读单责任，失败不重做已经完成的入驻。"""
         self._resume_failed_tasks()
@@ -4566,6 +4598,13 @@ class BaseSchedulerSolver(
         self.task.execution_retained = True
         observed_any = False
         for refresh in refreshes:
+            if observed_any:
+                protect_priority_tasks(self.tasks, op_data=self.op_data)
+            if any(
+                pending.time <= datetime.now() + timedelta(minutes=1)
+                for pending in self._arrangement_priority_tasks()
+            ):
+                break
             observed = False
             try:
                 observed = self.plan_run_order(refresh.meta_data)
@@ -4578,19 +4617,11 @@ class BaseSchedulerSolver(
             if observed and not getattr(refresh, "execution_failure", None):
                 self.tasks[:] = [task for task in self.tasks if task is not refresh]
             observed_any |= bool(observed)
-            if any(
-                pending.type == TaskTypes.RUN_ORDER
-                and pending.meta_data
-                and not getattr(pending, "run_order_restore_pending", False)
-                and pending.time <= datetime.now() + timedelta(minutes=1)
-                for pending in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
-            ):
-                break
         if observed_any:
             scheduling(self.tasks, op_data=self.op_data)
 
-    def _defer_arrangement_for_run_order(self, room, plan):
-        """下一房操作可能跨过跑单时刻时，保留原纠错安排并让出调度。"""
+    def _defer_arrangement_for_priority_task(self, room, plan):
+        """下一房操作可能挤占关键任务时，保留原安排并让出调度。"""
         task = self.task
         if (
             task.type
@@ -4617,11 +4648,8 @@ class BaseSchedulerSolver(
         deadline = next(
             (
                 pending
-                for pending in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
-                if pending.type == TaskTypes.RUN_ORDER
-                and pending.meta_data
-                and not getattr(pending, "run_order_restore_pending", False)
-                and (finish >= pending.time if has_dorm else finish > pending.time)
+                for pending in self._arrangement_priority_tasks()
+                if (finish >= pending.time if has_dorm else finish > pending.time)
             ),
             None,
         )
@@ -4630,8 +4658,9 @@ class BaseSchedulerSolver(
         task.execution_retained = True
         protect_priority_tasks(self.tasks, op_data=self.op_data)
         logger.info(
-            "保留 %s 的剩余安排，先执行 %s 跑单",
+            "保留 %s 的剩余安排，先执行 %s（%s）",
             task.type.display_value,
+            deadline.type.display_value,
             deadline.meta_data,
         )
         return True
@@ -13348,7 +13377,7 @@ class BaseSchedulerSolver(
 
         central_before = central_training_occupants(self)
         for room in rooms:
-            if not new_plan and self._defer_arrangement_for_run_order(room, plan):
+            if not new_plan and self._defer_arrangement_for_priority_task(room, plan):
                 self._finish_idle_dorm_shift()
                 refresh_after_central_change(self, central_before)
                 return False
