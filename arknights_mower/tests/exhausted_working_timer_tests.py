@@ -3,7 +3,7 @@
 import sys
 from datetime import datetime, timedelta
 from types import MethodType, SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import numpy as np
 import pytest
@@ -568,15 +568,19 @@ def test_fiammetta_arrangement_requests_both_mood_indexes(already_arranged):
     solver.back = MagicMock()
 
     plan = solver.task.plan
+    expected = ["伊内丝", "菲亚梅塔"]
     restored = solver.agent_arrange_room({}, "dormitory_1", plan)
 
     if already_arranged:
-        solver.get_agent_from_room.assert_called_once_with("dormitory_1", [0, 1])
+        solver.get_agent_from_room.assert_called_once_with(
+            "dormitory_1", [0, 1], expected_agents=expected
+        )
         solver.choose_agent.assert_not_called()
     else:
-        solver.get_agent_from_room.assert_called_once_with(
-            "dormitory_1", [0, 1], {1: "伊内丝"}
-        )
+        assert solver.get_agent_from_room.call_args_list == [
+            call("dormitory_1", departing_plan=expected),
+            call("dormitory_1", [0, 1], {1: "伊内丝"}, expected_agents=expected),
+        ]
     assert restored == {
         "dormitory_1": ["杜林", "菲亚梅塔"],
         "meeting": ["伊内丝"],
