@@ -2724,14 +2724,17 @@ class BaseSchedulerSolver(
                             self.task, "initial_staffing", False
                         ) and not self._verify_required_recovery(self.task):
                             self._queue_missing_run_order_reads()
-                            self.skip()
-                            return True
+                            # 回班暂停只释放当前派发，日常补货仍按原时间预算检查。
+                            self.task = None
+                            self.skip(["planned"])
+                            return
                         self._prepare_shift_cycle(self.task)
                         self._defer_conflicting_product_shift_slots(self.task)
                         if not self._verify_required_recovery(self.task):
                             self._queue_missing_run_order_reads()
-                            self.skip()
-                            return True
+                            self.task = None
+                            self.skip(["planned"])
+                            return
                         if (
                             getattr(self.task, "initial_staffing", False)
                             and not getattr(
