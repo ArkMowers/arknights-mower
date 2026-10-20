@@ -154,7 +154,7 @@ class SelectionPerformanceTest(BaseMixin, SceneGraphSolver):
             if self.scene() != Scene.INFRA_ARRANGE_ORDER:
                 raise RuntimeError("游戏已离开宿舍选人页，请返回基建首页后重试")
             self.profession_filter()
-            self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
+            self.clear_agent_selection()
             self.switch_arrange_order("技能", self.room)
             self.swipe_left(1, "ALL")
             before = self.wait_for_agent_page()
@@ -163,6 +163,9 @@ class SelectionPerformanceTest(BaseMixin, SceneGraphSolver):
                 for _, scope in before
             ):
                 raise RuntimeError("准备阶段未确认暂选已清空，请检查游戏画面")
+            initial = list(dict.fromkeys(name for name, _ in before if name))[:3]
+            if len(initial) != 3:
+                raise RuntimeError("首屏可识别的干员不足三名，无法进行性能测试")
             page = before
             original = set()
             for _ in range(SWIPES_PER_SELECTION):
@@ -188,9 +191,14 @@ class SelectionPerformanceTest(BaseMixin, SceneGraphSolver):
             reset = self.wait_for_agent_page()
             if not self.same_agent_page(reset, before, allow_unknown=True):
                 raise RuntimeError("准备阶段列表未复位，无法进行性能测试")
-            return reset, targets
+            return reset, initial + targets
 
     def trial(self, before, targets):
+        pending = targets[:-2].copy()
+        if pending:
+            self.scan_agent(pending)
+            if pending:
+                raise AgentSelectionNotReady("首屏未选中全部目标干员")
         page = before
         for index in range(SWIPES_PER_SELECTION):
             self.checkpoint()
@@ -198,7 +206,7 @@ class SelectionPerformanceTest(BaseMixin, SceneGraphSolver):
             if index + 1 < SWIPES_PER_SELECTION:
                 # Read the held frame for the next gesture without selecting.
                 _, page = self.scan_agent([], observation=observation)
-        pending = targets.copy()
+        pending = targets[-2:].copy()
         self.scan_agent(pending, observation=observation)
         if pending:
             raise AgentSelectionNotReady("滑动后未选中全部目标干员")
@@ -209,10 +217,23 @@ class SelectionPerformanceTest(BaseMixin, SceneGraphSolver):
         )
         if actual is None:
             raise AgentSelectionNotReady("检测到干员选择错误")
-        self.reorder_selected_agents(targets, actual)
+        self.reorder_selected_agents(
+            list(reversed(targets)) if len(targets) == 5 else targets, actual
+        )
         self.switch_arrange_order("技能", self.room)
         if self.wait_for_arranged_agents(targets, ordered=False) is None:
             raise AgentSelectionNotReady("重排后检测到干员选择错误")
+        # 单回暂留会把完整宿舍名单缩减；清空前的蓝框不能作为已选证据。
+        if len(targets) == 5:
+            retained = targets[:3]
+            self.clear_agent_selection()
+            pending = retained.copy()
+            self.scan_agent(pending)
+            if pending:
+                raise AgentSelectionNotReady("缩减名单后未选中全部目标干员")
+            self.switch_arrange_order("技能", self.room)
+            if self.wait_for_arranged_agents(retained, ordered=False) is None:
+                raise AgentSelectionNotReady("五人缩减为三人后检测到干员选择错误")
 
     def cancel_selection(self):
         if not self.entered_room:
@@ -271,7 +292,7 @@ class SelectionPerformanceTest(BaseMixin, SceneGraphSolver):
                         result = {
                             "status": "passed",
                             "recommended_mode": mode,
-                            "message": "连续三次选人测试及名单校验通过",
+                            "message": "连续三次五人选人、重排及三人暂留校验通过",
                         }
                         break
                 if result is None:

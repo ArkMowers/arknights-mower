@@ -421,6 +421,7 @@ def test_high_clear_wait_applies_to_empty_fixed_and_free_selection(
 def selection_solver(monkeypatch, residents=None):
     solver = object.__new__(BaseSchedulerSolver)
     solver.task = None
+    solver.wait_for_cleared_selection = MagicMock()
     current = list(RESIDENTS if residents is None else residents)
     selected = current.copy()
     cards = current.copy()
@@ -523,3 +524,24 @@ def selection_solver(monkeypatch, residents=None):
         ],
     )
     return solver, selected
+
+
+@pytest.mark.parametrize("mode", ["xhigh", "high", "medium", "low"])
+def test_unconfirmed_initial_residents_use_full_selection(monkeypatch, mode):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", mode)
+    solver, selected = selection_solver(monkeypatch, residents=RESIDENTS)
+    original = solver.wait_for_arranged_agents
+    first = True
+
+    def read(*args, **kwargs):
+        nonlocal first
+        if first:
+            first = False
+            raise base_mixin.AgentSelectionNotReady("实读比缓存多一人")
+        return original(*args, **kwargs)
+
+    solver.wait_for_arranged_agents = MagicMock(side_effect=read)
+    target = RESIDENTS[:2] + ["伊芙利特"]
+    solver.choose_agent(target.copy(), "dormitory_1")
+    assert selected == target
+    assert solver.tap.call_args_list[0].args[0] == (729.6, 1026.0)
