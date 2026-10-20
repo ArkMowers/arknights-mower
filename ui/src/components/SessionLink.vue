@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { sessionLocation } from '@/utils/sessionNavigation'
+import { readWindowShellMetadata } from '@/window-shell/adapter'
 
 defineOptions({ inheritAttrs: false })
 const props = defineProps({
@@ -10,10 +11,15 @@ const props = defineProps({
 })
 const router = useRouter()
 const route = useRoute()
+const desktopShellRequested = readWindowShellMetadata(globalThis.window?.location).requested
 const destination = computed(() => sessionLocation(router.resolve(props.to), route))
 
 function follow(event, navigate) {
-  if (!window.pywebview?.api || event.button > 1 || event.defaultPrevented) {
+  if (
+    (!desktopShellRequested && !window.pywebview?.api) ||
+    event.button > 1 ||
+    event.defaultPrevented
+  ) {
     return navigate(event)
   }
   event.preventDefault()

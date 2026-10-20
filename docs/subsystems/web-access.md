@@ -59,7 +59,7 @@ The [navigation dispatch decision](../../.agents/notes/implemented/bug-fix/2026-
 
 Internal page links include the current session token in their rendered `href`, before any click. An explicit destination token takes precedence. Navigation preserves the destination's query parameters and fragment when inheriting the session query.
 
-In a desktop WebView, primary and middle-button clicks on internal page links navigate in the current window, including clicks carrying modifier keys. Browser sessions retain native modified-click behavior with a credentialed destination. External links retain their configured targets.
+In a desktop WebView, primary and middle-button clicks on internal page links navigate in the current window, including clicks carrying modifier keys. Links recognize the initial `window_shell=1` URL marker before the Python bridge is injected and continue to recognize an available bridge without that marker. Browser sessions retain native modified-click behavior with a credentialed destination. External links retain their configured targets.
 
 Focused offline verification: [`router.test.js`](../../ui/src/router.test.js) and [`SessionLink.test.js`](../../ui/src/components/SessionLink.test.js) cover session inheritance, rendered links and desktop click handling. These checks do not establish native Windows input delivery.
 

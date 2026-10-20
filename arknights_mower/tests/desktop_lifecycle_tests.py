@@ -253,6 +253,8 @@ class DesktopStartupTests(unittest.TestCase):
         manager_port="0",
         restart_port="58100",
         updates_enabled=True,
+        instance_name="",
+        managed=True,
     ):
         import server as task_server
         import webview_ui
@@ -268,6 +270,16 @@ class DesktopStartupTests(unittest.TestCase):
             config.stop_mower = threading.Event()
             server = Mock(app=Flask(__name__))
             server.http_start = Mock()
+            server.browser_open = Mock()
+            tray_channel = Mock()
+            tray_channel.get.side_effect = [
+                "toggle",
+                "toggle",
+                "browser",
+                "browser",
+                "exit",
+            ]
+            server.desktop_child = Mock(return_value=(Mock(), tray_channel))
             server.start = Mock(wraps=task_server.start)
             stack.enter_context(patch.object(task_server, "app", server.app))
             server.resource_update.running.return_value = existing_install
@@ -325,7 +337,7 @@ class DesktopStartupTests(unittest.TestCase):
                     os.environ,
                     {
                         "MOWER_BACKGROUND": "1" if background else "0",
-                        "MOWER_MANAGED": "1",
+                        "MOWER_MANAGED": "1" if managed else "0",
                         "MOWER_RESTART_JOB": "fixture" if restart else "",
                         "MOWER_RESTART_PORT": restart_port,
                         "MOWER_MANAGER_PORT": manager_port,
@@ -334,7 +346,7 @@ class DesktopStartupTests(unittest.TestCase):
                     },
                 ),
                 patch.dict(sys.modules, {"server": server}),
-                patch.object(sys, "argv", ["mower"]),
+                patch.object(sys, "argv", ["mower", "", instance_name]),
                 patch.object(sys, "platform", "darwin"),
                 patch.object(utils, "config", config),
                 patch.object(path, "global_space", ""),
@@ -347,9 +359,7 @@ class DesktopStartupTests(unittest.TestCase):
                 patch.object(webview_ui, "close_child"),
                 patch.object(webview_ui, "start_http_server", server.http_start),
                 patch("arknights_mower.utils.lifecycle.shutdown", shutdown),
-                patch.object(
-                    webview_ui, "start_desktop_child", return_value=(Mock(), Mock())
-                ),
+                patch.object(webview_ui, "start_desktop_child", server.desktop_child),
                 patch.object(software_update, "request_auto_check"),
                 patch.object(desktop_process, "log_channel", return_value=Mock()),
                 patch.multiple(
@@ -362,7 +372,7 @@ class DesktopStartupTests(unittest.TestCase):
                 ),
                 patch("threading.Thread", side_effect=make_thread),
                 patch("time.sleep"),
-                patch("webbrowser.open"),
+                patch("webbrowser.open", server.browser_open),
             ]
             mocks = [stack.enter_context(item) for item in patches]
             webview_ui.run_desktop()
@@ -380,6 +390,36 @@ class DesktopStartupTests(unittest.TestCase):
         events, server = self.launch()
         self.assertEqual(events, [("start", "0")])
         server.start.assert_called_once_with("0", automatic=True)
+
+    def test_browser_commands_and_tray_launch_keep_the_session_url_without_instance_name(
+        self,
+    ):
+        instance_name = "测试实例 & + / ?"
+        for managed in (False, True):
+            for token in ("", "remote-secret"):
+                with self.subTest(managed=managed, token=token):
+                    _, server = self.launch(
+                        automatic=False,
+                        background=True,
+                        managed=managed,
+                        token=token,
+                        instance_name=instance_name,
+                    )
+                    expected_url = f"http://127.0.0.1:58100?token={server.app.token}"
+                    self.assertEqual(
+                        [call.args for call in server.browser_open.call_args_list],
+                        [(expected_url,), (expected_url,)],
+                    )
+                    launches = server.desktop_child.call_args_list
+                    windows = [call for call in launches if call.args[0] == "window"]
+                    self.assertEqual(len(windows), 1)
+                    self.assertEqual(windows[0].args[2], instance_name)
+                    self.assertEqual(windows[0].args[5], expected_url)
+                    trays = [call for call in launches if call.args[0] == "tray"]
+                    self.assertEqual(len(trays), int(not managed))
+                    for call in trays:
+                        self.assertEqual(call.args[1], instance_name)
+                        self.assertEqual(call.args[3], expected_url)
 
     def test_managed_desktop_honors_explicit_and_random_ports_with_or_without_token(
         self,

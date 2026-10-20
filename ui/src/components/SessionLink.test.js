@@ -26,7 +26,10 @@ beforeEach(async () => {
     )
   })
   await state.router.push('/?token=session-token&window_shell=1')
-  vi.stubGlobal('window', { pywebview: { api: {} } })
+  vi.stubGlobal('window', {
+    pywebview: { api: {} },
+    location: { search: '?token=session-token&window_shell=1' }
+  })
   scope = effectScope()
 })
 afterEach(() => {
@@ -75,6 +78,55 @@ describe('session links', () => {
     expect(state.router.currentRoute.value.query.token).toBe('session-token')
   })
 
+  it.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { button: 1 }])(
+    'keeps desktop links inside the window before bridge injection with %j',
+    async (modifiers) => {
+      window.pywebview = undefined
+      const event = click(modifiers)
+      const navigate = vi.fn()
+      await link('/mowersettings').follow(event, navigate)
+      expect(event.defaultPrevented).toBe(true)
+      expect(navigate).not.toHaveBeenCalled()
+      expect(state.router.currentRoute.value.path).toBe('/mowersettings')
+      expect(state.router.currentRoute.value.query.token).toBe('session-token')
+    }
+  )
+
+  it('uses the desktop URL marker when the current route has no shell query', async () => {
+    window.pywebview = undefined
+    await state.router.push('/?token=session-token')
+    const event = click({ ctrlKey: true })
+    const navigate = vi.fn()
+    await link('/mowersettings').follow(event, navigate)
+    expect(event.defaultPrevented).toBe(true)
+    expect(navigate).not.toHaveBeenCalled()
+    expect(state.router.currentRoute.value.path).toBe('/mowersettings')
+  })
+
+  it('retains desktop navigation after the current URL loses its shell marker', async () => {
+    window.pywebview = undefined
+    const component = link('/mowersettings')
+    window.location.search = '?token=session-token'
+    await state.router.push('/?token=session-token')
+    const event = click({ button: 1 })
+    const navigate = vi.fn()
+    await component.follow(event, navigate)
+    expect(event.defaultPrevented).toBe(true)
+    expect(navigate).not.toHaveBeenCalled()
+    expect(state.router.currentRoute.value.path).toBe('/mowersettings')
+  })
+
+  it('keeps bridge-backed desktop links internal without shell metadata', async () => {
+    window.location.search = '?token=session-token'
+    await state.router.push('/?token=session-token')
+    const event = click({ ctrlKey: true })
+    const navigate = vi.fn()
+    await link('/mowersettings').follow(event, navigate)
+    expect(event.defaultPrevented).toBe(true)
+    expect(navigate).not.toHaveBeenCalled()
+    expect(state.router.currentRoute.value.path).toBe('/mowersettings')
+  })
+
   it('keeps an explicit destination token and supports replacement navigation', async () => {
     await link('/mowersettings?token=destination-token#software-update', true).follow(
       click(),
@@ -84,17 +136,22 @@ describe('session links', () => {
     expect(state.router.currentRoute.value.hash).toBe('#software-update')
   })
 
-  it('leaves browser link gestures to RouterLink with a credentialed destination', async () => {
-    window.pywebview = undefined
-    const component = link('/mowersettings')
-    const event = click({ ctrlKey: true })
-    const navigate = vi.fn()
-    await component.follow(event, navigate)
-    expect(event.defaultPrevented).toBe(false)
-    expect(navigate).toHaveBeenCalledWith(event)
-    expect(component.destination.value.query.token).toBe('session-token')
-    expect(state.router.currentRoute.value.path).toBe('/')
-  })
+  it.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { button: 1 }])(
+    'leaves browser link gestures to RouterLink with credentials and %j',
+    async (modifiers) => {
+      window.pywebview = undefined
+      window.location.search = '?token=session-token'
+      await state.router.push('/?token=session-token')
+      const component = link('/mowersettings')
+      const event = click(modifiers)
+      const navigate = vi.fn()
+      await component.follow(event, navigate)
+      expect(event.defaultPrevented).toBe(false)
+      expect(navigate).toHaveBeenCalledWith(event)
+      expect(component.destination.value.query.token).toBe('session-token')
+      expect(state.router.currentRoute.value.path).toBe('/')
+    }
+  )
 
   it('leaves context-menu clicks alone without changing the page', async () => {
     const event = click({ button: 2 })
