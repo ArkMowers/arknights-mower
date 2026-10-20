@@ -614,7 +614,7 @@ def test_infra_main_blocks_physical_arrangement_until_every_required_member_is_f
     monkeypatch.setattr(scheduler, "_read_recovery_rooms", reader)
     arrange = Mock(side_effect=AssertionError("未回满时不得进入实际换人"))
     monkeypatch.setattr(scheduler, "agent_arrange", arrange)
-    assert scheduler.infra_main()
+    assert scheduler.infra_main() is None
     arrange.assert_not_called()
     assert task in scheduler.waiting_group_shifts and task not in scheduler.tasks
     assert not getattr(task, "execution_failure", None)

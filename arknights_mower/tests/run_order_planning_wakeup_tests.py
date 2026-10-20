@@ -100,7 +100,7 @@ def replay(monkeypatch):
     instance.back_to_infrastructure = MagicMock()
     instance.party_time = instance.free_clue = instance.credit_fight = None
     instance.enable_party = False
-    instance.drone_room = None
+    instance.drone_room = instance.drone_time = None
     instance.reload_time = Clock.now()
     instance.planned = instance.todo_task = instance.collect_notification = False
     instance.error = instance.refresh_connecting = False
