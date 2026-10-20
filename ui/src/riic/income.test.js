@@ -392,12 +392,30 @@ it('caps recovered drones at 250 even when an imported legacy field says 200', (
 })
 
 it.each([undefined, false, true])(
-  'ignores retired training state %s through the income worker',
+  'assumes no training despite retired state %s through the income worker',
   (present) => {
     expect(defaultIncomeSettings()).not.toHaveProperty('masteryPlanPresent')
     for (const [trigger, active] of [
       ["op_data.facility_has_mastery_plan('train')", false],
-      ["not op_data.facility_has_mastery_plan('train')", true]
+      ["not op_data.facility_has_mastery_plan('train')", true],
+      ["op_data.facility_is_training('train')", false],
+      ['not op_data.facility_is_training("train")', true],
+      [
+        {
+          left: {
+            left: "op_data.facility_has_mastery_plan('train')",
+            operator: '==',
+            right: 'False'
+          },
+          operator: 'and',
+          right: {
+            left: "op_data.facility_is_training('train')",
+            operator: '==',
+            right: 'False'
+          }
+        },
+        true
+      ]
     ]) {
       const source = plan()
       source.backup_plans = [
@@ -439,6 +457,7 @@ it('reports fixed training assumptions for new runs and preserves historical pro
   expect(incomeReportLines(result, settings, plan(), '主表').join('\n')).toContain(
     '本次演算固定为无未完成训练计划'
   )
+  expect(incomeReportLines(result, settings, plan(), '主表').join('\n')).toContain('且未在训练')
   expect(
     incomeReportLines(result, { ...settings, masteryPlanPresent: true }, plan(), '主表').join('\n')
   ).toContain('历史演算的未完成训练计划：有')
