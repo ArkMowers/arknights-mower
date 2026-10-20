@@ -346,3 +346,55 @@ it('announces a new recovery after dismissal even when polling never observed an
   expect(second).not.toBe(first)
   expect(client.post).not.toHaveBeenCalled()
 })
+
+it.each([false, true])(
+  'preserves the recovery notification while its event identity is unavailable (dismissed: %s)',
+  async (dismissed) => {
+    client.get.mockResolvedValue({ data: recoveryStatus() })
+    await mount()
+    const first = state.create.mock.results[0].value
+    if (dismissed) {
+      first.onClose()
+      first.onAfterLeave()
+    }
+
+    client.get.mockResolvedValue({
+      data: recoveryStatus({ occurred_at: undefined, message: '进程恢复记录暂时无法读取' })
+    })
+    await vi.advanceTimersByTimeAsync(3000)
+    await settle()
+    expect(state.create).toHaveBeenCalledOnce()
+    expect(first.destroy).not.toHaveBeenCalled()
+
+    client.get.mockResolvedValue({ data: recoveryStatus() })
+    await vi.advanceTimersByTimeAsync(3000)
+    await settle()
+    expect(state.create).toHaveBeenCalledOnce()
+    expect(first.destroy).not.toHaveBeenCalled()
+
+    client.get.mockResolvedValue({ data: recoveryStatus({ occurred_at: secondOccurrence }) })
+    await vi.advanceTimersByTimeAsync(3000)
+    await settle()
+    expect(state.create).toHaveBeenCalledTimes(2)
+    expect(client.post).not.toHaveBeenCalled()
+  }
+)
+
+it('keeps an initially unidentified recovery dismissed when its event identity becomes available', async () => {
+  client.get.mockResolvedValue({ data: recoveryStatus({ occurred_at: undefined }) })
+  await mount()
+  const first = state.create.mock.results[0].value
+  first.onClose()
+  first.onAfterLeave()
+
+  client.get.mockResolvedValue({ data: recoveryStatus() })
+  await vi.advanceTimersByTimeAsync(3000)
+  await settle()
+  expect(state.create).toHaveBeenCalledOnce()
+
+  client.get.mockResolvedValue({ data: recoveryStatus({ occurred_at: secondOccurrence }) })
+  await vi.advanceTimersByTimeAsync(3000)
+  await settle()
+  expect(state.create).toHaveBeenCalledTimes(2)
+  expect(client.post).not.toHaveBeenCalled()
+})

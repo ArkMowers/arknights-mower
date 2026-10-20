@@ -10,10 +10,17 @@ const recovery = createCrashRecovery({
 })
 const { status, busy, error } = recovery
 const notificationVisible = ref(false)
+const notificationKey = ref(0)
+let lastOccurrence
 
-watch(status, (current, previous) => {
-  if (!current.active || current.occurred_at !== previous.occurred_at) {
-    notificationVisible.value = false
+watch(status, (current) => {
+  if (!current.active) notificationVisible.value = false
+  if (current.occurred_at) {
+    if (lastOccurrence && current.occurred_at !== lastOccurrence) {
+      notificationVisible.value = false
+      notificationKey.value++
+    }
+    lastOccurrence = current.occurred_at
   }
   if (current.active && current.automatic !== false) notificationVisible.value = true
 })
@@ -36,7 +43,7 @@ onUnmounted(() => {
 
 <template>
   <StatusNotification
-    :key="status.occurred_at || ''"
+    :key="notificationKey"
     :show="notificationVisible"
     :type="status.automatic === false ? 'warning' : 'info'"
     :title="status.automatic === false ? '自动恢复已停止' : '正在自动恢复'"
