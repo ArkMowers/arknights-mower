@@ -59,6 +59,23 @@ it('keeps save failures assertive when forwarding them to the floating notificat
   })
 })
 
+it('keeps the save retry available in the notification action', async () => {
+  const save = vi.fn(async () => {})
+  const notice = renderConfigNotice(
+    {},
+    [],
+    {},
+    {
+      StatusNotification: { name: 'StatusNotification' },
+      config_save_error: '保存失败',
+      config_saving: false,
+      config: { save_config: save }
+    }
+  )
+  await notice.children.action()[0].props.onClick()
+  expect(save).toHaveBeenCalledOnce()
+})
+
 function notices(routeName) {
   const store = { save_config: vi.fn(async () => {}) }
   const setup = {
@@ -73,22 +90,26 @@ function notices(routeName) {
   return { nodes: tree.children, store }
 }
 
-it('uses floating notices only on the running log route', () => {
-  const { nodes } = notices('log')
-  expect(nodes.some((node) => node.type === configNotice)).toBe(true)
-  expect(nodes.some((node) => node.type.name === 'n-alert')).toBe(false)
-  expect(nodes.find((node) => node.type === recoveryNotice).props.floating).toBe(true)
-})
-
-it.each(['mowersettings', 'plan', 'record_line', 'log_schedule'])(
-  'preserves inline notices and the save retry on %s',
-  async (routeName) => {
-    const { nodes, store } = notices(routeName)
-    expect(nodes.some((node) => node.type === configNotice)).toBe(false)
-    expect(nodes.find((node) => node.type === recoveryNotice).props.floating).toBe(false)
-    const alert = nodes.find((node) => node.type.name === 'n-alert')
-    expect(alert.props.title).toBe('配置保存失败')
-    await alert.children.action()[0].props.onClick()
-    expect(store.save_config).toHaveBeenCalledOnce()
+it.each(['log', 'mowersettings', 'plan', 'record_line', 'log_schedule'])(
+  'renders the two global notification components without inline alerts on %s',
+  (routeName) => {
+    const { nodes } = notices(routeName)
+    expect(nodes.some((node) => node.type === configNotice)).toBe(true)
+    expect(nodes.some((node) => node.type === recoveryNotice)).toBe(true)
+    expect(nodes.some((node) => node.type.name === 'n-alert')).toBe(false)
   }
 )
+
+it('preserves both notification component identities across navigation', () => {
+  const first = notices('log').nodes
+  for (const route of ['plan', 'mowersettings', 'record_line', 'log']) {
+    const next = notices(route).nodes
+    for (const type of [configNotice, recoveryNotice]) {
+      const previous = first.find((node) => node.type === type)
+      const current = next.find((node) => node.type === type)
+      expect(current?.type).toBe(previous.type)
+      expect(current?.key).toBe(previous.key)
+      expect(current?.props).toEqual(previous.props)
+    }
+  }
+})
