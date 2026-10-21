@@ -129,6 +129,34 @@ def test_direct_name_template_confirms_training(confirmation, plan):
     assert [call.args[1] for call in update.call_args_list] == ["training"]
 
 
+@pytest.mark.parametrize("index, skill", [(1, "乱舞"), (2, "空中回旋乱舞")])
+def test_contained_skill_name_confirms_training(confirmation, index, skill):
+    from arknights_mower.utils.skill_label import format_skill_label
+
+    deadline, update, send = confirmation
+    text = f"[麒麟R夜刀]{skill}"
+    solver = panel_solver(text, text)
+    plan = {
+        "id": 1,
+        "char_id": "char_1029_yato2",
+        "char_name": "麒麟R夜刀",
+        "skill_index": index,
+        "skill_name": format_skill_label(index, skill),
+        "target_level": 3,
+        "status": "arranging",
+    }
+    assert mastery._confirm_training_started(solver, plan, deadline) == "started"
+    assert [call.args[1] for call in update.call_args_list] == ["training"]
+    assert all("与计划不符" not in call.args[0] for call in send.call_args_list)
+
+
+def test_contained_ocr_name_conflicting_with_pixels_stays_unknown():
+    solver = panel_solver("[麒麟R夜刀]乱舞", "[麒麟R夜刀]空中回旋乱舞")
+    panel = mastery_reader._read_panel_text(solver)
+    assert panel.operator_name == "麒麟R夜刀"
+    assert panel.skill_name == ""
+
+
 @pytest.mark.parametrize("text", ["[白面]脑啡肽", "[白面鸮]"])
 def test_unconfirmed_identity_times_out_without_false_mismatch(
     monkeypatch, confirmation, plan, text
