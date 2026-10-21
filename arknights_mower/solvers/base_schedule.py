@@ -412,6 +412,7 @@ class BaseSchedulerSolver(
         self.digit_reader = DigitReader()
         self.error = False
         self.clue_count = 0
+        self.task = None
         self.tasks = []
         self.waiting_group_shifts = []
         self.free_clue = None
