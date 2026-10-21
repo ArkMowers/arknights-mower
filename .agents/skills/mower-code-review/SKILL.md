@@ -27,6 +27,10 @@ Inputs: requested scope, actual comparison base where applicable, requirements a
 4. Run focused offline behavior tests when needed for the finding. For document/governance changes run `python scripts/verify_governance.py`; changes to its scripts also require `pytest arknights_mower/tests/verify_governance_tests.py`. For a branch or commit review, run checks in a checkout at the reviewed head and pass `--base <actual-comparison-commit>`. Checks run elsewhere describe only that checkout. Separate structural results from functional results and the semantic review conclusion.
 5. Report concrete locations, impact and supporting observations using the shared [prose rules](../mower-prose-standard/SKILL.md) and their bilingual terminology sources. A read-only request ends with findings. For authorized repairs, use the selected [task workflow](../../AGENTS.md#1-task-selection) and its [review feedback loop](../../AGENTS.md#4-verification-and-reporting); apply record ownership when the recorded rationale or evidence changes.
 
+## Interface Authentication
+
+When the reviewed scope adds or changes an HTTP route, WebSocket or other remotely callable backend interface, apply the [API authentication skill](../mower-api-auth/SKILL.md) to every affected method and representation. Treat a missing authentication decision or missing focused rejection evidence as a review finding; do not infer a public exception from `GET`, a frontend-only caller, loopback-oriented use, Origin or CORS handling, or an unprotected neighbouring route.
+
 ## Scheduling Guards and Progress
 
 For native scheduling or income-simulation guards, follow the [Runtime Task Failure contract](../../../docs/subsystems/base-scheduler.md#211-runtime-task-failure). Reject excessive defensive behavior: identify the concrete invalid action being prevented, the smallest dependent work that must wait, and the observation or arrangement change that releases it. Missing evidence is not evidence of an illegal configuration. Check whether a valid estimate or existing observation already satisfies the requirement before adding another mandatory read.
