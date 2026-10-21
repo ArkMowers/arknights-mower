@@ -2,9 +2,12 @@
   <div class="mood-page">
     <h1 class="page-title">工作休息比例报表</h1>
     <p class="order-note">
-      拖动卡片调整编组顺序，折线图自动同步。自定义观察表请在折线图中创建和查看。
+      拖动卡片调整顺序，折线图自动同步。点击编组标题展开干员，点击干员设为默认。
     </p>
     <div class="cleanup-toolbar">
+      <n-button v-if="board.hiddenGroups.length" secondary @click="board.restoreGroups">
+        还原隐藏窗口（{{ board.hiddenGroups.length }}）
+      </n-button>
       <n-date-picker
         v-model:value="selectedTime"
         type="datetime"
@@ -23,6 +26,10 @@
       @positive-click="clearData"
     />
     <p v-if="loadError" class="load-error" role="alert">{{ loadError }}</p>
+    <p v-if="board.saveError" class="load-error" role="alert">{{ board.saveError }}</p>
+    <p v-if="historyLimited" class="order-note">
+      当前历史查询接口不可用：自选表暂时只能使用默认报表中已有的干员记录。
+    </p>
     <mood-card-grid :groups="orderedReportData" @reorder="reorderCards">
       <template #default="{ group }">
         <header class="group-head">
@@ -35,18 +42,44 @@
           >
             {{ group.groupName }}
           </n-button>
+          <n-button
+            size="tiny"
+            secondary
+            :aria-label="'隐藏' + group.groupName + '窗口'"
+            @click="board.hideGroup(group.boardKey)"
+          >
+            隐藏
+          </n-button>
         </header>
+        <p v-if="group.isCustom" class="card-hint">
+          自选观察表 · {{ group.operators.length }} 位干员
+          <span v-if="group.missing.length"> · {{ group.missing.join('、') }} 暂无历史 </span>
+        </p>
         <div v-if="!showCard[group.boardKey] && group.hasValidRatio" class="pie-area">
           <Pie :data="group.work_break_group" :options="pieOptions" :plugins="[ChartDataLabels]" />
         </div>
         <div v-else-if="!showCard[group.boardKey]" class="no-history">暂无有效工休比数据</div>
         <div v-else class="agent-details">
-          <div v-for="operator in group.operatorRatios" :key="operator.name" class="agent-detail">
+          <button
+            v-for="operator in group.operatorRatios"
+            :key="operator.name"
+            type="button"
+            class="agent-detail"
+            :aria-label="'将' + operator.name + '设为' + group.groupName + '的默认干员'"
+            :aria-pressed="group.defaultOperator === operator.name"
+            @click="selectOperator(group.boardKey, operator.name)"
+          >
             <span>{{ operator.name }}</span>
             <span>{{ operator.ratio == null ? '暂无记录' : operator.ratio.toFixed(2) + '%' }}</span>
-          </div>
+          </button>
+          <p
+            v-if="!group.operatorRatios.length && group.moodData.datasets.length"
+            class="card-hint"
+          >
+            所有干员均已在心情曲线中排除
+          </p>
         </div>
-        <p class="card-hint">点击编组标题切换比例 / 干员明细</p>
+        <p class="card-hint">当前干员：{{ group.defaultOperator || '无可用干员' }}</p>
       </template>
     </mood-card-grid>
   </div>
@@ -75,7 +108,7 @@ import {
 import MoodCardGrid from '@/components/MoodCardGrid.vue'
 import { useMoodBoardStore } from '@/stores/mood_board'
 import { useRecordStore } from '@/stores/record'
-import { orderMoodGroups } from '@/utils/mood_order'
+import { useMoodGroups } from '@/composables/useMoodGroups'
 
 ChartJS.register(
   CategoryScale,
@@ -109,27 +142,31 @@ function durationRatio(points) {
 }
 
 function decorateGroup(group) {
-  const ratios = (group.moodData?.datasets || []).map((dataset) => ({
-    name: dataset.label,
-    ratio: dataset.label === '菲亚梅塔' ? 0 : durationRatio(dataset.data)
-  }))
+  const savedHidden = board.hiddenLines[group.boardKey]
+  const hidden = Array.isArray(savedHidden) ? savedHidden : []
+  const ratios = (group.moodData?.datasets || [])
+    .filter((dataset) => !hidden.includes(dataset.label))
+    .map((dataset) => ({
+      name: dataset.label,
+      ratio: dataset.label === '菲亚梅塔' ? 0 : durationRatio(dataset.data)
+    }))
   const quartet = ['歌蕾蒂娅', '乌尔比安', '斯卡蒂', '幽灵鲨']
   const isSpecial = quartet.every((name) => ratios.some((operator) => operator.name === name))
-  const numeric = ratios.map((item) => item.ratio).filter((ratio) => ratio != null)
-  const positive = numeric.filter((ratio) => ratio > 0)
-  const result =
-    ratios.length === 1
-      ? ratios[0].ratio
-      : positive.length
-        ? isSpecial
-          ? Math.max(...positive)
-          : Math.min(...positive)
-        : numeric.length
-          ? 0
-          : null
+  const positive = ratios.filter((item) => item.ratio > 0)
+  const automatic =
+    positive.reduce(
+      (best, item) =>
+        !best || (isSpecial ? item.ratio > best.ratio : item.ratio < best.ratio) ? item : best,
+      null
+    ) ||
+    ratios.find((item) => item.ratio != null) ||
+    ratios[0]
+  const selected =
+    ratios.find((item) => item.name === board.defaultOperators[group.boardKey]) || automatic
+  const result = selected?.ratio ?? null
   return {
     ...group,
-    boardKey: group.groupName,
+    defaultOperator: selected?.name || '',
     operatorRatios: ratios,
     hasValidRatio: result != null,
     work_break_group: {
@@ -140,20 +177,16 @@ function decorateGroup(group) {
 }
 
 const board = useMoodBoardStore()
-const { getMoodRatios } = useRecordStore()
+const { getMoodRatios, getMoodSeries } = useRecordStore()
 const reportData = ref([])
+const viewHistory = useMoodGroups(board, reportData, getMoodSeries)
+const { groups, historyLimited } = viewHistory
 const loadError = ref('')
 const showCard = ref({})
 const selectedTime = ref(Date.now())
 const showConfirm = ref(false)
 
-const orderedReportData = computed(() =>
-  orderMoodGroups(reportData.value.map(decorateGroup), {
-    groupOrder: board.groupOrder,
-    pinnedGroups: [],
-    pinnedOperators: []
-  })
-)
+const orderedReportData = computed(() => groups.value.map(decorateGroup))
 
 function reorderCards(source, target) {
   board.reorder(orderedReportData.value, source, target)
@@ -163,6 +196,13 @@ function handleClick(key) {
   showCard.value = { ...showCard.value, [key]: !showCard.value[key] }
 }
 
+function selectOperator(key, name) {
+  const group = orderedReportData.value.find((item) => item.boardKey === key)
+  if (!group?.operatorRatios.some((operator) => operator.name === name)) return
+  board.setDefaultOperator(key, name)
+  showCard.value = { ...showCard.value, [key]: false }
+}
+
 async function clearData() {
   try {
     await axios.delete(`${import.meta.env.VITE_HTTP_URL || ''}/record/clear-data`, {
@@ -170,6 +210,7 @@ async function clearData() {
     })
     alert('数据已清除')
     reportData.value = await getMoodRatios({ includeWorkRest: false })
+    await viewHistory.refreshSeries()
   } catch {
     alert('清除数据失败；若当前为只读验收页面，请先返回主界面确认操作权限。')
   } finally {
@@ -178,7 +219,7 @@ async function clearData() {
 }
 
 onMounted(async () => {
-  board.load()
+  await board.load()
   try {
     reportData.value = await getMoodRatios({ includeWorkRest: false })
   } catch {
@@ -226,11 +267,13 @@ const pieOptions = {
 .group-head {
   display: flex;
   justify-content: center;
+  align-items: center;
+  gap: 6px;
   padding: 27px 5px 3px;
 }
 .group-title {
   min-width: 100px;
-  max-width: 100%;
+  max-width: calc(100% - 48px);
   font-size: 16px;
 }
 .pie-area {
@@ -248,10 +291,25 @@ const pieOptions = {
 .agent-detail {
   display: flex;
   justify-content: space-between;
-  border-bottom: 1px solid var(--n-border-color);
   padding: 6px;
   gap: 8px;
   font-size: 12px;
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--n-border-color);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 4px;
+  font-family: inherit;
+}
+.agent-detail:hover,
+.agent-detail[aria-pressed='true'] {
+  background: var(--n-border-color, rgba(68, 159, 134, 0.13));
+}
+.agent-detail:focus-visible {
+  outline: 2px solid #358f78;
+  outline-offset: -2px;
 }
 .no-history {
   flex: 1;

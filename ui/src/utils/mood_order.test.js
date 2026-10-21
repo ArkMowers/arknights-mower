@@ -30,7 +30,10 @@ describe('mood priority preferences', () => {
     expect(readMoodPreferences(s)).toEqual({
       groupOrder: ['乙组', '甲组'],
       pinnedGroups: [],
-      pinnedOperators: []
+      pinnedOperators: [],
+      hiddenLines: {},
+      hiddenGroups: [],
+      defaultOperators: {}
     })
   })
 
@@ -41,7 +44,10 @@ describe('mood priority preferences', () => {
     expect(readMoodPreferences(s)).toEqual({
       groupOrder: [],
       pinnedGroups: [],
-      pinnedOperators: []
+      pinnedOperators: [],
+      hiddenLines: {},
+      hiddenGroups: [],
+      defaultOperators: {}
     })
     expect(
       readMoodPreferences({
@@ -72,7 +78,10 @@ describe('mood priority preferences', () => {
     ).toEqual({
       groupOrder: ['甲组'],
       pinnedGroups: ['乙组'],
-      pinnedOperators: ['能天使']
+      pinnedOperators: ['能天使'],
+      hiddenLines: {},
+      hiddenGroups: [],
+      defaultOperators: {}
     })
   })
 
@@ -81,7 +90,10 @@ describe('mood priority preferences', () => {
     const data = {
       groupOrder: ['乙组', '甲组'],
       pinnedGroups: ['甲组'],
-      pinnedOperators: ['能天使']
+      pinnedOperators: ['能天使'],
+      hiddenLines: { 甲组: ['煌'] },
+      hiddenGroups: ['乙组'],
+      defaultOperators: { 甲组: '阿米娅' }
     }
     expect(saveMoodPreferences(s, data)).toBe(true)
     expect(readMoodPreferences(s)).toEqual(data)

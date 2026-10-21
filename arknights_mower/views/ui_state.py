@@ -27,3 +27,21 @@ def log_layout():
 @result
 def save_log_layout():
     return ui_state.save_log_layout(request.get_json(silent=True) or {})
+
+
+@ui_state_bp.get("/mood-board")
+@result
+def mood_board():
+    return ui_state.get_mood_board()
+
+
+@ui_state_bp.post("/mood-board")
+@result
+def initialize_mood_board():
+    return ui_state.save_mood_board(request.get_json(silent=True), initialize=True)
+
+
+@ui_state_bp.patch("/mood-board")
+@result
+def save_mood_board():
+    return ui_state.save_mood_board(request.get_json(silent=True))

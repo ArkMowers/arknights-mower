@@ -26,7 +26,14 @@ describe('current mood pages load curves without monthly work/rest data', () => 
 
   beforeEach(() => {
     state.mounted = []
-    state.board = reactive({ views: [], groupOrder: [], load: vi.fn() })
+    state.board = reactive({
+      views: [],
+      groupOrder: [],
+      hiddenGroups: [],
+      hiddenLines: {},
+      defaultOperators: {},
+      load: vi.fn()
+    })
     state.getMoodRatios.mockReset().mockResolvedValue([])
     axios.delete.mockReset().mockResolvedValue({})
     vi.stubGlobal('alert', vi.fn())
