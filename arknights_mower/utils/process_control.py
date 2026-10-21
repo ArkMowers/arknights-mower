@@ -124,9 +124,9 @@ def restart_command(record, frozen):
 
 def restart_environment(record, job):
     env = runtime.launch_environment(record, job["id"], record.get("background", False))
-    if job["action"] == "restart_resume":
+    if job["action"] == "restart_resume" and record.get("running"):
         env["MOWER_RESUME_MODE"] = "0"
-    elif job["action"] == "apply_schedule":
+    elif job["action"] == "apply_schedule" and record.get("running"):
         env["MOWER_RESUME_MODE"] = "1"
     else:
         env["MOWER_RESUME_MODE"] = "preserve"
@@ -160,6 +160,8 @@ def execute(job_path):
             report("当前实例已结束", "succeeded")
             return
         report("正在恢复当前实例及原启动参数")
+        if runtime.task_stop_requested(record, job["id"], state):
+            record = {**record, "running": False}
         env = restart_environment(record, job)
         with (job_path.parent / "restart.log").open("ab") as log:
             child = subprocess.Popen(

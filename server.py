@@ -1836,8 +1836,8 @@ def _start_mower(
             or resource_update.running()
         ):
             return False
-        if crash_recovery.reset_observation_pending():
-            start_type = "2"
+        if start_type != "2":
+            start_type = crash_recovery.pending_start_type() or start_type
         if crash_recovery.status()["active"] and recovery_state is None:
             if automatic:
                 if not crash_recovery.status().get("automatic"):
@@ -1968,7 +1968,14 @@ def scheduled_start():
 @app.route("/stop")
 @require_token
 @save_state
-def stop():
+def stop(*, user_requested=True):
+    if user_requested:
+        from arknights_mower.utils.update_runtime import record_task_stop
+
+        try:
+            record_task_stop()
+        except Exception:
+            logger.exception("记录进程替换期间的停止选择失败，继续停止当前任务")
     return str(_stop_mower()).lower()
 
 

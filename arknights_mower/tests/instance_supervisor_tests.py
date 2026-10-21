@@ -261,6 +261,239 @@ def test_unknown_initial_intent_is_resolved_from_actual_startup_policy(
     assert policy["status"]["resume_requested"] is desired_running
 
 
+@pytest.mark.parametrize("desired_running", [False, True])
+@pytest.mark.parametrize("early_failure", [False, True])
+def test_explicit_launch_uses_current_policy_instead_of_old_recovery_intent(
+    isolated_runtime, desired_running, early_failure
+):
+    runtime.write_json(
+        isolated_runtime / "recovery.json",
+        {
+            "active": True,
+            "resume_requested": not desired_running,
+            "start_type": "1",
+            "occurred_at": "2000-01-01T00:00:00+00:00",
+        },
+    )
+    command = child_script(
+        isolated_runtime,
+        "from types import SimpleNamespace\n"
+        "from arknights_mower.utils import crash_recovery\n"
+        "from arknights_mower.utils.instance_supervisor import child_ready\n"
+        + (
+            "if len(events)==1:\n child_report(ready=False)\n os._exit(23)\n"
+            if early_failure
+            else ""
+        )
+        + "directory=Path(os.environ['MOWER_SUPERVISOR_DIRECTORY'])\n"
+        "registration=SimpleNamespace(record={'port':59998},request=directory/'shutdown')\n"
+        f"child_ready(registration,desired_running={desired_running!r})\n"
+        "runtime.write_json(directory/'policy.json',crash_recovery.status())\n"
+        "child_exit('window')\n",
+    )
+    assert (
+        supervisor.supervise(command, isolated_runtime, delays=(0,), poll_interval=0.01)
+        == 0
+    )
+    policy = runtime.read_json(isolated_runtime / "policy.json")
+    assert policy["active"]
+    assert policy["automatic"] is desired_running
+    assert policy["resume_requested"] is desired_running
+    assert policy["start_type"] == ("0" if desired_running or early_failure else "1")
+    assert policy["startup"] is not early_failure
+
+
+@pytest.mark.parametrize("start_type", ["0", "1", "2"])
+def test_explicit_startup_keeps_selected_mode_and_refreshes_stopped_progress(
+    isolated_runtime, monkeypatch, start_type
+):
+    from arknights_mower.utils import crash_recovery
+
+    monkeypatch.setenv("MOWER_SUPERVISOR_DIRECTORY", str(isolated_runtime))
+    monkeypatch.delenv("MOWER_RECOVERY_RUN", raising=False)
+    monkeypatch.delenv("MOWER_SUPERVISOR_INTENT", raising=False)
+    monkeypatch.setattr(crash_recovery, "_cancelled", False)
+    monkeypatch.setattr(crash_recovery, "_progress", {})
+    runtime.write_json(
+        isolated_runtime / "recovery.json",
+        {
+            "active": True,
+            "resume_requested": False,
+            "start_type": "1",
+            "phase": "stopped",
+            "message": "任务已停止，后台不会自动启动任务。",
+        },
+    )
+    supervisor.child_ready(
+        SimpleNamespace(record={"port": 59998}, request=isolated_runtime / "shutdown"),
+        desired_running=True,
+        start_type=start_type,
+    )
+    policy = crash_recovery.status()
+    assert policy["automatic"] and policy["startup"]
+    assert policy["start_type"] == start_type
+    assert policy["reset_observation_pending"] is (start_type == "2")
+    assert policy["phase"] == "waiting"
+    assert "启动前" in policy["message"]
+
+
+def test_new_launch_does_not_reload_snapshot_during_an_unfinished_reset(
+    isolated_runtime, monkeypatch
+):
+    from arknights_mower.utils import crash_recovery
+
+    monkeypatch.setenv("MOWER_SUPERVISOR_DIRECTORY", str(isolated_runtime))
+    monkeypatch.delenv("MOWER_RECOVERY_RUN", raising=False)
+    monkeypatch.delenv("MOWER_SUPERVISOR_INTENT", raising=False)
+    monkeypatch.setattr(crash_recovery, "_cancelled", False)
+    monkeypatch.setattr(crash_recovery, "_progress", {})
+    runtime.write_json(
+        isolated_runtime / "recovery.json",
+        {
+            "active": True,
+            "resume_requested": False,
+            "start_type": "2",
+            "reset_observation_pending": True,
+        },
+    )
+    supervisor.child_ready(
+        SimpleNamespace(record={"port": 59998}, request=isolated_runtime / "shutdown"),
+        desired_running=True,
+        start_type="0",
+    )
+    policy = crash_recovery.status()
+    assert policy["automatic"] and policy["startup"]
+    assert policy["start_type"] == "2"
+    assert policy["reset_observation_pending"]
+
+
+@pytest.mark.parametrize("running_before_crash", [False, True])
+def test_crash_relaunch_preserves_published_intent_over_current_startup_option(
+    isolated_runtime, running_before_crash
+):
+    command = child_script(
+        isolated_runtime,
+        "from types import SimpleNamespace\n"
+        "from arknights_mower.utils import crash_recovery\n"
+        "from arknights_mower.utils.instance_supervisor import child_ready,task_intent\n"
+        f"if len(events)==1:\n task_intent({running_before_crash!r})\n os._exit(23)\n"
+        "directory=Path(os.environ['MOWER_SUPERVISOR_DIRECTORY'])\n"
+        "registration=SimpleNamespace(record={'port':59998},request=directory/'shutdown')\n"
+        f"child_ready(registration,desired_running={not running_before_crash!r})\n"
+        "runtime.write_json(directory/'policy.json',crash_recovery.status())\n"
+        "child_exit('window')\n",
+    )
+    assert (
+        supervisor.supervise(command, isolated_runtime, delays=(0,), poll_interval=0.01)
+        == 0
+    )
+    policy = runtime.read_json(isolated_runtime / "policy.json")
+    assert policy["active"]
+    assert policy["automatic"] is running_before_crash
+    assert policy["startup"] is False
+
+
+@pytest.mark.parametrize("mode,expected", [("0", "0"), ("1", "1"), ("preserve", "2")])
+def test_unready_restart_keeps_its_supplied_start_mode(
+    isolated_runtime, mode, expected
+):
+    command = child_script(
+        isolated_runtime,
+        "from types import SimpleNamespace\n"
+        "from arknights_mower.utils import crash_recovery\n"
+        "from arknights_mower.utils.instance_supervisor import child_ready\n"
+        "if len(events)==1:\n child_report(ready=False)\n os._exit(23)\n"
+        "directory=Path(os.environ['MOWER_SUPERVISOR_DIRECTORY'])\n"
+        "registration=SimpleNamespace(record={'port':59998},request=directory/'shutdown')\n"
+        "child_ready(registration,desired_running=False)\n"
+        "runtime.write_json(directory/'policy.json',crash_recovery.status())\n"
+        "child_exit('window')\n",
+    )
+    environment = dict(
+        os.environ,
+        MOWER_RESTART_JOB="explicit-restart",
+        MOWER_RESUME_RUN="1",
+        MOWER_RESUME_MODE=mode,
+    )
+    assert (
+        supervisor.supervise(
+            command,
+            isolated_runtime,
+            delays=(0,),
+            poll_interval=0.01,
+            environment=environment,
+        )
+        == 0
+    )
+    policy = runtime.read_json(isolated_runtime / "policy.json")
+    assert policy["automatic"]
+    assert policy["start_type"] == expected
+    assert bool(policy.get("reset_observation_pending")) is (expected == "2")
+
+
+@pytest.mark.parametrize("mode", ["1", "preserve"])
+def test_completed_restart_does_not_repeat_its_reset_after_later_crash(
+    isolated_runtime, mode
+):
+    command = child_script(
+        isolated_runtime,
+        "from arknights_mower.utils.instance_supervisor import task_intent\n"
+        "directory=Path(os.environ['MOWER_SUPERVISOR_DIRECTORY'])\n"
+        "if len(events)==1:\n"
+        " task_intent(True)\n"
+        " runtime.write_json(directory/'recovery.json',{'active':False,'phase':'resolved','start_type':'2','reset_observation_pending':False})\n"
+        " os._exit(23)\n"
+        "child_exit('window')\n",
+    )
+    environment = dict(
+        os.environ,
+        MOWER_RESTART_JOB="explicit-restart",
+        MOWER_RESUME_RUN="1",
+        MOWER_RESUME_MODE=mode,
+    )
+    assert (
+        supervisor.supervise(
+            command,
+            isolated_runtime,
+            delays=(0,),
+            poll_interval=0.01,
+            environment=environment,
+        )
+        == 0
+    )
+    policy = runtime.read_json(isolated_runtime / "recovery.json")
+    assert policy["active"] and policy["resume_requested"]
+    assert policy["start_type"] == "0"
+    assert not policy.get("reset_observation_pending")
+
+
+@pytest.mark.parametrize("mode", ["1", "2"])
+def test_ready_before_automation_start_keeps_selected_mode_until_checkpoint(
+    isolated_runtime, mode
+):
+    command = child_script(
+        isolated_runtime,
+        "from types import SimpleNamespace\n"
+        "from arknights_mower.utils import crash_recovery\n"
+        "from arknights_mower.utils.instance_supervisor import child_ready\n"
+        "directory=Path(os.environ['MOWER_SUPERVISOR_DIRECTORY'])\n"
+        "registration=SimpleNamespace(record={'port':59998},request=directory/'shutdown')\n"
+        f"child_ready(registration,desired_running=True,start_type={mode!r})\n"
+        "if len(events)==1: os._exit(23)\n"
+        "runtime.write_json(directory/'policy.json',crash_recovery.status())\n"
+        "child_exit('window')\n",
+    )
+    assert (
+        supervisor.supervise(command, isolated_runtime, delays=(0,), poll_interval=0.01)
+        == 0
+    )
+    policy = runtime.read_json(isolated_runtime / "policy.json")
+    assert policy["automatic"]
+    assert policy["start_type"] == mode
+    assert policy["pending_start_type"] == mode
+    assert bool(policy.get("reset_observation_pending")) is (mode == "2")
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="named Windows intent map")
 @pytest.mark.parametrize("active_notice", [False, True])
 def test_initial_ready_publishing_cannot_override_earlier_user_stop(
@@ -272,6 +505,7 @@ def test_initial_ready_publishing_cannot_override_earlier_user_stop(
     from arknights_mower.utils import crash_recovery
 
     name = f"Local\\MowerStopReadyTest_{uuid4().hex}"
+    monkeypatch.delenv("MOWER_RECOVERY_RUN", raising=False)
     monkeypatch.setenv("MOWER_SUPERVISOR_DIRECTORY", str(isolated_runtime))
     monkeypatch.setenv("MOWER_SUPERVISOR_INTENT", name)
     monkeypatch.setattr(crash_recovery, "_cancelled", False)
@@ -288,9 +522,11 @@ def test_initial_ready_publishing_cannot_override_earlier_user_stop(
                 request=isolated_runtime / "shutdown",
             ),
             desired_running=True,
+            start_type="2",
         )
         assert intent[0] == 0
         assert not crash_recovery.status()["automatic"]
+        assert not crash_recovery.pending_start_type()
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="named Windows intent map")
@@ -330,7 +566,9 @@ def test_http_nonresponsiveness_recycles_only_owned_instance(isolated_runtime):
         isolated_runtime,
         "from arknights_mower.utils.instance_supervisor import task_intent\nchild_report(port=58991)\ntask_intent(True)\nif len(events)==1: time.sleep(5)\nchild_exit('window')\n",
     )
-    innocent = subprocess.Popen([sys.executable, "-c", "import time;time.sleep(5)"])
+    innocent = subprocess.Popen(
+        [sys.executable, "-c", "import sys;sys.stdin.read()"], stdin=subprocess.PIPE
+    )
     try:
         assert (
             supervisor.supervise(

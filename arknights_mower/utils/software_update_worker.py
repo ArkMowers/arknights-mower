@@ -37,6 +37,7 @@ if __package__:
         read_json,
         registration_key,
         submission_lock,
+        task_stop_requested,
         utf8_output,
         wait_for_supervisor_release,
         write_json,
@@ -54,6 +55,7 @@ else:
         read_json,
         registration_key,
         submission_lock,
+        task_stop_requested,
         utf8_output,
         wait_for_supervisor_release,
         write_json,
@@ -1586,6 +1588,8 @@ class Worker:
         else:
             self.new_processes = processes
         for record in records:
+            if task_stop_requested(record, self.job["id"], self.state):
+                record = {**record, "running": False}
             if (
                 record["kind"] == "manager"
                 and self.job["background"]

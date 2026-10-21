@@ -113,6 +113,39 @@ def test_automatic_prepare_preserves_all_saved_tasks_without_dispositions(notice
     assert crash_recovery.status()["automatic"]
 
 
+def test_ordinary_start_after_stop_checks_pending_state_without_clearing_tasks(
+    offline, notice, observed_scheduler, monkeypatch, tmp_path
+):
+    original, future = pending_tasks()
+    observed_scheduler.tasks = [original, future]
+    assert offline.record.save_current_state()
+    with offline.record._conn() as connection:
+        snapshot = connection.execute("SELECT state FROM saved_state").fetchone()[0]
+    assert offline.server._stop_mower()
+    assert crash_recovery.status()["active"]
+    assert not crash_recovery.status()["automatic"]
+    worker = Mock()
+    worker.is_alive.return_value = False
+    create = Mock(return_value=worker)
+    monkeypatch.setattr(offline.server, "Thread", create)
+    monkeypatch.setattr(offline.server, "get_path", lambda value: tmp_path)
+    monkeypatch.setattr(offline.server.resource_update, "running", lambda: False)
+    monkeypatch.setattr(supervisor, "task_intent", Mock())
+    assert offline.server._start_mower("0")
+    resumed = create.call_args.kwargs["args"][0]
+    assert resumed["_process_crash_recovery"]
+    assert resumed["tasks"][0].run_order_original_roster == {"room_1_1": ["鸿雪"]}
+    assert resumed["tasks"][1].time == future.time
+    assert crash_recovery.status()["startup"] is True
+    assert crash_recovery.status()["automatic"]
+    with offline.record._conn() as connection:
+        assert (
+            connection.execute("SELECT state FROM saved_state").fetchone()[0]
+            == snapshot
+        )
+    offline.io.assert_not_called()
+
+
 def test_corrupt_notice_never_overwrites_original(notice):
     notice.write_text("{broken", encoding="utf-8")
     original = notice.read_bytes()
@@ -482,6 +515,132 @@ def configure_simulate(offline, monkeypatch, solver):
     )
     solver.initialize_operators = Mock(return_value=None)
     solver.op_data.validate_backup_plans = Mock(return_value={"success": True})
+
+
+@pytest.mark.parametrize("checkpoint_failure", [False, True])
+def test_queue_reset_start_keeps_mode_until_its_first_checkpoint(
+    offline, notice, observed_scheduler, monkeypatch, tmp_path, checkpoint_failure
+):
+    runtime.write_json(notice, {"active": False, "phase": "resolved"})
+    observed_scheduler.tasks = list(pending_tasks())
+    assert offline.record.save_current_state()
+    with offline.record._conn() as connection:
+        original = connection.execute("SELECT state FROM saved_state").fetchone()[0]
+    worker = Mock()
+    worker.is_alive.return_value = False
+    create = Mock(return_value=worker)
+    monkeypatch.setattr(offline.server, "Thread", create)
+    monkeypatch.setattr(offline.server, "get_path", lambda value: tmp_path)
+    monkeypatch.setattr(offline.server.resource_update, "running", lambda: False)
+    monkeypatch.setattr(supervisor, "task_intent", Mock())
+    assert offline.server._start_mower("1")
+    saved = create.call_args.kwargs["args"][0]
+    assert saved["tasks"] == []
+    assert crash_recovery.pending_start_type() == "1"
+    configure_simulate(offline, monkeypatch, observed_scheduler)
+    if checkpoint_failure:
+        monkeypatch.setattr(offline.record, "save_current_state", lambda: False)
+        with pytest.raises(RuntimeError, match="清空任务后的状态暂未保存"):
+            offline.main.simulate(saved)
+        assert crash_recovery.pending_start_type() == "1"
+        with offline.record._conn() as connection:
+            assert (
+                connection.execute("SELECT state FROM saved_state").fetchone()[0]
+                == original
+            )
+    else:
+
+        def dispatch():
+            assert crash_recovery.pending_start_type() is None
+            assert offline.record.load_state(strict=True)["tasks"] == []
+            raise MowerExit
+
+        monkeypatch.setattr(offline.main, "refresh_resource_at_boundary", dispatch)
+        offline.main.simulate(saved)
+        crash_recovery.activate("later independent failure")
+        assert crash_recovery.status()["start_type"] == "0"
+    offline.io.assert_not_called()
+
+
+@pytest.mark.parametrize("replacement", ["restart_resume", "apply_schedule", "update"])
+@pytest.mark.parametrize("user_requested", [False, True])
+def test_user_stop_after_job_admission_overrides_captured_running_state(
+    offline, monkeypatch, tmp_path, replacement, user_requested
+):
+    import os
+
+    from arknights_mower.utils import process_control, software_update_worker
+
+    state = tmp_path / "state"
+    job_id = "accepted-replacement"
+    record = {
+        "id": "owned",
+        "kind": "instance",
+        "pid": os.getpid(),
+        "running": True,
+        "space": "owned-space",
+        "name": "owned-instance",
+        "port": 59998,
+        "executable": "owned-python",
+        "argv": ["owned-desktop.py"],
+        "cwd": str(tmp_path),
+    }
+    runtime.write_json(state / "active/owner.json", {"id": job_id, "pid": os.getpid()})
+    runtime.write_json(state / "instances/owned.json", record)
+    monkeypatch.setattr(runtime, "state_dir", lambda: state)
+    if user_requested:
+        response = offline.server.app.test_client().get(
+            "/stop", headers={"token": "crash-test"}
+        )
+        assert response.data == b"true"
+    else:
+        with offline.server.app.test_request_context(headers={"token": "crash-test"}):
+            assert offline.server.stop(user_requested=False) == "true"
+    assert runtime.task_stop_requested(record, job_id, state) is user_requested
+    create = Mock(return_value=Mock(poll=lambda: None))
+    monkeypatch.setattr(software_update_worker.subprocess, "Popen", create)
+    if replacement == "update":
+        worker = object.__new__(software_update_worker.Worker)
+        worker.state, worker.work = state, tmp_path / "work"
+        worker.work.mkdir()
+        worker.root = tmp_path
+        worker.job = {"id": job_id, "background": False, "deployment": "release"}
+        worker.report = Mock()
+        worker.restart([record], verify=False)
+    else:
+        job_path = tmp_path / "control/job.json"
+        runtime.write_json(
+            job_path,
+            {
+                "id": job_id,
+                "action": replacement,
+                "record": record,
+                "state_dir": str(state),
+                "frozen": False,
+            },
+        )
+        monkeypatch.setattr(runtime, "process_alive", lambda pid: False)
+        monkeypatch.setattr(
+            runtime,
+            "instances",
+            lambda *args, **kwargs: [
+                {
+                    **record,
+                    "ready": True,
+                    "restart_job": job_id,
+                }
+            ],
+        )
+        process_control.execute(job_path)
+        assert (
+            runtime.read_json(job_path.parent / "status.json")["status"] == "succeeded"
+        )
+    environment = create.call_args.kwargs["env"]
+    assert environment["MOWER_RESUME_RUN"] == ("0" if user_requested else "1")
+    if user_requested:
+        assert environment.get("MOWER_RESUME_MODE") not in ("0", "1")
+    assert record["running"] is True
+    offline.io.assert_not_called()
 
 
 def test_process_control_stop_waits_for_guardian_release(

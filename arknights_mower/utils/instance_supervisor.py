@@ -113,26 +113,17 @@ def child_report(**values):
         runtime.write_json(report, previous, sync=True)
 
 
-def child_ready(registration, *, desired_running=None):
+def child_ready(registration, *, desired_running=None, start_type="0"):
     from arknights_mower.utils import crash_recovery
 
-    notice = runtime.read_json(
-        Path(os.environ.get("MOWER_SUPERVISOR_DIRECTORY", ".")) / "recovery.json", {}
-    )
-    if not isinstance(notice, dict):
-        notice = {}
     wanted = bool(
         registration.record.get("running")
         if desired_running is None
         else desired_running
     )
-    if notice.get("active") and type(notice.get("resume_requested")) is bool:
-        wanted = notice["resume_requested"]
-    elif notice.get("active") and os.environ.get("MOWER_RECOVERY_RUN") in (
-        "0",
-        "1",
-    ):
-        wanted = os.environ["MOWER_RECOVERY_RUN"] == "1"
+    recovery_run = os.environ.get("MOWER_RECOVERY_RUN")
+    if recovery_run in ("0", "1"):
+        wanted = recovery_run == "1"
     with _report_lock:
         control = os.environ.get("MOWER_SUPERVISOR_INTENT")
         if control and sys.platform == "win32":
@@ -144,7 +135,9 @@ def child_ready(registration, *, desired_running=None):
         except AutomaticStartCancelled:
             wanted = False
             task_intent(False)
-        initialized = crash_recovery.initialize_intent(wanted)
+        initialized = crash_recovery.initialize_intent(
+            wanted, startup=recovery_run is None, start_type=start_type
+        )
         if initialized != wanted:
             task_intent(initialized, automatic=True)
         child_report(
@@ -314,6 +307,7 @@ def supervise(
     directory = Path(directory)
     exits = []
     base_environment = dict(os.environ if environment is None else environment)
+    base_environment.pop("MOWER_RECOVERY_RUN", None)
     state = runtime.state_dir()
     recovery_path = directory / "recovery.json"
 
@@ -347,22 +341,28 @@ def supervise(
         wanted = desired
         if wanted is None and type(report.get("desired_running")) is bool:
             wanted = report["desired_running"]
-        if (
-            wanted is None
-            and isinstance(previous, dict)
-            and type(previous.get("resume_requested")) is bool
-        ):
-            wanted = previous["resume_requested"]
-        if wanted is None:
-            for variable in ("MOWER_RECOVERY_RUN", "MOWER_RESUME_RUN"):
-                if base_environment.get(variable) in ("0", "1"):
-                    wanted = base_environment[variable] == "1"
-                    break
+        if wanted is None and base_environment.get("MOWER_RECOVERY_RUN") in ("0", "1"):
+            wanted = base_environment["MOWER_RECOVERY_RUN"] == "1"
         if wanted is None and base_environment.get("MOWER_RESUME_MODE") in (
             "0",
             "1",
         ):
             wanted = True
+        if (
+            wanted is None
+            and base_environment.get("MOWER_RESTART_JOB")
+            and base_environment.get("MOWER_RESUME_RUN") in ("0", "1")
+        ):
+            wanted = base_environment["MOWER_RESUME_RUN"] == "1"
+        start_type = "0"
+        if not report.get("ready"):
+            if base_environment.get("MOWER_RESUME_MODE") in ("0", "1"):
+                start_type = base_environment["MOWER_RESUME_MODE"]
+            elif (
+                base_environment.get("MOWER_RESTART_JOB")
+                and base_environment.get("MOWER_RESUME_RUN") == "1"
+            ):
+                start_type = "2"
         if (
             not recovery_path.exists()
             or isinstance(previous, dict)
@@ -370,12 +370,14 @@ def supervise(
         ):
             notice = {
                 "active": True,
+                "startup": False,
                 "phase": "waiting",
                 "exit_code": code,
                 "attempt": attempts,
                 "occurred_at": datetime.now(timezone.utc).isoformat(),
                 "reason": report.get("failure_reason", "process_exit"),
                 "message": "主实例意外退出或服务持续无响应；后台正在恢复服务，重新观察后自动接续已保存任务。",
+                "start_type": start_type,
             }
             if wanted is not None:
                 notice["resume_requested"] = wanted
@@ -383,11 +385,20 @@ def supervise(
                 if previous.get("reset_observation_pending"):
                     notice["start_type"] = "2"
                     notice["reset_observation_pending"] = True
-                elif previous.get("active") is True:
+                elif previous.get("pending_start_type") in ("1", "2"):
+                    notice["start_type"] = previous["pending_start_type"]
+                elif previous.get("active") is True and (
+                    report.get("ready")
+                    or base_environment.get("MOWER_RECOVERY_RUN") is not None
+                ):
                     notice["start_type"] = previous.get("start_type", "0")
+            if notice["start_type"] in ("1", "2"):
+                notice["pending_start_type"] = notice["start_type"]
+            if notice["start_type"] == "2":
+                notice["reset_observation_pending"] = True
             runtime.write_json(recovery_path, notice, sync=True)
         if wanted is None:
-            base_environment.pop("MOWER_RECOVERY_RUN", None)
+            base_environment["MOWER_RECOVERY_RUN"] = "unknown"
         else:
             base_environment["MOWER_RECOVERY_RUN"] = "1" if wanted else "0"
         runtime.write_json(

@@ -662,8 +662,7 @@ def simulate(saved):
             else:
                 from arknights_mower.utils import crash_recovery
 
-                if crash_recovery.reset_observation_pending():
-                    crash_recovery.checkpoint_reset(base_scheduler)
+                crash_recovery.checkpoint_start(base_scheduler)
             break
         except RECOVERABLE_DEVICE_ERRORS as exc:
             # 恢复前的房间读取也由原设备会话处理，保留已还原的任务和调度器。

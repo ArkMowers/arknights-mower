@@ -874,9 +874,16 @@ def _run_desktop():
     resume = (
         resume_mode in ("0", "1")
         or resume_run
-        or (resume_mode != "preserve" and conf.start_automatically)
+        or (
+            not os.environ.get("MOWER_RESTART_JOB")
+            and resume_mode != "preserve"
+            and conf.start_automatically
+        )
     )
-    child_ready(registration, desired_running=resume)
+    start_type = (
+        resume_mode if resume_mode in ("0", "1") else "2" if resume_run else "0"
+    )
+    child_ready(registration, desired_running=resume, start_type=start_type)
     crash_notice = crash_recovery.status()
     if crash_recovery.notice_path() is not None:
         recovery = crash_recovery.AutomaticRecovery(
@@ -1003,7 +1010,7 @@ def _run_desktop():
                     sleep(0.5)
                     continue
                 with server.app.test_request_context(headers={"token": runtime_token}):
-                    stopped = server.stop() == "true"
+                    stopped = server.stop(user_requested=False) == "true"
                 if stopped and registration.shutdown_requested():
                     shutdown.request("runtime_request")
                     break
