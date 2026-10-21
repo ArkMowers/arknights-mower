@@ -647,6 +647,23 @@ def post_plan_file(client, value, filename="plan.json", mimetype="application/js
     )
 
 
+def test_plan_entry_rejects_oversized_json_without_writing_plan(
+    plan_client, populated_plan, monkeypatch
+):
+    import server
+
+    config.plan = populated_plan
+    config.save_plan()
+    previous = config.plan_path.read_bytes()
+    monkeypatch.setattr(server, "MAX_PLAN_IMPORT_BYTES", 32)
+
+    response = post_plan_file(plan_client, b"{" + b" " * 31 + b"}")
+
+    assert response.status_code == 413
+    assert config.plan == populated_plan
+    assert config.plan_path.read_bytes() == previous
+
+
 @pytest.mark.parametrize("zip_backup", [False, True])
 def test_plan_entry_imports_json_or_zip_without_other_settings(
     plan_client, populated_plan, zip_backup

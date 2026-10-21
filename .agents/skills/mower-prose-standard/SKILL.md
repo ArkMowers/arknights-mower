@@ -19,6 +19,15 @@ Inputs: requested text and its authoritative role. Output: precise prose or read
 5. Separate final facts from work records. Decision rationale and postmortem history keep their authoritative role. Preserved quotations and test counterexamples need an explicit label and source, separate from current recommendations. Keep real code identifiers unchanged; backticks or code fences alone do not establish an exception.
 6. Verify affected links and run the applicable [text checks](../../../scripts/README.md#formal-text-checks). Program results establish listed-term absence and source-marker validity; a reviewer still checks meaning, title scope and source relevance. Prose editing alone creates no record or lifecycle transition.
 
+<a id="public-security-metadata"></a>
+## Public Security Metadata
+
+When the user or repository context marks a security issue as sensitive, embargoed or unsuitable for public disclosure, treat PR titles and bodies, Changelog entries, commit messages, branch names, review replies, CI annotations and public links as public metadata. Apply the disclosure boundary before selecting facts or drafting text.
+
+1. Do not disclose the vulnerability class, severity, affected endpoint or sink when it identifies the weakness, attacker prerequisites, exploit chain, payload or proof of concept, secret values, or language confirming that a missing control existed. A user request to omit one sensitive issue from PR text also applies to the other public metadata for the same change unless the user explicitly sets a narrower boundary.
+2. Use neutral but truthful wording about the maintained behavior, compatibility boundary or validation result. Do not claim that the change has no security impact or otherwise replace omitted facts with a false statement. Keep exact technical details in the implementation, focused tests and an authorized private disclosure channel; omission from public prose never authorizes weaker implementation or verification.
+3. Before publishing, review the complete public metadata set for indirect disclosure through titles, examples, filenames, links or combined statements. Neutral metadata does not conceal the public Git diff. If publishing the requested branch, commit or PR would itself expose details outside the accepted disclosure boundary, stop and recommend a private security advisory or embargoed coordination instead.
+
 <a id="chinese-prose"></a>
 ## 中文表达
 
