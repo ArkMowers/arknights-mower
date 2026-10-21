@@ -463,7 +463,12 @@ class SceneGraphSolver(BaseSolver):
         game_restarted = False
 
         unknown_count = 0
+        cancelled_login_attempts = 0
         while (current := self.scene()) != scene:
+            if current == Scene.LOGIN_CANCELLED:
+                cancelled_login_attempts += 1
+                self.retry_cancelled_login(cancelled_login_attempts)
+                continue
             if current in self.waiting_scene and current != Scene.UNKNOWN:
                 self.waiting_solver()
                 continue

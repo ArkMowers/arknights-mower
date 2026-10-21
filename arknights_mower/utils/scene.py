@@ -59,6 +59,8 @@ class Scene:
     "新登陆界面"
     LOGIN_BILIBILI_PRIVACY = 116
     "B服隐私政策提示"
+    LOGIN_CANCELLED = 117
+    "登录被取消"
     INFRA_MAIN = 201
     "基建全局视角"
     INFRA_TODOLIST = 202
@@ -330,6 +332,7 @@ SceneComment = {
     113: "4周年签到",
     114: "新登陆界面",
     116: "B服隐私政策提示",
+    117: "登录被取消",
     201: "基建全局视角",
     202: "基建待办事项",
     203: "线索主界面",
