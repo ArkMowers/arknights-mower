@@ -1,7 +1,6 @@
-"""回班等待保留原安排，并在同轮检查独立的源石碎片补货。"""
+"""回班无需补读核验，同轮仍按原预算检查源石碎片补货。"""
 
 import pickle
-from copy import deepcopy
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -50,7 +49,8 @@ def replenishment(resting, monkeypatch):
     scheduler.enable_party = False
     scheduler.drone_room = scheduler.drone_time = None
     scheduler.refresh_connecting = False
-    scheduler.planned = scheduler.todo_task = scheduler.collect_notification = False
+    scheduler.planned = True
+    scheduler.todo_task = scheduler.collect_notification = False
     scheduler.error = False
     scheduler.reload_time = datetime.now() - timedelta(hours=config.conf.maa_gap + 1)
     return scheduler
@@ -66,14 +66,16 @@ def pending_return(scheduler, *, initial=False, observed_deadline=False):
     task.time -= timedelta(minutes=20)
     scheduler.tasks, scheduler.task = [task], task
     op = scheduler.op_data.operators["讯使"]
+    scheduler.op_data.get_dorm_by_name(op.name)[1].time = (
+        datetime.now() + timedelta(minutes=31) if observed_deadline else None
+    )
+    from arknights_mower.tests.dorm_group_tests import apply_plan
 
-    def read(rooms):
-        op.mood, op.time_stamp = 18, datetime.now()
-        scheduler.op_data.get_dorm_by_name(op.name)[1].time = (
-            datetime.now() + timedelta(minutes=31) if observed_deadline else None
-        )
+    scheduler.agent_arrange.side_effect = lambda plan, *a, **kw: (
+        apply_plan(scheduler, plan),
+        True,
+    )[1]
 
-    scheduler._read_recovery_rooms = Mock(side_effect=read)
     return task
 
 
@@ -86,14 +88,14 @@ def finish_dispatch(scheduler):
 
 @pytest.mark.parametrize("initial", [False, True])
 @pytest.mark.parametrize("observed_deadline", [False, True])
-def test_recovery_pause_checks_both_shard_rooms_before_ending_dispatch(
+def test_return_checks_both_shard_rooms_before_ending_dispatch(
     replenishment, initial, observed_deadline
 ):
     scheduler = replenishment
     task = pending_return(
         scheduler, initial=initial, observed_deadline=observed_deadline
     )
-    original_plan, original_time = deepcopy(task.plan), task.time
+    original_time = task.time
     started_at = datetime.now()
 
     # 与 BaseSolver.run 相同：只有 transition 返回真值才结束本轮。
@@ -110,19 +112,17 @@ def test_recovery_pause_checks_both_shard_rooms_before_ending_dispatch(
         (1425, 895),
     ]
     assert scheduler.reload_time >= started_at
-    scheduler.agent_arrange.assert_not_called()
-    assert task.plan == original_plan and task.time == original_time
-    scheduler._read_recovery_rooms.assert_called_once()
-    if observed_deadline:
-        assert task in scheduler.waiting_group_shifts
-        assert task not in scheduler.tasks
-    else:
-        assert task in scheduler.tasks
-        assert task.execution_failure
+    scheduler.agent_arrange.assert_called_once()
+    assert task.time == original_time
+    assert task not in scheduler.tasks
+    assert scheduler.op_data.operators["讯使"].is_working()
+    assert not getattr(task, "execution_failure", None)
+    assert not getattr(scheduler, "waiting_group_shifts", [])
+    scheduler._scan_card_moods.assert_not_called()
 
 
 @pytest.mark.parametrize("constraint", ["interval", "critical_task"])
-def test_recovery_pause_preserves_replenishment_interval_and_task_budget(
+def test_return_preserves_replenishment_interval_and_task_budget(
     replenishment, constraint
 ):
     scheduler = replenishment
@@ -146,23 +146,16 @@ def test_recovery_pause_preserves_replenishment_interval_and_task_budget(
     assert scheduler.reload_time == original_time
 
 
-def test_retained_return_survives_restart_yields_to_other_work_and_resumes(
-    replenishment,
-):
-    from arknights_mower.tests.dorm_group_tests import apply_plan
-
+def test_saved_return_executes_then_releases_independent_work(replenishment):
     scheduler = replenishment
     task = pending_return(scheduler)
-    original_time, original_plan = task.time, deepcopy(task.plan)
-    finish_dispatch(scheduler)
     restored = pickle.loads(pickle.dumps(task))
-    scheduler.tasks = [restored]
-    for _ in range(3):
-        scheduler._resume_failed_tasks()
-        assert restored.execution_failure
-        assert restored.time == original_time and restored.plan == original_plan
-    scheduler._read_recovery_rooms.assert_called_once()
-
+    scheduler.tasks, scheduler.task = [restored], restored
+    original_time = restored.time
+    finish_dispatch(scheduler)
+    assert restored.time == original_time
+    assert all(t is not restored for t in scheduler.tasks)
+    assert scheduler.op_data.operators["讯使"].is_working()
     independent = SchedulerTask(task_type=TaskTypes.DEPOT)
     scheduler.tasks.append(independent)
     scheduler.task = independent
@@ -170,23 +163,4 @@ def test_retained_return_survives_restart_yields_to_other_work_and_resumes(
     scheduler.infra_main()
     scheduler.仓库扫描.assert_called_once()
     assert all(t is not independent for t in scheduler.tasks)
-    assert any(t is restored for t in scheduler.tasks)
-
-    op = scheduler.op_data.operators["讯使"]
-    op.mood, op.time_stamp = 24, datetime.now()
-    scheduler._resume_failed_tasks()
-    assert not getattr(restored, "execution_failure", None)
-    assert restored.time == original_time and restored.plan == original_plan
-
-    def arrange(plan, *args, **kwargs):
-        apply_plan(scheduler, plan)
-        plan.clear()
-        return True
-
-    scheduler.agent_arrange.side_effect = arrange
-    scheduler.task = restored
-    scheduler.infra_main()
-    assert op.is_working()
-    assert all(t is not restored for t in scheduler.tasks)
-    scheduler._read_recovery_rooms.assert_called_once()
-    assert scheduler.tap.call_count == 4
+    scheduler._scan_card_moods.assert_not_called()

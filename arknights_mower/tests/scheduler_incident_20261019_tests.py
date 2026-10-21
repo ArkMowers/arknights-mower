@@ -112,8 +112,7 @@ def test_personal_release_keeps_food_beast_in_recovery(incident, monkeypatch):
 
 
 def test_actual_return_then_backup_round_trip_does_not_restore_old_wait(incident):
-    from arknights_mower.utils.recovery_execution import required_recovery_members
-    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+    from arknights_mower.utils.group_recovery import group_recovery_deadline
 
     solver, _ = incident
     data = solver.op_data
@@ -136,15 +135,9 @@ def test_actual_return_then_backup_round_trip_does_not_restore_old_wait(incident
     data.restore_group_shift_state(
         data.group_shift_state, saved, data.group_recovery_return_time
     )
-    task = SchedulerTask(
-        NOW, {"room_2_2": ["Current", "食铁兽", "Current"]}, TaskTypes.RE_ORDER
-    )
-    assert op.name not in required_recovery_members(data, task, now=NOW)
-    original_time = task.time
     for _ in range(3):
-        assert solver._verify_required_recovery(task)
-        assert not getattr(task, "execution_failure", None)
-        assert task.time == original_time
+        required, _ = group_recovery_deadline(data, op.group, now=NOW)
+        assert op.name not in required
         assert solver.tasks == []
 
 
@@ -189,7 +182,8 @@ def test_waiting_group_does_not_rebuild_cancelled_shared_dorm_correction(
         },
         TaskTypes.SHIFT_ON,
     )
-    waiting.recovery_waiting_observations = {"森蚺": NOW}
+    waiting.group_shift_waiting = {"自动化"}
+    waiting.group_shift_predecessors = ()
     solver.waiting_group_shifts = [waiting]
     first = solver.agent_get_mood(read_rooms=False, return_plan=True)
     assert first.get("dormitory_3", ["Current"])[0] != "塑心"

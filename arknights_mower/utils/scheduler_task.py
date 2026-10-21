@@ -1986,6 +1986,8 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
     from arknights_mower.utils.group_recovery import (
         group_recovery_deadline,
         observed_full_mood,
+        observed_recovery_deadline,
+        recovery_mood_complete,
     )
 
     actual_data = op_data
@@ -2043,6 +2045,24 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
                     for idx, name in enumerate(agents):
                         if name not in ("Current", "Free", ""):
                             existing_targets[name] = (room, idx)
+    previous_returns = {}
+    for task in tasks:
+        if task.type != TaskTypes.SHIFT_ON or id(task) in locked_ids:
+            continue
+        for room, row in task.plan.items():
+            if room.startswith("dorm"):
+                continue
+            for name in row:
+                op = op_data.operators.get(name)
+                if op is None or op.is_working():
+                    continue
+                window = getattr(task, "return_windows", {}).get(name)
+                versions = dict(window[0][0]) if window else {}
+                versions.update(getattr(task, "recovery_position_versions", {}))
+                previous_returns[name] = (
+                    task.time,
+                    versions.get(name, getattr(op, "dorm_position_version", 0)),
+                )
     previous_releases = [t for t in tasks if getattr(t, "strict_mood_limit", False)]
     # 失败保留与切产物预约保留原对象和时间，只重算无关回班／清退。
     tasks = [
@@ -2115,6 +2135,14 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
     return_windows = {}
     now = datetime.now()
 
+    def previous_return_time(name):
+        previous = previous_returns.get(name)
+        if previous and previous[1] == getattr(
+            op_data.operators[name], "dorm_position_version", 0
+        ):
+            return previous[0]
+        return None
+
     def normal_return_time(dorms):
         operator = op_data.operators[dorms[0].name]
         members = (
@@ -2154,7 +2182,15 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
                 observed.individual_return_window = (identity, start)
         for bed in dorms:
             return_windows[bed.name] = (identity, start)
-        return min(bed.time for bed in dorms if bed.time is not None)
+        known = [bed.time for bed in dorms if bed.time is not None]
+        if known:
+            return min(known)
+        # 缺少新倒计时不取消既有回班；普通回班生成时仍保留原有提前量。
+        return min(
+            previous_return_time(bed.name)
+            for bed in dorms
+            if previous_return_time(bed.name) is not None
+        ) + timedelta(minutes=8)
 
     logger.debug(f"预测最低休息时间为: {min_resting_time}")
     grouped_dorms = defaultdict(list)
@@ -2212,6 +2248,15 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
             high_dorms = _high_dorms
         if high_dorms and group_name:
             required, deadline = group_recovery_deadline(op_data, group_name, now=now)
+            previous = [
+                due
+                for name in required
+                if not recovery_mood_complete(op_data, op_data.operators[name], now)
+                and observed_recovery_deadline(op_data, name) is None
+                and (due := previous_return_time(name)) is not None
+            ]
+            if previous:
+                deadline = max(previous + ([deadline] if deadline is not None else []))
             if (
                 group_name in op_data.group_recovery_full_members
                 and op_data.group_is_resting(group_name)
@@ -2224,12 +2269,13 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
                     actual_data.group_recovery_return_time[group_name] = (
                         op_data.group_recovery_return_time[group_name]
                     )
-            if required or deadline is not None:
-                if deadline is None:
-                    continue
+            if deadline is not None:
                 task_time = deadline
             else:
-                if not any(dorm.time is not None for dorm in high_dorms):
+                if not any(
+                    dorm.time is not None or previous_return_time(dorm.name) is not None
+                    for dorm in high_dorms
+                ):
                     continue
                 task_time = normal_return_time(high_dorms)
             if task_time not in new_task:
@@ -2242,10 +2288,14 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
             # 单独添加，最后合并
             # high_droms 如果触发急救模式，后面的移送到急救前
             for room in high_dorms:
-                if room.time and room.name:
+                if room.name and (
+                    room.time is not None or previous_return_time(room.name) is not None
+                ):
                     rest_in_full = op_data.operators[room.name].rest_in_full
                     task_time = (
-                        normal_return_time([room]) if not rest_in_full else room.time
+                        normal_return_time([room])
+                        if not rest_in_full
+                        else room.time or previous_return_time(room.name)
                     )
                     if task_time not in new_task:
                         new_task[task_time] = ([room], rest_in_full)
@@ -2277,6 +2327,12 @@ def plan_metadata(op_data, tasks, *, excluded_names=()):
     )
     for task in generated:
         if task.type == TaskTypes.SHIFT_ON:
+            task.recovery_position_versions = {
+                name: getattr(observed_operators[name], "dorm_position_version", 0)
+                for row in task.plan.values()
+                for name in row
+                if name in observed_operators
+            }
             task.return_windows = {
                 name: return_windows[name]
                 for row in task.plan.values()

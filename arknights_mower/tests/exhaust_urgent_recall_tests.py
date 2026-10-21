@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from arknights_mower.tests.exhaust_replacement_tests import solver as solver
-from arknights_mower.utils.recovery_execution import required_recovery_members
 from arknights_mower.utils.scheduler_task import TaskTypes
 
 
@@ -31,7 +30,6 @@ def test_exhausted_worker_recalls_cover_owner_without_ordinary_wait(solver, ordi
         assert original.type == TaskTypes.EXHAUST_OFF
         solver.task = support[0]
         assert solver._coordination_support_valid(support[0].plan, ["机械师"])
-        assert required_recovery_members(data, support[0]) == set()
     assert data.operators["苍苔"].is_resting()
     assert data.operators["槐琥"].current_room == "room_2_2"
 

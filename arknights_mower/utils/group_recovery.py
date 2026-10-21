@@ -127,16 +127,14 @@ def group_recovery_deadline(data, group, *, now=None):
         dict.fromkeys(explicit + (gap_names if cap is None or now < cap else []))
     )
     explicit_times = [completed_at(data.operators[name]) for name in explicit]
-    if any(at is None for at in explicit_times):
-        return required, None
-    deadlines = list(explicit_times)
+    # 缺少个别读数时沿用可用期限，不把补读变成整组回班的前置条件。
+    deadlines = [at for at in explicit_times if at is not None]
     if gap_names:
         times = [completed_at(data.operators[name]) for name in gap_names]
-        if any(at is None for at in times):
-            if cap is None:
-                return required, None
+        known = [at for at in times if at is not None]
+        if len(known) != len(times) and cap is not None:
             deadlines.append(cap)
-        else:
-            latest = max(times)
+        elif known:
+            latest = max(known)
             deadlines.append(min(latest, cap) if cap is not None else latest)
     return required, max(now, *deadlines) if deadlines else None

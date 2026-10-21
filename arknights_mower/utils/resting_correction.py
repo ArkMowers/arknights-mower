@@ -103,7 +103,7 @@ def _resting_members(op_data):
             continue
         end = ends.get(name)
         mood = dorm_candidate_mood(op_data, name, now)
-        unfinished = (
+        unfinished = not recovery_mood_complete(op_data, op, now) and (
             end > now if end is not None else mood is not None and mood < op.upper_limit
         )
         if unfinished:
@@ -127,21 +127,11 @@ def _resting_members(op_data):
             and not op_data.operators[name].workaholic
         ]
         if group not in recovery_groups and any(
-            not op.is_resting()
-            and not (
-                not op.current_room
-                and (
-                    op_data._can_standby(op)
-                    or op_data.rest_mood_complete(op.name)
-                    or op.time_stamp is not None
-                    and op.mood >= op.upper_limit
-                )
-            )
+            op.current_room and not op.is_resting()
             for op in members
             if op_data.is_group_shift_anchor(op)
         ):
-            # 没有未完成回满要求时，半组在岗或离岗成员缺少有效满心情
-            # 记录，仍由原有整组纠错完成回班。
+            # 半组在岗仍由整组纠错处理；空闲成员缺少读数不提前召回在休成员。
             resting.difference_update(set(op_data.groups[group]) - covered)
         else:
             resting.update(op.name for op in members)
