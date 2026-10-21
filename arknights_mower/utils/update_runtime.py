@@ -41,7 +41,7 @@ def state_dir(root=None):
 
 
 @contextmanager
-def supervision_lock(directory, timeout=15.0, *, child=False):
+def supervision_lock(directory, timeout=15.0, *, child=False, cancelled=None):
     """Lock configuration-space ownership without importing the installation."""
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
@@ -52,6 +52,8 @@ def supervision_lock(directory, timeout=15.0, *, child=False):
             stream.flush()
         deadline = time.monotonic() + timeout
         while True:
+            if cancelled is not None and cancelled():
+                raise InterruptedError("启动已取消，保留现有实例")
             try:
                 stream.seek(0)
                 if sys.platform == "win32":

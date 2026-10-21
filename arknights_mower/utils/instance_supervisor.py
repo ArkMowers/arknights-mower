@@ -2,10 +2,12 @@
 
 import mmap
 import os
+import signal
 import subprocess
 import sys
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -24,6 +26,47 @@ _report_lock = threading.RLock()
 
 class AutomaticStartCancelled(RuntimeError):
     """The existing Stop intent rejects an internal automatic start."""
+
+
+class ConsoleStop:
+    """Record console requests without interrupting process or lock cleanup."""
+
+    def __init__(self):
+        self.requested = False
+        self.force = False
+
+    def handle(self, signum, frame):
+        if self.requested:
+            self.force = True
+        self.requested = True
+
+
+@contextmanager
+def console_stop():
+    stop = ConsoleStop()
+    previous = signal.signal(signal.SIGINT, stop.handle)
+    try:
+        yield stop
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
+
+def _cancel_console_recovery(directory):
+    path = Path(directory) / "recovery.json"
+    notice = runtime.read_json(path)
+    if not isinstance(notice, dict) or notice.get("active") is not True:
+        return
+    notice.update(
+        resume_requested=False,
+        phase="stopped",
+        next_retry_at=None,
+        message="任务已停止，后台不会自动启动任务。",
+    )
+    try:
+        runtime.write_json(path, notice, sync=True)
+    except OSError:
+        # Failed status publication must not interrupt owned resource cleanup.
+        pass
 
 
 def supervisor_directory(arguments):
@@ -264,6 +307,8 @@ def supervise(
     health_timeout=3.0,
     health_failure_window=120.0,
     health_probe=http_probe,
+    stop=None,
+    shutdown_timeout=60.0,
 ):
     """Restore established-process exits; never infer dispatch progress or replay."""
     directory = Path(directory)
@@ -275,14 +320,14 @@ def supervise(
     def recovery_suppressed(report):
         request = report.get("shutdown_request")
         return (
-            report.get("intentional") is True
+            (stop is not None and stop.requested)
+            or report.get("intentional") is True
             or (request and Path(request).exists())
             or runtime.active_job(state)
         )
 
     def retry(report, code, desired):
         nonlocal exits
-        request = report.get("shutdown_request")
         if code == INTENTIONAL_EXIT_CODE or recovery_suppressed(report):
             return False
         if not report.get("ready"):
@@ -361,7 +406,7 @@ def supervise(
         )
         until = time.monotonic() + delay
         while time.monotonic() < until:
-            if runtime.active_job(state) or (request and Path(request).exists()):
+            if recovery_suppressed(report):
                 return False
             time.sleep(min(poll_interval, max(0, until - time.monotonic())))
         # A replacement launch must not inherit update-resume intent from an old job.
@@ -373,6 +418,8 @@ def supervise(
         return True
 
     while True:
+        if stop is not None and stop.requested:
+            return INTENTIONAL_EXIT_CODE
         generation = uuid4().hex
         report_path = directory / f"child-{generation}.json"
         child_environment = base_environment.copy()
@@ -400,7 +447,14 @@ def supervise(
                 intent[0] = 255
                 child_environment["MOWER_SUPERVISOR_INTENT"] = control_name
                 windows_job = WindowsInstanceJob()
-                options["creationflags"] = options.get("creationflags", 0) | 0x00000004
+                # Keep console output, but only the supervisor receives Ctrl+C.
+                options["creationflags"] = (
+                    options.get("creationflags", 0)
+                    | 0x00000004
+                    | subprocess.CREATE_NEW_PROCESS_GROUP
+                )
+            if stop is not None and stop.requested:
+                raise InterruptedError("启动已取消")
             process = subprocess.Popen(
                 command,
                 env=child_environment,
@@ -426,12 +480,16 @@ def supervise(
                 1,
                 None,
             ):
-                return 1
+                return (
+                    INTENTIONAL_EXIT_CODE if stop is not None and stop.requested else 1
+                )
             continue
         owned_leaf = None
         deadline = time.monotonic() + startup_timeout
         probe_at = 0.0
         unavailable_since = None
+        shutdown_deadline = None
+        requested_shutdown = None
         try:
             while True:
                 observed = runtime.read_json(report_path)
@@ -447,6 +505,26 @@ def supervise(
                                 owned_leaf = OwnedWindowsProcess(pid, windows_job)
                             except ProcessLookupError:
                                 pass
+                if stop is not None and stop.requested:
+                    if shutdown_deadline is None:
+                        shutdown_deadline = time.monotonic() + shutdown_timeout
+                    if intent is not None:
+                        intent[0] = 0
+                    request = report.get("shutdown_request")
+                    if request and request != requested_shutdown:
+                        try:
+                            runtime.write_json(request, {"reason": "ctrl_c"}, sync=True)
+                            requested_shutdown = request
+                        except OSError:
+                            # Retry within the same shutdown deadline after disk failure.
+                            pass
+                    if stop.force or time.monotonic() >= shutdown_deadline:
+                        if owned_leaf is not None:
+                            owned_leaf.stop()
+                        if process.poll() is None:
+                            process.terminate()
+                            process.wait(timeout=5)
+                        break
                 # Adopt an already-published leaf before treating wrapper exit
                 # as instance exit; a venv/frozen launcher may finish first.
                 if process.poll() is not None and (
@@ -522,17 +600,31 @@ def supervise(
             if windows_job is not None:
                 windows_job.close()
             report_path.unlink(missing_ok=True)
+        if stop is not None and stop.requested:
+            return INTENTIONAL_EXIT_CODE
         if not retry(report, code, desired):
-            return code
+            return (
+                INTENTIONAL_EXIT_CODE if stop is not None and stop.requested else code
+            )
 
 
 def run_launcher(arguments):
-    directory = supervisor_directory(arguments)
-    with instance_lock(directory):
-        # A surviving child retains exclusivity even after supervisor termination.
-        with instance_lock(directory, timeout=0, child=True):
-            pass
-        return supervise(child_command(arguments), directory)
+    with console_stop() as stop:
+        directory = supervisor_directory(arguments)
+        try:
+            with instance_lock(directory, cancelled=lambda: stop.requested):
+                # A surviving child retains exclusivity after supervisor termination.
+                with instance_lock(directory, timeout=0, child=True):
+                    pass
+                try:
+                    return supervise(child_command(arguments), directory, stop=stop)
+                finally:
+                    if stop.requested:
+                        _cancel_console_recovery(directory)
+        except InterruptedError:
+            if not stop.requested:
+                raise
+            return INTENTIONAL_EXIT_CODE
 
 
 wait_for_release = runtime.wait_for_supervisor_release
