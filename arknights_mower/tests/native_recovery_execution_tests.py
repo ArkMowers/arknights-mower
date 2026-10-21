@@ -170,10 +170,15 @@ def test_normal_room_observation_updates_pending_return_before_dispatch(resting)
     scheduler.enter_room.assert_not_called()
 
 
-def test_observation_waits_for_started_handoff_before_replanning(resting):
+@pytest.mark.parametrize("handoff", ["group_shift_expected", "backup_shift_active"])
+def test_observation_waits_for_started_handoff_before_replanning(resting, handoff):
     scheduler, now = resting
     task = returning_task()
-    task.group_shift_expected = {("contact", 0): "讯使"}
+    setattr(
+        task,
+        handoff,
+        {("contact", 0): "讯使"} if handoff == "group_shift_expected" else True,
+    )
     scheduler.tasks = [task]
     plan, at = deepcopy(task.plan), task.time
     observe_dorm(scheduler)
@@ -181,11 +186,47 @@ def test_observation_waits_for_started_handoff_before_replanning(resting):
     assert scheduler._recovery_plan_dirty
     assert scheduler.tasks == [task]
     assert task.plan == plan and task.time == at
-    del task.group_shift_expected
+    delattr(task, handoff)
     scheduler.tasks.remove(task)
     scheduler._refresh_observed_recovery_tasks()
     assert not scheduler._recovery_plan_dirty
     assert any(t.type == TaskTypes.SHIFT_ON for t in scheduler.tasks)
+
+
+@pytest.mark.parametrize("backup_active", [False, True])
+def test_failed_unrelated_handoff_allows_observed_return_update(resting, backup_active):
+    scheduler, now = resting
+    data = scheduler.op_data
+    data.operators["讯使"].rest_in_full = True
+    scheduler.plan_metadata()
+    original = next(t for t in scheduler.tasks if t.type == TaskTypes.SHIFT_ON)
+    assert original.time == now + timedelta(hours=5)
+    data.operators["芬"] = Operator(
+        "芬", "room_1_1", index=0, mood=24, operator_type="high"
+    )
+    data.plan["room_1_1"] = [Room("芬", "", ["年"])]
+    failure = SchedulerTask(
+        task_type=TaskTypes.SELF_CORRECTION, task_plan={"room_1_1": ["芬"]}
+    )
+    failure.group_shift_expected = {("room_1_1", 0): "芬"}
+    failure.backup_shift_active = backup_active
+    scheduler.tasks.append(failure)
+    scheduler._retain_failed_task(failure, "换班实测驻员与目标不一致", ["room_1_1"])
+    before_plan, before_time = deepcopy(failure.plan), failure.time
+    bed = data.get_dorm_by_name("讯使")[1]
+    bed.time = now + timedelta(hours=6)
+    observe_dorm(scheduler)
+
+    for _ in range(3):
+        scheduler._resume_failed_tasks()
+        scheduler._refresh_observed_recovery_tasks()
+        returns = [t for t in scheduler.tasks if t.type == TaskTypes.SHIFT_ON]
+        assert len(returns) == 1 and returns[0].time == bed.time
+        assert sum(t is failure for t in scheduler.tasks) == 1
+        assert failure.execution_failure
+        assert failure.plan == before_plan and failure.time == before_time
+        assert not scheduler._recovery_plan_dirty
+    scheduler.enter_room.assert_not_called()
 
 
 def test_idle_unknown_group_member_keeps_known_recovery_deadline(resting):

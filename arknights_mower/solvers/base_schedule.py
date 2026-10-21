@@ -2037,16 +2037,20 @@ class BaseSchedulerSolver(
         if any(
             getattr(task, "group_shift_expected", {})
             or getattr(task, "backup_shift_active", False)
-            for task in self.tasks
+            for task in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
         ):
             return
         self.plan_metadata()
         self._recovery_plan_dirty = False
 
-    def _waiting_shift_reservations(self):
+    def _waiting_shift_reservations(self, *, returning_groups=()):
+        """等待任务保留目标，但不阻止其依赖组回班释放替班。"""
         names = {
             name
             for task in getattr(self, "waiting_group_shifts", ())
+            if not set(returning_groups).intersection(
+                getattr(task, "group_shift_waiting", ())
+            )
             for row in task.plan.values()
             for name in row
             if name in self.op_data.operators
@@ -7145,8 +7149,11 @@ class BaseSchedulerSolver(
         self._resume_waiting_group_shifts()
         return True
 
-    def _suppress_retained_arrangements(self, plan):
+    def _suppress_retained_arrangements(self, plan, *, returning_groups=()):
         """派生安排不重做保留任务，也不挪用其目标和当前驻员。"""
+        waiting_names, waiting_slots = self._waiting_shift_reservations(
+            returning_groups=returning_groups
+        )
         names, slots = retained_task_reservations(
             self.op_data,
             self.tasks,
@@ -7159,7 +7166,6 @@ class BaseSchedulerSolver(
                 if not resting
             ],
         )
-        waiting_names, waiting_slots = self._waiting_shift_reservations()
         names.update(waiting_names)
         slots.update(waiting_slots)
         for room, row in list(plan.items()):
@@ -7384,7 +7390,9 @@ class BaseSchedulerSolver(
                     if pending.type != TaskTypes.SHIFT_ON or pending.retains_execution
                 ],
             )
-            waiting_names, waiting_slots = simulation._waiting_shift_reservations()
+            waiting_names, waiting_slots = simulation._waiting_shift_reservations(
+                returning_groups=returning_groups
+            )
             reserved_names.update(waiting_names)
             reserved_slots.update(waiting_slots)
             step.plan = prioritize_new_dorm_recovery(
@@ -7402,7 +7410,9 @@ class BaseSchedulerSolver(
                 reserved_names=reserved_names,
             )
             simulation._suppress_train_arrangement(step.plan)
-            simulation._suppress_retained_arrangements(step.plan)
+            simulation._suppress_retained_arrangements(
+                step.plan, returning_groups=returning_groups
+            )
             return_plan = step.plan
             if initial_correction:
                 # 初始化纠错只是驻员建议，允许低心情主班在本轮直接下班。
@@ -7550,7 +7560,9 @@ class BaseSchedulerSolver(
                 for room, names in rest.items()
                 if any(name != "Current" for name in names)
             }
-            simulation._suppress_retained_arrangements(rest)
+            simulation._suppress_retained_arrangements(
+                rest, returning_groups=returning_groups
+            )
             if rest:
                 step = SchedulerTask(task_type=TaskTypes.SHIFT_OFF, task_plan=rest)
                 step.ordinary_coordination = bool(rest_requests)

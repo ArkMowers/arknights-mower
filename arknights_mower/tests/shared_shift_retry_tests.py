@@ -29,6 +29,7 @@ def test_queued_shift_waits_for_working_primary_covers(working_shared_covers):
     assert admitted
     s.op_data = live
     assert shift_off(s, "甲")[0]
+    s.op_data.commit_group_shifts({"甲": True})
     blocked = SchedulerTask(task_type=TaskTypes.SHIFT_OFF, task_plan=queued_plan)
     s.task, s.tasks = blocked, [blocked]
     before_plan, before_time = deepcopy(blocked.plan), blocked.time
@@ -38,15 +39,34 @@ def test_queued_shift_waits_for_working_primary_covers(working_shared_covers):
     assert blocked.plan == before_plan
     assert not getattr(blocked, "group_shift_expected", {})
     s._suspend_group_shift(blocked, error.value.groups)
-    s._resume_waiting_group_shifts()
+    for _ in range(3):
+        s._resume_waiting_group_shifts()
+        assert s.waiting_group_shifts == [blocked]
     assert blocked not in s.tasks
     assert (blocked.plan, blocked.time) == (before_plan, before_time)
     assert s.op_data.operators[SHARED].current_room == "central"
     assert s.op_data.operators["清道夫"].current_room == "central"
     release = {"central": [A, "陈", *["Current"] * (len(live.plan["central"]) - 2)]}
-    apply(s, release)
-    s._resume_waiting_group_shifts()
+    returning = SchedulerTask(task_type=TaskTypes.SHIFT_ON, task_plan=release)
+    s.task, s.tasks = returning, [returning]
+    s.queue_product_switches = MagicMock()
+    s._sync_run_order_tasks = MagicMock()
+    s._prepare_group_shift(returning)
+    s._prepare_shift_cycle(returning)
+    assert returning.plan["central"][:2] == [A, "陈"]
+    assert s.waiting_group_shifts == [blocked]
+    assert blocked.plan == before_plan and blocked.time == before_time
+    assert s.op_data.group_is_resting("甲")
+    assert s.op_data.operators[SHARED].current_room == "central"
+    s._prepare_group_shift(returning, remember_targets=True)
+    apply(s, returning.plan)
+    assert s._complete_group_shift(returning)
+    s.tasks.remove(returning)
     assert s.tasks == [blocked] and not s.waiting_group_shifts
+    assert blocked.time == before_time
+    for _ in range(3):
+        s._resume_waiting_group_shifts()
+        assert s.tasks == [blocked]
     s._prepare_group_shift(blocked, remember_targets=True)
     assert blocked.group_shift_transitions["乙"]
 
