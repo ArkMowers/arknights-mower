@@ -1,4 +1,24 @@
+import json
+from pathlib import Path
+
 import pytest
+
+
+def pytest_generate_tests(metafunc):
+    if "contained_skill_roster" not in metafunc.fixturenames:
+        return
+    path = Path(__file__).parents[1] / "data/skill_data.json"
+    characters = json.loads(path.read_text(encoding="utf-8"))["characters"]
+    rosters = []
+    for cid, char in characters.items():
+        skills = [
+            (index, skill["name"])
+            for index, skill in enumerate(char.get("skills", []))
+            if skill.get("name")
+        ]
+        if any(a != b and a in b for _, a in skills for _, b in skills):
+            rosters.append(pytest.param((cid, char["name"], skills), id=cid))
+    metafunc.parametrize("contained_skill_roster", rosters)
 
 
 @pytest.fixture

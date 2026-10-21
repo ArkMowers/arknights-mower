@@ -111,6 +111,22 @@ def test_other_skill_does_not_match_gamma():
     assert match is not None and match[:2] == (1, "聆听")
 
 
+def test_skill_templates_require_the_whole_name(contained_skill_roster):
+    _, operator, skills = contained_skill_roster
+    data = json.loads(DATA.read_text(encoding="utf-8"))
+    font = ImageFont.truetype(
+        str(ROOT / "fonts/SourceHanSansCN-Medium-mastery.ttf"),
+        FONT_SIZE,
+        layout_engine=ImageFont.Layout.BASIC,
+    )
+    for index, name in skills:
+        rendered = render_template(f"[{operator}]{name}", font)
+        image = np.zeros((42, 520), dtype=np.uint8)
+        image[4 : 4 + rendered.shape[0], 5 : 5 + rendered.shape[1]] = rendered
+        match = recognize_skill(image, operator, data)
+        assert match is not None and match[:2] == (index, name), (operator, name)
+
+
 def test_amiya_forms_are_collected_and_recognized():
     data = json.loads(DATA.read_text(encoding="utf-8"))
     expected = {

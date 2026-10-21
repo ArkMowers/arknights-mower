@@ -8,6 +8,53 @@ import pytest
 from arknights_mower.solvers import mastery_reader as reader
 
 
+def test_contained_skill_names_match_only_the_observed_plan(contained_skill_roster):
+    from pathlib import Path
+
+    from PIL import ImageFont
+
+    from arknights_mower.utils.mastery_panel_model import FONT_SIZE, render_template
+    from arknights_mower.utils.skill_label import (
+        format_skill_label,
+        resolve_panel_skill,
+    )
+
+    char_id, operator, skills = contained_skill_roster
+    font = ImageFont.truetype(
+        str(Path(__file__).parents[1] / "fonts/SourceHanSansCN-Medium-mastery.ttf"),
+        FONT_SIZE,
+        layout_engine=ImageFont.Layout.BASIC,
+    )
+    for observed_index, name in skills:
+        rendered = render_template(f"[{operator}]{name}", font)
+        image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        image[934 : 934 + rendered.shape[0], 240 : 240 + rendered.shape[1]] = rendered[
+            :, :, None
+        ]
+        solver = MagicMock()
+        solver.read_screen.return_value = f"[{operator}]{name}"
+        panel = reader._read_panel_text(solver, image)
+        assert (panel.operator_name, panel.skill_name) == (operator, name)
+        assert resolve_panel_skill(operator, name) == observed_index
+        room = reader.RoomState("training", panel)
+        plans = [
+            {
+                "char_id": char_id,
+                "char_name": operator,
+                "skill_index": index,
+                "skill_name": format_skill_label(index, skill),
+                "status": "idle",
+            }
+            for index, skill in skills
+        ]
+        assert reader._match_plan(plans, room)["skill_index"] == observed_index
+        for plan in plans:
+            expected = plan["skill_index"] == observed_index
+            assert reader._plan_matches_room(plan, room) is expected
+            assert reader._can_adopt_expiry(plan, room) is expected
+            assert reader._can_recover_plan(plan, room) is expected
+
+
 def solver_with_text(*texts):
     solver = MagicMock()
     solver.recog.img = np.zeros((1080, 1920, 3), dtype=np.uint8)

@@ -104,7 +104,7 @@ def panel_skill_matches(panel_skill, plan_skill_name) -> bool:
     """主页面面板技能名 ⊂ 计划 skill_name（归一化后的包含匹配）。
 
     面板可能因长名截断只显示前缀，故用包含而非全等；
-    同一干员内技能名不重复，无歧义。
+    同一干员的技能名可能互相包含；已知干员先由 resolve_panel_skill 确认序号。
     OCR 偶尔在技能名后多读一个拉丁字母/数字（如「破坏与滋养」→「破坏与滋养A」），
     直接比不中；去掉尾部 ASCII 再比一次兜底。合法含尾字母的「红桃K」等先直接命中，
     不受影响。
@@ -151,8 +151,9 @@ def resolve_panel_skill(operator_name, panel_skill_text, char_id=None) -> Option
     """面板技能文本 → 干员已知技能序号（skill_data 对照解析）。
 
     已知技能 ≤3（skill_data.json characters[char_id].skills[].name）。面板文本对
-    每个有名字的已知技能做归一化互含匹配（面板 ⊂ 真名 或 真名 ⊂ 面板，容忍长名截断
-    与 OCR 首尾噪声）；同名多形态干员也逐形态比对。已知计划 char_id 且姓名一致时
+    每个有名字的已知技能先做归一化全等匹配，再做互含匹配（面板 ⊂ 真名 或
+    真名 ⊂ 面板，容忍长名截断与 OCR 首尾噪声）；同名多形态干员也逐形态比对。
+    已知计划 char_id 且姓名一致时
     只查该形态。命中**唯一**技能才返回序号；
     查无干员 / 无命名技能 / 0 或多候选 → 返回 None。
     """
@@ -179,6 +180,7 @@ def resolve_panel_skill(operator_name, panel_skill_text, char_id=None) -> Option
     panel = normalize_skill_text(panel_skill_text)
     if not panel:
         return None
+    exact = []
     hits = []
     for char in candidates:
         for idx, skill in enumerate(char.get("skills", [])):
@@ -186,8 +188,12 @@ def resolve_panel_skill(operator_name, panel_skill_text, char_id=None) -> Option
             if not name:
                 continue
             known = normalize_skill_text(name)
+            if known and panel == known:
+                exact.append(idx)
             if known and (panel in known or known in panel):
                 hits.append(idx)
+    if exact:
+        return exact[0] if len(exact) == 1 else None
     return hits[0] if len(hits) == 1 else None
 
 

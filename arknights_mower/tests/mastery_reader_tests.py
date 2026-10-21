@@ -180,6 +180,10 @@ class TestResolvePanelSkillRealData(unittest.TestCase):
         self.assertEqual(resolve_panel_skill("若叶睦", "破坏与滋养"), 1)
         self.assertEqual(resolve_panel_skill("若叶睦", "多首野兽"), 0)
 
+    def test_shared_fragment_remains_unknown(self):
+        self.assertIsNone(resolve_panel_skill("流星", "碎甲"))
+        self.assertIsNone(resolve_panel_skill("麒麟R夜刀", "舞"))
+
 
 class TestPanelParse(unittest.TestCase):
     def test_parse_bracketed(self):

@@ -23,6 +23,7 @@ NAME_BRACKET_WIDTH = 8
 NAME_BRACKET_MIN_SCORE = 0.80
 SKILL_MIN_SCORE = 0.70
 SKILL_MIN_MARGIN = 0.10
+SKILL_BOUNDARY_TOLERANCE = 8
 _model = None
 _model_loaded = False
 
@@ -101,6 +102,29 @@ def _name_score(region, template):
     return float(score)
 
 
+def _skill_score(region, template):
+    """Require the template to cover the visible skill text at both ends."""
+    if (
+        region.size == 0
+        or template.size == 0
+        or template.shape[0] > region.shape[0]
+        or template.shape[1] > region.shape[1]
+    ):
+        return 0.0
+    _, score, _, (x, _) = cv2.minMaxLoc(
+        cv2.matchTemplate(region, template, cv2.TM_CCORR_NORMED)
+    )
+    left, _, width, _ = cv2.boundingRect(region)
+    # Glyph edge differences fit within eight pixels at the bundled font size;
+    # a full preceding or following character must not be ignored.
+    if (
+        abs(x - left) > SKILL_BOUNDARY_TOLERANCE
+        or abs(x + template.shape[1] - left - width) > SKILL_BOUNDARY_TOLERANCE
+    ):
+        return 0.0
+    return float(score)
+
+
 def recognize_operator(img, data):
     """Match the full bracketed name against the roster, independently of OCR."""
     model = _load_model()
@@ -154,12 +178,17 @@ def recognize_skill(img, operator_name, data):
         if entry is None or entry["name"] != operator_name:
             continue
         prefix_width = entry["prefix_width"]
-        name_score = _score(binary[:, : prefix_width + 10], entry["name_template"])
+        name_region = binary[:, : prefix_width + 10]
+        name_template = entry["name_template"]
+        name_score = _score(name_region, name_template)
         if name_score < NAME_MIN_SCORE:
             continue
-        skill_region = binary[:, max(0, prefix_width - 10) :]
+        _, _, _, (name_x, _) = cv2.minMaxLoc(
+            cv2.matchTemplate(name_region, name_template, cv2.TM_CCORR_NORMED)
+        )
+        skill_region = binary[:, name_x + name_template.shape[1] :]
         scores.extend(
-            (index, name, name_score, _score(skill_region, template))
+            (index, name, name_score, _skill_score(skill_region, template))
             for index, name, template in entry["skills"]
         )
     if not scores:
