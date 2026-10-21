@@ -4,11 +4,15 @@
     <div class="mood-page-tools">
       <span>拖动卡片调整顺序；工休比报表自动同步。↓消耗 ↑恢复，单位：点/小时。</span>
       <n-button type="primary" secondary @click="newView">＋ 新建自定义观察表</n-button>
+      <n-button v-if="board.hiddenGroups.length" secondary @click="board.restoreGroups">
+        还原隐藏窗口（{{ board.hiddenGroups.length }}）
+      </n-button>
     </div>
-    <p v-if="historyLimited" class="history-note">
+    <p v-if="historyLimited || catalogLimited" class="history-note">
       当前历史查询接口不可用：自选表暂时只能组合默认报表中已有的干员。完整数据库查询需启用只读历史服务。
     </p>
     <p v-if="loadError" role="alert" class="history-note">{{ loadError }}</p>
+    <p v-if="board.saveError" role="alert" class="history-note">{{ board.saveError }}</p>
     <p v-if="formError" role="alert" class="history-note">{{ formError }}</p>
 
     <mood-card-grid :groups="orderedReportData" @reorder="reorderCards">
@@ -16,6 +20,14 @@
         <header class="group-head">
           <h2 :title="group.groupName">{{ group.groupName }}</h2>
           <div class="group-head-actions">
+            <n-button
+              size="tiny"
+              secondary
+              :aria-label="'隐藏' + group.groupName + '窗口'"
+              @click="board.hideGroup(group.boardKey)"
+            >
+              隐藏
+            </n-button>
             <n-button v-if="group.isCustom" size="tiny" secondary @click="editView(group.customId)">
               编辑
             </n-button>
@@ -113,7 +125,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, watch } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { Line } from 'vue-chartjs'
 import 'chartjs-adapter-luxon'
 import {
@@ -135,7 +147,8 @@ import MoodObservationEditor from '@/components/MoodObservationEditor.vue'
 import { useMoodBoardStore } from '@/stores/mood_board'
 import { useRecordStore } from '@/stores/record'
 import { moodStroke } from '@/utils/mood_colors'
-import { buildObservationGroups, mergeOperatorCatalog } from '@/utils/mood_observation'
+import { mergeOperatorCatalog } from '@/utils/mood_observation'
+import { useMoodGroups } from '@/composables/useMoodGroups'
 import {
   calculateMoodIntervals,
   describeMoodEvent,
@@ -161,15 +174,16 @@ const board = useMoodBoardStore()
 const { getMoodRatios, getMoodCatalog, getMoodSeries } = useRecordStore()
 const reportData = ref([])
 const catalog = ref([])
-const fetchedSeries = ref([])
-const historyLimited = ref(false)
+const viewHistory = useMoodGroups(board, reportData, getMoodSeries)
+const { groups, historyLimited } = viewHistory
+const catalogLimited = ref(false)
 const loadError = ref('')
 const formError = ref('')
 const editorShow = ref(false)
 const editingId = ref('')
 const fullscreenKey = ref('')
 const expandChart = ref({})
-const hiddenLines = ref({})
+const hiddenLines = computed(() => board.hiddenLines)
 const chartRefs = new Map()
 const chartIntervalCache = new WeakMap()
 
@@ -179,21 +193,9 @@ const fullscreenGroup = computed(
   () => orderedReportData.value.find((group) => group.boardKey === fullscreenKey.value) || null
 )
 const orderedReportData = computed(() => {
-  const custom = buildObservationGroups(board.views, reportData.value, fetchedSeries.value)
-  const original = reportData.value.map((group) => ({ ...group, boardKey: group.groupName }))
-  // Newly created observation cards lead unless the user has dragged them elsewhere.
-  const manual = board.groupOrder
-  const preferred = [
-    ...custom.map((group) => group.boardKey).filter((key) => !manual.includes(key)),
-    ...manual
-  ]
-  const rank = new Map(preferred.map((key, index) => [key, index]))
-  const groups = [...custom, ...original].sort(
-    (a, b) => (rank.get(a.boardKey) ?? Infinity) - (rank.get(b.boardKey) ?? Infinity)
-  )
-  return groups.map((group) => {
+  return groups.value.map((group) => {
     const key = group.boardKey
-    const hidden = hiddenLines.value[key] || []
+    const hidden = Array.isArray(hiddenLines.value[key]) ? hiddenLines.value[key] : []
     return {
       ...group,
       moodData: {
@@ -223,7 +225,7 @@ const rateEntries = computed(
         group.moodData.datasets.map((dataset, index) => ({
           name: dataset.label,
           color: moodStroke(index),
-          visible: !(hiddenLines.value[group.boardKey] || []).includes(dataset.label),
+          visible: !dataset.hidden,
           ...summarizeMoodRates(dataset.data)
         }))
       ])
@@ -242,10 +244,7 @@ function setChartRef(key, instance) {
 function setGroupVisibility(key, visible) {
   const group = orderedReportData.value.find((item) => item.boardKey === key)
   if (!group) return
-  hiddenLines.value = {
-    ...hiddenLines.value,
-    [key]: visible ? [] : group.moodData.datasets.map((dataset) => dataset.label)
-  }
+  board.setHiddenLines(key, visible ? [] : group.moodData.datasets.map((dataset) => dataset.label))
   setAllMoodDatasetsVisible(chartRefs.get(key)?.chart, visible)
 }
 
@@ -253,10 +252,10 @@ function toggleLine(key, index) {
   const group = orderedReportData.value.find((item) => item.boardKey === key)
   const name = group?.moodData.datasets[index]?.label
   if (!name) return
-  const next = new Set(hiddenLines.value[key] || [])
+  const next = new Set(Array.isArray(hiddenLines.value[key]) ? hiddenLines.value[key] : [])
   if (next.has(name)) next.delete(name)
   else next.add(name)
-  hiddenLines.value = { ...hiddenLines.value, [key]: [...next] }
+  board.setHiddenLines(key, [...next])
   const chart = chartRefs.get(key)?.chart
   if (chart) {
     chart.setDatasetVisibility(index, !next.has(name))
@@ -299,38 +298,8 @@ function deleteView(id) {
   editingId.value = ''
 }
 
-let requestNumber = 0
-async function refreshSeries() {
-  const id = ++requestNumber
-  const names = [...new Set(board.views.flatMap((view) => view.operators))].slice(0, 192)
-  if (!names.length) {
-    fetchedSeries.value = []
-    return
-  }
-  const combined = []
-  try {
-    // Backend enforces a maximum of sixteen names per request.
-    for (let index = 0; index < names.length; index += 16) {
-      const batch = await getMoodSeries(names.slice(index, index + 16))
-      if (id !== requestNumber) return
-      combined.push(...batch)
-    }
-    fetchedSeries.value = combined
-  } catch {
-    if (id === requestNumber) {
-      historyLimited.value = true
-      fetchedSeries.value = []
-    }
-  }
-}
-watch(
-  () => JSON.stringify(board.views.map((view) => view.operators)),
-  () => refreshSeries(),
-  { immediate: true }
-)
-
 onMounted(async () => {
-  board.load()
+  await board.load()
   try {
     reportData.value = await getMoodRatios({ includeWorkRest: false })
   } catch {
@@ -340,7 +309,7 @@ onMounted(async () => {
   try {
     catalog.value = await getMoodCatalog()
   } catch {
-    historyLimited.value = true
+    catalogLimited.value = true
   }
 })
 

@@ -11,11 +11,26 @@ function uniqueNames(input) {
   })
 }
 
+function preferenceMap(input, normalize) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
+  return Object.fromEntries(
+    Object.entries(input)
+      .filter(([key]) => key.trim())
+      .map(([key, value]) => [key, normalize(value)])
+      .filter(([, value]) => value?.length > 0)
+  )
+}
+
 export function normalizeMoodPreferences(input = {}) {
   return {
     groupOrder: uniqueNames(input?.groupOrder),
     pinnedGroups: uniqueNames(input?.pinnedGroups),
-    pinnedOperators: uniqueNames(input?.pinnedOperators)
+    pinnedOperators: uniqueNames(input?.pinnedOperators),
+    hiddenLines: preferenceMap(input?.hiddenLines, uniqueNames),
+    hiddenGroups: uniqueNames(input?.hiddenGroups),
+    defaultOperators: preferenceMap(input?.defaultOperators, (value) =>
+      typeof value === 'string' ? value.trim() : ''
+    )
   }
 }
 
@@ -32,6 +47,7 @@ export function readMoodPreferences(storage) {
   const oldGroupOrder = parseStoredJson(storage, LEGACY_MOOD_GROUP_ORDER_KEY)
   const saved = parseStoredJson(storage, MOOD_ORDER_KEY)
   return normalizeMoodPreferences({
+    ...saved,
     groupOrder: saved?.groupOrder ?? oldGroupOrder,
     pinnedGroups: saved?.pinnedGroups,
     pinnedOperators: saved?.pinnedOperators

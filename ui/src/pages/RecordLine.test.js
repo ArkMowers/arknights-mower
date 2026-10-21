@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import RecordLine from './RecordLine.vue'
+import RecordPie from './RecordPie.vue'
 import { useMoodBoardStore } from '@/stores/mood_board'
 import { MOOD_VIEWS_KEY } from '@/utils/mood_observation'
 
@@ -11,6 +12,13 @@ vi.mock('vue', async (original) => ({
   useSSRContext: () => ({ modules: new Set() }),
   onMounted: (callback) => state.mounted.push(callback)
 }))
+vi.mock('axios', () => ({
+  default: {
+    get: vi.fn(async () => ({ data: { preferences: null } })),
+    post: vi.fn(async (_url, preferences) => ({ data: { preferences } })),
+    patch: vi.fn(async () => ({}))
+  }
+}))
 vi.mock('@/stores/record', () => ({ useRecordStore: () => state.record }))
 vi.mock('@/components/MoodCardGrid.vue', () => ({ default: {} }))
 vi.mock('@/components/MoodRateLegend.vue', () => ({ default: {} }))
@@ -18,7 +26,10 @@ vi.mock('@/components/MoodObservationEditor.vue', () => ({ default: {} }))
 
 const series = (names) => names.map((name) => ({ name, data: [{ x: '2026-10-18', y: 12 }] }))
 
-describe('mood observation history requests', () => {
+describe.each([
+  ['curve', RecordLine],
+  ['pie', RecordPie]
+])('%s observation history requests', (_name, page) => {
   let scope
   let board
   let component
@@ -54,7 +65,7 @@ describe('mood observation history requests', () => {
 
   async function mount() {
     scope.run(() => {
-      component = RecordLine.setup({}, { expose: () => {} })
+      component = page.setup({}, { expose: () => {} })
     })
     for (const callback of state.mounted) await callback()
     await nextTick()
@@ -67,11 +78,11 @@ describe('mood observation history requests', () => {
       if (initialized) board.load()
 
       await mount()
-      await vi.waitFor(() => expect(component.fetchedSeries.value).toHaveLength(2))
+      await vi.waitFor(() => expect(component.viewHistory.fetchedSeries.value).toHaveLength(2))
 
       expect(state.record.getMoodSeries).toHaveBeenCalledExactlyOnceWith(['阿米娅', '煌'])
       expect(state.record.getMoodRatios).toHaveBeenCalledOnce()
-      expect(state.record.getMoodCatalog).toHaveBeenCalledOnce()
+      expect(state.record.getMoodCatalog).toHaveBeenCalledTimes(page === RecordLine ? 1 : 0)
     }
   )
 
@@ -84,7 +95,7 @@ describe('mood observation history requests', () => {
     saveInitialViews(views)
 
     await mount()
-    await vi.waitFor(() => expect(component.fetchedSeries.value).toHaveLength(192))
+    await vi.waitFor(() => expect(component.viewHistory.fetchedSeries.value).toHaveLength(192))
 
     expect(state.record.getMoodSeries).toHaveBeenCalledTimes(12)
     const batches = state.record.getMoodSeries.mock.calls.map(([names]) => names)
@@ -97,15 +108,19 @@ describe('mood observation history requests', () => {
     expect(state.record.getMoodSeries).not.toHaveBeenCalled()
 
     board.upsertView({ name: '重点观察', operators: ['阿米娅', '煌', '阿米娅'] })
-    await vi.waitFor(() => expect(component.fetchedSeries.value).toEqual(series(['阿米娅', '煌'])))
+    await vi.waitFor(() =>
+      expect(component.viewHistory.fetchedSeries.value).toEqual(series(['阿米娅', '煌']))
+    )
     const id = board.views[0].id
     board.upsertView({ name: '重点观察', operators: ['银灰'] }, id)
-    await vi.waitFor(() => expect(component.fetchedSeries.value).toEqual(series(['银灰'])))
+    await vi.waitFor(() =>
+      expect(component.viewHistory.fetchedSeries.value).toEqual(series(['银灰']))
+    )
 
     expect(state.record.getMoodSeries.mock.calls).toEqual([[['阿米娅', '煌']], [['银灰']]])
     board.removeView(id)
     await nextTick()
-    expect(component.fetchedSeries.value).toEqual([])
+    expect(component.viewHistory.fetchedSeries.value).toEqual([])
     expect(state.record.getMoodSeries).toHaveBeenCalledTimes(2)
   })
 
@@ -131,14 +146,16 @@ describe('mood observation history requests', () => {
       await vi.waitFor(() => expect(state.record.getMoodSeries).toHaveBeenCalledTimes(1))
       board.upsertView({ name: '第一表', operators: ['银灰'] }, 'card-one')
       board.removeView('card-two')
-      await vi.waitFor(() => expect(component.fetchedSeries.value).toEqual(series(['银灰'])))
+      await vi.waitFor(() =>
+        expect(component.viewHistory.fetchedSeries.value).toEqual(series(['银灰']))
+      )
 
       if (outcome === 'resolve') finishOld(series(oldNames.slice(0, 16)))
       else failOld(new Error('obsolete response'))
       await mounting
       await nextTick()
 
-      expect(component.fetchedSeries.value).toEqual(series(['银灰']))
+      expect(component.viewHistory.fetchedSeries.value).toEqual(series(['银灰']))
       expect(component.historyLimited.value).toBe(false)
       expect(state.record.getMoodSeries.mock.calls).toEqual([[oldNames.slice(0, 16)], [['银灰']]])
     }
@@ -149,7 +166,9 @@ describe('mood observation history requests', () => {
     state.record.getMoodRatios.mockRejectedValueOnce(new Error('report unavailable'))
 
     await mount()
-    await vi.waitFor(() => expect(component.fetchedSeries.value).toEqual(series(['阿米娅'])))
+    await vi.waitFor(() =>
+      expect(component.viewHistory.fetchedSeries.value).toEqual(series(['阿米娅']))
+    )
 
     expect(component.loadError.value).not.toBe('')
     expect(state.record.getMoodSeries).toHaveBeenCalledExactlyOnceWith(['阿米娅'])
