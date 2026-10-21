@@ -131,6 +131,25 @@
       <n-text depth="3"
         >显示 {{ displayList.length }} / {{ store.recommendations.length }} 位干员</n-text
       >
+      <n-space align="center" :size="8">
+        <n-tooltip>
+          <template #trigger>
+            <n-button
+              size="small"
+              type="primary"
+              secondary
+              :loading="batchAdding"
+              :disabled="store.loading || goalSaving || targetSaving || !filteredPlanItems.length"
+              @click="addFilteredToPlan"
+            >
+              按筛选一键添加计划（{{ filteredPlanItems.length }} 项）
+            </n-button>
+          </template>
+          添加全部分页中达到所选比例门槛的技能、模组及精英化目标，跳过已计划及已完成的项目。未设置门槛的类别不添加；技能和模组沿用所选目标等级，精一、精二均规划至该阶段
+          1 级，同一干员取较高目标。
+        </n-tooltip>
+        <n-text v-if="batchAdding" depth="3">{{ batchProgress }}</n-text>
+      </n-space>
     </n-space>
 
     <n-card size="small" class="materials-overview">
@@ -365,7 +384,8 @@
                         :type="isSkillPlanned(op.char_id, rec.skill_index) ? 'success' : 'default'"
                         @click.stop="toggleSkillPlan(op, rec)"
                         :disabled="
-                          !!op.material_error && !isSkillPlanned(op.char_id, rec.skill_index)
+                          batchAdding ||
+                          (!!op.material_error && !isSkillPlanned(op.char_id, rec.skill_index))
                         "
                       >
                         {{ isSkillPlanned(op.char_id, rec.skill_index) ? '移出计划' : '加入计划' }}
@@ -879,6 +899,10 @@ const filterProfession = ref([])
 const targets = ref({})
 const targetSaving = ref(false)
 const goalSaving = ref(false)
+const batchAdding = ref(false)
+const batchProgress = ref('')
+let batchController = null
+onUnmounted(() => batchController?.abort())
 const totalGoalCount = computed(() => planEntries.value.length + store.goals.length)
 const isGoalPlanned = (cid, mid) => goalSelected(store.goals, cid, mid)
 const levelGoalFor = (op) => selectedLevelGoal(op, hasPlannedSkill(op), store.goals)
@@ -1165,6 +1189,7 @@ async function warnMaterialShortage(additions) {
 }
 
 async function toggleSkillPlan(op, rec) {
+  if (batchAdding.value) return
   const k = planKey(op.char_id, rec.skill_index)
   if (!plan.value[k] && op.mastery_error) message.info(op.mastery_error)
   if (!plan.value[k]) await warnMaterialShortage([k])
@@ -1236,6 +1261,7 @@ async function toggleSkillPlan(op, rec) {
 }
 
 async function addAllToPlan(op) {
+  if (batchAdding.value) return
   if (op.mastery_error) message.info(op.mastery_error)
   if (trainingWarning(op.name)) {
     message.warning(trainingWarning(op.name))
@@ -1778,6 +1804,149 @@ const displayList = computed(() => {
   return list
 })
 
+const filteredPlanItems = computed(() => {
+  const { mastery, module, elite1, elite2 } = surveyFilters.value
+  return displayList.value.flatMap((op) => {
+    const matches = surveyFor(op)
+    const skills =
+      mastery !== null
+        ? visibleRecs(op)
+            .filter(
+              (rec) =>
+                matches.skillHighlights.includes(rec.skill_index) &&
+                rec.current_level < rec.target_level &&
+                !isSkillPlanned(op.char_id, rec.skill_index)
+            )
+            .map((rec) => ({
+              kind: 'skill',
+              name: op.name,
+              char_id: op.char_id,
+              skill_index: rec.skill_index,
+              target_level: rec.target_level
+            }))
+        : []
+    const modules =
+      module !== null
+        ? visibleModules(op)
+            .filter(
+              (entry) =>
+                matches.moduleHighlights.includes(entry.id) &&
+                entry.current_level < moduleTarget(op, entry) &&
+                !isGoalPlanned(op.char_id, entry.id)
+            )
+            .map((entry) => ({
+              kind: 'module',
+              char_id: op.char_id,
+              module_id: entry.id,
+              target_level: moduleTarget(op, entry)
+            }))
+        : []
+    const qualifies = (rate, threshold) => threshold !== null && rate !== null && rate >= threshold
+    const choices = operatorLevelGoals(op)
+    const phase =
+      choices.some((choice) => choice.key === 'elite2') && qualifies(matches.elite2, elite2)
+        ? 2
+        : qualifies(matches.elite1, elite1)
+          ? 1
+          : 0
+    const selected = choices.find((choice) => choice.key === levelGoalFor(op))
+    const goal = choices.find((choice) => choice.elite === phase && choice.level === 1)
+    const promotion =
+      goal && op.elite < phase && (!selected || selected.elite < phase)
+        ? [{ kind: 'promotion', char_id: op.char_id, module_id: goal.key }]
+        : []
+    return [...skills, ...modules, ...promotion]
+  })
+})
+
+async function addFilteredToPlan() {
+  if (batchAdding.value || store.loading || goalSaving.value || targetSaving.value) return
+  const items = filteredPlanItems.value
+  if (!items.length) return
+  const skills = items.filter((item) => item.kind === 'skill')
+  const goals = items.filter((item) => item.kind !== 'skill')
+  const controller = new AbortController()
+  batchController = controller
+  batchAdding.value = true
+  goalSaving.value = true
+  targetSaving.value = true
+  const options = { signal: controller.signal, timeout: 30000 }
+  let saved = 0
+  let processed = 0
+  const failures = []
+  const warnings = new Set()
+  try {
+    if (skills.length) {
+      batchProgress.value = `正在添加 ${skills.length} 项技能计划`
+      await warnMaterialShortage(skills.map((item) => planKey(item.char_id, item.skill_index)))
+      if (controller.signal.aborted) return
+      const { data } = await axios.post(
+        `${import.meta.env.VITE_HTTP_URL}/mastery-plan`,
+        {
+          planning: true,
+          items: skills.map(({ char_id, name, skill_index, target_level }) => ({
+            char_id,
+            name,
+            skill_index,
+            target_level
+          }))
+        },
+        options
+      )
+      if (controller.signal.aborted) return
+      skills.forEach((item, index) => {
+        const result = data.results?.[index]
+        if (result?.warning) warnings.add(result.warning)
+        if (
+          result?.id &&
+          ['added', 'existing', 'deferred', 'insufficient'].includes(result.status)
+        ) {
+          saved++
+          plan.value[planKey(item.char_id, item.skill_index)] = true
+        } else failures.push(result?.reason || `${item.name}的技能计划未确认保存`)
+      })
+      processed += skills.length
+    }
+    for (const { char_id, module_id, target_level } of goals) {
+      if (controller.signal.aborted) return
+      const item = { char_id, module_id, ...(target_level ? { target_level } : {}) }
+      batchProgress.value = `正在添加计划 ${processed + 1} / ${items.length}`
+      const { data } = await axios.post(
+        `${import.meta.env.VITE_HTTP_URL}/growth-plan`,
+        { ...item, selected: true },
+        options
+      )
+      if (controller.signal.aborted) return
+      if (
+        !data.goals?.some(
+          (goal) => goal.char_id === item.char_id && goal.module_id === item.module_id
+        )
+      )
+        throw new Error('未确认养成目标保存结果')
+      store.goals = data.goals
+      saved++
+      processed++
+    }
+    for (const warning of warnings) message.warning(warning)
+    if (failures.length) {
+      message.warning(`已保存 ${saved} 项计划，${failures.length} 项未加入：${failures[0]}`)
+    } else message.success(`已保存 ${saved} 项筛选计划`)
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      message.error(
+        `已确认保存 ${saved} 项，另有 ${items.length - saved} 项未确认保存；请刷新后重试：${error.response?.data?.error || error.message || '保存失败'}`
+      )
+    }
+  } finally {
+    if (!controller.signal.aborted) await refreshGrowthPlan()
+    batchAdding.value = false
+    goalSaving.value = false
+    targetSaving.value = false
+    batchProgress.value = ''
+    batchController = null
+  }
+}
+
 const operatorPageSize = 30
 const operatorPage = ref(1)
 const operatorDetail = shallowRef(null)
@@ -1888,6 +2057,7 @@ async function refreshT3Summary() {
 }
 
 function queueMaterialSummary() {
+  if (batchAdding.value) return
   ++materialRequest
   clearTimeout(materialTimer)
   materialsLoading.value = totalGoalCount.value > 0

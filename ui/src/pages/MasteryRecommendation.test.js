@@ -282,3 +282,249 @@ describe('大数据养成筛选', () => {
     expect(axios.post).not.toHaveBeenCalled()
   })
 })
+
+describe('按筛选一键添加养成计划', () => {
+  let roster
+  let goals
+  let plans
+  const rec = (skill_index) => ({ skill_index, current_level: 0 })
+  const module = (id, type) => ({ id, type, current_level: 0, max_level: 3 })
+  const row = (charId, extra = {}) => ({
+    charId,
+    own: 100,
+    skill1: { 0: 10, 3: 90 },
+    skill2: { 0: 80, 3: 20 },
+    modX: { 0: 10, 1: 90 },
+    modY: { 0: 80, 1: 20 },
+    elite: { 0: 5, 1: 5, 2: 90 },
+    ...extra
+  })
+  function prepare(page, count = 1) {
+    roster = operators()
+      .slice(0, count)
+      .map((op) => ({
+        ...op,
+        skill_levels: [0, 0],
+        recommendations: [rec(0), rec(1)],
+        modules: [module('x', 'MOD-X'), module('y', 'MOD-Y')],
+        level_goals: [
+          { id: 'elite1', elite: 1, level: 1 },
+          { id: 'elite2', elite: 2, level: 1 },
+          { id: 'elite2_max', elite: 2, level: 90 }
+        ]
+      }))
+    goals = []
+    plans = []
+    useMasteryStore().recommendations = roster
+    page.survey.value = { operators: roster.map((op) => row(op.char_id)) }
+    axios.post.mockImplementation(async (url, body) => {
+      if (url.endsWith('/mastery-plan')) {
+        return {
+          data: {
+            results: body.items.map((item, index) => {
+              plans.push({ ...item, id: index + 1, status: 'idle' })
+              return { id: index + 1, status: 'added' }
+            })
+          }
+        }
+      }
+      if (url.endsWith('/growth-plan')) {
+        goals = goals.filter(
+          (goal) => goal.char_id !== body.char_id || goal.module_id !== body.module_id
+        )
+        goals.push(body)
+        return { data: { goals: [...goals] } }
+      }
+      return { data: { material_summary: { available: true } } }
+    })
+    axios.get.mockImplementation(async (url) => ({
+      data: url.endsWith('/mastery-plan') ? { plans } : { operators: roster, goals }
+    }))
+  }
+  const writes = () =>
+    axios.post.mock.calls.filter(
+      ([url]) => url.endsWith('/growth-plan') || url.endsWith('/mastery-plan')
+    )
+
+  it('没有比例筛选时不添加，精一率筛选只添加精一目标', async () => {
+    const page = setup()
+    prepare(page)
+    expect(page.filteredPlanItems.value).toEqual([])
+    await page.addFilteredToPlan()
+    expect(writes()).toEqual([])
+    page.surveyFilters.value.elite1 = 80
+    await page.addFilteredToPlan()
+    expect(writes().map(([, body]) => body)).toEqual([
+      { char_id: 'char_0', module_id: 'elite1', selected: true }
+    ])
+    expect(page.filteredPlanItems.value).toEqual([])
+  })
+
+  it('专三率只添加达到门槛的技能，缺少样本的可见干员不误加入', async () => {
+    const page = setup()
+    prepare(page, 2)
+    page.survey.value.operators = [row('char_0')]
+    page.surveyFilters.value.mastery = 80
+    page.targets.value.char_0_0 = 2
+    expect(page.displayList.value).toHaveLength(2)
+    await page.addFilteredToPlan()
+    expect(writes().map(([, body]) => body)).toEqual([
+      {
+        planning: true,
+        items: [{ char_id: 'char_0', name: '干员0', skill_index: 0, target_level: 2 }]
+      }
+    ])
+  })
+
+  it('模组率只添加匹配模组并沿用目标，跳过已有计划与已满级模组', async () => {
+    const page = setup()
+    prepare(page, 3)
+    roster[2].modules[0].current_level = 3
+    useMasteryStore().goals = [{ char_id: 'char_1', module_id: 'x', target_level: 1 }]
+    page.moduleTargets.value['char_0:x'] = 2
+    page.surveyFilters.value.module = 80
+    await page.addFilteredToPlan()
+    expect(writes().map(([, body]) => body)).toEqual([
+      { char_id: 'char_0', module_id: 'x', target_level: 2, selected: true }
+    ])
+  })
+
+  it('精一精二取较高目标，跳过已完成及已有更高目标，保留三星精一', async () => {
+    const page = setup()
+    prepare(page, 5)
+    roster[1].elite = 2
+    roster[3].rarity = 3
+    roster[3].max_phase = 1
+    roster[3].level_goals = [
+      { id: 'elite1', elite: 1, level: 1 },
+      { id: 'level_max', elite: 1, level: 55 }
+    ]
+    useMasteryStore().goals = [{ char_id: 'char_2', module_id: 'elite2_max' }]
+    page.survey.value.operators[4] = row('char_4', { elite: { 0: 5, 1: 90, 2: 5 } })
+    page.surveyFilters.value.elite1 = 80
+    page.surveyFilters.value.elite2 = 80
+    await page.addFilteredToPlan()
+    expect(writes().map(([, body]) => body)).toEqual([
+      { char_id: 'char_0', module_id: 'elite2', selected: true },
+      { char_id: 'char_3', module_id: 'elite1', selected: true },
+      { char_id: 'char_4', module_id: 'elite1', selected: true }
+    ])
+  })
+
+  it('跨全部分页添加，同时遵守名称和职业筛选以及已有技能计划', async () => {
+    const page = setup()
+    prepare(page, 33)
+    page.surveyFilters.value.mastery = 80
+    page.plan.value.char_0_0 = true
+    expect(page.pagedOperators.value).toHaveLength(30)
+    expect(page.filteredPlanItems.value).toHaveLength(32)
+    page.searchQuery.value = '干员32'
+    page.filterProfession.value = ['医疗']
+    expect(page.filteredPlanItems.value).toHaveLength(0)
+    page.filterProfession.value = ['狙击']
+    page.searchQuery.value = ''
+    await page.addFilteredToPlan()
+    expect(writes()[0][1].items).toHaveLength(32)
+    expect(writes()[0][1].items.at(-1).char_id).toBe('char_32')
+    expect(writes()[0][1].items.some((item) => item.char_id === 'char_0')).toBe(false)
+  })
+
+  it('多个门槛分别添加匹配技能、模组和较高精英化目标', async () => {
+    const page = setup()
+    prepare(page)
+    Object.assign(page.surveyFilters.value, { mastery: 80, module: 80, elite1: 80, elite2: 80 })
+    await page.addFilteredToPlan()
+    expect(writes().map(([, body]) => body)).toEqual([
+      {
+        planning: true,
+        items: [{ char_id: 'char_0', name: '干员0', skill_index: 0, target_level: 3 }]
+      },
+      { char_id: 'char_0', module_id: 'x', target_level: 3, selected: true },
+      { char_id: 'char_0', module_id: 'elite2', selected: true }
+    ])
+    expect(page.filteredPlanItems.value).toHaveLength(0)
+  })
+
+  it('技能逐项拒绝时不误报全部成功，仍保存其余匹配目标', async () => {
+    const page = setup()
+    prepare(page)
+    page.surveyFilters.value.mastery = 10
+    const save = axios.post.getMockImplementation()
+    axios.post.mockImplementation(async (url, body, options) => {
+      if (url.endsWith('/mastery-plan'))
+        return {
+          data: {
+            results: [
+              { id: 1, status: 'added' },
+              { status: 'error', reason: '材料数据无效' }
+            ]
+          }
+        }
+      return save(url, body, options)
+    })
+    await page.addFilteredToPlan()
+    expect(state.feedback.warning).toHaveBeenCalledWith('已保存 1 项计划，1 项未加入：材料数据无效')
+    expect(state.feedback.success).not.toHaveBeenCalled()
+  })
+
+  it('重复点击不重复保存，保存期间修改筛选不改变已点击的项目', async () => {
+    const page = setup()
+    prepare(page)
+    page.surveyFilters.value.module = 80
+    let finish
+    axios.post.mockImplementationOnce(
+      (_url, body) =>
+        new Promise((resolve) => {
+          finish = () => {
+            goals = [body]
+            resolve({ data: { goals } })
+          }
+        })
+    )
+    const saving = page.addFilteredToPlan()
+    page.surveyFilters.value.module = 10
+    await page.addFilteredToPlan()
+    expect(writes()).toHaveLength(1)
+    finish()
+    await saving
+    expect(writes()).toHaveLength(1)
+    expect(page.batchAdding.value).toBe(false)
+  })
+
+  it('部分保存后失败保留成功目标，重新读取服务端并提示未确认项目', async () => {
+    const page = setup()
+    prepare(page)
+    page.surveyFilters.value.module = 10
+    const save = axios.post.getMockImplementation()
+    axios.post.mockImplementationOnce(save).mockRejectedValueOnce(new Error('网络中断'))
+    await page.addFilteredToPlan()
+    expect(useMasteryStore().goals.map((goal) => goal.module_id)).toEqual(['x'])
+    expect(state.feedback.error).toHaveBeenCalledWith(
+      expect.stringContaining('已确认保存 1 项，另有 1 项未确认保存')
+    )
+    expect(axios.get).toHaveBeenCalledWith(expect.stringContaining('/mastery-plan'))
+    expect(page.batchAdding.value).toBe(false)
+  })
+
+  it('离开页面取消当前保存且不继续保存剩余目标', async () => {
+    const page = setup()
+    prepare(page)
+    page.surveyFilters.value.module = 10
+    let finish
+    axios.post.mockImplementationOnce(
+      (_url, body) =>
+        new Promise((resolve) => {
+          finish = () => resolve({ data: { goals: [body] } })
+        })
+    )
+    const saving = page.addFilteredToPlan()
+    const signal = writes()[0][2].signal
+    state.unmount.forEach((fn) => fn())
+    expect(signal.aborted).toBe(true)
+    finish()
+    await saving
+    expect(writes()).toHaveLength(1)
+    expect(axios.get).not.toHaveBeenCalled()
+    expect(state.feedback.success).not.toHaveBeenCalled()
+  })
+})
