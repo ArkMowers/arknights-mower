@@ -25,6 +25,17 @@ The UI keeps overview snapshots shallow, renders at most thirty cards per page, 
 
 The [loading decision](../../.agents/notes/implemented/bug-fix/2026-10-12-bounded-growth-page-loading.md) records the resource trade-off and measured payload.
 
+### Instance planning files
+
+Growth goals persist in the current instance's `config/growth_plan.json`.
+Startup moves the former `tmp/growth_plan.json` there only when the new file is
+absent. Legacy manual workshop presets likewise move to `config/workshop_preset.json`;
+modern manual workshop settings retain their existing `conf.yml` storage.
+Existing destination files take precedence. A move failure stops configuration
+loading without generating replacement defaults. Growth history and observed
+inventory remain runtime data in `tmp/`. Configuration ZIP imports use the
+[backup migration rules](config-backup.md#2-import-boundary).
+
 ## 2. Materials and Farming
 
 Only the plan material overview starts collapsed. Level, basic-skill, mastery and module material details are displayed directly without a collapse control. Material headers retain readiness. The overview header remains present with no selected goals, so selecting the first goal does not insert a new block above the operator list. Expanding details is a local display choice and does not alter plans.

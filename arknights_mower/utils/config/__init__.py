@@ -18,6 +18,7 @@ from arknights_mower.utils.config.plan import (
     PlanModel,
     has_retired_dorm_options,
     migrate_legacy_dorm_order,
+    parse_plan_document,
     retire_rescue_backups,
 )
 from arknights_mower.utils.log import frontend_log_queue, logger
@@ -33,9 +34,12 @@ apply_http_proxy()
 # 在启动时搬一次——不搬会静默生成默认配置、把老配置弄丢。
 conf_path = get_path("@app/config/conf.yml")
 plan_path = get_path("@app/config/plan.json")
+rescue_plan_path = get_path("@app/config/rescue_plan.json")
 app_state_path = get_path("@app/config/state.json")
 weekly_plans_path = get_path("@app/config/weekly_plans.yml")
 gui_path = get_path("@app/config/gui.yml")
+growth_plan_path = get_path("@app/config/growth_plan.json")
+workshop_preset_path = get_path("@app/config/workshop_preset.json")
 
 _LEGACY_CONF_PATH = get_path("@app/conf.yml")
 _LEGACY_PLAN_PATH = get_path("@app/plan.json")
@@ -49,6 +53,8 @@ _CONFIG_PATH_PAIRS = (
     (_LEGACY_APP_STATE_PATH, app_state_path),
     (_LEGACY_WEEKLY_PLANS_PATH, weekly_plans_path),
     (_LEGACY_GUI_PATH, gui_path),
+    (get_path("@app/tmp/growth_plan.json"), growth_plan_path),
+    (get_path("@app/tmp/workshop_preset.json"), workshop_preset_path),
 )
 
 
@@ -135,6 +141,44 @@ def save_conf():
     atomic_write(conf_path, dump)
 
 
+def save_rescue_plan():
+    atomic_write(
+        rescue_plan_path,
+        lambda stream: json.dump(
+            rescue_plan.model_dump(exclude_none=True),
+            stream,
+            ensure_ascii=False,
+            indent=2,
+        ),
+    )
+
+
+def _load_rescue_plan(raw):
+    global rescue_plan
+    if rescue_plan_path.is_file():
+        with rescue_plan_path.open("r", encoding="utf-8-sig") as stream:
+            rescue_plan = parse_plan_document(json.load(stream))
+    else:
+        rescue_plan = PlanModel(**raw.get("automatic_rescue_plan", {}))
+        # 先提交独立排班，成功后才能清除旧全局字段。
+        save_rescue_plan()
+    if "automatic_rescue_plan" in raw:
+        # 其他旧字段仍由各自的迁移入口处理，不能在此提前清除。
+        atomic_write(
+            conf_path,
+            lambda stream: yaml.dump(
+                {
+                    key: value
+                    for key, value in raw.items()
+                    if key != "automatic_rescue_plan"
+                },
+                stream,
+                Dumper=CoreDumper,
+                allow_unicode=True,
+            ),
+        )
+
+
 _legacy_dorm_order = ""
 _retired_dorm_conf = False
 operation_feedback_avg: Optional[float] = None
@@ -169,6 +213,7 @@ def load_conf():
             and os.environ.get("MOWER_ANDROID") != "1"
             else Conf()
         )
+        _load_rescue_plan({})
         save_conf()
         return
     with conf_path.open("r", encoding="utf-8") as f:
@@ -185,6 +230,7 @@ def load_conf():
         & raw.keys()
     )
     conf = Conf(**raw)
+    _load_rescue_plan(raw)
 
 
 conf: Conf

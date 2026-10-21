@@ -44,6 +44,7 @@ TMP_DATA_FILES = {
     "skland.csv",
     "workshop_preset.json",
 }
+LEGACY_TMP_CONFIG_FILES = {"growth_plan.json", "workshop_preset.json"}
 
 
 class LocalConfigError(ValueError):
@@ -121,6 +122,11 @@ def _tmp_snapshot(total):
         ):
             raise LocalConfigError("本机 tmp 数据文件包含符号链接、目录或大小写冲突")
     for name in sorted(TMP_DATA_FILES):
+        if (
+            name in LEGACY_TMP_CONFIG_FILES
+            and (config.conf_path.parent / name).is_file()
+        ):
+            continue
         path = root / name
         if not path.is_file():
             continue
@@ -291,6 +297,12 @@ def _validate_configuration(files):
         "tray": config.conf.webview.tray,
     }
     conf = config.Conf(**data)
+    rescue_data = _object_file(files, "rescue_plan.json", optional=True)
+    rescue_plan = (
+        parse_plan_document(rescue_data)
+        if rescue_data is not None
+        else config.PlanModel(**data.get("automatic_rescue_plan", {}))
+    )
     if os.environ.get("MOWER_ANDROID") == "1":
         conf.sync_legacy_device_fields()
         data.update(conf.model_dump(exclude_unset=True))
@@ -338,7 +350,7 @@ def _validate_configuration(files):
                         raise ValueError("活动回退方案必须是字符串")
                 elif type(value) is not int or value < 0:
                     raise ValueError("活动切换时间必须是非负整数")
-    return data, conf, plan, dorm_order_migrated
+    return data, conf, plan, dorm_order_migrated, rescue_plan
 
 
 def _prepare_database(content, path):
@@ -361,12 +373,34 @@ def _prepare_database(content, path):
 def import_configuration(raw):
     with backup_lock, workshop_lock, TemporaryDirectory() as directory:
         files, tmp_files = read_archive(raw, include_tmp=True)
-        data, conf, plan, dorm_order_migrated = _validate_configuration(files)
+        for name in LEGACY_TMP_CONFIG_FILES:
+            if name not in files and name in tmp_files:
+                if any(path.casefold() == name for path in files):
+                    raise ValueError("持久化配置文件名大小写冲突")
+                files[name] = tmp_files[name]
+            tmp_files.pop(name, None)
+        if "growth_plan.json" in files:
+            goals = json.loads(files["growth_plan.json"].decode("utf-8-sig"))
+            if not isinstance(goals, list):
+                raise ValueError("养成计划文件格式错误")
+        data, conf, plan, dorm_order_migrated, rescue_plan = _validate_configuration(
+            files
+        )
+        if "rescue_plan.json" not in files:
+            if any(name.casefold() == "rescue_plan.json" for name in files):
+                raise ValueError("救急排班文件名必须为 rescue_plan.json")
+            files["rescue_plan.json"] = json.dumps(
+                rescue_plan.model_dump(exclude_none=True), ensure_ascii=False, indent=2
+            ).encode("utf-8")
         prepared = Path(directory) / "incoming.db"
         if "data.db" in tmp_files:
             _prepare_database(tmp_files["data.db"], prepared)
         root = config.conf_path.parent
         previous, local_names = _local_snapshot()
+        # 旧配置 ZIP 缺少这些原 tmp 数据时，仍保留本机的长期配置。
+        for name in LEGACY_TMP_CONFIG_FILES:
+            if name not in files and name in previous:
+                files[name] = previous[name]
         previous_tmp = _tmp_snapshot(sum(map(len, previous.values())))
         if "data.db" not in tmp_files and "data.db" in previous_tmp:
             _prepare_database(previous_tmp["data.db"], prepared)
@@ -398,6 +432,7 @@ def import_configuration(raw):
                     "refresh_backup_plan_after_mood",
                     "workshop_low_priority_rest",
                     "dorm_order",
+                    "automatic_rescue_plan",
                 }
             },
             allow_unicode=True,
@@ -450,7 +485,7 @@ def import_configuration(raw):
                 else:
                     target.unlink(missing_ok=True)
             raise
-        config.conf, config.plan = conf, plan
+        config.conf, config.plan, config.rescue_plan = conf, plan, rescue_plan
         if module := sys.modules.get("arknights_mower.utils.config.weekly_plan_loader"):
             module._weekly_plan_manager = None
         if module := sys.modules.get("arknights_mower.__main__"):

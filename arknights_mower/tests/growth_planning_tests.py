@@ -67,6 +67,23 @@ def growth_case():
     return {"characters": [char], "items": []}, skills
 
 
+def test_goal_write_uses_current_instance_config(growth_case, tmp_path, monkeypatch):
+    from arknights_mower.utils import path
+
+    monkeypatch.setattr(path, "_data_dir", tmp_path)
+    monkeypatch.setattr(path, "global_space", "first")
+    box, skills = growth_case
+    growth.set_goal("char_test", "elite1", True, box, skills)
+    target = tmp_path / "first/config/growth_plan.json"
+    assert json.loads(target.read_text()) == [
+        {"char_id": "char_test", "module_id": "elite1"}
+    ]
+    assert not (tmp_path / "first/tmp/growth_plan.json").exists()
+    monkeypatch.setattr(path, "global_space", "second")
+    assert growth.load_goals() == []
+    assert not (tmp_path / "second/config/growth_plan.json").exists()
+
+
 def counts(entries):
     result = Counter()
     for _, materials in entries:

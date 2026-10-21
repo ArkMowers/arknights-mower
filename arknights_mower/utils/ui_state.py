@@ -3,17 +3,36 @@ import re
 from threading import RLock
 
 from arknights_mower.utils import update_runtime as runtime
+from arknights_mower.utils.config import gui
 
 _state_lock = RLock()
 
 
 def _read_state():
-    state = runtime.read_json(state_path(), {})
-    return state if isinstance(state, dict) else {}
+    state = gui.read_gui_data(strict=True)
+    if not state.get("ui_state_migrated"):
+        gui.update_gui_data(_migrate_legacy_state)
+        state = gui.read_gui_data()
+    return state
 
 
-def state_path():
-    return runtime.state_dir() / "ui-state.json"
+def _migrate_legacy_state(state):
+    if state.get("ui_state_migrated"):
+        return
+    legacy_path = runtime.state_dir() / "ui-state.json"
+    legacy = (
+        json.loads(legacy_path.read_text(encoding="utf-8-sig"))
+        if legacy_path.is_file()
+        else {}
+    )
+    if isinstance(legacy, dict):
+        for key in ("mood_board", "log_layout"):
+            if key not in state and key in legacy:
+                if key == "mood_board":
+                    _mood_board(legacy)
+                state[key] = legacy[key]
+    # 旧文件曾由所有实例共用，保留原文件供其他实例分别迁移。
+    state["ui_state_migrated"] = True
 
 
 def get_log_layout():
@@ -31,7 +50,11 @@ def save_log_layout(data):
 
 
 def _save_log_layout(data):
-    state = _read_state()
+    return gui.update_gui_data(lambda state: _update_log_layout(state, data))
+
+
+def _update_log_layout(state, data):
+    _migrate_legacy_state(state)
     layout = state.get("log_layout", {})
     limits = {
         "screenshot_height": (90, 500),
@@ -48,8 +71,10 @@ def _save_log_layout(data):
             raise ValueError("界面布局参数无效")
         layout[key] = round(max(minimum, min(maximum, value)))
     state["log_layout"] = layout
-    runtime.write_json(state_path(), state, indent=2)
-    return get_log_layout()
+    return {
+        "screenshot_height": layout.get("screenshot_height"),
+        "task_height": layout.get("task_height"),
+    }
 
 
 def _names(value, *, count=512, length=160):
@@ -136,10 +161,13 @@ def get_mood_board():
 def save_mood_board(data, *, initialize=False):
     patch = _mood_board_patch(data)
     with _state_lock:
-        state = _read_state()
-        current = _mood_board(state)
-        if initialize and current is not None:
-            return {"preferences": current}
-        state["mood_board"] = _mood_board_patch({**(current or {}), **patch})
-        runtime.write_json(state_path(), state, indent=2)
-        return {"preferences": _mood_board(state)}
+
+        def update(state):
+            _migrate_legacy_state(state)
+            current = _mood_board(state)
+            if initialize and current is not None:
+                return {"preferences": current}
+            state["mood_board"] = _mood_board_patch({**(current or {}), **patch})
+            return {"preferences": _mood_board(state)}
+
+        return gui.update_gui_data(update)

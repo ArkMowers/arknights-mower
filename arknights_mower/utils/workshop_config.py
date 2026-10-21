@@ -38,7 +38,7 @@ def _manual_form(conf):
 
 
 def _import_legacy_preset(conf):
-    path = get_path("@app/tmp/workshop_preset.json")
+    path = get_path("@app/config/workshop_preset.json")
     if conf.workshop_manual_backup is None and path.exists():
         data = json.loads(path.read_text(encoding="utf-8"))
         entries = data.get("settings") if isinstance(data, dict) else data

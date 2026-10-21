@@ -3,15 +3,17 @@
 入口位于 **Mower 设置页面下方 → 配置导出与导入**，在「进程操作」板块上方。
 
 点击「导出配置」会等待页面已有保存任务完成，再下载 ZIP 压缩包。压缩包直接包含当前实例的
-`config/` 文件夹及配置原文件（包括注释），例如 `conf.yml`、`plan.json`、`weekly_plans.yml`。
+`config/` 文件夹及配置原文件（包括注释），例如 `conf.yml`、`plan.json`、`rescue_plan.json`、`weekly_plans.yml`。
 `plan.json` 包含主排班和所有备用排班；`state.json` 不导出。
+`rescue_plan.json` 包含独立的救急主表和副表；导入旧备份时，程序自动迁移 `conf.yml` 中的救急排班。
+`growth_plan.json` 保存养成目标，`workshop_preset.json` 保存旧版加工预设，均位于实例 `config/`。
+启动时会从原 `tmp/` 路径迁移；新旧文件同时存在时，以 `config/` 为准。
 ZIP 同时包含当前实例 `tmp/` 中的持久化数据：
 
 - `data.db`：数据库中的全部数据表，包括专精计划、专精路线和历史记录。
 - `cultivate.json`：库存及干员养成数据。
 - `depotresult.csv`、`depotmerged.csv`：仓库识别结果与合并历史。
 - `report.csv`、`skland.csv`：基建报表与森空岛记录。
-- `workshop_preset.json`：加工站预设。
 
 不存在的数据文件不导出。数据库使用一致性快照，包含 WAL 中已提交的数据，
 不直接复制正在使用的数据库文件或其辅助文件。
@@ -34,7 +36,9 @@ ZIP 同时包含当前实例 `tmp/` 中的持久化数据：
 导入时保留当前运行进程中加载的管理页面端口、访问令牌、托盘设置，
 以及本机的 `network.json`、`gui.yml`、`state.json`，即使 ZIP 包含这些文件也不会替换。
 即使运行期间手动替换了磁盘上的 `conf.yml`，上述三项仍以运行中的值为准，确保当前管理入口不变。
-网络访问、窗口尺寸和更新日志确认状态因此保持本机值；刷新保持原 URL。
+网络访问、窗口尺寸、心情曲线偏好、日志布局和更新日志确认状态因此保持本机值；刷新保持原 URL。
+旧 ZIP 的 `tmp/growth_plan.json` 和 `tmp/workshop_preset.json` 会导入实例 `config/`，
+同包内已有 `config/` 版本时优先使用该版本；两处都没有时保留本机对应配置。
 其余 `config/` 文件按备份恢复，备份中没有的本机文件会移除。旧调度缓存会清空，
 下次启动按导入后的排班生成任务。备份内的 tmp 数据文件覆盖本机同名文件，
 未包含的 tmp 数据文件保持不变；仅含配置的旧 ZIP 不覆盖现有数据表。

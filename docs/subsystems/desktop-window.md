@@ -26,6 +26,26 @@ Maximization and restoration use each backend's native operations. Cocoa maximiz
 
 Native state is authoritative for button state and size persistence. Startup, closing, minimized and maximized resize samples do not replace normal dimensions. When a native query fails, the cached state remains available for display but cannot authorize size or mode persistence. The saved startup mode is applied only after the backend is ready. Non-WinForms backends read current normal state and geometry together on the GUI thread instead of pairing a new state with old resize-event dimensions. Size sampling and assignment are serialized across event threads, and a sample that completes during closing is discarded. Screen proportions use an available work area rather than a whole-screen estimate; if that area cannot be read, the existing saved proportion is retained. WinForms alone performs the Windows DPI conversion.
 
+## Instance GUI preference storage
+
+The current instance's `config/gui.yml` stores native window mode, screen proportions,
+launch mode and close preference together with `mood_board` and `log_layout`.
+`mood_board.hiddenLines` and `hiddenGroups` store excluded curves and groups;
+`groupOrder`, `defaultOperators` and `views` store ordering and custom views.
+Legend clicks, group visibility changes, ordering and saved views submit an
+authenticated preference PATCH immediately. Browser local storage remains a fallback;
+a failed server save displays the local-preference warning without claiming disk persistence.
+
+The backend and native window process serialize read-modify-write operations through
+one instance file lock, read the latest YAML inside that lock and commit atomically.
+Malformed existing YAML or a failed write preserves the original file and reports an
+error. Before the first preference read or write, missing UI keys are seeded from
+the old installation-wide `ui-state.json` in the update cache. Existing GUI keys win.
+`ui_state_migrated` marks completion for each instance. The old shared file remains
+available to seed other instances; subsequent preference changes stay instance-local.
+Configuration imports preserve local GUI preferences as specified by the
+[backup contract](config-backup.md#2-import-boundary).
+
 ## Failure behavior
 
 When native input installation or a reported system operation fails, the adapter attempts to restore native decorations. The frontend hides its title bar only after restoration succeeds and the bridge reports the disabled capability. A connected bridge still accepts confirmed close commands after the custom title bar is hidden. If restoring decorations also fails, the available native or custom controls stay visible and the shared logger records the failure. Qt versions without system move and resize support use this same recovery path.

@@ -14,6 +14,8 @@ from arknights_mower.utils import config
 def client(monkeypatch):
     monkeypatch.setattr(config, "conf", config.Conf())
     monkeypatch.setattr(config, "plan", config.PlanModel())
+    monkeypatch.setattr(config, "rescue_plan", config.PlanModel())
+    monkeypatch.setattr(config, "save_rescue_plan", MagicMock())
     monkeypatch.setattr(config, "save_conf", MagicMock())
     monkeypatch.setattr(config, "save_plan", MagicMock())
     monkeypatch.setattr(server.app, "token", "rescue-route", raising=False)
@@ -45,17 +47,43 @@ def test_rescue_write_and_import_do_not_replace_normal_schedule(client, imported
     assert saved["backup_plans"][0]["name"] == "设施变化"
     assert config.plan.model_dump() == normal
     config.save_plan.assert_not_called()
-    config.save_conf.assert_called_once()
+    config.save_conf.assert_not_called()
+    config.save_rescue_plan.assert_called_once()
 
 
 def test_save_failure_preserves_rescue_roster(client):
-    original = config.conf.automatic_rescue_plan
-    config.save_conf.side_effect = OSError("readonly")
+    original = config.rescue_plan
+    config.save_rescue_plan.side_effect = OSError("readonly")
     with pytest.raises(OSError):
         server._save_rescue_plan(
             config.PlanModel(plan1={"central": {"plans": [{"agent": "红"}]}})
         )
-    assert config.conf.automatic_rescue_plan is original
+    assert config.rescue_plan is original
+
+
+@pytest.mark.parametrize(
+    "url,method",
+    [
+        ("/rescue-plan", "GET"),
+        ("/rescue-plan", "POST"),
+        ("/rescue-plan/validate", "POST"),
+        ("/import?rescue=1", "POST"),
+        ("/dialog/save/img?rescue=1", "POST"),
+    ],
+)
+@pytest.mark.parametrize("token", [None, "wrong"])
+def test_rescue_routes_reject_missing_or_invalid_token_before_work(
+    client, monkeypatch, url, method, token
+):
+    def forbidden(*args, **kwargs):
+        pytest.fail("未授权请求读取或写入救急排班")
+
+    monkeypatch.setattr(config, "save_rescue_plan", forbidden)
+    monkeypatch.setattr(server, "build_global_plan", forbidden)
+    response = client.open(
+        url, method=method, headers={"token": token} if token else {}
+    )
+    assert response.status_code == 403
 
 
 @pytest.mark.parametrize("backup_source", ["normal", "rescue", None])
@@ -74,7 +102,7 @@ def test_validation_defers_conditional_plans_and_rejects_product_mismatch(
     )
     monkeypatch.setattr(server, "build_global_plan", lambda: {})
     monkeypatch.setattr(server, "Operators", lambda plan: normal)
-    config.conf.automatic_rescue_plan = config.PlanModel(
+    config.rescue_plan = config.PlanModel(
         plan1={
             "room_1_1": {
                 "name": "贸易站",
@@ -167,7 +195,7 @@ def test_rescue_validation_checks_own_roster_before_conditional_deferral(
         payload["backup_plans"] = [
             {"name": "条件", "trigger": {}, "plan": {"recycle": {"plans": rows}}}
         ]
-    config.conf.automatic_rescue_plan = config.PlanModel(**payload)
+    config.rescue_plan = config.PlanModel(**payload)
     response = client.post(
         "/rescue-plan/validate", headers={"token": "rescue-route"}
     ).get_json()
@@ -204,7 +232,7 @@ def test_rescue_validation_preserves_working_and_specialized_room_rules(
     }
     if blank:
         payload[room] = {"plans": [{"agent": ""}]}
-    config.conf.automatic_rescue_plan = config.PlanModel(plan1=payload)
+    config.rescue_plan = config.PlanModel(plan1=payload)
     response = client.post(
         "/rescue-plan/validate", headers={"token": "rescue-route"}
     ).get_json()

@@ -49,7 +49,7 @@ def configure_rescue(solver):
         for room, row in solver.op_data.plan.items()
         if room in RESCUE_ROOMS and row
     }
-    config.conf.automatic_rescue_plan = PlanModel(plan1=roster)
+    config.rescue_plan = PlanModel(plan1=roster)
     return {
         room: [slot["agent"] for slot in facility["plans"]]
         for room, facility in roster.items()
@@ -1887,9 +1887,7 @@ def test_initial_card_scan_covers_configured_rescue_workers(
 
     config.conf.automatic_rescue_enable = enabled
     name = "红"
-    config.conf.automatic_rescue_plan = PlanModel(
-        plan1={"room_1_1": {"plans": [{"agent": name}]}}
-    )
+    config.rescue_plan = PlanModel(plan1={"room_1_1": {"plans": [{"agent": name}]}})
     if not missing:
         solver.op_data.dorm_mood_estimates[name] = (24, datetime.now())
     solver._scan_card_moods = MagicMock()

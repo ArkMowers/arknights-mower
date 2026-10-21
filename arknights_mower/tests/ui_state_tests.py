@@ -1,19 +1,19 @@
-import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import yaml
+
 from arknights_mower.utils import ui_state
+from arknights_mower.utils.config import gui
 
 
 class UiStateTests(unittest.TestCase):
     def test_log_layout_round_trip_and_clamp(self):
         with (
             tempfile.TemporaryDirectory() as folder,
-            patch.object(
-                ui_state, "state_path", return_value=Path(folder) / "ui-state.json"
-            ),
+            patch.object(gui, "gui_path", Path(folder) / "config/gui.yml"),
         ):
             self.assertEqual(
                 ui_state.get_log_layout(),
@@ -28,9 +28,7 @@ class UiStateTests(unittest.TestCase):
     def test_log_layout_rejects_non_numeric_value(self):
         with (
             tempfile.TemporaryDirectory() as folder,
-            patch.object(
-                ui_state, "state_path", return_value=Path(folder) / "ui-state.json"
-            ),
+            patch.object(gui, "gui_path", Path(folder) / "config/gui.yml"),
         ):
             with self.assertRaises(ValueError):
                 ui_state.save_log_layout({"task_height": "320"})
@@ -39,8 +37,8 @@ class UiStateTests(unittest.TestCase):
 class MoodBoardStateTests(unittest.TestCase):
     def setUp(self):
         folder = self.enterContext(tempfile.TemporaryDirectory())
-        self.path = Path(folder) / "ui-state.json"
-        self.enterContext(patch.object(ui_state, "state_path", return_value=self.path))
+        self.path = Path(folder) / "config/gui.yml"
+        self.enterContext(patch.object(gui, "gui_path", self.path))
         self.preferences = {
             "groupOrder": ["custom:focus-card", "一组"],
             "hiddenLines": {"一组": ["阿米娅"]},
@@ -62,7 +60,7 @@ class MoodBoardStateTests(unittest.TestCase):
         self.assertEqual(
             ui_state.get_log_layout(), {"task_height": 320, "screenshot_height": 200}
         )
-        self.assertEqual(json.loads(self.path.read_text())["mood_board"], expected)
+        self.assertEqual(yaml.safe_load(self.path.read_text())["mood_board"], expected)
 
     def test_another_browser_cannot_replace_existing_preferences_during_migration(self):
         ui_state.save_mood_board(self.preferences, initialize=True)

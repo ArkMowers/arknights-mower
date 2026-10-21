@@ -206,7 +206,7 @@ def module_materials(module, target_level=None):
 
 
 def load_goals():
-    path = get_path("@app/tmp/growth_plan.json")
+    path = get_path("@app/config/growth_plan.json")
     if not path.exists():
         return []
     data = json.loads(path.read_text("utf-8"))
@@ -265,7 +265,7 @@ def set_goal(char_id, module_id, selected, box, skills, target_level=None):
         if selected:
             goals.append(goal)
         atomic_write(
-            get_path("@app/tmp/growth_plan.json"),
+            get_path("@app/config/growth_plan.json"),
             lambda f: json.dump(goals, f, ensure_ascii=False),
         )
     return goals

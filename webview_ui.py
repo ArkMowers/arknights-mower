@@ -119,7 +119,7 @@ def exit_if_webview_backend_missing():
 # 若当成立即写回配置，下次打开就缩成一团——下限钳制挡住这些残留事件。
 MIN_WINDOW_SIZE = 100
 # 仅在 gui.yml 缺失或内容损坏（极小/零/非数字）时兜底，避免坏尺寸被读进创建
-# 并再次持久化。窗口尺寸唯一落在 GUI 进程专属的 gui.yml，不再进共享的 conf.yml。
+# 并再次持久化。窗口尺寸落在实例 gui.yml，与界面偏好共用锁后更新。
 DEFAULT_WINDOW_SIZE = (1450, 850)
 
 
