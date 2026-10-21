@@ -383,8 +383,37 @@ class BaseMixin:
             x, y = self.agent_selection_positions[index]
             self.tap((self.recog.w * x, self.recog.h * y), interval=interval)
 
-    def clear_agent_selection(self):
-        """点击一次清空，确认可见卡片的旧蓝框消失后才继续选人。"""
+    def clear_agent_selection(self, room=None):
+        """取消暂选，确认可见卡片的旧蓝框消失后才继续选人。"""
+        if (
+            room
+            and room.startswith("room")
+            and len(self.op_data.plan.get(room, ())) == 1
+        ):
+            # 单岗位生产房没有清空按钮；刷新已选置顶后取消实读蓝框卡片。
+            self.require_agent_selection_page()
+            self.switch_arrange_order("技能", room)
+            page = self.wait_for_agent_page()
+            self.require_agent_selection_page()
+            if (
+                not page
+                or any(not name or scope is None for name, scope in page)
+                or page[0][1][0][0] > 650
+            ):
+                raise AgentSelectionNotReady("单岗位选人名单不完整，返回房间重试")
+            states = [
+                (scope, agent_card_selected(self.recog.img, scope)) for _, scope in page
+            ]
+            selected = [scope for scope, state in states if state is True]
+            if any(state is None for _, state in states) or len(selected) > 1:
+                raise AgentSelectionNotReady("单岗位选中状态不明确，返回房间重试")
+            if selected:
+                self.tap(
+                    selected[0],
+                    interval=0.3 if self.performance_profile.mode == "high" else 0.5,
+                )
+            self.wait_for_cleared_selection()
+            return
         self.tap(
             (self.recog.w * 0.38, self.recog.h * 0.95),
             interval=0.3 if self.performance_profile.mode == "high" else 0.5,
