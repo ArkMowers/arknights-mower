@@ -18,6 +18,7 @@ from arknights_mower.utils import config, crash_recovery
 from arknights_mower.utils import instance_supervisor as supervisor
 from arknights_mower.utils import update_runtime as runtime
 from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
@@ -582,6 +583,112 @@ def test_production_simulate_observes_and_checkpoints_before_dispatch(
     crash_recovery.begin()
     offline.main.simulate(prepared)
     after_boundary.assert_called_once()
+    offline.io.assert_not_called()
+
+
+@pytest.mark.parametrize("failure_at", ["navigation", "room"])
+def test_observation_device_failure_recovers_same_scheduler_before_dispatch(
+    offline, notice, observed_scheduler, monkeypatch, failure_at
+):
+    solver = observed_scheduler
+    future = pending_tasks()[1]
+    solver.tasks = [future]
+    saved = offline.record.current_state()
+    assert offline.record.save_state_to_db(saved)
+    with offline.record._conn() as connection:
+        original = connection.execute("SELECT state FROM saved_state").fetchone()[0]
+    prepared = crash_recovery.prepare_resume(saved)
+    retained = []
+    configure_simulate(offline, monkeypatch, solver)
+    fault = DeviceRecoveryError("设备连接暂时中断")
+    calls = []
+
+    def fail_once(*args, **kwargs):
+        calls.append(args)
+        if len(calls) == 1:
+            raise fault
+
+    solver._read_room_mood = Mock()
+    if failure_at == "navigation":
+        solver.back_to_infrastructure = Mock(side_effect=fail_once)
+    else:
+        solver._read_room_mood.side_effect = fail_once
+
+    def recover(scheduler, error):
+        assert scheduler is solver and error is fault
+        retained.append(solver.tasks[0])
+        assert retained[0].time == future.time
+        assert not solver._state_restore_complete
+        assert crash_recovery.status()["active"]
+        with offline.record._conn() as connection:
+            assert (
+                connection.execute("SELECT state FROM saved_state").fetchone()[0]
+                == original
+            )
+
+    recovery = Mock(side_effect=recover)
+    monkeypatch.setattr(offline.main, "_resume_device_dispatch", recovery)
+
+    def dispatch():
+        assert not crash_recovery.status()["active"]
+        assert solver._state_restore_complete
+        assert solver.tasks[0] is retained[0] and retained[0].time == future.time
+        loaded = offline.record.load_state(strict=True)
+        assert loaded["tasks"][0].time == future.time
+        assert solver._read_room_mood.call_count >= len(solver.op_data.plan)
+        raise MowerExit
+
+    boundary = Mock(side_effect=dispatch)
+    monkeypatch.setattr(offline.main, "refresh_resource_at_boundary", boundary)
+    crash_recovery.begin()
+
+    offline.main.simulate(prepared)
+
+    recovery.assert_called_once_with(solver, fault)
+    offline.main.initialize.assert_called_once()
+    boundary.assert_called_once()
+    offline.io.assert_not_called()
+
+
+def test_stop_during_observation_device_recovery_keeps_checkpoint_and_pending_tasks(
+    offline, notice, observed_scheduler, monkeypatch
+):
+    solver = observed_scheduler
+    solver.tasks = list(pending_tasks())
+    saved = offline.record.current_state()
+    assert offline.record.save_state_to_db(saved)
+    with offline.record._conn() as connection:
+        original = connection.execute("SELECT state FROM saved_state").fetchone()[0]
+    prepared = crash_recovery.prepare_resume(saved)
+    configure_simulate(offline, monkeypatch, solver)
+    fault = DeviceRecoveryError("设备连接暂时中断")
+    solver.back_to_infrastructure = Mock(side_effect=fault)
+    solver._read_room_mood = Mock()
+
+    def stop(*args):
+        config.stop_mower.set()
+        crash_recovery.cancel()
+        raise MowerExit
+
+    recovery = Mock(side_effect=stop)
+    monkeypatch.setattr(offline.main, "_resume_device_dispatch", recovery)
+    boundary = Mock()
+    monkeypatch.setattr(offline.main, "refresh_resource_at_boundary", boundary)
+    crash_recovery.begin()
+
+    offline.main.simulate(prepared)
+
+    recovery.assert_called_once_with(solver, fault)
+    boundary.assert_not_called()
+    solver._read_room_mood.assert_not_called()
+    assert solver.tasks == prepared["tasks"] and not solver._state_restore_complete
+    assert crash_recovery.status()["active"]
+    assert not crash_recovery.status()["automatic"]
+    with offline.record._conn() as connection:
+        assert (
+            connection.execute("SELECT state FROM saved_state").fetchone()[0]
+            == original
+        )
     offline.io.assert_not_called()
 
 
