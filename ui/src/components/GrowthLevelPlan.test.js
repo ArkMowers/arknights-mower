@@ -76,7 +76,7 @@ describe('等级滑条自动保存', () => {
     stop()
   })
 
-  it('三星隐藏前置节点后仍显示精一目标和独立材料', () => {
+  it('三星隐藏前置节点后仍显示已选精一目标和独立材料', () => {
     const summary = { materials: [{ id: '4001', count: 10000 }] }
     const { component, stop } = setup({
       operator: {
@@ -88,7 +88,7 @@ describe('等级滑条自动保存', () => {
         ]
       },
       selectedKey: 'elite1',
-      requiredKey: 'elite1'
+      requiredKey: null
     })
     expect(component.draftIndex.value).toBe(0)
     expect(component.displayedChoice.value.label).toBe('精一 1 级')

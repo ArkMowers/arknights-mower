@@ -166,6 +166,7 @@ def level_goal_targets(definition):
     phases = definition.get("phases", [])
     if len(phases) >= 3:
         targets = {
+            "elite1": (1, 1),
             "elite2": (2, 1),
             "elite2_max": (2, phases[2]["max_level"]),
         }

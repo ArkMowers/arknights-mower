@@ -56,7 +56,10 @@ const draftIndex = ref(0)
 watch(() => [props.operator.char_id, props.selectedKey], resetDraft, { immediate: true })
 const draftChoice = computed(() => choices.value[draftIndex.value - 1])
 const displayedChoice = computed(
-  () => draftChoice.value || allChoices.value.find((choice) => choice.key === props.requiredKey)
+  () =>
+    draftChoice.value ||
+    allChoices.value.find((choice) => choice.key === props.selectedKey) ||
+    allChoices.value.find((choice) => choice.key === props.requiredKey)
 )
 const draftKey = computed(() => draftChoice.value?.key || null)
 const marks = computed(() =>
