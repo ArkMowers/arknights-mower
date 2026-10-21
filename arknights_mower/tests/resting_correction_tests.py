@@ -278,8 +278,8 @@ def test_correction_outside_planned_slot_is_not_silently_removed(solver):
 
 
 @pytest.mark.parametrize("cached", [False, True])
-def test_idle_group_member_requires_observed_full_mood(solver, cached):
-    """重启后的默认 24 不能把未完成入住当成满心情待命。"""
+def test_idle_group_member_does_not_force_recovering_peers_to_return(solver, cached):
+    """空闲成员缺少实读时保留同组休息，默认心情不构成召回依据。"""
     apply_plan(
         solver,
         {
@@ -293,16 +293,8 @@ def test_idle_group_member_requires_observed_full_mood(solver, cached):
     idle.time_stamp = datetime.now() if cached else None
     assert idle.mood == 24 and idle.current_room == ""
     plan = solver.agent_get_mood(read_rooms=False, return_plan=True)
-    if cached:
-        assert plan == {}
-    else:
-        assert plan == {"central": ["歌蕾蒂娅"], "room_3_3": ["斯卡蒂", "幽灵鲨"]}
-        apply_plan(solver, plan)
-        idle.time_stamp = datetime.now()  # 实际安排后的采样
-        assert (
-            solver.agent_get_mood(skip_dorm=True, read_rooms=False, return_plan=True)
-            == {}
-        )
+    assert plan == {}
+    assert idle.time_stamp is not None if cached else idle.time_stamp is None
     solver.enter_room.assert_not_called()
 
 

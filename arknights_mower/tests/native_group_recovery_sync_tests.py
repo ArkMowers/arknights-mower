@@ -134,32 +134,7 @@ def test_unknown_gap_deadline_keeps_known_wait_cap(resting):
     data.get_dorm_by_name("讯使")[1].time = None
     assert returns(data)[0].time == now + timedelta(hours=1, minutes=22)
     data.operators["讯使"].rest_in_full = True
-    assert returns(data) == []
-
-
-@pytest.mark.parametrize("explicit", [False, True])
-def test_execution_stops_gap_requirement_at_cap_but_keeps_explicit_full(
-    resting, monkeypatch, explicit
-):
-    from arknights_mower.solvers import base_schedule
-
-    solver, now = resting
-    data = solver.op_data
-    config.conf.group_rest_in_full_on_mood_gap = True
-    config.conf.group_mood_gap_max_extra_wait_hours = 0.5
-    task = returns(data)[0]
-    data.operators["讯使"].rest_in_full = explicit
-    cap = now + timedelta(hours=1, minutes=22)
-
-    class Clock(datetime):
-        @classmethod
-        def now(cls):
-            return cap
-
-    monkeypatch.setattr(base_schedule, "datetime", Clock)
-    monkeypatch.setattr(solver, "_read_recovery_rooms", lambda rooms: None)
-    assert solver._verify_required_recovery(task) is not explicit
-    assert data.operators["讯使"].mood == 5
+    assert returns(data)[0].time == now + timedelta(hours=1, minutes=22)
 
 
 def test_free_room_releases_completed_member_without_resetting_group_wait(
@@ -189,8 +164,6 @@ def test_free_room_releases_completed_member_without_resetting_group_wait(
     def read(rooms):
         op.time_stamp = datetime.now()
 
-    monkeypatch.setattr(solver, "_read_recovery_rooms", read)
-    assert solver._verify_required_recovery(target)
     assert solver.prepare_release_dorm(target)
     release_observed(data, op.name)
     assert returns(data)[0].time == return_time
@@ -198,41 +171,12 @@ def test_free_room_releases_completed_member_without_resetting_group_wait(
     assert data.group_is_resting("联动")
 
 
-def test_early_execution_waits_for_cap_without_resetting_original_task(
-    resting, monkeypatch
-):
+def test_unknown_explicit_full_deadline_uses_known_group_timing(resting):
     solver, now = resting
-    data = solver.op_data
-    config.conf.group_rest_in_full_on_mood_gap = True
-    config.conf.group_mood_gap_max_extra_wait_hours = 0.5
-    task = returns(data)[0]
-    original_time, original_plan = task.time, dict(task.plan)
-    solver.tasks = [task]
-
-    def read(rooms):
-        for op in data.operators.values():
-            if op.current_room in rooms:
-                op.time_stamp = datetime.now()
-
-    monkeypatch.setattr(solver, "_read_recovery_rooms", read)
-    assert not solver._verify_required_recovery(task)
-    observers = [
-        t for t in solver.tasks if getattr(t, "recovery_observation_rooms", None)
-    ]
-    assert max(t.time for t in observers) == now + timedelta(hours=1, minutes=22)
-    solver._resume_waiting_group_shifts()
-    solver._resume_waiting_group_shifts()
-    assert task in solver.waiting_group_shifts
-    assert task.time == original_time and task.plan == original_plan
-    assert not getattr(task, "execution_failure", None)
-
-
-def test_unknown_explicit_full_deadline_blocks_group_return(resting):
-    solver, _ = resting
     data = solver.op_data
     data.operators["讯使"].rest_in_full = True
     data.get_dorm_by_name("讯使")[1].time = None
-    assert returns(data) == []
+    assert returns(data)[0].time == now + timedelta(minutes=52)
 
 
 def test_shared_explicit_full_member_still_sets_deadline(resting):
@@ -300,32 +244,6 @@ def test_independent_full_member_does_not_extend_latched_group_wait(
     assert data.group_recovery_full_members["联动"] == ["伊内丝", "银灰"]
     personal_return = next(task for task in tasks if "contact" in task.plan)
     assert personal_return.time == now + timedelta(hours=5)
-
-
-def test_independent_full_member_is_checked_only_for_personal_return(
-    independent_full_member, monkeypatch
-):
-    from arknights_mower.utils.scheduler_task import SchedulerTask
-
-    instance, now = independent_full_member
-    group_return = SchedulerTask(
-        time=now,
-        task_plan={"meeting": ["伊内丝", "银灰"]},
-        task_type=TaskTypes.SHIFT_ON,
-    )
-    personal_return = SchedulerTask(
-        time=now,
-        task_plan={"contact": ["讯使"]},
-        task_type=TaskTypes.SHIFT_ON,
-    )
-    instance.tasks = [group_return, personal_return]
-    monkeypatch.setattr(instance, "_read_recovery_rooms", lambda rooms: None)
-
-    assert instance._verify_required_recovery(group_return)
-    assert not instance._verify_required_recovery(personal_return)
-    assert personal_return.time == now
-    assert personal_return.plan == {"contact": ["讯使"]}
-    assert personal_return.execution_failure
 
 
 def test_gap_excludes_standby_member(resting):
@@ -411,13 +329,13 @@ def test_completed_group_keeps_return_after_last_bed_is_released(resting):
     assert tasks[0].time <= datetime.now()
 
 
-def test_predicted_full_does_not_confirm_required_member(resting):
-    solver, _ = resting
+def test_predicted_full_does_not_replace_known_recovery_timing(resting):
+    solver, now = resting
     data = solver.op_data
     data.operators["讯使"].rest_in_full = True
     release_observed(data, "讯使")
     data.operators["讯使"].mood_is_prediction = True
-    assert returns(data) == []
+    assert returns(data)[0].time == now + timedelta(minutes=52)
 
 
 def test_full_recovery_latch_restores_and_isolates_saved_state(resting, monkeypatch):
@@ -523,18 +441,4 @@ def test_excluded_group_still_waits_for_explicit_full_recovery(resting):
     data.operators["讯使"].rest_in_full = True
     assert returns(data)[0].time == now + timedelta(hours=5)
     data.get_dorm_by_name("讯使")[1].time = None
-    assert returns(data) == []
-
-
-@pytest.mark.parametrize("explicit", [False, True])
-def test_saved_return_respects_exclusion_and_explicit_full(
-    resting, monkeypatch, explicit
-):
-    solver, _ = resting
-    data = solver.op_data
-    config.conf.group_rest_in_full_on_mood_gap = True
-    task = returns(data)[0]
-    config.conf.group_mood_gap_exclusions = ["联动"]
-    data.operators["讯使"].rest_in_full = explicit
-    monkeypatch.setattr(solver, "_read_recovery_rooms", lambda rooms: None)
-    assert solver._verify_required_recovery(task) is not explicit
+    assert returns(data)[0].time == now + timedelta(minutes=52)

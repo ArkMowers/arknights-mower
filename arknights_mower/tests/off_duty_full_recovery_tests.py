@@ -39,9 +39,6 @@ def recovery(solver, monkeypatch):
     solver.find = MagicMock(return_value=True)
     solver.scene = MagicMock(return_value=base_schedule.Scene.INFRA_MAIN)
     solver.skip = MagicMock()
-    solver._read_recovery_rooms = MagicMock(
-        side_effect=AssertionError("上岗前无需读取恢复期限")
-    )
     solver._scan_card_moods = MagicMock(side_effect=AssertionError("已有有效心情"))
     solver.agent_arrange = MagicMock(
         side_effect=lambda plan, *a, **kw: (
@@ -100,7 +97,6 @@ def test_correction_sends_idle_full_recovery_primary_to_dorm(
     assert solver.op_data.operators[PRIMARY[1]].current_room == "room_1_2"
     assert task.time == original_time
     assert task not in solver.tasks
-    solver._read_recovery_rooms.assert_not_called()
 
 
 def test_generated_correction_keeps_off_duty_primary_resting(recovery):
@@ -119,13 +115,10 @@ def test_new_card_observation_replaces_idle_primary_before_arrangement(
     solver, op = recovery
     op.mood, op.time_stamp = 24, None
 
-    def observe(**kwargs):
-        solver.op_data.dorm_mood_estimates[op.name] = (
-            18,
-            Clock.fromtimestamp(NOW.timestamp()),
-        )
-
-    solver._scan_card_moods.side_effect = observe
+    solver.op_data.dorm_mood_estimates[op.name] = (
+        18,
+        Clock.fromtimestamp(NOW.timestamp()),
+    )
     task = SchedulerTask(
         time=NOW,
         task_type=TaskTypes.SELF_CORRECTION,
@@ -136,8 +129,7 @@ def test_new_card_observation_replaces_idle_primary_before_arrangement(
     solver.infra_main()
     assert solver.op_data.operators[op.name].is_resting()
     assert solver.op_data.get_current_room(op.room, True) == [COVERS[0]]
-    solver._scan_card_moods.assert_called_once()
-    solver._read_recovery_rooms.assert_not_called()
+    solver._scan_card_moods.assert_not_called()
 
 
 @pytest.mark.parametrize("exhaust", [False, True])
@@ -230,9 +222,7 @@ def test_confirmed_full_resident_can_return_without_recovery_countdown(recovery)
     task = SchedulerTask(task_type=TaskTypes.SHIFT_ON, task_plan={op.room: [op.name]})
     solver.tasks, solver.task = [task], task
 
-    assert solver._verify_required_recovery(task)
     assert not getattr(task, "execution_failure", None)
-    solver._read_recovery_rooms.assert_not_called()
     solver._scan_card_moods.assert_not_called()
 
 

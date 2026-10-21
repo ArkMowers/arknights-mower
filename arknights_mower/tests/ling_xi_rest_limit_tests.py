@@ -304,7 +304,6 @@ def test_release_execution_preserves_early_dispatch_and_ignores_stale_mode(
         solver.op_data.operators[name].time_stamp = NOW
 
     read_rooms = MagicMock(side_effect=read)
-    monkeypatch.setattr(solver, "_read_recovery_rooms", read_rooms)
     solver.infra_main()
     assert solver.op_data.operators[name].is_resting() is stale
     assert not any(t.strict_mood_limit for t in solver.tasks)
@@ -376,9 +375,6 @@ def test_near_limit_member_can_dispatch_at_reserved_operation_start(
     original_time = task.time
     solver.task = task
     solver.agent_arrange = MagicMock(return_value=True)
-    monkeypatch.setattr(
-        solver, "_read_recovery_rooms", MagicMock(side_effect=AssertionError)
-    )
     assert solver.arrange_release_dorm() == (True, True)
     assert task in solver.tasks and task.time == original_time
     assert task.plan == {}

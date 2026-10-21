@@ -184,10 +184,8 @@ def test_shared_member_keeps_recovery_protection_from_another_binding(
     before = {
         name: (op.current_room, op.current_index) for name, op in data.operators.items()
     }
-    monkeypatch.setattr(solver, "_read_recovery_rooms", lambda rooms: None)
     solver._prepare_group_shift(task)
     solver._prepare_shift_cycle(task)
-    assert solver._verify_required_recovery(task)
     assert task.plan.get("central") == ["森蚺"]
     assert not {"阿罗玛", "槐琥"}.intersection(task.plan.get("room_3_2", []))
     assert not getattr(task, "execution_failure", None)
@@ -221,10 +219,8 @@ def test_derived_correction_preparation_keeps_independent_return_executable(
             if op.current_room in rooms:
                 op.time_stamp = datetime.now()
 
-    monkeypatch.setattr(solver, "_read_recovery_rooms", read)
     solver._prepare_group_shift(task)
     solver._prepare_shift_cycle(task)
-    assert solver._verify_required_recovery(task)
     assert task.plan.get("central") == ["森蚺"]
     assert "槐琥" not in task.plan.get("room_3_2", [])
     assert not getattr(task, "execution_failure", None)

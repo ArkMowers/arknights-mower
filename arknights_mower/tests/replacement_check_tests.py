@@ -112,6 +112,9 @@ def replacement_solver(clock, monkeypatch):
     solver._discard_legacy_ordinary_requests = MethodType(
         base.BaseSchedulerSolver._discard_legacy_ordinary_requests, solver
     )
+    solver._discard_legacy_recovery_checks = MethodType(
+        base.BaseSchedulerSolver._discard_legacy_recovery_checks, solver
+    )
     solver._refresh_derived_correction = MethodType(
         base.BaseSchedulerSolver._refresh_derived_correction, solver
     )

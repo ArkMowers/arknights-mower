@@ -273,7 +273,12 @@ def test_partial_return_resumes_remaining_station_after_order(ordinary_shift):
     original_time = task.time
     ui.deadlines["room_1_1"] = ui.clock.now() + timedelta(minutes=10)
     ui.durations["central"] = 380
-    s.tasks, s.task = [task], task
+    s.tasks = [task]
+    s._refresh_observed_recovery_tasks()
+    task = next(t for t in s.tasks if t.type == ui.task_type.SHIFT_ON)
+    assert task.time == original_time
+    assert task.plan == {"central": ["白面鸮"], "contact": ["讯使"]}
+    s.task = task
     s.plan_run_order("room_1_1")
 
     s.infra_main()

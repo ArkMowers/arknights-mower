@@ -1,26 +1,14 @@
 """普通互斥、恢复等待和旧缓存接续不伪装为用尽失败。"""
 
-from copy import deepcopy
 from datetime import datetime, timedelta
 
 import pytest
 
-from arknights_mower.tests import (
-    exhaust_replacement_tests,
-    native_recovery_execution_tests,
-)
+from arknights_mower.tests import exhaust_replacement_tests
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 solver = exhaust_replacement_tests.solver
-recovery_solver = native_recovery_execution_tests.solver
 pytestmark = pytest.mark.usefixtures("offline_maintenance")
-
-
-@pytest.fixture
-def recovery_resting(recovery_solver):
-    return native_recovery_execution_tests.native_group_recovery_sync_tests.resting.__wrapped__(
-        recovery_solver
-    )
 
 
 def test_ordinary_handoff_enqueues_only_concrete_work(solver, caplog):
@@ -57,119 +45,6 @@ def test_legacy_ordinary_placeholder_is_removed_without_losing_real_tasks(solver
     assert len(solver.tasks) == 3
 
 
-def test_known_recovery_wait_preserves_task_without_error_and_resumes_once(
-    recovery_resting, monkeypatch, caplog
-):
-    scheduler, _ = recovery_resting
-    op = scheduler.op_data.operators["讯使"]
-    op.rest_in_full = True
-    task = native_recovery_execution_tests.returning_task()
-    scheduler.tasks = [task]
-    before, at = deepcopy(task.plan), task.time
-
-    def read(rooms):
-        op.mood, op.time_stamp = 22.5, datetime.now()
-
-    monkeypatch.setattr(scheduler, "_read_recovery_rooms", read)
-    assert not scheduler._verify_required_recovery(task)
-    assert not [r for r in caplog.records if r.levelno >= 30]
-    assert task not in scheduler.tasks
-    assert scheduler.waiting_group_shifts == [task]
-    for _ in range(3):
-        scheduler._resume_waiting_group_shifts()
-    assert scheduler.waiting_group_shifts == [task]
-    assert task.plan == before and task.time == at
-    op.mood, op.time_stamp = 24, datetime.now()
-    scheduler._resume_waiting_group_shifts()
-    scheduler._resume_waiting_group_shifts()
-    assert sum(t is task for t in scheduler.tasks) == 1
-    assert not scheduler.waiting_group_shifts
-
-
-def test_legacy_recovery_failure_becomes_observed_wait(recovery_resting, monkeypatch):
-    scheduler, _ = recovery_resting
-    op = scheduler.op_data.operators["讯使"]
-    op.rest_in_full = True
-    task = native_recovery_execution_tests.returning_task()
-    task.execution_failure = {"reason": "需要回满的主班尚未实读确认恢复完成"}
-    task.execution_retained = True
-    scheduler.tasks = [task]
-    scheduler._resume_failed_tasks()
-    assert not getattr(task, "execution_failure", None)
-    assert scheduler.waiting_group_shifts == [task]
-    assert task not in scheduler.tasks
-
-
-def test_repeated_metadata_does_not_duplicate_waiting_return(
-    recovery_resting, monkeypatch
-):
-    scheduler, _ = recovery_resting
-    op = scheduler.op_data.operators["讯使"]
-    op.rest_in_full = True
-    task = native_recovery_execution_tests.returning_task()
-    scheduler.tasks = [task]
-
-    def read(rooms):
-        op.mood, op.time_stamp = 22.5, datetime.now()
-
-    monkeypatch.setattr(scheduler, "_read_recovery_rooms", read)
-    assert not scheduler._verify_required_recovery(task)
-    for _ in range(3):
-        scheduler.plan_metadata()
-    returns = [t for t in scheduler.tasks if t.type == TaskTypes.SHIFT_ON]
-    assert returns == []
-    assert scheduler.waiting_group_shifts == [task]
-
-
-def test_waiting_recovery_survives_snapshot_and_updated_deadline(
-    recovery_resting, monkeypatch
-):
-    import pickle
-
-    from arknights_mower import __main__ as main
-    from arknights_mower.solvers.record import current_state
-
-    scheduler, _ = recovery_resting
-    op = scheduler.op_data.operators["讯使"]
-    op.rest_in_full = True
-    task = native_recovery_execution_tests.returning_task()
-    scheduler.tasks = [task]
-
-    def read(rooms):
-        op.mood, op.time_stamp = 22.5, datetime.now()
-
-    monkeypatch.setattr(scheduler, "_read_recovery_rooms", read)
-    assert not scheduler._verify_required_recovery(task)
-    for attr in (
-        "daily_visit_friend",
-        "daily_report",
-        "daily_skland",
-        "daily_mail",
-        "task_count",
-    ):
-        setattr(scheduler, attr, None)
-    monkeypatch.setattr(main, "base_scheduler", scheduler)
-    snapshot = pickle.loads(pickle.dumps(current_state()))
-    scheduler.tasks = snapshot["tasks"]
-    scheduler.waiting_group_shifts = snapshot["waiting_group_shifts"]
-    restored = scheduler.waiting_group_shifts[0]
-    assert restored.time == task.time and restored.plan == task.plan
-    # 原期限读房后，新的真实倒计时延后；更新等待期限而不轮询。
-    scheduler.tasks = []
-    op.mood, op.time_stamp = 23, datetime.now()
-    deadline = datetime.now() + timedelta(minutes=20)
-    scheduler.op_data.get_dorm_by_name(op.name)[1].time = deadline
-    for _ in range(3):
-        scheduler._resume_waiting_group_shifts()
-    assert scheduler.waiting_group_shifts == [restored]
-    assert len(scheduler.tasks) == 1 and scheduler.tasks[0].time == deadline
-    assert not getattr(restored, "execution_failure", None)
-    op.mood, op.time_stamp = 24, datetime.now()
-    scheduler._resume_waiting_group_shifts()
-    assert any(t is restored for t in scheduler.tasks)
-    assert not scheduler.waiting_group_shifts
-
-
 def test_completed_ordinary_handoff_wakes_normal_planning(solver, monkeypatch):
     from unittest.mock import Mock
 
@@ -198,7 +73,6 @@ def test_completed_ordinary_handoff_wakes_normal_planning(solver, monkeypatch):
     monkeypatch.setattr(solver, "_suppress_train_arrangement", lambda plan: None)
     monkeypatch.setattr(solver, "_suppress_train_correction", lambda plan: None)
     monkeypatch.setattr(solver, "_refresh_orders_after_product_switch", lambda: None)
-    monkeypatch.setattr(solver, "_read_recovery_rooms", lambda rooms: None)
 
     def arrange(plan, *args, **kwargs):
         solver.op_data = solver.op_data.project_arrangements([plan])

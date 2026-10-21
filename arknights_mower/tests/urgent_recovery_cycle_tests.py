@@ -523,10 +523,8 @@ def test_ordinary_correction_keeps_recall_beneficiary_with_unknown_idle_peer(
     assert solver.agent_get_mood(skip_dorm=True, read_rooms=False) == "self_correction"
     (task,) = solver.tasks
     solver.task = task
-    solver._read_recovery_rooms = lambda rooms: None
     solver._prepare_group_shift(task)
     solver._prepare_shift_cycle(task)
-    assert solver._verify_required_recovery(task)
     assert task.plan.get("meeting") == ["能天使"]
     assert "苍苔" not in task.plan.get("room_2_2", [])
     assert "絮雨" not in task.plan.get("contact", [])
