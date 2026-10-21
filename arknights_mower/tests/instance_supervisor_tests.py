@@ -564,7 +564,7 @@ def test_initial_ready_publishing_preserves_accepted_user_start(
 def test_http_nonresponsiveness_recycles_only_owned_instance(isolated_runtime):
     command = child_script(
         isolated_runtime,
-        "from arknights_mower.utils.instance_supervisor import task_intent\nchild_report(port=58991)\ntask_intent(True)\nif len(events)==1: time.sleep(5)\nchild_exit('window')\n",
+        "from arknights_mower.utils.instance_supervisor import task_intent\ntask_intent(True)\nchild_report(port=58991)\nif len(events)==1: time.sleep(5)\nchild_exit('window')\n",
     )
     innocent = subprocess.Popen(
         [sys.executable, "-c", "import sys;sys.stdin.read()"], stdin=subprocess.PIPE
