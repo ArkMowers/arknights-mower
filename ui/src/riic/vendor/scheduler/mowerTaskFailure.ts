@@ -1,4 +1,4 @@
-import {refreshMowerDerivedCorrection} from './mowerCorrection'
+import {prepareMowerCorrectionRecovery,refreshMowerDerivedCorrection} from './mowerCorrection'
 import {reconcileMowerRetainedRecovery} from './mowerRetainedRecovery'
 // Port of base_schedule task failure snapshots, Mower alpha 3ad69f15 (MIT).
 import {mowerReplacementDependencyNames,mowerReplacementReservations} from './mowerReplacementCoordination'
@@ -51,6 +51,10 @@ export function resumeMowerFailedTasks(state:RuntimeState,data:MowerSchedulingDa
  for(const task of queue.tasks){
   const failure=task.executionFailure
   if(!failure)continue
+  if((failure.reason.startsWith('组员尚未确认回满心情')||failure.reason.startsWith('需要回满的主班心情尚未满足要求'))&&prepareMowerCorrectionRecovery(data,task,queue.tasks)){
+   delete task.executionFailure;task.coordinationDependencyWait=false;task.executionRetained=false;changed=true
+   continue
+  }
   reconcileMowerRetainedRecovery(data,task)
   // A prediction replacing a measurement does not constitute new evidence.
   for(const [name,observation] of Object.entries(failure.snapshot.observations))if(data.operators[name]?.moodIsPrediction)observation[2]=null
