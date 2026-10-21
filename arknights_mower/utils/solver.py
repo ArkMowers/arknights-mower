@@ -522,14 +522,30 @@ class BaseSolver:
         x, y, w, h = rect[0]
         self.tap(((x, y), (x + w, y + h)))
 
+    def retry_cancelled_login(self, attempt: int) -> None:
+        if attempt > config.MAX_RETRYTIME:
+            raise StrategyError("登录被取消，已达到本轮重试登录次数上限")
+        if not (
+            self.find("double_confirm/main")
+            and self.find("double_confirm/login_cancelled")
+            and (button := self.find("double_confirm/retry_login"))
+        ):
+            raise RecognizeError("登录取消弹窗或重试登录按钮已变化")
+        logger.info("登录被取消，第 %s 次重试登录", attempt)
+        self.tap(button)
+
     def login(self):
         """
         登录进游戏
         """
         retry_times = config.MAX_RETRYTIME
+        cancelled_login_attempts = 0
         while retry_times and not self.is_login():
             try:
-                if (scene := self.scene()) == Scene.LOGIN_START:
+                if (scene := self.scene()) == Scene.LOGIN_CANCELLED:
+                    cancelled_login_attempts += 1
+                    self.retry_cancelled_login(cancelled_login_attempts)
+                elif scene == Scene.LOGIN_START:
                     # 应对两种情况：
                     # 1. 点击左上角“网络检测”后出现“您即将进行一次网络拨测，该操作将采集您的网络状态并上报，点击确认继续”，点x
                     # 2. 点击左上角“清除缓存”之后取消

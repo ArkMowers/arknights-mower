@@ -119,6 +119,10 @@
     "label": "LOGIN_BILIBILI_PRIVACY",
     "comment": "B服隐私政策提示"
   },
+  "117": {
+    "label": "LOGIN_CANCELLED",
+    "comment": "登录被取消"
+  },
   "201": {
     "label": "INFRA_MAIN",
     "comment": "基建全局视角"

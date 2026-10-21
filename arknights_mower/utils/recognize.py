@@ -304,7 +304,11 @@ class Recognizer:
         elif self.find("ope_recover_originite_on", scope=((1530, 120), (1850, 190))):
             self.scene = Scene.OPERATOR_RECOVER_ORIGINITE
         elif self.find("double_confirm/main"):
-            if self.find("double_confirm/exit"):
+            if self.find("double_confirm/login_cancelled") and self.find(
+                "double_confirm/retry_login"
+            ):
+                self.scene = Scene.LOGIN_CANCELLED
+            elif self.find("double_confirm/exit"):
                 self.scene = Scene.EXIT_GAME
             elif self.find("double_confirm/friend"):
                 self.scene = Scene.BACK_TO_FRIEND_LIST
@@ -797,9 +801,11 @@ class Recognizer:
             "double_confirm/friend": (978, 465),
             "double_confirm/give_up": (574, 716),
             "double_confirm/infrastructure": (1077, 435),
+            "double_confirm/login_cancelled": (780, 460),
             "double_confirm/main": (835, 683),
             "double_confirm/network": (708, 435),
             "double_confirm/recruit": (981, 464),
+            "double_confirm/retry_login": (1164, 712),
             "double_confirm/voice": (745, 435),
             "drone": (274, 437),
             "factory_collect": (1542, 886),
