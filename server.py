@@ -32,7 +32,7 @@ from arknights_mower.utils.config.plan_advanced import (
     apply_advanced_settings,
     export_advanced_settings,
 )
-from arknights_mower.utils.config_backup import backup_lock
+from arknights_mower.utils.config_backup import MAX_BACKUP_BYTES, backup_lock
 from arknights_mower.utils.csv_utils import parse_cell_num, read_dicts
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.diagnostics import (
@@ -81,6 +81,9 @@ app.config["AI_ASSISTANT_ENABLED"] = config.conf.assistant_enabled_for_launch(
 sock = Sock(app)
 CORS(app)
 network_settings.start_proxy_sync()
+
+MAX_PLAN_IMPORT_BYTES = MAX_BACKUP_BYTES
+MAX_MULTIPART_OVERHEAD = 65536
 
 
 @app.errorhandler(500)
@@ -2339,28 +2342,33 @@ def _upload_matches(upload, extension, mimetype):
 @app.route("/import", methods=["POST"])
 @require_token
 def import_from_image():
+    if (
+        request.content_length
+        and request.content_length > MAX_PLAN_IMPORT_BYTES + MAX_MULTIPART_OVERHEAD
+    ):
+        abort(413)
     img = request.files["img"]
+    raw = img.stream.read(MAX_PLAN_IMPORT_BYTES + 1)
+    if len(raw) > MAX_PLAN_IMPORT_BYTES:
+        abort(413)
     try:
         from arknights_mower.utils.config.plan import parse_plan_document
 
         if _upload_matches(img, ".zip", "application/zip"):
             from arknights_mower.utils.config_backup import (
-                MAX_BACKUP_BYTES,
                 plan_from_archive,
                 read_archive,
             )
 
-            imported_plan = plan_from_archive(
-                read_archive(img.stream.read(MAX_BACKUP_BYTES + 1))
-            )
+            imported_plan = plan_from_archive(read_archive(raw))
         elif _upload_matches(img, ".json", "application/json"):
-            imported_plan = parse_plan_document(json.load(img))
+            imported_plan = parse_plan_document(json.loads(raw))
         else:
             from PIL import Image
 
             from arknights_mower.utils import qrcode
 
-            img = Image.open(img)
+            img = Image.open(BytesIO(raw))
             imported_plan = parse_plan_document(qrcode.decode(img))
     except (ValueError, TypeError, RecursionError, OSError, ZlibError):
         return "排班表导入失败：请选择有效的排班 JSON、排班图片或包含 config 文件夹的 ZIP 备份"
@@ -3325,6 +3333,7 @@ def export_recycling_history():
 
 
 @app.route("/record/clear-data", methods=["DELETE"])
+@require_token
 def clear_data_route():
     date_time_str = request.json.get("date_time")
     logger.info(date_time_str)
