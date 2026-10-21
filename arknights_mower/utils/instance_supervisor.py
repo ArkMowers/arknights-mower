@@ -8,7 +8,6 @@ import sys
 import threading
 import time
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -372,13 +371,24 @@ def supervise(
                 "active": True,
                 "startup": False,
                 "phase": "waiting",
-                "exit_code": code,
                 "attempt": attempts,
-                "occurred_at": datetime.now(timezone.utc).isoformat(),
-                "reason": report.get("failure_reason", "process_exit"),
                 "message": "主实例意外退出或服务持续无响应；后台正在恢复服务，重新观察后自动接续已保存任务。",
                 "start_type": start_type,
             }
+            reason = report.get("failure_reason", "process_exit")
+            failure_message = {
+                "process_creation": "无法创建主实例进程。",
+                "startup_timeout": "主实例未在启动时限内就绪。",
+                "http_unresponsive": "主实例 HTTP 服务持续无响应。",
+            }.get(reason, f"主实例进程意外退出，退出码：{code}。")
+            notice.update(
+                runtime.recovery_failure_details(
+                    previous,
+                    reason=reason,
+                    message=failure_message,
+                    exit_code=code,
+                )
+            )
             if wanted is not None:
                 notice["resume_requested"] = wanted
             if isinstance(previous, dict):

@@ -281,10 +281,11 @@ def activate(message):
                 "pending_start_type": raw.get("pending_start_type")
                 if isinstance(raw, dict)
                 else None,
-                "occurred_at": datetime.now(timezone.utc).isoformat(),
                 "message": message,
-                "reason": "worker_exception",
                 "next_retry_at": None,
+                **runtime.recovery_failure_details(
+                    raw, reason="worker_exception", message=message
+                ),
             },
             sync=True,
         )
