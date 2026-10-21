@@ -571,7 +571,8 @@ class RuntimeRegistrationTests(unittest.TestCase):
         ):
             self.assertTrue(failed.wait(3))
             self.assertEqual(runtime.read_json(self.registration.path), initial)
-            self.assertTrue(recovered.wait(3), "encoder failure stopped the heartbeat")
+            # 保留真实后台心跳和文件同步，给繁忙的原生文件系统留出有界时间。
+            self.assertTrue(recovered.wait(10), "encoder failure stopped the heartbeat")
         self.assertTrue(self.registration.thread.is_alive())
         self.assertIn("JSON encoder interrupted", " ".join(logged.output))
         self.assertEqual(

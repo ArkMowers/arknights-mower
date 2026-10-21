@@ -27,6 +27,9 @@ class SourceVersionTests(unittest.TestCase):
         for context in (
             patch.object(runtime, "state_dir", return_value=self.state),
             patch.object(
+                update, "get_path", return_value=self.state / "config/software-update"
+            ),
+            patch.object(
                 update, "source_repository", return_value=("b" * 40, "alpha", "")
             ),
             patch.dict(update._checks, {}, clear=True),
