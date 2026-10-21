@@ -9,6 +9,13 @@ SQLite snapshots contain committed database tables, including data in WAL files.
 Resource overlays, downloaded updates, logs and unrelated tmp files stay outside
 the archive. No configuration model or domain term changes.
 
+Rescue plans follow [instance rescue-plan storage](base-scheduler.md#rescue-plan-persistence).
+Import validates `rescue_plan.json` before writing and restores it with the other
+configuration files. Legacy archives migrate `conf.yml`'s `automatic_rescue_plan`
+field into that file; if both are present, the independent file takes precedence.
+Archives containing neither restore an empty rescue plan. Write failures roll back
+both saved files and the in-memory configuration, including the rescue plan.
+
 ## 2. Import Boundary
 
 Import validates bounded archive paths and the SQLite database before creating
@@ -19,6 +26,17 @@ ZIP files remain valid. Import clears `saved_state` in the restored database and
 retains the current process's access settings and protected configuration files.
 Database backup operations have a ten-second deadline. Archive byte and entry
 limits cover configuration and tmp data together.
+
+Legacy ZIP entries `tmp/growth_plan.json` and `tmp/workshop_preset.json`
+restore into the current instance's `config/` directory. Canonical config entries
+win when both forms exist. Growth goals must decode as a JSON list before any
+writes; malformed legacy workshop presets retain their existing recoverable
+warning behavior. A ZIP missing both forms preserves the corresponding local
+config file. Exports omit obsolete tmp copies once canonical files exist.
+
+Local `gui.yml` is exported but protected during import, including its window
+settings, mood curve preferences and log layout. Shared installation settings
+outside the current instance directory remain outside the archive.
 
 ## 3. Subsystem Invariants
 

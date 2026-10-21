@@ -26,6 +26,7 @@ def solver(monkeypatch):
             return NOW
 
     monkeypatch.setattr(config, "conf", config.Conf())
+    monkeypatch.setattr(config, "rescue_plan", config.PlanModel())
     config.conf.enable_mastery = False
     config.conf.rescue_threshold = 0.75
     monkeypatch.setattr(base_schedule, "datetime", Clock)

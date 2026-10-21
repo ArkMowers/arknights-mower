@@ -3181,7 +3181,7 @@ class BaseSchedulerSolver(
 
             missing = any(
                 dorm_candidate_mood(self.op_data, name) is None
-                for name in configured_rescue_names(config.conf.automatic_rescue_plan)
+                for name in configured_rescue_names(config.rescue_plan)
             )
         if missing:
             self._scan_card_moods()

@@ -87,7 +87,7 @@ def test_incomplete_or_duplicate_roster_is_rejected(roster):
 def test_primary_overlap_warns_and_stays_out_of_recovery_targets(solver, monkeypatch):
     setup_startup(solver)
     config.conf.automatic_rescue_enable = True
-    row = config.conf.automatic_rescue_plan.plan1.room_1_1
+    row = config.rescue_plan.plan1.room_1_1
     row.plans[0].agent = PRIMARY[0]
     logger = MagicMock()
     monkeypatch.setattr(emergency, "logger", logger)
@@ -104,10 +104,10 @@ def test_primary_overlap_warns_and_stays_out_of_recovery_targets(solver, monkeyp
     assert PRIMARY[0] in logger.warning.call_args.args[1]
 
 
-def test_configuration_instances_keep_rescue_rosters_isolated():
-    first, second = config.Conf(), config.Conf()
-    first.automatic_rescue_plan = schedule(COVERS[0])
-    assert not configured_rescue_names(second.automatic_rescue_plan)
+def test_rescue_roster_models_keep_mutable_defaults_isolated():
+    first, second = PlanModel(), PlanModel()
+    first.plan1 = schedule(COVERS[0]).plan1
+    assert not configured_rescue_names(second)
 
 
 @pytest.mark.parametrize("backup", [False, True])
@@ -165,7 +165,7 @@ def test_rescue_dorms_preserve_slot_indexes_and_override_fia_position(solver):
     setup_startup(solver)
     data = solver.op_data
     data.plan["dormitory_1"][4] = Room("菲亚梅塔", "", [])
-    document = config.conf.automatic_rescue_plan.model_copy(deep=True)
+    document = config.rescue_plan.model_copy(deep=True)
     from arknights_mower.utils.config.plan import Facility
 
     document.plan1.dormitory_1 = Facility(
@@ -182,7 +182,7 @@ def test_rescue_manager_defaults_to_free_and_cannot_duplicate_working_staff(solv
     from arknights_mower.utils.config.plan import Facility
 
     setup_startup(solver)
-    document = config.conf.automatic_rescue_plan
+    document = config.rescue_plan
     dorms = effective_rescue_plan(solver.op_data, document)["dorm_layout"]
     assert dorms["dormitory_1"] == ["Free"] * 5
     document.plan1.dormitory_1 = Facility(plans=[{"agent": COVERS[0]}])
@@ -243,7 +243,7 @@ def test_rescue_runner_and_fia_targets_are_independent(solver, additional):
     from arknights_mower.utils.config.plan import Facility, GroupBinding
 
     configure_rescue(solver)
-    document = config.conf.automatic_rescue_plan
+    document = config.rescue_plan
     slot = document.plan1.room_1_1.plans[0]
     if additional:
         slot.replacement = ["红"]
@@ -275,7 +275,7 @@ def test_facility_mismatch_prevents_rescue_entry(solver, monkeypatch, caplog, mi
     monkeypatch.setattr(emergency, "save_current_state", lambda: True)
     config.conf.automatic_rescue_enable = True
     solver.op_data.plan["room_1_1"][0].facility = "贸易站"
-    rescue = config.conf.automatic_rescue_plan.plan1.room_1_1
+    rescue = config.rescue_plan.plan1.room_1_1
     rescue.name = "制造站" if mismatch == "type" else "贸易站"
     if mismatch == "level":
         rescue.plans.append(Plans(agent="红"))
@@ -330,13 +330,14 @@ def test_normal_schedule_advanced_export_excludes_rescue_configuration():
     )
 
     conf = config.Conf(automatic_rescue_enable=True)
-    original = conf.automatic_rescue_plan.model_dump()
+    original = config.rescue_plan.model_dump()
     advanced = export_advanced_settings(conf)
     assert "automatic_rescue_enable" not in advanced
     assert "automatic_rescue_plan" not in advanced
     restored = apply_advanced_settings(conf, {"rescue_threshold": 0.8})
     assert restored.automatic_rescue_enable
-    assert restored.automatic_rescue_plan.model_dump() == original
+    assert "automatic_rescue_plan" not in restored.model_dump()
+    assert config.rescue_plan.model_dump() == original
 
 
 @pytest.mark.parametrize("active", [False, True])
@@ -533,7 +534,7 @@ def test_rescue_recovery_settings_append_and_dorm_order_overrides(solver):
     from arknights_mower.utils.plan import PlanConfig
 
     setup_startup(solver)
-    document = config.conf.automatic_rescue_plan.model_copy(deep=True)
+    document = config.rescue_plan.model_copy(deep=True)
     document.conf.workaholic = "年"
     document.conf.free_blacklist = "杜林"
     document.conf.dorm_order = "dormitory_3,dormitory_1,dormitory_2,dormitory_4"
@@ -557,7 +558,7 @@ def test_rescue_missing_right_room_prevents_startup(solver, monkeypatch):
     omitted.room = omitted._current_room = "contact"
     setup_startup(solver)
     config.conf.automatic_rescue_enable = True
-    config.conf.automatic_rescue_plan.plan1.contact = None
+    config.rescue_plan.plan1.contact = None
     monkeypatch.setattr(
         emergency, "native_opportunity", lambda *a, **k: NativeProjection(None, True)
     )

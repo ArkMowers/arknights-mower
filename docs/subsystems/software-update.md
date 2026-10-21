@@ -134,6 +134,16 @@ An already elevated old package and its updater remain elevated until they exit.
 
 `update_runtime.state_dir` resolves `@app/tmp/updates/<installation-hash>/` with `space=""`. All instances using the same installation and data root share update coordination; separate installations retain separate directories. Uploaded previews, downloaded packages, detached runners, source preparation and update logs inherit this directory through the existing job workspace. DMG package inspection creates and removes its temporary mount workspace directly under `@app/tmp/updates/`.
 
+Persistent update preferences use the shared data root's
+`config/software-update/<namespace>.json` with `space=""`. The namespace is a
+SHA-256-derived key of the resolved update state directory, retaining installation
+and data-root separation while all its instances share the settings. This file
+stores channel, background mode, automatic checks and updates, source branch,
+source remote and remote history. On first read, an absent destination receives
+the former update-cache `settings.json` under a migration lock. An existing
+destination wins; migration errors propagate without overwriting the source.
+Update coordination, downloads and temporary workspaces remain in the cache.
+
 `tmp/` sits beside `config/` and `logs/` in the Mower data root. `MOWER_DATA_DIR` redirects this root; macOS frozen applications use their writable application data root rather than the signed `.app` bundle. Resource packages and MAA storage retain their existing contracts. Update rollback backups retain their existing locations and verification lifecycle.
 
 [Local software update cache](../../.agents/notes/implemented/simplification/2026-10-12-local-software-update-cache.md) records the simplification and focused verification.

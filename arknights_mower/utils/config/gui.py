@@ -1,41 +1,44 @@
-"""GUI 进程专属配置。
-
-窗口几何这类只属于界面进程的设置与共享的 conf.yml 分离——父进程（调度/服务）
-不读不写这里，避免两个进程同时管 conf.yml 时一方用旧值覆盖另一方的窗口尺寸，
-导致重开窗口尺寸不固定。
-
-持久化路径与原子写复用 config 模块的收敛方案：gui.yml 与其余应用配置一起落在
-@app/config/，走 atomic_write，旧 @app/gui.yml 由 migrate_app_config_paths 搬进来。
-"""
+"""实例的窗口设置与界面偏好；读改写共用跨进程文件锁。"""
 
 from threading import RLock
 
 import yaml
 from yamlcore import CoreDumper, CoreLoader
 
+from arknights_mower.utils import update_runtime as runtime
 from arknights_mower.utils.config import atomic_write, gui_path
 from arknights_mower.utils.window_shell import WindowRatio
 
 _gui_lock = RLock()
 
 
-def _read_gui_data() -> dict:
+def read_gui_data(*, strict=False) -> dict:
     if not gui_path.is_file():
         return {}
     try:
         with gui_path.open("r", encoding="utf-8") as stream:
-            data = yaml.load(stream, Loader=CoreLoader) or {}
-        return data if isinstance(data, dict) else {}
+            data = yaml.load(stream, Loader=CoreLoader)
+        if data is None:
+            return {}
+        if not isinstance(data, dict):
+            if strict:
+                raise ValueError("gui.yml 必须包含配置对象")
+            return {}
+        return data
     except (OSError, ValueError, yaml.YAMLError):
+        if strict:
+            raise
         return {}
 
 
-def _update_gui_data(**changes) -> None:
-    # Window size and mode share the existing GUI-only file; preserve both
-    # whenever either setting is saved.
-    with _gui_lock:
-        data = _read_gui_data()
-        data.update(changes)
+def update_gui_data(update):
+    # 窗口与后端进程在锁内读取最新文件，再提交本次字段修改。
+    with (
+        _gui_lock,
+        runtime.supervision_lock(gui_path.parent.parent / "tmp/gui-config", timeout=5),
+    ):
+        data = read_gui_data(strict=True)
+        result = update(data)
 
         def dump(stream):
             yaml.dump(
@@ -43,10 +46,15 @@ def _update_gui_data(**changes) -> None:
             )
 
         atomic_write(gui_path, dump)
+        return result
+
+
+def _update_gui_data(**changes) -> None:
+    update_gui_data(lambda data: data.update(changes))
 
 
 def load_window_mode() -> str:
-    mode = _read_gui_data().get("window_mode")
+    mode = read_gui_data().get("window_mode")
     return mode if mode in ("normal", "maximized") else "normal"
 
 
@@ -63,7 +71,7 @@ def load_window_ratio() -> WindowRatio | None:
     会不匹配；比例则始终按当前屏幕换算。文件缺失或内容非法返回 None。
     """
     try:
-        ratio = _read_gui_data()["ratio"]
+        ratio = read_gui_data()["ratio"]
         width = float(ratio["width"])
         height = float(ratio["height"])
         if not (0 < width <= 3 and 0 < height <= 3):
@@ -79,7 +87,7 @@ def save_window_ratio(ratio: WindowRatio) -> None:
 
 
 def load_close_preference() -> dict:
-    value = _read_gui_data().get("close_preference")
+    value = read_gui_data().get("close_preference")
     if not isinstance(value, dict):
         return {"choice": "tray", "remember": False}
     return {
@@ -98,7 +106,7 @@ def save_close_preference(choice: str, remember: bool) -> bool:
 
 
 def load_window_launch_mode() -> str:
-    mode = _read_gui_data().get("window_launch_mode")
+    mode = read_gui_data().get("window_launch_mode")
     return mode if mode in ("last", "normal", "maximized") else "last"
 
 

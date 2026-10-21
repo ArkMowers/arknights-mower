@@ -1447,7 +1447,7 @@ def load_plan_from_json():
 @require_token
 def rescue_plan_route():
     if request.method == "GET":
-        return config.conf.automatic_rescue_plan.model_dump(exclude_none=True)
+        return config.rescue_plan.model_dump(exclude_none=True)
     try:
         plan = config.PlanModel(**request.json)
     except (ValueError, TypeError):
@@ -1460,12 +1460,12 @@ def _save_rescue_plan(plan):
     from arknights_mower.utils.workshop_config import workshop_lock
 
     with workshop_lock:
-        previous = config.conf.automatic_rescue_plan
-        config.conf.automatic_rescue_plan = plan
+        previous = config.rescue_plan
+        config.rescue_plan = plan
         try:
-            config.save_conf()
+            config.save_rescue_plan()
         except Exception:
-            config.conf.automatic_rescue_plan = previous
+            config.rescue_plan = previous
             raise
 
 
@@ -1482,14 +1482,14 @@ def validate_rescue_plan_route():
         error = data.init_and_validate()
         if error:
             return {"success": False, "message": str(error)}
-        validate_rescue_schedule(data, config.conf.automatic_rescue_plan)
-        if data.backup_plans or config.conf.automatic_rescue_plan.backup_plans:
+        validate_rescue_schedule(data, config.rescue_plan)
+        if data.backup_plans or config.rescue_plan.backup_plans:
             return {
                 "success": True,
                 "status": "incomplete",
                 "message": "救急表自身校验通过；排班含副表条件，设施类型、等级及产物仍需在初始化实测后按双方生效排班核验。",
             }
-        effective_rescue_plan(data, config.conf.automatic_rescue_plan)
+        effective_rescue_plan(data, config.rescue_plan)
     except (ValueError, TypeError) as exc:
         return {"success": False, "message": str(exc)}
     return {"success": True, "message": "救急排班验证通过"}
@@ -2464,7 +2464,7 @@ def save_file_dialog():
         except (ValueError, TypeError):
             return {"error": "导出排班快照格式无效"}, 400
     elif request.args.get("rescue") == "1":
-        plan_data = config.conf.automatic_rescue_plan.model_dump(exclude_none=True)
+        plan_data = config.rescue_plan.model_dump(exclude_none=True)
     else:
         plan_data = config.plan.model_dump(exclude_none=True)
         plan_data["advanced_settings"] = export_advanced_settings(config.conf)
@@ -3948,10 +3948,11 @@ def mastery_t3_debug():
 
 
 @app.route("/workshop-preset", methods=["GET"])
+@require_token
 def workshop_preset():
     import json as _json
 
-    preset_path = get_path("@app/tmp/workshop_preset.json")
+    preset_path = get_path("@app/config/workshop_preset.json")
     if request.method == "GET":
         if os.path.exists(preset_path):
             try:

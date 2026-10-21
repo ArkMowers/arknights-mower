@@ -22,7 +22,13 @@ def _patched_conf(path, conf=None):
     """
     original = config_module.conf
     try:
-        with patch.object(config_module, "conf_path", path):
+        with (
+            patch.object(config_module, "conf_path", path),
+            patch.object(
+                config_module, "rescue_plan_path", path.parent / "rescue_plan.json"
+            ),
+            patch.object(config_module, "rescue_plan", config_module.PlanModel()),
+        ):
             if conf is not None:
                 config_module.conf = conf
             yield

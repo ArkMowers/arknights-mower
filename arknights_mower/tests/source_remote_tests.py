@@ -36,6 +36,9 @@ class SourceRemoteTests(unittest.TestCase):
         self.command("remote", "add", "local-only", str(self.root / "local"))
         for context in (
             patch.object(runtime, "state_dir", return_value=self.root / "state"),
+            patch.object(
+                update, "get_path", return_value=self.root / "config/software-update"
+            ),
             patch.object(runtime, "installation_root", return_value=self.root),
             patch.object(runtime, "frozen", return_value=False),
             patch.object(

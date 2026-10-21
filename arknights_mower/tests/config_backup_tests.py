@@ -22,6 +22,7 @@ def storage(tmp_path, monkeypatch):
     for attr, name in (
         ("conf_path", "conf.yml"),
         ("plan_path", "plan.json"),
+        ("rescue_plan_path", "rescue_plan.json"),
         ("weekly_plans_path", "weekly_plans.yml"),
         ("app_state_path", "state.json"),
         ("gui_path", "gui.yml"),
@@ -33,6 +34,7 @@ def storage(tmp_path, monkeypatch):
         config.Conf(account="before"),
     )
     monkeypatch.setattr(config, "plan", config.PlanModel())
+    monkeypatch.setattr(config, "rescue_plan", config.PlanModel())
     config.save_conf()
     config.save_plan()
     database = get_path("@app/tmp/data.db")
@@ -55,6 +57,128 @@ def archive(files, tmp_files=None):
             for name, value in tmp_files.items():
                 zipped.writestr(f"tmp/{name}", value)
     return stream.getvalue()
+
+
+@pytest.mark.parametrize("name", ["growth_plan.json", "workshop_preset.json"])
+@pytest.mark.parametrize("canonical", [False, True])
+def test_long_term_tmp_archive_migrates_with_canonical_precedence(
+    storage, name, canonical
+):
+    files = {"conf.yml": "{}", "plan.json": '{"plan1": {}}'}
+    if canonical:
+        files[name] = '[{"source": "config"}]'
+    backup.import_configuration(archive(files, {name: '[{"source": "tmp"}]'}))
+    target = storage("@app/config/" + name)
+    assert json.loads(target.read_text())[0]["source"] == (
+        "config" if canonical else "tmp"
+    )
+    assert not storage("@app/tmp/" + name).exists()
+    exported, old_tmp = backup.read_archive(backup.export_archive(), include_tmp=True)
+    assert exported[name] == target.read_bytes()
+    assert name not in old_tmp
+
+
+def test_config_only_legacy_archive_preserves_moved_local_settings(storage):
+    for name in backup.LEGACY_TMP_CONFIG_FILES:
+        storage("@app/config/" + name).write_text("[]")
+    backup.import_configuration(
+        archive({"conf.yml": "{}", "plan.json": '{"plan1": {}}'})
+    )
+    for name in backup.LEGACY_TMP_CONFIG_FILES:
+        assert storage("@app/config/" + name).read_text() == "[]"
+
+
+@pytest.mark.parametrize("content", ["{", "{}"])
+def test_invalid_growth_archive_rejected_before_writes(storage, content):
+    before = config.conf_path.read_bytes()
+    with pytest.raises(ValueError):
+        backup.import_configuration(
+            archive(
+                {"conf.yml": "{}", "plan.json": '{"plan1": {}}'},
+                {"growth_plan.json": content},
+            )
+        )
+    assert config.conf_path.read_bytes() == before
+    assert not storage("@app/config-backups").exists()
+
+
+@pytest.mark.parametrize("source", ["legacy", "separate", "both", "absent"])
+def test_rescue_backup_import_migrates_and_reloads(storage, source):
+    legacy = {"plan1": {"central": {"plans": [{"agent": "红"}]}}}
+    separate = {"plan1": {"central": {"plans": [{"agent": "砾"}]}}}
+    conf = {"automatic_rescue_enable": True}
+    files = {"plan.json": '{"plan1": {}}'}
+    if source in {"legacy", "both"}:
+        conf["automatic_rescue_plan"] = legacy
+    if source in {"separate", "both"}:
+        files["rescue_plan.json"] = json.dumps(separate)
+    files["conf.yml"] = json.dumps(conf)
+    backup.import_configuration(archive(files))
+    assert "automatic_rescue_plan" not in config.conf_path.read_text()
+    assert config.conf.automatic_rescue_enable is True
+    config.load_conf()
+    if source == "absent":
+        assert config.rescue_plan.plan1.central is None
+    else:
+        expected = "红" if source == "legacy" else "砾"
+        assert config.rescue_plan.plan1.central.plans[0].agent == expected
+    exported = backup.read_archive(backup.export_archive())
+    assert "rescue_plan.json" in exported
+    assert "automatic_rescue_plan" not in backup._object_file(exported, "conf.yml")
+    assert (
+        json.loads(exported["rescue_plan.json"])["plan1"]
+        == json.loads(config.rescue_plan_path.read_text())["plan1"]
+    )
+
+
+@pytest.mark.parametrize("content", ["{", "[]", '{"unrelated": true}'])
+def test_invalid_rescue_backup_is_rejected_before_writes(storage, content):
+    config.rescue_plan = config.PlanModel(
+        plan1={"central": {"plans": [{"agent": "红"}]}}
+    )
+    config.save_rescue_plan()
+    before = config.rescue_plan_path.read_bytes()
+    with pytest.raises(ValueError):
+        backup.import_configuration(incoming(**{"rescue_plan.json": content}))
+    assert config.rescue_plan_path.read_bytes() == before
+    assert config.rescue_plan.plan1.central.plans[0].agent == "红"
+    assert not storage("@app/config-backups").exists()
+
+
+@pytest.mark.parametrize("failed_file", ["rescue_plan.json", "weekly_plans.yml"])
+def test_rescue_import_write_failure_rolls_back_file_and_memory(
+    storage, monkeypatch, failed_file
+):
+    config.rescue_plan = config.PlanModel(
+        plan1={"central": {"plans": [{"agent": "红"}]}}
+    )
+    config.save_rescue_plan()
+    before = config.rescue_plan_path.read_bytes()
+    before_conf = config.conf_path.read_bytes()
+    previous = config.rescue_plan
+    raw = incoming(
+        **{"rescue_plan.json": '{"plan1": {}}', "weekly_plans.yml": "plans: {}\n"}
+    )
+    write = backup._write_bytes
+
+    def fail(path, content):
+        if path.name == failed_file and content != before:
+            raise OSError("readonly")
+        write(path, content)
+
+    monkeypatch.setattr(backup, "_write_bytes", fail)
+    with pytest.raises(OSError, match="readonly"):
+        backup.import_configuration(raw)
+    assert config.rescue_plan_path.read_bytes() == before
+    assert config.conf_path.read_bytes() == before_conf
+    assert config.rescue_plan is previous
+
+
+def test_rescue_backup_rejects_case_conflict_before_migration(storage):
+    with pytest.raises(ValueError, match="文件名"):
+        backup.import_configuration(incoming(**{"RESCUE_PLAN.json": '{"plan1": {}}'}))
+    assert not config.rescue_plan_path.exists()
+    assert not storage("@app/config-backups").exists()
 
 
 def incoming(**files):
@@ -136,7 +260,10 @@ def test_export_preserves_original_bytes_and_includes_persistent_tmp_data(storag
 
 def test_tmp_data_and_all_database_tables_round_trip(storage):
     for name in backup.TMP_DATA_FILES - {"data.db"}:
-        storage(f"@app/tmp/{name}").write_bytes(f"original {name}\r\n".encode())
+        content = (
+            b"[]\r\n" if name == "growth_plan.json" else f"original {name}\r\n".encode()
+        )
+        storage(f"@app/tmp/{name}").write_bytes(content)
     database = storage("@app/tmp/data.db")
     with closing(sqlite3.connect(database)) as conn, conn:
         conn.execute("CREATE TABLE mastery_plan(char_name TEXT)")
@@ -147,7 +274,9 @@ def test_tmp_data_and_all_database_tables_round_trip(storage):
     config_files, original_tables = backup.read_archive(raw, include_tmp=True)
     assert set(original_tables) == backup.TMP_DATA_FILES
     for name in backup.TMP_DATA_FILES - {"data.db"}:
-        storage(f"@app/tmp/{name}").write_bytes(b"changed")
+        storage(f"@app/tmp/{name}").write_bytes(
+            b"[{}]" if name == "growth_plan.json" else b"changed"
+        )
     with closing(sqlite3.connect(database)) as conn, conn:
         conn.execute("DELETE FROM mastery_plan")
         conn.execute("UPDATE custom_table SET value='changed'")
@@ -155,7 +284,8 @@ def test_tmp_data_and_all_database_tables_round_trip(storage):
     recovery = backup.import_configuration(raw)
     assert backup.read_archive(raw) == config_files
     for name in backup.TMP_DATA_FILES - {"data.db"}:
-        assert storage(f"@app/tmp/{name}").read_bytes() == original_tables[name]
+        folder = "config" if name in backup.LEGACY_TMP_CONFIG_FILES else "tmp"
+        assert storage(f"@app/{folder}/{name}").read_bytes() == original_tables[name]
     with closing(sqlite3.connect(database)) as conn:
         assert conn.execute("SELECT char_name FROM mastery_plan").fetchall() == [
             ("阿米娅",)
@@ -821,7 +951,7 @@ def test_recycling_plan_json_and_image_round_trip(
     config.conf.theme = theme
     config.conf.right_side_room_order = ["recycle", "train", "contact"]
     if rescue:
-        config.conf.automatic_rescue_plan = schedule
+        config.rescue_plan = schedule
     else:
         config.plan = schedule
     json_response = plan_client.get(
@@ -859,7 +989,7 @@ def test_recycling_plan_json_and_image_round_trip(
         data={"img": (BytesIO(response.data), "plan.jpg", "image/jpeg")},
     )
     assert imported.get_data(as_text=True) == "排班已加载"
-    restored = config.conf.automatic_rescue_plan if rescue else config.plan
+    restored = config.rescue_plan if rescue else config.plan
     assert restored.facility_levels == schedule.facility_levels
     assert restored.plan1.recycle == schedule.plan1.recycle
     assert (

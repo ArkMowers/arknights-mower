@@ -20,6 +20,7 @@ import requests
 from arknights_mower import __version__
 from arknights_mower.utils import github_download, network_settings
 from arknights_mower.utils import update_runtime as runtime
+from arknights_mower.utils.path import get_path
 from arknights_mower.utils.software_update_worker import (
     MAX_PACKAGE_BYTES,
     SourceChangesError,
@@ -100,8 +101,22 @@ def normalize_source_ref(value):
     return value
 
 
+def settings_path():
+    key = hashlib.sha256(os.fsencode(runtime.state_dir().resolve())).hexdigest()[:20]
+    return get_path("@app/config/software-update", space="") / f"{key}.json"
+
+
 def get_settings():
-    saved = runtime.read_json(runtime.state_dir() / "settings.json", {})
+    destination = settings_path()
+    legacy = runtime.state_dir() / "settings.json"
+    if not destination.exists() and legacy.is_file():
+        with runtime.supervision_lock(
+            runtime.state_dir() / "settings-migration", timeout=5
+        ):
+            if not destination.exists() and legacy.is_file():
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(legacy, destination)
+    saved = runtime.read_json(destination, {})
     return {
         "channel": saved.get(
             "channel",
@@ -136,7 +151,7 @@ def save_settings(data):
     if settings["auto_update"]:
         settings["auto_check"] = True
     with runtime.submission_lock(runtime.state_dir()):
-        runtime.write_json(runtime.state_dir() / "settings.json", settings)
+        runtime.write_json(settings_path(), settings)
     return {"ok": True, "settings": settings}
 
 
@@ -433,7 +448,7 @@ def remember_source_remote(value):
         settings["source_remote_history"] = [url] + [
             item for item in history if item.lower() != url.lower()
         ][:9]
-        runtime.write_json(runtime.state_dir() / "settings.json", settings)
+        runtime.write_json(settings_path(), settings)
     return {"ok": True, **selected, "remotes": source_remotes()}
 
 
@@ -1370,7 +1385,7 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
             if plan.get("source_url"):
                 # Remember the confirmed URL, not a local alias that may be retargeted.
                 settings["source_remote"] = plan["source_url"]
-        runtime.write_json(state / "settings.json", settings)
+        runtime.write_json(settings_path(), settings)
         runtime.write_json(
             state / "status.json",
             {
@@ -1434,7 +1449,7 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
         runtime.write_json(lock / "owner.json", {"id": job_id, "pid": process.pid})
         return {"ok": True, "id": job_id, "message": "更新任务已启动"}
     except Exception:
-        runtime.write_json(state / "settings.json", previous_settings)
+        runtime.write_json(settings_path(), previous_settings)
         shutil.rmtree(lock, ignore_errors=True)
         runtime.write_json(
             state / "status.json",
