@@ -443,6 +443,186 @@ def test_direct_launch_preserves_the_selected_non_tap_command(android, mode):
 
 @pytest.mark.parametrize("mode", ["tap", "adb", "custom"])
 @pytest.mark.parametrize("running", ["main", "pushcore"])
+@pytest.mark.parametrize(
+    "data",
+    [b"", b" " * (1024 * 1024 + 1)],
+    ids=["empty", "oversized"],
+)
+def test_home_wakeup_restores_running_game_without_reading_launcher_ui(
+    android, mode, running, data
+):
+    device, responses, conf = android
+    conf.tap_to_launch_game.mode = mode
+    responses.focus = responses.game_focus
+    responses.running = running
+    responses.dump_override = data
+    bound_client = device.client
+    original_profile = device.profile.model_copy(deep=True)
+
+    def run(command):
+        if command == "input keyevent 3":
+            responses.commands.append(command)
+            responses.focus = LAUNCHER
+            return b""
+        return responses.run(command)
+
+    device.client.run.side_effect = run
+    device.return_home()
+    assert responses.focus == LAUNCHER
+
+    assert device.check_current_focus() is True
+    assert responses.focus == responses.game_focus
+    assert device.check_current_focus() is False
+
+    assert responses.commands == [
+        "input keyevent 3",
+        "dumpsys window | grep mCurrentFocus",
+        f"ps -A | grep {device.game_package} | grep -v grep",
+        responses.start_command,
+        "dumpsys window | grep mCurrentFocus",
+        "dumpsys window | grep mCurrentFocus",
+    ]
+    assert device.client is bound_client
+    assert device.profile == original_profile
+    device.client.cmd.assert_not_called()
+    device._connect_once.assert_not_called()
+
+
+@pytest.mark.parametrize("mode", ["adb", "custom"])
+@pytest.mark.parametrize(
+    "data",
+    [b"", b" " * (1024 * 1024 + 1)],
+    ids=["empty", "oversized"],
+)
+def test_stopped_game_direct_recovery_does_not_require_launcher_ui(android, mode, data):
+    device, responses, conf = android
+    conf.tap_to_launch_game.mode = mode
+    responses.dump_override = data
+
+    assert device.check_current_focus() is True
+    assert responses.focus == responses.game_focus
+
+    expected = responses.start_command if mode == "adb" else responses.custom_command
+    assert responses.commands == [
+        "dumpsys window | grep mCurrentFocus",
+        f"ps -A | grep {device.game_package} | grep -v grep",
+        expected,
+        "dumpsys window | grep mCurrentFocus",
+    ]
+    device.client.cmd.assert_not_called()
+    device._connect_once.assert_not_called()
+
+
+@pytest.mark.parametrize("entry", ["launch", "check_current_focus"])
+def test_empty_launcher_ui_still_blocks_tap_launch(android, entry):
+    device, responses, _ = android
+    responses.dump_override = b""
+
+    with pytest.raises(DeviceRecoveryError):
+        getattr(device, entry)()
+
+    assert responses.commands.count(DUMP_COMMAND) == 1
+    assert CLOSE_COMMAND not in responses.commands
+    assert ICON_COMMAND not in responses.commands
+    assert responses.start_command not in responses.commands
+    assert responses.custom_command not in responses.commands
+    device._connect_once.assert_not_called()
+
+
+def test_failed_direct_foreground_restore_prevents_recognizer_capture(android):
+    from arknights_mower.utils.recognize import Recognizer
+
+    device, responses, _ = android
+    responses.running = "main"
+    responses.start_works = False
+    responses.dump_override = b""
+    device.screencap = MagicMock()
+    device.check_ui_responsive = MagicMock()
+    recog = Recognizer(device)
+
+    with pytest.raises(DeviceRecoveryError):
+        recog.start()
+
+    assert responses.commands.count(responses.start_command) == 1
+    assert DUMP_COMMAND not in responses.commands
+    assert CLOSE_COMMAND not in responses.commands
+    assert ICON_COMMAND not in responses.commands
+    device.screencap.assert_not_called()
+    device.check_ui_responsive.assert_not_called()
+    device._connect_once.assert_not_called()
+    assert recog._img is None
+
+
+def test_cancelled_home_wakeup_does_not_restore_or_capture(android):
+    from arknights_mower.utils.recognize import Recognizer
+
+    device, responses, _ = android
+    responses.running = "main"
+    responses.dump_override = b""
+    device.screencap = MagicMock()
+    device.check_ui_responsive = MagicMock()
+    recog = Recognizer(device)
+    config.stop_mower.set()
+
+    with pytest.raises(MowerExit):
+        recog.start()
+
+    assert responses.commands == []
+    device.client.cmd.assert_not_called()
+    device.screencap.assert_not_called()
+    device.check_ui_responsive.assert_not_called()
+    device._connect_once.assert_not_called()
+    assert recog._img is None
+
+
+def test_recognizer_continues_with_new_frames_after_direct_foreground_restore(android):
+    import numpy as np
+
+    from arknights_mower.utils.recognize import Recognizer
+
+    device, responses, _ = android
+    responses.running = "main"
+    responses.dump_override = b""
+    device.check_ui_responsive = MagicMock()
+    images = [np.full((1080, 1920, 3), value, dtype=np.uint8) for value in (37, 89)]
+    frames = [
+        (b"first frame", images[0], images[0][:, :, 0]),
+        (b"second frame", images[1], images[1][:, :, 0]),
+    ]
+    pending_frames = iter(frames)
+    recog = Recognizer(device)
+
+    def capture():
+        assert responses.focus == responses.game_focus
+        assert recog._img is None
+        assert recog._screencap is None
+        return next(pending_frames)
+
+    device.screencap = MagicMock(side_effect=capture)
+    recog.start()
+    assert recog.img is images[0]
+    assert recog.screencap == b"first frame"
+    assert device.screencap.call_count == 1
+
+    recog.update()
+    recog.start()
+    assert recog.img is images[1]
+    assert recog.screencap == b"second frame"
+    assert device.screencap.call_count == 2
+    device.check_ui_responsive.assert_called_once_with()
+    assert responses.commands == [
+        "dumpsys window | grep mCurrentFocus",
+        f"ps -A | grep {device.game_package} | grep -v grep",
+        responses.start_command,
+        "dumpsys window | grep mCurrentFocus",
+        "dumpsys window | grep mCurrentFocus",
+    ]
+    device.client.cmd.assert_not_called()
+    device._connect_once.assert_not_called()
+
+
+@pytest.mark.parametrize("mode", ["tap", "adb", "custom"])
+@pytest.mark.parametrize("running", ["main", "pushcore"])
 def test_running_game_popup_recovery_keeps_game_and_uses_foreground_restore(
     android, mode, running
 ):
@@ -450,14 +630,17 @@ def test_running_game_popup_recovery_keeps_game_and_uses_foreground_restore(
     conf.tap_to_launch_game.mode = mode
     responses.running = running
     assert device.check_current_focus() is True
-    assert responses.commands.count(CLOSE_COMMAND) == 1
+    assert CLOSE_COMMAND not in responses.commands
+    assert DUMP_COMMAND not in responses.commands
     assert responses.commands.count(responses.start_command) == 1
     assert ICON_COMMAND not in responses.commands
     assert responses.custom_command not in responses.commands
     assert not any("force-stop" in command for command in responses.commands)
     assert responses.focus == responses.game_focus
     assert device.check_current_focus() is False
-    assert responses.commands.count(CLOSE_COMMAND) == 1
+    assert responses.commands.count(responses.start_command) == 1
+    device.client.cmd.assert_not_called()
+    device._connect_once.assert_not_called()
 
 
 @pytest.mark.parametrize("mode", ["tap", "adb", "custom"])
@@ -470,10 +653,17 @@ def test_stopped_game_popup_recovery_uses_the_saved_launch_mode(android, mode):
         "adb": responses.start_command,
         "custom": responses.custom_command,
     }[mode]
-    assert responses.commands.count(CLOSE_COMMAND) == 1
+    assert responses.commands.count(CLOSE_COMMAND) == int(mode == "tap")
     assert responses.commands.count(expected) == 1
-    assert responses.commands.index(CLOSE_COMMAND) < responses.commands.index(expected)
+    if mode == "tap":
+        assert responses.commands.index(CLOSE_COMMAND) < responses.commands.index(
+            expected
+        )
+    else:
+        assert DUMP_COMMAND not in responses.commands
+        device.client.cmd.assert_not_called()
     assert responses.focus == responses.game_focus
+    device._connect_once.assert_not_called()
 
 
 @pytest.mark.parametrize("entry", ["launch", "check_current_focus"])
@@ -563,13 +753,14 @@ def test_uncertain_close_input_is_not_replayed_or_followed_by_icon_tap(android, 
     assert ICON_COMMAND not in responses.commands
 
 
-def test_foreground_restore_must_confirm_game_focus_after_ad_recovery(android):
+def test_direct_foreground_restore_must_confirm_game_focus(android):
     device, responses, _ = android
     responses.running = "main"
     responses.start_works = False
     with pytest.raises(DeviceRecoveryError):
         device.check_current_focus()
-    assert responses.commands.count(CLOSE_COMMAND) == 1
+    assert CLOSE_COMMAND not in responses.commands
+    assert DUMP_COMMAND not in responses.commands
     assert responses.commands.count(responses.start_command) == 1
     assert ICON_COMMAND not in responses.commands
     device._connect_once.assert_not_called()
@@ -593,12 +784,11 @@ def test_single_remaining_ad_control_blocks_icon_tap(android, remaining):
 
 
 @pytest.mark.parametrize("ad_visible", [True, False], ids=["closed-ad", "no-ad"])
-def test_focus_race_to_another_application_blocks_foreground_recovery(
+def test_focus_race_to_another_application_blocks_tap_foreground_recovery(
     android, ad_visible
 ):
     device, responses, _ = android
     responses.visible = ad_visible
-    responses.running = "main"
 
     def run(command):
         result = responses.run(command)

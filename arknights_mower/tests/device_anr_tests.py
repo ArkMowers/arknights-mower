@@ -365,24 +365,22 @@ def test_new_error_after_restart_confirmation_prevents_game_restore(
     assert not any(command.startswith("am start") for command in responses.commands)
 
 
-def test_system_ui_recovery_checks_advertisement_on_fresh_launcher_focus(
-    system_ui_recovery,
+@pytest.mark.parametrize("game_running", [True, False])
+def test_system_ui_recovery_restores_game_without_reading_launcher_controls(
+    system_ui_recovery, game_running
 ):
     device, responses, _ = system_ui_recovery
     launcher = "app.lawnchair/app.lawnchair.LawnchairLauncher"
     responses.poll_states = [(b"4031\n", launcher)]
-
-    def close_ad(focus):
-        assert focus == launcher
-        responses.focus = responses.game_focus
-        return True
-
-    device._dismiss_mumu_startup_ad = MagicMock(side_effect=close_ad)
+    responses.game_running = game_running
 
     assert device.check_current_focus() is True
 
-    device._dismiss_mumu_startup_ad.assert_called_once_with(launcher)
-    assert not any(command.startswith("am start") for command in responses.commands)
+    assert responses.commands.count(UI_DUMP_COMMAND) == 1
+    assert responses.commands.count(CLOSE_SYSTEM_UI) == 1
+    assert responses.commands.count(f"am start -n {responses.game_focus}") == 1
+    assert responses.focus == responses.game_focus
+    device._connect_once.assert_not_called()
 
 
 def test_system_ui_recovery_waits_for_observed_theme_work(
