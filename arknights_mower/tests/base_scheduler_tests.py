@@ -3318,6 +3318,84 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         self.assertEqual(taps, [confirm_at])
         solver.sleep.assert_called_once_with(88.0)
 
+    def make_order_with_retained_selection(self, submitted_agent="但书"):
+        solver, room, _ = self.make_solver()
+        solver.task.time -= timedelta(minutes=5)
+        state = {"page": "selection", "physical": "旧干员"}
+        observations = []
+        confirmations = []
+
+        def read_room(*_args, **_kwargs):
+            self.assertNotEqual(state["page"], "connecting")
+            observations.append(state["physical"])
+            return [{"agent": state["physical"]}]
+
+        def find(name, **_kwargs):
+            if name == "connecting" and state["page"] == "connecting":
+                return (100, 100)
+            if name == "confirm_blue" and state["page"] == "selection":
+                return (1768, 1015)
+            if name == "room_detail" and state["page"] == "details":
+                return (100, 100)
+            return None
+
+        def tap(*_args, **_kwargs):
+            if state["page"] == "details":
+                state["page"] = "selection"
+                return
+            self.assertEqual(state["page"], "selection")
+            confirmations.append(state["physical"])
+            state.update(page="connecting", physical=submitted_agent)
+
+        def finish_submission():
+            self.assertEqual(state["page"], "connecting")
+            state["page"] = "selection"
+            return True
+
+        solver.get_agent_from_room.side_effect = read_room
+        solver.find.side_effect = find
+        solver.tap = MagicMock(side_effect=tap)
+        solver.sleep = MagicMock()
+        solver.waiting_solver = MagicMock(side_effect=finish_submission)
+        solver.back.side_effect = lambda *_args, **_kwargs: state.update(page="details")
+        solver.tap_confirm = BaseSchedulerSolver.tap_confirm.__get__(solver)
+        return solver, room, observations, confirmations
+
+    def test_submitted_order_still_showing_selection_is_verified_in_room(self):
+        solver, room, observations, confirmations = (
+            self.make_order_with_retained_selection()
+        )
+
+        with patch.object(base_schedule, "save_exception"):
+            original = solver.agent_arrange_room({}, room, solver.task.plan)
+
+        self.assertEqual(original, {room: ["旧干员"]})
+        self.assertEqual(observations, ["旧干员", "但书"])
+        self.assertEqual(confirmations, ["旧干员"])
+        self.assertEqual(solver.task.plan, {})
+        self.assertTrue(solver.task.run_order_restore_pending)
+        solver.waiting_solver.assert_called_once_with()
+        solver.choose_agent.assert_called_once()
+
+    def test_submission_feedback_without_matching_roster_retains_restoration(self):
+        for actual in ("旧干员", None):
+            with self.subTest(actual=actual):
+                solver, room, observations, confirmations = (
+                    self.make_order_with_retained_selection(actual)
+                )
+                with patch.object(base_schedule, "save_exception"):
+                    with self.assertRaisesRegex(Exception, "检测到安排干员未成功"):
+                        solver.agent_arrange_room({}, room, solver.task.plan)
+
+                self.assertEqual(observations, ["旧干员", actual])
+                self.assertEqual(confirmations, ["旧干员"])
+                self.assertEqual(solver.task.plan, {room: ["但书"]})
+                self.assertEqual(
+                    solver.task.run_order_original_roster, {room: ["旧干员"]}
+                )
+                self.assertTrue(solver.task.run_order_restore_pending)
+                solver.choose_agent.assert_called_once()
+
     def test_two_slot_task_runs_after_extra_target_is_removed(self):
         solver, room, _ = self.make_solver(target="乌尔比安")
         solver.task.type = TaskTypes.SHIFT_ON
