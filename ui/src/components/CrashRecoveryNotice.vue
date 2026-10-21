@@ -65,6 +65,19 @@ onUnmounted(() => {
       </n-text>
       <n-text v-else>任务已停止。需要继续时，可使用原有的开始按钮。</n-text>
       <n-text v-if="status.message" depth="3">{{ status.message }}</n-text>
+      <n-text v-if="status.trigger_message && !status.startup" depth="3">
+        触发原因：{{ status.trigger_message }}
+      </n-text>
+      <n-text
+        v-if="
+          !status.startup &&
+          status.last_failure_message &&
+          status.last_failure_message !== status.trigger_message
+        "
+        depth="3"
+      >
+        最近一次失败：{{ status.last_failure_message }}
+      </n-text>
       <n-text v-if="error" type="error">{{ error }}</n-text>
     </n-space>
     <template #action>

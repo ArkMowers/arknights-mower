@@ -14,6 +14,7 @@ import tempfile
 import threading
 import time
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -85,6 +86,33 @@ def wait_for_supervisor_release(record, deadline):
     if directory:
         with supervision_lock(directory, timeout=max(0, deadline - time.monotonic())):
             pass
+
+
+def recovery_failure_details(previous, *, reason, message, exit_code=None):
+    """Keep the first fault of an active recovery and report its latest failure."""
+    now = datetime.now(timezone.utc).isoformat()
+    details = {
+        "occurred_at": now,
+        "reason": reason,
+        "trigger_message": message,
+        "last_failure_at": now,
+        "last_failure_reason": reason,
+        "last_failure_message": message,
+        "last_exit_code": exit_code,
+    }
+    if exit_code is not None:
+        details["exit_code"] = exit_code
+    if (
+        isinstance(previous, dict)
+        and previous.get("active") is True
+        and previous.get("startup") is not True
+    ):
+        details.pop("exit_code", None)
+        for key in ("occurred_at", "reason", "trigger_message", "exit_code"):
+            if key in previous:
+                details[key] = previous[key]
+        details["trigger_message"] = previous.get("trigger_message")
+    return details
 
 
 def read_json(path, default=None):
