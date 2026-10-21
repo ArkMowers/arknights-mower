@@ -1628,7 +1628,7 @@ class ArchiveAndLauncherTests(unittest.TestCase):
             patch.object(runtime, "state_dir", return_value=Path(temporary)),
         ):
             registration = runtime.RuntimeRegistration(
-                "instance", name="test", running=lambda: True
+                "instance", name="test", running=lambda: True, maintenance=False
             )
             self.assertTrue(runtime.instances()[0]["running"])
             registration.close()

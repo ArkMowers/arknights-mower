@@ -180,6 +180,30 @@ it('shows active recovery once, updates its content and refreshes through the no
   expect(client.post).not.toHaveBeenCalled()
 })
 
+it('describes an ordinary start with pending observations as startup progress', async () => {
+  client.get.mockResolvedValue({ data: recoveryStatus({ startup: true }) })
+  await mount()
+  const entry = state.create.mock.results[0].value
+  expect(entry.title).toBe('正在启动')
+  expect(contents(entry.content())).toContain('启动前正在重新读取设备、驻员和心情')
+  expect(contents(entry.content())).not.toContain('程序发生异常')
+
+  entry.onClose()
+  entry.onAfterLeave()
+  await vi.advanceTimersByTimeAsync(3000)
+  await settle()
+  expect(state.create).toHaveBeenCalledOnce()
+
+  client.get.mockResolvedValue({
+    data: recoveryStatus({ startup: false, occurred_at: secondOccurrence })
+  })
+  await vi.advanceTimersByTimeAsync(3000)
+  await settle()
+  expect(state.create).toHaveBeenCalledTimes(2)
+  expect(state.create.mock.results[1].value.title).toBe('正在自动恢复')
+  expect(client.post).not.toHaveBeenCalled()
+})
+
 it('retains recovery progress while disconnected and closes it after resolution', async () => {
   client.get.mockResolvedValueOnce({
     data: recoveryStatus({ message: '正在重新读取驻员' })

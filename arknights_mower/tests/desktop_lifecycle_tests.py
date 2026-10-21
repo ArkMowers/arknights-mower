@@ -493,6 +493,7 @@ class DesktopStartupTests(unittest.TestCase):
                 ("0", "preserve", None),
                 ("1", "preserve", "2"),
                 ("1", "", "2"),
+                ("0", "", None),
                 ("0", "0", "0"),
                 ("0", "1", "1"),
             ):
@@ -510,7 +511,7 @@ class DesktopStartupTests(unittest.TestCase):
                     )
                     self.assertEqual(server.start.call_count, int(expected is not None))
 
-    def test_software_update_autostart_uses_the_saved_option_and_normal_mode(self):
+    def test_stopped_instance_stays_stopped_after_software_update(self):
         for automatic in (False, True):
             with self.subTest(automatic=automatic):
                 events, server = self.launch(
@@ -519,7 +520,5 @@ class DesktopStartupTests(unittest.TestCase):
                     resource=True,
                 )
                 expected = ["check resource", "install resource"]
-                if automatic:
-                    expected.append(("start", "0"))
                 self.assertEqual(events, expected)
-                self.assertEqual(server.start.call_count, int(automatic))
+                server.start.assert_not_called()

@@ -78,6 +78,16 @@ class SubmissionLockTests(unittest.TestCase):
 
 
 class UpdateStorageTests(unittest.TestCase):
+    def test_explicit_launch_does_not_inherit_automatic_recovery_permission(self):
+        for previous in ("0", "1", "unknown"):
+            with (
+                self.subTest(previous=previous),
+                patch.dict(os.environ, {"MOWER_RECOVERY_RUN": previous}),
+            ):
+                result = runtime.launch_environment({"running": False}, "new-restart")
+                self.assertNotIn("MOWER_RECOVERY_RUN", result)
+                self.assertEqual(result["MOWER_RESUME_RUN"], "0")
+
     def test_shared_tmp_storage_preserves_installation_isolation(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

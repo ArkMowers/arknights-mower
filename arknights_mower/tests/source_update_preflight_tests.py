@@ -241,7 +241,7 @@ class SourceCheckoutTests(unittest.TestCase):
             worker.restart([{"kind": "instance", "name": "fixture"}], verify=False)
         self.assertEqual(start.call_args.kwargs["env"]["PATH"], worker.env["PATH"])
 
-    def test_source_update_restart_honors_autostart_and_restores_running_tasks(self):
+    def test_source_update_restart_preserves_stopped_and_running_task_state(self):
         from arknights_mower.tests.desktop_lifecycle_tests import DesktopStartupTests
 
         desktop = DesktopStartupTests()
@@ -251,7 +251,7 @@ class SourceCheckoutTests(unittest.TestCase):
             worker.job["background"] = background
             for running, automatic, expected in (
                 (False, False, []),
-                (False, True, [("start", "0")]),
+                (False, True, []),
                 (True, False, [("start", "0")]),
                 (True, True, [("start", "0")]),
             ):

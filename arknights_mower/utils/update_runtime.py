@@ -181,6 +181,47 @@ def active_job(directory=None):
     return bool(owner and process_alive(owner.get("pid")))
 
 
+def record_task_stop():
+    """Keep a user Stop effective across an already accepted replacement job."""
+    directory = state_dir()
+    owner = read_json(directory / "active/owner.json", {})
+    if not owner or not process_alive(owner.get("pid")):
+        return
+    current = next(
+        (
+            record
+            for record in instances(directory)
+            if record.get("pid") == os.getpid() and record.get("kind") == "instance"
+        ),
+        None,
+    )
+    if (
+        current is not None
+        and isinstance(current.get("id"), str)
+        and current["id"]
+        and Path(current["id"]).name == current["id"]
+    ):
+        write_json(
+            directory / "active/task-stops" / f"{current['id']}.json",
+            {"job": owner["id"]},
+            sync=True,
+        )
+
+
+def task_stop_requested(record, job_id, directory):
+    instance_id = record.get("id")
+    if (
+        not isinstance(instance_id, str)
+        or not instance_id
+        or Path(instance_id).name != instance_id
+    ):
+        return False
+    stopped = read_json(
+        Path(directory) / "active/task-stops" / f"{instance_id}.json", {}
+    )
+    return stopped.get("job") == job_id
+
+
 class LockBusyError(ValueError):
     """Another process owns the requested nonblocking update lock."""
 
@@ -481,6 +522,7 @@ def hidden_console_options():
 
 def launch_environment(record, job_id="", background=False):
     env = os.environ.copy()
+    env.pop("MOWER_RECOVERY_RUN", None)
     # A frozen child must initialize its own bootloader/runtime, including after
     # replacement of the bundle. System subprocesses must not inherit private libs.
     env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"

@@ -46,10 +46,21 @@ onUnmounted(() => {
     :key="notificationKey"
     :show="notificationVisible"
     :type="status.automatic === false ? 'warning' : 'info'"
-    :title="status.automatic === false ? '自动恢复已停止' : '正在自动恢复'"
+    :title="
+      status.startup
+        ? status.automatic === false
+          ? '启动已停止'
+          : '正在启动'
+        : status.automatic === false
+          ? '自动恢复已停止'
+          : '正在自动恢复'
+    "
   >
     <n-space vertical :size="8">
-      <n-text v-if="status.automatic !== false">
+      <n-text v-if="status.automatic !== false && status.startup">
+        启动前正在重新读取设备、驻员和心情，保存后按所选方式开始调度；暂时失败时会等待并重试。
+      </n-text>
+      <n-text v-else-if="status.automatic !== false">
         程序发生异常后会自动重新读取设备、驻员和心情，再继续调度；暂时失败时会等待并重试。
       </n-text>
       <n-text v-else>任务已停止。需要继续时，可使用原有的开始按钮。</n-text>
