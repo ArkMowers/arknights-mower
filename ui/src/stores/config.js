@@ -86,6 +86,8 @@ export const useConfigStore = defineStore('config', () => {
   const maa_mall_blacklist = ref('')
   const shop_list = ref([])
   const item_list = ref([])
+  let shopLoadRevision = 0
+  let itemLoadRevision = 0
   const maa_gap = ref(3)
   const simulator = ref({ name: '', index: -1 })
   const resting_threshold = ref(50)
@@ -211,7 +213,9 @@ export const useConfigStore = defineStore('config', () => {
   const autosave_paused = ref(false)
 
   async function load_shop() {
+    const revision = ++shopLoadRevision
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/shop`)
+    if (revision !== shopLoadRevision) return
     const mall_list = []
     for (const i of response.data) {
       mall_list.push({
@@ -223,7 +227,9 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   async function load_item() {
+    const revision = ++itemLoadRevision
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/item`)
+    if (revision !== itemLoadRevision) return
     const mall_list = []
     for (const i of response.data) {
       mall_list.push({

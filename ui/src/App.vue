@@ -850,6 +850,17 @@ async function handleUpdateNoticeAck() {
   }
 }
 
+async function loadStartupUpdateNotice() {
+  try {
+    const notice = await loadUpdateNotice()
+    showUpdateNoticeModal.value = notice.should_show
+    if (notice.should_show) await renderChangelog()
+  } catch (error) {
+    console.error('failed to load update notice', error)
+    showUpdateNoticeModal.value = false
+  }
+}
+
 const operators_with_free_current = computed(() => {
   return [
     { value: 'Current', label: 'Current' },
@@ -876,7 +887,13 @@ onMounted(async () => {
       watermarkData.value = info
     })
     .catch(() => {})
-  await Promise.all([load_config(), load_shop(), load_item(), load_operators(), get_running()])
+  const optionListsRequest = Promise.allSettled([load_shop(), load_item()]).then((results) => {
+    for (const result of results) {
+      if (result.status === 'rejected')
+        console.error('failed to load setting options', result.reason)
+    }
+  })
+  await Promise.all([load_config(), load_plan(), load_operators(), get_running()])
 
   document.title = instanceName
     ? `${instanceName} - arknights-mower`
@@ -895,21 +912,10 @@ onMounted(async () => {
       )
       .catch((error) => console.error('failed to request automatic software check', error))
 
-  await load_plan()
-
-  try {
-    const notice = await loadUpdateNotice()
-    showUpdateNoticeModal.value = notice.should_show
-    if (notice.should_show) {
-      renderChangelog()
-    }
-  } catch (error) {
-    console.error('failed to load update notice', error)
-    showUpdateNoticeModal.value = false
-  }
   // Desktop startup owns automatic installation and task admission.
   const resourceUpdateRequest = (async () => {
     try {
+      await optionListsRequest
       if (updates_enabled.value === true && (await loadResourceJob())) {
         await Promise.all([load_shop(), load_item(), load_operators()])
       }
@@ -932,6 +938,7 @@ onMounted(async () => {
   })()
 
   loaded.value = true
+  void loadStartupUpdateNotice()
 
   const r = RegExp(operators_with_free_current.value.map((x) => "'" + x.value).join('|'))
   hljs.registerLanguage('mower', () => ({

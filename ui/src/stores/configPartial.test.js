@@ -60,6 +60,34 @@ async function setup(overrides = {}) {
 }
 
 describe('partial configuration saves', () => {
+  it.each([
+    ['load_shop', 'shop_list'],
+    ['load_item', 'item_list']
+  ])(
+    'keeps the latest %s response when a background request finishes later',
+    async (load, list) => {
+      await setup({ maa_mall_buy: '招聘许可' })
+      let finishInitial
+      axios.get
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishInitial = resolve
+            })
+        )
+        .mockResolvedValueOnce({ data: ['新资源'] })
+      const initial = store[load]()
+      await store[load]()
+      finishInitial({ data: ['旧资源'] })
+      await initial
+      await nextTick()
+      await store.flush_config_saves()
+      expect(store[list]).toEqual([{ value: '新资源', label: '新资源' }])
+      expect(store.maa_mall_buy).toEqual(['招聘许可'])
+      expect(axios.patch).not.toHaveBeenCalled()
+    }
+  )
+
   it('defaults value shopping off at 0.045 and saves only an explicit toggle', async () => {
     await setup()
     expect(store.credit_shop_by_value).toBe(false)
