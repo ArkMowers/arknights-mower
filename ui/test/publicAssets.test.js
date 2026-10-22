@@ -201,6 +201,24 @@ it('retains Vite public copying for a custom output directory', async () => {
   expect(text(path.join(root, 'custom-dist'), 'avatar/unchanged.webp')).toBe('image bytes')
 })
 
+it.each(['root', 'nested'])('builds linked public %s assets like Vite', async (kind) => {
+  const { root, directory, publicDir, outDir } = fixture()
+  const shared = path.join(directory, 'shared-assets')
+  if (kind === 'root') fs.renameSync(publicDir, shared)
+  else fs.mkdirSync(shared)
+  fs.writeFileSync(path.join(shared, 'shared.json'), '{"shared":1}')
+  fs.symlinkSync(shared, kind === 'root' ? publicDir : path.join(publicDir, 'shared'), 'junction')
+  const name = kind === 'root' ? 'shared.json' : 'shared/shared.json'
+
+  await runBuild(root, { build: { emptyOutDir: true } })
+  expectGzip(outDir, name, '{"shared":1}')
+  await runBuild(root)
+  expectGzip(outDir, name, '{"shared":1}')
+  fs.writeFileSync(path.join(shared, 'shared.json'), '{"shared":2}')
+  await runBuild(root)
+  expectGzip(outDir, name, '{"shared":2}')
+})
+
 it.each([false, true])(
   'builds a linked project with preserveSymlinks=%s',
   async (preserveSymlinks) => {

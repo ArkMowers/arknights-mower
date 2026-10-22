@@ -47,21 +47,15 @@ export function preparePublicOutput({ root, publicDir, outDir }) {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       const name = path.join(relative, entry.name)
       const full = path.join(directory, entry.name)
-      if (entry.isSymbolicLink())
-        throw new Error('Public assets must contain regular files and directories')
-      if (entry.isDirectory()) {
+      const source = entry.isSymbolicLink() ? fs.statSync(full) : entry
+      if (source.isDirectory()) {
         directories.add(name)
         readPublic(full, name)
-      } else if (entry.isFile()) files.set(name, fs.readFileSync(full))
+      } else if (source.isFile()) files.set(name, fs.readFileSync(full))
       else throw new Error('Public assets must contain regular files and directories')
     }
   }
-  const publicEntry = fs.lstatSync(publicDir, { throwIfNoEntry: false })
-  if (publicEntry) {
-    if (publicEntry.isSymbolicLink())
-      throw new Error('Public assets must contain regular files and directories')
-    readPublic(publicDir)
-  }
+  if (fs.existsSync(publicDir)) readPublic(publicDir)
 
   let copied = 0
   let unchanged = 0
