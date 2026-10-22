@@ -10070,9 +10070,11 @@ class BaseSchedulerSolver(
         for template in ("confirm_blue", "confirm_train", "arrange_confirm"):
             clicks = 0
             retry_ready = False
+            submission_observed = False
             for _ in range(12):
                 if self.find("connecting"):
                     retry_ready = False
+                    submission_observed = clicks > 0
                     if not self.waiting_solver():
                         # 联网超时已重启游戏；先完成登录，调用方再实读驻员。
                         self.back_to_infrastructure()
@@ -10106,6 +10108,10 @@ class BaseSchedulerSolver(
                     retry_ready = False
                     self.sleep(0.2)
                     continue
+                if submission_observed:
+                    # 提交反馈结束后仍显示选人页，也可能已经进驻；返回房间由调用方实读核验。
+                    self.back(interval=0.2)
+                    break
                 if clicks and not retry_ready:
                     # 可能仍是点击前的旧帧；再观察一次才判断点击未生效。
                     retry_ready = True
@@ -12390,6 +12396,36 @@ class BaseSchedulerSolver(
         )
         return True
 
+    def _wait_for_run_order_selection_page(self):
+        """跑单入口未就绪时只观察，保留原按钮匹配和房间恢复。"""
+        unready = (Scene.UNKNOWN, Scene.UNDEFINED, Scene.CONNECTING)
+        scene = self.scene()
+        if scene not in unready:
+            return
+
+        deadline = None
+        network_waited = False
+        while scene in unready:
+            if scene == Scene.CONNECTING:
+                if network_waited:
+                    raise AgentSelectionNotReady("跑单选人页反复联网，返回房间重试")
+                network_waited = True
+                if not self.waiting_solver(restart_on_timeout=False):
+                    raise AgentSelectionNotReady("跑单选人页联网等待超时，返回房间重试")
+            else:
+                if deadline is None:
+                    profile = self.performance_profile
+                    deadline = monotonic() + profile.transition_timeout
+                    poll_interval = profile.poll_interval
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    raise AgentSelectionNotReady("跑单选人页场景仍未知，返回房间重试")
+                self.sleep(min(poll_interval, remaining))
+            scene = self.scene()
+
+        if self.find("confirm_blue") is None:
+            raise AgentSelectionNotReady("跑单选人页确认按钮已消失，返回房间重试")
+
     @timed_room
     def agent_arrange_room(
         self,
@@ -12891,8 +12927,10 @@ class BaseSchedulerSolver(
                                 raise Exception("未成功进入干员选择界面")
                             self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
                             error_count += 1
-                        # 已确认进入选人页，将页面转换纳入场景停留计时。
-                        if self.scene() == Scene.UNDEFINED:
+                        # 跑单及原班恢复等待未知／联网画面结束，再开始选人。
+                        if self.task.type == TaskTypes.RUN_ORDER:
+                            self._wait_for_run_order_selection_page()
+                        elif self.scene() == Scene.UNDEFINED:
                             raise RecognizeError("选人页场景观测已失效，返回房间重试")
                         if normal_order and not getattr(
                             self.task, "run_order_restore_pending", False
