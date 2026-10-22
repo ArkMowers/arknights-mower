@@ -386,8 +386,19 @@ class SessionResolutionTests(unittest.TestCase):
 class WorkerDeviceSessionTests(unittest.TestCase):
     def setUp(self):
         # SKLand performs unrelated network I/O at import time.
-        with patch.dict(sys.modules, {"arknights_mower.utils.skland": MagicMock()}):
+        name = "arknights_mower.utils.skland"
+        previous = sys.modules.get(name)
+        sys.modules[name] = MagicMock()
+        try:
             self.main = importlib.import_module("arknights_mower.__main__")
+            self.base_schedule = importlib.import_module(
+                "arknights_mower.solvers.base_schedule"
+            )
+        finally:
+            if previous is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = previous
         self.control = DeviceControl(
             lambda: SimpleNamespace(adb="USB-123"), ManualAdapter()
         )
@@ -418,7 +429,7 @@ class WorkerDeviceSessionTests(unittest.TestCase):
         previous = self.control.start().value
         with (
             patch.object(
-                self.main,
+                self.base_schedule,
                 "BaseSchedulerSolver",
                 side_effect=lambda **kwargs: SimpleNamespace(**kwargs),
             ),
@@ -437,7 +448,7 @@ class WorkerDeviceSessionTests(unittest.TestCase):
     def test_initialization_failure_closes_the_session_before_retry(self):
         with (
             patch.object(
-                self.main,
+                self.base_schedule,
                 "BaseSchedulerSolver",
                 side_effect=RuntimeError("recognition failed"),
             ),

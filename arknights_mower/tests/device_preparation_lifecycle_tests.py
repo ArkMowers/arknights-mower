@@ -33,6 +33,9 @@ class PreparationLifecycleTests(unittest.TestCase):
         sys.modules[name] = MagicMock()
         try:
             cls.main = importlib.import_module("arknights_mower.__main__")
+            cls.base_schedule = importlib.import_module(
+                "arknights_mower.solvers.base_schedule"
+            )
         finally:
             if previous is None:
                 sys.modules.pop(name, None)
@@ -88,7 +91,11 @@ class PreparationLifecycleTests(unittest.TestCase):
             )
         )
         self.factory = self.enterContext(
-            patch.object(self.main, "BaseSchedulerSolver", side_effect=self.scheduler)
+            patch.object(
+                self.base_schedule,
+                "BaseSchedulerSolver",
+                side_effect=self.scheduler,
+            )
         )
 
     def scheduler(self, *, device):
