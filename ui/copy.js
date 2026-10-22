@@ -6,13 +6,17 @@ const sourceFile = 'Mower入门指北.html'
 const destDir = 'dist/docs'
 
 fs.mkdirSync(destDir, { recursive: true })
-fs.copyFileSync(sourceFile, path.join(destDir, path.basename(sourceFile)))
+const destFile = path.join(destDir, path.basename(sourceFile))
+fs.copyFileSync(sourceFile, destFile)
+fs.rmSync(destFile + '.gz', { force: true })
 
 // OTA reconstructs unchanged buffer data from its original bytes, not compiled JS.
 const bufferFile = 'src/pages/basement_skill/buffer.json'
 const bufferDest = 'dist/pages/basement_skill'
 fs.mkdirSync(bufferDest, { recursive: true })
-fs.copyFileSync(bufferFile, path.join(bufferDest, path.basename(bufferFile)))
+const bufferTarget = path.join(bufferDest, path.basename(bufferFile))
+fs.copyFileSync(bufferFile, bufferTarget)
+fs.rmSync(bufferTarget + '.gz', { force: true })
 
 // 预压缩静态资源，server.py 会按 Accept-Encoding 返回 .gz
 function precompress(dir) {

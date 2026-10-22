@@ -10,6 +10,7 @@ import vueJsx from '@vitejs/plugin-vue-jsx'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
+import { incrementalPublicAssets } from './scripts/publicAssets.js'
 
 // unplugin-vue-components 用单引号拼接自动导入路径且不转义，检出目录含单引号时
 // 生成的 import 语句会因引号提前闭合而无法解析。这里把组件路径换成 `@/` 别名，
@@ -24,6 +25,7 @@ export default defineConfig(({ command }) => ({
     strictPort: true
   },
   plugins: [
+    incrementalPublicAssets(),
     Inspect(),
     vue(),
     vueJsx(),
