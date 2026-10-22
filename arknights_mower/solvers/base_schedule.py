@@ -684,6 +684,31 @@ class BaseSchedulerSolver(
         log = logger.info if dependency else logger.error
         log("%s；保留原任务及时间，相关观测或安排更新后复核", reason)
 
+    def _run_order_restoration_failures(self):
+        """读取仍在原队列中的原班恢复失败，保留本次失败的引用。"""
+        return [
+            (task, failure)
+            for task in getattr(self, "tasks", ())
+            if task.type == TaskTypes.RUN_ORDER
+            and getattr(task, "run_order_restore_pending", False)
+            and (failure := getattr(task, "execution_failure", None))
+        ]
+
+    def _request_run_order_restoration_observations(self, failures=None):
+        """正常唤醒或载入后，由既有巡检为原有失败补一次实际驻员观察。"""
+        current = {
+            id(task): failure
+            for task, failure in self._run_order_restoration_failures()
+        }
+        if failures is None:
+            failures = self._run_order_restoration_failures()
+        self._run_order_restoration_observations = {
+            room: (task, failure)
+            for task, failure in failures
+            if current.get(id(task)) is failure
+            for room in task.run_order_original_roster
+        }
+
     def _refresh_derived_correction(self, task):
         """相关观测更新后，只重算尚未执行的普通派生纠错。"""
         if (
@@ -2940,6 +2965,21 @@ class BaseSchedulerSolver(
         }
         self._initial_mood_refresh_rooms = force_rooms
         need_read.update(force_rooms)
+        current_failures = {
+            id(task): failure
+            for task, failure in self._run_order_restoration_failures()
+        }
+        restoration_observations = {
+            room: (task, failure)
+            for room, (task, failure) in getattr(
+                self, "_run_order_restoration_observations", {}
+            ).items()
+            if current_failures.get(id(task)) is failure
+            and room in self.op_data.plan
+            and room in base_room_list
+        }
+        self._run_order_restoration_observations = restoration_observations
+        need_read.update(restoration_observations)
 
         # 正常心情刷新始终检查训练室，包含未启用专精时的手动训练。
         # 实际扫描仍受房间级 2.5 小时限频保护。
@@ -2983,6 +3023,7 @@ class BaseSchedulerSolver(
 
             if (
                 room not in force_rooms
+                and room not in restoration_observations
                 and current_working
                 and all(
                     operator.time_stamp
@@ -2998,6 +3039,8 @@ class BaseSchedulerSolver(
                     logger.debug(e.time_stamp)
                 logger.debug(f"{room} 所有干员不满足扫描条件，跳过")
                 continue
+            if room in restoration_observations and not self.no_pending_task(1):
+                continue
             if getattr(
                 self, "_emergency_startup_pending", False
             ) and not self._emergency_operation_fits(
@@ -3007,6 +3050,8 @@ class BaseSchedulerSolver(
                 return False
             skip_room_exit = False
             room_entered = False
+            # 进入既有有界读房前消费本轮机会；读取失败不在同轮另起一次巡检。
+            restoration_observations.pop(room, None)
             while True:
                 try:
                     if room == "train":
@@ -15167,6 +15212,11 @@ class BaseSchedulerSolver(
         成功恢复时清理标准画面帧、场景和计时；设备恢复失败时保留待完成的识别复位。
         主循环成功恢复设备后完成复位；取消与错误始终复位 `sleeping`。
         """
+        restoration_failures = (
+            self._run_order_restoration_failures()
+            if allow_wakeup and remaining_time > 0
+            else None
+        )
         self.sleeping = True
         try:
             end_time = datetime.now() + timedelta(seconds=remaining_time)
@@ -15179,6 +15229,8 @@ class BaseSchedulerSolver(
             if config.stop_mower.is_set():
                 raise MowerExit
             self._idle_observation_pending = True
+            if restoration_failures is not None:
+                self._idle_run_order_restoration_failures = restoration_failures
             refresh_resource_at_boundary()
             if (
                 config.conf.close_simulator_when_idle
@@ -15191,10 +15243,20 @@ class BaseSchedulerSolver(
                 self._simulator_closed_for_idle = False
                 self._sync_idle_device()
                 self.device.reconnect()
-            self.recog.reset_after_external_control()
-            self._idle_observation_pending = False
+            BaseSchedulerSolver._complete_idle_observation(self)
+        except MowerExit:
+            self.__dict__.pop("_idle_run_order_restoration_failures", None)
+            raise
         finally:
             self.sleeping = False
+
+    def _complete_idle_observation(self):
+        """画面成功复位后，完成原有正常等待的补充观察责任。"""
+        self.recog.reset_after_external_control()
+        failures = self.__dict__.pop("_idle_run_order_restoration_failures", None)
+        if failures is not None:
+            self._request_run_order_restoration_observations(failures)
+        self._idle_observation_pending = False
 
     def _refresh_workshop_inventory(self):
         """Reconcile committed drops after external control and before idle sleep."""

@@ -391,8 +391,7 @@ def _resume_device_dispatch(scheduler=None, failure=None):
             scheduler.device = device
             scheduler.recog.device = device
             if uncertain or getattr(scheduler, "_idle_observation_pending", False):
-                scheduler.recog.reset_after_external_control()
-                scheduler._idle_observation_pending = False
+                BaseSchedulerSolver._complete_idle_observation(scheduler)
             else:
                 scheduler.recog.update()
         return device
@@ -673,6 +672,8 @@ def simulate(saved):
         except MowerExit:
             return
     base_scheduler._state_restore_complete = True
+    if saved:
+        base_scheduler._request_run_order_restoration_observations()
     while True:
         try:
             config.maintenance_recheck.clear()
