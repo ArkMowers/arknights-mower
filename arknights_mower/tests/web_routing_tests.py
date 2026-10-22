@@ -1,3 +1,4 @@
+import gzip
 import json
 import tempfile
 import unittest
@@ -37,6 +38,261 @@ class WebRoutingTests(unittest.TestCase):
         response = self.client.get(path, **kwargs)
         self.addCleanup(response.close)
         return response
+
+    def static_file(self, path, body):
+        target = self.root / path.lstrip("/")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(body)
+        return target
+
+    def test_hashed_build_assets_are_public_and_immutable(self):
+        for path, body in (
+            ("/assets/main-Ab1_cd-2.js", b"console.log('mower');"),
+            ("/assets/incomeWorker-BNIl5NnI.js", b"postMessage('mower');"),
+            ("/assets/main-DJbKay_B.css", b"body { color: red; }"),
+            ("/assets/logo-Ef5_gh-6.svg", b"<svg></svg>"),
+            ("/assets/contact-Du2PVZeF.png", b"image fixture"),
+        ):
+            self.static_file(path, body)
+            for method in ("get", "head"):
+                for headers in ({}, {"token": "invalid"}):
+                    with (
+                        self.subTest(path=path, method=method, headers=headers),
+                        patch.object(
+                            server.app, "token", "fixture-secret", create=True
+                        ),
+                        getattr(self.client, method)(
+                            path,
+                            headers=headers,
+                            environ_base={"REMOTE_ADDR": "192.0.2.1"},
+                        ) as response,
+                    ):
+                        self.assertEqual(response.status_code, 200)
+                        self.assertEqual(
+                            response.data, body if method == "get" else b""
+                        )
+                        self.assertEqual(
+                            response.headers["Cache-Control"],
+                            "public, max-age=31536000, immutable",
+                        )
+
+    def test_hashed_asset_gzip_and_identity_keep_separate_representations(self):
+        path = "/assets/main-Ab1_cd-2.js"
+        body = b"console.log('mower');"
+        source = self.static_file(path, body)
+        source.with_suffix(".js.gz").write_bytes(gzip.compress(body))
+        for encoding in ("identity", "gzip", "gzip;q=0"):
+            for method in ("get", "head"):
+                with (
+                    self.subTest(encoding=encoding, method=method),
+                    getattr(self.client, method)(
+                        path, headers={"Accept-Encoding": encoding}
+                    ) as response,
+                ):
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.cache_control.max_age, 31536000)
+                    self.assertTrue(response.cache_control.immutable)
+                    self.assertIn("Accept-Encoding", response.vary)
+                    if encoding == "gzip":
+                        self.assertEqual(response.headers["Content-Encoding"], "gzip")
+                        self.assertNotIn("ETag", response.headers)
+                        if method == "get":
+                            self.assertEqual(gzip.decompress(response.data), body)
+                    else:
+                        self.assertNotIn("Content-Encoding", response.headers)
+                        self.assertIn("ETag", response.headers)
+                        if method == "get":
+                            self.assertEqual(response.data, body)
+                    if method == "head":
+                        self.assertEqual(response.data, b"")
+
+    def test_hashed_asset_not_modified_keeps_cache_and_encoding_variance(self):
+        path = "/assets/main-Ab1_cd-2.js"
+        body = b"console.log('mower');"
+        source = self.static_file(path, body)
+        source.with_suffix(".js.gz").write_bytes(gzip.compress(body))
+        identity = self.get(path)
+        for headers in (
+            {"If-None-Match": identity.headers["ETag"]},
+            {
+                "Accept-Encoding": "gzip",
+                "If-Modified-Since": identity.headers["Last-Modified"],
+            },
+            {"Accept-Encoding": "gzip", "If-None-Match": "*"},
+        ):
+            with self.subTest(headers=headers):
+                response = self.get(path, headers=headers)
+                self.assertEqual(response.status_code, 304)
+                self.assertEqual(response.data, b"")
+                self.assertEqual(response.cache_control.max_age, 31536000)
+                self.assertTrue(response.cache_control.immutable)
+                self.assertIn("Accept-Encoding", response.vary)
+                if headers.get("Accept-Encoding") == "gzip":
+                    self.assertNotIn("ETag", response.headers)
+
+    def test_identity_etag_does_not_validate_gzip_bytes(self):
+        path = "/assets/main-Ab1_cd-2.js"
+        body = b"console.log('mower');"
+        source = self.static_file(path, body)
+        source.with_suffix(".js.gz").write_bytes(gzip.compress(body))
+        identity = self.get(path)
+        response = self.get(
+            path,
+            headers={
+                "Accept-Encoding": "gzip",
+                "If-None-Match": identity.headers["ETag"],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Content-Encoding"], "gzip")
+        self.assertEqual(gzip.decompress(response.data), body)
+        self.assertNotIn("ETag", response.headers)
+        self.assertIn("Accept-Encoding", response.vary)
+
+    def test_public_asset_variants_keep_the_same_token_boundary(self):
+        path = "/assets/main-Ab1_cd-2.js"
+        body = b"console.log('mower');"
+        source = self.static_file(path, body)
+        source.with_suffix(".js.gz").write_bytes(gzip.compress(body))
+        identity = self.get(path)
+        variants = (
+            (path, {}, 200),
+            (path, {"Accept-Encoding": "gzip"}, 200),
+            (path, {"If-None-Match": identity.headers["ETag"]}, 304),
+            (
+                path,
+                {
+                    "Accept-Encoding": "gzip",
+                    "If-Modified-Since": identity.headers["Last-Modified"],
+                },
+                304,
+            ),
+            ("/assets/missing-Ab1_cd-2.js", {"Accept-Encoding": "gzip"}, 404),
+        )
+        with patch.object(server.app, "token", "fixture-secret", create=True):
+            for method in ("get", "head"):
+                for token in (None, "invalid"):
+                    for request_path, headers, status in variants:
+                        if token is not None:
+                            headers = {**headers, "token": token}
+                        with (
+                            self.subTest(method=method, token=token, headers=headers),
+                            getattr(self.client, method)(
+                                request_path,
+                                headers=headers,
+                                environ_base={"REMOTE_ADDR": "192.0.2.1"},
+                            ) as response,
+                        ):
+                            self.assertEqual(response.status_code, status)
+                            self.assertEqual(
+                                response.cache_control.immutable, status != 404
+                            )
+                            if status != 404:
+                                self.assertIn("Accept-Encoding", response.vary)
+
+    def test_asset_caching_does_not_weaken_protected_api_requests(self):
+        from arknights_mower.__main__ import device_control
+
+        for method in ("get", "head"):
+            for token in (None, "invalid", "fixture-secret"):
+                headers = {"Accept-Encoding": "gzip", "If-None-Match": "*"}
+                if token is not None:
+                    headers["token"] = token
+                with (
+                    self.subTest(method=method, token=token),
+                    patch.object(server.app, "token", "fixture-secret", create=True),
+                    patch.object(
+                        device_control,
+                        "settings_status",
+                        return_value={"active": False},
+                    ) as read_status,
+                    getattr(self.client, method)(
+                        "/device/status",
+                        headers=headers,
+                        environ_base={"REMOTE_ADDR": "192.0.2.1"},
+                    ) as response,
+                ):
+                    self.assertFalse(response.cache_control.immutable)
+                    self.assertIsNone(response.cache_control.max_age)
+                    if token == "fixture-secret":
+                        self.assertEqual(response.status_code, 200)
+                        read_status.assert_called_once_with()
+                    else:
+                        self.assertEqual(response.status_code, 403)
+                        read_status.assert_not_called()
+
+    def test_unversioned_files_and_html_keep_revalidation(self):
+        paths = (
+            "/assets/main.js",
+            "/assets/main-dev.js",
+            "/assets/main-Abcdefg.js",
+            "/assets/main-Abcdefghi.js",
+            "/assets/manual-Ab1_cd-2.html",
+            "/other/main-Ab1_cd-2.js",
+            "/bg.webp",
+        )
+        for path in paths:
+            self.static_file(path, b"unversioned fixture")
+        for path in (*paths, "/", "/index.html", "/plan-editor"):
+            with self.subTest(path=path):
+                response = self.get(path, headers={"Accept": "text/html"})
+                self.assertEqual(response.status_code, 200)
+                self.assertFalse(response.cache_control.immutable)
+                self.assertIsNone(response.cache_control.max_age)
+                self.assertTrue(response.cache_control.no_cache)
+
+    def test_resource_overlay_never_becomes_immutable(self):
+        path = "/avatar/operator-Ab1_cd-2.webp"
+        package = self.root / "package"
+        (package / "avatar").mkdir(parents=True)
+        (package / path.lstrip("/")).write_bytes(b"package avatar")
+        with patch.object(rp, "resource_ui_path", return_value=package):
+            response = self.get(path)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, b"package avatar")
+        self.assertEqual(response.headers["Cache-Control"], "no-cache")
+
+    def test_missing_hashed_assets_and_error_responses_are_not_immutable(self):
+        path = "/assets/main-Ab1_cd-2.js"
+        missing = self.get(path, headers={"Accept-Encoding": "gzip"})
+        self.assertEqual(missing.status_code, 404)
+        self.assertFalse(missing.cache_control.immutable)
+        self.assertIsNone(missing.cache_control.max_age)
+        self.static_file(path, b"console.log('mower');")
+        for status in (403, 500):
+            with (
+                self.subTest(status=status),
+                patch.dict(
+                    server.app.view_functions,
+                    {"static": lambda **kwargs: ("asset error", status)},
+                ),
+            ):
+                response = self.get(path)
+                self.assertEqual(response.status_code, status)
+                self.assertFalse(response.cache_control.immutable)
+                self.assertIsNone(response.cache_control.max_age)
+
+    def test_asset_like_html_and_non_file_responses_are_not_immutable(self):
+        path = "/assets/main-Ab1_cd-2.js"
+        source = self.static_file(path, b"console.log('mower');")
+        for mimetype in ("text/html", "application/javascript"):
+            if mimetype == "application/javascript":
+                source.unlink()
+            with (
+                self.subTest(mimetype=mimetype),
+                patch.dict(
+                    server.app.view_functions,
+                    {
+                        "static": lambda mimetype=mimetype, **kwargs: (
+                            server.app.response_class(self.shell, mimetype=mimetype)
+                        )
+                    },
+                ),
+            ):
+                response = self.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertFalse(response.cache_control.immutable)
+                self.assertIsNone(response.cache_control.max_age)
 
     def test_frontend_pages_refresh_with_query_trailing_slash_and_case(self):
         for page in self.pages:

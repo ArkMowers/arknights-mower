@@ -6,6 +6,7 @@ import ipaddress
 import json
 import mimetypes
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -951,6 +952,25 @@ def forbid_caching_sensitive_responses(response):
 
 
 @app.after_request
+def cache_hashed_static(response):
+    if (
+        request.endpoint in {"static", "serve_index"}
+        and request.method in {"GET", "HEAD"}
+        and response.status_code in {200, 304}
+        and response.mimetype != "text/html"
+        and re.fullmatch(
+            r"/assets/[^/]+-[A-Za-z0-9_-]{8}\."
+            r"(?:js|css|svg|webp|png|jpe?g|gif|avif|ico|woff2?|ttf|otf)",
+            request.path,
+        )
+    ):
+        static_path = safe_join(app.static_folder, request.path.lstrip("/"))
+        if static_path is not None and os.path.isfile(static_path):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    return response
+
+
+@app.after_request
 def gzip_static(response):
     # ui/dist 里的文本类静态资源由 Flask 静态路由直接服务，
     # 通过 after_request 统一对支持 gzip 的客户端返回预压缩 .gz 文件。
@@ -962,7 +982,7 @@ def gzip_static(response):
         return response
     static_path = safe_join(app.static_folder, path)
     if (
-        response.status_code != 200
+        response.status_code not in {200, 304}
         or static_path is None
         or not os.path.isfile(static_path)
     ):
@@ -975,6 +995,13 @@ def gzip_static(response):
     response.vary.add("Accept-Encoding")
     if request.accept_encodings["gzip"] <= 0:
         return response
+
+    if response.status_code == 304:
+        response.headers.pop("ETag", None)
+        if not request.if_none_match or request.if_none_match.star_tag:
+            return response
+        # Flask validated the original file before choosing the gzip representation.
+        response.status_code = 200
 
     # send_from_directory 可能返回 direct_passthrough 响应；替换内容前先关闭。
     response.direct_passthrough = False
