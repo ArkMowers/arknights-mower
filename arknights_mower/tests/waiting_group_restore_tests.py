@@ -190,6 +190,7 @@ def test_simulate_restoration_coalesces_waiting_before_dispatch(
     monkeypatch, mower_module
 ):
     mower = mower_module
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
     from arknights_mower.utils import config, crash_recovery
 
     class Restored(BaseException):
@@ -215,7 +216,7 @@ def test_simulate_restoration_coalesces_waiting_before_dispatch(
     )
     operators = MagicMock(operators={}, backup_plans=[])
     operators.validate_backup_plans.return_value = {"success": True}
-    instance = object.__new__(mower.BaseSchedulerSolver)
+    instance = object.__new__(BaseSchedulerSolver)
     instance.op_data = operators
     instance.initialize_operators = lambda: None
     instance._pending_group_transitions = lambda: {}

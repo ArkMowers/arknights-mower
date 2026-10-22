@@ -8,12 +8,15 @@ from pathlib import Path
 from queue import Queue
 from threading import Lock, Thread
 from time import monotonic
+from typing import TYPE_CHECKING
 
 import colorlog
 
 from arknights_mower.utils.log_retention import RUNTIME_LOG_RETENTION_HOURS
 from arknights_mower.utils.path import get_path
-from arknights_mower.utils.screenshot import ScreenshotStore
+
+if TYPE_CHECKING:
+    from arknights_mower.utils.screenshot import ScreenshotStore
 
 BASIC_FORMAT = (
     "%(asctime)s %(relativepath)s:%(lineno)d %(levelname)s %(funcName)s: %(message)s"
@@ -363,12 +366,12 @@ def close_logging():
             current.close()
 
 
-_store_instance: ScreenshotStore | None = None
+_store_instance: "ScreenshotStore | None" = None
 _store_lock = Lock()
 _store_closed = False
 
 
-def _store() -> ScreenshotStore | None:
+def _store() -> "ScreenshotStore | None":
     """返回本进程的截图存储，第一次提交截图时才建立后台线程。
 
     与 fhlr 同样不在导入时建立：导入本模块的进程（测试、开发服务器、各种抓图
@@ -383,6 +386,8 @@ def _store() -> ScreenshotStore | None:
         if _store_closed:
             return _store_instance
         if _store_instance is None:
+            from arknights_mower.utils.screenshot import ScreenshotStore
+
             store = ScreenshotStore(
                 get_path("@app/screenshot"),
                 lambda: config.conf.screenshot,
@@ -395,7 +400,7 @@ def _store() -> ScreenshotStore | None:
         return _store_instance
 
 
-def get_screenshot_store() -> ScreenshotStore | None:
+def get_screenshot_store() -> "ScreenshotStore | None":
     """本进程已建立的截图存储；还没提交过截图时返回 None。"""
     return _store_instance
 
