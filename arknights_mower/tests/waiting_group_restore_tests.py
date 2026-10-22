@@ -5,7 +5,6 @@ import pickle
 import sys
 from datetime import datetime, timedelta
 from threading import Event
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -216,11 +215,10 @@ def test_simulate_restoration_coalesces_waiting_before_dispatch(
     )
     operators = MagicMock(operators={}, backup_plans=[])
     operators.validate_backup_plans.return_value = {"success": True}
-    instance = SimpleNamespace(
-        op_data=operators,
-        initialize_operators=lambda: None,
-        _pending_group_transitions=lambda: {},
-    )
+    instance = object.__new__(mower.BaseSchedulerSolver)
+    instance.op_data = operators
+    instance.initialize_operators = lambda: None
+    instance._pending_group_transitions = lambda: {}
     monkeypatch.setattr(config, "conf", config.Conf())
     monkeypatch.setattr(config, "stop_mower", Event())
     monkeypatch.setattr(crash_recovery, "notice_path", lambda: None)
