@@ -1486,16 +1486,6 @@ class Device:
                 logger.warning("MuMu 加速服务没有响应，关闭该服务后恢复游戏前台")
                 self.run("am force-stop com.mumu.acc")
                 update = True
-            if is_mumu_launcher(focus):
-                if self._dismiss_mumu_startup_ad(focus):
-                    update = True
-                focus = self.current_focus()
-                if focus.startswith(self.game_package + "/"):
-                    return True
-                if not is_mumu_launcher(focus):
-                    raise DeviceRecoveryError(
-                        "MuMu 广告检查后的前台已变化，尚未继续游戏操作"
-                    )
             # 前台判定：package 前缀匹配（游戏包下任何界面都算前台，免疫新 activity）
             if focus.startswith(self.game_package + "/"):
                 return update
