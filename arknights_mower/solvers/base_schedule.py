@@ -10865,8 +10865,6 @@ class BaseSchedulerSolver(
         if "" in agents:
             fast_mode = False
             agents = [item for item in agents if item != ""]
-        if (not agents) and not fast_mode:
-            self.clear_agent_selection()
         agent = copy.deepcopy(agents)
         exists = []
         if fast_mode:
@@ -10928,6 +10926,8 @@ class BaseSchedulerSolver(
         selected = []
         logger.debug(f"上次进入房间为：{self.last_room},本次房间为：{room}")
         self.profession_filter()
+        if (not agents) and not fast_mode:
+            self.clear_agent_selection(room)
         if self.detect_arrange_order(room)[0] == "信赖值":
             self.switch_arrange_order("工作状态", room)
         siege = False  # 推进之王
@@ -10948,7 +10948,7 @@ class BaseSchedulerSolver(
                     self.switch_arrange_order("心情", room, "true")
                     pre_order = [3, "true"]
                 if not fast_mode:
-                    self.clear_agent_selection()
+                    self.clear_agent_selection(room)
                 changed, ret = self.scan_agent(
                     agent,
                     full_scan=last_special_filter == "ALL",
@@ -11150,7 +11150,7 @@ class BaseSchedulerSolver(
         # 安排空闲干员
         if free_num:
             if free_num == len(agents):
-                self.clear_agent_selection()
+                self.clear_agent_selection(room)
             if last_special_filter != "ALL":
                 # Free 搜索的目标就是 ALL；真实切换本身会复位列表，
                 # 无需先恢复原职业再切一次 ALL。
