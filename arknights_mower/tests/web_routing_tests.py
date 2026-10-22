@@ -149,6 +149,78 @@ class WebRoutingTests(unittest.TestCase):
         self.assertNotIn("ETag", response.headers)
         self.assertIn("Accept-Encoding", response.vary)
 
+    def test_public_asset_variants_keep_the_same_token_boundary(self):
+        path = "/assets/main-Ab1_cd-2.js"
+        body = b"console.log('mower');"
+        source = self.static_file(path, body)
+        source.with_suffix(".js.gz").write_bytes(gzip.compress(body))
+        identity = self.get(path)
+        variants = (
+            (path, {}, 200),
+            (path, {"Accept-Encoding": "gzip"}, 200),
+            (path, {"If-None-Match": identity.headers["ETag"]}, 304),
+            (
+                path,
+                {
+                    "Accept-Encoding": "gzip",
+                    "If-Modified-Since": identity.headers["Last-Modified"],
+                },
+                304,
+            ),
+            ("/assets/missing-Ab1_cd-2.js", {"Accept-Encoding": "gzip"}, 404),
+        )
+        with patch.object(server.app, "token", "fixture-secret", create=True):
+            for method in ("get", "head"):
+                for token in (None, "invalid"):
+                    for request_path, headers, status in variants:
+                        if token is not None:
+                            headers = {**headers, "token": token}
+                        with (
+                            self.subTest(method=method, token=token, headers=headers),
+                            getattr(self.client, method)(
+                                request_path,
+                                headers=headers,
+                                environ_base={"REMOTE_ADDR": "192.0.2.1"},
+                            ) as response,
+                        ):
+                            self.assertEqual(response.status_code, status)
+                            self.assertEqual(
+                                response.cache_control.immutable, status != 404
+                            )
+                            if status != 404:
+                                self.assertIn("Accept-Encoding", response.vary)
+
+    def test_asset_caching_does_not_weaken_protected_api_requests(self):
+        from arknights_mower.__main__ import device_control
+
+        for method in ("get", "head"):
+            for token in (None, "invalid", "fixture-secret"):
+                headers = {"Accept-Encoding": "gzip", "If-None-Match": "*"}
+                if token is not None:
+                    headers["token"] = token
+                with (
+                    self.subTest(method=method, token=token),
+                    patch.object(server.app, "token", "fixture-secret", create=True),
+                    patch.object(
+                        device_control,
+                        "settings_status",
+                        return_value={"active": False},
+                    ) as read_status,
+                    getattr(self.client, method)(
+                        "/device/status",
+                        headers=headers,
+                        environ_base={"REMOTE_ADDR": "192.0.2.1"},
+                    ) as response,
+                ):
+                    self.assertFalse(response.cache_control.immutable)
+                    self.assertIsNone(response.cache_control.max_age)
+                    if token == "fixture-secret":
+                        self.assertEqual(response.status_code, 200)
+                        read_status.assert_called_once_with()
+                    else:
+                        self.assertEqual(response.status_code, 403)
+                        read_status.assert_not_called()
+
     def test_unversioned_files_and_html_keep_revalidation(self):
         paths = (
             "/assets/main.js",
