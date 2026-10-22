@@ -55,6 +55,14 @@ JSON clients, wildcard Accept requests and non-read methods retain API dispatch 
 
 The [navigation dispatch decision](../../.agents/notes/implemented/bug-fix/2026-10-12-frontend-navigation-dispatch.md) records the defect and focused verification.
 
+### Build Asset Caching
+
+GET and HEAD requests for bundled frontend files remain public without a Web UI token. These files contain the distributed application and public assets; API requests retain their existing credential checks.
+
+Successful and not-modified static responses under `/assets/` use `public, max-age=31536000, immutable` when a script, stylesheet, image or font filename ends with the build's eight-character content hash. HTML, filenames without that suffix, resource-package overlays and error responses retain their existing cache policies. A new build changes asset URLs when their content changes, while the HTML entry continues to revalidate.
+
+Precompressed assets declare `Vary: Accept-Encoding` for both identity and gzip responses, including 304 responses. An identity ETag does not validate gzip bytes; gzip responses retain date-based validation without reusing that ETag. Focused offline checks exercise the Flask request paths in [`web_routing_tests.py`](../../arknights_mower/tests/web_routing_tests.py).
+
 ### Frontend Session Navigation
 
 Internal page links include the current session token in their rendered `href`, before any click. An explicit destination token takes precedence. Navigation preserves the destination's query parameters and fragment when inheriting the session query.
