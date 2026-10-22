@@ -7,14 +7,12 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { PieChart } from 'echarts/charts'
 import { TooltipComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
-import {
-  CubeOutline,
-  RefreshOutline,
-  DownloadOutline,
-  TimeOutline,
-  PersonOutline,
-  LeafOutline
-} from '@vicons/ionicons5'
+import CubeOutline from '@vicons/ionicons5/CubeOutline'
+import RefreshOutline from '@vicons/ionicons5/RefreshOutline'
+import DownloadOutline from '@vicons/ionicons5/DownloadOutline'
+import TimeOutline from '@vicons/ionicons5/TimeOutline'
+import PersonOutline from '@vicons/ionicons5/PersonOutline'
+import LeafOutline from '@vicons/ionicons5/LeafOutline'
 
 use([CanvasRenderer, PieChart, TooltipComponent])
 const axios = inject('axios')

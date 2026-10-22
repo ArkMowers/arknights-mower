@@ -1,14 +1,12 @@
 <script setup>
-import {
-  Add as PlusIcon,
-  FolderOpenOutline as FolderIcon,
-  Pencil as PencilIcon,
-  Play as PlayIcon,
-  Stop as StopIcon,
-  SettingsOutline as SettingsIcon,
-  TrashOutline as TrashIcon,
-  WarningOutline as WarningIcon
-} from '@vicons/ionicons5'
+import PlusIcon from '@vicons/ionicons5/Add'
+import FolderIcon from '@vicons/ionicons5/FolderOpenOutline'
+import PencilIcon from '@vicons/ionicons5/Pencil'
+import PlayIcon from '@vicons/ionicons5/Play'
+import StopIcon from '@vicons/ionicons5/Stop'
+import SettingsIcon from '@vicons/ionicons5/SettingsOutline'
+import TrashIcon from '@vicons/ionicons5/TrashOutline'
+import WarningIcon from '@vicons/ionicons5/WarningOutline'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { initializeManager, managerCall } from './bridge.js'
 
