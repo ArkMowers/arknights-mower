@@ -10865,8 +10865,6 @@ class BaseSchedulerSolver(
         if "" in agents:
             fast_mode = False
             agents = [item for item in agents if item != ""]
-        if (not agents) and not fast_mode:
-            self.clear_agent_selection(room)
         agent = copy.deepcopy(agents)
         exists = []
         if fast_mode:
@@ -10928,6 +10926,8 @@ class BaseSchedulerSolver(
         selected = []
         logger.debug(f"上次进入房间为：{self.last_room},本次房间为：{room}")
         self.profession_filter()
+        if (not agents) and not fast_mode:
+            self.clear_agent_selection(room)
         if self.detect_arrange_order(room)[0] == "信赖值":
             self.switch_arrange_order("工作状态", room)
         siege = False  # 推进之王

@@ -48,19 +48,41 @@ def test_captured_single_slot_selection_border(selection_module, cleared):
 
 
 @pytest.mark.parametrize(
-    "targets,initial,capacity,expected_events",
+    "targets,initial,capacity,initial_profession,expected_events",
     [
-        (["图耶"], ["但书"], 1, [("cancel", "但书"), "cleared", ("select", "图耶")]),
-        ([""], ["但书"], 1, [("cancel", "但书"), "cleared"]),
-        (["图耶"], [], 1, [("select", "图耶")]),
-        ([""], [], 1, []),
-        (["图耶"], ["但书"], 3, ["clear", "cleared", ("select", "图耶")]),
+        (
+            ["图耶"],
+            ["但书"],
+            1,
+            "ALL",
+            [("cancel", "但书"), "cleared", ("select", "图耶")],
+        ),
+        ([""], ["但书"], 1, "ALL", [("cancel", "但书"), "cleared"]),
+        pytest.param(
+            [""],
+            ["但书"],
+            1,
+            "MEDIC",
+            [("cancel", "但书"), "cleared"],
+            id="clear-hidden-selected-card",
+        ),
+        (["图耶"], [], 1, "ALL", [("select", "图耶")]),
+        ([""], [], 1, "ALL", []),
+        (["图耶"], ["但书"], 3, "ALL", ["clear", "cleared", ("select", "图耶")]),
     ],
 )
 @pytest.mark.parametrize("mode", ["xhigh", "high", "medium", "low"])
 def test_single_slot_retry_cancels_actual_card_before_selecting_target(
-    monkeypatch, selection_module, mode, targets, initial, capacity, expected_events
+    monkeypatch,
+    selection_module,
+    mode,
+    targets,
+    initial,
+    capacity,
+    initial_profession,
+    expected_events,
 ):
+    from arknights_mower.data import agent_profession
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 
     monkeypatch.setattr(config, "conf", config.Conf(performance_mode=mode))
@@ -69,6 +91,7 @@ def test_single_slot_retry_cancels_actual_card_before_selecting_target(
     frames = {}
     events = []
     clear_pending = 0
+    active_profession = initial_profession
     solver = object.__new__(BaseSchedulerSolver)
     solver.task = None
     solver.last_room = ""
@@ -81,7 +104,6 @@ def test_single_slot_retry_cancels_actual_card_before_selecting_target(
     )
     solver.prepare_dorm_selection = Mock(return_value=[])
     solver._check_group_shift_targets = Mock(return_value=False)
-    solver.profession_filter = Mock()
     solver.detect_arrange_order = Mock(return_value=("技能", False))
     solver.get_order = Mock(return_value=(False, ("技能", False)))
     solver.find = Mock(return_value=False)
@@ -96,7 +118,12 @@ def test_single_slot_retry_cancels_actual_card_before_selecting_target(
                 events.append("cleared")
         img = np.zeros((1080, 1920, 3), dtype=np.uint8)
         page = []
-        for index, name in enumerate(cards):
+        visible = [
+            name
+            for name in cards
+            if active_profession == "ALL" or agent_profession[name] == active_profession
+        ]
+        for index, name in enumerate(visible):
             left, top = 631 + index // 2 * 216, 488 + index % 2 * 421
             scope = ((left, top), (left + 189, top + 32))
             page.append((name, scope))
@@ -105,6 +132,11 @@ def test_single_slot_retry_cancels_actual_card_before_selecting_target(
 
     def sort(*_):
         cards[:] = selected + [name for name in cards if name not in selected]
+        refresh()
+
+    def filter_profession(profession=None):
+        nonlocal active_profession
+        active_profession = profession or "ALL"
         refresh()
 
     def tap(point, **_):
@@ -129,6 +161,7 @@ def test_single_slot_retry_cancels_actual_card_before_selecting_target(
         refresh()
 
     solver.recog.update = Mock(side_effect=refresh)
+    solver.profession_filter = Mock(side_effect=filter_profession)
     solver.sleep = Mock(side_effect=lambda *_: refresh())
     solver.wait_for_next_observation = Mock(side_effect=lambda *_: refresh())
     solver.switch_arrange_order = Mock(side_effect=sort)
