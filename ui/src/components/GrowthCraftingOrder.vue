@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import axios from 'axios'
-import { List } from '@vicons/carbon'
+import List from '@vicons/carbon/List'
 import draggable from 'vuedraggable'
 import { interleaveMasteryPlans } from '@/utils/masteryPlanOrder'
 import { pinyin_match } from '@/utils/common'

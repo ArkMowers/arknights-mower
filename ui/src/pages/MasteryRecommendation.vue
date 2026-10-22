@@ -810,8 +810,9 @@ import {
   useMessage,
   useThemeVars
 } from 'naive-ui'
-import { Settings } from '@vicons/carbon'
-import { Build, Refresh } from '@vicons/ionicons5'
+import Settings from '@vicons/carbon/Settings'
+import Build from '@vicons/ionicons5/Build'
+import Refresh from '@vicons/ionicons5/Refresh'
 import axios from 'axios'
 import { useMasteryStore } from '@/stores/mastery'
 import MasterySupports from '@/components/MasterySupports.vue'

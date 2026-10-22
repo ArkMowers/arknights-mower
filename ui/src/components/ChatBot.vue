@@ -3,19 +3,17 @@ import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDialog, useMessage } from 'naive-ui'
 import { useMowerStore } from '@/stores/mower'
-import {
-  AddOutline,
-  ArrowDownOutline,
-  ArrowUpOutline,
-  CheckmarkOutline,
-  CloseOutline,
-  CopyOutline,
-  DocumentTextOutline,
-  GridOutline,
-  MailOutline,
-  SchoolOutline,
-  SettingsOutline
-} from '@vicons/ionicons5'
+import AddOutline from '@vicons/ionicons5/AddOutline'
+import ArrowDownOutline from '@vicons/ionicons5/ArrowDownOutline'
+import ArrowUpOutline from '@vicons/ionicons5/ArrowUpOutline'
+import CheckmarkOutline from '@vicons/ionicons5/CheckmarkOutline'
+import CloseOutline from '@vicons/ionicons5/CloseOutline'
+import CopyOutline from '@vicons/ionicons5/CopyOutline'
+import DocumentTextOutline from '@vicons/ionicons5/DocumentTextOutline'
+import GridOutline from '@vicons/ionicons5/GridOutline'
+import MailOutline from '@vicons/ionicons5/MailOutline'
+import SchoolOutline from '@vicons/ionicons5/SchoolOutline'
+import SettingsOutline from '@vicons/ionicons5/SettingsOutline'
 import markdownit from 'markdown-it'
 import MowerAIIcon from './MowerAIIcon.vue'
 
