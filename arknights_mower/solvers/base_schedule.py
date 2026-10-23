@@ -11671,7 +11671,6 @@ class BaseSchedulerSolver(
         departing_plan=None,
         force_mood=False,
         strict_observation=False,
-        force_working_time=False,
         expected_agents=None,
     ):
         """读取实际驻员；姓名未决槽位标记 observed=False，不据此确认离岗。
@@ -11964,7 +11963,7 @@ class BaseSchedulerSolver(
                     data["time"] = bed.time
                     result.append(data)
                     continue
-            if i in read_time_index and _name != "":
+            if i in read_time_index and _name != "" and room != "recycle":
                 exhausted_working = False
                 if (
                     room == "central"
@@ -11993,12 +11992,7 @@ class BaseSchedulerSolver(
                 elif exhausted_working:
                     data["time"] = datetime.now()
                     logger.debug(f"中枢干员 {_name} 已复核心情耗尽，无需读取倒计时")
-                elif (
-                    _mood == 24
-                    and not force_working_time
-                    or room in ["meeting", "factory"]
-                    and not update_time
-                ):
+                elif _mood == 24 or room in ["meeting", "factory"] and not update_time:
                     data["time"] = datetime.now()
                 else:
                     logger.debug(f"开始记录时间:{room},{i}")
