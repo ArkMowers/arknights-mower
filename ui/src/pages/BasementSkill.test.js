@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, ref } from 'vue'
+import { effectScope } from 'vue'
 import axios from 'axios'
 import BasementSkill from './BasementSkill.vue'
+import { useBasementSkill } from '@/stores/basementSkill'
 
-const state = vi.hoisted(() => ({ load: null, skill: null }))
+const state = useBasementSkill()
 vi.mock('axios', () => ({ default: { get: vi.fn() } }))
-vi.mock('@/stores/basementSkill', () => ({ useBasementSkill: () => state }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
   onMounted: vi.fn(),
@@ -39,8 +39,8 @@ function setup() {
 }
 beforeEach(() => {
   vi.clearAllMocks()
-  state.skill = ref(catalog)
-  state.load = vi.fn()
+  state.skill.value = catalog
+  state.snapshot.value = null
 })
 describe('基建技能森空岛数据读取', () => {
   it('默认不显示持有标签，进入读取只请求本地快照', async () => {

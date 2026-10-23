@@ -115,10 +115,9 @@ import {
   skillStatusLabels
 } from '@/utils/basementSkills'
 
-const { skill, load } = useBasementSkill()
+const { skill, load, snapshot, loadOwnedOperators: readOwnedOperators } = useBasementSkill()
 const activePane = ref('skills')
 const showFilters = ref(false)
-const snapshot = ref(null)
 const loading = ref(false)
 const syncing = ref(false)
 const error = ref('')
@@ -167,8 +166,7 @@ async function loadOwnedOperators() {
   loading.value = true
   error.value = ''
   try {
-    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/basement-skill/operators`)
-    snapshot.value = response.data
+    await readOwnedOperators()
   } catch (e) {
     error.value = `读取森空岛练度失败：${e.message || e}`
   } finally {
