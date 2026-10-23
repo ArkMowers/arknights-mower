@@ -248,6 +248,49 @@ def test_backfill_does_not_move_old_dates_past_previously_submitted_new_records(
     assert transport.calls[1][1]["json"]["drops"][0]["dropTime"] == 1759400000000
 
 
+@pytest.mark.parametrize("ignored", [True, False], ids=["ignored", "reverted"])
+def test_unpersisted_failure_state_stops_without_repeating_http(
+    transport, monkeypatch, ignored
+):
+    old(materials={"装置": 1})
+    with record._conn() as connection:
+        if ignored:
+            connection.execute(
+                "CREATE TRIGGER ignore_report_failure BEFORE UPDATE "
+                "ON recycling_report_progress WHEN NEW.status = 'failed' "
+                "BEGIN SELECT RAISE(IGNORE); END"
+            )
+        else:
+            connection.execute(
+                "CREATE TRIGGER revert_report_failure AFTER UPDATE "
+                "ON recycling_report_progress WHEN NEW.status = 'failed' "
+                "BEGIN UPDATE recycling_report_progress SET status = OLD.status "
+                "WHERE event_id = OLD.event_id; END"
+            )
+        connection.commit()
+    submit = report._submit
+
+    def submit_while_woken(*args):
+        try:
+            submit(*args)
+        finally:
+            report._dirty = True
+
+    monkeypatch.setattr(report, "_submit", submit_while_woken)
+    exception = Mock()
+    monkeypatch.setattr(report.logger, "exception", exception)
+    transport.statuses[:] = [requests.Timeout(), SystemExit("repeated submission")]
+    resume(transport)
+    assert len(transport.calls) == 1
+    assert progress("old")[:2] == ("pending", 0)
+    exception.assert_called_once_with(
+        "回收站上报处理失败，已保存的记录和发送进度保持不变"
+    )
+    transport.worker.assert_called_once()
+    assert not report._running
+    assert not report._dirty
+
+
 def test_overlapping_collection_timestamps_are_allocated_once(transport):
     old("a", materials={"装置": 2})
     old("b", materials={"装置": 1})
@@ -675,6 +718,96 @@ def test_manual_retry_resumes_only_failed_units_and_does_not_admit_duplicate_cli
         == 404
     )
     assert len(transport.calls) == 5
+
+
+@pytest.mark.parametrize("retry_timing", ["before", "after", "between_batches"])
+@pytest.mark.parametrize("retry_fails", [False, True])
+def test_manual_retry_survives_other_batches_progress_failure(
+    transport, monkeypatch, retry_fails, retry_timing
+):
+    from threading import Event, Thread
+
+    import server
+
+    between_batches = retry_timing == "between_batches"
+    old(materials={"装置": 201 if between_batches else 1})
+    old("other", at=1759400010, materials={"固源岩": 1})
+    with record._conn() as connection:
+        connection.execute(
+            "INSERT INTO recycling_report_progress (event_id, status) "
+            "VALUES ('other', 'failed')"
+        )
+        connection.execute(
+            "CREATE TRIGGER ignore_report_progress BEFORE UPDATE "
+            "ON recycling_report_progress WHEN NEW.event_id = 'old' "
+            + (
+                "AND NEW.next_unit = 200 "
+                if between_batches
+                else "AND NEW.status = 'submitted' "
+            )
+            + "BEGIN SELECT RAISE(IGNORE); END"
+        )
+        connection.commit()
+    paused, release = Event(), Event()
+    threads = []
+    submit = report._submit
+
+    def worker(**kwargs):
+        thread = Thread(**kwargs)
+        threads.append(thread)
+        return thread
+
+    def pause():
+        if not paused.is_set():
+            paused.set()
+            assert release.wait(3)
+
+    def submit_then_pause(*args):
+        submit(*args)
+        if retry_timing != "after":
+            pause()
+
+    def pause_after_failed_commit(*args):
+        if retry_timing == "after":
+            pause()
+
+    monkeypatch.setattr(report, "Thread", worker)
+    monkeypatch.setattr(report, "_submit", submit_then_pause)
+    monkeypatch.setattr(report.logger, "exception", pause_after_failed_commit)
+    monkeypatch.setattr(server.app, "token", "recycling-test", raising=False)
+    client = server.app.test_client()
+    headers = {"token": "recycling-test"}
+    if retry_fails:
+        transport.statuses[:] = [(200, b"")] * (2 if between_batches else 1)
+        transport.statuses.append(requests.Timeout())
+    retry_id = "old" if retry_timing == "after" else "other"
+    untouched_id = "other" if retry_timing == "after" else "old"
+    retry_url = f"/report/recycling_history/{retry_id}/retry"
+    try:
+        assert report.start_recycling_reports()
+        assert paused.wait(3)
+        assert progress(retry_id)[:2] == ("failed", 0)
+        if retry_timing == "after":
+            with record._conn() as connection:
+                connection.execute("DROP TRIGGER ignore_report_progress")
+                connection.commit()
+        response = client.post(retry_url, headers=headers)
+        assert response.status_code == 202
+        assert client.post(retry_url, headers=headers).status_code == 409
+    finally:
+        release.set()
+        for thread in threads:
+            thread.join(5)
+            assert not thread.is_alive()
+    assert [len(call[1]["json"]["drops"]) for call in transport.calls] == (
+        [100, 100, 1] if between_batches else [1, 1]
+    )
+    assert progress(retry_id)[:2] == (
+        ("failed", 0) if retry_fails else ("submitted", 1)
+    )
+    assert progress(untouched_id)[:2] == ("failed", 100 if between_batches else 0)
+    assert len(threads) == 1
+    assert not report._running
 
 
 @pytest.mark.parametrize("status", ["waiting", "pending", "submitted", "skipped"])

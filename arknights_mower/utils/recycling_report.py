@@ -253,10 +253,8 @@ def _drain(directory):
                     len(batch["drops"]),
                     progress,
                 )
-                submitted = False
                 try:
                     _submit(directory, batch)
-                    submitted = True
                     with _connection() as connection:
                         cursor = connection.executemany(
                             "UPDATE recycling_report_progress SET next_unit = ?, status = ? WHERE event_id = ?",
@@ -277,17 +275,25 @@ def _drain(directory):
                         connection.commit()
                 except Exception:
                     with _connection() as connection:
-                        connection.executemany(
+                        cursor = connection.executemany(
                             "UPDATE recycling_report_progress SET status = 'failed' WHERE event_id = ?",
                             [(event_id,) for _, _, event_id in progress],
                         )
+                        if cursor.rowcount != len(progress):
+                            raise RuntimeError("回收站上传失败状态未写入全部收取记录")
+                        for _, _, event_id in progress:
+                            stored = connection.execute(
+                                "SELECT status FROM recycling_report_progress WHERE event_id = ?",
+                                (event_id,),
+                            ).fetchone()
+                            if stored != ("failed",):
+                                raise RuntimeError(
+                                    f"回收站上传失败状态未保存：{event_id}，实际 {stored}"
+                                )
                         connection.commit()
                     logger.exception(
                         "回收站材料上报失败，进度已保留，请在收取明细中点击“重试上传”"
                     )
-                    if submitted:
-                        failed = True
-                        break
                 else:
                     logger.info(
                         "回收站材料上报完成：%d 份材料，%d 条收取记录",
