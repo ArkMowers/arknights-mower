@@ -2501,7 +2501,11 @@ class BaseSchedulerSolver(
                     self.switch_base_products(product_tasks)
                     # 批量切换自行移除已完成任务；失败目标保留原任务。
                     remove_current_task = False
-                elif len(self.task.plan.keys()) > 0:
+                elif (
+                    self.task.plan
+                    or getattr(self.task, "group_shift_transitions", {})
+                    or getattr(self.task, "group_shift_expected", {})
+                ):
                     get_time = False
                     if TaskTypes.SHIFT_OFF == self.task.type or (
                         self.task.type
@@ -6692,6 +6696,7 @@ class BaseSchedulerSolver(
 
     def _prepare_group_shift(self, task, *, remember_targets=False):
         """Complete group targets and admit only independent unconfirmed shifts."""
+        self._prepare_group_shift_execution_targets(task)
         self.op_data.commit_group_shifts({})
         proposed = copy.deepcopy(task.plan)
         self._suppress_facility_arrangement(proposed)
@@ -6775,6 +6780,41 @@ class BaseSchedulerSolver(
                         }
                         expected[room, index] = name
             task.group_shift_expected = expected
+        self._prepare_group_shift_execution_targets(task)
+
+    def _prepare_group_shift_execution_targets(self, task):
+        """执行前同步合法取消与岗位保护，不补回已经完成的房间。"""
+        if not hasattr(task, "group_shift_transitions"):
+            return
+        expected_plan = {}
+        for (room, index), name in getattr(task, "group_shift_expected", {}).items():
+            expected_plan.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
+                index
+            ] = name
+        original_transitions = self.op_data.arrangement_group_transitions(expected_plan)
+        transitions = self.op_data.arrangement_group_transitions(
+            task.plan, group_transitions=task.group_shift_transitions
+        )
+        self._cancel_dorm_recovery_targets(expected_plan, transitions, task=task)
+        for plan in (task.plan, expected_plan):
+            for index in getattr(task, "training_skipped_slots", ()):
+                if index < len(plan.get("train", [])):
+                    plan["train"][index] = "Current"
+            self._suppress_facility_arrangement(plan)
+        remaining_transitions = self.op_data.arrangement_group_transitions(
+            expected_plan
+        )
+        for group in original_transitions.keys() - remaining_transitions.keys():
+            task.group_shift_transitions.pop(group, None)
+        for group, resting in remaining_transitions.items():
+            if resting != original_transitions[group]:
+                task.group_shift_transitions[group] = resting
+        task.group_shift_expected = {
+            (room, index): name
+            for room, names in expected_plan.items()
+            for index, name in enumerate(names)
+            if name not in ("Current", "Free", "")
+        }
 
     def _complete_ordinary_group_targets(self, task, plan, transitions):
         """Complete fixed and shared departures with both covers and recovery beds."""
@@ -7102,55 +7142,30 @@ class BaseSchedulerSolver(
             self._queue_ordinary_coordination_admission(task)
             complete_urgent_recovery(self.op_data, task, self.tasks)
             return True
-        expected_plan = {}
-        for (room, index), name in getattr(task, "group_shift_expected", {}).items():
-            expected_plan.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
-                index
-            ] = name
-        original_transitions = self.op_data.arrangement_group_transitions(expected_plan)
-        transitions = self.op_data.arrangement_group_transitions(
-            expected_plan, group_transitions=task.group_shift_transitions
-        )
-        for room, names in expected_plan.items():
-            for index, name in enumerate(names):
-                if (
-                    name != "Current"
-                    and self.op_data.is_dynamic_dorm_position(
-                        room, index, name, group_transitions=transitions
-                    )
-                    and resting_tier(self.op_data, name) == RestingTier.EXCLUDED
-                ):
-                    # 执行已拒绝的动态恢复目标不再触发每分钟重新入住。
-                    names[index] = "Current"
-        # Execution skips apply before cached mastery protection and confirmation.
-        for index in getattr(task, "training_skipped_slots", ()):
-            if index < len(expected_plan.get("train", [])):
-                expected_plan["train"][index] = "Current"
-        self._suppress_train_correction(expected_plan)
-        remaining_transitions = self.op_data.arrangement_group_transitions(
-            expected_plan
-        )
-        for group in original_transitions.keys() - remaining_transitions.keys():
-            # A task containing only protected anchors confirms no group change.
-            task.group_shift_transitions.pop(group, None)
-        for group, resting in remaining_transitions.items():
-            if resting != original_transitions[group]:
-                task.group_shift_transitions[group] = resting
-        task.group_shift_expected = {
-            (room, index): name
-            for room, names in expected_plan.items()
-            for index, name in enumerate(names)
-            if name != "Current"
-        }
         missing = {}
+        differences = []
         for (room, index), name in getattr(task, "group_shift_expected", {}).items():
             actual = self.op_data.get_current_operator(room, index)
             if actual is None or actual.name != name:
                 missing.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
                     index
                 ] = name
+                differences.append(
+                    {
+                        "room": room,
+                        "position": index + 1,
+                        "expected": name,
+                        "actual": actual.name if actual is not None else "",
+                    }
+                )
         if missing:
             task.plan = missing
+            logger.warning(
+                "换班核验差异：任务=%s@%s，差异=%s",
+                task.type.display_value,
+                task.time.isoformat(),
+                differences,
+            )
             self._retain_failed_task(task, "换班实测驻员与目标不一致", missing)
             return False
         transitions = getattr(task, "group_shift_transitions", {})
@@ -10458,9 +10473,10 @@ class BaseSchedulerSolver(
             },
         )
 
-    def _cancel_dorm_recovery_targets(self, plan, group_transitions):
+    def _cancel_dorm_recovery_targets(self, plan, group_transitions, *, task=None):
         """整批合法取消先于任何容量检查，确认目标与首次改写同步。"""
-        task = getattr(self, "task", None)
+        if task is None:
+            task = getattr(self, "task", None)
         expected = getattr(task, "group_shift_expected", {})
         for room, names in plan.items():
             if not room.startswith("dorm"):
@@ -10489,10 +10505,50 @@ class BaseSchedulerSolver(
                     continue
                 if expected.get((room, index)) == name:
                     expected.pop((room, index))
-                if capped:
-                    self.op_data.operators[name].depletion_rate = 0
-                    logger.info("检测个人心情上限释放休息位")
+                    remaining = task.plan.get(room, [])
+                    if remaining[index : index + 1] == [name]:
+                        remaining[index] = "Free"
+                logger.info(
+                    "取消动态恢复目标：房间=%s，位置=%s，干员=%s，原因=%s",
+                    room,
+                    index + 1,
+                    name,
+                    "达到个人心情上限" if capped else "宿舍恢复排除",
+                )
                 names[index] = "Free"
+
+    def _cancel_released_group_shift_targets(self, name):
+        """个人上限清退实测完成后，同步其他换班任务的动态恢复目标。"""
+        for task in [*self.tasks, *getattr(self, "waiting_group_shifts", ())]:
+            plan = {}
+            for (room, index), expected in getattr(
+                task, "group_shift_expected", {}
+            ).items():
+                if expected == name:
+                    plan.setdefault(room, ["Current"] * len(self.op_data.plan[room]))[
+                        index
+                    ] = name
+            if not plan:
+                continue
+            transitions = self.op_data.arrangement_group_transitions(
+                task.plan,
+                group_transitions=getattr(task, "group_shift_transitions", {}),
+            )
+            pending_slots = {
+                (room, index)
+                for room, names in plan.items()
+                for index, target in enumerate(names)
+                if target == name
+                and task.plan.get(room, [])[index : index + 1] == [name]
+            }
+            self._cancel_dorm_recovery_targets(plan, transitions, task=task)
+            for room, index in pending_slots:
+                if (room, index) not in task.group_shift_expected:
+                    # 清退已经完成，原任务只保留其他动作，不再重选这个床位。
+                    task.plan[room][index] = "Current"
+            for room in {room for room, _ in pending_slots}:
+                if all(target == "Current" for target in task.plan[room]):
+                    del task.plan[room]
 
     def preserve_resting_crafters(self, agents, room):
         """按统一层级解析 Free，并让实际选人遵守正在休息者的接管规则。"""
@@ -10840,12 +10896,6 @@ class BaseSchedulerSolver(
                 )
             ):
                 self.op_data.operators[agents[idx]].depletion_rate = 0
-                expected = getattr(
-                    getattr(self, "task", None), "group_shift_expected", {}
-                )
-                if expected.get((room, idx)) == agents[idx]:
-                    # 恢复目标在执行边界合法取消，不再要求重新入住才能确认换班。
-                    expected.pop((room, idx))
                 agents[idx] = "Free"
                 logger.info("检测个人心情上限释放休息位")
         if not preserve_dorm_occupants:
@@ -12067,6 +12117,15 @@ class BaseSchedulerSolver(
                         and not operator.mood_is_prediction
                     )
             operator.current_room, operator.current_index = "", -1
+            if (
+                confirmed_release
+                and name not in slots.values()
+                and getattr(task, "strict_mood_limit", False)
+                and task.meta_data == name
+                and self.op_data.has_rest_mood_limit(name)
+                and getattr(task, "mood_limit", None) in (None, operator.upper_limit)
+            ):
+                self._cancel_released_group_shift_targets(name)
             if measured_release:
                 # 已确认离宿保留实测心情，待命后不再按宿舍速度恢复。
                 operator.depletion_rate = 0
@@ -12470,6 +12529,7 @@ class BaseSchedulerSolver(
         skip_enter=False,
         get_time=False,
     ):
+        self._prepare_group_shift_execution_targets(self.task)
         self._suppress_facility_arrangement(plan)
         if room not in plan:
             return new_plan
@@ -12514,6 +12574,7 @@ class BaseSchedulerSolver(
                                 room_state,
                             )
                             del plan[room]
+                            self._prepare_group_shift_execution_targets(self.task)
                             self.back()
                             return new_plan
                         if config.conf.enable_mastery:
@@ -12528,10 +12589,15 @@ class BaseSchedulerSolver(
                                     range(len(plan[room]))
                                 )
                                 self._suppress_facility_arrangement(plan)
+                                self._prepare_group_shift_execution_targets(self.task)
                                 self.back()
                                 return new_plan
                         if getattr(room_state, "amiya_form_waiting", False) is True:
+                            self.task.training_skipped_slots.update(
+                                range(len(plan[room]))
+                            )
                             del plan[room]
+                            self._prepare_group_shift_execution_targets(self.task)
                             self.back()
                             return new_plan
                         if room_state is not None and config.conf.enable_mastery:
@@ -12587,6 +12653,9 @@ class BaseSchedulerSolver(
                                     self.task.training_skipped_slots.add(1)
                                 if all(name == "Current" for name in plan[room]):
                                     del plan[room]
+                                    self._prepare_group_shift_execution_targets(
+                                        self.task
+                                    )
                                     self.back()
                                     return new_plan
                             else:
@@ -12594,12 +12663,15 @@ class BaseSchedulerSolver(
                                     range(len(plan[room]))
                                 )
                                 del plan[room]
+                                self._prepare_group_shift_execution_targets(self.task)
                                 self.back()
                                 return new_plan
+                        self._prepare_group_shift_execution_targets(self.task)
                 self.turn_on_room_detail(room)
                 if room == "recycle":
                     self.get_agent_from_room(room)
                     self._suppress_facility_arrangement(plan)
+                    self._prepare_group_shift_execution_targets(self.task)
                     if room not in plan:
                         self.back()
                         return new_plan
@@ -13301,6 +13373,7 @@ class BaseSchedulerSolver(
                 if all(name == "Current" for name in plan[room]):
                     del plan[room]
             self.back_to_infrastructure()
+        self._prepare_group_shift_execution_targets(self.task)
         logger.info("基建：排班")
         if (
             self.task.type in (TaskTypes.NOT_SPECIFIC, TaskTypes.FILL_DORM)

@@ -113,6 +113,9 @@ def test_excluded_dorm_target_cannot_requeue_after_replacement(
     if selection_prepared:
         dorm_solver.prepare_dorm_selection(task.plan["dormitory_1"], "dormitory_1")
         assert task.plan["dormitory_1"][2] == "诗怀雅"
+    else:
+        dorm_solver._prepare_group_shift(task, remember_targets=True)
+    assert "但书" not in task.group_shift_expected.values()
     task.plan.clear()
 
     assert dorm_solver._complete_group_shift(task) is other_confirmed
