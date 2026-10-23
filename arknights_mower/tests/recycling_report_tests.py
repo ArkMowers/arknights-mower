@@ -178,6 +178,67 @@ def test_batches_combine_old_and_new_records_without_success_delays(transport):
     transport.waits.assert_not_called()
 
 
+def test_completion_log_requires_persisted_progress(transport, monkeypatch):
+    for index in range(11):
+        old(str(index), at=1759400000 + index, materials={"装置": 1})
+    messages = []
+
+    def info(message, *args):
+        assert all(progress(str(index))[:2] == ("submitted", 1) for index in range(11))
+        messages.append(message % args)
+
+    monkeypatch.setattr(report.logger, "info", info)
+    resume(transport)
+    resume(transport)
+    assert len(transport.calls) == 1
+    assert len(transport.calls[0][1]["json"]["drops"]) == 11
+    assert messages == ["回收站材料上报完成：11 份材料，11 条收取记录"]
+
+
+@pytest.mark.parametrize("ignored", [True, False], ids=["ignored", "reverted"])
+def test_unpersisted_progress_cannot_repeat_the_request(
+    transport, monkeypatch, ignored
+):
+    old(materials={"装置": 1})
+    with record._conn() as connection:
+        if ignored:
+            connection.execute(
+                "CREATE TRIGGER ignore_report_progress BEFORE UPDATE "
+                "ON recycling_report_progress WHEN NEW.status = 'submitted' "
+                "BEGIN SELECT RAISE(IGNORE); END"
+            )
+        else:
+            connection.execute(
+                "CREATE TRIGGER revert_report_progress AFTER UPDATE "
+                "ON recycling_report_progress WHEN NEW.status = 'submitted' "
+                "BEGIN UPDATE recycling_report_progress "
+                "SET next_unit = OLD.next_unit, status = OLD.status "
+                "WHERE event_id = OLD.event_id; END"
+            )
+        connection.commit()
+    info = Mock()
+    exception = Mock()
+    monkeypatch.setattr(report.logger, "info", info)
+    monkeypatch.setattr(report.logger, "exception", exception)
+    submit = report._submit
+
+    def submit_while_woken(*args):
+        submit(*args)
+        report._dirty = True
+
+    monkeypatch.setattr(report, "_submit", submit_while_woken)
+    # Bound the broken implementation without making a second real HTTP request.
+    transport.statuses[:] = [(200, b""), SystemExit("repeated submission")]
+    resume(transport)
+    assert len(transport.calls) == 1
+    assert progress("old")[:2] == ("pending", 0)
+    info.assert_not_called()
+    exception.assert_called_once()
+    transport.worker.assert_called_once()
+    assert not report._running
+    assert not report._dirty
+
+
 def test_backfill_does_not_move_old_dates_past_previously_submitted_new_records(
     transport,
 ):

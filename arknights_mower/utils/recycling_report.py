@@ -253,6 +253,7 @@ def _submit_with_retry(directory, batch):
 
 def _drain(directory):
     global _running, _dirty
+    failed = False
     try:
         with submission_lock(directory):
             while True:
@@ -261,6 +262,11 @@ def _drain(directory):
                 batch, progress = _next_batch()
                 if not batch["drops"]:
                     break
+                logger.debug(
+                    "回收站材料上报：%d 份材料，收取记录及本批结束进度 %s",
+                    len(batch["drops"]),
+                    progress,
+                )
                 try:
                     _submit_with_retry(directory, batch)
                 except Exception:
@@ -273,16 +279,34 @@ def _drain(directory):
                     logger.warning("回收站上报请求失败，进度已保留，下次启动时继续")
                 else:
                     with _connection() as connection:
-                        connection.executemany(
+                        cursor = connection.executemany(
                             "UPDATE recycling_report_progress SET next_unit = ?, status = ? WHERE event_id = ?",
                             progress,
                         )
+                        if cursor.rowcount != len(progress):
+                            raise RuntimeError("回收站上传进度未写入全部收取记录")
+                        for next_unit, status, event_id in progress:
+                            stored = connection.execute(
+                                "SELECT next_unit, status FROM recycling_report_progress WHERE event_id = ?",
+                                (event_id,),
+                            ).fetchone()
+                            if stored != (next_unit, status):
+                                raise RuntimeError(
+                                    f"回收站上传进度未保存：{event_id}，"
+                                    f"预期 {(next_unit, status)}，实际 {stored}"
+                                )
                         connection.commit()
+                    logger.info(
+                        "回收站材料上报完成：%d 份材料，%d 条收取记录",
+                        len(batch["drops"]),
+                        len(progress),
+                    )
     except Exception:
-        logger.warning("回收站历史补发已暂停，已保存的记录和发送进度保持不变")
+        failed = True
+        logger.exception("回收站上报处理失败，已保存的记录和发送进度保持不变")
     finally:
         with _lock:
-            restart = _dirty
+            restart = _dirty and not failed
             _dirty = False
             _running = False
         if restart:
@@ -313,4 +337,3 @@ def _submit(directory, batch):
                 raise requests.HTTPError("回收站上报服务暂时不可用")
             if response.status_code != 200 or response.raw.read(1):
                 raise ValueError("上报接口未返回预期的空响应")
-    logger.info("回收站上报请求已提交，接口不提供入库确认")
