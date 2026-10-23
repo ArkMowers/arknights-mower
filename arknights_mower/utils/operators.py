@@ -370,7 +370,10 @@ class Operators:
         self.profession_filter = set(agent_arrange_order["职介选择开关"])
         self.eval_model = base_eval_model.clone()
         self.eval_model.nodes.extend(
-            ["Call", "Attribute", "Is", "IsNot", "Mult", "FloorDiv", "Pow"]
+            ["Call", "Attribute", "Is", "IsNot", "Mult", "FloorDiv", "Pow", "List"]
+        )
+        self.eval_model.allowed_functions.extend(
+            ["max", "min", "sum", "any", "all", "abs"]
         )
         self.eval_model.attributes.extend(
             [

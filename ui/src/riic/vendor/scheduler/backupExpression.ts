@@ -32,6 +32,17 @@ function serialize(source: unknown, depth = 0, budget = { nodes: 0 }): string {
   if (typeof source === 'number' && Number.isFinite(source)) return String(source)
   if (!source || typeof source !== 'object' || Array.isArray(source)) return fail('条件必须为表达式树')
   const node = source as Record<string, unknown>
+  if ('function' in node) {
+    const name = String(node.function)
+    if (!['max', 'min', 'sum', 'any', 'all', 'abs'].includes(name) || !Array.isArray(node.args) || !node.args.length) return fail('不支持的函数或参数为空')
+    if (['max', 'min'].includes(name) && node.args.length < 2) return fail('max、min 条件需要至少两项参数')
+    if (name === 'abs' && node.args.length !== 1) return fail('abs 条件只接受一项参数')
+    let args = node.args.map(arg => serialize(arg, depth + 1, budget)).join(', ')
+    if (['sum', 'any', 'all'].includes(name)) args = `[${args}]`
+    const text = `${name}(${args})`
+    if (text.length > 20000) return fail('条件文本超过限制')
+    return text
+  }
   const text = `(${serialize(node.left ?? '', depth + 1, budget)} ${serialize(node.operator ?? '', depth + 1, budget)} ${serialize(node.right ?? '', depth + 1, budget)})`
   if (text.length > 20000) return fail('条件文本超过限制')
   return text
@@ -47,7 +58,8 @@ function tokenize(text: string): Token[] {
     const quoted = /^(['"])((?:\\.|(?!\1)[^\\])*)\1/.exec(rest)
     const number = /^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/.exec(rest)
     const word = /^(?:and|or|not|is|in|True|False|None)\b/.exec(rest)
-    const symbol = /^(?:==|!=|<=|>=|[<>+*/()\-])/.exec(rest)
+    const symbol = /^(?:==|!=|<=|>=|[<>+*/(),\[\]\-])/.exec(rest)
+    const aggregate = /^(?:max|min|sum|any|all|abs)\b/.exec(rest)
     const room = /^(?:room_[1-3]_[1-3]|dormitory_[1-4]|gaming_[1-3]|central|meeting|factory|contact|train|recycle)\b/.exec(rest)
     const product = /^(?:orirock_device|orirock|orundum|gold|exp3|lmd)\b/.exec(rest)
     let token: Token
@@ -60,6 +72,7 @@ function tokenize(text: string): Token[] {
       ? { text: word[0], kind: 'value', value: word[0] === 'None' ? null : word[0] === 'True' }
       : { text: word[0], kind: 'operator' }
     else if (symbol) token = { text: symbol[0], kind: 'operator' }
+    else if (aggregate) token = { text: aggregate[0], kind: 'operator' }
     else if (product) token = { text: product[0], kind: 'value', value: product[0] }
     else if (room) token = { text: room[0], kind: 'value', value: room[0] }
     else return fail(`不支持的条件 ${rest.slice(0, 120)}`)
@@ -102,6 +115,32 @@ export function compileBackupExpression(source: unknown, participants: Set<strin
   function atom(): Expression {
     if (++nesting > 64) return fail('条件嵌套超过限制')
     try {
+      if (['max', 'min', 'sum', 'any', 'all', 'abs'].includes(peek() ?? '')) {
+        const name = tokens[cursor++]!.text
+        if (!take('(')) return fail(`${name} 缺少参数括号`)
+        const list = ['sum', 'any', 'all'].includes(name)
+        if (list && !take('[')) return fail(`${name} 需要参数列表`)
+        const args = [logicalOr()]
+        while (take(',')) args.push(logicalOr())
+        if (list && !take(']')) return fail(`${name} 参数列表不完整`)
+        if (['max', 'min'].includes(name) && args.length < 2) return fail(`${name} 需要至少两项参数`)
+        if (name === 'abs' && args.length !== 1) return fail('abs 条件只接受一项参数')
+        if (!take(')')) return fail(`${name} 参数括号不完整`)
+        if (name === 'abs') return state => Math.abs(numeric(args[0]!(state)))
+        if (list) return state => {
+          const values = args.map(arg => arg(state))
+          if (name === 'any') return values.some(Boolean)
+          if (name === 'all') return values.every(Boolean)
+          const result = values.reduce<number>((sum, value) => sum + numeric(value), 0)
+          if (!Number.isFinite(result)) return fail('条件运算结果不是有限数')
+          return result
+        }
+        return state => args.map(arg => arg(state)).reduce((a, b) => {
+          if (typeof a === 'string' && typeof b === 'string') return (name === 'max' ? a >= b : a <= b) ? a : b
+          const x = numeric(a), y = numeric(b)
+          return (name === 'max' ? x >= y : x <= y) ? a : b
+        })
+      }
       if (take('(')) {
         if (take(')')) return () => false // Mower's empty tuple is false.
         const expr = logicalOr()

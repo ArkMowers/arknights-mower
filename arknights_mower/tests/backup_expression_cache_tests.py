@@ -11,6 +11,7 @@ from unittest.mock import Mock
 import pytest
 
 from arknights_mower.utils import operators
+from arknights_mower.utils.logic_expression import get_logic_exp
 from arknights_mower.utils.operators import Operator, Operators
 from arknights_mower.utils.plan import Plan, PlanConfig
 
@@ -37,6 +38,43 @@ def isolated_cache():
 @pytest.fixture
 def data():
     return make_data()
+
+
+@pytest.mark.parametrize(
+    "function,args,expected",
+    [
+        ("max", ["3", "9", "4"], 9),
+        ("min", ["3", "9", "4"], 3),
+        ("sum", ["3", "9", "4"], 16),
+        ("any", ["False", "True", "False"], True),
+        ("all", ["True", "False", "True"], False),
+        ("abs", ["-8"], 8),
+    ],
+)
+def test_evaluates_saved_function_conditions(data, function, args, expected):
+    source = str(get_logic_exp({"function": function, "args": args}))
+    assert data.evaluate_expression(source) == expected
+
+
+def test_nested_functions_read_current_operator_state(data):
+    source = str(
+        get_logic_exp(
+            {
+                "left": {
+                    "function": "max",
+                    "args": [
+                        "op_data.operators['芬'].current_mood()",
+                        {"function": "abs", "args": ["-8"]},
+                    ],
+                },
+                "operator": ">=",
+                "right": "10",
+            }
+        )
+    )
+    assert data.evaluate_expression(source) is False
+    data.operators["芬"].mood = 12
+    assert data.evaluate_expression(source) is True
 
 
 def test_reuses_compilation_while_reading_current_and_projected_mood(data, monkeypatch):

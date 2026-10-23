@@ -58,6 +58,56 @@ def test_old_plan_roundtrip_and_invalid_references():
             PlanModel.model_validate(change)
 
 
+def test_saved_functions_select_backup_group_and_plan(monkeypatch):
+    monkeypatch.setattr(config, "conf", config.Conf())
+    document = PlanModel.model_validate(
+        {
+            "backup_groups": [
+                {
+                    "id": "functions",
+                    "name": "函数分组",
+                    "trigger": {
+                        "function": "all",
+                        "args": [
+                            "True",
+                            {
+                                "left": {"function": "max", "args": ["3", "9", "4"]},
+                                "operator": "==",
+                                "right": "9",
+                            },
+                        ],
+                    },
+                }
+            ],
+            "backup_plans": [
+                {
+                    "name": "函数副表",
+                    "group_ids": ["functions"],
+                    "trigger": {
+                        "function": "any",
+                        "args": [
+                            "False",
+                            {
+                                "left": {
+                                    "function": "sum",
+                                    "args": ["2", {"function": "abs", "args": ["-3"]}],
+                                },
+                                "operator": "==",
+                                "right": "5",
+                            },
+                        ],
+                    },
+                }
+            ],
+        }
+    )
+    restored = PlanModel.model_validate_json(document.model_dump_json())
+    data = Operators(build_global_plan(plan_model=restored))
+    selected = data.evaluate_backup_selection()
+    assert selected.group_id == "functions"
+    assert selected.conditions == [True]
+
+
 def test_runtime_retains_group_and_exclusive_then_falls_back(monkeypatch):
     monkeypatch.setattr(config, "conf", config.Conf())
     data = Operators(build_global_plan(plan_model=model()))

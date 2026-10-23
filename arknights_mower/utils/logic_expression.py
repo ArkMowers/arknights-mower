@@ -16,7 +16,34 @@ class LogicExpression:
         return f"({(self.left)} {self.operator} {(self.right)})"
 
 
-def get_logic_exp(trigger: dict) -> LogicExpression:
+class FunctionExpression:
+    def __init__(self, function, args):
+        self.function = function
+        self.args = args
+
+    def __str__(self):
+        args = ", ".join(str(arg) for arg in self.args)
+        if self.function in ("sum", "any", "all"):
+            args = f"[{args}]"
+        return f"{self.function}({args})"
+
+
+def get_logic_exp(trigger: dict) -> LogicExpression | FunctionExpression:
+    if "function" in trigger:
+        function = trigger["function"]
+        args = trigger.get("args")
+        if function not in ("max", "min", "sum", "any", "all", "abs"):
+            raise ValueError("不支持的副表函数")
+        if not isinstance(args, list) or not args:
+            raise ValueError("函数条件需要参数")
+        if function in ("max", "min") and len(args) < 2:
+            raise ValueError("max、min 条件需要至少两项参数")
+        if function == "abs" and len(args) != 1:
+            raise ValueError("abs 条件只接受一项参数")
+        return FunctionExpression(
+            function,
+            [get_logic_exp(arg) if isinstance(arg, dict) else arg for arg in args],
+        )
     for k in ["left", "operator", "right"]:
         if k not in trigger:
             trigger[k] = ""

@@ -4,7 +4,7 @@ import math
 from enum import Enum
 from typing import Optional, Self
 
-from arknights_mower.utils.logic_expression import LogicExpression
+from arknights_mower.utils.logic_expression import FunctionExpression, LogicExpression
 from arknights_mower.utils.mastery_support_types import IGNORED_NAMES
 
 RIGHT_SIDE_ROOM_CAPACITY = {
@@ -270,7 +270,7 @@ class Plan:
         self,
         plan: dict[str, Room],
         config: PlanConfig,
-        trigger: Optional[LogicExpression] = None,
+        trigger: Optional[LogicExpression | FunctionExpression] = None,
         task: Optional[dict[str, list[str]]] = None,
         name: Optional[str] = "",
         products: Optional[dict[str, str]] = None,
