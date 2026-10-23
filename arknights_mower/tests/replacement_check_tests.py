@@ -81,6 +81,7 @@ def replacement_solver(clock, monkeypatch):
         "薇薇安娜",
         "",
         mood=24,
+        depletion_rate=6,
         time_stamp=clock.now(),
         current_room="central",
         current_index=0,
@@ -127,12 +128,12 @@ def replacement_solver(clock, monkeypatch):
         "time": clock.now() + timedelta(hours=4),
     }
 
-    def read(room, indices, **kwargs):
+    def read(room, indices=None, **kwargs):
         observed = deepcopy(solver.reading)
         if observed.get("observed", True) and observed.get("agent") == cover.name:
             mood = observed.get("mood")
             if isinstance(mood, (int, float)) and 0 <= mood <= 24:
-                data.update_detail(cover.name, mood, room, indices[0], True)
+                data.update_detail(cover.name, mood, room, cover.current_index, True)
         return [observed]
 
     solver.get_agent_from_room = Mock(side_effect=read)
@@ -148,7 +149,7 @@ def _bootstrap(solver):
     return task
 
 
-def test_bootstrap_reads_work_timer_even_with_full_mood(replacement_solver, clock):
+def test_bootstrap_uses_consumption_rate_at_full_mood(replacement_solver, clock):
     solver = replacement_solver
     task = _bootstrap(solver)
 
@@ -156,10 +157,8 @@ def test_bootstrap_reads_work_timer_even_with_full_mood(replacement_solver, cloc
     assert task.time == clock.now() + timedelta(hours=4)
     solver.get_agent_from_room.assert_called_once_with(
         "central",
-        [0],
         force_mood=True,
         strict_observation=True,
-        force_working_time=True,
     )
     solver.back.assert_called_once()
 
@@ -175,14 +174,59 @@ def test_bootstrap_ignores_unknown_legacy_work_segment(replacement_solver, clock
     assert solver.get_agent_from_room.call_count == 0
 
 
-def test_personal_floor_uses_exact_remaining_fraction(replacement_solver, clock):
+@pytest.mark.parametrize("lower,mood", [(1, 2), (6, 12)])
+def test_optional_zero_countdown_converts_to_personal_floor(
+    replacement_solver, clock, lower, mood
+):
     solver = replacement_solver
-    solver.op_data.operators["薇薇安娜"].lower_limit = 6
-    solver.reading.update(mood=12, time=clock.now() + timedelta(hours=4))
+    cover = solver.op_data.operators["薇薇安娜"]
+    cover.lower_limit, cover.depletion_rate = lower, 0
+    solver.reading.update(mood=mood, time=clock.now() + timedelta(hours=1))
 
     task = _bootstrap(solver)
 
-    assert task.time == clock.now() + timedelta(hours=2)
+    assert task.time == clock.now() + timedelta(minutes=30)
+
+
+@pytest.mark.parametrize("room", ["central", "recycle"])
+@pytest.mark.parametrize("mood,lower,rate,hours", [(12, 6, 3, 2), (1, 0, 2, 0.5)])
+def test_rate_supplies_deadline_without_required_countdown(
+    replacement_solver, clock, room, mood, lower, rate, hours
+):
+    solver = replacement_solver
+    data = solver.op_data
+    cover = data.operators["薇薇安娜"]
+    if room == "recycle":
+        data.plan[room] = data.plan.pop("central")
+        data.operators["歌蕾蒂娅"].room = room
+        cover.current_room = room
+    cover.lower_limit, cover.depletion_rate = lower, rate
+    solver.reading.update(mood=mood, time=None)
+
+    task = _bootstrap(solver)
+
+    assert not getattr(task, "execution_failure", None)
+    assert task.time == clock.now() + timedelta(hours=hours)
+
+
+@pytest.mark.parametrize("room", ["central", "recycle"])
+@pytest.mark.parametrize("lower,mood", [(6, 12), (6, 7), (20, 21)])
+def test_measured_rate_precedes_optional_countdown(
+    replacement_solver, clock, room, lower, mood
+):
+    solver = replacement_solver
+    data = solver.op_data
+    cover = data.operators["薇薇安娜"]
+    if room == "recycle":
+        data.plan[room] = data.plan.pop("central")
+        data.operators["歌蕾蒂娅"].room = room
+        cover.current_room = room
+    cover.lower_limit, cover.depletion_rate = lower, 1
+    solver.reading.update(mood=mood, time=clock.now() + timedelta(minutes=5))
+
+    task = _bootstrap(solver)
+
+    assert task.time == clock.now() + timedelta(hours=mood - lower)
 
 
 def test_unchanged_sync_keeps_object_and_deadline(replacement_solver, clock):
@@ -224,6 +268,8 @@ def _prepare_same_room_reader(solver, clock, count):
         data.operators[cover_name] = cover
         covers.append(cover)
     deadlines = [clock.now() + timedelta(hours=4 + index) for index in range(count)]
+    for index, cover in enumerate(covers):
+        cover.depletion_rate = cover.mood / (4 + index)
     solver.recog = SimpleNamespace(
         gray=np.zeros((1080, 1920), dtype=np.uint8), update=Mock()
     )
@@ -253,15 +299,13 @@ def test_same_room_checks_keep_deadlines_after_full_room_reads(
     solver = replacement_solver
     data = solver.op_data
     covers, deadlines = _prepare_same_room_reader(solver, clock, count)
-    solver.read_accurate_mood.side_effect = [
-        op.mood - step / 10 for step in range(count) for op in covers
-    ]
     replacement_check.sync_replacement_checks(solver)
     checks = list(solver.tasks)
 
-    for task in checks:
+    for index, task in enumerate(checks):
         clock.current += timedelta(seconds=6)
         assert replacement_check.run_replacement_check(solver, task) is False
+        deadlines[index] = clock.now() + timedelta(hours=4 + index)
         replacement_check.sync_replacement_checks(solver)
 
     independent = SchedulerTask(clock.now(), task_type=TaskTypes.DEPOT)
@@ -271,7 +315,7 @@ def test_same_room_checks_keep_deadlines_after_full_room_reads(
         assert [task.time for task in checks] == deadlines
         scheduling(solver.tasks, time_now=clock.now(), op_data=data)
         assert find_next_task(solver.tasks) is independent
-    assert solver.read_operator_time.call_count == count
+    solver.read_operator_time.assert_not_called()
     assert data.room_observations["central"] == count
 
 
@@ -312,7 +356,7 @@ def test_same_room_failed_checks_wait_for_candidate_release(
         scheduling(solver.tasks, time_now=clock.now(), op_data=data)
         assert find_next_task(solver.tasks) is independent
     assert solver.enter_room.call_count == 2
-    assert solver.read_operator_time.call_count == (1 if partial_read else 2)
+    solver.read_operator_time.assert_not_called()
     assert data.room_observations["central"] == (1 if partial_read else 2)
 
     solver.read_accurate_mood.side_effect = None
@@ -395,8 +439,8 @@ def test_new_measured_rate_rechecks_countdown_once(
     solver = replacement_solver
     cover = solver.op_data.operators["薇薇安娜"]
     cover.lower_limit = 6
-    cover.depletion_rate = previous_rate
     task = _bootstrap(solver)
+    cover.depletion_rate = previous_rate
     assert task.time == clock.now() + timedelta(hours=3)
     solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
     task = solver.tasks[0]
@@ -408,7 +452,7 @@ def test_new_measured_rate_rechecks_countdown_once(
 
     assert solver.tasks == [task] and task.time == clock.now()
     solver.get_agent_from_room.assert_called_once()
-    # 新速率只要求重读；下一期限仍由新实读的三十分钟归零倒计时确定。
+    # 按新实测心情消耗速率安排检查，优先于已有倒计时。
     solver.reading.update(mood=12, time=clock.now() + timedelta(minutes=30))
     assert replacement_check.run_replacement_check(solver, task) is False
     deadline = clock.now() + timedelta(minutes=15)
@@ -428,7 +472,7 @@ def test_same_room_new_rates_recheck_once_without_reopening_peers(
     solver = replacement_solver
     covers, _ = _prepare_same_room_reader(solver, clock, count)
     for cover in covers:
-        cover.lower_limit = 6
+        cover.lower_limit = 1
     replacement_check.sync_replacement_checks(solver)
     checks = list(solver.tasks)
     for task in checks:
@@ -437,7 +481,7 @@ def test_same_room_new_rates_recheck_once_without_reopening_peers(
         replacement_check.sync_replacement_checks(solver)
     clock.current += timedelta(minutes=30)
     solver.read_accurate_mood.side_effect = None
-    solver.read_accurate_mood.return_value = 12
+    solver.read_accurate_mood.return_value = 2
     solver.get_agent_from_room("central", [], force_mood=True)
     assert all(cover.depletion_rate > 0 for cover in covers)
 
@@ -450,8 +494,8 @@ def test_same_room_new_rates_recheck_once_without_reopening_peers(
     for task in checks:
         assert replacement_check.run_replacement_check(solver, task) is False
         replacement_check.sync_replacement_checks(solver)
-    deadline = clock.now() + timedelta(minutes=15)
-    assert [task.time for task in checks] == [deadline] * count
+    deadlines = [task.time for task in checks]
+    assert all(deadline > clock.now() for deadline in deadlines)
     reads = solver.read_operator_time.call_count
     independent = SchedulerTask(clock.now(), task_type=TaskTypes.DEPOT)
     solver.tasks.append(independent)
@@ -460,8 +504,8 @@ def test_same_room_new_rates_recheck_once_without_reopening_peers(
         replacement_check.sync_replacement_checks(solver)
         scheduling(solver.tasks, time_now=clock.now(), op_data=solver.op_data)
         assert find_next_task(solver.tasks) is independent
-        assert [task.time for task in checks] == [deadline] * count
-    assert reads == count * 2
+        assert [task.time for task in checks] == deadlines
+    assert reads == 0
     assert solver.read_operator_time.call_count == reads
 
 
@@ -507,6 +551,8 @@ def test_new_rate_resumes_failed_check_without_moving_original_time(
     cover.lower_limit = 6
     task = _bootstrap(solver)
     original_time = clock.current = task.time
+    cover.depletion_rate = 0
+    cover.mood, cover.time_stamp = 12, clock.now()
     solver.reading.update(mood=12, time=None)
     assert replacement_check.run_replacement_check(solver, task) is False
     failure = task.execution_failure
@@ -571,9 +617,9 @@ def test_work_environment_change_requests_one_new_read(
     assert solver.tasks[0] is task and task.time == clock.now()
     solver.reading["time"] = clock.now() + timedelta(hours=2)
     assert replacement_check.run_replacement_check(solver, task) is False
-    assert task.time == clock.now() + timedelta(hours=2)
+    assert task.time == clock.now() + timedelta(hours=4)
     replacement_check.sync_replacement_checks(solver)
-    assert task.time == clock.now() + timedelta(hours=2)
+    assert task.time == clock.now() + timedelta(hours=4)
 
 
 def test_due_check_uses_real_matching_and_retains_primary_rest(
@@ -601,8 +647,6 @@ def test_due_check_uses_real_matching_and_retains_primary_rest(
         {"agent": "薇薇安娜", "observed": False, "mood": 0},
         {"agent": "薇薇安娜", "mood": -1},
         {"agent": "薇薇安娜", "mood": float("nan")},
-        {"agent": "薇薇安娜", "mood": 10, "time": None},
-        {"agent": "薇薇安娜", "mood": 10},
         {"mood": 0},
     ],
 )
@@ -634,7 +678,8 @@ def test_missing_countdown_with_remaining_mood_does_not_mean_exhaustion(
     solver.reading.update(mood=10, time=clock.now())
 
     assert replacement_check.run_replacement_check(solver, task) is False
-    assert task.execution_failure and task.time == clock.now()
+    assert not getattr(task, "execution_failure", None)
+    assert task.time > clock.now()
     assert len(solver.tasks) == 1
 
 
@@ -822,7 +867,7 @@ def test_resumed_check_finishes_before_scheduling_next_deadline(
     successors = [queued for queued in solver.tasks if queued is not task]
     assert len(successors) == 1
     successor = successors[0]
-    assert successor.time == clock.now() + timedelta(hours=3)
+    assert successor.time == clock.now() + timedelta(hours=2)
     assert not successor.retains_execution
     solver.tasks[:] = [successor]
     replacement_check.sync_replacement_checks(solver)

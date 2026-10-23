@@ -429,6 +429,7 @@ def test_residual_exhaust_off_requeues_run_order_after_coordination(
             }
         ]
     )
+    solver.op_data.operators["引星棘刺"].depletion_rate = 6
     solver.task = replacement_check
     solver.infra_main()
     assert solver.task is None
@@ -437,10 +438,8 @@ def test_residual_exhaust_off_requeues_run_order_after_coordination(
     assert replacement_check.time > execute_time
     solver.get_agent_from_room.assert_called_once_with(
         "room_2_2",
-        [0],
         force_mood=True,
         strict_observation=True,
-        force_working_time=True,
     )
     assert not solver.planned
     solver.task = refresh

@@ -1,7 +1,7 @@
-"""在岗普通替班按实读工作倒计时检查个人心情下限。"""
+"""在岗普通替班按实读心情检查个人下限，计时信息只辅助安排检查。"""
 
 from copy import copy, deepcopy
-from datetime import datetime
+from datetime import datetime, timedelta
 from math import isfinite
 
 from arknights_mower.utils.dorm_candidates import (
@@ -235,7 +235,7 @@ def sync_replacement_checks(solver):
             )
         )
         # 候选恢复和预约释放只重新开放失败检查，不移动已有工作期限。
-        # 仅更新采样保留工作期限；达到下限或实测速率改变时重新核实倒计时。
+        # 仅更新采样保留工作期限；达到下限或实测速率改变时重新核实心情。
         if (
             previous is not None
             and (
@@ -259,7 +259,7 @@ def sync_replacement_checks(solver):
     for key, target in targets.items():
         if key in existing or (target["room"], target["index"]) in concrete_slots:
             continue
-        # 旧消耗速率没有工作段来源；新上岗先核实一次当前工作倒计时。
+        # 新上岗先核实当前心情，不要求设施提供工作倒计时。
         task = SchedulerTask(
             meta_data=f"替班心情检查：{target['cover']}",
             task_type=TaskTypes.NOT_SPECIFIC,
@@ -280,10 +280,12 @@ def invalidate_replacement_checks(solver):
                 task.time = min(task.time, datetime.now())
 
 
-def _retain(solver, task, reason):
+def _retain(solver, task, reason, *, dependency=False):
     # 本轮已经产生的观测先纳入来源，不能在下一轮把自己的读数当新事件。
     task.replacement_check_source = replacement_check_snapshot(solver, task)
-    solver._retain_failed_task(task, reason, [task.replacement_check["room"]])
+    solver._retain_failed_task(
+        task, reason, [task.replacement_check["room"]], dependency=dependency
+    )
     return False
 
 
@@ -342,10 +344,8 @@ def run_replacement_check(solver, task):
         solver.enter_room(room)
         result = solver.get_agent_from_room(
             room,
-            [index],
             force_mood=True,
             strict_observation=True,
-            force_working_time=True,
         )
         solver.back()
     except RecognizeError as exc:
@@ -366,9 +366,19 @@ def run_replacement_check(solver, task):
     now = datetime.now()
     if mood > cover.lower_limit:
         end = observed.get("time")
-        if not isinstance(end, datetime) or end <= now:
-            return _retain(solver, task, "替班仍有工作心情，但工作倒计时未核实")
-        deadline = now + (end - now) * ((mood - cover.lower_limit) / mood)
+        if isfinite(cover.depletion_rate) and cover.depletion_rate > 0:
+            deadline = now + timedelta(
+                hours=(mood - cover.lower_limit) / cover.depletion_rate
+            )
+        elif room != "recycle" and isinstance(end, datetime) and end > now:
+            deadline = now + (end - now) * ((mood - cover.lower_limit) / mood)
+        else:
+            return _retain(
+                solver,
+                task,
+                "替班心情仍高于下限，等待有效心情消耗观测",
+                dependency=True,
+            )
         if task.retains_execution:
             successor = SchedulerTask(time=deadline, meta_data=task.meta_data)
             successor.replacement_check = deepcopy(target)
