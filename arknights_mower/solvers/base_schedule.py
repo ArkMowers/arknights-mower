@@ -5689,10 +5689,10 @@ class BaseSchedulerSolver(
                     op.refresh_drained = self.op_data.config.is_refresh_drained(name)
                     op.refresh_order_room = self.op_data.config.is_refresh_trading(name)
 
-    def _exhaust_task_signatures(self):
+    def _exhaust_task_signatures(self, *, tasks=None):
         """动态用尽预约依赖生效岗位和组配置，不依赖临时驻员或心情读数。"""
         signatures = {}
-        for task in task_view(self.tasks, TaskScope.REPLAN):
+        for task in task_view(self.tasks if tasks is None else tasks, TaskScope.REPLAN):
             if task.type != TaskTypes.EXHAUST_OFF or task.plan:
                 continue
             names = set(task.meta_data.split(","))
@@ -5730,16 +5730,22 @@ class BaseSchedulerSolver(
             signatures[id(task)] = tuple(members)
         return signatures
 
-    def _invalidate_changed_exhaust_tasks(self, previous):
-        current = self._exhaust_task_signatures()
+    def _invalidate_changed_exhaust_tasks(self, previous, *, tasks=None):
+        tasks = self.tasks if tasks is None else tasks
+        current = self._exhaust_task_signatures(tasks=tasks)
         invalid = {
             task_id
             for task_id, signature in previous.items()
             if task_id in current and current[task_id] != signature
         }
         if invalid:
-            self.tasks[:] = [task for task in self.tasks if id(task) not in invalid]
-            logger.info("副表生效后移除 %s 条配置已改变的动态用尽预约", len(invalid))
+            tasks[:] = [task for task in tasks if id(task) not in invalid]
+            if tasks is self.tasks:
+                logger.info(
+                    "副表生效后移除 %s 条配置已改变的动态用尽预约", len(invalid)
+                )
+            else:
+                logger.debug("换班预演忽略 %s 条配置已改变的动态用尽预约", len(invalid))
         return bool(invalid)
 
     def _advance_orders_before_maintenance(self, conditions, backup_group=None):
@@ -7354,6 +7360,7 @@ class BaseSchedulerSolver(
             getattr(task, "group_shift_transitions", {})
         )
         pending = [t for t in self.tasks if t is not task and id(t) not in consumed]
+        pending_exhaust = self._exhaust_task_signatures(tasks=pending)
         step = SchedulerTask(task_type=task.type, task_plan=copy.deepcopy(intent))
         step.backup_explicit_slots = explicit_slots
         step.ordinary_coordination = bool(ordinary_requests)
@@ -7402,6 +7409,11 @@ class BaseSchedulerSolver(
                 backup_group=getattr(step, "backup_group", None),
             ):
                 raise ValueError(f"完整换班预演失败：{error}")
+            # 后续轮次和最终补床均从 pending 复制，失效预约不能重新进入演算。
+            if simulation._invalidate_changed_exhaust_tasks(
+                pending_exhaust, tasks=pending
+            ):
+                simulation.tasks = copy.deepcopy(pending)
             reserved_names, reserved_slots = dorm_task_reservations(
                 simulation.op_data,
                 [
