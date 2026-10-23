@@ -15,11 +15,13 @@
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.overtake_room",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._exhaust_task_signatures",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._invalidate_changed_exhaust_tasks",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._prepare_shift_cycle",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._capture_shift_refresh_rules",
     "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._arrange_with_shift_refresh_rules"
   ],
   "test_suites": [
     "arknights_mower/tests/backup_rest_schedule_tests.py",
+    "arknights_mower/tests/backup_exhaust_projection_tests.py",
     "arknights_mower/tests/dorm_group_tests.py",
     "arknights_mower/tests/exhaust_replacement_tests.py",
     "arknights_mower/tests/backup_refresh_continuity_tests.py",

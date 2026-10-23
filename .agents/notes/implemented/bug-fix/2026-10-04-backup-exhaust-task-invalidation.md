@@ -15,11 +15,13 @@ Successful backup activation or deactivation invalidates an empty-plan EXHAUST_O
 
 ## Pre-flight Simplification
 
-Backup coalescing requires concrete slot arrangements and cannot merge empty dynamic deadlines. Two live backup commit boundaries share scheduling signature comparison; projected swaps have no queue cleanup. Completion filters the existing candidate list without introducing another group-state API or changing lower-level bed allocation.
+Backup coalescing requires concrete slot arrangements and cannot merge empty dynamic deadlines. Two live backup commit boundaries and the private complete-shift projection queue share scheduling signature comparison; projected swaps preserve the live queue. Completion filters the existing candidate list without introducing another group-state API or changing lower-level bed allocation.
 
 ## Implementation
 
 The effective signature includes group membership, assigned positions, replacements, operator role, personal mood limits, exhaustion and full-rest settings, and configured facility products. It excludes actual occupancy, current mood and timestamps. Both cached backup convergence and shift activation compare the previous signature only after successful plan changes. An immediate ordinary check wakes normal planning after affected deadlines are removed. A combined deadline is invalidated when any represented member changes.
+
+Complete-shift projection previously changed effective configuration while repeatedly copying the original pending deadlines into rotation and bed planning. It now removes affected deadlines from its private pending list after each successful projected swap. Filtering that list prevents later rounds and final bed filling from restoring an invalidated deadline. The live queue remains available if projection fails, and retained execution and concrete arrangements keep their existing protection. [Projection regressions](../../../../arknights_mower/tests/backup_exhaust_projection_tests.py) cover due and future deadlines, combined requests, repeated planning, backup reactivation, retained work and failure isolation; they do not reproduce a specific account's staffing outcome without its schedule and observations.
 
 ## Verification
 
