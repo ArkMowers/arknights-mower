@@ -267,7 +267,7 @@ class Recognizer:
             self.scene = Scene.INFRA_TODOLIST
         elif self.find("clue/message_board_page"):
             self.scene = Scene.CLUE_MESSAGE_BOARD
-        elif self.find("clue/fast_place"):
+        elif self.find("clue"):
             self.scene = Scene.INFRA_CONFIDENTIAL
         elif self.find("infra_overview_in"):
             self.scene = Scene.INFRA_ARRANGE
@@ -787,9 +787,8 @@ class Recognizer:
             "arrange_confirm": (963, 969),
             "arrange_order_options": (1652, 23),
             ## "arrange_order_options_scene": (369, 199),
+            "clue": (1656, 940),
             "clue/daily": (526, 623),
-            "clue/fast_place": (1656, 940),
-            "clue/fast_place_disabled": (1656, 940),
             "clue/filter_all": (1297, 99),
             "clue/give_away": (25, 18),
             "clue/receive": (1295, 15),
@@ -886,32 +885,33 @@ class Recognizer:
         }
 
         if not force_feature_match and res in color:
-            res_img = loadres(res)
-            if res == "depot":
-                # 限时物品标签会遮住旧模板上沿，只匹配下方固定背景，兼容现有资源包。
-                res_img = res_img[45:]
-            h, w, _ = res_img.shape
+            templates = [loadres(res)]
+            if res == "clue":
+                # 灰色按钮替换旧图标，橙色按钮复用已有模板；均避开数量角标。
+                templates.append(loadres("clue/fast_place"))
+            for res_img in templates:
+                if res == "depot":
+                    # 限时物品标签会遮住旧模板上沿，只匹配下方固定背景，兼容现有资源包。
+                    res_img = res_img[45:]
+                h, w, _ = res_img.shape
 
-            pos_list = color[res]
-            if not isinstance(pos_list[0], tuple):
-                pos_list = [color[res]]
-            for pos in pos_list:
-                scope = pos, va(pos, (w, h))
-                img = cropimg(self.img, scope)
-                if cmatch(img, res_img, draw=draw):
-                    gray = cropimg(self.gray, scope)
-                    res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2GRAY)
-                    ssim = vision_np.ssim(gray, res_img)
-                    threshold = 0.9
-                    if res in template_matching_score:
-                        threshold = template_matching_score[res]
-                    if ssim >= threshold:
-                        logger.debug(f"find: {res} {scope=} {ssim=}")
-                        return scope
+                pos_list = color[res]
+                if not isinstance(pos_list[0], tuple):
+                    pos_list = [color[res]]
+                for pos in pos_list:
+                    scope = pos, va(pos, (w, h))
+                    img = cropimg(self.img, scope)
+                    if cmatch(img, res_img, draw=draw):
+                        gray = cropimg(self.gray, scope)
+                        res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2GRAY)
+                        ssim = vision_np.ssim(gray, res_img)
+                        threshold = 0.9
+                        if res in template_matching_score:
+                            threshold = template_matching_score[res]
+                        if ssim >= threshold:
+                            logger.debug(f"find: {res} {scope=} {ssim=}")
+                            return scope
 
-            if res == "clue/fast_place":
-                # 两种底色均表示线索板；模板右边界避开数量角标。
-                return self.find("clue/fast_place_disabled")
             if res == "confirm":
                 # 背景透出会改变整条按钮栏的颜色/纹理；保留原匹配，失败时
                 # 只复核固定位置的完整勾选图标，不扩大搜索区域或降低阈值。

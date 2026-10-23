@@ -37,7 +37,7 @@ def test_board_scene_does_not_depend_on_confidential_icon(filename):
 def test_both_fast_place_appearances_are_accepted(filename):
     recog = observation(filename)
 
-    assert recog.find("clue/fast_place") == ((1656, 940), (1872, 1023))
+    assert recog.find("clue") == ((1656, 940), (1872, 1023))
 
 
 @pytest.mark.parametrize("filename", BOARD_FRAMES)
@@ -62,5 +62,4 @@ def test_other_reception_pages_are_not_board(filename, scene):
     recog = observation(filename)
 
     assert recog.get_scene() == scene
-    assert recog.find("clue/fast_place") is None
-    assert recog.find("clue/fast_place_disabled") is None
+    assert recog.find("clue") is None
