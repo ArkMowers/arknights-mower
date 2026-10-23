@@ -371,16 +371,6 @@ async function requestForceUpdate() {
   if (!checked.value.check_id) await checkUpdate()
   if (!checked.value?.check_id) return
   const selection = { ...checked.value, force: true }
-  if (selection.downgrade) {
-    confirmSoftwareInstall(
-      dialogs,
-      info.value.version,
-      selection,
-      info.value.instances.length,
-      (confirmed) => install(true, null, confirmed)
-    )
-    return
-  }
   confirmForceUpdate(dialogs, selection.version, info.value.instances.length, () =>
     install(true, null, selection)
   )
@@ -459,9 +449,7 @@ onUnmounted(() => {
       <n-form-item label="最新版本">
         <div class="version-row">
           <span class="version">{{ checked?.version || '—' }}</span>
-          <n-tag v-if="checked?.available === true" type="warning">{{
-            checked.downgrade ? '可回退' : '可更新'
-          }}</n-tag>
+          <n-tag v-if="checked?.available === true" type="warning">可更新</n-tag>
           <n-tag v-else-if="checked?.available === false" type="success">已与渠道一致</n-tag>
         </div>
       </n-form-item>
@@ -490,7 +478,7 @@ onUnmounted(() => {
             :loading="busy"
             @click="requestInstall(false)"
           >
-            {{ checked?.downgrade ? '回退并安装' : '下载并安装' }}
+            下载并安装
           </n-button>
           <n-button
             v-if="source"

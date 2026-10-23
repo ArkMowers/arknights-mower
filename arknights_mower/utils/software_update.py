@@ -205,7 +205,6 @@ def check_on_launch():
         )
         if (
             result["available"]
-            and not result.get("downgrade", False)
             and current["auto_update"]
             and automatic_check_key(current) == automatic_check_key(settings)
             and not recent_restart
@@ -285,46 +284,6 @@ def version_key(value):
         int(number or 0),
         bool(revision),
     )
-
-
-def release_is_downgrade(channel, target, current, proxy=""):
-    """Order Nightly builds by publication time or verified commit ancestry."""
-    target_version = target.get("version") or target["tag_name"]
-    target_key, current_key = version_key(target_version), version_key(current)
-    if target_key != current_key or channel != "dev" or not is_nightly(current):
-        return target_key < current_key
-    current_name = current.split("+", 1)[0].removeprefix("v")
-    if target_version.removeprefix("v") == current_name:
-        return False
-    current_release = next(
-        (
-            item
-            for item in [target, *target.get("history", [])]
-            if isinstance(item, dict)
-            and isinstance(item.get("version"), str)
-            and item["version"].removeprefix("v") == current_name
-        ),
-        None,
-    )
-    if current_release is not None:
-        try:
-            target_date = datetime.fromisoformat(target["published_at"])
-            current_date = datetime.fromisoformat(current_release["published_at"])
-            if target_date.tzinfo is not None and current_date.tzinfo is not None:
-                return target_date <= current_date
-        except (KeyError, TypeError, ValueError):
-            pass
-    # Retained history omits older builds; SHA ancestry still proves direction.
-    current_sha = VERSION_RE.fullmatch(current).group(6)
-    target_sha = VERSION_RE.fullmatch(target_version).group(6)
-    try:
-        comparison = github(f"/compare/{current_sha}...{target_sha}", proxy)
-        return not (
-            isinstance(comparison, dict)
-            and comparison.get("status") in ("ahead", "identical")
-        )
-    except (requests.RequestException, ValueError):
-        return True
 
 
 def platform_asset():
@@ -1173,7 +1132,6 @@ def check(channel, proxy=None):
         release_version = release.get("version") or release["tag_name"]
         plan.update(
             version=release_version,
-            downgrade=release_is_downgrade(channel, release, __version__, proxy),
             notes=release.get("notes") or release.get("body") or "暂无更新说明",
             url=release.get("source_release") or release["html_url"],
         )
@@ -1194,7 +1152,6 @@ def check(channel, proxy=None):
         release = choose_release(releases, channel)
         plan.update(
             version=release["tag_name"],
-            downgrade=version_key(release["tag_name"]) < version_key(__version__),
             notes=release.get("body") or "暂无更新说明",
             url=release["html_url"],
         )
@@ -1224,16 +1181,15 @@ def check(channel, proxy=None):
         ].removeprefix("v")
         if available:
             plan["asset"] = choose_asset(release, repo=release_repo)
-            if not plan.get("downgrade"):
-                ota = choose_ota_asset(
-                    plan["version"],
-                    __version__,
-                    proxy,
-                    release=release if release_repo == OTA_REPO else None,
-                )
-                if ota and ota["size"] < plan["asset"]["size"]:
-                    plan["ota_asset"] = ota
-                    plan["current_version"] = __version__
+            ota = choose_ota_asset(
+                plan["version"],
+                __version__,
+                proxy,
+                release=release if release_repo == OTA_REPO else None,
+            )
+            if ota and ota["size"] < plan["asset"]["size"]:
+                plan["ota_asset"] = ota
+                plan["current_version"] = __version__
     plan["available"] = available
     plan["force_available"] = deployment == "source" and (
         available or current == plan["commit"]
@@ -1245,15 +1201,11 @@ def check(channel, proxy=None):
         "checked_at": time.time(),
         "check_id": check_id if available or plan["force_available"] else "",
         "available": available,
-        "downgrade": plan.get("downgrade", False),
+        "downgrade": False,
         "version": plan["version"],
         "notes": plan["notes"],
         "url": plan["url"],
-        "message": (
-            "发现可回退版本，请确认后安装" if plan.get("downgrade") else "发现可用更新"
-        )
-        if available
-        else "当前版本已与所选渠道一致",
+        "message": "发现可用更新" if available else "当前版本已与所选渠道一致",
     }
     if deployment == "source":
         result.update(

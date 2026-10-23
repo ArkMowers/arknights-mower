@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, nextTick } from 'vue'
+import { createSSRApp, effectScope, nextTick } from 'vue'
+import { renderToString } from 'vue/server-renderer'
 import SoftwareUpdate from './SoftwareUpdate.vue'
 import { pendingSoftwarePackage } from '@/stores/updateUpload'
 
@@ -13,11 +14,26 @@ vi.mock('vue', async (original) => ({
   onMounted: (callback) => state.mounted.push(callback),
   onUnmounted: (callback) => state.unmounted.push(callback)
 }))
-vi.mock('naive-ui', async (original) => ({
-  ...(await original()),
-  useDialog: () => ({ warning: state.warning }),
-  useMessage: () => ({ error: vi.fn(), info: vi.fn() })
-}))
+vi.mock('naive-ui', async (original) => {
+  const exports = await original()
+  const { defineComponent, h } = await import('vue')
+  const container = defineComponent({
+    setup:
+      (_, { slots }) =>
+      () =>
+        h('div', slots.default?.())
+  })
+  return {
+    ...exports,
+    ...Object.fromEntries(
+      Object.keys(exports)
+        .filter((name) => /^N[A-Z]/.test(name))
+        .map((name) => [name, container])
+    ),
+    useDialog: () => ({ warning: state.warning }),
+    useMessage: () => ({ error: vi.fn(), info: vi.fn() })
+  }
+})
 
 describe('offline software package installation', () => {
   let scope
@@ -80,6 +96,42 @@ describe('offline software package installation', () => {
     component.dropSoftwarePackage({ dataTransfer: { files: [file] } })
     await nextTick()
   }
+
+  it.each(['v4.1.5', 'v4.1.6-alpha.12.gfdc9e8b4'])(
+    'offers the online channel target %s with ordinary installation confirmation',
+    async (version) => {
+      await mount(new File(['unused'], 'package.zip'))
+      component.packageFiles.value = []
+      state.client.post.mockResolvedValueOnce({
+        data: {
+          ok: true,
+          available: true,
+          check_id: 'channel-target',
+          version,
+          downgrade: false,
+          message: '发现可用更新'
+        }
+      })
+      await component.checkUpdate()
+      const html = await renderToString(createSSRApp({ ...SoftwareUpdate, setup: () => component }))
+      expect(html).toContain('可更新')
+      expect(html).toContain('下载并安装')
+      expect(html).not.toContain('可回退')
+      expect(html).not.toContain('回退并安装')
+      await component.requestInstall(false)
+      const dialog = state.warning.mock.calls[0][0]
+      expect(dialog.title).toBe('确认安装并重启？')
+      expect(dialog.content).toContain(version)
+      expect(dialog.content).not.toContain('回退到')
+      expect(state.client.post.mock.calls.some(([url]) => url.endsWith('/start'))).toBe(false)
+      await dialog.onPositiveClick()
+      const submission = state.client.post.mock.calls.find(([url]) => url.endsWith('/start'))
+      expect(submission[1]).toMatchObject({
+        check_id: 'channel-target',
+        confirm_downgrade: false
+      })
+    }
+  )
 
   it.each([
     { silentRestart: false, restarted: false, reload: false },
