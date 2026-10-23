@@ -149,6 +149,68 @@ def test_card_estimate_cannot_replace_measured_recovery_need(incident, reading):
     assert not resting_priority.bed_takeover_allowed(data, candidate.name, "Mon3tr")
 
 
+@pytest.mark.parametrize(
+    "tier",
+    [
+        "explicit",
+        "main",
+        "low_main",
+        "priority_replacement",
+        "standby",
+        "replacement",
+        "idle",
+    ],
+)
+@pytest.mark.parametrize(
+    "reading", ["unknown", "predicted", "future", "full", "measured"]
+)
+def test_full_priority_resident_requires_measured_applicant_in_every_tier(
+    incident, tier, reading
+):
+    data = incident
+    data.config.free_blacklist = ["九色鹿"]
+    data.config.ope_resting_priority = ["Mon3tr"]
+    candidate = data.operators["斑点"]
+    if tier == "explicit":
+        data.config.ope_resting_priority.append(candidate.name)
+    elif tier in ("main", "low_main"):
+        candidate.operator_type, candidate.room = "high", "meeting"
+        candidate.resting_priority = "low" if tier == "low_main" else "high"
+    elif tier == "priority_replacement":
+        data.config.resting_priority_replacement = [candidate.name]
+    elif tier == "standby":
+        data.config.resting_standby = [candidate.name]
+    elif tier == "idle":
+        data.plan["meeting"][0].replacement = ["Mon3tr"]
+    if reading == "unknown":
+        candidate.time_stamp = None
+    elif reading == "predicted":
+        candidate.mood_is_prediction = True
+    elif reading == "future":
+        candidate.time_stamp = datetime.now() + timedelta(hours=1)
+    elif reading == "full":
+        candidate.mood = candidate.upper_limit
+    data.dorm_mood_estimates = {candidate.name: (10, datetime.now())}
+    allowed = reading == "measured"
+    assert (
+        resting_priority.bed_takeover_allowed(data, candidate.name, "Mon3tr") is allowed
+    )
+    if candidate.is_high():
+        bed = data.assign_dorm(candidate.name)
+        assert (bed is not None) is allowed
+        if allowed:
+            assert bed.position == (ROOM, 4)
+        return
+    tasks = []
+    try_add_release_dorm({}, None, data, tasks)
+    if allowed:
+        assert len(tasks) == 1
+        assert tasks[0].plan[ROOM] == ["Current"] * 4 + [candidate.name]
+    else:
+        assert tasks == []
+    assert data.operators["Mon3tr"].current_room == ROOM
+
+
 @pytest.mark.parametrize("name", ["九色鹿", "Mon3tr", "杜林"])
 def test_any_operator_can_use_configured_standby_recovery_tier(incident, name):
     data = incident

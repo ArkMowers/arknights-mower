@@ -122,14 +122,15 @@ def bed_takeover_allowed(op_data, requester, resident):
 
     op = op_data.operators.get(requester)
     mood = dorm_candidate_mood(op_data, requester, now)
-    if (
-        is_full_dorm_filler(op_data, resident, now)
-        and has_resting_mood(op, now)
-        and op.time_stamp <= now
-        and not getattr(op, "mood_is_prediction", False)
-        and resting_mood(op, now) < op.upper_limit
-    ):
-        return mood is not None and mood < op.upper_limit
+    if is_full_dorm_filler(op_data, resident, now):
+        return (
+            has_resting_mood(op, now)
+            and op.time_stamp <= now
+            and not getattr(op, "mood_is_prediction", False)
+            and resting_mood(op, now) < op.upper_limit
+            and mood is not None
+            and mood < op.upper_limit
+        )
     if not requester_tier < resident_tier < RestingTier.EXCLUDED:
         return False
     if requester_tier <= RestingTier.PRIORITY_REPLACEMENT:

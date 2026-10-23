@@ -75,11 +75,6 @@ def test_eight_workers_with_three_standby_validate_and_shift_with_seven_beds(
     admitted = solver.get_resting_plan(
         data.groups[GROUP].copy(), replacements, arrangement, 0
     )
-    if standby_mood == 5:
-        assert not admitted
-        assert arrangement == {} and replacements == []
-        assert not any(bed.name for bed in data.all_dorms())
-        return
     assert admitted
     beds = try_reorder(data, arrangement) or {}
     projected = data.project_arrangements([arrangement, beds])

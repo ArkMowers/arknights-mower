@@ -173,6 +173,7 @@ def test_standby_can_lose_bed_without_recalling_bound_group(individual):
     shared = data.operators[SHARED]
     shared.resting_priority = "standby"
     shared.mood = 10
+    data.operators["银灰"].mood = 10
     assert shift_off(s, "甲")[0]
     data = s.op_data
     bed = data.get_dorm_by_name(SHARED)[1]

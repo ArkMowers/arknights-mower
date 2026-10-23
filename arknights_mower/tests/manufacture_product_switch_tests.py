@@ -21,7 +21,11 @@ from arknights_mower.utils.manufacture_product import (  # noqa: E402
     parse_product_task_meta,
     product_task_meta,
 )
-from arknights_mower.utils.operators import Operators, build_global_plan  # noqa: E402
+from arknights_mower.utils.operators import (  # noqa: E402
+    Operator,
+    Operators,
+    build_global_plan,
+)
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.resting_priority import RestingTier  # noqa: E402
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
@@ -1047,12 +1051,12 @@ def test_deferred_product_shift_keeps_related_bed_and_splits_other_room():
 
 def test_reserved_product_bed_accepts_only_temporary_low_priority(monkeypatch):
     operators = Operators(product_plan()[1])
-    operators.config = SimpleNamespace()
+    operators.config = PlanConfig("", "", "")
     operators.is_effective_free_slot = MagicMock(return_value=True)
     operators.reserved_product_beds = {("dormitory_1", 0): "鸿雪"}
     operators.operators = {}
 
-    def tier(data, name):
+    def tier(data, name, now=None):
         return {
             "鸿雪": RestingTier.MAIN,
             "陈": RestingTier.MAIN,
@@ -1071,9 +1075,9 @@ def test_reserved_product_bed_accepts_only_temporary_low_priority(monkeypatch):
     assert operators._slot_takable(bed, requester="Lancet-2")
     assert operators._slot_takable(bed, requester="城墙")
     bed.name = "Lancet-2"
-    operators.operators["Lancet-2"] = SimpleNamespace(
-        current_room="dormitory_1", current_index=0
-    )
+    operators.operators["Lancet-2"] = Operator("Lancet-2", "")
+    operators.operators["Lancet-2"].current_room = "dormitory_1"
+    operators.operators["Lancet-2"].current_index = 0
     assert operators._slot_takable(bed, requester="鸿雪")
 
 

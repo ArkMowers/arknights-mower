@@ -564,6 +564,7 @@ def test_failed_group_assignment_is_atomic(solver, monkeypatch, failure):
     else:
         data.operators["泥岩"].operator_type = "high"
         data.operators["泥岩"].resting_priority = "high"
+        data.operators["泥岩"].mood = 10
     before = [(d.name, d.time) for d in data.dorm]
     plan, replacements = {}, []
     solver.get_resting_plan(data.groups["联动"], replacements, plan, 0)
@@ -843,6 +844,7 @@ def grouped_free_capacity(solver):
     for name in ("泥岩", "能天使", "年"):
         op = data.operators[name]
         op.operator_type, op.resting_priority, op.room = "high", "low", "factory"
+        op.mood = 10
     apply_plan(solver, {"dormitory_1": ["Free", "冰酿", "泥岩", "能天使", "年"]})
     data.operators["银灰"].current_room = ""
     return solver
@@ -979,6 +981,7 @@ def test_grouped_free_capacity_keeps_same_group_protected_resident(
     data = instance.op_data
     apply_plan(instance, {"dormitory_1": ["伊内丝"]})
     data.operators["伊内丝"].mood = 24
+    data.config.free_room_exclusions.append("伊内丝")
     data.config.ope_resting_priority.append("银灰")
     assert data.assign_dorm("银灰") is None
 
@@ -1810,6 +1813,7 @@ def test_explicit_free_resident_slot_reduces_required_free_beds(solver):
     configure_explicit_free_bed(solver)
     # 三名工作成员只需要两个 Free 床位；第三个床位由不可接管的主力占用。
     solver.op_data.operators["泥岩"].operator_type = "high"
+    solver.op_data.operators["泥岩"].mood = 10
     apply_plan(
         solver,
         {"dormitory_1": ["Current", "Current", "泥岩", "Current", "Current"]},
@@ -1925,11 +1929,7 @@ def test_auto_free_recovery_fills_vacancy_before_replacing_full_resident(
 
     try_add_release_dorm({}, None, data, tasks)
 
-    # 有空床先补空床；空闲候选不接管同级已占床位。
-    if other_beds_occupied and not replacement:
-        assert tasks == []
-        assert data.operators["年"].current_index == 0
-        return
+    # 有空床先补空床；没有空床时，实读低心情候选可接管已回满住客。
     assert len(tasks) == 1
     row = tasks[0].plan["dormitory_1"]
     projected = data.project_arrangements([tasks[0].plan])

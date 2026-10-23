@@ -434,7 +434,12 @@ def selection_solver(monkeypatch, residents=None):
         operators={},
         dorm_mood_estimates={},
         plan={},
-        config=SimpleNamespace(free_blacklist=[], ope_resting_priority=[]),
+        config=SimpleNamespace(
+            free_blacklist=[],
+            ope_resting_priority=[],
+            resting_standby=[],
+            free_room_exclusions=[],
+        ),
         profession_filter=set(),
         get_current_room=lambda *args: current.copy(),
         rest_mood_complete=lambda *args, **kwargs: False,

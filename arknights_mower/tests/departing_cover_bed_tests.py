@@ -92,6 +92,7 @@ def test_departure_cannot_take_an_unrelated_protected_bed(solver):
     resident = data.operators["空爆"]
     resident._current_room, resident.current_index = ROOM, 4
     data.config.ope_resting_priority = [resident.name]
+    resident.mood = 10
     data.dorm[0].name = resident.name
     before = deepcopy(vars(data.dorm[0]))
     plan, covers = {}, []

@@ -76,15 +76,24 @@ def test_priority_takeover_retains_candidate_and_bed_guards(op_data, reason):
 
 
 @pytest.mark.parametrize("free_room", [False, True])
-def test_projection_admission_preserves_full_primary(op_data, free_room):
+@pytest.mark.parametrize("retained", [False, True])
+def test_projection_admission_full_primary_yields_unless_retained(
+    op_data, free_room, retained
+):
     data = op_data
     data.config.free_room = free_room
     set_tier(data, "红", RestingTier.PRIORITY_REPLACEMENT, 5)
     resident = set_tier(data, "空爆", RestingTier.MAIN, 24)
     resident.current_room, resident.current_index = ROOM, 4
+    if retained:
+        data.config.free_room_exclusions.append(resident.name)
     tasks = []
     try_add_release_dorm({}, None, data, tasks, empty_only=True)
-    assert tasks == []
+    if retained:
+        assert tasks == []
+    else:
+        assert len(tasks) == 1
+        assert tasks[0].plan[ROOM][-1] == "红"
 
 
 def test_vacancy_precedes_priority_takeover(op_data):
@@ -106,6 +115,7 @@ def test_priority_takeover_reuses_selection_and_preserves_observations(
     instance, selected = solver
     data = instance.op_data
     data.config.free_room = free_room
+    data.operators["空爆"].mood = 12
     candidate = set_tier(data, "红", RestingTier.PRIORITY_REPLACEMENT, 5)
     if reading == "estimated":
         candidate.mood, candidate.time_stamp = 24, None
@@ -126,6 +136,7 @@ def test_priority_takeover_reuses_selection_and_preserves_observations(
 def test_priority_admission_orders_recovery_gap_and_excludes_ordinary_fill(op_data):
     data = op_data
     data.config.free_room = False
+    data.operators["空爆"].mood = 12
     set_tier(data, "红", RestingTier.PRIORITY_REPLACEMENT, 20)
     data.add(Operator("陈", ""))
     second = set_tier(data, "陈", RestingTier.PRIORITY_REPLACEMENT, 10)

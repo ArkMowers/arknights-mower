@@ -1,4 +1,4 @@
-"""已恢复主班保床，正常离宿保留整组恢复边界。"""
+"""已恢复主班让床和正常离宿保留整组回班边界。"""
 
 from datetime import timedelta
 
@@ -40,12 +40,15 @@ def prepare_group(solver, full_mood=24):
 
 @pytest.mark.parametrize("free_room", [False, True])
 @pytest.mark.parametrize("low_priority", [False, True])
-def test_completed_primary_keeps_group_beds_until_ordinary_return(
-    solver, free_room, low_priority
+@pytest.mark.parametrize("retained", [False, True])
+def test_completed_primary_yields_bed_without_changing_group_return(
+    solver, free_room, low_priority, retained
 ):
     data, names, return_task = prepare_group(solver)
     data.config.free_room = free_room
     data.operators[names[0]].resting_priority = "low" if low_priority else "high"
+    if retained:
+        data.config.free_room_exclusions.append(names[0])
     incoming = data.operators["陈"]
     incoming._current_room, incoming.current_index = "", -1
     incoming.mood = 5
@@ -53,7 +56,17 @@ def test_completed_primary_keeps_group_beds_until_ordinary_return(
 
     try_add_release_dorm({}, None, data, tasks)
 
-    assert tasks == [return_task]
+    assert return_task in tasks
+    fills = [task for task in tasks if task is not return_task]
+    if retained:
+        assert fills == []
+    else:
+        assert len(fills) == 1
+        assert set(fills[0].plan) == {"dormitory_1"}
+        projected = data.project_arrangements([fills[0].plan])
+        assert not projected.operators[names[0]].is_resting()
+        assert projected.operators[names[1]].is_resting()
+        assert projected.operators[incoming.name].is_resting()
     assert return_task.time == NOW + timedelta(hours=3)
     assert all(data.operators[name].is_resting() for name in names)
     assert incoming.current_room == ""
