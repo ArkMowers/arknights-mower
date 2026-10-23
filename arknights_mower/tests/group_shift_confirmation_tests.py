@@ -2,6 +2,7 @@
 
 # ruff: noqa: E402
 
+import pickle
 import sys
 from datetime import datetime, timedelta
 from threading import Event
@@ -290,8 +291,9 @@ def test_available_common_cover_is_considered(solver, reserved):
 
 @pytest.mark.parametrize("recovered", [False, True])
 @pytest.mark.parametrize("contact_confirmed", [False, True])
-def test_released_recovery_target_does_not_block_completed_shift(
-    solver, recovered, contact_confirmed
+@pytest.mark.parametrize("persisted", [False, True])
+def test_completed_dorm_target_is_not_recreated_after_personal_limit_release(
+    solver, recovered, contact_confirmed, persisted
 ):
     data = solver.op_data
     data.config.operator_mood_limits[B] = {"lower": 0, "upper": 12}
@@ -307,36 +309,298 @@ def test_released_recovery_target_does_not_block_completed_shift(
     )
     solver.task, solver.tasks = task, [task]
     solver._prepare_group_shift(task, remember_targets=True)
-    # Other rooms finish while contact stays pending. A personal-limit release
-    # may execute during the pending shift and legitimately remove this resident.
-    observed = data.project_arrangements([task.plan])
-    data.operators, data.dorm = observed.operators, observed.dorm
+    observe_arrangement(
+        solver, {room: row for room, row in task.plan.items() if room != "contact"}
+    )
+    task.plan.clear()
+    assert not solver._complete_group_shift(task)
+    assert task.plan == {"contact": ["黑角"]}
+    original_time = task.time
+    if persisted:
+        task = pickle.loads(pickle.dumps(task))
+        solver.task, solver.tasks = task, [task]
+
     data.operators[B].mood = 12 if recovered else 5
     data.operators[B].time_stamp = datetime.now()
     data.operators[B].rest_mood_release_limit = 12 if recovered else None
-    data.operators[B]._current_room = ""
-    data.operators[B].current_index = -1
-    assert bool(data.rest_mood_complete(B)) is recovered
-    task.plan = {}
-    assert not solver._complete_group_shift(task)
-    assert task.plan["dormitory_1"][2] == B
-    task.backup_shift_active = True
-    solver._prepare_group_shift(task)
-    solver._prepare_shift_cycle(task)
+    data.get_dorm_by_name(B)[1].reset()
+    data.operators[B]._current_room, data.operators[B].current_index = "", -1
     solver._prepare_group_shift(task, remember_targets=True)
-    # The real selection boundary correctly discards this expired recovery
-    # target, but confirmation must also forget that obsolete expectation.
-    solver.preserve_resting_crafters = lambda agents, room: None
-    solver.prepare_dorm_selection(task.plan["dormitory_1"], "dormitory_1")
-    assert task.plan["dormitory_1"][2] == ("Free" if recovered else B)
-    if not contact_confirmed:
-        data.operators["黑角"]._current_room = ""
-        data.operators["黑角"].current_index = -1
-    task.plan = {}
+    assert (B in task.group_shift_expected.values()) is (not recovered)
+    assert "dormitory_1" not in task.plan
+    expected = task.group_shift_expected.copy()
+    if contact_confirmed:
+        observe_arrangement(solver, task.plan)
+    task.plan.clear()
+
     assert solver._complete_group_shift(task) is (recovered and contact_confirmed)
+    assert solver.tasks == [task]
+    assert task.time == original_time
     assert data.group_is_resting("乙") is (recovered and contact_confirmed)
+    assert (B in task.group_shift_expected.values()) is (not recovered)
+    assert ("dormitory_1" in task.plan) is (not recovered)
     if not contact_confirmed:
-        assert task.group_shift_expected[("contact", 0)] == "黑角"
+        assert task.plan["contact"] == ["黑角"]
+        assert task.group_shift_expected["contact", 0] == "黑角"
+    if not (recovered and contact_confirmed):
+        assert task.group_shift_expected == expected
+
+
+@pytest.mark.parametrize("cancel_reason", ["personal_limit", "excluded"])
+def test_confirmation_does_not_rewrite_unexecuted_targets(solver, cancel_reason):
+    data = solver.op_data
+    if cancel_reason == "personal_limit":
+        data.config.operator_mood_limits[B] = {"lower": 0, "upper": 12}
+        data.operators[B].upper_limit = 12
+    else:
+        data.config.free_blacklist.append(B)
+    task = SchedulerTask(task_type=TaskTypes.SHIFT_OFF)
+    task.group_shift_transitions = {"乙": True}
+    expected = {("dormitory_1", 2): B}
+    task.group_shift_expected = expected.copy()
+    solver.task, solver.tasks = task, [task]
+
+    assert not solver._complete_group_shift(task)
+
+    assert task.group_shift_expected == expected
+    assert task.plan == {"dormitory_1": ["Current", "Current", B, "Current", "Current"]}
+    assert not data.group_is_resting("乙")
+
+
+def test_temporary_roster_cannot_cancel_final_confirmation_target(solver):
+    data = solver.op_data
+    data.config.operator_mood_limits[B] = {"lower": 0, "upper": 12}
+    data.operators[B].upper_limit = 12
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={"dormitory_1": ["Current", "Current", B, "Current", "Current"]},
+    )
+    task.group_shift_transitions = {"乙": True}
+    task.group_shift_expected = {("dormitory_1", 2): B}
+    solver.task, solver.tasks = task, [task]
+    temporary = task.plan["dormitory_1"].copy()
+
+    solver.prepare_dorm_selection(
+        temporary, "dormitory_1", preserve_dorm_occupants=True
+    )
+
+    assert temporary[2] == "Free"
+    assert task.plan["dormitory_1"][2] == B
+    assert task.group_shift_expected == {("dormitory_1", 2): B}
+
+
+@pytest.mark.parametrize("remaining_bed", [False, True])
+@pytest.mark.parametrize("persisted", [False, True])
+@pytest.mark.parametrize(
+    "outcome", ["confirmed", "partial", "mismatch", "old_limit", "unknown", "predicted"]
+)
+def test_confirmed_limit_release_synchronizes_pending_group_tasks(
+    solver, remaining_bed, persisted, outcome
+):
+    data = solver.op_data
+    data.config.operator_mood_limits[B] = {"lower": 0, "upper": 12}
+    data.operators[B].upper_limit = 12
+    data.operators[B].mood = 5
+    pending = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={
+            "meeting": ["Current", "初雪"],
+            "contact": ["黑角"],
+            "dormitory_1": ["Current", "Current", B, SHARED, "Current"],
+        },
+    )
+    solver.task, solver.tasks = pending, [pending]
+    solver._prepare_group_shift(pending, remember_targets=True)
+    observe_arrangement(
+        solver, {room: row for room, row in pending.plan.items() if room != "contact"}
+    )
+    pending.plan = {"contact": ["黑角"]}
+    if remaining_bed:
+        pending.plan["dormitory_1"] = ["Current", "Current", B, "Current", "Current"]
+    if persisted:
+        pending = pickle.loads(pickle.dumps(pending))
+    before_time = pending.time
+    before_expected = dict(pending.group_shift_expected)
+    independent = SchedulerTask(task_type=TaskTypes.RUN_ORDER, meta_data="meeting")
+    release = SchedulerTask(
+        task_type=TaskTypes.RELEASE_DORM,
+        task_plan={"dormitory_1": ["塑心", "冰酿", "", SHARED, ""]},
+        meta_data=B,
+        strict_mood_limit=True,
+    )
+    release.mood_limit = 20 if outcome == "old_limit" else 12
+    data.operators[B].mood = 11.9
+    data.operators[B].time_stamp = datetime.now()
+    if outcome == "unknown":
+        data.operators[B].time_stamp = None
+    elif outcome == "predicted":
+        data.operators[B].mood_is_prediction = True
+    # 上限清退可以提前执行；成功离宿标记负责证明这次合法取消。
+    assert not data.rest_mood_complete(B)
+    solver.task, solver.tasks = release, [pending, independent, release]
+    observed = [{"agent": name} for name in release.plan["dormitory_1"]]
+    if outcome == "partial":
+        observed[2]["observed"] = False
+    elif outcome == "mismatch":
+        observed[0]["agent"] = ""
+
+    solver._reconcile_room_observation("dormitory_1", observed)
+
+    assert pending.time == before_time
+    assert solver.tasks == [pending, independent, release]
+    assert not data.group_is_resting("乙")
+    if outcome != "confirmed":
+        assert pending.group_shift_expected == before_expected
+        if remaining_bed:
+            assert pending.plan["dormitory_1"][2] == B
+        return
+    assert B not in pending.group_shift_expected.values()
+    assert pending.plan["contact"] == ["黑角"]
+    assert "dormitory_1" not in pending.plan
+    solver.task = pending
+    solver._prepare_group_shift(pending, remember_targets=True)
+    assert B not in pending.group_shift_expected.values()
+    assert not any(B in row for row in pending.plan.values())
+    observe_arrangement(solver, pending.plan)
+    pending.plan.clear()
+    assert solver._complete_group_shift(pending)
+    assert data.group_is_resting("乙")
+    assert pending.time == before_time
+
+
+def test_last_pending_recovery_release_finishes_group_without_selection(solver):
+    data = solver.op_data
+    data.config.operator_mood_limits[B] = {"lower": 0, "upper": 12}
+    data.operators[B].upper_limit = 12
+    data.operators[B].mood = 11.9
+    observe_arrangement(
+        solver,
+        {
+            "meeting": ["Current", "初雪"],
+            "contact": ["黑角"],
+            "dormitory_1": ["Current", "Current", B, SHARED, ""],
+        },
+    )
+    pending = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={"dormitory_1": ["Current", "Current", B, "Current", "Current"]},
+    )
+    pending.group_shift_transitions = {"乙": True}
+    pending.group_shift_expected = {("dormitory_1", 2): B}
+    original_time = pending.time
+    solver.task, solver.tasks = pending, [pending]
+    solver._retain_failed_task(pending, "换班实测驻员与目标不一致", pending.plan)
+    release = SchedulerTask(
+        task_type=TaskTypes.RELEASE_DORM,
+        task_plan={"dormitory_1": ["塑心", "冰酿", "", SHARED, ""]},
+        meta_data=B,
+        strict_mood_limit=True,
+    )
+    solver.task, solver.tasks = release, [pending, release]
+    solver._reconcile_room_observation(
+        "dormitory_1", [{"agent": name} for name in release.plan["dormitory_1"]]
+    )
+    assert pending.plan == pending.group_shift_expected == {}
+    assert not data.group_is_resting("乙")
+    solver.task, solver.tasks = pending, [pending]
+    solver.find = MagicMock(return_value=(1, 1))
+    solver.refresh_connecting = False
+    solver._prepare_shift_cycle = MagicMock()
+    solver._switch_products_before_arrangement = MagicMock()
+    solver.backup_plan_solver = MagicMock(return_value=False)
+    solver.plan_metadata = MagicMock()
+    solver.skip = MagicMock()
+    solver.back_to_infrastructure = MagicMock()
+    solver._track_idle_dorm_shift = MagicMock()
+    solver._finish_idle_dorm_shift = MagicMock()
+    solver.choose_agent = MagicMock(side_effect=AssertionError("unnecessary selection"))
+
+    solver.infra_main()
+
+    solver.choose_agent.assert_not_called()
+    assert not solver.tasks
+    assert pending.time == original_time
+    assert data.group_is_resting("乙")
+    assert not getattr(pending, "execution_failure", None)
+
+
+def test_confirmed_limit_release_updates_suspended_group_shift(solver):
+    data = solver.op_data
+    data.config.operator_mood_limits[B] = {"lower": 0, "upper": 12}
+    data.operators[B].upper_limit = 12
+    data.operators[B].mood = 11.9
+    observe_arrangement(solver, {"dormitory_1": ["Current", "Current", B, "", ""]})
+    pending = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF, task_plan={"contact": ["黑角"]}
+    )
+    pending.group_shift_transitions = {"乙": True}
+    pending.group_shift_expected = {("dormitory_1", 2): B, ("contact", 0): "黑角"}
+    original_time = pending.time
+    solver.waiting_group_shifts = [pending]
+    release = SchedulerTask(
+        task_type=TaskTypes.RELEASE_DORM,
+        task_plan={"dormitory_1": ["塑心", "冰酿", "", "", ""]},
+        meta_data=B,
+        strict_mood_limit=True,
+    )
+    solver.task, solver.tasks = release, [release]
+
+    solver._reconcile_room_observation(
+        "dormitory_1", [{"agent": agent} for agent in release.plan["dormitory_1"]]
+    )
+
+    assert solver.waiting_group_shifts == [pending]
+    assert pending.time == original_time
+    assert pending.plan == {"contact": ["黑角"]}
+    assert pending.group_shift_expected == {("contact", 0): "黑角"}
+    assert not data.group_is_resting("乙")
+
+
+def test_limit_release_does_not_cancel_fixed_dorm_post(solver):
+    data = solver.op_data
+    name = "塑心"
+    data.config.operator_mood_limits[name] = {"lower": 0, "upper": 12}
+    data.operators[name].upper_limit = data.operators[name].mood = 12
+    pending = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={"dormitory_1": [name, *["Current"] * 4]},
+    )
+    pending.group_shift_transitions = {"乙": True}
+    pending.group_shift_expected = {("dormitory_1", 0): name}
+    release = SchedulerTask(
+        task_type=TaskTypes.RELEASE_DORM,
+        task_plan={"dormitory_1": ["", "冰酿", "", "", ""]},
+        meta_data=name,
+        strict_mood_limit=True,
+    )
+    solver.task, solver.tasks = release, [pending, release]
+    solver._reconcile_room_observation(
+        "dormitory_1", [{"agent": agent} for agent in release.plan["dormitory_1"]]
+    )
+    assert pending.group_shift_expected == {("dormitory_1", 0): name}
+    assert pending.plan["dormitory_1"][0] == name
+
+
+def test_cancelled_dorm_target_preserves_working_depletion_rate(solver):
+    data = solver.op_data
+    data.config.operator_mood_limits[B] = {"lower": 0, "upper": 12}
+    data.operators[B].upper_limit = 12
+    data.operators[B].depletion_rate = 1.5
+    task = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={"dormitory_1": ["Current", "Current", B, "Current", "Current"]},
+    )
+    task.group_shift_transitions = {"乙": True}
+    task.group_shift_expected = {("dormitory_1", 2): B}
+    solver.task, solver.tasks = task, [task]
+
+    solver._prepare_group_shift(task, remember_targets=True)
+    solver.prepare_dorm_selection(task.plan["dormitory_1"], "dormitory_1")
+
+    assert B not in task.group_shift_expected.values()
+    assert B not in task.plan["dormitory_1"]
+    assert data.operators[B].depletion_rate == 1.5
+    assert data.operators[B].current_room == "meeting"
 
 
 @pytest.mark.parametrize("other_owner", [False, True])
@@ -671,6 +935,7 @@ def test_cap_cancellation_relocates_other_pending_dorm_targets(
         name for name in agent_list if name not in {B, SHARED, "塑心", "冰酿"}
     ]
     data.operators[B].upper_limit = 12
+    data.operators[B].mood = 5
     task = SchedulerTask(
         task_type=TaskTypes.SHIFT_OFF,
         task_plan={
@@ -721,6 +986,7 @@ def test_pending_confirmation_refreshes_personal_limit_releases(
     data = solver.op_data
     data.config.operator_mood_limits[B] = {"lower": 0, "upper": 12}
     data.operators[B].upper_limit = 12
+    data.operators[B].mood = 5
     task = SchedulerTask(
         task_type=TaskTypes.SHIFT_OFF,
         task_plan={

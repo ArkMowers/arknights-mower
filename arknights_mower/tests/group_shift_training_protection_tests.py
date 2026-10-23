@@ -55,6 +55,8 @@ def test_protected_training_does_not_requeue_but_other_targets_still_confirm(
         monkeypatch.setattr(mastery_db, "get_active_plan", lambda: {"id": 1})
     else:
         s.train_room_state = mastery_reader.RoomState("training")
+    s._prepare_group_shift(task, remember_targets=True)
+    assert not any(room == "train" for room, _ in task.group_shift_expected)
     observed = {}
     if other_confirmed:
         observed.update(
@@ -326,6 +328,8 @@ def test_live_source_training_is_skipped_before_other_room_selection(
     s.train_room_state = None
     plan = {"meeting": [A, "Current"], "contact": ["银灰"]}
     task = SchedulerTask(task_plan=plan, task_type=TaskTypes.SHIFT_ON)
+    task.group_shift_transitions = {"甲": False}
+    task.group_shift_expected = {("meeting", 0): A}
     s.task, s.tasks = task, [task]
     s._track_idle_dorm_shift = MagicMock()
     s._finish_idle_dorm_shift = MagicMock()
@@ -341,6 +345,7 @@ def test_live_source_training_is_skipped_before_other_room_selection(
     executed = []
 
     def arrange(new_plan, room, plan, **kwargs):
+        assert ("meeting", 0) not in task.group_shift_expected
         executed.append(room)
         del plan[room]
         return new_plan
@@ -515,8 +520,7 @@ def test_restored_dorm_targets_keep_training_protection(
     s.train_room_state = mastery_reader.RoomState("training")
     config.conf.enable_mastery = enabled
     s._prepare_group_shift(task, remember_targets=True)
-    # A retained confirmation survives preparation until observed completion.
-    assert task.group_shift_expected[target_slot] == A
+    assert task.group_shift_expected.get(target_slot) == (None if enabled else A)
     names = task.plan[room]
     names[0] = ""
     names[target_slot[1]] = "Current"
@@ -542,7 +546,7 @@ def test_restored_dorm_targets_keep_training_protection(
     assert (A in names) is not enabled
     assert names[target_slot[1]] == ("Current" if enabled else A)
     assert names[0] == "塑心"
-    assert task.group_shift_expected[target_slot] == A
+    assert task.group_shift_expected.get(target_slot) == (None if enabled else A)
     assert task.plan["meeting"] == ["陈", "Current"]
     assert task.time == before
     assert s.tasks == [task]
