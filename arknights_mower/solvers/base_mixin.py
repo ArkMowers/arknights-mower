@@ -1481,6 +1481,7 @@ class BaseMixin:
         for enter_times in range(max_attempts):
             pending = False
             entry_source = False
+            room_deadline = None
             actions = 0
             for retry_times in range(9):
                 if self.find("connecting"):
@@ -1511,10 +1512,15 @@ class BaseMixin:
                         self.tap(visible_room, interval=0.2)
                         pending = True
                         entry_source = True
+                        room_deadline = perf_counter() + 2
                 elif entry_source and self._handle_room_entry_reward(room):
                     pending = False
                 elif self.detect_room() == room:
                     return
+                elif room_deadline is not None and perf_counter() < room_deadline:
+                    # 进入动画可能干扰标题或房间号；读到两秒后的首帧即结束等待，
+                    # 截图限频和采集耗时同样计入本次确认。
+                    self.sleep(0.1)
                 else:
                     # 上一个房间的返回键可能没有生效。确认仍在房间页时，
                     # 先回基建地图；只等待会在错误房间里耗尽全部进房次数。
@@ -1524,17 +1530,21 @@ class BaseMixin:
                     ):
                         logger.info("仍在其他房间，返回基建地图后进入 %s", room)
                         self.back_to_infrastructure()
+                    elif room_deadline is not None:
+                        break
                     else:
                         self.sleep()
-            # 最后一次点击也可能成功，检查其刷新后的画面再决定是否重试。
-            if entry_source:
-                self._handle_room_entry_reward(room)
-            if (
-                not self.find("connecting")
-                and not self.find("control_central")
-                and self.detect_room() == room
-            ):
-                return
+            # 最后一次点击共用原确认截止时间，不增加点击次数或重置等待。
+            while True:
+                if entry_source:
+                    self._handle_room_entry_reward(room)
+                if self.find("connecting") or self.find("control_central"):
+                    break
+                if self.detect_room() == room:
+                    return
+                if room_deadline is None or perf_counter() >= room_deadline:
+                    break
+                self.sleep(0.1)
             if enter_times < max_attempts - 1:
                 # 仍停在全局视角时，原逻辑会一直点击同一位置；退出基建
                 # 再重新进入，重新定位房间。此处不重启或关闭游戏。
