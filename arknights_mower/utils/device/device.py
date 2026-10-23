@@ -33,6 +33,7 @@ from arknights_mower.utils.device.manager_io import run_command
 from arknights_mower.utils.device.mumu12ipc.capture import MuMuCaptureSession
 from arknights_mower.utils.device.mumu12ipc.input import MuMuInputSession as MuMu12IPC
 from arknights_mower.utils.device.mumu_popup import (
+    MUMU_UI_DUMP_COMMAND,
     UI_DUMP_COMMAND,
     UIHierarchyError,
     is_mumu_launcher,
@@ -446,8 +447,8 @@ class Device:
     def run(self, cmd: str) -> Optional[bytes]:
         return self.recover(lambda: self.client.run(cmd))
 
-    def _read_ui_hierarchy(self) -> bytes:
-        return self.recover(lambda: self.client.cmd(["shell", UI_DUMP_COMMAND]))
+    def _read_ui_hierarchy(self, *, command: str = UI_DUMP_COMMAND) -> bytes:
+        return self.recover(lambda: self.client.cmd(["shell", command]))
 
     def check_ui_responsive(self) -> None:
         self.recover(self._probe_ui_responsive)
@@ -548,12 +549,17 @@ class Device:
 
         def close_point():
             try:
-                data = self._read_ui_hierarchy()
+                data = self._read_ui_hierarchy(command=MUMU_UI_DUMP_COMMAND)
             except (MowerExit, DeviceRecoveryError):
                 raise
             except Exception as exc:
                 if getattr(exc, "cleanup_failed", False):
                     raise
+                logger.warning(
+                    "MuMu 控件采集命令失败（退出码 %s），输出：%r",
+                    getattr(exc, "returncode", "未知"),
+                    (getattr(exc, "output", None) or b"")[:2048],
+                )
                 raise UIHierarchyError("MuMu 控件采集命令失败") from exc
             try:
                 return startup_ad_close_point(data)
@@ -603,20 +609,9 @@ class Device:
                         raise DeviceRecoveryError(
                             "MuMu 控件读取失败后的前台已变化，尚未启动游戏"
                         ) from exc
-                    logger.warning(
-                        "MuMu 桌面控件读取失败，改用所选游戏的启动入口：%s", exc
-                    )
-                    logger.debug("MuMu 桌面控件读取失败详情", exc_info=True)
-                    self._input_once(
-                        lambda: self.client.run(
-                            "am start -a android.intent.action.MAIN "
-                            "-c android.intent.category.LAUNCHER "
-                            f"-p {self.game_package}"
-                        ),
-                        transport="adb",
-                    )
-                    self._wait_game_foreground()
-                    return True
+                    raise DeviceRecoveryError(
+                        "MuMu 控件读取失败，尚未确认广告状态，未继续游戏操作"
+                    ) from exc
         except (MowerExit, DeviceRecoveryError):
             raise
         except Exception as exc:

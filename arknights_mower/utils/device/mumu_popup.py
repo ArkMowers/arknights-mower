@@ -5,6 +5,9 @@ import xml.etree.ElementTree as ET
 
 PACKAGE = "app.lawnchair"
 MAX_UI_BYTES = 1024 * 1024
+MUMU_UI_DUMP_COMMAND = (
+    f"set -o pipefail && uiautomator dump /proc/self/fd/1 | head -c {MAX_UI_BYTES + 1}"
+)
 UI_DUMP_COMMAND = (
     "f=$(mktemp /data/local/tmp/mower-ui-XXXXXX) || exit 1; "
     "trap 'rm -f \"$f\"' EXIT; trap 'exit 1' HUP INT TERM; "
