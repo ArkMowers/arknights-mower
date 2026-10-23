@@ -12,7 +12,12 @@ describe('backup condition functions', () => {
     ['sum', ['3', '9', '4'], 16],
     ['any', ['False', 'True', 'False'], true],
     ['all', ['True', 'False', 'True'], false],
-    ['abs', ['-8'], 8]
+    ['abs', ['-8'], 8],
+    ['max', ['7'], 7],
+    ['min', ['7'], 7],
+    ['sum', ['7'], 7],
+    ['any', ['False'], false],
+    ['all', ['True'], true]
   ])('evaluates saved %s arguments', (name, args, expected) => {
     expect(compile({ function: name, args }).evaluate(state())).toBe(expected)
   })
@@ -32,6 +37,8 @@ describe('backup condition functions', () => {
 
   it.each([
     'max(3, min(9, 4), 8) == 8',
+    'max([7]) == 7',
+    'min([7]) == 7',
     'sum([3, 9, 4]) == 16',
     'any([False, 3 > 2])',
     'all([True, abs(-8) == 8])'
@@ -40,7 +47,7 @@ describe('backup condition functions', () => {
   })
 
   it.each([
-    { function: 'max', args: ['1'] },
+    { function: 'max', args: [] },
     { function: 'abs', args: ['1', '2'] },
     { function: 'sum', args: [] },
     { function: 'eval', args: ['1'] },

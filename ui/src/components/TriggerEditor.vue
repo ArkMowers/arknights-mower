@@ -7,12 +7,7 @@ import {
   maintenance_trigger,
   parse_maintenance_trigger
 } from '@/utils/trigger_maintenance'
-import {
-  expression_type,
-  function_options,
-  minimum_arguments,
-  new_expression
-} from '@/utils/trigger_function'
+import { expression_type, function_options, new_expression } from '@/utils/trigger_function'
 const left = ref(props.data.left)
 const operator = ref(props.data.operator)
 const right = ref(props.data.right)
@@ -67,7 +62,7 @@ function add_argument() {
 function update_function(name) {
   function_name.value = name
   if (name === 'abs') args.value = args.value.slice(0, 1)
-  while (args.value.length < minimum_arguments(name)) add_argument()
+  if (!args.value.length) add_argument()
 }
 
 const le_options = [
@@ -117,14 +112,13 @@ const operator_tips = [
             <n-dynamic-input
               v-model:value="args"
               key-field="id"
-              :min="minimum_arguments(function_name)"
+              :min="1"
               :max="function_name === 'abs' ? 1 : undefined"
               :on-create="create_argument"
             >
               <template #default="{ value: arg, index }">
                 <n-flex align="center" :wrap="false" :size="6" class="argument-row">
                   <n-flex align="center" :wrap="false" :size="6" class="argument-label">
-                    <span>第 {{ index + 1 }} 项</span>
                     <n-select
                       :value="expression_type(arg.value)"
                       :aria-label="`第 ${index + 1} 项类型`"
@@ -150,21 +144,23 @@ const operator_tips = [
               </template>
               <template #action="{ index, remove }">
                 <n-button
-                  v-if="function_name !== 'abs'"
-                  circle
-                  size="small"
-                  :disabled="args.length <= minimum_arguments(function_name)"
+                  v-if="function_name !== 'abs' && index === 0"
+                  class="argument-action"
+                  aria-label="新增项"
+                  title="新增项"
+                  @click="add_argument"
+                  >+</n-button
+                >
+                <n-button
+                  v-else-if="function_name !== 'abs'"
+                  class="argument-action"
                   :aria-label="`删除第 ${index + 1} 项`"
+                  title="删除此项"
                   @click="remove(index)"
                   >−</n-button
                 >
               </template>
             </n-dynamic-input>
-          </td>
-        </tr>
-        <tr v-if="function_name !== 'abs'">
-          <td colspan="2">
-            <n-button block dashed aria-label="新增项" @click="add_argument">+</n-button>
           </td>
         </tr>
       </template>
@@ -290,8 +286,12 @@ td > .label > *,
 }
 
 .argument-label {
-  width: 164px;
+  width: 132px;
   flex-shrink: 0;
   white-space: nowrap;
+}
+.argument-action {
+  width: 30px;
+  padding: 0 9px;
 }
 </style>

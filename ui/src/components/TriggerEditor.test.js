@@ -143,12 +143,27 @@ describe('多参数函数条件编辑', () => {
     expect(functions).toContain('value="function" aria-label="第 2 项类型"')
   })
   it.each(['max', 'min', 'sum', 'any', 'all'])(
-    'renders %s as arguments with a bottom add button',
+    'renders %s with one right-side add button and removes only later arguments',
     async (name) => {
       const html = await render({ function: name, args: ['1', '2', '3'] })
       expect(html).not.toContain('运算符')
-      expect(html).toContain('第 3 项')
-      expect(html.indexOf('aria-label="新增项"')).toBeGreaterThan(html.indexOf('第 3 项'))
+      expect(html).not.toContain('<span>第 1 项</span>')
+      expect(html.match(/aria-label="新增项"/g)).toHaveLength(1)
+      expect(html).not.toContain('aria-label="删除第 1 项"')
+      expect(html).toContain('aria-label="删除第 2 项"')
+      expect(html.indexOf('aria-label="新增项"')).toBeLessThan(
+        html.indexOf('aria-label="第 2 项类型"')
+      )
+    }
+  )
+
+  it.each(['max', 'min', 'sum', 'any', 'all', 'abs'])(
+    'opens a saved single %s argument',
+    async (name) => {
+      const html = await render({ function: name, args: ['7'] })
+      expect(html).toContain('value="7"')
+      expect(html).not.toContain('删除第')
+      expect(html.includes('aria-label="新增项"')).toBe(name !== 'abs')
     }
   )
 
@@ -157,11 +172,12 @@ describe('多参数函数条件编辑', () => {
     editor.state.left = new_expression('function')
     await nextTick()
     expect(editor.update).toHaveBeenLastCalledWith({
-      left: { function: 'max', args: ['', ''] },
+      left: { function: 'max', args: [''] },
       operator: '>',
       right: '0'
     })
     const child = mount(editor.update.mock.lastCall[0].left)
+    child.state.add_argument()
     child.state.add_argument()
     await nextTick()
     child.state.args[2].value = '17'
@@ -173,7 +189,7 @@ describe('多参数函数条件编辑', () => {
     expect(saved.args).toEqual(['', '17'])
     const reopened = mount(JSON.parse(JSON.stringify(saved)))
     expect(reopened.state.args.map((arg) => arg.value)).toEqual(['', '17'])
-    expect(await render(saved)).toMatch(/disabled[^>]*aria-label="删除第 1 项"/)
+    expect(await render(saved)).not.toContain('aria-label="删除第 1 项"')
     expect(reopened.update).not.toHaveBeenCalled()
   })
 
@@ -187,7 +203,7 @@ describe('多参数函数条件编辑', () => {
     expect(await render(editor.update.mock.lastCall[0])).not.toContain('aria-label="新增项"')
     editor.state.update_function('min')
     await nextTick()
-    expect(editor.update).toHaveBeenLastCalledWith({ function: 'min', args: [nested, ''] })
+    expect(editor.update).toHaveBeenLastCalledWith({ function: 'min', args: [nested] })
     expect(data.args).toEqual([nested, '8'])
   })
 })
