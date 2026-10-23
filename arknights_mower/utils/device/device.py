@@ -34,6 +34,7 @@ from arknights_mower.utils.device.mumu12ipc.capture import MuMuCaptureSession
 from arknights_mower.utils.device.mumu12ipc.input import MuMuInputSession as MuMu12IPC
 from arknights_mower.utils.device.mumu_popup import (
     UI_DUMP_COMMAND,
+    UIHierarchyError,
     is_mumu_launcher,
     startup_ad_close_point,
 )
@@ -510,7 +511,8 @@ class Device:
         if mode == "tap":
             focus = self.current_focus()
             if is_mumu_launcher(focus):
-                self._dismiss_mumu_startup_ad(focus)
+                if self.recover(lambda: self._prepare_mumu_tap_launch(focus)):
+                    return
                 focus = self.current_focus()
                 if focus.startswith(self.game_package + "/"):
                     return
@@ -532,7 +534,8 @@ class Device:
         else:
             self.run(f"am start -n {self.game_package}/{config.APP_ACTIVITY_NAME}")
 
-    def _dismiss_mumu_startup_ad(self, focus: str) -> bool:
+    def _prepare_mumu_tap_launch(self, focus: str) -> bool:
+        """Prepare an icon tap, or return True after confirming the game foreground."""
         if not is_mumu_launcher(focus):
             return False
         deadline = time.monotonic() + 10
@@ -545,38 +548,75 @@ class Device:
 
         def close_point():
             try:
-                return startup_ad_close_point(self._read_ui_hierarchy())
+                data = self._read_ui_hierarchy()
+            except (MowerExit, DeviceRecoveryError):
+                raise
+            except Exception as exc:
+                if getattr(exc, "cleanup_failed", False):
+                    raise
+                raise UIHierarchyError("MuMu 控件采集命令失败") from exc
+            try:
+                return startup_ad_close_point(data)
+            except UIHierarchyError:
+                raise
             except ValueError as exc:
                 raise DeviceRecoveryError(str(exc)) from exc
 
         try:
             with device_io_budget(remaining):
-                point = close_point()
-                if point is None:
+                try:
+                    point = close_point()
+                    if point is None:
+                        return False
+                    if config.stop_mower.is_set():
+                        raise MowerExit
+                    if not is_mumu_launcher(self.current_focus()):
+                        raise DeviceRecoveryError(
+                            "MuMu 广告检查期间前台已变化，尚未发送关闭点击"
+                        )
+                    logger.info("关闭已确认的 MuMu 桌面广告")
+                    self._input_once(
+                        lambda: self.client.run(f"input tap {point[0]} {point[1]}"),
+                        transport="adb",
+                    )
+                    focus = self.current_focus()
+                    if focus.startswith(self.game_package + "/"):
+                        return True
+                    if not is_mumu_launcher(focus):
+                        raise DeviceRecoveryError(
+                            "MuMu 广告关闭后的前台已变化，尚未继续游戏操作"
+                        )
+                    if close_point() is not None:
+                        raise DeviceRecoveryError(
+                            "MuMu 广告关闭后仍然显示，尚未继续游戏操作"
+                        )
                     return False
-                if config.stop_mower.is_set():
-                    raise MowerExit
-                if not is_mumu_launcher(self.current_focus()):
-                    raise DeviceRecoveryError(
-                        "MuMu 广告检查期间前台已变化，尚未发送关闭点击"
+                except UIHierarchyError as exc:
+                    self._check_open()
+                    csleep(0)
+                    if config.stop_mower.is_set():
+                        raise MowerExit
+                    focus = self.current_focus()
+                    if focus.startswith(self.game_package + "/"):
+                        return True
+                    if not is_mumu_launcher(focus):
+                        raise DeviceRecoveryError(
+                            "MuMu 控件读取失败后的前台已变化，尚未启动游戏"
+                        ) from exc
+                    logger.warning(
+                        "MuMu 桌面控件读取失败，改用所选游戏的启动入口：%s", exc
                     )
-                logger.info("关闭已确认的 MuMu 桌面广告")
-                self._input_once(
-                    lambda: self.client.run(f"input tap {point[0]} {point[1]}"),
-                    transport="adb",
-                )
-                focus = self.current_focus()
-                if focus.startswith(self.game_package + "/"):
+                    logger.debug("MuMu 桌面控件读取失败详情", exc_info=True)
+                    self._input_once(
+                        lambda: self.client.run(
+                            "am start -a android.intent.action.MAIN "
+                            "-c android.intent.category.LAUNCHER "
+                            f"-p {self.game_package}"
+                        ),
+                        transport="adb",
+                    )
+                    self._wait_game_foreground()
                     return True
-                if not is_mumu_launcher(focus):
-                    raise DeviceRecoveryError(
-                        "MuMu 广告关闭后的前台已变化，尚未继续游戏操作"
-                    )
-                if close_point() is not None:
-                    raise DeviceRecoveryError(
-                        "MuMu 广告关闭后仍然显示，尚未继续游戏操作"
-                    )
-                return True
         except (MowerExit, DeviceRecoveryError):
             raise
         except Exception as exc:

@@ -13,6 +13,10 @@ UI_DUMP_COMMAND = (
 )
 
 
+class UIHierarchyError(ValueError):
+    """UI acquisition did not provide a complete, readable hierarchy."""
+
+
 def is_mumu_launcher(focus: str) -> bool:
     return focus in {
         f"{PACKAGE}/{PACKAGE}.LawnchairLauncher",
@@ -23,15 +27,15 @@ def is_mumu_launcher(focus: str) -> bool:
 def startup_ad_close_point(data: bytes) -> tuple[int, int] | None:
     """Return a verified close-button center in Android display coordinates."""
     if not data or len(data) > MAX_UI_BYTES:
-        raise ValueError("MuMu 控件信息为空或超过大小上限")
+        raise UIHierarchyError("MuMu 控件信息为空或超过大小上限")
     start = data.find(b"<hierarchy")
     end = data.find(b"</hierarchy>", start)
     if start < 0 or end < 0:
-        raise ValueError("MuMu 控件信息缺少完整层级")
+        raise UIHierarchyError("MuMu 控件信息缺少完整层级")
     try:
         root = ET.fromstring(data[start : end + len(b"</hierarchy>")])
     except ET.ParseError as exc:
-        raise ValueError("MuMu 控件信息无法解析") from exc
+        raise UIHierarchyError("MuMu 控件信息无法解析") from exc
 
     def bounds(node):
         match = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.get("bounds", ""))
