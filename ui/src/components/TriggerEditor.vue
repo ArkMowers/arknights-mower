@@ -101,6 +101,7 @@ const operator_tips = [
             <n-select
               :value="function_name"
               aria-label="函数名称"
+              style="width: 220px"
               :options="function_options"
               :consistent-menu-width="false"
               @update:value="update_function"
@@ -201,6 +202,7 @@ const operator_tips = [
           <td>
             <n-auto-complete
               v-model:value="operator"
+              style="width: 160px"
               :options="operator_tips"
               blur-after-select
               :get-show="() => true"
@@ -249,7 +251,7 @@ const operator_tips = [
 }
 
 .n-table {
-  min-width: 100%;
+  width: auto;
 
   th {
     width: 164px;
@@ -276,11 +278,12 @@ const operator_tips = [
   gap: 6px;
   flex: 1;
   min-width: 0;
+}
 
-  > :not(.trigger-editor) {
-    flex: 1;
-    min-width: 0;
-  }
+td > .label > *,
+.argument-value > :not(.trigger-editor) {
+  flex: 0 0 auto;
+  width: auto;
 }
 
 .argument-label {
