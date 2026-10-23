@@ -1,25 +1,57 @@
 <script setup>
 import { computed } from 'vue'
-import { NTooltip } from 'naive-ui'
+import { NTag, NTooltip } from 'naive-ui'
 import { getOperatorSkillDetails } from '@/utils/operatorSkillTooltip'
+import { useBasementSkill } from '@/stores/basementSkill'
+import { ownershipLabels, skillStatusLabels } from '@/utils/basementSkills'
 
 const props = defineProps({ name: String })
-const skills = computed(() => getOperatorSkillDetails(props.name))
+const details = computed(() => getOperatorSkillDetails(props.name))
+const { loadOwnedOperators } = useBasementSkill()
+
+async function loadOwnership(show) {
+  if (!show) return
+  try {
+    await loadOwnedOperators()
+  } catch {
+    // 读取失败时保留已有快照，仍可查看技能说明。
+  }
+}
 </script>
 
 <template>
   <NTooltip
-    v-if="skills.length"
+    v-if="details.skills.length"
     trigger="hover"
     placement="right"
     :delay="350"
     :keep-alive-on-hover="true"
+    @update:show="loadOwnership"
   >
     <template #trigger><slot /></template>
     <div class="operator-skill-tooltip">
-      <strong>{{ name }} · 基建技能</strong>
-      <section v-for="(skill, index) in skills" :key="index">
-        <div class="skill-heading">{{ skill.name }}</div>
+      <div class="skill-heading">
+        <strong>{{ name }} · 基建技能</strong>
+        <NTag
+          v-if="ownershipLabels[details.ownership]"
+          :type="details.ownership === 'owned' ? 'success' : 'default'"
+          :bordered="false"
+          size="small"
+          >{{ ownershipLabels[details.ownership] }}</NTag
+        >
+        <span v-if="details.progression" class="skill-unlock">{{ details.progression }}</span>
+      </div>
+      <section v-for="(skill, index) in details.skills" :key="index">
+        <div class="skill-heading">
+          <span>{{ skill.name }}</span>
+          <NTag
+            v-if="skillStatusLabels[skill.status]"
+            :type="skill.status === 'active' ? 'success' : 'default'"
+            :bordered="false"
+            size="small"
+            >{{ skillStatusLabels[skill.status] }}</NTag
+          >
+        </div>
         <div class="skill-unlock">{{ skill.facility }} · {{ skill.unlock }}</div>
         <p>{{ skill.description }}</p>
       </section>
@@ -40,6 +72,10 @@ section {
   margin-top: 12px;
 }
 .skill-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
   font-weight: 600;
 }
 .skill-unlock {
