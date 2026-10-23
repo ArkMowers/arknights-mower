@@ -108,6 +108,47 @@ def test_saved_functions_select_backup_group_and_plan(monkeypatch):
     assert selected.conditions == [True]
 
 
+@pytest.mark.parametrize(
+    "function,args,value",
+    [
+        ("max", ["3", "9", "4"], 9),
+        ("min", ["-9", "-3", "4"], -9),
+        ("sum", ["3", "9", "4"], 16),
+        ("abs", ["-3"], 3),
+        ("any", ["False", "True"], 1),
+        ("all", ["True", "True"], 1),
+        ("sum", ["2", {"function": "max", "args": ["3", "9"]}], 11),
+    ],
+)
+@pytest.mark.parametrize("operator", ["*", "**"])
+def test_saved_function_arithmetic_selects_group_and_backup(
+    monkeypatch, function, args, value, operator
+):
+    monkeypatch.setattr(config, "conf", config.Conf())
+    trigger = {
+        "left": {
+            "left": {"function": function, "args": args},
+            "operator": operator,
+            "right": "2",
+        },
+        "operator": "==",
+        "right": str(value * 2 if operator == "*" else value**2),
+    }
+    document = PlanModel.model_validate(
+        {
+            "backup_groups": [
+                {"id": "arithmetic", "name": "函数运算", "trigger": trigger}
+            ],
+            "backup_plans": [{"group_ids": ["arithmetic"], "trigger": trigger}],
+        }
+    )
+    restored = PlanModel.model_validate_json(document.model_dump_json())
+    data = Operators(build_global_plan(plan_model=restored))
+    selected = data.evaluate_backup_selection()
+    assert selected.group_id == "arithmetic"
+    assert selected.conditions == [True]
+
+
 def test_runtime_retains_group_and_exclusive_then_falls_back(monkeypatch):
     monkeypatch.setattr(config, "conf", config.Conf())
     data = Operators(build_global_plan(plan_model=model()))
