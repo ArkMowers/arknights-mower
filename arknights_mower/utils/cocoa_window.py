@@ -132,6 +132,13 @@ class CocoaWindow:
                         name, self._native, None, self._native_state_changed
                     )
                     self._observers.append(observer)
+                observer = center.addObserverForName_object_queue_usingBlock_(
+                    appkit.NSWindowWillCloseNotification,
+                    self._native,
+                    None,
+                    self._native_will_close,
+                )
+                self._observers.append(observer)
                 self._state = self._get_state_on_ui()
                 self._layout_native_controls()
                 for button in (
@@ -386,11 +393,24 @@ class CocoaWindow:
 
     def _stop_input(self):
         self._input_disabled = True
-        if self._dependencies is not None:
+        if self._dependencies is not None and (
+            self._monitor is not None or self._observers
+        ):
             try:
                 self._on_ui(self._cleanup_on_ui, cleanup=True)
             except Exception:
                 logger.exception("Unable to release Cocoa window observers")
+
+    def _native_will_close(self, _notification):
+        # This notification runs on the GUI thread before pywebview stops it.
+        self.dispose()
+        appkit, _, _, _ = self._dependencies
+        # NSApplication.stop_ needs another native event when close originated
+        # from a bridge or supervisor callback rather than a mouse event.
+        event = appkit.NSEvent.otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2_(
+            appkit.NSApplicationDefined, (0, 0), 0, 0, 0, None, 0, 0, 0
+        )
+        appkit.NSApplication.sharedApplication().postEvent_atStart_(event, False)
 
     def dispose(self):
         self._disposed = True

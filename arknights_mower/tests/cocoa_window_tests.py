@@ -121,6 +121,9 @@ class CocoaWindowTests(unittest.TestCase):
             NSWindowDidDeminiaturizeNotification="restore",
             NSWindowDidEnterFullScreenNotification="enter_fullscreen",
             NSWindowDidExitFullScreenNotification="exit_fullscreen",
+            NSWindowWillCloseNotification="will_close",
+            NSApplicationDefined=15,
+            NSApplication=SimpleNamespace(sharedApplication=Mock(return_value=Mock())),
             NSTitledWindowMask=1,
             NSClosableWindowMask=2,
             NSMiniaturizableWindowMask=4,
@@ -129,6 +132,7 @@ class CocoaWindowTests(unittest.TestCase):
             NSWindowZoomButton=2,
             NSMakeRect=rectangle,
             NSEvent=SimpleNamespace(
+                otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2_=Mock(),
                 addLocalMonitorForEventsMatchingMask_handler_=add_monitor,
                 removeMonitor_=self.removed_monitors.append,
             ),
@@ -338,6 +342,21 @@ class CocoaWindowTests(unittest.TestCase):
         self.callback.assert_not_called()
         self.assertFalse(self.adapter.maximize())
 
+    def test_native_close_releases_input_before_the_gui_loop_stops(self):
+        self.adapter.install()
+        self.emit("will_close")
+        self.assertEqual(self.removed_monitors, self.monitors)
+        self.assertEqual(self.removed_observers, list(reversed(self.observers)))
+        # pywebview's later closed event runs on a worker after the GUI stops.
+        worker = threading.Thread(target=self.adapter.dispose)
+        worker.start()
+        worker.join(0.2)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(self.pending, [])
+        application = self.appkit.NSApplication.sharedApplication()
+        event = self.appkit.NSEvent.otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2_.return_value
+        application.postEvent_atStart_.assert_called_once_with(event, False)
+
     def test_partial_install_failure_releases_already_registered_resources(self):
         add_observer = self.center.addObserverForName_object_queue_usingBlock_
         original = add_observer.side_effect
@@ -425,7 +444,7 @@ class CocoaWindowTests(unittest.TestCase):
         self.assertEqual(self.removed_monitors, [])
         self.drain()
         self.assertEqual(self.removed_monitors, self.monitors)
-        self.assertEqual(len(self.removed_observers), 6)
+        self.assertEqual(len(self.removed_observers), 7)
 
     def test_fallback_restores_native_buttons_and_only_disables_this_adapter(self):
         self.adapter.install()

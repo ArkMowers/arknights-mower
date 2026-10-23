@@ -41,6 +41,23 @@ run_worker(log_message, *sys.argv[1:])
 """
 
 
+CLOSED_WINDOW_WORKER = """
+import sys
+from threading import Event, Thread
+from arknights_mower.utils.desktop_process import run_worker
+def closed_window(channel, console):
+    if not console:
+        sys.stdout = sys.stderr = None
+    # A pywebview response can still await the destroyed page after GUI exit.
+    Thread(target=Event().wait, daemon=False).start()
+    try:
+        raise SystemExit(0)
+    finally:
+        channel.send('window resources released')
+run_worker(closed_window, sys.argv[1])
+"""
+
+
 def watched_manager_helper(ready):
     import time
 
@@ -63,6 +80,24 @@ helper.join()
 
 @unittest.skipIf(sys.platform == "win32", "macOS helper uses inherited POSIX pipes")
 class DesktopProcessTests(unittest.TestCase):
+    def test_closed_window_exits_after_cleanup_despite_pending_backend_response(self):
+        popen = subprocess.Popen
+
+        def launch(command, **options):
+            return popen(
+                [sys.executable, "-c", CLOSED_WINDOW_WORKER, command[-1]], **options
+            )
+
+        with mock.patch.object(desktop_process.subprocess, "Popen", side_effect=launch):
+            process, channel = desktop_process.start_worker("window", False)
+        try:
+            self.assertEqual(channel.get(timeout=5), "window resources released")
+            self.assertEqual(process.process.wait(timeout=3), 0)
+            with self.assertRaises(EOFError):
+                channel.recv()
+        finally:
+            close_child(process)
+
     def test_real_worker_roundtrip_timeout_and_graceful_cleanup(self):
         # Exercise the real inherited pipe and process lifecycle, substituting
         # an echo handler for Cocoa so this check also runs without a display.

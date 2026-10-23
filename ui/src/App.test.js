@@ -13,7 +13,8 @@ const state = vi.hoisted(() => ({
   plan: null,
   resource: null,
   loaded: null,
-  loadUpdateNotice: vi.fn()
+  loadUpdateNotice: vi.fn(),
+  closeWindow: vi.fn()
 }))
 vi.mock('axios', () => ({ default: state.client }))
 vi.mock('vue', async (original) => ({
@@ -52,6 +53,7 @@ vi.mock('@/window-shell/adapter.js', () => ({
   createWindowShellAdapter: () => ({
     metadata: { version: '' },
     active: ref(false),
+    close: state.closeWindow,
     initialize: vi.fn(),
     dispose: vi.fn()
   }),
@@ -172,6 +174,29 @@ describe('desktop page startup', () => {
       expect.arrayContaining(['/mowersettings', '/maasettings', '/plan-editor', '/record/report'])
     )
     expect(links.every((link) => link.type === SessionLink)).toBe(true)
+  })
+
+  it('closes a managed window directly without saving or applying a standalone exit choice', async () => {
+    const savePreference = vi.fn()
+    window.pywebview = {
+      api: {
+        get_close_preference: vi.fn(async () => ({
+          managed: true,
+          tray_enabled: false,
+          choice: 'exit',
+          remember: true
+        })),
+        set_close_preference: savePreference
+      }
+    }
+    state.closeWindow.mockResolvedValue(true)
+    await mount()
+    state.client.post.mockClear()
+    await expect(component.handleWindowControl('close')).resolves.toBe(true)
+    expect(state.closeWindow).toHaveBeenCalledOnce()
+    expect(component.closeModal.value).toBe(false)
+    expect(savePreference).not.toHaveBeenCalled()
+    expect(state.client.post).not.toHaveBeenCalled()
   })
 
   it('never restarts a stopped desktop task on mount, refresh or reopening', async () => {

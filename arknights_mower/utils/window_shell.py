@@ -204,9 +204,11 @@ class WindowShellBridge:
         ),
         tray_enabled: bool = True,
         backend: str | None = None,
+        managed: bool = False,
     ):
         self._window = window
         self._tray_enabled = tray_enabled
+        self._managed = managed
         self._platform = normalize_platform(system)
         self._backend = backend or {
             "windows": "winforms",
@@ -363,7 +365,12 @@ class WindowShellBridge:
         return False
 
     def request_native_close(self) -> bool:
-        if self._disposed or self._direct_close or self._backend != "cocoa":
+        if (
+            self._disposed
+            or self._direct_close
+            or self._managed
+            or self._backend != "cocoa"
+        ):
             return False
         self._pending_close.set()
         self._pending_state.set()
@@ -391,6 +398,8 @@ class WindowShellBridge:
         self._request_publish()
 
     def get_close_preference(self) -> dict:
+        if self._managed:
+            return {"managed": True, "tray_enabled": False}
         from arknights_mower.utils.config.gui import load_close_preference
 
         return {**load_close_preference(), "tray_enabled": self._tray_enabled}
@@ -591,8 +600,11 @@ def attach_window_shell(
     initial_size: WindowSize = WindowSize(DESKTOP_WINDOW_WIDTH, DESKTOP_WINDOW_HEIGHT),
     tray_enabled: bool = True,
     backend: str | None = None,
+    managed: bool = False,
 ) -> WindowShellBridge:
-    bridge = WindowShellBridge(window, system, initial_size, tray_enabled, backend)
+    bridge = WindowShellBridge(
+        window, system, initial_size, tray_enabled, backend, managed
+    )
 
     # pywebview 5.1 Window.expose only serializes the functions passed here.
     # Never pass the bridge or Window object itself to js_api.
