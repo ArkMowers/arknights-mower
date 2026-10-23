@@ -36,7 +36,7 @@ During a shared software update, the temporary progress service preserves each i
 - <a id="release-artifact-scope"></a>**Release Artifact Scope**: Future release builds exclude macOS x64; OTA publication targets only Windows x64 and Android ARM64, including Nightly, and rejects unsafe Android runtime paths without publishing a new channel index.
 
 - <a id="shared-skill-data-packaging"></a>**Shared Skill Data Packaging**: Application archives contain the backend-owned building-skill catalog independently of frontend sources or build output; both backend consumers and the frontend share that catalog, while resource packages retain their historical entry path for existing clients.
-- <a id="nightly-direction-evidence"></a>**Nightly Direction Evidence**: Same-alpha Nightly updates use valid publication times or verified upstream commit ancestry to determine direction; missing index history alone never establishes a downgrade, and unverified direction retains manual confirmation.
+- <a id="online-channel-targets"></a>**Online Channel Targets**: Ordinary online checks follow the selected channel target whenever it differs from the installed version, without classifying an upgrade or downgrade. Only explicit historical-version selection and offline package inspection retain rollback confirmation.
 - <a id="owned-command-completion"></a>**Owned Command Completion**: Windows update commands own their descendants before execution and verify tree completion within a finite budget before releasing the temporary checkout; cancellation preserves other application instances.
 - <a id="complete-registration-scan"></a>**Complete Registration Scan**: Strict registration scans retry unreadable files within one shared monotonic budget, preserve unverified registrations and raise `InstanceScanError` when that budget expires instead of returning an incomplete snapshot.
 - <a id="facility-update-drop-isolation"></a>**Facility Update Drop Isolation**: The Scheduling Plan facility layout, including every card, background and gap, suppresses and clears global update drag hints without intercepting facility sorting; other page regions retain update-package drops.
@@ -55,11 +55,16 @@ Cancellation and timeout terminate only the owned command tree. Successful root-
 
 [Command tree cleanup](../../.agents/notes/implemented/bug-fix/2026-10-02-update-command-tree-cleanup.md) records implementation and focused verification.
 
-## 6. Nightly Version Direction
+<a id="6-nightly-version-direction"></a>
+## 6. Online Channel Targets
 
-`release_is_downgrade` compares semantic version components before resolving same-alpha Nightly builds. Valid, timezone-aware publication dates in the channel index determine direction without another request. Missing history or invalid dates trigger one upstream GitHub commit comparison from the installed SHA to the target SHA, using the selected HTTP proxy and existing finite request timeout. `ahead` and `identical` permit updating; `behind`, `diverged`, malformed responses and request failures retain manual confirmation. Identical version names need no comparison. Offline package inspection remains network-free and retains confirmation when SHA ordering is unknown.
+Ordinary online checks compare the installed version with the selected channel target for equality only. A different target displays “可更新” with a “下载并安装” action, even when its semantic version is lower or Nightly publication history is absent. Source deployments compare the installed commit with the selected target commit. Neither path classifies update direction or requests a GitHub commit comparison. The `downgrade` response field remains `false` for compatibility.
 
-[Nightly direction evidence](../../.agents/notes/implemented/bug-fix/2026-10-07-nightly-direction-evidence.md) records the contract and focused verification.
+Automatic updates follow the same target when enabled and do not reinstall an identical version. Channel selection and newer public-release admission remain governed by [cross-channel upgrades](#11-cross-channel-upgrades); this change removes only the installed-to-target direction check. OTA selection still requires an asset from the exact installed version to the chosen target, with the existing full-package fallback.
+
+Explicit historical Release selection and offline package inspection retain their rollback confirmation. Offline Nightly packages with unknown SHA ordering remain network-free and require confirmation. The authenticated update endpoints retain their token and POST origin checks.
+
+The [archived Nightly direction decision](../../.agents/notes/archived/bug-fix/2026-10-07-nightly-direction-evidence.md) preserves the superseded publication-time and commit-ancestry approach.
 
 ## 7. MAA Resource Updates
 
@@ -95,7 +100,7 @@ Release builds produce Windows x64, Linux x64/ARM64, macOS ARM64 and Android ARM
 
 Installed development checks compare the development, beta and stable indexes. Beta checks compare beta and stable; stable checks read only stable. A more stable channel replaces the selected target only when its semantic version is higher and its full package passes platform, official-URL and SHA-256 metadata validation. Missing, unavailable or incompatible optional indexes preserve the primary channel result. The selected channel remains unchanged after installation, so later eligible Nightly builds remain discoverable. Source development deployments continue following their selected Git branch.
 
-Channel indexes retain their schema and channel-specific targets. Full and OTA assets come from the selected target's same index. OTA requires the exact installed source version; absence or reconstruction failure falls back to that target's full package. MowerRelease reserves recent Nightly sources for beta targets, and recent beta and Nightly sources for stable targets, with independent bounded quotas and platform filtering. Same-alpha Nightly direction retains [publication and commit evidence](#6-nightly-version-direction).
+Channel indexes retain their schema and channel-specific targets. Full and OTA assets come from the selected target's same index. OTA requires the exact installed source version; absence or reconstruction failure falls back to that target's full package. MowerRelease reserves recent Nightly sources for beta targets, and recent beta and Nightly sources for stable targets, with independent bounded quotas and platform filtering. Ordinary checks follow the selected target under [online channel selection](#6-online-channel-targets).
 
 [Cross-channel OTA upgrades](../../.agents/notes/implemented/bug-fix/2026-10-09-cross-channel-ota-upgrades.md) records the decision and focused verification.
 

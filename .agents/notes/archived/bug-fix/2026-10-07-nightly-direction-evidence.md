@@ -1,6 +1,6 @@
 ---
 title: Nightly Direction Evidence
-status: implemented
+status: archived
 category: bug-fix
 date: 2026-10-07
 ---
@@ -22,3 +22,7 @@ Focused software update tests cover the installed `074d15a3` build and target `9
 ## Review
 
 Standards Findings: the fallback reuses a finite request timeout and adds no persistent state. Spec Findings: retained history is an optimization rather than a prerequisite for recognizing older installed builds; verified rollbacks and unknown direction retain confirmation.
+
+## Archival Reason
+
+Online checks now follow the selected channel target whenever it differs from the installed version. Direction lookup conflated missing evidence with rollback and added a GitHub API dependency to ordinary Nightly checks. The [online channel target rules](../../../../docs/subsystems/software-update.md#6-online-channel-targets) replace this decision's publication-time and commit-ancestry classification. Explicit historical Release selection and offline package confirmation remain separate operations. The preceding implementation and verification sections describe the superseded behavior.

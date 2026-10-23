@@ -281,10 +281,8 @@ class ReleaseDiscoveryTests(unittest.TestCase):
                 result = update.check(channel)
                 self.assertTrue(result["available"])
                 self.assertEqual(result["version"], version)
-                self.assertEqual(
-                    result["downgrade"],
-                    update.version_key(version) < update.version_key(current),
-                )
+                self.assertIs(result["downgrade"], False)
+                self.assertEqual(result["message"], "发现可用更新")
                 self.assertEqual(
                     update._checks[result["check_id"]]["asset"]["name"],
                     target["assets"][0]["name"],
@@ -302,12 +300,21 @@ class ReleaseDiscoveryTests(unittest.TestCase):
         self.assertTrue(result["available"])
         self.assertEqual(update._checks[result["check_id"]]["commit"], "a" * 40)
 
-    def test_auto_update_waits_for_rollback_confirmation_without_reinstall_loop(self):
-        for channel, current, version in [
-            ("stable", "4.1.6-alpha.4", "v4.1.5"),
-            ("beta", "4.1.6-alpha.5", "v4.1.6-alpha.4"),
+    def test_auto_update_follows_channel_target_without_reinstall_loop(self):
+        for channel, current, version, system, arch in [
+            ("stable", "4.1.6-alpha.4", "v4.1.5", "macos", "arm64"),
+            ("beta", "4.1.6-alpha.5", "v4.1.6-alpha.4", "macos", "arm64"),
+            (
+                "dev",
+                "4.1.6-alpha.12.g6eb2d2f6",
+                "v4.1.6-alpha.12.gfdc9e8b4",
+                "windows",
+                "x64",
+            ),
         ]:
-            target = release(version, prerelease=channel == "beta")
+            target = release(
+                version, prerelease=channel != "stable", system=system, arch=arch
+            )
             update.save_settings(
                 {"channel": channel, "auto_update": True, "background": True}
             )
@@ -317,38 +324,30 @@ class ReleaseDiscoveryTests(unittest.TestCase):
                 self.subTest(channel=channel),
                 patch.dict(os.environ, {"MOWER_RESTART_JOB": ""}),
                 patch.object(runtime, "frozen", return_value=True),
-                patch.object(update, "platform_asset", return_value=("macos", "arm64")),
+                patch.object(update, "platform_asset", return_value=(system, arch)),
                 patch.object(
                     update, "release_index", return_value=release_index(target)
-                ) as api,
+                ),
+                patch.object(
+                    update, "github", side_effect=AssertionError("no commit lookup")
+                ) as github,
                 patch.object(update, "start_job", return_value={"ok": True}) as start,
             ):
                 with patch.object(update, "__version__", current):
                     self.assertTrue(update.check_on_launch())
-                    start.assert_not_called()
                     cached = runtime.read_json(runtime.state_dir() / "last-check.json")
                     self.assertTrue(cached["available"])
-                    self.assertTrue(cached["downgrade"])
-                    self.assertIn("确认后安装", cached["message"])
-                    # The clicked install action refreshes the display-only cache.
-                    result = update.check(channel)
-                    with self.assertRaisesRegex(ValueError, "二次确认"):
-                        update.submit(result["check_id"], True)
-                    start.assert_not_called()
-                    update.submit(result["check_id"], True, confirm_downgrade=True)
-                    start.assert_called_once_with(
-                        update._checks[result["check_id"]],
-                        True,
-                        force=False,
-                        confirm_downgrade=True,
-                    )
+                    self.assertIs(cached["downgrade"], False)
+                    self.assertEqual(cached["message"], "发现可用更新")
+                    start.assert_called_once()
+                    self.assertEqual(start.call_args.args[0]["version"], version)
+                    self.assertFalse(start.call_args.kwargs["confirm_downgrade"])
 
-                # Simulate the installed target, and bypass the one-minute
-                # throttle so the second check really exercises version equality.
+                # A completed installation must not submit the same target again.
                 marker.unlink()
                 with patch.object(update, "__version__", version.lstrip("v")):
                     self.assertTrue(update.check_on_launch())
-                self.assertEqual(api.call_count, 3 if channel == "stable" else 6)
+                github.assert_not_called()
                 start.assert_called_once()
                 self.assertFalse(
                     runtime.read_json(runtime.state_dir() / "last-check.json")[
@@ -468,7 +467,7 @@ class ReleaseDiscoveryTests(unittest.TestCase):
             self.assertTrue(result["available"])
             self.assertFalse(result["downgrade"])
 
-    def test_same_alpha_nightly_uses_exact_direct_ota_and_publication_order(self):
+    def test_same_alpha_nightly_uses_exact_direct_ota(self):
         old = release(
             "v4.1.6-alpha.10.gacfa1727",
             True,
@@ -509,117 +508,48 @@ class ReleaseDiscoveryTests(unittest.TestCase):
         self.assertEqual(
             update._checks[checked["check_id"]]["ota_asset"]["name"], ota_name
         )
-        self.assertTrue(
-            update.release_is_downgrade(
-                "dev", release_index(old, [target]), target["tag_name"]
-            )
-        )
 
-    def test_unlisted_nightly_requires_manual_confirmation(self):
-        target = release(
-            "v4.1.6-alpha.10.g75339a4b", True, system="windows", arch="x64"
-        )
-        with (
-            patch.object(update, "__version__", "4.1.6-alpha.10.gacfa1727"),
-            patch.object(runtime, "frozen", return_value=True),
-            patch.object(update, "platform_asset", return_value=("windows", "x64")),
-            patch.object(update, "release_index", return_value=release_index(target)),
-            patch.object(update, "github", side_effect=ValueError("API unavailable")),
-        ):
-            checked = update.check("dev")
-        self.assertTrue(checked["available"])
-        self.assertTrue(checked["downgrade"])
-
-    def test_unlisted_older_nightly_is_an_update_using_commit_ancestry(self):
-        target = release(
-            "v4.1.6-alpha.10.g90a9d91f", True, system="windows", arch="x64"
-        )
-        with (
-            patch.object(update, "__version__", "4.1.6-alpha.10.g074d15a3"),
-            patch.object(runtime, "frozen", return_value=True),
-            patch.object(update, "platform_asset", return_value=("windows", "x64")),
-            patch.object(update, "release_index", return_value=release_index(target)),
-            patch.object(update, "github", return_value={"status": "ahead"}) as api,
-        ):
-            checked = update.check("dev", proxy="http://127.0.0.1:7890")
-        self.assertTrue(checked["available"])
-        self.assertFalse(checked["downgrade"])
-        self.assertEqual(checked["message"], "发现可用更新")
-        api.assert_called_once_with(
-            "/compare/074d15a3...90a9d91f", "http://127.0.0.1:7890"
-        )
-
-    def test_nightly_ancestry_preserves_rollback_and_unknown_confirmation(self):
-        target = release_index(release("v4.1.6-alpha.10.g074d15a3", True))
-        for response, downgrade in [
-            ({"status": "ahead"}, False),
-            ({"status": "identical"}, False),
-            ({"status": "behind"}, True),
-            ({"status": "diverged"}, True),
-            ({"status": "unknown"}, True),
-            ({}, True),
-            (None, True),
+    def test_nightly_channel_targets_need_no_direction_evidence(self):
+        for current, version, history_date in [
+            ("4.1.6-alpha.12.g6eb2d2f6", "v4.1.6-alpha.12.gfdc9e8b4", None),
+            ("4.1.6-alpha.12.gfdc9e8b4", "v4.1.6-alpha.12.g6eb2d2f6", None),
+            ("4.1.6-alpha.12.g6eb2d2f6", "v4.1.6-alpha.12.gfdc9e8b4", "invalid"),
+            (
+                "4.1.6-alpha.12.g6eb2d2f6",
+                "v4.1.6-alpha.12.gfdc9e8b4",
+                "2099-01-01T00:00:00Z",
+            ),
         ]:
-            with (
-                self.subTest(response=response),
-                patch.object(update, "github", return_value=response) as api,
-            ):
-                self.assertEqual(
-                    update.release_is_downgrade(
-                        "dev", target, "v4.1.6-alpha.10.g90a9d91f+local"
-                    ),
-                    downgrade,
-                )
-                api.assert_called_once_with("/compare/90a9d91f...074d15a3", "")
-        for error in (ValueError("rate limited"), update.requests.Timeout("timeout")):
-            with (
-                self.subTest(error=type(error).__name__),
-                patch.object(update, "github", side_effect=error),
-            ):
-                self.assertTrue(
-                    update.release_is_downgrade(
-                        "dev", target, "4.1.6-alpha.10.g90a9d91f"
-                    )
-                )
-
-    def test_nightly_publication_order_avoids_commit_lookup(self):
-        current = release("v4.1.6-alpha.10.g074d15a3", True)
-        newer = release(
-            "v4.1.6-alpha.10.g90a9d91f",
-            True,
-            published_at="2026-10-07T13:03:45Z",
-        )
-        with patch.object(update, "github") as api:
-            self.assertFalse(
-                update.release_is_downgrade(
-                    "dev", release_index(newer, [current]), current["tag_name"]
-                )
-            )
-            self.assertTrue(
-                update.release_is_downgrade(
-                    "dev", release_index(current, [newer]), newer["tag_name"]
-                )
-            )
-            self.assertFalse(
-                update.release_is_downgrade(
-                    "dev", release_index(newer), newer["tag_name"] + "+local"
-                )
-            )
-            api.assert_not_called()
-
-    def test_invalid_nightly_publication_date_uses_commit_ancestry(self):
-        for date in (None, "invalid", "2026-10-07T13:03:45", 123):
-            current = release("v4.1.6-alpha.10.g074d15a3", True, published_at=date)
-            target = release_index(
-                release("v4.1.6-alpha.10.g90a9d91f", True), [current]
+            target = release(version, True, system="windows", arch="x64")
+            history = (
+                []
+                if history_date is None
+                else [release("v" + current, True, published_at=history_date)]
             )
             with (
-                self.subTest(date=date),
-                patch.object(update, "github", return_value={"status": "ahead"}),
+                self.subTest(
+                    current=current, target=version, history_date=history_date
+                ),
+                patch.object(update, "__version__", current),
+                patch.object(runtime, "frozen", return_value=True),
+                patch.object(update, "platform_asset", return_value=("windows", "x64")),
+                patch.object(
+                    update, "release_index", return_value=release_index(target, history)
+                ),
+                patch.object(
+                    update, "github", side_effect=AssertionError("no commit lookup")
+                ) as github,
+                patch.object(update, "start_job", return_value={"ok": True}) as start,
             ):
-                self.assertFalse(
-                    update.release_is_downgrade("dev", target, current["tag_name"])
-                )
+                checked = update.check("dev")
+                self.assertTrue(checked["available"])
+                self.assertIs(checked["downgrade"], False)
+                self.assertEqual(checked["version"], version)
+                self.assertEqual(checked["message"], "发现可用更新")
+                update.submit(checked["check_id"])
+                start.assert_called_once()
+                self.assertFalse(start.call_args.kwargs["confirm_downgrade"])
+                github.assert_not_called()
 
     def test_offline_nightly_requires_confirmation_when_sha_order_is_unknown(self):
         package = runtime.state_dir() / "nightly.zip"
@@ -1082,6 +1012,38 @@ class AdmissionAndRoutesTests(unittest.TestCase):
             ).status_code,
             403,
         )
+
+    def test_channel_check_and_install_retain_token_boundary(self):
+        self.app.token = "test-token"
+        for path, function, payload in (
+            ("check", "check", {"channel": "dev"}),
+            ("start", "submit", {"check_id": "channel-target"}),
+        ):
+            with (
+                self.subTest(path=path),
+                patch.object(
+                    update, function, return_value={"ok": True, "downgrade": False}
+                ) as operation,
+            ):
+                for token in (None, "wrong-token"):
+                    headers = {"X-Mower-Update": "1"}
+                    if token is not None:
+                        headers["token"] = token
+                    response = self.client.post(
+                        f"/software-update/{path}",
+                        data="{",
+                        content_type="application/json",
+                        headers=headers,
+                    )
+                    self.assertEqual(response.status_code, 403)
+                operation.assert_not_called()
+                response = self.client.post(
+                    f"/software-update/{path}",
+                    json=payload,
+                    headers={"X-Mower-Update": "1", "token": "test-token"},
+                )
+                self.assertEqual(response.status_code, 200)
+                operation.assert_called_once()
 
     def test_cross_origin_and_simple_form_posts_are_blocked(self):
         with patch.object(update, "check") as check:
