@@ -1,4 +1,4 @@
-"""低心情卡片候选等待合法清退后补位，实读与恢复计时保持独立。"""
+"""有效低心情预估可接替回满住客，实读与恢复计时保持独立。"""
 
 import copy
 from datetime import datetime, timedelta
@@ -44,7 +44,7 @@ def estimated_candidate(instance, monkeypatch, *, registered=True, stopped=True)
 @pytest.mark.parametrize("free_room", [False, True])
 @pytest.mark.parametrize("registered", [True, False])
 @pytest.mark.parametrize("stopped", [True, False])
-def test_low_card_waits_for_normal_release_before_replacing_full_resident(
+def test_registered_low_card_replaces_full_resident_without_measured_sample(
     solver, monkeypatch, registered, stopped, free_room
 ):
     instance, selected = solver
@@ -61,21 +61,28 @@ def test_low_card_waits_for_normal_release_before_replacing_full_resident(
 
     instance.plan_solver()
 
-    assert instance.tasks == []
     instance._scan_card_moods.assert_not_called()
     assert {key: vars(op) for key, op in data.operators.items()} == before
     assert data.dorm[0].time == bed_time
-    # 卡片预估不解除满员兜底；正常清退另行满足自己的准入条件。
-    data.operators["空爆"].dorm_mood_fallback = ""
-    task = SchedulerTask(
-        task_type=TaskTypes.RELEASE_DORM,
-        task_plan={ROOM: ["Current"] * 4 + ["Free"]},
-        meta_data="空爆",
-    )
-    assert instance.prepare_release_dorm(task)
-    instance.task = task
-    screen_only(instance, [name])
-    plan = selected[:4] + ["Free"]
+    if registered:
+        assert len(instance.tasks) == 1
+        assert instance.tasks[0].plan == {ROOM: ["Current"] * 4 + [name]}
+        instance.task = instance.tasks[0]
+        try_add_release_dorm({}, None, data, instance.tasks)
+        assert len(instance.tasks) == 1
+    else:
+        # 未登记姓名不直接进入明确换床计划，仍经合法清退后的选人登记。
+        assert instance.tasks == []
+        data.operators["空爆"].dorm_mood_fallback = ""
+        instance.task = SchedulerTask(
+            task_type=TaskTypes.RELEASE_DORM,
+            task_plan={ROOM: ["Current"] * 4 + ["Free"]},
+            meta_data="空爆",
+        )
+        assert instance.prepare_release_dorm(instance.task)
+    if not registered:
+        screen_only(instance, [name])
+    plan = selected[:4] + [name if registered else "Free"]
     instance.choose_agent(plan, ROOM)
     assert plan == selected
     assert selected[-1] == name
@@ -87,7 +94,7 @@ def test_low_card_waits_for_normal_release_before_replacing_full_resident(
 
 @pytest.mark.parametrize(
     "reason",
-    ["expired", "future", "full", "blacklist", "reserved", "working", "strict"],
+    ["expired", "future", "full", "blacklist", "reserved", "working", "at_cap"],
 )
 def test_ineligible_card_does_not_override_full_resident_retention(
     solver, monkeypatch, reason
@@ -111,6 +118,7 @@ def test_ineligible_card_does_not_override_full_resident_retention(
     else:
         data.config.operator_mood_limits[name] = {"lower": 0, "upper": 12}
         data.operators[name].upper_limit = 12
+        data.dorm_mood_estimates[name] = (12, now)
     before = instance.tasks.copy()
 
     try_add_release_dorm({}, None, data, instance.tasks)
@@ -156,16 +164,22 @@ def test_dorm_three_execution_does_not_skip_low_card_replacement(
     data.operators["空爆"].dorm_mood_fallback = room
     instance.task = None
     try_add_release_dorm({}, None, data, instance.tasks)
-    assert instance.tasks == []
-    data.operators["空爆"].dorm_mood_fallback = ""
-    instance.task = SchedulerTask(
-        task_type=TaskTypes.RELEASE_DORM,
-        task_plan={room: ["Current"] * 4 + ["Free"]},
-        meta_data="空爆",
-    )
-    instance.tasks = [instance.task]
-    assert instance.prepare_release_dorm(instance.task)
-    screen_only(instance, [name])
+    if registered:
+        assert len(instance.tasks) == 1
+        instance.task = instance.tasks[0]
+        assert instance.task.plan == {room: ["Current"] * 4 + [name]}
+    else:
+        assert instance.tasks == []
+        data.operators["空爆"].dorm_mood_fallback = ""
+        instance.task = SchedulerTask(
+            task_type=TaskTypes.RELEASE_DORM,
+            task_plan={room: ["Current"] * 4 + ["Free"]},
+            meta_data="空爆",
+        )
+        instance.tasks = [instance.task]
+        assert instance.prepare_release_dorm(instance.task)
+    if not registered:
+        screen_only(instance, [name])
     instance.enter_room = MagicMock()
     instance.back = MagicMock()
     instance.turn_on_room_detail = MagicMock()

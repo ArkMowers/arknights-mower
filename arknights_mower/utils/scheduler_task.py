@@ -3125,7 +3125,6 @@ def try_add_release_dorm(
                 name
                 for name in candidates.estimated_recovering
                 if name in op_data.operators
-                and resting_tier(op_data, name) <= RestingTier.PRIORITY_REPLACEMENT
             ],
             key=lambda name: (
                 resting_tier(op_data, name),
@@ -3193,7 +3192,13 @@ def try_add_release_dorm(
                     (
                         name
                         for name in recovering
-                        if bed_takeover_allowed(op_data, name, occupant.name)
+                        if (
+                            name in candidates.recovering
+                            or resting_tier(op_data, name)
+                            <= RestingTier.PRIORITY_REPLACEMENT
+                            or is_full_dorm_filler(op_data, occupant.name, now)
+                        )
+                        and bed_takeover_allowed(op_data, name, occupant.name)
                         and op_data._slot_takable(bed, requester=name, plan=arrangement)
                     ),
                     None,

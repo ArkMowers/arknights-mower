@@ -361,15 +361,20 @@ def test_unknown_card_screening_preserves_full_resident_only_without_lower_card(
     assert data.operators["红"].time_stamp is None
 
 
-def test_personal_limit_unknown_does_not_use_card_padding(solver):
+@pytest.mark.parametrize("estimate", [None, 6, 20, 24])
+def test_personal_limit_candidate_requires_valid_low_scheduling_mood(solver, estimate):
     instance, _ = solver
     data = instance.op_data
     data.operators["红"].time_stamp = None
     data.config.operator_mood_limits["红"] = {"lower": 0, "upper": 20}
     data.operators["红"].upper_limit = 20
-    data.dorm_mood_estimates["红"] = (6, datetime.now())
+    if estimate is not None:
+        data.dorm_mood_estimates["红"] = (estimate, datetime.now())
     candidates = dorm_candidates(data)
-    assert "红" not in candidates.filling
+    assert ("红" in candidates.filling) == (estimate == 6)
+    assert ("红" in candidates.estimated_recovering) == (estimate == 6)
+    assert "红" not in candidates.recovering
+    assert data.operators["红"].time_stamp is None
 
 
 def test_unregistered_full_card_keeps_free_through_projection_and_selection(

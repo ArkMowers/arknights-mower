@@ -286,7 +286,9 @@ def dorm_candidates(
             continue
         mood = dorm_candidate_mood(op_data, name, now)
         if not has_resting_mood(op, now):
-            if not op.is_high() and not op_data.has_rest_mood_limit(name):
+            if (mood is not None and mood < op.upper_limit) or (
+                not op.is_high() and not op_data.has_rest_mood_limit(name)
+            ):
                 unknown.append(name)
             continue
         if (

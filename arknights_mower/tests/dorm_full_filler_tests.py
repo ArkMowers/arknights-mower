@@ -132,23 +132,6 @@ def test_primary_bed_assignment_also_prefers_full_filler(incident):
     assert bed.position == (ROOM, 4)
 
 
-@pytest.mark.parametrize("reading", ["unknown", "predicted", "future", "full"])
-def test_card_estimate_cannot_replace_measured_recovery_need(incident, reading):
-    data = incident
-    candidate = data.operators["九色鹿"]
-    candidate.current_room, candidate.current_index = "", -1
-    if reading == "unknown":
-        candidate.time_stamp = None
-    elif reading == "predicted":
-        candidate.mood_is_prediction = True
-    elif reading == "future":
-        candidate.time_stamp = datetime.now() + timedelta(hours=1)
-    else:
-        candidate.mood = 24
-    data.dorm_mood_estimates = {candidate.name: (10, datetime.now())}
-    assert not resting_priority.bed_takeover_allowed(data, candidate.name, "Mon3tr")
-
-
 @pytest.mark.parametrize(
     "tier",
     [
@@ -161,16 +144,34 @@ def test_card_estimate_cannot_replace_measured_recovery_need(incident, reading):
         "idle",
     ],
 )
+@pytest.mark.parametrize("upper", [12, 24])
 @pytest.mark.parametrize(
-    "reading", ["unknown", "predicted", "future", "full", "measured"]
+    "source",
+    [
+        "measured",
+        "card_only",
+        "predicted",
+        "future_reading",
+        "old_full_reading",
+        "unknown",
+        "expired",
+        "future_estimate",
+        "full_estimate",
+        "newer_full_reading",
+    ],
 )
-def test_full_priority_resident_requires_measured_applicant_in_every_tier(
-    incident, tier, reading
+def test_full_priority_resident_accepts_valid_scheduling_mood(
+    incident, tier, upper, source
 ):
     data = incident
     data.config.free_blacklist = ["九色鹿"]
     data.config.ope_resting_priority = ["Mon3tr"]
     candidate = data.operators["斑点"]
+    now = datetime.now()
+    candidate.upper_limit, candidate.mood = upper, 5
+    candidate.time_stamp = now - timedelta(minutes=5)
+    if upper < 24:
+        data.config.operator_mood_limits[candidate.name] = {"lower": 0, "upper": upper}
     if tier == "explicit":
         data.config.ope_resting_priority.append(candidate.name)
     elif tier in ("main", "low_main"):
@@ -182,16 +183,40 @@ def test_full_priority_resident_requires_measured_applicant_in_every_tier(
         data.config.resting_standby = [candidate.name]
     elif tier == "idle":
         data.plan["meeting"][0].replacement = ["Mon3tr"]
-    if reading == "unknown":
+    if source != "measured":
+        data.dorm_mood_estimates = {candidate.name: (5, now - timedelta(minutes=1))}
+    if source in (
+        "card_only",
+        "unknown",
+        "expired",
+        "future_estimate",
+        "full_estimate",
+    ):
         candidate.time_stamp = None
-    elif reading == "predicted":
+    if source == "predicted":
         candidate.mood_is_prediction = True
-    elif reading == "future":
-        candidate.time_stamp = datetime.now() + timedelta(hours=1)
-    elif reading == "full":
-        candidate.mood = candidate.upper_limit
-    data.dorm_mood_estimates = {candidate.name: (10, datetime.now())}
-    allowed = reading == "measured"
+    elif source == "future_reading":
+        candidate.time_stamp = now + timedelta(hours=1)
+    elif source == "old_full_reading":
+        candidate.mood = upper
+    elif source == "unknown":
+        data.dorm_mood_estimates = {}
+    elif source == "expired":
+        data.dorm_mood_estimates[candidate.name] = (5, now - timedelta(hours=1))
+    elif source == "future_estimate":
+        data.dorm_mood_estimates[candidate.name] = (5, now + timedelta(minutes=1))
+    elif source == "full_estimate":
+        data.dorm_mood_estimates[candidate.name] = (upper, now - timedelta(minutes=1))
+    elif source == "newer_full_reading":
+        candidate.mood, candidate.time_stamp = upper, now - timedelta(seconds=10)
+    sample = candidate.mood, candidate.time_stamp, candidate.mood_is_prediction
+    allowed = source in (
+        "measured",
+        "card_only",
+        "predicted",
+        "future_reading",
+        "old_full_reading",
+    )
     assert (
         resting_priority.bed_takeover_allowed(data, candidate.name, "Mon3tr") is allowed
     )
@@ -200,14 +225,19 @@ def test_full_priority_resident_requires_measured_applicant_in_every_tier(
         assert (bed is not None) is allowed
         if allowed:
             assert bed.position == (ROOM, 4)
-        return
-    tasks = []
-    try_add_release_dorm({}, None, data, tasks)
-    if allowed:
-        assert len(tasks) == 1
-        assert tasks[0].plan[ROOM] == ["Current"] * 4 + [candidate.name]
     else:
-        assert tasks == []
+        tasks = []
+        try_add_release_dorm({}, None, data, tasks)
+        if allowed:
+            assert len(tasks) == 1
+            assert tasks[0].plan[ROOM] == ["Current"] * 4 + [candidate.name]
+        else:
+            assert tasks == []
+    assert (
+        candidate.mood,
+        candidate.time_stamp,
+        candidate.mood_is_prediction,
+    ) == sample
     assert data.operators["Mon3tr"].current_room == ROOM
 
 
@@ -217,6 +247,21 @@ def test_any_operator_can_use_configured_standby_recovery_tier(incident, name):
     data.config.resting_standby = [name]
     data.operators[name].mood = 10
     assert resting_tier(data, name) == RestingTier.STANDBY
+
+
+def test_estimated_candidate_is_not_assigned_to_two_full_beds(incident):
+    data = incident
+    data.operators["九色鹿"].mood = 24
+    candidate = data.operators["斑点"]
+    candidate.time_stamp = None
+    data.dorm_mood_estimates = {candidate.name: (5, datetime.now())}
+    tasks = []
+    try_add_release_dorm({}, None, data, tasks)
+    assert len(tasks) == 1
+    assert tasks[0].plan[ROOM].count(candidate.name) == 1
+    assert tasks[0].plan[ROOM].count("Current") == 4
+    try_add_release_dorm({}, None, data, tasks)
+    assert len(tasks) == 1
 
 
 def test_old_runtime_promotion_cannot_change_standby_tier(incident):
