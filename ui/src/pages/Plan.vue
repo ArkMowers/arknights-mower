@@ -1030,7 +1030,8 @@ function movePlanForward() {
         <template #label>
           <span>宿舍保留干员</span>
           <help-text>
-            名单内干员保留 Free 宿舍床位，不因满心情而离宿或降低恢复优先级，仍按正常回班及个人心情上限规则离宿。
+            名单内干员保留 Free
+            宿舍床位，不因满心情而离宿或降低恢复优先级，仍按正常回班及个人心情上限规则离宿。
           </help-text>
         </template>
         <PlanOperatorSelect
