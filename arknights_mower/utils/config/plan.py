@@ -254,8 +254,6 @@ class FunctionTrigger(BaseModel):
 
     @model_validator(mode="after")
     def validate_argument_count(self):
-        if self.function in ("max", "min") and len(self.args) < 2:
-            raise ValueError("max、min 条件需要至少两项参数")
         if self.function == "abs" and len(self.args) != 1:
             raise ValueError("abs 条件只接受一项参数")
         return self

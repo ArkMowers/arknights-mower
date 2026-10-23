@@ -49,6 +49,11 @@ def data():
         ("any", ["False", "True", "False"], True),
         ("all", ["True", "False", "True"], False),
         ("abs", ["-8"], 8),
+        ("max", ["7"], 7),
+        ("min", ["7"], 7),
+        ("sum", ["7"], 7),
+        ("any", ["False"], False),
+        ("all", ["True"], True),
     ],
 )
 def test_evaluates_saved_function_conditions(data, function, args, expected):

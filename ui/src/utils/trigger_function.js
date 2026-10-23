@@ -7,10 +7,6 @@ export const function_options = [
   { label: 'abs（绝对值）', value: 'abs' }
 ]
 
-export function minimum_arguments(name) {
-  return name === 'max' || name === 'min' ? 2 : 1
-}
-
 export function expression_type(value) {
   if (typeof value === 'string') return 'string'
   return value?.function ? 'function' : 'expression'
@@ -18,6 +14,6 @@ export function expression_type(value) {
 
 export function new_expression(type) {
   if (type === 'string') return ''
-  if (type === 'function') return { function: 'max', args: ['', ''] }
+  if (type === 'function') return { function: 'max', args: [''] }
   return { left: '', operator: '', right: '' }
 }

@@ -45,6 +45,8 @@ class TestLogicExpression(unittest.TestCase):
         ("any", ["True", "False"], "any([True, False])"),
         ("all", ["True", "False"], "all([True, False])"),
         ("abs", ["-8"], "abs(-8)"),
+        ("max", ["7"], "max([7])"),
+        ("min", ["7"], "min([7])"),
     ],
 )
 def test_function_survives_config_round_trip(function, args, expected):
@@ -77,7 +79,7 @@ def test_nested_function_and_binary_arguments():
 @pytest.mark.parametrize(
     "node",
     [
-        {"function": "max", "args": ["1"]},
+        {"function": "max", "args": []},
         {"function": "min", "args": []},
         {"function": "abs", "args": ["1", "2"]},
         {"function": "sum", "args": []},

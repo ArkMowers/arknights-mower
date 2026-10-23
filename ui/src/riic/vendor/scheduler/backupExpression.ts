@@ -35,10 +35,9 @@ function serialize(source: unknown, depth = 0, budget = { nodes: 0 }): string {
   if ('function' in node) {
     const name = String(node.function)
     if (!['max', 'min', 'sum', 'any', 'all', 'abs'].includes(name) || !Array.isArray(node.args) || !node.args.length) return fail('不支持的函数或参数为空')
-    if (['max', 'min'].includes(name) && node.args.length < 2) return fail('max、min 条件需要至少两项参数')
     if (name === 'abs' && node.args.length !== 1) return fail('abs 条件只接受一项参数')
     let args = node.args.map(arg => serialize(arg, depth + 1, budget)).join(', ')
-    if (['sum', 'any', 'all'].includes(name)) args = `[${args}]`
+    if (['sum', 'any', 'all'].includes(name) || (['max', 'min'].includes(name) && node.args.length === 1)) args = `[${args}]`
     const text = `${name}(${args})`
     if (text.length > 20000) return fail('条件文本超过限制')
     return text
@@ -118,16 +117,16 @@ export function compileBackupExpression(source: unknown, participants: Set<strin
       if (['max', 'min', 'sum', 'any', 'all', 'abs'].includes(peek() ?? '')) {
         const name = tokens[cursor++]!.text
         if (!take('(')) return fail(`${name} 缺少参数括号`)
-        const list = ['sum', 'any', 'all'].includes(name)
+        const list = ['sum', 'any', 'all'].includes(name) || (['max', 'min'].includes(name) && peek() === '[')
         if (list && !take('[')) return fail(`${name} 需要参数列表`)
         const args = [logicalOr()]
         while (take(',')) args.push(logicalOr())
         if (list && !take(']')) return fail(`${name} 参数列表不完整`)
-        if (['max', 'min'].includes(name) && args.length < 2) return fail(`${name} 需要至少两项参数`)
+        if (['max', 'min'].includes(name) && !list && args.length < 2) return fail(`${name} 需要至少两项参数`)
         if (name === 'abs' && args.length !== 1) return fail('abs 条件只接受一项参数')
         if (!take(')')) return fail(`${name} 参数括号不完整`)
         if (name === 'abs') return state => Math.abs(numeric(args[0]!(state)))
-        if (list) return state => {
+        if (['sum', 'any', 'all'].includes(name)) return state => {
           const values = args.map(arg => arg(state))
           if (name === 'any') return values.some(Boolean)
           if (name === 'all') return values.every(Boolean)
