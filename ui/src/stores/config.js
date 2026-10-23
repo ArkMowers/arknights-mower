@@ -164,6 +164,7 @@ export const useConfigStore = defineStore('config', () => {
   const run_order_grandet_mode = ref({})
   const product_switching = ref({})
   const check_mail_enable = ref(true)
+  const mail_skip_clear_read = ref(false)
   const report_enable = ref(true)
   const trust_rotation_enable = ref(false)
   const trust_rotation_prefer_low = ref(false)
@@ -615,6 +616,7 @@ export const useConfigStore = defineStore('config', () => {
         ...(response.data.product_switching || {})
       }
       check_mail_enable.value = response.data.check_mail_enable
+      mail_skip_clear_read.value = response.data.mail_skip_clear_read ?? false
       report_enable.value = response.data.report_enable
       trust_rotation_enable.value = response.data.trust_rotation_enable ?? false
       trust_rotation_prefer_low.value = response.data.trust_rotation_prefer_low ?? false
@@ -797,6 +799,7 @@ export const useConfigStore = defineStore('config', () => {
       run_order_grandet_mode: run_order_grandet_mode.value,
       product_switching: product_switching.value,
       check_mail_enable: check_mail_enable.value,
+      mail_skip_clear_read: mail_skip_clear_read.value,
       report_enable: report_enable.value,
       trust_rotation_enable: trust_rotation_enable.value,
       trust_rotation_prefer_low: trust_rotation_prefer_low.value,
@@ -1158,6 +1161,7 @@ export const useConfigStore = defineStore('config', () => {
     run_order_grandet_mode,
     product_switching,
     check_mail_enable,
+    mail_skip_clear_read,
     report_enable,
     trust_rotation_enable,
     trust_rotation_prefer_low,

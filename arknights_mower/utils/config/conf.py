@@ -395,6 +395,8 @@ class RegularTaskPart(ConfModel):
 
     check_mail_enable: bool = True
     "领取邮件奖励"
+    mail_skip_clear_read: bool = False
+    "领取邮件后跳过清除已读邮件"
     maa_enable: bool = True
     "日常任务（兼容旧字段）"
     stage_plan_enable: bool = True
