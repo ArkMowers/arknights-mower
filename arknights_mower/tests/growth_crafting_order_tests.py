@@ -209,6 +209,7 @@ def test_shortage_skips_entire_project_without_reserving_its_available_ingredien
     case.skills["characters"]["char_test"]["skills"][0]["levels"][0][
         "materials"
     ].append({"id": "exclusive", "count": 1})
+    case.formulas["t3"]["costs"]["exclusive"] = 1
     case.stock["raw"] = 3
     states, entries = prepared(case)
     assert states[0]["status"] == "waiting" and "跳过" in states[0]["reason"]
@@ -226,6 +227,7 @@ def test_active_training_shortage_blocks_later_projects(order_case):
     case.skills["characters"]["char_test"]["skills"][0]["levels"][1][
         "materials"
     ].append({"id": "exclusive", "count": 1})
+    case.formulas["t3"]["costs"]["exclusive"] = 1
     states, entries = prepared(case)
     assert states[0]["status"] == "active" and "暂停" in states[0]["reason"]
     assert all(row["status"] == "waiting" for row in states[1:])
@@ -302,7 +304,9 @@ def test_module_below_unlock_level_can_prepare_without_leveling_exp_or_gold(orde
     assert overview["4001"] == 640
     case.stock["4001"] = 49
     states, entries = prepared(case)
-    assert states[0]["status"] == "waiting" and entries == []
+    assert states[0]["status"] == "preparing" and entries
+    assert not states[0]["materials_prepared"]
+    assert generated(case)[0]
 
 
 def test_unpromoted_module_prepares_only_through_elite_two_level_one(order_case):
@@ -1068,3 +1072,91 @@ def test_plan_delete_locks_before_removing_plan_and_notifications(
     assert statements.index("BEGIN IMMEDIATE") < statements.index(
         "DELETE FROM mastery_plan WHERE id=?"
     )
+
+
+@pytest.mark.parametrize("target", ["elite2", "skill7", "module", "mastery"])
+def test_crafting_ignores_missing_manual_growth_resources(order_case, target):
+    case = order_case
+    case.box["characters"][0].update(evolvePhase=0, level=1, mainSkillLevel=4)
+    case.plans[:] = [case.plans[0]] if target == "mastery" else []
+    case.goals[:] = (
+        [] if target == "mastery" else [{"char_id": "char_test", "module_id": target}]
+    )
+    definition = case.skills["growth"]["characters"]["char_test"]
+    definition["phases"][1]["materials"].extend(
+        {"id": iid, "count": 1} for iid in ("3211", "32001", "4006", "mod_unlock_token")
+    )
+    for name in ("small", "book", "t3", "t4"):
+        case.formulas[name]["goldCost"] = 5
+    # Only raw materials and the full crafting fee are available. Promotion,
+    # leveling, chips, catalysts, vouchers and module resources are all missing.
+    fee = {"elite2": 10, "skill7": 25, "module": 40, "mastery": 30}[target]
+    case.stock.clear()
+    case.stock.update(raw=100, **{"4001": fee})
+    original = copy.deepcopy((case.box, case.stock, case.plans, case.goals))
+    states, _ = prepared(case)
+    assert states[0]["status"] == ("ready" if target == "elite2" else "preparing")
+    assert states[0]["shortages"] == []
+    assert not states[0]["materials_prepared"]
+    settings, cid = generated(case)
+    assert cid == "char_test"
+    assert recipe(settings)["item_names"] == [
+        "book" if target in ("skill7", "mastery") else "small"
+    ]
+    assert reminders(case) == []
+    overview = growth.calculate_growth_materials(
+        growth_order.MaterialBudget(case.skills, case.stock, case.formulas),
+        [
+            row
+            for _, costs in growth.material_entries(
+                case.box, case.skills, case.plans, case.goals
+            )
+            for row in costs
+        ],
+    )
+    assert not overview["craftable"]
+    assert {row["id"] for row in overview["missing"]} >= {"3211", "4001", "growth_exp"}
+    assert (case.box, case.stock, case.plans, case.goals) == original
+    case.stock["4001"] = fee - 1
+    states, entries = prepared(case)
+    assert states[0]["status"] == "waiting"
+    assert {row["id"] for row in states[0]["shortages"]} == {"4001"}
+    assert entries == []
+    assert generated(case)[0] == []
+
+
+def test_crafting_fees_are_shared_in_order_without_reserving_manual_gold(order_case):
+    case = order_case
+    case.plans[:] = case.plans[:2]
+    case.goals.clear()
+    case.skills["characters"]["char_test"]["skills"][0]["levels"][0][
+        "materials"
+    ].append({"id": "4001", "count": 1000})
+    case.formulas["t3"]["goldCost"] = 5
+    case.formulas["other"]["goldCost"] = 7
+    case.stock["4001"] = 11
+    states, entries = prepared(case)
+    assert [state["status"] for state in states] == ["ready", "waiting"]
+    assert [key for key, _ in entries] == ["skill:char_test:0"]
+    assert states[1]["shortages"][0]["required"] == 12
+    case.stock["4001"] = 12
+    states, entries = prepared(case)
+    assert [state["status"] for state in states] == ["ready", "ready"]
+    assert not states[0]["materials_prepared"]
+    assert [key for key, _ in entries] == ["skill:char_test:0", "skill:char_next:0"]
+    settings, cid = generated(case)
+    assert cid == "char_test" and recipe(settings)["item_names"] == ["t3"]
+
+
+def test_protected_ingredients_still_block_crafting_admission(order_case):
+    case = order_case
+    states, entries = growth_order.prepare_project_materials(
+        case.box,
+        case.skills,
+        projects(case),
+        case.stock,
+        case.formulas,
+        blocked={"raw"},
+    )
+    assert all(state["status"] == "waiting" for state in states)
+    assert not entries
