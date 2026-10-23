@@ -125,16 +125,14 @@ const SyncStatus = (item, game) => {
         <div>{{ sign_msg }}</div>
       </n-flex>
       <n-divider />
-      <n-checkbox v-model:checked="check_mail_enable">
-        <div class="item">领取邮件</div>
-      </n-checkbox>
-      <n-checkbox
-        v-model:checked="mail_skip_clear_read"
-        :disabled="!check_mail_enable"
-        style="margin-left: 24px"
-      >
-        <div class="item">跳过清除已读</div>
-      </n-checkbox>
+      <n-flex align="center">
+        <n-checkbox v-model:checked="check_mail_enable">
+          <div class="item">领取邮件</div>
+        </n-checkbox>
+        <n-checkbox v-model:checked="mail_skip_clear_read" :disabled="!check_mail_enable">
+          <div class="item">跳过清除已读</div>
+        </n-checkbox>
+      </n-flex>
       <n-divider />
       <n-flex>
         <n-checkbox v-model:checked="report_enable">
