@@ -3288,6 +3288,21 @@ def get_recycling_history():
         return {"error": str(exc)}, 400
 
 
+@app.route("/report/recycling_history/<path:event_id>/retry", methods=["POST"])
+@require_token
+def retry_recycling_upload(event_id):
+    from arknights_mower.utils.recycling_report import retry_recycling_report
+
+    try:
+        if not retry_recycling_report(event_id):
+            return {"error": "上传任务启动失败，请重试"}, 503
+        return {"upload_status": "pending"}, 202
+    except LookupError as exc:
+        return {"error": str(exc)}, 404
+    except ValueError as exc:
+        return {"error": str(exc)}, 409
+
+
 @app.route("/report/recycling_settings", methods=["GET", "PUT", "DELETE"])
 @require_token
 def recycling_settings():

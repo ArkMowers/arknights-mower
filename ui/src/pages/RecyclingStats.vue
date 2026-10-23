@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, onMounted, reactive, ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { use } from 'echarts/core'
@@ -26,14 +26,38 @@ const loading = ref(false)
 const error = ref('')
 const exporting = ref(false)
 const exportError = ref('')
+const retrying = ref('')
+const retryError = ref('')
 const emptyData = () => ({ total: 0, materials: [], qualities: [], records: [], comparison: null })
 const data = ref(emptyData())
 const failedIcons = reactive(new Set())
 let requestVersion = 0
+let refreshTimer
+let refreshesRemaining = 0
+let disposed = false
+const uploadLabels = {
+  submitted: '已上传',
+  failed: '上传失败',
+  pending: '待上传',
+  waiting: '待上传',
+  skipped: '未上传（材料未识别）'
+}
 const quantity = computed(() => data.value.materials.reduce((sum, item) => sum + item.count, 0))
 const comparison = computed(() => data.value.comparison)
-const qualityLabels = ['未知品质', '白色材料', '绿色材料', '蓝色材料', '紫色材料', '金色材料']
-const qualityColors = ['#8b98a6', '#bfc7cf', '#79ae59', '#549bd4', '#a078d0', '#dcb153']
+const qualityLabels = {
+  0: '未知品质',
+  2: '绿色材料',
+  3: '蓝色材料',
+  4: '紫色材料',
+  5: '金色材料'
+}
+const qualityColors = {
+  0: '#8b98a6',
+  2: '#79ae59',
+  3: '#549bd4',
+  4: '#a078d0',
+  5: '#dcb153'
+}
 const materialRarities = computed(() =>
   Object.fromEntries(data.value.materials.map((item) => [item.name, item.rarity]))
 )
@@ -101,9 +125,12 @@ const differenceText = computed(() => {
   if (value == null || !comparison.value?.expected_sanity) return '等待有效样本'
   return `${value >= 0 ? '高于' : '低于'}预期 ${percent(Math.abs(value) / comparison.value.expected_sanity)}`
 })
-async function load() {
+async function load(resetRefresh = true) {
+  if (disposed) return
+  clearTimeout(refreshTimer)
+  if (resetRefresh) refreshesRemaining = 60
   const version = ++requestVersion
-  loading.value = true
+  loading.value = Boolean(resetRefresh)
   error.value = ''
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/report/recycling_history`, {
@@ -113,14 +140,40 @@ async function load() {
         page: page.value
       }
     })
-    if (version === requestVersion) data.value = response.data
+    if (version === requestVersion) {
+      data.value = response.data
+      if (
+        refreshesRemaining > 0 &&
+        data.value.records.some((row) => ['pending', 'waiting'].includes(row.upload_status))
+      ) {
+        refreshTimer = setTimeout(() => {
+          refreshesRemaining--
+          load(false)
+        }, 2000)
+      }
+    }
   } catch {
     if (version === requestVersion) {
-      data.value = emptyData()
+      if (resetRefresh) data.value = emptyData()
       error.value = '回收站统计读取失败，请重试'
     }
   } finally {
     if (version === requestVersion) loading.value = false
+  }
+}
+async function retryUpload(row) {
+  if (disposed || retrying.value || row.upload_status !== 'failed') return
+  retrying.value = row.id
+  retryError.value = ''
+  try {
+    await axios.post(
+      `${import.meta.env.VITE_HTTP_URL}/report/recycling_history/${encodeURIComponent(row.id)}/retry`
+    )
+  } catch (error) {
+    retryError.value = error.response?.data?.error || '重试上传未能启动，请稍后再试'
+  } finally {
+    retrying.value = ''
+    await load()
   }
 }
 function changeRange() {
@@ -160,6 +213,11 @@ async function exportExcel() {
 }
 onMounted(() => {
   load()
+})
+onUnmounted(() => {
+  disposed = true
+  requestVersion++
+  clearTimeout(refreshTimer)
 })
 </script>
 
@@ -254,6 +312,7 @@ onMounted(() => {
             </div>
             <span class="count-badge">{{ data.total }} 条记录</span>
           </div>
+          <n-alert v-if="retryError" type="error" class="notice">{{ retryError }}</n-alert>
           <n-scrollbar style="max-height: 600px" class="history">
             <n-empty
               v-if="!data.records.length"
@@ -294,6 +353,26 @@ onMounted(() => {
                   </div>
                 </div>
                 <span v-else class="muted">材料未完整识别，请查看收取截图</span>
+                <div class="upload-state" aria-live="polite">
+                  <span
+                    :class="['upload-label', row.upload_status]"
+                    :title="
+                      row.upload_status === 'submitted'
+                        ? '请求已提交，接口不提供入库确认'
+                        : undefined
+                    "
+                    >{{ uploadLabels[row.upload_status] || '待上传' }}</span
+                  >
+                  <n-button
+                    v-if="row.upload_status === 'failed'"
+                    size="tiny"
+                    secondary
+                    :loading="retrying === row.id"
+                    :disabled="Boolean(retrying)"
+                    @click="retryUpload(row)"
+                    >重试上传</n-button
+                  >
+                </div>
               </div>
             </article>
           </n-scrollbar>
@@ -718,6 +797,26 @@ time .n-icon {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+.upload-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+.upload-label {
+  color: var(--muted);
+}
+.upload-label.submitted {
+  color: var(--accent);
+}
+.upload-label.failed {
+  color: #d35454;
+}
+.dark .upload-label.failed {
+  color: #f28b82;
 }
 .material-chip {
   display: flex;
