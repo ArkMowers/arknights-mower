@@ -3439,8 +3439,8 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
                 solver.back.assert_called_once()
                 self.assertIn(room, solver.task.plan)
 
-    def test_invalid_countdown_retains_order_without_claiming_a_miss(self):
-        for remaining in (0, -1):
+    def test_outside_countdown_reports_miss_before_selection(self):
+        for remaining in (0, -1, 660, 900):
             with self.subTest(remaining=remaining):
                 solver, room, _ = self.make_solver()
                 solver.get_order_remaining_time.side_effect = None
@@ -3453,15 +3453,15 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
                     patch.object(base_schedule, "send_message") as notify,
                     patch.object(base_schedule, "save_exception"),
                 ):
-                    with self.assertRaises(base_schedule.RoomArrangementDeferred):
+                    with self.assertRaises(base_schedule.RunOrderMissed):
                         solver.agent_arrange_room({}, room, solver.task.plan)
                 self.assertEqual(solver.task.time, original_time)
                 self.assertEqual(solver.task.plan, original_plan)
                 self.assertEqual(solver.tasks, [solver.task])
                 solver.choose_agent.assert_not_called()
                 solver.tap_confirm.assert_not_called()
-                solver.reset_room_time.assert_not_called()
-                notify.assert_not_called()
+                solver.reset_room_time.assert_called_once_with(room)
+                notify.assert_called_once_with("检测到漏单！", level="WARNING")
 
     def test_adjusted_order_can_continue_with_out_of_range_countdown(self):
         solver, room, events = self.make_solver()
@@ -3475,7 +3475,7 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         self.assertEqual(solver.turn_on_room_detail.call_count, 1)
         solver.reset_room_time.assert_not_called()
 
-    def test_resumed_window_failure_rechecks_countdown_before_selection(self):
+    def test_resumed_arrangement_rechecks_countdown_before_selection(self):
         solver, room, events = self.make_solver()
         solver.task.arrangement_retry_room = room
         solver.task.arrangement_retry_count = 1
@@ -3720,7 +3720,7 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         solver.get_order_remaining_time.assert_called_once_with()
 
     @patch.object(BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_changed_countdown_checks_actual_order_without_claiming_a_miss(self):
+    def test_changed_countdown_reports_miss_and_restores_original_roster(self):
         room = "room_1_1"
         task = SchedulerTask(
             time=datetime.now(),
@@ -3746,11 +3746,12 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
             patch.object(base_schedule, "save_exception") as save_exception,
             patch.object(base_schedule, "send_message") as send_message,
         ):
-            solver.agent_arrange(task.plan)
+            with self.assertRaises(base_schedule.RunOrderMissed):
+                solver.agent_arrange(task.plan)
 
-        error.assert_not_called()
-        save_exception.assert_not_called()
-        send_message.assert_not_called()
+        error.assert_called_once()
+        save_exception.assert_called_once()
+        send_message.assert_called_once_with("检测到漏单！", level="WARNING")
         solver.accept_order.assert_called_once_with()
         self.assertEqual(solver.agent_arrange_room.call_count, 2)
 

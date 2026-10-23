@@ -423,13 +423,11 @@ def _advance_mood_limit_releases(
         for task in blockers:
             if (
                 task.type in (TaskTypes.RUN_ORDER, TaskTypes.SWAP_SUPPORT)
-                or getattr(task, "run_order_window_observation", False)
-            ) and task.time <= now:
+                and task.time <= now
+            ):
                 # 已到期的关键任务先执行，不再尝试把清退塞到它前面。
                 continue
-            if task.type == TaskTypes.RUN_ORDER or getattr(
-                task, "run_order_window_observation", False
-            ):
+            if task.type == TaskTypes.RUN_ORDER:
                 # 跑单时间已扣除进站提前量，还需预留确认、收单和归位。
                 minutes = (
                     max(run_order_delay, config.conf.run_order_delay)
@@ -478,10 +476,7 @@ def _advance_swap_before_orders(tasks, swap, now, execution_time, op_data=None):
         (
             t
             for t in tasks
-            if (
-                t.type == TaskTypes.RUN_ORDER
-                or getattr(t, "run_order_window_observation", False)
-            )
+            if t.type == TaskTypes.RUN_ORDER
             and t.meta_data
             and not getattr(t, "run_order_restore_pending", False)
             and id(t) not in blocked_orders
@@ -609,7 +604,6 @@ def _priority_tasks(tasks, op_data=None):
             task
             for task in task_view(tasks, TaskScope.DISPATCH, op_data)
             if task.type == TaskTypes.RUN_ORDER
-            or getattr(task, "run_order_window_observation", False)
             or config.conf.enable_mastery
             and task.type == TaskTypes.SWAP_SUPPORT
         ),
@@ -1095,10 +1089,7 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
         # 未来普通任务仅在跑单前十分钟延期；到期任务仍按实际操作预算保护跑单。
         # 宿舍保留提前规划；只有确认独立的后续任务保留原时间。
         if (
-            (
-                priority.type == TaskTypes.RUN_ORDER
-                or getattr(priority, "run_order_window_observation", False)
-            )
+            priority.type == TaskTypes.RUN_ORDER
             and priority.time - now > timedelta(minutes=10)
             and task.time > now
         ):
@@ -1173,10 +1164,7 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
                 continue
             duration = batch_cursor - start
         protected = fixed | (
-            adjusted
-            if priority.type == TaskTypes.RUN_ORDER
-            or getattr(priority, "run_order_window_observation", False)
-            else set()
+            adjusted if priority.type == TaskTypes.RUN_ORDER else set()
         )
         if id(task) in protected or (
             batch_fits is not False

@@ -780,16 +780,15 @@ def test_restoration_confirm_does_not_repeat_order_buffer_wait(solver, monkeypat
     solver.sleep.assert_not_called()
 
 
-def test_unreadable_countdown_before_selection_never_claims_compensation(
-    solver, monkeypatch
-):
+def test_missed_order_before_selection_never_claims_compensation(solver, monkeypatch):
     task, _ = prepare_order(solver, monkeypatch, adjusted=False)
     solver.get_order_remaining_time.return_value = 0
     solver.reset_room_time = MagicMock()
 
-    with pytest.raises(base_schedule.RoomArrangementDeferred):
+    with pytest.raises(base_schedule.RunOrderMissed):
         solver.agent_arrange(task.plan)
 
+    solver.reset_room_time.assert_called_once_with(ROOM)
     assert solver.op_data.get_current_room(ROOM, True) == ORIGINAL
     assert not getattr(task, "run_order_restore_pending", False)
     solver.choose_agent.assert_not_called()
