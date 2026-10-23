@@ -267,7 +267,7 @@ class Recognizer:
             self.scene = Scene.INFRA_TODOLIST
         elif self.find("clue/message_board_page"):
             self.scene = Scene.CLUE_MESSAGE_BOARD
-        elif self.find("clue"):
+        elif self.find("clue/fast_place"):
             self.scene = Scene.INFRA_CONFIDENTIAL
         elif self.find("infra_overview_in"):
             self.scene = Scene.INFRA_ARRANGE
@@ -787,8 +787,9 @@ class Recognizer:
             "arrange_confirm": (963, 969),
             "arrange_order_options": (1652, 23),
             ## "arrange_order_options_scene": (369, 199),
-            "clue": (1751, 750),
             "clue/daily": (526, 623),
+            "clue/fast_place": (1656, 940),
+            "clue/fast_place_disabled": (1656, 940),
             "clue/filter_all": (1297, 99),
             "clue/give_away": (25, 18),
             "clue/receive": (1295, 15),
@@ -908,6 +909,9 @@ class Recognizer:
                         logger.debug(f"find: {res} {scope=} {ssim=}")
                         return scope
 
+            if res == "clue/fast_place":
+                # 两种底色均表示线索板；模板右边界避开数量角标。
+                return self.find("clue/fast_place_disabled")
             if res == "confirm":
                 # 背景透出会改变整条按钮栏的颜色/纹理；保留原匹配，失败时
                 # 只复核固定位置的完整勾选图标，不扩大搜索区域或降低阈值。
