@@ -14,6 +14,14 @@ from arknights_mower.utils.logic_expression import get_logic_exp
 dict_minus = {"left": "114514", "operator": "-", "right": "1919810"}
 
 
+@pytest.mark.parametrize(
+    "source",
+    [{}, {"left": "", "operator": "", "right": ""}, {"left": " ", "right": "\t"}],
+)
+def test_empty_condition_serializes_as_false(source):
+    assert str(get_logic_exp(source)) == "False"
+
+
 class TestLogicExpression(unittest.TestCase):
     def test_single(self):
         self.assertEqual(str(get_logic_exp({"left": "114514"})), "(114514  )")

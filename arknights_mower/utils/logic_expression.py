@@ -13,6 +13,11 @@ class LogicExpression:
         self.right = right
 
     def __str__(self):
+        if all(
+            value is None or isinstance(value, str) and not value.strip()
+            for value in (self.left, self.operator, self.right)
+        ):
+            return "False"
         return f"({(self.left)} {self.operator} {(self.right)})"
 
 

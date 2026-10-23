@@ -163,6 +163,7 @@ def test_cached_imported_call_reads_current_function_and_name_permissions(data):
         (str(2**300), "整数常量过大"),
         (repr("x" * 513), "字符串常量过长"),
         ("'x' * 2", "乘法仅支持数值表达式"),
+        ("(1, 2)", "Node type 'Tuple' is not allowed"),
         ("max('x', 'y') * 2", "乘法仅支持数值表达式"),
         ("min('x', 'y') ** 2", "幂运算结果过大"),
         ("sum([1, 'x']) * 2", "乘法仅支持数值表达式"),

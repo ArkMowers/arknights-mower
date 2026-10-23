@@ -1,11 +1,12 @@
 """Backup group selection, saved plans and structurally possible validation states."""
 
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from pydantic import ValidationError
 
-from arknights_mower.utils import config
+from arknights_mower.utils import config, operators
 from arknights_mower.utils.backup_validation import possible_backup_conditions
 from arknights_mower.utils.config.plan import PlanModel
 from arknights_mower.utils.operators import Operators, build_global_plan
@@ -56,6 +57,47 @@ def test_old_plan_roundtrip_and_invalid_references():
     ]:
         with pytest.raises(ValidationError):
             PlanModel.model_validate(change)
+
+
+def test_saved_empty_conditions_remain_inactive_without_errors(monkeypatch):
+    monkeypatch.setattr(config, "conf", config.Conf())
+    errors = Mock()
+    monkeypatch.setattr(operators.logger, "exception", errors)
+    empty = {"left": "", "operator": "", "right": ""}
+    document = PlanModel.model_validate(
+        {
+            "backup_groups": [
+                {"id": name, "name": name, "trigger": empty}
+                for name in ["default", "深海", "红松"]
+            ],
+            "backup_plans": [
+                {"name": "空条件", "trigger": empty},
+                {"name": "默认生效", "trigger": condition("True")},
+                {
+                    "name": "分组未生效",
+                    "group_ids": ["深海", "红松"],
+                    "trigger": condition("True"),
+                },
+                {
+                    "name": "嵌套空条件",
+                    "trigger": {"left": empty, "operator": "or", "right": "True"},
+                },
+                {
+                    "name": "函数空参数条件",
+                    "trigger": {"function": "any", "args": [empty]},
+                },
+            ],
+        }
+    )
+    restored = PlanModel.model_validate_json(document.model_dump_json())
+    assert restored.model_dump() == document.model_dump()
+    data = Operators(build_global_plan(plan_model=restored))
+    for current_group in ["default", "深海", "红松"]:
+        data.backup_group = current_group
+        selected = data.evaluate_backup_selection()
+        assert selected.group_id == "default"
+        assert selected.conditions == [False, True, False, True, False]
+    errors.assert_not_called()
 
 
 def test_saved_functions_select_backup_group_and_plan(monkeypatch):

@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { effectScope, nextTick, ref } from 'vue'
+import { createSSRApp, effectScope, nextTick, ref } from 'vue'
+import { renderToString } from '@vue/server-renderer'
 import { createPinia, defineStore, setActivePinia } from 'pinia'
 import TriggerDialog from './TriggerDialog.vue'
 
-const state = vi.hoisted(() => ({ injections: {} }))
+const state = vi.hoisted(() => ({ injections: {}, groupsExpanded: false }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
   useSSRContext: () => ({ modules: new Set() }),
@@ -13,11 +14,56 @@ vi.mock('@/stores/plan', () => ({ usePlanStore: vi.fn() }))
 vi.mock('@/stores/depot', () => ({ usedepotStore: () => ({}) }))
 vi.mock('@/stores/facility', () => ({ useFacilityStore: () => ({}) }))
 vi.mock('@/stores/mastery', () => ({ useMasteryStore: () => ({}) }))
+vi.mock('./TriggerEditor.vue', () => ({ default: { render: () => null } }))
+vi.mock('naive-ui', async () => {
+  const { h } = await import('vue')
+  const content = {
+    setup:
+      (_, { slots }) =>
+      () =>
+        h('div', slots.default?.())
+  }
+  return {
+    ...Object.fromEntries(
+      [
+        'NModal',
+        'NScrollbar',
+        'NForm',
+        'NFormItem',
+        'NSelect',
+        'NRadioGroup',
+        'NRadioButton',
+        'NText',
+        'NSpace',
+        'NInput',
+        'NButton',
+        'NPopconfirm',
+        'NCard',
+        'NCode',
+        'NCollapseItem'
+      ].map((name) => [name, content])
+    ),
+    NCollapse: {
+      setup:
+        (_, { slots }) =>
+        () =>
+          state.groupsExpanded ? h('div', slots.default?.()) : null
+    },
+    NAlert: {
+      props: ['title'],
+      setup:
+        (props, { slots }) =>
+        () =>
+          h('section', [props.title, slots.default?.()])
+    }
+  }
+})
 
 let scope
 let component
 let store
 beforeEach(() => {
+  state.groupsExpanded = false
   setActivePinia(createPinia())
   store = defineStore('trigger-dialog-test', {
     state: () => ({
@@ -98,4 +144,34 @@ it('ignores empty names and prevents creation while editing is locked', () => {
   component.create_group()
   expect(store.backup_groups).toEqual([{ id: 'default', name: '默认分组' }])
   expect(store.backup_plans[0].group_ids).toEqual(['default'])
+})
+
+it('shows both group hints only inside expanded group management', async () => {
+  store.backup_groups.push(
+    { id: 'deep', name: '深海', trigger: { left: '', operator: '', right: '' } },
+    { id: 'pine', name: '红松', trigger: {} }
+  )
+  const collapsed = await renderToString(createSSRApp(TriggerDialog))
+  expect(collapsed).not.toContain('自定义分组同时只生效一个')
+  expect(collapsed).not.toContain('请为分组添加生效条件')
+  state.groupsExpanded = true
+  const html = await renderToString(createSSRApp(TriggerDialog))
+  expect(html).toContain('自定义分组同时只生效一个')
+  expect(html).toContain('请为分组添加生效条件')
+  expect(html).toContain('深海、红松')
+  expect(html).toContain('不会生效')
+  expect(html).not.toContain('默认分组、')
+})
+
+it('clears the empty-group hint when a condition is set and preserves configured false conditions', async () => {
+  state.groupsExpanded = true
+  component.new_group_name.value = '夜间'
+  component.create_group()
+  await nextTick()
+  expect(component.groups_without_condition.value.map((group) => group.name)).toEqual(['夜间'])
+  component.update_group_trigger({ left: 'False', operator: '', right: '' })
+  expect(component.groups_without_condition.value).toEqual([])
+  const html = await renderToString(createSSRApp(TriggerDialog))
+  expect(html).not.toContain('请为分组添加生效条件')
+  expect(html).toContain('自定义分组同时只生效一个')
 })
