@@ -23,8 +23,6 @@ def transport(tmp_path, monkeypatch, income_db):
     monkeypatch.setattr(report, "Thread", worker)
     directory = tmp_path / "instance-a"
     monkeypatch.setattr(report, "get_path", lambda _: directory)
-    waits = Mock()
-    monkeypatch.setattr(report, "sleep", waits)
     calls, statuses = [], []
 
     class Response:
@@ -57,7 +55,7 @@ def transport(tmp_path, monkeypatch, income_db):
 
     monkeypatch.setattr(report.requests, "Session", Session)
     return SimpleNamespace(
-        calls=calls, statuses=statuses, waits=waits, worker=worker, directory=directory
+        calls=calls, statuses=statuses, worker=worker, directory=directory
     )
 
 
@@ -160,7 +158,6 @@ def test_all_old_records_that_fit_share_one_request_and_preserve_dates(transport
     assert drops[-1]["dropTime"] == 1759400099000
     assert drops[0]["operators"] == ["char_4232_hbound"]
     assert "operators" not in drops[-1]
-    transport.waits.assert_not_called()
     assert report.start_recycling_reports()
     resume(transport)
     assert len(transport.calls) == 1
@@ -175,7 +172,70 @@ def test_batches_combine_old_and_new_records_without_success_delays(transport):
     assert len({(drop["itemId"], drop["dropTime"]) for drop in drops}) == 201
     assert drops[100]["dropTime"] == 1759400000100
     assert drops[101]["dropTime"] == 1759400100000
-    transport.waits.assert_not_called()
+
+
+def test_completion_log_requires_persisted_progress(transport, monkeypatch):
+    for index in range(11):
+        old(str(index), at=1759400000 + index, materials={"装置": 1})
+    messages = []
+
+    def info(message, *args):
+        assert all(progress(str(index))[:2] == ("submitted", 1) for index in range(11))
+        messages.append(message % args)
+
+    monkeypatch.setattr(report.logger, "info", info)
+    resume(transport)
+    resume(transport)
+    assert len(transport.calls) == 1
+    assert len(transport.calls[0][1]["json"]["drops"]) == 11
+    assert messages == ["回收站材料上报完成：11 份材料，11 条收取记录"]
+
+
+@pytest.mark.parametrize("ignored", [True, False], ids=["ignored", "reverted"])
+def test_unpersisted_progress_cannot_repeat_the_request(
+    transport, monkeypatch, ignored
+):
+    old(materials={"装置": 1})
+    with record._conn() as connection:
+        if ignored:
+            connection.execute(
+                "CREATE TRIGGER ignore_report_progress BEFORE UPDATE "
+                "ON recycling_report_progress WHEN NEW.status = 'submitted' "
+                "BEGIN SELECT RAISE(IGNORE); END"
+            )
+        else:
+            connection.execute(
+                "CREATE TRIGGER revert_report_progress AFTER UPDATE "
+                "ON recycling_report_progress WHEN NEW.status = 'submitted' "
+                "BEGIN UPDATE recycling_report_progress "
+                "SET next_unit = OLD.next_unit, status = OLD.status "
+                "WHERE event_id = OLD.event_id; END"
+            )
+        connection.commit()
+    info = Mock()
+    exception = Mock()
+    monkeypatch.setattr(report.logger, "info", info)
+    monkeypatch.setattr(report.logger, "exception", exception)
+    submit = report._submit
+
+    def submit_while_woken(*args):
+        submit(*args)
+        report._dirty = True
+
+    monkeypatch.setattr(report, "_submit", submit_while_woken)
+    # Bound the broken implementation without making a second real HTTP request.
+    transport.statuses[:] = [(200, b""), SystemExit("repeated submission")]
+    resume(transport)
+    assert len(transport.calls) == 1
+    assert progress("old")[:2] == ("failed", 0)
+    info.assert_not_called()
+    exception.assert_called_once()
+    transport.worker.assert_called_once()
+    assert not report._running
+    assert not report._dirty
+    resume(transport)
+    assert len(transport.calls) == 1
+    assert progress("old")[:2] == ("failed", 0)
 
 
 def test_backfill_does_not_move_old_dates_past_previously_submitted_new_records(
@@ -186,6 +246,49 @@ def test_backfill_does_not_move_old_dates_past_previously_submitted_new_records(
     old(at=1759400000, materials={"装置": 1})
     resume(transport)
     assert transport.calls[1][1]["json"]["drops"][0]["dropTime"] == 1759400000000
+
+
+@pytest.mark.parametrize("ignored", [True, False], ids=["ignored", "reverted"])
+def test_unpersisted_failure_state_stops_without_repeating_http(
+    transport, monkeypatch, ignored
+):
+    old(materials={"装置": 1})
+    with record._conn() as connection:
+        if ignored:
+            connection.execute(
+                "CREATE TRIGGER ignore_report_failure BEFORE UPDATE "
+                "ON recycling_report_progress WHEN NEW.status = 'failed' "
+                "BEGIN SELECT RAISE(IGNORE); END"
+            )
+        else:
+            connection.execute(
+                "CREATE TRIGGER revert_report_failure AFTER UPDATE "
+                "ON recycling_report_progress WHEN NEW.status = 'failed' "
+                "BEGIN UPDATE recycling_report_progress SET status = OLD.status "
+                "WHERE event_id = OLD.event_id; END"
+            )
+        connection.commit()
+    submit = report._submit
+
+    def submit_while_woken(*args):
+        try:
+            submit(*args)
+        finally:
+            report._dirty = True
+
+    monkeypatch.setattr(report, "_submit", submit_while_woken)
+    exception = Mock()
+    monkeypatch.setattr(report.logger, "exception", exception)
+    transport.statuses[:] = [requests.Timeout(), SystemExit("repeated submission")]
+    resume(transport)
+    assert len(transport.calls) == 1
+    assert progress("old")[:2] == ("pending", 0)
+    exception.assert_called_once_with(
+        "回收站上报处理失败，已保存的记录和发送进度保持不变"
+    )
+    transport.worker.assert_called_once()
+    assert not report._running
+    assert not report._dirty
 
 
 def test_overlapping_collection_timestamps_are_allocated_once(transport):
@@ -219,41 +322,57 @@ def test_progress_survives_interruption_between_batches(transport):
     assert progress("old")[:2] == ("submitted", 201)
 
 
-def test_failed_requests_retry_with_identical_details_and_wait_only_after_failure(
-    transport,
-):
+@pytest.mark.parametrize(
+    "failure", [requests.ConnectionError(), requests.Timeout(), (503, b"")]
+)
+def test_failed_requests_only_retry_after_user_action(transport, failure):
     old(materials={"装置": 1})
-    transport.statuses[:] = [requests.ConnectionError(), (503, b""), (200, b"")]
+    transport.statuses[:] = [failure]
     resume(transport)
+    assert len(transport.calls) == 1
+    assert progress("old")[:2] == ("failed", 0)
+    save("new", at=1759400010)
+    report._drain(transport.directory)
+    resume(transport)
+    assert len(transport.calls) == 2
+    assert progress("old")[:2] == ("failed", 0)
+    assert progress("new")[:2] == ("submitted", 1)
+    assert report.retry_recycling_report("old")
+    report._drain(transport.directory)
     assert len(transport.calls) == 3
-    assert transport.calls[0][1] == transport.calls[1][1] == transport.calls[2][1]
-    assert [call.args[0] for call in transport.waits.call_args_list] == [5, 30]
+    assert transport.calls[0][1] == transport.calls[2][1]
     assert progress("old")[:2] == ("submitted", 1)
 
 
-def test_exhausted_batch_preserves_progress_while_other_records_continue(transport):
+def test_failed_batch_preserves_progress_while_other_records_continue(transport):
     old("first", materials={"装置": 100})
     old("second", at=1759400010, materials={"固源岩": 1})
-    transport.statuses[:] = [requests.Timeout(), requests.Timeout(), requests.Timeout()]
+    transport.statuses[:] = [requests.Timeout()]
     resume(transport)
-    assert len(transport.calls) == 4
+    assert len(transport.calls) == 2
     assert progress("first")[:2] == ("failed", 0)
     assert progress("second")[:2] == ("submitted", 1)
     report._drain(transport.directory)
-    assert len(transport.calls) == 4
+    assert len(transport.calls) == 2
     resume(transport)
-    assert len(transport.calls) == 5
+    assert len(transport.calls) == 2
+    assert report.retry_recycling_report("first")
+    report._drain(transport.directory)
+    assert len(transport.calls) == 3
     assert transport.calls[0][1] == transport.calls[-1][1]
 
 
 @pytest.mark.parametrize("response", [(200, b'{"code":500}'), (302, b""), (400, b"")])
-def test_unexpected_responses_keep_the_cursor_for_the_next_start(transport, response):
+def test_unexpected_responses_keep_the_cursor_for_manual_retry(transport, response):
     old(materials={"装置": 1})
     transport.statuses.append(response)
     resume(transport)
     assert progress("old")[:2] == ("failed", 0)
-    transport.waits.assert_not_called()
     resume(transport)
+    assert len(transport.calls) == 1
+    assert progress("old")[:2] == ("failed", 0)
+    assert report.retry_recycling_report("old")
+    report._drain(transport.directory)
     assert progress("old")[:2] == ("submitted", 1)
 
 
@@ -284,7 +403,9 @@ def test_unknown_materials_do_not_block_other_history_or_split_a_fitting_batch(
     assert len(transport.calls[0][1]["json"]["drops"]) == 100
 
 
-def test_unmapped_items_remain_pending_for_a_resource_change(transport, monkeypatch):
+def test_unmapped_items_need_manual_retry_after_a_resource_change(
+    transport, monkeypatch
+):
     old("future", materials={"新材料": 1})
     old("known", at=1759400010, materials={"装置": 1})
     resume(transport)
@@ -292,6 +413,10 @@ def test_unmapped_items_remain_pending_for_a_resource_change(transport, monkeypa
     assert progress("known")[:2] == ("submitted", 1)
     monkeypatch.setitem(report.key_mapping, "新材料", ["future_item"])
     resume(transport)
+    assert len(transport.calls) == 1
+    assert progress("future")[:2] == ("failed", 0)
+    assert report.retry_recycling_report("future")
+    report._drain(transport.directory)
     assert transport.calls[-1][1]["json"]["drops"][0]["itemId"] == "future_item"
 
 
@@ -553,8 +678,21 @@ def test_manual_retry_resumes_only_failed_units_and_does_not_admit_duplicate_cli
     )
     transport.worker.assert_called_once()
     assert len(transport.calls) == 2
+    transport.statuses[:] = [requests.Timeout()]
+    report._drain(transport.directory)
+    assert len(transport.calls) == 3
+    assert progress("old/collection") == ("failed", 100, base_ms)
+    resume(transport)
+    assert len(transport.calls) == 3
+    assert (
+        client.post(
+            "/report/recycling_history/old%2Fcollection/retry", headers=headers
+        ).status_code
+        == 202
+    )
     report._drain(transport.directory)
     assert [len(call[1]["json"]["drops"]) for call in transport.calls] == [
+        100,
         100,
         100,
         100,
@@ -579,7 +717,97 @@ def test_manual_retry_resumes_only_failed_units_and_does_not_admit_duplicate_cli
         ).status_code
         == 404
     )
-    assert len(transport.calls) == 4
+    assert len(transport.calls) == 5
+
+
+@pytest.mark.parametrize("retry_timing", ["before", "after", "between_batches"])
+@pytest.mark.parametrize("retry_fails", [False, True])
+def test_manual_retry_survives_other_batches_progress_failure(
+    transport, monkeypatch, retry_fails, retry_timing
+):
+    from threading import Event, Thread
+
+    import server
+
+    between_batches = retry_timing == "between_batches"
+    old(materials={"装置": 201 if between_batches else 1})
+    old("other", at=1759400010, materials={"固源岩": 1})
+    with record._conn() as connection:
+        connection.execute(
+            "INSERT INTO recycling_report_progress (event_id, status) "
+            "VALUES ('other', 'failed')"
+        )
+        connection.execute(
+            "CREATE TRIGGER ignore_report_progress BEFORE UPDATE "
+            "ON recycling_report_progress WHEN NEW.event_id = 'old' "
+            + (
+                "AND NEW.next_unit = 200 "
+                if between_batches
+                else "AND NEW.status = 'submitted' "
+            )
+            + "BEGIN SELECT RAISE(IGNORE); END"
+        )
+        connection.commit()
+    paused, release = Event(), Event()
+    threads = []
+    submit = report._submit
+
+    def worker(**kwargs):
+        thread = Thread(**kwargs)
+        threads.append(thread)
+        return thread
+
+    def pause():
+        if not paused.is_set():
+            paused.set()
+            assert release.wait(3)
+
+    def submit_then_pause(*args):
+        submit(*args)
+        if retry_timing != "after":
+            pause()
+
+    def pause_after_failed_commit(*args):
+        if retry_timing == "after":
+            pause()
+
+    monkeypatch.setattr(report, "Thread", worker)
+    monkeypatch.setattr(report, "_submit", submit_then_pause)
+    monkeypatch.setattr(report.logger, "exception", pause_after_failed_commit)
+    monkeypatch.setattr(server.app, "token", "recycling-test", raising=False)
+    client = server.app.test_client()
+    headers = {"token": "recycling-test"}
+    if retry_fails:
+        transport.statuses[:] = [(200, b"")] * (2 if between_batches else 1)
+        transport.statuses.append(requests.Timeout())
+    retry_id = "old" if retry_timing == "after" else "other"
+    untouched_id = "other" if retry_timing == "after" else "old"
+    retry_url = f"/report/recycling_history/{retry_id}/retry"
+    try:
+        assert report.start_recycling_reports()
+        assert paused.wait(3)
+        assert progress(retry_id)[:2] == ("failed", 0)
+        if retry_timing == "after":
+            with record._conn() as connection:
+                connection.execute("DROP TRIGGER ignore_report_progress")
+                connection.commit()
+        response = client.post(retry_url, headers=headers)
+        assert response.status_code == 202
+        assert client.post(retry_url, headers=headers).status_code == 409
+    finally:
+        release.set()
+        for thread in threads:
+            thread.join(5)
+            assert not thread.is_alive()
+    assert [len(call[1]["json"]["drops"]) for call in transport.calls] == (
+        [100, 100, 1] if between_batches else [1, 1]
+    )
+    assert progress(retry_id)[:2] == (
+        ("failed", 0) if retry_fails else ("submitted", 1)
+    )
+    assert progress(untouched_id)[:2] == ("failed", 100 if between_batches else 0)
+    assert len(threads) == 1
+    assert not report._running
 
 
 @pytest.mark.parametrize("status", ["waiting", "pending", "submitted", "skipped"])
