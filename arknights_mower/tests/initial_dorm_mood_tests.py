@@ -385,6 +385,7 @@ def test_real_primary_planning_observes_cards_before_candidate_selection(
     [
         "measured",
         "estimated",
+        "limited",
         "unregistered",
         "unknown",
         "full",
@@ -412,10 +413,13 @@ def test_cached_recovery_candidate_avoids_physical_scan(solver, monkeypatch, cac
             24 if cache == "full" else 6,
             now - timedelta(hours=1) if cache == "expired" else now,
         )
+    if cache == "limited":
+        data.config.operator_mood_limits["红"] = {"lower": 0, "upper": 20}
+        op.upper_limit = 20
     before = copy.deepcopy(data.dorm_mood_estimates)
     assert solver._plan_primary_recovery()
     solver.resting.assert_called_once_with()
-    if cache in ("measured", "estimated", "unregistered"):
+    if cache in ("measured", "estimated", "limited", "unregistered"):
         solver.enter_room.assert_not_called()
         assert data.dorm_mood_estimates == before
         assert not getattr(solver, "_card_moods_scanned_this_run", False)
@@ -429,7 +433,7 @@ def test_cached_recovery_candidate_avoids_physical_scan(solver, monkeypatch, cac
 
 @pytest.mark.parametrize(
     "unavailable",
-    ["working", "reserved", "blacklisted", "training", "busy", "limit", "checked"],
+    ["working", "reserved", "blacklisted", "training", "busy", "at_limit", "checked"],
 )
 def test_ineligible_low_cache_does_not_suppress_scan(solver, monkeypatch, unavailable):
     data = solver.op_data
@@ -453,9 +457,9 @@ def test_ineligible_low_cache_does_not_suppress_scan(solver, monkeypatch, unavai
         monkeypatch.setattr(
             "arknights_mower.utils.dorm_candidates.busy_resting_names", lambda: {"红"}
         )
-    elif unavailable == "limit":
-        data.config.operator_mood_limits["红"] = {"lower": 0, "upper": 20}
-        op.upper_limit = 20
+    elif unavailable == "at_limit":
+        data.config.operator_mood_limits["红"] = {"lower": 0, "upper": 6}
+        op.upper_limit = 6
     else:
         op.mood, op.time_stamp = 6, datetime.now()
         op.idle_rest_check = (24, op.mood, op.time_stamp)

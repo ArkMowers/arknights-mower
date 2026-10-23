@@ -2955,8 +2955,8 @@ class Operators:
         ordered_names = sorted(
             names,
             key=lambda name: (
-                is_full_dynamic_candidate(self, name),
                 name in optional,
+                is_full_dynamic_candidate(self, name),
                 resting_key(self, name),
             ),
         )

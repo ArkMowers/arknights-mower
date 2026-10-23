@@ -13,6 +13,7 @@ from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E
 from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.config.plan import PlanModel  # noqa: E402
 from arknights_mower.utils.log import logger  # noqa: E402
+from arknights_mower.utils.news_checker import NewsChecker  # noqa: E402
 from arknights_mower.utils.operators import Operator, build_global_plan  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.resting_priority import (  # noqa: E402
@@ -60,6 +61,7 @@ def apply_plan(solver, plan):
 @pytest.fixture
 def solver(monkeypatch):
     monkeypatch.setattr(logger, "disabled", True)
+    monkeypatch.setattr(NewsChecker, "get_maintenance", lambda: None)
     monkeypatch.setattr(config, "conf", config.Conf())
     monkeypatch.setattr(config, "save_conf", lambda: None)
     monkeypatch.setattr(base_schedule, "_is_mastery_busy", lambda name: False)
@@ -681,17 +683,35 @@ def test_candidate_uses_standby_tier_only_below_cap_through_readback_and_return(
         assert data._can_standby(candidate)
 
 
-def test_full_required_member_follows_recovering_optional_standby(solver):
+@pytest.mark.parametrize("available_beds", [2, 3])
+def test_full_required_member_keeps_bed_before_optional_standby(solver, available_beds):
     data = solver.op_data
     full = data.operators[DEEP[2]]
     data.config.resting_standby.remove(full.name)
     full.resting_priority = "high"
     full.mood = full.upper_limit
-    rooms = data.assign_dorm_group(DEEP[:3])
-    assert rooms is not None
-    assert [bed.name for bed in rooms] == DEEP[:3]
-    assert rooms[1].name == DEEP[1]
-    assert rooms[2].name == full.name
+    occupy_beds(solver, "high")
+    vacancies = {}
+    for bed in data.dorm[1:available_beds]:
+        room, index = bed.position
+        vacancies.setdefault(room, ["Current"] * 5)[index] = "Free"
+    apply_plan(solver, vacancies)
+    protected = [
+        (bed.position, bed.name, bed.time) for bed in data.dorm[available_beds:]
+    ]
+
+    plan, replacements = {}, []
+    assert solver.get_resting_plan(data.groups["深海"], replacements, plan, 0)
+
+    admitted = {bed.name for bed in data.dorm[:available_beds]}
+    required = {DEEP[0], full.name}
+    assert required <= admitted
+    assert len(admitted & (set(DEEP) - required)) == available_beds - 2
+    assert set(replacements) == set(COVERS)
+    assert {name for row in plan.values() for name in row} == set(COVERS)
+    assert [
+        (bed.position, bed.name, bed.time) for bed in data.dorm[available_beds:]
+    ] == protected
 
 
 def test_low_mood_candidate_can_wait_without_bed(solver):
