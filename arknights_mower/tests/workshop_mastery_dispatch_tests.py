@@ -202,6 +202,15 @@ def test_disabled_mastery_keeps_confirmed_output_without_dispatch(crafting):
     assert upgrades(crafting) == []
 
 
+def test_confirmed_output_does_not_dispatch_during_existing_training(crafting):
+    mastery_db.update_plan_status(crafting.plan_id, "training")
+    before = mastery_db.get_plan_by_id(crafting.plan_id)
+    crafting.run()
+    assert record.get_inventory_counts()["技巧概要·卷3"] == 2
+    assert upgrades(crafting) == []
+    assert mastery_db.get_plan_by_id(crafting.plan_id) == before
+
+
 def test_unconfirmed_batch_never_dispatches_or_retains_predicted_output(crafting):
     assert crafting.run(confirmed=False) is False
     assert "技巧概要·卷3" not in record.get_inventory_counts()

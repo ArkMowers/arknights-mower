@@ -2773,8 +2773,8 @@ class TestCollectFlow(unittest.TestCase):
 
 
 class TestReconcileAfterCollect(unittest.TestCase):
-    def test_meets_target_completes_no_cascade(self):
-        # #74 第2段：收取到目标 → completed，但不再级联开始下一个计划（等扫描）
+    def test_meets_target_completes_before_selecting_next_plan(self):
+        # 状态结算只完成当前计划；普通后续计划在收取确认后派发。
         panel = make_panel(mastery_tier=3)
         plan = make_plan(target_level=3)
         with (
@@ -2784,7 +2784,7 @@ class TestReconcileAfterCollect(unittest.TestCase):
             result = reader._reconcile_after_collect(MagicMock(), plan, panel)
         upd.assert_called_once_with(1, "completed")
         g.assert_not_called()
-        self.assertIsNone(result, "收取到目标后不再级联开始下一个计划")
+        self.assertIsNone(result, "普通后续计划在收取确认后派发")
 
     def test_below_target_continues_same_plan(self):
         panel = make_panel(mastery_tier=2)

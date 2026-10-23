@@ -2021,11 +2021,14 @@ def _reconcile_after_collect(solver, plan, panel: RoomPanel):
 
 
 def _collect_plan(solver, plan, room: RoomState):
-    """命中计划依次收取、结算状态、点勾确认，返回可继续的计划。"""
+    """收取、结算并确认，返回续训计划或派发下一就绪技能。"""
     room.collected = True  # #210：收集后房间物理变空闲（面板全空），gate 据此免重读
     collect_flow(solver, plan, room.panel)
     result = _reconcile_after_collect(solver, plan, room.panel)
     _tap_collect_confirm(solver)
+    solver.train_room_state = room
+    if result is None:
+        _dispatch_after_collect(solver)
     return result
 
 
@@ -2043,6 +2046,27 @@ def _collect_silent(solver, room: RoomState, suppress_help=False):
         _notify_help_collect(solver, room)
     collect_flow(solver, None, room.panel)
     _tap_collect_confirm(solver)
+    solver.train_room_state = room
+    _dispatch_after_collect(solver)
+
+
+def _dispatch_after_collect(solver):
+    """收取确认后，用当前库存为下一个就绪技能派发一条开始任务。"""
+    if not config.conf.enable_mastery:
+        return
+    from arknights_mower.utils.mastery_recommendation import auto_schedule_mastery_tasks
+
+    try:
+        ready = auto_schedule_mastery_tasks().get("scheduled", [])
+        if ready:
+            solver._dispatch_scan_start_tasks(ready)
+    except (MowerExit, DeviceRecoveryError):
+        raise
+    except Exception as exc:
+        logger.exception(
+            f"专精收取已完成，后续技能派发失败：{exc}",
+            extra={"archive_screenshots": False},
+        )
 
 
 def _next_idle_to_start(solver):
