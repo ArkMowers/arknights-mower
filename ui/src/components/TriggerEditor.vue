@@ -56,8 +56,12 @@ watch(
   { deep: true }
 )
 
+function create_argument() {
+  return { id: next_argument_id++, value: '' }
+}
+
 function add_argument() {
-  args.value.push({ id: next_argument_id++, value: '' })
+  args.value.push(create_argument())
 }
 
 function update_function(name) {
@@ -108,54 +112,68 @@ const operator_tips = [
             />
           </td>
         </tr>
-        <tr v-for="(arg, index) in args" :key="arg.id">
-          <th>
-            <div class="label">
-              <span class="argument-label">第 {{ index + 1 }} 项</span>
-              <n-select
-                :value="expression_type(arg.value)"
-                :aria-label="`第 ${index + 1} 项类型`"
-                :options="le_options"
-                :consistent-menu-width="false"
-                @update:value="(type) => (arg.value = new_expression(type))"
-              />
-            </div>
-          </th>
-          <td>
-            <div class="argument">
-              <div class="argument-value">
-                <trigger-editor
-                  v-if="typeof arg.value === 'object'"
-                  :data="arg.value"
-                  :key="expression_type(arg.value)"
-                  @update="(value) => (arg.value = value)"
-                />
-                <trigger-string v-else :data="arg.value" @update="(value) => (arg.value = value)" />
-              </div>
-              <n-button
-                v-if="function_name !== 'abs'"
-                quaternary
-                size="small"
-                :disabled="args.length <= minimum_arguments(function_name)"
-                :aria-label="`删除第 ${index + 1} 项`"
-                @click="args.splice(index, 1)"
-                >−</n-button
-              >
-            </div>
+        <tr>
+          <td colspan="2">
+            <n-dynamic-input
+              v-model:value="args"
+              key-field="id"
+              :min="minimum_arguments(function_name)"
+              :max="function_name === 'abs' ? 1 : undefined"
+              :on-create="create_argument"
+            >
+              <template #default="{ value: arg, index }">
+                <n-flex align="center" :wrap="false" :size="6" class="argument-row">
+                  <n-flex align="center" :wrap="false" :size="6" class="argument-label">
+                    <span>第 {{ index + 1 }} 项</span>
+                    <n-select
+                      :value="expression_type(arg.value)"
+                      :aria-label="`第 ${index + 1} 项类型`"
+                      :options="le_options"
+                      :consistent-menu-width="false"
+                      @update:value="(type) => (arg.value = new_expression(type))"
+                    />
+                  </n-flex>
+                  <n-flex align="center" :wrap="false" :size="6" class="argument-value">
+                    <trigger-editor
+                      v-if="typeof arg.value === 'object'"
+                      :data="arg.value"
+                      :key="expression_type(arg.value)"
+                      @update="(value) => (arg.value = value)"
+                    />
+                    <trigger-string
+                      v-else
+                      :data="arg.value"
+                      @update="(value) => (arg.value = value)"
+                    />
+                  </n-flex>
+                </n-flex>
+              </template>
+              <template #action="{ index, remove }">
+                <n-button
+                  v-if="function_name !== 'abs'"
+                  circle
+                  size="small"
+                  :disabled="args.length <= minimum_arguments(function_name)"
+                  :aria-label="`删除第 ${index + 1} 项`"
+                  @click="remove(index)"
+                  >−</n-button
+                >
+              </template>
+            </n-dynamic-input>
           </td>
         </tr>
         <tr v-if="function_name !== 'abs'">
           <td colspan="2">
-            <n-button block quaternary aria-label="新增项" @click="add_argument">+</n-button>
+            <n-button block dashed aria-label="新增项" @click="add_argument">+</n-button>
           </td>
         </tr>
       </template>
       <tr v-else-if="maintenance_hours !== null">
         <th>定时条件</th>
         <td>
-          <div class="label">
+          <n-flex class="label" align="center" :wrap="false" :size="6">
             <trigger-string :data="left" @update="update_left" />
-            <n-input-number
+            <mower-input-number
               :value="maintenance_hours"
               :min="0"
               :step="0.5"
@@ -164,13 +182,13 @@ const operator_tips = [
               @update:value="update_maintenance_hours"
             />
             <span style="white-space: nowrap">小时内生效</span>
-          </div>
+          </n-flex>
         </td>
       </tr>
       <template v-else>
         <tr>
           <th>
-            <div class="label">
+            <n-flex class="label" align="center" :wrap="false" :size="6">
               左
               <n-select
                 :value="expression_type(left)"
@@ -183,7 +201,7 @@ const operator_tips = [
                 :options="le_options"
                 :consistent-menu-width="false"
               />
-            </div>
+            </n-flex>
           </th>
           <td>
             <trigger-editor
@@ -192,9 +210,9 @@ const operator_tips = [
               :key="expression_type(left)"
               @update="(d) => (left = d)"
             />
-            <div class="label" v-else>
+            <n-flex class="label" v-else align="center" :wrap="false" :size="6">
               <trigger-string :data="left" @update="update_left" />
-            </div>
+            </n-flex>
           </td>
         </tr>
         <tr>
@@ -211,7 +229,7 @@ const operator_tips = [
         </tr>
         <tr>
           <th>
-            <div class="label">
+            <n-flex class="label" align="center" :wrap="false" :size="6">
               右
               <n-select
                 :value="expression_type(right)"
@@ -224,7 +242,7 @@ const operator_tips = [
                 :options="le_options"
                 :consistent-menu-width="false"
               />
-            </div>
+            </n-flex>
           </th>
           <td>
             <trigger-editor
@@ -233,9 +251,9 @@ const operator_tips = [
               :data="right"
               @update="(d) => (right = d)"
             />
-            <div class="label" v-else>
+            <n-flex class="label" v-else align="center" :wrap="false" :size="6">
               <trigger-string :data="right" @update="update_right" />
-            </div>
+            </n-flex>
           </td>
         </tr>
       </template>
@@ -259,23 +277,8 @@ const operator_tips = [
   }
 }
 
-.label {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
-}
-
-.argument {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
+.argument-row,
 .argument-value {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   flex: 1;
   min-width: 0;
 }
@@ -287,6 +290,8 @@ td > .label > *,
 }
 
 .argument-label {
+  width: 164px;
+  flex-shrink: 0;
   white-space: nowrap;
 }
 </style>

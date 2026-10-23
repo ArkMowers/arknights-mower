@@ -18,9 +18,10 @@ vi.mock('./TriggerString.vue', () => ({
         })
   }
 }))
-vi.mock('naive-ui', async () => {
+vi.mock('naive-ui', async (importOriginal) => {
   const { h } = await import('vue')
   return {
+    ...(await importOriginal()),
     NTable: {
       setup:
         (_, { slots }) =>
