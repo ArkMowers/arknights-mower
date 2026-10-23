@@ -3886,8 +3886,10 @@ class BaseSchedulerSolver(
         key = f"{support}:{train_slot}"
         if should_notify("protected", key):
             msg = (
-                f"训练室受保护（协助位 {support}），排班纠错已跳过该训练室，"
-                "mower 不调整该房间"
+                f"训练室受保护（协助位 {support}，训练位 {train_slot}），"
+                "为保留当前训练位干员的专精减半效果，排班纠错已跳过该训练室。"
+                "如需更换训练位干员，请先确认放弃减半效果，再手动清空训练室协助位的减半干员；"
+                "mower 下次进入训练室确认保护解除后恢复换人。"
             )
             send_message(msg, level="WARNING")
 
@@ -15105,11 +15107,16 @@ class BaseSchedulerSolver(
 
         候选由 auto_schedule_mastery_tasks 核算，计划按 priority、id 选择。
         已有安排中、训练中、待收取的计划或已观测的占用均阻止新开始任务；
-        重复触发保留已排任务及时间。材料等待计划仍优先于其他待执行计划。
+        跳过已观测保护不允许的干员，重复触发保留已排任务及时间。
+        材料等待计划仍优先于其他待执行计划。
         """
         if not scheduled or not config.conf.enable_mastery:
             return
-        from arknights_mower.solvers.mastery_reader import _schedule_scan_start
+        from arknights_mower.solvers.mastery_reader import (
+            _notify_protected,
+            _protected_trainee_matches,
+            _schedule_scan_start,
+        )
         from arknights_mower.utils.mastery_db import (
             get_all_plans,
             get_material_waiting_plan,
@@ -15142,12 +15149,20 @@ class BaseSchedulerSolver(
         waiting = get_material_waiting_plan(plans)
         if waiting is not None:
             plans = [waiting]
+        protection_notified = False
         for plan in plans:
             if plan["status"] != "idle":
                 continue
             key = (plan["char_id"], plan["skill_index"])
             entry = confirmed.get(key)
             if entry is None:
+                continue
+            if getattr(
+                room, "protected", False
+            ) is True and not _protected_trainee_matches(plan, room):
+                if not protection_notified:
+                    _notify_protected(self, room)
+                    protection_notified = True
                 continue
             step_level = entry.get("current_level", 0) + 1
             _schedule_scan_start(self, plan, step_level=step_level)

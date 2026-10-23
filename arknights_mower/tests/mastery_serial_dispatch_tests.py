@@ -273,3 +273,155 @@ def test_no_start_after_collection_when_automation_is_disabled(serial):
     config.conf.enable_mastery = False
     mastery_reader._collect_silent(serial.solver, serial.room)
     assert serial.solver.tasks == []
+
+
+def test_protected_rejection_observation_releases_next_eligible_candidate(
+    serial, monkeypatch
+):
+    room = mastery_reader.RoomState(
+        state="empty",
+        support_slot="逻各斯",
+        train_slot="下一干员",
+        protected=True,
+        slots_reliable=True,
+    )
+    monkeypatch.setattr(mastery_reader, "read_room_state", lambda *_a, **_k: room)
+    monkeypatch.setattr("arknights_mower.utils.email.send_message", MagicMock())
+    start = MagicMock()
+    monkeypatch.setattr(mastery, "_start_new_training", start)
+    before = mastery_db.get_all_plans()
+    # 首次没有观测时选择 A，实读保护后拒绝；后续扫描应允许 B 推进。
+    dispatch(serial)
+    rejected = serial.solver.tasks.pop()
+    assert rejected.plan_key == str(serial.ids[0])
+    serial.solver.task = rejected
+    mastery.run_mastery_task(serial.solver)
+    start.assert_not_called()
+    independent = SchedulerTask(task_type=TaskTypes.NOT_SPECIFIC)
+    serial.solver.tasks = [independent]
+    serial.solver.task = None
+    for _ in range(3):
+        dispatch(serial)
+    assert serial.solver.tasks[0] is independent
+    assert len(serial.solver.tasks) == 2
+    allowed = serial.solver.tasks[1]
+    assert allowed.plan_key == str(serial.ids[1])
+    deadline = allowed.time
+    dispatch(serial)
+    assert serial.solver.tasks[1] is allowed
+    assert allowed.time == deadline
+    serial.solver.task = allowed
+    mastery.run_mastery_task(serial.solver)
+    start.assert_called_once()
+    assert start.call_args.args[1]["id"] == serial.ids[1]
+    assert room.protected
+    assert mastery_db.get_all_plans() == before
+
+
+@pytest.mark.parametrize(
+    "reliable,read_failed", [(True, False), (False, False), (True, True)]
+)
+def test_protection_preserves_blocked_plans_until_new_observation(
+    serial, monkeypatch, reliable, read_failed
+):
+    room = mastery_reader.RoomState(
+        state="empty",
+        support_slot="艾丽妮",
+        train_slot="计划外干员",
+        protected=True,
+        slots_reliable=reliable,
+        read_failed=read_failed,
+    )
+    serial.solver.train_room_state = room
+    notify = MagicMock()
+    monkeypatch.setattr("arknights_mower.utils.email.send_message", notify)
+    before = mastery_db.get_all_plans()
+    for _ in range(3):
+        dispatch(serial)
+    assert serial.solver.tasks == []
+    assert mastery_db.get_all_plans() == before
+    notify.assert_called_once()
+    message = notify.call_args.args[0]
+    assert "艾丽妮" in message and "计划外干员" in message
+    assert "确认放弃" in message and "手动清空" in message and "协助位" in message
+    serial.solver.train_room_state = mastery_reader.RoomState(
+        state="empty", slots_reliable=True
+    )
+    dispatch(serial)
+    assert [task.plan_key for task in serial.solver.tasks] == [str(serial.ids[0])]
+    assert mastery_db.get_all_plans() == before
+
+
+def test_protected_material_wait_keeps_boundary_instead_of_skipping_to_same_trainee(
+    serial, monkeypatch
+):
+    mastery_db.update_plan_status(
+        serial.ids[0],
+        "idle",
+        failed_reason="材料不足",
+        expires_at="2026-10-23 12:00:00",
+    )
+    serial.solver.train_room_state = mastery_reader.RoomState(
+        state="empty",
+        support_slot="逻各斯",
+        train_slot="下一干员",
+        protected=True,
+        slots_reliable=True,
+    )
+    monkeypatch.setattr("arknights_mower.utils.email.send_message", MagicMock())
+    before = mastery_db.get_all_plans()
+    for _ in range(3):
+        dispatch(serial)
+    assert serial.solver.tasks == []
+    assert mastery_db.get_all_plans() == before
+
+
+@pytest.mark.parametrize("tiers", [[0, 0, 0], [3, 3, 3], [0, 3, 0]])
+def test_observed_no_partial_mastery_allows_replacing_trainee(
+    serial, monkeypatch, tiers
+):
+    solver = serial.solver
+    room = mastery_reader.RoomState(
+        state="empty",
+        support_slot="逻各斯",
+        train_slot="计划外干员",
+        slots_reliable=True,
+    )
+    solver.train_scene.return_value = mastery_reader.Scene.TRAIN_SKILL_SELECT
+    monkeypatch.setattr(
+        mastery_reader, "_read_slot_mastery_tier", MagicMock(side_effect=tiers)
+    )
+    monkeypatch.setattr(mastery_reader, "_back_to_train_main", MagicMock())
+    room.protected = mastery_reader._compute_protected(solver, room)
+    assert not room.protected
+    solver.train_room_state = room
+    dispatch(serial)
+    assert [task.plan_key for task in solver.tasks] == [str(serial.ids[0])]
+    solver.task = solver.tasks[0]
+    monkeypatch.setattr(mastery_reader, "read_room_state", lambda *_a, **_k: room)
+    start = MagicMock()
+    monkeypatch.setattr(mastery, "_start_new_training", start)
+    mastery.run_mastery_task(solver)
+    start.assert_called_once()
+    assert start.call_args.args[1]["id"] == serial.ids[0]
+
+
+def test_correction_notification_explains_manual_release_and_shares_throttle(
+    serial, monkeypatch
+):
+    solver = serial.solver
+    solver.op_data = MagicMock()
+    solver.op_data.get_current_room.return_value = ["逻各斯", "下一干员"]
+    notify = MagicMock()
+    monkeypatch.setattr("arknights_mower.utils.email.send_message", notify)
+    for _ in range(3):
+        solver._notify_train_correction_skipped()
+    room = mastery_reader.RoomState(
+        state="empty", support_slot="逻各斯", train_slot="下一干员", protected=True
+    )
+    mastery_reader._notify_protected(solver, room)
+    notify.assert_called_once()
+    message = notify.call_args.args[0]
+    assert "逻各斯" in message and "下一干员" in message
+    assert "确认放弃减半效果" in message and "手动清空训练室协助位" in message
+    assert "下次进入训练室" in message

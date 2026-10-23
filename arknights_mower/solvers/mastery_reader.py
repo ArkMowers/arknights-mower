@@ -1827,8 +1827,11 @@ def _notify_protected(solver, room):
     key = f"{room.support_slot}:{room.train_slot}"
     if should_notify("protected", key):
         msg = (
-            f"训练室受保护（协助位 {room.support_slot or '未知'}），"
-            "mower 无法开始新的专精训练，计划保持待执行"
+            f"训练室受保护（协助位 {room.support_slot or '未知'}，"
+            f"训练位 {room.train_slot or room.panel.operator_name or '未知'}），"
+            "为保留当前训练位干员的专精减半效果，mower 不换出该干员，其他干员的计划保持待执行。"
+            "如需更换训练位干员，请先确认放弃减半效果，再手动清空训练室协助位的减半干员；"
+            "mower 下次进入训练室确认保护解除后恢复换人。"
         )
         send_message(msg, level="WARNING")
 
@@ -2101,6 +2104,7 @@ def reconcile_and_act(solver, scan_plan=None):
     if not config.conf.enable_mastery:
         return None, True, None
     room = read_room_state(solver, scan_plan=scan_plan)
+    solver.train_room_state = room
     active = get_active_plan()
     plans = get_reconcile_plans()
     plan, arrange_support = _reconcile(solver, room, active, plans, scan_plan=scan_plan)
