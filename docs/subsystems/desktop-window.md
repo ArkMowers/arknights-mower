@@ -10,7 +10,9 @@ The bridge reports whether the title bar is enabled, whether movement uses the J
 
 Cocoa keeps the system red, yellow and green window buttons, including native hover and zoom/fullscreen behavior. Their native size and spacing are preserved, with the native titlebar container inset from the left and aligned with the content in the shared 36-point title bar; resize and move notifications reapply that placement after AppKit finishes its layout pass. The Vue title bar reserves space on the left and omits duplicate HTML controls when the bridge reports native controls. In that mode, the title bar compensates for page zoom so its height and native-button reservation retain their logical size. GTK and Qt keep neutral minimize, maximize and close glyphs in their custom title bar; Linux desktop themes do not share one traffic-light convention. These HTML controls do not inherit the window manager's theme or configured button order.
 
-Cocoa's native close request opens the same frontend close choice as an HTML close button. Cancelling or deferring that choice keeps the window and normal-size tracking active. A confirmed close or supervisor exit proceeds directly. Native requests received before the page is ready wait until the frontend installs its close listener and confirms readiness. The listener acknowledges each delivered close event synchronously; a missing listener after page reload or a failed dispatch retains the request for the next readiness confirmation or native close request, without polling. Closing the window prevents further delivery.
+Managed instance windows close directly and leave the instance running under the multi-instance manager. They do not offer a separate tray or apply the standalone close preference. The manager remains responsible for reopening the window or stopping the instance.
+
+For standalone windows, Cocoa's native close request opens the same frontend close choice as an HTML close button. Cancelling or deferring that choice keeps the window and normal-size tracking active. A confirmed close or supervisor exit proceeds directly. Native requests received before the page is ready wait until the frontend installs its close listener and confirms readiness. The listener acknowledges each delivered close event synchronously; a missing listener after page reload or a failed dispatch retains the request for the next readiness confirmation or native close request, without polling. Closing the window prevents further delivery.
 
 ## Native input ownership
 
@@ -19,6 +21,8 @@ For Cocoa, GTK and Qt, Vue sends a bounded viewport snapshot containing the drag
 Native handlers use the original input event on the GUI thread. GTK preserves the input device, button, root coordinates and timestamp; Qt requests system movement and resizing; Cocoa hands dragging to NSWindow and retains its native resizable edges. A double click on the title bar toggles maximization. Native input does not also trigger the JavaScript drag or maximize handler.
 
 GUI dispatch has a finite wait. Timed-out pending user operations are cancelled. Closing the window unregisters native handlers; cleanup already queued on an unavailable GUI thread remains eligible to run when that thread resumes. Native state callbacks signal one background publisher rather than evaluating JavaScript synchronously on the GUI thread.
+
+Cocoa releases its input monitor and observers on the native GUI thread before the window closes. After a macOS GUI helper completes normally, its target finalizers and command and logging channels finish cleanup before the helper process exits. A pywebview response still waiting for a destroyed page cannot retain that completed helper process.
 
 ## State and normal window size
 
@@ -57,13 +61,13 @@ A refused or timed-out hit-region update invalidates the frontend's acknowledgem
 From the repository root, run:
 
 ```bash
-python -m pytest arknights_mower/tests/window_state_tests.py arknights_mower/tests/window_frameless_tests.py arknights_mower/tests/window_regions_tests.py arknights_mower/tests/window_backend_tests.py arknights_mower/tests/window_shell_platform_tests.py arknights_mower/tests/cocoa_window_tests.py arknights_mower/tests/linux_window_tests.py arknights_mower/tests/webview_ui_tests.py
+python -m pytest arknights_mower/tests/window_state_tests.py arknights_mower/tests/window_frameless_tests.py arknights_mower/tests/window_regions_tests.py arknights_mower/tests/window_backend_tests.py arknights_mower/tests/window_shell_platform_tests.py arknights_mower/tests/cocoa_window_tests.py arknights_mower/tests/linux_window_tests.py arknights_mower/tests/webview_ui_tests.py arknights_mower/tests/desktop_process_tests.py
 ```
 
 From `ui/`, run:
 
 ```bash
-npm test -- src/window-shell/adapter.test.js src/window-shell/hit-regions.test.js src/components/WindowTitlebar.test.js
+npm test -- src/window-shell/adapter.test.js src/window-shell/hit-regions.test.js src/components/WindowTitlebar.test.js src/App.test.js
 ```
 
 Offline tests exercise bridge calls, native substitutes, state, saved proportions and cleanup. They do not establish real Cocoa, GTK or Qt event delivery. Native acceptance requires dragging, edge and corner resizing, double-click maximization, restoration, mixed display scaling, closing and tray reopening on macOS and Linux X11/Wayland. GTK window-manager cooperation and Qt platform-plugin support remain platform-dependent.

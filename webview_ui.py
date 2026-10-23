@@ -342,6 +342,7 @@ def webview_window(
         return
     windows_native = backend == "winforms"
     shell_enabled = backend in SUPPORTED_BACKENDS
+    managed = os.environ.get("MOWER_MANAGED") == "1"
     theme = config.conf.theme
     ratio = load_window_ratio()
     if ratio:
@@ -429,7 +430,7 @@ def webview_window(
         window_title(instance_name, port),
         window_url,
         text_select=True,
-        confirm_close=not tray,
+        confirm_close=not (tray or managed),
         width=width,
         height=height,
         min_size=min_size,
@@ -443,8 +444,9 @@ def webview_window(
     bridge = attach_window_shell(
         window,
         initial_size=WindowSize(width, height),
-        tray_enabled=tray,
+        tray_enabled=tray and not managed,
         backend=backend,
+        managed=managed,
     )
 
     def on_closing():

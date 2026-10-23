@@ -770,6 +770,7 @@ async function handleWindowControl(action) {
   if (!api?.get_close_preference) return windowShell.close()
   try {
     const pref = await api.get_close_preference()
+    if (pref.managed === true) return windowShell.close()
     const intent = resolveCloseIntent(pref)
     closeTrayAvailable.value = intent.trayAvailable
     closeChoice.value = intent.choice

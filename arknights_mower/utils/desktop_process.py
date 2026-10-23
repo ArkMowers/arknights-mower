@@ -160,6 +160,7 @@ def run_with_parent_watch(target, *args):
 
 
 def run_worker(target, descriptor, log_descriptor=None):
+    """Run one GUI helper and exit after its owned resources are released."""
     channel = Channel(Connection(int(descriptor)))
     log_queue = (
         Channel(Connection(int(log_descriptor), readable=False))
@@ -173,7 +174,17 @@ def run_worker(target, descriptor, log_descriptor=None):
             target(channel, *args)
         else:
             target(channel, *args, log_queue=log_queue)
+    except SystemExit as error:
+        if error.code not in (None, 0):
+            raise
     finally:
         channel.close()
         if log_queue is not None:
             log_queue.close()
+    # Cocoa may leave a pywebview response thread awaiting a destroyed page.
+    # The target's finalizers and pipe cleanup have finished; this process owns
+    # only the GUI helper, so those backend threads must not retain its lifetime.
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None:
+            stream.flush()
+    os._exit(0)

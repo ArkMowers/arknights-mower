@@ -535,6 +535,7 @@ def run_desktop_window(
 
     def start(**kwargs):
         assert kwargs == {"gui": backend if backend in ("gtk", "qt") else None}
+        window.confirm_close = create_window.call_args.kwargs["confirm_close"]
         if loaded_before_shown:
             load_errors = []
 
@@ -864,3 +865,21 @@ def test_native_red_button_keeps_size_tracking_until_close_is_confirmed(
 
     saved = run_desktop_window(monkeypatch, native_factory, "cocoa", "normal", scenario)
     saved.assert_called_once_with(window_shell.WindowRatio(0.6, 0.7))
+
+
+def test_managed_native_close_does_not_open_the_close_choice(
+    monkeypatch, native_factory
+):
+    monkeypatch.setenv("MOWER_MANAGED", "1")
+
+    def scenario(window, adapter, save_mode):
+        assert window.confirm_close is False
+        bridge = window.exposed["close"].__self__
+        preference = window.exposed["get_close_preference"]()
+        assert preference["managed"] is True
+        assert preference["tray_enabled"] is False
+        assert window.events.closing.handlers[0]() is None
+        assert bridge._pending_close.is_set() is False
+        window.events.closed.fire()
+
+    run_desktop_window(monkeypatch, native_factory, "cocoa", "normal", scenario)
