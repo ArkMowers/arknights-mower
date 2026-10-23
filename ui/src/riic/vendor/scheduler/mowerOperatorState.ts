@@ -11,7 +11,7 @@ export interface MowerOperatorOptions {
  dormRecoveryObservation?:[string,number,number,number];dormPositionVersion?:number;dormRecoveryRoom?:string;dormRecoveryIndex?:number;dormRecoveryFixed?:MowerRecoveryManager[];
  /** An unlocked single-target recovery skill, including workers outside fixed manager slots. */
  singleRecoveryManager?:boolean;restingFromTrain?:boolean;idleRestCheck?:[number,number,number|undefined]
- lowerLimit?:number;upperLimit?:number;workaholic?:boolean;exhaustRequire?:boolean;restInFull?:boolean;restMoodLimit?:boolean;customMoodLimit?:boolean;standbyLowPriority?:boolean;workshop?:boolean
+ lowerLimit?:number;upperLimit?:number;workaholic?:boolean;exhaustRequire?:boolean;restInFull?:boolean;restMoodLimit?:boolean;customMoodLimit?:boolean;workshop?:boolean
 }
 export type MowerRecoveryManager=[name:string,index:number,positionVersion:number]
 export class MowerOperatorState {
@@ -27,7 +27,7 @@ export class MowerOperatorState {
  name:string;nativeName:string;room:string;index:number;group:string;replacement:string[];operatorType:'high'|'low';restingPriority:'high'|'low'|'standby'
  dormRecoveryObservation:[string,number,number,number]|undefined;currentRoom!:string;currentIndex!:number;mood:number;dormPositionVersion=0;dormRecoveryRoom='';dormRecoveryIndex=-1;dormRecoveryFixed:MowerRecoveryManager[]=[];singleRecoveryManager=false;restingFromTrain=false;idleRestCheck:[number,number,number|undefined]|undefined;timeStampMicros:number|undefined;depletionRate:number;exhaustTimeMicros:number|undefined
  refreshOrderRooms:[boolean,string[]]=[false,[]]
- lowerLimit:number;upperLimit:number;workaholic:boolean;exhaustRequire:boolean;restInFull:boolean;restMoodLimit:boolean;standbyLowPriority:boolean;workshop:boolean
+ lowerLimit:number;upperLimit:number;workaholic:boolean;exhaustRequire:boolean;restInFull:boolean;restMoodLimit:boolean;workshop:boolean
  constructor(o:MowerOperatorOptions){
   let currentRoom:string|undefined,currentIndex=-1
   this.alpha=o.alpha??false
@@ -40,7 +40,7 @@ export class MowerOperatorState {
    currentRoom:{enumerable:true,get:()=>currentRoom,set:(value:string)=>{if(currentRoom!==value){this.dormPositionVersion++;this.idleRestCheck=undefined;this.clearDormRecovery();currentRoom=value;if(this.alpha){if(value!==this.dormMoodFallback){this.dormMoodFallback='';this.dormMoodPeers={}}if(!value||!value.startsWith('dorm'))this.temporaryDormFill=false;if(value)this.restMoodReleaseLimit=undefined}}}},
    currentIndex:{enumerable:true,get:()=>currentIndex,set:(value:number)=>{if(currentIndex!==value){this.dormPositionVersion++;this.clearDormRecovery()}currentIndex=value}}
   })
- this.name=o.name;this.nativeName=o.nativeName??o.name;this.room=o.room??'';this.index=o.index??-1;this.group=o.group??'';this.replacement=o.replacement??[];this.operatorType=o.operatorType??'low';this.restingPriority=o.restingPriority??'low';this.currentRoom=o.currentRoom??'';this.currentIndex=o.currentIndex??-1;this.mood=o.mood??24;this.timeStampMicros=o.timeStampMicros;this.depletionRate=o.depletionRate??0;this.exhaustTimeMicros=o.exhaustTimeMicros;this.lowerLimit=o.lowerLimit??0;this.upperLimit=o.upperLimit??24;this.workaholic=o.workaholic??false;this.exhaustRequire=o.exhaustRequire??false;this.restInFull=o.restInFull??false;this.restMoodLimit=o.restMoodLimit??false;this.standbyLowPriority=o.standbyLowPriority??false;this.workshop=o.workshop??false;this.dormPositionVersion=o.dormPositionVersion??this.dormPositionVersion;this.dormRecoveryRoom=o.dormRecoveryRoom??'';this.dormRecoveryIndex=o.dormRecoveryIndex??-1;this.dormRecoveryFixed=o.dormRecoveryFixed?.map(m=>[...m])??[];this.dormRecoveryObservation=o.dormRecoveryObservation?[...o.dormRecoveryObservation]:undefined;this.singleRecoveryManager=o.singleRecoveryManager??false;this.restingFromTrain=o.restingFromTrain??false;this.idleRestCheck=o.idleRestCheck
+ this.name=o.name;this.nativeName=o.nativeName??o.name;this.room=o.room??'';this.index=o.index??-1;this.group=o.group??'';this.replacement=o.replacement??[];this.operatorType=o.operatorType??'low';this.restingPriority=o.restingPriority??'low';this.currentRoom=o.currentRoom??'';this.currentIndex=o.currentIndex??-1;this.mood=o.mood??24;this.timeStampMicros=o.timeStampMicros;this.depletionRate=o.depletionRate??0;this.exhaustTimeMicros=o.exhaustTimeMicros;this.lowerLimit=o.lowerLimit??0;this.upperLimit=o.upperLimit??24;this.workaholic=o.workaholic??false;this.exhaustRequire=o.exhaustRequire??false;this.restInFull=o.restInFull??false;this.restMoodLimit=o.restMoodLimit??false;this.workshop=o.workshop??false;this.dormPositionVersion=o.dormPositionVersion??this.dormPositionVersion;this.dormRecoveryRoom=o.dormRecoveryRoom??'';this.dormRecoveryIndex=o.dormRecoveryIndex??-1;this.dormRecoveryFixed=o.dormRecoveryFixed?.map(m=>[...m])??[];this.dormRecoveryObservation=o.dormRecoveryObservation?[...o.dormRecoveryObservation]:undefined;this.singleRecoveryManager=o.singleRecoveryManager??false;this.restingFromTrain=o.restingFromTrain??false;this.idleRestCheck=o.idleRestCheck
  if(this.independentRest){this.group='';this.replacement=[...this.replacementsForGroup('')]}
  }
  clearDormRecovery(){this.dormRecoveryObservation=undefined;this.dormRecoveryRoom='';this.dormRecoveryIndex=-1;this.dormRecoveryFixed=[]}

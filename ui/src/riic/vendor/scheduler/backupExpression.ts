@@ -8,7 +8,7 @@ import type {MowerDateTimeValue} from './mowerSchedulingData'
 import {toMowerMicros} from './mowerTaskQueue'
 
 type Value = string | number | boolean | null | MowerDateTimeValue
-type Expression = (state: RuntimeState) => Value
+type Expression = ((state: RuntimeState) => Value) & { integerLiteral?: number }
 type Token = { text: string; kind: 'operator' | 'value' | 'worker' | 'external' | 'query'; value?: Value; name?: string; member?: string }
 const roomName = /^(?:room_[1-3]_[1-3]|dormitory_[1-4]|central|meeting|factory|contact|train|recycle)$/
 // Inventory queries: Mower 3de2b2ac; facility-product counts: 3ad69f15 Operators (MIT).
@@ -57,7 +57,7 @@ function tokenize(text: string): Token[] {
     const quoted = /^(['"])((?:\\.|(?!\1)[^\\])*)\1/.exec(rest)
     const number = /^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/.exec(rest)
     const word = /^(?:and|or|not|is|in|True|False|None)\b/.exec(rest)
-    const symbol = /^(?:==|!=|<=|>=|[<>+*/(),\[\]\-])/.exec(rest)
+    const symbol = /^(?:==|!=|<=|>=|\*\*|[<>+*/(),\[\]\-])/.exec(rest)
     const aggregate = /^(?:max|min|sum|any|all|abs)\b/.exec(rest)
     const room = /^(?:room_[1-3]_[1-3]|dormitory_[1-4]|gaming_[1-3]|central|meeting|factory|contact|train|recycle)\b/.exec(rest)
     const product = /^(?:orirock_device|orirock|orundum|gold|exp3|lmd)\b/.exec(rest)
@@ -107,7 +107,7 @@ export function compileBackupExpression(source: unknown, participants: Set<strin
     if (op === '<=') return x <= y
     if (op === '>') return x > y
     if (op === '>=') return x >= y
-    const value = op === '+' ? x + y : op === '-' ? x - y : op === '*' ? x * y : x / y
+    const value = op === '+' ? x + y : op === '-' ? x - y : op === '*' ? x * y : op === '**' ? x ** y : x / y
     if (!Number.isFinite(value)) return fail('条件运算结果不是有限数')
     return value
   }
@@ -146,10 +146,8 @@ export function compileBackupExpression(source: unknown, participants: Set<strin
         if (!take(')')) return fail('条件括号不完整')
         return expr
       }
-      if (take('+')) { const expr = atom(); return state => numeric(expr(state)) }
-      if (take('-')) { const expr = atom(); return state => -numeric(expr(state)) }
       const token = tokens[cursor++]
-      if (token?.kind === 'value') return () => token.value!
+      if (token?.kind === 'value') return Object.assign(() => token.value!, {integerLiteral: typeof token.value === 'number' && /^\d+$/.test(token.text) ? token.value : undefined})
       if (token?.kind === 'query') {
         if (!take('(')) return fail(`${token.member} 缺少参数括号`)
         if (token.member === 'facility_product_type_count') {
@@ -239,9 +237,26 @@ export function compileBackupExpression(source: unknown, participants: Set<strin
       return fail(`不支持的条件 ${token?.text ?? '空操作数'}`)
     } finally { nesting-- }
   }
+  function power(): Expression {
+    const base = atom()
+    if (!take('**')) return base
+    const exponent = unary(), value = exponent.integerLiteral
+    if (value === undefined || value < 0 || value > 64) return fail('幂运算指数必须是 0 到 64 的整数常量')
+    return binary(base, exponent, '**')
+  }
+  function unary(): Expression {
+    if (++nesting > 64) return fail('条件嵌套超过限制')
+    try {
+      if (peek() !== '+' && peek() !== '-') return power()
+      const sign = tokens[cursor++]!.text === '+' ? 1 : -1, literalStart = cursor, expr = unary()
+      // Native validation admits one signed integer literal, not a computed exponent.
+      const literal = cursor === literalStart + 1 && expr.integerLiteral !== undefined ? sign * expr.integerLiteral : undefined
+      return Object.assign((state: RuntimeState) => sign * numeric(expr(state)), {integerLiteral: literal})
+    } finally { nesting-- }
+  }
   function product(): Expression {
-    let expr = atom()
-    while (peek() === '*' || peek() === '/') { const op = tokens[cursor++]!.text; expr = binary(expr, atom(), op) }
+    let expr = unary()
+    while (peek() === '*' || peek() === '/') { const op = tokens[cursor++]!.text; expr = binary(expr, unary(), op) }
     return expr
   }
   function sum(): Expression {

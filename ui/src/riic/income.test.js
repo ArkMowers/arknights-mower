@@ -706,7 +706,7 @@ it.each([
       8
     )
     if (withFiammetta)
-      expect(report.operators.find((op) => op.operatorId === fia).finalMorale).toBeCloseTo(12, 8)
+      expect(report.operators.find((op) => op.operatorId === fia).finalMorale).toBeCloseTo(18, 8)
   }
 )
 

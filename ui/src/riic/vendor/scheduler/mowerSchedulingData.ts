@@ -1,4 +1,4 @@
-import {mowerDormCandidateMood} from './mowerAlphaCandidates'
+import {mowerDormCandidateMood} from './mowerSchedulingMood'
 import {isTradeRunOrderOperator} from '../domain/shiftRunPolicy'
 import {mowerRestingBindingGroups,mowerSharedReplacements,mowerSameGroupPrimaryReplacement} from './mowerSharedGroups'
 // Decision state for the pinned Mower port. Reservations do not imply physical occupancy.
@@ -136,10 +136,6 @@ export class MowerSchedulingData {
    if(ordinary.size===1&&ordinary.has(name))return false
   }
   return !!op&&hasRestingMood(op,this.nowMicros)&&restingMood(op,this.nowMicros)<=op.lowerLimit
- }
- updateStandbyLowPriority(op:MowerOperatorState,returnedToPost=false):void {
-  if(!this.standbyNames.includes(op.name)||returnedToPost)op.standbyLowPriority=false
-  else if(restingMood(op,this.nowMicros)<op.lowerLimit+(op.upperLimit-op.lowerLimit)*this.policy.restingThreshold*this.policy.rescueThreshold)op.standbyLowPriority=true
  }
  idleRestChecked(name:string):boolean {const op=this.operators[name],checked=op?.idleRestCheck;return !!op&&!op.currentRoom&&!!checked&&checked[0]>=op.upperLimit&&checked[1]===op.mood&&checked[2]===op.timeStampMicros}
  stopIdleDormSearch():void {if(!this.idleDormSearchExhausted){this.idleDormSearchExhausted=true;this.idleDormSearchStoppedAtMicros=this.nowMicros}}

@@ -56,3 +56,16 @@ describe('backup condition functions', () => {
     expect(() => compile(source)).toThrow()
   })
 })
+
+describe('function arithmetic follows native power restrictions and precedence',()=>{
+ it.each([
+  ['sum([1, 2]) * 2',6],['sum([1, 2]) ** 2',9],['-2 ** 2',-4],['(-2) ** 2',4],
+  ['2 * 3 ** 2 + 1',19],['2 ** (3)',8],['2 ** +3',8],['abs(-3) ** 2',9],
+ ])('evaluates %s', (source,expected)=>expect(compile(source).evaluate(state())).toBe(expected))
+ it.each(['2 ** -2','2 ** 65','2 ** 1.5','2 ** 3 ** 2','2 ** sum([1,2])'])('rejects a non-native exponent in %s',source=>expect(()=>compile(source)).toThrow())
+ it('preserves saved function nodes as arithmetic operands',()=>{
+  const source={left:{function:'sum',args:['1','2']},operator:'**',right:'2'}
+  expect(compile(source).evaluate(state())).toBe(9)
+ })
+ it.each(['any([True, 1 / 0])','all([False, 1 / 0])'])('evaluates all list items before %s',source=>expect(()=>compile(source).evaluate(state())).toThrow())
+})

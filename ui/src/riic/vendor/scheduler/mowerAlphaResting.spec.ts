@@ -9,19 +9,18 @@ import {mowerUpdateDetail,projectMowerArrangements} from './mowerObservations'
 import {planMowerMetadata} from './mowerMetadata'
 import {mowerAverageMood} from './mowerDormAssignment'
 
-describe('alpha resting boundaries with temporary standby promotion',()=>{
+describe('alpha resting boundaries with stable standby identity',()=>{
  for(const c of oracle.cases)it(c.kind,()=>{
   const standby=c.kind==='standby'
   const operators={A:new MowerOperatorState({name:'A',room:'room_1_1',index:0,currentRoom:'room_1_1',currentIndex:0,operatorType:'high',mood:4,timeStampMicros:['unknown','estimated'].includes(c.kind)?undefined:0,replacement:['R'],restingPriority:standby?'standby':'high'}),R:new MowerOperatorState({name:'R',mood:10,timeStampMicros:0}),...Object.fromEntries(['K1','K2'].map((name,index)=>[name,new MowerOperatorState({name,room:'dormitory_1',index,currentRoom:'dormitory_1',currentIndex:index,operatorType:'high',mood:24,timeStampMicros:0})]))}
   const data=new MowerSchedulingData({alpha:true,plan:{room_1_1:['A'],dormitory_1:['K1','K2','Free','Free','Free']},operators,dorms:[new MowerDormState(['dormitory_1',2])],nowMicros:0,standbyNames:standby?['A']:[],dormMoodEstimates:c.kind==='estimated'?new Map([['A',[4,0]]]):undefined,reservedProductReplacements:new Set(c.kind==='reserved-primary'?['A']:c.kind==='reserved-cover'?['R']:[])})
   expect(mowerResting(data,new MowerTaskQueue())).toEqual(c.plan)
   expect(data.dorms.map(b=>b.name)).toEqual(c.bedNames)
-  expect(operators.A.standbyLowPriority).toBe(c.standbyLow)
-  expect(alphaRestingTier(data,'A')).toBe(standby?2:1)
+  expect(alphaRestingTier(data,'A')).toBe(standby?4:1)
  })
 })
 
-describe('temporary standby promotion preserves standby identity',()=>{
+describe('standby priority follows current mood without promotion',()=>{
  function fixture(alpha=true){
   const operators={
    S:new MowerOperatorState({name:'S',room:'room_1_1',index:1,group:'g',replacement:['R'],operatorType:'high',restingPriority:'standby',mood:12,timeStampMicros:0,currentRoom:'dormitory_1',currentIndex:2}),
@@ -32,44 +31,38 @@ describe('temporary standby promotion preserves standby identity',()=>{
   const data=new MowerSchedulingData({alpha,operators,plan:{room_1_1:['H','S'],room_1_2:['L'],dormitory_1:['Free','Free','Free','Free','Free']},dorms:[new MowerDormState(['dormitory_1',2],'S',3_600_000_000),new MowerDormState(['dormitory_1',3],'H',3_600_000_000)],nowMicros:0,standbyNames:['S']})
   return {data,operators}
  }
- it.each([4,0])('promotes to tier 2 after observing and planning with morale %s',mood=>{
+ it.each([4,0])('keeps tier 4 after observing and planning with morale %s',mood=>{
   const {data}=fixture()
   mowerUpdateDetail(data,'S',mood,'dormitory_1',2,true)
-  expect(alphaRestingTier(data,'S')).toBe(2)
-  expect(data.operators.S!.standbyLowPriority).toBe(true)
+  expect(alphaRestingTier(data,'S')).toBe(4)
   expect(data.canStandby(data.operators.S!)).toBe(true)
   expect(data.isGroupShiftAnchor(data.operators.S!)).toBe(false)
   mowerResting(data,new MowerTaskQueue())
-  expect(alphaRestingTier(data,'S')).toBe(2)
+  expect(alphaRestingTier(data,'S')).toBe(4)
   expect(alphaRestingTier(data,'L')).toBe(2)
   expect(data.dorms[0]!.name).toBe('S')
-  expect(alphaSlotTakable(data,data.dorms[0]!,'L')).toBe(false)
+  expect(alphaSlotTakable(data,data.dorms[0]!,'L')).toBe(true)
  })
- it('promotes strictly below the rescue threshold and retains it until returning to the primary post',()=>{
+ it('keeps standby priority below the cap and demotes full dynamic residents',()=>{
   const {data,operators}=fixture()
   const threshold=operators.S.lowerLimit+(operators.S.upperLimit-operators.S.lowerLimit)*data.policy.restingThreshold*data.policy.rescueThreshold
   for(const mood of [threshold+1,threshold]){
    mowerUpdateDetail(data,'S',mood,'dormitory_1',2,true)
-   expect(operators.S.standbyLowPriority).toBe(false)
    expect(alphaRestingTier(data,'S')).toBe(4)
   }
   mowerUpdateDetail(data,'S',threshold-.01,'dormitory_1',2,true)
-  expect(operators.S.standbyLowPriority).toBe(true)
   for(const mood of [12,24]){
    mowerUpdateDetail(data,'S',mood,'dormitory_1',2,true)
-   expect(operators.S.standbyLowPriority).toBe(true)
-   expect(alphaRestingTier(data,'S')).toBe(2)
+   expect(alphaRestingTier(data,'S')).toBe(mood===24?6:4)
   }
   mowerUpdateDetail(data,'S',24,'room_1_1',1,true)
-  expect(operators.S.standbyLowPriority).toBe(false)
-  expect(alphaRestingTier(data,'S')).toBe(4)
+  expect(alphaRestingTier(data,'S')).toBe(6)
   expect(data.canStandby(operators.S)).toBe(true)
   expect(data.isGroupShiftAnchor(operators.S)).toBe(false)
  })
  it.each([false,true])('keeps a zero-morale standby idle until its group returns, alpha=%s',alpha=>{
   const {data,operators}=fixture(alpha)
   mowerUpdateDetail(data,'S',0,'',-1,true)
-  if(alpha)expect(operators.S.standbyLowPriority).toBe(true)
   expect(data.canStandby(operators.S)).toBe(true)
   expect(data.isStandby('S')).toBe(true)
   const queue=new MowerTaskQueue();planMowerMetadata(data,queue)
@@ -85,7 +78,6 @@ describe('temporary standby promotion preserves standby identity',()=>{
   data.restingPriorityNames=['S']
   mowerUpdateDetail(data,'S',0,'dormitory_1',2,true)
   mowerResting(data,new MowerTaskQueue())
-  expect(data.operators.S!.standbyLowPriority).toBe(true)
   expect(data.canStandby(data.operators.S!)).toBe(true)
   expect(alphaRestingTier(data,'S')).toBe(0)
   expect(alphaSlotTakable(data,data.dorms[0]!,'L')).toBe(false)
@@ -102,11 +94,9 @@ describe('group standby morale does not drive shifts',()=>{
   }
   const data=new MowerSchedulingData({alpha,operators,plan:{room_1_1:['H','S'],dormitory_1:['Free','Free','Free','Free','Free']},dorms:[new MowerDormState(['dormitory_1',2]),new MowerDormState(['dormitory_1',3])],nowMicros:0,standbyNames:['S'],policy:{restingThreshold:.65}})
   if(alpha)mowerUpdateDetail(data,'S',0,'room_1_1',1,true)
-  else operators.S.standbyLowPriority=true
-  expect(operators.S.standbyLowPriority).toBe(true)
   expect(data.canStandby(operators.S)).toBe(true)
   expect(data.isGroupShiftAnchor(operators.S)).toBe(false)
-  if(alpha)expect(alphaRestingTier(data,'S')).toBe(2)
+  if(alpha)expect(alphaRestingTier(data,'S')).toBe(4)
   return {data,operators}
  }
  it.each([false,true])('ignores a working low/zero-morale standby as a downshift trigger, alpha=%s',alpha=>{

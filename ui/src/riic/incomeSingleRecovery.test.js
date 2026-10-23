@@ -60,10 +60,10 @@ it.each(['满心情', '已离宿'])(
   }
 )
 it('excludes the provider and Fiammetta even when their morale is lower', () => {
-  const result = run({ 闪灵: 0, 菲亚梅塔: 0, 芬: 15, 香草: 5 })
+  const result = run({ 闪灵: 0, 菲亚梅塔: 0, 芬: 20, 香草: 18 })
   expect(result.闪灵).toBeCloseTo(0.4, 7)
-  expect(result.菲亚梅塔).toBeCloseTo(0.2, 7)
-  expect(result.香草).toBeCloseTo(5.475, 7)
+  expect(result.菲亚梅塔).toBeCloseTo(16.2, 7)
+  expect(result.香草).toBeCloseTo(18.475, 7)
 })
 it('uses slot order only to break an equal-morale tie', () => {
   const result = run({ 芬: 5, 香草: 5 })

@@ -33,6 +33,9 @@ export class MowerTask {
  executionRetained=false
  /** Only observation-derived corrections may be rebuilt before physical execution. */
  derivedCorrection=false
+ initialStaffing=false
+ workingReplacementCheck?:{room:string;index:number;owner:string;cover:string}
+ workingReplacementSource?:string
  correctionSkipDorm=false
  get retainsExecution():boolean{return !!this.executionFailure||this.executionRetained}
  previewReturnVeto?:{conditions:number[];names:string[]}

@@ -1,5 +1,5 @@
-import type {MowerDependencyReturnAdmission} from './mowerTaskDerivation'
 import {projectMowerArrangements} from './mowerObservations'
+import type {MowerDependencyReturnAdmission} from './mowerTaskDerivation'
 import {mowerExhaustGroups} from './mowerExhaustPolicy'
 import {mowerWorkingReplacementBlocked,mowerSameGroupPrimaryReplacement,mowerRestingBindingGroups,mowerSharedReplacements,normalizeMowerSharedArrangement,mowerArrangementGroupTransitions,commitMowerGroupShifts} from './mowerSharedGroups'
 // Port of default plan_solver/resting/_get_resting_plan_legacy/try_reorder.
@@ -139,7 +139,6 @@ export function mowerResting(data:MowerSchedulingData,queue:MowerTaskQueue,optio
 function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRestingOptions,metadataPrepared:boolean):MowerTaskPlan {
  options={...options,dormAdmissions:new Map()}
  if(data.policy.experimentalDormLogic)throw new Error('Experimental ordinary resting requires its source port')
- if(data.alpha)Object.values(data.operators).forEach(op=>data.updateStandbyLowPriority(op))
  const moods=new Map(Object.values(data.operators).map(op=>[op.name,data.alpha?mowerDormCandidateMood(data,op.name):op.currentMood(data.nowMicros)]))
  const total=Object.values(data.operators).filter(op=>(op.isHigh()||!data.alpha&&!op.currentRoom&&!op.room)&&!op.room.startsWith('dorm')&&!(op.group&&data.canStandby(op))).sort((a,b)=>data.alpha?0:a.currentMood(data.nowMicros)-b.currentMood(data.nowMicros))
  total.sort((a,b)=>Number(moods.get(a.name)===undefined)-Number(moods.get(b.name)===undefined)||((moods.get(a.name)??0)-a.lowerLimit)-((moods.get(b.name)??0)-b.lowerLimit))
