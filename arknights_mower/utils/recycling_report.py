@@ -109,6 +109,34 @@ def report_recycling_collection(event_id):
         return False
 
 
+def retry_recycling_report(event_id):
+    """Release only a failed collection, retaining its submitted prefix and times."""
+    with _connection() as connection:
+        cursor = connection.execute(
+            "UPDATE recycling_report_progress SET status = 'pending' "
+            "WHERE event_id = ? AND status = 'failed'",
+            (event_id,),
+        )
+        if cursor.rowcount != 1:
+            exists = connection.execute(
+                "SELECT 1 FROM recycling_collection WHERE event_id = ?", (event_id,)
+            ).fetchone()
+            if not exists:
+                raise LookupError("收取记录不存在")
+            raise ValueError("只有上传失败的记录可以重试")
+        connection.commit()
+    if _wake(get_path("@app/config/recycling_report")):
+        return True
+    with _connection() as connection:
+        connection.execute(
+            "UPDATE recycling_report_progress SET status = 'failed' "
+            "WHERE event_id = ? AND status = 'pending'",
+            (event_id,),
+        )
+        connection.commit()
+    return False
+
+
 def _allocate_time(connection, event_id, collected_at, total, base_ms):
     if base_ms is not None:
         return base_ms

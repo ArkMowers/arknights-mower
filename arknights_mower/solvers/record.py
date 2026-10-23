@@ -983,12 +983,22 @@ def get_recycling_history(start_date, end_date, page=1, page_size=50):
         connection.execute("BEGIN")
         result = _recycling_summary(connection, bounds)
         rows = connection.execute(
-            "SELECT event_id, collected_at, operators, materials "
-            "FROM recycling_collection WHERE collected_at >= ? AND collected_at < ? "
-            "ORDER BY collected_at DESC, event_id DESC LIMIT ? OFFSET ?",
+            "SELECT c.event_id, c.collected_at, c.operators, c.materials, p.status "
+            "FROM recycling_collection c LEFT JOIN recycling_report_progress p "
+            "ON p.event_id = c.event_id "
+            "WHERE c.collected_at >= ? AND c.collected_at < ? "
+            "ORDER BY c.collected_at DESC, c.event_id DESC LIMIT ? OFFSET ?",
             (*bounds, page_size, (page - 1) * page_size),
         )
-        result["records"] = [_recycling_snapshot(row) for row in rows]
+        result["records"] = [
+            {
+                **_recycling_snapshot(row[:4]),
+                "upload_status": (row[4] or "pending")
+                if json.loads(row[3])
+                else "skipped",
+            }
+            for row in rows
+        ]
         return result
 
 

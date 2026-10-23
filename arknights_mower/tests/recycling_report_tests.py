@@ -70,7 +70,7 @@ def old(event_id="old", at=1759400000, materials=None, names=None):
     with record._conn() as connection:
         connection.execute(
             "INSERT INTO recycling_collection VALUES (?, ?, ?, ?)",
-            (event_id, at, json.dumps(names), json.dumps(materials)),
+            (event_id, at, json.dumps(names), json.dumps(materials or {})),
         )
         connection.commit()
 
@@ -449,3 +449,177 @@ def test_collection_arriving_as_worker_finishes_is_not_lost(transport, monkeypat
     report._drain(transport.directory)
     assert len(transport.calls) == 1
     assert progress("late")[:2] == ("submitted", 1)
+
+
+def test_history_exposes_persistent_upload_states_without_marking_partial_submission_done(
+    transport,
+):
+    record.save_recycling_collection("waiting", 1759400010, None, {"装置": 1})
+    old("legacy", at=1759400020, materials={"装置": 1})
+    old("unknown", at=1759400030, materials=None)
+    save("partial", materials={"装置": 101})
+    transport.statuses[:] = [(200, b""), (400, b"")]
+    report._drain(transport.directory)
+    old("unprocessed", at=1759400040, materials={"装置": 1})
+    old("unread", at=1759400050, materials=None)
+
+    rows = {
+        row["id"]: row
+        for row in record.get_recycling_history("2000-01-01", "2100-01-01")["records"]
+    }
+    assert {key: row["upload_status"] for key, row in rows.items()} == {
+        "waiting": "waiting",
+        "legacy": "failed",
+        "unknown": "skipped",
+        "partial": "failed",
+        "unprocessed": "pending",
+        "unread": "skipped",
+    }
+    assert progress("partial")[:2] == ("failed", 100)
+    assert rows["partial"]["materials"] == {"装置": 101}
+
+
+def test_unknown_collection_is_never_uploaded_or_exposed_as_retryable(transport):
+    record.save_recycling_collection("unknown", 1759400000, None, None)
+    before = record.get_recycling_history("2000-01-01", "2100-01-01")["records"][0]
+    assert before["materials"] is None
+    assert before["upload_status"] == "skipped"
+    assert report.report_recycling_collection("unknown")
+    report._drain(transport.directory)
+    assert not transport.calls
+    assert progress("unknown")[:2] == ("skipped", 0)
+    with pytest.raises(ValueError, match="只有上传失败"):
+        report.retry_recycling_report("unknown")
+    resume(transport)
+    assert not transport.calls
+
+
+def test_manual_retry_route_requires_token_before_changing_progress_or_starting_worker(
+    transport,
+    monkeypatch,
+):
+    import server
+
+    old(materials={"装置": 1})
+    transport.statuses[:] = [(400, b"")]
+    resume(transport)
+    before = progress("old")
+    transport.worker.reset_mock()
+    transport.calls.clear()
+    monkeypatch.setattr(server.app, "token", "recycling-test", raising=False)
+    client = server.app.test_client()
+    for headers in ({}, {"token": "wrong"}):
+        assert (
+            client.post(
+                "/report/recycling_history/old/retry", headers=headers
+            ).status_code
+            == 403
+        )
+        assert (
+            client.get("/report/recycling_history", headers=headers).status_code == 403
+        )
+    assert progress("old") == before
+    transport.worker.assert_not_called()
+    assert not transport.calls
+
+
+def test_manual_retry_resumes_only_failed_units_and_does_not_admit_duplicate_clicks(
+    transport,
+    monkeypatch,
+):
+    import server
+
+    old("old/collection", materials={"装置": 201})
+    transport.statuses[:] = [(200, b""), (400, b"")]
+    resume(transport)
+    assert progress("old/collection")[:2] == ("failed", 100)
+    base_ms = progress("old/collection")[2]
+    transport.worker.reset_mock()
+    monkeypatch.setattr(server.app, "token", "recycling-test", raising=False)
+    client = server.app.test_client()
+    headers = {"token": "recycling-test"}
+
+    accepted = client.post(
+        "/report/recycling_history/old%2Fcollection/retry", headers=headers
+    )
+    assert accepted.status_code == 202
+    assert accepted.json == {"upload_status": "pending"}
+    assert progress("old/collection") == ("pending", 100, base_ms)
+    assert (
+        client.post(
+            "/report/recycling_history/old%2Fcollection/retry", headers=headers
+        ).status_code
+        == 409
+    )
+    transport.worker.assert_called_once()
+    assert len(transport.calls) == 2
+    report._drain(transport.directory)
+    assert [len(call[1]["json"]["drops"]) for call in transport.calls] == [
+        100,
+        100,
+        100,
+        1,
+    ]
+    assert transport.calls[1][1] == transport.calls[2][1]
+    assert progress("old/collection") == ("submitted", 201, base_ms)
+    history = client.get(
+        "/report/recycling_history?startDate=2000-01-01&endDate=2100-01-01",
+        headers=headers,
+    )
+    assert history.json["records"][0]["upload_status"] == "submitted"
+    assert (
+        client.post(
+            "/report/recycling_history/old%2Fcollection/retry", headers=headers
+        ).status_code
+        == 409
+    )
+    assert (
+        client.post(
+            "/report/recycling_history/missing/retry", headers=headers
+        ).status_code
+        == 404
+    )
+    assert len(transport.calls) == 4
+
+
+@pytest.mark.parametrize("status", ["waiting", "pending", "submitted", "skipped"])
+def test_manual_retry_cannot_release_unfinished_roster_or_resend_other_states(
+    transport,
+    status,
+):
+    record.save_recycling_collection("event", 1759400000, None, {"装置": 1})
+    with record._conn() as connection:
+        connection.execute("UPDATE recycling_report_progress SET status = ?", (status,))
+        connection.commit()
+    with pytest.raises(ValueError, match="只有上传失败"):
+        report.retry_recycling_report("event")
+    assert progress("event")[:2] == (status, 0)
+    transport.worker.assert_not_called()
+    assert not transport.calls
+
+
+def test_manual_retry_worker_launch_failure_keeps_record_retryable(
+    transport, monkeypatch
+):
+    import server
+
+    old(materials={"装置": 1})
+    transport.statuses[:] = [(400, b"")]
+    resume(transport)
+    before = progress("old")
+    transport.worker.return_value.start.side_effect = RuntimeError()
+    monkeypatch.setattr(server.app, "token", "recycling-test", raising=False)
+    client = server.app.test_client()
+    headers = {"token": "recycling-test"}
+    assert (
+        client.post("/report/recycling_history/old/retry", headers=headers).status_code
+        == 503
+    )
+    assert progress("old") == before
+    transport.worker.return_value.start.side_effect = None
+    assert (
+        client.post("/report/recycling_history/old/retry", headers=headers).status_code
+        == 202
+    )
+    report._drain(transport.directory)
+    assert progress("old")[:2] == ("submitted", 1)
