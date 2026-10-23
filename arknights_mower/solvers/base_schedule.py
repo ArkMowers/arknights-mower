@@ -3886,8 +3886,10 @@ class BaseSchedulerSolver(
         key = f"{support}:{train_slot}"
         if should_notify("protected", key):
             msg = (
-                f"训练室受保护（协助位 {support}），排班纠错已跳过该训练室，"
-                "mower 不调整该房间"
+                f"训练室受保护（协助位 {support}，训练位 {train_slot}），"
+                "为保留当前训练位干员的专精减半效果，排班纠错已跳过该训练室。"
+                "如需更换训练位干员，请先确认放弃减半效果，再手动清空训练室协助位的减半干员；"
+                "mower 下次进入训练室确认保护解除后恢复换人。"
             )
             send_message(msg, level="WARNING")
 
@@ -15087,10 +15089,7 @@ class BaseSchedulerSolver(
                 f"skipped={len(res.get('skipped', []))}"
             )
 
-            # #74 第3段：扫描 = 唯一周期派发点。对 DB 里材料足够的 idle 计划入队
-            # 「开始训练」SKILL_UPGRADE（plan_key 指定计划；房间状态决定开始/收集）。
-            # 材料判断用 auto_schedule 的 scheduled 结果（扫描时核算），不违背「删材料
-            # 门控」——删的是开始前现场查那套。受 enable_mastery 门控（OFF 停专精自动化）。
+            # 扫描确认材料后，复用单个开始任务的派发入口。
             if config.conf.enable_mastery:
                 self._dispatch_scan_start_tasks(res.get("scheduled", []))
 
@@ -15104,61 +15103,71 @@ class BaseSchedulerSolver(
             )
 
     def _dispatch_scan_start_tasks(self, scheduled):
-        """材料确认后，为材料足够的 idle 计划入队「开始训练」任务。
+        """训练室没有训练或专精任务时，仅派发首个材料就绪的待执行计划。
 
-        scheduled 来自 auto_schedule_mastery_tasks（已按链级材料核算），元素带
-        char_id/skill_index。按 (char_id, skill_index) 匹配 DB 里 status=='idle' 的
-        计划（get_all_plans 按 priority, id 排序 → 高优先级计划先入队先开始），入队一条
-        plan_key=计划id 的开始任务（meta_data 仅描述性标签，无逻辑标记）。TASK-01 按
-        plan_key 去重恒 ≤1 条，重复扫描原地刷新；计划开始训练后该任务原位升级为收取任务。
-
-        两轮扫描，兜住存量库里的重复计划（同干员同技能多行，见
-        doc/mastery-constraints.md §5.1）：第一轮记下正被 reconcile 管着的键
-        （arranging/training/waiting_collect），第二轮每个键只对第一条 idle 行派发。
-        否则「按行派发」会给同一个技能各发一条一模一样的任务，只有一条能真跑、其余
-        扑空报错（实测 `scheduled=1` 却打出「已为 7 个……安排开始训练」）。
+        候选由 auto_schedule_mastery_tasks 核算，计划按 priority、id 选择。
+        已有安排中、训练中、待收取的计划或已观测的占用均阻止新开始任务；
+        跳过已观测保护不允许的干员，重复触发保留已排任务及时间。
+        材料等待计划仍优先于其他待执行计划。
         """
-        if not scheduled:
+        if not scheduled or not config.conf.enable_mastery:
             return
-        from arknights_mower.solvers.mastery_reader import _schedule_scan_start
+        from arknights_mower.solvers.mastery_reader import (
+            _notify_protected,
+            _protected_trainee_matches,
+            _schedule_scan_start,
+        )
         from arknights_mower.utils.mastery_db import (
             get_all_plans,
             get_material_waiting_plan,
         )
 
-        # 带 current_level 的扫描条目：安排步级 = 当前级 + 1（森空岛数据，最可靠）
+        plans = get_all_plans()  # 非终态，按 priority, id 排序
+        if any(
+            plan["status"] in ("arranging", "training", "waiting_collect")
+            for plan in plans
+        ):
+            return
+        room = getattr(self, "train_room_state", None)
+        if getattr(room, "state", None) in (
+            "training",
+            "waiting_collect",
+        ) and not getattr(room, "collected", False):
+            return
+        current = getattr(self, "task", None)
+        if any(
+            task is not current
+            and task.type in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT)
+            for task in getattr(self, "tasks", [])
+        ):
+            return
+
         confirmed = {
             (entry.get("char_id"), entry.get("skill_index")): entry
             for entry in scheduled
         }
-        plans = get_all_plans()  # 非终态，按 priority, id 排序
-        # 第一轮：这些键正被 reconcile 管着，同键的重复行不该再去开训练
-        managed = {
-            (plan["char_id"], plan["skill_index"])
-            for plan in plans
-            if plan["status"] in ("arranging", "training", "waiting_collect")
-        }
         waiting = get_material_waiting_plan(plans)
         if waiting is not None:
             plans = [waiting]
-        # 第二轮：每个键只对第一条 idle 行派发（排序后第一条就是该管的那个）
-        dispatched = 0
-        seen: set = set()
+        protection_notified = False
         for plan in plans:
             if plan["status"] != "idle":
                 continue
             key = (plan["char_id"], plan["skill_index"])
-            if key in managed or key in seen:
-                continue
             entry = confirmed.get(key)
             if entry is None:
                 continue
-            seen.add(key)
+            if getattr(
+                room, "protected", False
+            ) is True and not _protected_trainee_matches(plan, room):
+                if not protection_notified:
+                    _notify_protected(self, room)
+                    protection_notified = True
+                continue
             step_level = entry.get("current_level", 0) + 1
             _schedule_scan_start(self, plan, step_level=step_level)
-            dispatched += 1
-        if dispatched:
-            logger.info(f"已为 {dispatched} 个材料足够的空闲专精计划安排开始训练")
+            logger.info("已为 1 个材料足够的空闲专精计划安排开始训练")
+            return
 
     def _sync_idle_device(self):
         """接收空闲生命周期操作后设备控制持有的设备对象。"""

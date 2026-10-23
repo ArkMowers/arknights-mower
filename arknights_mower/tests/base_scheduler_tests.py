@@ -2396,9 +2396,7 @@ class TestTrainGateReadThenJudge(unittest.TestCase):
 
 
 class TestScanDispatchMastery(unittest.TestCase):
-    """#74 第3段：扫描 = 唯一周期派发点——`_auto_schedule_mastery_after_scan` 对材料
-    足够的 idle 计划入队「开始训练」SKILL_UPGRADE（plan_key 指定计划，无逻辑标记）。
-    """
+    """材料确认后只为首个就绪计划派发开始任务，已有训练时保留原任务。"""
 
     def _solver(self):
         solver = base_schedule.BaseSchedulerSolver()
@@ -2440,7 +2438,7 @@ class TestScanDispatchMastery(unittest.TestCase):
         self.assertLessEqual(task.time, datetime.now() + timedelta(seconds=1))
 
     @patch.object(base_schedule.BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_dispatch_scan_start_tasks_skips_non_idle_and_unconfirmed(self):
+    def test_dispatch_scan_start_tasks_skips_when_other_skill_is_training(self):
         solver = self._solver()
         idle_ok = self._idle_plan(pid=3, char_id="char_a", skill_index=1)
         idle_no_material = self._idle_plan(pid=4, char_id="char_b", skill_index=1)
@@ -2455,8 +2453,7 @@ class TestScanDispatchMastery(unittest.TestCase):
             base_schedule.BaseSchedulerSolver._dispatch_scan_start_tasks(
                 solver, [{"char_id": "char_a", "skill_index": 1}]
             )
-        self.assertEqual(len(solver.tasks), 1, "只入队 idle 且材料足够的计划")
-        self.assertEqual(solver.tasks[0].plan_key, "3")
+        self.assertEqual(solver.tasks, [], "其他技能正在训练时不派发开始任务")
 
     @patch.object(base_schedule.BaseSchedulerSolver, "__init__", lambda x: None)
     def test_dispatch_scan_start_tasks_dedup_same_plan(self):
@@ -2476,16 +2473,12 @@ class TestScanDispatchMastery(unittest.TestCase):
         self.assertEqual(len(upgrades), 1)
 
     @patch.object(base_schedule.BaseSchedulerSolver, "__init__", lambda x: None)
-    def test_dispatch_scan_start_tasks_one_task_per_skill(self):
-        # 存量库同一 (干员, 技能) 有多行（insert_plan 无去重）→ 每个键只派第一条 idle
-        # 行：旧实现按行派发，7 行数据会发 7 条一模一样的「开始训练」，只有一条能真跑
-        # （实测 `scheduled=1` 却打出「已为 7 个……安排开始训练」）。
+    def test_dispatch_scan_start_tasks_only_first_skill_despite_duplicate_rows(self):
         solver = self._solver()
         rows = [
             self._idle_plan(pid=1, char_id="char_a", skill_index=1),
             self._idle_plan(pid=2, char_id="char_a", skill_index=1),
             self._idle_plan(pid=3, char_id="char_a", skill_index=1),
-            # 同一时刻另一个技能的任务必须保留（按时间判重会把这条吞掉）
             self._idle_plan(pid=4, char_id="char_b", skill_index=1),
         ]
         with (
@@ -2501,11 +2494,11 @@ class TestScanDispatchMastery(unittest.TestCase):
             )
         self.assertEqual(
             [t.plan_key for t in solver.tasks],
-            ["1", "4"],
-            "同键只派第一条 idle 行，不同技能各自保留",
+            ["1"],
+            "重复行及其他技能均不增加开始任务",
         )
         self.assertTrue(
-            any("已为 2 个" in c.args[0] for c in info.call_args_list),
+            any("已为 1 个" in c.args[0] for c in info.call_args_list),
             "日志里的 N 要与实际入队数一致",
         )
 

@@ -1827,8 +1827,11 @@ def _notify_protected(solver, room):
     key = f"{room.support_slot}:{room.train_slot}"
     if should_notify("protected", key):
         msg = (
-            f"训练室受保护（协助位 {room.support_slot or '未知'}），"
-            "mower 无法开始新的专精训练，计划保持待执行"
+            f"训练室受保护（协助位 {room.support_slot or '未知'}，"
+            f"训练位 {room.train_slot or room.panel.operator_name or '未知'}），"
+            "为保留当前训练位干员的专精减半效果，mower 不换出该干员，其他干员的计划保持待执行。"
+            "如需更换训练位干员，请先确认放弃减半效果，再手动清空训练室协助位的减半干员；"
+            "mower 下次进入训练室确认保护解除后恢复换人。"
         )
         send_message(msg, level="WARNING")
 
@@ -2021,11 +2024,14 @@ def _reconcile_after_collect(solver, plan, panel: RoomPanel):
 
 
 def _collect_plan(solver, plan, room: RoomState):
-    """命中计划依次收取、结算状态、点勾确认，返回可继续的计划。"""
+    """收取、结算并确认，返回续训计划或派发下一就绪技能。"""
     room.collected = True  # #210：收集后房间物理变空闲（面板全空），gate 据此免重读
     collect_flow(solver, plan, room.panel)
     result = _reconcile_after_collect(solver, plan, room.panel)
     _tap_collect_confirm(solver)
+    solver.train_room_state = room
+    if result is None:
+        _dispatch_after_collect(solver)
     return result
 
 
@@ -2043,6 +2049,27 @@ def _collect_silent(solver, room: RoomState, suppress_help=False):
         _notify_help_collect(solver, room)
     collect_flow(solver, None, room.panel)
     _tap_collect_confirm(solver)
+    solver.train_room_state = room
+    _dispatch_after_collect(solver)
+
+
+def _dispatch_after_collect(solver):
+    """收取确认后，用当前库存为下一个就绪技能派发一条开始任务。"""
+    if not config.conf.enable_mastery:
+        return
+    from arknights_mower.utils.mastery_recommendation import auto_schedule_mastery_tasks
+
+    try:
+        ready = auto_schedule_mastery_tasks().get("scheduled", [])
+        if ready:
+            solver._dispatch_scan_start_tasks(ready)
+    except (MowerExit, DeviceRecoveryError):
+        raise
+    except Exception as exc:
+        logger.exception(
+            f"专精收取已完成，后续技能派发失败：{exc}",
+            extra={"archive_screenshots": False},
+        )
 
 
 def _next_idle_to_start(solver):
@@ -2077,6 +2104,7 @@ def reconcile_and_act(solver, scan_plan=None):
     if not config.conf.enable_mastery:
         return None, True, None
     room = read_room_state(solver, scan_plan=scan_plan)
+    solver.train_room_state = room
     active = get_active_plan()
     plans = get_reconcile_plans()
     plan, arrange_support = _reconcile(solver, room, active, plans, scan_plan=scan_plan)
