@@ -2,6 +2,7 @@
 
 import shutil
 import sqlite3
+import sys
 import xml.etree.ElementTree as ET
 from contextlib import contextmanager
 from datetime import datetime
@@ -14,11 +15,22 @@ import cv2
 import numpy as np
 import pytest
 
-from arknights_mower.solvers import base_mixin, base_schedule, record
-from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+with pytest.MonkeyPatch.context() as import_patch:
+    import_patch.setitem(sys.modules, "arknights_mower.utils.skland", Mock())
+    from arknights_mower.solvers import base_mixin, base_schedule, record
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.utils import recycling
 from arknights_mower.utils.recognize import Recognizer
 from arknights_mower.utils.scene import Scene
+
+
+@pytest.fixture(autouse=True)
+def report_submission(monkeypatch):
+    from arknights_mower.utils import recycling_report
+
+    submit = Mock()
+    monkeypatch.setattr(recycling_report, "report_recycling_collection", submit)
+    return submit
 
 
 @pytest.fixture
@@ -416,7 +428,7 @@ def test_cancellation_during_reward_confirmation_preserves_pending_collection(
 
 
 def test_popup_retry_records_once_before_dismissal_and_reads_actual_staff(
-    db, monkeypatch
+    db, monkeypatch, report_submission
 ):
     solver = collection_solver()
     solver._recycling_pending = {"id": "popup"}
@@ -428,12 +440,33 @@ def test_popup_retry_records_once_before_dismissal_and_reads_actual_staff(
     )
     solver._finish_recycling_collection()
     assert solver._recycling_pending["recorded"]
+    report_submission.assert_not_called()
     solver._finish_recycling_collection()
     assert solver._recycling_pending is None
     result = record.get_recycling_history("2000-01-01", "2100-01-01")
     assert result["total"] == 1
     assert result["records"][0]["operators"] == ["旅骨"]
     assert result["materials"][0]["count"] == 1
+    report_submission.assert_called_once_with("popup")
+
+
+@pytest.mark.parametrize("names", [None, [], ["旅骨"]])
+def test_collection_hands_report_the_observed_snapshot(
+    db, monkeypatch, report_submission, names
+):
+    solver = collection_solver()
+    solver._recycling_pending = {"id": "report-snapshot", "at": at(18, 19)}
+    solver.scene = Mock(return_value=Scene.INFRA_MAIN)
+    solver._read_recycling_operators.return_value = names
+    monkeypatch.setattr(
+        recycling, "read_recycling_materials", Mock(return_value={"装置": 2})
+    )
+    solver._finish_recycling_collection()
+    report_submission.assert_called_once_with("report-snapshot")
+    saved = record.get_recycling_history("2026-10-18", "2026-10-18")["records"][0]
+    assert saved["materials"] == {"装置": 2}
+    assert saved["operators"] == names
+    assert solver._recycling_pending is None
 
 
 def test_archived_borderline_quantity_is_recorded_after_two_matching_frames(

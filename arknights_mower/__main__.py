@@ -309,6 +309,9 @@ def main(saved_state, *, preparation_serial=None):
 
 def _main(saved_state):
     logger.info("开始运行Mower")
+    from arknights_mower.utils.recycling_report import start_recycling_reports
+
+    start_recycling_reports()
     maintenance = NewsChecker.get_maintenance()
     if maintenance is not None:
         _arm_maintenance_timer(maintenance)

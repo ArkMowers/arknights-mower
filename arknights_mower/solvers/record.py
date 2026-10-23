@@ -50,6 +50,9 @@ _DB_TABLE_STMTS = (
     "operators TEXT, materials TEXT NOT NULL)",
     "CREATE INDEX IF NOT EXISTS recycling_collection_time "
     "ON recycling_collection(collected_at)",
+    "CREATE TABLE IF NOT EXISTS recycling_report_progress ("
+    "event_id TEXT PRIMARY KEY, status TEXT NOT NULL, next_unit INTEGER NOT NULL DEFAULT 0,"
+    "base_ms INTEGER, end_ms INTEGER)",
     "CREATE TABLE IF NOT EXISTS recycling_valuation ("
     "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS workshop_inventory_updates ("
@@ -767,6 +770,11 @@ def save_recycling_collection(event_id, collected_at, operators, materials):
                 json.dumps(materials or {}, ensure_ascii=False),
             ),
         )
+        if cursor.rowcount == 1:
+            connection.execute(
+                "INSERT INTO recycling_report_progress (event_id, status) VALUES (?, 'waiting')",
+                (event_id,),
+            )
         connection.commit()
         return cursor.rowcount == 1
 

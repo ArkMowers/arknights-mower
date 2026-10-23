@@ -8445,6 +8445,9 @@ class BaseSchedulerSolver(
             update_recycling_operators(event["id"], names)
         else:
             logger.warning("回收站进驻干员未确认，本次收取记录保留未知")
+        from arknights_mower.utils.recycling_report import report_recycling_collection
+
+        report_recycling_collection(event["id"])
         self._recycling_pending = None
         self.scene_graph_navigation(Scene.INFRA_MAIN)
 
