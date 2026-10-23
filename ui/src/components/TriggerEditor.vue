@@ -272,19 +272,15 @@ const operator_tips = [
 
 .argument-value {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   flex: 1;
   min-width: 0;
 
   > :not(.trigger-editor) {
-    flex: 1 1 160px;
+    flex: 1;
+    min-width: 0;
   }
-}
-
-td > .label {
-  flex-wrap: wrap;
 }
 
 .argument-label {
