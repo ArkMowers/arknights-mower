@@ -8,7 +8,13 @@ from unittest.mock import MagicMock
 import pytest
 
 from arknights_mower.solvers import base_schedule
-from arknights_mower.utils import config, operators, scheduler_task
+from arknights_mower.utils import (
+    config,
+    dorm_candidates,
+    operators,
+    resting_priority,
+    scheduler_task,
+)
 from arknights_mower.utils.config.plan import PlanModel
 from arknights_mower.utils.operators import Operator, Operators, build_global_plan
 from arknights_mower.utils.resting_priority import RestingTier, resting_tier
@@ -26,7 +32,13 @@ def logged_solver(monkeypatch):
         def now(cls, tz=None):
             return now
 
-    for module in (base_schedule, operators, scheduler_task):
+    for module in (
+        base_schedule,
+        operators,
+        scheduler_task,
+        resting_priority,
+        dorm_candidates,
+    ):
         monkeypatch.setattr(module, "datetime", Clock)
     monkeypatch.setattr(config, "conf", config.Conf())
     monkeypatch.setattr(

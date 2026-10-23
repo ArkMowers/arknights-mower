@@ -54,6 +54,7 @@ def add_standby_anchor(data, incoming):
     cover = data.operators["陈"]
     cover.current_room, cover.current_index = "meeting", 0
     anchor = data.operators["银灰"]
+    anchor.mood = 10
     anchor.group = incoming.group
     anchor.current_room, anchor.current_index = ROOM, 3
     data.groups[incoming.group] = [anchor.name, incoming.name]
@@ -68,7 +69,7 @@ def add_standby_anchor(data, incoming):
 @pytest.mark.parametrize("reading", ["unfinished", "full", "unknown", "predicted"])
 @pytest.mark.parametrize("free_room", [False, True])
 @pytest.mark.parametrize("entry", ["planner", "selection"])
-def test_recovery_applicants_never_evict_protected_residents(
+def test_protected_residents_yield_only_after_confirmed_cap(
     op_data, tier, reading, free_room, entry
 ):
     data = op_data
@@ -77,6 +78,7 @@ def test_recovery_applicants_never_evict_protected_residents(
     resident.group = ""
     resident.current_room, resident.current_index = ROOM, 4
     incoming = set_tier(data, "红", RestingTier.PRIORITY, 5)
+    incoming.operator_type = "low"
     if reading == "unknown":
         resident.time_stamp = None
     elif reading == "predicted":
@@ -89,11 +91,13 @@ def test_recovery_applicants_never_evict_protected_residents(
 
     if entry == "planner":
         try_add_release_dorm({}, None, data, tasks)
-        assert tasks == []
+        assert bool(tasks) is (reading == "full")
+        if tasks:
+            assert incoming.name in tasks[0].plan[ROOM]
     else:
         row = ["Current"] * 4 + ["Free"]
         selection_solver(data).preserve_resting_crafters(row, ROOM)
-        assert row[-1] == resident.name
+        assert (row[-1] != resident.name) is (reading == "full")
 
     assert vars(bed) == before
     assert resident.is_resting()
@@ -103,7 +107,7 @@ def test_recovery_applicants_never_evict_protected_residents(
 @pytest.mark.parametrize("tier", PROTECTED)
 def test_protected_priority_replacement_does_not_yield_in_rescue(op_data, tier):
     data = op_data
-    resident = set_tier(data, "空爆", tier, 24)
+    resident = set_tier(data, "空爆", tier, 12)
     resident.current_room, resident.current_index = ROOM, 4
     data.rescue_mode = True
     data.emergency_dorm_agents = {resident.name}
@@ -123,7 +127,7 @@ def test_protected_priority_replacement_does_not_yield_in_rescue(op_data, tier):
 @pytest.mark.parametrize("offset", [-0.01, 0, 0.01, None])
 @pytest.mark.parametrize("resident_mood", [2, 24])
 @pytest.mark.parametrize("entry", ["planner", "selection"])
-def test_lower_tier_takeovers_require_eighty_percent_mood(
+def test_unfinished_takeovers_require_eighty_percent_but_full_fillers_yield(
     op_data, requester, resident_tier, upper, offset, resident_mood, entry
 ):
     data = op_data
@@ -137,7 +141,7 @@ def test_lower_tier_takeovers_require_eighty_percent_mood(
     resident = set_tier(data, "空爆", resident_tier, resident_mood)
     resident.current_room, resident.current_index = ROOM, 4
     data.dorm[0].time = datetime.now() + timedelta(hours=2)
-    allowed = offset is not None and offset <= 0
+    allowed = offset is not None and (resident_mood == 24 or offset <= 0)
     bed_before = deepcopy(vars(data.dorm[0]))
     if entry == "planner":
         tasks = []
@@ -287,12 +291,16 @@ def test_merged_normal_release_checks_each_occupied_bed(op_data):
     assert task.plan[ROOM][-1] != resident.name
 
 
-def test_standby_takeover_does_not_recall_completed_protected_group_member(
+@pytest.mark.parametrize("retained", [False, True])
+def test_full_group_member_yields_without_early_group_return_unless_retained(
     group_solver,
+    retained,
 ):
     data = group_solver.op_data
     names = mass_mood_recovery_tests.PRIMARY[:2]
     data.groups["轮休"] = names
+    if retained:
+        data.config.free_room_exclusions = [names[1]]
     for name in names:
         data.operators[name].group = "轮休"
     for bed, name in zip(data.dorm, mass_mood_recovery_tests.PRIMARY[:3]):
@@ -321,7 +329,10 @@ def test_standby_takeover_does_not_recall_completed_protected_group_member(
         for room, row in fill.plan.items()
         if not room.startswith("dorm")
     )
-    assert data.project_arrangements([fill.plan]).operators[names[1]].is_resting()
+    assert (
+        data.project_arrangements([fill.plan]).operators[names[1]].is_resting()
+        is retained
+    )
     assert original in tasks
     assert vars(data.dorm[1]) == before
 

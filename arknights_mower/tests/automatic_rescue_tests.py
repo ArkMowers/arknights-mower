@@ -1347,8 +1347,9 @@ def test_rejected_staffing_candidate_cancels_only_failed_room_and_requests_repai
 @pytest.mark.parametrize("path", ["planner", "selection"])
 @pytest.mark.parametrize("lower_manager", [False, True])
 @pytest.mark.parametrize("resident_mood", [8, 24])
-def test_emergency_preserves_configured_managers_and_priority_dynamic_residents(
-    solver, monkeypatch, path, lower_manager, resident_mood
+@pytest.mark.parametrize("retained", [False, True])
+def test_emergency_preserves_managers_and_only_unfinished_or_retained_priority_residents(
+    solver, monkeypatch, path, lower_manager, resident_mood, retained
 ):
     from arknights_mower.solvers import record
     from arknights_mower.utils.resting_priority import RestingTier, resting_tier
@@ -1363,23 +1364,32 @@ def test_emergency_preserves_configured_managers_and_priority_dynamic_residents(
     for index, name in enumerate(residents):
         data.update_detail(name, 8 if index == 1 else resident_mood, room, index, True)
     data.config.ope_resting_priority = residents.copy()
+    if retained:
+        data.config.free_room_exclusions = residents[2:]
     assert len(data.dorm) == 3
     assert {bed.position[1] for bed in data.dorm} == {2, 3, 4}
     assert all(bed.name for bed in data.dorm)
     assert resting_tier(data, incoming) == RestingTier.MAIN
-    assert all(resting_tier(data, name) == RestingTier.PRIORITY for name in residents)
+    assert all(
+        resting_tier(data, name) == RestingTier.PRIORITY for name in residents[:2]
+    )
+    allowed = resident_mood == 24 and not retained
+    assert all(
+        resting_tier(data, name)
+        == (RestingTier.IDLE if allowed else RestingTier.PRIORITY)
+        for name in residents[2:]
+    )
     if lower_manager:
         data.config.ope_resting_priority.remove(residents[0])
         data.operators[residents[0]].resting_priority = "low"
-    allowed = False
     assert [
         bed.position for bed in data.dorm if data._slot_takable(bed, requester=incoming)
-    ] == ([(room, 0)] if allowed else [])
+    ] == ([(room, index) for index in (2, 3, 4)] if allowed else [])
 
     plan = emergency_recovery.emergency_dorm_plan(data, state, solver.tasks)
     if path == "planner":
         assert plan == (
-            {room: [incoming, "Current", "Current", "Current", "Current"]}
+            {room: ["Current", "Current", incoming, "Current", "Current"]}
             if allowed
             else {}
         )
@@ -1393,7 +1403,9 @@ def test_emergency_preserves_configured_managers_and_priority_dynamic_residents(
         )
         solver.task.emergency_dorm = True
         solver.prepare_dorm_selection(row, room)
-        assert row == ([incoming, *residents[1:]] if allowed else residents)
+        assert row == (
+            [*residents[:2], incoming, *residents[3:]] if allowed else residents
+        )
 
     assert data.get_current_room(room, True) == residents
     assert not data.operators[incoming].current_room

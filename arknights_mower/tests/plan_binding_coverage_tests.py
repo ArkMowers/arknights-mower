@@ -216,6 +216,7 @@ def test_ownership_validation_includes_additional_bindings(
 
 @pytest.mark.parametrize("priority", [False, True])
 def test_additional_replacement_gets_replacement_rest_priority(solver, priority):
+    solver.op_data.operators["黑角"].mood = 10
     if priority:
         solver.op_data.config.resting_priority_replacement = ["黑角"]
     assert resting_tier(solver.op_data, "黑角") == (

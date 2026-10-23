@@ -32,6 +32,7 @@ from arknights_mower.utils.resting_priority import (
     busy_resting_names,
     crafting_rest_order,
     has_resting_mood,
+    is_full_dorm_filler,
     resting_key,
     resting_mood,
     resting_tier,
@@ -3124,7 +3125,6 @@ def try_add_release_dorm(
                 name
                 for name in candidates.estimated_recovering
                 if name in op_data.operators
-                and resting_tier(op_data, name) <= RestingTier.PRIORITY_REPLACEMENT
             ],
             key=lambda name: (
                 resting_tier(op_data, name),
@@ -3154,7 +3154,10 @@ def try_add_release_dorm(
 
         filling_vacancies = bool(vacancies)
         arrangement = {}
-        beds_to_visit = op_data.ordered_dorms()
+        beds_to_visit = sorted(
+            op_data.ordered_dorms(),
+            key=lambda bed: not is_full_dorm_filler(op_data, bed.name, now),
+        )
         for bed in beds_to_visit:
             room, index = bed.position
             if room in arrangement and arrangement[room][index] != "Current":
@@ -3189,7 +3192,13 @@ def try_add_release_dorm(
                     (
                         name
                         for name in recovering
-                        if bed_takeover_allowed(op_data, name, occupant.name)
+                        if (
+                            name in candidates.recovering
+                            or resting_tier(op_data, name)
+                            <= RestingTier.PRIORITY_REPLACEMENT
+                            or is_full_dorm_filler(op_data, occupant.name, now)
+                        )
+                        and bed_takeover_allowed(op_data, name, occupant.name)
                         and op_data._slot_takable(bed, requester=name, plan=arrangement)
                     ),
                     None,

@@ -138,12 +138,19 @@ def test_single_release_without_completion_evidence_keeps_resident(op_data):
     assert occupant.current_room == ROOM
 
 
-def test_full_main_keeps_bed_during_automatic_fill(op_data):
+@pytest.mark.parametrize("retained", [False, True])
+def test_full_main_keeps_bed_during_automatic_fill_only_when_retained(
+    op_data, retained
+):
     occupant = op_data.operators["空爆"]
     occupant.operator_type = "high"
+    if retained:
+        op_data.config.free_room_exclusions = [occupant.name]
     tasks = []
     try_add_release_dorm({}, None, op_data, tasks)
-    assert tasks == []
+    assert bool(tasks) is not retained
+    if tasks:
+        assert tasks[0].plan[ROOM][-1] == "红"
 
 
 @pytest.mark.parametrize("priority", ["high", "low", "standby"])

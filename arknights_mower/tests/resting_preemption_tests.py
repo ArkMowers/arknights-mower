@@ -45,7 +45,7 @@ def test_explicit_priority_displaces_standby_without_recalling_its_group(
     data.rescue_mode = rescue
     if low_mood:
         for name in DEEP[1:]:
-            data.operators[name].standby_low_priority = True
+            data.operators[name].mood = 0
     shift_off(solver)
     fill_remaining_beds(solver, OTHERS[1:])
     data = solver.op_data
@@ -54,10 +54,6 @@ def test_explicit_priority_displaces_standby_without_recalling_its_group(
 
     newcomer, plan = try_admit_newcomer(solver)
 
-    if low_mood:
-        assert plan == {}
-        assert all(data.operators[name].is_resting() for name in DEEP)
-        return
     assert plan[newcomer.room][newcomer.index] == newcomer.replacement[0]
     beds = try_reorder(data, plan)
     apply_plan(solver, plan)
@@ -78,6 +74,7 @@ def test_explicit_priority_displaces_standby_without_recalling_its_group(
 def test_explicit_priority_preserves_low_main_group_beds(solver):
     data = solver.op_data
     data.config.ope_resting_priority = []
+    data.config.resting_standby = []
     for name in DEEP:
         data.operators[name].resting_priority = "low"
     shift_off(solver)
@@ -190,6 +187,7 @@ def test_idle_explicit_priority_keeps_required_low_main_group_resting(solver, re
     data = solver.op_data
     data.rescue_mode = rescue
     data.config.free_room = True
+    data.config.resting_standby = []
     for name in DEEP:
         data.operators[name].resting_priority = "low"
     shift_off(solver)

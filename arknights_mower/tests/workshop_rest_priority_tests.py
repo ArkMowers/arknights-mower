@@ -107,6 +107,7 @@ def test_takeover_keeps_original_idle_mood_policy(crafting):
         op = crafting.operators[bed.name]
         op.current_room, op.current_index = bed.position
     crafting.operators["芬"].mood = 1
+    crafting.operators["银灰"].mood = 10
     assert crafting._find_dorm_slot("银灰", set()) == 0
     # 内部先后顺序不允许加工干员挤出同层仍在休息的住客。
     assert crafting._find_dorm_slot("年", set()) is None
