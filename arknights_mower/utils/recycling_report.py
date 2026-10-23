@@ -2,7 +2,6 @@
 
 import json
 from threading import Lock, Thread
-from time import sleep
 from uuid import uuid4
 
 import requests
@@ -19,7 +18,6 @@ from arknights_mower.utils.update_runtime import submission_lock
 REPORT_URL = "https://backend.yituliu.cn/report/recycleDrop"
 REQUEST_TIMEOUT = (3, 15)
 MAX_BATCH_DROPS = 100
-RETRY_DELAYS = (5, 30)
 _lock = Lock()
 _running = False
 _dirty = False
@@ -88,7 +86,7 @@ def _recover_progress():
     with _connection() as connection:
         connection.execute(
             "UPDATE recycling_report_progress SET status = 'pending' "
-            "WHERE status IN ('waiting', 'failed')"
+            "WHERE status = 'waiting'"
         )
         connection.commit()
 
@@ -203,7 +201,7 @@ def _next_batch():
                         "UPDATE recycling_report_progress SET status = 'failed' WHERE event_id = ?",
                         (event_id,),
                     )
-                    logger.warning("回收站历史材料 ID 未确认，保留待补发记录")
+                    logger.warning("回收站历史材料 ID 未确认，请确认材料后手动重试")
                     continue
                 total = sum(count for _, count in items)
                 base_ms = _allocate_time(
@@ -239,18 +237,6 @@ def _next_batch():
     }, progress
 
 
-def _submit_with_retry(directory, batch):
-    for attempt in range(len(RETRY_DELAYS) + 1):
-        try:
-            _submit(directory, batch)
-            return
-        except requests.RequestException:
-            if attempt == len(RETRY_DELAYS):
-                raise
-            logger.debug("回收站上报连接失败，等待后重试本批请求")
-            sleep(RETRY_DELAYS[attempt])
-
-
 def _drain(directory):
     global _running, _dirty
     failed = False
@@ -267,17 +253,10 @@ def _drain(directory):
                     len(batch["drops"]),
                     progress,
                 )
+                submitted = False
                 try:
-                    _submit_with_retry(directory, batch)
-                except Exception:
-                    with _connection() as connection:
-                        connection.executemany(
-                            "UPDATE recycling_report_progress SET status = 'failed' WHERE event_id = ?",
-                            [(event_id,) for _, _, event_id in progress],
-                        )
-                        connection.commit()
-                    logger.warning("回收站上报请求失败，进度已保留，下次启动时继续")
-                else:
+                    _submit(directory, batch)
+                    submitted = True
                     with _connection() as connection:
                         cursor = connection.executemany(
                             "UPDATE recycling_report_progress SET next_unit = ?, status = ? WHERE event_id = ?",
@@ -296,6 +275,20 @@ def _drain(directory):
                                     f"预期 {(next_unit, status)}，实际 {stored}"
                                 )
                         connection.commit()
+                except Exception:
+                    with _connection() as connection:
+                        connection.executemany(
+                            "UPDATE recycling_report_progress SET status = 'failed' WHERE event_id = ?",
+                            [(event_id,) for _, _, event_id in progress],
+                        )
+                        connection.commit()
+                    logger.exception(
+                        "回收站材料上报失败，进度已保留，请在收取明细中点击“重试上传”"
+                    )
+                    if submitted:
+                        failed = True
+                        break
+                else:
                     logger.info(
                         "回收站材料上报完成：%d 份材料，%d 条收取记录",
                         len(batch["drops"]),
