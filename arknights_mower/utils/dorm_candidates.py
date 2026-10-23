@@ -9,6 +9,7 @@ from arknights_mower.utils.resting_priority import (
     busy_resting_names,
     crafting_rest_order,
     has_resting_mood,
+    is_full_dynamic_candidate,
     resting_key,
     resting_mood,
     resting_tier,
@@ -303,7 +304,11 @@ def dorm_candidates(
 
     def estimate_key(name):
         mood = dorm_candidate_mood(op_data, name, now)
-        return 24 if mood is None else mood, resting_tier(op_data, name)
+        return (
+            is_full_dynamic_candidate(op_data, name, now),
+            24 if mood is None else mood,
+            resting_tier(op_data, name, now),
+        )
 
     full.sort(key=estimate_key)
     unknown.sort(key=estimate_key)

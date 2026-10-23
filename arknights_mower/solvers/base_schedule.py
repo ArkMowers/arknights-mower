@@ -6313,10 +6313,6 @@ class BaseSchedulerSolver(
             )
         )
         agents.extend(dorm_agents)
-        for name in agents:
-            op = self.op_data.operators[name]
-            if not op.is_resting() and not self.op_data.is_standby(name):
-                self.op_data.update_standby_low_priority(op)
         logger.debug(f"计算排班:{agents}")
         superseded_covers = {
             previous[0]

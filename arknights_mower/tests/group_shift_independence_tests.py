@@ -34,7 +34,6 @@ def prepare_follower(solver, role, mood):
     else:
         data.config.resting_standby = [follower]
         op.resting_priority = "standby"
-        op.standby_low_priority = role == "promoted"
     op.mood, op.time_stamp = (
         (24, None) if mood is None else (mood, mass_mood_recovery_tests.NOW)
     )
@@ -42,7 +41,7 @@ def prepare_follower(solver, role, mood):
     return data, data.operators[anchor], op
 
 
-@pytest.mark.parametrize("role", ["standby", "promoted", "shared"])
+@pytest.mark.parametrize("role", ["standby", "shared"])
 @pytest.mark.parametrize("returning", [False, True])
 def test_follower_workplace_arrangement_does_not_change_group_state(
     solver, role, returning
@@ -52,7 +51,7 @@ def test_follower_workplace_arrangement_does_not_change_group_state(
     assert data.arrangement_group_transitions(plan) == {}
 
 
-@pytest.mark.parametrize("role", ["standby", "promoted", "shared"])
+@pytest.mark.parametrize("role", ["standby", "shared"])
 def test_legacy_state_and_group_mood_ignore_follower(solver, role):
     data, anchor, follower = prepare_follower(solver, role, 0)
     anchor.mood = 10
@@ -62,7 +61,7 @@ def test_legacy_state_and_group_mood_ignore_follower(solver, role):
     assert data.group_min_mood("轮休") == data.group_max_mood("轮休") == 10
 
 
-@pytest.mark.parametrize("role", ["standby", "promoted", "shared"])
+@pytest.mark.parametrize("role", ["standby", "shared"])
 @pytest.mark.parametrize("mood", [0, 12, 24, None])
 def test_follower_bed_cannot_supply_group_return_deadline(solver, role, mood):
     data, anchor, follower = prepare_follower(solver, role, mood)
@@ -88,14 +87,13 @@ def test_standby_mood_cannot_initiate_group_departure(standby_solver):
     candidate.mood = 0
 
     assert instance.resting() == {}
-    assert not candidate.standby_low_priority
+    assert resting_tier(data, candidate.name) == RestingTier.STANDBY
 
 
-@pytest.mark.parametrize("promoted", [False, True])
 @pytest.mark.parametrize("anchor_room", ["dormitory_1", ""])
 @pytest.mark.parametrize("candidate_room", ["meeting", "contact"])
 def test_standby_position_does_not_recall_resting_anchor(
-    standby_solver, promoted, anchor_room, candidate_room
+    standby_solver, anchor_room, candidate_room
 ):
     instance = standby_solver
     data = instance.op_data
@@ -112,7 +110,6 @@ def test_standby_position_does_not_recall_resting_anchor(
     else:
         anchor.mood = 24
     candidate._current_room = candidate_room
-    candidate.standby_low_priority = promoted
     data.group_shift_state = {"深海": True}
     plan = instance.agent_get_mood(read_rooms=False, return_plan=True)
     assert not any(anchor.name in row for row in plan.values())
@@ -143,16 +140,15 @@ def test_individual_standby_return_does_not_block_normal_group_departure(
     assert plan["central"] == [group_resting_capacity_tests.COVERS[0]]
 
 
-def test_low_mood_read_does_not_promote_until_group_departure(standby_solver):
+def test_low_mood_standby_keeps_priority_after_group_departure(standby_solver):
     instance = standby_solver
     data = instance.op_data
     candidate = data.operators[group_resting_capacity_tests.DEEP[1]]
     data.update_detail(candidate.name, 0, candidate.room, candidate.index)
-    assert not candidate.standby_low_priority
+    assert resting_tier(data, candidate.name) == RestingTier.STANDBY
     plan = {}
     assert instance.get_resting_plan(data.groups["深海"], [], plan, 0)
-    assert candidate.standby_low_priority
-    assert resting_tier(data, candidate.name) == RestingTier.LOW_MAIN
+    assert resting_tier(data, candidate.name) == RestingTier.STANDBY
     assert candidate.name in {bed.name for bed in data.all_dorms()}
     assert (
         data.arrangement_group_transitions(
@@ -162,7 +158,7 @@ def test_low_mood_read_does_not_promote_until_group_departure(standby_solver):
     )
 
 
-def test_promoted_standby_requires_bed_before_group_departure(standby_solver):
+def test_low_mood_standby_does_not_require_bed_before_group_departure(standby_solver):
     instance = standby_solver
     group_resting_capacity_tests.occupy_beds(instance, "high")
     data = instance.op_data
@@ -170,12 +166,13 @@ def test_promoted_standby_requires_bed_before_group_departure(standby_solver):
     candidate.mood, candidate.time_stamp = 0, datetime.now()
     before = [(bed.name, bed.time) for bed in data.dorm]
     plan = {}
-    assert not instance.get_resting_plan(data.groups["深海"], [], plan, 0)
-    assert plan == {}
-    assert [(bed.name, bed.time) for bed in data.dorm] == before
+    assert instance.get_resting_plan(data.groups["深海"], [], plan, 0)
+    assert candidate.name not in {bed.name for bed in data.dorm}
+    assert [(bed.name, bed.time) for bed in data.dorm][1:] == before[1:]
+    assert data.dorm[0].name == group_resting_capacity_tests.DEEP[0]
 
 
-@pytest.mark.parametrize("role", ["standby", "promoted", "shared"])
+@pytest.mark.parametrize("role", ["standby", "shared"])
 @pytest.mark.parametrize("event", ["closing", "backup"])
 def test_dropped_follower_during_capacity_rebalance_does_not_recall_group(
     solver, role, event
@@ -201,7 +198,7 @@ def test_dropped_follower_during_capacity_rebalance_does_not_recall_group(
     assert data.group_is_resting("轮休")
 
 
-@pytest.mark.parametrize("role", ["standby", "promoted", "shared"])
+@pytest.mark.parametrize("role", ["standby", "shared"])
 def test_individual_follower_correction_keeps_group_dorm_post_off_shift(solver, role):
     data, _, follower = prepare_follower(solver, role, 12)
     owner = data.operators["冰酿"]
@@ -215,7 +212,7 @@ def test_individual_follower_correction_keeps_group_dorm_post_off_shift(solver, 
     assert plan.get("dormitory_1", ["Current"])[0] != owner.name
 
 
-@pytest.mark.parametrize("role", ["standby", "promoted"])
+@pytest.mark.parametrize("role", ["standby"])
 def test_native_recovery_does_not_start_group_for_low_mood_standby(solver, role):
     from arknights_mower.utils.emergency_recovery import native_opportunity
 

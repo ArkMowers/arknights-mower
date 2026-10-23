@@ -68,6 +68,7 @@ def test_takeover_preserves_protected_tiers_in_both_modes(
 @pytest.mark.parametrize("temporary", [False, True])
 def test_legacy_idle_resident_has_no_formal_rescue_protection(solver, temporary):
     data = solver.op_data
+    data.operators[PRIMARY[0]].mood = 5
     name = set_role(data, RestingTier.IDLE)
     op = data.operators[name]
     op.temporary_dorm_fill = temporary
@@ -86,11 +87,11 @@ def test_rescue_does_not_disable_configured_standby(solver):
     data.operators.pop(PRIMARY[1])
     data.add(Operator(PRIMARY[1], "room_1_2", index=0, operator_type="high"))
     candidate = data.operators[PRIMARY[1]]
+    candidate.mood = 5
     assert not candidate.rest_in_full
     assert candidate.resting_priority == "standby"
-    candidate.standby_low_priority = True
     assert data._can_standby(candidate)
-    assert resting_tier(data, candidate.name) == RestingTier.LOW_MAIN
+    assert resting_tier(data, candidate.name) == RestingTier.STANDBY
 
 
 def test_idle_replacement_entry_can_take_lower_rescue_priority(solver):

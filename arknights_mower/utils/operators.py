@@ -25,6 +25,8 @@ from arknights_mower.utils.resting_priority import (
     RestingTier,
     bed_takeover_allowed,
     has_resting_mood,
+    is_full_dorm_filler,
+    is_full_dynamic_candidate,
     resting_key,
     resting_mood,
     resting_tier,
@@ -1827,8 +1829,6 @@ class Operators:
         if update_time and 0 <= mood < agent.upper_limit:
             # 最低者确实需要恢复时，之后回满仍按普通不养闲人处理。
             agent.dorm_mood_fallback = ""
-        if returned_to_post or not self.config.is_resting_standby(agent.name):
-            self.update_standby_low_priority(agent, returned_to_post=returned_to_post)
         if current_room == "train" and current_index == 0:
             agent.resting_from_train = True
         elif (current_room and not to_dorm) or mood >= 24:
@@ -2044,9 +2044,6 @@ class Operators:
             operator.rest_mood_release_limit = getattr(
                 exist, "rest_mood_release_limit", None
             )
-            operator.standby_low_priority = getattr(
-                exist, "standby_low_priority", False
-            )
             operator.temporary_dorm_fill = getattr(exist, "temporary_dorm_fill", False)
             operator.individual_return_window = getattr(
                 exist, "individual_return_window", None
@@ -2087,8 +2084,6 @@ class Operators:
             and not self.config.is_rest_in_full(operator.name)
         ):
             operator.resting_priority = "standby"
-        if operator.resting_priority != "standby":
-            operator.standby_low_priority = False
 
     def _can_standby(self, op):
         """仅显式配置且没有强制恢复要求的主班可待命。"""
@@ -2102,7 +2097,7 @@ class Operators:
         )
 
     def is_group_shift_anchor(self, op):
-        """只有普通固定工作主班参与绑组上下班，候补升为低优不改变身份。"""
+        """只有普通固定工作主班参与绑组上下班，候补不参与。"""
         return (
             op.is_high()
             and not op.multi_group
@@ -2128,23 +2123,6 @@ class Operators:
             if self.custom_mood_limits(op.name) is not None
             else int(threshold)
         )
-
-    def update_standby_low_priority(self, op, now=None, *, returned_to_post=False):
-        """候补低于急救线后升为低优，直到实际回班。
-
-        急救线与现有急救模式共用同一计算：排班心情阈值乘全局
-        急救阈值，并按干员自身心情上下限换算为绝对心情。
-        """
-        if not self.config.is_resting_standby(op.name):
-            op.standby_low_priority = False
-            return
-        # 回班是读取到的位置迁移事件；持续在岗的低心情候补仍需正常急救。
-        if returned_to_post:
-            op.standby_low_priority = False
-            return
-        mood = resting_mood(op, now)
-        if mood < self.rescue_mood_threshold(op):
-            op.standby_low_priority = True
 
     def is_standby(self, name):
         """从实际阵容识别候补待命，重启后也无需额外状态文件。"""
@@ -2908,9 +2886,9 @@ class Operators:
                     else 0,
                 )
             tier, recovery_order = resting_key(self, bed.name, now)
-            # 先使用空位，再接管最低层级；同层级先比较隔离，再比较恢复缺口。
+            # 先使用空位和已回满补位者，再按层级接管未完成恢复者。
             return (
-                1,
+                1 if is_full_dorm_filler(self, bed.name, now) else 2,
                 -tier,
                 single_cost,
                 self.dorm_isolation_cost(name, *bed.position, plan=plan)
@@ -2949,7 +2927,6 @@ class Operators:
             name
             for name in names
             if self._can_standby(self.operators[name])
-            and not self.operators[name].standby_low_priority
             and (
                 self.operators[name].group in anchor_groups
                 or self.operators[name].independent_rest
@@ -2978,6 +2955,7 @@ class Operators:
         ordered_names = sorted(
             names,
             key=lambda name: (
+                is_full_dynamic_candidate(self, name),
                 name in optional,
                 resting_key(self, name),
             ),
@@ -3228,8 +3206,6 @@ class Operator:
             self.group = ""
             self.replacement = list(self.replacements_for_group(""))
         self.resting_priority = resting_priority
-        # 候补跌破急救线后，本轮休息周期锁定为低优。
-        self.standby_low_priority = False
         self.dorm_recovery_room = ""
         self.dorm_recovery_index = -1
         self.resting_from_train = False

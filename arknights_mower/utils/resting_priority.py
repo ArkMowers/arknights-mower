@@ -1,5 +1,6 @@
 """宿舍候选、分床和重排共用的排班身份与心情排序。"""
 
+from datetime import datetime
 from enum import IntEnum
 from itertools import zip_longest
 
@@ -37,22 +38,22 @@ def _replacement_tier(op_data, name):
     return RestingTier.REPLACEMENT
 
 
-def resting_tier(op_data, name):
+def resting_tier(op_data, name, now=None):
     op = op_data.operators.get(name)
     if name in op_data.config.free_blacklist or (op is not None and op.workaholic):
         return RestingTier.EXCLUDED
+    if is_full_dynamic_candidate(op_data, name, now):
+        return RestingTier.IDLE
     if name in op_data.config.ope_resting_priority:
         return RestingTier.PRIORITY
+    if name in op_data.config.resting_standby:
+        return RestingTier.STANDBY
     if op is not None:
         if (op.room == "train" and op.index == 0) or (
             op.current_room == "train" and op.current_index == 0
         ):
             return _replacement_tier(op_data, name)
         if op.is_high():
-            if (op.resting_priority == "standby") and getattr(
-                op, "standby_low_priority", False
-            ):
-                return RestingTier.LOW_MAIN
             return {
                 "high": RestingTier.MAIN,
                 "low": RestingTier.LOW_MAIN,
@@ -71,21 +72,68 @@ def resting_tier(op_data, name):
     return RestingTier.IDLE
 
 
-def bed_takeover_allowed(op_data, requester, resident):
-    """前四级保床；候补与普通替班不超过个人上限八成时可接管更低级。"""
-    requester_tier = resting_tier(op_data, requester)
-    resident_tier = resting_tier(op_data, resident)
-    if not (
-        requester_tier < resident_tier < RestingTier.EXCLUDED
-        and resident_tier > RestingTier.PRIORITY_REPLACEMENT
+def is_full_dynamic_candidate(op_data, name, now=None):
+    """达到个人上限的动态候选不享受恢复优先级，宿舍保留名单除外。"""
+    from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+
+    op = op_data.operators.get(name)
+    if (
+        op is None
+        or op.is_high()
+        and op.room.startswith("dorm")
+        or name in op_data.config.free_room_exclusions
     ):
         return False
-    if requester_tier <= RestingTier.PRIORITY_REPLACEMENT:
-        return True
+    mood = dorm_candidate_mood(op_data, name, now)
+    return mood is not None and mood >= op.upper_limit
+
+
+def is_full_dorm_filler(op_data, name, now=None):
+    """实读回满的动态住客优先腾床，固定宿舍岗位和保留名单除外。"""
+    now = now or datetime.now()
+    op = op_data.operators.get(name)
+    return bool(
+        op is not None
+        and op.current_room.startswith("dorm")
+        and is_full_dynamic_candidate(op_data, name, now)
+        and RestingTier.PRIORITY_REPLACEMENT
+        < resting_tier(op_data, name, now)
+        < RestingTier.EXCLUDED
+        and has_resting_mood(op, now)
+        and op.time_stamp <= now
+        and not getattr(op, "mood_is_prediction", False)
+        and op.mood >= op.upper_limit
+    )
+
+
+def bed_takeover_allowed(op_data, requester, resident):
+    """先让实读回满补位者腾床；未完成恢复者沿用层级和八成门槛。"""
+    now = datetime.now()
+    requester_tier = resting_tier(op_data, requester, now)
+    resident_tier = resting_tier(op_data, resident, now)
+    if is_full_dynamic_candidate(op_data, requester, now):
+        return False
+    if (
+        requester_tier == RestingTier.EXCLUDED
+        or resident_tier <= RestingTier.PRIORITY_REPLACEMENT
+    ):
+        return False
     from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
 
     op = op_data.operators.get(requester)
-    mood = dorm_candidate_mood(op_data, requester)
+    mood = dorm_candidate_mood(op_data, requester, now)
+    if (
+        is_full_dorm_filler(op_data, resident, now)
+        and has_resting_mood(op, now)
+        and op.time_stamp <= now
+        and not getattr(op, "mood_is_prediction", False)
+        and resting_mood(op, now) < op.upper_limit
+    ):
+        return mood is not None and mood < op.upper_limit
+    if not requester_tier < resident_tier < RestingTier.EXCLUDED:
+        return False
+    if requester_tier <= RestingTier.PRIORITY_REPLACEMENT:
+        return True
     return op is not None and mood is not None and mood <= op.upper_limit * 0.8
 
 
@@ -112,7 +160,7 @@ def resting_key(op_data, name, now=None):
     mood = 24 if mood is None else mood
     # 同级按尚需恢复的心情点数降序；恢复速度不按个人上下限成比例。
     mood -= op.upper_limit if op is not None else 24
-    return resting_tier(op_data, name), mood
+    return resting_tier(op_data, name, now), mood
 
 
 def crafting_rest_candidates(op_data, names):

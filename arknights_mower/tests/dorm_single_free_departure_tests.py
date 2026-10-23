@@ -306,8 +306,7 @@ def test_unrelated_work_plan_does_not_fill_old_empty_target(residents):
     assert prioritize_new_dorm_recovery(data, plan) == plan
 
 
-@pytest.mark.parametrize("standby", [False, True])
-def test_local_arrival_does_not_bypass_remote_low_primary(residents, standby):
+def test_local_arrival_does_not_bypass_remote_low_primary(residents):
     data = residents
     for name, tier, mood, position in (
         ("承曦格雷伊", RestingTier.MAIN, 1, (OTHER, 2)),
@@ -316,7 +315,6 @@ def test_local_arrival_does_not_bypass_remote_low_primary(residents, standby):
     ):
         op = set_tier(data, name, tier, mood)
         op.current_room, op.current_index = position
-    data.operators["至简"].standby_low_priority = not standby
     data.dorm[1].name = "承曦格雷伊"
     data.dorm[2].name = "森蚺"
     data.dorm[3].reset()

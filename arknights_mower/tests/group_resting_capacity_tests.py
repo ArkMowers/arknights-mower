@@ -342,6 +342,8 @@ def test_low_main_requires_beds_but_can_take_resting_replacements(solver, occupa
     assert solver.initialize_operators() is None
     occupy_beds(solver, occupants)
     data = solver.op_data
+    for name in OTHERS:
+        data.operators[name].mood = 10
     data.operators[DEEP[0]].mood = 0
     before = [(bed.name, bed.time) for bed in data.dorm]
     plan, replacements = {}, []
@@ -665,72 +667,45 @@ def test_grouped_candidate_fills_vacancy_without_changing_return_time(solver):
     ) < timedelta(seconds=1)
 
 
-def test_candidate_below_rescue_line_stays_low_until_return(solver):
-    data = solver.op_data
-    candidate = data.operators[DEEP[1]]
-    now = datetime.now()
-    candidate.time_stamp = now
-    candidate.mood = 8.9
-
-    data.update_standby_low_priority(candidate, now)
-    assert candidate.standby_low_priority
-    assert solver._resting_tier(candidate).name == "LOW_MAIN"
-    assert data._can_standby(candidate)
-
-    # 恢复越过急救线也不在休息途中降回候补。
-    candidate.current_room, candidate.current_index = data.dorm[0].position
-    candidate.mood = 20
-    data.update_standby_low_priority(candidate, now)
-    assert candidate.standby_low_priority
-    assert solver._resting_tier(candidate).name == "LOW_MAIN"
-
-    # 实际回到自己的工作位后解除本轮升级。
-    data.update_detail(candidate.name, 20, candidate.room, candidate.index)
-    assert not candidate.standby_low_priority
-    assert solver._resting_tier(candidate).name == "STANDBY"
-
-
-@pytest.mark.parametrize("previous_room", ["dormitory_1", ""])
-def test_low_mood_return_resets_rescue_until_next_departure(solver, previous_room):
-    data = solver.op_data
-    candidate = data.operators[DEEP[1]]
-    candidate.current_room = previous_room
-    candidate.current_index = 2 if previous_room else -1
-    candidate.standby_low_priority = True
-    candidate.time_stamp = datetime.now()
-
-    data.update_detail(candidate.name, 8.9, candidate.room, candidate.index)
-    assert not candidate.standby_low_priority
-    assert data._can_standby(candidate)
-
-    # 持续在岗读数不提升；下一次下班分床前重新检查急救线。
-    data.update_detail(candidate.name, 8.8, candidate.room, candidate.index)
-    assert not candidate.standby_low_priority
-    data.update_standby_low_priority(candidate)
-    assert candidate.standby_low_priority
-    assert data._can_standby(candidate)
-
-
-def test_candidate_below_rescue_line_requires_bed_even_when_higher_tiers_occupy_beds(
-    solver,
+@pytest.mark.parametrize("mood", [0, 8.9, 20, 24])
+def test_candidate_uses_standby_tier_only_below_cap_through_readback_and_return(
+    solver, mood
 ):
+    data = solver.op_data
+    candidate = data.operators[DEEP[1]]
+    for room, index in [data.dorm[0].position, (candidate.room, candidate.index)]:
+        data.update_detail(candidate.name, mood, room, index, True)
+        assert solver._resting_tier(candidate).name == (
+            "IDLE" if mood == 24 else "STANDBY"
+        )
+        assert data._can_standby(candidate)
+
+
+def test_full_required_member_follows_recovering_optional_standby(solver):
+    data = solver.op_data
+    full = data.operators[DEEP[2]]
+    data.config.resting_standby.remove(full.name)
+    full.resting_priority = "high"
+    full.mood = full.upper_limit
+    rooms = data.assign_dorm_group(DEEP[:3])
+    assert rooms is not None
+    assert [bed.name for bed in rooms] == DEEP[:3]
+    assert rooms[1].name == DEEP[1]
+    assert rooms[2].name == full.name
+
+
+def test_low_mood_candidate_can_wait_without_bed(solver):
     occupy_beds(solver, "high")
     data = solver.op_data
     candidate = data.operators[DEEP[1]]
-    candidate.mood = 8.9
-    candidate.time_stamp = datetime.now()
-    data.update_standby_low_priority(candidate)
-
+    candidate.mood, candidate.time_stamp = 0, datetime.now()
     before = [(bed.name, bed.time) for bed in data.dorm]
-    plan, replacements = {}, []
-    solver.get_resting_plan(data.groups["深海"], replacements, plan, 0)
-
-    assert plan == {}
-    assert replacements == []
-    assert data.is_standby(DEEP[1]) is False  # 尚未执行离岗。
-    assert not any(bed.name in DEEP for bed in data.dorm)
-    assert data.operators[DEEP[1]].standby_low_priority
-    assert before == [(bed.name, bed.time) for bed in data.dorm]
+    plan = {}
+    assert solver.get_resting_plan(data.groups["深海"], [], plan, 0)
+    assert candidate.name not in {bed.name for bed in data.dorm}
+    assert before[1:] == [(bed.name, bed.time) for bed in data.dorm][1:]
+    assert data.dorm[0].name == DEEP[0]
+    assert solver._resting_tier(candidate).name == "STANDBY"
 
 
 def test_normal_low_gets_last_spare_bed_before_candidate(solver):
@@ -738,6 +713,7 @@ def test_normal_low_gets_last_spare_bed_before_candidate(solver):
     data = solver.op_data
     normal = data.operators[DEEP[1]]
     normal.resting_priority = "low"
+    data.config.resting_standby.remove(normal.name)
     room, index = data.dorm[1].position
     names = ["Current"] * 5
     names[index] = "Free"
@@ -776,6 +752,7 @@ def test_normal_low_controls_return_before_candidate_when_no_high_member(solver)
 def test_normal_low_precedes_candidate_in_resting_and_dorm_order(solver):
     data = solver.op_data
     data.operators[DEEP[1]].resting_priority = "low"
+    data.config.resting_standby.remove(DEEP[1])
     data.operators[DEEP[1]].mood = 20
     # 高于默认 9 点急救线，仍保持候补层级。
     data.operators[DEEP[2]].mood = 10

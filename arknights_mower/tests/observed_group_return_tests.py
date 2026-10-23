@@ -184,12 +184,10 @@ def test_healthy_working_state_needs_no_correction(solver):
     assert solver.tasks == []
 
 
-@pytest.mark.parametrize("promoted", [False, True])
-def test_standby_member_does_not_block_fixed_anchor_return(solver, promoted):
+def test_standby_member_does_not_block_fixed_anchor_return(solver):
     data = solver.op_data
     standby = data.operators["绮良"]
     standby.resting_priority = "standby"
-    standby.standby_low_priority = promoted
     standby._current_room, standby.current_index = "", -1
     standby.time_stamp = None
     assert not data.is_group_shift_anchor(standby)
