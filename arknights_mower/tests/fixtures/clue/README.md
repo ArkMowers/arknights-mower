@@ -1,5 +1,7 @@
 # 会客室实机截图
 
+`clue_board_fast_place_enabled.png` 和 `clue_board_fast_place_disabled.png` 于 2026-10-23 从用户本机 MuMu 通过 ADB 采集，保留 1920×1080 原始画面。前者显示橙色“快捷置入”和数量角标 1；用户授权点击一次后，4 号线索摆上，板上数量从 5/7 变为 6/7，后者显示灰色按钮且角标消失。`clue_board_blue_background.jpg` 是用户提供的故障截图，显示蓝色背景及灰色按钮。[线索板识别测试](../../clue_board_recognition_tests.py) 使用这三张图验证两种按钮外观及页面识别；测试内移除旧文件图标或角标，保存的截图保持原样。灰色按钮从点击后截图裁剪并替换原有 `clue.png`，橙色状态复用已有 `clue/fast_place.png`；两者沿用相同范围，右边界不包含数量角标。页面继续通过 `find("clue")` 识别，接受两种外观；快捷置入调用保持原样，不额外判断按钮是否可用。这些检查不能证明故障日志中所有画面均已识别。
+
 `clue_live_*.png` 于 2026-09-24 从本机 MuMu 模拟器通过 ADB `exec-out screencap -p` 获取，分辨率为 1920×1080。它们保留完整画面，以便 `Recognizer` 按运行时相同的区域和模板识别。
 
 - `clue_live_room_details.png`：进入会客室后的放大视角，无产物提示。
