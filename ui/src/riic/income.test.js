@@ -463,6 +463,41 @@ it('reports fixed training assumptions for new runs and preserves historical pro
   ).toContain('历史演算的未完成训练计划：有')
 })
 
+it('reports saved initial conditions and source versions without relabeling historical results', () => {
+  const source = plan()
+  const settings = { ...modelSettings(), warmupDays: 0, sampleDays: 1 }
+  const result = calculateIncome(source, settings)
+  expect(result.success, result.error).toBe(true)
+  expect(result.initialConditions).toEqual({ fiammettaMorale: 16 })
+  expect(result.modelProvenance).toEqual({
+    calculatorBaseRevision: '55294037d208bf1c416af386236ac0b12f321f66',
+    calculatorSyncRevision: '6ddbeece6264e1881b7bf34f9b346bbf03704fff',
+    mowerBaseReference: '80c97ee604375af144090656ef84b083acd6dc7f',
+    mowerCheckedRevision: '84e3926c0f36045d7baeb1ac050f815b40952d6d'
+  })
+  const saved = structuredClone(result)
+  const report = incomeReportLines(saved, settings, source, '主表').join('\n')
+  expect(report).toContain('菲亚梅塔初始心情 16')
+  expect(report).toContain(`选择性同步 ${saved.modelProvenance.calculatorSyncRevision}`)
+  expect(report).toContain(`本轮核对 ${saved.modelProvenance.mowerCheckedRevision}`)
+  const historical = { ...saved }
+  delete historical.initialConditions
+  delete historical.modelProvenance
+  const oldReport = incomeReportLines(historical, settings, source, '主表').join('\n')
+  expect(oldReport).toContain('初始心情 24（受个人上限约束）')
+  expect(oldReport).toContain('计算器 5529403')
+  expect(oldReport).not.toContain('菲亚梅塔初始心情 16')
+  expect(oldReport).not.toContain('选择性同步')
+  saved.initialConditions.fiammettaMorale = 17
+  saved.modelProvenance.calculatorSyncRevision = 'saved-calculator-version'
+  expect(incomeReportLines(saved, settings, source, '主表').join('\n')).toContain(
+    '菲亚梅塔初始心情 17'
+  )
+  expect(incomeReportLines(saved, settings, source, '主表').join('\n')).toContain(
+    '选择性同步 saved-calculator-version'
+  )
+})
+
 it('does not count ordinary gold delivery as gold income or deduct it from manufacturing', () => {
   const source = plan()
   source.plan1.room_2_3 = { name: '发电站', plans: [] }

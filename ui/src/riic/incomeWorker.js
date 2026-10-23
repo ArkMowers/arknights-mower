@@ -5,6 +5,8 @@ import { incomeOrderDistribution } from './incomeOrders'
 import { createRecruitmentObservation } from './incomeRecruitment'
 import { createClueObservation } from './incomeClues'
 import { buildTimelineData } from './vendor/workbench/timeline/timelineModel'
+import { MOWER_FIAMMETTA_INITIAL_MORALE } from './vendor/scheduler/mowerInitialMorale'
+import sourceManifest from './vendor/source.json'
 
 export function calculateIncome(plan, settings, onProgress) {
   const { workspace, options } = incomeRequest(plan, settings)
@@ -62,6 +64,13 @@ export function calculateIncome(plan, settings, onProgress) {
       : (production.sample.net.lmd ?? 0) / days
   return {
     success: true,
+    initialConditions: { fiammettaMorale: MOWER_FIAMMETTA_INITIAL_MORALE },
+    modelProvenance: {
+      calculatorBaseRevision: sourceManifest.revision,
+      calculatorSyncRevision: sourceManifest.schedulingSync.calculatorRevision,
+      mowerBaseReference: sourceManifest.mowerReference,
+      mowerCheckedRevision: sourceManifest.mowerCheckedRevision
+    },
     eventLog: incomeEventLog(simulation),
     orderDistribution: incomeOrderDistribution(simulation),
     simulationReport: simulation,
