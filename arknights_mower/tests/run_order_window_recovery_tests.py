@@ -1,4 +1,4 @@
-"""实测生产倒计时驱动窗口复核，保留原跑单并允许独立任务继续。"""
+"""倒计时判定漏单后重新规划，旧版等待不阻塞新订单或原班恢复。"""
 
 import pickle
 from datetime import timedelta
@@ -9,8 +9,7 @@ import pytest
 from arknights_mower.solvers import base_schedule as base
 from arknights_mower.tests.emergency_compensation_tests import selection_harness
 from arknights_mower.tests.run_order_planning_wakeup_tests import replay as replay
-from arknights_mower.utils import config, scheduler_task
-from arknights_mower.utils.dorm_candidates import retained_task_reservations
+from arknights_mower.utils import config
 from arknights_mower.utils.plan import Room
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
@@ -38,174 +37,184 @@ def window(replay, monkeypatch):
     return solver, clock, task
 
 
-def wait_for_production(window, remaining=5502.5):
+@pytest.mark.parametrize("remaining", [0, -1, 660, 900, 7155.5])
+def test_pre_swap_miss_retires_stale_order_and_plans_next_order(window, remaining):
     solver, clock, order = window
     solver.get_order_remaining_time.return_value = remaining
-    assert solver.agent_arrange(order.plan) is False
-    observation = next(
-        task for task in solver.tasks if task.type == TaskTypes.REFRESH_TIME
-    )
-    assert observation.time == clock.now() + timedelta(seconds=remaining - 60)
-    return observation
-
-
-@pytest.mark.parametrize("restart", [False, True])
-@pytest.mark.parametrize("slots", [1, 2])
-def test_production_wait_retains_order_and_dispatches_independent_work(
-    window, restart, slots
-):
-    solver, clock, order = window
-    if slots == 2:
-        solver.op_data.plan[ROOM].append(Room("Free", "", []))
-        solver.op_data.operators["深巡"]._current_room = ROOM
-        solver.op_data.operators["深巡"].current_index = 1
-        order.plan[ROOM] = ["鸿雪", "但书"]
     original_time = order.time
-    original_plan = order.plan.copy()
-    observation = wait_for_production(window)
-    if restart:
-        solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
-        order, observation = solver.tasks
-    for _ in range(3):
-        clock.current += timedelta(seconds=10)
-        solver._resume_failed_tasks()
-        scheduler_task.scheduling(
-            solver.tasks, time_now=clock.now(), op_data=solver.op_data
-        )
-        assert solver.find_next_task() is observation
-        assert order.time == original_time and order.plan == original_plan
-        assert retained_task_reservations(solver.op_data, [order]) == (set(), set())
-    solver.get_order_remaining_time.assert_called_once()
-    solver.choose_agent.assert_not_called()
-    solver.drone.assert_not_called()
-    depot = SchedulerTask(clock.now(), task_type=TaskTypes.DEPOT)
-    solver.tasks.append(depot)
-    solver.仓库扫描 = MagicMock()
-    solver.task = depot
-    solver.infra_main()
-    solver.仓库扫描.assert_called_once()
-    assert depot not in solver.tasks
-    assert order in solver.tasks and observation in solver.tasks
-    assert order.time == original_time
 
-    clock.current = observation.time
-    solver.get_order_remaining_time.return_value = 60
-    solver.task = observation
     solver.infra_main()
-    assert observation not in solver.tasks
-    assert solver.find_next_task() is order
-    assert not hasattr(order, "execution_failure")
-    solver.task = order
-    solver.agent_arrange(order.plan)
-    original = ["鸿雪"] if slots == 1 else ["鸿雪", "深巡"]
-    target = ["但书"] if slots == 1 else ["鸿雪", "但书"]
-    assert solver.op_data.get_current_room(ROOM, True) == original
-    assert order.plan == {} and order.time == original_time
+
+    base.send_message.assert_called_once_with("检测到漏单！", level="WARNING")
+    assert order not in solver.tasks
+    assert order.time == original_time
+    assert solver.op_data.operators["鸿雪"].time_stamp is None
+    assert solver.op_data.get_current_room(ROOM, True) == ["鸿雪"]
+    assert not getattr(order, "run_order_restore_pending", False)
+    solver.choose_agent.assert_not_called()
+    solver.accept_order.assert_not_called()
+    solver.drone.assert_not_called()
+    refresh = solver.find_next_task()
+    assert refresh.type == TaskTypes.REFRESH_TIME and refresh.meta_data == ROOM
+    assert refresh.time == clock.now()
+    for _ in range(3):
+        solver._resume_failed_tasks()
+        solver._queue_missing_run_order_reads()
+    assert solver.tasks == [refresh]
+    solver.get_order_remaining_time.assert_called_once()
+
+    next_time = clock.now() + timedelta(hours=1)
+    solver.get_run_order_time.return_value = next_time
+    solver.task = refresh
+    solver.infra_main()
+    assert refresh not in solver.tasks
+    next_order = solver.find_next_task()
+    assert next_order is not order
+    assert next_order.type == TaskTypes.RUN_ORDER
+    assert next_order.time == next_time
+    assert next_order.plan == {ROOM: ["但书"]}
+    assert not getattr(next_order, "execution_failure", None)
+
+
+@pytest.mark.parametrize("remaining", [0, -1, 60, 900])
+def test_post_swap_miss_notifies_and_restores_without_completed_order_evidence(
+    window, remaining
+):
+    solver, _, order = window
+    solver.get_order_remaining_time.side_effect = [30, remaining]
+
+    solver.infra_main()
+
+    base.send_message.assert_called_once_with("检测到漏单！", level="WARNING")
+    assert solver.op_data.get_current_room(ROOM, True) == ["鸿雪"]
+    assert order not in solver.tasks
+    assert not getattr(order, "run_order_restore_pending", False)
+    assert [c.args[0] for c in solver.choose_agent.call_args_list] == [
+        ["但书"],
+        ["鸿雪"],
+    ]
     solver.accept_order.assert_called_once()
     solver.drone.assert_not_called()
+
+
+@pytest.mark.parametrize("remaining", [1, 30, 659.5])
+def test_in_window_order_keeps_normal_insertion_and_restoration(window, remaining):
+    solver, _, order = window
+    solver.get_order_remaining_time.side_effect = [remaining, 5]
+
+    solver.infra_main()
+
+    base.send_message.assert_not_called()
+    assert order not in solver.tasks
+    assert solver.op_data.get_current_room(ROOM, True) == ["鸿雪"]
+    solver.accept_order.assert_called_once()
     assert [c.args[0] for c in solver.choose_agent.call_args_list] == [
-        target,
-        original,
+        ["但书"],
+        ["鸿雪"],
     ]
 
 
-def test_new_production_deadline_reuses_observation_without_polling(window):
-    solver, clock, order = window
-    observation = wait_for_production(window)
-    clock.current = observation.time
-    solver.get_order_remaining_time.return_value = 7155.5
-    expected = clock.now() + timedelta(seconds=7095.5)
-    solver.task = observation
-    solver.infra_main()
-    assert observation.time == expected
-    assert solver.tasks.count(observation) == 1
-    assert order.execution_failure
-    for _ in range(3):
-        solver._resume_failed_tasks()
-        assert solver.find_next_task() is observation
-    assert solver.get_order_remaining_time.call_count == 2
-    solver.choose_agent.assert_not_called()
-
-
-@pytest.mark.parametrize("remaining", [0, -1])
-def test_invalid_production_read_retains_failure_without_another_timer(
-    window, remaining
+@pytest.mark.parametrize("remaining", [0, -1, 5502.5])
+@pytest.mark.parametrize("with_observation", [False, True])
+def test_saved_countdown_failure_becomes_one_normal_order_read(
+    window, remaining, with_observation
 ):
     solver, clock, order = window
-    observation = wait_for_production(window)
-    clock.current = observation.time
-    solver.get_order_remaining_time.return_value = remaining
-    solver.task = observation
-    solver.infra_main()
-    for _ in range(3):
-        solver._resume_failed_tasks()
-        assert solver.find_next_task() is None
-    assert observation.execution_failure
-    assert order.execution_failure
-    assert len(solver.tasks) == 2
-    assert solver.get_order_remaining_time.call_count == 2
-    solver.choose_agent.assert_not_called()
-
-
-def test_legacy_window_failure_observes_once_then_uses_measured_production(window):
-    solver, clock, order = window
-    original_time = order.time
     solver._retain_failed_task(
-        order,
-        "订单倒计时 5502.5 秒不在跑单窗口，尚未确认漏单，等待相关实测或安排更新",
-        [ROOM],
+        order, f"订单倒计时 {remaining} 秒不在跑单窗口，尚未确认漏单", [ROOM]
     )
+    if with_observation:
+        order.run_order_window_wait = True
+        observation = SchedulerTask(
+            clock.now() + timedelta(hours=2),
+            task_type=TaskTypes.REFRESH_TIME,
+            meta_data=ROOM,
+        )
+        observation.run_order_window_observation = True
+        solver._retain_failed_task(
+            observation, "订单生产复核未取得有效正倒计时", [ROOM]
+        )
+        solver.tasks.append(observation)
     solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
-    order = solver.tasks[0]
+    obsolete = list(solver.tasks)
     for _ in range(3):
         solver._resume_failed_tasks()
-    observation = solver.find_next_task()
-    assert observation.type == TaskTypes.REFRESH_TIME
-    assert observation.time == clock.now()
-    solver.get_order_remaining_time.return_value = 3283.5
-    solver.task = observation
-    solver.infra_main()
-    assert observation.time == clock.now() + timedelta(seconds=3223.5)
-    assert len(solver.tasks) == 2
-    assert any(task is order for task in solver.tasks)
-    assert order.time == original_time
+    assert all(task not in solver.tasks for task in obsolete)
+    assert len(solver.tasks) == 1
+    refresh = solver.find_next_task()
+    assert refresh.type == TaskTypes.REFRESH_TIME and refresh.meta_data == ROOM
+    assert refresh.time == clock.now()
+    assert not getattr(refresh, "execution_failure", None)
+    assert solver.op_data.operators["鸿雪"].time_stamp is None
     solver.choose_agent.assert_not_called()
+    solver.get_order_remaining_time.assert_not_called()
 
-
-def test_losing_order_eligibility_releases_unstarted_production_wait(window):
-    solver, _, order = window
-    wait_for_production(window)
-    solver.op_data.plan[ROOM][0].replacement = []
-    solver._sync_run_order_tasks()
-    assert order not in solver.tasks
-    assert not any(
-        getattr(t, "run_order_window_observation", False) for t in solver.tasks
-    )
-
-
-def test_production_observation_propagates_cancellation_without_navigation(window):
-    solver, _, _ = window
-    observation = wait_for_production(window)
-    solver.back_to_infrastructure.reset_mock()
-    solver.get_order_remaining_time.side_effect = base.MowerExit()
-    with pytest.raises(base.MowerExit):
-        solver._observe_run_order_window(observation)
-    solver.back_to_infrastructure.assert_not_called()
-
-
-def test_retained_order_confirmation_uses_calibrated_time_not_original_time(
-    window, monkeypatch
-):
-    solver, clock, order = window
-    observation = wait_for_production(window)
-    clock.current = observation.time
-    solver.get_order_remaining_time.return_value = 120
-    solver.task = observation
+    unrelated = SchedulerTask(clock.now(), task_type=TaskTypes.DEPOT)
+    solver.tasks.append(unrelated)
+    solver.task = unrelated
+    solver.仓库扫描 = MagicMock()
     solver.infra_main()
-    solver.task = order
+    solver.仓库扫描.assert_called_once()
+    assert solver.tasks == [refresh]
+    next_time = clock.now() + timedelta(hours=1)
+    solver.get_run_order_time.return_value = next_time
+    solver.task = refresh
+    solver.infra_main()
+    assert len(solver.tasks) == 1
+    assert solver.tasks[0].type == TaskTypes.RUN_ORDER
+    assert solver.tasks[0].time == next_time
+
+
+def test_saved_observation_without_parent_replans_once(window):
+    solver, clock, _ = window
+    observation = SchedulerTask(
+        clock.now() + timedelta(hours=1),
+        task_type=TaskTypes.REFRESH_TIME,
+        meta_data=ROOM,
+    )
+    observation.run_order_window_observation = True
+    solver.tasks = [observation]
+    for _ in range(3):
+        solver._resume_failed_tasks()
+    assert observation not in solver.tasks
+    assert len(solver.tasks) == 1
+    assert solver.find_next_task().time == clock.now()
+
+
+def test_saved_started_restoration_and_unrelated_failure_keep_original_work(window):
+    solver, clock, order = window
+    order.run_order_restore_pending = True
+    order.run_order_original_roster = {ROOM: ["鸿雪"]}
+    order.run_order_window_wait = True
+    solver._retain_failed_task(order, "原班选人失败", [ROOM])
+    unrelated = SchedulerTask(
+        clock.now(), {"contact": ["红"]}, TaskTypes.SELF_CORRECTION
+    )
+    solver.tasks.append(unrelated)
+    solver._retain_failed_task(unrelated, "普通换班失败", ["contact"])
+    observation = SchedulerTask(task_type=TaskTypes.REFRESH_TIME, meta_data=ROOM)
+    observation.run_order_window_observation = True
+    solver.tasks.append(observation)
+    solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
+    order, unrelated, observation = solver.tasks
+    original_time = order.time
+    for _ in range(3):
+        solver._resume_failed_tasks()
+    assert solver.tasks == [order, unrelated]
+    assert order.time == original_time
+    assert order.run_order_original_roster == {ROOM: ["鸿雪"]}
+    assert order.execution_failure["reason"] == "原班选人失败"
+    assert unrelated.execution_failure["reason"] == "普通换班失败"
+    solver.get_order_remaining_time.assert_not_called()
+
+
+def test_retained_order_confirmation_still_uses_new_calibration(window, monkeypatch):
+    solver, clock, order = window
+    order.execution_retained = True
+    order.time = clock.now() - timedelta(hours=1)
+    solver.get_order_remaining_time.return_value = 120
     result = solver.agent_arrange_room({}, ROOM, order.plan)
     assert order.run_order_calibrated_time == clock.now() + timedelta(seconds=60)
-    assert order.time < clock.now() - timedelta(hours=1)
     solver.find = MagicMock(return_value=None)
     monkeypatch.setattr(config, "screenshot_avg", 0)
     solver.sleep.reset_mock()
@@ -213,157 +222,101 @@ def test_retained_order_confirmation_uses_calibrated_time_not_original_time(
     solver.sleep.assert_called_once_with(119.0)
 
 
-@pytest.mark.parametrize("remaining", [660, 900, 7155.5])
-def test_positive_outside_window_uses_measured_deadline(window, remaining):
+@pytest.mark.parametrize("miss_before_swap", [False, True])
+def test_two_slot_miss_never_leaves_trade_agent_as_original_roster(
+    window, miss_before_swap
+):
     solver, _, order = window
-    wait_for_production(window, remaining)
-    assert len(solver.tasks) == 2
-    assert order.execution_failure
-    solver.choose_agent.assert_not_called()
-    solver.drone.assert_not_called()
+    solver.op_data.plan[ROOM].append(Room("Free", "", []))
+    solver.op_data.operators["深巡"]._current_room = ROOM
+    solver.op_data.operators["深巡"].current_index = 1
+    order.plan[ROOM] = ["Current", "但书"]
+    solver.get_order_remaining_time.side_effect = (
+        [900] if miss_before_swap else [30, 900]
+    )
+
+    solver.infra_main()
+
+    assert order not in solver.tasks
+    assert solver.op_data.get_current_room(ROOM, True) == ["鸿雪", "深巡"]
+    assert not getattr(order, "run_order_restore_pending", False)
+    assert solver.find_next_task().type == TaskTypes.REFRESH_TIME
+    if miss_before_swap:
+        solver.choose_agent.assert_not_called()
+    else:
+        assert [c.args[0] for c in solver.choose_agent.call_args_list] == [
+            ["鸿雪", "但书"],
+            ["鸿雪", "深巡"],
+        ]
 
 
-@pytest.mark.parametrize("remaining", [0, -1])
-def test_legacy_invalid_read_does_not_create_production_observation(window, remaining):
+def test_post_swap_miss_keeps_failed_restoration_until_actual_roster_is_restored(
+    window,
+):
+    solver, clock, order = window
+    solver.get_order_remaining_time.side_effect = [30, 900]
+    choose = solver.choose_agent.side_effect
+
+    def fail_restoration(row, room, **kwargs):
+        if row == ["鸿雪"]:
+            raise base.RoomArrangementDeferred(room, RuntimeError("原班确认失败"))
+        return choose(row, room, **kwargs)
+
+    solver.choose_agent.side_effect = fail_restoration
+    solver.infra_main()
+
+    assert order in solver.tasks
+    assert order.run_order_restore_pending
+    assert order.run_order_original_roster == {ROOM: ["鸿雪"]}
+    assert solver.op_data.get_current_room(ROOM, True) == ["但书"]
+    assert not any(task.type == TaskTypes.REFRESH_TIME for task in solver.tasks)
+    base.send_message.assert_called_once_with("检测到漏单！", level="WARNING")
+
+    solver.choose_agent.side_effect = choose
+    clock.current += timedelta(minutes=2)
+    solver.task = order
+    solver.infra_main()
+    assert order not in solver.tasks
+    assert not getattr(order, "run_order_restore_pending", False)
+    assert solver.op_data.get_current_room(ROOM, True) == ["鸿雪"]
+    assert solver.get_order_remaining_time.call_count == 2
+    assert [c.args[0] for c in solver.choose_agent.call_args_list].count(["但书"]) == 1
+
+
+def test_legacy_wait_marker_does_not_discard_unrelated_execution_failure(window):
     solver, _, order = window
-    solver._retain_failed_task(order, f"订单倒计时 {remaining} 秒不在跑单窗口", [ROOM])
+    order.run_order_window_wait = True
+    solver._retain_failed_task(order, "选人失败", [ROOM])
+    original_time, original_plan = order.time, order.plan.copy()
     for _ in range(3):
         solver._resume_failed_tasks()
     assert solver.tasks == [order]
+    assert order.time == original_time and order.plan == original_plan
+    assert order.execution_failure["reason"] == "选人失败"
     assert solver.find_next_task() is None
 
 
-def test_new_valid_countdown_rearms_failed_observation(window):
-    solver, clock, order = window
-    observation = wait_for_production(window)
-    clock.current = observation.time
-    solver.get_order_remaining_time.return_value = 0
-    solver.task = observation
-    solver.infra_main()
-    assert observation.execution_failure
-    solver.op_data.operators["鸿雪"].time_stamp = clock.now()
-    solver._resume_failed_tasks()
-    solver.task = order
-    solver.get_order_remaining_time.return_value = 900
-    assert solver.agent_arrange(order.plan) is False
-    assert solver.find_next_task() is observation
-    assert observation.time == clock.now() + timedelta(seconds=840)
-    assert not getattr(observation, "execution_failure", None)
-    assert len(solver.tasks) == 2
-
-
-def test_return_navigation_does_not_extend_measured_production_deadline(window):
-    solver, clock, _ = window
-    observation = wait_for_production(window)
-    clock.current = observation.time
-    measured_at = clock.now()
-    solver.get_order_remaining_time.return_value = 900
-
-    def navigate():
-        clock.current += timedelta(seconds=5)
-
-    solver.back_to_infrastructure.side_effect = navigate
-    solver.task = observation
-    solver.infra_main()
-    assert observation.time == measured_at + timedelta(seconds=840)
-
-
-def test_staffing_dependency_cancels_obsolete_production_observation(window):
+def test_saved_emergency_countdown_failure_restores_snapshot_before_replanning(window):
     solver, _, order = window
-    observation = wait_for_production(window)
+    order.emergency_original_roster = {ROOM: ["鸿雪"]}
     solver.op_data.operators["鸿雪"]._current_room = ""
-    solver._resume_failed_tasks()
+    solver.op_data.operators["但书"]._current_room = ROOM
+    solver.op_data.operators["但书"].current_index = 0
+    solver._retain_failed_task(order, "订单倒计时 900 秒不在跑单窗口", [ROOM])
+    original_time = order.time
+    solver.tasks = pickle.loads(pickle.dumps(solver.tasks))
+    order = solver.tasks[0]
+    for _ in range(3):
+        solver._resume_failed_tasks()
+    assert solver.tasks == [order]
+    assert order.time == original_time
+    assert order.run_order_restore_pending
+    assert order.plan == {ROOM: ["鸿雪"]}
+    assert not getattr(order, "execution_failure", None)
     solver.task = order
-    assert solver.agent_arrange(order.plan) is False
-    solver._sync_run_order_tasks()
-    assert observation not in solver.tasks
-    assert order.run_order_staffing_wait
-    assert not getattr(order, "run_order_window_wait", False)
-    solver.choose_agent.assert_not_called()
-
-
-def test_due_long_work_yields_to_measured_order_observation(window):
-    solver, clock, order = window
-    observation = wait_for_production(window)
-    clock.current = observation.time - timedelta(minutes=2)
-    ordinary = SchedulerTask(
-        clock.now(),
-        {f"room_{i}_1": ["Current"] for i in range(1, 4)},
-        TaskTypes.SELF_CORRECTION,
-    )
-    solver.tasks.append(ordinary)
-    scheduler_task.scheduling(solver.tasks, execution_time=1, time_now=clock.now())
-    assert ordinary.time > observation.time
-    assert solver.find_next_task() is observation
-    assert order.time < clock.now()
-    assert order.execution_failure
-
-
-def test_future_work_outside_order_horizon_keeps_its_time(window):
-    solver, clock, _ = window
-    observation = wait_for_production(window)
-    original = clock.now() + timedelta(minutes=1)
-    ordinary = SchedulerTask(
-        original,
-        {f"room_{i}_1": ["Current"] for i in range(1, 4)},
-        TaskTypes.SELF_CORRECTION,
-    )
-    solver.tasks.append(ordinary)
-    scheduler_task.scheduling(solver.tasks, execution_time=40, time_now=clock.now())
-    assert ordinary.time == original
-    assert solver.find_next_task() is ordinary
-    assert observation.time > clock.now() + timedelta(minutes=10)
-
-
-def test_room_dispatch_yields_before_measured_production_observation(window):
-    solver, clock, _ = window
-    observation = wait_for_production(window)
-    clock.current = observation.time - timedelta(seconds=30)
-    ordinary = SchedulerTask(
-        clock.now(), {"contact": ["红"]}, TaskTypes.SELF_CORRECTION
-    )
-    original_time = ordinary.time
-    solver.tasks.append(ordinary)
-    solver.task = ordinary
-    assert solver._defer_arrangement_for_priority_task("contact", ordinary.plan)
-    assert solver.find_next_task() is observation
-    assert ordinary.time == original_time
-    assert ordinary.plan == {"contact": ["红"]}
-
-
-def test_mastery_handoff_retains_protection_before_production_observation(window):
-    solver, clock, _ = window
-    observation = wait_for_production(window)
-    clock.current = observation.time - timedelta(minutes=3)
-    config.conf.enable_mastery = True
-    handoff = SchedulerTask(
-        observation.time + timedelta(seconds=20),
-        {"train": ["Current", "Current"]},
-        TaskTypes.SWAP_SUPPORT,
-    )
-    solver.tasks.append(handoff)
-    deadline = observation.time
-    scheduler_task.scheduling(solver.tasks, time_now=clock.now())
-    assert handoff.time < deadline
-    assert observation.time == deadline
-    assert solver.find_next_task() is handoff
-
-
-def test_strict_mood_release_finishes_before_production_observation(window):
-    solver, clock, _ = window
-    observation = wait_for_production(window)
-    clock.current = observation.time - timedelta(minutes=5)
-    release = SchedulerTask(
-        observation.time - timedelta(seconds=10),
-        {"dormitory_1": ["Current", "Current", "Free", "Current", "Current"]},
-        TaskTypes.RELEASE_DORM,
-        "黑键",
-        strict_mood_limit=True,
-    )
-    solver.tasks.append(release)
-    deadline = observation.time
-    scheduler_task.scheduling(
-        solver.tasks, time_now=clock.now(), op_data=solver.op_data
-    )
-    assert release.time + timedelta(minutes=1.5) < deadline
-    assert observation.time == deadline
+    solver.infra_main()
+    assert order not in solver.tasks
+    assert solver.op_data.get_current_room(ROOM, True) == ["鸿雪"]
+    solver.get_order_remaining_time.assert_not_called()
+    solver.accept_order.assert_not_called()
+    assert [c.args[0] for c in solver.choose_agent.call_args_list] == [["鸿雪"]]
