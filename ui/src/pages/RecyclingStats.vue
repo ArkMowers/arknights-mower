@@ -44,8 +44,20 @@ const uploadLabels = {
 }
 const quantity = computed(() => data.value.materials.reduce((sum, item) => sum + item.count, 0))
 const comparison = computed(() => data.value.comparison)
-const qualityLabels = ['未知品质', '白色材料', '绿色材料', '蓝色材料', '紫色材料', '金色材料']
-const qualityColors = ['#8b98a6', '#bfc7cf', '#79ae59', '#549bd4', '#a078d0', '#dcb153']
+const qualityLabels = {
+  0: '未知品质',
+  2: '绿色材料',
+  3: '蓝色材料',
+  4: '紫色材料',
+  5: '金色材料'
+}
+const qualityColors = {
+  0: '#8b98a6',
+  2: '#79ae59',
+  3: '#549bd4',
+  4: '#a078d0',
+  5: '#dcb153'
+}
 const materialRarities = computed(() =>
   Object.fromEntries(data.value.materials.map((item) => [item.name, item.rarity]))
 )
