@@ -46,6 +46,13 @@ function swapTask(tasks, source, target) {
 }
 
 function updateTrigger(trigger, source, target) {
+  if (Array.isArray(trigger?.args)) {
+    trigger.args = trigger.args.map((value) => {
+      if (typeof value === 'string') return swapSubstrings(value, source, target)
+      updateTrigger(value, source, target)
+      return value
+    })
+  }
   for (const key in trigger) {
     if (key === 'left' || key === 'right') {
       if (typeof trigger[key] === 'string') {
@@ -114,6 +121,13 @@ export function replace_trigger_operators(trigger, source, target) {
   // 按带引号边界替换——避免裸子串替换误伤更长干员名（阿 ⊂ 阿米娅/阿消 等）
   const quoted_source = `['${source}']`
   const quoted_target = `['${target}']`
+  if (Array.isArray(trigger.args)) {
+    trigger.args = trigger.args.map((value) => {
+      if (typeof value === 'string') return value.split(quoted_source).join(quoted_target)
+      replace_trigger_operators(value, source, target)
+      return value
+    })
+  }
   for (const key of ['left', 'right']) {
     const value = trigger[key]
     if (typeof value === 'string') {

@@ -1,11 +1,12 @@
 """Backup group selection, saved plans and structurally possible validation states."""
 
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 from pydantic import ValidationError
 
-from arknights_mower.utils import config
+from arknights_mower.utils import config, operators
 from arknights_mower.utils.backup_validation import possible_backup_conditions
 from arknights_mower.utils.config.plan import PlanModel
 from arknights_mower.utils.operators import Operators, build_global_plan
@@ -56,6 +57,138 @@ def test_old_plan_roundtrip_and_invalid_references():
     ]:
         with pytest.raises(ValidationError):
             PlanModel.model_validate(change)
+
+
+def test_saved_empty_conditions_remain_inactive_without_errors(monkeypatch):
+    monkeypatch.setattr(config, "conf", config.Conf())
+    errors = Mock()
+    monkeypatch.setattr(operators.logger, "exception", errors)
+    empty = {"left": "", "operator": "", "right": ""}
+    document = PlanModel.model_validate(
+        {
+            "backup_groups": [
+                {"id": name, "name": name, "trigger": empty}
+                for name in ["default", "深海", "红松"]
+            ],
+            "backup_plans": [
+                {"name": "空条件", "trigger": empty},
+                {"name": "默认生效", "trigger": condition("True")},
+                {
+                    "name": "分组未生效",
+                    "group_ids": ["深海", "红松"],
+                    "trigger": condition("True"),
+                },
+                {
+                    "name": "嵌套空条件",
+                    "trigger": {"left": empty, "operator": "or", "right": "True"},
+                },
+                {
+                    "name": "函数空参数条件",
+                    "trigger": {"function": "any", "args": [empty]},
+                },
+            ],
+        }
+    )
+    restored = PlanModel.model_validate_json(document.model_dump_json())
+    assert restored.model_dump() == document.model_dump()
+    data = Operators(build_global_plan(plan_model=restored))
+    for current_group in ["default", "深海", "红松"]:
+        data.backup_group = current_group
+        selected = data.evaluate_backup_selection()
+        assert selected.group_id == "default"
+        assert selected.conditions == [False, True, False, True, False]
+    errors.assert_not_called()
+
+
+def test_saved_functions_select_backup_group_and_plan(monkeypatch):
+    monkeypatch.setattr(config, "conf", config.Conf())
+    document = PlanModel.model_validate(
+        {
+            "backup_groups": [
+                {
+                    "id": "functions",
+                    "name": "函数分组",
+                    "trigger": {
+                        "function": "all",
+                        "args": [
+                            "True",
+                            {
+                                "left": {"function": "max", "args": ["3", "9", "4"]},
+                                "operator": "==",
+                                "right": "9",
+                            },
+                        ],
+                    },
+                }
+            ],
+            "backup_plans": [
+                {
+                    "name": "函数副表",
+                    "group_ids": ["functions"],
+                    "trigger": {
+                        "function": "any",
+                        "args": [
+                            "False",
+                            {
+                                "left": {
+                                    "function": "sum",
+                                    "args": ["2", {"function": "abs", "args": ["-3"]}],
+                                },
+                                "operator": "==",
+                                "right": "5",
+                            },
+                        ],
+                    },
+                }
+            ],
+        }
+    )
+    restored = PlanModel.model_validate_json(document.model_dump_json())
+    data = Operators(build_global_plan(plan_model=restored))
+    selected = data.evaluate_backup_selection()
+    assert selected.group_id == "functions"
+    assert selected.conditions == [True]
+
+
+@pytest.mark.parametrize(
+    "function,args,value",
+    [
+        ("max", ["3", "9", "4"], 9),
+        ("min", ["-9", "-3", "4"], -9),
+        ("sum", ["3", "9", "4"], 16),
+        ("abs", ["-3"], 3),
+        ("any", ["False", "True"], 1),
+        ("all", ["True", "True"], 1),
+        ("sum", ["2", {"function": "max", "args": ["3", "9"]}], 11),
+    ],
+)
+@pytest.mark.parametrize("operator", ["*", "**"])
+def test_saved_function_arithmetic_selects_group_and_backup(
+    monkeypatch, function, args, value, operator
+):
+    monkeypatch.setattr(config, "conf", config.Conf())
+    trigger = {
+        "left": {
+            "left": {"function": function, "args": args},
+            "operator": operator,
+            "right": "2",
+        },
+        "operator": "==",
+        "right": str(value * 2 if operator == "*" else value**2),
+    }
+    document = PlanModel.model_validate(
+        {
+            "backup_groups": [
+                {"id": "arithmetic", "name": "函数运算", "trigger": trigger}
+            ],
+            "backup_plans": [{"group_ids": ["arithmetic"], "trigger": trigger}],
+        }
+    )
+    restored = PlanModel.model_validate_json(document.model_dump_json())
+    data = Operators(build_global_plan(plan_model=restored))
+    selected = data.evaluate_backup_selection()
+    assert selected.group_id == "arithmetic"
+    assert selected.conditions == [True]
 
 
 def test_runtime_retains_group_and_exclusive_then_falls_back(monkeypatch):

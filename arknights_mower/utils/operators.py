@@ -117,6 +117,31 @@ def _numeric_result_bits(node: ast.AST) -> int | None:
         return None
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
         return 64 if node.func.attr in _NUMERIC_EXPRESSION_CALLS else None
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        function = node.func.id
+        if node.keywords:
+            return None
+        if function in ("any", "all") and len(node.args) == 1:
+            return 1
+        if function == "abs" and len(node.args) == 1:
+            return _numeric_result_bits(node.args[0])
+        if function in ("max", "min") and len(node.args) >= 2:
+            args = node.args
+        elif (
+            function == "sum"
+            and len(node.args) == 1
+            and isinstance(node.args[0], ast.List)
+        ):
+            args = node.args[0].elts
+        else:
+            return None
+        bits = [_numeric_result_bits(arg) for arg in args]
+        if any(value is None for value in bits):
+            return None
+        result_bits = max(bits, default=1)
+        if function == "sum" and args:
+            result_bits += (len(args) - 1).bit_length()
+        return result_bits
     return None
 
 
@@ -370,7 +395,10 @@ class Operators:
         self.profession_filter = set(agent_arrange_order["职介选择开关"])
         self.eval_model = base_eval_model.clone()
         self.eval_model.nodes.extend(
-            ["Call", "Attribute", "Is", "IsNot", "Mult", "FloorDiv", "Pow"]
+            ["Call", "Attribute", "Is", "IsNot", "Mult", "FloorDiv", "Pow", "List"]
+        )
+        self.eval_model.allowed_functions.extend(
+            ["max", "min", "sum", "any", "all", "abs"]
         )
         self.eval_model.attributes.extend(
             [

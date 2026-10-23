@@ -13,6 +13,8 @@ def contains_retired_rescue_condition(value) -> bool:
         value = value.model_dump()
     if isinstance(value, dict):
         return any(contains_retired_rescue_condition(part) for part in value.values())
+    if isinstance(value, list):
+        return any(contains_retired_rescue_condition(part) for part in value)
     if not isinstance(value, str):
         return False
     try:
@@ -246,16 +248,36 @@ class Task(BaseModel):
     room_3_3: Optional[list[str]] = None
 
 
+class FunctionTrigger(BaseModel):
+    function: Literal["max", "min", "sum", "any", "all", "abs"]
+    args: list[str | Trigger | FunctionTrigger] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_argument_count(self):
+        if self.function in ("max", "min") and len(self.args) < 2:
+            raise ValueError("max、min 条件需要至少两项参数")
+        if self.function == "abs" and len(self.args) != 1:
+            raise ValueError("abs 条件只接受一项参数")
+        return self
+
+
 class Trigger(BaseModel):
-    left: str | Trigger = ""
+    left: str | Trigger | FunctionTrigger = ""
     operator: str = ""
-    right: str | Trigger = ""
+    right: str | Trigger | FunctionTrigger = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def require_binary_expression(cls, value):
+        if isinstance(value, dict) and "function" in value:
+            raise ValueError("函数条件须按函数及参数校验")
+        return value
 
 
 class BackupGroup(BaseModel):
     id: str = Field(min_length=1)
     name: str = Field(min_length=1)
-    trigger: Trigger = Field(default_factory=Trigger)
+    trigger: Trigger | FunctionTrigger = Field(default_factory=Trigger)
 
 
 class BackupPlan(BaseModel):
@@ -272,7 +294,7 @@ class BackupPlan(BaseModel):
     conf: BackupPlanConf = Field(default_factory=BackupPlanConf)
     plan: Plan1 = Field(default_factory=Plan1)
     task: Task = Field(default_factory=Task)
-    trigger: Trigger = Field(default_factory=Trigger)
+    trigger: Trigger | FunctionTrigger = Field(default_factory=Trigger)
     name: str = "plan"
 
 

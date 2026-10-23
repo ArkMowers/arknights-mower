@@ -11,6 +11,7 @@ from unittest.mock import Mock
 import pytest
 
 from arknights_mower.utils import operators
+from arknights_mower.utils.logic_expression import get_logic_exp
 from arknights_mower.utils.operators import Operator, Operators
 from arknights_mower.utils.plan import Plan, PlanConfig
 
@@ -37,6 +38,43 @@ def isolated_cache():
 @pytest.fixture
 def data():
     return make_data()
+
+
+@pytest.mark.parametrize(
+    "function,args,expected",
+    [
+        ("max", ["3", "9", "4"], 9),
+        ("min", ["3", "9", "4"], 3),
+        ("sum", ["3", "9", "4"], 16),
+        ("any", ["False", "True", "False"], True),
+        ("all", ["True", "False", "True"], False),
+        ("abs", ["-8"], 8),
+    ],
+)
+def test_evaluates_saved_function_conditions(data, function, args, expected):
+    source = str(get_logic_exp({"function": function, "args": args}))
+    assert data.evaluate_expression(source) == expected
+
+
+def test_nested_functions_read_current_operator_state(data):
+    source = str(
+        get_logic_exp(
+            {
+                "left": {
+                    "function": "max",
+                    "args": [
+                        "op_data.operators['芬'].current_mood()",
+                        {"function": "abs", "args": ["-8"]},
+                    ],
+                },
+                "operator": ">=",
+                "right": "10",
+            }
+        )
+    )
+    assert data.evaluate_expression(source) is False
+    data.operators["芬"].mood = 12
+    assert data.evaluate_expression(source) is True
 
 
 def test_reuses_compilation_while_reading_current_and_projected_mood(data, monkeypatch):
@@ -125,6 +163,20 @@ def test_cached_imported_call_reads_current_function_and_name_permissions(data):
         (str(2**300), "整数常量过大"),
         (repr("x" * 513), "字符串常量过长"),
         ("'x' * 2", "乘法仅支持数值表达式"),
+        ("(1, 2)", "Node type 'Tuple' is not allowed"),
+        ("max('x', 'y') * 2", "乘法仅支持数值表达式"),
+        ("min('x', 'y') ** 2", "幂运算结果过大"),
+        ("sum([1, 'x']) * 2", "乘法仅支持数值表达式"),
+        ("abs('x') * 2", "乘法仅支持数值表达式"),
+        ("max(2, 3) ** 65", "幂运算指数必须是 0 到 64 的整数常量"),
+        ("abs((2 ** 64) ** 32) ** 2", "幂运算结果过大"),
+        ("sum([(2 ** 64) ** 32, 1]) ** 2", "幂运算结果过大"),
+        ("sum([(2 ** 64) ** 32, 1]) ** 1", "幂运算结果过大"),
+        ("min((2 ** 64) ** 32, 1) ** 2", "幂运算结果过大"),
+        (
+            "max((2 ** 64) ** 32, 1) * max((2 ** 64) ** 32, 1)",
+            "乘法结果过大",
+        ),
         ("2 ** 65", "幂运算指数必须是 0 到 64 的整数常量"),
         ("((2 ** 64) ** 64) ** 2", "幂运算结果过大"),
         ("op_data.__class__", "Attribute __class__ is not allowed"),

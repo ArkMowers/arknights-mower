@@ -9,6 +9,42 @@ import {
   swapTask,
   updateTrigger
 } from './plan_edit.js'
+import { replace_trigger_operators } from './plan_edit.js'
+
+it('updates operator and facility references in nested function arguments', () => {
+  const trigger = {
+    function: 'max',
+    args: [
+      "op_data.operators['能天使'].current_mood()",
+      {
+        function: 'sum',
+        args: [
+          "op_data.facility_operator_count('room_1_1')",
+          { left: "op_data.operators['能天使'].current_room", operator: '==', right: "'room_1_2'" }
+        ]
+      }
+    ]
+  }
+  replace_trigger_operators(trigger, '能天使', '德克萨斯')
+  updateTrigger(trigger, 'room_1_1', 'room_1_2')
+  expect(trigger).toEqual({
+    function: 'max',
+    args: [
+      "op_data.operators['德克萨斯'].current_mood()",
+      {
+        function: 'sum',
+        args: [
+          "op_data.facility_operator_count('room_1_2')",
+          {
+            left: "op_data.operators['德克萨斯'].current_room",
+            operator: '==',
+            right: "'room_1_1'"
+          }
+        ]
+      }
+    ]
+  })
+})
 
 const empty_conf = {
   rest_in_full: [],

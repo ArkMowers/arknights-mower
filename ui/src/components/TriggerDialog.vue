@@ -29,6 +29,17 @@ watch(
 const selected_group = computed(() =>
   backup_groups.value.find((group) => group.id === editing_group.value)
 )
+const groups_without_condition = computed(() =>
+  backup_groups.value.filter(
+    (group) =>
+      group.id !== 'default' &&
+      !group.trigger?.function &&
+      ['left', 'operator', 'right'].every((key) => {
+        const value = group.trigger?.[key]
+        return value == null || (typeof value === 'string' && !value.trim())
+      })
+  )
+)
 const new_group_name = ref('')
 function create_group() {
   if (edit_locked.value || !new_group_name.value.trim()) return
@@ -129,9 +140,18 @@ function update_trigger(data) {
       </n-text>
       <n-collapse style="margin-bottom: 16px">
         <n-collapse-item title="分组条件与管理" name="groups">
-          <n-text depth="3"
-            >自定义分组满足条件后保持生效，失效后按顺序选择；没有符合条件的分组时使用默认分组。</n-text
+          <n-alert :show-icon="false" type="info" style="margin-bottom: 12px">
+            自定义分组同时只生效一个。当前分组仍满足条件时保持生效，否则按列表顺序选择满足条件的分组；均不满足时使用默认分组。
+          </n-alert>
+          <n-alert
+            v-if="groups_without_condition.length"
+            :show-icon="false"
+            type="warning"
+            title="请为分组添加生效条件"
           >
+            {{ groups_without_condition.map((group) => group.name).join('、') }}
+            尚未设置生效条件，不会生效。请在下方选择分组并添加生效条件。
+          </n-alert>
           <n-space vertical style="margin-top: 12px">
             <n-space v-for="group in backup_groups" :key="group.id" align="center" :wrap="false">
               <n-input
