@@ -4,7 +4,7 @@ import { renderToString } from 'vue/server-renderer'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import AppSidebar from './AppSidebar.vue'
 import { createSidebarPreferences } from '@/composables/sidebarPreferences'
-import { navigationItems } from '@/navigation'
+import { navigationItems, sidebarNavigationItems } from '@/navigation'
 
 let preferences
 const mounted = []
@@ -141,9 +141,12 @@ describe('自定义侧边栏', () => {
     const mobile = await render({ mobile: true })
     expect(mobile).toMatch(/<nav\b[^>]*class="[^"]*app-sidebar--mobile/)
     const body = mobile.slice(0, mobile.indexOf('class="app-sidebar__footer"'))
-    for (const item of navigationItems.filter((item) => !item.footer)) {
+    for (const item of sidebarNavigationItems.filter((item) => !item.footer)) {
       expect(body).toContain(`aria-label="管理${item.label}"`)
     }
+    expect(body).toContain('aria-label="管理全部设置"')
+    expect(mobile).not.toContain('data-sidebar-item="rescue-plan"')
+    expect(mobile).not.toContain('data-sidebar-item="mower-settings"')
     expect(body).toContain('aria-label="管理常用分组"')
     const footer = mobile.slice(mobile.indexOf('class="app-sidebar__footer"'))
     expect(footer).not.toContain('app-sidebar__menu')
@@ -218,26 +221,24 @@ describe('自定义侧边栏', () => {
     expect(component.groupOptions('daily')).toContainEqual({ key: 'add', label: '添加页面' })
   })
 
-  it('keeps the two footer entries fixed without group controls, menus or dragging', async () => {
+  it('keeps the assistant footer fixed without group controls, menus or dragging', async () => {
     for (const item of preferences.catalog.value) {
       expect(preferences.moveItem(item.key, 'footer')).toBe(false)
     }
     const html = await render()
     const footer = html.slice(html.indexOf('class="app-sidebar__footer"'))
-    expect(footer.match(/data-sidebar-item=/g)).toHaveLength(2)
+    expect(footer.match(/data-sidebar-item=/g)).toHaveLength(1)
+    expect(footer).toContain('data-sidebar-item="chat"')
+    expect(footer).not.toContain('data-sidebar-item="task-settings"')
+    expect(html).not.toContain('data-sidebar-item="mower-settings"')
     expect(html).toContain('aria-label="管理常用分组"')
     expect(footer).not.toContain('app-sidebar__heading')
     expect(footer).not.toContain('app-sidebar__menu')
     expect(footer).not.toContain('draggable="true"')
     expect(footer).not.toContain('data-sidebar-group=')
-    expect(footer.indexOf('data-sidebar-item="chat"')).toBeLessThan(
-      footer.indexOf('data-sidebar-item="mower-settings"')
-    )
     const component = mount()
-    for (const key of ['chat', 'mower-settings']) {
-      component.startPageSort(pageSortStart(key))
-      expect(component.dragKey).toBeNull()
-    }
+    component.startPageSort(pageSortStart('chat'))
+    expect(component.dragKey).toBeNull()
   })
 
   it('fixes pinned entries above the scrolling groups and keeps the footer below them', async () => {
@@ -326,10 +327,7 @@ describe('自定义侧边栏', () => {
     expect(component.canMovePage(pageMove(element, 'footer'))).toBe(false)
     component.onPageSort({ added: { element, newIndex: 0 } }, 'footer')
     expect(preferences.pinnedItems.value.map((item) => item.key)).toEqual(['log', 'record-depot'])
-    expect(preferences.footerItems.value.map((item) => item.key)).toEqual([
-      'chat',
-      'mower-settings'
-    ])
+    expect(preferences.footerItems.value.map((item) => item.key)).toEqual(['chat'])
   })
 
   it('ignores unrelated drags and cancels a drag without changing preferences', () => {
