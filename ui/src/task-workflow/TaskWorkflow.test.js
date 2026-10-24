@@ -69,9 +69,11 @@ vi.mock('@/components/TaskSettingsPanels.vue', () => ({
               ])
             ]),
             h('section', { 'data-task-editor': 'credit' }, [
-              h('div', { 'data-task-editor': 'shop' }, [
-                h('span', { class: 'n-form-item-label' }, '按需领取信用')
-              ])
+              props.active === 'shop' && state.config.maa_mall_mode === 'mower'
+                ? h('div', { 'data-task-editor': 'shop' }, [
+                    h('span', { class: 'n-form-item-label' }, '按需领取信用')
+                  ])
+                : null
             ])
           ]
         )
@@ -787,6 +789,11 @@ describe('production task checklist interactions', () => {
     ['理智 药', 'stage-plan'],
     ['跳过清除已读', 'mail'],
     ['按需领取信用', 'shop'],
+    ['按性价比购物', 'shop'],
+    ['五星词条组合唯一时自动选择', 'recruit'],
+    ['导能单元', 'long'],
+    ['单次最大组装轮数', 'long'],
+    ['关卡体力默认值', 'stage-plan'],
     ['支援 机械', 'recruit']
   ])('finds real fields across directories with %s without saving', async (query, id) => {
     await mount()
@@ -801,7 +808,7 @@ describe('production task checklist interactions', () => {
 
   it('finds connection settings across directories without reporting an empty result', async () => {
     const page = await mount('#task-runtime')
-    for (const query of ['设备', '启动', 'ADB', '任务结束后']) {
+    for (const query of ['设备', '启动', 'ADB', '任务结束后', '启动命令', '旋转截图']) {
       await search(query)
       const connection = find((node) => node.props['aria-label'] === '配置连接与启动')
       expect(connection.parent.style.display).not.toBe('none')
