@@ -2,8 +2,8 @@
 import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
-import AlarmOutline from '@vicons/ionicons5/AlarmOutline'
-import PlayIcon from '@vicons/ionicons5/Play'
+import AlarmOutline from '@vicons/ionicons5/es/AlarmOutline'
+import PlayIcon from '@vicons/ionicons5/es/Play'
 import { useMowerStore } from '@/stores/mower'
 
 const props = defineProps({

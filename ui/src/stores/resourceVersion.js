@@ -7,6 +7,7 @@ export const useResourceVersionStore = defineStore('resourceVersion', () => {
   const info = ref({
     current_version: '',
     current_display: '',
+    current_metadata: {},
     remote_version: '',
     remote_display: '',
     update_available: null,
@@ -49,6 +50,7 @@ export const useResourceVersionStore = defineStore('resourceVersion', () => {
         info.value = {
           current_version: response.data.current_version || '',
           current_display: response.data.current_display || '',
+          current_metadata: response.data.current_metadata || {},
           remote_version: response.data.remote_version || '',
           remote_display: response.data.remote_display || '',
           update_available: response.data.update_available ?? null,
@@ -89,6 +91,7 @@ export const useResourceVersionStore = defineStore('resourceVersion', () => {
         ...info.value,
         current_version: response.data.current_version || '',
         current_display: response.data.current_display || '',
+        current_metadata: response.data.current_metadata || {},
         remote_version: '',
         remote_display: '',
         update_available: null,

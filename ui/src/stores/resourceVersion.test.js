@@ -210,4 +210,26 @@ describe('resource version store', () => {
     await expect(store.loadResourceVersionLocal()).resolves.toBeUndefined()
     expect(store.info.current_display).toBe('')
   })
+
+  it('loads installed lifecycle metadata from local and checked responses, clearing an absent marker', async () => {
+    const metadata = {
+      activity: { name: '昨日海', time: 1791500400, endTime: 1792699199 },
+      gacha: {},
+      last_updated: '26-09-22-07-47-20_6c71fa'
+    }
+    axios.get
+      .mockResolvedValueOnce({ data: { ...version, current_metadata: metadata } })
+      .mockResolvedValueOnce({
+        data: { ...version, current_metadata: { ...metadata, activity: {} } }
+      })
+      .mockResolvedValueOnce({ data: { current_version: '', current_display: '' } })
+    const store = useResourceVersionStore()
+    await store.loadResourceVersionLocal()
+    expect(store.info.current_metadata).toEqual(metadata)
+    await store.loadResourceVersion()
+    expect(store.info.current_metadata.activity).toEqual({})
+    await store.loadResourceVersionLocal()
+    expect(store.info.current_metadata).toEqual({})
+    expect(store.info.current_display).toBe('')
+  })
 })

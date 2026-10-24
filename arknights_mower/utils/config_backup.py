@@ -32,7 +32,7 @@ from arknights_mower.utils.workshop_config import workshop_lock
 MAX_BACKUP_BYTES = 16 * 1024 * 1024
 MAX_ARCHIVE_ENTRIES = 1024
 backup_lock = RLock()
-IMPORT_PRESERVED_FILES = {"network.json", "gui.yml", "state.json"}
+IMPORT_PRESERVED_FILES = {"network.json", "gui.yml", "gui.yml.lock", "state.json"}
 TMP_DATA_FILES = {
     "data.db",
     "cultivate.json",
@@ -51,7 +51,7 @@ class LocalConfigError(ValueError):
     """The destination directory cannot be backed up safely."""
 
 
-EXPORT_EXCLUDED_FILES = {"state.json"}
+EXPORT_EXCLUDED_FILES = {"state.json", "gui.yml.lock"}
 
 
 def _local_snapshot():
@@ -171,10 +171,11 @@ def _write_bytes(path, content):
     config.atomic_write(path, lambda stream: stream.buffer.write(content))
 
 
-def export_archive():
+def export_archive(*, include_tmp=True):
+    """Export configuration originals and optionally persistent tmp snapshots."""
     with backup_lock, workshop_lock:
         files, _ = _local_snapshot()
-        tmp_files = _tmp_snapshot(sum(map(len, files.values())))
+        tmp_files = _tmp_snapshot(sum(map(len, files.values()))) if include_tmp else {}
         return _archive_bytes(files, tmp_files)
 
 
@@ -370,7 +371,8 @@ def _prepare_database(content, path):
         raise ValueError("备份中的 data.db 无法读取") from exc
 
 
-def import_configuration(raw):
+def import_configuration(raw, *, replace_tmp=False, commit=None):
+    """Restore files and commit caller metadata before publishing runtime models."""
     with backup_lock, workshop_lock, TemporaryDirectory() as directory:
         files, tmp_files = read_archive(raw, include_tmp=True)
         for name in LEGACY_TMP_CONFIG_FILES:
@@ -399,11 +401,19 @@ def import_configuration(raw):
         previous, local_names = _local_snapshot()
         # 旧配置 ZIP 缺少这些原 tmp 数据时，仍保留本机的长期配置。
         for name in LEGACY_TMP_CONFIG_FILES:
-            if name not in files and name in previous:
+            if not replace_tmp and name not in files and name in previous:
                 files[name] = previous[name]
         previous_tmp = _tmp_snapshot(sum(map(len, previous.values())))
         if "data.db" not in tmp_files and "data.db" in previous_tmp:
-            _prepare_database(previous_tmp["data.db"], prepared)
+            if replace_tmp:
+                # Keep open SQLite readers on the same file while clearing old tables.
+                with closing(sqlite3.connect(prepared)) as conn, conn:
+                    conn.execute("PRAGMA user_version=0")
+            else:
+                _prepare_database(previous_tmp["data.db"], prepared)
+        previous_database = Path(directory) / "previous.db"
+        if "data.db" in previous_tmp:
+            previous_database.write_bytes(previous_tmp["data.db"])
         # Reject destination path collisions before backup or write.
         for name in files:
             for part in (PurePosixPath(name), *PurePosixPath(name).parents):
@@ -460,7 +470,14 @@ def import_configuration(raw):
             }
         )
         removed = {root / name for name in previous.keys() - contents.keys()}
+        if replace_tmp:
+            removed.update(
+                tmp_root / name
+                for name in previous_tmp.keys() - tmp_files.keys()
+                if name != "data.db"
+            )
         written = []
+        database_restored = False
         try:
             for target in sorted(set(targets) | removed):
                 if (
@@ -476,14 +493,21 @@ def import_configuration(raw):
             if prepared.exists():
                 database.parent.mkdir(parents=True, exist_ok=True)
                 _copy_database(prepared, database)
+                database_restored = True
+            if commit is not None:
+                commit()
         except Exception:
-            if not database_existed:
-                database.unlink(missing_ok=True)
-            for target in reversed(written):
-                if target in originals:
-                    _write_bytes(target, originals[target])
-                else:
-                    target.unlink(missing_ok=True)
+            try:
+                if not database_existed:
+                    database.unlink(missing_ok=True)
+                elif database_restored:
+                    _copy_database(previous_database, database)
+            finally:
+                for target in reversed(written):
+                    if target in originals:
+                        _write_bytes(target, originals[target])
+                    else:
+                        target.unlink(missing_ok=True)
             raise
         config.conf, config.plan, config.rescue_plan = conf, plan, rescue_plan
         if module := sys.modules.get("arknights_mower.utils.config.weekly_plan_loader"):
@@ -494,4 +518,9 @@ def import_configuration(raw):
             module.skland_cache.clear()
             module._device_id = ""
             module._device_id_failed = False
+        if database_restored:
+            if module := sys.modules.get("arknights_mower.solvers.record"):
+                module._tables_created = False
+            if module := sys.modules.get("arknights_mower.utils.mastery_db"):
+                module._tables_created.discard(str(database))
         return str(recovery)

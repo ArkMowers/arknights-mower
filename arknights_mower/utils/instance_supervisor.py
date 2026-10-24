@@ -159,6 +159,7 @@ def task_intent(running, *, automatic=False):
 
 def http_probe(port, timeout):
     """Check HTTP responsiveness independently of scheduler logs and sleeps."""
+    from urllib.error import HTTPError
     from urllib.request import ProxyHandler, build_opener
 
     try:
@@ -166,6 +167,9 @@ def http_probe(port, timeout):
             f"http://127.0.0.1:{int(port)}/status", timeout=timeout
         ) as response:
             return response.status == 200
+    except HTTPError as exc:
+        with exc:
+            return exc.code == 403
     except (OSError, ValueError):
         return False
 

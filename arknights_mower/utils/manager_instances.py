@@ -100,8 +100,12 @@ def validate_settings(settings, *, partial=False):
     return result
 
 
+class InstanceTargetChangedError(ValueError):
+    """The submitted instance identity no longer matches the shared list."""
+
+
 class InstanceController:
-    def __init__(self, storage_path=None, ready=None):
+    def __init__(self, storage_path=None, ready=None, *, defer_load=False):
         self._ready = ready
         self._lock = threading.RLock()
         self._operation_depth = 0
@@ -110,7 +114,7 @@ class InstanceController:
             if storage_path is not None
             else get_path("@app/instances.json", space="")
         )
-        self.instances = self._load()
+        self.instances = [] if defer_load else self._load()
 
     @property
     def _control_directory(self):
@@ -266,26 +270,51 @@ class InstanceController:
         if self._ready is not None:
             self._ready.set()
 
-    def add(self, name, path):
+    def add(self, name, path, targets=None):
         if not isinstance(name, str) or not name.strip() or not isinstance(path, str):
             raise ValueError("实例名称不能为空，保存目录必须是文本")
         with self._operation():
+            self._check_targets(targets)
             self._save([*self.instances, {"name": name, "path": path}])
 
-    def remove(self, idx):
+    def _check_targets(self, targets):
+        if targets is not None and targets != [
+            {key: item[key] for key in ("name", "path")} for item in self.instances
+        ]:
+            raise InstanceTargetChangedError("实例列表已变化，请刷新列表后重试")
+
+    def _target_instance(self, idx, target=None):
+        if target is not None and (
+            type(idx) is not int
+            or not 0 <= idx < len(self.instances)
+            or target != {key: self.instances[idx][key] for key in ("name", "path")}
+        ):
+            raise InstanceTargetChangedError("实例已变化，请刷新列表后重试")
+        return self.instances[idx]
+
+    def remove(self, idx, target=None):
         with self._operation():
-            self._editable(self.instances[idx], self._records())
+            instance = self._target_instance(idx, target)
+            self._editable(instance, self._records())
             self._save([i for n, i in enumerate(self.instances) if n != idx])
 
-    def rename(self, idx, name):
+    def rename(self, idx, name, target=None):
         if not isinstance(name, str) or not name.strip():
             raise ValueError("实例名称不能为空")
-        self._update(idx, {"name": name})
+        self._update(idx, {"name": name}, target)
 
-    def _update(self, idx, changes):
+    def set_path(self, idx, path, target=None):
+        if not isinstance(path, str) or not path.strip():
+            raise ValueError("实例保存目录不能为空")
+        if not Path(path).is_absolute():
+            raise ValueError("请填写 Mower 所在主机上的完整目录路径")
+        self._update(idx, {"path": path}, target)
+
+    def _update(self, idx, changes, target=None):
         with self._operation():
+            instance = self._target_instance(idx, target)
             records = self._records()
-            self._editable(self.instances[idx], records)
+            self._editable(instance, records)
             updated = copy.deepcopy(self.instances)
             updated[idx].update(changes)
             self._editable(updated[idx], records)
@@ -294,13 +323,7 @@ class InstanceController:
     def update_settings(self, idx, settings, target=None):
         settings = validate_settings(settings)
         with self._operation():
-            if target is not None and (
-                type(idx) is not int
-                or not 0 <= idx < len(self.instances)
-                or target != {key: self.instances[idx][key] for key in ("name", "path")}
-            ):
-                raise ValueError("实例已变化，请重新打开配置")
-            instance = self.instances[idx]
+            instance = self._target_instance(idx, target)
             self._editable(instance, self._records())
             self._write_settings(instance, settings)
 
@@ -364,7 +387,7 @@ class InstanceController:
                 {"name": item["name"], "path": item["path"]} for item in self.instances
             ]
             if targets != current:
-                raise ValueError("实例列表已变化，请重新打开批量配置")
+                raise InstanceTargetChangedError("实例列表已变化，请重新打开批量配置")
             if any(idx >= len(current) for idx in selected):
                 raise ValueError("批量配置包含无效实例")
             results, seen = [], set()
@@ -417,10 +440,10 @@ class InstanceController:
                     )
             return {"ok": True, "results": results}
 
-    def start(self, idx):
+    def start(self, idx, target=None):
         try:
             with self._operation():
-                instance = self.instances[idx]
+                instance = self._target_instance(idx, target)
                 settings = self._start_settings(instance, self._records())
                 frozen = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
                 executable = Path(sys.executable).resolve().parent / (
@@ -439,6 +462,12 @@ class InstanceController:
                 env = runtime.launch_environment(
                     {"data_dir": os.environ.get("MOWER_DATA_DIR", ""), "managed": True}
                 )
+                for name in tuple(env):
+                    if name.startswith("MOWER_SUPERVISOR_") or name in (
+                        "MOWER_RECOVERY_RUN",
+                        "MOWER_RESUME_MODE",
+                    ):
+                        env.pop(name)
                 env.update(
                     MOWER_LAUNCH_ID=launch_id,
                     MOWER_MANAGER_PORT=str(settings["port"] or 0),
@@ -487,10 +516,11 @@ class InstanceController:
         ) as error:
             return {"ok": False, "message": str(error)}
 
-    def stop(self, idx):
+    def stop(self, idx, target=None):
         try:
             with self._operation():
-                matches = self._matching(self.instances[idx], self._records())
+                instance = self._target_instance(idx, target)
+                matches = self._matching(instance, self._records())
                 if any(not r.get("managed") for r in matches):
                     raise ValueError("该实例不是由多开管理器启动，请在实例中退出程序")
                 for record in matches:
@@ -499,16 +529,27 @@ class InstanceController:
         except (OSError, ValueError, runtime.InstanceScanError) as error:
             return {"ok": False, "message": str(error)}
 
-    def start_all(self):
-        return self._bulk("start")
+    def start_all(self, targets=None):
+        return self._bulk("start", targets=targets)
 
-    def stop_all(self):
-        return self._bulk("stop")
+    def stop_all(self, targets=None, *, last_directory=None):
+        return self._bulk("stop", targets=targets, last_directory=last_directory)
 
-    def _bulk(self, action):
+    def _bulk(self, action, *, targets=None, last_directory=None):
         with self._operation():
+            self._check_targets(targets)
             results = []
-            for idx in range(len(self.instances)):
+            indices = range(len(self.instances))
+            if action == "stop" and last_directory is not None:
+                last_key = instance_key(last_directory)
+                indices = sorted(
+                    indices,
+                    key=lambda idx: (
+                        bool(self.instances[idx]["path"])
+                        and instance_key(self.instances[idx]["path"]) == last_key
+                    ),
+                )
+            for idx in indices:
                 if action == "start":
                     records = self._records()
                     try:

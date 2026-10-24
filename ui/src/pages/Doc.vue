@@ -5,8 +5,12 @@ import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useThemeVars } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
+import { useResolvedTheme } from '@/composables/theme'
+import PageLayout from '@/components/PageLayout.vue'
+import PageHeader from '@/components/PageHeader.vue'
 
-const { theme } = storeToRefs(useConfigStore())
+const { theme: themePreference } = storeToRefs(useConfigStore())
+const theme = useResolvedTheme(themePreference)
 const themeVars = useThemeVars()
 const guideFrame = ref(null)
 const docSrc = `/docs/Mower入门指北.html?theme=${theme.value === 'dark' ? 'dark' : 'light'}`
@@ -50,12 +54,47 @@ watch([theme, guideColors], syncTheme, { flush: 'post' })
 </script>
 
 <template>
-  <iframe
-    ref="guideFrame"
-    title="Mower 一条龙入门说明"
-    :src="docSrc"
-    @load="syncTheme"
-    sandbox="allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin allow-forms"
-    style="display: block; width: 100%; height: 100vh; border: none"
-  />
+  <PageLayout max-width="100%">
+    <template #header>
+      <PageHeader>
+        帮助文档
+        <template #actions>
+          <n-button
+            tag="a"
+            href="https://arkmowers.github.io/arknights-mower/"
+            target="_blank"
+            rel="noopener noreferrer"
+            secondary
+          >
+            在线文档 ↗
+          </n-button>
+        </template>
+      </PageHeader>
+    </template>
+    <iframe
+      ref="guideFrame"
+      title="Mower 一条龙入门说明"
+      :src="docSrc"
+      @load="syncTheme"
+      sandbox="allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin allow-forms"
+      class="doc-frame"
+    />
+  </PageLayout>
 </template>
+
+<style scoped>
+.doc-frame {
+  width: 100%;
+  height: calc(100vh - 120px);
+  border: none;
+  border-radius: 8px;
+  background: var(--mower-surface);
+  box-shadow: var(--mower-shadow-surface);
+}
+
+@media (max-width: 640px) {
+  .doc-frame {
+    height: calc(100vh - 100px);
+  }
+}
+</style>

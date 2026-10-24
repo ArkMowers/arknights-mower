@@ -167,6 +167,8 @@ Use the entries relevant to changed call paths. Follow each owning contract for 
 
 ### 2.3 Presentation Layer (UI)
 
+- [ ] **Single Navigation Definition**: Do the desktop sidebar, mobile tab bar and mobile page drawer render each page from the shared navigation definition, with safe external links and route-derived highlighting? See the [navigation rules](../../../../ui/AGENTS.md#2-navigation-shell).
+
 - [ ] **Read Only Base Groups**: Do immutable preset browsing and filters preserve browser storage, Scheduling Plans and unknown ownership? See the [group boundary](../../../../docs/subsystems/base-scheduler.md#read-only-base-groups).
 - [ ] **Isolated Group Estimates**: Do selected skill mode, average-output choice, manual Jaye stage and accessory conditions remain page-local, with facility outputs separated and invalid staffing withheld? Do roster and normalized facility conditions come from one cached snapshot? See the [estimate boundary](../../../../docs/subsystems/base-scheduler.md#isolated-group-estimates).
 

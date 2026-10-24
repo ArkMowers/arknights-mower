@@ -1,5 +1,5 @@
 <script setup>
-import Close from '@vicons/ionicons5/Close'
+import Close from '@vicons/ionicons5/es/Close'
 import { storeToRefs } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'

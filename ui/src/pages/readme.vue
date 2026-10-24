@@ -1,11 +1,15 @@
 <script setup>
+import PageLayout from '@/components/PageLayout.vue'
+import PageHeader from '@/components/PageHeader.vue'
+
 defineOptions({ name: 'ResourceLinksPage' })
 </script>
 
 <template>
-  <div class="home-container readme">
-    <!-- <h2>更新日志</h2> -->
-    <h1 id="资源合集">资源合集</h1>
+  <PageLayout>
+    <template #header>
+      <PageHeader>资源合集</PageHeader>
+    </template>
     <div>
       <h2 id="mower">Mower</h2>
       <p>
@@ -157,12 +161,11 @@ defineOptions({ name: 'ResourceLinksPage' })
         >
       </p>
     </div>
-  </div>
+  </PageLayout>
 </template>
 
 <style scoped>
-.readme {
+.page-content {
   word-break: break-all;
-  max-width: 800px;
 }
 </style>

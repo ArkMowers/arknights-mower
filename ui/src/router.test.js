@@ -27,6 +27,7 @@ describe('frontend navigation credentials', () => {
 
   it.each([
     ['/plan-editor', 'plan'],
+    ['/task-settings', 'task-settings'],
     ['/mowersettings', 'mowersettings'],
     ['/record/report', 'report']
   ])('keeps the session token when navigating to %s', async (path, name) => {
@@ -81,4 +82,32 @@ describe('frontend navigation credentials', () => {
       '/:pathMatch(.*)'
     ])
   })
+
+  it('preserves the requested query and anchor when adding the session token', async () => {
+    await router.push('/?token=demo&old=unused')
+    await router.push('/mowersettings?section=accounts#income-settings')
+    expect(router.currentRoute.value.query).toEqual({
+      token: 'demo',
+      old: 'unused',
+      section: 'accounts'
+    })
+    expect(router.currentRoute.value.hash).toBe('#income-settings')
+  })
+
+  it.each(['#task-devices', '#task-daily', '#task-accounts', '#task-maa'])(
+    'opens legacy task settings on the task settings page while retaining %s and authentication',
+    async (hash) => {
+      await router.push('/?token=demo&old=unused')
+      await router.push(`/maasettings?section=accounts${hash}`)
+      expect(router.currentRoute.value.name).toBe('task-settings')
+      expect(router.currentRoute.value.path).toBe('/task-settings')
+      expect(router.currentRoute.value.query).toEqual({
+        token: 'demo',
+        old: 'unused',
+        section: 'accounts'
+      })
+      expect(router.currentRoute.value.hash).toBe(hash)
+      expect(router.currentRoute.value.meta.settings).not.toBe(true)
+    }
+  )
 })

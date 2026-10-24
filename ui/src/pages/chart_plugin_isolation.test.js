@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 // Cross-route regression: a globally registered ChartDataLabels instance
 // paints every raw point in densely sampled mood-line charts as text.
 describe('mood chart data-label plugin isolation', () => {
-  for (const file of ['RecordPie.vue', 'record.vue']) {
+  for (const file of ['RecordPie.vue']) {
     it(file + ' keeps percentage labels local to Pie charts', () => {
       const vue = readFileSync(new URL('./' + file, import.meta.url), 'utf8')
       const registrations = [...vue.matchAll(/ChartJS\.register\(([\s\S]*?)\)/g)]

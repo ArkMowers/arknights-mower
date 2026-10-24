@@ -7,7 +7,9 @@ import { readWindowShellMetadata } from '@/window-shell/adapter'
 defineOptions({ inheritAttrs: false })
 const props = defineProps({
   to: { type: [String, Object], required: true },
-  replace: Boolean
+  replace: Boolean,
+  activeClass: { type: String, default: 'router-link-active' },
+  exactActiveClass: { type: String, default: 'router-link-exact-active' }
 })
 const router = useRouter()
 const route = useRoute()
@@ -38,7 +40,7 @@ function follow(event, navigate) {
       v-bind="$attrs"
       :href="href"
       :aria-current="isExactActive ? 'page' : undefined"
-      :class="{ 'router-link-active': isActive, 'router-link-exact-active': isExactActive }"
+      :class="{ [activeClass]: isActive, [exactActiveClass]: isExactActive }"
       @click="follow($event, navigate)"
       @auxclick="follow($event, navigate)"
       ><slot

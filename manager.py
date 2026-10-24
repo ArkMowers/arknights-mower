@@ -53,21 +53,55 @@ def choose_instance_directory(window, directory=""):
 
 
 class Api(InstanceController):
-    def select_path(self, idx):
+    def __init__(
+        self,
+        storage_path=None,
+        ready=None,
+        window=None,
+        *,
+        defer_load=False,
+        current_instance_path=None,
+    ):
+        super().__init__(storage_path, ready, defer_load=defer_load)
+        self._window = window
+        self._current_instance_path = current_instance_path
+
+    def stop_all(self):
+        return self._bulk("stop", last_directory=self._current_instance_path)
+
+    def select_path(self, idx, target=None):
         with self._operation():
-            original = self.instances[idx].copy()
+            original = self._target_instance(idx, target).copy()
             self._editable(original, self._records())
-        window = webview.active_window()
+        window = self._window if self._window is not None else webview.active_window()
         folder = choose_instance_directory(window, original["path"])
         if not folder:
             return None
         if not isinstance(folder, str):
             folder = folder[0]
-        with self._operation():
-            if self.instances[idx] != original:
-                raise ValueError("实例已发生变化，请重新选择保存目录")
-            self._update(idx, {"path": folder})
+        self._update(
+            idx, {"path": folder}, {key: original[key] for key in ("name", "path")}
+        )
         return folder
+
+
+def attach_instance_controls(window):
+    api = Api(window=window, defer_load=True, current_instance_path=get_path("@app"))
+    window.expose(
+        api.get_instances,
+        api.mark_ready,
+        api.add,
+        api.remove,
+        api.rename,
+        api.select_path,
+        api.update_settings,
+        api.update_all_settings,
+        api.start,
+        api.stop,
+        api.start_all,
+        api.stop_all,
+    )
+    return api
 
 
 def manager_app():
@@ -100,6 +134,7 @@ def manager_window(connection, ready, closed):
         width=800,
         height=500,
     )
+    api._window = window
 
     def receive():
         try:

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <rect width="1920" height="1080" fill="#18242e"/>
+  <path d="M0 140H1920M0 940H1920" stroke="#596b7b" stroke-width="2"/>
+  <text x="72" y="90" fill="#fff" font-family="sans-serif" font-size="44">罗德岛 · 基建</text>
+  <rect x="1290" y="35" width="560" height="72" rx="12" fill="#f2c665"/>
+  <text x="1320" y="84" fill="#18242e" font-family="sans-serif" font-size="34">离线预览 · 示例截图</text>
+  <g fill="#293d4a" stroke="#657e8d" stroke-width="3">
+    <rect x="230" y="220" width="330" height="170"/><rect x="230" y="430" width="330" height="170"/><rect x="230" y="640" width="330" height="170"/>
+    <rect x="620" y="220" width="330" height="170"/><rect x="620" y="430" width="330" height="170"/><rect x="620" y="640" width="330" height="170"/>
+    <rect x="1010" y="220" width="330" height="170"/><rect x="1010" y="430" width="330" height="170"/><rect x="1010" y="640" width="330" height="170"/>
+    <rect x="1420" y="220" width="290" height="275"/><rect x="1420" y="535" width="290" height="275"/>
+  </g>
+  <g fill="#e7eef2" font-family="sans-serif" font-size="34">
+    <text x="258" y="280">B101 贸易站</text><text x="258" y="490">B201 制造站</text><text x="258" y="700">B301 发电站</text>
+    <text x="648" y="280">B102 制造站</text><text x="648" y="490">B202 贸易站</text><text x="648" y="700">B302 制造站</text>
+    <text x="1038" y="280">B103 发电站</text><text x="1038" y="490">B203 制造站</text><text x="1038" y="700">B303 发电站</text>
+    <text x="1450" y="280">训练室</text><text x="1450" y="595">宿舍</text>
+  </g>
+  <g fill="#67d6a2"><rect x="258" y="325" width="250" height="12"/><rect x="648" y="325" width="220" height="12"/><rect x="1038" y="325" width="260" height="12"/><rect x="258" y="535" width="190" height="12"/><rect x="648" y="535" width="250" height="12"/><rect x="1038" y="535" width="200" height="12"/><rect x="258" y="745" width="250" height="12"/><rect x="648" y="745" width="240" height="12"/><rect x="1038" y="745" width="260" height="12"/></g>
+  <text x="72" y="1015" fill="#bdcbd5" font-family="sans-serif" font-size="30">此图由预览代码绘制，用于检查截图区域的比例、滚动与缩放。</text>
+</svg>

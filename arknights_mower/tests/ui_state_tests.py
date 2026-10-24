@@ -60,7 +60,10 @@ class MoodBoardStateTests(unittest.TestCase):
         self.assertEqual(
             ui_state.get_log_layout(), {"task_height": 320, "screenshot_height": 200}
         )
-        self.assertEqual(yaml.safe_load(self.path.read_text())["mood_board"], expected)
+        self.assertEqual(
+            yaml.safe_load(self.path.read_text(encoding="utf-8"))["mood_board"],
+            expected,
+        )
 
     def test_another_browser_cannot_replace_existing_preferences_during_migration(self):
         ui_state.save_mood_board(self.preferences, initialize=True)

@@ -3,10 +3,11 @@ import { effectScope, nextTick } from 'vue'
 import MowerManager from './MowerManager.vue'
 import { managerCall } from './bridge.js'
 
-const hooks = vi.hoisted(() => ({ mounted: [], unmounted: [] }))
+const hooks = vi.hoisted(() => ({ mounted: [], unmounted: [], axios: null }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
   useSSRContext: () => ({ modules: new Set() }),
+  inject: (key, fallback) => (key === 'axios' ? hooks.axios : fallback),
   onMounted: (callback) => hooks.mounted.push(callback),
   onUnmounted: (callback) => hooks.unmounted.push(callback)
 }))
@@ -30,6 +31,7 @@ describe('manager instance controls', () => {
     vi.useFakeTimers()
     hooks.mounted = []
     hooks.unmounted = []
+    hooks.axios = null
     rows = [stopped()]
     api = {
       get_instances: vi.fn(async () => structuredClone(rows)),
@@ -82,6 +84,121 @@ describe('manager instance controls', () => {
     vi.unstubAllGlobals()
   })
 
+  it('edits the server directory as a browser draft and sends its captured target on save', async () => {
+    vi.stubGlobal('window', { addEventListener() {}, removeEventListener() {} })
+    hooks.axios = {
+      get: vi.fn(async () => ({ data: structuredClone(rows) })),
+      post: vi.fn(async (_url, { action, args }) => {
+        if (action === 'set_path') rows[0].path = args[1]
+        return { data: { ok: true } }
+      })
+    }
+    await mount()
+    component.selectPath(0)
+    expect(component.editing.value.kind).toBe('path')
+    component.draft.value.path = '/server/another-instance'
+    expect(hooks.axios.post).not.toHaveBeenCalled()
+    await component.save()
+    expect(hooks.axios.post).toHaveBeenCalledWith(
+      expect.stringMatching(/\/instances\/actions$/),
+      {
+        action: 'set_path',
+        args: [0, '/server/another-instance', { name: 'first', path: '/first' }]
+      },
+      expect.objectContaining({ headers: { 'X-Mower-Settings': '1' } })
+    )
+    expect(component.instances.value[0].path).toBe('/server/another-instance')
+    expect(component.editing.value).toBeNull()
+  })
+
+  it('blocks browser directory edits for live instances', async () => {
+    vi.stubGlobal('window', { addEventListener() {}, removeEventListener() {} })
+    rows[0] = { ...rows[0], state: 'running', editable: false }
+    hooks.axios = { get: vi.fn(async () => ({ data: structuredClone(rows) })), post: vi.fn() }
+    await mount()
+    component.selectPath(0)
+    expect(component.editing.value).toBeNull()
+    expect(hooks.axios.post).not.toHaveBeenCalled()
+  })
+
+  it('uses the accepted browser list identity after a late discarded refresh', async () => {
+    vi.stubGlobal('window', { addEventListener() {}, removeEventListener() {} })
+    hooks.axios = {
+      get: vi.fn(async () => ({ data: structuredClone(rows) })),
+      post: vi.fn(async () => ({ data: { ok: true } }))
+    }
+    await mount()
+    const oldRows = structuredClone(rows)
+    let finishOldRefresh
+    hooks.axios.get.mockImplementationOnce(
+      () => new Promise((resolve) => (finishOldRefresh = resolve))
+    )
+    const oldRefresh = component.refresh()
+    rows[0].name = 'renamed elsewhere'
+    await component.initialize()
+    finishOldRefresh({ data: oldRows })
+    await oldRefresh
+    await component.addInstance()
+    expect(hooks.axios.post).toHaveBeenCalledWith(
+      expect.any(String),
+      {
+        action: 'add',
+        args: ['新实例', '', [{ name: 'renamed elsewhere', path: '/first' }]]
+      },
+      expect.any(Object)
+    )
+  })
+
+  it('offers retry after an unsupported browser backend without exposing cached actions', async () => {
+    vi.stubGlobal('window', { addEventListener() {}, removeEventListener() {} })
+    hooks.axios = {
+      get: vi
+        .fn()
+        .mockRejectedValueOnce({ response: { status: 404 } })
+        .mockResolvedValue({ data: structuredClone(rows) }),
+      post: vi.fn(async () => ({ data: { ok: true } }))
+    }
+    await mount()
+    expect(component.initializationError.value).toContain('当前 Mower 版本不支持网页实例管理')
+    expect(component.unavailable.value).toBe(true)
+    await component.addInstance()
+    expect(hooks.axios.post).not.toHaveBeenCalled()
+    await component.initialize()
+    expect(component.unavailable.value).toBe(false)
+    await component.addInstance()
+    expect(hooks.axios.post).toHaveBeenCalledWith(
+      expect.any(String),
+      { action: 'add', args: ['新实例', '', [{ name: 'first', path: '/first' }]] },
+      expect.any(Object)
+    )
+  })
+
+  it.each(['settings', 'batch', 'deletion'])(
+    'invalidates an obsolete %s dialog when the instance menu reloads the list',
+    async (kind) => {
+      await mount()
+      if (kind === 'settings') {
+        component.edit(0, 'settings')
+        await component.changeAssistant(true)
+      } else if (kind === 'batch') {
+        component.editBatch()
+        await component.changeBatchAssistant(true)
+      } else component.confirmDelete(0)
+      rows[0].name = 'replaced elsewhere'
+
+      await component.initialize()
+
+      expect(component.editing.value).toBeNull()
+      expect(component.deleting.value).toBeNull()
+      expect(component.assistantConfirmation.value).toBeNull()
+      await component.save()
+      await component.applyDelete()
+      expect(api.update_settings).not.toHaveBeenCalled()
+      expect(api.update_all_settings).not.toHaveBeenCalled()
+      expect(api.remove).not.toHaveBeenCalled()
+    }
+  )
+
   it('changes start to stop and suppresses repeat clicks while dispatch is pending', async () => {
     await mount()
     component.lifecycle(0)
@@ -96,6 +213,82 @@ describe('manager instance controls', () => {
     component.lifecycle(0)
     expect(api.stop).toHaveBeenCalledOnce()
   })
+
+  it('blocks cached instance actions while a reopened menu reloads the list', async () => {
+    await mount()
+    const snapshot = structuredClone(rows)
+    let finishReload
+    api.get_instances.mockImplementationOnce(
+      () => new Promise((resolve) => (finishReload = resolve))
+    )
+    const reload = component.initialize()
+    await vi.advanceTimersByTimeAsync(0)
+
+    component.lifecycle(0)
+    component.edit(0, 'name')
+    component.confirmDelete(0)
+    await vi.advanceTimersByTimeAsync(0)
+    const startsDuringReload = api.start.mock.calls.length
+    const editorDuringReload = component.editing.value
+    const deletionDuringReload = component.deleting.value
+    finishReload(snapshot)
+    await reload
+
+    expect(startsDuringReload).toBe(0)
+    expect(editorDuringReload).toBeNull()
+    expect(deletionDuringReload).toBeNull()
+    component.lifecycle(0)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(api.start).toHaveBeenCalledOnce()
+  })
+
+  it('ignores an old status refresh superseded by an explicit list reload', async () => {
+    await mount()
+    const oldRows = structuredClone(rows)
+    let finishOldRefresh
+    api.get_instances.mockImplementationOnce(
+      () => new Promise((resolve) => (finishOldRefresh = resolve))
+    )
+    const refresh = component.refresh()
+    await vi.advanceTimersByTimeAsync(0)
+    rows[0].name = 'renamed elsewhere'
+    await component.initialize()
+    finishOldRefresh(oldRows)
+    await refresh
+
+    expect(component.instances.value[0].name).toBe('renamed elsewhere')
+  })
+
+  it.each(['start', 'stop', 'select_path', 'remove', 'rename'])(
+    'sends the displayed instance identity with %s',
+    async (action) => {
+      if (action === 'stop') {
+        Object.assign(rows[0], {
+          state: 'running',
+          editable: false,
+          can_start: false,
+          can_stop: true
+        })
+      }
+      await mount()
+      if (action === 'start' || action === 'stop') {
+        component.lifecycle(0)
+        await vi.advanceTimersByTimeAsync(0)
+      } else if (action === 'select_path') await component.selectPath(0)
+      else if (action === 'remove') {
+        component.confirmDelete(0)
+        await component.applyDelete()
+      } else {
+        component.edit(0, 'name')
+        component.draft.value.name = 'new name'
+        await component.save()
+      }
+      const target = { name: 'first', path: '/first' }
+      expect(api[action]).toHaveBeenCalledExactlyOnceWith(
+        ...(action === 'rename' ? [0, 'new name', target] : [0, target])
+      )
+    }
+  )
 
   it.each(['name', 'settings', 'batch'])(
     'retains the %s editor presentation until its closing transition finishes',
@@ -197,7 +390,7 @@ describe('manager instance controls', () => {
     expect(api.remove).not.toHaveBeenCalled()
     component.confirmDelete(0)
     await component.applyDelete()
-    expect(api.remove).toHaveBeenCalledExactlyOnceWith(0)
+    expect(api.remove).toHaveBeenCalledExactlyOnceWith(0, { name: 'first', path: '/first' })
     expect(component.deleting.value).toBeNull()
   })
 
@@ -858,7 +1051,7 @@ describe('manager instance controls', () => {
       expect(component.unavailable.value).toBe(false)
       expect(component.error.value).toBe('')
       expect(component.instances.value[0].path).toBe(outcome === 'confirm' ? '/selected' : '/first')
-      expect(api.select_path).toHaveBeenCalledExactlyOnceWith(0)
+      expect(api.select_path).toHaveBeenCalledExactlyOnceWith(0, { name: 'first', path: '/first' })
     }
   )
 

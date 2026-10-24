@@ -8,12 +8,13 @@ const state = vi.hoisted(() => ({
   notice: null,
   push: null,
   mower: null,
+  axios: null,
   dialog: null
 }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
   useSSRContext: () => ({ modules: new Set() }),
-  inject: () => state.feedback,
+  inject: (key) => (key === 'axios' ? state.axios : state.feedback),
   onBeforeUnmount: (callback) => (state.cleanup = callback)
 }))
 vi.mock('naive-ui', () => ({ useMessage: () => state.notice, useDialog: () => state.dialog }))
@@ -54,6 +55,9 @@ beforeEach(() => {
   state.notice = { success: vi.fn(), error: vi.fn(), warning: vi.fn() }
   state.dialog = { warning: vi.fn() }
   state.mower = reactive({ ai_assistant_enabled: true })
+  state.axios = {
+    defaults: { headers: { common: { 'X-Mower-Config-Generation': 'page-generation' } } }
+  }
   state.push = vi.fn()
   FakeSocket.instances = []
   vi.useFakeTimers()
@@ -78,6 +82,49 @@ function send(text = '检查日志') {
 }
 
 describe('AI chat interactions', () => {
+  it.each(['/', '/mowersettings', '/mowersettings#mower-data'])(
+    'closes the assistant before settings navigation from %s and keeps its conversation',
+    async (path) => {
+      const { createMemoryHistory, createRouter } = await vi.importActual('vue-router')
+      const router = createRouter({
+        history: createMemoryHistory(),
+        routes: [
+          { path: '/', component: {} },
+          { path: '/mowersettings', component: {} }
+        ]
+      })
+      await router.push(path)
+      await router.isReady()
+      const visibleDuringNavigation = []
+      router.beforeEach(() => {
+        visibleDuringNavigation.push(props.show)
+      })
+      state.push.mockImplementation((target) => router.push(target))
+      emit.mockImplementation((event, visible) => {
+        if (event === 'update:show') props.show = visible
+      })
+      const socket = send()
+      socket.open()
+      socket.receive({ reply: '保留正在回复的内容' })
+      component.userInput.value = '保留未发送的草稿'
+
+      component.openSettings()
+      await state.push.mock.results.at(-1).value
+      await flush()
+
+      expect(props.show).toBe(false)
+      expect(component.show.value).toBe(false)
+      expect(visibleDuringNavigation.every((visible) => visible === false)).toBe(true)
+      expect(router.currentRoute.value.path).toBe('/mowersettings')
+      expect(component.userInput.value).toBe('保留未发送的草稿')
+      expect(component.chatHistory.value.at(-1).content).toBe('保留正在回复的内容')
+      expect(socket.close).not.toHaveBeenCalled()
+      props.show = true
+      await flush()
+      expect(component.show.value).toBe(true)
+    }
+  )
+
   it('shows the refusal on lazy mount when authorization is already disabled', async () => {
     await flush()
     state.cleanup?.()
@@ -235,7 +282,7 @@ describe('AI chat interactions', () => {
     socket.open()
     expect(socket.send.mock.calls.map(([data]) => JSON.parse(data))).toEqual([
       { token: 'test-session' },
-      { message: '检查日志' }
+      { message: '检查日志', generation: 'page-generation' }
     ])
     socket.receive({ reply: '正在查询\n' })
     expect(component.loading.value).toBe(true)
@@ -249,7 +296,10 @@ describe('AI chat interactions', () => {
     expect(component.chatHistory.value.at(-1).content).toBe('正在查询\n查询完成')
     component.sendMessage()
     expect(component.chatHistory.value).toHaveLength(4)
-    expect(JSON.parse(socket.send.mock.calls.at(-1)[0])).toEqual({ message: '下一条草稿' })
+    expect(JSON.parse(socket.send.mock.calls.at(-1)[0])).toEqual({
+      message: '下一条草稿',
+      generation: 'page-generation'
+    })
   })
 
   it('does not send Chinese composition or Shift+Enter as a message', () => {

@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from arknights_mower import __version__
@@ -228,6 +229,76 @@ class TestWindowTitle(unittest.TestCase):
         ):
             server._request_title_refresh()
         conn.send.assert_called_once_with(("title", "2026.09.06"))
+
+
+class TestWindowInstanceControls(unittest.TestCase):
+    def test_main_window_exposes_the_existing_manager_actions(self):
+        import webview
+
+        import webview_ui
+        from arknights_mower.utils import config, path, window_backend, window_shell
+        from arknights_mower.utils import manager_instances as controls
+
+        window = mock.MagicMock()
+        shell = mock.Mock()
+        shell.get_platform.return_value = {"platform": "linux"}
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(path, "global_space", ""),
+            mock.patch.object(config, "load_conf"),
+            mock.patch.object(config, "conf", SimpleNamespace(theme="light")),
+            mock.patch.object(gui, "load_window_ratio", return_value=None),
+            mock.patch.object(gui, "load_window_mode", return_value="normal"),
+            mock.patch.object(gui, "load_window_launch_mode", return_value="normal"),
+            mock.patch.object(
+                window_shell,
+                "default_desktop_window_size",
+                return_value=window_shell.WindowSize(1000, 700),
+            ),
+            mock.patch.object(
+                window_shell,
+                "desktop_window_min_size",
+                return_value=window_shell.WindowSize(600, 400),
+            ),
+            mock.patch.object(
+                window_backend, "prepare_window_backend", return_value="gtk"
+            ),
+            mock.patch.object(window_shell, "attach_window_shell", return_value=shell),
+            mock.patch.object(
+                window_shell, "ratio_from_window_size", return_value=None
+            ),
+            mock.patch.object(webview_ui, "title_version", return_value="test-version"),
+            mock.patch.object(webview, "create_window", return_value=window),
+            mock.patch.object(webview, "start"),
+            mock.patch("threading.Thread"),
+            mock.patch.object(
+                controls,
+                "get_path",
+                return_value=Path(directory) / "instances.json",
+            ),
+            mock.patch.object(
+                controls.runtime, "state_dir", return_value=Path(directory) / "runtime"
+            ),
+        ):
+            with self.assertRaises(SystemExit):
+                webview_ui.webview_window(
+                    mock.Mock(), "", "current", "127.0.0.1", 58000, "http://local", True
+                )
+            options = webview.create_window.call_args.kwargs
+            self.assertIs(options.get("draggable"), True)
+            self.assertIs(options["easy_drag"], False)
+            methods = {
+                method.__name__: method for method in window.expose.call_args.args
+            }
+            methods["add"]("created from titlebar", "")
+            self.assertEqual(
+                controls.InstanceController().instances,
+                [{"name": "created from titlebar", "path": ""}],
+            )
+            self.assertIs(methods["select_path"].__self__._window, window)
+            self.assertIn("start_all", methods)
+            self.assertIn("stop_all", methods)
+            self.assertIn("update_all_settings", methods)
 
 
 if __name__ == "__main__":

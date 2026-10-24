@@ -1,0 +1,513 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createSSRApp, effectScope, h, nextTick, ref } from 'vue'
+import { parse as parseHtml } from '@vue/compiler-dom'
+import { renderToString } from 'vue/server-renderer'
+import { createPinia } from 'pinia'
+import { createMemoryHistory, createRouter } from 'vue-router'
+import { NDialogProvider, NMessageProvider } from 'naive-ui'
+import axios from 'axios'
+import { useConfigStore } from '@/stores/config'
+import { usePlanStore } from '@/stores/plan'
+import { useMowerStore } from '@/stores/mower'
+import MowerSettings from './Settings.vue'
+import TaskConfiguration from '@/task-workflow/TaskConfiguration.vue'
+import TaskSettingsPanels from '@/components/TaskSettingsPanels.vue'
+import { routes } from '@/routes'
+
+const state = vi.hoisted(() => ({ segmented: [], actions: {} }))
+
+vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }))
+vi.mock('vue', async (original) => ({
+  ...(await original()),
+  useSSRContext: () => ({ modules: new Set() })
+}))
+vi.mock('naive-ui', async (original) => {
+  const library = await original()
+  const wrapper = (name) => ({
+    inheritAttrs: false,
+    props: ['value', 'checked', 'label', 'title', 'disabled', 'show'],
+    setup(props, { attrs, slots }) {
+      if (name === 'NButton' && attrs['aria-label']) {
+        state.actions[attrs['aria-label']] = attrs.onClick
+      }
+      if (name === 'NTabs') {
+        state.segmented.push({
+          label: attrs['aria-label'],
+          value: props.value,
+          select: (value) => attrs['onUpdate:value']?.(value)
+        })
+      }
+      return () => {
+        if (name === 'NModal' && !props.show) return null
+        const content = [props.title, props.label, slots.header?.(), slots.label?.()]
+        if (name === 'NDynamicInput') {
+          content.push(
+            ...(props.value || []).map((value, index) => slots.default?.({ value, index }))
+          )
+        } else {
+          content.push(slots.default?.())
+        }
+        if (['NInput', 'NInputNumber'].includes(name)) {
+          content.push(h('input', { value: props.value, disabled: props.disabled }))
+        }
+        return h('div', { 'data-control': name }, content)
+      }
+    }
+  })
+  return {
+    ...library,
+    ...Object.fromEntries(
+      Object.keys(library)
+        .filter((name) => /^N[A-Z]/.test(name))
+        .map((name) => [name, wrapper(name)])
+    ),
+    useDialog: () => ({}),
+    useMessage: () => ({})
+  }
+})
+
+let store
+let plan
+let scope
+
+beforeEach(() => {
+  state.segmented = []
+  state.actions = {}
+  const storage = { getItem: vi.fn(() => null), setItem: vi.fn(), removeItem: vi.fn() }
+  vi.stubGlobal('sessionStorage', storage)
+  vi.stubGlobal('localStorage', storage)
+  vi.stubGlobal('window', { localStorage: storage, sessionStorage: storage })
+})
+
+afterEach(() => {
+  scope?.stop()
+  store?.$dispose()
+  plan?.$dispose()
+  vi.clearAllMocks()
+  vi.unstubAllGlobals()
+})
+
+function setup(Page, overrides = {}, setTheme, pageProps = {}) {
+  const app = createSSRApp({
+    render: () =>
+      h(NDialogProvider, null, {
+        default: () =>
+          h(NMessageProvider, null, {
+            default: () =>
+              h(Page, { ...(Page === TaskConfiguration ? { embedded: true } : {}), ...pageProps })
+          })
+      })
+  })
+  app.use(createPinia())
+  app.use(createRouter({ history: createMemoryHistory(), routes }))
+  app.provide('axios', axios)
+  app.provide('loaded', ref(false))
+  app.provide('mobile', ref(false))
+  if (setTheme) app.provide('set_theme_with_transition', setTheme)
+  store = app.runWithContext(() => useConfigStore())
+  plan = app.runWithContext(() => usePlanStore())
+  app.runWithContext(() => useMowerStore()).updates_enabled = true
+  Object.assign(store, {
+    runtime_platform: 'windows',
+    simulator: { name: 'MuMu12', wait_time: 75 },
+    device_profile: { preset_id: 'windows.mumu12' },
+    tap_to_launch_game: { mode: 'custom', command: 'saved-command', x: 200, y: 300 },
+    run_order_grandet_mode: { enable: true, buffer_time: 25, back_to_index: true },
+    waiting_scene: { LOADING: [3, 6] },
+    skland_info: [],
+    maa_long_task_type: 'sf',
+    ...overrides
+  })
+  return app
+}
+
+function taskSections(html) {
+  const sections = new Map()
+  for (const node of elements(parseHtml(html))) {
+    const id = attribute(node, 'data-task-editor')
+    if (!id) continue
+    const previous = sections.get(id)
+    sections.set(id, {
+      tag: previous?.tag || node.loc.source.slice(0, node.loc.source.indexOf('>') + 1),
+      content: (previous?.content || '') + node.loc.source
+    })
+  }
+  return sections
+}
+
+function elements(node) {
+  return [node, ...(node.children || []).flatMap(elements)]
+}
+
+function attribute(node, name) {
+  return node.props?.find((prop) => prop.name === name)?.value?.content
+}
+
+describe('settings page ownership', () => {
+  it.each([false, null])('keeps update controls hidden with permission %s', async (permission) => {
+    const app = setup(MowerSettings)
+    app.runWithContext(() => useMowerStore()).updates_enabled = permission
+    const html = await renderToString(app)
+    expect(html).not.toContain('软件更新')
+    expect(html).not.toContain('资源更新')
+    expect(html).toContain('截图保存时间')
+    expect(axios.post).not.toHaveBeenCalled()
+  })
+
+  it('keeps software preferences and storage controls on Mower settings', async () => {
+    const html = await renderToString(setup(MowerSettings))
+    for (const label of [
+      '界面缩放',
+      '软件版本显示',
+      '版本类型',
+      '邮件提醒',
+      '软件更新',
+      '截图保存时间',
+      '仓库历史',
+      '档案备份与恢复',
+      '导出档案',
+      '导入档案'
+    ]) {
+      expect(html).toContain(label)
+    }
+    expect(html).toContain('aria-label="软件版本显示预览"')
+    expect(html).toContain('version-workflow-targets')
+    expect(state.segmented.map((control) => control.label)).toEqual(
+      expect.arrayContaining(['显示主题', '软件版本显示'])
+    )
+    expect(html.match(/class="sidebar-brand-channel\b/g)).toHaveLength(4)
+    for (const kind of ['source', 'alpha', 'nightly', 'stable']) {
+      expect(html.match(new RegExp(`sidebar-brand-channel--${kind}`, 'g'))).toHaveLength(1)
+    }
+    for (const label of [
+      '配置导出与导入',
+      '导出配置',
+      '导入配置',
+      '启动游戏',
+      '公开招募',
+      '仓库物品混合读取',
+      '跑单前置延时',
+      '无人机使用阈值',
+      '无人机加速间隔',
+      '材料价值与基报算法'
+    ]) {
+      expect(html).not.toContain(label)
+    }
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+
+  it('passes the shared theme selector choice to the injected transition owner', async () => {
+    const setTheme = vi.fn()
+    const html = await renderToString(setup(MowerSettings, { theme: 'light' }, setTheme))
+    const control = state.segmented.find((entry) => entry.label === '显示主题')
+    expect(control).toMatchObject({ value: 'light' })
+    expect(html).toContain('跟随系统')
+    control.select('system')
+    expect(setTheme).toHaveBeenCalledExactlyOnceWith('system')
+    expect(store.theme).toBe('light')
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+
+  it('updates the theme directly when no transition owner is provided', async () => {
+    await renderToString(setup(MowerSettings, { theme: 'dark' }))
+    const control = state.segmented.find((entry) => entry.label === '显示主题')
+    expect(control).toMatchObject({ value: 'dark' })
+    control.select('light')
+    await nextTick()
+    expect(store.theme).toBe('light')
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+
+  it('renders moved controls and the existing MAA tasks together', async () => {
+    const html = await renderToString(setup(TaskConfiguration))
+    for (const label of [
+      '启动命令',
+      '截图最短间隔',
+      '跑单前置延时',
+      '无人机使用阈值',
+      '无人机加速间隔',
+      '公开招募',
+      '森空岛签到',
+      '仓库物品混合读取',
+      '自动切换信赖',
+      '获取信用及购物',
+      '大型任务',
+      '触控模式'
+    ]) {
+      expect(html).toContain(label)
+    }
+    for (const label of ['界面缩放', '邮件提醒', '截图保存时间', '仓库历史']) {
+      expect(html).not.toContain(label)
+    }
+    expect(html).toContain('saved-command')
+    const accounts = html.slice(
+      html.indexOf('<section id="task-accounts"'),
+      html.indexOf('<section id="task-maa"')
+    )
+    expect(accounts).toContain('材料价值与基报算法')
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+
+  it('preserves the Android server and performance controls without desktop lifecycle options', async () => {
+    const html = await renderToString(setup(TaskConfiguration, { runtime_platform: 'android' }))
+    expect(html).toContain('设备连接由 Android 应用管理')
+    expect(html).toContain('Bilibili 服')
+    expect(html).toContain('设备性能适配')
+    expect(html).not.toContain('启动命令')
+    const runtime = html.slice(
+      html.indexOf('<section id="task-runtime"'),
+      html.indexOf('<section id="task-base"')
+    )
+    expect(runtime).not.toContain('任务结束后')
+  })
+
+  it('retains a physical device preference while omitting emulator shutdown from the UI', async () => {
+    const app = setup(TaskConfiguration, {
+      device_profile: { preset_id: 'manual.physical' },
+      close_simulator_when_idle: true
+    })
+    const html = await renderToString(app)
+    expect(html).not.toContain('关闭模拟器')
+    expect(store.close_simulator_when_idle).toBe(true)
+    expect(store.device_profile.preset_id).toBe('manual.physical')
+  })
+
+  it('edits the migrated idle action through the existing mutually exclusive fields', async () => {
+    const app = setup(TaskConfiguration, { return_home_when_idle: true })
+    scope = effectScope()
+    const component = scope.run(() =>
+      app.runWithContext(() =>
+        TaskSettingsPanels.setup({ active: 'idle' }, { expose: () => {}, emit: () => {} })
+      )
+    )
+    expect(component.displayedIdleAction.value).toBe('home')
+    component.displayedIdleAction.value = 'exit'
+    await nextTick()
+    expect(store.return_home_when_idle).toBe(false)
+    expect(store.exit_game_when_idle).toBe(true)
+    expect(store.close_simulator_when_idle).toBe(false)
+    component.reset_launch_command()
+    expect(store.tap_to_launch_game.command).toBe(
+      'input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard; am start -n {package}/{activity}'
+    )
+    expect(store.tap_to_launch_game.x).toBe(200)
+    expect(store.tap_to_launch_game.y).toBe(300)
+  })
+
+  it('keeps the Mower settings directory and redirects the legacy task URL to its own page', () => {
+    const children = routes[0].children
+    const legacyTasks = children.find((route) => route.path === 'maasettings')
+    expect(legacyTasks.component).toBeUndefined()
+    expect(legacyTasks.redirect({ query: { token: 'demo' }, hash: '#task-devices' })).toEqual({
+      name: 'task-settings',
+      query: { token: 'demo' },
+      hash: '#task-devices'
+    })
+    expect(children.find((route) => route.path === 'mowersettings').meta.title).toBe('Mower 设置')
+  })
+})
+
+describe('settings page layouts', () => {
+  it('opens the clue configuration from the combined credit card', async () => {
+    const select = vi.fn()
+    await renderToString(
+      setup(TaskSettingsPanels, {}, undefined, {
+        active: 'credit',
+        checklist: true,
+        onSelect: select
+      })
+    )
+
+    state.actions['配置线索搜集与交流']()
+
+    expect(select).toHaveBeenCalledExactlyOnceWith('clue')
+    expect(store.enable_party).toBe(true)
+  })
+
+  it('omits the launch and idle headings only in the checklist while retaining their controls', async () => {
+    const html = await renderToString(
+      setup(TaskSettingsPanels, {}, undefined, {
+        active: 'device',
+        layout: 'checklist',
+        checklist: true
+      })
+    )
+    expect(html).toContain('task-settings-panels--checklist')
+    expect(html).not.toContain('游戏启动')
+    expect(html).not.toContain('任务运行')
+    expect(html).toContain('启动游戏')
+    expect(html).toContain('任务结束后')
+    expect(html).toContain('saved-command')
+
+    const defaultHtml = await renderToString(
+      setup(TaskSettingsPanels, {}, undefined, { active: 'device' })
+    )
+    expect(defaultHtml).not.toContain('task-settings-panels--checklist')
+    expect(defaultHtml).toContain('游戏启动')
+    expect(defaultHtml).toContain('任务运行')
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+
+  it('keeps daily task intervals in their own checklist editor and task-specific intervals on their task cards', async () => {
+    const html = await renderToString(
+      setup(
+        TaskSettingsPanels,
+        { maa_gap: 7, drone_interval: 13, recruit_gap: 9, trust_rotation_interval: 27 },
+        undefined,
+        { active: 'intervals', layout: 'checklist', checklist: true }
+      )
+    )
+    const sections = taskSections(html)
+    const intervals = sections.get('intervals')
+    expect(intervals.tag).not.toMatch(/display:\s*none/)
+    const intervalFields = elements(parseHtml(intervals.content)).filter(
+      (node) => attribute(node, 'data-control') === 'NFormItem'
+    )
+    for (const [label, value] of [['日常任务间隔', 7]]) {
+      const field = intervalFields.find((node) =>
+        elements(node).some((child) => child.type === 2 && child.content === label)
+      )
+      expect(field, label).toBeDefined()
+      expect(
+        elements(field)
+          .filter((node) => node.tag === 'input')
+          .map((node) => attribute(node, 'value')),
+        label
+      ).toEqual([String(value)])
+    }
+    expect(intervals.content.match(/data-control="NInputNumber"/g)).toHaveLength(1)
+    expect(intervals.content).not.toContain('data-control="NSwitch"')
+    expect(intervals.content).not.toContain('data-control="NCheckbox"')
+    expect([...sections.keys()].some((id) => id.startsWith('category:'))).toBe(false)
+    const droneInterval = elements(parseHtml(sections.get('drone').content)).find(
+      (node) =>
+        attribute(node, 'data-control') === 'NFormItem' &&
+        elements(node).some((child) => child.type === 2 && child.content === '无人机加速间隔')
+    )
+    expect(droneInterval).toBeDefined()
+    expect(attribute(droneInterval, 'style') || '').not.toMatch(/display:\s*none/)
+    expect(sections.get('recruit').content).toContain('启动间隔')
+    expect(sections.get('trust').content).toContain('检查间隔')
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+
+  it('renders independent waterfall cards and visible navigation targets without fixed column groups', async () => {
+    const app = setup(
+      TaskSettingsPanels,
+      {
+        maa_gap: 7,
+        drone_interval: 13,
+        recruit_gap: 9,
+        trust_rotation_interval: 27,
+        visit_friend_enable: true,
+        maa_mall_enable: true,
+        maa_mall_mode: 'maa'
+      },
+      undefined,
+      { active: 'recruit', layout: 'waterfall', checklist: false }
+    )
+    const html = await renderToString(app)
+    const sections = taskSections(html)
+    for (const id of [
+      'device',
+      'runtime',
+      'idle',
+      'base',
+      'runorder',
+      'drone',
+      'clue',
+      'workshop',
+      'training',
+      'trust',
+      'credit',
+      'daily',
+      'recruit',
+      'depot',
+      'stage-plan',
+      'rewards',
+      'long',
+      'accounts',
+      'maa',
+      'intervals'
+    ]) {
+      expect(sections.has(id), id).toBe(true)
+      expect(sections.get(id).tag, id).not.toMatch(/display:\s*none/)
+    }
+    expect([...sections.keys()].some((id) => id.startsWith('category:'))).toBe(false)
+    const content = (id) => sections.get(id).content
+    expect(html).not.toContain('task-settings-panels--checklist')
+    expect(content('device')).toContain('游戏启动')
+    expect(content('device')).toContain('saved-command')
+    expect(content('idle')).toContain('任务运行')
+    expect(content('base')).toContain('基建排班')
+    expect(content('runtime')).not.toContain('日常任务间隔')
+    expect(content('intervals')).toContain('日常任务间隔')
+    expect(content('intervals')).toContain('value="7"')
+    for (const label of ['信用作战', '访问好友', '信用商店购物', '编队', '优先购买', '黑名单'])
+      expect(content('credit')).toContain(label)
+    expect(content('credit')).toContain('data-control="NCheckbox"')
+    for (const label of ['每日任务', '森空岛签到', '领取邮件', '读取基报', '尚未添加森空岛账号'])
+      expect(content('daily')).toContain(label)
+    expect(content('daily')).toContain('data-control="NCheckbox"')
+    for (const label of ['公开招募', '启动间隔', '三星招募阈值'])
+      expect(content('recruit')).toContain(label)
+    expect(content('recruit')).toContain('data-control="NCheckbox"')
+    expect(content('recruit')).toContain('value="9"')
+    expect(content('drone')).toContain('无人机加速间隔')
+    expect(content('drone')).toContain('value="13"')
+    expect(content('trust')).toContain('检查间隔')
+    expect(content('trust')).toContain('value="27"')
+    expect(content('maa')).toContain('MAA 核心')
+    const tree = parseHtml(html)
+    const panels = elements(tree).find((node) =>
+      attribute(node, 'class')?.includes('task-settings-panels--waterfall')
+    )
+    expect(
+      panels.children.map((node) => attribute(node, 'data-task-editor')).filter(Boolean)
+    ).toEqual([
+      'device',
+      'device',
+      'idle',
+      'runtime',
+      'accounts',
+      'accounts',
+      'accounts',
+      'depot',
+      'daily',
+      'base',
+      'clue',
+      'runorder',
+      'drone',
+      'workshop',
+      'training',
+      'recruit',
+      'maa',
+      'rewards',
+      'trust',
+      'stage-plan',
+      'credit',
+      'long',
+      'intervals'
+    ])
+    expect(html).not.toContain('data-waterfall-group')
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+
+  it('keeps settings search on Mower settings and task configuration separate', async () => {
+    const settings = await renderToString(setup(MowerSettings))
+    expect(settings).toContain('settings-search')
+    expect(settings).not.toContain('settings-eyebrow')
+    expect(settings).not.toContain('缩放、主题、托盘与窗口行为')
+
+    const tasks = await renderToString(setup(TaskConfiguration))
+    expect(tasks).toContain('task-workspace')
+    expect(tasks).not.toContain('settings-search')
+    expect(tasks).not.toContain('settings-aside')
+    expect(tasks).not.toContain('设备连接、性能适配与游戏启动方式')
+  })
+})

@@ -198,6 +198,8 @@ onMounted(loadSettings)
 }
 .algorithm-field {
   display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   margin-bottom: 12px;
 }

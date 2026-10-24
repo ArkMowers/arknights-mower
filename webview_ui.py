@@ -50,6 +50,11 @@ if __name__ == "__main__" and sys.argv[1:2] == ["--maa-check-worker"]:
     worker_main(sys.argv[2])
     sys.exit()
 
+if __name__ == "__main__" and sys.argv[1:] == ["--preview"]:
+    from arknights_mower.utils.desktop_preview import run_preview
+
+    sys.exit(run_preview())
+
 # Linux 版独立包运行期需要宿主提供 GTK/WebKit2 原生库与 typelib，PyInstaller 只把
 # pywebview 的 Python 依赖打进包。这份提示在窗口后端初始化失败时展示，直接给出
 # 三个发行版的安装命令，避免用户对着裸 ImportError 无从下手。
@@ -436,6 +441,9 @@ def webview_window(
         min_size=min_size,
         resizable=True,
         frameless=shell_enabled,
+        # Preserve page link drag/drop. easy_drag=False separately disables
+        # whole-page window dragging.
+        draggable=True,
         easy_drag=False,
         shadow=True,
         background_color=window_background_color(theme),
@@ -448,6 +456,9 @@ def webview_window(
         backend=backend,
         managed=managed,
     )
+    from manager import attach_instance_controls
+
+    attach_instance_controls(window)
 
     def on_closing():
         nonlocal closing

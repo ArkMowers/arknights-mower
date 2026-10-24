@@ -2,6 +2,7 @@
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDialog, useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
+import { deviceConnectionNavigationKey } from '@/composables/deviceConnectionNavigation'
 import PerformanceSettings from './PerformanceSettings.vue'
 import {
   deviceSettingsState,
@@ -21,8 +22,10 @@ import {
 
 import { file_dialog, folder_dialog } from '@/utils/dialog'
 
+const props = defineProps({ expanded: { type: Boolean, default: false } })
 const config = useConfigStore()
 const axios = inject('axios')
+const connectionNavigation = inject(deviceConnectionNavigationKey, null)
 const dialog = useDialog()
 const message = useMessage()
 const base = `${import.meta.env.VITE_HTTP_URL || ''}/device`
@@ -32,6 +35,7 @@ const result = ref(null)
 const performanceObservation = ref(null)
 const busy = ref(false)
 const advanced = ref(false)
+const showAdvanced = computed(() => props.expanded || advanced.value)
 const manual = ref(false)
 const selectedKey = ref(null)
 const dirty = ref(false)
@@ -45,7 +49,7 @@ const state = computed(() =>
     metadata: metadata.value,
     result: result.value,
     busy: busy.value,
-    advanced: advanced.value,
+    advanced: showAdvanced.value,
     manual: manual.value,
     selectedKey: selectedKey.value,
     confirmedPackage: confirmedPackage.value
@@ -405,12 +409,33 @@ function updateStatusPolling() {
   timer = setInterval(readStatus, 3000)
 }
 
+if (connectionNavigation) {
+  watch(
+    () => state.value.locked,
+    (locked) => {
+      connectionNavigation.locked.value = locked
+    },
+    { immediate: true, flush: 'sync' }
+  )
+  watch(
+    connectionNavigation.request,
+    (request) => {
+      if (!request || !connectionNavigation.consume(request)) return
+      if (request.action === 'settings') advanced.value = true
+      else if (request.action === 'select') advanced.value = false
+      else if (request.action === 'test') void selectDetect('preflight')
+    },
+    { immediate: true, flush: 'post' }
+  )
+}
+
 onMounted(() => {
   updateStatusPolling()
   document.addEventListener('visibilitychange', updateStatusPolling)
 })
 onUnmounted(() => {
   disposed = true
+  if (connectionNavigation) connectionNavigation.locked.value = false
   document.removeEventListener('visibilitychange', updateStatusPolling)
   clearInterval(timer)
   clearTimeout(savedHintTimer)
@@ -487,7 +512,7 @@ onUnmounted(() => {
         {{ state.actions.discover.label }}
       </n-button>
 
-      <n-button quaternary @click="advanced = !advanced">
+      <n-button v-if="!expanded" quaternary @click="advanced = !advanced">
         {{ advanced ? '收起高级设置' : '高级设置' }}
       </n-button>
     </n-space>
@@ -684,7 +709,7 @@ onUnmounted(() => {
       :test-enabled="!dirty && !state.locked"
     />
 
-    <template v-if="advanced">
+    <template v-if="showAdvanced">
       <div class="advanced-divider">
         <n-divider dashed title-placement="left">超时保护与高级控制</n-divider>
       </div>
@@ -820,7 +845,7 @@ onUnmounted(() => {
             </template>
             <n-input
               :value="draft.simulator_hotkey ?? ''"
-              placeholder="留空表示不启用（如 alt+q、ctrl+alt+w）"
+              placeholder="例如 alt+q，留空禁用"
               :disabled="state.locked"
               @update:value="(v) => edit('simulator_hotkey', v)"
             />

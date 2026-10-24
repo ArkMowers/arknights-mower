@@ -4,7 +4,7 @@
     @update:show="$emit('update:show', $event)"
     preset="card"
     title="专精协助方案"
-    style="width: min(660px, 95vw); max-height: 90vh"
+    style="width: min(660px, 95vw)"
     content-style="overflow-y: auto; min-height: 0"
     :mask-closable="!saving"
     :closable="!saving"

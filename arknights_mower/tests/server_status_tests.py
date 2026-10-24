@@ -1,5 +1,6 @@
 import datetime
 import os
+import sys
 import unittest
 from threading import Event
 from types import SimpleNamespace
@@ -7,7 +8,12 @@ from unittest.mock import Mock, patch
 
 from arknights_mower.tests import device_settings_route_tests as settings_routes
 from arknights_mower.tests.device_preflight_tests import PreflightIO
-from arknights_mower.utils import config, crash_recovery
+from arknights_mower.utils import (
+    config,
+    crash_recovery,
+    software_update,
+    update_runtime,
+)
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.io_budget import budget_sleep
 from arknights_mower.utils.device.preflight import PreflightService
@@ -58,6 +64,101 @@ class ServerStatusTests(unittest.TestCase):
             tasks=[],
         )
 
+    def test_status_reports_desktop_deployment_without_running_update_checks(self):
+        self.worker.is_alive.return_value = False
+        with (
+            patch.dict(os.environ, {"MOWER_ANDROID": "0"}),
+            patch.dict(self.server.app.extensions),
+            patch.object(
+                software_update,
+                "info",
+                side_effect=AssertionError("status performs no update check"),
+            ) as info,
+            patch.object(
+                software_update,
+                "source_tools",
+                side_effect=AssertionError("status performs no Git or tool probe"),
+            ) as tools,
+            patch.object(
+                update_runtime,
+                "instances",
+                side_effect=AssertionError("status performs no registration scan"),
+            ) as instances,
+        ):
+            self.server.app.extensions.pop("software_update_provider", None)
+            for frozen, expected in ((False, "source"), (True, "release")):
+                with (
+                    self.subTest(frozen=frozen),
+                    patch.object(sys, "frozen", frozen, create=True),
+                    patch.object(sys, "_MEIPASS", "unused-package-root", create=True),
+                ):
+                    response = self.client.get("/status", headers=self.headers)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.json["deployment"], expected)
+                    self.assertEqual(response.json["status"], "stopped")
+            info.assert_not_called()
+            tools.assert_not_called()
+            instances.assert_not_called()
+
+    def test_status_reports_android_release_deployment_without_probing_its_provider(
+        self,
+    ):
+        self.worker.is_alive.return_value = False
+        provider = Mock()
+        provider.info.side_effect = AssertionError(
+            "status must not call the host updater"
+        )
+        with (
+            patch.dict(os.environ, {"MOWER_ANDROID": "1"}),
+            patch.object(sys, "frozen", False, create=True),
+            patch.dict(
+                self.server.app.extensions, {"software_update_provider": provider}
+            ),
+            patch.object(software_update, "info") as info,
+            patch.object(update_runtime, "instances") as instances,
+        ):
+            response = self.client.get("/status", headers=self.headers)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json["deployment"], "release")
+            self.assertEqual(response.json["status"], "stopped")
+            provider.info.assert_not_called()
+            info.assert_not_called()
+            instances.assert_not_called()
+
+    def test_status_preserves_unknown_embedded_deployment_without_guessing_source(self):
+        self.worker.is_alive.return_value = False
+        provider = Mock()
+        with (
+            patch.dict(os.environ, {"MOWER_ANDROID": "0"}),
+            patch.object(sys, "frozen", False, create=True),
+            patch.dict(
+                self.server.app.extensions, {"software_update_provider": provider}
+            ),
+        ):
+            response = self.client.get("/status", headers=self.headers)
+            self.assertEqual(response.status_code, 200)
+            self.assertIsNone(response.json["deployment"])
+            provider.info.assert_not_called()
+
+    def test_disabled_updates_do_not_hide_runtime_deployment_from_status(self):
+        self.worker.is_alive.return_value = False
+        with (
+            patch.dict(os.environ, {"MOWER_ANDROID": "0"}),
+            patch.object(sys, "frozen", False, create=True),
+            patch.dict(self.server.app.extensions),
+            patch.dict(self.server.app.config, {"UPDATES_ENABLED": False}),
+            patch.object(software_update, "info") as info,
+        ):
+            self.server.app.extensions.pop("software_update_provider", None)
+            response = self.client.get("/status", headers=self.headers)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json["deployment"], "source")
+            self.assertFalse(response.json["updates_enabled"])
+            blocked = self.client.get("/software-update/info", headers=self.headers)
+            self.assertEqual(blocked.status_code, 403)
+            self.assertEqual(blocked.json["error"], "updates_disabled")
+            info.assert_not_called()
+
     def test_desktop_startup_stays_handled_after_stop_and_repeated_status_reads(self):
         for owned, restart in ((True, ""), (False, ""), (False, "update")):
             with (
@@ -68,7 +169,7 @@ class ServerStatusTests(unittest.TestCase):
             ):
                 self.worker.is_alive.return_value = False
                 for _ in range(3):
-                    response = self.client.get("/status")
+                    response = self.client.get("/status", headers=self.headers)
                     self.assertEqual(response.json["status"], "stopped")
                     self.assertEqual(response.json["desktop_startup_handled"], owned)
                     self.assertEqual(
@@ -86,7 +187,7 @@ class ServerStatusTests(unittest.TestCase):
             ("closed", "starting"),
         ):
             with self.subTest(state=state), patch.object(self.control, "_state", state):
-                response = self.client.get("/status")
+                response = self.client.get("/status", headers=self.headers)
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.json["status"], expected)
                 self.assertEqual(response.json["plan_condition"], [])
@@ -97,7 +198,7 @@ class ServerStatusTests(unittest.TestCase):
 
     def test_scheduler_without_operator_data_still_reports_starting(self):
         self.main.base_scheduler = self.scheduler(initialized=False)
-        response = self.client.get("/status")
+        response = self.client.get("/status", headers=self.headers)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["status"], "starting")
         self.assertEqual(response.json["plan_condition"], [])
@@ -112,7 +213,7 @@ class ServerStatusTests(unittest.TestCase):
             for sleeping, expected in ((False, "working"), (True, "sleeping")):
                 with self.subTest(sleeping=sleeping):
                     self.main.base_scheduler.sleeping = sleeping
-                    response = self.client.get("/status")
+                    response = self.client.get("/status", headers=self.headers)
                     self.assertEqual(response.json["status"], expected)
                     self.assertEqual(
                         response.json["plan_condition"], ["first", "second"]
@@ -130,7 +231,7 @@ class ServerStatusTests(unittest.TestCase):
                     self.subTest(sleeping=sleeping, state=state),
                     patch.object(self.control, "_state", state),
                 ):
-                    response = self.client.get("/status")
+                    response = self.client.get("/status", headers=self.headers)
                     self.assertEqual(response.status_code, 200)
                     self.assertEqual(response.json["status"], "recovering")
                     self.assertEqual(
@@ -147,7 +248,7 @@ class ServerStatusTests(unittest.TestCase):
                     patch.object(self.server, "mower_thread", worker),
                     patch.object(self.control, "_state", state),
                 ):
-                    response = self.client.get("/status")
+                    response = self.client.get("/status", headers=self.headers)
                     self.assertEqual(response.json["status"], "stopped")
                     self.assertEqual(response.json["plan_condition"], [])
                     self.assertIsNone(response.json["next_task_time"])
@@ -223,7 +324,8 @@ class ServerStatusTests(unittest.TestCase):
                 self.assertTrue(config.stop_mower.is_set())
                 self.assertIs(self.server.mower_thread, self.worker)
                 self.assertNotEqual(
-                    self.client.get("/status").json["status"], "stopped"
+                    self.client.get("/status", headers=self.headers).json["status"],
+                    "stopped",
                 )
                 self.assertTrue(
                     self.client.get("/device/status", headers=self.headers).json[
@@ -241,4 +343,6 @@ class ServerStatusTests(unittest.TestCase):
             response = self.client.get("/stop", headers=self.headers)
             self.assertEqual(response.get_data(as_text=True), "true")
             set_thread.assert_called_once_with(None)
-        self.assertEqual(self.client.get("/status").json["status"], "stopped")
+        self.assertEqual(
+            self.client.get("/status", headers=self.headers).json["status"], "stopped"
+        )

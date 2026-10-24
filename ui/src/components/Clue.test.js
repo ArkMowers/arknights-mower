@@ -3,7 +3,7 @@ import { createSSRApp, defineComponent, h, ref } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
 import Clue from './Clue.vue'
 
-const state = vi.hoisted(() => ({ config: {}, updateThreshold: null }))
+const state = vi.hoisted(() => ({ config: {}, updateThreshold: null, updates: {} }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => ({}) }))
 vi.mock('@/stores/plan', () => ({ usePlanStore: () => ({ operators: [] }) }))
 vi.mock('pinia', () => ({ storeToRefs: () => state.config }))
@@ -39,25 +39,41 @@ vi.mock('naive-ui', () => {
   )
   return {
     ...components,
+    NButton: defineComponent({
+      setup: (_, { attrs, slots }) => {
+        if (attrs['aria-label']) state.updates[attrs['aria-label']] = attrs.onClick
+        return () => h('button', slots.default?.())
+      }
+    }),
+    NFormItem: defineComponent({
+      setup:
+        (_, { slots }) =>
+        () =>
+          h('div', [slots.label?.(), slots.default?.()])
+    }),
     NRadioGroup: defineComponent({
       props: ['value', 'disabled'],
-      setup:
-        (props, { slots }) =>
-        () =>
+      setup: (props, { attrs, slots }) => {
+        if (attrs['aria-label']) state.updates[attrs['aria-label']] = attrs['onUpdate:value']
+        return () =>
           h(
             'fieldset',
             { disabled: props.disabled, 'data-value': String(props.value) },
             slots.default?.()
           )
+      }
     }),
     NSelect: defineComponent({
       props: ['multiple', 'value', 'disabled'],
-      setup: (props) => () =>
-        h('select', {
-          multiple: props.multiple,
-          disabled: props.disabled,
-          'data-value': String(props.value)
-        })
+      setup: (props, { attrs }) => {
+        if (attrs['aria-label']) state.updates[attrs['aria-label']] = attrs['onUpdate:value']
+        return () =>
+          h('select', {
+            multiple: props.multiple,
+            disabled: props.disabled,
+            'data-value': String(props.value)
+          })
+      }
     }),
     NInputNumber: defineComponent({
       props: ['value', 'disabled', 'min', 'step', 'precision', 'inputProps'],
@@ -95,7 +111,8 @@ vi.mock('naive-ui', () => {
   }
 })
 
-async function renderClue(overrides = {}) {
+async function renderClue(overrides = {}, props = {}) {
+  state.updates = {}
   state.config = Object.fromEntries(
     Object.entries({
       visit_friend_enable: true,
@@ -114,12 +131,87 @@ async function renderClue(overrides = {}) {
       ...overrides
     }).map(([key, value]) => [key, ref(value)])
   )
-  const app = createSSRApp(Clue)
+  const app = createSSRApp(Clue, props)
   app.provide('mobile', false)
   return renderToString(app)
 }
 
 describe('信息板功能适用范围', () => {
+  it('assigns combined credit fields to their individual searchable task editors', async () => {
+    const html = await renderClue()
+    for (const editor of ['visit', 'credit-fight', 'shop']) {
+      expect(html).toContain(`data-task-editor="${editor}"`)
+    }
+  })
+
+  it('opens the clue editor from the combined credit settings', async () => {
+    const configureClue = vi.fn()
+    const html = await renderClue({}, { onConfigureClue: configureClue })
+    expect(html).toContain('线索搜集与交流')
+    expect(html).not.toContain('#task-base')
+    state.updates['配置线索搜集与交流']()
+    expect(configureClue).toHaveBeenCalledExactlyOnceWith()
+  })
+
+  it('edits an inactive visit task without enabling it', async () => {
+    const html = await renderClue(
+      { visit_friend_enable: false },
+      { task: 'visit', showEnable: false }
+    )
+    expect(html).toContain('data-value="mower"')
+    state.updates['访友执行方式']('maa')
+    expect(state.config.visit_friend_mode.value).toBe('maa')
+    expect(state.config.visit_friend_enable.value).toBe(false)
+  })
+
+  it('edits an inactive shop task without enabling it', async () => {
+    const html = await renderClue(
+      { maa_mall_enable: false, maa_mall_mode: 'maa' },
+      { task: 'shop', showEnable: false }
+    )
+    expect(html).toContain('只购买折扣物品')
+    expect(html).toContain('<select multiple')
+    state.updates['购物执行方式']('mower')
+    state.updates['优先购买'](['招聘许可', '龙门币'])
+    expect(state.config.maa_mall_mode.value).toBe('mower')
+    expect(state.config.maa_mall_buy.value).toEqual(['招聘许可', '龙门币'])
+    expect(state.config.maa_mall_enable.value).toBe(false)
+  })
+
+  it('keeps inactive task parameters hidden in the existing combined editor', async () => {
+    const html = await renderClue({ visit_friend_enable: false, maa_mall_enable: false })
+    expect(html).not.toContain('由 MAA 进入好友列表')
+    expect(html).not.toContain('只购买折扣物品')
+    expect(state.updates['访友执行方式']).toBeUndefined()
+    expect(state.updates['购物执行方式']).toBeUndefined()
+  })
+
+  it('separates credit task editors without changing shared shopping dependencies', async () => {
+    const visit = await renderClue({}, { task: 'visit', showEnable: false })
+    expect(visit).toContain('data-value="mower"')
+    expect(visit).not.toContain('按性价比购物')
+    expect(visit).not.toContain('<select')
+    expect(state.config.visit_friend_enable.value).toBe(true)
+
+    const fight = await renderClue({}, { task: 'credit-fight', showEnable: false })
+    expect(fight).toContain('<select')
+    expect(fight).toContain('借助战打OF-1')
+    expect(fight).toContain('使用指定编队')
+    expect(fight).not.toContain('<fieldset')
+    expect(fight).not.toContain('按性价比购物')
+    expect(state.config.maa_credit_fight.value).toBe(false)
+
+    const shop = await renderClue(
+      { visit_friend_mode: 'maa', credit_shop_by_value: true },
+      { task: 'shop', showEnable: false }
+    )
+    expect(shop).toContain('按性价比购物')
+    expect(shop).toContain('需要开启 Mower 访问好友')
+    expect(shop).not.toContain('由 MAA 进入好友列表')
+    expect(state.config.credit_shop_by_value.value).toBe(true)
+    expect(state.config.visit_friend_mode.value).toBe('maa')
+  })
+
   it.each([
     [true, 'mower', true, 'mower', true, true],
     [false, 'mower', true, 'mower', true, false],

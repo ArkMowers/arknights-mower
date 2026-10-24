@@ -1,4 +1,5 @@
 <script setup>
+defineProps({ showEnable: { type: Boolean, default: true } })
 import { storeToRefs } from 'pinia'
 import { NTag, NCheckbox } from 'naive-ui'
 import axios from 'axios'
@@ -271,12 +272,13 @@ function cancelCopyDialogLongPress() {
 </script>
 
 <template>
-  <n-card>
+  <n-card class="maa-weekly">
     <template #header>
-      <n-checkbox v-model:checked="stage_plan_enable">
+      <n-checkbox v-if="showEnable" v-model:checked="stage_plan_enable" aria-label="启用周计划">
         <div class="card-title">刷理智周计划</div>
       </n-checkbox>
-      <help-text>
+      <span v-else class="weekly-plan-heading">周计划</span>
+      <help-text label="周计划说明">
         <div>支持 MAA 支持的所有关卡。</div>
         <div>操作流程：</div>
         <div>1. 先在"方案"里选择已有方案，或输入新方案名后按回车创建。</div>
@@ -435,7 +437,7 @@ function cancelCopyDialogLongPress() {
                   {{ plan.weekday }}
                 </span>
               </td>
-              <td>
+              <td class="stage-column">
                 <n-select
                   v-model:value="plan.stage"
                   multiple
@@ -444,24 +446,29 @@ function cancelCopyDialogLongPress() {
                   :options="filteredStageOptions(plan.weekday)"
                   :render-tag="renderStageTag(plan)"
                   :on-create="createTag"
+                  :consistent-menu-width="false"
                 />
               </td>
               <td v-if="stage_plan_runner === 'maa'" class="number-column">
+                <span class="weekly-mobile-label">每次吃药</span>
                 <mower-input-number
                   v-model:value="plan.medicine"
                   :min="0"
                   :max="999"
                   :show-button="false"
+                  :input-props="{ 'aria-label': `${plan.weekday}每次吃药` }"
                 >
                   <template #suffix>药</template>
                 </mower-input-number>
               </td>
               <td class="number-column">
+                <span class="weekly-mobile-label">体力阈值</span>
                 <mower-input-number
                   v-model:value="plan.sanity_threshold"
                   :min="0"
                   :max="210"
                   :show-button="false"
+                  :input-props="{ 'aria-label': `${plan.weekday}体力阈值` }"
                 >
                   <template #suffix>理智</template>
                 </mower-input-number>
@@ -529,6 +536,19 @@ function cancelCopyDialogLongPress() {
 </template>
 
 <style scoped lang="scss">
+.maa-weekly {
+  container: weekly-plan / inline-size;
+}
+
+.weekly-mobile-label {
+  display: none;
+}
+
+.weekly-plan-heading {
+  font-size: 14px;
+  font-weight: 500;
+}
+
 .weekly-plan-table {
   width: 100%;
   border-collapse: collapse;
@@ -537,6 +557,51 @@ function cancelCopyDialogLongPress() {
   td {
     padding: 8px 6px;
     vertical-align: middle;
+  }
+}
+
+@container weekly-plan (max-width: 520px) {
+  .weekly-plan-table {
+    display: block;
+
+    thead {
+      display: none;
+    }
+
+    tbody {
+      display: grid;
+      gap: 16px;
+    }
+
+    tr {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 12px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--mower-border);
+    }
+
+    td {
+      width: auto;
+      min-width: 0;
+      padding: 0;
+    }
+
+    .weekday-column,
+    .stage-column {
+      grid-column: 1 / -1;
+    }
+
+    .number-column {
+      display: grid;
+      gap: 6px;
+    }
+
+    .weekly-mobile-label {
+      display: block;
+      font-size: 12px;
+      color: var(--mower-text-muted);
+    }
   }
 }
 
@@ -572,7 +637,11 @@ function cancelCopyDialogLongPress() {
 
 .weekly-plan-toolbar {
   width: 100%;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+
+  :deep(.n-input-number) {
+    flex-shrink: 0;
+  }
 }
 
 .weekly-plan-selector-wrap {

@@ -1,15 +1,61 @@
 """实例的窗口设置与界面偏好；读改写共用跨进程文件锁。"""
 
+import errno
+import os
+import re
+import time
+from contextlib import contextmanager
 from threading import RLock
 
 import yaml
 from yamlcore import CoreDumper, CoreLoader
 
-from arknights_mower.utils import update_runtime as runtime
 from arknights_mower.utils.config import atomic_write, gui_path
 from arknights_mower.utils.window_shell import WindowRatio
 
 _gui_lock = RLock()
+_KEY_PATTERN = re.compile(r"[a-zA-Z0-9_-]{1,100}\Z")
+_MAX_GROUPS = 20
+_MAX_KNOWN_KEYS = 100
+_MAX_PLACEMENTS = 2200
+
+
+@contextmanager
+def _gui_file_lock(timeout=3.0):
+    # Keep a stable lock file across atomic replacements and process exits.
+    gui_path.parent.mkdir(parents=True, exist_ok=True)
+    with gui_path.with_suffix(gui_path.suffix + ".lock").open("a+b") as stream:
+        if os.name == "nt" and os.fstat(stream.fileno()).st_size == 0:
+            stream.write(b"\0")
+            stream.flush()
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+
+                    stream.seek(0)
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError as exc:
+                if exc.errno not in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+                    raise
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("界面配置正在保存，请稍后重试") from exc
+                time.sleep(min(0.02, remaining))
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
 def read_gui_data(*, strict=False) -> dict:
@@ -33,10 +79,7 @@ def read_gui_data(*, strict=False) -> dict:
 
 def update_gui_data(update):
     # 窗口与后端进程在锁内读取最新文件，再提交本次字段修改。
-    with (
-        _gui_lock,
-        runtime.supervision_lock(gui_path.parent.parent / "tmp/gui-config", timeout=5),
-    ):
+    with _gui_lock, _gui_file_lock():
         data = read_gui_data(strict=True)
         result = update(data)
 
@@ -51,6 +94,133 @@ def update_gui_data(update):
 
 def _update_gui_data(**changes) -> None:
     update_gui_data(lambda data: data.update(changes))
+
+
+def _valid_key(value) -> bool:
+    return isinstance(value, str) and _KEY_PATTERN.fullmatch(value) is not None
+
+
+def validate_sidebar(value: object) -> dict:
+    if not isinstance(value, dict) or type(value.get("version")) is not int:
+        raise ValueError("侧栏配置格式无效")
+    if value["version"] != 3:
+        raise ValueError("侧栏配置版本无效")
+    groups = value.get("groups")
+    placements = value.get("placements")
+    known_keys = value.get("knownKeys")
+    if (
+        not isinstance(groups, list)
+        or len(groups) > _MAX_GROUPS
+        or not isinstance(placements, list)
+        or len(placements) > _MAX_PLACEMENTS
+        or not isinstance(known_keys, list)
+        or len(known_keys) > _MAX_KNOWN_KEYS
+        or any(not _valid_key(key) for key in known_keys)
+        or len(set(known_keys)) != len(known_keys)
+    ):
+        raise ValueError("侧栏配置条目无效或超过上限")
+    group_keys = {"ungrouped", "footer"}
+    clean_groups = []
+    for group in groups:
+        if (
+            not isinstance(group, dict)
+            or not _valid_key(group.get("key"))
+            or group["key"] in group_keys | {"pinned"}
+            or not isinstance(group.get("title"), str)
+            or not 1 <= len(group["title"].strip()) <= 80
+            or type(group.get("collapsed")) is not bool
+        ):
+            raise ValueError("侧栏分组无效")
+        group_keys.add(group["key"])
+        clean_groups.append(
+            {
+                "key": group["key"],
+                "title": group["title"].strip(),
+                "collapsed": group["collapsed"],
+            }
+        )
+    clean_placements = []
+    placement_ids = set()
+    for placement in placements:
+        if (
+            not isinstance(placement, dict)
+            or not _valid_key(placement.get("id"))
+            or placement["id"] in placement_ids
+            or not _valid_key(placement.get("key"))
+            or not isinstance(placement.get("group"), str)
+            or placement["group"] not in group_keys
+            or type(placement.get("visible")) is not bool
+            or type(placement.get("pinned")) is not bool
+        ):
+            raise ValueError("侧栏入口无效")
+        placement_ids.add(placement["id"])
+        clean_placements.append(
+            {key: placement[key] for key in ("id", "key", "group", "visible", "pinned")}
+        )
+    return {
+        "version": 3,
+        "knownKeys": list(known_keys),
+        "groups": clean_groups,
+        "placements": clean_placements,
+    }
+
+
+def load_sidebar() -> dict | None:
+    value = read_gui_data().get("sidebar")
+    if not isinstance(value, dict):
+        return None
+    if type(value.get("version")) is int and value["version"] in (1, 2):
+        return value
+    try:
+        return validate_sidebar(value)
+    except ValueError:
+        return None
+
+
+def save_sidebar(value: object) -> dict:
+    sidebar = validate_sidebar(value)
+    _update_gui_data(sidebar=sidebar)
+    return sidebar
+
+
+def load_software_version_display() -> str:
+    value = read_gui_data().get("software_version_display")
+    return value if value in ("version", "channel") else "version"
+
+
+def save_software_version_display(value: object) -> str:
+    save_appearance({"software_version_display": value})
+    return value
+
+
+def load_software_version_language() -> str:
+    value = read_gui_data().get("software_version_language")
+    return value if value in ("zh", "en") else "en"
+
+
+def load_task_settings_layout() -> str:
+    value = read_gui_data().get("task_settings_layout")
+    return value if value in ("checklist", "waterfall") else "checklist"
+
+
+def save_appearance(changes: dict) -> dict:
+    fields = {
+        "software_version_display": (("version", "channel"), "软件版本显示方式无效"),
+        "software_version_language": (("zh", "en"), "软件版本类型语言无效"),
+        "task_settings_layout": (("checklist", "waterfall"), "任务配置显示方式无效"),
+    }
+    if (
+        not isinstance(changes, dict)
+        or not changes
+        or not changes.keys() <= fields.keys()
+    ):
+        raise ValueError("请提供有效的外观配置")
+    for key, value in changes.items():
+        choices, message = fields[key]
+        if not isinstance(value, str) or value not in choices:
+            raise ValueError(message)
+    _update_gui_data(**changes)
+    return dict(changes)
 
 
 def load_window_mode() -> str:

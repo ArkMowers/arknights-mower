@@ -72,7 +72,7 @@ describe('global update drop routing', () => {
     const file = await zipPackage(['mower/_internal/arknights_mower/__init__.py'], 'resource.zip')
     await component.drop(dropEvent(file))
     expect(pendingSoftwarePackage.value).toBe(file)
-    expect(state.push).toHaveBeenCalledWith('/mowersettings')
+    expect(state.push).toHaveBeenCalledWith('/mowersettings#software-update-manual')
     expect(state.client.post).not.toHaveBeenCalled()
     expect(component.show.value).toBe(false)
   })

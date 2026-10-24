@@ -28,7 +28,13 @@ vi.mock('@/stores/config', () => ({ useConfigStore: () => ({}) }))
 vi.mock('pinia', () => ({ storeToRefs: () => state.config }))
 vi.mock('axios', () => ({ default: { get: vi.fn(async () => ({ data: [] })) } }))
 vi.mock('./WeeklyPlanSelector.vue', () => ({ default: defineComponent(() => () => h('div')) }))
-vi.mock('./HelpText.vue', () => ({ default: defineComponent(() => () => h('div')) }))
+vi.mock('./HelpText.vue', () => ({
+  default: defineComponent(
+    (_, { slots }) =>
+      () =>
+        h('div', slots.default?.())
+  )
+}))
 vi.mock('./MowerInputNumber.vue', () => ({ default: defineComponent(() => () => h('div')) }))
 vi.mock('./MaaStageInventory.vue', () => ({
   default: defineComponent({
@@ -78,6 +84,11 @@ vi.mock('naive-ui', () => {
         'NTabs',
         'NTag'
       ].map((name) => [name, wrapper])
+    ),
+    NCard: defineComponent(
+      (_, { slots }) =>
+        () =>
+          h('section', [h('header', slots.header?.()), slots.default?.()])
     ),
     NTabPane: defineComponent({
       props: ['name'],
@@ -155,6 +166,20 @@ describe('周计划芯片按钮排序联动', () => {
     state.editor = app._instance
     return app
   }
+
+  it.each([true, false])('启用控件显示为 %s 时保留计划帮助与关卡链接', async (showEnable) => {
+    const app = createSSRApp(MaaWeekly, { showEnable })
+    app.provide('mobile', false)
+    const html = await renderToString(app)
+    const header = html.match(/<header>([\s\S]*?)<\/header>/)?.[1] || ''
+    expect(html.includes('刷理智周计划')).toBe(showEnable)
+    expect(header.includes('aria-label="启用周计划"')).toBe(showEnable)
+    expect(html.split('aria-label="启用周计划"').length - 1).toBe(showEnable ? 1 : 0)
+    expect(html).toContain('支持 MAA 支持的所有关卡')
+    expect(html).toContain('PRTS.wiki：关卡一览 / 资源收集')
+    expect(html).toContain('href="https://m.prts.wiki/')
+    expect(html).toContain('consistent-menu-width="false"')
+  })
 
   it('资源变更后重读活动并保留周计划选择', async () => {
     const selected = JSON.stringify(state.config.maa_weekly_plan.value)

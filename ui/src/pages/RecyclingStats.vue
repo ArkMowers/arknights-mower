@@ -2,21 +2,23 @@
 import { computed, inject, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
+import { useResolvedTheme } from '@/composables/theme'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { PieChart } from 'echarts/charts'
 import { TooltipComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
-import CubeOutline from '@vicons/ionicons5/CubeOutline'
-import RefreshOutline from '@vicons/ionicons5/RefreshOutline'
-import DownloadOutline from '@vicons/ionicons5/DownloadOutline'
-import TimeOutline from '@vicons/ionicons5/TimeOutline'
-import PersonOutline from '@vicons/ionicons5/PersonOutline'
-import LeafOutline from '@vicons/ionicons5/LeafOutline'
+import CubeOutline from '@vicons/ionicons5/es/CubeOutline'
+import RefreshOutline from '@vicons/ionicons5/es/RefreshOutline'
+import DownloadOutline from '@vicons/ionicons5/es/DownloadOutline'
+import TimeOutline from '@vicons/ionicons5/es/TimeOutline'
+import PersonOutline from '@vicons/ionicons5/es/PersonOutline'
+import LeafOutline from '@vicons/ionicons5/es/LeafOutline'
 
 use([CanvasRenderer, PieChart, TooltipComponent])
 const axios = inject('axios')
-const { theme } = storeToRefs(useConfigStore())
+const { theme: themePreference } = storeToRefs(useConfigStore())
+const theme = useResolvedTheme(themePreference)
 const today = new Date()
 const since = new Date(today)
 since.setDate(today.getDate() - 29)
@@ -256,7 +258,7 @@ onUnmounted(() => {
     <n-alert v-if="exportError" type="error" class="notice">{{ exportError }}</n-alert>
     <section class="valuation-panel valuation-source">
       <span>{{ comparison?.valuation?.source || '材料价值未读取' }}</span>
-      <SessionLink to="/mowersettings">管理材料价值与基报算法</SessionLink>
+      <SessionLink to="/task-settings#task-accounts">管理材料价值与基报算法</SessionLink>
     </section>
     <n-alert
       v-if="comparison?.unknown_collections || comparison?.unknown_materials.length"

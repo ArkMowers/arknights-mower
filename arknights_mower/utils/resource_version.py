@@ -76,12 +76,19 @@ def check_resource_update(local_only: bool = False) -> dict:
     """
     local = _read_local_version_json() or {}
     current_version = local.get("res_version") or ""
-    current_display = display_version(local) or ""
+    current = {
+        "current_version": current_version,
+        "current_display": display_version(local) or "",
+        "current_metadata": {
+            "activity": local.get("activity") or {},
+            "gacha": local.get("gacha") or {},
+            "last_updated": local.get("last_updated") or "",
+        },
+    }
 
     if local_only:
         return {
-            "current_version": current_version,
-            "current_display": current_display,
+            **current,
             "remote_version": "",
             "remote_display": "",
             "update_available": None,
@@ -93,8 +100,7 @@ def check_resource_update(local_only: bool = False) -> dict:
         remote = _read_tmp_cache()
         if remote is None:
             return {
-                "current_version": current_version,
-                "current_display": current_display,
+                **current,
                 "remote_version": "",
                 "remote_display": "",
                 "update_available": None,
@@ -106,8 +112,7 @@ def check_resource_update(local_only: bool = False) -> dict:
     remote_version = remote.get("res_version") or ""
     if not remote_version:
         return {
-            "current_version": current_version,
-            "current_display": current_display,
+            **current,
             "remote_version": "",
             "remote_display": display_version(remote) or "",
             "update_available": None,
@@ -115,8 +120,7 @@ def check_resource_update(local_only: bool = False) -> dict:
         }
     incompatible = compatibility_error(remote, __version__)
     return {
-        "current_version": current_version,
-        "current_display": current_display,
+        **current,
         "remote_version": remote_version,
         "remote_display": display_version(remote) or "",
         "update_available": not incompatible

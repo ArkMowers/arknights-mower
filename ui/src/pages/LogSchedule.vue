@@ -1,7 +1,14 @@
 <script setup>
 import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
+import { useThemeVars } from 'naive-ui'
 
 const axios = inject('axios')
+const themeVars = useThemeVars()
+const deleteDialogStyle = computed(() => ({
+  width: 'min(440px, calc(100vw - 32px))',
+  '--mower-control-surface': themeVars.value.actionColor,
+  '--mower-error': themeVars.value.errorColor
+}))
 const queryAt = ref(Date.now())
 const loadedAt = ref(queryAt.value)
 const timeCenter = ref(queryAt.value)
@@ -609,7 +616,7 @@ onMounted(() => {
       :show="pendingDeleteEvent !== null"
       preset="card"
       title="删除异常记录"
-      style="width: min(440px, calc(100vw - 32px))"
+      :style="deleteDialogStyle"
       :closable="!deleting"
       :mask-closable="!deleting"
       :close-on-esc="!deleting"
