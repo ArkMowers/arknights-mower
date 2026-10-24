@@ -205,10 +205,8 @@ def test_inline_reads_respect_priority_after_refresh_operator_moves(
 
     if not mastery_enabled and priority_kind == "SWAP_SUPPORT":
         assert task.plan == {} and task not in solver.tasks
-        assert [event[1] for event in ui.events if event[0] == "read"] == [
-            "room_1_1",
-            "room_2_2",
-        ]
+        read_rooms = [event[1] for event in ui.events if event[0] == "read"]
+        assert read_rooms.count("room_1_1") == read_rooms.count("room_2_2") == 2
         assert priority in solver.tasks
         return
     assert ui.clock.now() < priority_at
@@ -220,7 +218,9 @@ def test_inline_reads_respect_priority_after_refresh_operator_moves(
     assert task.time == original_time and task in solver.tasks
     assert [event[1] for event in ui.events if event[0] == "read"] == ["room_1_1"]
     waiting = next(
-        pending for pending in solver.tasks if pending.type == ui.task_type.REFRESH_TIME
+        pending
+        for pending in solver.tasks
+        if pending.type == ui.task_type.REFRESH_TIME and pending.meta_data == "room_2_2"
     )
     assert waiting.meta_data == "room_2_2"
     assert not getattr(waiting, "execution_failure", None)
@@ -238,10 +238,9 @@ def test_inline_reads_respect_priority_after_refresh_operator_moves(
 
     assert task.plan == {} and task not in solver.tasks
     assert task.time == original_time and waiting not in solver.tasks
-    assert [event[1] for event in ui.events if event[0] == "read"] == [
-        "room_1_1",
-        "room_2_2",
-    ]
+    read_rooms = [event[1] for event in ui.events if event[0] == "read"]
+    assert len(read_rooms) == 3 and read_rooms[0] == "room_1_1"
+    assert set(read_rooms[1:]) == {"room_1_1", "room_2_2"}
     assert [call.args[0] for call in solver.choose_agent.call_args_list].count(
         ["鸿雪"]
     ) == 1
@@ -284,10 +283,15 @@ def test_inline_reads_preserve_due_refresh_before_imminent_priority(
     solver._read_arrangement_order_times("room_1_1")
 
     assert [event[1] for event in ui.events if event[0] == "read"] == ["room_1_1"]
-    assert refresh not in solver.tasks
-    assert any(pending.type == ui.task_type.RUN_ORDER for pending in solver.tasks)
+    assert refresh in solver.tasks
+    assert not any(pending.type == ui.task_type.RUN_ORDER for pending in solver.tasks)
     assert arrangement.time == before[1]["time"]
     assert arrangement.plan == before[1]["plan"]
+
+    solver.agent_arrange(arrangement.plan)
+    assert arrangement.plan == {} and arrangement.time == before[1]["time"]
+    assert refresh not in solver.tasks
+    assert any(pending.type == ui.task_type.RUN_ORDER for pending in solver.tasks)
 
 
 def test_blocked_order_allows_independent_inline_refresh(order_navigation):
@@ -459,6 +463,13 @@ def test_restoration_with_old_room_metadata_does_not_interrupt_order_refreshes(
         "room_2_2",
         "room_3_3",
     ]
+    assert all(refresh in solver.tasks for refresh in refreshes)
+    assert [task for task in solver.tasks if task.type == ui.task_type.RUN_ORDER] == [
+        restoration
+    ]
+    assert arrangement.plan == {"dormitory_1": ["Current"]}
+    arrangement.plan.clear()
+    solver._read_arrangement_order_times("room_2_2")
     assert all(refresh not in solver.tasks for refresh in refreshes)
     orders = {
         task.meta_data: task
@@ -470,5 +481,5 @@ def test_restoration_with_old_room_metadata_does_not_interrupt_order_refreshes(
     assert vars(restoration) == original_restoration
     for room in ("room_2_2", "room_3_3"):
         assert orders[room].time == ui.deadlines[room] - timedelta(minutes=3)
-    assert arrangement.plan == {"dormitory_1": ["Current"]}
+    assert arrangement.plan == {}
     solver.choose_agent.assert_not_called()
