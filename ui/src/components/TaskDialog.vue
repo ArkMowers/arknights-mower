@@ -147,13 +147,32 @@ async function saveTasks() {
     // 独立任务不携带房间排班。
     task.plan = {}
   }
-  msg.value = (await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, { task })).data
-  if (msg.value != '添加任务成功！') {
-    error.value = true
-  } else {
-    error.value = false
-    get_tasks()
+  saving.value = true
+  try {
+    msg.value = (
+      await axios.post(`${import.meta.env.VITE_HTTP_URL}/task`, { task }, { timeout: 30000 })
+    ).data
+    if (msg.value != '添加任务成功！') {
+      error.value = true
+    } else {
+      error.value = false
+      get_tasks()
+    }
+  } catch (e) {
+    showSubmissionError(e)
+  } finally {
+    saving.value = false
   }
+}
+
+function showSubmissionError(e) {
+  const detail = e.response?.data
+  if ((detail?.code || detail?.error) === 'configuration_changed') {
+    msg.value = detail.message || '当前配置已切换，请刷新页面后再操作'
+  } else {
+    msg.value = `未确认提交结果：${detail?.message || detail?.error || e.message}，请刷新计划和任务队列后重试`
+  }
+  error.value = true
 }
 
 async function saveMasteryTask() {
@@ -201,8 +220,7 @@ async function saveMasteryTask() {
       error.value = true
     }
   } catch (e) {
-    msg.value = `未确认提交结果：${e.response?.data?.error || e.message}，请刷新计划和任务队列后重试`
-    error.value = true
+    showSubmissionError(e)
   }
 }
 

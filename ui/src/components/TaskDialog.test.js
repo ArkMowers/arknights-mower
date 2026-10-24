@@ -62,9 +62,11 @@ describe('manual task dialog', () => {
     component.task_time.value = 1792800000000
     component.task_list.value = [{ room: 'train', operators: ['陈'] }]
     await component.saveTasks()
-    expect(axios.post).toHaveBeenCalledWith(expect.stringContaining('/task'), {
-      task: { time: new Date(1792800000000), task_type: kind, plan: {}, meta_data: '' }
-    })
+    expect(axios.post).toHaveBeenCalledWith(
+      expect.stringContaining('/task'),
+      { task: { time: new Date(1792800000000), task_type: kind, plan: {}, meta_data: '' } },
+      { timeout: 30000 }
+    )
     expect(component.error.value).toBe(false)
     expect(state.mower.get_tasks).toHaveBeenCalledOnce()
   })
@@ -79,9 +81,11 @@ describe('manual task dialog', () => {
     component.task_time.value = 1792800000000
     component.task_list.value = [{ room: 'train', operators: ['陈'] }]
     await component.saveTasks()
-    expect(axios.post).toHaveBeenCalledWith(expect.stringContaining('/task'), {
-      task: { time: new Date(1792800000000), task_type: kind, plan: {}, meta_data: '' }
-    })
+    expect(axios.post).toHaveBeenCalledWith(
+      expect.stringContaining('/task'),
+      { task: { time: new Date(1792800000000), task_type: kind, plan: {}, meta_data: '' } },
+      { timeout: 30000 }
+    )
     expect(state.mower.get_tasks).toHaveBeenCalledOnce()
   })
 
@@ -187,5 +191,55 @@ describe('manual task dialog', () => {
     await component.saveTasks()
     expect(component.error.value).toBe(true)
     expect(state.mower.get_tasks).not.toHaveBeenCalled()
+  })
+
+  it.each(['日常任务', '技能专精'])(
+    'shows the profile conflict message and retains the %s selection for reload',
+    async (kind) => {
+      selectMastery()
+      component.task_type.value = kind
+      component.daily_task.value = '领取邮件'
+      axios.post.mockRejectedValueOnce({
+        response: {
+          status: 409,
+          data: {
+            error: 'configuration_changed',
+            message: '当前配置已切换，请刷新页面后再操作'
+          }
+        }
+      })
+      await component.saveTasks()
+      expect(component.msg.value).toBe('当前配置已切换，请刷新页面后再操作')
+      expect(component.error.value).toBe(true)
+      expect(component.task_type.value).toBe(kind)
+      expect(component.daily_task.value).toBe('领取邮件')
+      expect(component.mastery_operator.value).toBe('陈')
+      expect(component.saving.value).toBe(false)
+      expect(state.mower.get_tasks).not.toHaveBeenCalled()
+    }
+  )
+
+  it('reports an unconfirmed ordinary submission and releases the saving state', async () => {
+    component.task_type.value = '作战计划'
+    axios.post.mockRejectedValueOnce(new Error('网络中断'))
+    await component.saveTasks()
+    expect(component.msg.value).toContain('未确认提交结果：网络中断')
+    expect(component.error.value).toBe(true)
+    expect(component.saving.value).toBe(false)
+    expect(state.mower.get_tasks).not.toHaveBeenCalled()
+  })
+
+  it('blocks duplicate ordinary submissions until the first completes', async () => {
+    component.task_type.value = '日常任务'
+    let resolve
+    axios.post.mockReturnValueOnce(new Promise((done) => (resolve = done)))
+    const first = component.saveTasks()
+    expect(component.saving.value).toBe(true)
+    await component.saveTasks()
+    expect(axios.post).toHaveBeenCalledOnce()
+    resolve({ data: '添加任务成功！' })
+    await first
+    expect(component.saving.value).toBe(false)
+    expect(state.mower.get_tasks).toHaveBeenCalledOnce()
   })
 })
