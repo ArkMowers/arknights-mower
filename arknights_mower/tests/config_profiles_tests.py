@@ -2,11 +2,12 @@ import json
 import sqlite3
 from contextlib import closing, contextmanager
 from io import BytesIO
+from threading import Event
 
 import pytest
 from flask import Flask
 
-from arknights_mower.utils import config
+from arknights_mower.utils import config, crash_recovery
 from arknights_mower.utils import config_backup as backup
 from arknights_mower.utils import config_profiles as profiles
 from arknights_mower.utils import config_selection as selection
@@ -16,6 +17,17 @@ from arknights_mower.views.config_profiles import config_profiles_bp
 
 @pytest.fixture
 def storage(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "stop_mower", Event())
+    monkeypatch.setattr(crash_recovery, "_cancelled", False)
+    monkeypatch.setattr(crash_recovery, "_progress", {})
+    for name in (
+        "MOWER_SUPERVISOR_DIRECTORY",
+        "MOWER_SUPERVISOR_CHILD_REPORT",
+        "MOWER_SUPERVISOR_GENERATION",
+        "MOWER_SUPERVISOR_INTENT",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
     def get_path(name, space=None):
         return tmp_path / "instance" / name.removeprefix("@app/")
 
