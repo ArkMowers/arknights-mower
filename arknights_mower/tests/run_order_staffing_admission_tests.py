@@ -205,7 +205,7 @@ def test_confirmed_station_reads_order_before_next_room_and_keeps_distant_run(
     ui.solver.agent_arrange(task.plan)
 
     assert task.plan == {} and task.time == original_time
-    assert len(reads(ui)) == 1
+    assert len(reads(ui)) == 3
     assert ui.events.index(reads(ui)[0]) < next(
         index
         for index, event in enumerate(ui.events)
@@ -215,8 +215,8 @@ def test_confirmed_station_reads_order_before_next_room_and_keeps_distant_run(
     assert {task.meta_data for task in orders} == {"room_1_1", "room_2_2"}
     assert not any(task.type == ui.task_type.REFRESH_TIME for task in ui.solver.tasks)
     ui.solver.run_order_solver()
-    assert len(reads(ui)) == 1
-    assert len(reads(ui, "room_2_2")) == 1
+    assert len(reads(ui)) == 3
+    assert len(reads(ui, "room_2_2")) == 2
 
 
 def test_short_first_order_yields_then_resumes_same_unfinished_correction(
@@ -315,7 +315,7 @@ def test_later_room_refresh_operator_updates_already_read_station(
     solver.agent_arrange(task.plan)
 
     assert task.plan == {}
-    assert len(reads(ui)) == 2
+    assert len(reads(ui)) == 3
     order = next(
         task
         for task in solver.tasks
@@ -438,6 +438,11 @@ def test_remaining_work_room_uses_same_margin_as_dispatch(
     ui.deadlines["room_1_1"] = ui.clock.now() + timedelta(
         minutes=3, seconds=run_start_seconds
     )
+    # 已有正式跑单仍按原有下一房安排预算决定是否让行。
+    ui.occupants["room_1_1"] = ["鸿雪"]
+    ui.states["room_1_1"] = "active"
+    ui.solver.get_agent_from_room("room_1_1")
+    ui.solver.plan_run_order("room_1_1")
     task = correction(ui, {"room_1_1", "room_2_2"})
     original_time = task.time
 
@@ -641,7 +646,10 @@ def test_failed_inline_read_checks_order_deadline_before_next_refresh(staffed_or
 
     assert len(attempts) == 1
     assert len(reads(ui, "room_3_3")) == 1
-    assert all(queued is not other for queued in solver.tasks)
+    assert any(queued is other for queued in solver.tasks)
     assert failed.time == failed_time and failed.execution_failure
     assert task.time == original_time and task.plan == remaining
-    solver.choose_agent.assert_not_called()
+    solver.agent_arrange(task.plan)
+    assert task.plan == {} and task.time == original_time
+    assert len(reads(ui, "room_3_3")) == 2
+    assert all(queued is not other for queued in solver.tasks)

@@ -331,11 +331,11 @@ _COLLECTIBLE_START_KEYS = (
 )
 
 
-class RunOrderMissed(Exception):
+class RunOrderWindowExpired(Exception):
     """本次跑单已错过倒计时窗口，交回调度重新读单规划。"""
 
     def __init__(self, room):
-        super().__init__("检测到漏单！")
+        super().__init__("跑单倒计时超出窗口")
         self.room = room
 
 
@@ -2697,8 +2697,8 @@ class BaseSchedulerSolver(
                     and self.tasks[0].type in [TaskTypes.SHIFT_ON]
                 ):
                     self.backup_plan_solver()
-            except RunOrderMissed as e:
-                # 漏单结束本次插拔；新订单使用正常读单流程，不保留失效时间。
+            except RunOrderWindowExpired as e:
+                # 超窗结束本次插拔；当前订单重新读单，不保留失效时间。
                 self.tasks[:] = [task for task in self.tasks if task is not self.task]
                 self._queue_order_refresh(e.room)
                 self.skip()
@@ -4454,7 +4454,8 @@ class BaseSchedulerSolver(
             if self._emergency_run_order_available(room):
                 self._queue_order_refresh(room)
 
-    def plan_run_order(self, room):
+    def plan_run_order(self, room, *, probe_window=None):
+        """规划跑单；换班中途只接纳临近订单，远期读数不生成任务。"""
         if any(
             room in getattr(task, "run_order_original_roster", {})
             for task in self.tasks
@@ -4508,6 +4509,10 @@ class BaseSchedulerSolver(
             return True
         if room not in self.op_data.run_order_rooms:
             return
+        if probe_window is not None and execute_time > datetime.now() + probe_window:
+            # 换班中途只检查临近订单，远期时间留待整批换班完成后正式读取。
+            logger.info("%s 跑单尚未临近，换班完毕后重新读取正式时间", room)
+            return False
         self.tasks.append(
             SchedulerTask(
                 time=execute_time,
@@ -4535,7 +4540,9 @@ class BaseSchedulerSolver(
         ]
 
     def _read_arrangement_order_times(self, room):
-        """在房间确认后消费到期读单责任，失败不重做已经完成的入驻。"""
+        """中途只检查临近订单，安排完毕后正式读单，失败保留独立刷新。"""
+        if self.task.plan and not self._can_defer_arrangement():
+            return False
         self._resume_failed_tasks()
         refreshes = [
             refresh
@@ -4548,7 +4555,21 @@ class BaseSchedulerSolver(
             return
         refreshes.sort(key=lambda refresh: refresh.meta_data != room)
         self.task.execution_retained = True
+        probe_window = None
+        if self.task.plan:
+            next_room = min(
+                self.task.plan,
+                key=lambda name: (
+                    name.startswith("dormitory_"),
+                    int(name.split("_")[1]) if name.startswith("dormitory_") else 0,
+                ),
+            )
+            # 预留下一房的安排预算及再次读单前已有的一分钟保护窗口。
+            probe_window = self._arrangement_room_budget(
+                next_room, self.task.plan
+            ) + timedelta(minutes=1)
         observed_any = False
+        urgent = False
         for refresh in refreshes:
             if observed_any:
                 protect_priority_tasks(self.tasks, op_data=self.op_data)
@@ -4557,9 +4578,11 @@ class BaseSchedulerSolver(
                 for pending in self._arrangement_priority_tasks()
             ):
                 break
-            observed = False
+            observed = None
             try:
-                observed = self.plan_run_order(refresh.meta_data)
+                observed = self.plan_run_order(
+                    refresh.meta_data, probe_window=probe_window
+                )
             except (MowerExit, DeviceRecoveryError, SharedADBError):
                 raise
             except Exception as e:
@@ -4568,16 +4591,37 @@ class BaseSchedulerSolver(
                 self.back_to_infrastructure()
             if observed and not getattr(refresh, "execution_failure", None):
                 self.tasks[:] = [task for task in self.tasks if task is not refresh]
-            observed_any |= bool(observed)
+                urgent = (
+                    probe_window is not None
+                    and self.find_next_task(
+                        meta_data=refresh.meta_data,
+                        task_type=TaskTypes.RUN_ORDER,
+                        scope=TaskScope.PENDING,
+                    )
+                    is not None
+                )
+            observed_any |= observed is not None
+            if urgent:
+                logger.info(
+                    "中途检测到 %s 跑单临近，保留剩余换班先执行跑单", refresh.meta_data
+                )
+                break
         if observed_any:
             scheduling(self.tasks, op_data=self.op_data)
+        return urgent
 
-    def _defer_arrangement_for_priority_task(self, room, plan):
-        """下一房操作可能挤占关键任务时，保留原安排并让出调度。"""
+    def _arrangement_room_budget(self, room, plan):
+        operation = SchedulerTask(
+            time=datetime.now(), task_plan={room: plan[room]}, task_type=self.task.type
+        )
+        margin = timedelta(seconds=60 if room.startswith("dormitory_") else 15)
+        return estimate_task_duration(operation, op_data=self.op_data) + margin
+
+    def _can_defer_arrangement(self):
         task = self.task
-        if (
+        return (
             task.type
-            not in (
+            in (
                 TaskTypes.SELF_CORRECTION,
                 TaskTypes.RE_ORDER,
                 TaskTypes.SHIFT_ON,
@@ -4586,17 +4630,18 @@ class BaseSchedulerSolver(
                 TaskTypes.NOT_SPECIFIC,
                 TaskTypes.FILL_DORM,
             )
-            or getattr(task, "strict_mood_limit", False)
-            or getattr(task, "dorm_recovery_restore", [])
-        ):
-            return False
-        now = datetime.now()
-        operation = SchedulerTask(
-            time=now, task_plan={room: plan[room]}, task_type=task.type
+            and not getattr(task, "strict_mood_limit", False)
+            and not getattr(task, "dorm_recovery_restore", [])
         )
+
+    def _defer_arrangement_for_priority_task(self, room, plan):
+        """下一房操作可能挤占关键任务时，保留原安排并让出调度。"""
+        if not self._can_defer_arrangement():
+            return False
+        task = self.task
+        now = datetime.now()
         has_dorm = room.startswith("dormitory_")
-        finish = now + estimate_task_duration(operation, op_data=self.op_data)
-        finish += timedelta(seconds=60 if has_dorm else 15)
+        finish = now + self._arrangement_room_budget(room, plan)
         deadline = next(
             (
                 pending
@@ -12987,7 +13032,7 @@ class BaseSchedulerSolver(
                             self.turn_on_room_detail(room)
                         else:
                             self._report_missed_order(room, remaining_time)
-                            raise RunOrderMissed(room)
+                            raise RunOrderWindowExpired(room)
                     if room == "train":
                         # #59：idx1 冻结已在 gate L1 按锁定状态处理好（Current），
                         # 不再依赖 find_next_task(SKILL_UPGRADE) 的脆弱信号。
@@ -13106,7 +13151,7 @@ class BaseSchedulerSolver(
                 MowerExit,
                 DeviceRecoveryError,
                 RoomArrangementDeferred,
-                RunOrderMissed,
+                RunOrderWindowExpired,
             ):
                 raise
             except Exception as e:
@@ -13516,7 +13561,10 @@ class BaseSchedulerSolver(
             if self.task.type != TaskTypes.RUN_ORDER and room not in plan:
                 self._queue_order_refresh(room)
                 if not new_plan and self.task.type != TaskTypes.FIAMMETTA:
-                    self._read_arrangement_order_times(room)
+                    if self._read_arrangement_order_times(room):
+                        self._finish_idle_dorm_shift()
+                        refresh_after_central_change(self, central_before)
+                        return False
         self._finish_idle_dorm_shift()
         if restoring_order:
             del self.task.run_order_original_roster
@@ -13534,7 +13582,7 @@ class BaseSchedulerSolver(
                 and self.task.meta_data == room
             )
         ):
-            missed_order = False
+            expired_order = False
             try:
                 if config.conf.run_order_buffer_time <= 0 or self.task.adjusted:
                     if self.task.adjusted:
@@ -13566,8 +13614,14 @@ class BaseSchedulerSolver(
                                     )
                                 return False
                     else:
-                        self._report_missed_order(room, wait_time)
-                        missed_order = True
+                        logger.warning(
+                            "%s 换入后订单倒计时 %s 秒超出等待窗口，"
+                            "仅凭换入后读数无法确认漏单，恢复原班后重新读单",
+                            room,
+                            wait_time,
+                        )
+                        self.reset_room_time(room)
+                        expired_order = True
                     self.accept_order()
                     if self.drone_room is None or (
                         self.drone_room == room and room in self.op_data.run_order_rooms
@@ -13591,8 +13645,8 @@ class BaseSchedulerSolver(
                     del plan[room]
                     if getattr(self.task, "maintenance_replacement_run", False):
                         self.maintenance_entry_pending = True
-                    if missed_order:
-                        raise RunOrderMissed(room)
+                    if expired_order:
+                        raise RunOrderWindowExpired(room)
                     return True
                 # 防止由于意外导致的死循环
                 run_order_room = next(iter(new_plan))
@@ -13634,8 +13688,8 @@ class BaseSchedulerSolver(
                         restore_task.maintenance_replacement_run = True
                     self.tasks.append(restore_task)
                     self.skip()
-                if missed_order:
-                    raise RunOrderMissed(room)
+                if expired_order:
+                    raise RunOrderWindowExpired(room)
             except BaseException:
                 if getattr(self.task, "run_order_restore_pending", False):
                     self._retain_run_order_restoration()
