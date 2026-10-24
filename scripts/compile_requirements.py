@@ -29,6 +29,7 @@ def compile_locks(
                 "-m",
                 "piptools",
                 "compile",
+                "--no-emit-index-url",
                 "--no-strip-extras",
                 f"--output-file={output}",
                 source,

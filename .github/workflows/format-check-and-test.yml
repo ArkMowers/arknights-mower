@@ -161,7 +161,7 @@ jobs:
       - run: |
           python3.12 -m venv venv
           ./venv/bin/pip install -r requirements.txt
-          ./venv/bin/pip install pytest
+          ./venv/bin/pip install pytest setuptools wheel
       - name: Compile all Python sources
         run: ./venv/bin/python3 -m compileall -q arknights_mower scripts
       - name: 自动发现全部 Python 回归测试（兼容 unittest 和 pytest）

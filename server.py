@@ -2473,6 +2473,7 @@ def resource_update_manual():
 @app.route("/dialog/save/img", methods=["POST"])
 @require_token
 def save_file_dialog():
+    request.max_form_memory_size = MAX_PLAN_IMPORT_BYTES
     img = request.files["img"]
 
     from PIL import Image
