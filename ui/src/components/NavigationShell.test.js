@@ -6,7 +6,13 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import AppSidebar from './AppSidebar.vue'
 import MowerAIIcon from './MowerAIIcon.vue'
 import MobileTabBar from './MobileTabBar.vue'
-import { mobileTabItems, mobileTabs, navigationItems, navigationSections } from '@/navigation'
+import {
+  mobileTabItems,
+  mobileTabs,
+  navigationItems,
+  navigationSections,
+  sidebarNavigationItems
+} from '@/navigation'
 import { routes } from '@/routes'
 
 vi.mock('@/composables/sidebarPreferences', async (original) => {
@@ -86,7 +92,7 @@ function links(html) {
 const isActive = (tag) => /\bclass="[^"]*\bis-active\b/.test(tag)
 const moreButton = (html) =>
   html.match(/<button\b[^>]*\bclass="[^"]*\bmobile-tab-bar__more\b[^"]*"[^>]*>/)[0]
-const internalPaths = navigationItems.filter((item) => item.to).map((item) => item.to)
+const internalPaths = sidebarNavigationItems.filter((item) => item.to).map((item) => item.to)
 
 it.each([
   ['sidebar', AppSidebar, internalPaths],
@@ -98,14 +104,7 @@ it.each([
   [
     'mobile plan picker',
     MobileTabBar,
-    [
-      '/',
-      '/task-settings',
-      '/plan-editor',
-      '/rescue-plan-editor',
-      '/mastery-recommendation',
-      '/mowersettings'
-    ],
+    ['/', '/task-settings', '/plan-editor', '/rescue-plan-editor', '/mastery-recommendation'],
     'plan'
   ],
   [
@@ -115,7 +114,6 @@ it.each([
       '/',
       '/task-settings',
       '/mastery-recommendation',
-      '/mowersettings',
       '/record/line',
       '/record/pie',
       '/record/report',
@@ -157,10 +155,15 @@ describe('[INV-UI-04] AppSidebar', () => {
       links(html)
         .map((link) => link.href)
         .toSorted()
-    ).toEqual(navigationItems.map((item) => item.to ?? item.href).toSorted())
+    ).toEqual(
+      sidebarNavigationItems
+        .filter((item) => item.to || item.href)
+        .map((item) => item.to ?? item.href)
+        .toSorted()
+    )
   })
 
-  it('starts with logs and pins the AI assistant directly above Mower settings', async () => {
+  it('starts with logs and all settings and keeps only the assistant in the footer', async () => {
     const html = await render(AppSidebar)
     expect(
       links(html)
@@ -168,14 +171,14 @@ describe('[INV-UI-04] AppSidebar', () => {
         .map((link) => link.href)
     ).toEqual(['/', '/task-settings', '/plan-editor'])
     expect(html).toContain('排班编辑')
-    expect(html).toContain('救急排班编辑')
+    expect(html).not.toContain('救急排班编辑')
+    expect(html).not.toContain('Mower 设置')
     const footerStart = html.indexOf('class="app-sidebar__footer"')
     expect(footerStart).toBeGreaterThan(0)
     const scrolling = html.slice(0, footerStart)
     const footer = html.slice(footerStart)
     expect(links(scrolling).some((link) => link.href === '/maasettings')).toBe(false)
-    expect(links(footer).map((link) => link.href)).toEqual(['/mowersettings'])
-    expect(footer.indexOf('Mower AI 助手')).toBeLessThan(footer.indexOf('href="/mowersettings"'))
+    expect(links(footer)).toEqual([])
     const assistant = footer.match(
       /<button\b[^>]*title="Mower AI 助手"[^>]*>[\s\S]*?<\/button>/
     )?.[0]
@@ -204,7 +207,8 @@ describe('[INV-UI-04] AppSidebar', () => {
     const ids = [...html.matchAll(/aria-labelledby="([^"]+)"/g)].map(([, id]) => id)
     expect(ids).toHaveLength(
       navigationSections.filter(
-        (section) => section.title && section.items.some((item) => !item.footer)
+        (section) =>
+          section.title && section.items.some((item) => !item.footer && item.sidebar !== false)
       ).length
     )
     for (const id of ids) expect(html).toContain(`id="${id}"`)
@@ -230,13 +234,13 @@ describe('[INV-UI-04] AppSidebar', () => {
         expect(html).not.toContain('app-sidebar__group-add')
       }
       expect(html).not.toContain('aria-haspopup="dialog"')
-      for (const item of navigationItems) expect(html).toContain(item.label)
+      for (const item of sidebarNavigationItems) expect(html).toContain(item.label)
     }
   )
 
   it('draws an svg for every icon', async () => {
     const bodies = iconBodies(await render(AppSidebar))
-    expect(bodies.length).toBeGreaterThanOrEqual(navigationItems.length)
+    expect(bodies.length).toBeGreaterThanOrEqual(sidebarNavigationItems.length)
     for (const body of bodies) expect(body).toMatch(/^<svg\b/)
   })
 })
@@ -292,7 +296,7 @@ describe('[INV-UI-04] MobileTabBar', () => {
 
   it('draws an svg for every icon', async () => {
     const bodies = iconBodies(await render(MobileTabBar))
-    expect(bodies).toHaveLength(9)
+    expect(bodies).toHaveLength(8)
     for (const body of bodies) expect(body).toMatch(/^<svg\b/)
   })
 
@@ -314,22 +318,22 @@ describe('[INV-UI-04] MobileTabBar', () => {
     expect(active[0][2]).toContain(label)
   })
 
-  it('links the settings tab straight to Mower settings', async () => {
-    const html = await render(MobileTabBar, {}, '/mowersettings')
+  it('links the settings tab straight to all settings', async () => {
+    const html = await render(MobileTabBar, {}, '/task-settings')
     const current = links(html).filter((link) => isActive(link.tag))
-    expect(current.map((link) => link.href)).toEqual(['/mowersettings'])
+    expect(current.map((link) => link.href)).toEqual(['/task-settings'])
     expect(current[0].tag).toContain('aria-current="page"')
     expect(html).not.toContain('设置，选择页面')
     expect(html).not.toContain('href="/maasettings"')
   })
 
-  it('shows compact task and report labels with complete accessible names', async () => {
+  it('shows compact settings and report labels with complete accessible names', async () => {
     const html = await render(MobileTabBar, {}, '/task-settings')
     const task = links(html).find((link) => link.href === '/task-settings')
     expect(task.tag).toContain('aria-label="全部设置"')
     expect(task.tag).toContain('aria-current="page"')
     expect(html).toContain('aria-label="数据报表，选择页面"')
-    expect(html).toMatch(/class="mobile-tab-bar__label"[^>]*>\s*任务\s*</)
+    expect(html).toMatch(/class="mobile-tab-bar__label"[^>]*>\s*设置\s*</)
     expect(html).toMatch(/class="mobile-tab-bar__label"[^>]*>\s*报表\s*</)
   })
 

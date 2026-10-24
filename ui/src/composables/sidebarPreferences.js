@@ -13,22 +13,20 @@ const editableKeys = new Set(editableItems.map((item) => item.key))
 const MAX_PLACEMENTS = editableItems.length * (MAX_GROUPS + 2)
 
 const defaultGroups = navigationSections
-  .filter((section) => section.items.some((item) => !item.footer))
+  .filter((section) => section.items.some((item) => editableKeys.has(item.key)))
   .map((section) => ({ key: section.key, title: section.title || '', collapsed: false }))
 const dailyGroup = defaultGroups.find((group) => group.key === 'daily')
 const defaultPlacements = navigationSections.flatMap((section) =>
-  section.items.map((item) => ({
-    key: item.key,
-    group: item.footer ? 'footer' : section.key,
-    visible: true,
-    pinned: false
-  }))
+  section.items
+    .filter((item) => editableKeys.has(item.key))
+    .map((item) => ({
+      key: item.key,
+      group: item.footer ? 'footer' : section.key,
+      visible: true,
+      pinned: false
+    }))
 )
-defaultPlacements.splice(
-  defaultPlacements.findIndex((item) => item.group === 'footer'),
-  0,
-  { key: 'chat', group: 'footer', visible: true, pinned: false }
-)
+defaultPlacements.push({ key: 'chat', group: 'footer', visible: true, pinned: false })
 defaultPlacements.sort(
   (left, right) => Number(fixedItemKeys.has(left.key)) - Number(fixedItemKeys.has(right.key))
 )

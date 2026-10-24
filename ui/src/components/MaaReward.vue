@@ -27,7 +27,7 @@ const { maa_mail, maa_recruit, maa_orundum, maa_mining, maa_specialaccess } = st
       </n-checkbox>
       <n-divider />
       <n-checkbox v-model:checked="maa_specialaccess">
-        <div class="item">领取五周年赠送月卡奖励</div>
+        <div class="item">领取赠送月卡奖励</div>
       </n-checkbox>
       <!-- <n-flex>
         <n-checkbox v-model:checked="sign_in.enable">

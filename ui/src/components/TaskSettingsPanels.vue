@@ -2,8 +2,18 @@
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore } from '@/stores/plan'
 import { storeToRefs } from 'pinia'
-import { computed, inject, onActivated, onDeactivated, onScopeDispose, ref, watch } from 'vue'
-import { useMeasuredMasonry } from '@/composables/measuredMasonry'
+import {
+  computed,
+  inject,
+  nextTick,
+  onActivated,
+  onDeactivated,
+  onMounted,
+  onScopeDispose,
+  ref,
+  watch
+} from 'vue'
+import MowerSettings from '@/pages/Settings.vue'
 import DeviceSettings from '@/components/DeviceSettings.vue'
 import PerformanceSettings from '@/components/PerformanceSettings.vue'
 import WorkshopManualSettings from '@/components/WorkshopManualSettings.vue'
@@ -23,57 +33,142 @@ import '@/styles/settings.css'
 
 defineOptions({ name: 'TaskSettingsPanels' })
 const props = defineProps({
-  active: { type: String, default: '' },
-  checklist: { type: Boolean, default: false },
-  layout: { type: String, default: 'checklist' }
+  active: { type: String, default: '' }
 })
-const waterfall = computed(() => props.layout === 'waterfall')
-const emit = defineEmits(['select'])
+const emit = defineEmits(['select', 'visible-editor'])
 const root = ref(null)
-const updateMasonry = useMeasuredMasonry(root, waterfall)
-let highlightedPanel
-let highlightTimer
 let pageActive = true
+let scrollParent
+let scrollTarget
+let viewportWindow
+let resizeObserver
+let scrollFrame
 
-function clearHighlight() {
-  clearTimeout(highlightTimer)
-  highlightTimer = undefined
-  highlightedPanel?.classList.remove('task-panel--revealed')
-  highlightedPanel = undefined
+function directoryEditor(id) {
+  return { daily: 'skland', credit: 'visit', idle: 'device' }[id] || id
 }
 
-onActivated(() => (pageActive = true))
-onDeactivated(() => {
-  pageActive = false
-  clearHighlight()
-})
-onScopeDispose(() => {
-  pageActive = false
-  clearHighlight()
-})
-watch(waterfall, clearHighlight)
+function updateVisibleEditor() {
+  scrollFrame = undefined
+  if (!pageActive || !scrollParent) return
+  const document = root.value.ownerDocument
+  const documentScroll = scrollParent === document.scrollingElement
+  const bounds = scrollParent.getBoundingClientRect()
+  const scale = documentScroll ? 1 : bounds.height / scrollParent.offsetHeight || 1
+  const top = documentScroll ? 0 : bounds.top + scrollParent.clientTop * scale
+  const bottom =
+    top + (documentScroll ? viewportWindow.innerHeight : scrollParent.clientHeight * scale)
+  const toggle = root.value.closest('.task-workspace')?.querySelector('.checklist-mobile-toggle')
+  const toggleBounds = toggle?.getBoundingClientRect()
+  const contentTop =
+    toggleBounds?.height && toggleBounds.top <= top + 1 ? Math.max(top, toggleBounds.bottom) : top
+  const sections = Array.from(root.value.querySelectorAll('[data-task-editor]'))
+    .map((element) => ({ element, bounds: element.getBoundingClientRect() }))
+    .filter(({ bounds }) => bounds.height > 0)
+  if (!sections.length) return
+  const atBottom =
+    scrollParent.scrollHeight > scrollParent.clientHeight + 1 &&
+    scrollParent.scrollTop + scrollParent.clientHeight >= scrollParent.scrollHeight - 2
+  let selected = sections[0]
+  for (const section of sections) {
+    const margin =
+      Number.parseFloat(viewportWindow.getComputedStyle(section.element).scrollMarginTop) || 0
+    if (section.bounds.top <= contentTop + margin * scale + 1) selected = section
+  }
+  if (atBottom && root.value.getBoundingClientRect().bottom <= bottom + 2)
+    selected = sections.at(-1)
+  const id = directoryEditor(selected.element.getAttribute('data-task-editor'))
+  if (id && id !== props.active) emit('visible-editor', id)
+}
 
-function revealActive() {
+function scheduleVisibleEditor() {
+  if (!pageActive || scrollFrame !== undefined || !viewportWindow?.requestAnimationFrame) return
+  scrollFrame = viewportWindow.requestAnimationFrame(updateVisibleEditor)
+}
+
+function disconnectScroll() {
+  scrollTarget?.removeEventListener('scroll', scheduleVisibleEditor)
+  viewportWindow?.removeEventListener('resize', scheduleVisibleEditor)
+  if (scrollFrame !== undefined) viewportWindow?.cancelAnimationFrame(scrollFrame)
+  scrollFrame = undefined
+  resizeObserver?.disconnect()
+  resizeObserver = undefined
+  scrollParent = undefined
+  scrollTarget = undefined
+}
+
+function connectScroll() {
+  disconnectScroll()
+  if (!pageActive || !root.value?.ownerDocument) return
+  const document = root.value.ownerDocument
+  viewportWindow = document.defaultView
+  if (!viewportWindow) return
+  for (let ancestor = root.value.parentElement; ancestor; ancestor = ancestor.parentElement) {
+    if (/(auto|scroll|overlay)/.test(viewportWindow.getComputedStyle(ancestor).overflowY)) {
+      scrollParent = ancestor
+      break
+    }
+  }
+  scrollParent ||= document.scrollingElement
+  if (!scrollParent) return
+  scrollTarget = scrollParent === document.scrollingElement ? viewportWindow : scrollParent
+  scrollTarget.addEventListener('scroll', scheduleVisibleEditor, { passive: true })
+  viewportWindow.addEventListener('resize', scheduleVisibleEditor, { passive: true })
+  if (viewportWindow.ResizeObserver) {
+    resizeObserver = new viewportWindow.ResizeObserver(scheduleVisibleEditor)
+    resizeObserver.observe(root.value)
+    resizeObserver.observe(scrollParent)
+  }
+  scheduleVisibleEditor()
+}
+
+onMounted(connectScroll)
+onActivated(() => {
+  pageActive = true
+  nextTick(connectScroll)
+})
+function deactivate() {
+  pageActive = false
+  disconnectScroll()
+}
+onDeactivated(deactivate)
+onScopeDispose(deactivate)
+
+function targetElement(id) {
+  if (!id) return null
+  return Array.from(root.value?.querySelectorAll('[id]') ?? []).find((element) => element.id === id)
+}
+
+function resolveTarget(id) {
+  const editor = targetElement(id)?.closest('[data-task-editor]')?.getAttribute('data-task-editor')
+  return directoryEditor(editor)
+}
+
+function revealActive(target = '') {
   if (!pageActive) return
-  updateMasonry()
-  clearHighlight()
   const id = ['report', 'skland', 'mail'].includes(props.active)
     ? 'daily'
     : ['visit', 'credit-fight', 'shop'].includes(props.active)
       ? 'credit'
       : props.active
-  const panel = root.value?.querySelector(`[data-task-editor="${id}"]`)
-  panel?.scrollIntoView({ block: 'start', behavior: 'instant' })
-  if (panel && waterfall.value) {
-    highlightedPanel = panel
-    panel.classList.add('task-panel--revealed')
-    highlightTimer = setTimeout(clearHighlight, 1800)
-  }
+  const destination = targetElement(target)
+  const panel =
+    destination?.closest('[data-task-editor]') ||
+    root.value?.querySelector(`[data-task-editor="${props.active}"]`) ||
+    root.value?.querySelector(`[data-task-editor="${id}"]`)
+  const scrollTarget = destination || panel
+  scrollTarget?.scrollIntoView({ block: 'start', behavior: 'instant' })
+  scheduleVisibleEditor()
 }
 
-defineExpose({ revealActive })
+defineExpose({ revealActive, resolveTarget })
 
 const config_store = useConfigStore()
+watch(
+  () => config_store.manager_owned_device,
+  () => nextTick(scheduleVisibleEditor),
+  { flush: 'post' }
+)
 const plan_store = usePlanStore()
 const mobile = inject('mobile', ref(false))
 const {
@@ -165,20 +260,8 @@ const idleOptions = computed(() => [
 </script>
 
 <template>
-  <div
-    ref="root"
-    class="task-settings-panels"
-    :class="{
-      'task-settings-panels--checklist': checklist && !waterfall,
-      'task-settings-panels--waterfall': waterfall
-    }"
-  >
-    <section
-      v-if="!config_store.manager_owned_device"
-      id="task-devices"
-      data-task-editor="device"
-      v-show="waterfall || active === 'device'"
-    >
+  <div ref="root" class="task-settings-panels task-settings-panels--continuous">
+    <section v-if="!config_store.manager_owned_device" id="task-devices" data-task-editor="device">
       <div class="settings-card-grid">
         <div class="settings-card-wide">
           <n-card title="设备连接与性能">
@@ -188,7 +271,7 @@ const idleOptions = computed(() => [
               label-width="158"
               label-align="left"
             >
-              <DeviceSettings v-if="runtime_platform !== 'android'" :expanded="checklist" />
+              <DeviceSettings v-if="runtime_platform !== 'android'" :expanded="true" />
               <template v-else>
                 <n-form-item label="服务器"
                   ><n-radio-group v-model:value="package_type"
@@ -206,18 +289,14 @@ const idleOptions = computed(() => [
         </div>
       </div>
     </section>
+
     <section
       data-task-editor="device"
-      v-if="!config_store.manager_owned_device"
-      v-show="
-        (waterfall || active === 'device') &&
-        runtime_platform !== 'android' &&
-        !config_store.manager_owned_device
-      "
+      v-if="!config_store.manager_owned_device && runtime_platform !== 'android'"
     >
       <div class="settings-card-grid">
         <div v-if="runtime_platform !== 'android'" class="settings-card-wide">
-          <n-card :title="checklist && !waterfall ? undefined : '游戏启动'">
+          <n-card title="游戏启动">
             <n-form
               class="task-panel-form"
               :label-placement="mobile ? 'top' : 'left'"
@@ -281,13 +360,10 @@ const idleOptions = computed(() => [
         </div>
       </div>
     </section>
-    <section
-      data-task-editor="idle"
-      v-if="!config_store.manager_owned_device"
-      v-show="waterfall || active === 'idle' || (checklist && active === 'device')"
-    >
+
+    <section data-task-editor="idle" v-if="!config_store.manager_owned_device">
       <div class="settings-card-grid">
-        <n-card :title="checklist && !waterfall ? undefined : '任务运行'">
+        <n-card title="任务运行">
           <n-form
             class="task-panel-form"
             :label-placement="mobile ? 'top' : 'left'"
@@ -349,11 +425,276 @@ const idleOptions = computed(() => [
         </n-card>
       </div>
     </section>
-    <section
-      id="task-runtime"
-      data-task-editor="runtime"
-      v-show="waterfall || active === 'runtime'"
-    >
+
+    <section id="task-base" data-task-editor="base">
+      <div class="settings-card-grid">
+        <n-card title="自动救急">
+          <n-form
+            class="task-panel-form"
+            :label-placement="mobile ? 'top' : 'left'"
+            :show-feedback="false"
+            label-width="140"
+            label-align="left"
+          >
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="automatic_rescue_enable" aria-label="自动救急">
+                自动救急
+                <help-text>
+                  初始化时多组主班低于救急线且普通轮休无法安排休息，使用救急排班接管普通工作站。
+                  恢复期间冻结正常副表，正常排班可接回周转后退出；双方副表生效后的设施类型、等级或产物不一致时不启动。
+                </help-text>
+              </n-checkbox>
+            </n-form-item>
+          </n-form>
+          <div class="task-related-actions task-plan-actions">
+            <SessionLink to="/rescue-plan-editor"><n-button>救急排班</n-button></SessionLink>
+          </div>
+        </n-card>
+      </div>
+    </section>
+
+    <section data-task-editor="runorder">
+      <div class="settings-card-grid">
+        <n-card title="跑单设置">
+          <n-form
+            class="task-panel-form"
+            :label-placement="mobile ? 'top' : 'left'"
+            :show-feedback="false"
+            label-width="140"
+            label-align="left"
+          >
+            <n-form-item>
+              <template #label>
+                <span>跑单前置延时</span>
+                <help-text>
+                  <div>推荐范围5-10</div>
+                  <div>可填小数</div>
+                </help-text>
+              </template>
+              <mower-input-number v-model:value="run_order_delay">
+                <template #suffix>分钟</template>
+              </mower-input-number>
+            </n-form-item>
+            <n-form-item :show-label="false">
+              <n-checkbox v-model:checked="run_order_grandet_mode.enable">葛朗台跑单</n-checkbox>
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>葛朗台缓冲时间</span>
+                <help-text>推荐范围：15-30</help-text>
+              </template>
+              <mower-input-number
+                v-model:value="run_order_grandet_mode.buffer_time"
+                :disabled="!run_order_grandet_mode.enable"
+              >
+                <template #suffix>秒</template>
+              </mower-input-number>
+            </n-form-item>
+            <n-form-item v-if="run_order_grandet_mode.enable" :show-label="false">
+              <n-checkbox v-model:checked="run_order_grandet_mode.back_to_index">
+                跑单前返回主界面以保持登录状态
+              </n-checkbox>
+            </n-form-item>
+          </n-form>
+        </n-card>
+      </div>
+    </section>
+
+    <section data-task-editor="drone">
+      <div class="settings-card-grid">
+        <n-card title="无人机加速">
+          <n-form
+            class="task-panel-form"
+            :label-placement="mobile ? 'top' : 'left'"
+            :show-feedback="false"
+            label-width="140"
+            label-align="left"
+          >
+            <n-form-item>
+              <template #label>
+                <span>无人机使用房间</span>
+                <help-text>
+                  <div>加速制造站为指定制造站加速</div>
+                  <div>（加速任意贸易站）只会加速有跑单人员作备班的站</div>
+                  <div>例：没填龙舌兰但书的卖玉站 （加速任意贸易站） 不会被加速</div>
+                  <div>如需要加速特定某个贸易站请指定对应房间</div>
+                </help-text>
+              </template>
+              <n-select
+                :options="facility_with_empty"
+                v-model:value="drone_room"
+                :consistent-menu-width="false"
+                aria-label="无人机使用房间"
+              />
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>无人机使用阈值</span>
+                <help-text>
+                  <div>如加速贸易，推荐大于 贸易站数*10 + 92</div>
+                  <div>如加速制造，推荐大于 贸易站数*10</div>
+                </help-text>
+              </template>
+              <mower-input-number v-model:value="drone_count_limit" />
+            </n-form-item>
+            <n-form-item>
+              <template #label>
+                <span>无人机加速间隔</span>
+                <help-text>
+                  <div>可填小数</div>
+                </help-text>
+              </template>
+              <mower-input-number v-model:value="drone_interval">
+                <template #suffix>小时</template>
+              </mower-input-number>
+            </n-form-item>
+          </n-form>
+        </n-card>
+      </div>
+    </section>
+
+    <section data-task-editor="clue">
+      <div class="settings-card-grid">
+        <n-card title="线索搜集与交流">
+          <n-form
+            class="task-panel-form"
+            :label-placement="mobile ? 'top' : 'left'"
+            :show-feedback="false"
+            label-width="140"
+            label-align="left"
+          >
+            <n-form-item>
+              <n-flex>
+                <n-checkbox v-model:checked="enable_party">
+                  <div class="item">线索收集</div>
+                </n-checkbox>
+                <n-checkbox v-model:checked="leifeng_mode">
+                  雷锋模式
+                  <help-text>
+                    <div>开启时，向好友赠送多余的线索；</div>
+                    <div>关闭则超过9个线索才送好友。</div>
+                  </help-text>
+                </n-checkbox>
+              </n-flex>
+            </n-form-item>
+          </n-form>
+        </n-card>
+      </div>
+    </section>
+
+    <section data-task-editor="workshop">
+      <div class="settings-card-grid">
+        <n-card title="加工设置">
+          <n-form
+            class="task-panel-form task-panel-form-stacked"
+            :label-placement="mobile ? 'top' : 'left'"
+            :show-feedback="false"
+            label-width="140"
+            label-align="left"
+          >
+            <WorkshopManualSettings
+              v-model="workshop_manual_settings"
+              :migration-warning="workshop_preset_warning"
+              :operators="operators"
+              :item_list="item_list"
+            />
+          </n-form>
+        </n-card>
+      </div>
+    </section>
+
+    <section data-task-editor="training">
+      <div class="settings-card-grid">
+        <n-card title="自动专精">
+          <div class="task-related-actions">
+            <SessionLink to="/mastery-recommendation"
+              ><n-button type="primary">养成规划</n-button></SessionLink
+            >
+            <help-text>专精任务在养成规划中设置，加工材料在加工设置中管理。</help-text>
+          </div>
+        </n-card>
+      </div>
+    </section>
+
+    <section data-task-editor="trust">
+      <div class="settings-card-grid">
+        <TrustSettings :compact-help="true" />
+      </div>
+    </section>
+
+    <section id="task-daily" data-task-editor="daily">
+      <div class="settings-card-grid">
+        <DailyMission task="all" @configure-accounts="emit('select', 'accounts')" />
+      </div>
+    </section>
+
+    <section data-task-editor="recruit">
+      <div class="settings-card-grid">
+        <Recruit />
+      </div>
+    </section>
+
+    <section data-task-editor="depot">
+      <div class="settings-card-grid">
+        <Depotswitch @configure-accounts="emit('select', 'accounts')" />
+      </div>
+    </section>
+
+    <section data-task-editor="credit">
+      <div class="settings-card-grid">
+        <Clue task="all" @configure-clue="emit('select', 'clue')" />
+      </div>
+    </section>
+
+    <section data-task-editor="rewards">
+      <div class="settings-card-grid">
+        <MaaReward />
+      </div>
+    </section>
+
+    <section data-task-editor="stage-plan">
+      <div class="settings-card-grid">
+        <div class="settings-card-wide"><MaaWeekly /></div>
+      </div>
+    </section>
+
+    <section id="task-long" data-task-editor="long">
+      <div class="settings-card-grid">
+        <div class="settings-card-wide"><LongTasks /></div>
+      </div>
+    </section>
+
+    <section data-task-editor="intervals">
+      <div class="settings-card-grid">
+        <n-card title="执行间隔">
+          <n-form
+            class="task-panel-form"
+            :label-placement="mobile ? 'top' : 'left'"
+            :show-feedback="false"
+          >
+            <n-form-item>
+              <template #label>
+                <span>日常任务间隔</span>
+                <help-text>
+                  <div>可填小数</div>
+                  <div>
+                    MAA 日常、刷理智、仓库扫描和制造站补货共用此间隔；邮件等每日任务按游戏日检查。
+                  </div>
+                </help-text>
+              </template>
+              <mower-input-number
+                v-model:value="maa_gap"
+                :input-props="{ 'aria-label': '日常任务间隔' }"
+              >
+                <template #suffix>小时</template>
+              </mower-input-number>
+            </n-form-item>
+          </n-form>
+        </n-card>
+      </div>
+    </section>
+
+    <section v-if="!config_store.manager_owned_device" id="task-runtime" data-task-editor="runtime">
       <div class="settings-card-grid">
         <n-card title="采样与等待">
           <n-form
@@ -437,311 +778,30 @@ const idleOptions = computed(() => [
       </div>
     </section>
 
-    <section
-      id="task-accounts"
-      data-task-editor="accounts"
-      v-show="waterfall || active === 'accounts'"
-    >
+    <section id="task-accounts" data-task-editor="accounts">
       <div class="settings-card-grid">
         <SKLand />
       </div>
     </section>
-    <section data-task-editor="accounts" v-show="waterfall || active === 'accounts'">
+
+    <section data-task-editor="accounts">
       <div class="settings-card-grid">
         <YituliuSyncSettings />
       </div>
     </section>
-    <section data-task-editor="accounts" v-show="waterfall || active === 'accounts'">
+
+    <section data-task-editor="accounts">
       <div class="settings-card-grid">
         <div class="settings-card-wide"><IncomeSettings /></div>
       </div>
     </section>
-    <section data-task-editor="depot" v-show="waterfall || active === 'depot'">
-      <div class="settings-card-grid">
-        <Depotswitch :show-enable="!checklist" @configure-accounts="emit('select', 'accounts')" />
-      </div>
-    </section>
-    <section
-      id="task-daily"
-      data-task-editor="daily"
-      v-show="waterfall || ['report', 'skland', 'mail'].includes(active)"
-    >
-      <div class="settings-card-grid">
-        <DailyMission
-          :task="waterfall ? 'all' : active"
-          :show-enable="!checklist"
-          @configure-accounts="emit('select', 'accounts')"
-        />
-      </div>
-    </section>
 
-    <section id="task-base" data-task-editor="base" v-show="waterfall || active === 'base'">
+    <section id="task-maa" data-task-editor="maa">
       <div class="settings-card-grid">
-        <n-card :title="checklist && !waterfall ? undefined : '基建排班'">
-          <n-form
-            class="task-panel-form"
-            :label-placement="mobile ? 'top' : 'left'"
-            :show-feedback="false"
-            label-width="140"
-            label-align="left"
-          >
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="automatic_rescue_enable" aria-label="自动救急">
-                自动救急
-                <help-text>
-                  初始化时多组主班低于救急线且普通轮休无法安排休息，使用救急排班接管普通工作站。
-                  恢复期间冻结正常副表，正常排班可接回周转后退出；双方副表生效后的设施类型、等级或产物不一致时不启动。
-                </help-text>
-              </n-checkbox>
-            </n-form-item>
-          </n-form>
-          <div class="task-related-actions task-plan-actions">
-            <SessionLink to="/plan-editor"><n-button>排班编辑</n-button></SessionLink>
-            <SessionLink to="/rescue-plan-editor"><n-button>救急排班</n-button></SessionLink>
-          </div>
-        </n-card>
+        <div class="settings-card-wide"><MaaBasic /></div>
       </div>
     </section>
-    <section data-task-editor="clue" v-show="waterfall || active === 'clue'">
-      <div class="settings-card-grid">
-        <n-card :title="checklist && !waterfall ? undefined : '线索搜集与交流'">
-          <n-form
-            class="task-panel-form"
-            :label-placement="mobile ? 'top' : 'left'"
-            :show-feedback="false"
-            label-width="140"
-            label-align="left"
-          >
-            <n-form-item>
-              <n-flex>
-                <n-checkbox v-if="!checklist" v-model:checked="enable_party">
-                  <div class="item">线索收集</div>
-                </n-checkbox>
-                <n-checkbox v-model:checked="leifeng_mode">
-                  雷锋模式
-                  <help-text>
-                    <div>开启时，向好友赠送多余的线索；</div>
-                    <div>关闭则超过9个线索才送好友。</div>
-                  </help-text>
-                </n-checkbox>
-              </n-flex>
-            </n-form-item>
-          </n-form>
-          <div v-if="!waterfall" class="task-related-actions">
-            <n-button @click="emit('select', 'credit')">获取信用及购物设置</n-button>
-          </div>
-        </n-card>
-      </div>
-    </section>
-    <section data-task-editor="runorder" v-show="waterfall || active === 'runorder'">
-      <div class="settings-card-grid">
-        <n-card title="跑单设置">
-          <n-form
-            class="task-panel-form"
-            :label-placement="mobile ? 'top' : 'left'"
-            :show-feedback="false"
-            label-width="140"
-            label-align="left"
-          >
-            <n-form-item>
-              <template #label>
-                <span>跑单前置延时</span>
-                <help-text>
-                  <div>推荐范围5-10</div>
-                  <div>可填小数</div>
-                </help-text>
-              </template>
-              <mower-input-number v-model:value="run_order_delay">
-                <template #suffix>分钟</template>
-              </mower-input-number>
-            </n-form-item>
-            <n-form-item :show-label="false">
-              <n-checkbox v-model:checked="run_order_grandet_mode.enable">葛朗台跑单</n-checkbox>
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>葛朗台缓冲时间</span>
-                <help-text>推荐范围：15-30</help-text>
-              </template>
-              <mower-input-number
-                v-model:value="run_order_grandet_mode.buffer_time"
-                :disabled="!run_order_grandet_mode.enable"
-              >
-                <template #suffix>秒</template>
-              </mower-input-number>
-            </n-form-item>
-            <n-form-item v-if="run_order_grandet_mode.enable" :show-label="false">
-              <n-checkbox v-model:checked="run_order_grandet_mode.back_to_index">
-                跑单前返回主界面以保持登录状态
-              </n-checkbox>
-            </n-form-item>
-          </n-form>
-        </n-card>
-      </div>
-    </section>
-    <section data-task-editor="drone" v-show="waterfall || active === 'drone'">
-      <div class="settings-card-grid">
-        <n-card title="无人机加速">
-          <n-form
-            class="task-panel-form"
-            :label-placement="mobile ? 'top' : 'left'"
-            :show-feedback="false"
-            label-width="140"
-            label-align="left"
-          >
-            <n-form-item>
-              <template #label>
-                <span>无人机使用房间</span>
-                <help-text>
-                  <div>加速制造站为指定制造站加速</div>
-                  <div>（加速任意贸易站）只会加速有跑单人员作备班的站</div>
-                  <div>例：没填龙舌兰但书的卖玉站 （加速任意贸易站） 不会被加速</div>
-                  <div>如需要加速特定某个贸易站请指定对应房间</div>
-                </help-text>
-              </template>
-              <n-select
-                :options="facility_with_empty"
-                v-model:value="drone_room"
-                :consistent-menu-width="false"
-                aria-label="无人机使用房间"
-              />
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>无人机使用阈值</span>
-                <help-text>
-                  <div>如加速贸易，推荐大于 贸易站数*10 + 92</div>
-                  <div>如加速制造，推荐大于 贸易站数*10</div>
-                </help-text>
-              </template>
-              <mower-input-number v-model:value="drone_count_limit" />
-            </n-form-item>
-            <n-form-item>
-              <template #label>
-                <span>无人机加速间隔</span>
-                <help-text>
-                  <div>可填小数</div>
-                </help-text>
-              </template>
-              <mower-input-number v-model:value="drone_interval">
-                <template #suffix>小时</template>
-              </mower-input-number>
-            </n-form-item>
-          </n-form>
-        </n-card>
-      </div>
-    </section>
-    <section data-task-editor="workshop" v-show="waterfall || active === 'workshop'">
-      <div class="settings-card-grid">
-        <n-card title="加工设置">
-          <n-form
-            class="task-panel-form task-panel-form-stacked"
-            :label-placement="mobile ? 'top' : 'left'"
-            :show-feedback="false"
-            label-width="140"
-            label-align="left"
-          >
-            <WorkshopManualSettings
-              v-model="workshop_manual_settings"
-              :migration-warning="workshop_preset_warning"
-              :operators="operators"
-              :item_list="item_list"
-            />
-          </n-form>
-        </n-card>
-      </div>
-    </section>
-    <section data-task-editor="training" v-show="waterfall || active === 'training'">
-      <div class="settings-card-grid">
-        <n-card title="自动专精">
-          <div class="task-related-actions">
-            <SessionLink to="/mastery-recommendation"
-              ><n-button type="primary">养成规划</n-button></SessionLink
-            >
-            <help-text>专精任务在养成规划中设置，加工材料在加工设置中管理。</help-text>
-            <n-button v-if="!waterfall" @click="emit('select', 'workshop')">加工设置</n-button>
-          </div>
-        </n-card>
-      </div>
-    </section>
-
-    <section data-task-editor="recruit" v-show="waterfall || active === 'recruit'">
-      <div class="settings-card-grid">
-        <Recruit :show-enable="!checklist" />
-      </div>
-    </section>
-
-    <section id="task-maa" data-task-editor="maa" v-show="waterfall || active === 'maa'">
-      <div class="settings-card-grid">
-        <div class="settings-card-wide"><MaaBasic :show-title="!checklist" /></div>
-      </div>
-    </section>
-    <section data-task-editor="rewards" v-show="waterfall || active === 'rewards'">
-      <div class="settings-card-grid">
-        <MaaReward />
-      </div>
-    </section>
-    <section data-task-editor="trust" v-show="waterfall || active === 'trust'">
-      <div class="settings-card-grid">
-        <TrustSettings :show-enable="!checklist" :compact-help="checklist || waterfall" />
-      </div>
-    </section>
-
-    <section data-task-editor="stage-plan" v-show="waterfall || active === 'stage-plan'">
-      <div class="settings-card-grid">
-        <div class="settings-card-wide"><MaaWeekly :show-enable="!checklist" /></div>
-      </div>
-    </section>
-    <section
-      data-task-editor="credit"
-      v-show="waterfall || ['credit', 'visit', 'credit-fight', 'shop'].includes(active)"
-    >
-      <div class="settings-card-grid">
-        <Clue
-          :task="waterfall || active === 'credit' ? 'all' : active"
-          :show-enable="!checklist || active === 'credit'"
-          @configure-clue="emit('select', 'clue')"
-        />
-      </div>
-    </section>
-    <section id="task-long" data-task-editor="long" v-show="waterfall || active === 'long'">
-      <div class="settings-card-grid">
-        <div class="settings-card-wide"><LongTasks :show-enable="!checklist" /></div>
-      </div>
-    </section>
-
-    <section
-      data-task-editor="intervals"
-      v-show="waterfall || active === 'intervals' || (!checklist && active === 'runtime')"
-    >
-      <div class="settings-card-grid">
-        <n-card :title="waterfall ? '执行间隔' : undefined">
-          <n-form
-            class="task-panel-form"
-            :label-placement="mobile ? 'top' : 'left'"
-            :show-feedback="false"
-          >
-            <n-form-item>
-              <template #label>
-                <span>日常任务间隔</span>
-                <help-text>
-                  <div>可填小数</div>
-                  <div>
-                    MAA 日常、刷理智、仓库扫描和制造站补货共用此间隔；邮件等每日任务按游戏日检查。
-                  </div>
-                </help-text>
-              </template>
-              <mower-input-number
-                v-model:value="maa_gap"
-                :input-props="{ 'aria-label': '日常任务间隔' }"
-              >
-                <template #suffix>小时</template>
-              </mower-input-number>
-            </n-form-item>
-          </n-form>
-        </n-card>
-      </div>
-    </section>
+    <MowerSettings />
   </div>
 </template>
 
@@ -751,49 +811,7 @@ const idleOptions = computed(() => [
   --settings-card-border: var(--mower-border);
   --settings-control-width: 440px;
   --settings-number-width: 180px;
-  max-width: none;
-  margin: 0;
   padding: 0;
-}
-
-.task-settings-panels :deep(.settings-card-grid) {
-  gap: 24px;
-}
-
-.task-settings-panels :deep(:is(.settings-card-grid, .settings-card-wide) > .n-card:not(.n-modal)) {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.task-settings-panels
-  :deep(:is(.settings-card-grid, .settings-card-wide) > .n-card > .n-card-header) {
-  padding: 0 0 12px;
-}
-
-.task-settings-panels
-  :deep(
-    :is(.settings-card-grid, .settings-card-wide) > .n-card > .n-card-header .n-card-header__main
-  ) {
-  font-size: 14px;
-  line-height: 1.5;
-  font-weight: 500;
-}
-
-.task-settings-panels
-  :deep(:is(.settings-card-grid, .settings-card-wide) > .n-card > .n-card-content) {
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-.task-settings-panels
-  :deep([data-task-editor='recruit'] > .settings-card-grid > .n-card > .n-card-header),
-.task-settings-panels
-  :deep([data-task-editor='runorder'] > .settings-card-grid > .n-card > .n-card-header),
-.task-settings-panels
-  :deep([data-task-editor='drone'] > .settings-card-grid > .n-card > .n-card-header) {
-  display: none;
 }
 
 .task-settings-panels :deep(.task-panel-form .n-form-item-label__text) {
@@ -802,20 +820,20 @@ const idleOptions = computed(() => [
   gap: 4px;
 }
 
-.task-settings-panels--checklist :deep(.task-panel-form > .n-form-item) {
+.task-settings-panels :deep(.task-panel-form > .n-form-item) {
   min-width: 0;
   align-items: center;
   padding: 8px 0;
 }
 
-.task-settings-panels--checklist :deep(.task-panel-form > .n-form-item:has(> .n-form-item-label)) {
+.task-settings-panels :deep(.task-panel-form > .n-form-item:has(> .n-form-item-label)) {
   grid-template-columns: 148px minmax(0, 440px);
   grid-template-areas: 'label blank' 'feedback feedback';
   grid-template-rows: auto auto;
   column-gap: 20px;
 }
 
-.task-settings-panels--checklist :deep(.task-panel-form > .n-form-item > .n-form-item-label) {
+.task-settings-panels :deep(.task-panel-form > .n-form-item > .n-form-item-label) {
   width: auto !important;
   min-width: 0;
   min-height: 0;
@@ -827,7 +845,7 @@ const idleOptions = computed(() => [
   justify-content: flex-start;
 }
 
-.task-settings-panels--checklist :deep(.task-panel-form > .n-form-item > .n-form-item-blank) {
+.task-settings-panels :deep(.task-panel-form > .n-form-item > .n-form-item-blank) {
   min-width: 0;
   width: 100%;
   max-width: 440px;
@@ -837,27 +855,26 @@ const idleOptions = computed(() => [
   gap: 8px;
 }
 
-.task-settings-panels--checklist
+.task-settings-panels
   :deep(.task-panel-form > .n-form-item > .n-form-item-blank > .n-input-number) {
   max-width: 180px;
 }
 
-.task-settings-panels--checklist
+.task-settings-panels
   :deep(.task-panel-form > .n-form-item:not(:has(> .n-form-item-label)) > .n-form-item-blank) {
   justify-self: stretch;
   max-width: none;
 }
 
-.task-settings-panels--checklist :deep(.task-panel-form > .n-form-item.task-panel-field-wide),
-.task-settings-panels--checklist :deep(.task-panel-form.task-panel-form-stacked > .n-form-item) {
+.task-settings-panels :deep(.task-panel-form > .n-form-item.task-panel-field-wide),
+.task-settings-panels :deep(.task-panel-form.task-panel-form-stacked > .n-form-item) {
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas: 'label' 'blank' 'feedback';
   row-gap: 10px;
 }
 
-.task-settings-panels--checklist
-  :deep(.task-panel-form > .task-panel-field-wide > .n-form-item-blank),
-.task-settings-panels--checklist
+.task-settings-panels :deep(.task-panel-form > .task-panel-field-wide > .n-form-item-blank),
+.task-settings-panels
   :deep(.task-panel-form.task-panel-form-stacked > .n-form-item > .n-form-item-blank) {
   flex-direction: column;
   align-items: stretch;
@@ -866,13 +883,13 @@ const idleOptions = computed(() => [
 }
 
 .task-settings-panels :deep(.task-panel-field-wide .n-form-item-blank > .n-input),
-.task-settings-panels--checklist :deep(.task-panel-form-stacked .n-form-item-blank > .n-list) {
+.task-settings-panels :deep(.task-panel-form-stacked .n-form-item-blank > .n-list) {
   width: 100%;
   max-width: none;
 }
 
 .task-settings-panels :deep(.task-panel-field-wide .n-form-item-blank > .n-button),
-.task-settings-panels--checklist :deep(.task-panel-form-stacked .n-form-item-blank > .n-button) {
+.task-settings-panels :deep(.task-panel-form-stacked .n-form-item-blank > .n-button) {
   align-self: flex-start;
 }
 
@@ -950,19 +967,18 @@ const idleOptions = computed(() => [
     padding: 0;
   }
 
-  .task-settings-panels--checklist
-    :deep(.task-panel-form > .n-form-item:has(> .n-form-item-label)) {
+  .task-settings-panels :deep(.task-panel-form > .n-form-item:has(> .n-form-item-label)) {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas: 'label' 'blank' 'feedback';
     row-gap: 8px;
   }
 
-  .task-settings-panels--checklist :deep(.task-panel-form > .n-form-item > .n-form-item-blank) {
+  .task-settings-panels :deep(.task-panel-form > .n-form-item > .n-form-item-blank) {
     justify-self: stretch;
     max-width: none;
   }
 
-  .task-settings-panels--checklist
+  .task-settings-panels
     :deep(.task-panel-form > .n-form-item > .n-form-item-blank > .n-input-number) {
     width: 100%;
     max-width: none;
@@ -979,35 +995,30 @@ const idleOptions = computed(() => [
   }
 }
 
-.task-settings-panels--waterfall {
+.task-settings-panels--continuous {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 10px;
   width: 100%;
-  max-width: 600px;
+  max-width: 1000px;
   margin: 0 auto;
 }
 
-.task-settings-panels--waterfall > section {
+.task-settings-panels--continuous > section {
   min-width: 0;
+}
+
+.task-settings-panels :deep([id]),
+.task-settings-panels--continuous > section {
   scroll-margin-top: var(--task-target-scroll-margin, 12px);
 }
 
-.task-settings-panels--waterfall[data-masonry-ready] {
-  grid-auto-rows: 1px;
-  row-gap: 0;
-}
-
-.task-settings-panels--waterfall[data-masonry-ready] > section {
-  grid-row-end: span var(--task-card-span, 1);
-}
-
-.task-settings-panels--waterfall :deep(.settings-card-grid) {
+.task-settings-panels--continuous :deep(.settings-card-grid) {
   gap: 10px;
 }
 
-.task-settings-panels.task-settings-panels--waterfall
+.task-settings-panels.task-settings-panels--continuous
   :deep(:is(.settings-card-grid, .settings-card-wide) > .n-card:not(.n-modal)) {
   display: flex;
   width: 100%;
@@ -1015,6 +1026,7 @@ const idleOptions = computed(() => [
   margin: 0;
   border: 1px solid var(--settings-card-border, var(--mower-border));
   border-radius: 10px;
+  box-shadow: none;
   background: var(--mower-surface);
   transition:
     border-color 180ms ease,
@@ -1022,28 +1034,20 @@ const idleOptions = computed(() => [
     box-shadow 180ms ease;
 }
 
-.task-settings-panels.task-settings-panels--waterfall
-  > .task-panel--revealed
-  :deep(:is(.settings-card-grid, .settings-card-wide) > .n-card:not(.n-modal)) {
-  border-color: var(--mower-primary);
-  background: color-mix(in srgb, var(--mower-primary) 6%, var(--mower-surface));
-  box-shadow: 0 0 0 1px var(--mower-primary);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .task-settings-panels.task-settings-panels--waterfall
+  .task-settings-panels.task-settings-panels--continuous
     :deep(:is(.settings-card-grid, .settings-card-wide) > .n-card:not(.n-modal)) {
     transition: none;
   }
 }
 
-.task-settings-panels.task-settings-panels--waterfall
+.task-settings-panels.task-settings-panels--continuous
   :deep(:is(.settings-card-grid, .settings-card-wide) > .n-card > .n-card-header) {
   display: flex;
   padding: 16px 20px 12px;
 }
 
-.task-settings-panels.task-settings-panels--waterfall
+.task-settings-panels.task-settings-panels--continuous
   :deep(
     :is(.settings-card-grid, .settings-card-wide) > .n-card > .n-card-header .n-card-header__main
   ) {
@@ -1051,74 +1055,19 @@ const idleOptions = computed(() => [
   font-weight: 600;
 }
 
-.task-settings-panels.task-settings-panels--waterfall
+.task-settings-panels.task-settings-panels--continuous
   :deep(:is(.settings-card-grid, .settings-card-wide) > .n-card > .n-card-content) {
   padding: 0 20px 20px;
   border: 0;
   background: transparent;
 }
 
-@container task-configuration (min-width: 1500px) {
-  .task-settings-panels--waterfall[data-masonry-ready] {
-    max-width: 1210px;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.task-settings-panels :deep(.settings-section) {
+  margin-bottom: 0;
+  scroll-margin-top: var(--task-target-scroll-margin, 12px);
 }
 
-.task-settings-panels--checklist {
-  max-width: 880px;
-  container: task-settings-content / inline-size;
-}
-
-.task-settings-panels--checklist
-  :deep(
-    :is(
-        [data-task-editor='trust'],
-        [data-task-editor='device'],
-        [data-task-editor='workshop'],
-        [data-task-editor='training'],
-        [data-task-editor='daily'],
-        [data-task-editor='credit'],
-        [data-task-editor='rewards']
-      )
-      .n-card
-      > .n-card-header
-  ) {
-  display: none;
-}
-
-.task-settings-panels--checklist :deep(.settings-card-grid > * + *) {
-  padding-top: 24px;
-  border-top: 1px solid var(--settings-card-border);
-}
-
-.task-settings-panels--checklist > section:has(+ section[data-task-editor='device']) {
-  margin-bottom: 24px;
-}
-
-.task-settings-panels--checklist
-  > section[data-task-editor='accounts']
-  + section[data-task-editor='accounts'] {
-  margin-top: 24px;
-  padding-top: 24px;
-  border-top: 1px solid var(--settings-card-border);
-}
-
-.task-settings-panels--checklist :deep([data-task-editor='idle']) {
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid var(--settings-card-border);
-}
-
-@container task-inspector (max-width: 480px) {
-  .task-settings-panels--checklist
-    :deep(.task-panel-form > .n-form-item:has(> .n-form-item-label)) {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'label' 'blank' 'feedback';
-    row-gap: 8px;
-  }
-  .task-settings-panels--checklist :deep(.task-panel-form > .n-form-item > .n-form-item-blank) {
-    max-width: none;
-  }
+.task-settings-panels :deep(.settings-section-header) {
+  margin-bottom: 16px;
 }
 </style>

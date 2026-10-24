@@ -2,6 +2,7 @@
 
 import copy
 import math
+import ntpath
 import os
 
 # Keep legacy inputs in the same boundary as their Device Profile equivalents.
@@ -12,6 +13,9 @@ SETTINGS = (
     "simulator",
     "adb",
     "maa_adb_path",
+    "maa_path",
+    "maa_conn_preset",
+    "maa_touch_option",
     "package_type",
     "custom_screenshot",
     "droidcast",
@@ -27,6 +31,7 @@ SETTINGS = (
     "screenshot_interval",
     "selection_poll_interval",
     "selection_transition_timeout",
+    "waiting_scene",
 )
 
 
@@ -35,7 +40,7 @@ def enabled():
 
 
 def snapshot(configuration):
-    data = configuration.model_dump()
+    data = configuration.model_dump(mode="json")
     return {key: copy.deepcopy(data[key]) for key in SETTINGS}
 
 
@@ -47,7 +52,12 @@ def preserve(data, current):
     """Imports retain the current manager-owned values, including legacy aliases."""
     if enabled():
         data.update(snapshot(current))
-        for key in ("start_automatically", "ai_assistant_enabled", "updates_enabled"):
+        for key in (
+            "start_automatically",
+            "ai_assistant_enabled",
+            "updates_enabled",
+            "extra_settings_visible",
+        ):
             data[key] = getattr(current, key)
         from .manager_common import read_settings
 
@@ -67,6 +77,8 @@ def preserve(data, current):
 
 
 def validate_patch(values):
+    from .manager_common import validate_waiting_scene
+
     definitions = {field["key"]: field for field in fields()}
     if not isinstance(values, dict) or not values or set(values) - definitions.keys():
         raise ValueError("不支持的设备配置项")
@@ -74,6 +86,9 @@ def validate_patch(values):
     for key, value in values.items():
         field = definitions[key]
         kind = field["kind"]
+        if kind == "waiting_scene":
+            patch[key] = validate_waiting_scene(value)
+            continue
         valid = (
             type(value) is bool
             if kind == "boolean"
@@ -132,6 +147,71 @@ def discover(configuration):
     ).to_dict()
 
 
+def project_shared_candidates(result, shared_values):
+    """Keep detected identities within the selected shared simulator template."""
+    from .manager_common import TEMPLATE_KEYS
+    from .path import resolve_config_path
+
+    template = {key.split(".")[1]: shared_values[key] for key in TEMPLATE_KEYS}
+    windows = template["preset_id"].startswith("windows.")
+
+    def normalized(value):
+        value = resolve_config_path(value)
+        return (
+            ntpath.normcase(ntpath.normpath(value))
+            if windows
+            else os.path.normpath(os.path.expanduser(value))
+        )
+
+    locator = None
+    if template["preset_id"] == "windows.nox":
+        from .device.nox_discovery import locate_nox_manager
+
+        locator = locate_nox_manager
+    elif template["preset_id"] in {"windows.ldplayer9", "windows.ldplayer14"}:
+        from .device.ldplayer_discovery import locate_ldplayer_manager
+
+        locator = locate_ldplayer_manager
+    elif template["preset_id"] == "windows.mumu12":
+        from .device.mumu_discovery import MuMuDiscoveryIO
+
+        locator = MuMuDiscoveryIO._manager_candidate
+
+    def matches_path(key, expected, actual):
+        if not expected or normalized(actual) == normalized(expected):
+            return True
+        if (
+            locator is not None
+            and key in {"installation_path", "manager_path"}
+            and actual
+        ):
+            try:
+                selected_manager, _ = locator(expected)
+                detected_manager, _ = locator(actual)
+                return bool(
+                    selected_manager
+                    and detected_manager
+                    and normalized(str(selected_manager))
+                    == normalized(str(detected_manager))
+                )
+            except (OSError, ValueError):
+                return False
+        return False
+
+    result = copy.deepcopy(result)
+    for candidate in result.get("candidates", []):
+        binding = candidate.get("binding", {})
+        matches = binding.get("preset_id") == template["preset_id"] and all(
+            matches_path(key, value, binding.get(key, ""))
+            for key, value in template.items()
+            if key != "preset_id"
+        )
+        candidate["shared_template_matches"] = matches
+        if matches:
+            candidate["binding"] = {**binding, **template}
+    return result
+
+
 def fields():
     from pydantic import TypeAdapter
 
@@ -159,6 +239,8 @@ def fields():
             "device.touch_backend": "触控后端",
             "custom_screenshot.command": "自定义截图命令",
             "droidcast.rotate": "旋转截图 180 度",
+            "maa_conn_preset": "MAA 连接预设",
+            "maa_touch_option": "MAA 触控方式",
         },
         "连接恢复": {
             "device.recovery_timeout": "恢复总时限（秒）",
@@ -179,6 +261,7 @@ def fields():
             "return_home_when_idle": "空闲时返回首页",
             "fix_mumu12_adb_disconnect": "关闭 MuMu 12 时断开当前 ADB 连接",
         },
+        "运行参数": {"waiting_scene": "页面等待参数"},
         "性能": {
             "performance_mode": "设备性能适配",
             "screenshot_interval": "截图间隔（毫秒）",
@@ -221,13 +304,18 @@ def fields():
                     {
                         k: copy.deepcopy(v)
                         for k, v in shared[key].items()
-                        if k in {"kind", "options", "min", "max"}
+                        if k in {"kind", "options", "min", "max", "scenes"}
                     }
                 )
-            if key == "device.screenshot_backend":
+            if (
+                key == "device.screenshot_backend"
+                and ("custom", "自定义命令") not in field["options"]
+            ):
                 field["options"].append(("custom", "自定义命令"))
-            if key == "device.config_path":
+            if key in {"device.config_path", "device.manager_path"}:
                 field["kind"] = "file"
+            if key == "device.installation_path":
+                field["kind"] = "directory"
             for source, target in (("minimum", "min"), ("maximum", "max")):
                 if source in schema:
                     field[target] = schema[source]

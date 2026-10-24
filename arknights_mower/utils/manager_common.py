@@ -3,7 +3,9 @@
 import copy
 import json
 import math
+import os
 import sys
+from pathlib import Path
 
 from .path import get_path
 
@@ -234,8 +236,200 @@ FIELDS = [
         max=65535,
     ),
 ]
+TEMPLATE_KEYS = frozenset(
+    {
+        "device.preset_id",
+        "device.installation_path",
+        "device.manager_path",
+        "device.config_path",
+    }
+)
+FIELDS.extend(
+    [
+        dict(
+            key="device.preset_id",
+            group="模拟器模板",
+            label="模拟器预设",
+            kind="select",
+            default="manual.other",
+            options=[
+                (preset, preset)
+                for preset in (
+                    "windows.mumu12",
+                    "windows.ldplayer9",
+                    "windows.ldplayer14",
+                    "windows.nox",
+                    "windows.bluestacks5",
+                    "macos.bluestacks_air",
+                    "macos.avd",
+                    "macos.mumu_pro",
+                    "linux.waydroid",
+                    "linux.avd",
+                    "linux.redroid",
+                    "linux.genymotion",
+                    "manual.other",
+                    "manual.physical",
+                )
+            ],
+        ),
+        dict(
+            key="device.config_path",
+            group="模拟器模板",
+            label="模拟器配置文件",
+            kind="file",
+            default="",
+        ),
+    ]
+)
+FIELDS.extend(
+    [
+        dict(
+            key="simulator.wait_time",
+            group="连接恢复",
+            label="模拟器启动等待（秒）",
+            kind="integer",
+            default=30,
+            min=0,
+            max=3600,
+        ),
+        dict(
+            key="custom_screenshot.command",
+            group="连接方式",
+            label="自定义截图命令",
+            kind="text",
+            default="adb -s 127.0.0.1:5555 shell screencap -p 2>/dev/null",
+        ),
+        dict(
+            key="droidcast.rotate",
+            group="连接方式",
+            label="旋转截图 180 度",
+            kind="boolean",
+            default=False,
+        ),
+        dict(
+            key="device.simulator_hotkey",
+            group="连接恢复",
+            label="模拟器老板键",
+            kind="text",
+            default="",
+        ),
+        dict(
+            key="device.simulator_hotkey_delay",
+            group="连接恢复",
+            label="老板键等待（秒）",
+            kind="number",
+            default=3.0,
+            min=0,
+            max=60,
+        ),
+        dict(
+            key="tap_to_launch_game.mode",
+            group="游戏启动与空闲",
+            label="启动游戏方式",
+            kind="select",
+            default="adb",
+            options=[("adb", "ADB"), ("tap", "点击屏幕"), ("custom", "自定义命令")],
+        ),
+        dict(
+            key="tap_to_launch_game.x",
+            group="游戏启动与空闲",
+            label="启动点击 X",
+            kind="integer",
+            default=0,
+            min=0,
+            max=10000,
+        ),
+        dict(
+            key="tap_to_launch_game.y",
+            group="游戏启动与空闲",
+            label="启动点击 Y",
+            kind="integer",
+            default=0,
+            min=0,
+            max=10000,
+        ),
+        dict(
+            key="tap_to_launch_game.command",
+            group="游戏启动与空闲",
+            label="自定义游戏启动命令",
+            kind="text",
+            default="input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard; am start -n {package}/{activity}",
+        ),
+        *[
+            dict(
+                key=key,
+                group="游戏启动与空闲",
+                label=label,
+                kind="boolean",
+                default=False,
+            )
+            for key, label in [
+                ("close_simulator_when_idle", "空闲时关闭模拟器"),
+                ("exit_game_when_idle", "空闲时退出游戏"),
+                ("return_home_when_idle", "空闲时返回首页"),
+                ("fix_mumu12_adb_disconnect", "关闭 MuMu 12 时断开当前 ADB 连接"),
+            ]
+        ],
+    ]
+)
+FIELDS.append(
+    dict(
+        key="waiting_scene",
+        group="运行参数",
+        label="页面等待参数",
+        kind="waiting_scene",
+        scenes=[
+            ("CONNECTING", "正在提交反馈至神经"),
+            ("UNKNOWN", "未知"),
+            ("LOADING", "加载中"),
+            ("LOGIN_LOADING", "场景跳转时的等待界面"),
+            ("LOGIN_MAIN_NOENTRY", "登录页面（无按钮入口）"),
+            ("OPERATOR_ONGOING", "代理作战"),
+        ],
+    )
+)
 _FIELDS_BY_KEY = {field["key"]: field for field in FIELDS}
 _BACKENDS = {"device.screenshot_backend", "device.touch_backend"}
+SHARED_CONNECTION_KEYS = frozenset(
+    field["key"]
+    for field in FIELDS
+    if field["group"] in {"连接方式", "连接恢复", "性能", "游戏启动与空闲"}
+    or field["key"] in {"device.adb_path", "waiting_scene"}
+    or field["key"] in TEMPLATE_KEYS
+)
+for _field in FIELDS:
+    if _field["key"] in SHARED_CONNECTION_KEYS:
+        _field["shared_connection"] = True
+        if _field["key"] == "device.screenshot_backend":
+            _field["options"].append(("custom", "自定义命令"))
+
+
+def fields():
+    from .config import Conf
+
+    result = copy.deepcopy(FIELDS)
+    next(field for field in result if field["key"] == "waiting_scene")["default"] = (
+        Conf().waiting_scene.model_dump(mode="json")
+    )
+    return result
+
+
+def validate_waiting_scene(value):
+    from .config import Conf
+
+    model = Conf.model_fields["waiting_scene"].annotation
+    if not isinstance(value, dict) or set(value) != set(model.model_fields):
+        raise ValueError("页面等待参数必须包含完整的六个场景")
+    if any(
+        not isinstance(pair, (list, tuple))
+        or len(pair) != 2
+        or any(type(item) is not int for item in pair)
+        for pair in value.values()
+    ):
+        raise ValueError("页面等待参数每个场景必须包含两个整数")
+    return model.model_validate(
+        {key: tuple(pair) for key, pair in value.items()}, strict=True
+    ).model_dump(mode="json")
 
 
 def settings_path():
@@ -245,10 +439,14 @@ def settings_path():
 def validate_settings(values):
     if not isinstance(values, dict) or values.keys() - _FIELDS_BY_KEY.keys():
         raise ValueError("不支持的公共配置项")
+    result = copy.deepcopy(values)
     for key, value in values.items():
         field = _FIELDS_BY_KEY[key]
         kind = field["kind"]
         valid = True
+        if kind == "waiting_scene":
+            result[key] = validate_waiting_scene(value)
+            continue
         if kind == "boolean":
             valid = type(value) is bool
         elif kind in {"integer", "number"}:
@@ -261,7 +459,9 @@ def validate_settings(values):
             valid = isinstance(value, str) and len(value) <= 4096 and "\0" not in value
             if kind == "select":
                 valid = valid and value in {item[0] for item in field["options"]}
-            if kind in {"directory", "file"}:
+            if kind in {"directory", "file"} and key not in TEMPLATE_KEYS | {
+                "device.adb_path"
+            }:
                 valid = valid and bool(value.strip())
         if not valid:
             raise ValueError(f"{field['label']}的值无效")
@@ -272,20 +472,65 @@ def validate_settings(values):
             values["device.touch_backend"] == "mumu_ipc"
         ):
             raise ValueError("MuMu IPC 必须同时用于截图与触控")
-    return copy.deepcopy(values)
+    return result
 
 
-def read_settings(path=None):
+def policy_key(path):
+    return os.path.normcase(str(Path(path).expanduser().resolve()))
+
+
+def read_document(path=None):
     try:
         raw = (path or settings_path()).read_text(encoding="utf-8")
     except FileNotFoundError:
-        return {}
-    return validate_settings(json.loads(raw))
+        return dict(version=0, values={}, independent_instances={})
+    data = json.loads(raw)
+    if isinstance(data, dict) and "version" in data:
+        if (
+            set(data) != {"version", "values", "independent_instances"}
+            or type(data["version"]) is not int
+            or data["version"] != 1
+        ):
+            raise ValueError("公共连接配置格式不正确")
+        policies = data["independent_instances"]
+        if not isinstance(policies, dict) or any(
+            not isinstance(key, str)
+            or len(key) > 4096
+            or "\0" in key
+            or not Path(key).is_absolute()
+            or type(value) is not bool
+            for key, value in policies.items()
+        ):
+            raise ValueError("独立连接配置格式不正确")
+        values = validate_settings(data["values"])
+        if (
+            not SHARED_CONNECTION_KEYS - TEMPLATE_KEYS - {"waiting_scene"}
+            <= values.keys()
+        ):
+            raise ValueError("公共连接配置缺少共享参数")
+        return dict(
+            version=1,
+            values=values,
+            independent_instances=policies.copy(),
+        )
+    return dict(version=0, values=validate_settings(data), independent_instances={})
 
 
-def apply_settings(conf, values):
+def read_settings(path=None):
+    return read_document(path)["values"]
+
+
+def effective_values(values, *, independent=False):
+    return {
+        key: value
+        for key, value in values.items()
+        if not (independent and key in SHARED_CONNECTION_KEYS)
+    }
+
+
+def apply_settings(conf, values, *, independent=False):
     """Apply a launch snapshot using Conf's existing target and legacy rules."""
-    values = validate_settings(values)
+    values = effective_values(validate_settings(values), independent=independent)
     if not values:
         return conf
     patch = {}
@@ -297,8 +542,16 @@ def apply_settings(conf, values):
             patch.setdefault(parent, {})[name] = value
         else:
             patch[key] = value
+    if any(key in values for key in TEMPLATE_KEYS):
+        patch.setdefault("device", {})["instance_name"] = conf.device.instance_name
     return conf.updated(patch) if patch else conf
 
 
 def for_launch(conf, *, managed):
-    return apply_settings(conf, read_settings()) if managed else conf
+    if not managed:
+        return conf
+    document = read_document()
+    independent = document["independent_instances"].get(
+        policy_key(get_path("@app")), False
+    )
+    return apply_settings(conf, document["values"], independent=independent)

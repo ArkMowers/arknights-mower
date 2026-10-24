@@ -2,7 +2,6 @@
 import { computed, inject, nextTick, ref, watch } from 'vue'
 import { routeLocationKey } from 'vue-router'
 import { useConfigStore } from '@/stores/config'
-import { useGuiStore } from '@/stores/gui'
 import { deviceConnectionNavigationKey } from '@/composables/deviceConnectionNavigation'
 import TaskSettingsPanels from '@/components/TaskSettingsPanels.vue'
 import TaskWorkflow from './TaskWorkflow.vue'
@@ -19,8 +18,7 @@ const config = useConfigStore()
 const route = inject(routeLocationKey, null)
 const deviceConnectionNavigation = inject(deviceConnectionNavigationKey, null)
 const activeEditor = ref('base')
-const gui = useGuiStore()
-const layout = computed(() => (gui.taskSettingsLayout === 'waterfall' ? 'waterfall' : 'checklist'))
+const requestedTarget = ref('')
 const panels = ref(null)
 const editorRequest = ref(0)
 const workflow = computed(() => createTaskWorkflow(config))
@@ -33,8 +31,8 @@ watch(
   },
   { flush: 'sync' }
 )
-watch([activeEditor, editorRequest], () => {
-  if (layout.value === 'waterfall') nextTick(() => panels.value?.revealActive?.())
+watch(editorRequest, () => {
+  nextTick(() => panels.value?.revealActive?.(requestedTarget.value))
 })
 const legacyEditors = {
   'task-devices': 'device',
@@ -50,20 +48,28 @@ function selectEditor(id) {
   if (workflow.value.editors.some((editor) => editor.id === id)) activeEditor.value = id
 }
 
-function openEditor(id) {
+function openEditor(id, target = '') {
   if (!workflow.value.editors.some((editor) => editor.id === id)) return
   emit('reveal')
+  requestedTarget.value = target
   selectEditor(id)
   editorRequest.value += 1
 }
 
 defineExpose({ openEditor })
 
-function revealHash(hash) {
+async function revealHash(hash) {
   const target = hash?.replace(/^#/, '')
+  if (!target) return
   if (legacyEditors[target]) {
-    openEditor(legacyEditors[target])
+    openEditor(legacyEditors[target], target)
+    return
   }
+  const request = editorRequest.value
+  await nextTick()
+  if (request !== editorRequest.value) return
+  const editor = panels.value?.resolveTarget?.(target) || legacyEditors[target]
+  if (editor) openEditor(editor, target)
 }
 
 watch(() => route?.hash, revealHash, { immediate: true })
@@ -78,18 +84,18 @@ watch(
 )
 
 function followLegacyLink(event) {
-  const anchor = event.target.closest?.('a[href^="#task-"]')
-  const editor = legacyEditors[anchor?.getAttribute('href').slice(1)]
+  const anchor = event.target.closest?.('a[href^="#"]')
+  const target = anchor?.getAttribute('href').slice(1)
+  const editor = panels.value?.resolveTarget?.(target) || legacyEditors[target]
   if (!editor) return
   event.preventDefault()
-  openEditor(editor)
+  openEditor(editor, target)
 }
 </script>
 
 <template>
   <TaskWorkflow
     v-model="activeEditor"
-    :layout="layout"
     :workflow="workflow"
     :embedded="embedded"
     :tabbed="tabbed"
@@ -103,9 +109,8 @@ function followLegacyLink(event) {
       <TaskSettingsPanels
         ref="panels"
         :active="activeEditor"
-        :checklist="layout === 'checklist'"
-        :layout="layout"
         @select="openEditor"
+        @visible-editor="selectEditor"
       />
     </div>
   </TaskWorkflow>

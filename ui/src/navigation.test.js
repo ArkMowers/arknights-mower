@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { mobileTabItems, mobileTabs, navigationItems, navigationSections } from './navigation'
+import {
+  mobileTabItems,
+  mobileTabs,
+  navigationItems,
+  navigationSections,
+  sidebarNavigationItems
+} from './navigation'
 import { routes } from './routes'
+import SettingsOutline from '@vicons/ionicons5/es/SettingsOutline'
 
 // Production page paths exclude the catch-all and the development-only taskflow prototype.
 function pagePaths(records, parent = '') {
@@ -52,6 +59,15 @@ describe('[INV-UI-04] Single Navigation Definition', () => {
     })
   })
 
+  it('hides the rescue page from the sidebar and uses one settings entry', () => {
+    expect(sidebarNavigationItems.map((item) => item.key)).not.toContain('mower-settings')
+    expect(sidebarNavigationItems.map((item) => item.key)).not.toContain('rescue-plan')
+    const settings = navigationItems.find((item) => item.key === 'task-settings')
+    expect(settings.icon).toBe(SettingsOutline)
+    expect(settings.shortLabel).toBe('设置')
+    expect(mobileTabs.some((item) => item.key === 'mower-settings')).toBe(false)
+  })
+
   it('opens external entries over canonical https URLs only', () => {
     expect(externalItems.length).toBeGreaterThan(0)
     for (const item of externalItems) {
@@ -62,18 +78,17 @@ describe('[INV-UI-04] Single Navigation Definition', () => {
   })
 
   it('builds direct tabs and section pickers from the shared navigation definition', () => {
-    expect(mobileTabs).toHaveLength(6)
+    expect(mobileTabs).toHaveLength(5)
     for (const tab of mobileTabs) {
       expect([...internalItems, ...navigationSections], tab.key).toContain(tab)
       expect(tab.shortLabel, tab.key).toBeTruthy()
     }
     expect(mobileTabs.map((tab) => tab.shortLabel)).toEqual([
-      '任务',
+      '设置',
       '排班',
       '养成',
       '日志',
-      '报表',
-      '设置'
+      '报表'
     ])
     expect(mobileTabs.find((tab) => tab.key === 'task-settings')).toMatchObject({
       label: '全部设置',
@@ -81,14 +96,14 @@ describe('[INV-UI-04] Single Navigation Definition', () => {
     })
   })
 
-  it('offers both scheduling pages while settings links only to Mower settings', () => {
+  it('offers both scheduling pages while settings opens all settings', () => {
     const plan = mobileTabs.find((tab) => tab.key === 'plan')
-    const settings = mobileTabs.find((tab) => tab.key === 'mower-settings')
+    const settings = mobileTabs.find((tab) => tab.key === 'task-settings')
     expect(mobileTabItems(plan).map((item) => item.to)).toEqual([
       '/plan-editor',
       '/rescue-plan-editor'
     ])
-    expect(mobileTabItems(settings).map((item) => item.to)).toEqual(['/mowersettings'])
+    expect(mobileTabItems(settings).map((item) => item.to)).toEqual(['/task-settings'])
     expect(internalItems.some((item) => item.to === '/maasettings')).toBe(false)
     const pages = mobileTabs.flatMap(mobileTabItems)
     expect(new Set(pages).size).toBe(pages.length)

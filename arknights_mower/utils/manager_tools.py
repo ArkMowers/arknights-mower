@@ -4,14 +4,16 @@ import copy
 import json
 import os
 import threading
+from contextlib import ExitStack
 from pathlib import Path
 from time import monotonic, time
 
 import yaml
+from pydantic import ValidationError
 
 from . import manager_common
 from . import update_runtime as runtime
-from .device_compatibility import _PRESET_BY_ALIAS, capture_compatibility_error
+from .device_compatibility import capture_compatibility_error
 from .path import resolve_config_path
 
 
@@ -135,10 +137,14 @@ class ManagerTools:
             return network_settings.save_settings(values)
 
     def preview_common_settings(self, values, targets):
+        from .config import Conf
+        from .manager_instances import instance_directory
+
         values = manager_common.validate_settings(values)
         with self._operation():
             if targets != [{k: i[k] for k in ("name", "path")} for i in self.instances]:
                 raise ValueError("实例列表已变化，请重新打开批量配置")
+            document = self._connection_document(persist=False, skip_invalid=True)
             rows = []
             for idx, instance in enumerate(self.instances):
                 row = dict(idx=idx, name=instance["name"], warnings=[], fields=[])
@@ -147,19 +153,33 @@ class ManagerTools:
                     if not instance["path"]:
                         raise ValueError("尚未选择保存目录")
                     raw = self._raw(instance)
-                    preset = _value(raw, "device.preset_id") or _PRESET_BY_ALIAS.get(
-                        str(_value(raw, "simulator.name", "")).casefold(),
-                        "manual.other",
+                    configuration = Conf(**raw)
+                    key = manager_common.policy_key(
+                        instance_directory(instance["path"])
+                    )
+                    independent = document["independent_instances"].get(key, False)
+                    row["independent_configuration"] = independent
+                    proposed = manager_common.effective_values(
+                        values, independent=independent
+                    )
+                    current_values = manager_common.effective_values(
+                        document["values"], independent=independent
                     )
                     if reason := capture_compatibility_error(
-                        preset, values.get("device.screenshot_backend")
+                        proposed.get(
+                            "device.preset_id", configuration.device.preset_id
+                        ),
+                        proposed.get("device.screenshot_backend"),
                     ):
                         row["warnings"].append(reason)
+                    current_configuration = configuration.model_dump()
                     for field in manager_common.FIELDS:
                         key = field["key"]
-                        if key not in values:
+                        if key not in proposed:
                             continue
-                        current = _value(raw, key)
+                        current = current_values.get(
+                            key, _value(current_configuration, key)
+                        )
                         # A preview never returns secrets from either source.
                         password = field["kind"] == "password"
                         row["fields"].append(
@@ -171,14 +191,18 @@ class ManagerTools:
                                 if password
                                 else current,
                                 after="已设置"
-                                if password and values[key]
+                                if password and proposed[key]
                                 else "未设置"
                                 if password
-                                else values[key],
+                                else proposed[key],
                             )
                         )
                 except (OSError, ValueError, yaml.YAMLError) as error:
-                    row["warnings"].append(str(error))
+                    row["warnings"].append(
+                        "实例配置格式不正确，请检查 conf.yml"
+                        if isinstance(error, (ValidationError, yaml.YAMLError))
+                        else str(error)
+                    )
             return {"rows": rows, "future_instances": True}
 
     def get_storage_usage(self):
@@ -370,7 +394,15 @@ class ManagerTools:
 
     def _maa_worker(self, target, channel, component, action, check):
         try:
-            self._run_maa_worker(target, channel, component, action, check)
+            with ExitStack() as cleanup:
+                state = runtime.state_dir()
+                with runtime.submission_lock(state):
+                    if runtime.active_job():
+                        raise ValueError(
+                            "软件更新或进程操作正在进行，请完成后再维护 MAA"
+                        )
+                    cleanup.enter_context(runtime.manager_maintenance_lock(state))
+                self._run_maa_worker(target, channel, component, action, check)
         except Exception as error:
             from .log import logger
 

@@ -1165,6 +1165,85 @@ class WorkerTests(unittest.TestCase):
             runtime.read_json(self.state / "status.json")["status"], "succeeded"
         )
 
+    def test_manager_only_update_stops_registered_services_and_restores_manager(self):
+        manager = {
+            "id": "manager-id",
+            "pid": 123,
+            "kind": "manager",
+            "unified_tray": True,
+            "data_dir": "",
+            "space": "",
+            "name": "",
+        }
+        service = {"id": "ocr-id", "pid": 124, "kind": "ocr-service"}
+        records = [manager, service]
+        ready = {**manager, "ready": True, "restart_job": self.job["id"]}
+        for deployment, background in product(("source", "release"), (True, False)):
+            with self.subTest(deployment=deployment, background=background):
+                self.job.update(deployment=deployment, background=background)
+                worker = self.worker()
+                with (
+                    patch(
+                        "arknights_mower.utils.software_update_worker.instances",
+                        side_effect=[records, [ready]],
+                    ),
+                    patch(
+                        "arknights_mower.utils.software_update_worker.process_alive",
+                        return_value=False,
+                    ),
+                    patch(
+                        "arknights_mower.utils.software_update_worker.wait_for_supervisor_release"
+                    ) as released,
+                    patch.object(subprocess, "Popen") as launch,
+                ):
+                    worker.stop_instances()
+                    worker.restart(worker.original)
+                self.assertEqual(worker.stopped, records)
+                self.assertEqual(released.call_count, 2)
+                for record in records:
+                    self.assertEqual(
+                        runtime.read_json(
+                            self.state / "shutdown" / f"{record['id']}.json"
+                        ),
+                        {"job": self.job["id"]},
+                    )
+                launch.assert_called_once()
+                if deployment == "source":
+                    expected_command = [sys.executable, str(self.root / "manager.py")]
+                else:
+                    executable = (
+                        "多开管理器.exe" if sys.platform == "win32" else "多开管理器"
+                    )
+                    expected_command = [str(self.root / executable)]
+                self.assertEqual(launch.call_args.args[0], expected_command)
+                self.assertEqual(
+                    launch.call_args.kwargs["env"]["MOWER_BACKGROUND"],
+                    "1" if background else "0",
+                )
+                self.assertTrue(worker.verified_restart)
+
+    def test_update_without_registered_application_does_not_stop_or_restart_services(
+        self,
+    ):
+        for records in (
+            [],
+            [{"id": "ocr-id", "pid": 124, "kind": "ocr-service"}],
+            [{"id": "worker-id", "pid": 125, "kind": "ocr-worker"}],
+        ):
+            with self.subTest(records=records):
+                worker = self.worker()
+                with (
+                    patch(
+                        "arknights_mower.utils.software_update_worker.instances",
+                        return_value=records,
+                    ),
+                    patch.object(subprocess, "Popen") as launch,
+                    self.assertRaisesRegex(ValueError, "未找到可恢复的"),
+                ):
+                    worker.stop_instances()
+                launch.assert_not_called()
+                self.assertEqual(list((self.state / "shutdown").glob("*.json")), [])
+
     def test_cleanup_failure_after_verified_restart_never_rolls_back(self):
         self.job.update(deployment="release")
         worker = self.worker()

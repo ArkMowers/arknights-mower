@@ -33,7 +33,6 @@
       :profile-state="configProfiles.state.value"
       :profile-write-disabled="configProfiles.writeDisabled.value"
       :profile-read-disabled="configProfiles.readDisabled.value"
-      :show-instance-menu="nativeInstanceManagementAvailable"
       :on-control="handleWindowControl"
       :on-toggle-maximize="windowShell.toggleMaximize"
       :resizable="windowShellCapabilities.resize === 'html' && !windowShellState.maximized"
@@ -324,20 +323,12 @@ const closeStatus = ref('')
 let closePollTimer = null
 const {
   active: windowShellActive,
-  connected: windowShellConnected,
   busy: windowShellBusy,
   controls: windowShellControls,
   controlSide: windowShellControlSide,
   capabilities: windowShellCapabilities,
   state: windowShellState
 } = windowShell
-
-const nativeInstanceManagementAvailable = ref(false)
-function syncNativeInstanceManagement() {
-  nativeInstanceManagementAvailable.value =
-    typeof window.pywebview?.api?.get_instances === 'function'
-}
-watch(windowShellConnected, syncNativeInstanceManagement, { immediate: true })
 
 let disposeModalDrag = null
 
@@ -629,7 +620,6 @@ const configProfiles = createConfigProfiles({
 })
 const appMenuProps = computed(() => ({
   theme: theme.value,
-  showInstanceMenu: nativeInstanceManagementAvailable.value,
   instanceName: windowShell.metadata.instanceName || '默认实例',
   mowerPort: mowerPort.value,
   emulatorName: emulatorName.value,
@@ -790,6 +780,25 @@ function apply_zoom(scale) {
 const isMobileNav = ref(false)
 const mobile = ref(false)
 provide('mobile', mobile)
+const allSettingsOpen = computed(() => route.name === 'task-settings')
+let sidebarBeforeSettings = null
+watch(
+  allSettingsOpen,
+  (open) => {
+    if (open && !isMobileNav.value) {
+      sidebarBeforeSettings = {
+        collapsed: sidebarCollapsed.value,
+        userToggled: userToggledSidebar.value
+      }
+      sidebarCollapsed.value = true
+    } else if (!open && sidebarBeforeSettings) {
+      sidebarCollapsed.value = sidebarBeforeSettings.collapsed
+      userToggledSidebar.value = sidebarBeforeSettings.userToggled
+      sidebarBeforeSettings = null
+    }
+  },
+  { immediate: true }
+)
 // The page drawer belongs to the mobile layout; widening the window closes it.
 watch(isMobileNav, (mobileNav) => {
   if (!mobileNav) {
@@ -803,7 +812,7 @@ function actions_on_resize() {
   isMobileNav.value = width < 680
   mobile.value = width < 850
   if (!userToggledSidebar.value) {
-    sidebarCollapsed.value = width < 850
+    sidebarCollapsed.value = width < 850 || allSettingsOpen.value
   }
 }
 
@@ -857,8 +866,6 @@ const operators_with_free_current = computed(() => {
 })
 
 onMounted(async () => {
-  window.addEventListener('pywebviewready', syncNativeInstanceManagement)
-  syncNativeInstanceManagement()
   void windowShell.initialize()
   disposeModalDrag = installModalDragging()
   actions_on_resize()
@@ -990,7 +997,6 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('pywebviewready', syncNativeInstanceManagement)
   clearTimeout(closePollTimer)
   disposeModalDrag?.()
   windowShell.dispose()

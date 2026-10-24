@@ -395,7 +395,7 @@ class RegularTaskPart(ConfModel):
 
     check_mail_enable: bool = True
     "领取邮件奖励"
-    mail_skip_clear_read: bool = False
+    mail_skip_clear_read: bool = True
     "领取邮件后跳过清除已读邮件"
     maa_enable: bool = True
     "日常任务（兼容旧字段）"
@@ -865,7 +865,7 @@ class MaaRewardPart(ConfModel):
     maa_mining: bool = False
     "领取限时开采许可的每日合成玉奖励"
     maa_specialaccess: bool = False
-    "领取五周年赠送月卡奖励"
+    "领取赠送月卡奖励"
 
 
 # 旧配置文件及旧前端提交的字段在校验层统一迁移；新旧并存时以新键为准。
@@ -890,6 +890,8 @@ class Conf(
 ):
     updates_enabled: StrictBool = True
     "多开管理器保存的更新授权；单开不受此设置限制"
+    extra_settings_visible: StrictBool = False
+    "多开管理器启动的实例是否显示网络与更新、数据与维护设置"
 
     def updates_enabled_for_launch(self, *, managed: bool) -> bool:
         return not managed or self.updates_enabled

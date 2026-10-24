@@ -55,6 +55,9 @@ def read_webview(space):
     port = settings.get("port", 0)
     assistant = raw.get("ai_assistant_enabled")
     updates = raw.get("updates_enabled", True)
+    extra_settings = raw.get("extra_settings_visible", False)
+    if type(extra_settings) is not bool:
+        raise ValueError("显示额外设置开关必须是布尔值")
     automatic = raw.get("start_automatically", False)
     if type(automatic) is not bool:
         raise ValueError("启动后自动开始任务必须是布尔值")
@@ -75,6 +78,7 @@ def read_webview(space):
             "ai_assistant_enabled": assistant is True,
             "updates_enabled": updates,
             "start_automatically": automatic,
+            "extra_settings_visible": extra_settings,
         },
     )
 
@@ -86,6 +90,7 @@ def validate_settings(settings, *, partial=False):
         "ai_assistant_enabled",
         "updates_enabled",
         "start_automatically",
+        "extra_settings_visible",
     }
     if (
         not isinstance(settings, dict)
@@ -114,6 +119,11 @@ def validate_settings(settings, *, partial=False):
         and type(result["start_automatically"]) is not bool
     ):
         raise ValueError("启动后自动开始任务必须是布尔值")
+    if (
+        "extra_settings_visible" in result
+        and type(result["extra_settings_visible"]) is not bool
+    ):
+        raise ValueError("显示额外设置开关必须是布尔值")
     return result
 
 
@@ -122,7 +132,7 @@ class InstanceTargetChangedError(ValueError):
 
 
 class InstanceController(ManagerTools):
-    def __init__(self, storage_path=None, ready=None, *, defer_load=False):
+    def __init__(self, storage_path=None, ready=None):
         self._ready = ready
         self._lock = threading.RLock()
         self._operation_depth = 0
@@ -133,7 +143,7 @@ class InstanceController(ManagerTools):
             if storage_path is not None
             else get_path("@app/instances.json", space="")
         )
-        self.instances = [] if defer_load else self._load()
+        self.instances = self._load()
 
     @property
     def _control_directory(self):
@@ -249,6 +259,7 @@ class InstanceController(ManagerTools):
                     ai_assistant_enabled=False,
                     updates_enabled=True,
                     start_automatically=False,
+                    extra_settings_visible=False,
                     editable=False,
                     can_start=False,
                     can_stop=False,
@@ -301,10 +312,226 @@ class InstanceController(ManagerTools):
 
     def get_common_settings(self):
         with self._operation():
+            document = self._connection_document()
             return {
-                "values": manager_common.read_settings(self._common_path),
-                "fields": copy.deepcopy(manager_common.FIELDS),
+                "values": document["values"],
+                "fields": manager_common.fields(),
             }
+
+    def _connection_document(self, *, persist=True, skip_invalid=False):
+        from .config import Conf
+        from .config.device_profile import LEGACY_PROFILE_FIELDS
+
+        document = manager_common.read_document(self._common_path)
+        configurations = []
+        missing_shared = (
+            manager_common.SHARED_CONNECTION_KEYS - document["values"].keys()
+        )
+        shared = manager_common.SHARED_CONNECTION_KEYS
+        legacy_paths = {"device.installation_path", "device.manager_path"}
+        legacy_patch = {}
+        if document["version"] == 0 and legacy_paths & document["values"].keys():
+            for name, selected in document["values"].items():
+                if name == "startup_mode":
+                    continue
+                if "." in name:
+                    parent, child = name.split(".", 1)
+                    legacy_patch.setdefault(parent, {})[child] = selected
+                else:
+                    legacy_patch[name] = selected
+        bindings = {}
+        for instance in self.instances:
+            if not instance["path"]:
+                continue
+            key = manager_common.policy_key(instance_directory(instance["path"]))
+            if document["version"] == 1 and key in document["independent_instances"]:
+                if not missing_shared or document["independent_instances"][key]:
+                    continue
+            try:
+                destination, raw = read_instance_config(instance["path"])
+                configuration = Conf(**raw)
+                upgrading_shared = (
+                    document["version"] == 1
+                    and key in document["independent_instances"]
+                )
+                if upgrading_shared:
+                    configuration = manager_common.apply_settings(
+                        configuration, document["values"]
+                    )
+            except (OSError, ValueError, yaml.YAMLError):
+                if skip_invalid:
+                    continue
+                raise
+            explicit = (
+                set(manager_common.TEMPLATE_KEYS) | {"waiting_scene"}
+                if upgrading_shared or document["version"] == 0
+                else set()
+            )
+            for field in shared:
+                current = raw
+                for part in field.split("."):
+                    if not isinstance(current, dict) or part not in current:
+                        break
+                    current = current[part]
+                else:
+                    explicit.add(field)
+            for path, targets in LEGACY_PROFILE_FIELDS.items():
+                current = raw
+                for part in path:
+                    if not isinstance(current, dict) or part not in current:
+                        break
+                    current = current[part]
+                else:
+                    explicit.update(
+                        f"device.{name}"
+                        for name in targets
+                        if f"device.{name}" in shared
+                    )
+            if "low_frame_rate_mode" in raw:
+                explicit.add("performance_mode")
+            if "enable" in raw.get("tap_to_launch_game", {}):
+                explicit.add("tap_to_launch_game.mode")
+            configurations.append(
+                (key, configuration, explicit, destination, raw, upgrading_shared)
+            )
+
+        def value(configuration, path):
+            for part in path.split("."):
+                configuration = getattr(configuration, part)
+            return (
+                configuration.model_dump(mode="json")
+                if hasattr(configuration, "model_dump")
+                else configuration
+            )
+
+        changed = (
+            document["version"] == 0 or bool(configurations) or bool(missing_shared)
+        )
+        if document["version"] == 0 or missing_shared:
+            baseline = Conf()
+            for _, candidate, _, _, _, _ in configurations:
+                try:
+                    manager_common.validate_settings(
+                        {name: value(candidate, name) for name in shared}
+                    )
+                except ValueError:
+                    continue
+                baseline = candidate
+                break
+            template_baseline = (
+                baseline.updated(legacy_patch) if legacy_patch else baseline
+            )
+            for key in sorted(shared):
+                source = (
+                    template_baseline
+                    if key in manager_common.TEMPLATE_KEYS
+                    else baseline
+                )
+                document["values"].setdefault(key, value(source, key))
+            document["version"] = 1
+        for (
+            key,
+            configuration,
+            explicit,
+            destination,
+            raw,
+            upgrading_shared,
+        ) in configurations:
+            if legacy_patch:
+                previous = configuration.updated(legacy_patch)
+                data = configuration.model_dump()
+                for name, selected in previous.device.model_dump().items():
+                    if (
+                        f"device.{name}" not in shared
+                        or f"device.{name}" in manager_common.TEMPLATE_KEYS
+                    ):
+                        data["device"][name] = selected
+                configuration = Conf(**data)
+                explicit -= legacy_paths & document["values"].keys()
+            independent = any(
+                value(configuration, field) != document["values"][field]
+                for field in explicit
+            )
+            try:
+                manager_common.validate_settings(
+                    {name: value(configuration, name) for name in shared}
+                )
+                manager_common.apply_settings(
+                    configuration, document["values"], independent=independent
+                )
+            except ValueError:
+                independent = True
+            document["independent_instances"][key] = independent
+            if independent and (legacy_patch or upgrading_shared):
+                from . import managed_device
+
+                preserved = copy.deepcopy(raw)
+                values = (
+                    managed_device.snapshot(configuration)
+                    if upgrading_shared
+                    else {
+                        name: configuration.model_dump()[name]
+                        for name in ("device", "simulator", "adb", "package_type")
+                    }
+                )
+                for name, selected in values.items():
+                    preserved[name] = (
+                        {**preserved[name], **selected}
+                        if isinstance(preserved.get(name), dict)
+                        and isinstance(selected, dict)
+                        else selected
+                    )
+                if preserved != raw:
+                    bindings[destination] = preserved
+        if changed:
+            manager_common.validate_settings(document["values"])
+            if persist:
+                originals = {
+                    path: path.read_bytes() if path.exists() else None
+                    for path in (*bindings, self._common_path)
+                }
+                attempted = []
+                try:
+                    for path, raw in bindings.items():
+                        attempted.append(path)
+                        self._write_config(path, raw)
+                    attempted.append(self._common_path)
+                    runtime.write_json(self._common_path, document, sync=True)
+                except BaseException:
+                    failures = []
+                    for path in reversed(attempted):
+                        try:
+                            original = originals[path]
+                            if original is None:
+                                path.unlink(missing_ok=True)
+                            elif not path.exists() or path.read_bytes() != original:
+                                self._write_config_bytes(path, original)
+                        except OSError as error:
+                            failures.append(error)
+                    if failures:
+                        raise OSError(
+                            "配置迁移失败且无法完整恢复，请检查文件权限"
+                        ) from failures[0]
+                    raise
+        return document
+
+    def _connection_state(self, instance, raw, document):
+        from .config import Conf
+
+        key = manager_common.policy_key(instance_directory(instance["path"]))
+        independent = document["independent_instances"].get(key, False)
+        shared_values = {
+            name: value
+            for name, value in document["values"].items()
+            if name in manager_common.SHARED_CONNECTION_KEYS
+        }
+        effective = manager_common.apply_settings(
+            Conf(**raw), shared_values, independent=independent
+        )
+        policy = dict(
+            independent_configuration=independent, shared_values=shared_values
+        )
+        return effective, independent, policy
 
     def add(self, name, path, targets=None):
         if not isinstance(name, str) or not name.strip() or not isinstance(path, str):
@@ -369,7 +596,13 @@ class InstanceController(ManagerTools):
         destination, raw = read_instance_config(instance["path"])
         current = {
             key: raw.get(key)
-            if key in {"ai_assistant_enabled", "updates_enabled", "start_automatically"}
+            if key
+            in {
+                "ai_assistant_enabled",
+                "updates_enabled",
+                "start_automatically",
+                "extra_settings_visible",
+            }
             else raw.get("webview", {}).get(key)
             for key in settings
         }
@@ -392,15 +625,23 @@ class InstanceController(ManagerTools):
             raw["updates_enabled"] = settings["updates_enabled"]
         if "start_automatically" in settings:
             raw["start_automatically"] = settings["start_automatically"]
+        if "extra_settings_visible" in settings:
+            raw["extra_settings_visible"] = settings["extra_settings_visible"]
         self._write_config(destination, raw)
         return True
 
     def _write_config(self, destination, raw):
+        self._write_config_bytes(
+            destination,
+            yaml.dump(raw, Dumper=CoreDumper, allow_unicode=True).encode("utf-8"),
+        )
+
+    def _write_config_bytes(self, destination, content):
         destination.parent.mkdir(parents=True, exist_ok=True)
         fd, temporary = tempfile.mkstemp(dir=destination.parent)
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                yaml.dump(raw, stream, Dumper=CoreDumper, allow_unicode=True)
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(content)
                 stream.flush()
                 os.fsync(stream.fileno())
             runtime.replace_with_retry(temporary, destination)
@@ -409,24 +650,38 @@ class InstanceController(ManagerTools):
 
     def get_device_settings(self, idx, target):
         from . import managed_device
-        from .config import Conf
 
         with self._operation():
             instance = self._target(idx, target)
             self._editable(instance, self._records())
             if not instance["path"]:
                 raise ValueError("请先选择实例保存目录")
+            document = self._connection_document()
             _, raw = read_instance_config(instance["path"])
+            configuration, independent, policy = self._connection_state(
+                instance, raw, document
+            )
             return {
-                "values": managed_device.snapshot(Conf(**raw)),
+                "values": managed_device.snapshot(configuration),
                 "fields": managed_device.fields(),
+                "independent_configuration": independent,
+                "original_policy": policy,
+                "shared_keys": sorted(manager_common.SHARED_CONNECTION_KEYS),
             }
 
-    def update_device_settings(self, idx, changes, target, original):
+    def update_device_settings(self, idx, changes, target, original, policy=None):
         from . import managed_device
         from .config import Conf
 
-        patch = managed_device.validate_patch(changes)
+        if policy is not None and (
+            not isinstance(policy, dict)
+            or set(policy) != {"independent_configuration", "original_policy"}
+            or type(policy["independent_configuration"]) is not bool
+        ):
+            raise ValueError("独立连接配置格式不正确")
+        patch = managed_device.validate_patch(changes) if changes else {}
+        if not changes and policy is None:
+            raise ValueError("请选择需要保存的设备配置")
         derived = managed_device.DERIVED_IDENTITY_FIELDS
         submitted_identity = {
             key: value
@@ -441,26 +696,56 @@ class InstanceController(ManagerTools):
                 if key not in {f"device.{name}" for name in derived}
             }
             candidates = self.discover_device_settings(
-                idx, discovery_changes, target, original
+                idx,
+                discovery_changes,
+                target,
+                original,
+                policy,
             ).get("candidates", [])
         with self._operation():
             instance = self._target(idx, target)
             self._editable(instance, self._records())
             if not instance["path"]:
                 raise ValueError("请先选择实例保存目录")
+            document = self._connection_document()
             destination, raw = read_instance_config(instance["path"])
-            current = Conf(**raw)
+            current, independent, current_policy = self._connection_state(
+                instance, raw, document
+            )
             if original != managed_device.snapshot(current):
                 raise ValueError("设备配置已变化，请重新打开编辑器")
-            proposed = managed_device.snapshot(current.updated(patch))
+            if policy is not None and policy["original_policy"] != current_policy:
+                raise ValueError("独立连接配置已变化，请重新打开编辑器")
+            desired = (
+                independent if policy is None else policy["independent_configuration"]
+            )
+            if not desired and set(changes) & (
+                manager_common.SHARED_CONNECTION_KEYS | {"device.last_serial"}
+            ):
+                raise ValueError("共享连接参数只能在公共配置中修改，请先启用独立配置")
+            baseline = (
+                current
+                if desired
+                else manager_common.apply_settings(
+                    Conf(**raw), current_policy["shared_values"]
+                )
+            )
+            if "instance_name" in patch.get("device", {}) and (
+                patch["device"]["instance_name"] != baseline.device.instance_name
+            ):
+                patch["device"]["last_serial"] = ""
+                for name in derived:
+                    patch["device"].setdefault(name, "")
+            proposed = managed_device.snapshot(baseline.updated(patch))
             if submitted_identity:
                 ordinary_patch = copy.deepcopy(patch)
                 for key in derived:
                     ordinary_patch.get("device", {}).pop(key, None)
-                automatic = current.updated(ordinary_patch).device.model_dump()
+                automatic = baseline.updated(ordinary_patch).device.model_dump()
                 if any(proposed["device"][key] != automatic[key] for key in derived):
                     if not candidates or not any(
-                        all(
+                        (desired or candidate.get("shared_template_matches") is True)
+                        and all(
                             proposed["device"].get(key) == value
                             for key, value in candidate.get("binding", {}).items()
                             if key not in {"last_serial", "game_package_confirmed"}
@@ -475,6 +760,22 @@ class InstanceController(ManagerTools):
                         raise ValueError(
                             "实例识别信息由检测结果维护，请重新检测并选择实例"
                         )
+            if not desired:
+                # Validate the binding against shared launch values, but retain
+                # local connection values and their synchronized legacy aliases.
+                stored = managed_device.snapshot(Conf(**raw))
+                for name in (
+                    manager_common.SHARED_CONNECTION_KEYS - manager_common.TEMPLATE_KEYS
+                ):
+                    parts = name.split(".")
+                    source, destination_values = stored, proposed
+                    for part in parts[:-1]:
+                        source, destination_values = (
+                            source[part],
+                            destination_values[part],
+                        )
+                    destination_values[parts[-1]] = source[parts[-1]]
+                proposed = managed_device.snapshot(Conf(**proposed))
             # Preserve unknown private fields while synchronizing legacy aliases.
             for key, value in proposed.items():
                 raw[key] = (
@@ -482,25 +783,65 @@ class InstanceController(ManagerTools):
                     if isinstance(raw.get(key), dict) and isinstance(value, dict)
                     else value
                 )
+            original_bytes = destination.read_bytes() if destination.exists() else None
             self._write_config(destination, raw)
+            if desired != independent:
+                key = manager_common.policy_key(instance_directory(instance["path"]))
+                document["independent_instances"][key] = desired
+                try:
+                    runtime.write_json(self._common_path, document, sync=True)
+                except BaseException:
+                    if original_bytes is None:
+                        destination.unlink(missing_ok=True)
+                    else:
+                        self._write_config_bytes(destination, original_bytes)
+                    raise
             return {"ok": True}
 
-    def discover_device_settings(self, idx, changes, target, original):
+    def discover_device_settings(self, idx, changes, target, original, policy=None):
         from . import managed_device
-        from .config import Conf
 
+        if policy is not None and (
+            not isinstance(policy, dict)
+            or set(policy) != {"independent_configuration", "original_policy"}
+            or type(policy["independent_configuration"]) is not bool
+        ):
+            raise ValueError("独立连接配置格式不正确")
         patch = managed_device.validate_patch(changes) if changes else {}
         with self._operation():
             instance = self._target(idx, target)
             self._editable(instance, self._records())
             if not instance["path"]:
                 raise ValueError("请先选择实例保存目录")
+            document = self._connection_document()
             _, raw = read_instance_config(instance["path"])
-            current = Conf(**raw)
+            current, independent, current_policy = self._connection_state(
+                instance, raw, document
+            )
             if original != managed_device.snapshot(current):
                 raise ValueError("设备配置已变化，请重新打开编辑器")
-            configuration = current.updated(patch)
+            if policy is not None and policy["original_policy"] != current_policy:
+                raise ValueError("独立连接配置已变化，请重新打开编辑器")
+            desired = (
+                independent if policy is None else policy["independent_configuration"]
+            )
+            if not desired and set(changes) & (
+                manager_common.SHARED_CONNECTION_KEYS | {"device.last_serial"}
+            ):
+                raise ValueError("共享连接参数只能在公共配置中修改，请先启用独立配置")
+            baseline = (
+                current
+                if desired
+                else manager_common.apply_settings(
+                    current, current_policy["shared_values"]
+                )
+            )
+            configuration = baseline.updated(patch)
         result = managed_device.discover(configuration)
+        if not desired:
+            result = managed_device.project_shared_candidates(
+                result, current_policy["shared_values"]
+            )
         with self._operation():
             self._editable(self._target(idx, target), self._records())
         return result
@@ -545,7 +886,15 @@ class InstanceController(ManagerTools):
             deadline = monotonic() + 10
             records = self._records()
             if common is not None:
-                runtime.write_json(self._common_path, common_values, sync=True)
+                document = manager_common.read_document(self._common_path)
+                if document["version"] == 1:
+                    document = self._connection_document()
+                    for key in manager_common.SHARED_CONNECTION_KEYS:
+                        common_values.setdefault(key, document["values"][key])
+                    document["values"] = common_values
+                    runtime.write_json(self._common_path, document, sync=True)
+                else:
+                    runtime.write_json(self._common_path, common_values, sync=True)
             blocked = ""
             for position, (idx, settings) in enumerate(sorted(selected.items())):
                 instance = self.instances[idx]
@@ -598,6 +947,7 @@ class InstanceController(ManagerTools):
             with self._operation():
                 instance = self._target_instance(idx, target)
                 settings = self._start_settings(instance, self._records())
+                self._connection_document()
                 frozen = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
                 executable = Path(sys.executable).resolve().parent / (
                     "mower.exe" if sys.platform == "win32" else "mower"
@@ -713,23 +1063,14 @@ class InstanceController(ManagerTools):
     def start_all(self, targets=None):
         return self._bulk("start", targets=targets)
 
-    def stop_all(self, targets=None, *, last_directory=None):
-        return self._bulk("stop", targets=targets, last_directory=last_directory)
+    def stop_all(self, targets=None):
+        return self._bulk("stop", targets=targets)
 
-    def _bulk(self, action, *, targets=None, last_directory=None):
+    def _bulk(self, action, *, targets=None):
         with self._operation():
             self._check_targets(targets)
             results = []
             indices = range(len(self.instances))
-            if action == "stop" and last_directory is not None:
-                last_key = instance_key(last_directory)
-                indices = sorted(
-                    indices,
-                    key=lambda idx: (
-                        bool(self.instances[idx]["path"])
-                        and instance_key(self.instances[idx]["path"]) == last_key
-                    ),
-                )
             for idx in indices:
                 if action == "start":
                     records = self._records()

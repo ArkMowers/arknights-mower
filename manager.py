@@ -59,23 +59,9 @@ class Api(InstanceController):
         storage_path=None,
         ready=None,
         window=None,
-        *,
-        defer_load=False,
-        current_instance_path=None,
     ):
-        super().__init__(storage_path, ready, defer_load=defer_load)
+        super().__init__(storage_path, ready)
         self._window = window
-        self._current_instance_path = current_instance_path
-
-    def stop_all(self, targets=None):
-        return self._bulk(
-            "stop", targets=targets, last_directory=self._current_instance_path
-        )
-
-    def update_all_settings(self, changes, targets, common=None):
-        if common is not None and self._current_instance_path is not None:
-            raise ValueError("公共配置只能在多开管理器中修改")
-        return super().update_all_settings(changes, targets, common)
 
     def select_device_path(self, key, current=""):
         from arknights_mower.utils.managed_device import fields
@@ -122,25 +108,6 @@ class Api(InstanceController):
             idx, {"path": folder}, {key: original[key] for key in ("name", "path")}
         )
         return folder
-
-
-def attach_instance_controls(window):
-    api = Api(window=window, defer_load=True, current_instance_path=get_path("@app"))
-    window.expose(
-        api.get_instances,
-        api.mark_ready,
-        api.add,
-        api.remove,
-        api.rename,
-        api.select_path,
-        api.update_settings,
-        api.update_all_settings,
-        api.start,
-        api.stop,
-        api.start_all,
-        api.stop_all,
-    )
-    return api
 
 
 def manager_app():

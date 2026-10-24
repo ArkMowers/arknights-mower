@@ -8,6 +8,8 @@ from pathlib import Path
 from threading import Event
 from unittest.mock import MagicMock, patch
 
+import yaml
+
 from arknights_mower.tests.device_application_tests import ManualAdapter, ManualDevice
 from arknights_mower.tests.device_preflight_tests import PreflightIO
 from arknights_mower.utils import config
@@ -95,11 +97,13 @@ class DeviceSettingsRouteTests(unittest.TestCase):
                     {"device": {"instance_id": "different"}},
                     {"simulator": {"simulator_folder": "/different"}},
                     {"maa_adb_path": "untrusted-adb"},
+                    {"maa_path": "/different/MAA"},
                     {"custom_screenshot": {"command": "different-capture"}},
                     {"tap_to_launch_game": {"command": "different-launch"}},
                     {"performance_mode": "low"},
                     {"screenshot_interval": 987},
                     {"selection_poll_interval": 1.5},
+                    {"waiting_scene": {"UNKNOWN": [7, 13]}},
                     {"start_automatically": True},
                 ):
                     with self.subTest(method=method, payload=payload):
@@ -128,6 +132,72 @@ class DeviceSettingsRouteTests(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 200, response.json)
             self.assertEqual(config.conf.theme, "dark")
+
+    def test_extra_settings_visibility_uses_manager_choice_and_standalone_can_save(
+        self,
+    ):
+        for managed in (False, True):
+            with patch.dict("os.environ", {"MOWER_MANAGED": "1" if managed else "0"}):
+                for current in (False, True):
+                    config.conf.extra_settings_visible = current
+                    config.conf.ai_assistant_enabled = True
+                    config.conf.updates_enabled = False
+                    config.save_conf()
+                    before = self.path.read_bytes()
+                    loaded = self.client.get("/conf", headers=self.headers)
+                    self.assertIs(loaded.json["extra_settings_visible"], current)
+                    self.assertIs(loaded.json["manager_owned_device"], managed)
+                    for method in ("POST", "PATCH"):
+                        response = self.client.open(
+                            "/conf",
+                            method=method,
+                            headers=self.headers,
+                            json={"extra_settings_visible": not current},
+                        )
+                        if managed:
+                            self.assertEqual(response.status_code, 403, response.json)
+                            self.assertEqual(
+                                response.json["error"], "manager_owned_setting"
+                            )
+                            self.assertEqual(self.path.read_bytes(), before)
+                            self.assertIs(config.conf.extra_settings_visible, current)
+                        else:
+                            self.assertEqual(response.status_code, 200, response.json)
+                            self.assertIs(
+                                config.conf.extra_settings_visible, not current
+                            )
+                        self.assertIs(config.conf.ai_assistant_enabled, True)
+                        self.assertIs(config.conf.updates_enabled, False)
+                    echo = self.client.patch(
+                        "/conf",
+                        headers=self.headers,
+                        json={
+                            "extra_settings_visible": config.conf.extra_settings_visible,
+                            "theme": "dark",
+                        },
+                    )
+                    self.assertEqual(echo.status_code, 200, echo.json)
+
+    def test_standalone_instance_can_change_maa_installation_path(self):
+        with patch.dict("os.environ", {"MOWER_MANAGED": "0"}):
+            response = self.client.patch(
+                "/conf", headers=self.headers, json={"maa_path": "/standalone/MAA"}
+            )
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(config.conf.maa_path, "/standalone/MAA")
+
+    def test_standalone_instance_can_change_waiting_scene_table(self):
+        values = config.conf.waiting_scene.model_dump(mode="json")
+        values["UNKNOWN"] = [7, 13]
+        with patch.dict("os.environ", {"MOWER_MANAGED": "0"}):
+            response = self.client.patch(
+                "/conf", headers=self.headers, json={"waiting_scene": values}
+            )
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertEqual(config.conf.waiting_scene.UNKNOWN, (7, 13))
+        self.assertEqual(response.json["waiting_scene"], values)
+        persisted = config.Conf(**yaml.safe_load(self.path.read_text()))
+        self.assertEqual(persisted.waiting_scene.UNKNOWN, (7, 13))
 
     def test_managed_detection_refuses_overrides_before_device_actions(self):
         with (
@@ -194,6 +264,7 @@ class DeviceSettingsRouteTests(unittest.TestCase):
             ),
         ):
             for route, method in (
+                ("/conf", "GET"),
                 ("/conf", "POST"),
                 ("/conf", "PATCH"),
                 ("/device/preflight", "POST"),

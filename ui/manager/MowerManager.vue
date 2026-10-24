@@ -8,13 +8,8 @@ import SettingsIcon from '@vicons/ionicons5/es/SettingsOutline'
 import TrashIcon from '@vicons/ionicons5/es/TrashOutline'
 import WarningIcon from '@vicons/ionicons5/es/WarningOutline'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { managerCall } from './bridge.js'
-import { createInstanceManagement } from '../src/utils/instanceManagement.js'
+import { initializeManager, managerCall } from './bridge.js'
 
-const props = defineProps({
-  embedded: { type: Boolean, default: false },
-  active: { type: Boolean, default: true }
-})
 import BrowserIcon from '@vicons/ionicons5/es/GlobeOutline'
 import CommonSettings from './CommonSettings.vue'
 import ManagerTools from './ManagerTools.vue'
@@ -63,7 +58,9 @@ const commonLoading = ref(false)
 const commonError = ref('')
 const commonChanged = computed(() => {
   const keys = new Set([...Object.keys(commonDraft.value), ...Object.keys(commonOriginal.value)])
-  return [...keys].some((key) => commonDraft.value[key] !== commonOriginal.value[key])
+  return [...keys].some(
+    (key) => JSON.stringify(commonDraft.value[key]) !== JSON.stringify(commonOriginal.value[key])
+  )
 })
 const batchChanges = computed(() => {
   if (displayedEditing.value?.kind !== 'batch') return []
@@ -78,7 +75,7 @@ const batchChanges = computed(() => {
 const batchSummary = computed(() => {
   const results = batchResult.value?.results || []
   const count = (status) => results.filter((item) => item.status === status).length
-  const prefix = batchResult.value?.common_saved ? '公共配置已保存，下次启动生效。' : ''
+  const prefix = batchResult.value?.common_saved ? '通用设置已保存，下次启动生效。' : ''
   if (prefix && !results.length) return prefix
   return `${prefix}已更新 ${count('updated')} 个，跳过 ${count('skipped')} 个，失败 ${count('failed')} 个`
 })
@@ -86,9 +83,6 @@ const assistantConfirmation = ref(null)
 const riskAcknowledged = ref(false)
 const riskSeconds = ref(5)
 const unavailable = computed(() => loading.value || !ready.value || !connected.value || busy.value)
-const hasDialog = computed(() =>
-  Boolean(editing.value || deleting.value || confirmation.value || assistantConfirmation.value)
-)
 const riskReady = computed(
   () =>
     Boolean(assistantConfirmation.value) &&
@@ -101,8 +95,7 @@ let riskTimer
 let riskStartedAt = 0
 let disposed = false
 let refreshVersion = 0
-const transport = createInstanceManagement()
-const api = () => transport.api
+const api = () => window.pywebview?.api
 const statuses = { stopped: '已停止', starting: '启动中', running: '运行中', stopping: '停止中' }
 
 async function refresh() {
@@ -113,14 +106,40 @@ async function refresh() {
   acceptInstances(loaded)
 }
 
+function deviceSettingsAvailable() {
+  return ['get_device_settings', 'update_device_settings', 'discover_device_settings'].every(
+    (name) => typeof api()?.[name] === 'function'
+  )
+}
+
 function editDevice(idx) {
-  if (props.embedded || unavailable.value || !instances.value[idx]?.editable) return
+  if (
+    !deviceSettingsAvailable() ||
+    unavailable.value ||
+    !instances.value[idx]?.editable ||
+    !instances.value[idx]?.path
+  )
+    return
   const { name, path } = instances.value[idx]
-  deviceEditor.value = { idx, target: { name, path } }
+  deviceEditor.value = { idx, target: { name, path }, previousEditor: editing.value }
+  editing.value = null
+}
+
+function closeDevice() {
+  const previous = deviceEditor.value?.previousEditor
+  deviceEditor.value = null
+  if (!previous) return
+  const current = instances.value[previous.idx]
+  if (
+    current?.editable &&
+    current.name === previous.target.name &&
+    current.path === previous.target.path
+  )
+    editing.value = previous
 }
 
 function deviceSaved() {
-  deviceEditor.value = null
+  closeDevice()
   void initialize()
 }
 
@@ -187,7 +206,7 @@ async function initialize() {
   initializationError.value = ''
   error.value = ''
   try {
-    await transport.initialize(async (loaded) => {
+    await initializeManager(async (loaded) => {
       if (disposed || version !== refreshVersion) return
       acceptInstances(loaded)
       ready.value = true
@@ -204,7 +223,7 @@ async function initialize() {
 
 async function poll() {
   try {
-    if (props.active !== false && ready.value && !busy.value && !loading.value) await refresh()
+    if (ready.value && !busy.value && !loading.value) await refresh()
   } catch (failure) {
     connected.value = false
     error.value = failure?.message || '无法读取实例状态，请稍后重试'
@@ -253,7 +272,8 @@ function edit(idx, kind) {
     ...instances.value[idx],
     ai_assistant_enabled: instances.value[idx].ai_assistant_enabled === true,
     updates_enabled: instances.value[idx].updates_enabled === true,
-    start_automatically: instances.value[idx].start_automatically === true
+    start_automatically: instances.value[idx].start_automatically === true,
+    extra_settings_visible: instances.value[idx].extra_settings_visible === true
   }
   editing.value = {
     idx,
@@ -261,7 +281,8 @@ function edit(idx, kind) {
     target: { name: draft.value.name, path: draft.value.path },
     originalAssistant: draft.value.ai_assistant_enabled,
     originalUpdates: draft.value.updates_enabled,
-    originalAutomatic: draft.value.start_automatically
+    originalAutomatic: draft.value.start_automatically,
+    originalExtraSettings: draft.value.extra_settings_visible
   }
 }
 
@@ -277,7 +298,8 @@ async function editBatch() {
     port: item.port,
     ai_assistant_enabled: item.ai_assistant_enabled === true,
     updates_enabled: item.updates_enabled === true,
-    start_automatically: item.start_automatically === true
+    start_automatically: item.start_automatically === true,
+    extra_settings_visible: item.extra_settings_visible === true
   }))
   batchDraft.value = originals.map((row) => ({ ...row }))
   batchAiRead.value = false
@@ -290,7 +312,7 @@ async function editBatch() {
   commonDraft.value = {}
   commonOriginal.value = {}
   commonError.value = ''
-  if (!props.embedded) await loadCommon()
+  await loadCommon()
 }
 
 async function previewCommon() {
@@ -303,7 +325,7 @@ async function previewCommon() {
     )
     if (editing.value === editor && revision === previewRevision.value) preview.value = result
   } catch (failure) {
-    error.value = failure?.message || '无法预览公共配置'
+    error.value = failure?.message || '无法预览通用设置'
   } finally {
     previewLoading.value = false
   }
@@ -313,6 +335,11 @@ function changeBatchAutomatic(enabled) {
   for (let idx = 0; idx < batchDraft.value.length; idx++)
     if (batchEditable(idx)) batchDraft.value[idx].start_automatically = enabled
 }
+function changeBatchExtraSettings(visible) {
+  if (unavailable.value || assistantConfirmation.value) return
+  for (let idx = 0; idx < batchDraft.value.length; idx++)
+    if (batchEditable(idx)) batchDraft.value[idx].extra_settings_visible = visible
+}
 async function loadCommon() {
   const editor = editing.value
   commonLoading.value = true
@@ -320,12 +347,12 @@ async function loadCommon() {
   try {
     const result = await managerCall(() => api().get_common_settings())
     if (editing.value !== editor) return
-    if (!result?.values || !Array.isArray(result.fields)) throw new Error('公共配置格式不正确')
-    commonOriginal.value = { ...result.values }
-    commonDraft.value = { ...result.values }
+    if (!result?.values || !Array.isArray(result.fields)) throw new Error('通用设置格式不正确')
+    commonOriginal.value = structuredClone(result.values)
+    commonDraft.value = structuredClone(result.values)
     commonFields.value = result.fields
   } catch (failure) {
-    if (editing.value === editor) commonError.value = failure?.message || '无法加载公共配置'
+    if (editing.value === editor) commonError.value = failure?.message || '无法加载通用设置'
   } finally {
     if (editing.value === editor) commonLoading.value = false
   }
@@ -350,7 +377,15 @@ function selectPath(idx) {
 
 async function save() {
   if (!editing.value || unavailable.value || assistantConfirmation.value) return
-  const { idx, kind, target, originalAssistant, originalUpdates, originalAutomatic } = editing.value
+  const {
+    idx,
+    kind,
+    target,
+    originalAssistant,
+    originalUpdates,
+    originalAutomatic,
+    originalExtraSettings
+  } = editing.value
   if (kind === 'batch') {
     if (
       commonLoading.value ||
@@ -389,6 +424,8 @@ async function save() {
     settings.updates_enabled = draft.value.updates_enabled
   if (draft.value.start_automatically !== originalAutomatic)
     settings.start_automatically = draft.value.start_automatically
+  if (draft.value.extra_settings_visible !== originalExtraSettings)
+    settings.extra_settings_visible = draft.value.extra_settings_visible
   const succeeded = await execute(() => api().update_settings(idx, settings, target))
   if (succeeded) editing.value = null
 }
@@ -522,27 +559,10 @@ async function applyDelete() {
 function addInstance() {
   return execute(() => api().add('新实例', ''))
 }
-
-defineExpose({
-  instances,
-  loading,
-  ready,
-  unavailable,
-  hasDialog,
-  initializationError,
-  initialize,
-  addInstance,
-  edit,
-  editBatch,
-  selectPath,
-  confirmBulk,
-  lifecycle,
-  confirmDelete
-})
 </script>
 
 <template>
-  <div class="mower-list" :class="{ 'mower-list--embedded': embedded }" :data-manager-ready="ready">
+  <div class="mower-list" :data-manager-ready="ready">
     <div v-if="initializationError || error || batchResult" class="manager-feedback">
       <n-alert v-if="initializationError" type="error">
         {{ initializationError }}
@@ -575,143 +595,134 @@ defineExpose({
         </ul>
       </n-alert>
     </div>
-    <template v-if="!embedded">
-      <div class="manager-heading">
-        <div>
-          <h1>多开管理器</h1>
-          <p>
-            {{ instances.length }} 个实例 ·
-            {{ instances.filter((item) => item.state === 'running').length }} 个运行中
-          </p>
-        </div>
+    <div class="manager-heading">
+      <div>
+        <h1>多开管理器</h1>
+        <p>
+          {{ instances.length }} 个实例 ·
+          {{ instances.filter((item) => item.state === 'running').length }} 个运行中
+        </p>
       </div>
-      <div class="bulk-actions">
-        <n-button
-          :disabled="unavailable || !instances.some((i) => i.can_start)"
-          @click="confirmBulk('start')"
-        >
-          <template #icon
-            ><n-icon><play-icon /></n-icon></template
-          >全部打开
-        </n-button>
-        <n-button
-          :disabled="unavailable || !instances.some((i) => i.can_stop)"
-          @click="confirmBulk('stop')"
-        >
-          <template #icon
-            ><n-icon><stop-icon /></n-icon></template
-          >全部关闭
-        </n-button>
-        <n-button :disabled="unavailable" @click="editBatch">
-          <template #icon
-            ><n-icon><settings-icon /></n-icon></template
-          >批量配置
-        </n-button>
-        <n-button :disabled="unavailable" @click="toolsOpen = true">维护工具</n-button>
-      </div>
-      <n-empty
-        v-if="ready && !instances.length"
-        description="添加实例，或先在批量配置中设置公共参数"
-      />
-      <n-skeleton v-if="loading" :height="140" />
-      <n-card v-for="(instance, idx) in instances" :key="idx" size="small">
-        <div class="instance-heading">
-          <strong class="instance-name">{{ instance.name }}</strong>
-          <n-tag size="small" :type="instance.state === 'running' ? 'success' : 'default'">{{
-            statuses[instance.state]
-          }}</n-tag>
-          <n-button
-            :type="instance.state === 'stopped' ? 'primary' : 'error'"
-            size="small"
-            :disabled="
-              unavailable ||
-              (instance.state === 'stopped' ? !instance.can_start : !instance.can_stop)
-            "
-            @click="lifecycle(idx)"
-          >
-            <template #icon
-              ><n-icon><play-icon v-if="instance.state === 'stopped'" /><stop-icon v-else /></n-icon
-            ></template>
-            {{ instance.state === 'stopped' ? '启动' : '停止' }}
-          </n-button>
-        </div>
-        <div class="instance-toolbar">
-          <div class="instance-tools">
-            <n-button
-              size="tiny"
-              :disabled="unavailable || !instance.editable || !instance.path"
-              @click="editDevice(idx)"
-              >连接与启动</n-button
-            >
-            <n-button
-              size="tiny"
-              title="修改实例名称"
-              aria-label="修改实例名称"
-              :disabled="unavailable || !instance.editable"
-              @click="edit(idx, 'name')"
-              ><template #icon
-                ><n-icon><pencil-icon /></n-icon></template
-            ></n-button>
-            <n-button
-              size="tiny"
-              title="实例配置"
-              aria-label="实例配置"
-              :disabled="unavailable || !instance.editable || !instance.path"
-              @click="edit(idx, 'settings')"
-              ><template #icon
-                ><n-icon><settings-icon /></n-icon></template
-            ></n-button>
-            <n-button
-              size="tiny"
-              title="选择保存目录"
-              aria-label="选择保存目录"
-              :disabled="unavailable || !instance.editable"
-              @click="selectPath(idx)"
-              ><template #icon
-                ><n-icon><folder-icon /></n-icon></template
-            ></n-button>
-            <n-button
-              size="tiny"
-              type="error"
-              ghost
-              title="删除实例"
-              aria-label="删除实例"
-              :disabled="unavailable || !instance.editable"
-              @click="confirmDelete(idx)"
-              ><template #icon
-                ><n-icon><trash-icon /></n-icon></template
-            ></n-button>
-          </div>
-          <n-button
-            text
-            size="small"
-            class="browser-action"
-            :disabled="unavailable || !instance.can_open_browser"
-            :aria-label="`${instance.name} 在浏览器中打开`"
-            @click="openBrowser(idx)"
-          >
-            <template #icon
-              ><n-icon><browser-icon /></n-icon
-            ></template>
-            在浏览器中打开
-          </n-button>
-        </div>
-        <code class="folder-content">{{ instance.path || '未选择保存目录' }}</code>
-        <div class="connection-info">
-          <span>端口：{{ instance.port || '随机' }}</span
-          ><span>Token：{{ instance.token ? '已设置' : '未设置' }}</span
-          ><span>自动开始任务：{{ instance.start_automatically ? '开' : '关' }}</span>
-        </div>
-        <div v-if="instance.reason && instance.state === 'stopped'" class="reason">
-          {{ instance.reason }}
-        </div>
-      </n-card>
-      <n-button v-if="ready" dashed :disabled="unavailable" @click="addInstance"
-        ><template #icon
-          ><n-icon><plus-icon /></n-icon></template
-        >添加实例</n-button
+    </div>
+    <div class="bulk-actions">
+      <n-button
+        :disabled="unavailable || !instances.some((i) => i.can_start)"
+        @click="confirmBulk('start')"
       >
-    </template>
+        <template #icon
+          ><n-icon><play-icon /></n-icon></template
+        >全部打开
+      </n-button>
+      <n-button
+        :disabled="unavailable || !instances.some((i) => i.can_stop)"
+        @click="confirmBulk('stop')"
+      >
+        <template #icon
+          ><n-icon><stop-icon /></n-icon></template
+        >全部关闭
+      </n-button>
+      <n-button :disabled="unavailable" @click="editBatch">
+        <template #icon
+          ><n-icon><settings-icon /></n-icon></template
+        >批量配置
+      </n-button>
+      <n-button :disabled="unavailable" @click="toolsOpen = true">维护工具</n-button>
+    </div>
+    <n-empty
+      v-if="ready && !instances.length"
+      description="添加实例，或先在批量配置中设置通用参数"
+    />
+    <n-skeleton v-if="loading" :height="140" />
+    <n-card v-for="(instance, idx) in instances" :key="idx" size="small">
+      <div class="instance-heading">
+        <strong class="instance-name">{{ instance.name }}</strong>
+        <n-tag size="small" :type="instance.state === 'running' ? 'success' : 'default'">{{
+          statuses[instance.state]
+        }}</n-tag>
+        <n-button
+          :type="instance.state === 'stopped' ? 'primary' : 'error'"
+          size="small"
+          :disabled="
+            unavailable || (instance.state === 'stopped' ? !instance.can_start : !instance.can_stop)
+          "
+          @click="lifecycle(idx)"
+        >
+          <template #icon
+            ><n-icon><play-icon v-if="instance.state === 'stopped'" /><stop-icon v-else /></n-icon
+          ></template>
+          {{ instance.state === 'stopped' ? '启动' : '停止' }}
+        </n-button>
+      </div>
+      <div class="instance-toolbar">
+        <div class="instance-tools">
+          <n-button
+            size="tiny"
+            title="修改实例名称"
+            aria-label="修改实例名称"
+            :disabled="unavailable || !instance.editable"
+            @click="edit(idx, 'name')"
+            ><template #icon
+              ><n-icon><pencil-icon /></n-icon></template
+          ></n-button>
+          <n-button
+            size="tiny"
+            title="实例配置"
+            aria-label="实例配置"
+            :disabled="unavailable || !instance.editable || !instance.path"
+            @click="edit(idx, 'settings')"
+            ><template #icon
+              ><n-icon><settings-icon /></n-icon></template
+          ></n-button>
+          <n-button
+            size="tiny"
+            title="选择保存目录"
+            aria-label="选择保存目录"
+            :disabled="unavailable || !instance.editable"
+            @click="selectPath(idx)"
+            ><template #icon
+              ><n-icon><folder-icon /></n-icon></template
+          ></n-button>
+          <n-button
+            size="tiny"
+            type="error"
+            ghost
+            title="删除实例"
+            aria-label="删除实例"
+            :disabled="unavailable || !instance.editable"
+            @click="confirmDelete(idx)"
+            ><template #icon
+              ><n-icon><trash-icon /></n-icon></template
+          ></n-button>
+        </div>
+        <n-button
+          text
+          size="small"
+          class="browser-action"
+          :disabled="unavailable || !instance.can_open_browser"
+          :aria-label="`${instance.name} 在浏览器中打开`"
+          @click="openBrowser(idx)"
+        >
+          <template #icon
+            ><n-icon><browser-icon /></n-icon
+          ></template>
+          在浏览器中打开
+        </n-button>
+      </div>
+      <code class="folder-content">{{ instance.path || '未选择保存目录' }}</code>
+      <div class="connection-info">
+        <span>端口：{{ instance.port || '随机' }}</span
+        ><span>Token：{{ instance.token ? '已设置' : '未设置' }}</span
+        ><span>自动开始任务：{{ instance.start_automatically ? '开' : '关' }}</span>
+      </div>
+      <div v-if="instance.reason && instance.state === 'stopped'" class="reason">
+        {{ instance.reason }}
+      </div>
+    </n-card>
+    <n-button v-if="ready" dashed :disabled="unavailable" @click="addInstance"
+      ><template #icon
+        ><n-icon><plus-icon /></n-icon></template
+      >添加实例</n-button
+    >
     <n-modal
       :show="!!deviceEditor"
       preset="card"
@@ -719,7 +730,7 @@ defineExpose({
       :style="{ width: 'min(800px, calc(100vw - 24px))' }"
       @update:show="
         (show) => {
-          if (!show) deviceEditor = null
+          if (!show) closeDevice()
         }
       "
     >
@@ -821,13 +832,13 @@ defineExpose({
               <template #action><n-button @click="loadCommon">重新加载</n-button></template>
             </n-alert>
             <common-settings
-              v-if="!embedded && !commonLoading && !commonError"
+              v-if="!commonLoading && !commonError"
               v-model:values="commonDraft"
               :fields="commonFields"
               :disabled="unavailable || !!assistantConfirmation"
               @browse="browseCommon"
             />
-            <div v-if="!embedded" class="preview-section">
+            <div class="preview-section">
               <n-button
                 :disabled="unavailable || commonLoading || !!commonError || previewLoading"
                 :loading="previewLoading"
@@ -836,7 +847,9 @@ defineExpose({
               >
               <span>当前 {{ displayedEditing.targets.length }} 个实例及以后新增的实例</span>
               <div v-if="preview" class="preview-results" aria-live="polite">
-                <p>以下公共值在下次受管理启动时覆盖实例配置；已运行实例保留当前值。</p>
+                <p>
+                  以下通用值在下次受管理启动时生效；独立配置保留本实例的连接和页面等待参数，已运行实例保留当前值。
+                </p>
                 <details v-for="row in preview.rows" :key="row.idx" :open="row.warnings.length > 0">
                   <summary>
                     {{ row.name }} · {{ row.fields.length }} 项<span v-if="row.warnings.length">
@@ -854,6 +867,10 @@ defineExpose({
             </div>
             <h2 class="section-title">逐实例配置</h2>
             <p class="section-description">只保存修改过的单元格；运行中的实例会跳过。</p>
+            <p class="section-description">
+              “显示更新与维护设置”控制实例页面的“网络与更新”和“数据与维护”两组，下次启动生效；不改变更新许可或
+              AI 助手权限。
+            </p>
             <div class="batch-actions">
               <span>{{ displayedEditing.targets.length }} 个实例</span>
               <n-button
@@ -892,6 +909,18 @@ defineExpose({
                 @click="changeBatchUpdates(false)"
                 >全部禁止更新</n-button
               >
+              <n-button
+                size="small"
+                :disabled="unavailable || !!assistantConfirmation"
+                @click="changeBatchExtraSettings(true)"
+                >全部显示更新与维护</n-button
+              >
+              <n-button
+                size="small"
+                :disabled="unavailable || !!assistantConfirmation"
+                @click="changeBatchExtraSettings(false)"
+                >全部隐藏更新与维护</n-button
+              >
             </div>
             <div class="batch-table-scroll">
               <table class="batch-table">
@@ -900,6 +929,7 @@ defineExpose({
                   <col class="batch-token-col" />
                   <col class="batch-port-col" />
                   <col class="batch-ai-col" />
+                  <col class="batch-updates-col" />
                   <col class="batch-updates-col" />
                   <col class="batch-updates-col" />
                 </colgroup>
@@ -911,6 +941,7 @@ defineExpose({
                     <th scope="col">Mower AI 助手</th>
                     <th scope="col">允许更新</th>
                     <th scope="col">启动后自动开始</th>
+                    <th scope="col">显示更新与维护设置</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -971,6 +1002,13 @@ defineExpose({
                         :aria-label="`${displayedEditing.targets[idx].name} 启动后自动开始任务`"
                       />
                     </td>
+                    <td>
+                      <n-switch
+                        v-model:value="row.extra_settings_visible"
+                        :disabled="unavailable || !batchEditable(idx) || !!assistantConfirmation"
+                        :aria-label="`${displayedEditing.targets[idx].name} 显示更新与维护设置`"
+                      />
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -1016,6 +1054,26 @@ defineExpose({
                 :disabled="unavailable || !!assistantConfirmation"
               />
             </n-form-item>
+            <n-form-item label="显示更新与维护设置">
+              <n-space vertical>
+                <n-switch
+                  v-model:value="draft.extra_settings_visible"
+                  aria-label="显示更新与维护设置"
+                  :disabled="unavailable || !!assistantConfirmation"
+                />
+                <n-text depth="3">
+                  控制实例页面的“网络与更新”和“数据与维护”两组，下次启动生效；不改变更新许可或 AI
+                  助手权限。
+                </n-text>
+              </n-space>
+            </n-form-item>
+            <n-form-item v-if="deviceSettingsAvailable()" label="连接与启动">
+              <n-button
+                :disabled="unavailable || !!assistantConfirmation"
+                @click="editDevice(displayedEditing.idx)"
+                >配置连接、启动与运行参数</n-button
+              >
+            </n-form-item>
             <n-alert v-if="draft.token" type="warning"
               >设置 Token 后将允许远程连接，请妥善保管。</n-alert
             >
@@ -1025,7 +1083,7 @@ defineExpose({
       <template #footer
         ><div class="dialog-actions">
           <span v-if="displayedEditing?.kind === 'batch'" class="batch-change-count"
-            >{{ commonChanged ? '公共配置已修改；' : '' }}已修改
+            >{{ commonChanged ? '通用设置已修改；' : '' }}已修改
             {{ batchChanges.length }} 个实例</span
           >
           <n-button :disabled="busy" @click="editing = null">取消</n-button
@@ -1104,18 +1162,6 @@ defineExpose({
 .manager-feedback {
   display: grid;
   gap: 10px;
-}
-.mower-list--embedded {
-  display: contents;
-}
-.mower-list--embedded .manager-feedback {
-  position: fixed;
-  z-index: 2100;
-  top: 48px;
-  right: 16px;
-  width: min(440px, calc(100vw - 32px));
-  max-height: calc(100dvh - 72px);
-  overflow: auto;
 }
 .bulk-actions,
 .instance-heading,

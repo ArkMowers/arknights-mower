@@ -114,6 +114,19 @@ describe('sidebar editing window', () => {
     expect(await renderEditor()).toContain('aria-label="移除全部设置"')
   })
 
+  it('does not offer removed settings or rescue entries through the page picker', async () => {
+    const picker = scope.run(() =>
+      SidebarCustomize.setup(reactive({ groupKey: 'daily' }), { expose: vi.fn(), emit: vi.fn() })
+    )
+    for (const query of ['Mower 设置', '救急排班编辑']) {
+      picker.search.value = query
+      expect(picker.availableEntries.value).toEqual([])
+    }
+    const html = await renderToString(createSSRApp(SidebarEditor, props))
+    expect(html).not.toContain('救急排班编辑')
+    expect(html).not.toContain('Mower 设置')
+  })
+
   it('validates names and applies group creation and renaming only after confirmation', () => {
     const original = state.preferences.state.value.groups.length
     component.startNaming()

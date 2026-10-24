@@ -344,6 +344,7 @@ def _validate_configuration(files):
     preserve(data, config.conf)
     # An imported archive cannot replace the manager's update authorization.
     data["updates_enabled"] = config.conf.updates_enabled
+    data["extra_settings_visible"] = config.conf.extra_settings_visible
     legacy_dorm_order = str(data.get("dorm_order", "") or "")
     webview = data.get("webview", {})
     if not isinstance(webview, dict):

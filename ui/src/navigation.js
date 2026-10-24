@@ -8,7 +8,6 @@ import CubeOutline from '@vicons/ionicons5/es/CubeOutline'
 import FlashOutline from '@vicons/ionicons5/es/FlashOutline'
 import HelpCircleOutline from '@vicons/ionicons5/es/HelpCircleOutline'
 import LibraryOutline from '@vicons/ionicons5/es/LibraryOutline'
-import ListOutline from '@vicons/ionicons5/es/ListOutline'
 import MedkitOutline from '@vicons/ionicons5/es/MedkitOutline'
 import PieChartOutline from '@vicons/ionicons5/es/PieChartOutline'
 import ReceiptOutline from '@vicons/ionicons5/es/ReceiptOutline'
@@ -39,8 +38,8 @@ export const navigationSections = [
       {
         key: 'task-settings',
         label: '全部设置',
-        shortLabel: '任务',
-        icon: ListOutline,
+        shortLabel: '设置',
+        icon: SettingsOutline,
         to: '/task-settings',
         tab: 1
       },
@@ -58,6 +57,7 @@ export const navigationSections = [
         label: '救急排班编辑',
         icon: MedkitOutline,
         to: '/rescue-plan-editor',
+        sidebar: false,
         tabGroup: 'plan'
       },
       {
@@ -67,21 +67,6 @@ export const navigationSections = [
         icon: SchoolOutline,
         to: '/mastery-recommendation',
         tab: 3
-      }
-    ]
-  },
-  {
-    key: 'config',
-    title: '脚本配置',
-    items: [
-      {
-        key: 'mower-settings',
-        label: 'Mower 设置',
-        shortLabel: '设置',
-        icon: SettingsOutline,
-        to: '/mowersettings',
-        tab: 6,
-        footer: true
       }
     ]
   },
@@ -142,7 +127,7 @@ export const navigationSections = [
 export const navigationItems = navigationSections.flatMap((section) => section.items)
 
 export const sidebarNavigationItems = [
-  ...navigationItems,
+  ...navigationItems.filter((item) => item.sidebar !== false),
   { key: 'chat', label: 'Mower AI 助手', icon: MowerAIIcon, action: 'chat', footer: true }
 ]
 

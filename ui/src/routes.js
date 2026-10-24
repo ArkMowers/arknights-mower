@@ -34,8 +34,7 @@ export const routes = [
       },
       {
         path: 'mowersettings',
-        component: () => import('@/pages/Settings.vue'),
-        meta: { title: 'Mower 设置', settings: true, settingsSidebar: true },
+        redirect: (to) => ({ name: 'task-settings', query: to.query, hash: to.hash }),
         name: 'mowersettings'
       },
       {

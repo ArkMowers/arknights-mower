@@ -49,7 +49,6 @@
       :active="active"
       :instance-name="instanceName"
       :theme="theme"
-      :show-instance-menu="showInstanceMenu"
       :mower-port="mowerPort"
       :emulator-name="emulatorName"
       :adb-port="adbPort"
@@ -135,7 +134,6 @@ const props = defineProps({
   title: { type: String, required: true },
   instanceName: { type: String, required: true },
   theme: { type: String, required: true },
-  showInstanceMenu: { type: Boolean, default: true },
   controlSide: { type: String, required: true },
   maximized: { type: Boolean, required: true },
   controls: { type: Array, required: true },

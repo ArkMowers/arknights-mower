@@ -174,16 +174,7 @@ def test_preview_serves_only_built_assets_and_closes_its_server(
         assert api["set_window_launch_mode"]("maximized")
         assert api["get_window_launch_mode"]() == "maximized"
         assert api["mark_ready"]() is True
-        instances = api["get_instances"]()
-        assert [(item["name"], item["path"], item["state"]) for item in instances] == [
-            ("离线预览", "预览数据/默认实例", "running"),
-            ("示例实例", "预览数据/示例实例", "stopped"),
-        ]
-        assert all(
-            item[flag] is False
-            for item in instances
-            for flag in ("editable", "can_start", "can_stop")
-        )
+        assert "get_instances" not in api
         assert not {"start", "stop", "add", "remove", "update_settings"} & api.keys()
         assert api["minimize"]()
         assert api["maximize"]()

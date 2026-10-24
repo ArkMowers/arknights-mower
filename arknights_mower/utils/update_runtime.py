@@ -13,7 +13,7 @@ import sys
 import tempfile
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -292,6 +292,19 @@ def submission_lock(directory):
                 msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
             else:
                 fcntl.flock(stream, fcntl.LOCK_UN)
+
+
+@contextmanager
+def manager_maintenance_lock(directory=None):
+    """Keep software replacement separate from native manager MAA maintenance."""
+    with ExitStack() as cleanup:
+        try:
+            cleanup.enter_context(
+                submission_lock(Path(directory or state_dir()) / "manager-maintenance")
+            )
+        except LockBusyError as exc:
+            raise LockBusyError("多开管理器正在维护 MAA，请完成后再更新 Mower") from exc
+        yield
 
 
 def registration_key(record):

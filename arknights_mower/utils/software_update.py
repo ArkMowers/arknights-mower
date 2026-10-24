@@ -1264,7 +1264,8 @@ def start_job(
     plan, background=False, uploaded=None, *, force=False, confirm_downgrade=False
 ):
     require_downgrade_confirmation(plan, confirm_downgrade)
-    with runtime.submission_lock(runtime.state_dir()):
+    state = runtime.state_dir()
+    with runtime.submission_lock(state), runtime.manager_maintenance_lock(state):
         return _start_job(plan, background, uploaded, force=force)
 
 

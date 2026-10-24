@@ -34,25 +34,32 @@ def save(manager, values, original=None, changes=None):
 
 def test_common_editor_defaults_match_existing_configuration():
     conf = Conf()
-    for field in common.FIELDS:
+    for field in common.fields():
         if field["kind"] in {"directory", "file"} or field["key"] == "startup_mode":
             continue
         actual = conf
         for name in field["key"].split("."):
             actual = getattr(actual, name)
+        if hasattr(actual, "model_dump"):
+            actual = actual.model_dump(mode="json")
         assert field["default"] == actual, field["key"]
 
 
 def test_common_settings_persist_without_any_instances(manager):
-    assert manager.get_common_settings()["values"] == {}
-    values = {"maa_path": "C:/共享/MAA", "account": "sender@example.com"}
-    assert save(manager, values) == {"ok": True, "results": [], "common_saved": True}
+    defaults = manager.get_common_settings()["values"]
+    assert set(defaults) == common.SHARED_CONNECTION_KEYS
+    values = {**defaults, "maa_path": "C:/共享/MAA", "account": "sender@example.com"}
+    assert save(manager, values, defaults) == {
+        "ok": True,
+        "results": [],
+        "common_saved": True,
+    }
     reopened = InstanceController(manager._storage_path)
     assert reopened.get_common_settings()["values"] == values
     assert manager.instances == []
     assert not manager._storage_path.exists()
     save(manager, {}, values)
-    assert reopened.get_common_settings()["values"] == {}
+    assert reopened.get_common_settings()["values"] == defaults
 
 
 @pytest.mark.parametrize("key", ["maa_path", "device.adb_path"])
@@ -78,6 +85,10 @@ def test_common_native_selection_is_a_draft_and_cancel_does_not_write(
     "route",
     [
         "/get_common_settings",
+        "/get_instance_binding",
+        "/discover_instance_binding",
+        "/update_instance_binding",
+        "/select_instance_binding_path",
         "/update_all_settings",
         "/select_common_path",
         "/open_browser",
@@ -160,7 +171,7 @@ def test_common_save_leaves_running_and_stopped_instance_files_untouched(
         {"device.recovery_timeout": float("inf")},
         {"device.recovery_attempts": 0},
         {"selection_poll_interval": 0.01},
-        {"device.adb_path": ""},
+        {"device.adb_path": 42},
         {"maa_path": None},
         {"account": 42},
         {"low_frame_rate_mode": "false"},
@@ -283,7 +294,7 @@ def test_startup_mode_stays_manager_owned_and_does_not_patch_instance_configurat
     assert common.apply_settings(original, {"startup_mode": "background"}) is original
 
 
-def test_common_path_change_uses_existing_rebinding_rules_and_legacy_mapping():
+def test_common_template_paths_clear_endpoint_while_retaining_instance_binding():
     original = Conf(
         simulator={"name": "MuMu12", "index": "4", "simulator_folder": "C:/old"},
         adb="127.0.0.1:16416",

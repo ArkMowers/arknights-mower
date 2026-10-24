@@ -359,6 +359,7 @@ def combine_archives(incoming_raw, current_raw, selected):
             if (index == 1) == (group in selected):
                 merged[key] = copy.deepcopy(value)
     merged["ai_assistant_enabled"] = config.conf.ai_assistant_enabled
+    merged["extra_settings_visible"] = config.conf.extra_settings_visible
     webview = merged.setdefault("webview", {})
     if not isinstance(webview, dict):
         raise ValueError("窗口设置格式错误")

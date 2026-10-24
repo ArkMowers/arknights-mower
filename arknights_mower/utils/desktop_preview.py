@@ -94,26 +94,6 @@ class _PreviewSession:
     def mark_ready(self) -> bool:
         return True
 
-    def get_instances(self) -> list[dict]:
-        return [
-            {
-                "name": "离线预览",
-                "path": "预览数据/默认实例",
-                "state": "running",
-                "editable": False,
-                "can_start": False,
-                "can_stop": False,
-            },
-            {
-                "name": "示例实例",
-                "path": "预览数据/示例实例",
-                "state": "stopped",
-                "editable": False,
-                "can_start": False,
-                "can_stop": False,
-            },
-        ]
-
 
 def _preview_pages(root: Path) -> frozenset[str]:
     try:
@@ -193,7 +173,6 @@ def run_preview(build_directory: Path | None = None) -> int:
                 session.set_close_preference,
                 session.get_window_launch_mode,
                 session.set_window_launch_mode,
-                session.get_instances,
                 session.mark_ready,
             )
             if shell_enabled:

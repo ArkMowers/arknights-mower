@@ -10,24 +10,6 @@ import {
 } from '@zip.js/zip.js'
 
 const clone = (value) => JSON.parse(JSON.stringify(value))
-const previewInstances = [
-  {
-    name: '离线预览',
-    path: '预览数据/默认实例',
-    state: 'running',
-    editable: false,
-    can_start: false,
-    can_stop: false
-  },
-  {
-    name: '示例实例',
-    path: '预览数据/示例实例',
-    state: 'stopped',
-    editable: false,
-    can_start: false,
-    can_stop: false
-  }
-]
 const previewGroups = [
   ['连接与运行', 'device', '设备与游戏连接', '示例设备身份、路径、截图与触控方式'],
   ['连接与运行', 'runtime', '运行参数', '示例性能与自动启动设置'],
@@ -81,6 +63,15 @@ export function createPreviewConfiguration(config, theme = 'light') {
     maa_rg_sleep_min: '0:00',
     maa_rg_sleep_max: '0:00',
     start_automatically: false,
+    waiting_scene: {
+      CONNECTING: [1, 10],
+      UNKNOWN: [1, 10],
+      LOADING: [2, 30],
+      LOGIN_LOADING: [3, 10],
+      LOGIN_MAIN_NOENTRY: [3, 10],
+      OPERATOR_ONGOING: [10, 30],
+      ...clone(config.waiting_scene || {})
+    },
     resource_update: { enable: false, auto_update: false }
   }
 }
@@ -290,7 +281,6 @@ export function createPreviewAdapter(data, requests = []) {
     let result
     const reads = {
       '/conf': () => clone(data.config),
-      '/instances': () => clone(previewInstances),
       '/network/settings': () => ({ ok: true, ...networkSettings }),
       '/config-profiles': profileList,
       '/shop': () => ['龙门币', '招聘许可', '赤金'],
@@ -636,8 +626,7 @@ export function installPreviewBackend(config, target = window) {
       close: async () => true,
       start_resize: async () => true,
       start_move: async () => true,
-      mark_ready: async () => true,
-      get_instances: async () => clone(previewInstances)
+      mark_ready: async () => true
     }
   }
   const nativePreview =

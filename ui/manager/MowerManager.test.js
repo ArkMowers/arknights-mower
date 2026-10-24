@@ -98,7 +98,7 @@ describe('manager instance controls', () => {
     const mounting = mount()
     await vi.advanceTimersByTimeAsync(15000)
     await mounting
-    expect(component.initializationError.value).toContain('本机多开管理器或 Mower 桌面窗口')
+    expect(component.initializationError.value).toContain('加载实例列表超时，请重试')
     expect(component.instances.value).toEqual([])
     expect(component.unavailable.value).toBe(true)
     await component.addInstance()
@@ -264,6 +264,32 @@ describe('manager instance controls', () => {
       original: { screenshot: 2 },
       values: {}
     })
+  })
+
+  it('keeps waiting scene drafts separate from the backend and snapshot and saves only real value changes', async () => {
+    const values = { waiting_scene: { LOADING: [2, 30], UNKNOWN: [1, 10] } }
+    api.get_common_settings.mockResolvedValue({ values, fields: [] })
+    await mount()
+    await component.editBatch()
+    expect(component.commonChanged.value).toBe(false)
+    component.commonDraft.value.waiting_scene.LOADING[0] = 7
+    expect(component.commonOriginal.value).toEqual(values)
+    expect(values.waiting_scene.LOADING).toEqual([2, 30])
+    expect(component.commonChanged.value).toBe(true)
+    component.commonDraft.value.waiting_scene.LOADING[0] = 2
+    expect(component.commonChanged.value).toBe(false)
+    await component.save()
+    expect(api.update_all_settings).not.toHaveBeenCalled()
+    component.commonDraft.value.waiting_scene.LOADING[1] = 40
+    await component.save()
+    expect(api.update_all_settings).toHaveBeenCalledExactlyOnceWith(
+      [],
+      [{ name: 'first', path: '/first' }],
+      {
+        original: values,
+        values: { waiting_scene: { LOADING: [2, 40], UNKNOWN: [1, 10] } }
+      }
+    )
   })
 
   it('does not allow a failed public read to overwrite configuration with defaults', async () => {
@@ -702,7 +728,8 @@ describe('manager instance controls', () => {
         port: null,
         ai_assistant_enabled: false,
         updates_enabled: false,
-        start_automatically: false
+        start_automatically: false,
+        extra_settings_visible: false
       }
     ])
     await component.save()
@@ -739,6 +766,53 @@ describe('manager instance controls', () => {
       { token: '', port: null, updates_enabled: true },
       { name: 'first', path: '/first' }
     )
+  })
+
+  it('saves optional maintenance visibility without granting update or AI permissions', async () => {
+    await mount()
+    component.edit(0, 'settings')
+    expect(component.draft.value.extra_settings_visible).toBe(false)
+    component.draft.value.extra_settings_visible = true
+    expect(component.draft.value.updates_enabled).toBe(false)
+    expect(component.draft.value.ai_assistant_enabled).toBe(false)
+    expect(component.assistantConfirmation.value).toBeNull()
+    await component.save()
+    expect(api.update_settings).toHaveBeenCalledExactlyOnceWith(
+      0,
+      { token: '', port: null, extra_settings_visible: true },
+      { name: 'first', path: '/first' }
+    )
+  })
+
+  it('changes maintenance visibility only for editable batch rows and sends changed cells', async () => {
+    rows.push({ ...stopped(), name: 'live', path: '/live', editable: false, state: 'running' })
+    await mount()
+    await component.editBatch()
+    component.changeBatchExtraSettings(true)
+    expect(component.batchDraft.value.map((row) => row.extra_settings_visible)).toEqual([
+      true,
+      false
+    ])
+    expect(
+      component.batchDraft.value.every((row) => !row.updates_enabled && !row.ai_assistant_enabled)
+    ).toBe(true)
+    expect(component.assistantConfirmation.value).toBeNull()
+    await component.save()
+    expect(api.update_all_settings).toHaveBeenCalledExactlyOnceWith(
+      [{ idx: 0, settings: { extra_settings_visible: true } }],
+      rows.map(({ name, path }) => ({ name, path }))
+    )
+  })
+
+  it('does not overwrite an untouched visibility choice after external changes', async () => {
+    rows[0].extra_settings_visible = true
+    await mount()
+    component.edit(0, 'settings')
+    rows[0].extra_settings_visible = false
+    component.draft.value.token = 'edited'
+    await component.refresh()
+    await component.save()
+    expect(api.update_settings.mock.calls[0][1]).toEqual({ token: 'edited', port: null })
   })
 
   it.each([true, false])(
@@ -1178,5 +1252,32 @@ describe('manager instance controls', () => {
     const result = expect(pending).rejects.toThrow('操作超时')
     await vi.advanceTimersByTimeAsync(50)
     await result
+  })
+  it('does not offer device configuration when the native bridge lacks device capabilities', async () => {
+    await mount()
+    expect(component.deviceSettingsAvailable()).toBe(false)
+    component.edit(0, 'settings')
+    const editor = component.editing.value
+    component.editDevice(0)
+    expect(component.deviceEditor.value).toBeNull()
+    expect(component.editing.value).toBe(editor)
+  })
+
+  it('opens connection settings from the instance dialog and restores its unsaved basic draft', async () => {
+    api.get_device_settings = vi.fn()
+    api.update_device_settings = vi.fn()
+    api.discover_device_settings = vi.fn()
+    await mount()
+    component.edit(0, 'settings')
+    component.draft.value.token = 'unsaved-token'
+    const editor = component.editing.value
+    component.editDevice(0)
+    expect(component.editing.value).toBeNull()
+    expect(component.deviceEditor.value.target).toEqual({ name: 'first', path: '/first' })
+    component.closeDevice()
+    expect(component.deviceEditor.value).toBeNull()
+    expect(component.editing.value).toBe(editor)
+    expect(component.draft.value.token).toBe('unsaved-token')
+    expect(api.update_settings).not.toHaveBeenCalled()
   })
 })

@@ -456,9 +456,6 @@ def webview_window(
         backend=backend,
         managed=managed,
     )
-    from manager import attach_instance_controls
-
-    attach_instance_controls(window)
 
     def on_closing():
         nonlocal closing

@@ -6,12 +6,22 @@ vi.mock('vue', async (original) => ({
   useSSRContext: () => ({ modules: new Set() })
 }))
 
-function setup(values = {}) {
+function setup(values = {}, shared = false) {
   const props = {
     values,
     fields: [
-      { key: 'device.screenshot_backend', default: 'droidcast', group: '连接方式' },
-      { key: 'device.touch_backend', default: 'scrcpy', group: '连接方式' },
+      {
+        key: 'device.screenshot_backend',
+        default: 'droidcast',
+        group: '连接方式',
+        shared_connection: shared
+      },
+      {
+        key: 'device.touch_backend',
+        default: 'scrcpy',
+        group: '连接方式',
+        shared_connection: shared
+      },
       { key: 'account', default: '', group: '邮件发信人' },
       { key: 'startup_mode', default: 'window', group: '实例启动' }
     ]
@@ -21,6 +31,32 @@ function setup(values = {}) {
   })
   const component = CommonSettings.setup(props, { expose() {}, emit })
   return { props, emit, component }
+}
+
+function waitingField() {
+  return {
+    key: 'waiting_scene',
+    kind: 'waiting_scene',
+    group: '运行参数',
+    label: '页面等待参数',
+    shared_connection: true,
+    scenes: [
+      ['CONNECTING', '正在提交反馈至神经'],
+      ['UNKNOWN', '未知'],
+      ['LOADING', '加载中'],
+      ['LOGIN_LOADING', '场景跳转时的等待界面'],
+      ['LOGIN_MAIN_NOENTRY', '登录页面（无按钮入口）'],
+      ['OPERATOR_ONGOING', '代理作战']
+    ],
+    default: {
+      CONNECTING: [1, 10],
+      UNKNOWN: [1, 10],
+      LOADING: [2, 30],
+      LOGIN_LOADING: [3, 10],
+      LOGIN_MAIN_NOENTRY: [3, 10],
+      OPERATOR_ONGOING: [10, 30]
+    }
+  }
 }
 
 describe('manager common settings', () => {
@@ -56,4 +92,83 @@ describe('manager common settings', () => {
     component.toggle(field, false)
     expect(props.values).toEqual({ account: 'keep' })
   })
+})
+
+it('keeps shared connection defaults mandatory while allowing their values to change', () => {
+  const { props, emit, component } = setup(
+    {
+      'device.screenshot_backend': 'droidcast',
+      'device.touch_backend': 'scrcpy'
+    },
+    true
+  )
+  component.toggle(props.fields[0], false)
+  expect(emit).not.toHaveBeenCalled()
+  expect(component.enabled('device.screenshot_backend')).toBe(true)
+  component.change(props.fields[0], 'mumu_ipc')
+  expect(props.values).toEqual({
+    'device.screenshot_backend': 'mumu_ipc',
+    'device.touch_backend': 'mumu_ipc'
+  })
+  component.toggle(props.fields[2], true)
+  expect(props.values.account).toBe('')
+  component.toggle(props.fields[2], false)
+  expect(props.values.account).toBeUndefined()
+  expect(props.values['device.touch_backend']).toBe('mumu_ipc')
+})
+
+it('labels shared simulator presets with their simulator name and platform', () => {
+  const { component } = setup()
+  expect(
+    component.options({
+      key: 'device.preset_id',
+      options: [
+        ['windows.mumu12', 'windows.mumu12'],
+        ['manual.other', 'manual.other']
+      ]
+    })
+  ).toEqual([
+    { value: 'windows.mumu12', label: 'MuMu 12 (windows)' },
+    { value: 'manual.other', label: '其他模拟器 (manual)' }
+  ])
+  expect(component.options({ key: 'startup_mode', options: [['window', '普通启动']] })).toEqual([
+    { value: 'window', label: '普通启动' }
+  ])
+})
+
+it('edits only one waiting cell without mutating other scenes, the original object or schema defaults', () => {
+  const field = waitingField()
+  const original = { ...structuredClone(field.default), UNKNOWN: [7, 13] }
+  const { props, emit, component } = setup({ waiting_scene: original, account: 'keep' })
+  props.fields.push(field)
+  component.change(field, { ...original, LOADING: [2, 25] })
+  expect(props.values).toEqual({
+    account: 'keep',
+    waiting_scene: { ...original, LOADING: [2, 25] }
+  })
+  expect(original.LOADING).toEqual([2, 30])
+  expect(field.default.LOADING).toEqual([2, 30])
+  component.toggle(field, false)
+  expect(emit).toHaveBeenCalledTimes(1)
+  expect(component.enabled('waiting_scene')).toBe(true)
+})
+
+it.each(['disabled', 'read_only'])('does not edit the waiting table when %s', (condition) => {
+  const field = waitingField()
+  const { props, emit, component } = setup({ waiting_scene: structuredClone(field.default) })
+  props.fields.push(field)
+  if (condition === 'disabled') props.disabled = true
+  else field.read_only = true
+  component.change(field, { ...field.default, LOADING: [5, 30] })
+  expect(emit).not.toHaveBeenCalled()
+  expect(props.values.waiting_scene.LOADING).toEqual([2, 30])
+})
+
+it('searches waiting scene labels and keeps the six rows together', () => {
+  const field = waitingField()
+  const { props, component } = setup({ waiting_scene: structuredClone(field.default) })
+  props.fields.push(field)
+  component.search.value = '代理作战'
+  expect(component.visibleFields.value).toEqual([field])
+  expect(field.scenes).toHaveLength(6)
 })

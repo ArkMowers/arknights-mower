@@ -93,6 +93,100 @@ def test_common_preview_is_read_only_redacts_both_secrets_and_reports_native_mis
         manager.preview_common_settings({}, [])
 
 
+def test_common_preview_respects_independent_policy_and_current_shared_values(
+    manager, monkeypatch
+):
+    first = write_conf(
+        manager,
+        0,
+        {
+            "device": {"preset_id": "windows.ldplayer9"},
+            "performance_mode": "high",
+            "pass_code": "instance-secret",
+        },
+    )
+    second = write_conf(
+        manager,
+        1,
+        {
+            "device": {"preset_id": "windows.ldplayer9"},
+            "performance_mode": "low",
+        },
+    )
+    original = manager.get_common_settings()["values"]
+    manager.update_all_settings(
+        [],
+        manager.instances.copy(),
+        {
+            "values": {
+                **original,
+                "performance_mode": "medium",
+                "pass_code": "global-secret",
+            },
+            "original": original,
+        },
+    )
+    before = first.read_bytes(), second.read_bytes(), manager._common_path.read_bytes()
+    monkeypatch.setattr(
+        runtime, "write_json", Mock(side_effect=AssertionError("write"))
+    )
+    result = manager.preview_common_settings(
+        {
+            "performance_mode": "low",
+            "device.screenshot_backend": "mumu_ipc",
+            "device.touch_backend": "mumu_ipc",
+            "pass_code": "proposed-secret",
+        },
+        manager.instances.copy(),
+    )
+    shared, independent = result["rows"]
+    assert shared["independent_configuration"] is False
+    assert "MuMu" in shared["warnings"][0]
+    assert any(field["before"] == "medium" for field in shared["fields"])
+    assert independent["independent_configuration"] is True
+    assert independent["warnings"] == []
+    assert independent["fields"] == [
+        {"label": "邮箱授权码或密码", "before": "已设置", "after": "已设置"}
+    ]
+    serialized = json.dumps(result)
+    for secret in ("instance-secret", "global-secret", "proposed-secret"):
+        assert secret not in serialized
+    assert (
+        first.read_bytes(),
+        second.read_bytes(),
+        manager._common_path.read_bytes(),
+    ) == before
+
+
+@pytest.mark.parametrize(
+    "bad_text",
+    ["pass_code: [invalid-secret]", "pass_code: [invalid-secret"],
+)
+def test_common_preview_classifies_without_migration_writes_and_isolates_bad_config(
+    manager, monkeypatch, bad_text
+):
+    first = write_conf(manager, 0, {"performance_mode": "high"})
+    second = write_conf(manager, 1, {"performance_mode": "low"})
+    manager.add("bad", str(first.parent.parent.parent / "bad"))
+    bad = write_conf(manager, 2, {})
+    bad.write_text(bad_text)
+    before = first.read_bytes(), second.read_bytes(), bad.read_bytes()
+    monkeypatch.setattr(
+        runtime, "write_json", Mock(side_effect=AssertionError("write"))
+    )
+    result = manager.preview_common_settings(
+        {"performance_mode": "medium"}, manager.instances.copy()
+    )
+    assert result["rows"][0]["independent_configuration"] is False
+    assert result["rows"][0]["fields"][0]["before"] == "high"
+    assert result["rows"][1]["independent_configuration"] is True
+    assert result["rows"][1]["fields"] == []
+    assert result["rows"][2]["warnings"]
+    assert "invalid-secret" not in json.dumps(result)
+    assert not manager._common_path.exists()
+    assert (first.read_bytes(), second.read_bytes(), bad.read_bytes()) == before
+
+
 def test_proxy_entry_reuses_shared_file_and_rejects_stale_and_corrupt_data(
     manager, tmp_path, monkeypatch
 ):
@@ -271,6 +365,57 @@ def test_maintenance_failure_is_reported_and_allows_closing(manager, monkeypatch
     manager._maa_worker("target", "stable", "core", "check", {})
     assert manager.get_maintenance_status()["status"] == "failed"
     assert manager.request_close()
+
+
+def test_manager_maintenance_blocks_web_update_submission_until_worker_exits(
+    manager, monkeypatch
+):
+    from flask import Flask
+
+    from arknights_mower.utils import software_update as updater
+    from arknights_mower.views.software_update import software_update_bp
+
+    app = Flask(__name__)
+    app.token = "test-token"
+    app.register_blueprint(software_update_bp)
+    client = app.test_client()
+    submit = Mock(return_value={"ok": True, "id": "job"})
+    monkeypatch.setattr(updater, "_start_job", submit)
+    monkeypatch.setitem(updater._checks, "receipt", {"created_at": tools.time()})
+
+    def request_update():
+        return client.post(
+            "/software-update/start",
+            json={"check_id": "receipt"},
+            headers={"X-Mower-Update": "1", "token": "test-token"},
+        )
+
+    def maintenance(*args):
+        response = request_update()
+        assert response.status_code == 400
+        assert "MAA" in response.get_json()["message"]
+        submit.assert_not_called()
+
+    monkeypatch.setattr(manager, "_run_maa_worker", maintenance)
+    manager._maa_worker("target", "stable", "core", "update", {})
+    assert request_update().status_code == 200
+    submit.assert_called_once()
+
+
+def test_manager_worker_rechecks_update_admission_and_releases_lease_after_failure(
+    manager, monkeypatch
+):
+    operation = Mock(side_effect=RuntimeError("failed"))
+    monkeypatch.setattr(manager, "_run_maa_worker", operation)
+    monkeypatch.setattr(runtime, "active_job", lambda: True)
+    manager._maa_worker("target", "stable", "core", "update", {})
+    operation.assert_not_called()
+    assert manager.get_maintenance_status()["status"] == "failed"
+    monkeypatch.setattr(runtime, "active_job", lambda: False)
+    manager._maa_worker("target", "stable", "core", "update", {})
+    operation.assert_called_once()
+    with runtime.manager_maintenance_lock():
+        pass
 
 
 def test_native_manager_close_hides_active_maintenance_and_tray_exit_is_rejected(

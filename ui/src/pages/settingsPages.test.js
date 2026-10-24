@@ -238,7 +238,7 @@ describe('settings page ownership', () => {
       expect(html).toContain(label)
     }
     for (const label of ['界面缩放', '邮件提醒', '截图保存时间', '仓库历史']) {
-      expect(html).not.toContain(label)
+      expect(html).toContain(label)
     }
     expect(html).toContain('saved-command')
     const accounts = html.slice(
@@ -296,7 +296,7 @@ describe('settings page ownership', () => {
     expect(store.tap_to_launch_game.y).toBe(300)
   })
 
-  it('keeps the Mower settings directory and redirects the legacy task URL to its own page', () => {
+  it('redirects both old settings addresses to the unified page', () => {
     const children = routes[0].children
     const legacyTasks = children.find((route) => route.path === 'maasettings')
     expect(legacyTasks.component).toBeUndefined()
@@ -305,7 +305,13 @@ describe('settings page ownership', () => {
       query: { token: 'demo' },
       hash: '#task-devices'
     })
-    expect(children.find((route) => route.path === 'mowersettings').meta.title).toBe('Mower 设置')
+    const legacyMower = children.find((route) => route.path === 'mowersettings')
+    expect(legacyMower.component).toBeUndefined()
+    expect(legacyMower.redirect({ query: { token: 'demo' }, hash: '#mower-data' })).toEqual({
+      name: 'task-settings',
+      query: { token: 'demo' },
+      hash: '#mower-data'
+    })
   })
 })
 
@@ -326,7 +332,7 @@ describe('settings page layouts', () => {
     expect(store.enable_party).toBe(true)
   })
 
-  it('omits the launch and idle headings only in the checklist while retaining their controls', async () => {
+  it('keeps launch and idle controls visible in the continuous page', async () => {
     const html = await renderToString(
       setup(TaskSettingsPanels, {}, undefined, {
         active: 'device',
@@ -334,9 +340,9 @@ describe('settings page layouts', () => {
         checklist: true
       })
     )
-    expect(html).toContain('task-settings-panels--checklist')
-    expect(html).not.toContain('游戏启动')
-    expect(html).not.toContain('任务运行')
+    expect(html).toContain('task-settings-panels--continuous')
+    expect(html).toContain('游戏启动')
+    expect(html).toContain('任务运行')
     expect(html).toContain('启动游戏')
     expect(html).toContain('任务结束后')
     expect(html).toContain('saved-command')
@@ -395,7 +401,7 @@ describe('settings page layouts', () => {
     expect(axios.patch).not.toHaveBeenCalled()
   })
 
-  it('renders independent waterfall cards and visible navigation targets without fixed column groups', async () => {
+  it('renders continuous cards in directory order without fixed column groups', async () => {
     const app = setup(
       TaskSettingsPanels,
       {
@@ -443,7 +449,7 @@ describe('settings page layouts', () => {
     expect(content('device')).toContain('游戏启动')
     expect(content('device')).toContain('saved-command')
     expect(content('idle')).toContain('任务运行')
-    expect(content('base')).toContain('基建排班')
+    expect(content('base')).toContain('自动救急')
     expect(content('runtime')).not.toContain('日常任务间隔')
     expect(content('intervals')).toContain('日常任务间隔')
     expect(content('intervals')).toContain('value="7"')
@@ -464,7 +470,7 @@ describe('settings page layouts', () => {
     expect(content('maa')).toContain('MAA 核心')
     const tree = parseHtml(html)
     const panels = elements(tree).find((node) =>
-      attribute(node, 'class')?.includes('task-settings-panels--waterfall')
+      attribute(node, 'class')?.includes('task-settings-panels--continuous')
     )
     expect(
       panels.children.map((node) => attribute(node, 'data-task-editor')).filter(Boolean)
@@ -472,42 +478,96 @@ describe('settings page layouts', () => {
       'device',
       'device',
       'idle',
+      'base',
+      'runorder',
+      'drone',
+      'clue',
+      'workshop',
+      'training',
+      'trust',
+      'daily',
+      'recruit',
+      'depot',
+      'credit',
+      'rewards',
+      'stage-plan',
+      'long',
+      'intervals',
       'runtime',
       'accounts',
       'accounts',
       'accounts',
-      'depot',
-      'daily',
-      'base',
-      'clue',
-      'runorder',
-      'drone',
-      'workshop',
-      'training',
-      'recruit',
-      'maa',
-      'rewards',
-      'trust',
-      'stage-plan',
-      'credit',
-      'long',
-      'intervals'
+      'maa'
     ])
     expect(html).not.toContain('data-waterfall-group')
     expect(axios.post).not.toHaveBeenCalled()
     expect(axios.patch).not.toHaveBeenCalled()
   })
 
-  it('keeps settings search on Mower settings and task configuration separate', async () => {
-    const settings = await renderToString(setup(MowerSettings))
-    expect(settings).toContain('settings-search')
-    expect(settings).not.toContain('settings-eyebrow')
-    expect(settings).not.toContain('缩放、主题、托盘与窗口行为')
-
-    const tasks = await renderToString(setup(TaskConfiguration))
-    expect(tasks).toContain('task-workspace')
-    expect(tasks).not.toContain('settings-search')
-    expect(tasks).not.toContain('settings-aside')
-    expect(tasks).not.toContain('设备连接、性能适配与游戏启动方式')
+  it('includes Mower settings in the continuous page with one shared directory and no layout selector', async () => {
+    const html = await renderToString(setup(TaskConfiguration))
+    expect(html).toContain('task-workspace--continuous')
+    expect(html).not.toContain('settings-aside')
+    expect(html).not.toContain('settings-search-results')
+    expect(html).not.toContain('全部设置显示')
+    expect(html).not.toContain('配置分类')
+    for (const label of [
+      '界面缩放',
+      '邮件提醒',
+      '软件更新',
+      '仓库历史',
+      '档案备份与恢复',
+      '自动救急',
+      '连接与启动'
+    ])
+      expect(html).toContain(label)
+    for (const id of ['mower-interface', 'mower-notifications', 'mower-updates', 'mower-data'])
+      expect(html).toContain(`data-task-editor="${id}"`)
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.patch).not.toHaveBeenCalled()
   })
+})
+
+describe('managed optional maintenance settings', () => {
+  it.each([false, true])(
+    'omits the complete managed runtime panel with extra settings visibility %s',
+    async (visible) => {
+      const app = setup(TaskSettingsPanels, {
+        manager_owned_device: true,
+        extra_settings_visible: visible
+      })
+      const html = await renderToString(app)
+      expect(taskSections(html).has('runtime')).toBe(false)
+      expect(html).not.toContain('场景等待参数')
+      expect(html).not.toContain('截图最短间隔')
+      expect(html).not.toContain('选人采样间隔')
+    }
+  )
+
+  it.each([
+    [true, false, false],
+    [true, true, true],
+    [false, false, true]
+  ])(
+    'renders managed=%s visibility=%s with maintenance groups=%s',
+    async (managed, visible, expected) => {
+      const app = setup(MowerSettings, {
+        manager_owned_device: managed,
+        extra_settings_visible: visible
+      })
+      const mower = app.runWithContext(() => useMowerStore())
+      mower.updates_enabled = false
+      mower.ai_assistant_enabled = false
+      const html = await renderToString(app)
+      const ids = [...taskSections(html).keys()]
+      expect(ids).toEqual([
+        'mower-interface',
+        'mower-notifications',
+        ...(expected ? ['mower-updates', 'mower-data'] : [])
+      ])
+      expect(mower.updates_enabled).toBe(false)
+      expect(mower.ai_assistant_enabled).toBe(false)
+      expect(axios.patch).not.toHaveBeenCalled()
+    }
+  )
 })

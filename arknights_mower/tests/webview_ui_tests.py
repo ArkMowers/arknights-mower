@@ -232,7 +232,7 @@ class TestWindowTitle(unittest.TestCase):
 
 
 class TestWindowInstanceControls(unittest.TestCase):
-    def test_main_window_exposes_the_existing_manager_actions(self):
+    def test_main_window_does_not_expose_instance_management(self):
         import webview
 
         import webview_ui
@@ -287,18 +287,8 @@ class TestWindowInstanceControls(unittest.TestCase):
             options = webview.create_window.call_args.kwargs
             self.assertIs(options.get("draggable"), True)
             self.assertIs(options["easy_drag"], False)
-            methods = {
-                method.__name__: method for method in window.expose.call_args.args
-            }
-            methods["add"]("created from titlebar", "")
-            self.assertEqual(
-                controls.InstanceController().instances,
-                [{"name": "created from titlebar", "path": ""}],
-            )
-            self.assertIs(methods["select_path"].__self__._window, window)
-            self.assertIn("start_all", methods)
-            self.assertIn("stop_all", methods)
-            self.assertIn("update_all_settings", methods)
+            window.expose.assert_not_called()
+            self.assertFalse((Path(directory) / "instances.json").exists())
 
 
 if __name__ == "__main__":

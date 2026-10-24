@@ -2,7 +2,8 @@
 import FolderIcon from '@vicons/ionicons5/es/FolderOpenOutline'
 import { computed, ref } from 'vue'
 import HelpText from '../src/components/HelpText.vue'
-import { editDeviceDraft } from '../src/utils/deviceSettings'
+import WaitingSceneEditor from './WaitingSceneEditor.vue'
+import { editDeviceDraft, presetLabels } from '../src/utils/deviceSettings'
 
 const props = defineProps({
   values: { type: Object, required: true },
@@ -14,22 +15,39 @@ const groups = computed(() => [...new Set(visibleFields.value.map((field) => fie
 const search = ref('')
 const visibleFields = computed(() =>
   props.fields.filter((field) =>
-    `${field.group} ${field.label}`.toLowerCase().includes(search.value.trim().toLowerCase())
+    `${field.group} ${field.label} ${field.kind === 'waiting_scene' ? (field.scenes ?? []).flat().join(' ') + ' 截图间隔 等待次数' : ''}`
+      .toLowerCase()
+      .includes(search.value.trim().toLowerCase())
   )
 )
 const backendKeys = ['device.screenshot_backend', 'device.touch_backend']
-const enabled = (key) => Object.hasOwn(props.values, key)
+const enabled = (key) =>
+  props.fields.some((field) => field.key === key && field.shared_connection) ||
+  Object.hasOwn(props.values, key)
+
+function options(field) {
+  return field.options.map(([value, label]) => ({
+    value,
+    label:
+      field.key === 'device.preset_id'
+        ? `${presetLabels[value] || label} (${value.split('.')[0]})`
+        : label
+  }))
+}
 
 function toggle(field, checked) {
+  if (props.disabled || field.read_only || field.shared_connection) return
   const next = { ...props.values }
   for (const key of backendKeys.includes(field.key) ? backendKeys : [field.key]) {
-    if (checked) next[key] = props.fields.find((item) => item.key === key).default
+    if (checked)
+      next[key] = JSON.parse(JSON.stringify(props.fields.find((item) => item.key === key).default))
     else delete next[key]
   }
   emit('update:values', next)
 }
 
 function change(field, value) {
+  if (props.disabled || field.read_only || !enabled(field.key)) return
   const next = { ...props.values, [field.key]: value }
   if (backendKeys.includes(field.key)) {
     const device = Object.fromEntries(
@@ -45,16 +63,18 @@ function change(field, value) {
 <template>
   <details class="common-settings" open>
     <summary>
-      <span>公共配置</span>
+      <span>通用设置</span>
       <n-tag size="small">{{ Object.keys(values).length }} 项</n-tag>
       <span class="effective-time">下次启动生效</span>
     </summary>
-    <p class="common-description">勾选后统一覆盖，下次受管理启动生效；未勾选的项目保留实例设置。</p>
+    <p class="common-description">
+      未启用独立配置的实例共用此处的模拟器预设、路径、连接、截图、启动和性能参数，仅单独设置实例编号、实例名称和游戏包名。页面等待参数默认统一应用，开启独立配置后可单独设置；其他项目勾选后统一应用。修改在下次受管理启动时生效。
+    </p>
     <n-input
       v-model:value="search"
       clearable
-      placeholder="搜索公共配置"
-      aria-label="搜索公共配置"
+      placeholder="搜索通用设置"
+      aria-label="搜索通用设置"
     />
     <p v-if="!visibleFields.length" class="common-description">没有匹配的配置项</p>
     <details
@@ -77,11 +97,12 @@ function change(field, value) {
           v-for="field in visibleFields.filter((item) => item.group === group)"
           :key="field.key"
           class="common-field"
+          :class="{ 'common-field-wide': field.kind === 'waiting_scene' }"
         >
           <div class="field-label">
             <n-checkbox
               :checked="enabled(field.key)"
-              :disabled="disabled"
+              :disabled="disabled || field.read_only || field.shared_connection"
               :aria-label="`统一设置${field.label}`"
               @update:checked="(checked) => toggle(field, checked)"
               >{{ field.label }}</n-checkbox
@@ -89,29 +110,36 @@ function change(field, value) {
             <help-text v-if="field.help" :label="`${field.label}说明`">{{ field.help }}</help-text>
           </div>
           <div class="field-control">
+            <WaitingSceneEditor
+              v-if="field.kind === 'waiting_scene'"
+              :field="field"
+              :value="values[field.key] ?? field.default"
+              :disabled="disabled || field.read_only || !enabled(field.key)"
+              @update:value="(value) => change(field, value)"
+            />
             <n-input-number
-              v-if="['integer', 'number'].includes(field.kind)"
+              v-else-if="['integer', 'number'].includes(field.kind)"
               :value="values[field.key] ?? field.default"
               :min="field.min"
               :max="field.max"
               :precision="field.kind === 'integer' ? 0 : undefined"
-              :disabled="disabled || !enabled(field.key)"
+              :disabled="disabled || field.read_only || !enabled(field.key)"
               :aria-label="field.label"
               @update:value="(value) => change(field, value)"
             />
             <n-switch
               v-else-if="field.kind === 'boolean'"
               :value="values[field.key] ?? field.default"
-              :disabled="disabled || !enabled(field.key)"
+              :disabled="disabled || field.read_only || !enabled(field.key)"
               :aria-label="field.label"
               @update:value="(value) => change(field, value)"
             />
             <n-select
               v-else-if="field.kind === 'select'"
               :value="values[field.key] ?? field.default"
-              :options="field.options.map(([value, label]) => ({ value, label }))"
+              :options="options(field)"
               :consistent-menu-width="false"
-              :disabled="disabled || !enabled(field.key)"
+              :disabled="disabled || field.read_only || !enabled(field.key)"
               :aria-label="field.label"
               @update:value="(value) => change(field, value)"
             />
@@ -121,13 +149,13 @@ function change(field, value) {
               :type="field.kind === 'password' ? 'password' : 'text'"
               show-password-on="click"
               placeholder="未设置"
-              :disabled="disabled || !enabled(field.key)"
+              :disabled="disabled || field.read_only || !enabled(field.key)"
               :aria-label="field.label"
               @update:value="(value) => change(field, value)"
             />
             <n-button
               v-if="['directory', 'file'].includes(field.kind)"
-              :disabled="disabled || !enabled(field.key)"
+              :disabled="disabled || field.read_only || !enabled(field.key)"
               :title="`选择${field.label}`"
               :aria-label="`选择${field.label}`"
               @click="emit('browse', field.key)"
@@ -184,6 +212,9 @@ summary > * {
 }
 .common-field {
   min-width: 0;
+}
+.common-field-wide {
+  grid-column: 1 / -1;
 }
 .field-label {
   display: flex;

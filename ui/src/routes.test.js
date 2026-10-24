@@ -3,12 +3,20 @@ import { describe, expect, it } from 'vitest'
 import { routes } from './routes'
 
 describe('backend page fallback contract', () => {
-  it('reserves the settings page and directory for Mower settings', () => {
-    const settings = routes[0].children.filter((route) => route.meta?.settings)
-    expect(settings.map((route) => route.name)).toEqual(['mowersettings'])
-    expect(
-      settings.filter((route) => route.meta.settingsSidebar).map((route) => route.name)
-    ).toEqual(['mowersettings'])
+  it('uses the unified settings page and keeps old addresses as redirects', () => {
+    const children = routes[0].children
+    const page = children.find((route) => route.name === 'task-settings')
+    expect(page.component).toBeTruthy()
+    expect(page.meta.settings).not.toBe(true)
+    for (const path of ['mowersettings', 'maasettings']) {
+      const legacy = children.find((route) => route.path === path)
+      expect(legacy.component).toBeUndefined()
+      expect(legacy.redirect({ query: { token: 'demo' }, hash: '#mower-data' })).toEqual({
+        name: 'task-settings',
+        query: { token: 'demo' },
+        hash: '#mower-data'
+      })
+    }
   })
 
   it('lists every production frontend route, including parent routes', () => {

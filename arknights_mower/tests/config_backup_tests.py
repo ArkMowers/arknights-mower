@@ -144,6 +144,8 @@ def test_managed_import_preserves_permissions_launch_preferences_and_selected_co
     config.conf.updates_enabled = False
     config.conf.account = "manager-sender"
     config.conf.pass_code = "manager-secret"
+    config.conf.maa_path = "/manager/MAA"
+    config.conf = config.conf.updated({"waiting_scene": {"UNKNOWN": [7, 13]}})
     config.save_conf()
     incoming = {
         "start_automatically": False,
@@ -152,6 +154,8 @@ def test_managed_import_preserves_permissions_launch_preferences_and_selected_co
         "account": "incoming-sender",
         "pass_code": "incoming-secret",
         "mail_subject": "imported-subject",
+        "maa_path": "/incoming/MAA",
+        "waiting_scene": {"UNKNOWN": [9, 17]},
     }
     backup.import_configuration(
         archive({"conf.yml": json.dumps(incoming), "plan.json": '{"plan1": {}}'})
@@ -162,6 +166,8 @@ def test_managed_import_preserves_permissions_launch_preferences_and_selected_co
     assert config.conf.account == "manager-sender"
     assert config.conf.pass_code == "manager-secret"
     assert config.conf.mail_subject == "imported-subject"
+    assert config.conf.maa_path == "/manager/MAA"
+    assert config.conf.waiting_scene.UNKNOWN == (7, 13)
 
 
 @pytest.mark.parametrize("name", ["growth_plan.json", "workshop_preset.json"])
@@ -312,18 +318,19 @@ def incoming(**files):
     return archive({**backup.read_archive(backup.export_archive()), **files})
 
 
+@pytest.mark.parametrize("field", ["updates_enabled", "extra_settings_visible"])
 @pytest.mark.parametrize("saved", [False, True])
 @pytest.mark.parametrize("archived", [None, False, True])
-def test_restore_preserves_current_update_authorization(storage, saved, archived):
-    config.conf.updates_enabled = saved
+def test_restore_preserves_current_manager_choice(storage, field, saved, archived):
+    setattr(config.conf, field, saved)
     config.save_conf()
-    uploaded = {} if archived is None else {"updates_enabled": archived}
+    uploaded = {} if archived is None else {field: archived}
     raw = incoming(**{"conf.yml": json.dumps(uploaded)})
     backup.import_configuration(raw)
-    assert config.conf.updates_enabled is saved
+    assert getattr(config.conf, field) is saved
     assert (
         backup._object_file(backup.read_archive(backup.export_archive()), "conf.yml")[
-            "updates_enabled"
+            field
         ]
         is saved
     )

@@ -49,7 +49,7 @@ describe('sidebar preferences', () => {
     }
   )
 
-  it('shows every catalog entry once and keeps the assistant and settings in the default footer', () => {
+  it('shows every catalog entry once and keeps the assistant in the default footer', () => {
     const preferences = createSidebarPreferences({ storage: memoryStorage() })
     const displayed = [
       ...preferences.pinnedItems.value,
@@ -58,7 +58,7 @@ describe('sidebar preferences', () => {
     ]
     expect(keys(displayed).toSorted()).toEqual(keys(sidebarNavigationItems).toSorted())
     expect(new Set(keys(displayed)).size).toBe(displayed.length)
-    expect(keys(preferences.footerItems.value)).toEqual(['chat', 'mower-settings'])
+    expect(keys(preferences.footerItems.value)).toEqual(['chat'])
     expect(keys(preferences.catalog.value)).toEqual(keys(editableNavigationItems))
     expect(preferences.pinnedItems.value).toHaveLength(0)
     expect(keys(preferences.visibleSections.value)).toEqual(['daily', 'reports', 'reference'])
@@ -72,6 +72,40 @@ describe('sidebar preferences', () => {
     })
     expect(preferences.state.value.version).toBe(3)
   })
+
+  it.each(['local', 'server'])(
+    'removes obsolete page copies from %s layouts and the picker',
+    async (source) => {
+      const saved = {
+        version: 3,
+        knownKeys: [...keys(editableNavigationItems), 'rescue-plan', 'mower-settings'],
+        groups: [{ key: 'custom', title: '我的页面', collapsed: true }],
+        placements: [
+          { id: 'my-log', key: 'log', group: 'custom', visible: false, pinned: true },
+          { id: 'old-rescue', key: 'rescue-plan', group: 'custom', pinned: true },
+          { id: 'old-rescue-copy', key: 'rescue-plan', group: 'custom' },
+          { id: 'old-settings', key: 'mower-settings', group: 'footer' },
+          { id: 'old-settings-copy', key: 'mower-settings', group: 'custom', pinned: true }
+        ]
+      }
+      const preferences = createSidebarPreferences(
+        source === 'local'
+          ? { storage: memoryStorage(JSON.stringify(saved)) }
+          : { storage: memoryStorage(), transport: remoteTransport(saved) }
+      )
+      await preferences.initialize()
+      expect(preferences.state.value.groups).toEqual(saved.groups)
+      expect(preferences.state.value.placements).toEqual([
+        saved.placements[0],
+        { id: 'chat', key: 'chat', group: 'footer', visible: true, pinned: false }
+      ])
+      for (const key of ['rescue-plan', 'mower-settings']) {
+        expect(preferences.catalog.value.some((item) => item.key === key)).toBe(false)
+        expect(preferences.state.value.knownKeys).not.toContain(key)
+        expect(preferences.addEntry(key, 'custom')).toBe(false)
+      }
+    }
+  )
 
   it('keeps hidden entries out of every area and returns unpinned entries to their group', () => {
     const preferences = createSidebarPreferences({ storage: memoryStorage() })
@@ -112,7 +146,7 @@ describe('sidebar preferences', () => {
       'record-depot',
       'doc'
     ])
-    expect(keys(preferences.footerItems.value)).toEqual(['chat', 'mower-settings'])
+    expect(keys(preferences.footerItems.value)).toEqual(['chat'])
     expect(placement(preferences, 'record-depot')).toMatchObject({
       group: 'reference',
       pinned: false
@@ -200,11 +234,7 @@ describe('sidebar preferences', () => {
       )
     })
     expect(section(preferences, 'daily')).toMatchObject({ title: '常用页面', collapsed: true })
-    expect(keys(section(preferences, 'daily').items)).toEqual([
-      'task-settings',
-      'mastery',
-      'rescue-plan'
-    ])
+    expect(keys(section(preferences, 'daily').items)).toEqual(['task-settings', 'mastery'])
     expect(keys(preferences.pinnedItems.value)).toEqual(['plan'])
     expect(placement(preferences, 'log').visible).toBe(false)
     expect(preferences.state.value.placements).toHaveLength(sidebarNavigationItems.length)
@@ -229,8 +259,8 @@ describe('sidebar preferences', () => {
       })
     )
     const preferences = createSidebarPreferences({ storage })
-    expect(keys(preferences.footerItems.value)).toEqual(['chat', 'mower-settings'])
-    for (const key of ['chat', 'mower-settings']) {
+    expect(keys(preferences.footerItems.value)).toEqual(['chat'])
+    for (const key of ['chat']) {
       expect(placement(preferences, key)).toEqual({
         id: key,
         key,
@@ -281,7 +311,7 @@ describe('sidebar preferences', () => {
     expect(keys(section(preferences, 'daily').items)).toEqual(['mastery'])
     expect(section(preferences, 'daily').items[0].id).toBe('mastery')
     expect(preferences.state.value.knownKeys).toContain('mastery')
-    expect(keys(preferences.footerItems.value)).toEqual(['chat', 'mower-settings'])
+    expect(keys(preferences.footerItems.value)).toEqual(['chat'])
   })
 
   it('inserts task settings after the saved log without reordering or resetting other choices', () => {
@@ -289,7 +319,7 @@ describe('sidebar preferences', () => {
     previous.removeEntry('task-settings')
     previous.moveItem('mastery', 'daily', 'log')
     previous.setVisible('plan', false)
-    previous.setPinned('rescue-plan', true)
+    previous.setPinned('record-depot', true)
     previous.renameGroup('daily', '我的页面')
     const saved = snapshot(previous)
     saved.knownKeys = saved.knownKeys.filter((key) => key !== 'task-settings')
@@ -427,14 +457,14 @@ describe('sidebar preferences', () => {
     expect(section(preferences, 'daily').items.map((item) => item.id)).toEqual(['log'])
     expect(section(preferences, 'tools').items.map((item) => item.id)).toEqual(['log-copy'])
     expect(preferences.pinnedItems.value.map((item) => item.id)).toEqual(['log-pinned'])
-    expect(preferences.state.value.placements).toHaveLength(5)
-    expect(keys(preferences.footerItems.value)).toEqual(['chat', 'mower-settings'])
+    expect(preferences.state.value.placements).toHaveLength(4)
+    expect(keys(preferences.footerItems.value)).toEqual(['chat'])
   })
 
   it('falls back to the default layout for unreadable JSON or incompatible saved versions', () => {
     for (const saved of ['{broken', 'null', '[]', JSON.stringify({ version: 999, groups: [] })]) {
       const preferences = createSidebarPreferences({ storage: memoryStorage(saved) })
-      expect(keys(preferences.footerItems.value)).toEqual(['chat', 'mower-settings'])
+      expect(keys(preferences.footerItems.value)).toEqual(['chat'])
       expect(preferences.state.value.placements).toHaveLength(sidebarNavigationItems.length)
       expect(keys(preferences.visibleSections.value)).toEqual(['daily', 'reports', 'reference'])
     }
@@ -597,7 +627,7 @@ describe('sidebar preferences', () => {
     expect(placement(reset, 'log').visible).toBe(true)
     expect(reset.pinnedItems.value).toHaveLength(0)
     expect(section(reset, 'reports').collapsed).toBe(false)
-    expect(keys(reset.footerItems.value)).toEqual(['chat', 'mower-settings'])
+    expect(keys(reset.footerItems.value)).toEqual(['chat'])
   })
 
   it('ignores invalid movement targets without changing the saved layout', () => {
@@ -632,7 +662,7 @@ describe('sidebar preferences', () => {
     const storage = memoryStorage()
     const preferences = createSidebarPreferences({ storage })
     const initial = JSON.stringify(preferences.state.value)
-    for (const key of ['chat', 'mower-settings']) {
+    for (const key of ['chat']) {
       expect(preferences.setVisible(key, false)).toBe(false)
       expect(preferences.setPinned(key, true)).toBe(false)
       expect(preferences.moveItem(key, 'daily')).toBe(false)
@@ -644,13 +674,13 @@ describe('sidebar preferences', () => {
     }
     expect(preferences.moveItem('log', 'footer')).toBe(false)
     expect(preferences.moveItem('log', 'reports', 'chat')).toBe(false)
-    expect(preferences.reorderItem('log', 'mower-settings')).toBe(false)
+    expect(preferences.reorderItem('log', 'chat')).toBe(false)
     expect(preferences.addEntry('log', 'footer')).toBe(false)
     expect(preferences.toggleGroup('footer')).toBe(false)
     expect(preferences.removeEntry('unknown-copy')).toBe(false)
     expect(JSON.stringify(preferences.state.value)).toBe(initial)
     expect(storage.setItem).not.toHaveBeenCalled()
-    expect(keys(preferences.footerItems.value)).toEqual(['chat', 'mower-settings'])
+    expect(keys(preferences.footerItems.value)).toEqual(['chat'])
   })
 
   it('bounds edited and imported layouts to twenty groups and the fixed entry catalog', () => {
@@ -695,7 +725,7 @@ describe('sidebar preferences', () => {
     const restored = createSidebarPreferences({ storage })
     expect(restored.state.value).toEqual(preferences.state.value)
     expect(restored.visibleSections.value).toEqual([])
-    expect(keys(restored.footerItems.value)).toEqual(['chat', 'mower-settings'])
+    expect(keys(restored.footerItems.value)).toEqual(['chat'])
   })
 
   it('adds and moves independent copies while preserving copies in other groups and pinned pages', () => {
@@ -869,7 +899,7 @@ describe('server sidebar preferences', () => {
     await preferences.flush()
     expect(preferences.state.value.groups).toEqual([])
     expect(preferences.pinnedItems.value.map((item) => item.id)).toEqual(['saved-log'])
-    expect(preferences.state.value.placements).toHaveLength(3)
+    expect(preferences.state.value.placements).toHaveLength(2)
     expect(transport.put).toHaveBeenCalledWith(
       expect.any(String),
       { sidebar: snapshot(preferences) },

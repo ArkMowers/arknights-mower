@@ -11,7 +11,7 @@ import TaskConfiguration from './TaskConfiguration.vue'
 import TaskWorkflow from './TaskWorkflow.vue'
 import TaskSettingsPanels from '@/components/TaskSettingsPanels.vue'
 
-const state = vi.hoisted(() => ({ config: null }))
+const state = vi.hoisted(() => ({ config: null, resolveTarget: null, revealActive: null }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
 vi.mock('@/stores/gui', () => ({
   useGuiStore: () => reactive({ taskSettingsLayout: 'checklist' })
@@ -33,7 +33,11 @@ vi.mock('@/components/TaskSettingsPanels.vue', () => ({
   default: defineComponent({
     props: ['active'],
     emits: ['select'],
-    setup(_, { emit }) {
+    setup(_, { emit, expose }) {
+      expose({
+        resolveTarget: (id) => state.resolveTarget(id),
+        revealActive: (id) => state.revealActive(id)
+      })
       return () => h('button', { onClick: () => emit('select', 'runtime') }, '运行参数')
     }
   })
@@ -51,6 +55,8 @@ const ClientConfiguration = {
 
 beforeEach(() => {
   state.config = reactive({ theme: 'light', manager_owned_device: false })
+  state.resolveTarget = vi.fn()
+  state.revealActive = vi.fn()
 })
 const mounted = []
 function node(tag) {
@@ -114,6 +120,50 @@ afterEach(() => {
 })
 
 describe('task configuration connection requests', () => {
+  it('blocks managed runtime hashes and explicit requests while standalone instances retain them', async () => {
+    state.config.manager_owned_device = true
+    state.config.extra_settings_visible = true
+    const page = mount(null, '#task-runtime')
+    for (let tick = 0; tick < 4; tick += 1) await nextTick()
+    page.openEditor('runtime')
+    expect(page.editor()).toBe('base')
+    expect(page.reveal).not.toHaveBeenCalled()
+    state.config.manager_owned_device = false
+    page.openEditor('runtime')
+    await nextTick()
+    expect(page.editor()).toBe('runtime')
+    state.config.manager_owned_device = true
+    await nextTick()
+    expect(page.editor()).toBe('base')
+  })
+
+  it.each([
+    ['#software-update', 'mower-updates'],
+    ['#mower-data', 'mower-data']
+  ])(
+    'cannot reopen hidden managed maintenance settings through %s or explicit selection',
+    async (hash, editor) => {
+      state.config.manager_owned_device = true
+      state.resolveTarget.mockReturnValue(editor)
+      const page = mount(null, hash)
+      for (let tick = 0; tick < 4; tick += 1) await nextTick()
+      page.openEditor(editor)
+      expect(page.editor()).toBe('base')
+      expect(page.reveal).not.toHaveBeenCalled()
+      expect(state.revealActive).not.toHaveBeenCalled()
+      state.config.extra_settings_visible = true
+      page.openEditor(editor)
+      await nextTick()
+      expect(page.editor()).toBe(editor)
+      state.config.extra_settings_visible = false
+      await nextTick()
+      expect(page.editor()).toBe('base')
+      page.openEditor('mower-notifications')
+      await nextTick()
+      expect(page.editor()).toBe('mower-notifications')
+    }
+  )
+
   it.each(['select', 'test', 'settings'])(
     'ignores managed %s requests and legacy links',
     async (action) => {
@@ -201,9 +251,12 @@ describe('task configuration connection requests', () => {
 
   it('retains legacy hash navigation when there is no connection controller', async () => {
     const page = mount(null, '#task-runtime')
+    await nextTick()
+    await nextTick()
     expect(page.reveal).toHaveBeenCalledOnce()
     expect(page.editor()).toBe('runtime')
     page.route.hash = '#task-devices'
+    await nextTick()
     await nextTick()
     expect(page.reveal).toHaveBeenCalledTimes(2)
     expect(page.editor()).toBe('device')
@@ -217,16 +270,48 @@ describe('task configuration connection requests', () => {
     ['#task-long', 'long'],
     ['#task-accounts', 'accounts'],
     ['#task-maa', 'maa']
-  ])('retains the %s destination after category headings become plain text', (hash, editor) => {
+  ])(
+    'retains the %s destination after category headings become plain text',
+    async (hash, editor) => {
+      const page = mount(null, hash)
+      await nextTick()
+      await nextTick()
+      expect(page.editor()).toBe(editor)
+      expect(page.route.hash).toBe(hash)
+    }
+  )
+
+  it.each([
+    ['#software-update', 'mower-updates'],
+    ['#mower-data', 'mower-data'],
+    ['#income-settings', 'accounts']
+  ])('reveals the actual existing %s card after its panels mount', async (hash, editor) => {
+    state.resolveTarget.mockReturnValue(editor)
     const page = mount(null, hash)
+    for (let tick = 0; tick < 4; tick += 1) await nextTick()
+    expect(state.resolveTarget).toHaveBeenCalledWith(hash.slice(1))
     expect(page.editor()).toBe(editor)
+    expect(state.revealActive).toHaveBeenLastCalledWith(hash.slice(1))
     expect(page.route.hash).toBe(hash)
+    expect(state.config).toEqual({ theme: 'light', manager_owned_device: false })
   })
 
-  it('opens the pending device request after applying an existing legacy hash', () => {
+  it('does not let a deferred old settings hash override a newer connection action', async () => {
+    state.resolveTarget.mockReturnValue('mower-updates')
+    const navigation = createDeviceConnectionNavigation()
+    navigation.open('test')
+    const page = mount(navigation, '#software-update')
+    for (let tick = 0; tick < 4; tick += 1) await nextTick()
+    expect(page.editor()).toBe('device')
+    expect(state.revealActive).toHaveBeenLastCalledWith('')
+  })
+
+  it('opens the pending device request after applying an existing legacy hash', async () => {
     const navigation = createDeviceConnectionNavigation()
     navigation.open('test')
     const page = mount(navigation, '#task-runtime')
+    await nextTick()
+    await nextTick()
     expect(page.editor()).toBe('device')
     expect(page.route.hash).toBe('#task-runtime')
   })

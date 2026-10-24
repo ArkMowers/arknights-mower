@@ -27,13 +27,56 @@ function freeze(value) {
 }
 
 describe('task configuration checklist', () => {
-  it('hides only managed connection editors without removing tasks', () => {
+  it('hides managed connection and optional maintenance editors while retaining all business tasks', () => {
     const direct = createTaskWorkflow({ manager_owned_device: false })
     const managed = createTaskWorkflow({ manager_owned_device: true })
     expect(direct.editors.map(({ id }) => id)).toEqual(expect.arrayContaining(['device', 'idle']))
-    expect(managed.editors.some(({ id }) => ['device', 'idle'].includes(id))).toBe(false)
-    expect(managed.tasks).toEqual(direct.tasks)
+    expect(managed.editors.some(({ id }) => ['device', 'idle', 'runtime'].includes(id))).toBe(false)
+    expect(managed.tasks.map(({ id }) => id)).toEqual(
+      direct.tasks
+        .filter(({ id }) => !['runtime', 'mower-updates', 'mower-data'].includes(id))
+        .map(({ id }) => id)
+    )
+    expect(managed.editors.map(({ id }) => id)).toEqual(
+      expect.arrayContaining(['mower-interface', 'mower-notifications'])
+    )
+    expect(managed.editors.find(({ id }) => id === 'maa')).toMatchObject({
+      description: '设置 MAA 恢复主题与目标主题。',
+      searchKeywords: 'MAA 恢复主题 目标主题'
+    })
+    expect(direct.editors.find(({ id }) => id === 'maa').searchKeywords).toContain('MAA目录')
   })
+
+  it.each([false, true])(
+    'keeps the optional maintenance directory consistent for visibility %s',
+    (visible) => {
+      const config = {
+        manager_owned_device: true,
+        extra_settings_visible: visible,
+        ai_assistant_enabled: false,
+        updates_enabled: false
+      }
+      const before = { ...config }
+      const workflow = createTaskWorkflow(config)
+      expect(workflow.editors.some(({ id }) => id === 'runtime')).toBe(false)
+      expect(workflow.tasks.some(({ id }) => id === 'runtime')).toBe(false)
+      for (const id of ['mower-updates', 'mower-data']) {
+        expect(workflow.editors.some((editor) => editor.id === id)).toBe(visible)
+        expect(workflow.tasks.some((task) => task.id === id)).toBe(visible)
+      }
+      for (const task of workflow.tasks)
+        expect(workflow.editors.some((editor) => editor.id === task.editor)).toBe(true)
+      expect(workflow.tasks.filter(({ group }) => group === 'mower').map(({ id }) => id)).toEqual([
+        'mower-interface',
+        'mower-notifications',
+        ...(visible ? ['mower-updates', 'mower-data'] : [])
+      ])
+      expect(config).toEqual(before)
+      expect(
+        createTaskWorkflow({ ...config, manager_owned_device: false }).tasks.map(({ id }) => id)
+      ).toEqual(expect.arrayContaining(['mower-updates', 'mower-data']))
+    }
+  )
 
   it('keeps every task and configuration destination available while disabled', () => {
     const workflow = createTaskWorkflow({})
@@ -41,7 +84,8 @@ describe('task configuration checklist', () => {
       ['base', '基建任务'],
       ['daily', '日常任务'],
       ['combat', '作战与空闲'],
-      ['support', '运行配置']
+      ['support', '运行配置'],
+      ['mower', '界面与维护']
     ])
     const expectedGroups = {
       base: ['base', 'runorder', 'drone', 'clue', 'workshop', 'training'],
@@ -58,7 +102,8 @@ describe('task configuration checklist', () => {
         'rewards'
       ],
       combat: ['stage-plan', 'long'],
-      support: ['intervals', 'runtime', 'accounts', 'maa']
+      support: ['intervals', 'runtime', 'accounts', 'maa'],
+      mower: ['mower-interface', 'mower-notifications', 'mower-updates', 'mower-data']
     }
     const editors = new Set(workflow.editors.map(({ id }) => id))
     for (const group of workflow.groups) {
@@ -71,7 +116,7 @@ describe('task configuration checklist', () => {
     for (const id of ['device', 'credit', 'idle']) expect(editors.has(id)).toBe(true)
     expect(workflow.tasks.some(({ id }) => id === 'device')).toBe(false)
     expect(workflow.editors.find(({ id }) => id === 'device').title).toBe('连接与启动')
-    expect(workflow.tasks.find(({ id }) => id === 'base').title).toBe('基建排班')
+    expect(workflow.tasks.find(({ id }) => id === 'base').title).toBe('自动救急')
     expect(workflow.tasks.find(({ id }) => id === 'intervals')).toMatchObject({
       title: '执行间隔',
       group: 'support',

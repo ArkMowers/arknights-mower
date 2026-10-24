@@ -2,16 +2,21 @@ const groups = [
   { id: 'base', label: '基建任务' },
   { id: 'daily', label: '日常任务' },
   { id: 'combat', label: '作战与空闲' },
-  { id: 'support', label: '运行配置' }
+  { id: 'support', label: '运行配置' },
+  { id: 'mower', label: '界面与维护' }
 ]
 
 const editorDefinitions = [
+  ['mower-interface', '界面与窗口', '设置主题、界面缩放、版本显示与桌面窗口。'],
+  ['mower-notifications', '通知与助手', '设置邮件通知和 Mower AI 助手。'],
+  ['mower-updates', '网络与更新', '设置网络代理，检查和更新 Mower 本体与资源。'],
+  ['mower-data', '数据与维护', '管理仓库历史、截图与报错归档、配置备份和进程。'],
   ['intervals', '执行间隔', '设置日常任务、刷理智、仓库扫描与制造站补货的执行间隔。'],
   ['device', '连接与启动', '连接设备，设置截图、触控、游戏启动与任务空档时的动作。'],
   ['runtime', '运行参数', '设置截图间隔、选人采样和页面等待时间。'],
   ['accounts', '账号与数据来源', '管理森空岛账号、同步设置和收益统计口径。'],
   ['maa', 'MAA 核心', '设置 MAA 安装目录、连接方式和组件更新。'],
-  ['base', '基建排班', '设置自动救急，驻员、跑单和菲亚梅塔充能由排班表管理。'],
+  ['base', '自动救急', '设置自动救急，驻员、跑单和菲亚梅塔充能由排班表管理。'],
   ['runorder', '跑单', '设置跑单提前量、葛朗台跑单和返回主界面选项。'],
   [
     'drone',
@@ -63,11 +68,20 @@ const taskDefinitions = [
   ['intervals', 'support'],
   ['runtime', 'support'],
   ['accounts', 'support'],
-  ['maa', 'support']
+  ['maa', 'support'],
+  ['mower-interface', 'mower'],
+  ['mower-notifications', 'mower'],
+  ['mower-updates', 'mower'],
+  ['mower-data', 'mower']
 ]
 
 // 目录的补充词来自对应编辑器中的字段和常用名称，条件字段也可用于定位所属配置。
 const editorKeywords = {
+  'mower-interface':
+    '主题 暗色 亮色 跟随系统 界面缩放 软件版本 版本类型 语言 关闭窗口 托盘 启动时窗口状态',
+  'mower-notifications': '邮件 SMTP QQ 通知 发件人 收件人 Mower AI 助手 自定义模型 API 密钥',
+  'mower-updates': 'Mower 本体 资源 网络 更新 Mirror酱 CDK 代理 下载源 更新源 自动更新',
+  'mower-data': '仓库历史 截图 保存 报错归档 容量 空间 导入 导出 配置备份 数据库 重启 退出',
   device:
     '设备 模拟器 ADB 截图 触控 MuMu 性能适配 恢复 超时 重试 选择实例 旋转截图 截图命令 启动游戏 点击坐标 启动命令 自定义命令启动 空闲动作 关闭MuMu模拟器12时断开该实例的adb连接 启动后自动开始任务',
   intervals: '日常任务间隔 MAA 日常 制造站补货',
@@ -92,7 +106,7 @@ const editorKeywords = {
   shop: '购物 采购 商店 处理方式 购物执行方式 按需领取信用 按性价比购物 购物性价比阈值 理智/信用 只购买折扣物品 保留最大信用点（低于 300 停止购买） 停止购买 无视黑名单继续购买，直至不再溢出 优先购买 黑名单 信用溢出 Mower MAA',
   'stage-plan':
     '刷图 关卡 战斗 周计划 理智药 临期 药 有效期 库存 上报至企鹅物流 上报至一图流 关卡体力默认值 每次吃药 MAA Mower',
-  rewards: '邮件奖励 免费单抽 幸运墙 合成玉 限时开采许可 五周年月卡',
+  rewards: '邮件奖励 免费单抽 幸运墙 合成玉 限时开采许可 赠送月卡 五周年月卡',
   long: [
     '集成战略 保全派驻 生息演算 隐秘战线 肉鸽主题 开局分队 开局职业组 开局干员 难度 策略 开始时间 停止时间',
     '凹开局干员直升精二 只凹开局干员直升精二，不进行作战 开局干员使用助战 开局干员使用非好友助战 月度小队自动切换 将月度小队通信也作为切换依据 深入调查自动切换 刷新商店（指路鳞） 坍缩范式',
@@ -134,26 +148,42 @@ function hasMaaDaily(config) {
 }
 
 export function createTaskWorkflow(config) {
+  const hiddenEditors = new Set(
+    config.manager_owned_device
+      ? [
+          'device',
+          'idle',
+          'runtime',
+          ...(config.extra_settings_visible === true ? [] : ['mower-updates', 'mower-data'])
+        ]
+      : []
+  )
   const editors = editorDefinitions
-    .filter(([id]) => !config.manager_owned_device || !['device', 'idle'].includes(id))
+    .filter(([id]) => !hiddenEditors.has(id))
     .map(([id, title, description]) => ({
       id,
       title,
-      description,
-      searchKeywords: editorKeywords[id] || ''
+      description:
+        config.manager_owned_device && id === 'maa' ? '设置 MAA 恢复主题与目标主题。' : description,
+      searchKeywords:
+        config.manager_owned_device && id === 'maa'
+          ? 'MAA 恢复主题 目标主题'
+          : editorKeywords[id] || ''
     }))
-  const tasks = taskDefinitions.map(([id, group]) => {
-    const editor = editors.find((entry) => entry.id === id)
-    return {
-      id,
-      editor: id,
-      title: editor.title,
-      description: editor.description,
-      searchKeywords: editor.searchKeywords,
-      group,
-      mode: Object.hasOwn(taskSwitches, id) ? 'switch' : 'automatic'
-    }
-  })
+  const tasks = taskDefinitions
+    .filter(([id]) => !hiddenEditors.has(id))
+    .map(([id, group]) => {
+      const editor = editors.find((entry) => entry.id === id)
+      return {
+        id,
+        editor: id,
+        title: editor.title,
+        description: editor.description,
+        searchKeywords: editor.searchKeywords,
+        group,
+        mode: Object.hasOwn(taskSwitches, id) ? 'switch' : 'automatic'
+      }
+    })
   const workshopSettings = config.workshop_manual_settings ?? config.workshop_settings ?? []
   const statuses = Object.fromEntries(
     tasks.map((task) => {

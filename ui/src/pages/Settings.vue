@@ -2,15 +2,14 @@
 import { useConfigStore } from '@/stores/config'
 import { useMowerStore } from '@/stores/mower'
 import { storeToRefs } from 'pinia'
-import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, provide, ref } from 'vue'
 import ChatBotSetting from '@/components/ChatBotSetting.vue'
 import SoftwareUpdate from '@/components/SoftwareUpdate.vue'
 import NetworkSettings from '@/components/NetworkSettings.vue'
 import ConfigBackup from '@/components/ConfigBackup.vue'
-import SettingsLayout from '@/components/SettingsLayout.vue'
+import { settingsSectionKey } from '@/composables/settingsNavigation'
 import SettingsSection from '@/components/SettingsSection.vue'
 import SoftwareVersionPreference from '@/components/SoftwareVersionPreference.vue'
-import TaskLayoutPreference from '@/components/TaskLayoutPreference.vue'
 import SettingsSegmented from '@/components/SettingsSegmented.vue'
 import InterfaceIcon from '@vicons/fluent/es/PaintBrush24Regular'
 import NotifyIcon from '@vicons/fluent/es/Alert24Regular'
@@ -21,6 +20,7 @@ import MoonIcon from '@vicons/fluent/es/WeatherMoon24Regular'
 import SystemIcon from '@vicons/fluent/es/Desktop24Regular'
 
 defineOptions({ name: 'MowerSettings' })
+provide(settingsSectionKey, null)
 
 const sections = [
   {
@@ -47,6 +47,9 @@ const sections = [
 const section = Object.fromEntries(sections.map((item) => [item.id, item]))
 
 const config_store = useConfigStore()
+const showExtraSettings = computed(
+  () => !config_store.manager_owned_device || config_store.extra_settings_visible === true
+)
 const { updates_enabled } = storeToRefs(useMowerStore())
 const mobile = inject('mobile')
 const { theme, webview, runtime_platform, screenshot, screenshot_archive_limit_mb } =
@@ -155,13 +158,8 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
 </script>
 
 <template>
-  <SettingsLayout
-    title="Mower 设置"
-    description="管理界面、通知、更新与本地数据。修改会自动保存。"
-    nav-label="Mower 设置分类"
-    :sections="sections"
-  >
-    <SettingsSection v-bind="section['mower-interface']">
+  <div class="mower-settings-panels settings-page">
+    <SettingsSection v-bind="section['mower-interface']" data-task-editor="mower-interface">
       <n-card id="appearance-settings" title="常规">
         <n-form
           class="settings-row-form"
@@ -220,7 +218,6 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
               label="显示主题"
             />
           </n-form-item>
-          <TaskLayoutPreference />
           <SoftwareVersionPreference />
         </n-form>
       </n-card>
@@ -300,16 +297,24 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
         </n-form>
       </n-card>
     </SettingsSection>
-    <SettingsSection v-bind="section['mower-notifications']">
+    <SettingsSection v-bind="section['mower-notifications']" data-task-editor="mower-notifications">
       <email />
       <ChatBotSetting />
     </SettingsSection>
-    <SettingsSection v-bind="section['mower-updates']">
+    <SettingsSection
+      v-if="showExtraSettings"
+      v-bind="section['mower-updates']"
+      data-task-editor="mower-updates"
+    >
       <SoftwareUpdate v-if="updates_enabled === true" />
       <ResourceUpdate v-if="updates_enabled === true" />
       <div class="settings-card-wide"><NetworkSettings /></div>
     </SettingsSection>
-    <SettingsSection v-bind="section['mower-data']">
+    <SettingsSection
+      v-if="showExtraSettings"
+      v-bind="section['mower-data']"
+      data-task-editor="mower-data"
+    >
       <DepotHistorySettings />
       <n-card id="archive-settings" title="截图与报错归档">
         <n-form
@@ -388,10 +393,23 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
       <ConfigBackup />
       <ProcessControl v-if="runtime_platform !== 'android'" />
     </SettingsSection>
-  </SettingsLayout>
+  </div>
 </template>
 
 <style scoped lang="scss">
+.mower-settings-panels {
+  display: grid;
+  gap: 28px;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mower-settings-panels :deep(.settings-section) {
+  margin: 0;
+}
+
 #appearance-settings {
   container: appearance-settings / inline-size;
 }

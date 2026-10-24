@@ -1462,6 +1462,13 @@ def load_config():
                     "message": "请在多开管理器中修改启动后自动开始任务设置",
                 }, 403
             req.pop("start_automatically")
+        if managed_device.enabled() and "extra_settings_visible" in req:
+            if req["extra_settings_visible"] is not config.conf.extra_settings_visible:
+                return {
+                    "error": "manager_owned_setting",
+                    "message": "请在实例退出后通过多开管理器修改额外设置的显示开关",
+                }, 403
+            req.pop("extra_settings_visible")
         if managed_device.enabled() and set(req) & set(managed_device.SETTINGS):
             try:
                 proposed = config.conf.updated(req)
