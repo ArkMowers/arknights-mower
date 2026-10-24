@@ -199,6 +199,8 @@ def test_manual_threshold_and_automatic_reservations_remain_binding(case):
 
 
 def test_status_shares_dispatch_eligibility_and_preserves_all_state(case, monkeypatch):
+    from arknights_mower.utils import growth_workshop
+
     record.apply_workshop_inventory({"技巧概要·卷2": 7})
     auto.refresh_workshop_after_inventory_change()
     scheduler = SimpleNamespace(op_data=case.data, tasks=case.tasks, sleeping=False)
@@ -216,6 +218,9 @@ def test_status_shares_dispatch_eligibility_and_preserves_all_state(case, monkey
         "restore_if_no_plans",
         MagicMock(side_effect=AssertionError("read must not restore")),
     )
+    auto.clear_workshop_plan_cache()
+    compute = MagicMock(wraps=growth_workshop.growth_workshop_config)
+    monkeypatch.setattr(growth_workshop, "growth_workshop_config", compute)
     status = workshop_status(scheduler, running=True)
     assert status["execution"] == "ready" and status["blockers"] == []
     assert config.conf.model_dump() == conf
@@ -227,6 +232,7 @@ def test_status_shares_dispatch_eligibility_and_preserves_all_state(case, monkey
     assert status["execution"] == "waiting"
     assert status["blockers"][0]["code"] == "mood_insufficient"
     assert status["blockers"][0]["required"] == 2
+    compute.assert_called_once()
 
 
 def test_missing_stock_stopped_scheduler_and_waiting_focus_are_distinct(case):
