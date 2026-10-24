@@ -2295,8 +2295,13 @@ class Operators:
         )
         projected.dorm = copy.deepcopy(self.dorm)
         projected.group_dorm = copy.deepcopy(getattr(self, "group_dorm", []))
+        projected._apply_projected_arrangements(plans)
+        return projected
+
+    def _apply_projected_arrangements(self, plans):
+        """仅在调用方独占的隔离副本上推进驻员和床位，不再复制副本。"""
         for plan in plans:
-            projected.commit_group_shifts(projected.arrangement_group_transitions(plan))
+            self.commit_group_shifts(self.arrangement_group_transitions(plan))
             changed_slots = {
                 (room, index)
                 for room, names in plan.items()
@@ -2305,7 +2310,7 @@ class Operators:
                 and (
                     (
                         occupant.name
-                        if (occupant := projected.get_current_operator(room, index))
+                        if (occupant := self.get_current_operator(room, index))
                         is not None
                         else ""
                     )
@@ -2319,22 +2324,22 @@ class Operators:
                 op.current_room
                 for room, names in plan.items()
                 for index, name in enumerate(names)
-                if (op := projected.operators.get(name)) is not None
+                if (op := self.operators.get(name)) is not None
                 and op.current_room.startswith("dorm")
                 and (op.current_room, op.current_index) != (room, index)
             )
             recovery_times = {
                 bed.name: (bed.position, bed.time)
-                for bed in projected.all_dorms()
+                for bed in self.all_dorms()
                 if bed.name
             }
-            for op in projected.operators.values():
+            for op in self.operators.values():
                 if (op.current_room, op.current_index) in changed_slots:
                     op._current_room, op.current_index = "", -1
             for room, names in plan.items():
                 for index, name in enumerate(names):
-                    if name in projected.operators:
-                        op = projected.operators[name]
+                    if name in self.operators:
+                        op = self.operators[name]
                         # 不触发 current_room 的通知／记账回调；跨房移动
                         # 即使槽位编号不变，也使原单回确认失效。
                         if op.current_room != room:
@@ -2344,14 +2349,12 @@ class Operators:
                             )
                         op._current_room, op.current_index = room, index
                         op.rest_mood_release_limit = None
-            for op in projected.operators.values():
+            for op in self.operators.values():
                 if not op.is_resting():
                     op.temporary_dorm_fill = False
-            for bed in projected.all_dorms():
-                occupant = projected.get_current_operator(*bed.position)
-                if occupant is not None and projected.is_recovery_dorm(
-                    bed, occupant.name
-                ):
+            for bed in self.all_dorms():
+                occupant = self.get_current_operator(*bed.position)
+                if occupant is not None and self.is_recovery_dorm(bed, occupant.name):
                     bed.name = occupant.name
                     old_position, old_time = recovery_times.get(
                         occupant.name, (None, None)
@@ -2364,7 +2367,6 @@ class Operators:
                     )
                 else:
                     bed.reset()
-        return projected
 
     def all_dorms(self):
         """返回动态床位与只供配置内同组工作替班恢复的固定床位。"""
