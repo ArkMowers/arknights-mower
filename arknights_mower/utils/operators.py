@@ -880,7 +880,7 @@ class Operators:
             return None
         from arknights_mower.utils.calculated_mood import sync_model
 
-        return sync_model(self).value(name, now)
+        return sync_model(self, advance_clock=False).value(name, now)
 
     def calculated_mood_rate(self, name, now=None):
         if not self.mood_calculation_enabled:
@@ -898,7 +898,9 @@ class Operators:
             return None
         from arknights_mower.utils.calculated_mood import sync_model
 
-        return sync_model(self).deadline(name, target, now, max_hours)
+        return sync_model(self, advance_clock=False).deadline(
+            name, target, now, max_hours
+        )
 
     def set_mood_limit(self, name, upper_limit=24, lower_limit=0):
         if name in self.operators and self.is_planned_operator(name):
@@ -2335,9 +2337,11 @@ class Operators:
         projected.recall_recovery_rates = dict(
             getattr(self, "recall_recovery_rates", {})
         )
-        projected.operators = copy.deepcopy(self.operators)
+        memo = {}
         if self.mood_calculation_enabled:
-            projected.mood_model = copy.deepcopy(self.mood_model)
+            projected.mood_model = copy.deepcopy(self.mood_model, memo)
+        projected.operators = copy.deepcopy(self.operators, memo)
+        if self.mood_calculation_enabled:
             for op in projected.operators.values():
                 op._mood_model = projected.mood_model
         projected.groups = copy.deepcopy(self.groups)
@@ -3484,7 +3488,7 @@ class Operator:
             )
         return max(now, zero_time)
 
-    def predict_exhaust(self):
+    def predict_exhaust(self, now=None):
         if self.workaholic or self.exhaust_require or self.room in ["factory", "train"]:
             return datetime.now() + timedelta(hours=24)
         model = getattr(self, "_mood_model", None)
@@ -3496,11 +3500,12 @@ class Operator:
             )
             and self.room not in ("factory", "train")
         ):
-            deadline = model.deadline(self.name, self.lower_limit)
+            now = now or datetime.now()
+            deadline = model.deadline(self.name, self.lower_limit, now)
             return (
-                max(datetime.now(), deadline - timedelta(minutes=30))
+                max(now, deadline - timedelta(minutes=30))
                 if deadline
-                else datetime.now() + timedelta(hours=24)
+                else now + timedelta(hours=24)
             )
         remaining_mood = self.mood - self.lower_limit  # 剩余心情
         depletion_rate = self.depletion_rate  # 心情掉率，小时单位

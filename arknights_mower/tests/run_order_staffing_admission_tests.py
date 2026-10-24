@@ -1,4 +1,4 @@
-"""贸易站确认入驻后及时读取订单，短单先执行，原纠错保留未完安排。"""
+"""整批换班后读取订单，已有关键任务保护原纠错的未完安排。"""
 
 import copy
 import socket
@@ -195,7 +195,7 @@ def reads(ui, room="room_1_1"):
     return [event for event in ui.events if event[:2] == ("read", room)]
 
 
-def test_confirmed_station_reads_order_before_next_room_and_keeps_distant_run(
+def test_completed_staffing_reads_each_station_once_and_keeps_distant_run(
     staffed_order,
 ):
     ui = staffed_order
@@ -205,8 +205,8 @@ def test_confirmed_station_reads_order_before_next_room_and_keeps_distant_run(
     ui.solver.agent_arrange(task.plan)
 
     assert task.plan == {} and task.time == original_time
-    assert len(reads(ui)) == 3
-    assert ui.events.index(reads(ui)[0]) < next(
+    assert len(reads(ui)) == 1
+    assert ui.events.index(reads(ui)[0]) > next(
         index
         for index, event in enumerate(ui.events)
         if event[:2] == ("enter", "room_2_2")
@@ -215,46 +215,32 @@ def test_confirmed_station_reads_order_before_next_room_and_keeps_distant_run(
     assert {task.meta_data for task in orders} == {"room_1_1", "room_2_2"}
     assert not any(task.type == ui.task_type.REFRESH_TIME for task in ui.solver.tasks)
     ui.solver.run_order_solver()
-    assert len(reads(ui)) == 3
-    assert len(reads(ui, "room_2_2")) == 2
+    assert len(reads(ui)) == 1
+    assert len(reads(ui, "room_2_2")) == 1
 
 
-def test_short_first_order_yields_then_resumes_same_unfinished_correction(
-    staffed_order,
-):
+def test_known_order_yields_and_preserves_unfinished_correction(staffed_order):
     ui = staffed_order
-    ui.deadlines["room_1_1"] = ui.clock.now() + timedelta(seconds=90)
-    task = correction(ui)
+    task = correction(ui, {"room_1_1", "dormitory_1"})
     original_time = task.time
-    remaining = copy.deepcopy(task.plan)
-    del remaining["room_1_1"]
-
-    assert ui.solver.agent_arrange(task.plan) is False
-
-    assert any(queued is task for queued in ui.solver.tasks)
-    assert task.time == original_time and task.plan == remaining
-    assert ui.clock.now() < ui.deadlines["room_1_1"]
-    assert not getattr(task, "execution_failure", None)
-    assert not any(event[:2] == ("enter", "room_2_2") for event in ui.events)
-    order = next(
-        queued for queued in ui.solver.tasks if queued.type == ui.task_type.RUN_ORDER
+    order = ui.task(
+        time=ui.clock.now() + timedelta(seconds=90),
+        task_type=ui.task_type.RUN_ORDER,
+        task_plan={"room_2_2": ["龙舌兰"]},
+        meta_data="room_2_2",
     )
-    assert order.time <= ui.clock.now()
-    ui.solver.task = order
-    ui.solver.infra_main()
-    assert ui.solver.accept_order.call_count == 1
-    assert ui.occupants["room_1_1"] == ["鸿雪"]
-    assert order not in ui.solver.tasks
-    assert task.time == original_time and task.plan == remaining
-
-    ui.solver.task = task
-    ui.solver.infra_main()
-
-    assert task not in ui.solver.tasks and task.plan == {}
-    assert task.time == original_time
-    selected = [call.args[0] for call in ui.solver.choose_agent.call_args_list]
-    assert selected.count(["鸿雪"]) == 2  # 初次入驻与跑单后的原班恢复。
-    assert selected.count(["图耶"]) == 1
+    ui.solver.tasks.append(order)
+    assert ui.solver.agent_arrange(task.plan) is False
+    remaining = copy.deepcopy(task.plan)
+    assert remaining and task.time == original_time
+    assert not reads(ui)
+    for _ in range(3):
+        assert ui.solver.agent_arrange(task.plan) is False
+        assert task.plan == remaining and task.time == original_time
+    ui.solver.tasks = [pending for pending in ui.solver.tasks if pending is not order]
+    ui.solver.agent_arrange(task.plan)
+    assert not task.plan and task.time == original_time
+    assert len(reads(ui)) == 1
 
 
 @pytest.mark.parametrize("old_minutes", [60, 10, -1])
@@ -315,7 +301,7 @@ def test_later_room_refresh_operator_updates_already_read_station(
     solver.agent_arrange(task.plan)
 
     assert task.plan == {}
-    assert len(reads(ui)) == 3
+    assert len(reads(ui)) == 1
     order = next(
         task
         for task in solver.tasks
@@ -382,52 +368,19 @@ def test_original_roster_restoration_does_not_read_or_reinsert_order(
     ]
 
 
-def test_near_future_order_waits_once_without_retiming_unfinished_correction(
-    staffed_order, monkeypatch
-):
+def test_unobserved_short_order_is_read_only_after_completed_batch(staffed_order):
     ui = staffed_order
-    solver = ui.solver
     ui.deadlines["room_1_1"] = ui.clock.now() + timedelta(minutes=4)
     task = correction(ui)
     original_time = task.time
-    assert solver.agent_arrange(task.plan) is False
-    remaining = copy.deepcopy(task.plan)
-    order = next(
-        queued for queued in solver.tasks if queued.type == ui.task_type.RUN_ORDER
-    )
-    assert order.time == original_time + timedelta(minutes=1)
-    assert order.time > ui.clock.now()
-    for _ in range(3):
-        ui.scheduling.scheduling(solver.tasks, op_data=solver.op_data)
-        assert task.time == original_time and task.plan == remaining
-        assert len(reads(ui)) == 1
-    waited = []
-
-    def idle_sleep(seconds):
-        waited.append(seconds)
-        assert len(waited) <= 2, "到期订单不能反复等待或阻塞原纠错续行"
-        ui.clock.current += timedelta(seconds=seconds)
-
-    transition = solver.transition
-    transitions = []
-
-    def bounded_transition():
-        transitions.append(ui.clock.now())
-        assert len(transitions) <= 12, "已到期订单应结束本轮场景执行"
-        return transition()
-
-    monkeypatch.setattr(solver, "_idle_sleep", idle_sleep)
-    monkeypatch.setattr(solver, "transition", bounded_transition)
-    monkeypatch.setattr(solver, "_fill_empty_dorms", MagicMock())
-    monkeypatch.setattr(solver, "handle_error", MagicMock(return_value=True))
-    monkeypatch.setattr(solver, "check_current_focus", MagicMock())
-
-    solver.run()
-
-    assert waited == [40]
-    assert solver.accept_order.call_count == 1
-    assert task.time == original_time and task.plan == remaining
+    ui.solver.agent_arrange(task.plan)
+    assert not task.plan and task.time == original_time
     assert len(reads(ui)) == 1
+    last_staffing = max(
+        index for index, event in enumerate(ui.events) if event[0] == "staffed"
+    )
+    assert ui.events.index(reads(ui)[0]) > last_staffing
+    assert any(queued.type == ui.task_type.RUN_ORDER for queued in ui.solver.tasks)
 
 
 @pytest.mark.parametrize("run_start_seconds", [100, 110])
@@ -467,7 +420,7 @@ def test_remaining_work_room_uses_same_margin_as_dispatch(
     assert not reads(ui, "room_2_2")
     assert refresh in ui.solver.tasks and refresh.time == refresh_time
 
-    ui.solver.tasks.remove(order)
+    order.time = ui.clock.now() + timedelta(hours=1)
     ui.solver._read_arrangement_order_times("room_2_2")
 
     assert len(reads(ui, "room_2_2")) == 1
@@ -475,7 +428,7 @@ def test_remaining_work_room_uses_same_margin_as_dispatch(
     assert task.time == original_time
 
 
-def test_failed_inline_read_keeps_independent_refresh_and_finishes_other_rooms(
+def test_failed_final_read_keeps_independent_refresh_after_all_staffing(
     staffed_order,
 ):
     ui = staffed_order
@@ -522,14 +475,12 @@ def test_due_first_order_is_read_before_other_pending_refresh(staffed_order):
     ui.deadlines["room_1_1"] = ui.clock.now() + timedelta(seconds=90)
     task = correction(ui, {"room_1_1", "dormitory_1"})
 
-    assert solver.agent_arrange(task.plan) is False
+    assert solver.agent_arrange(task.plan) is not False
 
     assert len(reads(ui)) == 1
-    assert not reads(ui, "room_2_2")
-    assert any(queued is other for queued in solver.tasks)
-    assert task.plan == {
-        "dormitory_1": ["杜林", "蜜莓", "Current", "Current", "Current"]
-    }
+    assert len(reads(ui, "room_2_2")) == 1
+    assert all(queued is not other for queued in solver.tasks)
+    assert task.plan == {}
 
 
 @pytest.mark.parametrize(
@@ -597,7 +548,7 @@ def test_retained_ordinary_departure_keeps_request_after_member_is_resting(
     assert vars(task) == original
 
 
-def test_failed_inline_read_checks_order_deadline_before_next_refresh(staffed_order):
+def test_failed_final_read_checks_order_deadline_before_next_refresh(staffed_order):
     from arknights_mower.utils.plan import Room
 
     ui = staffed_order
@@ -608,6 +559,7 @@ def test_failed_inline_read_checks_order_deadline_before_next_refresh(staffed_or
     ui.states.update({"room_2_2": "active", "room_3_3": "active"})
     ui.deadlines["room_3_3"] = ui.clock.now() + timedelta(hours=4)
     task = correction(ui, {"dormitory_1"})
+    task.plan.clear()
     original_time, remaining = task.time, copy.deepcopy(task.plan)
     order = ui.task(
         time=ui.clock.now() + timedelta(seconds=75),
@@ -641,15 +593,15 @@ def test_failed_inline_read_checks_order_deadline_before_next_refresh(staffed_or
     assert not reads(ui, "room_3_3")
     assert task.time == original_time and task.plan == remaining
 
-    solver.tasks.remove(order)
+    order.time = ui.clock.now() + timedelta(hours=1)
+    ui.clock.current = max(ui.clock.now(), other.time)
     solver._read_arrangement_order_times("room_3_3")
 
     assert len(attempts) == 1
     assert len(reads(ui, "room_3_3")) == 1
-    assert any(queued is other for queued in solver.tasks)
+    assert all(queued is not other for queued in solver.tasks)
     assert failed.time == failed_time and failed.execution_failure
     assert task.time == original_time and task.plan == remaining
-    solver.agent_arrange(task.plan)
     assert task.plan == {} and task.time == original_time
-    assert len(reads(ui, "room_3_3")) == 2
+    assert len(reads(ui, "room_3_3")) == 1
     assert all(queued is not other for queued in solver.tasks)

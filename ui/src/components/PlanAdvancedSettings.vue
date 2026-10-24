@@ -48,7 +48,7 @@ const excludedGroupOptions = computed(() =>
     >
       <n-form-item :show-label="false">
         <n-checkbox v-model:checked="test_mood_calculation">
-          测试心情计算
+          实时心情计算
           <help-text
             >默认关闭。开启后使用与收益演算相同的技能规则计算普通基建调度心情；启动时读取实际驻员和心情，后续在正常进房时校准。已同步
             BOX

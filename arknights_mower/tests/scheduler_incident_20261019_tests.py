@@ -194,6 +194,12 @@ def test_waiting_group_does_not_rebuild_cancelled_shared_dorm_correction(
     solver.task, solver.tasks = task, [task]
     solver._prepare_group_shift(task, remember_targets=True)
     selected = []
+    order_reads = []
+
+    def read_order_time(room):
+        assert task.plan == {}
+        order_reads.append(room)
+        return NOW + timedelta(hours=1)
 
     def arrange_room(new_plan, room, plan, **kwargs):
         row = plan.pop(room)
@@ -206,9 +212,19 @@ def test_waiting_group_does_not_rebuild_cancelled_shared_dorm_correction(
         return new_plan
 
     monkeypatch.setattr(solver, "agent_arrange_room", arrange_room)
+    monkeypatch.setattr(solver, "get_run_order_time", read_order_time)
     solver.agent_arrange(task.plan)
     assert selected
     assert "dormitory_3" not in selected
+    assert sorted(order_reads) == ["room_1_1", "room_3_1"]
+    assert sorted(
+        (pending.meta_data, pending.time)
+        for pending in solver.tasks
+        if pending.type == TaskTypes.RUN_ORDER
+    ) == [
+        ("room_1_1", NOW + timedelta(hours=1)),
+        ("room_3_1", NOW + timedelta(hours=1)),
+    ]
     solver.task, solver.tasks = None, []
     for _ in range(3):
         assert solver.agent_get_mood(read_rooms=False, return_plan=True) == {}

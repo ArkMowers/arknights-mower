@@ -44,6 +44,7 @@ it('从主副表及多绑组提供多选，保留已保存的组名并绑定配�
   }
   plan.backup_plans = [{ plan: { meeting: { plans: [{ agent: 'B', group: '副表组' }] } } }]
   const html = await renderToString(app)
+  expect(html).toContain('实时心情计算')
   expect(html).toContain('延后回班排除组')
   expect(selectProps.options.map((option) => option.value)).toEqual([
     '主表组',

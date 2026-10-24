@@ -454,6 +454,8 @@ class BaseSchedulerSolver(
         self.train_room_state = None
         self.emergency_state = None
         self._emergency_startup_pending = False
+        self._startup_run_order_check_pending = True
+        self._startup_mood_observations = {}
         workshop_inventory_changed.set()
 
     def find_next_task(
@@ -2461,6 +2463,7 @@ class BaseSchedulerSolver(
                 )
                 self.skip()
                 return True
+        self._check_startup_run_orders()
         if getattr(self, "_emergency_startup_pending", False):
             if (
                 self.task is not None
@@ -3091,8 +3094,29 @@ class BaseSchedulerSolver(
             getattr(self.op_data, "mood_calculation_enabled", False)
             and self._initial_mood_read_pending()
         )
+        startup_observations = {
+            room: signature
+            for room, signature in getattr(
+                self, "_startup_mood_observations", {}
+            ).items()
+            if signature == self._room_mood_signature(room)
+            and all(
+                observed_at is not None
+                and observed_at
+                > datetime.now()
+                - timedelta(hours=0.5 if name in ("歌蕾蒂娅", "见行者") else 2.5)
+                for name, _, observed_at in signature
+            )
+        }
+        self._startup_mood_observations = (
+            startup_observations if self._initial_mood_read_pending() else {}
+        )
         if initial_calculation:
-            self._initial_mood_room_observations = set()
+            self._initial_mood_room_observations = {
+                name
+                for signature in startup_observations.values()
+                for name, _, _ in signature
+            }
         initial_rooms = (
             {room for room in base_room_list if not room.startswith("gaming_")}
             if initial_calculation
@@ -3124,6 +3148,9 @@ class BaseSchedulerSolver(
         }
         self._run_order_restoration_observations = restoration_observations
         need_read.update(restoration_observations)
+        for room in startup_observations.keys() - restoration_observations.keys():
+            force_rooms.discard(room)
+            need_read.discard(room)
 
         # 正常心情刷新始终检查训练室，包含未启用专精时的手动训练。
         # 实际扫描仍受房间级 2.5 小时限频保护。
@@ -3368,6 +3395,7 @@ class BaseSchedulerSolver(
             for item in mood_data
         ]
         logger.info(f"房间 {self.translate_room(room)}  {mood_info}")
+        return mood_data
 
     def _read_initial_card_mood(self):
         """首次规划复用选人卡片预估，不选人或确认换班；失败仍继续启动。"""
@@ -4692,8 +4720,113 @@ class BaseSchedulerSolver(
             if self._emergency_run_order_available(room):
                 self._queue_order_refresh(room)
 
-    def plan_run_order(self, room, *, probe_window=None):
-        """规划跑单；换班中途只接纳临近订单，远期读数不生成任务。"""
+    def _room_mood_signature(self, room):
+        return tuple(
+            sorted(
+                (operator.name, operator.current_index, operator.time_stamp)
+                for operator in self.op_data.operators.values()
+                if operator.current_room == room
+            )
+        )
+
+    def _startup_order_check_fits(self):
+        return not any(
+            pending.time <= datetime.now() + timedelta(minutes=1)
+            and (
+                pending.type == TaskTypes.RUN_ORDER
+                or pending.type == TaskTypes.SWAP_SUPPORT
+                and config.conf.enable_mastery
+                or getattr(pending, "strict_mood_limit", False)
+                and pending.plan
+            )
+            for pending in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
+        )
+
+    def _check_startup_run_orders(self):
+        """启动时检查一次订单；临时读数只发布保护窗口内的跑单任务。"""
+        if not getattr(self, "_startup_run_order_check_pending", False):
+            return
+        if not getattr(self, "_state_restore_complete", True):
+            return
+        self._startup_run_order_check_pending = False
+        if any(task.type == TaskTypes.RUN_ORDER for task in self.tasks):
+            return
+        if getattr(self, "maintenance_entry_pending", False) or any(
+            getattr(task, "maintenance_replacement_run", False) for task in self.tasks
+        ):
+            return
+        self._sync_run_order_tasks()
+        provisional = []
+        for room in list(self.op_data.run_order_rooms):
+            if not self._startup_order_check_fits():
+                break
+            if not self._emergency_run_order_available(room):
+                continue
+            refresh = self.find_next_task(
+                meta_data=room,
+                task_type=TaskTypes.REFRESH_TIME,
+                scope=TaskScope.PENDING,
+            )
+            if refresh is not None and getattr(refresh, "execution_failure", None):
+                continue
+            try:
+                execute_time = self.get_run_order_time(room, read_mood=True)
+                self._sync_run_order_tasks()
+                if execute_time is None or room not in self.op_data.run_order_rooms:
+                    continue
+                replacements = self.op_data.run_order_replacements(room)
+                plan = {
+                    room: [
+                        next(
+                            (name for name in choices if name in TRADE_ORDER_AGENTS),
+                            "Current",
+                        )
+                        for choices in replacements
+                    ]
+                }
+                provisional.append(
+                    SchedulerTask(
+                        time=execute_time,
+                        task_plan=plan,
+                        task_type=TaskTypes.RUN_ORDER,
+                        meta_data=room,
+                    )
+                )
+            except (MowerExit, DeviceRecoveryError, SharedADBError):
+                raise
+            except Exception as e:
+                logger.warning("启动检查 %s 订单失败，继续初始化：%s", room, e)
+                self.back_to_infrastructure()
+        # scheduling 会改写任务，启动的远期读数不能进入持久化任务队列。
+        temporary_tasks = copy.deepcopy(self.tasks) + provisional
+        try:
+            self._adjust_run_orders(temporary_tasks, startup=True)
+            self.scene_graph_navigation(Scene.INFRA_MAIN)
+        except (MowerExit, DeviceRecoveryError, SharedADBError):
+            raise
+        except Exception as e:
+            logger.warning("启动调整订单失败，继续初始化：%s", e)
+            self.back_to_infrastructure()
+        deadline = datetime.now() + timedelta(
+            minutes=max(10, config.conf.run_order_delay * 2)
+        )
+        for task in provisional:
+            if task.time <= deadline and task.meta_data in self.op_data.run_order_rooms:
+                if self.task is not None and self._can_defer_arrangement():
+                    self.task.execution_retained = True
+                self.tasks.append(task)
+                self.tasks[:] = [
+                    pending
+                    for pending in self.tasks
+                    if not (
+                        pending.type == TaskTypes.REFRESH_TIME
+                        and pending.meta_data == task.meta_data
+                        and not getattr(pending, "execution_failure", None)
+                    )
+                ]
+
+    def plan_run_order(self, room):
+        """按实际订单倒计时规划跑单。"""
         if any(
             room in getattr(task, "run_order_original_roster", {})
             for task in self.tasks
@@ -4747,10 +4880,6 @@ class BaseSchedulerSolver(
             return True
         if room not in self.op_data.run_order_rooms:
             return
-        if probe_window is not None and execute_time > datetime.now() + probe_window:
-            # 换班中途只检查临近订单，远期时间留待整批换班完成后正式读取。
-            logger.info("%s 跑单尚未临近，换班完毕后重新读取正式时间", room)
-            return False
         self.tasks.append(
             SchedulerTask(
                 time=execute_time,
@@ -4778,10 +4907,14 @@ class BaseSchedulerSolver(
         ]
 
     def _read_arrangement_order_times(self, room):
-        """中途只检查临近订单，安排完毕后正式读单，失败保留独立刷新。"""
-        if self.task.plan and not self._can_defer_arrangement():
+        """整批换班完成后正式读单，失败保留原有独立刷新责任。"""
+        if self.task.plan:
             return False
+        self.task.execution_retained = True
         self._resume_failed_tasks()
+        for order_room in self.op_data.run_order_rooms:
+            if self._emergency_run_order_available(order_room):
+                self._queue_order_refresh(order_room)
         refreshes = [
             refresh
             for refresh in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
@@ -4789,25 +4922,8 @@ class BaseSchedulerSolver(
             and refresh.meta_data in self.op_data.run_order_rooms
             and refresh.time <= datetime.now()
         ]
-        if not refreshes:
-            return
         refreshes.sort(key=lambda refresh: refresh.meta_data != room)
-        self.task.execution_retained = True
-        probe_window = None
-        if self.task.plan:
-            next_room = min(
-                self.task.plan,
-                key=lambda name: (
-                    name.startswith("dormitory_"),
-                    int(name.split("_")[1]) if name.startswith("dormitory_") else 0,
-                ),
-            )
-            # 预留下一房的安排预算及再次读单前已有的一分钟保护窗口。
-            probe_window = self._arrangement_room_budget(
-                next_room, self.task.plan
-            ) + timedelta(minutes=1)
         observed_any = False
-        urgent = False
         for refresh in refreshes:
             if observed_any:
                 protect_priority_tasks(self.tasks, op_data=self.op_data)
@@ -4816,37 +4932,21 @@ class BaseSchedulerSolver(
                 for pending in self._arrangement_priority_tasks()
             ):
                 break
-            observed = None
+            observed_any = True
             try:
-                observed = self.plan_run_order(
-                    refresh.meta_data, probe_window=probe_window
-                )
+                observed = self.plan_run_order(refresh.meta_data)
             except (MowerExit, DeviceRecoveryError, SharedADBError):
                 raise
             except Exception as e:
                 logger.warning("入驻后读取订单失败，保留独立刷新任务：%s", e)
                 self._retain_failed_task(refresh, str(e), [refresh.meta_data])
                 self.back_to_infrastructure()
+                continue
             if observed and not getattr(refresh, "execution_failure", None):
                 self.tasks[:] = [task for task in self.tasks if task is not refresh]
-                urgent = (
-                    probe_window is not None
-                    and self.find_next_task(
-                        meta_data=refresh.meta_data,
-                        task_type=TaskTypes.RUN_ORDER,
-                        scope=TaskScope.PENDING,
-                    )
-                    is not None
-                )
-            observed_any |= observed is not None
-            if urgent:
-                logger.info(
-                    "中途检测到 %s 跑单临近，保留剩余换班先执行跑单", refresh.meta_data
-                )
-                break
         if observed_any:
             scheduling(self.tasks, op_data=self.op_data)
-        return urgent
+        return False
 
     def _arrangement_room_budget(self, room, plan):
         operation = SchedulerTask(
@@ -4900,6 +5000,54 @@ class BaseSchedulerSolver(
         )
         return True
 
+    def _adjust_run_orders(self, order_tasks, *, startup=False):
+        run_order_rooms = self.op_data.run_order_rooms
+        adj_tasks = scheduling(
+            order_tasks, op_data=self.op_data
+        )  # 修改scheduling 同时输出撞在一起的前后两个任务
+        max_execution = 3
+        adj_count = 0
+
+        if run_order_rooms is not None and len(run_order_rooms) >= 3:
+            n = len(run_order_rooms)
+            dp = [0] * (n + 1)
+            dp[1] = 0
+            if n > 1:
+                dp[2] = 1
+            for i in range(3, n + 1):
+                dp[i] = 3 * dp[i - 1] + 2 * dp[i - 2]
+            max_execution = min(
+                dp[n] * 1.25, 15
+            )  # 通过跑单房间计算得到循环次数 同时限制最大次数
+            logger.debug(f"max_execution = {max_execution}")
+            logger.info(run_order_rooms)
+            logger.info(
+                f"当前跑单房间数量为：{n}，计算最大循环次数为: {max_execution + 1}"
+            )
+        while (
+            adj_tasks is not None and adj_count <= max_execution
+        ):  # 由于改动会增加触发次数 改为<= 多触发一次
+            # logger.error("<UNK>,<UNK>")
+            adjust_0_room = self.get_run_order_adjust_room(adj_tasks)  # 抽离成单独的
+            if adjust_0_room is None:
+                logger.error(
+                    f"adjust_0_room的结果为：{adjust_0_room}，获取跑单房间失败，停止循环"
+                )
+                return False
+            if startup and not self._startup_order_check_fits():
+                return False
+            is_run = self.drone(
+                adjust_0_room,
+                adjust_time=True,
+                **({"order_tasks": order_tasks} if startup else {}),
+            )
+            adj_tasks = scheduling(order_tasks, op_data=getattr(self, "op_data", None))
+            adj_count += 1
+            logger.info(f"第{adj_count}次循环结束")
+            if is_run is not None and not is_run:
+                return False
+        return True
+
     def run_order_solver(self):
         self._sync_run_order_tasks()
         if len(self.op_data.run_order_rooms) > 0:
@@ -4910,48 +5058,8 @@ class BaseSchedulerSolver(
                 for k in list(run_order_rooms):
                     self.plan_run_order(k)
                 run_order_rooms = self.op_data.run_order_rooms
-                adj_tasks = scheduling(
-                    self.tasks, op_data=self.op_data
-                )  # 修改scheduling 同时输出撞在一起的前后两个任务
-                max_execution = 3
-                adj_count = 0
-
-                if run_order_rooms is not None and len(run_order_rooms) >= 3:
-                    n = len(run_order_rooms)
-                    dp = [0] * (n + 1)
-                    dp[1] = 0
-                    if n > 1:
-                        dp[2] = 1
-                    for i in range(3, n + 1):
-                        dp[i] = 3 * dp[i - 1] + 2 * dp[i - 2]
-                    max_execution = min(
-                        dp[n] * 1.25, 15
-                    )  # 通过跑单房间计算得到循环次数 同时限制最大次数
-                    logger.debug(f"max_execution = {max_execution}")
-                    logger.info(run_order_rooms)
-                    logger.info(
-                        f"当前跑单房间数量为：{n}，计算最大循环次数为: {max_execution + 1}"
-                    )
-                while (
-                    adj_tasks is not None and adj_count <= max_execution
-                ):  # 由于改动会增加触发次数 改为<= 多触发一次
-                    # logger.error("<UNK>,<UNK>")
-                    adjust_0_room = self.get_run_order_adjust_room(
-                        adj_tasks
-                    )  # 抽离成单独的
-                    if adjust_0_room is None:
-                        logger.error(
-                            f"adjust_0_room的结果为：{adjust_0_room}，获取跑单房间失败，停止循环"
-                        )
-                        return
-                    is_run = self.drone(adjust_0_room, adjust_time=True)
-                    adj_tasks = scheduling(
-                        self.tasks, op_data=getattr(self, "op_data", None)
-                    )
-                    adj_count += 1
-                    logger.info(f"第{adj_count}次循环结束")
-                    if is_run is not None and not is_run:
-                        return
+                if self._adjust_run_orders(self.tasks) is False:
+                    return
         fia_plan, fia_room = self.check_fia()
         if fia_room is not None:
             # 副表可能把肥鸭移到另一宿舍或暂时撤下；只读实际所在的槽位。
@@ -8576,11 +8684,16 @@ class BaseSchedulerSolver(
         if self.find("connecting") or not ready:
             raise RecognizeError("未成功进入订单或制造详情界面")
 
-    def get_run_order_time(self, room) -> datetime | None:
+    def get_run_order_time(self, room, *, read_mood=False) -> datetime | None:
         """读取跑单时刻；确认订单暂停时，本轮不安排跑单。"""
         logger.info("基建：读取插拔时间")
         # 点击进入该房间
         self.enter_room(room)
+        if read_mood:
+            self._read_room_mood(room, force_mood=True, strict_observation=True)
+            if not hasattr(self, "_startup_mood_observations"):
+                self._startup_mood_observations = {}
+            self._startup_mood_observations[room] = self._room_mood_signature(room)
         # 进入房间详情
         self._wait_drone_interface(
             interval=1,
@@ -8603,8 +8716,9 @@ class BaseSchedulerSolver(
                 logger.info(
                     f"房间 {self.translate_room(room)} 订单暂停获取，检查是否缺少进驻干员"
                 )
-                self.scene_graph_navigation(Scene.INFRA_DETAILS)
-                self._read_room_mood(room, force_mood=True)
+                if not read_mood:
+                    self.scene_graph_navigation(Scene.INFRA_DETAILS)
+                    self._read_room_mood(room, force_mood=True)
                 self.scene_graph_navigation(Scene.INFRA_MAIN)
                 return None
             # 读取失败不能回退为当前时间，否则会误创建立即执行的跑单任务。
@@ -9281,9 +9395,10 @@ class BaseSchedulerSolver(
             logger.exception(e)
             return
 
-    def adjust_order_time(self, accelerate, room):
+    def adjust_order_time(self, accelerate, room, *, order_tasks=None):
+        order_tasks = self.tasks if order_tasks is None else order_tasks
         action_required_task = scheduling(
-            self.tasks, op_data=getattr(self, "op_data", None)
+            order_tasks, op_data=getattr(self, "op_data", None)
         )
         # logger.error(f"action_required_task:{action_required_task}")
         logger.debug(f"room:{room}")
@@ -9327,15 +9442,18 @@ class BaseSchedulerSolver(
                 use_digit_reader=True,
             )
             task_time = _time - timedelta(minutes=config.conf.run_order_delay)
-            if task := self.find_next_task(
-                task_type=TaskTypes.RUN_ORDER, meta_data=room
+            if task := find_next_task(
+                order_tasks,
+                task_type=TaskTypes.RUN_ORDER,
+                meta_data=room,
+                op_data=self.op_data,
             ):
                 task.time = task_time
                 logger.info(
                     f"房间 {room} 无人机加速后接单时间为 {task_time.strftime('%H:%M:%S')}"
                 )
                 action_required_task = scheduling(
-                    self.tasks, op_data=getattr(self, "op_data", None)
+                    order_tasks, op_data=getattr(self, "op_data", None)
                 )
             else:
                 break
@@ -10209,6 +10327,7 @@ class BaseSchedulerSolver(
         not_return=False,
         adjust_time=False,
         skip_enter=False,
+        order_tasks=None,
     ):
         logger.info("基建：无人机加速" if not adjust_time else "开始调整订单时间")
         retain_reserve = not not_customize
@@ -10275,7 +10394,11 @@ class BaseSchedulerSolver(
                         break
                 accelerate = self.find("bill_accelerate")
             if adjust_time:
-                return self.adjust_order_time(accelerate, room)
+                return self.adjust_order_time(
+                    accelerate,
+                    room,
+                    **({"order_tasks": order_tasks} if order_tasks is not None else {}),
+                )
         if not_return:
             return
         self.scene_graph_navigation(Scene.INFRA_MAIN)
@@ -13836,13 +13959,12 @@ class BaseSchedulerSolver(
                 if getattr(self.task, "run_order_restore_pending", False):
                     return self._retain_run_order_restoration(delay=True)
                 return False
-            if self.task.type != TaskTypes.RUN_ORDER and room not in plan:
-                self._queue_order_refresh(room)
-                if not new_plan and self.task.type != TaskTypes.FIAMMETTA:
-                    if self._read_arrangement_order_times(room):
-                        self._finish_idle_dorm_shift()
-                        refresh_after_central_change(self, central_before)
-                        return False
+        if (
+            rooms
+            and not new_plan
+            and self.task.type not in (TaskTypes.RUN_ORDER, TaskTypes.FIAMMETTA)
+        ):
+            self._read_arrangement_order_times(room)
         self._finish_idle_dorm_shift()
         if restoring_order:
             del self.task.run_order_original_roster

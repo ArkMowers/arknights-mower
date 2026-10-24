@@ -764,11 +764,11 @@ def test_staffing_change_resumes_original_paused_order_refresh(paused_empty_orde
     assert not any(task is refresh for task in solver.tasks)
     orders = [task for task in solver.tasks if task.type == TaskTypes.RUN_ORDER]
     assert len(orders) == 1 and orders[0].meta_data == "room_1_1"
-    assert remaining_at_read == [{"contact", "room_1_1"}, {"room_1_1"}, set()]
+    assert remaining_at_read == [set()]
     assert orders[0].time == clock.now() + timedelta(
         seconds=1800 - 60 * config.conf.run_order_delay
     )
-    assert solver.read_time.call_count == 4
+    assert solver.read_time.call_count == 2
 
 
 def test_saved_paused_refresh_remains_suspended_until_room_changes(
