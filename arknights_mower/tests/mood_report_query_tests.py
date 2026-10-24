@@ -1,11 +1,12 @@
 """Mood reports retain local date boundaries while using the time index."""
 
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta
 
 import pytest
 
-from arknights_mower.solvers import record
+from arknights_mower.solvers import mood_history_query, record
 from arknights_mower.utils import config
 from arknights_mower.utils.config.plan import PlanModel
 
@@ -112,3 +113,69 @@ def test_report_membership_searches_only_recent_working_history(
             and "current_time>?" in row[3]
             for row in plan
         ), plan
+
+
+@pytest.mark.parametrize("columns", [7, 9])
+def test_directory_migration_covers_query_without_changing_history(
+    tmp_path, monkeypatch, columns
+):
+    database = tmp_path / "history.db"
+    events = ", related_operator TEXT, mood_event TEXT" if columns == 9 else ""
+    with closing(sqlite3.connect(database)) as connection, connection:
+        connection.execute(
+            "CREATE TABLE agent_action (name TEXT, agent_current_room TEXT, "
+            "current_room TEXT, is_high INTEGER, agent_group TEXT, mood REAL, "
+            f"current_time TEXT{events})"
+        )
+        observations = [
+            ("older", 12, "2020-01-01 12:00:00"),
+            ("recent", 23, "2026-10-23 12:00:00"),
+            ("recent", 22, "2026-10-24 12:00:00"),
+            (None, 24, "2026-10-24 12:00:00"),
+            (" ", 24, "2026-10-24 12:00:00"),
+            ("unknown", None, "2026-10-24 12:00:00"),
+            ("no time", 24, None),
+        ]
+        connection.executemany(
+            'INSERT INTO agent_action(name, mood, "current_time") VALUES (?, ?, ?)',
+            observations,
+        )
+        monkeypatch.setattr(record, "_tables_created", False)
+        record._ensure_tables(connection)
+        assert (
+            connection.execute(
+                'SELECT name, mood, "current_time" FROM agent_action ORDER BY rowid'
+            ).fetchall()
+            == observations
+        )
+
+    queries = []
+    original_open = mood_history_query._open_history
+
+    def open_history(path):
+        connection = original_open(path)
+        connection.set_trace_callback(queries.append)
+        return connection
+
+    monkeypatch.setattr(mood_history_query, "_open_history", open_history)
+    before = database.read_bytes()
+    assert mood_history_query.available_mood_operators(database) == [
+        {"name": "recent", "sampleCount": 2, "lastRecordedAt": "2026-10-24 12:00:00"},
+        {"name": "older", "sampleCount": 1, "lastRecordedAt": "2020-01-01 12:00:00"},
+    ]
+    assert database.read_bytes() == before
+    query = next(sql for sql in queries if "COUNT(*)" in sql)
+    with closing(sqlite3.connect(database)) as connection, connection:
+        plan = connection.execute("EXPLAIN QUERY PLAN " + query).fetchall()
+        assert any(
+            "USING COVERING INDEX agent_action_mood_directory" in row[3] for row in plan
+        ), plan
+        connection.execute("DELETE FROM agent_action WHERE name = 'recent'")
+        connection.execute(
+            'INSERT INTO agent_action(name, mood, "current_time") VALUES (?, ?, ?)',
+            ("new", 24, "2026-10-25 12:00:00"),
+        )
+    assert mood_history_query.available_mood_operators(database) == [
+        {"name": "new", "sampleCount": 1, "lastRecordedAt": "2026-10-25 12:00:00"},
+        {"name": "older", "sampleCount": 1, "lastRecordedAt": "2020-01-01 12:00:00"},
+    ]
