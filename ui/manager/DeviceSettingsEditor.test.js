@@ -224,7 +224,7 @@ it('shows only the three instance inputs with shared connection settings and rej
 it('retains the complete editable form and four-argument discovery for a legacy API', async () => {
   expect(component.visibleFields.value.map(({ key }) => key)).toContain('device.preset_id')
   expect(component.visibleFields.value.map(({ key }) => key)).toContain('device.last_serial')
-  expect(component.visibleFields.value.map(({ key }) => key)).toContain('custom_screenshot.command')
+  expect(component.visibleFields.value.map(({ key }) => key)).toContain('device.screenshot_backend')
   expect(component.visibleFields.value.map(({ key }) => key)).not.toContain('device.instance_uuid')
   await component.detect()
   expect(api.discover_device_settings).toHaveBeenCalledExactlyOnceWith(0, {}, target, original)
@@ -387,11 +387,9 @@ it('enables independent configuration from inherited values without requiring a 
   component.setIndependent(true)
   expect(component.draft.value.performance_mode).toBe('high')
   expect(component.visibleFields.value.some(({ key }) => key === 'custom_screenshot.command')).toBe(
-    true
+    false
   )
-  expect(component.visibleFields.value).toEqual(
-    component.fields.value.filter((field) => !field.read_only)
-  )
+  expect(component.visibleFields.value.map(({ key }) => key)).toContain('device.screenshot_backend')
   expect(component.hasChanges.value).toBe(true)
   await component.save()
   expect(api.update_device_settings).toHaveBeenCalledExactlyOnceWith(0, {}, target, original, {
@@ -579,4 +577,59 @@ it('returning one item to common settings drops its unsaved edit and preserves o
   component.setIndependent(true)
   component.setIndependent(false)
   expect(component.draft.value.screenshot).toBe(9)
+})
+
+it('saves one idle action from the instance editor and retains hidden connection values', async () => {
+  const result = await api.get_device_settings()
+  api.get_device_settings.mockResolvedValue({
+    ...result,
+    values: {
+      ...original,
+      close_simulator_when_idle: true,
+      exit_game_when_idle: true,
+      return_home_when_idle: true
+    },
+    fields: [
+      ...result.fields,
+      ...['close_simulator_when_idle', 'exit_game_when_idle', 'return_home_when_idle'].map(
+        (key) => ({ key, group: '游戏启动与空闲', kind: 'boolean' })
+      )
+    ]
+  })
+  await component.load()
+  const idle = () =>
+    component.visibleFields.value.filter(({ key }) =>
+      ['close_simulator_when_idle', 'exit_game_when_idle', 'return_home_when_idle'].includes(key)
+    )
+  expect(idle()).toHaveLength(1)
+  expect(idle()[0].kind).toBe('idle_action')
+  expect(component.idleAction(component.draft.value)).toBe('close')
+  expect(component.hasChanges.value).toBe(false)
+  component.editIdleAction('home')
+  await component.save()
+  expect(api.update_device_settings.mock.calls[0][1]).toEqual({
+    close_simulator_when_idle: false,
+    exit_game_when_idle: false
+  })
+  expect(component.draft.value.return_home_when_idle).toBe(true)
+  expect(component.draft.value['custom_screenshot.command']).toBe('saved-command')
+  expect(component.visibleFields.value.some(({ key }) => key === 'custom_screenshot.command')).toBe(
+    false
+  )
+  component.edit('device.screenshot_backend', 'custom')
+  expect(component.visibleFields.value.some(({ key }) => key === 'custom_screenshot.command')).toBe(
+    true
+  )
+  expect(component.draft.value['custom_screenshot.command']).toBe('saved-command')
+})
+
+it('keeps idle choices locked while using shared connection settings', async () => {
+  await loadPolicy()
+  const keys = ['close_simulator_when_idle', 'exit_game_when_idle', 'return_home_when_idle']
+  component.fields.value.push(
+    ...keys.map((key) => ({ key, group: '游戏启动与空闲', kind: 'boolean' }))
+  )
+  component.editIdleAction('close')
+  expect(component.changes.value).toEqual({})
+  expect(component.visibleFields.value.some(({ key }) => keys.includes(key))).toBe(false)
 })

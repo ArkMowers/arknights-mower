@@ -27,7 +27,8 @@ async function render(path = '/task-settings') {
 describe('task configuration page', () => {
   it('renders the real configuration entry as a page without navigating on mount', async () => {
     const { html, router } = await render('/task-settings?token=demo#task-base')
-    expect(html).toMatch(/<h1\b[^>]*>全部设置<\/h1>/)
+    expect(html).not.toMatch(/<h1\b/)
+    expect(html).toContain('aria-label="全部设置"')
     expect(html).toContain('data-task-configuration="true"')
     expect(router.currentRoute.value.fullPath).toBe('/task-settings?token=demo#task-base')
   })

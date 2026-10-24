@@ -356,6 +356,23 @@ afterEach(() => {
 })
 
 describe('continuous settings directory and scroll selection', () => {
+  it('displays the scheduler idle-action priority for old conflicting flags and saves one choice', async () => {
+    const { config } = await mount()
+    config.close_simulator_when_idle = true
+    config.exit_game_when_idle = true
+    config.return_home_when_idle = true
+    await flush()
+    const field = all(panels('idle')[0]).find(
+      (element) => element.props['aria-label'] === '任务结束后'
+    )
+    expect(field.props.value).toBe('close')
+    field.props['onUpdate:value']('home')
+    await flush()
+    expect(config.close_simulator_when_idle).toBe(false)
+    expect(config.exit_game_when_idle).toBe(false)
+    expect(config.return_home_when_idle).toBe(true)
+  })
+
   it.each(['checklist', 'waterfall'])(
     'unmounts managed connection panels in %s layout',
     async (layout) => {

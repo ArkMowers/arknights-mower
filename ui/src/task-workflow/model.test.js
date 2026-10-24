@@ -1,6 +1,6 @@
 import { computed, reactive } from 'vue'
 import { describe, expect, it } from 'vitest'
-import { createTaskWorkflow, setAllTasksEnabled, setTaskEnabled } from './model'
+import { createTaskWorkflow, setTaskEnabled } from './model'
 
 const switches = [
   ['clue', 'enable_party'],
@@ -203,7 +203,8 @@ describe('task configuration checklist', () => {
       maa_long_task_type: 'rogue'
     }
     const before = structuredClone(config)
-    setAllTasksEnabled(config, false)
+    for (const [id] of switches) setTaskEnabled(config, id, false)
+    setTaskEnabled(config, 'rewards', false)
     expect(config).toEqual({
       ...before,
       ...Object.fromEntries(switches.map(([, key]) => [key, key === 'maa_rg_enable' ? 0 : false])),
@@ -213,7 +214,8 @@ describe('task configuration checklist', () => {
       maa_mining: false,
       maa_specialaccess: false
     })
-    setAllTasksEnabled(config, true)
+    for (const [id] of switches) setTaskEnabled(config, id, true)
+    setTaskEnabled(config, 'rewards', true)
     expect(config).toEqual(before)
   })
 

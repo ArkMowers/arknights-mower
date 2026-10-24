@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { managerCall } from './bridge.js'
 import { editedDevicePatch, presetLabels } from '../src/utils/deviceSettings.js'
 import WaitingSceneEditor from './WaitingSceneEditor.vue'
+import { connectionFields, idleAction, idleActionPatch, idleOptions } from './connectionSettings.js'
 
 const props = defineProps({
   api: { type: Object, required: true },
@@ -48,7 +49,7 @@ const editableField = (key) =>
     : !sharedConfiguration.value || instanceFields.has(key)
 const patchField = (key) => editableField(key) || derivedIdentityFields.has(key)
 const visibleFields = computed(() =>
-  fields.value.filter(
+  connectionFields(fields.value, draft.value).filter(
     (field) =>
       !field.read_only && (editableField(field.key) || overrideKeys.value.includes(field.key))
   )
@@ -133,6 +134,10 @@ function edit(key, value) {
   } else draft.value[key] = value
   if (managerOnlyKeys.has(key) && usesLocalValue(key))
     instanceOverride.value.manager_values[key] = value
+}
+
+function editIdleAction(value) {
+  for (const [key, selected] of Object.entries(idleActionPatch(value))) edit(key, selected)
 }
 
 function setIndependent(value) {
@@ -368,6 +373,7 @@ onUnmounted(() => {
                 }"
               >
                 <div class="device-editor-field-value">
+                  <n-text v-if="field.help" depth="3">{{ field.help }}</n-text>
                   <n-select
                     v-if="overrideKeys.includes(field.key)"
                     :value="usesLocalValue(field.key)"
@@ -379,8 +385,17 @@ onUnmounted(() => {
                     :aria-label="`${field.label}配置来源`"
                     @update:value="(value) => setLocalValue(field.key, value)"
                   />
+                  <n-select
+                    v-if="field.kind === 'idle_action'"
+                    :value="idleAction(draft)"
+                    :options="idleOptions(draft)"
+                    :consistent-menu-width="false"
+                    :disabled="disabled || !editableField(field.key)"
+                    :aria-label="field.label"
+                    @update:value="editIdleAction"
+                  />
                   <WaitingSceneEditor
-                    v-if="field.kind === 'waiting_scene'"
+                    v-else-if="field.kind === 'waiting_scene'"
                     :field="field"
                     :value="draft[field.key]"
                     :disabled="disabled || !editableField(field.key)"

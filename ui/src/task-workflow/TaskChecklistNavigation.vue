@@ -18,7 +18,7 @@ const props = defineProps({
   selectionRequest: { type: Number, default: 0 },
   collapsed: { type: Boolean, default: false }
 })
-const emit = defineEmits(['select', 'toggle', 'set-all', 'update:collapsed'])
+const emit = defineEmits(['select', 'toggle', 'update:collapsed'])
 const query = ref('')
 const directory = ref(null)
 const directoryScroll = ref(null)
@@ -229,11 +229,6 @@ watch(
           没有找到匹配的功能
         </p>
       </div>
-
-      <footer v-show="!query.trim()" class="checklist-footer" aria-label="批量启用任务">
-        <button type="button" @click="emit('set-all', true)">全选</button>
-        <button type="button" @click="emit('set-all', false)">清空</button>
-      </footer>
     </div>
   </nav>
 </template>
@@ -345,8 +340,7 @@ watch(
   padding: 3px 6px;
 }
 .connection-select,
-.checklist-task-select,
-.checklist-footer button {
+.checklist-task-select {
   border: 0;
   background: transparent;
   color: inherit;
@@ -430,24 +424,6 @@ watch(
 .connection-select:hover {
   color: var(--mower-primary);
 }
-.checklist-footer {
-  flex: none;
-  display: flex;
-  border-top: 1px solid var(--mower-border);
-  padding: 6px 12px;
-}
-.checklist-footer button {
-  flex: 1;
-  padding: 7px 0;
-  color: var(--mower-text-muted);
-  font-size: 13px;
-}
-.checklist-footer button + button {
-  border-left: 1px solid var(--mower-border);
-}
-.checklist-footer button:hover {
-  color: var(--mower-primary);
-}
 .checklist-empty {
   margin: 0;
   padding: 24px 4px;
@@ -491,8 +467,7 @@ input:focus-visible {
     flex: none;
   }
   .connection-select,
-  .checklist-task-select,
-  .checklist-footer button {
+  .checklist-task-select {
     min-height: 44px;
   }
   .checklist-mobile-toggle {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createSSRApp } from 'vue'
+import { createSSRApp, reactive } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import CommonSettings from './CommonSettings.vue'
 
@@ -9,11 +9,12 @@ vi.mock('vue', async (original) => ({
 }))
 
 function setup(values = {}, shared = false) {
-  const props = {
+  const props = reactive({
     values,
     fields: [
       {
         key: 'device.screenshot_backend',
+        label: '截图方式',
         default: 'droidcast',
         group: '连接方式',
         shared_connection: shared
@@ -27,7 +28,7 @@ function setup(values = {}, shared = false) {
       { key: 'screenshot', label: '截图保存时间', kind: 'number', default: 1, group: '截图保存' },
       { key: 'startup_mode', default: 'window', group: '实例启动' }
     ]
-  }
+  })
   const emit = vi.fn((event, next) => {
     if (event === 'update:values') props.values = next
   })
@@ -220,4 +221,130 @@ it('searches the combined connection board without including unrelated settings'
     'waiting_scene'
   ])
   expect(component.groups.value).toEqual(['连接与启动'])
+})
+
+const idleFields = [
+  'close_simulator_when_idle',
+  'exit_game_when_idle',
+  'return_home_when_idle'
+].map((key) => ({
+  key,
+  label: key,
+  kind: 'boolean',
+  default: false,
+  group: '游戏启动与空闲',
+  shared_connection: true
+}))
+
+it.each([
+  ['idle', false, false, false],
+  ['home', false, false, true],
+  ['exit', false, true, false],
+  ['close', true, false, false]
+])('saves the common idle choice %s as mutually exclusive flags', (choice, close, exit, home) => {
+  const { props, component } = setup({
+    close_simulator_when_idle: true,
+    exit_game_when_idle: true,
+    return_home_when_idle: true
+  })
+  props.fields.push(...idleFields)
+  const controls = component.visibleFields.value.filter(({ key }) =>
+    idleFields.some((field) => field.key === key)
+  )
+  expect(controls).toHaveLength(1)
+  expect(controls[0].kind).toBe('idle_action')
+  expect(component.idleAction(props.values)).toBe('close')
+  component.change(controls[0], choice)
+  expect(props.values).toEqual({
+    close_simulator_when_idle: close,
+    exit_game_when_idle: exit,
+    return_home_when_idle: home
+  })
+})
+
+it('shows only applicable connection details and keeps their values across parent changes', () => {
+  const values = {
+    'device.preset_id': 'windows.mumu12',
+    'device.screenshot_backend': 'droidcast',
+    'tap_to_launch_game.mode': 'adb',
+    'custom_screenshot.command': 'capture --png',
+    'droidcast.rotate': true,
+    'tap_to_launch_game.x': 100,
+    'tap_to_launch_game.y': 200,
+    'tap_to_launch_game.command': 'saved launch',
+    'device.simulator_hotkey': '',
+    'device.simulator_hotkey_delay': 4,
+    close_simulator_when_idle: true,
+    fix_mumu12_adb_disconnect: true
+  }
+  const { props, component } = setup(values)
+  const conditional = [
+    'custom_screenshot.command',
+    'droidcast.rotate',
+    'tap_to_launch_game.x',
+    'tap_to_launch_game.y',
+    'tap_to_launch_game.command',
+    'device.simulator_hotkey_delay',
+    'fix_mumu12_adb_disconnect'
+  ]
+  props.fields.push(
+    ...conditional.map((key) => ({ key, group: '连接方式', label: key, shared_connection: true }))
+  )
+  const visible = () =>
+    component.visibleFields.value
+      .filter(({ key }) => conditional.includes(key))
+      .map(({ key }) => key)
+  expect(visible()).toEqual(['droidcast.rotate', 'fix_mumu12_adb_disconnect'])
+  props.values = {
+    ...values,
+    'device.screenshot_backend': 'custom',
+    'tap_to_launch_game.mode': 'tap',
+    'device.simulator_hotkey': 'ctrl+f9'
+  }
+  expect(visible()).toEqual([
+    'custom_screenshot.command',
+    'tap_to_launch_game.x',
+    'tap_to_launch_game.y',
+    'device.simulator_hotkey_delay',
+    'fix_mumu12_adb_disconnect'
+  ])
+  props.values = {
+    ...props.values,
+    'tap_to_launch_game.mode': 'custom',
+    'device.preset_id': 'manual.physical'
+  }
+  expect(visible()).toEqual([
+    'custom_screenshot.command',
+    'tap_to_launch_game.command',
+    'device.simulator_hotkey_delay'
+  ])
+  expect(component.idleOptions(props.values).find(({ value }) => value === 'close').disabled).toBe(
+    true
+  )
+  props.values = {
+    ...props.values,
+    'device.screenshot_backend': 'adb_gzip',
+    'device.preset_id': 'windows.mumu12',
+    close_simulator_when_idle: false,
+    exit_game_when_idle: true
+  }
+  expect(visible()).not.toContain('fix_mumu12_adb_disconnect')
+  expect(visible()).not.toContain('custom_screenshot.command')
+  expect(props.values['custom_screenshot.command']).toBe('capture --png')
+  expect(props.values['droidcast.rotate']).toBe(true)
+  expect(props.values['tap_to_launch_game.x']).toBe(100)
+})
+
+it('renders shared connection labels without forced checkboxes while keeping opt-in checkboxes', async () => {
+  const { props } = setup({}, true)
+  const html = await renderToString(createSSRApp(CommonSettings, props))
+  expect(html).not.toContain('aria-label="统一设置截图方式"')
+  expect(html).toContain('aria-label="统一设置截图保存时间"')
+})
+
+it('finds the combined idle selector by its individual actions', () => {
+  const { props, component } = setup({ close_simulator_when_idle: true })
+  props.fields.push(...idleFields)
+  component.search.value = '退出游戏'
+  expect(component.visibleFields.value.map(({ kind }) => kind)).toEqual(['idle_action'])
 })

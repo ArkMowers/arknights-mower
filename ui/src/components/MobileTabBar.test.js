@@ -43,25 +43,25 @@ async function mount(path = '/') {
 }
 
 describe('移动底栏页面选择', () => {
-  it('opens the plan picker and ignores a stale dismissal from another key', async () => {
+  it('opens the report picker and ignores a stale dismissal from another key', async () => {
     const { component } = await mount()
-    component.setTabOpen('plan', true)
-    expect(component.openTab).toBe('plan')
+    component.setTabOpen('reports', true)
+    expect(component.openTab).toBe('reports')
     component.setTabOpen('stale-picker', false)
-    expect(component.openTab).toBe('plan')
-    component.setTabOpen('plan', false)
+    expect(component.openTab).toBe('reports')
+    component.setTabOpen('reports', false)
     expect(component.openTab).toBeNull()
   })
 
   it('closes the picker on page navigation and highlights secondary routes as their group', async () => {
     const { component, router } = await mount('/plan-editor')
-    component.setTabOpen('plan', true)
+    component.setTabOpen('reports', true)
     await router.push('/rescue-plan-editor')
     await nextTick()
     expect(component.openTab).toBeNull()
     expect(component.activeTab).toBe('plan')
     expect(component.moreActive).toBe(false)
-    component.setTabOpen('plan', true)
+    component.setTabOpen('reports', true)
     await router.push('/mowersettings')
     await nextTick()
     expect(component.openTab).toBeNull()
@@ -76,11 +76,11 @@ describe('移动底栏页面选择', () => {
 
   it('closes the picker before opening More and keeps report navigation in its own group', async () => {
     const { component, router, more } = await mount()
-    component.setTabOpen('plan', true)
+    component.setTabOpen('reports', true)
     component.openMore()
     expect(more).toHaveBeenCalledOnce()
     expect(component.openTab).toBeNull()
-    component.setTabOpen('plan', true)
+    component.setTabOpen('reports', true)
     await router.push('/record/depot')
     await nextTick()
     expect(component.openTab).toBeNull()

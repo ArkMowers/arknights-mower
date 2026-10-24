@@ -10,7 +10,7 @@ const props = defineProps({
   editorRequest: { type: Number, default: 0 },
   queue: { type: Array, default: () => [] }
 })
-const emit = defineEmits(['update:modelValue', 'select', 'toggle', 'set-all'])
+const emit = defineEmits(['update:modelValue', 'select', 'toggle'])
 const navigationCollapsed = ref(false)
 const editor = computed(() => props.workflow.editors.find((item) => item.id === props.modelValue))
 </script>
@@ -36,7 +36,6 @@ const editor = computed(() => props.workflow.editors.find((item) => item.id === 
         :selection-request="editorRequest"
         @select="emit('select', $event)"
         @toggle="(id, value) => emit('toggle', id, value)"
-        @set-all="emit('set-all', $event)"
       />
       <section class="task-inspector" aria-label="全部设置">
         <div class="inspector-content"><slot /></div>
@@ -56,7 +55,7 @@ const editor = computed(() => props.workflow.editors.find((item) => item.id === 
   display: grid;
   grid-template-columns: 216px minmax(0, 1fr);
   align-items: start;
-  gap: 24px;
+  gap: 16px;
   min-width: 0;
 }
 .task-inspector {

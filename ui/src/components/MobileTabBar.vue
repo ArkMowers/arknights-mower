@@ -6,7 +6,7 @@
   >
     <template v-for="item in mobileTabs" :key="item.key">
       <n-popover
-        v-if="item.tabGroup || item.items"
+        v-if="item.items"
         trigger="click"
         placement="top"
         :show="openTab === item.key"
@@ -60,7 +60,10 @@
         v-else
         :to="item.to"
         class="mobile-tab-bar__item"
-        :class="{ 'mobile-tab-bar__item--primary': item.key === 'log' }"
+        :class="{
+          'mobile-tab-bar__item--primary': item.key === 'log',
+          'is-active': activeTab === item.key
+        }"
         exact-active-class="is-active"
         :aria-label="item.label"
         :title="item.label"

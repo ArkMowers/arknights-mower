@@ -5,7 +5,7 @@ import { useConfigStore } from '@/stores/config'
 import { deviceConnectionNavigationKey } from '@/composables/deviceConnectionNavigation'
 import TaskSettingsPanels from '@/components/TaskSettingsPanels.vue'
 import TaskWorkflow from './TaskWorkflow.vue'
-import { createTaskWorkflow, setAllTasksEnabled, setTaskEnabled } from './model'
+import { createTaskWorkflow, setTaskEnabled } from './model'
 
 defineProps({
   embedded: { type: Boolean, default: false },
@@ -103,7 +103,6 @@ function followLegacyLink(event) {
     :editor-request="editorRequest"
     @select="openEditor"
     @toggle="(id, value) => setTaskEnabled(config, id, value)"
-    @set-all="setAllTasksEnabled(config, $event)"
   >
     <div @click="followLegacyLink">
       <TaskSettingsPanels
