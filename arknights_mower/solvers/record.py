@@ -114,6 +114,12 @@ def _ensure_tables(conn):
             'CREATE INDEX IF NOT EXISTS agent_action_name_time ON agent_action(name, "current_time")'
         )
         conn.execute(
+            "CREATE INDEX IF NOT EXISTS agent_action_mood_directory "
+            'ON agent_action(name, "current_time", mood) '
+            "WHERE name IS NOT NULL AND TRIM(name) <> '' "
+            'AND mood IS NOT NULL AND "current_time" IS NOT NULL'
+        )
+        conn.execute(
             "CREATE INDEX IF NOT EXISTS agent_action_working_time "
             'ON agent_action("current_time", name) '
             "WHERE is_high = 1 AND current_room NOT LIKE 'dormitory%'"
